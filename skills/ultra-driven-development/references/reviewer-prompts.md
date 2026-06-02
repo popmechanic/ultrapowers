@@ -6,6 +6,16 @@ These prompts are adapted from `superpowers:subagent-driven-development` (implem
 
 ---
 
+## Fail-safe guard (prepend to EVERY agent prompt)
+
+Every dispatched agent — implementer, reviewer, setup, merge, completeness — MUST receive this guard verbatim at the TOP of its prompt:
+
+> SAFETY: Operate ONLY inside the absolute paths named in these instructions. Before any `git` command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string `undefined`, or not a git repo, STOP immediately and report `BLOCKED` — NEVER run `git` or write files in your current working directory or any other repository as a fallback.
+
+A workflow agent handed an unresolved target otherwise silently falls back to the session's repository and mutates it. (Found during live end-to-end validation, 2026-06-02.)
+
+---
+
 ## Implementer prompt
 
 You are an implementer subagent operating inside a dedicated git worktree. You have no access to the Skill tool.

@@ -10,17 +10,24 @@ export const meta = {
   description: 'Execute an approved plan: parallel waves, worktree isolation, adversarial review',
   phases: [ /* one entry per wave, titled "Wave N" */ ],
 }
-// WAVES and per-task PROMPTS/SCHEMAS are injected by the main agent at authoring time.
+// Bake the git target as LITERALS at authoring time. Do NOT rely on `args` to carry
+// REPO/integration — live validation (2026-06-02) showed `args` may not populate the
+// script globals, and an undefined target makes agents fall back to the SESSION repo.
+const REPO = '/absolute/path/to/target/repo'          // literal; validated to be a git repo before launch
+const integrationBranch = 'ultra/integration-<stamp>' // literal (<stamp> may come via args)
+const GUARD = `SAFETY: operate only inside ${REPO}; if it is missing, "undefined", or not a git repo, STOP and report BLOCKED — never fall back to your cwd.`
 const WAVES = args.waves              // Task[][] from dependency-analysis
-const integrationBranch = args.integrationBranch
+if (!Array.isArray(WAVES) || WAVES.length === 0) {
+  throw new Error('WAVES missing/empty — bake waves inline or verify args before launch; never run with an undefined plan')
+}
 for (let w = 0; w < WAVES.length; w++) {
   phase(`Wave ${w + 1}`)
   const results = await parallel(WAVES[w].map(task => () =>
-    runTask(task)                     // pipeline defined below; barrier per wave
+    runTask(task, REPO, GUARD)        // pipeline below; every agent prompt BEGINS with GUARD
   ))
-  await mergeWave(results, integrationBranch)   // see wave-merge.md
+  await mergeWave(results, REPO, integrationBranch, GUARD)   // see wave-merge.md
 }
-return await integrationReview(integrationBranch) // see wave-merge.md + report-format.md
+return await integrationReview(REPO, integrationBranch, GUARD) // see wave-merge.md + report-format.md
 ```
 
 ## Filling In the Skeleton
@@ -31,7 +38,7 @@ return await integrationReview(integrationBranch) // see wave-merge.md + report-
 
 - **Barrier rationale:** `parallel()` per wave is a deliberate barrier — the wave must fully merge before the next starts (cross-wave dependencies). Within a wave, tasks are independent by construction.
 
-- **Authoring instructions:** the main agent loads the superpowers discipline, bakes the reviewer-prompts.md content into each `agent()` prompt, substitutes real task text (pasted, not file refs), and passes `args = { waves, integrationBranch }` to the Workflow tool.
+- **Authoring instructions:** the main agent loads the superpowers discipline, bakes the reviewer-prompts.md content into each `agent()` prompt, substitutes real task text (pasted, not file refs), and **bakes the target repo path and integration branch as string literals** in the script — `args` is unreliable for these (live validation 2026-06-02). Prepend the fail-safe `GUARD` (see reviewer-prompts.md) to the top of every `agent()` prompt, and assert the plan is present before the wave loop (fail loud; never run with an undefined target).
 
 - **Budget guard:** if `budget.total` is set, degrade model tiers / stop early and return a partial report rather than exceeding it.
 
@@ -45,7 +52,7 @@ The workflow script body has no shell or filesystem access. It cannot invoke `gi
 
 `phase(title)` marks a progress checkpoint in the run log. Use one per wave. The `meta.phases` array should list the same titles so the UI can show expected vs. completed phases before execution starts.
 
-`args` carries all caller-supplied inputs. The main agent must pass at minimum `{ waves, integrationBranch }`. Task objects inside `waves` should be self-contained: they carry the task title, acceptance criteria, relevant file paths, and the baked-in reviewer prompts — no external file references that the script cannot resolve.
+`args` may carry supplementary inputs (e.g. `waves`, a timestamp), but **never the git target**: bake the absolute repo path and integration branch as literals so a failure to populate `args` cannot silently redirect git at the session repo. Assert any `args`-sourced value (e.g. `waves`) is present and well-formed before use — throw rather than proceed with `undefined`. Task objects inside `waves` must be self-contained: task title, acceptance criteria, file paths, and the baked-in reviewer prompts — no external file references the script cannot resolve.
 
 `budget` exposes the token budget for the run. If `budget.total` is set, check remaining budget before launching each wave. If headroom is insufficient for the next wave, skip remaining waves, note which tasks were deferred in the return value, and still run `integrationReview` on whatever merged successfully.
 

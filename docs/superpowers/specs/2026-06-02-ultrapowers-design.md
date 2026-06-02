@@ -278,6 +278,30 @@ A throwaway spike (run `wf_52552d12-c24`) confirmed the core mechanics before bu
 Deferred to the clean-repo canary (plan Task 10): the full mutate→merge→test loop, and the
 `claude --plugin-dir` end-to-end skill-launch check.
 
+## Live end-to-end validation (2026-06-02)
+
+A live run (`wf_1366ade3-8c8`) executed the engine against a throwaway scratch repo: a real 3-task
+plan (two independent + one dependent) built in parallel waves with isolated-worktree TDD,
+agent-driven wave merges, and a completeness review. Result: waves `[[A,B],[C]]`, the dependent task
+correctly built on the merged upstream result, **3/3 tests passing**, no completeness gaps. The
+dependency→waves logic, parallel isolation, agent-driven merges, and structured report all work.
+
+**A first attempt failed instructively and produced a hardening rule.** It passed the target repo +
+integration branch via the Workflow `args` field, but `args` did not populate the script's globals;
+the target resolved to `undefined`, and because the agents were not worktree-isolated, `git -C
+undefined` made them fall back to the **session repo** and create a stray branch there (cleaned up;
+no data loss). The plugin now requires:
+
+1. **Bake the absolute target repo path + integration branch as literals** in the authored workflow
+   — never carry the git target through `args`.
+2. **Validate the target is a real git repo** before launch (fail fast).
+3. **Prepend a fail-safe guard to every `agent()` prompt** forbidding any fallback to the cwd.
+4. **Prefer worktree isolation** to contain blast radius.
+
+Still deferred: a true `claude --plugin-dir` install run using the runtime `isolation: 'worktree'`
+flag against the invoking repo (the scratch run used explicit `git worktree add`, since runtime
+worktrees bind to the session repo).
+
 ## Open questions & risks
 
 1. **Dependency inference is the hard part of parallel-in-v1.** A wrong guess costs either lost

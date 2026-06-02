@@ -14,6 +14,13 @@ Autonomously implement an approved Superpowers plan via a parallel, worktree-iso
 
 Run this skill from within the target project's git repository. Worktrees are created as subdirectories of the session repo root. Do not run from a detached HEAD or from outside the project tree.
 
+## Safety Preflight (before authoring the workflow)
+
+- Resolve the target repo to an **absolute path** and confirm it is a real git repo (`git -C <path> rev-parse --git-dir`). Abort if not.
+- **Bake that absolute path and the integration branch name into the workflow script as string literals.** Do NOT pass the git target through `args` — live validation (2026-06-02) showed `args` may not populate the script's globals, and an `undefined` target causes agents to silently fall back to the *session* repo and mutate it.
+- **Every `agent()` prompt must begin with the fail-safe guard** from `references/reviewer-prompts.md` (refuse to run git outside the named path; report `BLOCKED` rather than falling back to the cwd).
+- Assert the computed `waves` are present and non-empty before launching; throw rather than proceed with an undefined plan.
+
 ---
 
 ## Step 1 — Confirm an Approved Plan Exists
@@ -66,7 +73,7 @@ Follow `references/workflow-template.md` to author the Dynamic Workflow script. 
 
 **Fill in the skeleton:**
 
-- Set `args = { waves, integrationBranch }` where `integrationBranch` is `ultra/integration-<timestamp>` (use the current unix timestamp, or pass it through args since the script cannot call `Date.now()`).
+- **Bake the absolute target repo path and `integrationBranch` (`ultra/integration-<timestamp>`) into the script as string literals** (the script cannot call `Date.now()`, so pass only the timestamp via `args` if needed). Do not rely on `args` for the git target. Assert `waves` is present and non-empty before the wave loop, and prepend the fail-safe guard to every `agent()` prompt.
 - Populate `meta.phases` with one entry per wave, titled "Wave N".
 - For each wave, call `parallel()` over the wave's tasks, each dispatching `runTask(task)`.
 
