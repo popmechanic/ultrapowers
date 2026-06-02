@@ -1,0 +1,8 @@
+{
+  "name": "ultrapowers",
+  "owner": { "name": "Marcus Estes", "email": "marcus@vibes.diy" },
+  "description": "ultrapowers: autonomous parallel execution for Superpowers plans.",
+  "plugins": [
+    { "name": "ultrapowers", "source": ".", "description": "ultra-driven-development executor", "version": "0.1.0" }
+  ]
+}
