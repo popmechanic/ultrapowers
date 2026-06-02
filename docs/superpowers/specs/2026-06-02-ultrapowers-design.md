@@ -140,7 +140,10 @@ A `meta` block plus a body using `phase()` per wave, `parallel()` to barrier eac
 per-task `agent({ isolation: 'worktree', schema, model })` pipelines. Per task:
 
 - **implement** — agent prompt carries the full task text (pasted, not a file reference) + baked-in
-  TDD discipline; returns a structured status (`DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`).
+  TDD discipline; runs in `isolation: 'worktree'`; returns a structured status
+  (`DONE | DONE_WITH_CONCERNS | NEEDS_CONTEXT | BLOCKED`) **plus its worktree branch name and HEAD sha**
+  — required because branch names are runtime-assigned (`worktree-wf_<runId>-<n>`), so the merge step
+  learns the task→branch mapping from the agent itself.
 - **spec-compliance review** — adversarial verifier: "does this match the task, nothing more/less?"
   Independent; instructed not to trust the implementer's report.
 - **code-quality review** — runs only after spec-compliance passes.
@@ -153,10 +156,20 @@ most-capable for design/review (Superpowers' selection heuristic).
 
 ### 4. Wave merge + reconciliation
 
-At each wave barrier, the wave's worktree branches merge into a single integration branch and the
-test suite runs. A failed merge or failed tests spawns a **reconciliation agent** that resolves
-the conflict / fixes the regression. If unresolvable within bounds, the wave is marked blocked and
-surfaced in the report rather than silently dropped.
+At each wave barrier the wave's task branches merge into a single integration branch and the test
+suite runs. Two facts from the spike (2026-06-02) shape this:
+
+- **Worktrees** are created at `<repo>/.claude/worktrees/wf_<runId>-<n>` on branches
+  `worktree-wf_<runId>-<n>`, locked during the run and auto-removed when unchanged.
+- **The workflow script cannot run git itself** (no shell/fs in the script body). So the merge is
+  performed by a dedicated **non-isolated merge agent** that the script dispatches with the list of
+  task branches reported by the wave's implementers; it merges them into the integration branch (in
+  the main checkout) in deterministic order and runs the tests. The script orchestrates; agents do
+  the git work.
+
+A failed merge or failed tests spawns a **reconciliation agent** that resolves the conflict / fixes
+the regression. If unresolvable within bounds, the wave is marked blocked and surfaced in the report
+rather than silently dropped.
 
 ### 5. Integration / completeness review
 
@@ -252,6 +265,19 @@ This is a skill + a dynamically authored workflow, so testing has three layers:
 - A bundled marketplace (publish later, as a separate concern).
 - Replacing `writing-plans` with inline decomposition (we keep the plan doc).
 
+## Spike validation (2026-06-02)
+
+A throwaway spike (run `wf_52552d12-c24`) confirmed the core mechanics before build:
+
+- The Workflow tool launches, runs `agent()` calls, and returns schema-validated structured output.
+- `isolation: 'worktree'` provisions a real per-agent worktree (location/branch convention above) and
+  auto-cleans when unchanged — verified zero residue in the host repo.
+- Agents without isolation run in the session's working dir, confirming implementer agents must use
+  worktree isolation.
+
+Deferred to the clean-repo canary (plan Task 10): the full mutate→merge→test loop, and the
+`claude --plugin-dir` end-to-end skill-launch check.
+
 ## Open questions & risks
 
 1. **Dependency inference is the hard part of parallel-in-v1.** A wrong guess costs either lost
@@ -260,9 +286,11 @@ This is a skill + a dynamically authored workflow, so testing has three layers:
 2. **Whether a workflow `agent()` can invoke the Skill tool mid-run is unverified.** The design
    sidesteps this by baking discipline at authoring time, but if live skill access *is* available
    it could simplify things. *To confirm experimentally.*
-3. **Whether a `SKILL.md` can reliably drive `Workflow({scriptPath})`** is the core integration
-   assumption. The documented opt-in path ("a skill whose instructions tell you to call Workflow")
-   suggests yes; *to confirm experimentally — this is the highest-priority unknown.*
+3. **Whether a `SKILL.md` can reliably drive the Workflow tool** is the core integration assumption.
+   The plugin-dev docs confirm a skill may instruct any tool (and `allowed-tools` can pre-approve
+   Workflow), and the spike confirmed the Workflow tool itself behaves as needed. The only unproven
+   leg is a skill *triggering* the launch end-to-end via `claude --plugin-dir` — now low risk,
+   validated in Task 10.
 4. **Cost.** Parallel + adversarial verification + worktrees is token-heavy. The degrade-to-sequential
    path and the `budget` guard are the controls.
 

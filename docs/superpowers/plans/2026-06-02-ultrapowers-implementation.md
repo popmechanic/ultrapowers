@@ -331,7 +331,8 @@ return await integrationReview(integrationBranch) // see wave-merge.md + report-
 ```
 ````
 
-  - **Per-task pipeline (`runTask`):** implement → spec-compliance review → code-quality review → bounded fix-loop, each `agent()` call using `isolation: 'worktree'`, the prompts/schemas from `reviewer-prompts.md`, and `model` tiers per role.
+  - **Per-task pipeline (`runTask`):** implement → spec-compliance review → code-quality review → bounded fix-loop, each `agent()` call using `isolation: 'worktree'`, the prompts/schemas from `reviewer-prompts.md`, and `model` tiers per role. Each implementer returns its **worktree branch + HEAD sha** (branch names are runtime-assigned, so the task→branch map comes from the agent).
+  - **Merge step (`mergeWave`):** the workflow script cannot run git, so `mergeWave` dispatches a dedicated **non-isolated** merge agent with the wave's reported branches; it merges them into the integration branch (in the main checkout) and runs the tests. See `wave-merge.md`.
   - **Authoring instructions:** the main agent loads the Superpowers discipline (Task content reused from `reviewer-prompts.md`), substitutes real task text (pasted, not file refs), and passes `args = { waves, integrationBranch }` to `Workflow`.
   - **Barrier rationale:** `parallel()` per wave is a deliberate barrier — the wave must fully merge before the next wave starts (cross-wave dependencies). Within a wave, tasks are independent by construction.
   - **Budget guard:** if `budget.total` is set, degrade model tiers / stop early and return a partial report rather than exceeding it.
@@ -354,15 +355,17 @@ git commit -m "docs: workflow-template reference (wave loop skeleton)"
 
 - [ ] **Step 1: Write the file.** It bakes Superpowers' implementer/reviewer discipline into workflow-agent prompts + JSON schemas (so headless agents need no live Skill-tool access). Sections, with concrete content:
   - **Sourcing note:** these prompts are adapted from `superpowers:subagent-driven-development` (implementer, spec-reviewer, code-quality-reviewer) and `superpowers:test-driven-development`/`verification-before-completion`. The main agent loads those skills via the Skill tool at authoring time and refreshes this content if Superpowers has changed.
-  - **Implementer prompt:** receives the **full pasted task text**, the worktree path, TDD instruction (red→green→refactor), and the status protocol. Must self-verify before reporting.
+  - **Implementer prompt:** receives the **full pasted task text**, the worktree path, TDD instruction (red→green→refactor), and the status protocol. Must self-verify before reporting, and must report its **worktree branch** (`git branch --show-current`) and **HEAD sha** (`git rev-parse HEAD`) so the merge step can map task→branch.
   - **Status schema** (verbatim JSON Schema):
 
 ```json
-{ "type": "object", "required": ["status", "summary"],
+{ "type": "object", "required": ["status", "summary", "branch"],
   "properties": {
     "status": { "enum": ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"] },
     "summary": { "type": "string" },
     "concerns": { "type": "array", "items": { "type": "string" } },
+    "branch": { "type": "string" },
+    "headSha": { "type": "string" },
     "commit": { "type": "string" } } }
 ```
 
@@ -410,8 +413,9 @@ git commit -m "docs: reviewer-prompts reference (baked discipline + schemas)"
 - Create: `skills/ultra-driven-development/references/wave-merge.md`
 
 - [ ] **Step 1: Write the file** with concrete procedures:
-  - **Integration branch:** created from the base branch before Wave 1 (`git checkout -b ultra/integration-<timestamp>`; timestamp passed in via `args` since workflows can't call Date.now()).
-  - **Per-wave merge:** for each completed task in the wave, merge its worktree branch into the integration branch in deterministic task order. After merging the wave, run the project's test command (detected from the repo: `pnpm check` / `npm test` / `pytest` / `cargo test` / `go test ./...`).
+  - **Integration branch:** created by an agent (the script can't run git) from the base branch before Wave 1 (`git checkout -b ultra/integration-<timestamp>`; timestamp passed in via `args` since workflows can't call Date.now()).
+  - **Worktree/branch facts (spike-confirmed):** task agents run in worktrees at `<repo>/.claude/worktrees/wf_<runId>-<n>` on runtime-assigned branches `worktree-wf_<runId>-<n>`; each implementer self-reports its branch + HEAD sha.
+  - **Merge is done by an agent, not the script:** the workflow body has no shell/fs, so `mergeWave` dispatches one **non-isolated** merge agent with the wave's reported branches. That agent merges them into the integration branch (in the main checkout) in deterministic task order, then runs the project's test command (detected from the repo: `pnpm check` / `npm test` / `pytest` / `cargo test` / `go test ./...`).
   - **Reconciliation:** on a merge conflict or a failed post-merge test, dispatch one reconciliation agent with the conflict/diff and the failing output; cap at 2 attempts. If unresolved, mark the wave `blocked`, leave its branches intact, and record it for the report — do not abort the whole run unless a downstream wave wholly depends on the blocked output.
   - **Integration / completeness review (after the final wave):** run the full test suite, then dispatch a completeness-critic agent (reusing `superpowers:verification-before-completion`): "what plan requirement is unmet, what claim is unverified, what path is untested?" Its findings join the report.
   - **No silent caps:** every truncation (fix-loop cap, reconciliation cap, blocked wave) is logged via `log()` and included in the report.
@@ -443,7 +447,7 @@ git commit -m "docs: wave-merge reference (merge, reconciliation, integration re
     "dependencyEdges": { "type": "array", "items": { "type": "string" } },
     "tasks": { "type": "array", "items": { "type": "object",
       "required": ["task", "status"],
-      "properties": { "task": {"type":"string"}, "status": {"type":"string"},
+      "properties": { "task": {"type":"string"}, "status": {"type":"string"}, "branch": {"type":"string"},
         "commit": {"type":"string"}, "reviewVerdict": {"type":"string"}, "notes": {"type":"string"} } } },
     "tests": { "type": "object", "properties": { "command": {"type":"string"}, "passed": {"type":"boolean"}, "output": {"type":"string"} } },
     "judgmentCalls": { "type": "array", "items": { "type": "string" } },
