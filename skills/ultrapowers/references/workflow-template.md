@@ -43,7 +43,15 @@ confirm it reports `waves` as an array.
 - **Probe fails** → switch SKILL.md to the **temp-file fallback**: the main agent writes the waves
   JSON to a temp path and the workflow's phase-0 `agent()` reads it (agents have fs access) and
   returns parsed JSON, which the script then validates. The script must still never proceed on
-  `undefined`. (Record the probe result here when known.)
+  `undefined`.
+
+**Probe result (2026-06-03, claude v2.1.161 via `claude --plugin-dir ... -p`):** `args` arrived as a
+raw **JSON string** (`rawType: "string"`), not a parsed object — so `args.waves` was `undefined` until
+parsed. Fix applied: `workflow.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
+reading `.waves` (and throws if the string is not valid JSON). After the fix the probe returns
+`{ rawType: "string", argsSeen: ["waves"], wavesType: "array" }`. The defensive parse handles both
+delivery forms (object or string), so the temp-file fallback is **not** needed. Re-run the probe if a
+future Claude Code version changes how `args` is delivered.
 
 Either way, the **GUARD** (baked into every agent prompt) is the backstop: it forbids any `git` in an
 unrelated repo or a cwd fallback.

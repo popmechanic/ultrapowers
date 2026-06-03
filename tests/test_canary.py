@@ -36,6 +36,7 @@ def test_workflow_uses_api_correctly():
     wf = WORKFLOW.read_text()
     assert "export const meta" in wf
     assert "args.waves" in wf
+    assert "JSON.parse(" in wf                  # defensive parse: args may arrive as a string
     assert "throw new Error(" in wf            # fail-loud args validation
     assert "phase(" in wf
     assert "parallel(" in wf                    # per-wave barrier

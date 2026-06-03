@@ -23,7 +23,20 @@ export const meta = {
 // ── args.waves validation (FAIL LOUD) ────────────────────────────────────────
 // A silent undefined target is catastrophic (agents could mutate the session
 // repo). We refuse to run rather than proceed on a missing/malformed plan.
-const WAVES = (typeof args !== 'undefined' && args) ? args.waves : undefined
+// args may arrive as a parsed object OR, in some headless/-p launch paths, as a
+// raw JSON string (confirmed live via tests/fixtures/args-probe.js: Object.keys
+// returned character indices, i.e. a string). Normalize defensively so the
+// primary args.waves path works regardless of delivery form.
+let ARGS = (typeof args !== 'undefined') ? args : undefined
+if (typeof ARGS === 'string') {
+  try {
+    ARGS = JSON.parse(ARGS)
+  } catch (e) {
+    throw new Error('ultrapowers: args was a string but not valid JSON: ' + e.message)
+  }
+}
+
+const WAVES = (ARGS && typeof ARGS === 'object') ? ARGS.waves : undefined
 const validWaves =
   Array.isArray(WAVES) && WAVES.length > 0 &&
   WAVES.every((w) =>
@@ -38,11 +51,11 @@ if (!validWaves) {
   )
 }
 
-const stamp = (typeof args !== 'undefined' && args && args.stamp) || 'run'
+const stamp = (ARGS && ARGS.stamp) || 'run'
 const integrationBranch =
-  (typeof args !== 'undefined' && args && typeof args.integrationBranch === 'string' && args.integrationBranch) ||
+  (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||
   ('ultra/integration-' + stamp)
-const dependencyEdges = (typeof args !== 'undefined' && args && args.dependencyEdges) || []
+const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
 
 // meta.phases must be { title } objects, one per wave (+ setup + review).
 meta.phases = [{ title: 'Setup' }]

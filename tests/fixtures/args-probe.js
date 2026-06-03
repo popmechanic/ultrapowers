@@ -19,9 +19,14 @@ export const meta = {
 
 phase('Probe')
 
-const seen = (typeof args !== 'undefined' && args) ? Object.keys(args) : null
-const wavesType = (typeof args !== 'undefined' && args && Array.isArray(args.waves))
-  ? 'array'
-  : typeof (typeof args !== 'undefined' && args ? args.waves : undefined)
+// Mirror workflow.js: args may arrive as an object or a JSON string.
+let A = (typeof args !== 'undefined') ? args : undefined
+const rawType = typeof args
+if (typeof A === 'string') {
+  try { A = JSON.parse(A) } catch (e) { A = { __parseError: e.message } }
+}
 
-return { argsSeen: seen, wavesType }
+const seen = (A && typeof A === 'object') ? Object.keys(A) : null
+const wavesType = (A && Array.isArray(A.waves)) ? 'array' : typeof (A ? A.waves : undefined)
+
+return { rawType, argsSeen: seen, wavesType }
