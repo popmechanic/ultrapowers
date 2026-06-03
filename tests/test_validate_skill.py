@@ -1,6 +1,6 @@
 import subprocess, sys, pathlib, textwrap
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-VALIDATOR = ROOT / "skills/ultra-driven-development/scripts/validate_skill.py"
+VALIDATOR = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
 
 def run(skill_dir):
     p = subprocess.run([sys.executable, str(VALIDATOR), str(skill_dir)],
@@ -9,6 +9,10 @@ def run(skill_dir):
 
 def test_good_skill_passes():
     code, out = run(ROOT / "tests/fixtures/good-skill")
+    assert code == 0, out
+
+def test_ultrapowers_skill_validates():
+    code, out = run(ROOT / "skills/ultrapowers")
     assert code == 0, out
 
 def test_missing_description_fails(tmp_path):

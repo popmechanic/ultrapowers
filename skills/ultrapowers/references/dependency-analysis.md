@@ -75,7 +75,9 @@ If either condition is true:
 
 ## Transparency: Computed Output
 
-Record the following for inclusion in the final report (see `report-format.md`):
+This block is what the main agent renders at the **Step-3 wave-plan approval gate** (see `SKILL.md`)
+so the human can sanity-check the parallelization before launch, and it is also included in the final
+report (see `report-format.md`). Record the following:
 
 ```
 dag_edges:
