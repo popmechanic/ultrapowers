@@ -84,9 +84,14 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 ### Model-tier mapping (single source)
 
-`reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow API takes
-`small` / `medium` / `large`. The mapping lives in **one place**, the `TIER` constant in `workflow.js`.
-Reviewers always run at `most-capable`.
+`reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
+takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
+constant in `workflow.js`. Reviewers always run at `most-capable` (`opus`).
+
+**Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
+the agent returns "There's an issue with the selected model" and does no work — whereas
+`haiku` / `sonnet` / `opus` work. Re-verify with a model probe if a future version changes the
+accepted identifiers.
 
 ## Re-bake procedure (when Superpowers discipline changes)
 

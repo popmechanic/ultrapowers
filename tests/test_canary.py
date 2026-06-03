@@ -46,6 +46,16 @@ def test_workflow_uses_api_correctly():
     assert "return {" in wf                      # structured report return
 
 
+def test_workflow_model_tiers_use_valid_aliases():
+    # Verified live (2026-06-03): agent({model}) accepts haiku/sonnet/opus;
+    # small/medium/large are rejected as invalid models. Lock the mapping so it
+    # can't silently regress to the broken values.
+    wf = WORKFLOW.read_text()
+    assert "cheap: 'haiku'" in wf
+    assert "standard: 'sonnet'" in wf
+    assert "mostCapable: 'opus'" in wf
+
+
 def test_workflow_has_baked_discipline_markers():
     wf = WORKFLOW.read_text()
     for const in ("GUARD", "IMPLEMENTER_PROMPT", "SPEC_REVIEWER_PROMPT",

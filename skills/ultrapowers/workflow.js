@@ -46,8 +46,8 @@ if (!validWaves) {
   throw new Error(
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
     'task = { id, title, body, tier, acceptance, files }. Refusing to run with an ' +
-    'undefined plan. If args did not populate, use the SKILL.md fallback ' +
-    '(temp-file handoff, or superpowers:subagent-driven-development).'
+    'undefined plan. When this happens, the SKILL.md fallback ' +
+    '(superpowers:subagent-driven-development) runs instead.'
   )
 }
 
@@ -213,8 +213,10 @@ const REVIEW_SCHEMA = {
 }
 
 // Model tiers. reviewer-prompts.md names them cheap / standard / most-capable;
-// the workflow API takes small / medium / large. Map in ONE place here.
-const TIER = { cheap: 'small', standard: 'medium', mostCapable: 'large' }
+// the workflow agent() API takes Claude aliases haiku / sonnet / opus. Verified
+// live (2026-06-03): small/medium/large are rejected as invalid models, so the
+// agent returns an error instead of doing the work. Map in ONE place here.
+const TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
 
 // ── Per-task pipeline: implement → spec → quality → bounded fix-loop ──────────
 async function runTask(task) {
