@@ -1,6 +1,6 @@
 # Plan: Canary Fixture
 
-> Tiny fixture for validating ultra-driven-development's dependency analysis and wave computation.
+> Tiny fixture for validating ultrapowers' dependency analysis and wave computation.
 
 **Goal:** Two independent tasks plus one dependent task, so the expected wave grouping is known: `[[Task A, Task B], [Task C]]` with edge `A → C`.
 

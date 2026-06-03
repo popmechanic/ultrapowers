@@ -2,6 +2,12 @@
 
 How a wave's worktree branches get merged into one integration branch, reconciled on failure, and finally reviewed.
 
+**Source-of-truth note:** the setup, merge, reconciliation, and completeness-critic prompts described
+here are **baked into `skills/ultrapowers/workflow.js`** as the `SETUP_PROMPT`, `MERGE_PROMPT`,
+`RECONCILE_PROMPT`, and `COMPLETENESS_PROMPT` constants. When you change the procedure here, re-bake
+those constants (see the re-bake procedure in `workflow-template.md`). The committed workflow runs
+this machinery; the main agent does not author it.
+
 ---
 
 ## Integration Branch
@@ -18,7 +24,9 @@ The timestamp is passed in via `args` at workflow startup — workflows cannot c
 
 ## Worktree and Branch Facts
 
-Task agents run in isolated worktrees at:
+Task agents run in isolated worktrees provisioned by `isolation: 'worktree'`. `<repo>` is the
+**session repository** (the repo `/ultrapowers` was invoked from) — the runtime binds worktrees there
+natively, so no external target path is passed to the workflow:
 
 ```
 <repo>/.claude/worktrees/wf_<runId>-<n>

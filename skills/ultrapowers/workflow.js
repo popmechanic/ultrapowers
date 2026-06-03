@@ -1,0 +1,341 @@
+// skills/ultrapowers/workflow.js
+//
+// COMMITTED Dynamic Workflow for ultrapowers. This file is NOT authored at
+// runtime — it ships frozen and is launched by SKILL.md with args.waves.
+//
+// The Superpowers discipline (implementer / reviewer / completeness prompts,
+// the safety GUARD, and the JSON schemas) is BAKED IN below as constants.
+// Source of truth: references/reviewer-prompts.md (prompts + GUARD + schemas)
+// and references/wave-merge.md (merge / setup / reconcile prompts). When the
+// upstream discipline changes, re-bake per references/workflow-template.md;
+// tests/test_no_prompt_drift.py fails if the baked copy diverges from source.
+//
+// Runtime globals provided by the workflow engine: agent(), parallel(),
+// phase(), log(), args, budget. The script itself has no shell/filesystem
+// access — only agent() calls do work.
+
+export const meta = {
+  name: 'ultrapowers',
+  description: 'Execute an approved plan: parallel waves, worktree isolation, adversarial review.',
+  phases: [],
+}
+
+// ── args.waves validation (FAIL LOUD) ────────────────────────────────────────
+// A silent undefined target is catastrophic (agents could mutate the session
+// repo). We refuse to run rather than proceed on a missing/malformed plan.
+const WAVES = (typeof args !== 'undefined' && args) ? args.waves : undefined
+const validWaves =
+  Array.isArray(WAVES) && WAVES.length > 0 &&
+  WAVES.every((w) =>
+    Array.isArray(w) && w.length > 0 &&
+    w.every((t) => t && typeof t.id === 'string' && typeof t.body === 'string'))
+if (!validWaves) {
+  throw new Error(
+    'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
+    'task = { id, title, body, tier, acceptance, files }. Refusing to run with an ' +
+    'undefined plan. If args did not populate, use the SKILL.md fallback ' +
+    '(temp-file handoff, or superpowers:subagent-driven-development).'
+  )
+}
+
+const stamp = (typeof args !== 'undefined' && args && args.stamp) || 'run'
+const integrationBranch =
+  (typeof args !== 'undefined' && args && typeof args.integrationBranch === 'string' && args.integrationBranch) ||
+  ('ultra/integration-' + stamp)
+const dependencyEdges = (typeof args !== 'undefined' && args && args.dependencyEdges) || []
+
+// meta.phases must be { title } objects, one per wave (+ setup + review).
+meta.phases = [{ title: 'Setup' }]
+  .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
+  .concat([{ title: 'Integration Review' }])
+
+// ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
+const GUARD =
+  'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
+  'setup, merge, reconcile, and integration roles the session repository main ' +
+  'checkout. Before any git command, confirm the target directory exists and is ' +
+  'a git repository. If a path is missing, empty, the literal string undefined, ' +
+  'or not a git repo, STOP immediately and report BLOCKED. NEVER run git or ' +
+  'write files in an unrelated repository, and NEVER fall back to your current ' +
+  'working directory.'
+
+// ── Baked discipline prompts (source: references/reviewer-prompts.md) ─────────
+// BAKE:IMPLEMENTER_PROMPT
+const IMPLEMENTER_PROMPT = [
+  'You are an implementer subagent operating inside a dedicated git worktree. You have no access to the Skill tool.',
+  '',
+  'Inputs you receive:',
+  '- TASK: the full, verbatim task text — do not paraphrase or reinterpret it',
+  '- WORKTREE_PATH: absolute path to your isolated worktree',
+  '- BRANCH: the branch you must work on (already checked out for you)',
+  '',
+  'Workflow — red green refactor:',
+  '1. Read and restate the acceptance criteria from the task text before touching code.',
+  '2. Write or update tests that encode those criteria. Confirm they fail (pnpm check or equivalent).',
+  '3. Implement the minimum code to make them pass.',
+  '4. Refactor for clarity without breaking tests.',
+  '5. Run the full check suite one final time and confirm it is clean.',
+  '',
+  'Self-verify before reporting:',
+  '- Re-read the task. Confirm every stated requirement is addressed.',
+  '- Run git diff main (or the base branch) and verify no unrelated files are modified.',
+  '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
+  '',
+  'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
+  '',
+  'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.',
+].join('\n')
+
+// BAKE:SPEC_REVIEWER_PROMPT
+const SPEC_REVIEWER_PROMPT = [
+  'You are an independent spec-compliance reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
+  '',
+  'Mandate: verify everything independently. Do not trust the implementer report.',
+  '',
+  '1. Check out the branch identified by headSha. Run git diff main yourself.',
+  '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
+  '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
+  '4. Run the full check suite and confirm it passes.',
+  '5. Return the reviewer verdict schema below — nothing more, nothing less.',
+  '',
+  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
+].join('\n')
+
+// BAKE:QUALITY_REVIEWER_PROMPT
+const QUALITY_REVIEWER_PROMPT = [
+  'You are a code-quality reviewer. You run only after the spec-compliance reviewer returns PASS. You receive the diff and the codebase context.',
+  '',
+  'Check these dimensions:',
+  '- Separation of concerns: each module/function has one clear responsibility; UI, logic, and data layers are not entangled.',
+  '- Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
+  '- DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
+  '- Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
+  '',
+  'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the PR must not merge until fixed; minor is advisory.',
+  '',
+  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
+].join('\n')
+
+// Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
+const SETUP_PROMPT =
+  'Create the integration branch from the current HEAD of the session repo main ' +
+  'checkout: git checkout -b ' + integrationBranch + '. Confirm the branch name ' +
+  'and its HEAD sha back in your JSON result.'
+
+const MERGE_PROMPT =
+  'You are the wave merge agent, operating on the session repo main checkout (no ' +
+  'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
+  'the given task-index order (deterministic, so conflicts are reproducible). ' +
+  'After all merges succeed, detect and run the project test command (pnpm check, ' +
+  'npm test, pytest, cargo test, or go test ./...). Report MERGED with the final ' +
+  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
+
+const RECONCILE_PROMPT =
+  'You are the reconciliation agent on ' + integrationBranch + '. You are given a ' +
+  'merge conflict diff or failing test output. Resolve it on the integration ' +
+  'branch and re-run the project test command. Report MERGED on success, or ' +
+  'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
+
+const COMPLETENESS_PROMPT =
+  'What plan requirement is unmet? What claim is unverified? What code path is ' +
+  'untested? Run the full test suite on ' + integrationBranch + ' from the main ' +
+  'checkout and review the integrated result against the original plan. List every ' +
+  'gap, unverified claim, and untested path.'
+
+// ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
+const IMPLEMENTER_SCHEMA = {
+  type: 'object',
+  required: ['status', 'summary', 'branch'],
+  properties: {
+    status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
+    summary: { type: 'string' },
+    concerns: { type: 'array', items: { type: 'string' } },
+    branch: { type: 'string' },
+    headSha: { type: 'string' },
+    commit: { type: 'string' },
+  },
+}
+const REVIEWER_SCHEMA = {
+  type: 'object',
+  required: ['verdict', 'issues'],
+  properties: {
+    verdict: { enum: ['PASS', 'FIX_REQUIRED'] },
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['severity', 'detail'],
+        properties: {
+          severity: { enum: ['blocking', 'minor'] },
+          detail: { type: 'string' },
+        },
+      },
+    },
+  },
+}
+const MERGE_SCHEMA = {
+  type: 'object',
+  required: ['status'],
+  properties: {
+    status: { enum: ['MERGED', 'CONFLICT', 'TEST_FAILED'] },
+    headSha: { type: 'string' },
+    detail: { type: 'string' },
+    command: { type: 'string' },
+  },
+}
+const SETUP_SCHEMA = {
+  type: 'object',
+  required: ['branch'],
+  properties: { branch: { type: 'string' }, headSha: { type: 'string' } },
+}
+const REVIEW_SCHEMA = {
+  type: 'object',
+  required: ['testsPassed'],
+  properties: {
+    command: { type: 'string' },
+    testsPassed: { type: 'boolean' },
+    output: { type: 'string' },
+    findings: { type: 'array', items: { type: 'string' } },
+  },
+}
+
+// Model tiers. reviewer-prompts.md names them cheap / standard / most-capable;
+// the workflow API takes small / medium / large. Map in ONE place here.
+const TIER = { cheap: 'small', standard: 'medium', mostCapable: 'large' }
+
+// ── Per-task pipeline: implement → spec → quality → bounded fix-loop ──────────
+async function runTask(task) {
+  const baseModel = TIER[task.tier] || TIER.standard
+
+  let impl = await agent(
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body,
+    { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
+  )
+  if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
+    return { task: task.id, status: 'failed', branch: impl.branch,
+             reviewVerdict: 'not-reviewed', notes: impl.summary }
+  }
+
+  // Fix-loop: cap 3 iterations total (initial + 2). See reviewer-prompts.md.
+  for (let iter = 1; iter <= 3; iter++) {
+    const spec = await agent(
+      GUARD + '\n\n' + SPEC_REVIEWER_PROMPT +
+        '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
+      { label: 'spec:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
+    )
+    let quality = { verdict: 'PASS', issues: [] }
+    if (spec.verdict === 'PASS') {
+      quality = await agent(
+        GUARD + '\n\n' + QUALITY_REVIEWER_PROMPT +
+          '\n\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
+        { label: 'qual:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
+      )
+    }
+    const issues = (spec.issues || []).concat(quality.issues || [])
+    const blocking = issues.filter((i) => i.severity === 'blocking')
+    const minors = issues.filter((i) => i.severity === 'minor')
+
+    if (blocking.length === 0) {
+      return { task: task.id, status: 'done', branch: impl.branch, commit: impl.commit,
+               headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
+               notes: minors.map((m) => m.detail).join('; ') }
+    }
+    if (iter === 3) {
+      return { task: task.id, status: 'failed', branch: impl.branch,
+               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; ') }
+    }
+    // Re-dispatch implementer on the same branch, escalated to most-capable.
+    impl = await agent(
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body +
+        '\n\nFIX REQUIRED — resolve these blocking issues on the same branch (' +
+        impl.branch + '):\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
+      { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
+    )
+    if (impl.status === 'BLOCKED') {
+      return { task: task.id, status: 'failed', branch: impl.branch,
+               reviewVerdict: 'blocked-after-fix', notes: impl.summary }
+    }
+  }
+}
+
+// ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
+async function mergeWave(results, waveIdx) {
+  const merged = results.filter((r) => r && r.status === 'done' && r.branch)
+  if (merged.length === 0) return { status: 'TEST_FAILED', detail: 'no branches to merge' }
+  const branchList = merged
+    .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
+    .join('\n')
+  let merge = await agent(
+    GUARD + '\n\n' + MERGE_PROMPT + '\nMerge in this order:\n' + branchList,
+    { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
+  )
+  for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
+    log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
+    merge = await agent(
+      GUARD + '\n\n' + RECONCILE_PROMPT + '\nFailure:\n' + (merge.detail || ''),
+      { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
+    )
+  }
+  return merge
+}
+
+// ── Main: setup → wave loop (parallel barrier, chunked at 16) → review ────────
+const taskResults = []
+const blockedWaves = []
+const judgmentCalls = []
+const unfinished = []
+
+phase('Setup')
+await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+
+const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
+
+for (let w = 0; w < WAVES.length; w++) {
+  // Peak concurrency equals wave width (each task pipeline is internally
+  // sequential), so chunk waves wider than the engine cap.
+  if (typeof budget !== 'undefined' && budget && budget.total && budget.remaining === 0) {
+    WAVES[w].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted)'))
+    continue
+  }
+  phase('Wave ' + (w + 1))
+  const results = []
+  for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
+    const chunk = WAVES[w].slice(off, off + CONCURRENCY)
+    const chunkResults = await parallel(chunk.map((task) => () => runTask(task)))
+    for (const r of chunkResults) results.push(r)
+  }
+  for (const r of results) taskResults.push(r)
+
+  const merge = await mergeWave(results, w)
+  if (merge.status !== 'MERGED') {
+    blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
+    log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
+    // Later waves depend on earlier ones by construction: cascade-block them.
+    for (let d = w + 1; d < WAVES.length; d++) {
+      WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+    }
+    break
+  }
+}
+
+// ── Integration + completeness review ────────────────────────────────────────
+phase('Integration Review')
+const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
+const review = await agent(
+  GUARD + '\n\n' + COMPLETENESS_PROMPT +
+    '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves),
+  { label: 'integration', model: TIER.mostCapable, schema: REVIEW_SCHEMA }
+)
+
+// ── Structured return value (matches references/report-format.md) ─────────────
+return {
+  integrationBranch,
+  waves: WAVES.map((w) => w.map((t) => t.id)),
+  dependencyEdges,
+  tasks: taskResults,
+  tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  judgmentCalls,
+  unfinished,
+  completenessFindings: review.findings || [],
+  blockedWaves,
+}

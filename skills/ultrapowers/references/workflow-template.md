@@ -1,0 +1,98 @@
+# Workflow Maintainer Guide (`workflow.js`)
+
+This skill ships a **committed** Dynamic Workflow at `skills/ultrapowers/workflow.js`. It is **not
+authored at runtime** — the main agent (SKILL.md) only computes waves and launches it. This file
+documents the committed script's structure, its input contract, and the procedure for re-baking the
+Superpowers discipline when it changes.
+
+## What the script is
+
+A pure orchestrator. The workflow runtime executes it headlessly in the background; the script body
+has **no shell or filesystem access** — only `agent()` calls do work (clone, edit, commit, merge,
+test). Runtime globals: `agent(prompt, opts)`, `parallel(thunks)`, `phase(title)`, `log(msg)`,
+`args`, `budget`. The file is ESM (`export const meta`) with top-level `await` and a top-level
+`return`; this is the engine's wrapped dialect (see "Syntax checking" below).
+
+## Input contract (`args`)
+
+The skill launches the workflow with:
+
+```
+args = { waves, integrationBranch, stamp, dependencyEdges }
+```
+
+- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files }`. `body` is the
+  full verbatim task text (the script cannot resolve file references). **Required.**
+- `args.integrationBranch` — e.g. `ultra/integration-<stamp>` (falls back to `ultra/integration-<stamp>`).
+- `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
+- `args.dependencyEdges` — human-readable edges for the report (optional).
+
+The script **validates `args.waves` and throws loudly** if it is missing or malformed, converting a
+silent `undefined` (which historically caused agents to mutate the session repo) into a safe, loud
+failure that never touches git.
+
+### Args-population note (the one risk to verify)
+
+Live validation on 2026-06-02 saw `args` **fail to populate** the script globals for an *ad-hoc*
+launch, leaving the target `undefined`. The current docs state `args` populates for committed/saved
+workflows. Before relying on it for a real run, run the one-time **probe** (`tests/fixtures/args-probe.js`):
+launch it via the real `/ultrapowers` install path with `args = { waves: [[{ id: 'probe' }]] }` and
+confirm it reports `waves` as an array.
+
+- **Probe passes** → the `args.waves` path is safe (current default).
+- **Probe fails** → switch SKILL.md to the **temp-file fallback**: the main agent writes the waves
+  JSON to a temp path and the workflow's phase-0 `agent()` reads it (agents have fs access) and
+  returns parsed JSON, which the script then validates. The script must still never proceed on
+  `undefined`. (Record the probe result here when known.)
+
+Either way, the **GUARD** (baked into every agent prompt) is the backstop: it forbids any `git` in an
+unrelated repo or a cwd fallback.
+
+## No external target path
+
+Task agents run with `isolation: 'worktree'`, which provisions a worktree **in the session repo**
+natively; the non-isolated roles (setup, merge, reconcile, integration) operate on the session repo's
+main checkout by design. So the script carries **no absolute repo path** — the old "bake the REPO
+literal" rule is obsolete. Run the skill from inside the target repo.
+
+## Structure (read the file for specifics)
+
+- `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review).
+- Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `SPEC_REVIEWER_PROMPT`, `QUALITY_REVIEWER_PROMPT`,
+  `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
+- `runTask(task)` — implement (`isolation: 'worktree'`) → spec review → quality review → bounded
+  fix-loop (cap 3, escalate to most-capable on re-dispatch).
+- Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
+  engine's concurrency cap), then `mergeWave()` (non-isolated; reconciliation cap 2; cascade-block
+  downstream on unrecoverable failure).
+- `phase('Integration Review')` — completeness critic + full test run.
+- Returns the structured report from `report-format.md`.
+
+### Concurrency math
+
+The engine allows **up to 16 concurrent agents** (1000 total per run). Peak concurrency equals the
+**wave width**, because each task's pipeline (impl → spec → quality → fix) is internally sequential —
+the reviewers do not multiply concurrency. The wave loop therefore chunks any wave wider than 16.
+
+### Model-tier mapping (single source)
+
+`reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow API takes
+`small` / `medium` / `large`. The mapping lives in **one place**, the `TIER` constant in `workflow.js`.
+Reviewers always run at `most-capable`.
+
+## Re-bake procedure (when Superpowers discipline changes)
+
+1. Update the canonical prose in `references/reviewer-prompts.md` (implementer/spec/quality/GUARD,
+   inside the `<!-- BAKE:NAME -->` markers) and the merge/setup/reconcile prompts in
+   `references/wave-merge.md`.
+2. Copy the changed wording into the corresponding `const` blocks in `workflow.js`. Formatting need
+   not match (the drift test normalizes away markdown/backticks/punctuation), but the **words must**.
+3. Run `python3 -m pytest tests/test_no_prompt_drift.py` — it fails until the baked copy matches the
+   source. Iterate until green.
+
+## Syntax checking
+
+Because the file mixes `export`, top-level `await`, and a top-level `return`, plain `node --check`
+**false-passes**. Validate by wrapping (strip `export`, wrap in an async function) and running
+`node --check --input-type=commonjs` — this is exactly what `tests/test_canary.py::test_workflow_parses_as_js`
+does.

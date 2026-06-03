@@ -1,4 +1,4 @@
-# Ultra-Driven Development — Report Format
+# Ultrapowers — Report Format
 
 The workflow produces a single structured report object that the main agent presents at the pre-merge human gate.
 
@@ -49,7 +49,8 @@ When the workflow completes, the main agent renders the report as a concise huma
 5. **Judgment calls** — bullet each non-obvious autonomous decision so the human can spot disagreements early.
 6. **Unfinished / completeness findings** — anything deferred or out-of-scope discovered during the run; empty means nothing was left behind.
 
-After the summary the agent names the integration branch and asks the human to choose:
+This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
+approval). After the summary the agent names the integration branch and asks the human to choose:
 
 - **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge, clean up worktrees, and close the plan.
-- **Redirect** — provide corrective instructions; the workflow re-enters the execution loop for the affected tasks before returning to this gate.
+- **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.

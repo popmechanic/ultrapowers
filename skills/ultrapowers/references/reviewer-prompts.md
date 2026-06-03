@@ -2,22 +2,29 @@
 
 ## Sourcing note
 
-These prompts are adapted from `superpowers:subagent-driven-development` (implementer, spec-reviewer, code-quality-reviewer), `superpowers:test-driven-development`, and `superpowers:verification-before-completion`. The main agent loads those skills via the Skill tool at authoring time and refreshes this content whenever the superpowers skills change.
+These prompts are adapted from `superpowers:subagent-driven-development` (implementer, spec-reviewer, code-quality-reviewer), `superpowers:test-driven-development`, and `superpowers:verification-before-completion`.
+
+**This file is the single source of truth for the discipline baked into `skills/ultrapowers/workflow.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `workflow.js` (see the re-bake procedure in `workflow-template.md`).
+
+The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block and asserts (whitespace-normalized) that it appears in `workflow.js`, so the baked copy can never silently diverge from this source.
 
 ---
 
 ## Fail-safe guard (prepend to EVERY agent prompt)
 
-Every dispatched agent — implementer, reviewer, setup, merge, completeness — MUST receive this guard verbatim at the TOP of its prompt:
+Every dispatched agent — implementer, reviewer, setup, merge, reconcile, completeness — MUST receive this guard verbatim at the TOP of its prompt:
 
-> SAFETY: Operate ONLY inside the absolute paths named in these instructions. Before any `git` command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string `undefined`, or not a git repo, STOP immediately and report `BLOCKED` — NEVER run `git` or write files in your current working directory or any other repository as a fallback.
+<!-- BAKE:GUARD -->
+SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the setup, merge, reconcile, and integration roles — the session repository's main checkout. Before any git command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string undefined, or not a git repo, STOP immediately and report BLOCKED. NEVER run git or write files in an unrelated repository, and NEVER fall back to your current working directory.
+<!-- /BAKE -->
 
-A workflow agent handed an unresolved target otherwise silently falls back to the session's repository and mutates it. (Found during live end-to-end validation, 2026-06-02.)
+This guard is the sole safety net against an agent mutating the wrong repository. It directly forbids the failure mode found during live validation (2026-06-02): a `git -C undefined` target silently falling back to the session repo. Runtime worktree isolation (`isolation: 'worktree'`) already binds task agents to the session repo, so no absolute target path is passed; the guard backstops the non-isolated roles.
 
 ---
 
 ## Implementer prompt
 
+<!-- BAKE:IMPLEMENTER_PROMPT -->
 You are an implementer subagent operating inside a dedicated git worktree. You have no access to the Skill tool.
 
 **Inputs you receive:**
@@ -35,11 +42,12 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 **Self-verify before reporting:**
 - Re-read the task. Confirm every stated requirement is addressed.
 - Run `git diff main` (or the base branch) and verify no unrelated files are modified.
-- Confirm no secrets, no commented-out debug code, no `TODO`s introduced.
+- Confirm no secrets, no commented-out debug code, no TODOs introduced.
 
 **Report your worktree coordinates:** include `git branch --show-current` and `git rev-parse HEAD` in your response so the merge step can map task → branch → commit.
 
 **Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.**
+<!-- /BAKE -->
 
 ---
 
@@ -69,6 +77,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 
 ## Spec-compliance reviewer prompt
 
+<!-- BAKE:SPEC_REVIEWER_PROMPT -->
 You are an independent spec-compliance reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
 
 **Mandate:** verify everything independently. Do not trust the implementer report.
@@ -80,11 +89,13 @@ You are an independent spec-compliance reviewer. You receive the original task t
 5. Return the reviewer verdict schema below — nothing more, nothing less.
 
 **Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.**
+<!-- /BAKE -->
 
 ---
 
 ## Code-quality reviewer prompt
 
+<!-- BAKE:QUALITY_REVIEWER_PROMPT -->
 You are a code-quality reviewer. You run **only after** the spec-compliance reviewer returns `PASS`. You receive the diff and the codebase context.
 
 **Check these dimensions:**
@@ -96,6 +107,7 @@ You are a code-quality reviewer. You run **only after** the spec-compliance revi
 Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity `blocking` means the PR must not merge until fixed; `minor` is advisory.
 
 **Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.**
+<!-- /BAKE -->
 
 ---
 
