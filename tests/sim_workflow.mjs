@@ -143,8 +143,32 @@ async function scenarioArgsThrow() {
   console.log('scenario args-throw: OK')
 }
 
+// ── Scenario 5: args delivered as a JSON STRING (observed live in -p) ─────────
+// The args-probe showed args can arrive as a raw JSON string; workflow.js must
+// JSON.parse it and still run normally.
+async function scenarioArgsString() {
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: JSON.stringify(baseArgs), budget: undefined })
+  eq(r.waves, [['A', 'B'], ['C']], 'argsString: waves parsed from JSON string')
+  assert(r.tasks.length === 3 && r.tasks.every((t) => t.status === 'done'), 'argsString: all tasks done')
+  eq(r.integrationBranch, 'ultra/integration-sim', 'argsString: integrationBranch from parsed string')
+  console.log('scenario args-string: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
+await scenarioArgsString()
 console.log('ALL SCENARIOS PASSED')
