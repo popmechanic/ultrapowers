@@ -203,7 +203,7 @@ async function scenarioArgsString() {
 // Defaults stay unchanged when omitted (covered by the other scenarios); here we
 // supply all three and assert each is honored.
 async function scenarioPortability() {
-  const seen = { implModels: {}, reviewCount: {}, mergeHadCmd: false, integrationHadCmd: false }
+  const seen = { implModels: {}, reviewCount: {}, reviewModels: {}, integrationModel: null, mergeHadCmd: false, integrationHadCmd: false }
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
@@ -215,6 +215,7 @@ async function scenarioPortability() {
     if (label.startsWith('review:')) {
       const id = taskIdFromLabel(label)
       seen.reviewCount[id] = (seen.reviewCount[id] || 0) + 1
+      seen.reviewModels[id] = opts.model
       return { verdict: 'PASS', issues: [] }
     }
     if (label.startsWith('merge:')) {
@@ -223,6 +224,7 @@ async function scenarioPortability() {
     }
     if (label === 'integration') {
       if (prompt.includes('make test')) seen.integrationHadCmd = true
+      seen.integrationModel = opts.model
       return { command: 'make test', testsPassed: true, output: 'ok', findings: [] }
     }
     throw new Error('unexpected agent label: ' + label)
@@ -230,13 +232,20 @@ async function scenarioPortability() {
   const args = Object.assign({}, baseArgs, {
     testCmd: 'make test',
     reviewProfile: 'adversarial',
-    tierOverrides: { cheap: 'opus' }, // distinct from the cheap default (haiku)
+    // cheap -> opus (distinct from the haiku default); mostCapable -> haiku to prove
+    // reviewers DON'T follow the override (they must stay opus, override-proof).
+    tierOverrides: { cheap: 'opus', mostCapable: 'haiku' },
   })
   const r = await runWorkflow({ agent, args, budget: undefined })
   // tierOverrides: A,B are 'cheap' -> overridden to opus; C is 'standard' -> sonnet (unchanged).
   eq(seen.implModels['A'], 'opus', 'portability: cheap tier overridden to opus (A)')
   eq(seen.implModels['B'], 'opus', 'portability: cheap tier overridden to opus (B)')
   eq(seen.implModels['C'], 'sonnet', 'portability: untouched standard tier still sonnet (C)')
+  // OVERRIDE-PROOF reviewers: mostCapable was overridden to haiku, but review and
+  // completeness roles must still run at opus (a weak reviewer false-PASSes).
+  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer stays opus despite mostCapable override (A)')
+  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer stays opus despite mostCapable override (C)')
+  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer stays opus despite mostCapable override')
   // adversarial: two independent review passes per iteration (all PASS on iter 1 => 2 each).
   assert(seen.reviewCount['A'] === 2, 'portability: adversarial = 2 review passes (A, got ' + seen.reviewCount['A'] + ')')
   assert(seen.reviewCount['C'] === 2, 'portability: adversarial = 2 review passes (C, got ' + seen.reviewCount['C'] + ')')

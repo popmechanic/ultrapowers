@@ -224,12 +224,21 @@ const REVIEW_SCHEMA = {
 // the workflow agent() API takes Claude aliases haiku / sonnet / opus. Verified
 // live (2026-06-03): small/medium/large are rejected as invalid models, so the
 // agent returns an error instead of doing the work. Map in ONE place here.
-const TIER = Object.assign({ cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }, tierOverrides)
+const DEFAULT_TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
+const TIER = Object.assign({}, DEFAULT_TIER, tierOverrides)
 // Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
 // (this map); normalize so both resolve. Unknown tiers fall back to standard.
 const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
+// Review / completeness roles always run at the strongest model, OVERRIDE-PROOF:
+// tierOverrides remap implementer tiers only — a weak reviewer's failure mode is
+// the silent false PASS, so it must never be downgradable. (Reconcile is a fixer,
+// not a reviewer, so it tracks the implementer-side mostCapable.)
+const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 
-// ── Per-task pipeline: implement → spec → quality → bounded fix-loop ──────────
+// Returns true for a task result whose worktree branch is ready to merge.
+const isMergeable = (r) => r && r.status === 'done' && r.branch
+
+// ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 async function runTask(task) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
 
@@ -250,7 +259,7 @@ async function runTask(task) {
       '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
-      isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA,
+      isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
     })
     // 'adversarial' runs two independent reviewers over the same diff and unions
     // their findings; 'lean' (default) runs one. See reviewProfile.
@@ -291,7 +300,7 @@ async function runTask(task) {
 
 // ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
 async function mergeWave(results, waveIdx) {
-  const merged = results.filter((r) => r && r.status === 'done' && r.branch)
+  const merged = results.filter(isMergeable)
   if (merged.length === 0) return { status: 'TEST_FAILED', detail: 'no branches to merge' }
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
@@ -350,7 +359,7 @@ for (let w = 0; w < WAVES.length; w++) {
     detail: merge.detail,
     // Task branches submitted to the merge agent — accurate whether or not the
     // merge succeeded (do not imply success: a CONFLICT wave still lists them).
-    branches: results.filter((r) => r && r.status === 'done' && r.branch).map((r) => r.task),
+    branches: results.filter(isMergeable).map((r) => r.task),
   })
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
@@ -369,7 +378,7 @@ const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n
 const review = await agent(
   GUARD + '\n\n' + COMPLETENESS_PROMPT +
     '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves),
-  { label: 'integration', model: TIER.mostCapable, schema: REVIEW_SCHEMA }
+  { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
 )
 
 // ── Structured return value (matches references/report-format.md) ─────────────
