@@ -21,6 +21,22 @@ skills (soft dependency), Python 3 + pytest, Node for the orchestration simulati
 
 ---
 
+## Status (2026-06-05)
+
+The spike-independent tasks were implemented directly (test-first, suite green at each step), since
+they don't bet on the unvalidated launch surface. Tasks 3 and 6 are held for the interactive spike.
+
+| Task | Status |
+|---|---|
+| 1 — Spike (launch + handoff) | ⏳ **Run in an interactive session** (needs the live `Workflow` tool / `ultracode`). Hard go/no-go gate. |
+| 2 — Ground-truth corrections | ✅ **Done** — `af5e836` |
+| 3 — Launch pivot | ⏸ **Held for Task 1** — the launch mechanism is rewritten only after the spike confirms which one fires. |
+| 4 — Review + cost rework | ✅ **Done** — `fd43f90` |
+| 5 — Portability (args knobs) | ✅ **Done** — `449ae5c` |
+| 6 — Dogfood + finish | ⏳ **After Task 1** (and the Task 3 rebuild). |
+
+---
+
 ## File Structure (target)
 
 ```

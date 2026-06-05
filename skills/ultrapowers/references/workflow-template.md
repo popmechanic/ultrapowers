@@ -76,8 +76,8 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 ## Structure (read the file for specifics)
 
 - `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review).
-- Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `SPEC_REVIEWER_PROMPT`, `QUALITY_REVIEWER_PROMPT`,
-  `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
+- Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
+  merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
 - `runTask(task)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
   + code-quality merged; **two** passes under `reviewProfile: 'adversarial'`) → bounded fix-loop
   (cap 2 = initial + 1, escalate to most-capable on re-dispatch).
