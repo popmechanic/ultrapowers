@@ -1,5 +1,17 @@
 # ultrapowers Design
 
+> **CORRECTION (2026-06-05) — read before the Motivation section.** This historical design doc is
+> preserved as the record of the project's original reasoning, but two of its claims are factually
+> wrong about superpowers and are corrected in `2026-06-05-ultrapowers-improvement.md`:
+> 1. **Motivation #1 is wrong.** superpowers does **not** ask for human judgment between every
+>    implementation task — `subagent-driven-development` explicitly runs headless and forbids pausing
+>    between tasks. So ultrapowers' real differentiator is **parallel throughput**, not relocating a
+>    human gate that doesn't exist.
+> 2. **Attribution error (Motivation #3).** The *"Never … dispatch multiple implementation subagents
+>    in parallel (conflicts)"* prohibition lives in **`subagent-driven-development`**, not
+>    `superpowers:dispatching-parallel-agents`. The substance (superpowers forbids parallel
+>    implementers because of file conflicts; worktree isolation answers exactly that) still holds.
+
 - **Date:** 2026-06-02
 - **Status:** Design approved (brainstorming complete) — awaiting spec review before planning
 - **Plugin:** `ultrapowers`

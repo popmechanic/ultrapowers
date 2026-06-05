@@ -32,8 +32,11 @@ project tree.
 ## Step 1 — Confirm an Approved Plan Exists
 
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
-plan document: a markdown file whose top-level heading matches "Plan:" or that contains numbered
-tasks with `**Files:**` blocks and `- [ ]` checkbox steps.
+plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`
+and titles each task `### Task N: <name>`, so accept a plan whose top-level heading matches
+"Implementation Plan" **or** "Plan:", **or** any markdown file that contains `### Task N:` headings
+with `**Files:**` blocks and `- [ ]` checkbox steps. The task-shape check is the reliable signal;
+the heading match is a convenience, not a gate.
 
 If no approved plan is found, stop. Inform the user: "No approved plan found. Run
 `superpowers:brainstorming` to explore the problem, then `superpowers:writing-plans` to produce a
