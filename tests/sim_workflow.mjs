@@ -256,6 +256,41 @@ async function scenarioPortability() {
   console.log('scenario portability: OK')
 }
 
+// ── Scenario 7: per-task review depth — task.review overrides the run default ──
+// The plan (via the orchestrating agent) marks high-stakes tasks 'adversarial'
+// while routine tasks use the lean default; we should spend the extra review
+// pass only where it was asked for.
+async function scenarioPerTaskReview() {
+  const reviewCount = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ib', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCount[id] = (reviewCount[id] || 0) + 1
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [[
+    { id: 'A', title: 'high stakes', body: 'do A', tier: 'standard', review: 'adversarial' },
+    { id: 'B', title: 'routine', body: 'do B', tier: 'cheap' }, // no review field -> run default
+  ]]
+  // No global reviewProfile -> run default is 'lean'. A opts into adversarial.
+  const args = { waves, integrationBranch: 'ib', stamp: 's' }
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  assert(reviewCount['A'] === 2, 'per-task: A (review=adversarial) gets 2 passes (got ' + reviewCount['A'] + ')')
+  assert(reviewCount['B'] === 1, 'per-task: B (default lean) gets 1 pass (got ' + reviewCount['B'] + ')')
+  assert(r.tasks.every((t) => t.status === 'done'), 'per-task: all done')
+  console.log('scenario per-task-review: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -263,4 +298,5 @@ await scenarioBlockedCascade()
 await scenarioArgsThrow()
 await scenarioArgsString()
 await scenarioPortability()
+await scenarioPerTaskReview()
 console.log('ALL SCENARIOS PASSED')

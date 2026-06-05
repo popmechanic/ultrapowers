@@ -238,6 +238,12 @@ const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 // Returns true for a task result whose worktree branch is ready to merge.
 const isMergeable = (r) => r && r.status === 'done' && r.branch
 
+// Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
+// the orchestrating agent from the plan's per-task risk/tier — overrides the
+// run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
+const taskReviewProfile = (task) =>
+  (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
+
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 async function runTask(task) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
@@ -262,9 +268,9 @@ async function runTask(task) {
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
     })
     // 'adversarial' runs two independent reviewers over the same diff and unions
-    // their findings; 'lean' (default) runs one. See reviewProfile.
+    // their findings; 'lean' (default) runs one. Per-task, falling back to the run default.
     let issues
-    if (reviewProfile === 'adversarial') {
+    if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
       const r2 = await agent(reviewPrompt, reviewOpts(2))
       issues = (r1.issues || []).concat(r2.issues || [])

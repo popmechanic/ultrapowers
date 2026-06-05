@@ -22,8 +22,10 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
          testCmd, reviewProfile, tierOverrides }
 ```
 
-- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files }`. `body` is the
-  full verbatim task text (the script cannot resolve file references). **Required.**
+- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
+  is the full verbatim task text (the script cannot resolve file references). `review` is the optional
+  per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
+  risk/tier; it overrides the run-wide `reviewProfile`. **Required:** `id`, `body`.
 - `args.integrationBranch` — e.g. `ultra/integration-<stamp>` (falls back to `ultra/integration-<stamp>`).
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
@@ -32,8 +34,10 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
 
 - `args.testCmd` — exact project test command (e.g. `'make test'`, `'pnpm -w test'`). Overrides the
   built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
-- `args.reviewProfile` — `'lean'` (default: one independent review pass per task) or `'adversarial'`
-  (two independent reviewers over the same diff, findings unioned) for high-stakes tasks.
+- `args.reviewProfile` — the **run-wide default** review depth: `'lean'` (one independent review pass
+  per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
+  task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for
+  the extra pass on every task.
 - `args.tierOverrides` — remap model tiers per project, e.g. `{ cheap: 'sonnet' }`. Merged over the
   default `TIER` map. The plan's `most-capable` tier name is normalized to the `mostCapable` key.
 

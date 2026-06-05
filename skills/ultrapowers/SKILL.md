@@ -48,8 +48,9 @@ exists only as freeform prose — it must have numbered tasks with explicit file
 ## Step 2 — Analyze Dependencies and Compute Waves
 
 Follow `references/dependency-analysis.md` in full to turn the plan into a `waves: Task[][]`
-structure. Each task object must be **self-contained**: `{ id, title, body, tier, acceptance, files }`,
-where `body` is the full verbatim task text (the workflow cannot resolve file references).
+structure. Each task object must be **self-contained**: `{ id, title, body, tier, acceptance, files, review? }`,
+where `body` is the full verbatim task text (the workflow cannot resolve file references) and `review`
+(`'adversarial'` | `'lean'`, optional) is the per-task depth you derive below.
 
 - **Parse** each task's `writes` set (`Create:` ∪ `Modify:`) and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
@@ -58,7 +59,19 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   writes → a single sequential wave).
 - **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope, per
   `references/reviewer-prompts.md`.
-- **Record** the DAG edges, wave list, mode, and any degrade reason (the transparency block).
+- **Derive the run knobs yourself — do not ask the human to hand-tune them.** You read the plan and
+  run inside the repo, so you are the right party to set these; the human only approves them at the
+  Step-3 gate.
+  - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
+    monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
+    built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
+  - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
+    passes) or `lean` (one) from its risk and tier: high-stakes or `most-capable` tasks warrant
+    `adversarial`; routine `cheap` tasks stay `lean`. This is derived from the plan, not asked.
+  - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
+    ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
+    from the plan.
+- **Record** the DAG edges, wave list, mode, any degrade reason, and the derived knobs (the transparency block).
 
 ---
 
@@ -69,6 +82,9 @@ Render the transparency block from Step 2 for the human:
 1. **Waves** — one line per wave: which task IDs run in parallel, in wave order.
 2. **Dependency edges** — the edges that shaped the ordering.
 3. **Mode** — `parallel` or `sequential` (with the degrade reason if sequential).
+4. **Derived knobs** — the test command you'll use, which tasks get `adversarial` vs `lean` review,
+   and any tier overrides. Show them so the human can veto a wrong guess — they approve these, they
+   do not author them.
 
 Then ask the human to **approve the wave plan or revise the plan and re-run**. Do **not** launch
 the workflow without approval. This is the only mid-process gate between plan approval and the
@@ -87,13 +103,20 @@ args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependenc
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
-recorded `dependencyEdges`. **Set the per-project knobs when they apply** (all optional; omitting
-them preserves standard behavior): `testCmd` — the exact test command for *this* repo, set it for
-monorepos or non-standard runners so the merge/completeness agents don't guess; `reviewProfile` —
-`'adversarial'` (two independent review passes) for high-stakes plans, default `'lean'` (one pass);
-`tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap implementer model tiers. The workflow validates
-`args.waves` and **throws loudly** if it is missing or malformed rather than risk mutating the wrong
-repository. Do not pause mid-run —
+recorded `dependencyEdges`, plus the knobs you **derived in Step 2** (all optional; omitting them
+preserves standard behavior):
+
+- `testCmd` — the exact test command for *this* repo (monorepos / non-standard runners), so the
+  merge and completeness agents don't have to guess.
+- **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).
+  `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
+  overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —
+  without paying for the extra pass everywhere.
+- `tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap *implementer* tiers (reviewers stay at the
+  strongest model regardless).
+
+The workflow validates `args.waves` and **throws loudly** if it is missing or malformed rather than
+risk mutating the wrong repository. Do not pause mid-run —
 workflows are headless and cannot receive input after launch. The workflow creates the integration
 branch, runs each wave (`parallel()` barrier, chunked to the 16-agent engine cap), merges each wave,
 reconciles failures, and runs a final integration/completeness review. See

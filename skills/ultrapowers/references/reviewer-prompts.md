@@ -83,8 +83,10 @@ Per superpowers' v5.0.6 direction — subagent review loops *"doubled execution 
 improving quality"* — ultrapowers runs **one** independent review pass per task covering both
 spec-compliance and code-quality, rather than two separate passes. The reviewer always runs at the
 most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse
-than no reviewer. (For high-stakes tasks, a two-pass `adversarial` review profile can be requested via
-`args` — see `workflow-template.md` — but `lean` single-pass is the default.)
+than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks
+high-stakes / `most-capable` tasks `adversarial` (two independent passes, findings unioned) and leaves
+routine tasks `lean` (one pass) — derived from the plan's risk/tier, not asked of the human. The
+run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
