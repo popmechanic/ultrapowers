@@ -58,6 +58,6 @@ def test_workflow_model_tiers_use_valid_aliases():
 
 def test_workflow_has_baked_discipline_markers():
     wf = WORKFLOW.read_text()
-    for const in ("GUARD", "IMPLEMENTER_PROMPT", "SPEC_REVIEWER_PROMPT",
-                  "QUALITY_REVIEWER_PROMPT", "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
+    for const in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT",
+                  "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
         assert ("const " + const + " =") in wf, "missing baked constant: " + const

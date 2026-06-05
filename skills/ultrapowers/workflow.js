@@ -99,32 +99,28 @@ const IMPLEMENTER_PROMPT = [
   'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.',
 ].join('\n')
 
-// BAKE:SPEC_REVIEWER_PROMPT
-const SPEC_REVIEWER_PROMPT = [
-  'You are an independent spec-compliance reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
+// BAKE:REVIEWER_PROMPT
+// One independent pass merging spec-compliance + code-quality (superpowers v5.0.6
+// direction: a single review loop instead of two). Always runs at most-capable.
+const REVIEWER_PROMPT = [
+  'You are an independent reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
   '',
   'Mandate: verify everything independently. Do not trust the implementer report.',
   '',
+  'Spec compliance:',
   '1. Check out the branch identified by headSha. Run git diff main yourself.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
-  '4. Run the full check suite and confirm it passes.',
-  '5. Return the reviewer verdict schema below — nothing more, nothing less.',
   '',
-  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
-].join('\n')
-
-// BAKE:QUALITY_REVIEWER_PROMPT
-const QUALITY_REVIEWER_PROMPT = [
-  'You are a code-quality reviewer. You run only after the spec-compliance reviewer returns PASS. You receive the diff and the codebase context.',
+  'Code quality:',
+  '4. Separation of concerns: each module or function has one clear responsibility; UI, logic, and data layers are not entangled.',
+  '5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
+  '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
+  '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
   '',
-  'Check these dimensions:',
-  '- Separation of concerns: each module/function has one clear responsibility; UI, logic, and data layers are not entangled.',
-  '- Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
-  '- DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
-  '- Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
+  '8. Run the full check suite and confirm it passes.',
   '',
-  'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the PR must not merge until fixed; minor is advisory.',
+  'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
   'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
 ].join('\n')
@@ -231,22 +227,15 @@ async function runTask(task) {
              reviewVerdict: 'not-reviewed', notes: impl.summary }
   }
 
-  // Fix-loop: cap 3 iterations total (initial + 2). See reviewer-prompts.md.
-  for (let iter = 1; iter <= 3; iter++) {
-    const spec = await agent(
-      GUARD + '\n\n' + SPEC_REVIEWER_PROMPT +
+  // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
+  // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
+  for (let iter = 1; iter <= 2; iter++) {
+    const review = await agent(
+      GUARD + '\n\n' + REVIEWER_PROMPT +
         '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
-      { label: 'spec:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
+      { label: 'review:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
     )
-    let quality = { verdict: 'PASS', issues: [] }
-    if (spec.verdict === 'PASS') {
-      quality = await agent(
-        GUARD + '\n\n' + QUALITY_REVIEWER_PROMPT +
-          '\n\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
-        { label: 'qual:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
-      )
-    }
-    const issues = (spec.issues || []).concat(quality.issues || [])
+    const issues = review.issues || []
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
@@ -255,7 +244,7 @@ async function runTask(task) {
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail).join('; ') }
     }
-    if (iter === 3) {
+    if (iter === 2) {
       return { task: task.id, status: 'failed', branch: impl.branch,
                reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; ') }
     }

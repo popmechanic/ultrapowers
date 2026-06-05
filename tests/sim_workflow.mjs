@@ -45,7 +45,7 @@ const WAVES = [
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: ['A -> C'] }
 
 function taskIdFromLabel(label) {
-  // labels look like impl:A, spec:A:1, qual:A:1, fix:A:1
+  // labels look like impl:A, review:A:1, fix:A:1
   return label.split(':')[1]
 }
 
@@ -58,7 +58,7 @@ async function scenarioHappy() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 'done ' + id, branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -75,9 +75,9 @@ async function scenarioHappy() {
   console.log('scenario happy: OK')
 }
 
-// ── Scenario 2: fix-loop — A needs one fix round, then passes ────────────────
+// ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
 async function scenarioFixLoop() {
-  const specCalls = {}
+  const reviewCalls = {}
   const agent = async (_prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
@@ -85,15 +85,14 @@ async function scenarioFixLoop() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:')) {
+    if (label.startsWith('review:')) {
       const id = taskIdFromLabel(label)
-      specCalls[id] = (specCalls[id] || 0) + 1
-      if (id === 'A' && specCalls[id] === 1) {
+      reviewCalls[id] = (reviewCalls[id] || 0) + 1
+      if (id === 'A' && reviewCalls[id] === 1) {
         return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'missing assertion' }] }
       }
       return { verdict: 'PASS', issues: [] }
     }
-    if (label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -102,9 +101,38 @@ async function scenarioFixLoop() {
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a.status, 'done', 'fixloop: A done')
   eq(a.reviewVerdict, 'fixed', 'fixloop: A reviewVerdict fixed (re-dispatched once)')
-  assert(specCalls['A'] === 2, 'fixloop: A spec reviewed twice (got ' + specCalls['A'] + ')')
+  assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
   console.log('scenario fix-loop: OK')
+}
+
+// ── Scenario 2b: fix-loop exhausts at cap 2 (still blocking after one fix) ────
+async function scenarioFixLoopExhausted() {
+  const reviewCalls = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCalls[id] = (reviewCalls[id] || 0) + 1
+      // A never gets fixed; everything else passes.
+      if (id === 'A') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'still broken' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'exhausted: A failed')
+  eq(a.reviewVerdict, 'fix-loop-exhausted', 'exhausted: A fix-loop-exhausted')
+  assert(reviewCalls['A'] === 2, 'exhausted: A reviewed exactly twice — cap 2, no third pass (got ' + reviewCalls['A'] + ')')
+  console.log('scenario fix-loop-exhausted: OK')
 }
 
 // ── Scenario 3: wave-1 merge unrecoverable → wave blocked, C cascade-blocked ──
@@ -116,7 +144,7 @@ async function scenarioBlockedCascade() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:wave1')) return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
     if (label.startsWith('reconcile:')) return { status: 'CONFLICT', detail: 'still conflicted' }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
@@ -154,7 +182,7 @@ async function scenarioArgsString() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -168,6 +196,7 @@ async function scenarioArgsString() {
 
 await scenarioHappy()
 await scenarioFixLoop()
+await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
 await scenarioArgsString()

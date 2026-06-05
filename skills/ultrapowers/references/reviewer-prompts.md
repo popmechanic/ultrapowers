@@ -77,36 +77,34 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 
 ---
 
-## Spec-compliance reviewer prompt
+## Reviewer prompt (spec-compliance + code-quality, merged)
 
-<!-- BAKE:SPEC_REVIEWER_PROMPT -->
-You are an independent spec-compliance reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
+Per superpowers' v5.0.6 direction — subagent review loops *"doubled execution time without measurably
+improving quality"* — ultrapowers runs **one** independent review pass per task covering both
+spec-compliance and code-quality, rather than two separate passes. The reviewer always runs at the
+most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse
+than no reviewer. (For high-stakes tasks, a two-pass `adversarial` review profile can be requested via
+`args` — see `workflow-template.md` — but `lean` single-pass is the default.)
+
+<!-- BAKE:REVIEWER_PROMPT -->
+You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
 
 **Mandate:** verify everything independently. Do not trust the implementer report.
 
+**Spec compliance:**
 1. Check out the branch identified by `headSha`. Run `git diff main` yourself.
 2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.
 3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).
-4. Run the full check suite and confirm it passes.
-5. Return the reviewer verdict schema below — nothing more, nothing less.
 
-**Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.**
-<!-- /BAKE -->
+**Code quality:**
+4. Separation of concerns: each module or function has one clear responsibility; UI, logic, and data layers are not entangled.
+5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.
+6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.
+7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.
 
----
+8. Run the full check suite and confirm it passes.
 
-## Code-quality reviewer prompt
-
-<!-- BAKE:QUALITY_REVIEWER_PROMPT -->
-You are a code-quality reviewer. You run **only after** the spec-compliance reviewer returns `PASS`. You receive the diff and the codebase context.
-
-**Check these dimensions:**
-- **Separation of concerns:** each module/function has one clear responsibility; UI, logic, and data layers are not entangled.
-- **Error handling:** all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.
-- **DRY:** no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.
-- **Test quality:** tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.
-
-Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity `blocking` means the PR must not merge until fixed; `minor` is advisory.
+Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.
 
 **Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.**
 <!-- /BAKE -->
@@ -140,11 +138,11 @@ Flag only issues worth fixing. Minor style nits that a linter would catch automa
 
 ## Fix-loop policy
 
-When either reviewer returns `FIX_REQUIRED`:
+When the reviewer returns `FIX_REQUIRED`:
 
 1. Collect all `blocking` issues into a structured fix request and re-dispatch the implementer on the same branch with the issues appended to the original task text.
 2. The implementer runs the full red → green → refactor cycle again against the fix request.
-3. Cap at **3 iterations** total (initial + 2 fix rounds). If blocking issues remain after iteration 3, mark the task `FAILED` and surface it to the orchestrator with the accumulated issue list.
+3. Cap at **2 iterations** total (initial + 1 fix round). If blocking issues remain after iteration 2, mark the task `FAILED` and surface it to the orchestrator with the accumulated issue list.
 4. If the implementer returns `BLOCKED` after a fix-round re-dispatch, escalate once to the most-capable model tier. If still `BLOCKED`, mark the task `FAILED` — never silently drop a blocked task.
 5. `minor` issues do not block merge; record them as follow-up work items.
 
