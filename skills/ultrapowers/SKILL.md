@@ -82,12 +82,18 @@ Invoke the **Workflow** tool on `skills/ultrapowers/workflow.js` (the committed 
 author or edit it) with:
 
 ```
-args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges }
+args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
+         testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
-recorded `dependencyEdges`. The workflow validates `args.waves` and **throws loudly** if it is
-missing or malformed rather than risk mutating the wrong repository. Do not pause mid-run —
+recorded `dependencyEdges`. **Set the per-project knobs when they apply** (all optional; omitting
+them preserves standard behavior): `testCmd` — the exact test command for *this* repo, set it for
+monorepos or non-standard runners so the merge/completeness agents don't guess; `reviewProfile` —
+`'adversarial'` (two independent review passes) for high-stakes plans, default `'lean'` (one pass);
+`tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap implementer model tiers. The workflow validates
+`args.waves` and **throws loudly** if it is missing or malformed rather than risk mutating the wrong
+repository. Do not pause mid-run —
 workflows are headless and cannot receive input after launch. The workflow creates the integration
 branch, runs each wave (`parallel()` barrier, chunked to the 16-agent engine cap), merges each wave,
 reconciles failures, and runs a final integration/completeness review. See

@@ -57,6 +57,14 @@ const integrationBranch =
   ('ultra/integration-' + stamp)
 const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
 
+// ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
+// testCmd:        override the test-command detection ladder (e.g. 'make test').
+// reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
+// tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
+const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
+const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
+const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
+
 // meta.phases must be { title } objects, one per wave (+ setup + review).
 meta.phases = [{ title: 'Setup' }]
   .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
@@ -126,6 +134,11 @@ const REVIEWER_PROMPT = [
 ].join('\n')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
+// testInstruction: honor an explicit args.testCmd, else fall back to detection.
+const testInstruction = testCmd
+  ? ('run the project test command `' + testCmd + '`')
+  : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
+
 const SETUP_PROMPT =
   'Create the integration branch from the current HEAD of the session repo main ' +
   'checkout: git checkout -b ' + integrationBranch + '. Confirm the branch name ' +
@@ -135,8 +148,7 @@ const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
   'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
   'the given task-index order (deterministic, so conflicts are reproducible). ' +
-  'After all merges succeed, detect and run the project test command (pnpm check, ' +
-  'npm test, pytest, cargo test, or go test ./...). Report MERGED with the final ' +
+  'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
   'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
 
 const RECONCILE_PROMPT =
@@ -147,8 +159,8 @@ const RECONCILE_PROMPT =
 
 const COMPLETENESS_PROMPT =
   'What plan requirement is unmet? What claim is unverified? What code path is ' +
-  'untested? Run the full test suite on ' + integrationBranch + ' from the main ' +
-  'checkout and review the integrated result against the original plan. List every ' +
+  'untested? On ' + integrationBranch + ' from the main checkout, ' + testInstruction +
+  ', then review the integrated result against the original plan. List every ' +
   'gap, unverified claim, and untested path.'
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
@@ -212,11 +224,14 @@ const REVIEW_SCHEMA = {
 // the workflow agent() API takes Claude aliases haiku / sonnet / opus. Verified
 // live (2026-06-03): small/medium/large are rejected as invalid models, so the
 // agent returns an error instead of doing the work. Map in ONE place here.
-const TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
+const TIER = Object.assign({ cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }, tierOverrides)
+// Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
+// (this map); normalize so both resolve. Unknown tiers fall back to standard.
+const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
 
 // ── Per-task pipeline: implement → spec → quality → bounded fix-loop ──────────
 async function runTask(task) {
-  const baseModel = TIER[task.tier] || TIER.standard
+  const baseModel = TIER[tierKey(task.tier)] || TIER.standard
 
   let impl = await agent(
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body,
@@ -230,12 +245,24 @@ async function runTask(task) {
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
   // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
   for (let iter = 1; iter <= 2; iter++) {
-    const review = await agent(
+    const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
-        '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
-      { label: 'review:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
-    )
-    const issues = review.issues || []
+      '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha
+    const reviewOpts = (pass) => ({
+      label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
+      isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA,
+    })
+    // 'adversarial' runs two independent reviewers over the same diff and unions
+    // their findings; 'lean' (default) runs one. See reviewProfile.
+    let issues
+    if (reviewProfile === 'adversarial') {
+      const r1 = await agent(reviewPrompt, reviewOpts(1))
+      const r2 = await agent(reviewPrompt, reviewOpts(2))
+      issues = (r1.issues || []).concat(r2.issues || [])
+    } else {
+      const review = await agent(reviewPrompt, reviewOpts())
+      issues = review.issues || []
+    }
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 

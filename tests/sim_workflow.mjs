@@ -194,10 +194,59 @@ async function scenarioArgsString() {
   console.log('scenario args-string: OK')
 }
 
+// ── Scenario 6: portability — testCmd / reviewProfile / tierOverrides via args ─
+// Defaults stay unchanged when omitted (covered by the other scenarios); here we
+// supply all three and assert each is honored.
+async function scenarioPortability() {
+  const seen = { implModels: {}, reviewCount: {}, mergeHadCmd: false, integrationHadCmd: false }
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      seen.implModels[id] = opts.model
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      seen.reviewCount[id] = (seen.reviewCount[id] || 0) + 1
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) {
+      if (prompt.includes('make test')) seen.mergeHadCmd = true
+      return { status: 'MERGED', headSha: 'm' }
+    }
+    if (label === 'integration') {
+      if (prompt.includes('make test')) seen.integrationHadCmd = true
+      return { command: 'make test', testsPassed: true, output: 'ok', findings: [] }
+    }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const args = Object.assign({}, baseArgs, {
+    testCmd: 'make test',
+    reviewProfile: 'adversarial',
+    tierOverrides: { cheap: 'opus' }, // distinct from the cheap default (haiku)
+  })
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  // tierOverrides: A,B are 'cheap' -> overridden to opus; C is 'standard' -> sonnet (unchanged).
+  eq(seen.implModels['A'], 'opus', 'portability: cheap tier overridden to opus (A)')
+  eq(seen.implModels['B'], 'opus', 'portability: cheap tier overridden to opus (B)')
+  eq(seen.implModels['C'], 'sonnet', 'portability: untouched standard tier still sonnet (C)')
+  // adversarial: two independent review passes per iteration (all PASS on iter 1 => 2 each).
+  assert(seen.reviewCount['A'] === 2, 'portability: adversarial = 2 review passes (A, got ' + seen.reviewCount['A'] + ')')
+  assert(seen.reviewCount['C'] === 2, 'portability: adversarial = 2 review passes (C, got ' + seen.reviewCount['C'] + ')')
+  // testCmd threaded into the merge + integration/completeness prompts.
+  assert(seen.mergeHadCmd, 'portability: testCmd threaded into merge prompt')
+  assert(seen.integrationHadCmd, 'portability: testCmd threaded into integration prompt')
+  assert(r.tasks.every((t) => t.status === 'done'), 'portability: all tasks done')
+  console.log('scenario portability: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
 await scenarioArgsString()
+await scenarioPortability()
 console.log('ALL SCENARIOS PASSED')
