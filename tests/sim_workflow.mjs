@@ -72,6 +72,9 @@ async function scenarioHappy() {
   eq(r.unfinished, [], 'happy: nothing unfinished')
   eq(r.blockedWaves, [], 'happy: no blocked waves')
   eq(r.dependencyEdges, ['A -> C'], 'happy: dependency edges passed through')
+  assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
+    'happy: per-wave merge outcomes recorded (status + headSha)')
+  eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
   console.log('scenario happy: OK')
 }
 
@@ -156,6 +159,8 @@ async function scenarioBlockedCascade() {
   assert(r.unfinished.some((u) => u.startsWith('C:') && u.includes('cascade-blocked')), 'cascade: C cascade-blocked')
   // C must NOT appear as a completed task (we broke before running wave 2).
   assert(!r.tasks.some((t) => t.task === 'C'), 'cascade: C did not run')
+  assert(r.waveMerges.length === 1 && r.waveMerges[0].status === 'CONFLICT',
+    'cascade: wave-1 merge outcome recorded as CONFLICT in waveMerges')
   console.log('scenario blocked-cascade: OK')
 }
 

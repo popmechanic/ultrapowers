@@ -313,6 +313,7 @@ async function mergeWave(results, waveIdx) {
 // ── Main: setup → wave loop (parallel barrier, chunked at 16) → review ────────
 const taskResults = []
 const blockedWaves = []
+const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
 
@@ -338,6 +339,19 @@ for (let w = 0; w < WAVES.length; w++) {
   for (const r of results) taskResults.push(r)
 
   const merge = await mergeWave(results, w)
+  // Record every wave's merge outcome (success too) so the pre-merge gate can see
+  // how integration actually went — not just failures. This is the report's record
+  // of the merge sequence; on success merge.headSha is the integration HEAD.
+  waveMerges.push({
+    wave: w + 1,
+    status: merge.status,
+    headSha: merge.headSha,
+    command: merge.command,
+    detail: merge.detail,
+    // Task branches submitted to the merge agent — accurate whether or not the
+    // merge succeeded (do not imply success: a CONFLICT wave still lists them).
+    branches: results.filter((r) => r && r.status === 'done' && r.branch).map((r) => r.task),
+  })
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
@@ -365,6 +379,7 @@ return {
   dependencyEdges,
   tasks: taskResults,
   tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  waveMerges,
   judgmentCalls,
   unfinished,
   completenessFindings: review.findings || [],

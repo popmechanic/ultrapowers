@@ -23,6 +23,15 @@ ultrapowers adds only what superpowers deliberately leaves to the human: the orc
 
 Make sure superpowers is already installed. ultrapowers does not install it for you.
 
+### Environment support
+
+`/ultrapowers` runs a Dynamic Workflow, which requires a surface that exposes the **Workflow** tool:
+the local **CLI**, **Desktop app**, **IDE extensions**, or non-interactive **`claude -p`** / the **Agent
+SDK** (Claude Code v2.1.154+, paid plan). **Claude Code on the web** (the cloud/remote execution
+environment) is *not* in the workflows availability list and does **not** expose the Workflow tool, so
+`/ultrapowers` cannot launch there — verified live: `select:Workflow` resolves to no tool in a web
+session. In that environment, fall back to `superpowers:subagent-driven-development` (sequential).
+
 ## Usage
 
 1. **Brainstorm** — run `superpowers:brainstorming` to explore requirements and design before touching code.
