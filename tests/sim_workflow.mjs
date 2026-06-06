@@ -291,6 +291,46 @@ async function scenarioPerTaskReview() {
   console.log('scenario per-task-review: OK')
 }
 
+// ── Scenario 8: adversarial dissent — second reviewer catches what first misses ─
+// The whole point of 'adversarial': a clean first reviewer must NOT shield a task
+// when an independent second reviewer finds a blocker. Exercises the issue union
+// (r1 ∪ r2) and the fix-loop driven by the second opinion.
+async function scenarioAdversarialDissent() {
+  const reviewCalls = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ib', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      // label is review:A:<iter>:<pass>; track per (iter,pass).
+      const parts = label.split(':') // ['review','A','1','1']
+      const iter = parts[2]
+      const pass = parts[3]
+      reviewCalls.A = (reviewCalls.A || 0) + 1
+      // Round 1: reviewer 1 PASSes, reviewer 2 dissents (blocking) -> must fix.
+      // Round 2 (after the fix): both PASS.
+      if (iter === '1' && pass === '2') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'second reviewer caught a missing edge case' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [[{ id: 'A', title: 't', body: 'do A', tier: 'standard', review: 'adversarial' }]]
+  const r = await runWorkflow({ agent, args: { waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'done', 'dissent: A recovers after the fix')
+  eq(a.reviewVerdict, 'fixed', "dissent: second reviewer's blocker drove a fix round")
+  // 2 passes/round × 2 rounds = 4 review calls: the dissent was NOT swallowed.
+  assert(reviewCalls.A === 4, 'dissent: 2 reviewers × 2 rounds = 4 review calls (got ' + reviewCalls.A + ')')
+  console.log('scenario adversarial-dissent: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -299,4 +339,5 @@ await scenarioArgsThrow()
 await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
+await scenarioAdversarialDissent()
 console.log('ALL SCENARIOS PASSED')

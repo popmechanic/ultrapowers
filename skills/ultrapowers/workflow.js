@@ -247,6 +247,11 @@ const taskReviewProfile = (task) =>
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 async function runTask(task) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
+  // Surface a typo'd review depth rather than silently downgrading it.
+  if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
+    log('task ' + task.id + ': unknown review="' + task.review +
+        '", falling back to run default (' + reviewProfile + ')')
+  }
 
   let impl = await agent(
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body,
@@ -269,6 +274,10 @@ async function runTask(task) {
     })
     // 'adversarial' runs two independent reviewers over the same diff and unions
     // their findings; 'lean' (default) runs one. Per-task, falling back to the run default.
+    // NOTE: the two adversarial reviews run SEQUENTIALLY on purpose — each task
+    // pipeline must stay single-agent so peak concurrency equals wave width and the
+    // 16-agent chunking below holds. Do NOT parallelize them, or a wide adversarial
+    // wave can exceed the engine's concurrency cap.
     let issues
     if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
