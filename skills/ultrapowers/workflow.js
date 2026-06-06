@@ -57,6 +57,14 @@ const integrationBranch =
   ('ultra/integration-' + stamp)
 const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
 
+// ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
+// testCmd:        override the test-command detection ladder (e.g. 'make test').
+// reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
+// tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
+const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
+const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
+const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
+
 // meta.phases must be { title } objects, one per wave (+ setup + review).
 meta.phases = [{ title: 'Setup' }]
   .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
@@ -99,37 +107,38 @@ const IMPLEMENTER_PROMPT = [
   'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.',
 ].join('\n')
 
-// BAKE:SPEC_REVIEWER_PROMPT
-const SPEC_REVIEWER_PROMPT = [
-  'You are an independent spec-compliance reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
+// BAKE:REVIEWER_PROMPT
+// One independent pass merging spec-compliance + code-quality (superpowers v5.0.6
+// direction: a single review loop instead of two). Always runs at most-capable.
+const REVIEWER_PROMPT = [
+  'You are an independent reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
   '',
   'Mandate: verify everything independently. Do not trust the implementer report.',
   '',
+  'Spec compliance:',
   '1. Check out the branch identified by headSha. Run git diff main yourself.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
-  '4. Run the full check suite and confirm it passes.',
-  '5. Return the reviewer verdict schema below — nothing more, nothing less.',
   '',
-  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
-].join('\n')
-
-// BAKE:QUALITY_REVIEWER_PROMPT
-const QUALITY_REVIEWER_PROMPT = [
-  'You are a code-quality reviewer. You run only after the spec-compliance reviewer returns PASS. You receive the diff and the codebase context.',
+  'Code quality:',
+  '4. Separation of concerns: each module or function has one clear responsibility; UI, logic, and data layers are not entangled.',
+  '5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
+  '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
+  '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
   '',
-  'Check these dimensions:',
-  '- Separation of concerns: each module/function has one clear responsibility; UI, logic, and data layers are not entangled.',
-  '- Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
-  '- DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
-  '- Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
+  '8. Run the full check suite and confirm it passes.',
   '',
-  'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the PR must not merge until fixed; minor is advisory.',
+  'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
   'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
 ].join('\n')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
+// testInstruction: honor an explicit args.testCmd, else fall back to detection.
+const testInstruction = testCmd
+  ? ('run the project test command `' + testCmd + '`')
+  : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
+
 const SETUP_PROMPT =
   'Create the integration branch from the current HEAD of the session repo main ' +
   'checkout: git checkout -b ' + integrationBranch + '. Confirm the branch name ' +
@@ -139,8 +148,7 @@ const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
   'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
   'the given task-index order (deterministic, so conflicts are reproducible). ' +
-  'After all merges succeed, detect and run the project test command (pnpm check, ' +
-  'npm test, pytest, cargo test, or go test ./...). Report MERGED with the final ' +
+  'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
   'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
 
 const RECONCILE_PROMPT =
@@ -151,8 +159,8 @@ const RECONCILE_PROMPT =
 
 const COMPLETENESS_PROMPT =
   'What plan requirement is unmet? What claim is unverified? What code path is ' +
-  'untested? Run the full test suite on ' + integrationBranch + ' from the main ' +
-  'checkout and review the integrated result against the original plan. List every ' +
+  'untested? On ' + integrationBranch + ' from the main checkout, ' + testInstruction +
+  ', then review the integrated result against the original plan. List every ' +
   'gap, unverified claim, and untested path.'
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
@@ -216,11 +224,34 @@ const REVIEW_SCHEMA = {
 // the workflow agent() API takes Claude aliases haiku / sonnet / opus. Verified
 // live (2026-06-03): small/medium/large are rejected as invalid models, so the
 // agent returns an error instead of doing the work. Map in ONE place here.
-const TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
+const DEFAULT_TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
+const TIER = Object.assign({}, DEFAULT_TIER, tierOverrides)
+// Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
+// (this map); normalize so both resolve. Unknown tiers fall back to standard.
+const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
+// Review / completeness roles always run at the strongest model, OVERRIDE-PROOF:
+// tierOverrides remap implementer tiers only — a weak reviewer's failure mode is
+// the silent false PASS, so it must never be downgradable. (Reconcile is a fixer,
+// not a reviewer, so it tracks the implementer-side mostCapable.)
+const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 
-// ── Per-task pipeline: implement → spec → quality → bounded fix-loop ──────────
+// Returns true for a task result whose worktree branch is ready to merge.
+const isMergeable = (r) => r && r.status === 'done' && r.branch
+
+// Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
+// the orchestrating agent from the plan's per-task risk/tier — overrides the
+// run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
+const taskReviewProfile = (task) =>
+  (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
+
+// ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 async function runTask(task) {
-  const baseModel = TIER[task.tier] || TIER.standard
+  const baseModel = TIER[tierKey(task.tier)] || TIER.standard
+  // Surface a typo'd review depth rather than silently downgrading it.
+  if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
+    log('task ' + task.id + ': unknown review="' + task.review +
+        '", falling back to run default (' + reviewProfile + ')')
+  }
 
   let impl = await agent(
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body,
@@ -231,22 +262,31 @@ async function runTask(task) {
              reviewVerdict: 'not-reviewed', notes: impl.summary }
   }
 
-  // Fix-loop: cap 3 iterations total (initial + 2). See reviewer-prompts.md.
-  for (let iter = 1; iter <= 3; iter++) {
-    const spec = await agent(
-      GUARD + '\n\n' + SPEC_REVIEWER_PROMPT +
-        '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
-      { label: 'spec:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
-    )
-    let quality = { verdict: 'PASS', issues: [] }
-    if (spec.verdict === 'PASS') {
-      quality = await agent(
-        GUARD + '\n\n' + QUALITY_REVIEWER_PROMPT +
-          '\n\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha,
-        { label: 'qual:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: REVIEWER_SCHEMA }
-      )
+  // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
+  // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
+  for (let iter = 1; iter <= 2; iter++) {
+    const reviewPrompt =
+      GUARD + '\n\n' + REVIEWER_PROMPT +
+      '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha
+    const reviewOpts = (pass) => ({
+      label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
+      isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
+    })
+    // 'adversarial' runs two independent reviewers over the same diff and unions
+    // their findings; 'lean' (default) runs one. Per-task, falling back to the run default.
+    // NOTE: the two adversarial reviews run SEQUENTIALLY on purpose — each task
+    // pipeline must stay single-agent so peak concurrency equals wave width and the
+    // 16-agent chunking below holds. Do NOT parallelize them, or a wide adversarial
+    // wave can exceed the engine's concurrency cap.
+    let issues
+    if (taskReviewProfile(task) === 'adversarial') {
+      const r1 = await agent(reviewPrompt, reviewOpts(1))
+      const r2 = await agent(reviewPrompt, reviewOpts(2))
+      issues = (r1.issues || []).concat(r2.issues || [])
+    } else {
+      const review = await agent(reviewPrompt, reviewOpts())
+      issues = review.issues || []
     }
-    const issues = (spec.issues || []).concat(quality.issues || [])
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
@@ -255,7 +295,7 @@ async function runTask(task) {
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail).join('; ') }
     }
-    if (iter === 3) {
+    if (iter === 2) {
       return { task: task.id, status: 'failed', branch: impl.branch,
                reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; ') }
     }
@@ -275,7 +315,7 @@ async function runTask(task) {
 
 // ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
 async function mergeWave(results, waveIdx) {
-  const merged = results.filter((r) => r && r.status === 'done' && r.branch)
+  const merged = results.filter(isMergeable)
   if (merged.length === 0) return { status: 'TEST_FAILED', detail: 'no branches to merge' }
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
@@ -297,6 +337,7 @@ async function mergeWave(results, waveIdx) {
 // ── Main: setup → wave loop (parallel barrier, chunked at 16) → review ────────
 const taskResults = []
 const blockedWaves = []
+const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
 
@@ -322,6 +363,19 @@ for (let w = 0; w < WAVES.length; w++) {
   for (const r of results) taskResults.push(r)
 
   const merge = await mergeWave(results, w)
+  // Record every wave's merge outcome (success too) so the pre-merge gate can see
+  // how integration actually went — not just failures. This is the report's record
+  // of the merge sequence; on success merge.headSha is the integration HEAD.
+  waveMerges.push({
+    wave: w + 1,
+    status: merge.status,
+    headSha: merge.headSha,
+    command: merge.command,
+    detail: merge.detail,
+    // Task branches submitted to the merge agent — accurate whether or not the
+    // merge succeeded (do not imply success: a CONFLICT wave still lists them).
+    branches: results.filter(isMergeable).map((r) => r.task),
+  })
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
@@ -339,7 +393,7 @@ const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n
 const review = await agent(
   GUARD + '\n\n' + COMPLETENESS_PROMPT +
     '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves),
-  { label: 'integration', model: TIER.mostCapable, schema: REVIEW_SCHEMA }
+  { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
 )
 
 // ── Structured return value (matches references/report-format.md) ─────────────
@@ -349,6 +403,7 @@ return {
   dependencyEdges,
   tasks: taskResults,
   tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  waveMerges,
   judgmentCalls,
   unfinished,
   completenessFindings: review.findings || [],

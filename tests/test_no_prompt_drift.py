@@ -34,11 +34,11 @@ def baked_blocks():
 
 def test_expected_blocks_present():
     blocks = baked_blocks()
-    for name in ("GUARD", "IMPLEMENTER_PROMPT", "SPEC_REVIEWER_PROMPT", "QUALITY_REVIEWER_PROMPT"):
+    for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT"):
         assert name in blocks, "missing BAKE marker for " + name
 
 
-@pytest.mark.parametrize("name", ["GUARD", "IMPLEMENTER_PROMPT", "SPEC_REVIEWER_PROMPT", "QUALITY_REVIEWER_PROMPT"])
+@pytest.mark.parametrize("name", ["GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT"])
 def test_block_is_baked_into_workflow(name):
     blocks = baked_blocks()
     wf = normalize(WORKFLOW.read_text())

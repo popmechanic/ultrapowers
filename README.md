@@ -4,7 +4,7 @@ ultrapowers — [Superpowers](https://github.com/obra/superpowers)' senior engin
 
 ## What it is
 
-ultrapowers ships one skill, `ultrapowers`, invoked as **`/ultrapowers <plan-path>`**. It is the autonomous, parallel drop-in replacement for `superpowers:subagent-driven-development`. Where subagent-driven-development runs tasks sequentially with a human guiding each step, `/ultrapowers` fans approved plan tasks out across isolated git worktrees, runs them in parallel via a **committed Dynamic Workflow** (`skills/ultrapowers/workflow.js`), adversarially verifies each result, and integrates them onto a single branch — with one wave-plan approval before launch and one review at the end.
+ultrapowers ships one skill, `ultrapowers`, invoked as **`/ultrapowers <plan-path>`**. It is the parallel drop-in replacement for `superpowers:subagent-driven-development`. subagent-driven-development already runs autonomously and headless — it implements plan tasks one after another and does **not** pause for the human between them. What it structurally cannot do is run *implementation* tasks in parallel: it explicitly forbids that (plain subagents share one working tree and would conflict). `/ultrapowers` adds exactly that missing capability — it fans approved plan tasks out across isolated git worktrees, runs independent ones in parallel via a **committed Dynamic Workflow** (`skills/ultrapowers/workflow.js`), adversarially verifies each result, and integrates them onto a single branch — with one wave-plan approval before launch and one review at the end. Its differentiator is **parallel throughput on decomposable work, not autonomy** — superpowers already gives you that.
 
 The orchestration ships as a frozen, version-controlled `workflow.js` with the Superpowers discipline **baked in at build time** — so a run does not re-author a script or depend on live `superpowers:*` skill resolution. That is what makes execution deterministic and keeps the two plugins decoupled at runtime (they hand off only through the plan file on disk).
 
@@ -22,6 +22,15 @@ ultrapowers adds only what superpowers deliberately leaves to the human: the orc
 ```
 
 Make sure superpowers is already installed. ultrapowers does not install it for you.
+
+### Environment support
+
+`/ultrapowers` runs a Dynamic Workflow, which requires a surface that exposes the **Workflow** tool:
+the local **CLI**, **Desktop app**, **IDE extensions**, or non-interactive **`claude -p`** / the **Agent
+SDK** (Claude Code v2.1.154+, paid plan). **Claude Code on the web** (the cloud/remote execution
+environment) is *not* in the workflows availability list and does **not** expose the Workflow tool, so
+`/ultrapowers` cannot launch there — verified live: `select:Workflow` resolves to no tool in a web
+session. In that environment, fall back to `superpowers:subagent-driven-development` (sequential).
 
 ## Usage
 

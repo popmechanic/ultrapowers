@@ -18,14 +18,28 @@ test). Runtime globals: `agent(prompt, opts)`, `parallel(thunks)`, `phase(title)
 The skill launches the workflow with:
 
 ```
-args = { waves, integrationBranch, stamp, dependencyEdges }
+args = { waves, integrationBranch, stamp, dependencyEdges,
+         testCmd, reviewProfile, tierOverrides }
 ```
 
-- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files }`. `body` is the
-  full verbatim task text (the script cannot resolve file references). **Required.**
+- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
+  is the full verbatim task text (the script cannot resolve file references). `review` is the optional
+  per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
+  risk/tier; it overrides the run-wide `reviewProfile`. **Required:** `id`, `body`.
 - `args.integrationBranch` — e.g. `ultra/integration-<stamp>` (falls back to `ultra/integration-<stamp>`).
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
+
+**Per-project knobs (all optional; omitting any preserves prior behavior):**
+
+- `args.testCmd` — exact project test command (e.g. `'make test'`, `'pnpm -w test'`). Overrides the
+  built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
+- `args.reviewProfile` — the **run-wide default** review depth: `'lean'` (one independent review pass
+  per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
+  task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for
+  the extra pass on every task.
+- `args.tierOverrides` — remap model tiers per project, e.g. `{ cheap: 'sonnet' }`. Merged over the
+  default `TIER` map. The plan's `most-capable` tier name is normalized to the `mostCapable` key.
 
 The script **validates `args.waves` and throws loudly** if it is missing or malformed, converting a
 silent `undefined` (which historically caused agents to mutate the session repo) into a safe, loud
@@ -66,10 +80,11 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 ## Structure (read the file for specifics)
 
 - `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review).
-- Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `SPEC_REVIEWER_PROMPT`, `QUALITY_REVIEWER_PROMPT`,
-  `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
-- `runTask(task)` — implement (`isolation: 'worktree'`) → spec review → quality review → bounded
-  fix-loop (cap 3, escalate to most-capable on re-dispatch).
+- Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
+  merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
+- `runTask(task)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
+  + code-quality merged; **two** passes under `reviewProfile: 'adversarial'`) → bounded fix-loop
+  (cap 2 = initial + 1, escalate to most-capable on re-dispatch).
 - Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
   engine's concurrency cap), then `mergeWave()` (non-isolated; reconciliation cap 2; cascade-block
   downstream on unrecoverable failure).
@@ -86,7 +101,9 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 `reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
-constant in `workflow.js`. Reviewers always run at `most-capable` (`opus`).
+constant in `workflow.js`, and `args.tierOverrides` is merged over it per run (`most-capable` is
+normalized to the `mostCapable` key; unknown tiers fall back to `standard`). Reviewers always run at
+`most-capable` (`opus`), regardless of overrides to the implementer tiers.
 
 **Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
 the agent returns "There's an issue with the selected model" and does no work — whereas

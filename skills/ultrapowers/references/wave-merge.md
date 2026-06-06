@@ -52,7 +52,7 @@ The merge agent:
 
 1. Checks out the integration branch (`ultra/integration-<timestamp>`).
 2. Merges each reported branch in deterministic task-index order (task 0 first, then 1, 2, …). Fixed order makes conflicts reproducible.
-3. After all merges succeed, detects and runs the project's test command by checking in order: `pnpm-lock.yaml` → `pnpm check`; `package.json` (no pnpm lock) → `npm test`; `pytest.ini` / `pyproject.toml` / `setup.py` → `pytest`; `Cargo.toml` → `cargo test`; `go.mod` → `go test ./...`.
+3. After all merges succeed, detects and runs the project's test command by checking in order: `pnpm-lock.yaml` → `pnpm check`; `package.json` (no pnpm lock) → `npm test`; `pytest.ini` / `pyproject.toml` / `setup.py` → `pytest`; `Cargo.toml` → `cargo test`; `go.mod` → `go test ./...`. **When `args.testCmd` is supplied, that exact command is used instead of this detection ladder** (set it for monorepos or custom runners; baked into `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
 4. Reports back: success with final integration HEAD sha, or failure with the conflict diff or failing test output.
 
 ---

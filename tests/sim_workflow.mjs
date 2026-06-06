@@ -45,7 +45,7 @@ const WAVES = [
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: ['A -> C'] }
 
 function taskIdFromLabel(label) {
-  // labels look like impl:A, spec:A:1, qual:A:1, fix:A:1
+  // labels look like impl:A, review:A:1, fix:A:1
   return label.split(':')[1]
 }
 
@@ -58,7 +58,7 @@ async function scenarioHappy() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 'done ' + id, branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -72,12 +72,15 @@ async function scenarioHappy() {
   eq(r.unfinished, [], 'happy: nothing unfinished')
   eq(r.blockedWaves, [], 'happy: no blocked waves')
   eq(r.dependencyEdges, ['A -> C'], 'happy: dependency edges passed through')
+  assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
+    'happy: per-wave merge outcomes recorded (status + headSha)')
+  eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
   console.log('scenario happy: OK')
 }
 
-// ── Scenario 2: fix-loop — A needs one fix round, then passes ────────────────
+// ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
 async function scenarioFixLoop() {
-  const specCalls = {}
+  const reviewCalls = {}
   const agent = async (_prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
@@ -85,15 +88,14 @@ async function scenarioFixLoop() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:')) {
+    if (label.startsWith('review:')) {
       const id = taskIdFromLabel(label)
-      specCalls[id] = (specCalls[id] || 0) + 1
-      if (id === 'A' && specCalls[id] === 1) {
+      reviewCalls[id] = (reviewCalls[id] || 0) + 1
+      if (id === 'A' && reviewCalls[id] === 1) {
         return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'missing assertion' }] }
       }
       return { verdict: 'PASS', issues: [] }
     }
-    if (label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -102,9 +104,38 @@ async function scenarioFixLoop() {
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a.status, 'done', 'fixloop: A done')
   eq(a.reviewVerdict, 'fixed', 'fixloop: A reviewVerdict fixed (re-dispatched once)')
-  assert(specCalls['A'] === 2, 'fixloop: A spec reviewed twice (got ' + specCalls['A'] + ')')
+  assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
   console.log('scenario fix-loop: OK')
+}
+
+// ── Scenario 2b: fix-loop exhausts at cap 2 (still blocking after one fix) ────
+async function scenarioFixLoopExhausted() {
+  const reviewCalls = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCalls[id] = (reviewCalls[id] || 0) + 1
+      // A never gets fixed; everything else passes.
+      if (id === 'A') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'still broken' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'exhausted: A failed')
+  eq(a.reviewVerdict, 'fix-loop-exhausted', 'exhausted: A fix-loop-exhausted')
+  assert(reviewCalls['A'] === 2, 'exhausted: A reviewed exactly twice — cap 2, no third pass (got ' + reviewCalls['A'] + ')')
+  console.log('scenario fix-loop-exhausted: OK')
 }
 
 // ── Scenario 3: wave-1 merge unrecoverable → wave blocked, C cascade-blocked ──
@@ -116,7 +147,7 @@ async function scenarioBlockedCascade() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:wave1')) return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
     if (label.startsWith('reconcile:')) return { status: 'CONFLICT', detail: 'still conflicted' }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
@@ -128,6 +159,8 @@ async function scenarioBlockedCascade() {
   assert(r.unfinished.some((u) => u.startsWith('C:') && u.includes('cascade-blocked')), 'cascade: C cascade-blocked')
   // C must NOT appear as a completed task (we broke before running wave 2).
   assert(!r.tasks.some((t) => t.task === 'C'), 'cascade: C did not run')
+  assert(r.waveMerges.length === 1 && r.waveMerges[0].status === 'CONFLICT',
+    'cascade: wave-1 merge outcome recorded as CONFLICT in waveMerges')
   console.log('scenario blocked-cascade: OK')
 }
 
@@ -154,7 +187,7 @@ async function scenarioArgsString() {
       const id = taskIdFromLabel(label)
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
-    if (label.startsWith('spec:') || label.startsWith('qual:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
@@ -166,9 +199,145 @@ async function scenarioArgsString() {
   console.log('scenario args-string: OK')
 }
 
+// ── Scenario 6: portability — testCmd / reviewProfile / tierOverrides via args ─
+// Defaults stay unchanged when omitted (covered by the other scenarios); here we
+// supply all three and assert each is honored.
+async function scenarioPortability() {
+  const seen = { implModels: {}, reviewCount: {}, reviewModels: {}, integrationModel: null, mergeHadCmd: false, integrationHadCmd: false }
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      seen.implModels[id] = opts.model
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      seen.reviewCount[id] = (seen.reviewCount[id] || 0) + 1
+      seen.reviewModels[id] = opts.model
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) {
+      if (prompt.includes('make test')) seen.mergeHadCmd = true
+      return { status: 'MERGED', headSha: 'm' }
+    }
+    if (label === 'integration') {
+      if (prompt.includes('make test')) seen.integrationHadCmd = true
+      seen.integrationModel = opts.model
+      return { command: 'make test', testsPassed: true, output: 'ok', findings: [] }
+    }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const args = Object.assign({}, baseArgs, {
+    testCmd: 'make test',
+    reviewProfile: 'adversarial',
+    // cheap -> opus (distinct from the haiku default); mostCapable -> haiku to prove
+    // reviewers DON'T follow the override (they must stay opus, override-proof).
+    tierOverrides: { cheap: 'opus', mostCapable: 'haiku' },
+  })
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  // tierOverrides: A,B are 'cheap' -> overridden to opus; C is 'standard' -> sonnet (unchanged).
+  eq(seen.implModels['A'], 'opus', 'portability: cheap tier overridden to opus (A)')
+  eq(seen.implModels['B'], 'opus', 'portability: cheap tier overridden to opus (B)')
+  eq(seen.implModels['C'], 'sonnet', 'portability: untouched standard tier still sonnet (C)')
+  // OVERRIDE-PROOF reviewers: mostCapable was overridden to haiku, but review and
+  // completeness roles must still run at opus (a weak reviewer false-PASSes).
+  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer stays opus despite mostCapable override (A)')
+  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer stays opus despite mostCapable override (C)')
+  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer stays opus despite mostCapable override')
+  // adversarial: two independent review passes per iteration (all PASS on iter 1 => 2 each).
+  assert(seen.reviewCount['A'] === 2, 'portability: adversarial = 2 review passes (A, got ' + seen.reviewCount['A'] + ')')
+  assert(seen.reviewCount['C'] === 2, 'portability: adversarial = 2 review passes (C, got ' + seen.reviewCount['C'] + ')')
+  // testCmd threaded into the merge + integration/completeness prompts.
+  assert(seen.mergeHadCmd, 'portability: testCmd threaded into merge prompt')
+  assert(seen.integrationHadCmd, 'portability: testCmd threaded into integration prompt')
+  assert(r.tasks.every((t) => t.status === 'done'), 'portability: all tasks done')
+  console.log('scenario portability: OK')
+}
+
+// ── Scenario 7: per-task review depth — task.review overrides the run default ──
+// The plan (via the orchestrating agent) marks high-stakes tasks 'adversarial'
+// while routine tasks use the lean default; we should spend the extra review
+// pass only where it was asked for.
+async function scenarioPerTaskReview() {
+  const reviewCount = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ib', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCount[id] = (reviewCount[id] || 0) + 1
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [[
+    { id: 'A', title: 'high stakes', body: 'do A', tier: 'standard', review: 'adversarial' },
+    { id: 'B', title: 'routine', body: 'do B', tier: 'cheap' }, // no review field -> run default
+  ]]
+  // No global reviewProfile -> run default is 'lean'. A opts into adversarial.
+  const args = { waves, integrationBranch: 'ib', stamp: 's' }
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  assert(reviewCount['A'] === 2, 'per-task: A (review=adversarial) gets 2 passes (got ' + reviewCount['A'] + ')')
+  assert(reviewCount['B'] === 1, 'per-task: B (default lean) gets 1 pass (got ' + reviewCount['B'] + ')')
+  assert(r.tasks.every((t) => t.status === 'done'), 'per-task: all done')
+  console.log('scenario per-task-review: OK')
+}
+
+// ── Scenario 8: adversarial dissent — second reviewer catches what first misses ─
+// The whole point of 'adversarial': a clean first reviewer must NOT shield a task
+// when an independent second reviewer finds a blocker. Exercises the issue union
+// (r1 ∪ r2) and the fix-loop driven by the second opinion.
+async function scenarioAdversarialDissent() {
+  const reviewCalls = {}
+  const agent = async (_prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ib', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      // label is review:A:<iter>:<pass>; track per (iter,pass).
+      const parts = label.split(':') // ['review','A','1','1']
+      const iter = parts[2]
+      const pass = parts[3]
+      reviewCalls.A = (reviewCalls.A || 0) + 1
+      // Round 1: reviewer 1 PASSes, reviewer 2 dissents (blocking) -> must fix.
+      // Round 2 (after the fix): both PASS.
+      if (iter === '1' && pass === '2') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'second reviewer caught a missing edge case' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [[{ id: 'A', title: 't', body: 'do A', tier: 'standard', review: 'adversarial' }]]
+  const r = await runWorkflow({ agent, args: { waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'done', 'dissent: A recovers after the fix')
+  eq(a.reviewVerdict, 'fixed', "dissent: second reviewer's blocker drove a fix round")
+  // 2 passes/round × 2 rounds = 4 review calls: the dissent was NOT swallowed.
+  assert(reviewCalls.A === 4, 'dissent: 2 reviewers × 2 rounds = 4 review calls (got ' + reviewCalls.A + ')')
+  console.log('scenario adversarial-dissent: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
+await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
 await scenarioArgsString()
+await scenarioPortability()
+await scenarioPerTaskReview()
+await scenarioAdversarialDissent()
 console.log('ALL SCENARIOS PASSED')

@@ -2,7 +2,8 @@
 
 ## Input
 
-An approved `superpowers:writing-plans` plan document — a numbered list of Tasks, each containing:
+An approved `superpowers:writing-plans` plan document — headed `# <Feature> Implementation Plan`,
+with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 
 - A short title and description paragraph.
 - A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels.

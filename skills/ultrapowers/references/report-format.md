@@ -16,6 +16,9 @@ The workflow produces a single structured report object that the main agent pres
       "properties": { "task": {"type":"string"}, "status": {"type":"string"}, "branch": {"type":"string"},
         "commit": {"type":"string"}, "reviewVerdict": {"type":"string"}, "notes": {"type":"string"} } } },
     "tests": { "type": "object", "properties": { "command": {"type":"string"}, "passed": {"type":"boolean"}, "output": {"type":"string"} } },
+    "waveMerges": { "type": "array", "items": { "type": "object",
+      "properties": { "wave": {"type":"integer"}, "status": {"type":"string"}, "headSha": {"type":"string"},
+        "command": {"type":"string"}, "detail": {"type":"string"}, "branches": {"type":"array","items":{"type":"string"}} } } },
     "judgmentCalls": { "type": "array", "items": { "type": "string" } },
     "unfinished": { "type": "array", "items": { "type": "string" } },
     "completenessFindings": { "type": "array", "items": { "type": "string" } } } }
@@ -34,6 +37,7 @@ The workflow produces a single structured report object that the main agent pres
 | `tasks[].reviewVerdict` | no | Verdict from the code-review subagent, e.g. `"clean"`, `"fixed"`, `"warnings"` |
 | `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent |
 | `tests` | yes | Result of the suite run on the integration branch |
+| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
 | `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run |
 | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
 | `completenessFindings` | no | Gaps spotted during review that exceed the original spec |
@@ -45,9 +49,10 @@ When the workflow completes, the main agent renders the report as a concise huma
 1. **Integration branch** — name of the branch ready for review.
 2. **Wave plan** — one line per wave listing which tasks ran in parallel and the wave sequence.
 3. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes.
-4. **Test result** — pass or fail, the command run, and any relevant output excerpt.
-5. **Judgment calls** — bullet each non-obvious autonomous decision so the human can spot disagreements early.
-6. **Unfinished / completeness findings** — anything deferred or out-of-scope discovered during the run; empty means nothing was left behind.
+4. **Wave merges** — one line per wave: merge `status`, the task IDs merged, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
+5. **Test result** — pass or fail, the command run, and any relevant output excerpt.
+6. **Judgment calls** — bullet each non-obvious autonomous decision so the human can spot disagreements early.
+7. **Unfinished / completeness findings** — anything deferred or out-of-scope discovered during the run; empty means nothing was left behind.
 
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
