@@ -1,6 +1,6 @@
 # ultrapowers
 
-ultrapowers — [Superpowers](https://github.com/obra/superpowers)' senior engineering discipline, ultracode's parallel engine.
+ultrapowers — [Superpowers](https://github.com/obra/superpowers)' senior engineering discipline, ultracode's parallel execution engine.
 
 ## What it is
 
