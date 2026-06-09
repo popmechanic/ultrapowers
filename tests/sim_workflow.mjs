@@ -515,6 +515,40 @@ async function scenarioNeedsContextAfterFix() {
   console.log('scenario needs-context-after-fix: OK')
 }
 
+// ── Scenario: resume reuses the existing integration branch (F16) ─────────────
+async function scenarioResume() {
+  let setupPrompt = ''
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'setup') { setupPrompt = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { resume: true }),
+    budget: undefined,
+  })
+  assert(/EXISTING/.test(setupPrompt) && setupPrompt.includes('ultra/integration-sim'),
+    'resume: setup told to check out the EXISTING integration branch')
+  assert(!/checkout -b/.test(setupPrompt), 'resume: setup must not create a new branch')
+  assert(r.tasks.every((t) => t.status === 'done'), 'resume: redirect tasks ran')
+  console.log('scenario resume: OK')
+}
+
+// ── Scenario: resume without an explicit integrationBranch fails loud ─────────
+async function scenarioResumeRequiresBranch() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: { waves: WAVES, stamp: 'sim', resume: true },
+      budget: undefined,
+    })
+  } catch (e) {
+    threw = /resume requires/.test(e.message)
+  }
+  assert(threw, 'resumeRequiresBranch: resume with a defaulted branch must throw')
+  console.log('scenario resume-requires-branch: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -532,4 +566,6 @@ await scenarioConcernsPropagate()
 await scenarioPlanPath()
 await scenarioVerdictMismatch()
 await scenarioNeedsContextAfterFix()
+await scenarioResume()
+await scenarioResumeRequiresBranch()
 console.log('ALL SCENARIOS PASSED')

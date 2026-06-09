@@ -38,6 +38,9 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
   integration branch (guards against a stale checkout from a previous run).
 - `args.planPath` — path to the plan document; threaded into the completeness prompt so the critic
   reads and reviews against the actual plan.
+- `args.resume` — boolean; the deterministic redirect path. Setup checks out the EXISTING
+  integration branch instead of creating one, and the waves carry only the redirected tasks.
+  Requires an explicit `args.integrationBranch` (throws otherwise).
 - `args.reviewProfile` — the **run-wide default** review depth: `'lean'` (one independent review pass
   per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
   task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for

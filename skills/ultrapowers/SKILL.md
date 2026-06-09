@@ -137,7 +137,13 @@ anything unfinished or flagged by the completeness critic. Then name the integra
 present two choices:
 
 - **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up.
-- **Redirect** — provide corrective instructions; re-run the affected tasks before returning here.
+- **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
+  affected tasks** (preserving their relative order and any edges between them, with the
+  corrective instructions appended to each task `body`), and relaunch the same committed
+  `workflow.js` with `resume: true` and the **same** `integrationBranch`. The setup agent checks
+  out the existing branch instead of creating one; redirected work merges onto it. Never
+  improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
+  it completes.
 
 ---
 

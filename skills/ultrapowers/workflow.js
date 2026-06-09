@@ -72,6 +72,14 @@ const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBran
 // planPath: where the original plan lives on disk, so the completeness critic
 // reviews against the actual plan (agents have fs access; this script does not).
 const planPath = (ARGS && typeof ARGS.planPath === 'string' && ARGS.planPath.trim()) || undefined
+// resume: the deterministic redirect path (SKILL.md Step 5). Setup checks out the
+// EXISTING integration branch instead of creating one; the waves carry only the
+// redirected tasks. Requires the branch to be named explicitly — never guessed.
+const resume = !!(ARGS && ARGS.resume === true)
+if (resume && !(ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch)) {
+  throw new Error('ultrapowers: resume requires an explicit args.integrationBranch — ' +
+    'pass the integration branch of the run being redirected.')
+}
 
 // Fail loud on a typo'd model alias: an invalid model makes every agent error
 // without doing any work (verified live 2026-06-03), so catch it before launch.
@@ -160,12 +168,17 @@ const testInstruction = testCmd
   ? ('run the project test command `' + testCmd + '`')
   : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
 
-const SETUP_PROMPT =
-  'You are the setup agent on the session repo main checkout. ' +
-  (baseBranch ? ('Check out the base branch ' + baseBranch + ' first. ') : '') +
-  'Create the integration branch: git checkout -b ' + integrationBranch + '. Then ' +
-  'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
-  'Report the branch name, its HEAD sha, and the baseline result in your JSON result.'
+const SETUP_PROMPT = resume
+  ? ('You are the setup agent on the session repo main checkout. Check out the EXISTING ' +
+     'integration branch ' + integrationBranch + ' — it must already exist; report BLOCKED ' +
+     'if it does not, and do not create a new branch. Then ' +
+     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+     'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
+  : ('You are the setup agent on the session repo main checkout. ' +
+     (baseBranch ? ('Check out the base branch ' + baseBranch + ' first. ') : '') +
+     'Create the integration branch: git checkout -b ' + integrationBranch + '. Then ' +
+     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+     'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
 const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
