@@ -20,6 +20,25 @@ def test_missing_description_fails(tmp_path):
     code, out = run(tmp_path)
     assert code != 0 and "description" in out
 
+def test_bad_name_chars_fail(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: bad name (x)\ndescription: Use when testing this validator thing.\n---\nbody\n")
+    code, out = run(tmp_path)
+    assert code != 0 and "name" in out
+
+def test_overlong_description_fails(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: " + "w" * 1100 + "\n---\nbody\n")
+    code, out = run(tmp_path)
+    assert code != 0 and "1024" in out
+
+def test_missing_script_link_fails(tmp_path):
+    (tmp_path / "SKILL.md").write_text(
+        "---\nname: x\ndescription: Use when testing this validator thing.\n---\n"
+        "run scripts/missing_tool.py\n")
+    code, out = run(tmp_path)
+    assert code != 0 and "missing_tool.py" in out
+
 def test_missing_reference_fails(tmp_path):
     (tmp_path / "SKILL.md").write_text(
         "---\nname: x\ndescription: This skill should be used when ...\n---\n"

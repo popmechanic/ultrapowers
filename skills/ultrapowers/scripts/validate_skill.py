@@ -13,14 +13,19 @@ def validate(skill_dir: pathlib.Path):
         return ["SKILL.md missing YAML frontmatter (--- ... ---)"]
     fm, body = m.group(1), m.group(2)
     fields = dict(re.findall(r"^([A-Za-z0-9_-]+):\s*(.*)$", fm, re.MULTILINE))
-    if not fields.get("name"):
+    name = fields.get("name", "")
+    if not name:
         errors.append("frontmatter: missing 'name'")
+    elif not re.fullmatch(r"[A-Za-z0-9-]{1,64}", name):
+        errors.append("frontmatter: 'name' must be 1-64 chars of letters, digits, hyphens")
     desc = fields.get("description", "")
     if len(desc) < 20:
         errors.append("frontmatter: missing or trivial 'description'")
-    for ref in re.findall(r"references/([A-Za-z0-9_\-/]+\.md)", body):
-        if not (skill_dir / "references" / ref).exists():
-            errors.append(f"missing referenced file: references/{ref}")
+    if len(desc) > 1024:
+        errors.append("frontmatter: 'description' exceeds 1024 chars")
+    for sub, ref in re.findall(r"\b(references|scripts)/([A-Za-z0-9_\-./]+\.\w+)", body):
+        if not (skill_dir / sub / ref).exists():
+            errors.append(f"missing referenced file: {sub}/{ref}")
     return errors
 
 if __name__ == "__main__":
