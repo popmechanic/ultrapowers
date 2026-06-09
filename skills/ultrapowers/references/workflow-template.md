@@ -34,12 +34,21 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
 
 - `args.testCmd` — exact project test command (e.g. `'make test'`, `'pnpm -w test'`). Overrides the
   built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
+- `args.baseBranch` — the repo's default branch; the setup agent checks it out before creating the
+  integration branch (guards against a stale checkout from a previous run).
+- `args.planPath` — path to the plan document; threaded into the completeness prompt so the critic
+  reads and reviews against the actual plan.
+- `args.resume` — boolean; the deterministic redirect path. Setup checks out the EXISTING
+  integration branch instead of creating one, and the waves carry only the redirected tasks.
+  Requires an explicit `args.integrationBranch` (throws otherwise).
 - `args.reviewProfile` — the **run-wide default** review depth: `'lean'` (one independent review pass
   per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
   task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for
   the extra pass on every task.
 - `args.tierOverrides` — remap model tiers per project, e.g. `{ cheap: 'sonnet' }`. Merged over the
   default `TIER` map. The plan's `most-capable` tier name is normalized to the `mostCapable` key.
+  Values are validated at launch against `haiku` / `sonnet` / `opus`; an unknown alias throws
+  before any agent runs.
 
 The script **validates `args.waves` and throws loudly** if it is missing or malformed, converting a
 silent `undefined` (which historically caused agents to mutate the session repo) into a safe, loud

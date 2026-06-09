@@ -8,7 +8,7 @@ These prompts are adapted from `superpowers:subagent-driven-development` (implem
 
 **This file is the single source of truth for the discipline baked into `skills/ultrapowers/workflow.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `workflow.js` (see the re-bake procedure in `workflow-template.md`).
 
-The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block and asserts (whitespace-normalized) that it appears in `workflow.js`, so the baked copy can never silently diverge from this source.
+The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block (here and in `wave-merge.md`, whose blocks use `{{...}}` placeholders for runtime interpolations) and asserts (whitespace-normalized) that it appears in `workflow.js`, so the baked copies can never silently diverge from their sources.
 
 ---
 
@@ -33,6 +33,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 - `TASK`: the full, verbatim task text — do not paraphrase or reinterpret it
 - `WORKTREE_PATH`: absolute path to your isolated worktree
 - `BRANCH`: the branch you must work on (already checked out for you)
+- `BASE`: sha of the integration-branch HEAD your work builds on
 
 **Workflow — red → green → refactor:**
 1. Read and restate the acceptance criteria from the task text before touching code.
@@ -43,7 +44,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 
 **Self-verify before reporting:**
 - Re-read the task. Confirm every stated requirement is addressed.
-- Run `git diff main` (or the base branch) and verify no unrelated files are modified.
+- Run `git diff BASE...HEAD` (`BASE` is provided in your inputs) and verify no unrelated files are modified.
 - Confirm no secrets, no commented-out debug code, no TODOs introduced.
 
 **Report your worktree coordinates:** include `git branch --show-current` and `git rev-parse HEAD` in your response so the merge step can map task → branch → commit.
@@ -94,7 +95,7 @@ You are an independent reviewer. You receive the original task text and the impl
 **Mandate:** verify everything independently. Do not trust the implementer report.
 
 **Spec compliance:**
-1. Check out the branch identified by `headSha`. Run `git diff main` yourself.
+1. Check out the implementer HEAD sha as a DETACHED checkout (`git checkout --detach <HEAD>`) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run `git diff BASE...HEAD` yourself.
 2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.
 3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).
 

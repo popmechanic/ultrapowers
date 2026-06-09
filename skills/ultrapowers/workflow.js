@@ -65,6 +65,34 @@ const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
 const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
+// baseBranch: the repo's default branch, derived by the orchestrator (SKILL.md
+// Step 2). Anchors the integration branch against a stale checkout left by a
+// previous run.
+const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBranch.trim()) || undefined
+// planPath: where the original plan lives on disk, so the completeness critic
+// reviews against the actual plan (agents have fs access; this script does not).
+const planPath = (ARGS && typeof ARGS.planPath === 'string' && ARGS.planPath.trim()) || undefined
+// resume: the deterministic redirect path (SKILL.md Step 5). Setup checks out the
+// EXISTING integration branch instead of creating one; the waves carry only the
+// redirected tasks. Requires the branch to be named explicitly — never guessed.
+const resume = !!(ARGS && ARGS.resume === true)
+if (resume && !(ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch)) {
+  throw new Error('ultrapowers: resume requires an explicit args.integrationBranch — ' +
+    'pass the integration branch of the run being redirected.')
+}
+
+// Fail loud on a typo'd model alias: an invalid model makes every agent error
+// without doing any work (verified live 2026-06-03), so catch it before launch.
+const VALID_MODELS = ['haiku', 'sonnet', 'opus']
+for (const k in tierOverrides) {
+  if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
+    throw new Error(
+      'ultrapowers: tierOverrides.' + k + ' = "' + tierOverrides[k] +
+      '" is not a valid model alias (valid: haiku, sonnet, opus). Refusing to launch.'
+    )
+  }
+}
+
 // meta.phases must be { title } objects, one per wave (+ setup + review).
 meta.phases = [{ title: 'Setup' }]
   .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
@@ -89,6 +117,7 @@ const IMPLEMENTER_PROMPT = [
   '- TASK: the full, verbatim task text — do not paraphrase or reinterpret it',
   '- WORKTREE_PATH: absolute path to your isolated worktree',
   '- BRANCH: the branch you must work on (already checked out for you)',
+  '- BASE: sha of the integration-branch HEAD your work builds on',
   '',
   'Workflow — red green refactor:',
   '1. Read and restate the acceptance criteria from the task text before touching code.',
@@ -99,7 +128,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Run git diff main (or the base branch) and verify no unrelated files are modified.',
+  '- Run git diff BASE...HEAD (BASE is provided in your inputs) and verify no unrelated files are modified.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
@@ -116,7 +145,7 @@ const REVIEWER_PROMPT = [
   'Mandate: verify everything independently. Do not trust the implementer report.',
   '',
   'Spec compliance:',
-  '1. Check out the branch identified by headSha. Run git diff main yourself.',
+  '1. Check out the implementer HEAD sha as a DETACHED checkout (git checkout --detach <HEAD>) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run git diff BASE...HEAD yourself.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   '',
@@ -139,10 +168,17 @@ const testInstruction = testCmd
   ? ('run the project test command `' + testCmd + '`')
   : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
 
-const SETUP_PROMPT =
-  'Create the integration branch from the current HEAD of the session repo main ' +
-  'checkout: git checkout -b ' + integrationBranch + '. Confirm the branch name ' +
-  'and its HEAD sha back in your JSON result.'
+const SETUP_PROMPT = resume
+  ? ('You are the setup agent on the session repo main checkout. Check out the EXISTING ' +
+     'integration branch ' + integrationBranch + ' — it must already exist; report BLOCKED ' +
+     'if it does not, and do not create a new branch. Then ' +
+     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+     'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
+  : ('You are the setup agent on the session repo main checkout. ' +
+     (baseBranch ? ('Check out the base branch ' + baseBranch + ' first. ') : '') +
+     'Create the integration branch: git checkout -b ' + integrationBranch + '. Then ' +
+     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+     'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
 const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
@@ -158,6 +194,7 @@ const RECONCILE_PROMPT =
   'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
 
 const COMPLETENESS_PROMPT =
+  (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'What plan requirement is unmet? What claim is unverified? What code path is ' +
   'untested? On ' + integrationBranch + ' from the main checkout, ' + testInstruction +
   ', then review the integrated result against the original plan. List every ' +
@@ -206,8 +243,13 @@ const MERGE_SCHEMA = {
 }
 const SETUP_SCHEMA = {
   type: 'object',
-  required: ['branch'],
-  properties: { branch: { type: 'string' }, headSha: { type: 'string' } },
+  required: ['branch', 'headSha'],
+  properties: {
+    branch: { type: 'string' },
+    headSha: { type: 'string' },
+    baselinePassed: { type: 'boolean' },
+    baselineOutput: { type: 'string' },
+  },
 }
 const REVIEW_SCHEMA = {
   type: 'object',
@@ -245,8 +287,20 @@ const taskReviewProfile = (task) =>
   (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
 
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
-async function runTask(task) {
+async function runTask(task, baseSha) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
+  // Run economics, reported per task so the pre-merge gate can judge cost vs. benefit.
+  const economics = { tier: baseModel, review: taskReviewProfile(task) }
+  // DONE_WITH_CONCERNS concerns must reach the report — never swallowed.
+  const concerns = []
+  const noteConcerns = (res) => {
+    if (res && res.status === 'DONE_WITH_CONCERNS' && Array.isArray(res.concerns)) {
+      for (const c of res.concerns) {
+        concerns.push(c)
+        judgmentCalls.push('task ' + task.id + ': ' + c)
+      }
+    }
+  }
   // Surface a typo'd review depth rather than silently downgrading it.
   if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
     log('task ' + task.id + ': unknown review="' + task.review +
@@ -254,12 +308,14 @@ async function runTask(task) {
   }
 
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body,
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
+  noteConcerns(impl)
   if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
     return { task: task.id, status: 'failed', branch: impl.branch,
-             reviewVerdict: 'not-reviewed', notes: impl.summary }
+             reviewVerdict: 'not-reviewed', notes: impl.summary,
+             tier: economics.tier, review: economics.review, fixIterations: 0 }
   }
 
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
@@ -267,7 +323,8 @@ async function runTask(task) {
   for (let iter = 1; iter <= 2; iter++) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
-      '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha
+      '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
+      '\nBASE: ' + baseSha
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -278,37 +335,51 @@ async function runTask(task) {
     // pipeline must stay single-agent so peak concurrency equals wave width and the
     // 16-agent chunking below holds. Do NOT parallelize them, or a wide adversarial
     // wave can exceed the engine's concurrency cap.
-    let issues
+    let issues, verdicts
     if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
       const r2 = await agent(reviewPrompt, reviewOpts(2))
       issues = (r1.issues || []).concat(r2.issues || [])
+      verdicts = [r1.verdict, r2.verdict]
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
       issues = review.issues || []
+      verdicts = [review.verdict]
     }
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
     if (blocking.length === 0) {
+      // Severity decides the merge; a FIX_REQUIRED verdict with no blocking issues
+      // is a reviewer inconsistency worth surfacing, not silently merging past.
+      if (verdicts.indexOf('FIX_REQUIRED') !== -1) {
+        log('task ' + task.id + ': reviewer verdict FIX_REQUIRED but no blocking issues; merging on severity')
+        judgmentCalls.push('task ' + task.id +
+          ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
+      }
       return { task: task.id, status: 'done', branch: impl.branch, commit: impl.commit,
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
-               notes: minors.map((m) => m.detail).join('; ') }
+               notes: minors.map((m) => m.detail)
+                 .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
+               tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
     }
     if (iter === 2) {
       return { task: task.id, status: 'failed', branch: impl.branch,
-               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; ') }
+               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
+               tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
     // Re-dispatch implementer on the same branch, escalated to most-capable.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nTASK:\n' + task.body +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + '\nTASK:\n' + task.body +
         '\n\nFIX REQUIRED — resolve these blocking issues on the same branch (' +
         impl.branch + '):\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
-    if (impl.status === 'BLOCKED') {
+    noteConcerns(impl)
+    if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, status: 'failed', branch: impl.branch,
-               reviewVerdict: 'blocked-after-fix', notes: impl.summary }
+               reviewVerdict: 'blocked-after-fix', notes: impl.summary,
+               tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
   }
 }
@@ -342,14 +413,33 @@ const judgmentCalls = []
 const unfinished = []
 
 phase('Setup')
-await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+// SKILL.md promises an abort when the integration branch cannot be created.
+if (!setup || setup.branch !== integrationBranch || !setup.headSha) {
+  throw new Error(
+    'ultrapowers: setup failed to create integration branch ' + integrationBranch +
+    ' (got ' + JSON.stringify(setup) + '). Aborting before any task runs.'
+  )
+}
+const baseline = { passed: setup.baselinePassed, output: setup.baselineOutput }
+if (setup.baselinePassed === false) {
+  judgmentCalls.push(
+    'baseline: test suite was already failing before any task ran (' +
+    (setup.baselineOutput || 'no output') + ') — task results inherit a red suite'
+  )
+  log('setup: baseline tests FAILED before any work began')
+}
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
+
+// Review diff base: the integration-branch HEAD a wave's worktrees build on.
+// Wave 1 starts at the setup HEAD; each successful merge advances it.
+let waveBaseSha = setup.headSha
 
 for (let w = 0; w < WAVES.length; w++) {
   // Peak concurrency equals wave width (each task pipeline is internally
   // sequential), so chunk waves wider than the engine cap.
-  if (typeof budget !== 'undefined' && budget && budget.total && budget.remaining === 0) {
+  if (typeof budget !== 'undefined' && budget && typeof budget.remaining === 'number' && budget.remaining <= 0) {
     WAVES[w].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted)'))
     continue
   }
@@ -357,7 +447,7 @@ for (let w = 0; w < WAVES.length; w++) {
   const results = []
   for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
     const chunk = WAVES[w].slice(off, off + CONCURRENCY)
-    const chunkResults = await parallel(chunk.map((task) => () => runTask(task)))
+    const chunkResults = await parallel(chunk.map((task) => () => runTask(task, waveBaseSha)))
     for (const r of chunkResults) results.push(r)
   }
   for (const r of results) taskResults.push(r)
@@ -376,6 +466,7 @@ for (let w = 0; w < WAVES.length; w++) {
     // merge succeeded (do not imply success: a CONFLICT wave still lists them).
     branches: results.filter(isMergeable).map((r) => r.task),
   })
+  if (merge.status === 'MERGED' && merge.headSha) waveBaseSha = merge.headSha
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
@@ -403,6 +494,7 @@ return {
   dependencyEdges,
   tasks: taskResults,
   tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  baseline,
   waveMerges,
   judgmentCalls,
   unfinished,

@@ -1,6 +1,7 @@
 ---
 name: ultrapowers
-description: This skill should be used when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", "run the plan as a workflow", or wants to autonomously implement an approved Superpowers plan in parallel. The drop-in alternative to superpowers:subagent-driven-development.
+description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", "run the plan as a workflow", or wants to autonomously implement an approved Superpowers plan in parallel waves across git worktrees.
+argument-hint: <plan-path>
 allowed-tools: Workflow Skill Read Grep Glob Bash
 ---
 
@@ -30,6 +31,12 @@ project tree.
 ---
 
 ## Step 1 — Confirm an Approved Plan Exists
+
+**Preflight — confirm the Workflow tool exists on this surface.** The Workflow tool is an
+undocumented/experimental surface and is absent in some environments (e.g. Claude Code on the
+web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable, go directly to
+Step 6 and run the fallback — do **not** perform dependency analysis or ask the human to approve
+a wave plan that cannot launch.
 
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
 plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`
@@ -65,6 +72,9 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
     monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
     built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
+  - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`,
+    falling back to the current branch). Always set it; it anchors the integration branch and the
+    review diff base.
   - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
     passes) or `lean` (one) from its risk and tier: high-stakes or `most-capable` tasks warrant
     `adversarial`; routine `cheap` tasks stay `lean`. This is derived from the plan, not asked.
@@ -99,7 +109,7 @@ author or edit it) with:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         testCmd?, reviewProfile?, tierOverrides? }
+         baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
@@ -108,6 +118,8 @@ preserves standard behavior):
 
 - `testCmd` — the exact test command for *this* repo (monorepos / non-standard runners), so the
   merge and completeness agents don't have to guess.
+- `planPath` — the resolved plan path from Step 1, so the completeness critic reviews against the
+  actual plan, not just the task list.
 - **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).
   `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
   overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —
@@ -132,11 +144,19 @@ anything unfinished or flagged by the completeness critic. Then name the integra
 present two choices:
 
 - **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up.
-- **Redirect** — provide corrective instructions; re-run the affected tasks before returning here.
+- **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
+  affected tasks** (preserving their relative order and any edges between them, with the
+  corrective instructions appended to each task `body`), and relaunch the same committed
+  `workflow.js` with `resume: true` and the **same** `integrationBranch`. The setup agent checks
+  out the existing branch instead of creating one; redirected work merges onto it. Never
+  improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
+  it completes.
 
 ---
 
 ## Step 6 — Fallback Path
+
+The Step-1 preflight routes here *before* any analysis when the Workflow tool is absent.
 
 If the committed workflow **cannot run** — the Workflow feature is unavailable or changed under us,
 `args.waves` will not populate (see the args-population note in `references/workflow-template.md`),

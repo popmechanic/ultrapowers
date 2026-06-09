@@ -48,3 +48,41 @@ def test_block_is_baked_into_workflow(name):
         "drift: BAKE:" + name + " in reviewer-prompts.md does not match workflow.js.\n"
         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected
     )
+
+
+# ── wave-merge.md prompts (setup/merge/reconcile/completeness) ────────────────
+# These blocks contain {{PLACEHOLDER}} tokens where workflow.js interpolates
+# runtime values; we assert the static fragments appear in workflow.js, in order.
+
+WAVE_SOURCE = ROOT / "skills/ultrapowers/references/wave-merge.md"
+PLACEHOLDER = re.compile(r"\{\{\w+\}\}")
+WAVE_PROMPTS = ["SETUP_PROMPT_CREATE", "SETUP_PROMPT_RESUME", "MERGE_PROMPT",
+                "RECONCILE_PROMPT", "COMPLETENESS_PROMPT"]
+
+
+def wave_blocks():
+    blocks = {name: body for name, body in MARKER.findall(WAVE_SOURCE.read_text())}
+    assert blocks, "no <!-- BAKE:NAME --> markers found in wave-merge.md"
+    return blocks
+
+
+def test_wave_blocks_present():
+    blocks = wave_blocks()
+    for name in WAVE_PROMPTS:
+        assert name in blocks, "missing BAKE marker for " + name
+
+
+@pytest.mark.parametrize("name", WAVE_PROMPTS)
+def test_wave_prompt_is_baked(name):
+    blocks = wave_blocks()
+    wf = normalize(WORKFLOW.read_text())
+    fragments = [normalize(f) for f in PLACEHOLDER.split(blocks[name])]
+    fragments = [f for f in fragments if f]
+    assert fragments, "empty source block for " + name
+    pos = 0
+    for frag in fragments:
+        idx = wf.find(frag, pos)
+        assert idx >= 0, (
+            "drift: BAKE:" + name + " fragment missing or out of order in workflow.js. "
+            "Re-bake per references/workflow-template.md.\nfragment (normalized):\n" + frag)
+        pos = idx + len(frag)

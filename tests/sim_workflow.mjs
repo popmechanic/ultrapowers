@@ -49,6 +49,27 @@ function taskIdFromLabel(label) {
   return label.split(':')[1]
 }
 
+// Default stub agent: every role succeeds. Pass a handler(label, prompt, opts)
+// that returns a value to override a role, or undefined to fall through.
+function makeAgent(handle) {
+  return async (prompt, opts) => {
+    const label = opts.label || ''
+    if (handle) {
+      const r = handle(label, prompt, opts)
+      if (r !== undefined) return r
+    }
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+}
+
 // ── Scenario 1: happy path — everything DONE / PASS / MERGED ──────────────────
 async function scenarioHappy() {
   const agent = async (_prompt, opts) => {
@@ -104,6 +125,7 @@ async function scenarioFixLoop() {
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a.status, 'done', 'fixloop: A done')
   eq(a.reviewVerdict, 'fixed', 'fixloop: A reviewVerdict fixed (re-dispatched once)')
+  eq(a.fixIterations, 1, 'fixloop: one fix round recorded')
   assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
   console.log('scenario fix-loop: OK')
@@ -331,6 +353,202 @@ async function scenarioAdversarialDissent() {
   console.log('scenario adversarial-dissent: OK')
 }
 
+// ── Scenario: invalid tierOverrides model must fail loud at launch ────────────
+async function scenarioTierOverrideInvalid() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'gpt-4' } }),
+      budget: undefined,
+    })
+  } catch (e) {
+    threw = /tierOverrides/.test(e.message) && /gpt-4/.test(e.message)
+  }
+  assert(threw, 'tierOverrideInvalid: invalid model alias must throw at launch, before any agent runs')
+  console.log('scenario tier-override-invalid: OK')
+}
+
+// ── Scenario: setup failure must abort before any task runs (F1) ──────────────
+async function scenarioSetupFailure() {
+  let implRan = false
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'setup') return { branch: 'wrong-branch', headSha: 'x' }
+        if (label.startsWith('impl:')) { implRan = true }
+        return undefined
+      }),
+      args: baseArgs, budget: undefined,
+    })
+  } catch (e) {
+    threw = /setup failed/.test(e.message)
+  }
+  assert(threw, 'setupFailure: mismatched setup branch must throw')
+  assert(!implRan, 'setupFailure: no implementer may run after a failed setup')
+  console.log('scenario setup-failure: OK')
+}
+
+// ── Scenario: red baseline is recorded and surfaced, run continues (F15) ──────
+async function scenarioBaselineRed() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'setup') {
+        return { branch: 'ultra/integration-sim', headSha: 'int0',
+                 baselinePassed: false, baselineOutput: '2 failed, 10 passed' }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  eq(r.baseline.passed, false, 'baselineRed: baseline failure recorded in report')
+  assert(/failed/.test(r.baseline.output), 'baselineRed: baseline output kept')
+  assert(r.judgmentCalls.some((j) => /baseline/.test(j)),
+    'baselineRed: red baseline surfaced as a judgment call')
+  assert(r.tasks.length === 3, 'baselineRed: run still proceeds (conservative, non-destructive)')
+  console.log('scenario baseline-red: OK')
+}
+
+// ── Scenario: diff base = integration HEAD at wave start, threaded per wave (F3)
+async function scenarioBaseShaThreading() {
+  const basesSeen = {}
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label.startsWith('impl:') || label.startsWith('review:')) {
+        const id = taskIdFromLabel(label)
+        // The prompt body also says "- BASE: sha of the ..."; the threaded value is
+        // the LAST "BASE: <sha>" occurrence (appended by the dispatch).
+        const all = prompt.match(/BASE: \S+/g) || []
+        const last = all[all.length - 1]
+        basesSeen[label.split(':')[0] + ':' + id] = last && last.slice('BASE: '.length)
+      }
+      if (label === 'merge:wave1') return { status: 'MERGED', headSha: 'm1' }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  eq(basesSeen['impl:A'], 'int0', 'baseSha: wave-1 implementer base = setup HEAD')
+  eq(basesSeen['review:A'], 'int0', 'baseSha: wave-1 reviewer base = setup HEAD')
+  eq(basesSeen['impl:C'], 'm1', 'baseSha: wave-2 implementer base = wave-1 merge HEAD')
+  eq(basesSeen['review:C'], 'm1', 'baseSha: wave-2 reviewer base = wave-1 merge HEAD')
+  assert(r.tasks.every((t) => t.status === 'done'), 'baseSha: all done')
+  console.log('scenario base-sha-threading: OK')
+}
+
+// ── Scenario: DONE_WITH_CONCERNS concerns reach the report; economics recorded (F4, F17)
+async function scenarioConcernsPropagate() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'impl:A') {
+        return { status: 'DONE_WITH_CONCERNS', summary: 's', branch: 'wt-A',
+                 headSha: 'sha-A', commit: 'c-A', concerns: ['reused legacy auth API'] }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(/legacy auth/.test(a.notes), 'concerns: concern lands in task notes')
+  assert(r.judgmentCalls.some((j) => /A/.test(j) && /legacy auth/.test(j)),
+    'concerns: concern surfaced as a judgment call')
+  eq(a.fixIterations, 0, 'economics: clean task records 0 fix iterations')
+  eq(a.tier, 'haiku', 'economics: resolved model recorded (A is cheap)')
+  eq(a.review, 'lean', 'economics: review depth recorded')
+  console.log('scenario concerns-propagate: OK')
+}
+
+// ── Scenario: completeness critic gets the plan path (F5) ─────────────────────
+async function scenarioPlanPath() {
+  let integrationPrompt = ''
+  await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'integration') { integrationPrompt = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { planPath: 'docs/superpowers/plans/feature.md' }),
+    budget: undefined,
+  })
+  assert(integrationPrompt.includes('docs/superpowers/plans/feature.md'),
+    'planPath: completeness prompt instructs reading the original plan document')
+  console.log('scenario plan-path: OK')
+}
+
+// ── Scenario: FIX_REQUIRED verdict with zero blocking issues is flagged (F7) ──
+async function scenarioVerdictMismatch() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'minor', detail: 'nit' }] }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'done', 'verdictMismatch: severity rule still decides (merges)')
+  assert(r.judgmentCalls.some((j) => /A/.test(j) && /FIX_REQUIRED/.test(j)),
+    'verdictMismatch: the inconsistency is surfaced, not swallowed')
+  console.log('scenario verdict-mismatch: OK')
+}
+
+// ── Scenario: NEEDS_CONTEXT after a fix re-dispatch fails the task (F8) ───────
+async function scenarioNeedsContextAfterFix() {
+  let reviews = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('review:A')) {
+        reviews += 1
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'broken' }] }
+      }
+      if (label.startsWith('fix:A')) {
+        return { status: 'NEEDS_CONTEXT', summary: 'which auth provider?', branch: 'wt-A' }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'needsContext: task fails instead of re-reviewing')
+  assert(reviews === 1, 'needsContext: no second review after NEEDS_CONTEXT (got ' + reviews + ')')
+  assert(/auth provider/.test(a.notes), 'needsContext: the open question is surfaced')
+  console.log('scenario needs-context-after-fix: OK')
+}
+
+// ── Scenario: resume reuses the existing integration branch (F16) ─────────────
+async function scenarioResume() {
+  let setupPrompt = ''
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'setup') { setupPrompt = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { resume: true }),
+    budget: undefined,
+  })
+  assert(/EXISTING/.test(setupPrompt) && setupPrompt.includes('ultra/integration-sim'),
+    'resume: setup told to check out the EXISTING integration branch')
+  assert(!/checkout -b/.test(setupPrompt), 'resume: setup must not create a new branch')
+  assert(r.tasks.every((t) => t.status === 'done'), 'resume: redirect tasks ran')
+  console.log('scenario resume: OK')
+}
+
+// ── Scenario: resume without an explicit integrationBranch fails loud ─────────
+async function scenarioResumeRequiresBranch() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: { waves: WAVES, stamp: 'sim', resume: true },
+      budget: undefined,
+    })
+  } catch (e) {
+    threw = /resume requires/.test(e.message)
+  }
+  assert(threw, 'resumeRequiresBranch: resume with a defaulted branch must throw')
+  console.log('scenario resume-requires-branch: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -340,4 +558,14 @@ await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
 await scenarioAdversarialDissent()
+await scenarioTierOverrideInvalid()
+await scenarioSetupFailure()
+await scenarioBaselineRed()
+await scenarioBaseShaThreading()
+await scenarioConcernsPropagate()
+await scenarioPlanPath()
+await scenarioVerdictMismatch()
+await scenarioNeedsContextAfterFix()
+await scenarioResume()
+await scenarioResumeRequiresBranch()
 console.log('ALL SCENARIOS PASSED')
