@@ -1,6 +1,7 @@
 ---
 name: ultrapowers
-description: This skill should be used when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", "run the plan as a workflow", or wants to autonomously implement an approved Superpowers plan in parallel. The drop-in alternative to superpowers:subagent-driven-development.
+description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", "run the plan as a workflow", or wants to autonomously implement an approved Superpowers plan in parallel waves across git worktrees.
+argument-hint: <plan-path>
 allowed-tools: Workflow Skill Read Grep Glob Bash
 ---
 
@@ -30,6 +31,12 @@ project tree.
 ---
 
 ## Step 1 — Confirm an Approved Plan Exists
+
+**Preflight — confirm the Workflow tool exists on this surface.** The Workflow tool is an
+undocumented/experimental surface and is absent in some environments (e.g. Claude Code on the
+web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable, go directly to
+Step 6 and run the fallback — do **not** perform dependency analysis or ask the human to approve
+a wave plan that cannot launch.
 
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
 plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`
@@ -148,6 +155,8 @@ present two choices:
 ---
 
 ## Step 6 — Fallback Path
+
+The Step-1 preflight routes here *before* any analysis when the Workflow tool is absent.
 
 If the committed workflow **cannot run** — the Workflow feature is unavailable or changed under us,
 `args.waves` will not populate (see the args-population note in `references/workflow-template.md`),

@@ -31,6 +31,8 @@ SDK** (Claude Code v2.1.154+, paid plan). **Claude Code on the web** (the cloud/
 environment) is *not* in the workflows availability list and does **not** expose the Workflow tool, so
 `/ultrapowers` cannot launch there — verified live: `select:Workflow` resolves to no tool in a web
 session. In that environment, fall back to `superpowers:subagent-driven-development` (sequential).
+The skill preflights Workflow-tool availability at Step 1 and falls back immediately — before
+computing or presenting a wave plan.
 
 ## Usage
 
