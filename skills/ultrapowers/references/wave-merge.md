@@ -22,6 +22,18 @@ The timestamp is passed in via `args` at workflow startup — workflows cannot c
 
 The setup agent first checks out `args.baseBranch` when supplied (the orchestrator derives the repo's default branch in SKILL.md Step 2 — protects against a stale checkout left by a previous run), runs the project test command once to establish the **baseline**, and reports `baselinePassed` / `baselineOutput`. The workflow validates the setup report and **throws** if the integration branch was not created — no task runs against a missing branch. A red baseline does not abort the run; it is logged, recorded in the report's `baseline` field, and surfaced as a judgment call so the pre-merge gate can weigh every later test result against it.
 
+The canonical prompt wording (`{{...}}` tokens mark values `workflow.js` interpolates at run time; `{{BASE_STEP}}` is the optional base-branch checkout sentence):
+
+<!-- BAKE:SETUP_PROMPT_CREATE -->
+You are the setup agent on the session repo main checkout. {{BASE_STEP}}Create the integration branch: git checkout -b {{INTEGRATION_BRANCH}}. Then establish the test baseline: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+<!-- /BAKE -->
+
+Under `args.resume` (the deterministic redirect path), setup reuses the existing branch instead:
+
+<!-- BAKE:SETUP_PROMPT_RESUME -->
+You are the setup agent on the session repo main checkout. Check out the EXISTING integration branch {{INTEGRATION_BRANCH}} — it must already exist; report BLOCKED if it does not, and do not create a new branch. Then establish the test baseline: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+<!-- /BAKE -->
+
 ---
 
 ## Worktree and Branch Facts
@@ -57,11 +69,23 @@ The merge agent:
 3. After all merges succeed, detects and runs the project's test command by checking in order: `pnpm-lock.yaml` → `pnpm check`; `package.json` (no pnpm lock) → `npm test`; `pytest.ini` / `pyproject.toml` / `setup.py` → `pytest`; `Cargo.toml` → `cargo test`; `go.mod` → `go test ./...`. **When `args.testCmd` is supplied, that exact command is used instead of this detection ladder** (set it for monorepos or custom runners; baked into `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
 4. Reports back: success with final integration HEAD sha, or failure with the conflict diff or failing test output.
 
+The canonical prompt wording:
+
+<!-- BAKE:MERGE_PROMPT -->
+You are the wave merge agent, operating on the session repo main checkout (no worktree). Check out {{INTEGRATION_BRANCH}}. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
+<!-- /BAKE -->
+
 ---
 
 ## Reconciliation
 
 On a merge conflict or a failed post-merge test, the controller dispatches a single **reconciliation agent**. It receives the conflict diff or failing test output alongside the full task context and is expected to resolve the issue on the integration branch and re-run the test command.
+
+The canonical prompt wording:
+
+<!-- BAKE:RECONCILE_PROMPT -->
+You are the reconciliation agent on {{INTEGRATION_BRANCH}}. You are given a merge conflict diff or failing test output. Resolve it on the integration branch and re-run the project test command. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
+<!-- /BAKE -->
 
 Caps and failure handling:
 
@@ -69,8 +93,7 @@ Caps and failure handling:
 - If the reconciliation agent fails both attempts, the wave is marked **`blocked`**.
 - Its branches are left intact — do not delete worktrees for a blocked wave.
 - The blocked wave, its conflict/diff, and the failing output are recorded in the final report.
-- The run continues with subsequent waves **unless** a downstream wave declares a hard dependency on the blocked wave's output. If it does, that downstream wave is also marked `blocked` (cascading block), logged, and skipped — but waves without that dependency proceed normally.
-- Do not abort the whole run for a single blocked wave unless every remaining wave depends on it.
+- When a wave's merge cannot be reconciled, the wave is marked **`blocked`** and **all later waves are cascade-blocked** (recorded in `unfinished`, surfaced under `## Blocked Waves`). Every later wave merges onto the same integration branch the failed wave left in an unknown state, and by wave construction each wave-N+1 task depends on some wave-N task — so continuing selectively would integrate onto a broken base. The committed workflow therefore stops dispatching after an unrecoverable merge; nothing after the blocked wave runs. The integration/completeness review still runs and reports.
 
 ---
 
@@ -81,6 +104,12 @@ After the final wave's merge agent completes successfully (or is blocked), the c
 1. Runs the full test suite one more time on the integration branch from the main checkout, regardless of whether the last wave passed its own test run. Log the result.
 2. Dispatches a **completeness-critic agent** using `superpowers:verification-before-completion`. Its prompt: "What plan requirement is unmet? What claim is unverified? What code path is untested?" The agent receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks, the blocked-wave log (if any), and the final test output.
 3. All findings from the critic — gaps, unverified claims, untested paths — are appended to the run report verbatim.
+
+The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence):
+
+<!-- BAKE:COMPLETENESS_PROMPT -->
+{{PLAN_STEP}}What plan requirement is unmet? What claim is unverified? What code path is untested? On {{INTEGRATION_BRANCH}} from the main checkout, {{TEST_INSTRUCTION}}, then review the integrated result against the original plan. List every gap, unverified claim, and untested path.
+<!-- /BAKE -->
 
 The report section header for this step is `## Integration Review`. Blocked waves appear under `## Blocked Waves`.
 
