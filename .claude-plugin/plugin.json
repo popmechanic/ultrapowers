@@ -1,10 +1,20 @@
 {
   "name": "ultrapowers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Autonomous, parallel, worktree-isolated execution of Superpowers plans via a committed Dynamic Workflow. Pairs with superpowers; invoke as /ultrapowers <plan-path> instead of subagent-driven-development.",
-  "author": { "name": "Marcus Estes", "email": "marcus@vibes.diy" },
+  "author": {
+    "name": "Marcus Estes",
+    "email": "marcus@vibes.diy"
+  },
   "homepage": "https://github.com/popmechanic/ultrapowers",
   "repository": "https://github.com/popmechanic/ultrapowers",
   "license": "MIT",
-  "keywords": ["skills", "workflows", "superpowers", "parallel", "worktrees", "ultracode"]
+  "keywords": [
+    "skills",
+    "workflows",
+    "superpowers",
+    "parallel",
+    "worktrees",
+    "ultracode"
+  ]
 }

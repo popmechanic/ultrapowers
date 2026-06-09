@@ -16,7 +16,7 @@
 
 export const meta = {
   name: 'ultrapowers',
-  description: 'Execute an approved plan: parallel waves, worktree isolation, adversarial review.',
+  description: 'Execute an approved plan: parallel waves, worktree isolation, independent per-task review.',
   phases: [],
 }
 
