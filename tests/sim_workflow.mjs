@@ -409,6 +409,32 @@ async function scenarioBaselineRed() {
   console.log('scenario baseline-red: OK')
 }
 
+// ── Scenario: diff base = integration HEAD at wave start, threaded per wave (F3)
+async function scenarioBaseShaThreading() {
+  const basesSeen = {}
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label.startsWith('impl:') || label.startsWith('review:')) {
+        const id = taskIdFromLabel(label)
+        // The prompt body also says "- BASE: sha of the ..."; the threaded value is
+        // the LAST "BASE: <sha>" occurrence (appended by the dispatch).
+        const all = prompt.match(/BASE: \S+/g) || []
+        const last = all[all.length - 1]
+        basesSeen[label.split(':')[0] + ':' + id] = last && last.slice('BASE: '.length)
+      }
+      if (label === 'merge:wave1') return { status: 'MERGED', headSha: 'm1' }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  eq(basesSeen['impl:A'], 'int0', 'baseSha: wave-1 implementer base = setup HEAD')
+  eq(basesSeen['review:A'], 'int0', 'baseSha: wave-1 reviewer base = setup HEAD')
+  eq(basesSeen['impl:C'], 'm1', 'baseSha: wave-2 implementer base = wave-1 merge HEAD')
+  eq(basesSeen['review:C'], 'm1', 'baseSha: wave-2 reviewer base = wave-1 merge HEAD')
+  assert(r.tasks.every((t) => t.status === 'done'), 'baseSha: all done')
+  console.log('scenario base-sha-threading: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -421,4 +447,5 @@ await scenarioAdversarialDissent()
 await scenarioTierOverrideInvalid()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
+await scenarioBaseShaThreading()
 console.log('ALL SCENARIOS PASSED')
