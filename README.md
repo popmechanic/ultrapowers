@@ -13,11 +13,17 @@ share a single working tree — parallel tasks would trample each other's files.
 Most plans don't need that caution everywhere. A six-task plan often has four tasks that touch
 disjoint files, and with a sequential executor you wait for them in single file anyway.
 
-ultrapowers is an alternative execution engine for exactly that step. It reads the same approved
-plan, works out which tasks can safely run at the same time, and runs them in parallel **waves** —
-each task in its own git worktree, each result independently reviewed, everything merged onto one
-integration branch for your approval. Same plan, same discipline, same human gates; parallel
-throughput on the parts of the plan that allow it.
+ultrapowers is an alternative execution engine for exactly that step, built on
+[**Dynamic Workflows**](https://code.claude.com/docs/en/workflows) — the orchestration engine
+Anthropic recently shipped in Claude Code (research preview; you may know it as the `ultracode`
+keyword), which lets one script coordinate up to 16 parallel subagents while keeping intermediate
+results out of the main context window. ultrapowers reads the same approved plan, works out which
+tasks can safely run at the same time, and hands the Workflow runtime a committed orchestration
+script that runs them in parallel **waves** — each task in its own git worktree, each result
+independently reviewed, everything merged onto one integration branch for your approval. Same
+plan, same discipline, same human gates; parallel throughput on the parts of the plan that allow
+it. And if you've been curious what `ultracode` can actually do, an approved plan is about the
+most structured test drive it gets.
 
 *New to Superpowers? It's a plugin that teaches Claude Code a rigorous build workflow
 (brainstorm → plan → execute → review). Install it first — ultrapowers plugs into that workflow at
@@ -28,8 +34,8 @@ the "execute the plan" step and reuses its skills rather than duplicating them.*
 - **Throughput where the plan allows it.** Independent tasks run concurrently (up to 16 agents);
   dependent tasks wait exactly as long as they must. Plans too small or too entangled to benefit
   are detected up front and run sequentially — you don't pay parallelism overhead for nothing.
-- **Deterministic orchestration.** The engine is a frozen, version-controlled script
-  (`skills/ultrapowers/workflow.js`) with the review discipline baked in at build time and
+- **Deterministic orchestration.** The engine is a frozen, version-controlled Dynamic Workflow
+  script (`skills/ultrapowers/workflow.js`) with the review discipline baked in at build time and
   drift-tested against its reference sources. A run never improvises its own orchestration and
   never depends on live superpowers skill resolution.
 - **Review that understands parallelism.** Each task is verified by an independent reviewer that
@@ -86,11 +92,12 @@ review, and branch-finishing skills.
 
 ## Environment support
 
-`/ultrapowers` needs a surface that exposes the **Workflow** tool: the local **CLI**, **Desktop
-app**, **IDE extensions**, or **`claude -p`** / the **Agent SDK** (Claude Code v2.1.154+, paid
-plan). **Claude Code on the web** does not expose it (verified live), so the skill detects that at
-Step 1 and falls back to `superpowers:subagent-driven-development` — sequential, but the same plan
-executes either way.
+`/ultrapowers` runs on [Dynamic Workflows](https://code.claude.com/docs/en/workflows)
+(Claude Code v2.1.154+, all paid plans — Pro users enable it under `/config`), which is exposed on
+the local **CLI**, **Desktop app**, **IDE extensions**, **`claude -p`**, and the **Agent SDK**.
+**Claude Code on the web** does not expose the Workflow tool (verified live), so the skill detects
+that at Step 1 and falls back to `superpowers:subagent-driven-development` — sequential, but the
+same plan executes either way.
 
 ## Cost honesty
 
