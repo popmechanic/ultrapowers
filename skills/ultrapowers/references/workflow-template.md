@@ -40,6 +40,8 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
   the extra pass on every task.
 - `args.tierOverrides` — remap model tiers per project, e.g. `{ cheap: 'sonnet' }`. Merged over the
   default `TIER` map. The plan's `most-capable` tier name is normalized to the `mostCapable` key.
+  Values are validated at launch against `haiku` / `sonnet` / `opus`; an unknown alias throws
+  before any agent runs.
 
 The script **validates `args.waves` and throws loudly** if it is missing or malformed, converting a
 silent `undefined` (which historically caused agents to mutate the session repo) into a safe, loud

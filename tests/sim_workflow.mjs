@@ -49,6 +49,27 @@ function taskIdFromLabel(label) {
   return label.split(':')[1]
 }
 
+// Default stub agent: every role succeeds. Pass a handler(label, prompt, opts)
+// that returns a value to override a role, or undefined to fall through.
+function makeAgent(handle) {
+  return async (prompt, opts) => {
+    const label = opts.label || ''
+    if (handle) {
+      const r = handle(label, prompt, opts)
+      if (r !== undefined) return r
+    }
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+}
+
 // ── Scenario 1: happy path — everything DONE / PASS / MERGED ──────────────────
 async function scenarioHappy() {
   const agent = async (_prompt, opts) => {
@@ -331,6 +352,22 @@ async function scenarioAdversarialDissent() {
   console.log('scenario adversarial-dissent: OK')
 }
 
+// ── Scenario: invalid tierOverrides model must fail loud at launch ────────────
+async function scenarioTierOverrideInvalid() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'gpt-4' } }),
+      budget: undefined,
+    })
+  } catch (e) {
+    threw = /tierOverrides/.test(e.message) && /gpt-4/.test(e.message)
+  }
+  assert(threw, 'tierOverrideInvalid: invalid model alias must throw at launch, before any agent runs')
+  console.log('scenario tier-override-invalid: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -340,4 +377,5 @@ await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
 await scenarioAdversarialDissent()
+await scenarioTierOverrideInvalid()
 console.log('ALL SCENARIOS PASSED')

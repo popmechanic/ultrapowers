@@ -65,6 +65,18 @@ const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
 const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
+// Fail loud on a typo'd model alias: an invalid model makes every agent error
+// without doing any work (verified live 2026-06-03), so catch it before launch.
+const VALID_MODELS = ['haiku', 'sonnet', 'opus']
+for (const k in tierOverrides) {
+  if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
+    throw new Error(
+      'ultrapowers: tierOverrides.' + k + ' = "' + tierOverrides[k] +
+      '" is not a valid model alias (valid: haiku, sonnet, opus). Refusing to launch.'
+    )
+  }
+}
+
 // meta.phases must be { title } objects, one per wave (+ setup + review).
 meta.phases = [{ title: 'Setup' }]
   .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
@@ -349,7 +361,7 @@ const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
 for (let w = 0; w < WAVES.length; w++) {
   // Peak concurrency equals wave width (each task pipeline is internally
   // sequential), so chunk waves wider than the engine cap.
-  if (typeof budget !== 'undefined' && budget && budget.total && budget.remaining === 0) {
+  if (typeof budget !== 'undefined' && budget && typeof budget.remaining === 'number' && budget.remaining <= 0) {
     WAVES[w].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted)'))
     continue
   }
