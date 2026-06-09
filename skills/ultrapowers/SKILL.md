@@ -104,8 +104,27 @@ pre-merge review, and it is where a bad parallelization guess gets caught before
 
 ## Step 4 — Launch the Committed Workflow
 
-Invoke the **Workflow** tool on `skills/ultrapowers/workflow.js` (the committed script — do **not**
-author or edit it) with:
+**4a — Install the committed script as a project saved workflow (idempotent).** Saved workflows
+(`.claude/workflows/*.js`) are the documented deterministic launch surface: they run **by name**
+with `args`, instead of relying on ad-hoc script delivery. Plugins cannot ship saved workflows, so
+install the copy now:
+
+```
+mkdir -p .claude/workflows
+cp "${CLAUDE_SKILL_DIR}/workflow.js" .claude/workflows/ultrapowers-run.js
+```
+
+Run the copy unconditionally — it is byte-for-byte the committed script, so overwriting keeps any
+stale copy in sync with the installed plugin version. Never edit the copy. (The user may commit it
+or gitignore it; Step 4a keeps it current either way.)
+
+> **Determinism guard:** never trigger the run with the `ultracode` keyword or by asking for "a
+> workflow" in prose — that opt-in makes Claude **author a new script at runtime**, which is
+> exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
+> `ultrapowers-run` workflow installed above; if it cannot be launched, go to Step 6.
+
+**4b — Launch the saved workflow** `ultrapowers-run` (the committed script — do **not** author or
+edit it) via the **Workflow** tool with:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
@@ -146,8 +165,8 @@ present two choices:
 - **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
-  corrective instructions appended to each task `body`), and relaunch the same committed
-  `workflow.js` with `resume: true` and the **same** `integrationBranch`. The setup agent checks
+  corrective instructions appended to each task `body`), and relaunch the saved `ultrapowers-run`
+  workflow (Step 4) with `resume: true` and the **same** `integrationBranch`. The setup agent checks
   out the existing branch instead of creating one; redirected work merges onto it. Never
   improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
   it completes.

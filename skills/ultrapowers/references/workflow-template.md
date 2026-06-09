@@ -5,6 +5,16 @@ authored at runtime** — the main agent (SKILL.md) only computes waves and laun
 documents the committed script's structure, its input contract, and the procedure for re-baking the
 Superpowers discipline when it changes.
 
+## Install path (saved workflow)
+
+The canonical source is `skills/ultrapowers/workflow.js` — the only copy that is edited, reviewed,
+and drift-tested. At launch time, SKILL.md Step 4a copies it to
+`.claude/workflows/ultrapowers-run.js` in the target project, because saved workflows are the
+documented deterministic launch surface (run by name, with `args`) and plugins cannot ship them.
+The installed copy is disposable: it is overwritten on every run and must never be edited in
+place. Never launch via the `ultracode` keyword — that makes Claude author a new script instead
+of running this one.
+
 ## What the script is
 
 A pure orchestrator. The workflow runtime executes it headlessly in the background; the script body
