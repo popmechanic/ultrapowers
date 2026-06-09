@@ -474,6 +474,47 @@ async function scenarioPlanPath() {
   console.log('scenario plan-path: OK')
 }
 
+// ── Scenario: FIX_REQUIRED verdict with zero blocking issues is flagged (F7) ──
+async function scenarioVerdictMismatch() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'minor', detail: 'nit' }] }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'done', 'verdictMismatch: severity rule still decides (merges)')
+  assert(r.judgmentCalls.some((j) => /A/.test(j) && /FIX_REQUIRED/.test(j)),
+    'verdictMismatch: the inconsistency is surfaced, not swallowed')
+  console.log('scenario verdict-mismatch: OK')
+}
+
+// ── Scenario: NEEDS_CONTEXT after a fix re-dispatch fails the task (F8) ───────
+async function scenarioNeedsContextAfterFix() {
+  let reviews = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('review:A')) {
+        reviews += 1
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'broken' }] }
+      }
+      if (label.startsWith('fix:A')) {
+        return { status: 'NEEDS_CONTEXT', summary: 'which auth provider?', branch: 'wt-A' }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'needsContext: task fails instead of re-reviewing')
+  assert(reviews === 1, 'needsContext: no second review after NEEDS_CONTEXT (got ' + reviews + ')')
+  assert(/auth provider/.test(a.notes), 'needsContext: the open question is surfaced')
+  console.log('scenario needs-context-after-fix: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -489,4 +530,6 @@ await scenarioBaselineRed()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
 await scenarioPlanPath()
+await scenarioVerdictMismatch()
+await scenarioNeedsContextAfterFix()
 console.log('ALL SCENARIOS PASSED')

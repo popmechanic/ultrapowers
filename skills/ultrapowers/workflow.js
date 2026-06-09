@@ -322,19 +322,28 @@ async function runTask(task, baseSha) {
     // pipeline must stay single-agent so peak concurrency equals wave width and the
     // 16-agent chunking below holds. Do NOT parallelize them, or a wide adversarial
     // wave can exceed the engine's concurrency cap.
-    let issues
+    let issues, verdicts
     if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
       const r2 = await agent(reviewPrompt, reviewOpts(2))
       issues = (r1.issues || []).concat(r2.issues || [])
+      verdicts = [r1.verdict, r2.verdict]
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
       issues = review.issues || []
+      verdicts = [review.verdict]
     }
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
     if (blocking.length === 0) {
+      // Severity decides the merge; a FIX_REQUIRED verdict with no blocking issues
+      // is a reviewer inconsistency worth surfacing, not silently merging past.
+      if (verdicts.indexOf('FIX_REQUIRED') !== -1) {
+        log('task ' + task.id + ': reviewer verdict FIX_REQUIRED but no blocking issues; merging on severity')
+        judgmentCalls.push('task ' + task.id +
+          ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
+      }
       return { task: task.id, status: 'done', branch: impl.branch, commit: impl.commit,
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail)
@@ -354,7 +363,7 @@ async function runTask(task, baseSha) {
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
     noteConcerns(impl)
-    if (impl.status === 'BLOCKED') {
+    if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, status: 'failed', branch: impl.branch,
                reviewVerdict: 'blocked-after-fix', notes: impl.summary,
                tier: economics.tier, review: economics.review, fixIterations: 1 }
