@@ -36,11 +36,14 @@ The workflow produces a single structured report object that the main agent pres
 | `tasks[].branch` | no | Worktree branch used for the task |
 | `tasks[].commit` | no | Merge commit SHA on the integration branch |
 | `tasks[].reviewVerdict` | no | Verdict from the code-review subagent, e.g. `"clean"`, `"fixed"`, `"warnings"` |
-| `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent |
+| `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent (minor review findings and implementer concerns) |
+| `tasks[].tier` | no | Resolved model alias the implementer ran at (`haiku`/`sonnet`/`opus`) |
+| `tasks[].review` | no | Review depth applied: `lean` (one pass) or `adversarial` (two) |
+| `tasks[].fixIterations` | no | Fix rounds consumed (0 = clean on first review) |
 | `tests` | yes | Result of the suite run on the integration branch |
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
 | `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
-| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run |
+| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run; populated by implementer `DONE_WITH_CONCERNS` concerns, a red baseline, and reviewer verdict/severity mismatches |
 | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
 | `completenessFindings` | no | Gaps spotted during review that exceed the original spec |
 
@@ -51,7 +54,7 @@ When the workflow completes, the main agent renders the report as a concise huma
 1. **Integration branch** — name of the branch ready for review.
 2. **Wave plan** — one line per wave listing which tasks ran in parallel and the wave sequence.
 3. **Baseline** — whether the suite was green before any task ran; a red baseline reframes every later test result.
-4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes.
+4. **Per-task status** — a compact table or bullet list: task name, status, review verdict, and any notes; include tier, review depth, and fix iterations so the human can judge cost vs. benefit per task.
 5. **Wave merges** — one line per wave: merge `status`, the task IDs merged, and the integration `headSha` (or the conflict/failure detail). Lets the human see the integration sequence, not just the final state.
 6. **Test result** — pass or fail, the command run, and any relevant output excerpt.
 7. **Judgment calls** — bullet each non-obvious autonomous decision so the human can spot disagreements early.

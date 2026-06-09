@@ -125,6 +125,7 @@ async function scenarioFixLoop() {
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a.status, 'done', 'fixloop: A done')
   eq(a.reviewVerdict, 'fixed', 'fixloop: A reviewVerdict fixed (re-dispatched once)')
+  eq(a.fixIterations, 1, 'fixloop: one fix round recorded')
   assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
   console.log('scenario fix-loop: OK')
@@ -435,6 +436,28 @@ async function scenarioBaseShaThreading() {
   console.log('scenario base-sha-threading: OK')
 }
 
+// ── Scenario: DONE_WITH_CONCERNS concerns reach the report; economics recorded (F4, F17)
+async function scenarioConcernsPropagate() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'impl:A') {
+        return { status: 'DONE_WITH_CONCERNS', summary: 's', branch: 'wt-A',
+                 headSha: 'sha-A', commit: 'c-A', concerns: ['reused legacy auth API'] }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(/legacy auth/.test(a.notes), 'concerns: concern lands in task notes')
+  assert(r.judgmentCalls.some((j) => /A/.test(j) && /legacy auth/.test(j)),
+    'concerns: concern surfaced as a judgment call')
+  eq(a.fixIterations, 0, 'economics: clean task records 0 fix iterations')
+  eq(a.tier, 'haiku', 'economics: resolved model recorded (A is cheap)')
+  eq(a.review, 'lean', 'economics: review depth recorded')
+  console.log('scenario concerns-propagate: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -448,4 +471,5 @@ await scenarioTierOverrideInvalid()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
 await scenarioBaseShaThreading()
+await scenarioConcernsPropagate()
 console.log('ALL SCENARIOS PASSED')

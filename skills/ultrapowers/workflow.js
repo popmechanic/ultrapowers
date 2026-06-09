@@ -272,6 +272,18 @@ const taskReviewProfile = (task) =>
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 async function runTask(task, baseSha) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
+  // Run economics, reported per task so the pre-merge gate can judge cost vs. benefit.
+  const economics = { tier: baseModel, review: taskReviewProfile(task) }
+  // DONE_WITH_CONCERNS concerns must reach the report — never swallowed.
+  const concerns = []
+  const noteConcerns = (res) => {
+    if (res && res.status === 'DONE_WITH_CONCERNS' && Array.isArray(res.concerns)) {
+      for (const c of res.concerns) {
+        concerns.push(c)
+        judgmentCalls.push('task ' + task.id + ': ' + c)
+      }
+    }
+  }
   // Surface a typo'd review depth rather than silently downgrading it.
   if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
     log('task ' + task.id + ': unknown review="' + task.review +
@@ -282,9 +294,11 @@ async function runTask(task, baseSha) {
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
+  noteConcerns(impl)
   if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
     return { task: task.id, status: 'failed', branch: impl.branch,
-             reviewVerdict: 'not-reviewed', notes: impl.summary }
+             reviewVerdict: 'not-reviewed', notes: impl.summary,
+             tier: economics.tier, review: economics.review, fixIterations: 0 }
   }
 
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
@@ -319,11 +333,14 @@ async function runTask(task, baseSha) {
     if (blocking.length === 0) {
       return { task: task.id, status: 'done', branch: impl.branch, commit: impl.commit,
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
-               notes: minors.map((m) => m.detail).join('; ') }
+               notes: minors.map((m) => m.detail)
+                 .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
+               tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
     }
     if (iter === 2) {
       return { task: task.id, status: 'failed', branch: impl.branch,
-               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; ') }
+               reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
+               tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
     // Re-dispatch implementer on the same branch, escalated to most-capable.
     impl = await agent(
@@ -332,9 +349,11 @@ async function runTask(task, baseSha) {
         impl.branch + '):\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
+    noteConcerns(impl)
     if (impl.status === 'BLOCKED') {
       return { task: task.id, status: 'failed', branch: impl.branch,
-               reviewVerdict: 'blocked-after-fix', notes: impl.summary }
+               reviewVerdict: 'blocked-after-fix', notes: impl.summary,
+               tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
   }
 }
