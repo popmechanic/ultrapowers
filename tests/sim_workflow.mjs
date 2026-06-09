@@ -458,6 +458,22 @@ async function scenarioConcernsPropagate() {
   console.log('scenario concerns-propagate: OK')
 }
 
+// ── Scenario: completeness critic gets the plan path (F5) ─────────────────────
+async function scenarioPlanPath() {
+  let integrationPrompt = ''
+  await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'integration') { integrationPrompt = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { planPath: 'docs/superpowers/plans/feature.md' }),
+    budget: undefined,
+  })
+  assert(integrationPrompt.includes('docs/superpowers/plans/feature.md'),
+    'planPath: completeness prompt instructs reading the original plan document')
+  console.log('scenario plan-path: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -472,4 +488,5 @@ await scenarioSetupFailure()
 await scenarioBaselineRed()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
+await scenarioPlanPath()
 console.log('ALL SCENARIOS PASSED')

@@ -69,6 +69,9 @@ const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides =
 // Step 2). Anchors the integration branch against a stale checkout left by a
 // previous run.
 const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBranch.trim()) || undefined
+// planPath: where the original plan lives on disk, so the completeness critic
+// reviews against the actual plan (agents have fs access; this script does not).
+const planPath = (ARGS && typeof ARGS.planPath === 'string' && ARGS.planPath.trim()) || undefined
 
 // Fail loud on a typo'd model alias: an invalid model makes every agent error
 // without doing any work (verified live 2026-06-03), so catch it before launch.
@@ -178,6 +181,7 @@ const RECONCILE_PROMPT =
   'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
 
 const COMPLETENESS_PROMPT =
+  (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'What plan requirement is unmet? What claim is unverified? What code path is ' +
   'untested? On ' + integrationBranch + ' from the main checkout, ' + testInstruction +
   ', then review the integrated result against the original plan. List every ' +

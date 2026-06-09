@@ -34,6 +34,10 @@ args = { waves, integrationBranch, stamp, dependencyEdges,
 
 - `args.testCmd` — exact project test command (e.g. `'make test'`, `'pnpm -w test'`). Overrides the
   built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
+- `args.baseBranch` — the repo's default branch; the setup agent checks it out before creating the
+  integration branch (guards against a stale checkout from a previous run).
+- `args.planPath` — path to the plan document; threaded into the completeness prompt so the critic
+  reads and reviews against the actual plan.
 - `args.reviewProfile` — the **run-wide default** review depth: `'lean'` (one independent review pass
   per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
   task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for

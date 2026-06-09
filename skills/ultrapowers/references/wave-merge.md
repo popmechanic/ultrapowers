@@ -79,7 +79,7 @@ Caps and failure handling:
 After the final wave's merge agent completes successfully (or is blocked), the controller:
 
 1. Runs the full test suite one more time on the integration branch from the main checkout, regardless of whether the last wave passed its own test run. Log the result.
-2. Dispatches a **completeness-critic agent** using `superpowers:verification-before-completion`. Its prompt: "What plan requirement is unmet? What claim is unverified? What code path is untested?" The agent receives the original plan, the full list of tasks, the blocked-wave log (if any), and the final test output.
+2. Dispatches a **completeness-critic agent** using `superpowers:verification-before-completion`. Its prompt: "What plan requirement is unmet? What claim is unverified? What code path is untested?" The agent receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks, the blocked-wave log (if any), and the final test output.
 3. All findings from the critic — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
 The report section header for this step is `## Integration Review`. Blocked waves appear under `## Blocked Waves`.

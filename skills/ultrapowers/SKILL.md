@@ -102,7 +102,7 @@ author or edit it) with:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         baseBranch, testCmd?, reviewProfile?, tierOverrides? }
+         baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
@@ -111,6 +111,8 @@ preserves standard behavior):
 
 - `testCmd` — the exact test command for *this* repo (monorepos / non-standard runners), so the
   merge and completeness agents don't have to guess.
+- `planPath` — the resolved plan path from Step 1, so the completeness critic reviews against the
+  actual plan, not just the task list.
 - **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).
   `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
   overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —
