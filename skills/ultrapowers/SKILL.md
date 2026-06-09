@@ -65,6 +65,9 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
     monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
     built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
+  - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`,
+    falling back to the current branch). Always set it; it anchors the integration branch and the
+    review diff base.
   - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
     passes) or `lean` (one) from its risk and tier: high-stakes or `most-capable` tasks warrant
     `adversarial`; routine `cheap` tasks stay `lean`. This is derived from the plan, not asked.
@@ -99,7 +102,7 @@ author or edit it) with:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         testCmd?, reviewProfile?, tierOverrides? }
+         baseBranch, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the

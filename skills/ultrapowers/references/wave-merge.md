@@ -20,6 +20,8 @@ git checkout -b ultra/integration-<timestamp>
 
 The timestamp is passed in via `args` at workflow startup — workflows cannot call `Date.now()`. The setup agent confirms the branch name and HEAD sha back to the controller, which stores both for use in subsequent merge steps.
 
+The setup agent first checks out `args.baseBranch` when supplied (the orchestrator derives the repo's default branch in SKILL.md Step 2 — protects against a stale checkout left by a previous run), runs the project test command once to establish the **baseline**, and reports `baselinePassed` / `baselineOutput`. The workflow validates the setup report and **throws** if the integration branch was not created — no task runs against a missing branch. A red baseline does not abort the run; it is logged, recorded in the report's `baseline` field, and surfaced as a judgment call so the pre-merge gate can weigh every later test result against it.
+
 ---
 
 ## Worktree and Branch Facts

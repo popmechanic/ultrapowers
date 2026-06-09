@@ -65,6 +65,11 @@ const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
 const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
+// baseBranch: the repo's default branch, derived by the orchestrator (SKILL.md
+// Step 2). Anchors the integration branch against a stale checkout left by a
+// previous run.
+const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBranch.trim()) || undefined
+
 // Fail loud on a typo'd model alias: an invalid model makes every agent error
 // without doing any work (verified live 2026-06-03), so catch it before launch.
 const VALID_MODELS = ['haiku', 'sonnet', 'opus']
@@ -152,9 +157,11 @@ const testInstruction = testCmd
   : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
 
 const SETUP_PROMPT =
-  'Create the integration branch from the current HEAD of the session repo main ' +
-  'checkout: git checkout -b ' + integrationBranch + '. Confirm the branch name ' +
-  'and its HEAD sha back in your JSON result.'
+  'You are the setup agent on the session repo main checkout. ' +
+  (baseBranch ? ('Check out the base branch ' + baseBranch + ' first. ') : '') +
+  'Create the integration branch: git checkout -b ' + integrationBranch + '. Then ' +
+  'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+  'Report the branch name, its HEAD sha, and the baseline result in your JSON result.'
 
 const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
@@ -218,8 +225,13 @@ const MERGE_SCHEMA = {
 }
 const SETUP_SCHEMA = {
   type: 'object',
-  required: ['branch'],
-  properties: { branch: { type: 'string' }, headSha: { type: 'string' } },
+  required: ['branch', 'headSha'],
+  properties: {
+    branch: { type: 'string' },
+    headSha: { type: 'string' },
+    baselinePassed: { type: 'boolean' },
+    baselineOutput: { type: 'string' },
+  },
 }
 const REVIEW_SCHEMA = {
   type: 'object',
@@ -354,7 +366,22 @@ const judgmentCalls = []
 const unfinished = []
 
 phase('Setup')
-await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+// SKILL.md promises an abort when the integration branch cannot be created.
+if (!setup || setup.branch !== integrationBranch || !setup.headSha) {
+  throw new Error(
+    'ultrapowers: setup failed to create integration branch ' + integrationBranch +
+    ' (got ' + JSON.stringify(setup) + '). Aborting before any task runs.'
+  )
+}
+const baseline = { passed: setup.baselinePassed, output: setup.baselineOutput }
+if (setup.baselinePassed === false) {
+  judgmentCalls.push(
+    'baseline: test suite was already failing before any task ran (' +
+    (setup.baselineOutput || 'no output') + ') — task results inherit a red suite'
+  )
+  log('setup: baseline tests FAILED before any work began')
+}
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
 
@@ -415,6 +442,7 @@ return {
   dependencyEdges,
   tasks: taskResults,
   tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  baseline,
   waveMerges,
   judgmentCalls,
   unfinished,

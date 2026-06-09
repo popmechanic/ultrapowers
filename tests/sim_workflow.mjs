@@ -368,6 +368,47 @@ async function scenarioTierOverrideInvalid() {
   console.log('scenario tier-override-invalid: OK')
 }
 
+// ── Scenario: setup failure must abort before any task runs (F1) ──────────────
+async function scenarioSetupFailure() {
+  let implRan = false
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'setup') return { branch: 'wrong-branch', headSha: 'x' }
+        if (label.startsWith('impl:')) { implRan = true }
+        return undefined
+      }),
+      args: baseArgs, budget: undefined,
+    })
+  } catch (e) {
+    threw = /setup failed/.test(e.message)
+  }
+  assert(threw, 'setupFailure: mismatched setup branch must throw')
+  assert(!implRan, 'setupFailure: no implementer may run after a failed setup')
+  console.log('scenario setup-failure: OK')
+}
+
+// ── Scenario: red baseline is recorded and surfaced, run continues (F15) ──────
+async function scenarioBaselineRed() {
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'setup') {
+        return { branch: 'ultra/integration-sim', headSha: 'int0',
+                 baselinePassed: false, baselineOutput: '2 failed, 10 passed' }
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  eq(r.baseline.passed, false, 'baselineRed: baseline failure recorded in report')
+  assert(/failed/.test(r.baseline.output), 'baselineRed: baseline output kept')
+  assert(r.judgmentCalls.some((j) => /baseline/.test(j)),
+    'baselineRed: red baseline surfaced as a judgment call')
+  assert(r.tasks.length === 3, 'baselineRed: run still proceeds (conservative, non-destructive)')
+  console.log('scenario baseline-red: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -378,4 +419,6 @@ await scenarioPortability()
 await scenarioPerTaskReview()
 await scenarioAdversarialDissent()
 await scenarioTierOverrideInvalid()
+await scenarioSetupFailure()
+await scenarioBaselineRed()
 console.log('ALL SCENARIOS PASSED')
