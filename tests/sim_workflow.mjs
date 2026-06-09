@@ -427,12 +427,14 @@ async function scenarioSetupFailure() {
 
 // ── Scenario: red baseline is recorded and surfaced, run continues (F15) ──────
 async function scenarioBaselineRed() {
+  let integrationPrompt = ''
   const r = await runWorkflow({
-    agent: makeAgent((label) => {
+    agent: makeAgent((label, prompt) => {
       if (label === 'setup') {
         return { branch: 'ultra/integration-sim', headSha: 'int0',
                  baselinePassed: false, baselineOutput: '2 failed, 10 passed' }
       }
+      if (label === 'integration') { integrationPrompt = prompt }
       return undefined
     }),
     args: baseArgs, budget: undefined,
@@ -442,7 +444,28 @@ async function scenarioBaselineRed() {
   assert(r.judgmentCalls.some((j) => /baseline/.test(j)),
     'baselineRed: red baseline surfaced as a judgment call')
   assert(r.tasks.length === 3, 'baselineRed: run still proceeds (conservative, non-destructive)')
+  // The completeness critic must know the suite was red BEFORE any task ran, so
+  // it can tell inherited failures from introduced ones when it re-runs tests.
+  assert(/[Bb]aseline/.test(integrationPrompt) && /FAILED/.test(integrationPrompt),
+    'baselineRed: red baseline threaded into the completeness prompt')
   console.log('scenario baseline-red: OK')
+}
+
+// ── Scenario: exhausted budget defers every wave, runs nothing ────────────────
+async function scenarioBudgetExhausted() {
+  let implRan = false
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:')) { implRan = true }
+      return undefined
+    }),
+    args: baseArgs, budget: { total: 100, remaining: 0 },
+  })
+  assert(!implRan, 'budget: no implementer runs on an exhausted budget')
+  eq(r.tasks, [], 'budget: no task results')
+  assert(['A', 'B', 'C'].every((id) => r.unfinished.some((u) => u.startsWith(id + ':') && /budget/.test(u))),
+    'budget: every task surfaced as deferred, none silently dropped')
+  console.log('scenario budget-exhausted: OK')
 }
 
 // ── Scenario: diff base = integration HEAD at wave start, threaded per wave (F3)
@@ -604,4 +627,5 @@ await scenarioNeedsContextAfterFix()
 await scenarioResume()
 await scenarioResumeRequiresBranch()
 await scenarioAdversarialDedupe()
+await scenarioBudgetExhausted()
 console.log('ALL SCENARIOS PASSED')

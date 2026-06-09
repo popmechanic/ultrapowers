@@ -496,7 +496,12 @@ phase('Integration Review')
 const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
 const review = await agent(
   GUARD + '\n\n' + COMPLETENESS_PROMPT +
-    '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves),
+    '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+    // A red baseline reframes the critic's own test run: failures it sees may be
+    // inherited, not introduced. Only thread it when it actually failed.
+    (baseline.passed === false
+      ? '\nBaseline: the test suite FAILED before any task ran — ' + (baseline.output || 'no output')
+      : ''),
   { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
 )
 

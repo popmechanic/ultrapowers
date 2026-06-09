@@ -91,7 +91,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 - `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review).
 - Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
   merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
-- `runTask(task)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
+- `runTask(task, baseSha)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
   + code-quality merged; **two** passes under `reviewProfile: 'adversarial'`) → bounded fix-loop
   (cap 2 = initial + 1, escalate to most-capable on re-dispatch).
 - Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
@@ -103,7 +103,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 ### Concurrency math
 
 The engine allows **up to 16 concurrent agents** (1000 total per run). Peak concurrency equals the
-**wave width**, because each task's pipeline (impl → spec → quality → fix) is internally sequential —
+**wave width**, because each task's pipeline (implement → review → fix) is internally sequential —
 the reviewers do not multiply concurrency. The wave loop therefore chunks any wave wider than 16.
 
 ### Model-tier mapping (single source)
