@@ -190,7 +190,7 @@ const MERGE_PROMPT =
 const RECONCILE_PROMPT =
   'You are the reconciliation agent on ' + integrationBranch + '. You are given a ' +
   'merge conflict diff or failing test output. Resolve it on the integration ' +
-  'branch and re-run the project test command. Report MERGED on success, or ' +
+  'branch, then ' + testInstruction + '. Report MERGED on success, or ' +
   'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
 
 const COMPLETENESS_PROMPT =
@@ -280,6 +280,10 @@ const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 // Returns true for a task result whose worktree branch is ready to merge.
 const isMergeable = (r) => r && r.status === 'done' && r.branch
 
+// Threaded into implementer/reviewer dispatches so task agents run the project's
+// actual test command instead of guessing ("pnpm check or equivalent").
+const testCmdLine = testCmd ? ('\nTEST COMMAND: ' + testCmd) : ''
+
 // Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
 // the orchestrating agent from the plan's per-task risk/tier — overrides the
 // run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
@@ -308,7 +312,7 @@ async function runTask(task, baseSha) {
   }
 
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + '\nTASK:\n' + task.body,
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -324,7 +328,7 @@ async function runTask(task, baseSha) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha
+      '\nBASE: ' + baseSha + testCmdLine
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -346,6 +350,15 @@ async function runTask(task, baseSha) {
       issues = review.issues || []
       verdicts = [review.verdict]
     }
+    // Dedupe identical findings — adversarial reviewers often agree verbatim,
+    // and a doubled issue doubles the noise in the fix prompt and the report.
+    const seenIssue = {}
+    issues = issues.filter((i) => {
+      const key = (i.severity || '') + '|' + (i.detail || '')
+      if (seenIssue[key]) return false
+      seenIssue[key] = true
+      return true
+    })
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
@@ -370,7 +383,7 @@ async function runTask(task, baseSha) {
     }
     // Re-dispatch implementer on the same branch, escalated to most-capable.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + '\nTASK:\n' + task.body +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + '\nTASK:\n' + task.body +
         '\n\nFIX REQUIRED — resolve these blocking issues on the same branch (' +
         impl.branch + '):\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }

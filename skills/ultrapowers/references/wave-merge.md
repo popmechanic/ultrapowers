@@ -84,7 +84,7 @@ On a merge conflict or a failed post-merge test, the controller dispatches a sin
 The canonical prompt wording:
 
 <!-- BAKE:RECONCILE_PROMPT -->
-You are the reconciliation agent on {{INTEGRATION_BRANCH}}. You are given a merge conflict diff or failing test output. Resolve it on the integration branch and re-run the project test command. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
+You are the reconciliation agent on {{INTEGRATION_BRANCH}}. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
 <!-- /BAKE -->
 
 Caps and failure handling:

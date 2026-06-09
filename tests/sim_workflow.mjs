@@ -162,7 +162,8 @@ async function scenarioFixLoopExhausted() {
 
 // ── Scenario 3: wave-1 merge unrecoverable → wave blocked, C cascade-blocked ──
 async function scenarioBlockedCascade() {
-  const agent = async (_prompt, opts) => {
+  let reconcileHadCmd = false
+  const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
@@ -171,12 +172,16 @@ async function scenarioBlockedCascade() {
     }
     if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:wave1')) return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
-    if (label.startsWith('reconcile:')) return { status: 'CONFLICT', detail: 'still conflicted' }
+    if (label.startsWith('reconcile:')) {
+      if (prompt.includes('make test')) reconcileHadCmd = true
+      return { status: 'CONFLICT', detail: 'still conflicted' }
+    }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
     if (label === 'integration') return { command: 'pytest', testsPassed: false, output: 'n/a', findings: ['wave 1 blocked'] }
     throw new Error('unexpected agent label: ' + label)
   }
-  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  const r = await runWorkflow({ agent, args: Object.assign({}, baseArgs, { testCmd: 'make test' }), budget: undefined })
+  assert(reconcileHadCmd, 'cascade: testCmd threaded into the reconcile prompt')
   assert(r.blockedWaves.length === 1 && r.blockedWaves[0].wave === 1, 'cascade: wave 1 recorded blocked')
   assert(r.unfinished.some((u) => u.startsWith('C:') && u.includes('cascade-blocked')), 'cascade: C cascade-blocked')
   // C must NOT appear as a completed task (we broke before running wave 2).
@@ -225,19 +230,21 @@ async function scenarioArgsString() {
 // Defaults stay unchanged when omitted (covered by the other scenarios); here we
 // supply all three and assert each is honored.
 async function scenarioPortability() {
-  const seen = { implModels: {}, reviewCount: {}, reviewModels: {}, integrationModel: null, mergeHadCmd: false, integrationHadCmd: false }
+  const seen = { implModels: {}, reviewCount: {}, reviewModels: {}, integrationModel: null, mergeHadCmd: false, integrationHadCmd: false, implHadCmd: false, reviewHadCmd: false }
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
       const id = taskIdFromLabel(label)
       seen.implModels[id] = opts.model
+      if (prompt.includes('make test')) seen.implHadCmd = true
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
     if (label.startsWith('review:')) {
       const id = taskIdFromLabel(label)
       seen.reviewCount[id] = (seen.reviewCount[id] || 0) + 1
       seen.reviewModels[id] = opts.model
+      if (prompt.includes('make test')) seen.reviewHadCmd = true
       return { verdict: 'PASS', issues: [] }
     }
     if (label.startsWith('merge:')) {
@@ -274,6 +281,9 @@ async function scenarioPortability() {
   // testCmd threaded into the merge + integration/completeness prompts.
   assert(seen.mergeHadCmd, 'portability: testCmd threaded into merge prompt')
   assert(seen.integrationHadCmd, 'portability: testCmd threaded into integration prompt')
+  // ...and into the implementer/reviewer dispatches, so task agents don't guess.
+  assert(seen.implHadCmd, 'portability: testCmd threaded into implementer dispatch')
+  assert(seen.reviewHadCmd, 'portability: testCmd threaded into reviewer dispatch')
   assert(r.tasks.every((t) => t.status === 'done'), 'portability: all tasks done')
   console.log('scenario portability: OK')
 }
@@ -351,6 +361,31 @@ async function scenarioAdversarialDissent() {
   // 2 passes/round × 2 rounds = 4 review calls: the dissent was NOT swallowed.
   assert(reviewCalls.A === 4, 'dissent: 2 reviewers × 2 rounds = 4 review calls (got ' + reviewCalls.A + ')')
   console.log('scenario adversarial-dissent: OK')
+}
+
+// ── Scenario: identical adversarial findings are deduped in the fix prompt ────
+async function scenarioAdversarialDedupe() {
+  let fixPrompt = ''
+  const agent = makeAgent((label, prompt) => {
+    if (label.startsWith('review:A')) {
+      const iter = label.split(':')[2]
+      if (iter === '1') {
+        // Both independent reviewers report the SAME blocking issue.
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'missing null check' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('fix:A')) { fixPrompt = prompt }
+    return undefined
+  })
+  const waves = [[{ id: 'A', title: 't', body: 'do A', tier: 'standard', review: 'adversarial' }]]
+  const r = await runWorkflow({
+    agent, args: { waves, integrationBranch: 'ultra/integration-sim', stamp: 's' }, budget: undefined,
+  })
+  const count = (fixPrompt.match(/missing null check/g) || []).length
+  eq(count, 1, 'dedupe: identical findings from both reviewers appear once in the fix prompt')
+  eq(r.tasks.find((t) => t.task === 'A').status, 'done', 'dedupe: task recovers after the fix')
+  console.log('scenario adversarial-dedupe: OK')
 }
 
 // ── Scenario: invalid tierOverrides model must fail loud at launch ────────────
@@ -568,4 +603,5 @@ await scenarioVerdictMismatch()
 await scenarioNeedsContextAfterFix()
 await scenarioResume()
 await scenarioResumeRequiresBranch()
+await scenarioAdversarialDedupe()
 console.log('ALL SCENARIOS PASSED')
