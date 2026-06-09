@@ -1,18 +1,78 @@
 # ultrapowers
 
-ultrapowers — [Superpowers](https://github.com/obra/superpowers)' senior engineering discipline, ultracode's parallel execution engine.
+**A parallel execution engine for approved [Superpowers](https://github.com/obra/superpowers) plans.**
 
-## What it is
+## The bottleneck
 
-ultrapowers ships one skill, `ultrapowers`, invoked as **`/ultrapowers <plan-path>`**. It is the parallel drop-in replacement for `superpowers:subagent-driven-development`. subagent-driven-development already runs autonomously and headless — it implements plan tasks one after another and does **not** pause for the human between them. What it structurally cannot do is run *implementation* tasks in parallel: it explicitly forbids that (plain subagents share one working tree and would conflict). `/ultrapowers` adds exactly that missing capability — it fans approved plan tasks out across isolated git worktrees, runs independent ones in parallel via a **committed Dynamic Workflow** (`skills/ultrapowers/workflow.js`), independently verifies each result (adversarial two-pass review available per task), and integrates them onto a single branch — with one wave-plan approval before launch and one review at the end. Its differentiator is **parallel throughput on decomposable work, not autonomy** — superpowers already gives you that.
+Superpowers gives Claude Code a disciplined path from idea to merged code: brainstorm the design,
+write a structured implementation plan, then execute that plan task-by-task with independent
+review. The execution step, however, is serial by design. Superpowers' executors
+(`subagent-driven-development`, `executing-plans`) run one task at a time, because their subagents
+share a single working tree — parallel tasks would trample each other's files.
 
-The orchestration ships as a frozen, version-controlled `workflow.js` with the Superpowers discipline **baked in at build time** — so a run does not re-author a script or depend on live `superpowers:*` skill resolution. That is what makes execution deterministic and keeps the two plugins decoupled at runtime (they hand off only through the plan file on disk).
+Most plans don't need that caution everywhere. A six-task plan often has four tasks that touch
+disjoint files, and with a sequential executor you wait for them in single file anyway.
 
-## Relationship to superpowers
+ultrapowers is an alternative execution engine for exactly that step. It reads the same approved
+plan, works out which tasks can safely run at the same time, and runs them in parallel **waves** —
+each task in its own git worktree, each result independently reviewed, everything merged onto one
+integration branch for your approval. Same plan, same discipline, same human gates; parallel
+throughput on the parts of the plan that allow it.
 
-This plugin depends on `superpowers`. Install superpowers alongside ultrapowers — ultrapowers reuses its brainstorming, writing-plans, TDD, code-review, verification, and finishing-a-development-branch skills and does not duplicate them.
+*New to Superpowers? It's a plugin that teaches Claude Code a rigorous build workflow
+(brainstorm → plan → execute → review). Install it first — ultrapowers plugs into that workflow at
+the "execute the plan" step and reuses its skills rather than duplicating them.*
 
-ultrapowers adds only what superpowers deliberately leaves to the human: the orchestration layer that dispatches tasks in parallel, manages worktrees, and merges results.
+## Why you might want it
+
+- **Throughput where the plan allows it.** Independent tasks run concurrently (up to 16 agents);
+  dependent tasks wait exactly as long as they must. Plans too small or too entangled to benefit
+  are detected up front and run sequentially — you don't pay parallelism overhead for nothing.
+- **Deterministic orchestration.** The engine is a frozen, version-controlled script
+  (`skills/ultrapowers/workflow.js`) with the review discipline baked in at build time and
+  drift-tested against its reference sources. A run never improvises its own orchestration and
+  never depends on live superpowers skill resolution.
+- **Review that understands parallelism.** Each task is verified by an independent reviewer that
+  diffs the work against the exact integration SHA the task built on (`BASE...HEAD`) — not against
+  `main`. Without that anchor, a reviewer in wave 3 would see waves 1–2's merged work in the diff
+  and flag it as scope creep. Review depth is set per task: routine tasks get one pass, high-stakes
+  tasks two independent passes.
+- **Nothing fails silently.** The test suite runs once before the first task, so pre-existing
+  failures aren't pinned on the wrong agent. Blocked tasks, merge conflicts, deferred work,
+  reviewer disagreements, and autonomous judgment calls all surface in a structured end-of-run
+  report — with per-task cost signals (model tier, review depth, fix rounds) so you can see whether
+  the parallelism paid off.
+
+## How a run works
+
+You invoke **`/ultrapowers <plan-path>`** from inside the target repo. The skill then:
+
+1. **Preflights and validates** — confirms the Workflow tool exists on this surface (falling back
+   to sequential execution immediately if not) and that the plan has numbered tasks with explicit
+   file lists.
+2. **Computes waves** — builds a dependency graph from each task's file writes and explicit
+   "depends on" text, layers it into waves of safely-concurrent tasks, detects cycles, and degrades
+   small or fully-overlapping plans to a single sequential wave.
+3. **Shows you the wave plan** — dependency edges, wave ordering, derived knobs (test command,
+   per-task review depth). You approve or revise before any tokens are spent on implementation.
+4. **Launches the committed workflow** — a setup agent creates the integration branch and runs the
+   test baseline; then per wave: implementer agents work in isolated worktrees, reviewers verify
+   each result against its `BASE` SHA with a bounded fix loop, and a merge agent integrates the
+   wave's branches in deterministic order (with capped reconciliation on conflict, and cascade
+   blocking — never silent dropping — when a wave can't be integrated).
+5. **Reports for the pre-merge gate** — a completeness critic re-reads the original plan and the
+   integrated result, and you get the full report: per-task status, wave merges, test results,
+   judgment calls, anything unfinished. You approve the integration branch or **redirect** —
+   corrective re-runs go through the same engine (`resume` mode on the same branch), never an
+   improvised one-off.
+
+Three human gates, total: plan approval (before ultrapowers is involved), wave-plan approval, and
+pre-merge review. Everything in between runs autonomously and headless.
+
+Deep dive: [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md) is the front door;
+[`skills/ultrapowers/references/`](skills/ultrapowers/references/) covers dependency analysis,
+the reviewer prompts and schemas, wave-merge mechanics, the report format, and the maintainer
+guide for `workflow.js`.
 
 ## Install
 
@@ -21,38 +81,21 @@ ultrapowers adds only what superpowers deliberately leaves to the human: the orc
 /plugin install ultrapowers@ultrapowers
 ```
 
-Make sure superpowers is already installed. ultrapowers does not install it for you.
+Superpowers must be installed alongside it — ultrapowers reuses its brainstorming, planning,
+review, and branch-finishing skills.
 
-### Environment support
+## Environment support
 
-`/ultrapowers` runs a Dynamic Workflow, which requires a surface that exposes the **Workflow** tool:
-the local **CLI**, **Desktop app**, **IDE extensions**, or non-interactive **`claude -p`** / the **Agent
-SDK** (Claude Code v2.1.154+, paid plan). **Claude Code on the web** (the cloud/remote execution
-environment) is *not* in the workflows availability list and does **not** expose the Workflow tool, so
-`/ultrapowers` cannot launch there — verified live: `select:Workflow` resolves to no tool in a web
-session. In that environment, fall back to `superpowers:subagent-driven-development` (sequential).
-The skill preflights Workflow-tool availability at Step 1 and falls back immediately — before
-computing or presenting a wave plan.
+`/ultrapowers` needs a surface that exposes the **Workflow** tool: the local **CLI**, **Desktop
+app**, **IDE extensions**, or **`claude -p`** / the **Agent SDK** (Claude Code v2.1.154+, paid
+plan). **Claude Code on the web** does not expose it (verified live), so the skill detects that at
+Step 1 and falls back to `superpowers:subagent-driven-development` — sequential, but the same plan
+executes either way.
 
-## Usage
+## Cost honesty
 
-1. **Brainstorm** — run `superpowers:brainstorming` to explore requirements and design before touching code.
-2. **Write a plan** — run `superpowers:writing-plans` to produce a structured, task-by-task implementation plan.
-3. **Approve the plan** — review it with the human. This is the first human gate. Once approved, execution is autonomous except for one quick wave-plan check.
-4. **Execute** — run `/ultrapowers <plan-path>` from inside the target repo. The skill computes the parallel wave plan and shows it for approval (the second gate), then launches the committed workflow: tasks run in isolated worktrees, are independently verified, conflicts are reconciled, and everything integrates onto a shared branch.
-5. **Review the integration branch** — inspect the combined result and the report. This is the third and final human gate.
-6. **Finish** — run `superpowers:finishing-a-development-branch` to merge, open a PR, or clean up worktrees as appropriate.
-
-## Human gates
-
-There are three points where a human decision is required:
-
-- **Plan approval** — before anything runs, a human confirms the plan (from `superpowers:writing-plans`) is correct and complete.
-- **Wave-plan approval** — `/ultrapowers` computes how tasks split into parallel waves and shows that plan; a human approves it before launch, catching a bad parallelization guess before tokens are spent.
-- **Pre-merge review** — after integration, a human approves the branch before it lands in main.
-
-Everything between the wave-plan approval and the pre-merge review — task dispatch, parallel execution, independent verification, conflict resolution, integration — is handled autonomously by the committed workflow. If the workflow cannot run, the skill falls back to `superpowers:subagent-driven-development` (sequential) rather than improvising.
-
-## Cost note
-
-Parallel execution plus independent verification plus per-task worktrees is token-heavy relative to a sequential run. For very small plans (one or two independent tasks), the overhead may exceed the benefit; in those cases `/ultrapowers` automatically degrades to sequential execution to avoid unnecessary cost. For larger plans with clear task boundaries and parallelizable work, the throughput gain is substantial.
+Parallel waves, per-task worktrees, and independent review are token-heavy relative to a
+sequential run. The payoff is wall-clock time on plans with real parallel structure. For one- or
+two-task plans the engine degrades to sequential execution automatically; if your plans are
+usually small or tightly coupled, superpowers' own executors are the better default and this
+plugin adds little.
