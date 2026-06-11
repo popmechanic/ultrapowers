@@ -32,10 +32,11 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
-# Files-entry near-misses (`- Modify : x`, `- create: x`) inside an open Files
+# Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
-FILE_ISH = re.compile(r"^-\s*(create|modify|test)\s*:", re.I)
+FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
+FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends on|after|requires)\s+Task\s+([A-Za-z0-9]+)", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
@@ -198,6 +199,12 @@ def parse_task(t):
             in_files = True
             files_entries_seen = False
             continue
+        if FILES_ISH.match(s):
+            # `**Files**:` / `**files:**` never opens the block — every entry
+            # under it would drop to ambiguous serialization with no pointer
+            # to the typo.
+            files_near_miss.append(s + "  <Files header not recognized>")
+            continue
         if in_files:
             # A blank line closes the Files section — but only once at least one
             # entry has been parsed: `**Files:**` followed by a blank line before
@@ -220,13 +227,28 @@ def parse_task(t):
                 in_files = False
             f = FILE_LINE.match(s) if in_files else None
             if in_files and not f and FILE_ISH.match(s):
+                # Surface AND keep the block open: an asterisk/typo'd entry must
+                # not silently close the section and drop the valid entries
+                # after it.
                 files_near_miss.append(s)
+                continue
             if f:
                 # Prefer backticked paths; otherwise take the first
                 # whitespace-delimited token so an unbackticked line like
                 # "src/app.py — the new module" yields "src/app.py", not the
                 # whole prose tail. Paths containing spaces MUST be backticked.
-                paths = PATH_RE.findall(f.group(2)) or [f.group(2).strip().split()[0]]
+                backticked = PATH_RE.findall(f.group(2))
+                if backticked:
+                    paths = backticked
+                else:
+                    tokens = f.group(2).strip().split()
+                    # First token only; strip list separators so `a.py, b.py`
+                    # still overlap-matches a.py elsewhere. Multi-path values
+                    # must be backticked per path — surface the truncation.
+                    paths = [tokens[0].rstrip(",;")]
+                    if len(tokens) > 1:
+                        files_near_miss.append(
+                            s + "  <only the first path is used — backtick each path>")
                 paths = [p.split(":")[0] for p in paths]  # drop :line-range
                 files_entries_seen = True
                 if f.group(1) == "Create":
@@ -466,7 +488,11 @@ def main(argv=None):
     # section into the PREVIOUS task: the task vanishes from the waves and its
     # files corrupt the previous task's write set. Refuse loudly, like
     # duplicate ids.
-    near_head = re.compile(r"^#{3,4}\s*task\b", re.I)
+    # Two nets: (a) 3-4-hash task-word headings (the contract level, any
+    # malformation); (b) ANY heading level carrying the id-colon shape
+    # (`## Task 2:`, `##### Task 2:` — wrong level, would fold silently).
+    # Section titles like "## Task Structure" or "## Tasks" match neither.
+    near_head = re.compile(r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+[^\s:]+:)", re.I)
     bad_heads = [line.strip() for line, fenced in _fence_aware_lines(plan_text)
                  if not fenced and near_head.match(line.strip())
                  and not match_head(line)]

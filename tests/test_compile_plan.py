@@ -927,3 +927,71 @@ def test_empty_depends_on_value_diagnosed_as_missing(tmp_path):
     out = compile_plan(plan)
     note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
     assert "missing" in note.lower() and "value" in note.lower()
+
+
+def test_wrong_level_task_headings_error_loudly(tmp_path):
+    for bad in ("## Task 2: two hashes", "##### Task 2: five hashes"):
+        plan = tmp_path / "levelhead.md"
+        plan.write_text(
+            "# Plan: Wrong level\n\n"
+            "### Task 1: first\n\n**Type:** implementation\n\n"
+            "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
+            + bad + "\n\n**Type:** implementation\n\n"
+            "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
+        )
+        p = compile_plan_raw(plan)
+        assert p.returncode == 1, bad
+        assert "heading" in p.stderr.lower(), bad
+
+
+def test_section_titles_with_task_word_stay_legal(tmp_path):
+    plan = tmp_path / "sections.md"
+    plan.write_text(
+        "# Plan: Sections\n\n"
+        "## Tasks\n\n## Task Structure\n\n"
+        "### Task 1: only\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    assert [t["id"] for t in out["tasks"]] == ["1"]
+
+
+def test_asterisk_bullet_files_entry_surfaces_and_keeps_block_open(tmp_path):
+    plan = tmp_path / "starbullet.md"
+    plan.write_text(
+        "# Plan: Star bullet\n\n"
+        "### Task 1: mixed bullets\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n* Modify: `b.py`\n- Modify: `c.py`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: writer\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `b.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert "c.py" in by_id["1"]["writes"]          # valid entry after the star survives
+    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_unbackticked_comma_paths_lose_no_overlap_and_surface(tmp_path):
+    plan = tmp_path / "commapaths.md"
+    plan.write_text(
+        "# Plan: Comma paths\n\n"
+        "### Task 1: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: src/app.py, src/other.py\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: modifier\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "write-after-create"} in out["dag_edges"]
+    assert any(c["task"] == "1" and "backtick" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_files_header_near_miss_surfaces(tmp_path):
+    plan = tmp_path / "fileshead.md"
+    plan.write_text(
+        "# Plan: Files header miss\n\n"
+        "### Task 1: colon outside\n\n**Type:** implementation\n\n"
+        "**Files**:\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
