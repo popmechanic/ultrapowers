@@ -35,10 +35,10 @@ The workflow produces a single structured report object that the main agent pres
 | `integrationBranch` | yes | Branch where all task branches were merged |
 | `waves` | yes | Ordered list of waves; each wave is a list of task IDs that ran in parallel |
 | `dependencyEdges` | no | Human-readable edges that shaped wave order, e.g. `"task-2 → task-4"` |
-| `tasks` | yes | One entry per task; `status` is one of `done`, `failed`, `skipped` |
+| `tasks` | yes | One entry per task; `status` is `done` or `failed`; dependency-blocked and budget-deferred tasks are reported as strings in `unfinished`, not as `tasks[]` entries |
 | `tasks[].branch` | no | Worktree branch used for the task |
-| `tasks[].commit` | no | Merge commit SHA on the integration branch |
-| `tasks[].reviewVerdict` | no | Verdict from the code-review subagent, e.g. `"clean"`, `"fixed"`, `"warnings"` |
+| `tasks[].commit` | no | The implementer's final commit on the task's worktree branch (self-reported); the integration merge SHA lives in `waveMerges[].headSha` |
+| `tasks[].reviewVerdict` | no | Review outcome. Merged tasks: `clean` (passed first review) or `fixed` (passed after the fix round). Failed tasks: `not-reviewed` (implementer BLOCKED/NEEDS_CONTEXT), `fix-loop-exhausted` (blocking issues after the capped fix round), `blocked-after-fix` (implementer blocked during the fix round), `agent-error` (the agent call itself failed) |
 | `tasks[].notes` | no | Free-form notes from the implementing or reviewing subagent (minor review findings and implementer concerns) |
 | `tasks[].tier` | no | Resolved model alias the implementer ran at (`haiku`/`sonnet`/`opus`) |
 | `tasks[].review` | no | Review depth applied: `lean` (one pass) or `adversarial` (two) |

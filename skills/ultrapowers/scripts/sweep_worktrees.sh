@@ -14,11 +14,19 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 FORCE="${1:-}"
+if [ -n "$FORCE" ] && [ "$FORCE" != "--force" ]; then
+  echo "usage: sweep_worktrees.sh [--force]" >&2
+  exit 2
+fi
 
 removed_worktrees=0
 for wt in "$ROOT"/.claude/worktrees/wf_*; do
   [ -e "$wt" ] || continue
-  git -C "$ROOT" worktree remove --force "$wt"
+  # --force --force also removes locked worktrees; a stale directory git no
+  # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
+  if ! git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
+    rm -rf "$wt"
+  fi
   removed_worktrees=$((removed_worktrees + 1))
 done
 git -C "$ROOT" worktree prune
@@ -29,12 +37,17 @@ while IFS= read -r br; do
   [ -n "$br" ] || continue
   if git -C "$ROOT" branch -d "$br" >/dev/null 2>&1; then
     deleted=$((deleted + 1))
-  elif [ "$FORCE" = "--force" ]; then
-    git -C "$ROOT" branch -D "$br" >/dev/null
+  elif [ "$FORCE" = "--force" ] && git -C "$ROOT" branch -D "$br" >/dev/null 2>&1; then
     deleted=$((deleted + 1))
   else
     kept=$((kept + 1))
-    echo "kept (unmerged — failed/blocked work; --force to delete): $br"
+    if [ "$FORCE" = "--force" ]; then
+      echo "kept (cannot delete — likely checked out; resolve manually): $br"
+    elif git -C "$ROOT" merge-base --is-ancestor "$br" HEAD 2>/dev/null; then
+      echo "kept (merged but undeletable — likely checked out): $br"
+    else
+      echo "kept (unmerged — failed/blocked work; --force to delete): $br"
+    fi
   fi
 done < <(git -C "$ROOT" branch --list 'worktree-wf_*' --format='%(refname:short)')
 

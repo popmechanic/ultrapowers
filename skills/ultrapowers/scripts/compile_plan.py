@@ -4,8 +4,9 @@
 Parses a plan into tasks (fence-aware), classifies each per the plan-markers
 contract (explicit **Type:** trusted; heuristics otherwise, flagged
 "heuristic": true), builds the dependency DAG (marker edges + file-overlap
-inference + explicit text), runs Kahn layering with cycle detection, and
-emits the Step-3 transparency block as JSON on stdout.
+inference + read-after-write + ambiguous-files serialization + explicit text),
+runs Kahn layering with cycle detection, and emits the Step-3 transparency
+block as JSON on stdout.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
@@ -27,6 +28,7 @@ MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends on|after|requires)\s+Task\s+([A-Za-z0-9]+)", re.I)
+GLOB_CHARS = re.compile(r"[*?\[]")
 
 TYPES = ("implementation", "gate", "release", "manual")
 RELEASE_EV = re.compile(
@@ -73,16 +75,24 @@ def split_tasks(text):
 
 def parse_task(t):
     ttype = None
+    type_unparsed = None
     deps, deps_none = [], False
-    creates, modifies = [], []
+    creates, modifies, reads = [], [], []
     in_files = False
     for line, fenced in _fence_aware_lines(t["body"]):
         if fenced:
             continue
         s = line.strip()
-        m = MARKER_TYPE.match(s)
-        if m and ttype is None and m.group(1) in TYPES:
-            ttype = m.group(1)
+        # Check for **Type:** lines
+        if s.startswith("**Type:**"):
+            m = MARKER_TYPE.match(s)
+            if m and ttype is None and m.group(1) in TYPES:
+                ttype = m.group(1)
+            elif ttype is None and type_unparsed is None:
+                # Unparseable or unrecognized type marker
+                remainder = s[len("**Type:**"):].strip()
+                if remainder:
+                    type_unparsed = remainder
         m = MARKER_DEPS.match(s)
         if m and not deps and not deps_none:
             val = m.group(1).strip()
@@ -102,11 +112,23 @@ def parse_task(t):
                     creates.extend(paths)
                 elif f.group(1) == "Modify":
                     modifies.extend(paths)
+                elif f.group(1) == "Test":
+                    reads.extend(paths)
             elif s and not s.startswith("-"):
                 in_files = False
-    t.update(marker_type=ttype, depends_on=deps, depends_none=deps_none,
+
+    all_paths = creates + modifies + reads
+    files_ambiguous = (
+        (not creates and not modifies and not reads) or
+        any(GLOB_CHARS.search(p) for p in all_paths)
+    )
+
+    t.update(marker_type=ttype, type_unparsed=type_unparsed,
+             depends_on=deps, depends_none=deps_none,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
-             writes=sorted(set(creates) | set(modifies)))
+             reads=sorted(set(reads)),
+             writes=sorted(set(creates) | set(modifies)),
+             files_ambiguous=files_ambiguous)
     return t
 
 
@@ -138,12 +160,21 @@ def build_edges(impl):
                 conflicts.append({
                     "task": b,
                     "edge": f"{a} -> {b} ({why})",
-                    "note": "Depends-on: none overridden by inferred edge (file edge wins)",
+                    "note": "Depends-on: none overridden by inferred edge (inferred edge wins)",
                 })
 
     for t in impl:
         for d in t["depends_on"]:
-            add(d, t["id"], "marker")
+            if d in ids:
+                add(d, t["id"], "marker")
+            else:
+                conflicts.append({
+                    "task": t["id"],
+                    "edge": d + " -> " + t["id"] + " (marker)",
+                    "note": "Depends-on: " + d + " names a task outside the implementation set "
+                            "(unknown id or gate/release/manual) — edge dropped",
+                })
+
     for a in impl:
         for b in impl:
             if a["id"] == b["id"]:
@@ -152,10 +183,26 @@ def build_edges(impl):
                 add(a["id"], b["id"], "write-after-create")
             if set(a["writes"]) & set(b["writes"]) and a["order"] < b["order"]:
                 add(a["id"], b["id"], "write-after-write")
+            # read-after-write: b reads a file that a writes (no order condition)
+            if set(a["writes"]) & set(b["reads"]):
+                add(a["id"], b["id"], "read-after-write")
+
     for b in impl:
         for m in TEXT_DEP.finditer(b["body"]):
             if m.group(1) != b["id"]:
                 add(m.group(1), b["id"], "text")
+
+    # ambiguous-files: serialize task T at its document position
+    for t in impl:
+        if t["files_ambiguous"]:
+            for u in impl:
+                if u["id"] == t["id"]:
+                    continue
+                if u["order"] < t["order"]:
+                    add(u["id"], t["id"], "ambiguous-files")
+                elif u["order"] > t["order"]:
+                    add(t["id"], u["id"], "ambiguous-files")
+
     return edges, conflicts
 
 
@@ -196,6 +243,14 @@ def main(argv=None):
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
 
+    # Bug D: detect duplicate task IDs early
+    ids = [t["id"] for t in tasks]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if dups:
+        print("compile_plan: duplicate task id(s): " + ", ".join(dups) +
+              " — task headings must be unique; refusing to compile.", file=sys.stderr)
+        raise SystemExit(1)
+
     out_tasks = []
     for t in tasks:
         disp, heuristic = classify(t)
@@ -203,6 +258,13 @@ def main(argv=None):
         out_tasks.append({"id": t["id"], "title": t["title"], "disposition": disp,
                           "heuristic": heuristic, "writes": t["writes"],
                           "depends_on": t["depends_on"]})
+
+    # Bug E1: surface unparseable type markers as conflicts
+    type_conflicts = [
+        {"task": t["id"], "edge": "",
+         "note": "**Type:** " + repr(t["type_unparsed"]) + " is not a recognized type "
+                 "(implementation/gate/release/manual) — marker ignored, heuristic applied"}
+        for t in tasks if t.get("type_unparsed")]
 
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     edges, conflicts = build_edges(impl)
@@ -216,12 +278,13 @@ def main(argv=None):
         mode = "sequential"
         degrade = f"Sequential mode: {len(impl)} implementation tasks" + (
             ", fully overlapping writes" if fully_overlapping else "")
-        waves = [[t["id"]] for t in impl]
+        # Bug A: flatten already-computed topological layering (not document order)
+        waves = [[tid] for wave in waves for tid in wave]
 
     print(json.dumps({
         "tasks": out_tasks,
         "dag_edges": edges,
-        "marker_conflicts": conflicts,
+        "marker_conflicts": type_conflicts + conflicts,
         "gates": [t["id"] for t in tasks if t["disposition"] == "gate"],
         "post_merge_runbook": [t["id"] for t in tasks
                                if t["disposition"] in ("release", "manual")],

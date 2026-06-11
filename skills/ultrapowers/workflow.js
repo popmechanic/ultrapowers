@@ -143,6 +143,7 @@ const IMPLEMENTER_PROMPT = [
   '4. Implement the minimum code to make them pass.',
   '5. Refactor for clarity without breaking tests.',
   '6. Run the full check suite one final time and confirm it is clean.',
+  '7. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
@@ -155,8 +156,9 @@ const IMPLEMENTER_PROMPT = [
 ].join('\n')
 
 // BAKE:REVIEWER_PROMPT
-// One independent pass merging spec-compliance + code-quality (superpowers v5.0.6
-// direction: a single review loop instead of two). Always runs at most-capable.
+// One independent pass merging spec-compliance + code-quality — a deliberate
+// divergence from superpowers 5.1.0's two-ordered-pass mandate (see
+// references/reviewer-prompts.md, "Deliberate divergence"). Always runs at most-capable.
 const REVIEWER_PROMPT = [
   'You are an independent reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
   '',
@@ -226,7 +228,7 @@ const COMPLETENESS_PROMPT =
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
   type: 'object',
-  required: ['status', 'summary', 'branch'],
+  required: ['status', 'summary', 'branch', 'headSha'],
   properties: {
     status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
     summary: { type: 'string' },
@@ -415,6 +417,7 @@ async function runTaskInner(task, baseSha) {
                tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
     }
     if (iter === 2) {
+      log('task ' + task.id + ' FAILED: fix-loop cap (2) reached with blocking issues remaining')
       return { task: task.id, status: 'failed', branch: impl.branch,
                reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
                tier: economics.tier, review: economics.review, fixIterations: 1 }
@@ -472,6 +475,33 @@ const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
 
+const budgetExhausted = () => {
+  if (typeof budget === 'undefined' || !budget) return false
+  const r = (typeof budget.remaining === 'function') ? budget.remaining() : budget.remaining
+  return typeof r === 'number' && r <= 0
+}
+
+// A run launched with an already-exhausted budget defers everything up front:
+// dispatching setup (or the opus integration review) would spend agents on a
+// run that cannot execute a single task.
+if (budgetExhausted()) {
+  WAVES.forEach((w) => w.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted before setup)')))
+  log('budget exhausted before setup: deferring the entire run, no agents dispatched')
+  return {
+    integrationBranch,
+    waves: WAVES.map((w) => w.map((t) => t.id)),
+    dependencyEdges,
+    tasks: [],
+    tests: { command: undefined, passed: false, output: 'not run — budget exhausted before setup' },
+    baseline: {},
+    waveMerges: [],
+    judgmentCalls: ['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched'],
+    unfinished,
+    completenessFindings: [],
+    blockedWaves: [],
+  }
+}
+
 phase('Setup')
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
@@ -492,12 +522,6 @@ if (setup.baselinePassed === false) {
 }
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
-
-const budgetExhausted = () => {
-  if (typeof budget === 'undefined' || !budget) return false
-  const r = (typeof budget.remaining === 'function') ? budget.remaining() : budget.remaining
-  return typeof r === 'number' && r <= 0
-}
 
 // Tasks transitively downstream of a failure — never dispatched, always reported.
 const blockedByDep = new Set()

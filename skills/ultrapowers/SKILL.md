@@ -79,8 +79,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
   If a cycle is found, stop and surface it in plain language — never guess an ordering.
-- **Apply conservative defaults** and the **small-plan degrade** (≤2 tasks or fully overlapping
-  writes → a single sequential wave).
+- **Apply conservative defaults** and the **small-plan degrade** (≤2 implementation tasks or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order).
 - **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope, per
   `references/reviewer-prompts.md`.
 - **Derive the run knobs yourself — do not ask the human to hand-tune them.** You read the plan and
@@ -235,6 +234,8 @@ the Skill tool and hand it the same plan. This preserves determinism: the proven
 runs instead, and we simply lose parallelism for that run. **Never improvise an ad-hoc workflow
 script** — that would reintroduce the runtime nondeterminism this skill exists to remove.
 
+If the plan carries `release` or `manual` tasks (marked, or classified by the heuristics), do **not** hand those to the sequential executor — subagent-driven-development executes every task continuously, without pausing for human eyes. Hand it the `implementation` and `gate` tasks only, and carry the `release`/`manual` tasks as the post-merge runbook, presented to the human when the sequential run completes — the same contract the parallel path honors.
+
 When falling back, hand subagent-driven-development a clean checkout and let its
 own using-git-worktrees setup create isolation — do not hand it a dirty tree or
 silently leave it implementing on main; it requires explicit consent for that.
@@ -260,7 +261,7 @@ revision) or an inability to create the integration branch.
 - `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `workflow.js`.
 - `references/report-format.md` — structured report schema and the human-facing presentation order.
 - `references/workflow-template.md` — maintainer doc for `workflow.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
-- `scripts/validate_skill.py` — run `python3 scripts/validate_skill.py skills/ultrapowers` to verify frontmatter and reference integrity; expected output: `skill ok`.
+- `scripts/validate_skill.py` — run `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` from the repo root (CI also runs it for `skills/ultraplan`) to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for marked plans: transparency-block JSON from a plan path.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
 - `probe.js` — the zero-agent engine preflight installed and launched at Step 4a½.

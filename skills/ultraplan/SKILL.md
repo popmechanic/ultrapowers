@@ -31,7 +31,7 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 
 writing-plans mandates this header line on every plan:
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 On a marked plan, REPLACE it with:
 
