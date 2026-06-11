@@ -28,15 +28,16 @@ test). Runtime globals: `agent(prompt, opts)`, `parallel(thunks)`, `phase(title)
 The skill launches the workflow with:
 
 ```
-args = { waves, integrationBranch, stamp, dependencyEdges,
-         testCmd, reviewProfile, tierOverrides }
+args = { waves, integrationBranch, stamp, dependencyEdges, edges,
+         baseBranch, planPath, resume?, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 - `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
   is the full verbatim task text (the script cannot resolve file references). `review` is the optional
   per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
-  risk/tier; it overrides the run-wide `reviewProfile`. **Required:** `id`, `body`.
-- `args.integrationBranch` — e.g. `ultra/integration-<stamp>` (falls back to `ultra/integration-<stamp>`).
+  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task;
+  `title`, `tier`, `acceptance`, `files`, and `review` are advisory inputs the prompts consume.**
+- `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
 
@@ -98,7 +99,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 
 ## Structure (read the file for specifics)
 
-- `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review).
+- `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review). The assignment is wrapped in a typeof-guard because newer engines extract the meta literal at parse time and do not expose the binding to the executing body; phase() calls group progress regardless.
 - Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
   merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
 - `runTask(task, baseSha)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance

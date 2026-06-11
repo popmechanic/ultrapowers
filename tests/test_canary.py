@@ -61,3 +61,9 @@ def test_workflow_has_baked_discipline_markers():
     for const in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT",
                   "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
         assert ("const " + const + " =") in wf, "missing baked constant: " + const
+
+
+def test_workflow_consumes_structured_edges():
+    wf = WORKFLOW.read_text()
+    assert "ARGS.edges" in wf
+    assert "blockedByDep" in wf

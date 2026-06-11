@@ -45,3 +45,10 @@ def test_ultraplan_pairs_with_writing_plans():
     text = ULTRAPLAN.read_text()
     assert "superpowers:writing-plans" in text
     assert "worktree-pure" in text
+
+
+def test_ultraplan_overrides_the_execution_header_and_handoff():
+    text = ULTRAPLAN.read_text()
+    assert "REQUIRED SUB-SKILL" in text          # quotes the upstream header it replaces
+    assert "ultrapowers:ultrapowers" in text     # names the parallel executor
+    assert "Execution Handoff" in text           # overrides writing-plans' two-option menu

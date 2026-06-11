@@ -34,7 +34,8 @@ def baked_blocks():
 
 def test_expected_blocks_present():
     blocks = baked_blocks()
-    for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT"):
+    for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT",
+                 "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
         assert name in blocks, "missing BAKE marker for " + name
 
 
@@ -86,3 +87,19 @@ def test_wave_prompt_is_baked(name):
             "drift: BAKE:" + name + " fragment missing or out of order in workflow.js. "
             "Re-bake per references/workflow-template.md.\nfragment (normalized):\n" + frag)
         pos = idx + len(frag)
+
+
+# ── JSON schemas: enum/key drift between reviewer-prompts.md and workflow.js ──
+SCHEMA_BLOCKS = ["IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"]
+
+
+@pytest.mark.parametrize("name", SCHEMA_BLOCKS)
+def test_schema_block_is_baked(name):
+    blocks = baked_blocks()
+    assert name in blocks, "missing BAKE marker for " + name
+    wf = normalize(WORKFLOW.read_text())
+    expected = normalize(blocks[name])
+    assert expected, "empty source block for " + name
+    assert expected in wf, (
+        "drift: BAKE:" + name + " in reviewer-prompts.md does not match workflow.js.\n"
+        "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected)

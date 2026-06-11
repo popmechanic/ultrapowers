@@ -11,3 +11,10 @@ def test_report_presents_the_runbook():
     assert "Post-merge runbook" in text
     assert "Step-2" in text   # sourced from compile-time dispositions, not the workflow return
     assert "finishing-a-development-branch" in text
+
+
+def test_report_contract_includes_blocked_waves():
+    text = REPORT.read_text()
+    assert "blockedWaves" in text          # schema + field table
+    assert "Blocked waves" in text         # presentation item
+    assert "clean up worktrees" not in text  # finishing-a-development-branch never will

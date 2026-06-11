@@ -56,6 +56,12 @@ const integrationBranch =
   (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||
   ('ultra/integration-' + stamp)
 const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
+// Structured dependency pairs [[fromTaskId, toTaskId], ...] — optional. When
+// present, a failed task blocks its transitive dependents instead of letting
+// them run against a base that never received the prerequisite.
+const EDGES = (ARGS && Array.isArray(ARGS.edges))
+  ? ARGS.edges.filter((e) => Array.isArray(e) && e.length === 2).map((e) => [String(e[0]), String(e[1])])
+  : []
 
 // ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
 // testCmd:        override the test-command detection ladder (e.g. 'make test').
@@ -84,6 +90,12 @@ if (resume && !(ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integ
 // Fail loud on a typo'd model alias: an invalid model makes every agent error
 // without doing any work (verified live 2026-06-03), so catch it before launch.
 const VALID_MODELS = ['haiku', 'sonnet', 'opus']
+for (const k of Object.keys(tierOverrides)) {
+  if (k !== 'cheap' && k !== 'standard' && k !== 'mostCapable') {
+    throw new Error('ultrapowers: tierOverrides key "' + k +
+      '" is not a tier (valid: cheap, standard, mostCapable). Refusing to launch.')
+  }
+}
 for (const k in tierOverrides) {
   if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
     throw new Error(
@@ -125,11 +137,12 @@ const IMPLEMENTER_PROMPT = [
   '- BASE: sha of the integration-branch HEAD your work builds on',
   '',
   'Workflow — red green refactor:',
-  '1. Read and restate the acceptance criteria from the task text before touching code.',
-  '2. Write or update tests that encode those criteria. Confirm they fail (pnpm check or equivalent).',
-  '3. Implement the minimum code to make them pass.',
-  '4. Refactor for clarity without breaking tests.',
-  '5. Run the full check suite one final time and confirm it is clean.',
+  "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
+  '2. Read and restate the acceptance criteria from the task text before touching code.',
+  '3. Write or update tests that encode those criteria. Confirm they fail (pnpm check or equivalent).',
+  '4. Implement the minimum code to make them pass.',
+  '5. Refactor for clarity without breaking tests.',
+  '6. Run the full check suite one final time and confirm it is clean.',
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
@@ -190,7 +203,12 @@ const MERGE_PROMPT =
   'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
   'the given task-index order (deterministic, so conflicts are reproducible). ' +
   'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
-  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
+  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.' +
+  ' After ALL branches in your list are merged and the test suite passes, clean up' +
+  ' the merged branches only: use git worktree list to find each merged branch\'s' +
+  ' worktree, git worktree remove it, then git branch -d the branch. Leave any' +
+  ' branch you did NOT merge — and its worktree — untouched; failed and blocked' +
+  ' work must stay inspectable.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent on ' + integrationBranch + '. You are given a ' +
@@ -296,7 +314,22 @@ const taskReviewProfile = (task) =>
   (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
 
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
+// A thrown agent() call (engine fault, schema failure, transient error) must
+// cost ONE task, never the run: parallel() is fail-fast, so an uncaught throw
+// in a 16-wide wave would reject the whole wave and lose the report.
 async function runTask(task, baseSha) {
+  try {
+    return await runTaskInner(task, baseSha)
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    judgmentCalls.push('task ' + task.id + ': agent error — ' + msg)
+    log('task ' + task.id + ' FAILED on agent error: ' + msg)
+    return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
+             notes: msg, tier: TIER[tierKey(task.tier)] || TIER.standard,
+             review: taskReviewProfile(task), fixIterations: 0 }
+  }
+}
+async function runTaskInner(task, baseSha) {
   const baseModel = TIER[tierKey(task.tier)] || TIER.standard
   // Run economics, reported per task so the pre-merge gate can judge cost vs. benefit.
   const economics = { tier: baseModel, review: taskReviewProfile(task) }
@@ -409,16 +442,25 @@ async function mergeWave(results, waveIdx) {
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
     .join('\n')
-  let merge = await agent(
-    GUARD + '\n\n' + MERGE_PROMPT + '\nMerge in this order:\n' + branchList,
-    { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
-  )
+  let merge
+  try {
+    merge = await agent(
+      GUARD + '\n\n' + MERGE_PROMPT + '\nMerge in this order:\n' + branchList,
+      { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
+    )
+  } catch (e) {
+    merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
+  }
   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
     log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
-    merge = await agent(
-      GUARD + '\n\n' + RECONCILE_PROMPT + '\nFailure:\n' + (merge.detail || ''),
-      { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
-    )
+    try {
+      merge = await agent(
+        GUARD + '\n\n' + RECONCILE_PROMPT + '\nFailure:\n' + (merge.detail || ''),
+        { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
+      )
+    } catch (e) {
+      merge = { status: 'CONFLICT', detail: 'reconcile agent error: ' + String((e && e.message) || e) }
+    }
   }
   return merge
 }
@@ -435,7 +477,8 @@ const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model
 // SKILL.md promises an abort when the integration branch cannot be created.
 if (!setup || setup.branch !== integrationBranch || !setup.headSha) {
   throw new Error(
-    'ultrapowers: setup failed to create integration branch ' + integrationBranch +
+    'ultrapowers: setup failed to ' + (resume ? 'check out existing' : 'create') +
+    ' integration branch ' + integrationBranch +
     ' (got ' + JSON.stringify(setup) + '). Aborting before any task runs.'
   )
 }
@@ -450,6 +493,28 @@ if (setup.baselinePassed === false) {
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
 
+const budgetExhausted = () => {
+  if (typeof budget === 'undefined' || !budget) return false
+  const r = (typeof budget.remaining === 'function') ? budget.remaining() : budget.remaining
+  return typeof r === 'number' && r <= 0
+}
+
+// Tasks transitively downstream of a failure — never dispatched, always reported.
+const blockedByDep = new Set()
+const noteFailures = () => {
+  const failed = new Set(taskResults.filter((r) => r && r.status === 'failed').map((r) => r.task))
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const [a, b] of EDGES) {
+      if ((failed.has(a) || blockedByDep.has(a)) && !blockedByDep.has(b) && !failed.has(b)) {
+        blockedByDep.add(b)
+        grew = true
+      }
+    }
+  }
+}
+
 // Review diff base: the integration-branch HEAD a wave's worktrees build on.
 // Wave 1 starts at the setup HEAD; each successful merge advances it.
 let waveBaseSha = setup.headSha
@@ -457,18 +522,33 @@ let waveBaseSha = setup.headSha
 for (let w = 0; w < WAVES.length; w++) {
   // Peak concurrency equals wave width (each task pipeline is internally
   // sequential), so chunk waves wider than the engine cap.
-  if (typeof budget !== 'undefined' && budget && typeof budget.remaining === 'number' && budget.remaining <= 0) {
+  if (budgetExhausted()) {
     WAVES[w].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted)'))
     continue
   }
   phase('Wave ' + (w + 1))
+  noteFailures()
   const results = []
   for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
     const chunk = WAVES[w].slice(off, off + CONCURRENCY)
-    const chunkResults = await parallel(chunk.map((task) => () => runTask(task, waveBaseSha)))
+    if (budgetExhausted()) {
+      chunk.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted mid-wave)'))
+      continue
+    }
+    const runnable = chunk.filter((t) => {
+      if (blockedByDep.has(t.id)) {
+        unfinished.push(t.id + ': blocked — depends on a failed task')
+        log('task ' + t.id + ' skipped: upstream dependency failed')
+        return false
+      }
+      return true
+    })
+    if (runnable.length === 0) continue
+    const chunkResults = await parallel(runnable.map((task) => () => runTask(task, waveBaseSha)))
     for (const r of chunkResults) results.push(r)
   }
   for (const r of results) taskResults.push(r)
+  noteFailures()
 
   const merge = await mergeWave(results, w)
   // Record every wave's merge outcome (success too) so the pre-merge gate can see
@@ -484,6 +564,12 @@ for (let w = 0; w < WAVES.length; w++) {
     // merge succeeded (do not imply success: a CONFLICT wave still lists them).
     branches: results.filter(isMergeable).map((r) => r.task),
   })
+  if (merge.status === 'MERGED' && !merge.headSha) {
+    judgmentCalls.push('wave ' + (w + 1) + ': merge reported MERGED without headSha — ' +
+      'review base stays at ' + String(waveBaseSha).slice(0, 12) +
+      '; later reviewers may see this wave\'s changes as task scope')
+    log('wave ' + (w + 1) + ': MERGED without headSha; review base frozen')
+  }
   if (merge.status === 'MERGED' && merge.headSha) waveBaseSha = merge.headSha
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
@@ -499,16 +585,24 @@ for (let w = 0; w < WAVES.length; w++) {
 // ── Integration + completeness review ────────────────────────────────────────
 phase('Integration Review')
 const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
-const review = await agent(
-  GUARD + '\n\n' + COMPLETENESS_PROMPT +
-    '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
-    // A red baseline reframes the critic's own test run: failures it sees may be
-    // inherited, not introduced. Only thread it when it actually failed.
-    (baseline.passed === false
-      ? '\nBaseline: the test suite FAILED before any task ran — ' + (baseline.output || 'no output')
-      : ''),
-  { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
-)
+let review
+try {
+  review = await agent(
+    GUARD + '\n\n' + COMPLETENESS_PROMPT +
+      '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+      // A red baseline reframes the critic's own test run: failures it sees may be
+      // inherited, not introduced. Only thread it when it actually failed.
+      (baseline.passed === false
+        ? '\nBaseline: the test suite FAILED before any task ran — ' + (baseline.output || 'no output')
+        : ''),
+    { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
+  )
+} catch (e) {
+  const msg = String((e && e.message) || e)
+  judgmentCalls.push('integration review failed to run: ' + msg)
+  review = { testsPassed: false, output: 'integration agent error: ' + msg,
+             findings: ['integration review did not run — verify the suite manually before merging'] }
+}
 
 // ── Structured return value (matches references/report-format.md) ─────────────
 return {

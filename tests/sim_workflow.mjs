@@ -72,7 +72,8 @@ function makeAgent(handle) {
 
 // ── Scenario 1: happy path — everything DONE / PASS / MERGED ──────────────────
 async function scenarioHappy() {
-  const agent = async (_prompt, opts) => {
+  let mergePrompt = ''
+  const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
@@ -80,7 +81,10 @@ async function scenarioHappy() {
       return { status: 'DONE', summary: 'done ' + id, branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
     if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
-    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label.startsWith('merge:')) {
+      mergePrompt = prompt
+      return { status: 'MERGED', headSha: 'm-' + label }
+    }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
   }
@@ -96,6 +100,7 @@ async function scenarioHappy() {
   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
+  assert(/git worktree remove/.test(mergePrompt), 'happy: merge prompt contains cleanup instruction (git worktree remove)')
   console.log('scenario happy: OK')
 }
 
@@ -607,6 +612,128 @@ async function scenarioResumeRequiresBranch() {
   console.log('scenario resume-requires-branch: OK')
 }
 
+// ── Scenario: agent-throw-degrades — a thrown impl agent costs ONE task ────────
+// parallel() is fail-fast; an uncaught throw would lose the whole wave's report.
+// The runTask wrapper must degrade to {status:'failed', reviewVerdict:'agent-error'}.
+async function scenarioAgentThrowDegrades() {
+  const waves = [
+    [
+      { id: 'X', title: 'throw task', body: 'task X', tier: 'cheap' },
+      { id: 'Y', title: 'sibling task', body: 'task Y', tier: 'cheap' },
+    ],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'impl:X') throw new Error('engine fault: schema mismatch')
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r !== undefined && r.tasks !== undefined, 'agentThrow: run returned a report')
+  const x = r.tasks.find((t) => t.task === 'X')
+  const y = r.tasks.find((t) => t.task === 'Y')
+  assert(x !== undefined, 'agentThrow: X appears in tasks')
+  eq(x.status, 'failed', 'agentThrow: thrown task status is failed')
+  eq(x.reviewVerdict, 'agent-error', 'agentThrow: thrown task reviewVerdict is agent-error')
+  assert(y !== undefined, 'agentThrow: sibling Y appears in tasks')
+  eq(y.status, 'done', 'agentThrow: sibling Y is done (parallel did not lose it)')
+  assert(r.judgmentCalls.some((j) => /X/.test(j) && /engine fault/.test(j)),
+    'agentThrow: judgmentCalls mentions the error')
+  console.log('scenario agent-throw-degrades: OK')
+}
+
+// ── Scenario: merged-without-headsha — MERGED result missing headSha is surfaced ─
+async function scenarioMergedWithoutHeadSha() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) return { status: 'MERGED' } // no headSha
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r !== undefined, 'mergedWithoutHeadSha: run completed')
+  assert(r.judgmentCalls.some((j) => /without headSha/.test(j)),
+    'mergedWithoutHeadSha: judgmentCalls contains an entry matching /without headSha/')
+  console.log('scenario merged-without-headsha: OK')
+}
+
+// ── Scenario: meta-absent-engine — entire meta declaration stripped ────────────
+// Simulates engines that extract meta at parse time and do not expose the
+// binding to the executing body. The typeof guard must handle this gracefully.
+async function scenarioMetaAbsentEngine() {
+  // Strip the entire `export const meta = { ... }` block (multi-line object literal)
+  // by removing from 'export const meta' up through the closing '}\n' of that block.
+  const srcWithoutMeta = SRC.replace(/const meta\s*=\s*\{[^}]*\}\s*\n/, '')
+  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
+  const phase = () => {}
+  const log = () => {}
+  const agent = makeAgent()
+  const args = baseArgs
+  const budget = undefined
+  const factory = new Function(
+    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
+    '"use strict"; return (async () => {\n' + srcWithoutMeta + '\n})();'
+  )
+  const r = await factory(agent, parallel, phase, log, args, budget)
+  assert(r !== undefined && r.tasks !== undefined, 'metaAbsent: run completed (typeof guard holds)')
+  assert(r.tasks.every((t) => t.status === 'done'), 'metaAbsent: all tasks done')
+  console.log('scenario meta-absent-engine: OK')
+}
+
+// ── Scenario: dependent-blocked-by-failed-task ────────────────────────────────
+// waves [[A, X],[B]] with args.edges=[["A","B"]]; A's review stub returns
+// blocking issues twice (fix-loop exhaustion -> A failed); X passes; wave 1
+// merges successfully (X's branch lands); B is in wave 2 but depends on A
+// which never landed. The dep-cascade must block B before dispatch.
+async function scenarioDependentBlockedByFailedTask() {
+  const implCalled = new Set()
+  const waves = [
+    [
+      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+    ],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = {
+    waves,
+    integrationBranch: 'ultra/integration-sim',
+    stamp: 'sim',
+    edges: [['A', 'B']],
+  }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        const id = taskIdFromLabel(label)
+        implCalled.add(id)
+        return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+      }
+      if (label.startsWith('review:')) {
+        const id = taskIdFromLabel(label)
+        // A always returns blocking issues -> fix-loop exhaustion -> failed
+        if (id === 'A') {
+          return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+        }
+        return { verdict: 'PASS', issues: [] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('B'), 'depBlocked: B impl must never dispatch (no impl:B stub call)')
+  assert(r.unfinished.some((u) => /B: blocked — depends on a failed task/.test(u)),
+    'depBlocked: unfinished contains B: blocked — depends on a failed task')
+  assert(r !== undefined && r.tasks !== undefined, 'depBlocked: report still returned')
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'depBlocked: A failed (fix-loop exhausted)')
+  eq(a.reviewVerdict, 'fix-loop-exhausted', 'depBlocked: A reviewVerdict fix-loop-exhausted')
+  console.log('scenario dependent-blocked-by-failed-task: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -628,4 +755,8 @@ await scenarioResume()
 await scenarioResumeRequiresBranch()
 await scenarioAdversarialDedupe()
 await scenarioBudgetExhausted()
+await scenarioAgentThrowDegrades()
+await scenarioMergedWithoutHeadSha()
+await scenarioMetaAbsentEngine()
+await scenarioDependentBlockedByFailedTask()
 console.log('ALL SCENARIOS PASSED')

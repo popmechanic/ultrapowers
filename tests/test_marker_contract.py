@@ -52,3 +52,9 @@ def test_fixture_covers_every_marker_shape():
     # canary expectations for the compiler: waves [[1,2],[3]], 4 -> config, 5 -> runbook
     assert "Create: `a.txt`" in p
     assert "Modify: `a.txt`" in p
+
+
+def test_contract_defines_executor_variance():
+    text = CONTRACT.read_text()
+    assert "## Executor variance" in text
+    assert "sequential executor" in text.lower()
