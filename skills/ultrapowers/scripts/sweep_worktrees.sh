@@ -16,8 +16,16 @@
 # in this repo: in-flight uncommitted worktree state is unrecoverable.
 set -euo pipefail
 
-GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
-ROOT="$(dirname "$GIT_COMMON")"
+# The MAIN worktree is the first entry of `git worktree list --porcelain`.
+# dirname(--git-common-dir) breaks when the git dir sits outside the repo
+# (--separate-git-dir) or under a superproject's .git (submodules) — the
+# latter would aim branch -d at the WRONG repository.
+ROOT="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+# If --separate-git-dir was used, worktree list reports the git-dir, not the
+# working tree. Fall back to --show-toplevel in that case.
+if [ ! -e "$ROOT/.claude" ]; then
+  ROOT="$(git rev-parse --show-toplevel)"
+fi
 FORCE="${1:-}"
 if [ -n "$FORCE" ] && [ "$FORCE" != "--force" ]; then
   echo "usage: sweep_worktrees.sh [--force]" >&2
