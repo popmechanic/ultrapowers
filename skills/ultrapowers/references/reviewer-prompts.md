@@ -4,7 +4,7 @@
 
 These prompts are adapted from `superpowers:subagent-driven-development` (implementer, spec-reviewer, code-quality-reviewer), `superpowers:test-driven-development`, and `superpowers:verification-before-completion`.
 
-**Baked-from upstream reference:** `obra/superpowers` as of releases **v5.0.6 (2026-03-24)** and **v5.1.0 (2026-04-30)**. The upstream prompts live in separate files — `skills/subagent-driven-development/{implementer-prompt,spec-reviewer-prompt,code-quality-reviewer-prompt}.md` — and the code-quality reviewer delegates to `requesting-code-review/code-reviewer.md`. These are **paraphrases**, not verbatim copies (ultrapowers adds its own JSON schemas, verdict vocabulary, fix-loop cap, and model tiers for headless parsing). When re-baking, diff against the upstream files at or after the pinned releases. Note v5.0.6's direction — *inline self-review replacing subagent review loops that "doubled execution time without measurably improving quality"* — which is why this skill runs **one** independent review pass per task, not two.
+**Baked-from upstream reference:** `obra/superpowers` as of releases **v5.0.6 (2026-03-24)** and **v5.1.0 (2026-04-30)**. The upstream prompts live in separate files — `skills/subagent-driven-development/{implementer-prompt,spec-reviewer-prompt,code-quality-reviewer-prompt}.md` — and the code-quality reviewer delegates to `requesting-code-review/code-reviewer.md`. These are **paraphrases**, not verbatim copies (ultrapowers adds its own JSON schemas, verdict vocabulary, fix-loop cap, and model tiers for headless parsing). When re-baking, diff against the upstream files at or after the pinned releases. The merged spec+quality review topology is a **deliberate divergence** from 5.1.0's two-ordered-pass mandate (a trade of upstream's ordering for headless wall-clock), not a fidelity claim — see "Deliberate divergence from superpowers 5.1.0" under the reviewer prompt below.
 
 **This file is the single source of truth for the discipline baked into `skills/ultrapowers/workflow.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `workflow.js` (see the re-bake procedure in `workflow-template.md`).
 
@@ -56,38 +56,46 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 
 ## Implementer status schema
 
-```json
+<!-- BAKE:IMPLEMENTER_SCHEMA -->
+```
 {
-  "type": "object",
-  "required": ["status", "summary", "branch"],
-  "properties": {
-    "status": { "enum": ["DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"] },
-    "summary": { "type": "string" },
-    "concerns": { "type": "array", "items": { "type": "string" } },
-    "branch": { "type": "string" },
-    "headSha": { "type": "string" },
-    "commit": { "type": "string" }
-  }
+  type: 'object',
+  required: ['status', 'summary', 'branch'],
+  properties: {
+    status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
+    summary: { type: 'string' },
+    concerns: { type: 'array', items: { type: 'string' } },
+    branch: { type: 'string' },
+    headSha: { type: 'string' },
+    commit: { type: 'string' },
+  },
 }
 ```
+<!-- /BAKE -->
 
 - `DONE`: task complete, tests pass, diff is clean.
 - `DONE_WITH_CONCERNS`: complete but non-blocking observations recorded in `concerns`.
 - `NEEDS_CONTEXT`: blocked on ambiguity — list specific questions in `concerns`; do not guess.
 - `BLOCKED`: hard blocker (missing dependency, broken environment, conflicting change); escalate immediately.
 
+**Headless downgrade:** upstream treats `NEEDS_CONTEXT` as "answer the question and
+re-dispatch". A headless workflow cannot answer, so `workflow.js` records the task
+as `failed` with the question in `notes` — it surfaces at the pre-merge gate for a
+redirect rather than pausing a run that cannot pause.
+
 ---
 
 ## Reviewer prompt (spec-compliance + code-quality, merged)
 
-Per superpowers' v5.0.6 direction — subagent review loops *"doubled execution time without measurably
-improving quality"* — ultrapowers runs **one** independent review pass per task covering both
-spec-compliance and code-quality, rather than two separate passes. The reviewer always runs at the
-most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse
-than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks
-high-stakes / `most-capable` tasks `adversarial` (two independent passes, findings unioned) and leaves
-routine tasks `lean` (one pass) — derived from the plan's risk/tier, not asked of the human. The
-run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
+**Deliberate divergence from superpowers 5.1.0:** upstream subagent-driven-development
+mandates two ORDERED review passes (spec compliance first, then code quality) and
+red-flags merging them. Ultrapowers runs ONE merged spec+quality pass per fix-loop
+iteration (`lean`), or two independent merged passes (`adversarial`) — a deliberate
+trade of upstream's ordering for headless wall-clock, not an implementation of it.
+If upstream's evidence later shows the ordering matters, the adversarial profile is
+the place to restore it (pass 1 spec-only, pass 2 quality-only).
+
+The reviewer always runs at the most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks high-stakes / `most-capable` tasks `adversarial` (two independent passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk/tier, not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
@@ -116,26 +124,28 @@ Flag only issues worth fixing. Minor style nits that a linter would catch automa
 
 ## Reviewer verdict schema
 
-```json
+<!-- BAKE:REVIEWER_SCHEMA -->
+```
 {
-  "type": "object",
-  "required": ["verdict", "issues"],
-  "properties": {
-    "verdict": { "enum": ["PASS", "FIX_REQUIRED"] },
-    "issues": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity", "detail"],
-        "properties": {
-          "severity": { "enum": ["blocking", "minor"] },
-          "detail": { "type": "string" }
-        }
-      }
-    }
-  }
+  type: 'object',
+  required: ['verdict', 'issues'],
+  properties: {
+    verdict: { enum: ['PASS', 'FIX_REQUIRED'] },
+    issues: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['severity', 'detail'],
+        properties: {
+          severity: { enum: ['blocking', 'minor'] },
+          detail: { type: 'string' },
+        },
+      },
+    },
+  },
 }
 ```
+<!-- /BAKE -->
 
 ---
 
