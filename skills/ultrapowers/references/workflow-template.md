@@ -37,8 +37,7 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 - `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
   is the full verbatim task text (the script cannot resolve file references). `review` is the optional
   per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
-  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task;
-  `title`, `tier`, `acceptance`, `files`, and `review` are advisory inputs the prompts consume.**
+  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task. `title` (completeness task list), `tier` (model selection), and `review` (per-task depth) are consumed; `acceptance` and `files` are currently UNUSED by the workflow — the verbatim `body` is authoritative for acceptance criteria and file lists.**
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
@@ -119,7 +118,9 @@ literal" rule is obsolete. Run the skill from inside the target repo.
   cascade; the integration branch is untouched.
 - Failure containment: a budget exhausted at launch defers the whole run before setup (early
   return, every task in `unfinished`); mid-run exhaustion defers remaining waves/chunks; a thrown
-  `agent()` call degrades to one failed task (`reviewVerdict: 'agent-error'`), never the run.
+  task-pipeline `agent()` call degrades to one failed task (`reviewVerdict: 'agent-error'`);
+  merge/reconcile/integration throws are caught and contained; the one deliberate exception is
+  SETUP — a failed setup aborts the run before any task spends tokens.
 - `phase('Integration Review')` — one completeness-critic agent runs the suite and reviews against
   the plan.
 - Returns the structured report from `report-format.md`.
@@ -135,8 +136,7 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 `reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
 constant in `workflow.js`, and `args.tierOverrides` is merged over it per run (`most-capable` is
-normalized to the `mostCapable` key; unknown tiers fall back to `standard`). Reviewers always run at
-`most-capable` (`opus`), regardless of overrides to the implementer tiers.
+normalized to the `mostCapable` key; unknown tiers fall back to `standard`). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
 
 **Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
 the agent returns "There's an issue with the selected model" and does no work — whereas
