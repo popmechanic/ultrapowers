@@ -8,11 +8,44 @@ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 - A short title and description paragraph.
 - A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels.
 - One or more checkbox steps (`- [ ] …`) describing what the task does.
+- Optionally, the parallel-execution markers from `plan-markers.md`: `**Type:**` and
+  `**Depends-on:**` lines between the task heading and the `**Files:**` block.
 
 Parse each task to extract two file sets:
 
 - **writes** = `Create:` paths ∪ `Modify:` paths (files the task changes on disk).
 - **reads** = `Test:` paths are treated as reads only — they do not generate outbound edges unless another task also writes them.
+
+Extract each task's verbatim body **fence-aware**: a heading inside a ``` code fence
+is content, not a section boundary — plans routinely embed whole markdown documents
+inside their steps.
+
+---
+
+## Classify Before Building the DAG
+
+Classify every task per `plan-markers.md` — trust an explicit `**Type:**` marker;
+otherwise apply the contract heuristics there (release → manual → gate →
+implementation, in that precedence). The dispositions:
+
+- **implementation** — enters the DAG below.
+- **gate** — leaves the task set. Compile it into run configuration: its suite
+  command informs `testCmd`; its expectations are listed in the transparency block
+  so the human sees what the engine's per-wave merge tests and completeness critic
+  now cover. Never executed as a task.
+- **release** / **manual** — leaves the task set. Collect verbatim, in document
+  order, into the **post-merge runbook** (rendered with the final report; handed to
+  `superpowers:finishing-a-development-branch` on approval). Never run headless,
+  never silently dropped.
+
+While classifying, also:
+
+- **Inline preamble knowledge.** Coordination notes living outside task bodies
+  (ordering sections, port tables, exclusion lists) must be copied into the bodies
+  of the tasks they affect — task agents see only their own `body`.
+- **Supersede blanket ordering prose.** "Execute phases in order" converts to edges
+  only where it names concrete task pairs; otherwise the computed DAG supersedes it
+  and the supersession is recorded as a judgment line in the transparency block.
 
 ---
 
@@ -20,9 +53,14 @@ Parse each task to extract two file sets:
 
 For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A → B** (meaning B depends on A) when any of the following hold:
 
-1. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
-2. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan).
-3. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task number or title).
+1. **Explicit marker:** B carries `**Depends-on:**` naming A. Marker edges are
+   **additive** to the inferred rules below — the union orders the waves.
+   `**Depends-on:** none` asserts the author expects no incoming edges; if a file
+   rule still finds one, the file edge wins and the disagreement is surfaced in the
+   transparency block under `marker_conflicts`.
+2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
+3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan).
+4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task number or title). A phase-level reference (`after phase C`) expands to an edge from every task in that phase.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
 
@@ -45,7 +83,7 @@ Each wave is a set of tasks that can execute in parallel — their dependencies 
 
 Apply these rules before finalizing the DAG:
 
-- **Ambiguous Files block:** if a task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. Place it in its own wave after those tasks.
+- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks.
 - **Implicit shared directories:** if two tasks each create or modify files in the same directory AND one task's description mentions scaffolding, initialization, or setup, serialize the scaffolding task before the other.
 - **Unknown paths:** a path that does not exist in the repo yet counts as a `Create:` — do not assume it is safe to write concurrently with another task that also lists that same path.
 
@@ -84,6 +122,16 @@ report (see `report-format.md`). Record the following:
 dag_edges:
   - T1 → T3  (T3 modifies app/foo.ts created by T1)
   - T2 → T3  (explicit: "after Task 2")
+  - T2 → T4  (marker: "Depends-on: 2")
+
+dispositions:
+  - T5: gate → compiled into testCmd / wave verification (not executed)
+  - T6: release → post-merge runbook
+marker_conflicts: []        # e.g. "Depends-on: none" overridden by a file edge
+inlined_notes:
+  - "port table from the preamble → T3, T4 bodies"
+
+post_merge_runbook: [T6]    # rendered with the final report, in document order
 
 waves:
   wave_0: [T1, T2]
