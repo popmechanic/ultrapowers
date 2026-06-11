@@ -52,7 +52,10 @@ Each worktree is checked out on a runtime-assigned branch named:
 worktree-wf_<runId>-<n>
 ```
 
-Branches are locked for the duration of the run. When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists until the merge step consumes it.
+Branches are locked for the duration of the run. When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists until the wave's merge agent has merged the branch and
+the suite passed — then the merge agent removes the worktree and deletes the
+branch. Failed/blocked branches and their worktrees are deliberately left for
+inspection; the orchestrating agent may sweep them after the pre-merge gate.
 
 Each implementer agent is responsible for self-reporting its branch name and HEAD sha at the end of its run. This self-report is the only mechanism by which the merge step learns the task-to-branch mapping — the script cannot inspect the filesystem to discover branches.
 
@@ -66,13 +69,14 @@ The merge agent:
 
 1. Checks out the integration branch (`ultra/integration-<timestamp>`).
 2. Merges each reported branch in deterministic task-index order (task 0 first, then 1, 2, …). Fixed order makes conflicts reproducible.
-3. After all merges succeed, detects and runs the project's test command by checking in order: `pnpm-lock.yaml` → `pnpm check`; `package.json` (no pnpm lock) → `npm test`; `pytest.ini` / `pyproject.toml` / `setup.py` → `pytest`; `Cargo.toml` → `cargo test`; `go.mod` → `go test ./...`. **When `args.testCmd` is supplied, that exact command is used instead of this detection ladder** (set it for monorepos or custom runners; baked into `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
+3. After all merges succeed, detects and runs the project's test command. When no `testCmd` is provided, the merge agent detects and runs the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...). **When `args.testCmd` is supplied, that exact command is used instead** (set it for monorepos or custom runners; baked into `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
 4. Reports back: success with final integration HEAD sha, or failure with the conflict diff or failing test output.
 
 The canonical prompt wording:
 
 <!-- BAKE:MERGE_PROMPT -->
 You are the wave merge agent, operating on the session repo main checkout (no worktree). Check out {{INTEGRATION_BRANCH}}. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
+After ALL branches in your list are merged and the test suite passes, clean up the merged branches only: use git worktree list to find each merged branch's worktree, git worktree remove it, then git branch -d the branch. Leave any branch you did NOT merge — and its worktree — untouched; failed and blocked work must stay inspectable.
 <!-- /BAKE -->
 
 ---
