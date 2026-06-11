@@ -1135,3 +1135,30 @@ def test_cycle_error_names_one_concrete_edge_path(tmp_path):
     assert "One cycle:" in p.stderr
     assert "-> 2 (marker)" in p.stderr
     assert "-> 1 (marker)" in p.stderr
+
+
+def test_inline_files_header_backticked_paths_parse(tmp_path):
+    plan = tmp_path / "inline-files.md"
+    plan.write_text(
+        "### Task 1: a\n\n**Files:** `x.py` and `y.py`\n\n"
+        "### Task 2: b\n\n**Files:**\n- Modify: `z.py`\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == ["x.py", "y.py"]
+    # Disjoint concrete paths -> no ambiguous-files serialization, one wave:
+    assert not any(e["why"] == "ambiguous-files" for e in out["dag_edges"])
+    assert out["waves"] == [["1", "2"]]
+
+
+def test_inline_files_header_prose_value_surfaces(tmp_path):
+    plan = tmp_path / "inline-prose.md"
+    plan.write_text(
+        "### Task 1: a\n\n**Files:** see the bullets in the spec\n\n"
+        "### Task 2: b\n\n**Files:**\n- Modify: `z.py`\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == []          # falls to ambiguous-files as before
+    assert any(c["task"] == "1" and "inline" in c["note"].lower()
+               for c in out["marker_conflicts"])
