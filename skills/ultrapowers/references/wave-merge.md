@@ -79,6 +79,8 @@ You are the wave merge agent, operating on the session repo main checkout (no wo
 After ALL branches in your list are merged and the test suite passes, clean up the merged branches only: use git worktree list to find each merged branch's worktree, git worktree remove it, then git branch -d the branch. Leave any branch you did NOT merge — and its worktree — untouched; failed and blocked work must stay inspectable.
 <!-- /BAKE -->
 
+A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run — dependency edges, not the cascade, decide what downstream work is blocked.
+
 ---
 
 ## Reconciliation
@@ -97,17 +99,13 @@ Caps and failure handling:
 - If the reconciliation agent fails both attempts, the wave is marked **`blocked`**.
 - Its branches are left intact — do not delete worktrees for a blocked wave.
 - The blocked wave, its conflict/diff, and the failing output are recorded in the final report.
-- When a wave's merge cannot be reconciled, the wave is marked **`blocked`** and **all later waves are cascade-blocked** (recorded in `unfinished`, surfaced under `## Blocked Waves`). Every later wave merges onto the same integration branch the failed wave left in an unknown state, and by wave construction each wave-N+1 task depends on some wave-N task — so continuing selectively would integrate onto a broken base. The committed workflow therefore stops dispatching after an unrecoverable merge; nothing after the blocked wave runs. The integration/completeness review still runs and reports.
+- When a wave's merge cannot be reconciled, the wave is marked **`blocked`** and **all later waves are cascade-blocked** (recorded in `unfinished` and `blockedWaves`). Every later wave merges onto the same integration branch the failed wave left in an unknown state, and in parallel mode each wave-N+1 task depends on some wave-N task by construction; degraded sequential runs cascade conservatively too — after a failed MERGE the integration branch is in an unknown state either way. (A SKIPPED merge — nothing to integrate — does not cascade.) The committed workflow therefore stops dispatching after an unrecoverable merge; nothing after the blocked wave runs. The integration/completeness review still runs and reports.
 
 ---
 
 ## Integration and Completeness Review
 
-After the final wave's merge agent completes successfully (or is blocked), the controller:
-
-1. Runs the full test suite one more time on the integration branch from the main checkout, regardless of whether the last wave passed its own test run. Log the result.
-2. Dispatches a **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `workflow.js` at build time, not loaded from Superpowers at runtime. The agent receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks, the blocked-wave log (if any), and the final test output.
-3. All findings from the critic — gaps, unverified claims, untested paths — are appended to the run report verbatim.
+After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `workflow.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch from the main checkout (its result populates the report's `tests` field) and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
 The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence):
 
@@ -115,7 +113,7 @@ The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original
 {{PLAN_STEP}}What plan requirement is unmet? What claim is unverified? What code path is untested? On {{INTEGRATION_BRANCH}} from the main checkout, {{TEST_INSTRUCTION}}, then review the integrated result against the original plan. List every gap, unverified claim, and untested path.
 <!-- /BAKE -->
 
-The report section header for this step is `## Integration Review`. Blocked waves appear under `## Blocked Waves`.
+In the structured report this lands in `tests` and `completenessFindings`; blocked waves land in `blockedWaves` (presentation item 6), cascaded work in `unfinished`.
 
 ---
 
@@ -125,10 +123,10 @@ Every truncation is surfaced explicitly:
 
 | Event | Logged via | Appears in report |
 |---|---|---|
-| Reconciliation attempt 1 or 2 fails | `log()` | `## Blocked Waves` |
-| Wave marked `blocked` | `log()` | `## Blocked Waves` |
+| Reconciliation attempt 1 or 2 fails | `log()` | `blockedWaves` |
+| Wave marked `blocked` | `log()` | `blockedWaves` |
 | Downstream wave cascade-blocked | `log()` (one line per blocked wave) | `unfinished` (`cascade-blocked by wave N` entries) |
 | Fix-loop cap reached | `log()` | failed task in `tasks[]` (`reviewVerdict: 'fix-loop-exhausted'`) |
-| Completeness-critic findings | — | `## Integration Review` |
+| Completeness-critic findings | — | `completenessFindings` |
 
 Nothing is swallowed. If a cap fires and nothing is logged, that is a bug in the workflow.
