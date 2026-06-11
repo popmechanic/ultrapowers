@@ -1,6 +1,7 @@
 """report-format.md must present the post-merge runbook at the pre-merge gate
 and route it into the finishing handoff on approval."""
 import pathlib
+import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REPORT = ROOT / "skills/ultrapowers/references/report-format.md"
@@ -18,3 +19,16 @@ def test_report_contract_includes_blocked_waves():
     assert "blockedWaves" in text          # schema + field table
     assert "Blocked waves" in text         # presentation item
     assert "clean up worktrees" not in text  # finishing-a-development-branch never will
+
+
+def test_report_format_documents_every_review_verdict():
+    wf = (ROOT / "skills/ultrapowers/workflow.js").read_text()
+    doc = REPORT.read_text()
+    verdicts = set()
+    for frag in re.findall(r"reviewVerdict:([^\n]+)", wf):
+        verdicts.update(re.findall(r"'([a-z][a-z-]*)'", frag))
+    assert verdicts, "no reviewVerdict literals found in workflow.js"
+    for v in sorted(verdicts):
+        assert "`" + v + "`" in doc, (
+            "report-format.md does not document reviewVerdict '" + v + "' — "
+            "workflow.js emits it; update the field-reference table")
