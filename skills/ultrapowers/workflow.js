@@ -554,15 +554,21 @@ const unfinished = []
       judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoint not in this run — ' +
         'unbound for dependency blocking (legitimate on resume runs; otherwise check for a typo)')
       log('edge ' + a + ' -> ' + b + ' has an unbound endpoint — dependency blocking will not fire for it')
-    } else if (waveIndexOf[a] >= waveIndexOf[b]) {
-      // Blocking binds only ACROSS dispatch boundaries: a dependent co-located
-      // with (or scheduled before) its prerequisite is already in flight when
-      // the failure lands. Compiler waves always layer dependents later;
-      // hand-authored or redirect waves may not — say so instead of letting
-      // the blocking guarantee silently evaporate.
+    } else if (waveIndexOf[a] > waveIndexOf[b]) {
+      // Inverted: the dependent is scheduled BEFORE its prerequisite — blocking
+      // can never bind. Compiler waves always layer dependents later;
+      // hand-authored or redirect waves may not.
       judgmentCalls.push('edge ' + a + ' -> ' + b + ': \'' + b + '\' does not run after \'' + a +
-        '\' (same wave or earlier) — dependency blocking cannot bind; move the dependent to a later wave')
-      log('edge ' + a + ' -> ' + b + ' endpoints share a wave or are inverted — blocking will not fire')
+        '\' (earlier wave) — dependency blocking cannot bind; move the dependent to a later wave')
+      log('edge ' + a + ' -> ' + b + ' endpoints are inverted — blocking will not fire')
+    } else if (waveIndexOf[a] === waveIndexOf[b]) {
+      // Same wave: the per-chunk noteFailures() re-check DOES bind across
+      // 16-task chunk boundaries, so blocking here is position-dependent, not
+      // impossible — say exactly that.
+      judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoints share a wave — blocking is ' +
+        'chunk-position-dependent (fires only across 16-task chunk boundaries); ' +
+        'move the dependent to a later wave for a guarantee')
+      log('edge ' + a + ' -> ' + b + ' endpoints share a wave — blocking only fires across chunk boundaries')
     }
   }
 }

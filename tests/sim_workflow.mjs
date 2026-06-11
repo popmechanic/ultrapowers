@@ -54,6 +54,10 @@ function taskIdFromLabel(label) {
 function makeAgent(handle) {
   return async (prompt, opts) => {
     const label = opts.label || ''
+    // Every dispatched prompt must START with the baked GUARD — reviewer-prompts.md
+    // calls it the sole safety net; a dropped prepend at any call site must fail here.
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
     if (handle) {
       const r = handle(label, prompt, opts)
       if (r !== undefined) return r
@@ -411,6 +415,16 @@ async function scenarioTierOverrideInvalid() {
     threw = /tierOverrides/.test(e.message) && /gpt-4/.test(e.message)
   }
   assert(threw, 'tierOverrideInvalid: invalid model alias must throw at launch, before any agent runs')
+  // Unknown override KEY must also throw at launch (documented alongside values).
+  let keyThrew = false
+  try {
+    await runWorkflow({ agent: makeAgent(),
+      args: Object.assign({}, baseArgs, { tierOverrides: { chepa: 'haiku' } }),
+      budget: undefined })
+  } catch (e) {
+    keyThrew = /not a tier/.test(e.message)
+  }
+  assert(keyThrew, 'tierOverride: unknown override key throws at launch')
   console.log('scenario tier-override-invalid: OK')
 }
 

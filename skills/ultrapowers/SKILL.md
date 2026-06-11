@@ -264,4 +264,4 @@ revision) or an inability to create the integration branch.
 - `scripts/validate_skill.py` — run `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` from the repo root (CI also runs it for `skills/ultraplan`) to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for plans (marked: adopted verbatim; unmarked: heuristic-flagged draft): transparency-block JSON from a plan path.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
-- `probe.js` — the zero-agent engine preflight installed and launched at Step 4a½.
+- `probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
