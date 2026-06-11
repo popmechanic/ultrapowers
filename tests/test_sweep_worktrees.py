@@ -129,3 +129,34 @@ def test_sweep_rejects_unknown_argument(tmp_path):
                        capture_output=True, text=True)
     assert p.returncode == 2
     assert "usage" in p.stderr.lower()
+
+
+def test_sweep_from_inside_a_worktree_still_sweeps(tmp_path):
+    repo = make_repo(tmp_path)
+    wt_a, _ = add_engine_worktree(repo, "inside", "i.txt", merge=True)
+    wt_b, _ = add_engine_worktree(repo, "other", "x.txt", merge=True)
+
+    # cwd INSIDE an engine worktree: ROOT must still resolve to the main repo.
+    p = subprocess.run(["bash", str(SWEEP)], cwd=wt_a, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt_a.exists()
+    assert not wt_b.exists()
+    assert "2 worktree(s) removed" in p.stdout
+
+
+def test_sweep_warns_but_finishes_when_rm_fails(tmp_path):
+    import os
+    repo = make_repo(tmp_path)
+    stale = repo / ".claude" / "worktrees" / "wf_aaa-protected"
+    stale.mkdir(parents=True)
+    (stale / "f.txt").write_text("f\n")
+    wt_real, _ = add_engine_worktree(repo, "zzz-real", "z.txt", merge=True)
+    os.chmod(stale, 0o555)   # contents cannot be unlinked -> rm -rf fails
+    try:
+        p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert "warn: could not fully remove" in p.stderr
+        assert not wt_real.exists()          # later worktree still swept
+        assert "swept:" in p.stdout          # summary still printed
+    finally:
+        os.chmod(stale, 0o755)               # let pytest clean tmp_path

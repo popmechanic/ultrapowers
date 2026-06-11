@@ -7,12 +7,13 @@
 # Unmerged branches (failed/blocked tasks) are KEPT for inspection; pass
 # --force to delete those too once they have been triaged.
 #
-# Run from anywhere inside the target repo, typically at the Step-5 Approve
-# path with the integration branch (or post-merge main) checked out, so
-# "merged into HEAD" means what you expect.
+# Run from anywhere inside the target repo (including from inside an engine
+# worktree), typically at the Step-5 Approve path with the integration branch
+# (or post-merge main) checked out, so "merged into HEAD" means what you expect.
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
+GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
+ROOT="$(dirname "$GIT_COMMON")"
 FORCE="${1:-}"
 if [ -n "$FORCE" ] && [ "$FORCE" != "--force" ]; then
   echo "usage: sweep_worktrees.sh [--force]" >&2
@@ -25,7 +26,7 @@ for wt in "$ROOT"/.claude/worktrees/wf_*; do
   # --force --force also removes locked worktrees; a stale directory git no
   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
   if ! git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
-    rm -rf "$wt"
+    rm -rf "$wt" 2>/dev/null || echo "warn: could not fully remove $wt — inspect manually" >&2
   fi
   removed_worktrees=$((removed_worktrees + 1))
 done
