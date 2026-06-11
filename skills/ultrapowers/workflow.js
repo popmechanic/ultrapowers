@@ -303,7 +303,8 @@ const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
 const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 
 // Returns true for a task result whose worktree branch is ready to merge.
-const isMergeable = (r) => r && r.status === 'done' && r.branch
+// headSha is required: downstream steps refuse to operate on a guessed sha.
+const isMergeable = (r) => r && r.status === 'done' && r.branch && r.headSha
 
 // Threaded into implementer/reviewer dispatches so task agents run the project's
 // actual test command instead of guessing ("pnpm check or equivalent").
@@ -554,6 +555,7 @@ for (let w = 0; w < WAVES.length; w++) {
   noteFailures()
   const results = []
   for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
+    noteFailures()
     const chunk = WAVES[w].slice(off, off + CONCURRENCY)
     if (budgetExhausted()) {
       chunk.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted mid-wave)'))
@@ -569,10 +571,23 @@ for (let w = 0; w < WAVES.length; w++) {
     })
     if (runnable.length === 0) continue
     const chunkResults = await parallel(runnable.map((task) => () => runTask(task, waveBaseSha)))
-    for (const r of chunkResults) results.push(r)
+    for (const r of chunkResults) { results.push(r); taskResults.push(r) }
   }
-  for (const r of results) taskResults.push(r)
   noteFailures()
+
+  // Fix A: when every task in the wave is dep-blocked/failed (no mergeable branches),
+  // skip the merge entirely — the integration branch is untouched, so no cascade.
+  const mergeable = results.filter(isMergeable)
+  if (mergeable.length === 0) {
+    waveMerges.push({
+      wave: w + 1,
+      status: 'SKIPPED',
+      detail: 'no mergeable branches — every task in this wave failed, was blocked, or was deferred; integration branch untouched',
+      branches: [],
+    })
+    log('wave ' + (w + 1) + ' merge skipped: no mergeable branches')
+    continue
+  }
 
   const merge = await mergeWave(results, w)
   // Record every wave's merge outcome (success too) so the pre-merge gate can see
@@ -600,6 +615,7 @@ for (let w = 0; w < WAVES.length; w++) {
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
     // Later waves depend on earlier ones by construction: cascade-block them.
     for (let d = w + 1; d < WAVES.length; d++) {
+      log('wave ' + (d + 1) + ' cascade-blocked by wave ' + (w + 1))
       WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
     }
     break
