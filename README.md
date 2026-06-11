@@ -32,7 +32,7 @@ the "execute the plan" step: brainstorming, planning, and branch-finishing hand 
 ## Why you might want it
 
 - **Throughput where the plan allows it.** Independent tasks run concurrently (up to 16 agents);
-  dependent tasks wait exactly as long as they must. Plans too small or too entangled to benefit
+  dependent tasks wait only for the prior wave to land. Plans too small or too entangled to benefit
   are detected up front and run sequentially — you don't pay parallelism overhead for nothing.
 - **Deterministic orchestration — and deterministic compilation.** The engine is a frozen,
   version-controlled Dynamic Workflow script (`skills/ultrapowers/workflow.js`) with the review

@@ -30,7 +30,7 @@ for wt in "$ROOT"/.claude/worktrees/wf_*; do
   # Removing the worktree the caller is standing in succeeds (every later
   # command uses -C "$ROOT") but leaves their shell in an unlinked directory —
   # say so instead of letting subsequent commands fail confusingly.
-  case "$PWD/" in
+  case "$(pwd -P)/" in
     "$wt"/*) echo "note: removing your current directory ($wt) — cd \"$ROOT\" afterwards" >&2 ;;
   esac
   # --force --force also removes locked worktrees; a stale directory git no

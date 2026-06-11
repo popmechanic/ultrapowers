@@ -158,4 +158,4 @@ mode: parallel   # or "sequential" if small-plan degrade applied
 degrade_reason:  # populated only in sequential mode
 ```
 
-Include this block verbatim in the agent's report so reviewers can audit the scheduling decisions without re-running the analysis.
+Render this block verbatim at the Step-3 gate so the human can audit the scheduling decisions without re-running the analysis (the waves, edges, and runbook then reappear in the final report, per the note above).

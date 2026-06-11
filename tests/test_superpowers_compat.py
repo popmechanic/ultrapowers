@@ -213,7 +213,8 @@ def test_sdd_done_with_concerns_handling_unchanged():
 
 def test_code_reviewer_dropped_subchecks_still_exist():
     text = (installed() / "skills/requesting-code-review/code-reviewer.md").read_text()
-    for sub in ("Type safety where applicable?", "Edge cases handled?"):
+    for sub in ("Type safety where applicable?", "Edge cases handled?",
+                "Integration tests where they matter?"):
         assert sub in text, (
             sub + " is gone from code-reviewer.md — reviewer-prompts.md's "
             "deliberate-drop ledger names it; re-audit the divergence note")
