@@ -26,6 +26,7 @@ from pathlib import Path
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 PATH_RE = re.compile(r"`([^`]+)`")
@@ -98,52 +99,72 @@ def parse_task(t):
     type_unparsed = None
     deps, deps_none, deps_mixed = [], False, False
     late_markers = []
+    dup_types = []
+    near_miss = []
     creates, modifies, reads = [], [], []
     in_files = False
     # The marker contract places **Type:**/**Depends-on:** "immediately after
-    # the task heading, before the **Files:** block". Honor markers only in that
-    # header block: the first **Files:** line or checkbox step ends it. An
-    # unfenced marker-shaped line later in the body (e.g. an example inside a
-    # step) is recorded and surfaced as a conflict instead of being TRUSTED —
-    # otherwise it would silently reclassify the task with heuristic=false or
-    # fabricate a trusted marker edge.
+    # the task heading". The header block is therefore the CONTIGUOUS run of
+    # blank lines and marker(-shaped) lines that directly follows the heading;
+    # the first other line — a description paragraph, the **Files:** line, a
+    # checkbox step, anything — ends it. Marker-shaped lines after that are
+    # recorded and surfaced as conflicts instead of being TRUSTED: an unfenced
+    # example deep in a prose-only task must never silently reclassify the task
+    # with heuristic=false or fabricate a trusted marker edge.
     in_header = True
     for line, fenced in _fence_aware_lines(t["body"]):
         if fenced:
             continue
         s = line.strip()
-        if s.startswith("**Files:**") or s.startswith("- ["):
-            in_header = False
+        if TASK_HEAD.match(s):
+            continue  # the task's own heading line
+        is_markerish = bool(MARKER_ISH.match(s))
+        if in_header and not s:
+            continue  # blank lines inside the header block are fine
+        if in_header and not is_markerish:
+            in_header = False  # first non-marker, non-blank line ends the header
         # Check for **Type:** lines
         if s.startswith("**Type:**"):
             if not in_header:
                 late_markers.append(s)
             else:
                 m = MARKER_TYPE.match(s)
-                if m and ttype is None and m.group(1) in TYPES:
-                    ttype = m.group(1)
+                if m and m.group(1) in TYPES:
+                    if ttype is None:
+                        ttype = m.group(1)
+                    elif m.group(1) != ttype:
+                        # A second, DIFFERENT valid Type marker: first wins, but
+                        # a direct contradiction between trusted markers must
+                        # never vanish silently.
+                        dup_types.append(m.group(1))
                 elif ttype is None and type_unparsed is None:
                     # Unparseable or unrecognized type marker
                     remainder = s[len("**Type:**"):].strip()
                     if remainder:
                         type_unparsed = remainder
-        m = MARKER_DEPS.match(s)
-        if m:
+        elif (m := MARKER_DEPS.match(s)):
             if not in_header:
                 late_markers.append(s)
             else:
                 # Accumulate across repeated **Depends-on:** lines — first-wins
                 # silently dropped declared prerequisites. `none` combined with
-                # concrete ids is contradictory: ids win, surfaced as a conflict.
-                val = m.group(1).strip()
-                if val.lower() == "none":
-                    if deps:
+                # concrete ids (across lines OR inline, `none, A`) is
+                # contradictory: ids win, surfaced as a conflict.
+                tokens = [d.strip() for d in m.group(1).split(",") if d.strip()]
+                id_tokens = [d for d in tokens if d.lower() != "none"]
+                has_none = len(id_tokens) != len(tokens)
+                if has_none:
+                    if deps or id_tokens:
                         deps_mixed = True
                     deps_none = True
-                else:
-                    if deps_none:
+                if id_tokens:
+                    if deps_none and not has_none:
                         deps_mixed = True
-                    deps.extend(d.strip() for d in val.split(",") if d.strip())
+                    deps.extend(id_tokens)
+        elif is_markerish and in_header:
+            # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type :**`)
+            # would otherwise silently degrade to heuristics with no feedback.
+            near_miss.append(s)
         if s.startswith("**Files:**"):
             in_files = True
             continue
@@ -197,6 +218,7 @@ def parse_task(t):
              # once concrete prerequisites are declared; surfaced via deps_mixed)
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
+             dup_types=dup_types, near_miss=near_miss,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -422,6 +444,19 @@ def main(argv=None):
                  + "; ".join(sorted(set(t["late_markers"]))[:3])
                  + ") — markers go immediately after the task heading"}
         for t in tasks if t.get("late_markers")]
+    # Contradictory trusted Type markers: first wins, surfaced loudly.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "contradictory **Type:** markers (" + t["marker_type"] + " vs "
+                 + ", ".join(sorted(set(t["dup_types"]))) + ") — the first one wins"}
+        for t in tasks if t.get("dup_types")]
+    # Near-miss marker spellings: degraded to heuristics, but never silently.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "marker-like line(s) not recognized (check spelling/case: "
+                 + "; ".join(sorted(set(t["near_miss"]))[:3])
+                 + ") — ignored, heuristics applied"}
+        for t in tasks if t.get("near_miss")]
     # `Depends-on: none` combined with concrete ids — ids won, none is void.
     type_conflicts += [
         {"task": t["id"], "edge": "",

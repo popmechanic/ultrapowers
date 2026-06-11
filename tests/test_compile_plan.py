@@ -626,3 +626,90 @@ def test_self_referential_depends_on_surfaces_conflict(tmp_path):
     out = compile_plan(plan)
     assert out["dag_edges"] == []
     assert any(c["task"] == "A" and "self" in c["note"].lower() for c in out["marker_conflicts"])
+
+
+def test_prose_only_task_does_not_trust_late_markers(tmp_path):
+    plan = tmp_path / "proseonly.md"
+    plan.write_text(
+        "# Plan: Prose only\n\n"
+        "### Task A: reference notes\n\n"
+        "This task collects the marker reference material.\n\n"
+        "Plans may carry a line like:\n\n"
+        "**Type:** release\n\n"
+        "somewhere in the marker reference table.\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "implementation"
+    assert by_id["A"]["heuristic"] is True
+    assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_marker_after_description_paragraph_is_demoted(tmp_path):
+    # The contract says markers go IMMEDIATELY after the heading; a marker that
+    # follows a description paragraph is ignored and surfaced, not trusted.
+    plan = tmp_path / "descfirst.md"
+    plan.write_text(
+        "# Plan: Description first\n\n"
+        "### Task A: misplaced marker\n\n"
+        "A short description paragraph comes first here.\n\n"
+        "**Type:** gate\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "implementation"   # heuristic, not trusted gate
+    assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_conflicting_type_markers_surface_first_wins(tmp_path):
+    plan = tmp_path / "duptype.md"
+    plan.write_text(
+        "# Plan: Dup type\n\n"
+        "### Task A: contradictory types\n\n"
+        "**Type:** gate\n**Type:** implementation\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "gate"             # first wins
+    assert by_id["A"]["heuristic"] is False
+    assert any(c["task"] == "A" and "contradictory" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_inline_none_plus_ids_surfaces_mixed_conflict(tmp_path):
+    plan = tmp_path / "inlinemix.md"
+    plan.write_text(
+        "# Plan: Inline mix\n\n"
+        "### Task A: base\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: mixed inline\n\n**Type:** implementation\n"
+        "**Depends-on:** none, A\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "marker"} in out["dag_edges"]
+    assert any(c["task"] == "B" and "none" in c["note"] and "ids win" in c["note"]
+               for c in out["marker_conflicts"])
+    # 'none' must not be treated as a ghost task id
+    assert not any("none ->" in c.get("edge", "") for c in out["marker_conflicts"])
+
+
+def test_near_miss_marker_spelling_surfaces_conflict(tmp_path):
+    plan = tmp_path / "nearmiss.md"
+    plan.write_text(
+        "# Plan: Near miss\n\n"
+        "### Task A: typo'd markers\n\n"
+        "**type:** gate\n**Depends-On:** B\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "implementation"   # heuristics, not the typo'd gate
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
+    assert any(c["task"] == "A" and "spelling" in c["note"].lower()
+               for c in out["marker_conflicts"])
