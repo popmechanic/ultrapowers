@@ -27,6 +27,12 @@ fi
 removed_worktrees=0
 for wt in "$ROOT"/.claude/worktrees/wf_*; do
   [ -e "$wt" ] || continue
+  # Removing the worktree the caller is standing in succeeds (every later
+  # command uses -C "$ROOT") but leaves their shell in an unlinked directory —
+  # say so instead of letting subsequent commands fail confusingly.
+  case "$PWD/" in
+    "$wt"/*) echo "note: removing your current directory ($wt) — cd \"$ROOT\" afterwards" >&2 ;;
+  esac
   # --force --force also removes locked worktrees; a stale directory git no
   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
   # Increment only on a successful removal so the summary is accurate.

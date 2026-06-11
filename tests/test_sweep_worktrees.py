@@ -161,3 +161,12 @@ def test_sweep_warns_but_finishes_when_rm_fails(tmp_path):
         assert "1 worktree(s) removed" in p.stdout  # protected stale dir must not be counted
     finally:
         os.chmod(stale, 0o755)               # let pytest clean tmp_path
+
+
+def test_sweep_warns_when_removing_the_callers_worktree(tmp_path):
+    repo = make_repo(tmp_path)
+    wt, _ = add_engine_worktree(repo, "cwd", "c.txt", merge=True)
+    p = subprocess.run(["bash", str(SWEEP)], cwd=wt, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt.exists()
+    assert "current directory" in p.stderr   # the caller is told their cwd is gone
