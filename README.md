@@ -80,6 +80,33 @@ Deep dive: [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md) is the f
 the reviewer prompts and schemas, wave-merge mechanics, the report format, and the maintainer
 guide for `workflow.js`.
 
+## Authoring parallel-ready plans (ultraplan)
+
+Superpowers plans are written for a sequential, human-in-the-loop executor;
+ultrapowers executes them parallel and headless. Most plans compile cleanly anyway —
+real cross-task constraints tend to be shared-file edges, which the dependency
+analysis already infers — but release rituals, verification-only gate tasks, and
+"execute phases in order" prose need interpretation. Two layers close that gap:
+
+- **Markers** — additive per-task annotations defined in
+  `skills/ultrapowers/references/plan-markers.md`:
+  `**Type:** implementation | gate | release | manual` and
+  `**Depends-on:** <task-ids>`. Sequential executors ignore them; ultrapowers
+  compiles them deterministically. Gates become run configuration (their suite
+  commands inform `testCmd`); `release`/`manual` tasks are excluded into a
+  **post-merge runbook** presented with the final report — never run headless,
+  never silently dropped.
+- **The `ultraplan` skill** — load it alongside `superpowers:writing-plans` when
+  authoring a plan destined for `/ultrapowers`. It injects the markers and the
+  worktree-pure authoring rules (self-contained bodies, ordering as `Depends-on:`,
+  no branch instructions, concurrency-safe tests) at writing time, so the compile
+  step parses instead of inferring.
+
+Unmarked plans still run: the compiler classifies each task against the
+worktree-pure contract (no pushes, no human steps, no mutation outside the
+worktree) and surfaces every reinterpretation in the wave-plan approval gate —
+you approve the interpretation, not just the grouping.
+
 ## Install
 
 ```
