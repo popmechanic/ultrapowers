@@ -89,6 +89,7 @@ redirect rather than pausing a run that cannot pause. The same downgrade applies
 `BLOCKED`: upstream's interactive ladder (add context → stronger model → split →
 human) cannot run headless, so a first-dispatch `BLOCKED` records the task as
 `failed` (`not-reviewed`) and surfaces at the pre-merge gate for a redirect.
+`DONE_WITH_CONCERNS` is likewise downgraded: upstream addresses the concerns before review; headless, the independent review pass IS that check — concerns are logged as judgment calls, surfaced at the pre-merge gate, and never block dispatch of the review.
 
 ---
 
@@ -176,4 +177,4 @@ When the reviewer returns `FIX_REQUIRED`:
 | **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems |
 | **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches |
 
-Assign tier at task-dispatch time based on estimated scope. Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models.
+Assign tier at task-dispatch time based on estimated scope. Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models. `tierOverrides` reaches every non-review role: setup and merge run at the overridden `cheap`, reconcile and fix-rounds at the overridden `mostCapable`. Only the reviewer and completeness-critic models are pinned to the default most-capable, override-proof.
