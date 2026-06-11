@@ -14,8 +14,8 @@ import fs from 'node:fs'
 const WF_URL = new URL('../skills/ultrapowers/workflow.js', import.meta.url)
 const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
 
-function runWorkflow({ agent, args, budget }) {
-  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
+function runWorkflow({ agent, args, budget, parallel: parallelOverride }) {
+  const parallel = parallelOverride || ((thunks) => Promise.all(thunks.map((t) => t())))
   const phase = () => {}
   const log = () => {}
   // Execute the workflow body as the engine would: an async wrapper whose
@@ -458,18 +458,19 @@ async function scenarioBaselineRed() {
 
 // ── Scenario: exhausted budget defers every wave, runs nothing ────────────────
 async function scenarioBudgetExhausted() {
-  let implRan = false
+  let agentCalls = 0
+  const inner = makeAgent()
   const r = await runWorkflow({
-    agent: makeAgent((label) => {
-      if (label.startsWith('impl:')) { implRan = true }
-      return undefined
-    }),
+    agent: async (prompt, opts) => { agentCalls += 1; return inner(prompt, opts) },
     args: baseArgs, budget: { total: 100, remaining: 0 },
   })
-  assert(!implRan, 'budget: no implementer runs on an exhausted budget')
+  assert(agentCalls === 0, 'budget: NO agents dispatched at all (setup and integration included)')
   eq(r.tasks, [], 'budget: no task results')
+  eq(r.tests.passed, false, 'budget: tests reported not-passed (not run)')
   assert(['A', 'B', 'C'].every((id) => r.unfinished.some((u) => u.startsWith(id + ':') && /budget/.test(u))),
     'budget: every task surfaced as deferred, none silently dropped')
+  assert(r.judgmentCalls.some((j) => /budget exhausted before setup/.test(j)),
+    'budget: deferral recorded as a judgment call')
   console.log('scenario budget-exhausted: OK')
 }
 
@@ -669,6 +670,7 @@ async function scenarioMetaAbsentEngine() {
   // Strip the entire `export const meta = { ... }` block (multi-line object literal)
   // by removing from 'export const meta' up through the closing '}\n' of that block.
   const srcWithoutMeta = SRC.replace(/const meta\s*=\s*\{[^}]*\}\s*\n/, '')
+  assert(srcWithoutMeta !== SRC, 'metaAbsent: the regex actually stripped the meta block — update it if meta gained nesting')
   const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
   const phase = () => {}
   const log = () => {}
@@ -734,6 +736,60 @@ async function scenarioDependentBlockedByFailedTask() {
   console.log('scenario dependent-blocked-by-failed-task: OK')
 }
 
+// ── Scenario: chunk-cap — 17-task wave must not exceed engine's 16-agent cap ────
+async function scenarioChunkCap() {
+  const tasks = Array.from({ length: 17 }, (_, i) =>
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+  const args = { waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const batchSizes = []
+  const parallel = (thunks) => { batchSizes.push(thunks.length); return Promise.all(thunks.map((t) => t())) }
+  const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined, parallel })
+  assert(Math.max(...batchSizes) <= 16, 'chunkCap: no parallel batch exceeds the 16-agent engine cap')
+  eq(batchSizes.reduce((a, b) => a + b, 0), 17, 'chunkCap: every task dispatched exactly once')
+  eq(r.tasks.length, 17, 'chunkCap: 17 task results')
+  assert(r.tasks.every((t) => t.status === 'done'), 'chunkCap: all 17 done')
+  console.log('scenario chunk-cap: OK')
+}
+
+// ── Scenario: transitive dep-block — closure blocks C via B via failed A ──────
+async function scenarioTransitiveDepBlock() {
+  const implCalled = new Set()
+  const waves = [
+    [
+      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+    ],
+    [
+      { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
+      { id: 'C', title: 'task C', body: 'do C', tier: 'cheap' },
+      { id: 'Y', title: 'task Y', body: 'do Y', tier: 'cheap' },
+    ],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['A', 'B'], ['B', 'C']] }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalled.add(taskIdFromLabel(label))
+        return undefined            // fall through to the default DONE stub
+      }
+      if (label.startsWith('review:') && taskIdFromLabel(label) === 'A') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('B'), 'transitive: direct dependent B never dispatched')
+  assert(!implCalled.has('C'), 'transitive: TRANSITIVE dependent C never dispatched')
+  assert(implCalled.has('Y'), 'transitive: unrelated sibling Y did dispatch')
+  assert(r.unfinished.some((u) => /^B: blocked/.test(u)) && r.unfinished.some((u) => /^C: blocked/.test(u)),
+    'transitive: B and C both surfaced in unfinished')
+  const y = r.tasks.find((t) => t.task === 'Y')
+  eq(y && y.status, 'done', 'transitive: Y completed')
+  console.log('scenario transitive-dep-block: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -759,4 +815,6 @@ await scenarioAgentThrowDegrades()
 await scenarioMergedWithoutHeadSha()
 await scenarioMetaAbsentEngine()
 await scenarioDependentBlockedByFailedTask()
+await scenarioChunkCap()
+await scenarioTransitiveDepBlock()
 console.log('ALL SCENARIOS PASSED')

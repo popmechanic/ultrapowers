@@ -475,6 +475,33 @@ const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
 
+const budgetExhausted = () => {
+  if (typeof budget === 'undefined' || !budget) return false
+  const r = (typeof budget.remaining === 'function') ? budget.remaining() : budget.remaining
+  return typeof r === 'number' && r <= 0
+}
+
+// A run launched with an already-exhausted budget defers everything up front:
+// dispatching setup (or the opus integration review) would spend agents on a
+// run that cannot execute a single task.
+if (budgetExhausted()) {
+  WAVES.forEach((w) => w.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted before setup)')))
+  log('budget exhausted before setup: deferring the entire run, no agents dispatched')
+  return {
+    integrationBranch,
+    waves: WAVES.map((w) => w.map((t) => t.id)),
+    dependencyEdges,
+    tasks: [],
+    tests: { command: undefined, passed: false, output: 'not run — budget exhausted before setup' },
+    baseline: {},
+    waveMerges: [],
+    judgmentCalls: ['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched'],
+    unfinished,
+    completenessFindings: [],
+    blockedWaves: [],
+  }
+}
+
 phase('Setup')
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
@@ -495,12 +522,6 @@ if (setup.baselinePassed === false) {
 }
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
-
-const budgetExhausted = () => {
-  if (typeof budget === 'undefined' || !budget) return false
-  const r = (typeof budget.remaining === 'function') ? budget.remaining() : budget.remaining
-  return typeof r === 'number' && r <= 0
-}
 
 // Tasks transitively downstream of a failure — never dispatched, always reported.
 const blockedByDep = new Set()
