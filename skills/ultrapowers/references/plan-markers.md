@@ -47,9 +47,9 @@ Example:
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if inference still finds one, the file edge wins
-and the disagreement is surfaced in the transparency block under `marker_conflicts` —
-never silently dropped.
+author expects no incoming edges; if inference still finds one, the inferred edge wins (file or text — the compiler's
+conflict note names which) and the disagreement is surfaced in the transparency block
+under `marker_conflicts` — never silently dropped.
 
 ## Type semantics (dispositions)
 
@@ -69,10 +69,16 @@ never silently dropped.
 The dispositions above bind **ultrapowers**. A sequential executor
 (subagent-driven-development, executing-plans) reads the same plan and treats
 every task — including `gate`, `release`, and `manual` — as an ordinary task to
-execute in document order. That is safe by construction, not by accident: the
-sequential executors keep a human in the loop at each task, so a `release` push
-or a `manual` owner step gets human eyes before it runs. The semantic difference
-to author for:
+execute in document order. Since superpowers 5.1.0, the sequential executors run
+**continuously** — subagent-driven-development explicitly instructs "Do not pause
+to check in with your human partner between tasks" — so a `release` push or a
+`manual` owner step in the plan **executes inline without fresh human eyes**. The
+safety comes from plan approval (the human approved exactly those steps when
+approving the plan) and from placement (put `release`/`manual` tasks LAST, so
+nothing irreversible runs before all implementation work has landed and been
+reviewed). When ultrapowers itself falls back to a sequential executor (SKILL.md
+Step 6), it withholds `release`/`manual` tasks from the handoff and carries them
+as the post-merge runbook instead. The semantic difference to author for:
 
 - `gate` — ultrapowers compiles it into run config; a sequential executor runs
   it as written. Write gates so both work: pure verification commands, no writes.
@@ -98,9 +104,20 @@ Precedence matters: a task that pushes AND verifies is `release`, not `gate`. Th
 empty-Files conservative default in `dependency-analysis.md` applies only to tasks
 that classify as `implementation`.
 
+The executable compiler (`scripts/compile_plan.py`) implements these heuristics as
+a conservative regex subset: release evidence is the literal patterns `git push`,
+`git checkout main`, `git merge main|master`, `ssh`, `scp`, `systemctl`, and "after
+the branch merges" — it does not recognize provider CLIs or other deploy idioms by
+name. Heuristic classifications are flagged `"heuristic": true` in its output
+precisely so the orchestrating agent re-judges them against the full contract above.
+
 ## Compile-time obligations
 
-Whatever the classification source (marker or heuristic), the compiler MUST:
+Whatever the classification source (marker or heuristic), the compiling agent MUST
+(the mechanical obligations — task splitting, fence-aware extraction, classification,
+edges, runbook collection — are implemented by `scripts/compile_plan.py`; preamble
+inlining and ordering-prose supersession remain the orchestrating agent's judgment,
+recorded in the transparency block):
 
 - record every non-`implementation` disposition in the Step-3 transparency block —
   the human approves the **interpretation** of the plan, not just the wave grouping;
