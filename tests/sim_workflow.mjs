@@ -1332,8 +1332,8 @@ async function scenarioSameWaveEdgeSurfaces() {
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
   const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
-  assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /same wave|does not run after/.test(j)),
-    'sameWave: co-located edge endpoints surfaced as a judgment call')
+  assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /share a wave/.test(j) && /chunk/.test(j)),
+    'sameWave: co-located edge endpoints surfaced with the chunk-position-dependent wording')
   console.log('scenario same-wave-edge-surfaces: OK')
 }
 
