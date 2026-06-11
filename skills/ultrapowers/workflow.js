@@ -128,8 +128,6 @@ for (const k of Object.keys(tierOverrides)) {
     throw new Error('ultrapowers: tierOverrides key "' + k +
       '" is not a tier (valid: cheap, standard, mostCapable). Refusing to launch.')
   }
-}
-for (const k in tierOverrides) {
   if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
     throw new Error(
       'ultrapowers: tierOverrides.' + k + ' = "' + tierOverrides[k] +
@@ -743,7 +741,6 @@ for (let w = 0; w < WAVES.length; w++) {
     }
     noteFailures()
   }
-  noteFailures()
 
   // When every task in the wave is dep-blocked/failed (no mergeable branches),
   // skip the merge — but when NO edges were supplied (not even an empty array)
