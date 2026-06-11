@@ -134,8 +134,9 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 `reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
-constant in `workflow.js`, and `args.tierOverrides` is merged over it per run (`most-capable` is
-normalized to the `mostCapable` key; unknown tiers fall back to `standard`). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
+constant in `workflow.js`, and `args.tierOverrides` is merged over it per run (per-task `most-capable` is normalized to the
+`mostCapable` key and unknown *task* tiers fall back to `standard` with a judgment call; unknown
+override *keys or model values* throw at launch). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
 
 **Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
 the agent returns "There's an issue with the selected model" and does no work — whereas
