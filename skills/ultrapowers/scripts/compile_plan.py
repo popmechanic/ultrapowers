@@ -148,6 +148,12 @@ def classify(t):
 
 
 def build_edges(impl):
+    # Edge precedence:
+    # explicit (marker, text) > semantic order-independent (write-after-create,
+    # read-after-write) > document-order heuristics (write-after-write,
+    # ambiguous-files), which yield to any opposing earlier edge.
+    # A cycle that survives this precedence is a genuine plan contradiction
+    # and stays a loud error.
     ids = {t["id"] for t in impl}
     edges, conflicts, seen = [], [], set()
 
@@ -163,6 +169,11 @@ def build_edges(impl):
                     "note": "Depends-on: none overridden by inferred edge (inferred edge wins)",
                 })
 
+    def opposed(a, b):
+        """Return True if the reverse edge (b -> a) is already recorded."""
+        return (b, a) in seen
+
+    # Tier 1: Explicit — marker edges
     for t in impl:
         for d in t["depends_on"]:
             if d in ids:
@@ -175,32 +186,43 @@ def build_edges(impl):
                             "(unknown id or gate/release/manual) — edge dropped",
                 })
 
+    # Tier 1: Explicit — text edges (moved up from bottom to enforce precedence)
+    for b in impl:
+        for m in TEXT_DEP.finditer(b["body"]):
+            if m.group(1) != b["id"]:
+                add(m.group(1), b["id"], "text")
+
+    # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
         for b in impl:
             if a["id"] == b["id"]:
                 continue
             if set(a["creates"]) & set(b["modifies"]):
                 add(a["id"], b["id"], "write-after-create")
-            if set(a["writes"]) & set(b["writes"]) and a["order"] < b["order"]:
-                add(a["id"], b["id"], "write-after-write")
             # read-after-write: b reads a file that a writes (no order condition)
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
 
-    for b in impl:
-        for m in TEXT_DEP.finditer(b["body"]):
-            if m.group(1) != b["id"]:
-                add(m.group(1), b["id"], "text")
+    # Tier 3: Document-order heuristics — yield to any opposing earlier edge
+    for a in impl:
+        for b in impl:
+            if a["id"] == b["id"]:
+                continue
+            # write-after-write: only add if doc order is forward AND no reverse already set
+            if (set(a["writes"]) & set(b["writes"])
+                    and a["order"] < b["order"]
+                    and not opposed(a["id"], b["id"])):
+                add(a["id"], b["id"], "write-after-write")
 
-    # ambiguous-files: serialize task T at its document position
+    # ambiguous-files: serialize task T at its document position, yielding to opposing edges
     for t in impl:
         if t["files_ambiguous"]:
             for u in impl:
                 if u["id"] == t["id"]:
                     continue
-                if u["order"] < t["order"]:
+                if u["order"] < t["order"] and not opposed(u["id"], t["id"]):
                     add(u["id"], t["id"], "ambiguous-files")
-                elif u["order"] > t["order"]:
+                elif u["order"] > t["order"] and not opposed(t["id"], u["id"]):
                     add(t["id"], u["id"], "ambiguous-files")
 
     return edges, conflicts
