@@ -90,6 +90,7 @@ Each wave is a set of tasks that can execute in parallel — their dependencies 
 Apply these rules before finalizing the DAG:
 
 - **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one — serializing it into its own wave at its document position.
+
 The remaining two defaults are hand-derivation guidance only — the compiler is static and does not inspect the repo; apply them when reviewing heuristic-flagged output:
 
 - **Implicit shared directories:** if two tasks each create or modify files in the same directory AND one task's description mentions scaffolding, initialization, or setup, serialize the scaffolding task before the other.
