@@ -345,8 +345,10 @@ async function runTask(task, baseSha) {
     const msg = String((e && e.message) || e)
     judgmentCalls.push('task ' + task.id + ': agent error — ' + msg)
     log('task ' + task.id + ' FAILED on agent error: ' + msg)
+    const safeTier = Object.prototype.hasOwnProperty.call(TIER, tierKey(task.tier))
+      ? TIER[tierKey(task.tier)] : undefined
     return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
-             notes: msg, tier: TIER[tierKey(task.tier)] || TIER.standard,
+             notes: msg, tier: (typeof safeTier === 'string') ? safeTier : TIER.standard,
              review: taskReviewProfile(task), fixIterations: 0 }
   }
 }
@@ -363,6 +365,7 @@ async function runTaskInner(task, baseSha) {
   const noteConcerns = (res) => {
     if (res && res.status === 'DONE_WITH_CONCERNS' && Array.isArray(res.concerns)) {
       for (const c of res.concerns) {
+        if (concerns.indexOf(c) !== -1) continue // fix round repeating a concern: once is enough
         concerns.push(c)
         judgmentCalls.push('task ' + task.id + ': ' + c)
       }
@@ -397,7 +400,7 @@ async function runTaskInner(task, baseSha) {
   // GUARD forces a BLOCKED state the reviewer schema cannot express — burning
   // an opus review on a doomed pipeline. The wave-level lost sweep stays as
   // second-line defense.
-  if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') &&
+  if (impl.status !== 'BLOCKED' && impl.status !== 'NEEDS_CONTEXT' &&
       (!impl.branch || !impl.headSha)) {
     judgmentCalls.push('task ' + task.id + ': reported done without mergeable ' +
       'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')

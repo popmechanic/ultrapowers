@@ -1453,6 +1453,43 @@ async function scenarioPrototypeNamesSafe() {
   console.log('scenario prototype-names-safe: OK')
 }
 
+
+// ── Scenario: inverted edge (dependent in an EARLIER wave) surfaces ───────────
+async function scenarioInvertedEdgeSurfaces() {
+  const waves = [
+    [{ id: 'B', title: 'dependent first', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'prerequisite second', body: 'do A', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['A', 'B']] }
+  const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
+  assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /earlier wave|cannot bind/.test(j)),
+    'inverted: earlier-wave dependent surfaced as cannot-bind')
+  assert(r.tasks.length === 2 && r.tasks.every((t) => t.status === 'done'),
+    'inverted: both tasks still dispatched (surfacing only)')
+  console.log('scenario inverted-edge-surfaces: OK')
+}
+
+// ── Scenario: status-less impl result fails fast like any lost coordinates ────
+async function scenarioStatuslessImplFailsFast() {
+  let reviewed = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'impl:A') return {}        // engine bypass: no status, no coordinates
+      if (label.startsWith('review:A')) { reviewed = true }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!reviewed, 'statusless: no reviewer dispatched for a coordinate-less result')
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a && a.status, 'failed', 'statusless: task failed')
+  eq(a && a.reviewVerdict, 'lost-coordinates', 'statusless: verdict lost-coordinates')
+  console.log('scenario statusless-impl-fails-fast: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1471,6 +1508,8 @@ await scenarioUnboundEdgeEndpointsSurface()
 await scenarioVerdictlessReviewSurfaces()
 await scenarioPrototypeNamesSafe()
 await scenarioSameWaveEdgeSurfaces()
+await scenarioInvertedEdgeSurfaces()
+await scenarioStatuslessImplFailsFast()
 await scenarioBudgetDeferralKeepsJudgmentCalls()
 await scenarioMergeThrowContained()
 await scenarioReconcileThrowContained()
