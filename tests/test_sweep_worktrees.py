@@ -92,9 +92,22 @@ def test_sweep_survives_stale_dir_and_locked_worktree(tmp_path):
     p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert not stale.exists()
-    assert not wt_locked.exists()
+    assert wt_locked.exists()                       # locked => kept by default
+    assert "kept (locked" in p.stdout
     assert not wt_real.exists()
     assert "swept:" in p.stdout          # the summary line printed — no mid-sweep abort
+
+
+def test_sweep_force_removes_locked_worktree(tmp_path):
+    repo = make_repo(tmp_path)
+    wt_locked, br = add_engine_worktree(repo, "locked-f", "lf.txt", merge=True)
+    git(repo, "worktree", "lock", str(wt_locked))
+
+    p = subprocess.run(["bash", str(SWEEP), "--force"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt_locked.exists()
+    assert branches(repo) == []
 
 
 def test_sweep_force_keeps_checked_out_branch_and_finishes(tmp_path):

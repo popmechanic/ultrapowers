@@ -211,8 +211,9 @@ present two choices:
   tree, not the base branch you restored for the report), then run
   `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` — the deterministic sweep
   of engine worktrees and merged branches (unmerged failed-task branches are kept
-  for inspection; never rely on the merge agents having cleaned up; do not sweep
-  while another ultrapowers run is active in this repo). Then proceed
+  for inspection; never rely on the merge agents having cleaned up; locked worktrees
+  are kept by default (pass `--force` to remove them); concurrent runs in one repo
+  remain unsupported). Then proceed
   to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
   the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
