@@ -87,6 +87,36 @@ def test_sdd_still_mandates_continuous_execution():
     assert "Continuous execution" in text and "without stopping" in text, (
         "subagent-driven-development changed its continuous-execution posture — "
         "re-audit plan-markers.md Executor variance and ultrapowers SKILL.md Step 6")
+    assert "Do not pause to check in with your human partner between tasks" in text, (
+        "the exact sentence plan-markers.md quotes was reworded — update the quote")
+
+
+def test_finishing_branch_still_gates_on_passing_tests():
+    text = (installed() / "skills/finishing-a-development-branch/SKILL.md").read_text()
+    assert "Cannot proceed with merge/PR until tests pass" in text, (
+        "finishing-a-development-branch relaxed its passing-suite precondition — "
+        "ultrapowers SKILL.md Step 5 gates the Approve path on this; re-audit it")
+
+
+def test_sdd_still_requires_consent_for_main_branch_work():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "without explicit user consent" in text, (
+        "subagent-driven-development dropped its main/master consent red flag — "
+        "ultrapowers SKILL.md Step 6 relies on it for the fallback handoff")
+
+
+def test_writing_plans_still_offers_two_execution_options():
+    text = (installed() / "skills/writing-plans/SKILL.md").read_text()
+    assert "Two execution options" in text, (
+        "writing-plans changed its Execution Handoff structure — "
+        "ultraplan overlays a third option on exactly two; re-audit ultraplan SKILL.md")
+
+
+def test_verification_skill_still_states_evidence_before_claims():
+    text = (installed() / "skills/verification-before-completion/SKILL.md").read_text()
+    assert "Evidence before claims" in text, (
+        "verification-before-completion reworded its core principle — "
+        "wave-merge.md and reviewer-prompts.md cite it as the critic's source")
 
 
 def test_attested_version_matches_installed():
