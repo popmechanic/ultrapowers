@@ -47,7 +47,7 @@ Example:
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if inference still finds one, the inferred edge wins (the compiler's conflict note carries the edge's literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `text`, or `ambiguous-files`)
+author expects no incoming edges; if inference still finds one, the inferred edge wins (the conflict entry's `edge` field carries the literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `text`, or `ambiguous-files`)
 and the disagreement is surfaced in the transparency block
 under `marker_conflicts` — never silently dropped.
 

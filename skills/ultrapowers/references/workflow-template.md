@@ -41,7 +41,7 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
-- `args.edges` — structured dependency pairs `[[fromTaskId, toTaskId], ...]` (optional). A failed
+- `args.edges` — structured dependency pairs `[[fromTaskId, toTaskId], ...]` (optional; omitting it and supplying `[]` differ — see the SKIPPED-cascade note under Structure). A failed
   task blocks its transitive dependents (computed via fixed-point closure, re-checked before every
   16-task chunk) instead of letting them run against a base that never received the prerequisite.
 
@@ -114,7 +114,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 - Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
   engine's concurrency cap, with dependency failures re-checked per chunk), then `mergeWave()`
   (non-isolated; reconciliation cap 2; cascade-block downstream — logged per wave — on an
-  unrecoverable MERGE failure). A wave with no mergeable branches records `SKIPPED` (integration branch untouched); it cascades conservatively only when no dependency edges were supplied and tasks actually ran.
+  unrecoverable MERGE failure). A wave with no mergeable branches records `SKIPPED` (integration branch untouched); it cascades conservatively only when `args.edges` was omitted (an explicitly supplied empty array counts as supplied — the compiler proved independence) and tasks actually ran.
 - Failure containment: a budget exhausted at launch defers the whole run before setup (early
   return, every task in `unfinished`); mid-run exhaustion defers remaining waves/chunks; a thrown
   task-pipeline `agent()` call degrades to one failed task (`reviewVerdict: 'agent-error'`);

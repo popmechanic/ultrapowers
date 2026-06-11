@@ -10,6 +10,10 @@
 # Run from anywhere inside the target repo (including from inside an engine
 # worktree), typically at the Step-5 Approve path with the integration branch
 # (or post-merge main) checked out, so "merged into HEAD" means what you expect.
+#
+# Run it only AFTER the run completes — it removes every wf_* worktree,
+# including locked ones. Do not sweep while another ultrapowers run is active
+# in this repo: in-flight uncommitted worktree state is unrecoverable.
 set -euo pipefail
 
 GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"

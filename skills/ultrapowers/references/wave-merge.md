@@ -123,7 +123,8 @@ Every truncation is surfaced explicitly:
 
 | Event | Logged via | Appears in report |
 |---|---|---|
-| Reconciliation attempt 1 or 2 fails | `log()` | `blockedWaves` |
+| Reconciliation attempt fails, later attempt recovers | `log()` | log only — the wave records plain `MERGED` |
+| Reconciliation fails terminally (both attempts) | `log()` | `blockedWaves` |
 | Wave marked `blocked` | `log()` | `blockedWaves` |
 | Downstream wave cascade-blocked | `log()` (one line per blocked wave) | `unfinished` (`cascade-blocked by wave N` entries) |
 | Fix-loop cap reached | `log()` | failed task in `tasks[]` (`reviewVerdict: 'fix-loop-exhausted'`) |

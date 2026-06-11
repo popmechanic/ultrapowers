@@ -7,8 +7,8 @@
 Superpowers gives Claude Code a disciplined path from idea to merged code: brainstorm the design,
 write a structured implementation plan, then execute that plan task-by-task with independent
 review. The execution step, however, is serial by design. Superpowers' executors
-(`subagent-driven-development`, `executing-plans`) run one task at a time, because their subagents
-share a single working tree — parallel tasks would trample each other's files.
+(`subagent-driven-development`, `executing-plans`) run one task at a time, because execution
+shares a single working tree — parallel tasks would trample each other's files.
 
 Most plans don't need that caution everywhere. A six-task plan often has four tasks that touch
 disjoint files, and with a sequential executor you wait for them in single file anyway.
