@@ -105,7 +105,7 @@ After building the adjacency list, run cycle detection before accepting any wave
 If a cycle is found:
 
 1. **Abort wave computation immediately.**
-2. Surface the offending edge list to the human in plain language: The compiler reports the unplaceable tasks: `compile_plan: cycle detected among tasks A, B — revise the plan to break it; refusing to guess an ordering.` When hand-deriving, name the offending edges too.
+2. Surface the offending edge list to the human in plain language: The compiler reports the unplaceable tasks: `compile_plan: cycle detected among tasks A, B — revise the plan to break it; refusing to guess an ordering.` The compiler also prints one concrete cycle with each hop's why label (`One cycle: A -> B (write-after-write) -> A (marker)`) so the author knows exactly which constraint to break. When hand-deriving, name the offending edges too.
 3. Ask the human to revise the plan to break the cycle — do not guess an ordering or silently drop an edge.
 
 ---
