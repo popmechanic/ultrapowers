@@ -77,3 +77,55 @@ def test_sweep_is_a_noop_on_a_clean_repo(tmp_path):
     p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert "0 worktree(s) removed, 0 branch(es) deleted" in p.stdout
+
+
+def test_sweep_survives_stale_dir_and_locked_worktree(tmp_path):
+    repo = make_repo(tmp_path)
+    # A stale plain directory git does not recognize, sorting BEFORE a real worktree.
+    stale = repo / ".claude" / "worktrees" / "wf_aaa-stale"
+    stale.mkdir(parents=True)
+    (stale / "junk.txt").write_text("junk\n")
+    wt_locked, _ = add_engine_worktree(repo, "mmm-locked", "l.txt", merge=True)
+    git(repo, "worktree", "lock", str(wt_locked))
+    wt_real, _ = add_engine_worktree(repo, "zzz-real", "z.txt", merge=True)
+
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not stale.exists()
+    assert not wt_locked.exists()
+    assert not wt_real.exists()
+    assert "swept:" in p.stdout          # the summary line printed — no mid-sweep abort
+
+
+def test_sweep_force_keeps_checked_out_branch_and_finishes(tmp_path):
+    repo = make_repo(tmp_path)
+    add_engine_worktree(repo, "other", "o.txt", merge=False)
+    # An unmerged worktree-wf_ branch checked out in the MAIN repo: -d and -D both fail.
+    git(repo, "checkout", "-b", "worktree-wf_co")
+    (repo / "co.txt").write_text("co\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "co work")
+
+    p = subprocess.run(["bash", str(SWEEP), "--force"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "kept (cannot delete" in p.stdout
+    assert "swept:" in p.stdout                       # summary still printed
+    assert branches(repo) == ["worktree-wf_co"]       # the other one was force-deleted
+
+
+def test_sweep_reports_checked_out_merged_branch_distinctly(tmp_path):
+    repo = make_repo(tmp_path)
+    git(repo, "checkout", "-b", "worktree-wf_merged-co")   # zero commits: fully merged
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "kept (merged but undeletable" in p.stdout
+    assert "kept (unmerged" not in p.stdout
+
+
+def test_sweep_rejects_unknown_argument(tmp_path):
+    repo = make_repo(tmp_path)
+    p = subprocess.run(["bash", str(SWEEP), "--froce"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 2
+    assert "usage" in p.stderr.lower()
