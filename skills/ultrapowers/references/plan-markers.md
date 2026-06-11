@@ -47,8 +47,8 @@ Example:
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if inference still finds one, the inferred edge wins (file or text — the compiler's
-conflict note names which) and the disagreement is surfaced in the transparency block
+author expects no incoming edges; if inference still finds one, the inferred edge wins (the compiler's conflict note names which kind: file, read, text, or ambiguous-files)
+and the disagreement is surfaced in the transparency block
 under `marker_conflicts` — never silently dropped.
 
 ## Type semantics (dispositions)
@@ -108,7 +108,11 @@ The executable compiler (`scripts/compile_plan.py`) implements these heuristics 
 a conservative regex subset: release evidence is the literal patterns `git push`,
 `git checkout main`, `git merge main|master`, `ssh`, `scp`, `systemctl`, and "after
 the branch merges" — it does not recognize provider CLIs or other deploy idioms by
-name. Heuristic classifications are flagged `"heuristic": true` in its output
+name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
+write paths plus any test-runner/lint/git-status mention in the prose" (an existence
+check, not a proof that every step is read-only), and manual additionally fires on
+the phrase "on the deployment". All such classifications arrive flagged for
+re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
 precisely so the orchestrating agent re-judges them against the full contract above.
 
 ## Compile-time obligations
@@ -122,8 +126,10 @@ recorded in the transparency block):
 - record every non-`implementation` disposition in the Step-3 transparency block —
   the human approves the **interpretation** of the plan, not just the wave grouping;
 - collect `release` and `manual` tasks, verbatim and in document order, into the
-  **post-merge runbook**, rendered with the final report and handed to
-  `superpowers:finishing-a-development-branch` on approval;
+  **post-merge runbook**, rendered with the final report; on approval the
+  orchestrating agent carries it through the finishing-a-development-branch
+  handoff and presents it as the follow-up list (the upstream skill accepts no
+  checklist input);
 - inline preamble coordination notes into the bodies of the tasks they affect —
   task agents see only their own `body`;
 - convert global ordering prose ("execute phases in order") into edges only where it
