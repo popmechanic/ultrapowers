@@ -4,10 +4,11 @@
 Parses a plan into tasks (fence-aware), classifies each per the plan-markers
 contract (explicit **Type:** trusted; heuristics otherwise, flagged
 "heuristic": true), builds the dependency DAG (marker edges + file-overlap
-inference + read-after-write + ambiguous-files serialization + explicit text,
+inference + read-after-write + write-after-write whose overlap set covers
+writes union Test: paths + ambiguous-files serialization + explicit text,
 with explicit/semantic edges taking precedence so document-order heuristics
-yield to any opposing earlier edge), runs Kahn layering with cycle detection,
-and emits the Step-3 transparency block as JSON on stdout.
+yield by reachability to any opposing earlier path), runs Kahn layering with
+cycle detection, and emits the Step-3 transparency block as JSON on stdout.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
@@ -44,23 +45,35 @@ GATE_EV = re.compile(
 def _fence_aware_lines(text):
     """Yield (line, in_fence) — a heading inside an open fence is content.
 
-    Tracks both the fence character (backtick or tilde) and its length, per
-    CommonMark: a fence closes only on a run of the SAME character at least as
-    long as the opener. Tilde fences are the natural wrapper when the example
-    itself contains backtick fences.
+    Maintains a stack of open fence runs so nested examples survive: per
+    CommonMark a fence closes only on a run of the SAME character at least as
+    long as the opener AND with no info string (the closer line is nothing but
+    the fence run). An info-stringed run inside an open fence — e.g. ```bash
+    nested in an outer ``` block — is a NESTED OPENER, not a closer, so the
+    example's own fences stay content. Closers are matched against the
+    INNERMOST open frame (stack[-1]), not the outermost: a tilde wrapper
+    (~~~) around a backtick example pops the inner ``` first, then the outer
+    ~~~, instead of leaving the wrapper open forever and swallowing the rest
+    of the document.
     """
-    fence = None  # the opening run, e.g. "```" or "~~~~", or None when closed
+    stack = []  # open fence runs, innermost last; empty when not in a fence
     for line in text.splitlines():
         m = FENCE.match(line.strip())
         if m:
             run = m.group(1)
-            if fence is None:
-                fence = run
-            elif run[0] == fence[0] and len(run) >= len(fence):
-                fence = None
+            if stack:
+                inner = stack[-1]
+                is_closer = (run[0] == inner[0] and len(run) >= len(inner)
+                             and line.strip() == run)
+                if is_closer:
+                    stack.pop()
+                else:
+                    stack.append(run)  # nested opener (info string or diff char)
+            else:
+                stack.append(run)  # opening fence; info strings allowed
             yield line, True
             continue
-        yield line, fence is not None
+        yield line, bool(stack)
 
 
 def split_tasks(text):
@@ -111,7 +124,14 @@ def parse_task(t):
             in_files = True
             continue
         if in_files:
-            f = FILE_LINE.match(s)
+            # A checkbox step closes the Files section. Without this, a prose
+            # step shaped like a Files line (e.g. "- Modify: nothing in `b.txt`
+            # should change yet") that sits AFTER a checkbox would keep parsing
+            # as a Files entry and over-serialize the task. Checkbox lines start
+            # with "- [": close, then fall through to normal processing.
+            if s.startswith("- ["):
+                in_files = False
+            f = FILE_LINE.match(s) if in_files else None
             if f:
                 # Prefer backticked paths; otherwise take the first
                 # whitespace-delimited token so an unbackticked line like
@@ -169,7 +189,8 @@ def build_edges(impl):
     # Edge precedence:
     # explicit (marker, text) > semantic order-independent (write-after-create,
     # read-after-write) > document-order heuristics (write-after-write,
-    # ambiguous-files), which yield to any opposing earlier edge.
+    # ambiguous-files), which yield to any opposing earlier PATH (reachability),
+    # not just a direct reverse edge.
     # A cycle that survives this precedence is a genuine plan contradiction
     # and stays a loud error.
     ids = {t["id"] for t in impl}
@@ -187,9 +208,21 @@ def build_edges(impl):
                     "note": "Depends-on: none overridden by inferred edge (inferred edge wins)",
                 })
 
-    def opposed(a, b):
-        """Return True if the reverse edge (b -> a) is already recorded."""
-        return (b, a) in seen
+    def would_cycle(a, b):
+        """True if adding a -> b would close a cycle (b already reaches a)."""
+        adj = {}
+        for e in edges:
+            adj.setdefault(e["from"], []).append(e["to"])
+        stack, visited = [b], set()
+        while stack:
+            n = stack.pop()
+            if n == a:
+                return True
+            if n in visited:
+                continue
+            visited.add(n)
+            stack.extend(adj.get(n, []))
+        return False
 
     # Tier 1: Explicit — marker edges
     for t in impl:
@@ -210,7 +243,18 @@ def build_edges(impl):
     for b in impl:
         for m in TEXT_DEP.finditer(b["prose"]):
             if m.group(1) != b["id"]:
-                add(m.group(1), b["id"], "text")
+                if m.group(1) in ids:
+                    add(m.group(1), b["id"], "text")
+                else:
+                    # Same surfacing as marker edges: a text dependency on a task
+                    # outside the implementation set (gate/release/manual/unknown)
+                    # drops, but loudly, instead of silently no-opping in add().
+                    conflicts.append({
+                        "task": b["id"],
+                        "edge": m.group(1) + " -> " + b["id"] + " (text)",
+                        "note": "text dependency names a task outside the implementation set "
+                                "(unknown id or gate/release/manual) — edge dropped",
+                    })
 
     # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
@@ -223,26 +267,38 @@ def build_edges(impl):
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
 
-    # Tier 3: Document-order heuristics — yield to any opposing earlier edge
+    # Tier 3: Document-order heuristics — yield to any opposing earlier PATH.
+    # Each tier-3 edge is reachability-checked against everything added before it
+    # (tiers 1-2 plus earlier tier-3 edges), so tier-3 can never close a cycle;
+    # any surviving cycle is an explicit/semantic contradiction.
     for a in impl:
         for b in impl:
             if a["id"] == b["id"]:
                 continue
-            # write-after-write: only add if doc order is forward AND no reverse already set
-            if (set(a["writes"]) & set(b["writes"])
+            # write-after-write: the overlap set is (writes union reads) on both
+            # sides. Upstream TDD semantics make a `Test:` path a WRITE (the task
+            # writes the failing test and commits it), so two tasks listing the
+            # same `Test:` path must serialize or they guarantee a merge conflict.
+            # As accepted conservatism this also serializes two pure readers of one
+            # shared fixture. Add only when doc order is forward AND b cannot
+            # already reach a (reachability guard, Bug A).
+            a_touch = set(a["writes"]) | set(a["reads"])
+            b_touch = set(b["writes"]) | set(b["reads"])
+            if (a_touch & b_touch
                     and a["order"] < b["order"]
-                    and not opposed(a["id"], b["id"])):
+                    and not would_cycle(a["id"], b["id"])):
                 add(a["id"], b["id"], "write-after-write")
 
-    # ambiguous-files: serialize task T at its document position, yielding to opposing edges
+    # ambiguous-files: serialize task T at its document position, yielding to any
+    # opposing earlier path (reachability), not just a direct reverse edge.
     for t in impl:
         if t["files_ambiguous"]:
             for u in impl:
                 if u["id"] == t["id"]:
                     continue
-                if u["order"] < t["order"] and not opposed(u["id"], t["id"]):
+                if u["order"] < t["order"] and not would_cycle(u["id"], t["id"]):
                     add(u["id"], t["id"], "ambiguous-files")
-                elif u["order"] > t["order"] and not opposed(t["id"], u["id"]):
+                elif u["order"] > t["order"] and not would_cycle(t["id"], u["id"]):
                     add(t["id"], u["id"], "ambiguous-files")
 
     return edges, conflicts

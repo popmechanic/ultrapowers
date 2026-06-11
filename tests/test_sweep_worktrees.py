@@ -158,5 +158,6 @@ def test_sweep_warns_but_finishes_when_rm_fails(tmp_path):
         assert "warn: could not fully remove" in p.stderr
         assert not wt_real.exists()          # later worktree still swept
         assert "swept:" in p.stdout          # summary still printed
+        assert "1 worktree(s) removed" in p.stdout  # protected stale dir must not be counted
     finally:
         os.chmod(stale, 0o755)               # let pytest clean tmp_path

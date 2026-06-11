@@ -72,6 +72,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   `release`/`manual` tasks go verbatim into the post-merge runbook. Extract task
   bodies fence-aware — headings inside code fences are content, not boundaries.
   Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>` on every plan. Marked plans: adopt its JSON as the transparency block's waves/edges/dispositions verbatim, applying judgment only to `"heuristic": true` entries and the derived knobs. Unmarked plans: the compiler applies the contract heuristics and flags every call — verify the flagged entries against `references/plan-markers.md` instead of hand-deriving.
+  If the compiler reports `no implementation tasks` (gates/release/manual only — `waves: []`), do NOT launch the workflow (it refuses empty waves): compile the gates into run config as usual, then go straight to a Step-5-style presentation of the post-merge runbook for the human to execute or schedule.
 - **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), any `**Depends-on:**`
   markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
@@ -171,11 +172,11 @@ preserves standard behavior):
   `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
   overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —
   without paying for the extra pass everywhere.
-- `tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap *implementer* tiers (reviewers stay at the
-  strongest model regardless).
+- `tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap *implementer* tiers (reviewers and the completeness critic stay at the strongest model regardless; setup/merge run at the overridden `cheap`, and reconcile/fix-rounds at the overridden `mostCapable`).
 - `edges` — the structured dependency pairs `[[fromTaskId, toTaskId], ...]` from
   Step 2 (the same edges rendered as prose in `dependencyEdges`). The workflow uses
   them to block transitive dependents of a failed task instead of dispatching them.
+  Convert the compiler's `dag_edges` objects to bare pairs (`[e.from, e.to]`) — the workflow throws on malformed entries rather than silently disabling dependency blocking.
 
 The workflow validates `args.waves` and **throws loudly** if it is missing or malformed rather than
 risk mutating the wrong repository. Do not pause mid-run —

@@ -50,7 +50,7 @@ three — parallel first:
    parallel waves, worktree isolation, per-task review, two human gates.
 2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
    review between tasks.
-3. **Inline** — superpowers:executing-plans, batch execution with checkpoints.
+3. **Inline** — superpowers:executing-plans, batch execution (continuous since superpowers 5.0.0 — no per-task checkpoints).
 
 ## Choose the right Type
 
@@ -71,6 +71,8 @@ While writing tasks:
 1. **Self-contained bodies.** Task agents see only their own task body — every
    coordination note (shared-file ordering, port assignments, "match on quoted
    text") must live in the body of each task it affects, never only in a preamble.
+   Wrap embedded examples in code fences (``` or `~~~`) — fenced content never
+   drives classification, edges, or task splitting.
 2. **Ordering is `Depends-on:`, not prose.** Never write "execute phases in order"
    or "within a phase, run tasks in numeric order" — put a `**Depends-on:**` line on
    each downstream task instead.

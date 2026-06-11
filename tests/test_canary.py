@@ -79,3 +79,11 @@ def test_workflow_requires_headsha_and_commit_discipline():
     # both ways: the stale attribution is gone AND the honest one is present.
     assert "v5.0.6" not in wf            # stale upstream attribution removed
     assert "two-ordered-pass" in wf      # deliberate-divergence comment present
+
+
+def test_default_test_detection_ladder_matches_wave_merge_doc():
+    ladder = "pnpm check, npm test, pytest, cargo test, or go test ./..."
+    wf = WORKFLOW.read_text()
+    doc = (ROOT / "skills/ultrapowers/references/wave-merge.md").read_text()
+    assert ladder in wf, "workflow.js reworded the detection ladder — update wave-merge.md and this pin"
+    assert ladder in doc, "wave-merge.md reworded the detection ladder — update workflow.js and this pin"
