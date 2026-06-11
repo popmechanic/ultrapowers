@@ -9,8 +9,9 @@ Superpowers discipline when it changes.
 
 The canonical source is `skills/ultrapowers/workflow.js` — the only copy that is edited, reviewed,
 and drift-tested. At launch time, SKILL.md Step 4a copies it to
-`.claude/workflows/ultrapowers-run.js` in the target project, because saved workflows are the
-documented deterministic launch surface (run by name, with `args`) and plugins cannot ship them.
+`.claude/workflows/ultrapowers-run.js` in the target project (and `probe.js` to
+`.claude/workflows/ultrapowers-probe.js` for the Step-4a½ preflight), because saved workflows are
+the documented deterministic launch surface (run by name, with `args`) and plugins cannot ship them.
 The installed copy is disposable: it is overwritten on every run and must never be edited in
 place. Never launch via the `ultracode` keyword — that makes Claude author a new script instead
 of running this one.
@@ -20,8 +21,9 @@ of running this one.
 A pure orchestrator. The workflow runtime executes it headlessly in the background; the script body
 has **no shell or filesystem access** — only `agent()` calls do work (clone, edit, commit, merge,
 test). Runtime globals: `agent(prompt, opts)`, `parallel(thunks)`, `phase(title)`, `log(msg)`,
-`args`, `budget`. The file is ESM (`export const meta`) with top-level `await` and a top-level
-`return`; this is the engine's wrapped dialect (see "Syntax checking" below).
+`args`, `budget`. The file is ESM (`export const meta`) with top-level `await` and top-level
+`return`s (the budget-exhausted early return and the final report); this is the engine's wrapped
+dialect (see "Syntax checking" below).
 
 ## Input contract (`args`)
 
@@ -40,6 +42,9 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
+- `args.edges` — structured dependency pairs `[[fromTaskId, toTaskId], ...]` (optional). A failed
+  task blocks its transitive dependents (computed via fixed-point closure, re-checked before every
+  16-task chunk) instead of letting them run against a base that never received the prerequisite.
 
 **Per-project knobs (all optional; omitting any preserves prior behavior):**
 
@@ -104,11 +109,19 @@ literal" rule is obsolete. Run the skill from inside the target repo.
   merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
 - `runTask(task, baseSha)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
   + code-quality merged; **two** passes under `reviewProfile: 'adversarial'`) → bounded fix-loop
-  (cap 2 = initial + 1, escalate to most-capable on re-dispatch).
+  (cap 2 = initial + 1; the fix re-dispatch runs at most-capable and anchors its `BASE` to the
+  prior implementation's HEAD, not the integration base). The implementer schema requires
+  `headSha`; a `done` result without one is not mergeable.
 - Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
-  engine's concurrency cap), then `mergeWave()` (non-isolated; reconciliation cap 2; cascade-block
-  downstream on unrecoverable failure).
-- `phase('Integration Review')` — completeness critic + full test run.
+  engine's concurrency cap, with dependency failures re-checked per chunk), then `mergeWave()`
+  (non-isolated; reconciliation cap 2; cascade-block downstream — logged per wave — on an
+  unrecoverable MERGE failure). A wave with no mergeable branches records `SKIPPED` and does NOT
+  cascade; the integration branch is untouched.
+- Failure containment: a budget exhausted at launch defers the whole run before setup (early
+  return, every task in `unfinished`); mid-run exhaustion defers remaining waves/chunks; a thrown
+  `agent()` call degrades to one failed task (`reviewVerdict: 'agent-error'`), never the run.
+- `phase('Integration Review')` — one completeness-critic agent runs the suite and reviews against
+  the plan.
 - Returns the structured report from `report-format.md`.
 
 ### Concurrency math
