@@ -14,7 +14,7 @@ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 Parse each task to extract two file sets:
 
 - **writes** = `Create:` paths ∪ `Modify:` paths (files the task changes on disk).
-- **reads** = `Test:` paths. A reader generates no outbound edges, but when another task writes a path this task reads, the compiler adds an edge writer → reader (`why: "read-after-write"`) — you cannot test a file that does not exist yet.
+- **reads** = `Test:` paths. Two effects: a task that `Test:`s a path another task writes depends on the writer (`why: "read-after-write"`), AND `Test:` paths count toward the write-after-write overlap — upstream TDD tasks WRITE their test files, so two tasks sharing any path (written or tested) serialize in document order unless an explicit or semantic edge orders them.
 
 Extract each task's verbatim body **fence-aware**: a heading inside a ``` code fence
 is content, not a section boundary — plans routinely embed whole markdown documents
@@ -36,8 +36,7 @@ implementation, in that precedence). The dispositions:
   so the human sees what the engine's per-wave merge tests and completeness critic
   now cover. Never executed as a task.
 - **release** / **manual** — leaves the task set. Collect verbatim, in document
-  order, into the **post-merge runbook** (rendered with the final report; handed to
-  `superpowers:finishing-a-development-branch` on approval). Never run headless,
+  order, into the **post-merge runbook** (rendered with the final report; carried by the orchestrating agent through the finishing-a-development-branch handoff (the upstream skill accepts no checklist input)). Never run headless,
   never silently dropped.
 
 While classifying, also:
@@ -60,15 +59,15 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
    `**Depends-on:** none` asserts the author expects no incoming edges; if inference still finds one, the inferred edge wins (its `why` is named in the conflict note) and the disagreement is surfaced in the
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
-3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan).
-4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2).
+3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet).
+4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2).
 5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
 
 Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `text`, `ambiguous-files`.
 
-Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic edge (marker, text, write-after-create, read-after-write). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
+Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic PATH (reachability through earlier edges, not just a direct reverse edge) (marker, text, write-after-create, read-after-write). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
 
 ---
 
