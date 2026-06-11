@@ -94,9 +94,14 @@ for (const k in tierOverrides) {
 }
 
 // meta.phases must be { title } objects, one per wave (+ setup + review).
-meta.phases = [{ title: 'Setup' }]
-  .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
-  .concat([{ title: 'Integration Review' }])
+// Newer engines extract the meta literal at parse time and do NOT expose
+// `meta` to the executing body (runtime mutation throws ReferenceError there);
+// phase() calls group progress regardless, so the mutation is best-effort.
+if (typeof meta !== 'undefined') {
+  meta.phases = [{ title: 'Setup' }]
+    .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
+    .concat([{ title: 'Integration Review' }])
+}
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
