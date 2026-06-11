@@ -45,9 +45,9 @@ The workflow produces a single structured report object that the main agent pres
 | `tasks[].fixIterations` | no | Fix rounds consumed (0 = clean on first review) |
 | `tests` | yes | Result of the suite run on the integration branch |
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
-| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
+| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED` (`SKIPPED` = no mergeable branches; integration branch untouched, no cascade)), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
 | `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished` |
-| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run; populated by implementer `DONE_WITH_CONCERNS` concerns, a red baseline, and reviewer verdict/severity mismatches |
+| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals, merges reported without a headSha, and a failed integration review |
 | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
 | `completenessFindings` | no | Gaps spotted during review that exceed the original spec |
 
@@ -72,5 +72,5 @@ When the workflow completes, the main agent renders the report as a concise huma
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
 
-- **Approve** — run `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` (the deterministic sweep of engine worktrees and merged branches — do not assume the merge agents' prompted cleanup ran), then proceed to `superpowers:finishing-a-development-branch` to merge and close the plan; the post-merge runbook travels with the handoff as its follow-up checklist.
+- **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand off; present the failure and offer Redirect instead. If true: `git checkout <integrationBranch>` (finishing-a-development-branch verifies tests on the CURRENT checkout, and the sweep classifies 'merged' against HEAD), then run `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` (the deterministic sweep — do not assume the merge agents' prompted cleanup ran), then proceed to `superpowers:finishing-a-development-branch`; the orchestrator carries the post-merge runbook and presents it again when that handoff completes.
 - **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.
