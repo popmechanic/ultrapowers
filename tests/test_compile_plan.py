@@ -278,3 +278,106 @@ def test_genuine_cycle_still_errors(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode == 1
     assert "cycle" in p.stderr.lower()
+
+
+def test_tilde_fenced_heading_is_content_not_a_task(tmp_path):
+    plan = tmp_path / "tilde.md"
+    plan.write_text(
+        "# Plan: Tilde\n\n"
+        "### Task A: embeds an example\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** document the format:\n\n"
+        "~~~markdown\n### Task 42: fenced by tildes, not a task\n~~~\n\n"
+        "### Task B: second\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert [t["id"] for t in out["tasks"]] == ["A", "B"]
+
+
+def test_fenced_release_evidence_does_not_reclassify(tmp_path):
+    plan = tmp_path / "fenced-release.md"
+    plan.write_text(
+        "# Plan: Fenced evidence\n\n"
+        "### Task A: implementation with a fenced example\n\n"
+        "**Files:**\n- Create: `deploy_docs.md`\n\n"
+        "- [ ] **Step 1:** document the release command:\n\n"
+        "```bash\ngit push origin main\n```\n"
+    )
+    out = compile_plan(plan)
+    assert out["tasks"][0]["disposition"] == "implementation"
+
+
+def test_fenced_text_dependency_creates_no_edge(tmp_path):
+    plan = tmp_path / "fenced-text.md"
+    plan.write_text(
+        "# Plan: Fenced text dep\n\n"
+        "### Task A: base\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: embeds prose example\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n"
+        "- [ ] **Step 1:** include this sample text:\n\n"
+        "```text\nthis step runs after Task A in the example\n```\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "text" for e in out["dag_edges"])
+    # No edge of any kind: the two disjoint-write tasks are independent. The
+    # documented small-plan degrade (<=2 impl tasks -> sequential, one task per
+    # wave in topological order; SKILL.md / dependency-analysis.md) still applies,
+    # so waves are [["A"], ["B"]] rather than a single concurrent wave.
+    assert not any(e["from"] == "A" and e["to"] == "B" for e in out["dag_edges"])
+    assert out["waves"] == [["A"], ["B"]]
+    assert out["mode"] == "sequential"
+
+
+def test_unbackticked_path_drops_trailing_prose(tmp_path):
+    plan = tmp_path / "plainpath.md"
+    plan.write_text(
+        "# Plan: Plain path\n\n"
+        "### Task A: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: src/app.py — the new module\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: modifier\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "write-after-create"} in out["dag_edges"]
+
+
+def test_brace_glob_flags_ambiguous(tmp_path):
+    plan = tmp_path / "brace.md"
+    plan.write_text(
+        "# Plan: Brace glob\n\n"
+        "### Task A: first\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `one.txt`\n\n- [ ] **Step 1:** one\n\n"
+        "### Task B: brace glob\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/{a,b}.py`\n\n- [ ] **Step 1:** sweep\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "ambiguous-files"} in out["dag_edges"]
+
+
+def test_zero_implementation_plan_warns_loudly(tmp_path):
+    plan = tmp_path / "zeroimpl.md"
+    plan.write_text(
+        "# Plan: Gates only\n\n"
+        "### Task A: suite gate\n\n**Type:** gate\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 0
+    assert "no implementation tasks" in p.stderr
+    import json as _json
+    assert _json.loads(p.stdout)["waves"] == []
+
+
+def test_fully_overlapping_writes_degrade_and_reason(tmp_path):
+    plan = tmp_path / "overlap.md"
+    body = "".join(
+        "### Task {i}: writer {i}\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `same.txt`\n\n- [ ] **Step 1:** edit\n\n".replace("{i}", i)
+        for i in ("A", "B", "C"))
+    plan.write_text("# Plan: Overlap\n\n" + body)
+    out = compile_plan(plan)
+    assert out["mode"] == "sequential"
+    assert out["degrade_reason"] == "Sequential mode: 3 implementation tasks, fully overlapping writes"
+    assert out["waves"] == [["A"], ["B"], ["C"]]
