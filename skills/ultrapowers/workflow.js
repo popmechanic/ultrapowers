@@ -351,7 +351,11 @@ async function runTask(task, baseSha) {
   }
 }
 async function runTaskInner(task, baseSha) {
-  const baseModel = TIER[tierKey(task.tier)] || TIER.standard
+  // Own-string lookup only: a prototype name like 'constructor' must never
+  // resolve to an inherited function and ship as a model identifier.
+  const tierValue = Object.prototype.hasOwnProperty.call(TIER, tierKey(task.tier))
+    ? TIER[tierKey(task.tier)] : undefined
+  const baseModel = (typeof tierValue === 'string') ? tierValue : TIER.standard
   // Run economics, reported per task so the pre-merge gate can judge cost vs. benefit.
   const economics = { tier: baseModel, review: taskReviewProfile(task) }
   // DONE_WITH_CONCERNS concerns must reach the report — never swallowed.
@@ -375,7 +379,7 @@ async function runTaskInner(task, baseSha) {
   }
   // Same posture for an unknown tier: a plan asking for top-tier work must not
   // silently run a tier down (tierKey normalizes only 'most-capable').
-  if (task.tier && !TIER[tierKey(task.tier)]) {
+  if (task.tier && typeof tierValue !== 'string') {
     log('task ' + task.id + ': unknown tier="' + task.tier +
         '", falling back to standard')
     judgmentCalls.push('task ' + task.id + ': unknown tier="' + task.tier +
@@ -446,6 +450,16 @@ async function runTaskInner(task, baseSha) {
       seenIssue[key] = true
       return true
     })
+    // Engine-bypass class (schema requires verdict+issues): a review result
+    // with NO recognizable verdict must not severity-merge as clean — a weak
+    // reviewer's failure mode is the silent false PASS. Treat it as blocking.
+    if (!verdicts.some((v) => v === 'PASS' || v === 'FIX_REQUIRED')) {
+      judgmentCalls.push('task ' + task.id + ': reviewer returned no recognizable verdict — ' +
+        'treating as FIX_REQUIRED with a blocking issue (never merging on an empty review)')
+      log('task ' + task.id + ': verdict-less review result — conservative blocking')
+      issues = issues.concat([{ severity: 'blocking',
+        detail: 'review result carried no recognizable verdict — re-review required' }])
+    }
     const blocking = issues.filter((i) => i.severity === 'blocking')
     const minors = issues.filter((i) => i.severity === 'minor')
 
@@ -547,7 +561,7 @@ const unfinished = []
 // Surfaced, not thrown: on resume runs, edges referencing tasks completed in
 // the prior run are legitimately unbound.
 {
-  const waveIndexOf = {}
+  const waveIndexOf = Object.create(null) // proto-safe: ids like 'toString' must not false-bind
   WAVES.forEach((w, i) => w.forEach((t) => { waveIndexOf[t.id] = i }))
   for (const [a, b] of EDGES) {
     if (!(a in waveIndexOf) || !(b in waveIndexOf)) {

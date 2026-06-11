@@ -1410,6 +1410,49 @@ async function scenarioIntegrationThrowContained() {
   console.log('scenario integration-throw-contained: OK')
 }
 
+
+// ── Scenario: verdict-less reviewer result must not merge as clean ────────────
+async function scenarioVerdictlessReviewSurfaces() {
+  let fixDispatched = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') return {}            // engine-bypass: no verdict, no issues
+      if (label === 'fix:A:1') fixDispatched = true    // conservative path: fix round
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r.judgmentCalls.some((j) => /no recognizable verdict/.test(j)),
+    'verdictless: surfaced as a judgment call')
+  assert(fixDispatched, 'verdictless: treated as blocking — fix round dispatched, not merged as clean')
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.reviewVerdict !== 'clean', 'verdictless: never merges as clean off an empty review')
+  console.log('scenario verdictless-review-surfaces: OK')
+}
+
+// ── Scenario: prototype-name tiers and edge ids stay safe ─────────────────────
+async function scenarioPrototypeNamesSafe() {
+  const models = []
+  const waves = [
+    [{ id: 'toString', title: 'proto-named task', body: 'do it', tier: 'constructor' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['toString', 'valueOf']] }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt, opts) => {
+      if (label.startsWith('impl:')) models.push(opts.model)
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(models[0], 'sonnet', 'proto: tier "constructor" falls back to standard, never a prototype function')
+  assert(r.judgmentCalls.some((j) => /unknown tier/.test(j)), 'proto: bogus tier surfaced')
+  assert(r.judgmentCalls.some((j) => /valueOf/.test(j)), 'proto: unbound prototype-named edge endpoint surfaced')
+  console.log('scenario prototype-names-safe: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1425,6 +1468,8 @@ await scenarioBaselineRed()
 await scenarioTypoReviewAndUnknownBaseline()
 await scenarioFixRoundLostCoordinates()
 await scenarioUnboundEdgeEndpointsSurface()
+await scenarioVerdictlessReviewSurfaces()
+await scenarioPrototypeNamesSafe()
 await scenarioSameWaveEdgeSurfaces()
 await scenarioBudgetDeferralKeepsJudgmentCalls()
 await scenarioMergeThrowContained()
