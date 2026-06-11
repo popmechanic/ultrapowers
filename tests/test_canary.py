@@ -74,4 +74,8 @@ def test_workflow_requires_headsha_and_commit_discipline():
     assert "required: ['status', 'summary', 'branch', 'headSha']" in wf
     assert "Commit your work" in wf
     assert "fix-loop cap" in wf          # exhaustion is logged, not silent
-    assert "v5.0.6 direction" not in wf  # stale upstream attribution removed
+    # The stale comment wrapped "v5.0.6" and "direction" across two source
+    # lines, so a "v5.0.6 direction" substring check never bit. Guard the fix
+    # both ways: the stale attribution is gone AND the honest one is present.
+    assert "v5.0.6" not in wf            # stale upstream attribution removed
+    assert "two-ordered-pass" in wf      # deliberate-divergence comment present
