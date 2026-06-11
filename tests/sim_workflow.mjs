@@ -107,11 +107,13 @@ async function scenarioHappy() {
 // ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
 async function scenarioFixLoop() {
   const reviewCalls = {}
+  let fixPrompt = ''
   const agent = async (_prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
       const id = taskIdFromLabel(label)
+      if (label === 'fix:A:1') { fixPrompt = _prompt }
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
     if (label.startsWith('review:')) {
@@ -133,6 +135,9 @@ async function scenarioFixLoop() {
   eq(a.fixIterations, 1, 'fixloop: one fix round recorded')
   assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
+  assert(fixPrompt.indexOf('BASE: sha-A') !== -1, 'fixLoop: fix round anchors BASE to the prior implementation HEAD')
+  assert(fixPrompt.indexOf('FIX ROUND') !== -1, 'fixLoop: fix preamble present')
+  assert(fixPrompt.indexOf('locked by its own worktree') !== -1, 'fixLoop: branch-lock warning present')
   console.log('scenario fix-loop: OK')
 }
 
