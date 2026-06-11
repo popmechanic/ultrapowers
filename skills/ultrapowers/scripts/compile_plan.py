@@ -96,30 +96,54 @@ def split_tasks(text):
 def parse_task(t):
     ttype = None
     type_unparsed = None
-    deps, deps_none = [], False
+    deps, deps_none, deps_mixed = [], False, False
+    late_markers = []
     creates, modifies, reads = [], [], []
     in_files = False
+    # The marker contract places **Type:**/**Depends-on:** "immediately after
+    # the task heading, before the **Files:** block". Honor markers only in that
+    # header block: the first **Files:** line or checkbox step ends it. An
+    # unfenced marker-shaped line later in the body (e.g. an example inside a
+    # step) is recorded and surfaced as a conflict instead of being TRUSTED —
+    # otherwise it would silently reclassify the task with heuristic=false or
+    # fabricate a trusted marker edge.
+    in_header = True
     for line, fenced in _fence_aware_lines(t["body"]):
         if fenced:
             continue
         s = line.strip()
+        if s.startswith("**Files:**") or s.startswith("- ["):
+            in_header = False
         # Check for **Type:** lines
         if s.startswith("**Type:**"):
-            m = MARKER_TYPE.match(s)
-            if m and ttype is None and m.group(1) in TYPES:
-                ttype = m.group(1)
-            elif ttype is None and type_unparsed is None:
-                # Unparseable or unrecognized type marker
-                remainder = s[len("**Type:**"):].strip()
-                if remainder:
-                    type_unparsed = remainder
-        m = MARKER_DEPS.match(s)
-        if m and not deps and not deps_none:
-            val = m.group(1).strip()
-            if val.lower() == "none":
-                deps_none = True
+            if not in_header:
+                late_markers.append(s)
             else:
-                deps = [d.strip() for d in val.split(",") if d.strip()]
+                m = MARKER_TYPE.match(s)
+                if m and ttype is None and m.group(1) in TYPES:
+                    ttype = m.group(1)
+                elif ttype is None and type_unparsed is None:
+                    # Unparseable or unrecognized type marker
+                    remainder = s[len("**Type:**"):].strip()
+                    if remainder:
+                        type_unparsed = remainder
+        m = MARKER_DEPS.match(s)
+        if m:
+            if not in_header:
+                late_markers.append(s)
+            else:
+                # Accumulate across repeated **Depends-on:** lines — first-wins
+                # silently dropped declared prerequisites. `none` combined with
+                # concrete ids is contradictory: ids win, surfaced as a conflict.
+                val = m.group(1).strip()
+                if val.lower() == "none":
+                    if deps:
+                        deps_mixed = True
+                    deps_none = True
+                else:
+                    if deps_none:
+                        deps_mixed = True
+                    deps.extend(d.strip() for d in val.split(",") if d.strip())
         if s.startswith("**Files:**"):
             in_files = True
             continue
@@ -169,7 +193,10 @@ def parse_task(t):
                       if not fenced and not TASK_HEAD.match(line))
 
     t.update(marker_type=ttype, type_unparsed=type_unparsed,
-             depends_on=deps, depends_none=deps_none,
+             # ids win over a contradictory `none` (the none assertion is void
+             # once concrete prerequisites are declared; surfaced via deps_mixed)
+             depends_on=deps, depends_none=deps_none and not deps,
+             deps_mixed=deps_mixed, late_markers=late_markers,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -244,7 +271,15 @@ def build_edges(impl):
     # Tier 1: Explicit — marker edges
     for t in impl:
         for d in t["depends_on"]:
-            if d in ids:
+            if d == t["id"]:
+                # Self-referential markers no-op inside add() (a != b guard);
+                # surface them like every other bad marker instead of dropping
+                # silently.
+                add_conflict(
+                    t["id"], d + " -> " + t["id"] + " (marker)",
+                    "self-referential Depends-on — a task cannot depend on "
+                    "itself; marker ignored")
+            elif d in ids:
                 add(d, t["id"], "marker")
             else:
                 add_conflict(
@@ -379,6 +414,20 @@ def main(argv=None):
          "note": "**Type:** " + repr(t["type_unparsed"]) + " is not a recognized type "
                  "(implementation/gate/release/manual) — marker ignored, heuristic applied"}
         for t in tasks if t.get("type_unparsed")]
+    # Markers found outside the header block (after the Files block or the
+    # first checkbox step) are never trusted — surface each task once.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "marker line(s) outside the header block ignored ("
+                 + "; ".join(sorted(set(t["late_markers"]))[:3])
+                 + ") — markers go immediately after the task heading"}
+        for t in tasks if t.get("late_markers")]
+    # `Depends-on: none` combined with concrete ids — ids won, none is void.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "Depends-on: none combined with concrete ids — the ids win; "
+                 "the none assertion is ignored"}
+        for t in tasks if t.get("deps_mixed")]
 
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     if not impl:

@@ -555,3 +555,74 @@ def test_line_ranged_paths_strip_to_overlap(tmp_path):
     out = compile_plan(plan)
     assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
     assert out["waves"] == [["A"], ["B"]]
+
+
+def test_multiple_depends_on_lines_accumulate(tmp_path):
+    plan = tmp_path / "multidep.md"
+    plan.write_text(
+        "# Plan: Multi dep\n\n"
+        "### Task A: first\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: second\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n\n"
+        "### Task C: needs both\n\n**Type:** implementation\n"
+        "**Depends-on:** A\n**Depends-on:** B\n\n"
+        "**Files:**\n- Create: `c.txt`\n\n- [ ] **Step 1:** c\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "C", "why": "marker"} in out["dag_edges"]
+    assert {"from": "B", "to": "C", "why": "marker"} in out["dag_edges"]
+    assert out["waves"] == [["A", "B"], ["C"]]
+
+
+def test_depends_none_plus_ids_conflict_ids_win(tmp_path):
+    plan = tmp_path / "mixeddep.md"
+    plan.write_text(
+        "# Plan: Mixed dep\n\n"
+        "### Task A: base\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: contradictory markers\n\n**Type:** implementation\n"
+        "**Depends-on:** none\n**Depends-on:** A\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "marker"} in out["dag_edges"]
+    assert any(c["task"] == "B" and "none" in c["note"] for c in out["marker_conflicts"])
+    assert out["waves"] == [["A"], ["B"]]
+
+
+def test_marker_outside_header_block_is_ignored_and_surfaced(tmp_path):
+    plan = tmp_path / "latemarker.md"
+    plan.write_text(
+        "# Plan: Late marker\n\n"
+        "### Task A: discusses the syntax\n\n"
+        "**Files:**\n- Create: `doc.md`\n\n"
+        "- [ ] **Step 1:** document that each task carries a line like:\n\n"
+        "**Type:** release\n"
+        "**Depends-on:** B\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    # The late unfenced markers must not reclassify A as a trusted release
+    # nor fabricate a trusted marker edge B -> A.
+    assert by_id["A"]["disposition"] == "implementation"
+    assert by_id["A"]["heuristic"] is True
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
+    assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_self_referential_depends_on_surfaces_conflict(tmp_path):
+    plan = tmp_path / "selfdep.md"
+    plan.write_text(
+        "# Plan: Self dep\n\n"
+        "### Task A: depends on itself\n\n**Type:** implementation\n"
+        "**Depends-on:** A\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: bystander\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert out["dag_edges"] == []
+    assert any(c["task"] == "A" and "self" in c["note"].lower() for c in out["marker_conflicts"])
