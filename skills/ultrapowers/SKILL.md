@@ -38,6 +38,13 @@ web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable
 Step 6 and run the fallback — do **not** perform dependency analysis or ask the human to approve
 a wave plan that cannot launch.
 
+**Tested with superpowers 5.1.0.** Check the installed version (the directory name
+under `~/.claude/plugins/cache/claude-plugins-official/superpowers/`). A newer
+version is not a blocker — warn and continue: "ultrapowers was validated against
+superpowers 5.1.0; you have <X>. If plan parsing or a handoff misbehaves, suspect
+upstream drift first (run `python3 -m pytest tests/test_superpowers_compat.py` in
+the ultrapowers repo to localize it)."
+
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
 plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`
 and titles each task `### Task N: <name>`, so accept a plan whose top-level heading matches
@@ -64,6 +71,10 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   DAG. Gates compile into run config (their suite commands inform `testCmd`);
   `release`/`manual` tasks go verbatim into the post-merge runbook. Extract task
   bodies fence-aware — headings inside code fences are content, not boundaries.
+  For marked plans, do not hand-derive: run
+  `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>`
+  and adopt its JSON as the transparency block's waves/edges/dispositions verbatim,
+  applying judgment only to `"heuristic": true` entries and the derived knobs.
 - **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), any `**Depends-on:**`
   markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
@@ -125,6 +136,7 @@ install the copy now:
 ```
 mkdir -p .claude/workflows
 cp "${CLAUDE_SKILL_DIR}/workflow.js" .claude/workflows/ultrapowers-run.js
+cp "${CLAUDE_SKILL_DIR}/probe.js" .claude/workflows/ultrapowers-probe.js
 ```
 
 Run the copy unconditionally — it is byte-for-byte the committed script, so overwriting keeps any
@@ -136,6 +148,11 @@ or gitignore it; Step 4a keeps it current either way.)
 > exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
 > workflow installed above; if it cannot be launched, go to Step 6.
 
+**4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with
+`args = { ping: 'pong' }`. It spawns no agents and returns `{ ok: true, ... }` in
+seconds. If the launch errors or `ok` is not true, the engine has drifted — go
+directly to Step 6; do not launch the real workflow.
+
 **4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
 `meta.name` (`ultrapowers`), **not** the installed filename (`ultrapowers-run.js`) — launching as
@@ -143,7 +160,7 @@ or edit it) via the **Workflow** tool. The registry resolves saved workflows by 
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
+         edges, baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
 Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
@@ -160,6 +177,9 @@ preserves standard behavior):
   without paying for the extra pass everywhere.
 - `tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap *implementer* tiers (reviewers stay at the
   strongest model regardless).
+- `edges` — the structured dependency pairs `[[fromTaskId, toTaskId], ...]` from
+  Step 2 (the same edges rendered as prose in `dependencyEdges`). The workflow uses
+  them to block transitive dependents of a failed task instead of dispatching them.
 
 The workflow validates `args.waves` and **throws loudly** if it is missing or malformed rather than
 risk mutating the wrong repository. Do not pause mid-run —
@@ -184,8 +204,13 @@ compile time, verbatim and in document order — so nothing classified out of th
 is forgotten. Then name the integration branch and
 present two choices:
 
-- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge /
-  open a PR / clean up, carrying the post-merge runbook as its follow-up checklist.
+- **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand
+  off; present the failure and offer Redirect instead (finishing-a-development-branch's
+  own precondition is a passing suite). If true: `git checkout <integrationBranch>`
+  (its Step 1 verifies tests on the CURRENT checkout — it must see the integration
+  tree, not the base branch you restored for the report), then proceed to
+  `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
+  carrying the post-merge runbook as its follow-up checklist.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
   corrective instructions appended to each task `body`), and relaunch the saved workflow
@@ -207,6 +232,10 @@ the Skill tool and hand it the same plan. This preserves determinism: the proven
 runs instead, and we simply lose parallelism for that run. **Never improvise an ad-hoc workflow
 script** — that would reintroduce the runtime nondeterminism this skill exists to remove.
 
+When falling back, hand subagent-driven-development a clean checkout and let its
+own using-git-worktrees setup create isolation — do not hand it a dirty tree or
+silently leave it implementing on main; it requires explicit consent for that.
+
 ---
 
 ## Autonomy Posture
@@ -214,7 +243,7 @@ script** — that would reintroduce the runtime nondeterminism this skill exists
 Operate with catastrophe-only escalation between the wave-plan gate and the pre-merge gate. Mid-run
 questions are not possible — the workflow is headless. Handle ambiguity by making a conservative,
 logged judgment call surfaced in the final report under `judgmentCalls`. Blocked tasks are never
-silently dropped: they appear under blocked waves / unfinished in the report. The only events that
+silently dropped: they appear in the report as failed tasks, blocked waves, or unfinished entries — never silently dropped. The only events that
 warrant aborting before the pre-merge review are a dependency cycle (Step 2, requires human plan
 revision) or an inability to create the integration branch.
 
@@ -229,3 +258,5 @@ revision) or an inability to create the integration branch.
 - `references/report-format.md` — structured report schema and the human-facing presentation order.
 - `references/workflow-template.md` — maintainer doc for `workflow.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
 - `scripts/validate_skill.py` — run `python3 scripts/validate_skill.py skills/ultrapowers` to verify frontmatter and reference integrity; expected output: `skill ok`.
+- `scripts/compile_plan.py` — deterministic compiler for marked plans: transparency-block JSON from a plan path.
+- `probe.js` — the zero-agent engine preflight installed and launched at Step 4a½.
