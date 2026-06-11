@@ -27,5 +27,8 @@ jobs:
       - name: Validate skill
         run: python skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers
 
+      - name: Validate ultraplan skill
+        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultraplan
+
       - name: Run tests
         run: python -m pytest tests/ -v

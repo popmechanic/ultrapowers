@@ -15,6 +15,10 @@ def test_ultrapowers_skill_validates():
     code, out = run(ROOT / "skills/ultrapowers")
     assert code == 0, out
 
+def test_ultraplan_skill_validates():
+    code, out = run(ROOT / "skills/ultraplan")
+    assert code == 0, out
+
 def test_missing_description_fails(tmp_path):
     (tmp_path / "SKILL.md").write_text("---\nname: x\n---\nbody\n")
     code, out = run(tmp_path)
