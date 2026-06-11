@@ -32,9 +32,24 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
+# Files-entry near-misses (`- Modify : x`, `- create: x`) inside an open Files
+# block would otherwise drop silently — losing a write path and with it the
+# overlap edge that prevents a same-wave write race.
+FILE_ISH = re.compile(r"^-\s*(create|modify|test)\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends on|after|requires)\s+Task\s+([A-Za-z0-9]+)", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
+
+
+def match_head(line):
+    """The single source of truth for task headings: TASK_HEAD on the
+    stripped text, accepting CommonMark's up-to-3 leading spaces. Used by
+    BOTH split_tasks and the malformed-heading net so a heading can never
+    pass one and fail the other (a raw/stripped mismatch silently folded
+    indented tasks into their predecessor)."""
+    if len(line) - len(line.lstrip(" ")) > 3:
+        return None
+    return TASK_HEAD.match(line.strip())
 
 TYPES = ("implementation", "gate", "release", "manual")
 RELEASE_EV = re.compile(
@@ -86,7 +101,7 @@ def split_tasks(text):
     for i, (line, fenced) in enumerate(lines):
         if fenced:
             continue
-        h = TASK_HEAD.match(line)
+        h = match_head(line)
         if h:
             heads.append((h.group(1), h.group(2).strip(), i))
     tasks = []
@@ -105,6 +120,7 @@ def parse_task(t):
     dup_types = []
     near_miss = []
     creates, modifies, reads = [], [], []
+    files_near_miss = []
     in_files = False
     files_entries_seen = False
     # The marker contract places **Type:**/**Depends-on:** "immediately after
@@ -169,6 +185,9 @@ def parse_task(t):
                     if deps_none and not has_none:
                         deps_mixed = True
                     deps.extend(id_tokens)
+        elif is_markerish and s.rstrip() == "**Depends-on:**":
+            # Exact marker, missing value — a spelling diagnosis would mislead.
+            near_miss.append(s + "  <missing value>")
         elif is_markerish:
             # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type**:`)
             # would otherwise silently degrade to heuristics with no feedback —
@@ -200,6 +219,8 @@ def parse_task(t):
             if s.startswith("- ["):
                 in_files = False
             f = FILE_LINE.match(s) if in_files else None
+            if in_files and not f and FILE_ISH.match(s):
+                files_near_miss.append(s)
             if f:
                 # Prefer backticked paths; otherwise take the first
                 # whitespace-delimited token so an unbackticked line like
@@ -243,6 +264,7 @@ def parse_task(t):
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
+             files_near_miss=files_near_miss,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -433,7 +455,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
     args = ap.parse_args(argv)
-    tasks = [parse_task(t) for t in split_tasks(args.plan.read_text())]
+    plan_text = args.plan.read_text()
+    tasks = [parse_task(t) for t in split_tasks(plan_text)]
     if not tasks:
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
@@ -443,10 +466,10 @@ def main(argv=None):
     # section into the PREVIOUS task: the task vanishes from the waves and its
     # files corrupt the previous task's write set. Refuse loudly, like
     # duplicate ids.
-    near_head = re.compile(r"^###\s*[Tt]ask\b")
-    bad_heads = [line.strip() for line, fenced in _fence_aware_lines(args.plan.read_text())
+    near_head = re.compile(r"^#{3,4}\s*task\b", re.I)
+    bad_heads = [line.strip() for line, fenced in _fence_aware_lines(plan_text)
                  if not fenced and near_head.match(line.strip())
-                 and not TASK_HEAD.match(line.strip())]
+                 and not match_head(line)]
     if bad_heads:
         print("compile_plan: task heading(s) not recognized: "
               + "; ".join(bad_heads[:3])
@@ -492,10 +515,18 @@ def main(argv=None):
          "note": "contradictory **Type:** markers (" + t["marker_type"] + " vs "
                  + ", ".join(sorted(set(t["dup_types"]))) + ") — the first one wins"}
         for t in tasks if t.get("dup_types")]
+    # Files-entry near-misses: a dropped write path silently weakens overlap
+    # inference — surface per task.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "Files entr(y/ies) not recognized (check label case/colon: "
+                 + "; ".join(sorted(set(t["files_near_miss"]))[:3])
+                 + ") — path(s) dropped from overlap inference"}
+        for t in tasks if t.get("files_near_miss")]
     # Near-miss marker spellings: degraded to heuristics, but never silently.
     type_conflicts += [
         {"task": t["id"], "edge": "",
-         "note": "marker-like line(s) not recognized (check spelling/case: "
+         "note": "marker-like line(s) not recognized (check spelling/case, or a missing value: "
                  + "; ".join(sorted(set(t["near_miss"]))[:3])
                  + ") — ignored"
                  + (", heuristics applied" if not t.get("marker_type")

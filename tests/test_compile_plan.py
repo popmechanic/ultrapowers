@@ -869,3 +869,61 @@ def test_near_miss_note_does_not_claim_heuristics_when_type_is_trusted(tmp_path)
     note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
     assert "spelling" in note.lower()
     assert "heuristics applied" not in note   # classification was NOT heuristic here
+
+
+def test_indented_valid_heading_is_a_real_task(tmp_path):
+    plan = tmp_path / "indenthead.md"
+    plan.write_text(
+        "# Plan: Indented heading\n\n"
+        "### Task 1: first\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        " ### Task 2: one leading space, still a CommonMark heading\n\n"
+        "**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert [t["id"] for t in out["tasks"]] == ["1", "2"]
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == ["a.txt"]      # task 2's files did NOT fold in
+    assert by_id["2"]["writes"] == ["b.txt"]
+
+
+def test_four_hash_and_caps_headings_error_loudly(tmp_path):
+    for bad in ("#### Task 2: four hashes", "### TASK 2: all caps"):
+        plan = tmp_path / "badhead.md"
+        plan.write_text(
+            "# Plan: Bad heading\n\n"
+            "### Task 1: first\n\n**Type:** implementation\n\n"
+            "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+            + bad + "\n\n**Type:** implementation\n\n"
+            "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+        )
+        p = compile_plan_raw(plan)
+        assert p.returncode == 1, bad
+        assert "heading" in p.stderr.lower(), bad
+
+
+def test_near_miss_files_entry_surfaces_conflict(tmp_path):
+    plan = tmp_path / "filesmiss.md"
+    plan.write_text(
+        "# Plan: Files near miss\n\n"
+        "### Task 1: spaced colon\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify : `shared.py`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: lowercase label\n\n**Type:** implementation\n\n"
+        "**Files:**\n- modify: `shared.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
+    assert any(c["task"] == "2" and "Files" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_empty_depends_on_value_diagnosed_as_missing(tmp_path):
+    plan = tmp_path / "emptydep.md"
+    plan.write_text(
+        "# Plan: Empty dep\n\n"
+        "### Task A: empty value\n\n**Type:** implementation\n**Depends-on:**\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
+    assert "missing" in note.lower() and "value" in note.lower()
