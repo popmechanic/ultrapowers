@@ -13,3 +13,23 @@ def test_orchestrator_wires_the_contract_through_its_gates():
     assert "Classify first" in text
     assert "post-merge runbook" in text
     assert "dispositions" in text.lower()   # Step 3 approves the interpretation
+
+
+def test_orchestrator_launches_by_meta_name():
+    # The saved-workflow registry resolves by the script's meta.name
+    # ('ultrapowers'), NOT the installed filename ('ultrapowers-run.js') —
+    # confirmed live 2026-06-10: launching as 'ultrapowers-run' fails.
+    text = ORCHESTRATOR.read_text()
+    assert "`meta.name`" in text
+    assert "not found" in text   # the failure mode is named, not just implied
+    workflow = (ROOT / "skills/ultrapowers/workflow.js").read_text()
+    assert "name: 'ultrapowers'" in workflow   # the name Step 4b promises
+
+
+def test_orchestrator_restores_session_checkout_at_step_5():
+    # The workflow's setup agent leaves the session checkout on the
+    # integration branch; Step 5 must switch back before presenting the
+    # report or the work looks prematurely merged at the human gate.
+    text = ORCHESTRATOR.read_text()
+    assert "restore the session checkout" in text
+    assert "git checkout <baseBranch>" in text

@@ -134,10 +134,12 @@ or gitignore it; Step 4a keeps it current either way.)
 > **Determinism guard:** never trigger the run with the `ultracode` keyword or by asking for "a
 > workflow" in prose — that opt-in makes Claude **author a new script at runtime**, which is
 > exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
-> `ultrapowers-run` workflow installed above; if it cannot be launched, go to Step 6.
+> workflow installed above; if it cannot be launched, go to Step 6.
 
-**4b — Launch the saved workflow** `ultrapowers-run` (the committed script — do **not** author or
-edit it) via the **Workflow** tool with:
+**4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
+or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
+`meta.name` (`ultrapowers`), **not** the installed filename (`ultrapowers-run.js`) — launching as
+`ultrapowers-run` fails with "not found". Pass:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
@@ -170,7 +172,12 @@ reconciles failures, and runs a final integration/completeness review. See
 
 ## Step 5 — Present the Pre-Merge Report (human gate)
 
-When the workflow returns, render its structured report per `references/report-format.md`:
+**First, restore the session checkout.** The workflow's setup agent checks the integration branch
+out in the session repository and nothing switches it back — run `git checkout <baseBranch>` now.
+Skipping this makes every `git log`/`git merge` at this gate silently target the integration
+branch, so the work *looks* prematurely merged when it is not.
+
+Then render the workflow's structured report per `references/report-format.md`:
 integration branch, wave plan, per-task status + review verdict, test result, judgment calls, and
 anything unfinished or flagged by the completeness critic. Then render the **post-merge runbook** — the `release`/`manual` tasks excluded at
 compile time, verbatim and in document order — so nothing classified out of the run
@@ -181,8 +188,8 @@ present two choices:
   open a PR / clean up, carrying the post-merge runbook as its follow-up checklist.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
-  corrective instructions appended to each task `body`), and relaunch the saved `ultrapowers-run`
-  workflow (Step 4) with `resume: true` and the **same** `integrationBranch`. The setup agent checks
+  corrective instructions appended to each task `body`), and relaunch the saved workflow
+  (Step 4, by `meta.name` `ultrapowers`) with `resume: true` and the **same** `integrationBranch`. The setup agent checks
   out the existing branch instead of creating one; redirected work merges onto it. Never
   improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
   it completes.
