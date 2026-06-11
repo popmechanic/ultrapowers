@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+
+# ultrapowers run artifacts (installed copies + engine worktrees)
+.claude/worktrees/
+.claude/workflows/ultrapowers-run.js
+.claude/workflows/ultrapowers-probe.js
