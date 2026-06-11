@@ -381,3 +381,116 @@ def test_fully_overlapping_writes_degrade_and_reason(tmp_path):
     assert out["mode"] == "sequential"
     assert out["degrade_reason"] == "Sequential mode: 3 implementation tasks, fully overlapping writes"
     assert out["waves"] == [["A"], ["B"], ["C"]]
+
+
+def test_doc_order_edge_yields_to_transitive_marker_path(tmp_path):
+    plan = tmp_path / "transitive.md"
+    plan.write_text(
+        "# Plan: Transitive yield\n\n"
+        "### Task A: last by markers, first in doc\n\n"
+        "**Type:** implementation\n**Depends-on:** B\n\n"
+        "**Files:**\n- Modify: `f.txt`\n\n- [ ] **Step 1:** edit f\n\n"
+        "### Task B: middle\n\n"
+        "**Type:** implementation\n**Depends-on:** C\n\n"
+        "**Files:**\n- Create: `other.txt`\n\n- [ ] **Step 1:** other\n\n"
+        "### Task C: first by markers, last in doc\n\n"
+        "**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Modify: `f.txt`\n\n- [ ] **Step 1:** edit f first\n"
+    )
+    out = compile_plan(plan)   # must NOT be a spurious cycle
+    assert not any(e["from"] == "A" and e["to"] == "C" for e in out["dag_edges"])
+    assert out["waves"] == [["C"], ["B"], ["A"]]
+
+
+def test_nested_fence_with_info_string_stays_content(tmp_path):
+    plan = tmp_path / "nested.md"
+    plan.write_text(
+        "# Plan: Nested fence\n\n"
+        "### Task A: base\n\n**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: embeds a nested example\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n"
+        "- [ ] **Step 1:** document this snippet:\n\n"
+        "```\n"
+        "```bash\n"
+        "git push origin main\n"
+        "```\n"
+        "this line runs after Task A in the example\n"
+        "```\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["B"]["disposition"] == "implementation"   # fenced git push inert
+    assert not any(e["why"] == "text" for e in out["dag_edges"])  # fenced text-dep inert
+
+
+def test_checkbox_step_shaped_like_files_line_adds_no_writes(tmp_path):
+    plan = tmp_path / "stepbleed.md"
+    plan.write_text(
+        "# Plan: Step bleed\n\n"
+        "### Task A: writer\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** write a\n"
+        "- Modify: nothing in `b.txt` should change yet\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert "b.txt" not in by_id["A"]["writes"]
+    assert out["dag_edges"] == []
+
+
+def test_shared_test_path_serializes(tmp_path):
+    plan = tmp_path / "sharedtest.md"
+    plan.write_text(
+        "# Plan: Shared test file\n\n"
+        "### Task A: first feature\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `feat_a.py`\n- Test: `tests/test_shared.py`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task B: second feature\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `feat_b.py`\n- Test: `tests/test_shared.py`\n\n"
+        "- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
+    assert out["waves"] == [["A"], ["B"]]
+
+
+def test_text_dependency_outside_impl_set_surfaces_conflict(tmp_path):
+    plan = tmp_path / "textghost.md"
+    plan.write_text(
+        "# Plan: Text ghost\n\n"
+        "### Task A: gate-ish\n\n**Type:** gate\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n\n"
+        "### Task B: follower\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** Run after Task A passes.\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "text" for e in out["dag_edges"])
+    assert any(c["task"] == "B" and "edge dropped" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_tilde_wrapper_with_backtick_inner_keeps_following_task(tmp_path):
+    # Regression: a tilde fence (~~~) wrapping a backtick example (```bash ... ```)
+    # must close cleanly so a following task is still parsed. A nesting tracker that
+    # compares closers against the OUTERMOST frame instead of the innermost leaves
+    # the outer ~~~ open forever and silently drops Task B.
+    plan = tmp_path / "tildewrap.md"
+    plan.write_text(
+        "# Plan: Tilde wrapper\n\n"
+        "### Task A: documents a shell example inside a tilde wrapper\n\n"
+        "**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** show the deploy command:\n\n"
+        "~~~\n"
+        "```bash\n"
+        "git push origin main\n"
+        "```\n"
+        "~~~\n\n"
+        "### Task B: still here\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert [t["id"] for t in out["tasks"]] == ["A", "B"]
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "implementation"   # fenced git push inert
