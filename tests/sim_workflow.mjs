@@ -607,6 +607,79 @@ async function scenarioResumeRequiresBranch() {
   console.log('scenario resume-requires-branch: OK')
 }
 
+// ── Scenario: agent-throw-degrades — a thrown impl agent costs ONE task ────────
+// parallel() is fail-fast; an uncaught throw would lose the whole wave's report.
+// The runTask wrapper must degrade to {status:'failed', reviewVerdict:'agent-error'}.
+async function scenarioAgentThrowDegrades() {
+  const waves = [
+    [
+      { id: 'X', title: 'throw task', body: 'task X', tier: 'cheap' },
+      { id: 'Y', title: 'sibling task', body: 'task Y', tier: 'cheap' },
+    ],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'impl:X') throw new Error('engine fault: schema mismatch')
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r !== undefined && r.tasks !== undefined, 'agentThrow: run returned a report')
+  const x = r.tasks.find((t) => t.task === 'X')
+  const y = r.tasks.find((t) => t.task === 'Y')
+  assert(x !== undefined, 'agentThrow: X appears in tasks')
+  eq(x.status, 'failed', 'agentThrow: thrown task status is failed')
+  eq(x.reviewVerdict, 'agent-error', 'agentThrow: thrown task reviewVerdict is agent-error')
+  assert(y !== undefined, 'agentThrow: sibling Y appears in tasks')
+  eq(y.status, 'done', 'agentThrow: sibling Y is done (parallel did not lose it)')
+  assert(r.judgmentCalls.some((j) => /X/.test(j) && /engine fault/.test(j)),
+    'agentThrow: judgmentCalls mentions the error')
+  console.log('scenario agent-throw-degrades: OK')
+}
+
+// ── Scenario: merged-without-headsha — MERGED result missing headSha is surfaced ─
+async function scenarioMergedWithoutHeadSha() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) return { status: 'MERGED' } // no headSha
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r !== undefined, 'mergedWithoutHeadSha: run completed')
+  assert(r.judgmentCalls.some((j) => /without headSha/.test(j)),
+    'mergedWithoutHeadSha: judgmentCalls contains an entry matching /without headSha/')
+  console.log('scenario merged-without-headsha: OK')
+}
+
+// ── Scenario: meta-absent-engine — entire meta declaration stripped ────────────
+// Simulates engines that extract meta at parse time and do not expose the
+// binding to the executing body. The typeof guard must handle this gracefully.
+async function scenarioMetaAbsentEngine() {
+  // Strip the entire `export const meta = { ... }` block (multi-line object literal)
+  // by removing from 'export const meta' up through the closing '}\n' of that block.
+  const srcWithoutMeta = SRC.replace(/const meta\s*=\s*\{[^}]*\}\s*\n/, '')
+  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
+  const phase = () => {}
+  const log = () => {}
+  const agent = makeAgent()
+  const args = baseArgs
+  const budget = undefined
+  const factory = new Function(
+    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
+    '"use strict"; return (async () => {\n' + srcWithoutMeta + '\n})();'
+  )
+  const r = await factory(agent, parallel, phase, log, args, budget)
+  assert(r !== undefined && r.tasks !== undefined, 'metaAbsent: run completed (typeof guard holds)')
+  assert(r.tasks.every((t) => t.status === 'done'), 'metaAbsent: all tasks done')
+  console.log('scenario meta-absent-engine: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -628,4 +701,7 @@ await scenarioResume()
 await scenarioResumeRequiresBranch()
 await scenarioAdversarialDedupe()
 await scenarioBudgetExhausted()
+await scenarioAgentThrowDegrades()
+await scenarioMergedWithoutHeadSha()
+await scenarioMetaAbsentEngine()
 console.log('ALL SCENARIOS PASSED')
