@@ -39,8 +39,16 @@ FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
-# Plural prose ("depends on Tasks 1 and 3") is NOT parsed into edges — surface
-# it so the author converts to Depends-on markers instead of losing ordering.
+# Plural conjunction/comma lists ("depends on Tasks 1 and 3", "after Tasks
+# 1, 2 and 3") parse into one text edge per listed id. A `Tasks` mention the
+# list regex cannot parse (e.g. "after Tasks above") still surfaces as a
+# conflict so ordering intent is never silently lost.
+TEXT_DEP_LIST = re.compile(
+    r"(?:depends\s+on|after|requires)[\s:*]+Tasks\s+"
+    r"((?:[A-Za-z0-9]+)(?:\s*(?:,|and|&)\s*[A-Za-z0-9]+)*)", re.I)
+LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
+# Plural prose that does NOT form a parseable id list — surface it so the
+# author can fix the ordering intent instead of losing it silently.
 TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
 
@@ -412,6 +420,18 @@ def build_edges(impl):
                         b["id"], m.group(1) + " -> " + b["id"] + " (text)",
                         "text dependency names a task outside the implementation set "
                         "(unknown id or gate/release/manual) — edge dropped")
+        for m in TEXT_DEP_LIST.finditer(b["prose"]):
+            for ref in LIST_SPLIT.split(m.group(1)):
+                ref = ref.strip()
+                if not ref or ref == b["id"]:
+                    continue
+                if ref in ids:
+                    add(ref, b["id"], "text")
+                else:
+                    add_conflict(
+                        b["id"], ref + " -> " + b["id"] + " (text)",
+                        "text dependency names a task outside the implementation set "
+                        "(unknown id or gate/release/manual) — edge dropped")
 
     # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
@@ -594,13 +614,15 @@ def main(argv=None):
                  + ") — task serialized via ambiguous-files; list concrete files "
                  "to parallelize (a literal [slug]/{x} path also triggers this)"}
         for t in tasks if t.get("glob_paths")]
-    # Plural text dependencies are not parsed into edges — surface so the
-    # ordering intent is not silently lost.
+    # Plural text dependencies that could NOT be parsed into an id list — surface
+    # so the ordering intent is not silently lost.
     type_conflicts += [
         {"task": t["id"], "edge": "",
-         "note": "plural text dependency ('depends on/after/requires Tasks …') is "
-                 "not parsed — encode each prerequisite as a **Depends-on:** marker"}
-        for t in tasks if TEXT_DEP_PLURAL.search(t["prose"])]
+         "note": "plural text dependency ('depends on/after/requires Tasks …') could "
+                 "not be parsed into task ids — encode each prerequisite as a "
+                 "**Depends-on:** marker"}
+        for t in tasks
+        if TEXT_DEP_PLURAL.search(t["prose"]) and not TEXT_DEP_LIST.search(t["prose"])]
     # Files-entry near-misses: a dropped write path silently weakens overlap
     # inference — surface per task.
     type_conflicts += [
