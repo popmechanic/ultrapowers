@@ -680,6 +680,55 @@ async function scenarioMetaAbsentEngine() {
   console.log('scenario meta-absent-engine: OK')
 }
 
+// ── Scenario: dependent-blocked-by-failed-task ────────────────────────────────
+// waves [[A, X],[B]] with args.edges=[["A","B"]]; A's review stub returns
+// blocking issues twice (fix-loop exhaustion -> A failed); X passes; wave 1
+// merges successfully (X's branch lands); B is in wave 2 but depends on A
+// which never landed. The dep-cascade must block B before dispatch.
+async function scenarioDependentBlockedByFailedTask() {
+  const implCalled = new Set()
+  const waves = [
+    [
+      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+    ],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = {
+    waves,
+    integrationBranch: 'ultra/integration-sim',
+    stamp: 'sim',
+    edges: [['A', 'B']],
+  }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        const id = taskIdFromLabel(label)
+        implCalled.add(id)
+        return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+      }
+      if (label.startsWith('review:')) {
+        const id = taskIdFromLabel(label)
+        // A always returns blocking issues -> fix-loop exhaustion -> failed
+        if (id === 'A') {
+          return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+        }
+        return { verdict: 'PASS', issues: [] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('B'), 'depBlocked: B impl must never dispatch (no impl:B stub call)')
+  assert(r.unfinished.some((u) => /B: blocked — depends on a failed task/.test(u)),
+    'depBlocked: unfinished contains B: blocked — depends on a failed task')
+  assert(r !== undefined && r.tasks !== undefined, 'depBlocked: report still returned')
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a.status, 'failed', 'depBlocked: A failed (fix-loop exhausted)')
+  eq(a.reviewVerdict, 'fix-loop-exhausted', 'depBlocked: A reviewVerdict fix-loop-exhausted')
+  console.log('scenario dependent-blocked-by-failed-task: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -704,4 +753,5 @@ await scenarioBudgetExhausted()
 await scenarioAgentThrowDegrades()
 await scenarioMergedWithoutHeadSha()
 await scenarioMetaAbsentEngine()
+await scenarioDependentBlockedByFailedTask()
 console.log('ALL SCENARIOS PASSED')

@@ -56,6 +56,12 @@ const integrationBranch =
   (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||
   ('ultra/integration-' + stamp)
 const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
+// Structured dependency pairs [[fromTaskId, toTaskId], ...] — optional. When
+// present, a failed task blocks its transitive dependents instead of letting
+// them run against a base that never received the prerequisite.
+const EDGES = (ARGS && Array.isArray(ARGS.edges))
+  ? ARGS.edges.filter((e) => Array.isArray(e) && e.length === 2).map((e) => [String(e[0]), String(e[1])])
+  : []
 
 // ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
 // testCmd:        override the test-command detection ladder (e.g. 'make test').
@@ -487,6 +493,22 @@ const budgetExhausted = () => {
   return typeof r === 'number' && r <= 0
 }
 
+// Tasks transitively downstream of a failure — never dispatched, always reported.
+const blockedByDep = new Set()
+const noteFailures = () => {
+  const failed = new Set(taskResults.filter((r) => r && r.status === 'failed').map((r) => r.task))
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const [a, b] of EDGES) {
+      if ((failed.has(a) || blockedByDep.has(a)) && !blockedByDep.has(b) && !failed.has(b)) {
+        blockedByDep.add(b)
+        grew = true
+      }
+    }
+  }
+}
+
 // Review diff base: the integration-branch HEAD a wave's worktrees build on.
 // Wave 1 starts at the setup HEAD; each successful merge advances it.
 let waveBaseSha = setup.headSha
@@ -499,6 +521,7 @@ for (let w = 0; w < WAVES.length; w++) {
     continue
   }
   phase('Wave ' + (w + 1))
+  noteFailures()
   const results = []
   for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
     const chunk = WAVES[w].slice(off, off + CONCURRENCY)
@@ -506,10 +529,20 @@ for (let w = 0; w < WAVES.length; w++) {
       chunk.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted mid-wave)'))
       continue
     }
-    const chunkResults = await parallel(chunk.map((task) => () => runTask(task, waveBaseSha)))
+    const runnable = chunk.filter((t) => {
+      if (blockedByDep.has(t.id)) {
+        unfinished.push(t.id + ': blocked — depends on a failed task')
+        log('task ' + t.id + ' skipped: upstream dependency failed')
+        return false
+      }
+      return true
+    })
+    if (runnable.length === 0) continue
+    const chunkResults = await parallel(runnable.map((task) => () => runTask(task, waveBaseSha)))
     for (const r of chunkResults) results.push(r)
   }
   for (const r of results) taskResults.push(r)
+  noteFailures()
 
   const merge = await mergeWave(results, w)
   // Record every wave's merge outcome (success too) so the pre-merge gate can see
