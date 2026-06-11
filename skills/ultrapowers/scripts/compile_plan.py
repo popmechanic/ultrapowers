@@ -275,7 +275,7 @@ def build_edges(impl):
             if target["depends_none"] and why != "marker":
                 add_conflict(
                     b, f"{a} -> {b} ({why})",
-                    "Depends-on: none overridden by inferred edge (inferred edge wins)")
+                    "Depends-on: none overridden by a conflicting edge — its why label is in the edge field")
 
     def would_cycle(a, b):
         """True if adding a -> b would close a cycle (b already reaches a)."""

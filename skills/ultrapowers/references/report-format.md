@@ -13,7 +13,7 @@ The workflow produces a single structured report object that the main agent pres
     "dependencyEdges": { "type": "array", "items": { "type": "string" } },
     "tasks": { "type": "array", "items": { "type": "object",
       "required": ["task", "status"],
-      "properties": { "task": {"type":"string"}, "status": {"type":"string"}, "branch": {"type":"string"},
+      "properties": { "task": {"type":"string"}, "status": {"type":"string"}, "branch": {"type":"string"}, "headSha": {"type":"string"},
         "commit": {"type":"string"}, "reviewVerdict": {"type":"string"}, "notes": {"type":"string"},
         "tier": {"type":"string"}, "review": {"type":"string"}, "fixIterations": {"type":"integer"} } } },
     "tests": { "type": "object", "properties": { "command": {"type":"string"}, "passed": {"type":"boolean"}, "output": {"type":"string"} } },
@@ -48,7 +48,7 @@ The workflow produces a single structured report object that the main agent pres
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
 | `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED` (`SKIPPED` = no mergeable branches, integration branch untouched; cascades only when `args.edges` was omitted — an explicitly supplied empty array counts as supplied — and tasks actually ran)), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
 | `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished` |
-| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals (one judgment call at launch-time exhaustion and one for the first mid-run deferral; every deferred task is itemized in `unfinished`), merges reported without a headSha, tasks reported done without mergeable coordinates, and a failed integration review |
+| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals (one judgment call at launch-time exhaustion and one for the first mid-run deferral; every deferred task is itemized in `unfinished`), merges reported without a headSha, tasks reported done without mergeable coordinates, an unknown or typo'd per-task review depth or tier (fell back to defaults), an unknown baseline (setup omitted baselinePassed or reported null), and a failed integration review |
 | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
 | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths |
 

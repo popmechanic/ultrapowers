@@ -66,8 +66,9 @@ structure. Each task object must be **self-contained**: `{ id, title, body, tier
 where `body` is the full verbatim task text (the workflow cannot resolve file references) and `review`
 (`'adversarial'` | `'lean'`, optional) is the per-task depth you derive below.
 
-- **Classify first** per `references/plan-markers.md`: trust `**Type:**` markers when
-  present, else the contract heuristics there. Only `implementation` tasks enter the
+- **Classify first** per `references/plan-markers.md`: trust header-block `**Type:**`
+  markers when present (markers outside the contiguous block after the heading are
+  ignored and surfaced as conflicts), else the contract heuristics there. Only `implementation` tasks enter the
   DAG. Gates compile into run config (their suite commands inform `testCmd`);
   `release`/`manual` tasks go verbatim into the post-merge runbook. Extract task
   bodies fence-aware — headings inside code fences are content, not boundaries.
@@ -208,7 +209,8 @@ present two choices:
   tree, not the base branch you restored for the report), then run
   `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` — the deterministic sweep
   of engine worktrees and merged branches (unmerged failed-task branches are kept
-  for inspection; never rely on the merge agents having cleaned up). Then proceed
+  for inspection; never rely on the merge agents having cleaned up; do not sweep
+  while another ultrapowers run is active in this repo). Then proceed
   to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
   the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the

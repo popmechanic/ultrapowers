@@ -179,3 +179,26 @@ def test_sdd_model_selection_section_still_exists():
     assert "Model Selection" in text, (
         "SDD's Model Selection section is gone or renamed — reviewer-prompts.md "
         "names it as the re-bake source for the model-tier scheme")
+
+
+def test_code_reviewer_template_still_has_dropped_categories():
+    text = (installed() / "skills/requesting-code-review/code-reviewer.md").read_text()
+    for cat in ("**Architecture:**", "**Production readiness:**"):
+        assert cat in text, (
+            cat + " is gone from code-reviewer.md — reviewer-prompts.md's "
+            "deliberate-drop note names it; re-audit the divergence note")
+
+
+def test_sdd_blocked_ladder_still_includes_model_escalation():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "re-dispatch with a more capable model" in text, (
+        "SDD's BLOCKED ladder changed — reviewer-prompts.md's headless-downgrade "
+        "note paraphrases it; re-audit the paraphrase")
+
+
+def test_writing_plans_menu_still_carries_the_stale_checkpoint_wording():
+    text = (installed() / "skills/writing-plans/SKILL.md").read_text()
+    assert "batch execution with checkpoints" in text, (
+        "writing-plans fixed its stale Inline-option wording — ultraplan SKILL.md "
+        "explicitly calls it stale ('its own handoff text still says otherwise'); "
+        "update ultraplan's Inline option to stop accusing upstream")

@@ -47,11 +47,13 @@ Example:
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if inference still finds one, the inferred edge wins (the conflict entry's `edge` field carries the literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `text`, or `ambiguous-files`)
+author expects no incoming edges; if another rule still finds one, the conflicting edge wins — explicit text edges included (the conflict entry's `edge` field carries the literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `text`, or `ambiguous-files`)
 and the disagreement is surfaced in the transparency block
 under `marker_conflicts` — never silently dropped.
 
-`Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set.
+Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings (`**type:**`, `**Depends-On:**`) are flagged for correction rather than silently treated as prose.
+
+`Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set. The same drop-and-surface rule covers text dependencies naming excluded tasks, and self-referential markers.
 
 ## Type semantics (dispositions)
 

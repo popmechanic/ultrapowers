@@ -27,6 +27,10 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 - `**Depends-on:**` — comma-separated task IDs from the plan's own numbering
   (`2`, `A3`, `C4b`), or `none`.
 
+Placement is enforced: the compiler trusts markers only as the contiguous block
+immediately after the task heading — a marker after a description paragraph (or
+anywhere later) is ignored and surfaced as a conflict at the wave-plan gate.
+
 ## Replace the plan header
 
 writing-plans mandates this header line on every plan:

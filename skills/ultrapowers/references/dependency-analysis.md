@@ -5,11 +5,12 @@
 An approved `superpowers:writing-plans` plan document — headed `# <Feature> Implementation Plan`,
 with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 
-- A short title and description paragraph.
+- A short title, optionally followed by a description paragraph (the upstream template goes straight to `**Files:**`; real plans often add one).
 - A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels. Paths may carry the upstream line-range suffix (`existing.py:123-145`); the compiler strips the suffix, so two tasks editing different ranges of one file still overlap and serialize.
 - One or more checkbox steps (`- [ ] …`) describing what the task does.
 - Optionally, the parallel-execution markers from `plan-markers.md`: `**Type:**` and
-  `**Depends-on:**` lines between the task heading and the `**Files:**` block.
+  `**Depends-on:**` lines forming the contiguous block immediately after the task
+  heading (markers placed later — even before `**Files:**` — are demoted to conflicts).
 
 Parse each task to extract two file sets:
 
@@ -56,7 +57,7 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
 
 1. **Explicit marker:** B carries `**Depends-on:**` naming A. Marker edges are
    **additive** to the inferred rules below — the union orders the waves.
-   `**Depends-on:** none` asserts the author expects no incoming edges; if inference still finds one, the inferred edge wins (the conflict entry's `edge` field carries the literal `why` label) and the disagreement is surfaced in the
+   `**Depends-on:** none` asserts the author expects no incoming edges; if another rule still finds one, the conflicting edge wins — explicit text edges included (the conflict entry's `edge` field carries the literal `why` label) and the disagreement is surfaced in the
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
 3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet).
