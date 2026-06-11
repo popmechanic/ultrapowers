@@ -170,3 +170,25 @@ def test_sweep_warns_when_removing_the_callers_worktree(tmp_path):
     assert p.returncode == 0, p.stderr
     assert not wt.exists()
     assert "current directory" in p.stderr   # the caller is told their cwd is gone
+
+
+def test_sweep_root_survives_separate_git_dir(tmp_path):
+    # --separate-git-dir puts the git dir OUTSIDE the repo: dirname(common-dir)
+    # resolves to the git dir's parent, and the old derivation died with
+    # "fatal: not a git repository".
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    gitdir = tmp_path / "gitdir"
+    subprocess.run(["git", "init", "-b", "main", "--separate-git-dir", str(gitdir),
+                    str(repo)], check=True, capture_output=True)
+    git(repo, "config", "user.email", "sweep@test")
+    git(repo, "config", "user.name", "sweep test")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "init")
+    wt, br = add_engine_worktree(repo, "sep", "s.txt", merge=True)
+
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt.exists()
+    assert branches(repo) == []
