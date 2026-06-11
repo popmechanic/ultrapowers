@@ -153,7 +153,7 @@ same plan executes either way.
 ## Cost honesty
 
 Parallel waves, per-task worktrees, and independent review are token-heavy relative to a
-sequential run. The payoff is wall-clock time on plans with real parallel structure. For one- or
-two-task plans the engine degrades to sequential execution automatically; if your plans are
+sequential run. The payoff is wall-clock time on plans with real parallel structure. Single-task and
+fully-overlapping plans degrade to sequential execution automatically; if your plans are
 usually small or tightly coupled, superpowers' own executors are the better default and this
 plugin adds little.
