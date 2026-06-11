@@ -60,9 +60,13 @@ When the workflow completes, the main agent renders the report as a concise huma
 6. **Test result** — pass or fail, the command run, and any relevant output excerpt.
 7. **Judgment calls** — bullet each non-obvious autonomous decision so the human can spot disagreements early.
 8. **Unfinished / completeness findings** — anything deferred or out-of-scope discovered during the run; empty means nothing was left behind.
+9. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
+   rendered verbatim in document order. Sourced from the Step-2 dispositions (the
+   main agent carries it), **not** from the workflow return — the schema above is
+   unchanged. Empty runbook means the whole plan was waveable.
 
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
 
-- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge, clean up worktrees, and close the plan.
+- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge, clean up worktrees, and close the plan; the post-merge runbook travels with the handoff as its follow-up checklist.
 - **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.
