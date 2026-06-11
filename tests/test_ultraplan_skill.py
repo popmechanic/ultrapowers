@@ -1,0 +1,47 @@
+"""The ultraplan authoring skill must mirror the canonical marker contract
+(plan-markers.md BAKE blocks) verbatim — same anti-drift discipline as
+test_no_prompt_drift.py uses for workflow.js."""
+import pathlib
+import re
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+CONTRACT = ROOT / "skills/ultrapowers/references/plan-markers.md"
+ULTRAPLAN = ROOT / "skills/ultraplan/SKILL.md"
+
+MARKER = re.compile(r"<!-- BAKE:(\w+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
+
+
+def normalize(s: str) -> str:
+    s = s.lower()
+    s = re.sub(r"'s\b", "", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return s.strip()
+
+
+def contract_blocks():
+    blocks = {name: body for name, body in MARKER.findall(CONTRACT.read_text())}
+    assert blocks, "no <!-- BAKE:NAME --> markers found in plan-markers.md"
+    return blocks
+
+
+def test_ultraplan_mirrors_the_canonical_contract():
+    blocks = contract_blocks()
+    skill = normalize(ULTRAPLAN.read_text())
+    for name in ("MARKER_SYNTAX", "TYPE_SEMANTICS"):
+        expected = normalize(blocks[name])
+        assert expected, "empty contract block " + name
+        assert expected in skill, (
+            "drift: BAKE:" + name + " in plan-markers.md is not mirrored in "
+            "skills/ultraplan/SKILL.md — copy the block content verbatim.")
+
+
+def test_ultraplan_does_not_cross_reference_other_skill_dirs():
+    # validate_skill.py resolves `references/...` mentions against the skill's
+    # OWN directory; a literal cross-skill path would fail validation or dangle.
+    assert "references/plan-markers.md" not in ULTRAPLAN.read_text()
+
+
+def test_ultraplan_pairs_with_writing_plans():
+    text = ULTRAPLAN.read_text()
+    assert "superpowers:writing-plans" in text
+    assert "worktree-pure" in text
