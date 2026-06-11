@@ -6,7 +6,7 @@ An approved `superpowers:writing-plans` plan document — headed `# <Feature> Im
 with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 
 - A short title and description paragraph.
-- A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels.
+- A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels. Paths may carry the upstream line-range suffix (`existing.py:123-145`); the compiler strips the suffix, so two tasks editing different ranges of one file still overlap and serialize.
 - One or more checkbox steps (`- [ ] …`) describing what the task does.
 - Optionally, the parallel-execution markers from `plan-markers.md`: `**Type:**` and
   `**Depends-on:**` lines between the task heading and the `**Files:**` block.
@@ -60,14 +60,14 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
 3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet).
-4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2).
+4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections.
 5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
 
 Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `text`, `ambiguous-files`.
 
-Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic PATH — reachability through earlier `marker`, `text`, `write-after-create`, or `read-after-write` edges, not just a direct reverse edge. A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
+Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing PATH — reachability through ALL earlier-recorded edges, not just a direct reverse edge (a reverse path always contains at least one explicit or semantic edge, since heuristics never create cycles). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
 
 ---
 
@@ -88,7 +88,7 @@ Each wave is a set of tasks that can execute in parallel — their dependencies 
 
 Apply these rules before finalizing the DAG:
 
-- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one — serializing it into its own wave at its document position.
+- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one (minus any edge the reachability yield suppresses) — serializing it into its own wave at its document position.
 
 The remaining two defaults are hand-derivation guidance only — the compiler is static and does not inspect the repo; apply them when reviewing heuristic-flagged output:
 
