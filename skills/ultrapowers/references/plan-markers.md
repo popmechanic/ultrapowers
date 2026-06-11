@@ -33,8 +33,9 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   (`2`, `A3`, `C4b`), or `none`.
 <!-- /BAKE -->
 
-Example (format as a fenced ```markdown block in the doc):
+Example:
 
+````markdown
 ### Task 4: Wire the health probe
 
 **Type:** implementation
@@ -42,6 +43,7 @@ Example (format as a fenced ```markdown block in the doc):
 
 **Files:**
 - Modify: `app/server/server.ts`
+````
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
