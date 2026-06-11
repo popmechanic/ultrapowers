@@ -24,6 +24,15 @@ inside their steps.
 
 ## Classify Before Building the DAG
 
+**Marked plans compile mechanically.** If the plan contains any `**Type:**` or
+`**Depends-on:**` line, run
+`python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>`
+and use its JSON verbatim for the `dag_edges`, `dispositions`, `marker_conflicts`,
+`post_merge_runbook`, `waves`, `mode`, and `degrade_reason` of the transparency
+block. Reserve judgment for entries flagged `"heuristic": true` (verify or
+override them, recording why) and for the derived knobs below — the compiler
+does not derive `testCmd`, `baseBranch`, tiers, or review depth.
+
 Classify every task per `plan-markers.md` — trust an explicit `**Type:**` marker;
 otherwise apply the contract heuristics there (release → manual → gate →
 implementation, in that precedence). The dispositions:
@@ -115,8 +124,9 @@ If either condition is true:
 ## Transparency: Computed Output
 
 This block is what the main agent renders at the **Step-3 wave-plan approval gate** (see `SKILL.md`)
-so the human can sanity-check the parallelization before launch, and it is also included in the final
-report (see `report-format.md`). Record the following:
+so the human can sanity-check the parallelization before launch. The waves, dependency edges, and
+post-merge runbook reappear in the final report; the full block itself is rendered only at the
+Step-3 gate. Record the following:
 
 ```
 dag_edges:
@@ -132,6 +142,12 @@ inlined_notes:
   - "port table from the preamble → T3, T4 bodies"
 
 post_merge_runbook: [T6]    # rendered with the final report, in document order
+
+derived_knobs:
+  testCmd: python3 -m pytest tests/ -q
+  baseBranch: main
+  review: { T1: adversarial, default: lean }
+  tierOverrides: {}
 
 waves:
   wave_0: [T1, T2]
