@@ -114,8 +114,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 - Wave loop — `phase('Setup')` then per wave: `parallel()` over `runTask`, **chunked at 16** (the
   engine's concurrency cap, with dependency failures re-checked per chunk), then `mergeWave()`
   (non-isolated; reconciliation cap 2; cascade-block downstream — logged per wave — on an
-  unrecoverable MERGE failure). A wave with no mergeable branches records `SKIPPED` and does NOT
-  cascade; the integration branch is untouched.
+  unrecoverable MERGE failure). A wave with no mergeable branches records `SKIPPED` (integration branch untouched); it cascades conservatively only when no dependency edges were supplied and tasks actually ran.
 - Failure containment: a budget exhausted at launch defers the whole run before setup (early
   return, every task in `unfinished`); mid-run exhaustion defers remaining waves/chunks; a thrown
   task-pipeline `agent()` call degrades to one failed task (`reviewVerdict: 'agent-error'`);

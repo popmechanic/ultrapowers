@@ -158,8 +158,15 @@ def parse_task(t):
     # run over this, not the raw body, so a fenced example (e.g. a bash snippet
     # with `git push origin main`, or prose that says "runs after Task A") does
     # not reclassify a task or fabricate a dependency edge.
+    #
+    # Fix C: also drop the task's own `### Task N: <title>` heading line. The
+    # heading is metadata, not prose — dependency-analysis.md promises task
+    # titles are NOT matched, but split_tasks folds the heading into body, so a
+    # task TITLED "cleanup after Task 1 lands" would otherwise fabricate a real
+    # text edge. Prose BETWEEN headings still folds into the preceding task's
+    # body and stays scanned; only the heading line itself is excluded.
     prose = "\n".join(line for line, fenced in _fence_aware_lines(t["body"])
-                      if not fenced)
+                      if not fenced and not TASK_HEAD.match(line))
 
     t.update(marker_type=ttype, type_unparsed=type_unparsed,
              depends_on=deps, depends_none=deps_none,
@@ -195,24 +202,34 @@ def build_edges(impl):
     # and stays a loud error.
     ids = {t["id"] for t in impl}
     edges, conflicts, seen = [], [], set()
+    # Fix E: maintain the adjacency map incrementally instead of rebuilding it
+    # on every would_cycle call inside the O(N^2) pair loops (measured
+    # superlinear blowup >= 80 tasks). add() appends to adj as it appends edges.
+    adj = {}
+    # Fix A: dedupe marker_conflicts on the (task, edge) pair. The marker loop
+    # and the text loop share this set so byte-identical drops — e.g. two prose
+    # matches "after Task A" / "after Task A is green", or a `Depends-on: 9, 9`
+    # naming the same ghost twice — surface exactly once.
+    conflict_seen = set()
+
+    def add_conflict(task, edge, note):
+        if (task, edge) not in conflict_seen:
+            conflict_seen.add((task, edge))
+            conflicts.append({"task": task, "edge": edge, "note": note})
 
     def add(a, b, why):
         if a in ids and b in ids and a != b and (a, b) not in seen:
             seen.add((a, b))
             edges.append({"from": a, "to": b, "why": why})
+            adj.setdefault(a, []).append(b)
             target = next(t for t in impl if t["id"] == b)
             if target["depends_none"] and why != "marker":
-                conflicts.append({
-                    "task": b,
-                    "edge": f"{a} -> {b} ({why})",
-                    "note": "Depends-on: none overridden by inferred edge (inferred edge wins)",
-                })
+                add_conflict(
+                    b, f"{a} -> {b} ({why})",
+                    "Depends-on: none overridden by inferred edge (inferred edge wins)")
 
     def would_cycle(a, b):
         """True if adding a -> b would close a cycle (b already reaches a)."""
-        adj = {}
-        for e in edges:
-            adj.setdefault(e["from"], []).append(e["to"])
         stack, visited = [b], set()
         while stack:
             n = stack.pop()
@@ -230,12 +247,10 @@ def build_edges(impl):
             if d in ids:
                 add(d, t["id"], "marker")
             else:
-                conflicts.append({
-                    "task": t["id"],
-                    "edge": d + " -> " + t["id"] + " (marker)",
-                    "note": "Depends-on: " + d + " names a task outside the implementation set "
-                            "(unknown id or gate/release/manual) — edge dropped",
-                })
+                add_conflict(
+                    t["id"], d + " -> " + t["id"] + " (marker)",
+                    "Depends-on: " + d + " names a task outside the implementation set "
+                    "(unknown id or gate/release/manual) — edge dropped")
 
     # Tier 1: Explicit — text edges (moved up from bottom to enforce precedence).
     # Scans fence-stripped prose so a fenced example saying "runs after Task A"
@@ -249,12 +264,13 @@ def build_edges(impl):
                     # Same surfacing as marker edges: a text dependency on a task
                     # outside the implementation set (gate/release/manual/unknown)
                     # drops, but loudly, instead of silently no-opping in add().
-                    conflicts.append({
-                        "task": b["id"],
-                        "edge": m.group(1) + " -> " + b["id"] + " (text)",
-                        "note": "text dependency names a task outside the implementation set "
-                                "(unknown id or gate/release/manual) — edge dropped",
-                    })
+                    # add_conflict dedupes so two prose matches on the same ghost
+                    # task (e.g. "after Task A" and "after Task A is green") yield
+                    # one entry, not two byte-identical ones.
+                    add_conflict(
+                        b["id"], m.group(1) + " -> " + b["id"] + " (text)",
+                        "text dependency names a task outside the implementation set "
+                        "(unknown id or gate/release/manual) — edge dropped")
 
     # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
@@ -379,7 +395,15 @@ def main(argv=None):
     fully_overlapping = (len(impl) > 1 and all(
         set(a["writes"]) & set(b["writes"])
         for a in impl for b in impl if a["id"] != b["id"]))
-    if len(impl) <= 2 or fully_overlapping:
+    # Fix B: a gates/release-only plan has waves: [] — there is nothing to
+    # sequence, so skip the degrade entirely (the "no implementation tasks"
+    # stderr warning above already covers the situation). Without this guard the
+    # `len(impl) == 1` trigger still catches zero and emits the misleading
+    # `Sequential mode: 0 implementation tasks` against an empty wave list.
+    # The single-task trigger is `== 1`, not `<= 2`: a 2-impl-task plan with
+    # disjoint writes is genuinely parallelizable into one wave, so degrading it
+    # to two single-task waves would be needless serialization.
+    if impl and (len(impl) == 1 or fully_overlapping):
         mode = "sequential"
         degrade = f"Sequential mode: {len(impl)} implementation tasks" + (
             ", fully overlapping writes" if fully_overlapping else "")

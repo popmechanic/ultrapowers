@@ -79,7 +79,7 @@ You are the wave merge agent, operating on the session repo main checkout (no wo
 After ALL branches in your list are merged and the test suite passes, clean up the merged branches only: use git worktree list to find each merged branch's worktree, git worktree remove it, then git branch -d the branch. Leave any branch you did NOT merge — and its worktree — untouched; failed and blocked work must stay inspectable.
 <!-- /BAKE -->
 
-A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run — dependency edges, not the cascade, decide what downstream work is blocked.
+A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred, or reported done without mergeable coordinates) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run when dependency edges were supplied (they decide what downstream work is blocked) or when nothing in the wave actually ran. When `args.edges` was NOT supplied and tasks did run, the workflow cannot know what depends on the lost work — it records the `SKIPPED` merge plus a `blockedWaves` entry ('no mergeable branches and no dependency edges supplied — cascading conservatively') and cascade-blocks later waves.
 
 ---
 
@@ -99,7 +99,7 @@ Caps and failure handling:
 - If the reconciliation agent fails both attempts, the wave is marked **`blocked`**.
 - Its branches are left intact — do not delete worktrees for a blocked wave.
 - The blocked wave, its conflict/diff, and the failing output are recorded in the final report.
-- When a wave's merge cannot be reconciled, the wave is marked **`blocked`** and **all later waves are cascade-blocked** (recorded in `unfinished` and `blockedWaves`). Every later wave merges onto the same integration branch the failed wave left in an unknown state, and in parallel mode each wave-N+1 task depends on some wave-N task by construction; degraded sequential runs cascade conservatively too — after a failed MERGE the integration branch is in an unknown state either way. (A SKIPPED merge — nothing to integrate — does not cascade.) The committed workflow therefore stops dispatching after an unrecoverable merge; nothing after the blocked wave runs. The integration/completeness review still runs and reports.
+- When a wave's merge cannot be reconciled, the wave is marked **`blocked`** and **all later waves are cascade-blocked** (recorded in `unfinished` and `blockedWaves`). Every later wave merges onto the same integration branch the failed wave left in an unknown state, and in parallel mode each wave-N+1 task depends on some wave-N task by construction; degraded sequential runs cascade conservatively too — after a failed MERGE the integration branch is in an unknown state either way. (A SKIPPED merge does not cascade when edges were supplied; without edges it cascades conservatively.) The committed workflow therefore stops dispatching after an unrecoverable merge; nothing after the blocked wave runs. The integration/completeness review still runs and reports.
 
 ---
 

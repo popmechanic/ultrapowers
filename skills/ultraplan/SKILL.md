@@ -50,7 +50,7 @@ three — parallel first:
    parallel waves, worktree isolation, per-task review, two human gates.
 2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
    review between tasks.
-3. **Inline** — superpowers:executing-plans, batch execution (continuous since superpowers 5.0.0 — no per-task checkpoints).
+3. **Inline** — superpowers:executing-plans, continuous inline execution (upstream removed batch checkpoints in superpowers 5.0.0; its own handoff text still says otherwise — trust the behavior, not the menu).
 
 ## Choose the right Type
 
