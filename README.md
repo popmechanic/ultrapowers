@@ -27,7 +27,7 @@ most structured test drive it gets.
 
 *New to Superpowers? It's a plugin that teaches Claude Code a rigorous build workflow
 (brainstorm → plan → execute → review). Install it first — ultrapowers plugs into that workflow at
-the "execute the plan" step and reuses its skills rather than duplicating them.*
+the "execute the plan" step: brainstorming, planning, and branch-finishing hand off to superpowers skills at runtime, while the execution-time review discipline is baked in from superpowers sources at build time (drift-tested, manually re-baked).*
 
 ## Why you might want it
 
@@ -139,8 +139,7 @@ interpretation, not just the grouping.
 /plugin install ultrapowers@ultrapowers
 ```
 
-Superpowers must be installed alongside it — ultrapowers reuses its brainstorming, planning,
-review, and branch-finishing skills.
+Superpowers must be installed alongside it — ultrapowers hands off to its brainstorming, planning, and branch-finishing skills; the review discipline is baked from its sources at build time and re-baked manually when upstream changes.
 
 ## Environment support
 
