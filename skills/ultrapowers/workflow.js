@@ -60,7 +60,12 @@ const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
 // Structured dependency pairs [[fromTaskId, toTaskId], ...] — optional. When
 // present, a failed task blocks its transitive dependents instead of letting
 // them run against a base that never received the prerequisite.
-const EDGES = (ARGS && Array.isArray(ARGS.edges))
+// edgesSupplied: true iff the caller explicitly passed args.edges (even if []).
+// A compiler-generated plan with no dependencies legitimately yields edges: [].
+// The conservative-cascade branch must distinguish "edges omitted" (unsafe to
+// skip cascade) from "edges: [] supplied" (compiler proved independence — safe).
+const edgesSupplied = !!(ARGS && Array.isArray(ARGS.edges))
+const EDGES = edgesSupplied
   ? ARGS.edges.map((e, i) => {
       if (!Array.isArray(e) || e.length !== 2) {
         throw new Error(
@@ -599,26 +604,33 @@ for (let w = 0; w < WAVES.length; w++) {
     if (runnable.length === 0) continue
     const chunkResults = await parallel(runnable.map((task) => () => runTask(task, waveBaseSha)))
     for (const r of chunkResults) { results.push(r); taskResults.push(r) }
-  }
-  noteFailures()
-
-  // Fix A: surface done results that fail isMergeable (missing branch/headSha).
-  // These must be treated as failed so dependents block and they appear in report.
-  const lost = results.filter((r) => r && r.status === 'done' && !isMergeable(r))
-  for (const r of lost) {
-    judgmentCalls.push('task ' + r.task + ': reported done without mergeable coordinates (branch/headSha) — branch not merged; treating as failed for dependency blocking')
-    log('task ' + r.task + ': done without mergeable coordinates — treating as failed')
-    r.status = 'failed'
+    // Fix B: run the lost-done sweep immediately after each chunk so the NEXT
+    // chunk's noteFailures() sees the downgrade before dispatching intra-wave
+    // dependents. A done-without-coordinates task in chunk 1 must block a
+    // dependent in chunk 2 — this was missed when the sweep ran only after
+    // all chunks completed.
+    // Fix C: also set reviewVerdict and notes so the record is self-describing.
+    const chunkLost = chunkResults.filter((r) => r && r.status === 'done' && !isMergeable(r))
+    for (const r of chunkLost) {
+      judgmentCalls.push('task ' + r.task + ': reported done without mergeable coordinates (branch/headSha) — branch not merged; treating as failed for dependency blocking')
+      log('task ' + r.task + ': done without mergeable coordinates — treating as failed')
+      r.status = 'failed'
+      r.reviewVerdict = 'lost-coordinates'
+      r.notes = (r.notes ? r.notes + '; ' : '') + 'reported done without mergeable coordinates — downgraded to failed'
+    }
+    noteFailures()
   }
   noteFailures()
 
   // When every task in the wave is dep-blocked/failed (no mergeable branches),
-  // skip the merge — but when NO edges were supplied and tasks actually ran,
-  // cascade conservatively (Fix C) so later waves don't build on a missing base.
+  // skip the merge — but when NO edges were supplied (not even an empty array)
+  // and tasks actually ran, cascade conservatively so later waves don't build
+  // on a missing base. An explicitly supplied edges: [] means the compiler
+  // proved independence — take the SKIPPED-continue path instead.
   const mergeable = results.filter(isMergeable)
   if (mergeable.length === 0) {
-    if (EDGES.length === 0 && results.length > 0) {
-      // Fix C: no edges supplied and nothing merged — conservative cascade.
+    if (!edgesSupplied && results.length > 0) {
+      // No edges supplied at all and nothing merged — conservative cascade.
       const cascadeDetail = 'no mergeable branches and no dependency edges supplied — cascading conservatively'
       blockedWaves.push({ wave: w + 1, detail: cascadeDetail })
       log('wave ' + (w + 1) + ' cascade (no edges): ' + cascadeDetail)
