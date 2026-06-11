@@ -461,6 +461,27 @@ def build_edges(impl):
     return edges, conflicts
 
 
+def find_cycle(members, edges):
+    """One concrete cycle among `members` as an edge list, or None.
+    Iterative DFS over the recorded edges restricted to the unplaced members —
+    small by construction (only the Kahn leftovers), so no perf concern."""
+    mset = set(members)
+    succ = {}
+    for e in edges:
+        if e["from"] in mset and e["to"] in mset:
+            succ.setdefault(e["from"], []).append(e)
+    for start in members:
+        stack = [(start, [])]
+        while stack:
+            node, path = stack.pop()
+            for e in succ.get(node, []):
+                if e["to"] == start:
+                    return path + [e]
+                if all(p["to"] != e["to"] for p in path):
+                    stack.append((e["to"], path + [e]))
+    return None
+
+
 def layer(impl, edges):
     order = [t["id"] for t in impl]
     indeg = {i: 0 for i in order}
@@ -482,8 +503,14 @@ def layer(impl, edges):
         ready = nxt
     if len(done) != len(order):
         members = [i for i in order if i not in done]
+        cyc = find_cycle(members, edges)
+        hint = ""
+        if cyc:
+            hint = (" One cycle: " + cyc[0]["from"] + " -> "
+                    + " -> ".join(f"{e['to']} ({e['why']})" for e in cyc)
+                    + " — break the weakest labeled constraint.")
         print(f"compile_plan: cycle detected among tasks {', '.join(members)} — "
-              "revise the plan to break it; refusing to guess an ordering.",
+              "revise the plan to break it; refusing to guess an ordering." + hint,
               file=sys.stderr)
         raise SystemExit(1)
     return waves

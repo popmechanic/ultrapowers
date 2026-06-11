@@ -1092,3 +1092,19 @@ def test_all_wrong_level_plan_gets_the_heading_diagnostic(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode == 1
     assert "## Task 1:" in p.stderr           # the diagnostic NAMES the heading (not the generic bail)
+
+
+def test_cycle_error_names_one_concrete_edge_path(tmp_path):
+    plan = tmp_path / "cycle.md"
+    plan.write_text(
+        "### Task 1: a\n\n**Depends-on:** 2\n\n**Files:**\n- Modify: `a.py`\n\n"
+        "### Task 2: b\n\n**Depends-on:** 1\n\n**Files:**\n- Modify: `b.py`\n"
+    )
+    p = subprocess.run([sys.executable, str(COMPILER), str(plan)],
+                       capture_output=True, text=True)
+    assert p.returncode == 1
+    assert "cycle detected among tasks 1, 2" in p.stderr
+    # One concrete path, each hop labeled with the edge's why:
+    assert "One cycle:" in p.stderr
+    assert "-> 2 (marker)" in p.stderr
+    assert "-> 1 (marker)" in p.stderr
