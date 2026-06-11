@@ -67,7 +67,7 @@ Collect all edges into an adjacency list. Each node is identified by its task nu
 
 Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `text`, `ambiguous-files`.
 
-Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic PATH (reachability through earlier edges, not just a direct reverse edge) (marker, text, write-after-create, read-after-write). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
+Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic PATH — reachability through earlier `marker`, `text`, `write-after-create`, or `read-after-write` edges, not just a direct reverse edge. A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
 
 ---
 
