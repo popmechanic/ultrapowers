@@ -128,3 +128,24 @@ def test_attested_version_matches_installed():
         pytest.fail(
             f"installed superpowers {installed().name} != attested {m.group(1)} — "
             "re-run the interop audit, then bump the attestation in SKILL.md")
+
+
+def test_executing_plans_still_runs_continuously():
+    text = (installed() / "skills/executing-plans/SKILL.md").read_text()
+    assert "execute all tasks" in text.lower(), (
+        "executing-plans changed its continuous-execution posture — "
+        "plan-markers.md Executor variance covers both sequential executors; re-audit it")
+
+
+def test_writing_plans_header_still_carries_tech_stack():
+    text = (installed() / "skills/writing-plans/SKILL.md").read_text()
+    assert "**Tech Stack:**" in text, (
+        "writing-plans dropped the Tech Stack header line — "
+        "ultrapowers SKILL.md Step 2 derives testCmd from it; re-audit the derivation")
+
+
+def test_code_quality_reviewer_still_delegates_to_code_reviewer_template():
+    text = (installed() / "skills/subagent-driven-development/code-quality-reviewer-prompt.md").read_text()
+    assert "requesting-code-review/code-reviewer.md" in text, (
+        "the code-quality reviewer no longer delegates to the code-reviewer template — "
+        "reviewer-prompts.md's sourcing note and the re-bake procedure cite that delegation")
