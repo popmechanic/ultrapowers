@@ -1212,6 +1212,33 @@ async function scenarioIntraWaveDepAcrossChunks() {
   console.log('scenario intra-wave-dep-across-chunks: OK')
 }
 
+
+// ── Scenario: typo'd review depth and unknown baseline reach judgmentCalls ────
+async function scenarioTypoReviewAndUnknownBaseline() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap', review: 'agressive' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'setup') {
+        // Schema-legal setup report that omits baselinePassed entirely.
+        return { branch: 'ultra/integration-sim', headSha: 'int0' }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(r.judgmentCalls.some((j) => /unknown review/.test(j) && /agressive/.test(j)),
+    'typoReview: typo\'d task.review surfaced as a judgment call, not just a log line')
+  assert(r.judgmentCalls.some((j) => /baseline unknown/.test(j)),
+    'typoReview: setup omitting baselinePassed surfaced as a judgment call')
+  assert(r.baseline && r.baseline.passed === undefined, 'typoReview: baseline.passed stays undefined (not coerced)')
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a && a.status, 'done', 'typoReview: task still completes on the run-default review depth')
+  console.log('scenario typo-review-and-unknown-baseline: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1224,6 +1251,7 @@ await scenarioAdversarialDissent()
 await scenarioTierOverrideInvalid()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
+await scenarioTypoReviewAndUnknownBaseline()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
 await scenarioPlanPath()

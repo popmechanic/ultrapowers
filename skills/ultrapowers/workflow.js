@@ -360,10 +360,14 @@ async function runTaskInner(task, baseSha) {
       }
     }
   }
-  // Surface a typo'd review depth rather than silently downgrading it.
+  // Surface a typo'd review depth rather than silently downgrading it — the
+  // autonomy posture promises ambiguity reaches the report via judgmentCalls,
+  // not only the run log.
   if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
     log('task ' + task.id + ': unknown review="' + task.review +
         '", falling back to run default (' + reviewProfile + ')')
+    judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
+        '" — fell back to the run default (' + reviewProfile + ')')
   }
 
   let impl = await agent(
@@ -540,6 +544,15 @@ if (setup.baselinePassed === false) {
     (setup.baselineOutput || 'no output') + ') — task results inherit a red suite'
   )
   log('setup: baseline tests FAILED before any work began')
+} else if (setup.baselinePassed === undefined) {
+  // baselinePassed is required by the setup prompt but optional in the schema
+  // (same class as lost-coordinates): an unknown baseline must not silently
+  // read as not-red at the pre-merge gate.
+  judgmentCalls.push(
+    'baseline unknown — setup did not report baselinePassed; treat later test ' +
+    'results with care (the suite may have been red before any task ran)'
+  )
+  log('setup: baseline result UNKNOWN (baselinePassed not reported)')
 }
 
 const CONCURRENCY = 16 // engine cap: up to 16 concurrent agents per run
