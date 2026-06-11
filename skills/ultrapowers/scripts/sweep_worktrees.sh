@@ -25,10 +25,14 @@ for wt in "$ROOT"/.claude/worktrees/wf_*; do
   [ -e "$wt" ] || continue
   # --force --force also removes locked worktrees; a stale directory git no
   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
-  if ! git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
-    rm -rf "$wt" 2>/dev/null || echo "warn: could not fully remove $wt — inspect manually" >&2
+  # Increment only on a successful removal so the summary is accurate.
+  if git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
+    removed_worktrees=$((removed_worktrees + 1))
+  elif rm -rf "$wt" 2>/dev/null; then
+    removed_worktrees=$((removed_worktrees + 1))
+  else
+    echo "warn: could not fully remove $wt — inspect manually" >&2
   fi
-  removed_worktrees=$((removed_worktrees + 1))
 done
 git -C "$ROOT" worktree prune
 
