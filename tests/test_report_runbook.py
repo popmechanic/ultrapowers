@@ -32,7 +32,7 @@ def test_report_format_documents_every_review_verdict():
     wf = (ROOT / "skills/ultrapowers/workflow.js").read_text()
     doc = REPORT.read_text()
     verdicts = set()
-    for frag in re.findall(r"reviewVerdict:([^\n]+)", wf):
+    for frag in re.findall(r"reviewVerdict\s*[:=]([^\n]+)", wf):
         verdicts.update(re.findall(r"'([a-z][a-z-]*)'", frag))
     assert verdicts, "no reviewVerdict literals found in workflow.js"
     for v in sorted(verdicts):
