@@ -67,3 +67,11 @@ def test_workflow_consumes_structured_edges():
     wf = WORKFLOW.read_text()
     assert "ARGS.edges" in wf
     assert "blockedByDep" in wf
+
+
+def test_workflow_requires_headsha_and_commit_discipline():
+    wf = WORKFLOW.read_text()
+    assert "required: ['status', 'summary', 'branch', 'headSha']" in wf
+    assert "Commit your work" in wf
+    assert "fix-loop cap" in wf          # exhaustion is logged, not silent
+    assert "v5.0.6 direction" not in wf  # stale upstream attribution removed

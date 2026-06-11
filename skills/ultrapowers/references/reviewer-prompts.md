@@ -42,6 +42,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 4. Implement the minimum code to make them pass.
 5. Refactor for clarity without breaking tests.
 6. Run the full check suite one final time and confirm it is clean.
+7. Commit your work on your branch. The merge step integrates committed work only — `git rev-parse HEAD` must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.
 
 **Self-verify before reporting:**
 - Re-read the task. Confirm every stated requirement is addressed.
@@ -61,7 +62,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 ```
 {
   type: 'object',
-  required: ['status', 'summary', 'branch'],
+  required: ['status', 'summary', 'branch', 'headSha'],
   properties: {
     status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
     summary: { type: 'string' },
@@ -78,6 +79,8 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 - `DONE_WITH_CONCERNS`: complete but non-blocking observations recorded in `concerns`.
 - `NEEDS_CONTEXT`: blocked on ambiguity — list specific questions in `concerns`; do not guess.
 - `BLOCKED`: hard blocker (missing dependency, broken environment, conflicting change); escalate immediately.
+
+`headSha` is required for every status, including `BLOCKED` / `NEEDS_CONTEXT` — the worktree always has a HEAD (at minimum the provided `BASE` sha), and downstream steps refuse to operate on a guessed sha.
 
 **Headless downgrade:** upstream treats `NEEDS_CONTEXT` as "answer the question and
 re-dispatch". A headless workflow cannot answer, so `workflow.js` records the task
@@ -157,7 +160,7 @@ When the reviewer returns `FIX_REQUIRED`:
 1. Collect all `blocking` issues into a structured fix request and re-dispatch the implementer on the same branch with the issues appended to the original task text.
 2. The implementer runs the full red → green → refactor cycle again against the fix request.
 3. Cap at **2 iterations** total (initial + 1 fix round). If blocking issues remain after iteration 2, mark the task `FAILED` and surface it to the orchestrator with the accumulated issue list.
-4. If the implementer returns `BLOCKED` after a fix-round re-dispatch, escalate once to the most-capable model tier. If still `BLOCKED`, mark the task `FAILED` — never silently drop a blocked task.
+4. The fix-round re-dispatch itself runs at the most-capable tier. If the implementer returns `BLOCKED` or `NEEDS_CONTEXT` after that re-dispatch, the task is marked `FAILED` (`reviewVerdict: 'blocked-after-fix'`) and surfaced at the pre-merge gate — never silently dropped.
 5. `minor` issues do not block merge; record them as follow-up work items.
 
 ---
