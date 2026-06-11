@@ -858,7 +858,64 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
   assert(mergePrompt !== null, 'noHeadSha: wave still merged (G is mergeable)')
   assert(mergePrompt.indexOf('wt-A') === -1, 'noHeadSha: branch without headSha excluded from the merge list')
   assert(mergePrompt.indexOf('wt-G') !== -1, 'noHeadSha: good branch merged')
+  // Fix A: the lost-done must be surfaced in judgmentCalls and treated as failed
+  assert(r.judgmentCalls.some((j) => /without mergeable coordinates/.test(j)),
+    'noHeadSha: lost-done surfaced in judgmentCalls with "without mergeable coordinates"')
+  const aTask = r.tasks.find((t) => t.task === 'A')
+  eq(aTask && aTask.status, 'failed', 'noHeadSha: A task record has status failed (not done)')
   console.log('scenario done-without-headsha-not-merged: OK')
+}
+
+// ── Scenario: malformed edges (object-shaped) must throw at launch ────────────
+async function scenarioMalformedEdgesThrow() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: Object.assign({}, baseArgs, {
+        edges: [{ from: 'A', to: 'C', why: 'marker' }], // object, not [from, to] pair
+      }),
+      budget: undefined,
+    })
+  } catch (e) {
+    threw = /args\.edges\[0\]/.test(e.message)
+  }
+  assert(threw, 'malformedEdges: object-shaped edge must throw with message matching /args\\.edges\\[0\\]/')
+  console.log('scenario malformed-edges-throw: OK')
+}
+
+// ── Scenario: no edges + zero-mergeable wave must cascade-block later waves ────
+// waves [[A],[B]], NO edges; A's reviewer always returns blocking (fix-loop
+// exhaustion -> A failed -> wave 1 has zero mergeable). Without edges, the
+// SKIPPED-continue path is unsafe: later waves assume the prerequisite landed.
+// Fix C requires a conservative cascade-break instead.
+async function scenarioNoEdgesZeroMergeableCascades() {
+  const implCalled = new Set()
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  // NO edges supplied
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalled.add(taskIdFromLabel(label))
+        return undefined // fall through to default DONE stub
+      }
+      if (label.startsWith('review:') && taskIdFromLabel(label) === 'A') {
+        // A always has a blocking review => fix-loop exhaustion => failed
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('B'), 'noEdgesCascade: B must never dispatch when A failed with no edges')
+  assert(r.blockedWaves.length === 1, 'noEdgesCascade: one blocked wave recorded (got ' + r.blockedWaves.length + ')')
+  assert(r.unfinished.some((u) => /B/.test(u) && /cascade-blocked/.test(u)),
+    'noEdgesCascade: B surfaced in unfinished with cascade-blocked')
+  console.log('scenario no-edges-zero-mergeable-cascades: OK')
 }
 
 // ── Scenario: intra-wave edge respected across 16-task chunks ─────────────────
@@ -917,4 +974,6 @@ await scenarioTransitiveDepBlock()
 await scenarioFullyBlockedWaveDoesNotCascade()
 await scenarioDoneWithoutHeadShaNotMerged()
 await scenarioIntraWaveDepAcrossChunks()
+await scenarioMalformedEdgesThrow()
+await scenarioNoEdgesZeroMergeableCascades()
 console.log('ALL SCENARIOS PASSED')

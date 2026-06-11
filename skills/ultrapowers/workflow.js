@@ -45,7 +45,8 @@ const validWaves =
 if (!validWaves) {
   throw new Error(
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
-    'task = { id, title, body, tier, acceptance, files }. Refusing to run with an ' +
+    'task = { id, body, ... } (id and body are validated; title/tier/review are consumed by prompts; ' +
+    'acceptance/files are advisory). Refusing to run with an ' +
     'undefined plan. When this happens, the SKILL.md fallback ' +
     '(superpowers:subagent-driven-development) runs instead.'
   )
@@ -60,7 +61,15 @@ const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
 // present, a failed task blocks its transitive dependents instead of letting
 // them run against a base that never received the prerequisite.
 const EDGES = (ARGS && Array.isArray(ARGS.edges))
-  ? ARGS.edges.filter((e) => Array.isArray(e) && e.length === 2).map((e) => [String(e[0]), String(e[1])])
+  ? ARGS.edges.map((e, i) => {
+      if (!Array.isArray(e) || e.length !== 2) {
+        throw new Error(
+          'ultrapowers: args.edges[' + i + '] is not a [fromTaskId, toTaskId] pair. ' +
+          'Convert compiler dag_edges objects to pairs (e.g. [e.from, e.to]) before launch. ' +
+          'Refusing to run with dependency blocking silently disabled.')
+      }
+      return [String(e[0]), String(e[1])]
+    })
   : []
 
 // ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
@@ -447,8 +456,8 @@ async function runTaskInner(task, baseSha) {
 
 // ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
 async function mergeWave(results, waveIdx) {
+  // Caller guarantees ≥1 mergeable result (the SKIPPED path filters empty waves).
   const merged = results.filter(isMergeable)
-  if (merged.length === 0) return { status: 'TEST_FAILED', detail: 'no branches to merge' }
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
     .join('\n')
@@ -549,12 +558,19 @@ const noteFailures = () => {
 // Review diff base: the integration-branch HEAD a wave's worktrees build on.
 // Wave 1 starts at the setup HEAD; each successful merge advances it.
 let waveBaseSha = setup.headSha
+// Guard: record a judgmentCall only once for the first mid-run budget deferral.
+let budgetDeferred = false
 
 for (let w = 0; w < WAVES.length; w++) {
   // Peak concurrency equals wave width (each task pipeline is internally
   // sequential), so chunk waves wider than the engine cap.
   if (budgetExhausted()) {
     WAVES[w].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted)'))
+    log('wave ' + (w + 1) + ' deferred: budget exhausted')
+    if (!budgetDeferred) {
+      budgetDeferred = true
+      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+    }
     continue
   }
   phase('Wave ' + (w + 1))
@@ -565,6 +581,11 @@ for (let w = 0; w < WAVES.length; w++) {
     const chunk = WAVES[w].slice(off, off + CONCURRENCY)
     if (budgetExhausted()) {
       chunk.forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted mid-wave)'))
+      log('wave ' + (w + 1) + ' chunk deferred: budget exhausted mid-wave')
+      if (!budgetDeferred) {
+        budgetDeferred = true
+        judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+      }
       continue
     }
     const runnable = chunk.filter((t) => {
@@ -581,14 +602,42 @@ for (let w = 0; w < WAVES.length; w++) {
   }
   noteFailures()
 
-  // Fix A: when every task in the wave is dep-blocked/failed (no mergeable branches),
-  // skip the merge entirely — the integration branch is untouched, so no cascade.
+  // Fix A: surface done results that fail isMergeable (missing branch/headSha).
+  // These must be treated as failed so dependents block and they appear in report.
+  const lost = results.filter((r) => r && r.status === 'done' && !isMergeable(r))
+  for (const r of lost) {
+    judgmentCalls.push('task ' + r.task + ': reported done without mergeable coordinates (branch/headSha) — branch not merged; treating as failed for dependency blocking')
+    log('task ' + r.task + ': done without mergeable coordinates — treating as failed')
+    r.status = 'failed'
+  }
+  noteFailures()
+
+  // When every task in the wave is dep-blocked/failed (no mergeable branches),
+  // skip the merge — but when NO edges were supplied and tasks actually ran,
+  // cascade conservatively (Fix C) so later waves don't build on a missing base.
   const mergeable = results.filter(isMergeable)
   if (mergeable.length === 0) {
+    if (EDGES.length === 0 && results.length > 0) {
+      // Fix C: no edges supplied and nothing merged — conservative cascade.
+      const cascadeDetail = 'no mergeable branches and no dependency edges supplied — cascading conservatively'
+      blockedWaves.push({ wave: w + 1, detail: cascadeDetail })
+      log('wave ' + (w + 1) + ' cascade (no edges): ' + cascadeDetail)
+      for (let d = w + 1; d < WAVES.length; d++) {
+        log('wave ' + (d + 1) + ' cascade-blocked by wave ' + (w + 1))
+        WAVES[d].forEach((t) => unfinished.push(t.id + ': cascade-blocked by wave ' + (w + 1)))
+      }
+      waveMerges.push({
+        wave: w + 1,
+        status: 'SKIPPED',
+        detail: cascadeDetail,
+        branches: [],
+      })
+      break
+    }
     waveMerges.push({
       wave: w + 1,
       status: 'SKIPPED',
-      detail: 'no mergeable branches — every task in this wave failed, was blocked, or was deferred; integration branch untouched',
+      detail: 'no mergeable branches — every task in this wave failed, was blocked, was deferred, or reported done without mergeable coordinates; integration branch untouched',
       branches: [],
     })
     log('wave ' + (w + 1) + ' merge skipped: no mergeable branches')
