@@ -49,13 +49,14 @@ def test_every_handoff_skill_still_exists():
     for name in HANDOFF_SKILLS:
         assert (installed() / "skills" / name / "SKILL.md").exists(), (
             f"superpowers:{name} is gone or renamed — ultrapowers hands off to it; "
-            "re-audit SKILL.md Steps 1/5/6")
+            "re-audit SKILL.md Steps 1/5/6, ultraplan's Execution Handoff, and the "
+            "re-bake sources in reviewer-prompts.md/wave-merge.md")
 
 
 def test_writing_plans_template_shape_unchanged():
     text = (installed() / "skills/writing-plans/SKILL.md").read_text()
     for token in ("Implementation Plan", "### Task N:", "**Files:**", "- [ ]",
-                  "- Create:", "- Modify:", "- Test:"):
+                  "- Create:", "- Modify:", "- Test:", ":123-145"):
         assert token in text, (
             f"writing-plans template lost {token!r} — compile_plan.py and the "
             "Step-1 shape check parse this; re-audit dependency-analysis.md")
@@ -134,7 +135,7 @@ def test_executing_plans_still_runs_continuously():
     text = (installed() / "skills/executing-plans/SKILL.md").read_text()
     assert "execute all tasks" in text.lower(), (
         "executing-plans changed its continuous-execution posture — "
-        "plan-markers.md Executor variance covers both sequential executors; re-audit it")
+        "re-audit plan-markers.md Executor variance and ultraplan's Inline option")
 
 
 def test_writing_plans_header_still_carries_tech_stack():
@@ -149,3 +150,17 @@ def test_code_quality_reviewer_still_delegates_to_code_reviewer_template():
     assert "requesting-code-review/code-reviewer.md" in text, (
         "the code-quality reviewer no longer delegates to the code-reviewer template — "
         "reviewer-prompts.md's sourcing note and the re-bake procedure cite that delegation")
+
+
+def test_sdd_implementer_status_taxonomy_unchanged():
+    text = (installed() / "skills/subagent-driven-development/implementer-prompt.md").read_text()
+    assert "DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT" in text, (
+        "the implementer status taxonomy changed — reviewer-prompts.md's headless-downgrade "
+        "notes and workflow.js's IMPLEMENTER_SCHEMA enum are built on these four statuses")
+
+
+def test_sdd_still_mandates_ordered_two_pass_review():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "Start code quality review before spec compliance" in text, (
+        "SDD no longer red-flags merging/reordering the two review passes — "
+        "reviewer-prompts.md's 'deliberate divergence' note describes a mandate that moved; re-audit it")
