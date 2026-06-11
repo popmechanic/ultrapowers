@@ -21,6 +21,14 @@ Extract each task's verbatim body **fence-aware**: a heading inside a ``` code f
 is content, not a section boundary — plans routinely embed whole markdown documents
 inside their steps.
 
+> **Leniency note:** the tracker models info-stringed fence runs inside an open
+> fence as nested openers so balanced nested examples (e.g. a `~~~` wrapper
+> around a ``` example) stay content. On *unbalanced* trailing fences it is more
+> lenient than strict CommonMark: a trailing line that strict CommonMark would
+> keep fenced can be treated as prose and reach marker/text-dependency scanning.
+> This triggers only on malformed example markdown — keep fenced examples
+> balanced and the models agree.
+
 ---
 
 ## Classify Before Building the DAG
