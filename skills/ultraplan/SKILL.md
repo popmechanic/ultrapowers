@@ -27,6 +27,31 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 - `**Depends-on:**` — comma-separated task IDs from the plan's own numbering
   (`2`, `A3`, `C4b`), or `none`.
 
+## Replace the plan header
+
+writing-plans mandates this header line on every plan:
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task.
+
+On a marked plan, REPLACE it with:
+
+> **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+Without this, the header literally directs any skills-obedient agent into the
+sequential executor — the parallel run happens only because a human typed
+`/ultrapowers`.
+
+## Execution Handoff (third option)
+
+writing-plans ends by offering two execution options. On a marked plan, offer
+three — parallel first:
+
+1. **Ultrapowers (recommended for marked plans)** — `/ultrapowers <plan-path>`:
+   parallel waves, worktree isolation, per-task review, two human gates.
+2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
+   review between tasks.
+3. **Inline** — superpowers:executing-plans, batch execution with checkpoints.
+
 ## Choose the right Type
 
 - `implementation` — a worktree-pure diff. Waved and executed.
