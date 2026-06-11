@@ -226,3 +226,10 @@ def test_writing_plans_task_heading_still_adjacent_to_files():
         "writing-plans now puts content between the task heading and the Files "
         "block — dependency-analysis.md's contiguous-header-block rationale and "
         "the compiler's marker placement rule assume adjacency; re-audit both")
+
+
+def test_writing_plans_self_review_section_still_exists():
+    text = (installed() / "skills/writing-plans/SKILL.md").read_text()
+    assert "## Self-Review" in text, (
+        "writing-plans dropped its Self-Review checklist — ultraplan's "
+        "'Self-review additions' section extends it; re-audit ultraplan SKILL.md")

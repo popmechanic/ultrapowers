@@ -87,7 +87,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
     monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
     built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
-  - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD`,
+  - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'` — strip the remote prefix; `origin/main` as a checkout target lands detached,
     falling back to the current branch). Always set it; it anchors the integration branch and the
     review diff base.
   - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
