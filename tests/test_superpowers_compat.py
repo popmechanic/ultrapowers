@@ -164,3 +164,18 @@ def test_sdd_still_mandates_ordered_two_pass_review():
     assert "Start code quality review before spec compliance" in text, (
         "SDD no longer red-flags merging/reordering the two review passes — "
         "reviewer-prompts.md's 'deliberate divergence' note describes a mandate that moved; re-audit it")
+
+
+def test_sdd_still_routes_through_using_git_worktrees():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "superpowers:using-git-worktrees" in text, (
+        "subagent-driven-development no longer routes through using-git-worktrees — "
+        "ultrapowers SKILL.md Step 6 hands it a clean checkout expecting it to "
+        "self-isolate; re-audit the fallback")
+
+
+def test_sdd_model_selection_section_still_exists():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "Model Selection" in text, (
+        "SDD's Model Selection section is gone or renamed — reviewer-prompts.md "
+        "names it as the re-bake source for the model-tier scheme")

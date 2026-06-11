@@ -73,3 +73,22 @@ def test_contract_documents_compiler_release_patterns():
             "disclosure paragraph and this list together")
         assert pat in doc, (
             f"plan-markers.md does not disclose compiler release pattern {pat!r}")
+
+
+MANUAL_PATTERNS = ("the owner runs", "cannot be done from this machine", "on the deployment")
+GATE_PATTERNS = ("pytest", "npm test", "git status", "git log")
+
+
+def test_contract_documents_compiler_manual_and_gate_heuristics():
+    """plan-markers.md's heuristic disclosure must move with MANUAL_EV/GATE_EV —
+    the release patterns are already three-way pinned; these were not."""
+    doc = CONTRACT.read_text()
+    src = (ROOT / "skills/ultrapowers/scripts/compile_plan.py").read_text()
+    for pat in MANUAL_PATTERNS + GATE_PATTERNS:
+        assert pat in src, (
+            f"compiler lost heuristic pattern {pat!r} — update plan-markers.md's "
+            "disclosure paragraph and this list together")
+    # The disclosure paragraph names the one manual pattern the documented
+    # heuristic itself omits; pin that claim specifically.
+    assert "on the deployment" in doc, (
+        "plan-markers.md no longer discloses the 'on the deployment' manual pattern")
