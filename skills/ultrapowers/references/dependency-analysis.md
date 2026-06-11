@@ -24,14 +24,7 @@ inside their steps.
 
 ## Classify Before Building the DAG
 
-**Marked plans compile mechanically.** If the plan contains any `**Type:**` or
-`**Depends-on:**` line, run
-`python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>`
-and use its JSON verbatim for the `dag_edges`, `dispositions`, `marker_conflicts`,
-`post_merge_runbook`, `waves`, `mode`, and `degrade_reason` of the transparency
-block. Reserve judgment for entries flagged `"heuristic": true` (verify or
-override them, recording why) and for the derived knobs below — the compiler
-does not derive `testCmd`, `baseBranch`, tiers, or review depth.
+**Run the compiler on every plan, marked or not:** `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>`. It implements the classification heuristics itself and flags every non-marker judgment `"heuristic": true`. On a **marked** plan, use its JSON verbatim for the `dag_edges`, `dispositions` (rendered from `tasks[].disposition` plus `gates`), `marker_conflicts`, `post_merge_runbook`, `waves`, `mode`, and `degrade_reason` of the transparency block, reserving judgment for heuristic-flagged entries. On an **unmarked** plan, treat the same JSON as the draft analysis: verify every flagged classification and inferred edge against `plan-markers.md` before adopting it — never hand-derive from scratch what the compiler already computed.
 
 Classify every task per `plan-markers.md` — trust an explicit `**Type:**` marker;
 otherwise apply the contract heuristics there (release → manual → gate →
@@ -64,8 +57,7 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
 
 1. **Explicit marker:** B carries `**Depends-on:**` naming A. Marker edges are
    **additive** to the inferred rules below — the union orders the waves.
-   `**Depends-on:** none` asserts the author expects no incoming edges; if a file
-   rule still finds one, the file edge wins and the disagreement is surfaced in the
+   `**Depends-on:** none` asserts the author expects no incoming edges; if inference still finds one, the inferred edge wins (its `why` is named in the conflict note) and the disagreement is surfaced in the
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
 3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan).
@@ -75,6 +67,8 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
 
 Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `text`, `ambiguous-files`.
+
+Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing explicit or semantic edge (marker, text, write-after-create, read-after-write). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing.
 
 ---
 
@@ -96,6 +90,8 @@ Each wave is a set of tasks that can execute in parallel — their dependencies 
 Apply these rules before finalizing the DAG:
 
 - **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one — serializing it into its own wave at its document position.
+The remaining two defaults are hand-derivation guidance only — the compiler is static and does not inspect the repo; apply them when reviewing heuristic-flagged output:
+
 - **Implicit shared directories:** if two tasks each create or modify files in the same directory AND one task's description mentions scaffolding, initialization, or setup, serialize the scaffolding task before the other.
 - **Unknown paths:** a path that does not exist in the repo yet counts as a `Create:` — do not assume it is safe to write concurrently with another task that also lists that same path.
 
@@ -103,7 +99,7 @@ Apply these rules before finalizing the DAG:
 
 ## Cycle Detection
 
-After building the adjacency list, run DFS-based cycle detection before computing any waves.
+After building the adjacency list, run cycle detection before accepting any waves — the compiler detects cycles as tasks Kahn layering cannot place; when hand-deriving, DFS works too.
 
 If a cycle is found:
 
