@@ -81,17 +81,21 @@ def compile_plan_raw(path):
                           capture_output=True, text=True)
 
 
-def test_degrade_honors_marker_edges(tmp_path):
+def test_marker_edge_orders_two_tasks_topologically(tmp_path):
+    # Two impl tasks no longer degrade to sequential (the trigger is == 1, not
+    # <= 2): a marker edge 2 -> 1 still serializes them by topology, in parallel
+    # mode, so the waves stay [[2],[1]] without a spurious degrade_reason.
     plan = tmp_path / "dep.md"
     plan.write_text(
-        "# Plan: Degrade order\n\n"
+        "# Plan: Marker order\n\n"
         "### Task 1: dependent\n\n**Type:** implementation\n**Depends-on:** 2\n\n"
         "**Files:**\n- Create: `one.txt`\n\n- [ ] **Step 1:** write one\n\n"
         "### Task 2: prerequisite\n\n**Type:** implementation\n**Depends-on:** none\n\n"
         "**Files:**\n- Create: `two.txt`\n\n- [ ] **Step 1:** write two\n"
     )
     out = compile_plan(plan)
-    assert out["mode"] == "sequential"
+    assert out["mode"] == "parallel"
+    assert out["degrade_reason"] is None
     assert {"from": "2", "to": "1", "why": "marker"} in out["dag_edges"]
     assert out["waves"] == [["2"], ["1"]]   # topological, not document, order
 
@@ -321,13 +325,13 @@ def test_fenced_text_dependency_creates_no_edge(tmp_path):
     )
     out = compile_plan(plan)
     assert not any(e["why"] == "text" for e in out["dag_edges"])
-    # No edge of any kind: the two disjoint-write tasks are independent. The
-    # documented small-plan degrade (<=2 impl tasks -> sequential, one task per
-    # wave in topological order; SKILL.md / dependency-analysis.md) still applies,
-    # so waves are [["A"], ["B"]] rather than a single concurrent wave.
+    # No edge of any kind: the two disjoint-write tasks are independent. With the
+    # small-plan degrade trigger narrowed to == 1 (single task; SKILL.md /
+    # dependency-analysis.md), two independent tasks now run concurrently in one
+    # parallel wave rather than being needlessly serialized.
     assert not any(e["from"] == "A" and e["to"] == "B" for e in out["dag_edges"])
-    assert out["waves"] == [["A"], ["B"]]
-    assert out["mode"] == "sequential"
+    assert out["waves"] == [["A", "B"]]
+    assert out["mode"] == "parallel"
 
 
 def test_unbackticked_path_drops_trailing_prose(tmp_path):
@@ -494,3 +498,60 @@ def test_tilde_wrapper_with_backtick_inner_keeps_following_task(tmp_path):
     assert [t["id"] for t in out["tasks"]] == ["A", "B"]
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["A"]["disposition"] == "implementation"   # fenced git push inert
+
+
+def test_duplicate_conflict_entries_are_deduped(tmp_path):
+    plan = tmp_path / "dupconf.md"
+    plan.write_text(
+        "# Plan: Dup conflicts\n\n"
+        "### Task A: gate-ish\n\n**Type:** gate\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n\n"
+        "### Task B: follower\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n"
+        "- [ ] **Step 1:** Run after Task A passes.\n"
+        "- [ ] **Step 2:** Verify again after Task A is green.\n"
+    )
+    out = compile_plan(plan)
+    drops = [c for c in out["marker_conflicts"] if c["task"] == "B"]
+    assert len(drops) == 1
+
+
+def test_zero_impl_plan_is_not_sequential_mode(tmp_path):
+    plan = tmp_path / "zeromode.md"
+    plan.write_text(
+        "# Plan: Gates only\n\n"
+        "### Task A: suite gate\n\n**Type:** gate\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n"
+    )
+    out = compile_plan(plan)
+    assert out["waves"] == []
+    assert out["mode"] == "parallel"
+    assert out["degrade_reason"] is None
+
+
+def test_task_title_does_not_create_text_edge(tmp_path):
+    plan = tmp_path / "titledep.md"
+    plan.write_text(
+        "# Plan: Title dep\n\n"
+        "### Task 1: base\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: cleanup after Task 1 lands\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "text" for e in out["dag_edges"])
+    assert out["waves"] == [["1", "2"]]
+
+
+def test_line_ranged_paths_strip_to_overlap(tmp_path):
+    plan = tmp_path / "ranged.md"
+    plan.write_text(
+        "# Plan: Ranged\n\n"
+        "### Task A: edit top\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/existing.py:123-145`\n\n- [ ] **Step 1:** top\n\n"
+        "### Task B: edit bottom\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/existing.py:200-260`\n\n- [ ] **Step 1:** bottom\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
+    assert out["waves"] == [["A"], ["B"]]

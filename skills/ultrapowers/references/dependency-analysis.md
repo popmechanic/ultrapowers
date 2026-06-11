@@ -113,7 +113,7 @@ If a cycle is found:
 
 If either condition is true:
 
-- Implementation task count ≤ 2 (counted after classification removes gates, release, and manual tasks), **or**
+- Implementation task count is exactly 1 (counted after classification removes gates, release, and manual tasks) — a single task is its own wave, **or**
 - Every task shares at least one path in its `writes` set with every other task (fully overlapping writes)
 
 …emit one single-task wave per task in topological (Kahn) order — `[[T1], [T2], …]` — so dependency edges are still honored. The run flows through the standard workflow machinery (worktrees, per-task review, per-wave merge); sequential mode simply means no two tasks ever execute concurrently. The compiler's `degrade_reason` reads `Sequential mode: N implementation tasks` (suffixed with `, fully overlapping writes` when that trigger fired).

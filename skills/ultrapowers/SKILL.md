@@ -77,7 +77,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
   If a cycle is found, stop and surface it in plain language — never guess an ordering.
-- **Apply conservative defaults** and the **small-plan degrade** (≤2 implementation tasks or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order).
+- **Apply conservative defaults** and the **small-plan degrade** (exactly 1 implementation task, or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order). Two or more tasks with disjoint writes stay parallel; dependency edges still serialize them by topology within parallel mode.
 - **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope, per
   `references/reviewer-prompts.md`.
 - **Derive the run knobs yourself — do not ask the human to hand-tune them.** You read the plan and
