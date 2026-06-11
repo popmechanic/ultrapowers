@@ -58,3 +58,18 @@ def test_contract_defines_executor_variance():
     text = CONTRACT.read_text()
     assert "## Executor variance" in text
     assert "sequential executor" in text.lower()
+
+
+RELEASE_PATTERNS = ("git push", "git checkout main", "git merge", "ssh", "scp",
+                    "systemctl", "after the branch merges")
+
+
+def test_contract_documents_compiler_release_patterns():
+    doc = CONTRACT.read_text()
+    src = (ROOT / "skills/ultrapowers/scripts/compile_plan.py").read_text()
+    for pat in RELEASE_PATTERNS:
+        assert pat in src, (
+            f"compiler lost release pattern {pat!r} — update plan-markers.md's "
+            "disclosure paragraph and this list together")
+        assert pat in doc, (
+            f"plan-markers.md does not disclose compiler release pattern {pat!r}")
