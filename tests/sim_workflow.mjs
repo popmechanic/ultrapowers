@@ -798,6 +798,8 @@ async function scenarioTransitiveDepBlock() {
 // ── Scenario: fully dep-blocked wave does NOT cascade ─────────────────────────
 async function scenarioFullyBlockedWaveDoesNotCascade() {
   const implCalled = new Set()
+  let wave1MergeHeadSha = null
+  let zImplBase = null
   const waves = [
     [
       { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
@@ -809,13 +811,24 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
   const r = await runWorkflow({
-    agent: makeAgent((label) => {
+    agent: makeAgent((label, prompt) => {
       if (label.startsWith('impl:') || label.startsWith('fix:')) {
         implCalled.add(taskIdFromLabel(label))
+        if (label === 'impl:Z') {
+          // Capture the LAST "BASE: <sha>" from Z's implementer prompt
+          const all = prompt.match(/BASE: \S+/g) || []
+          const last = all[all.length - 1]
+          zImplBase = last && last.slice('BASE: '.length)
+        }
         return undefined
       }
       if (label.startsWith('review:') && taskIdFromLabel(label) === 'A') {
         return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      if (label === 'merge:wave1') {
+        const result = { status: 'MERGED', headSha: 'w1-merge-head' }
+        wave1MergeHeadSha = result.headSha
+        return result
       }
       return undefined
     }),
@@ -829,7 +842,93 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
   eq(w2 && w2.status, 'SKIPPED', 'noCascade: wave-2 merge recorded SKIPPED')
   eq(r.blockedWaves, [], 'noCascade: no wave recorded blocked')
   assert(!r.unfinished.some((u) => /cascade-blocked/.test(u)), 'noCascade: nothing cascade-blocked')
+  // Review base stays frozen across the SKIPPED wave: Z must build on wave-1's
+  // merge headSha, not on a stale or corrupted value from the skipped wave.
+  assert(wave1MergeHeadSha !== null, 'noCascade: wave-1 merge captured a headSha')
+  eq(zImplBase, wave1MergeHeadSha, 'noCascade: Z implementer BASE equals wave-1 merge headSha — SKIPPED wave 2 did not advance or corrupt the review base')
   console.log('scenario fully-blocked-wave-no-cascade: OK')
+}
+
+// ── Scenario: baseBranch threading — setup prompt carries checkout instruction ─
+// workflow.js threads args.baseBranch into the setup prompt so the setup agent
+// checks out the base branch before creating the integration branch. When
+// baseBranch is absent, the sentence must not appear.
+async function scenarioBaseBranchThreaded() {
+  let setupPromptWith = ''
+  let setupPromptWithout = ''
+
+  // With baseBranch supplied
+  const agentWith = makeAgent((label, prompt) => {
+    if (label === 'setup') { setupPromptWith = prompt }
+    return undefined
+  })
+  await runWorkflow({
+    agent: agentWith,
+    args: Object.assign({}, baseArgs, { baseBranch: 'main' }),
+    budget: undefined,
+  })
+  assert(/Check out the base branch main/.test(setupPromptWith),
+    'baseBranch: setup prompt contains "Check out the base branch main" when baseBranch supplied')
+
+  // Without baseBranch
+  const agentWithout = makeAgent((label, prompt) => {
+    if (label === 'setup') { setupPromptWithout = prompt }
+    return undefined
+  })
+  await runWorkflow({
+    agent: agentWithout,
+    args: baseArgs,
+    budget: undefined,
+  })
+  assert(!/Check out the base branch/.test(setupPromptWithout),
+    'baseBranch: setup prompt does NOT contain "Check out the base branch" when baseBranch is absent')
+
+  console.log('scenario baseBranch-threaded: OK')
+}
+
+// ── Scenario: reconcile tracks mostCapable tier override ──────────────────────
+// From reviewer-prompts.md: "reconcile is a fixer, not a reviewer, so it tracks
+// the implementer-side mostCapable". With tierOverrides: { mostCapable: 'sonnet' },
+// the reconcile agent must receive opts.model === 'sonnet', while the reviewer
+// must stay 'opus' (OVERRIDE-PROOF).
+async function scenarioReconcileTierOverride() {
+  let reconcileModel = null
+  let reviewerModel = null
+
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      reviewerModel = opts.model
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:wave1')) {
+      // Return CONFLICT so reconcile is dispatched
+      return { status: 'CONFLICT', detail: 'simulated conflict' }
+    }
+    if (label.startsWith('reconcile:')) {
+      reconcileModel = opts.model
+      return { status: 'MERGED', headSha: 'reconciled-sha' }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+
+  await runWorkflow({
+    agent,
+    args: Object.assign({}, baseArgs, { tierOverrides: { mostCapable: 'sonnet' } }),
+    budget: undefined,
+  })
+
+  assert(reconcileModel !== null, 'reconcileTier: reconcile agent was actually dispatched')
+  eq(reconcileModel, 'sonnet', 'reconcileTier: reconcile uses overridden mostCapable model (sonnet)')
+  eq(reviewerModel, 'opus', 'reconcileTier: reviewer stays opus despite mostCapable override (OVERRIDE-PROOF)')
+  console.log('scenario reconcile-tier-override: OK')
 }
 
 // ── Scenario: done-without-headSha is not mergeable ───────────────────────────
@@ -976,4 +1075,6 @@ await scenarioDoneWithoutHeadShaNotMerged()
 await scenarioIntraWaveDepAcrossChunks()
 await scenarioMalformedEdgesThrow()
 await scenarioNoEdgesZeroMergeableCascades()
+await scenarioBaseBranchThreaded()
+await scenarioReconcileTierOverride()
 console.log('ALL SCENARIOS PASSED')
