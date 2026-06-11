@@ -64,6 +64,22 @@ never silently dropped.
   action). Excluded from the waves; carried verbatim into the post-merge runbook.
 <!-- /BAKE -->
 
+## Executor variance
+
+The dispositions above bind **ultrapowers**. A sequential executor
+(subagent-driven-development, executing-plans) reads the same plan and treats
+every task — including `gate`, `release`, and `manual` — as an ordinary task to
+execute in document order. That is safe by construction, not by accident: the
+sequential executors keep a human in the loop at each task, so a `release` push
+or a `manual` owner step gets human eyes before it runs. The semantic difference
+to author for:
+
+- `gate` — ultrapowers compiles it into run config; a sequential executor runs
+  it as written. Write gates so both work: pure verification commands, no writes.
+- `release` / `manual` — ultrapowers defers them to the post-merge runbook; a
+  sequential executor runs them inline at their document position. Place them
+  LAST in the plan so the inline execution order equals the deferred order.
+
 ## Classification heuristics (unmarked plans)
 
 For tasks without a `**Type:**` marker, classify by evidence, in this precedence:
