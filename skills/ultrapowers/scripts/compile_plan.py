@@ -210,6 +210,25 @@ def parse_task(t):
         if s.startswith("**Files:**"):
             in_files = True
             files_entries_seen = False
+            # Inline header values: `**Files:** \`a.py\` \`b.py\`` carries the
+            # paths on the header line itself. Backticked paths are honored as
+            # writes (conservative: inline form does not distinguish
+            # Create/Modify/Test, and a write is the safe assumption). A
+            # non-backticked remainder surfaces a conflict instead of silently
+            # falling to ambiguous-files with no pointer.
+            rest = s[len("**Files:**"):].strip()
+            if rest:
+                inline = [p.split(":")[0] for p in PATH_RE.findall(rest) if p]
+                if inline:
+                    modifies.extend(inline)
+                    files_entries_seen = True
+                elif not rest.lower().startswith("none"):
+                    # "none" (with or without trailing prose) is a valid value
+                    # (common for gates); other prose without backticked paths
+                    # surfaces a conflict
+                    files_near_miss.append(
+                        s + "  <inline Files value has no backticked paths — "
+                        "backtick each path or use - Create/Modify/Test bullets>")
             continue
         if FILES_ISH.match(s):
             # `**Files**:` / `**files:**` never opens the block — every entry
