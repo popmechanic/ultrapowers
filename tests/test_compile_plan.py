@@ -995,3 +995,100 @@ def test_files_header_near_miss_surfaces(tmp_path):
     )
     out = compile_plan(plan)
     assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
+    plan = tmp_path / "bullets.md"
+    plan.write_text(
+        "# Plan: Unparsed bullets\n\n"
+        "### Task 1: natural english\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify `src/app.py` to wire it in\n- Delete: `old.py`\n- Modify: `keep.py`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: writer\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == ["keep.py"]      # valid entry after misses survives
+    drops = [c for c in out["marker_conflicts"] if c["task"] == "1" and "Files" in c["note"]]
+    assert drops, "colon-less and unknown-label bullets must surface"
+
+
+def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_path):
+    plan = tmp_path / "depspace.md"
+    plan.write_text(
+        "# Plan: Depends space\n\n"
+        "### Task 1: base\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: upstream idiom\n\n**Type:** implementation\n"
+        "**Depends on:** Task 1 GREEN passing.\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    # The space-spelled marker is surfaced as a near-miss AND the text rule
+    # tolerates the `:**` punctuation, so the ordering edge is recovered.
+    assert any(c["task"] == "2" and ("spelling" in c["note"].lower() or "header" in c["note"])
+               for c in out["marker_conflicts"])
+    assert {"from": "1", "to": "2", "why": "text"} in out["dag_edges"]
+    assert out["waves"] == [["1"], ["2"]]
+
+
+def test_plural_tasks_text_dependency_surfaces(tmp_path):
+    plan = tmp_path / "plural.md"
+    plan.write_text(
+        "# Plan: Plural\n\n"
+        "### Task 1: a\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: b\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n"
+        "- [ ] **Step 1:** This depends on Tasks 1 and 3 being merged first.\n\n"
+        "### Task 3: c\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `c.txt`\n\n- [ ] **Step 1:** c\n"
+    )
+    out = compile_plan(plan)
+    assert any(c["task"] == "2" and "plural" in c["note"].lower()
+               for c in out["marker_conflicts"])
+
+
+def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
+    plan = tmp_path / "phantom.md"
+    plan.write_text(
+        "# Plan: Phantom\n\n"
+        "### Task 1: prose test line\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Test: run pytest manually and confirm green\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: other\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    # 'run' must not become a phantom read path: with no real paths task 1 stays
+    # AMBIGUOUS (conservative ambiguous-files serialization), and the prose value
+    # is surfaced.
+    assert any(c["task"] == "1" for c in out["marker_conflicts"])
+    assert any(e["why"] == "ambiguous-files" for e in out["dag_edges"])
+    assert not any(e["why"] == "read-after-write" for e in out["dag_edges"])
+
+
+def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
+    plan = tmp_path / "globwhy.md"
+    plan.write_text(
+        "# Plan: Glob why\n\n"
+        "### Task 1: bracket route\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `app/[slug]/page.tsx`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: other\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert any(c["task"] == "1" and "glob" in c["note"].lower()
+               for c in out["marker_conflicts"])
+
+
+def test_all_wrong_level_plan_gets_the_heading_diagnostic(tmp_path):
+    plan = tmp_path / "h2only.md"
+    plan.write_text(
+        "# Plan: Legacy levels\n\n"
+        "## Task 1: first\n\n**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "## Task 2: second\n\n**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "## Task 1:" in p.stderr           # the diagnostic NAMES the heading (not the generic bail)

@@ -29,7 +29,7 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # Marker-shaped: bold-prefixed type/depends-on label in ANY colon position —
 # `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside form `**Type**:`
 # all count, so a near-miss never silently degrades to prose.
-MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*(?:\*\*)?\s*:", re.I)
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
@@ -38,7 +38,10 @@ FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
-TEXT_DEP = re.compile(r"(?:depends on|after|requires)\s+Task\s+([A-Za-z0-9]+)", re.I)
+TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
+# Plural prose ("depends on Tasks 1 and 3") is NOT parsed into edges — surface
+# it so the author converts to Depends-on markers instead of losing ordering.
+TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
 
 
@@ -187,8 +190,9 @@ def parse_task(t):
                         deps_mixed = True
                     deps.extend(id_tokens)
         elif is_markerish and s.rstrip() == "**Depends-on:**":
-            # Exact marker, missing value — a spelling diagnosis would mislead.
-            near_miss.append(s + "  <missing value>")
+            # Exact marker, missing value — a spelling diagnosis would mislead;
+            # outside the header it is a placement violation like any late marker.
+            (near_miss if in_header else late_markers).append(s + "  <missing value>")
         elif is_markerish:
             # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type**:`)
             # would otherwise silently degrade to heuristics with no feedback —
@@ -226,10 +230,12 @@ def parse_task(t):
             if s.startswith("- ["):
                 in_files = False
             f = FILE_LINE.match(s) if in_files else None
-            if in_files and not f and FILE_ISH.match(s):
-                # Surface AND keep the block open: an asterisk/typo'd entry must
-                # not silently close the section and drop the valid entries
-                # after it.
+            if in_files and not f and re.match(r"^[-*+]\s", s):
+                # TOTAL rule: ANY bullet inside an open Files block that is not a
+                # checkbox and fails FILE_LINE is a near-miss — colon-less
+                # natural English, unknown labels (Read:/Delete:), wrong case or
+                # bullet char — surfaced, and the block stays open so valid
+                # entries after it survive.
                 files_near_miss.append(s)
                 continue
             if f:
@@ -242,15 +248,24 @@ def parse_task(t):
                     paths = backticked
                 else:
                     tokens = f.group(2).strip().split()
-                    # First token only; strip list separators so `a.py, b.py`
-                    # still overlap-matches a.py elsewhere. Multi-path values
-                    # must be backticked per path — surface the truncation.
-                    paths = [tokens[0].rstrip(",;")]
-                    if len(tokens) > 1:
+                    first = tokens[0].rstrip(",;")
+                    # First token only, and only if it LOOKS like a path ("/" or
+                    # "." present) — a prose value ("run pytest manually") must
+                    # not fabricate a phantom path that defeats the conservative
+                    # ambiguous-files fallback. Strip list separators so
+                    # `a.py, b.py` still overlap-matches a.py elsewhere.
+                    if "/" in first or "." in first:
+                        paths = [first]
+                        if len(tokens) > 1:
+                            files_near_miss.append(
+                                s + "  <only the first path is used — backtick each path>")
+                    else:
+                        paths = []
                         files_near_miss.append(
-                            s + "  <only the first path is used — backtick each path>")
-                paths = [p.split(":")[0] for p in paths]  # drop :line-range
-                files_entries_seen = True
+                            s + "  <value is prose, not a path — backtick real paths>")
+                paths = [p.split(":")[0] for p in paths if p]  # drop :line-range
+                if paths:
+                    files_entries_seen = True
                 if f.group(1) == "Create":
                     creates.extend(paths)
                 elif f.group(1) == "Modify":
@@ -261,9 +276,10 @@ def parse_task(t):
                 in_files = False
 
     all_paths = creates + modifies + reads
+    glob_paths = [p for p in all_paths if GLOB_CHARS.search(p)]
     files_ambiguous = (
         (not creates and not modifies and not reads) or
-        any(GLOB_CHARS.search(p) for p in all_paths)
+        bool(glob_paths)
     )
 
     # Fence-stripped prose: classification evidence and text-dependency scanning
@@ -286,7 +302,7 @@ def parse_task(t):
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
-             files_near_miss=files_near_miss,
+             files_near_miss=files_near_miss, glob_paths=sorted(set(glob_paths)),
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -478,11 +494,8 @@ def main(argv=None):
     ap.add_argument("plan", type=Path)
     args = ap.parse_args(argv)
     plan_text = args.plan.read_text()
-    tasks = [parse_task(t) for t in split_tasks(plan_text)]
-    if not tasks:
-        print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
-        raise SystemExit(1)
-
+    # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
+    # named diagnostic, not the generic 'no headings found'.)
     # A heading that LOOKS like a task heading but fails TASK_HEAD (e.g.
     # `### Task 1.5:` — non-alphanumeric id) would silently fold its whole
     # section into the PREVIOUS task: the task vanishes from the waves and its
@@ -502,6 +515,11 @@ def main(argv=None):
               + " — ids must be alphanumeric (`### Task <id>: <title>`); a "
               "malformed heading folds its task into the previous one. "
               "Refusing to compile.", file=sys.stderr)
+        raise SystemExit(1)
+
+    tasks = [parse_task(t) for t in split_tasks(plan_text)]
+    if not tasks:
+        print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
 
     # Bug D: detect duplicate task IDs early
@@ -541,6 +559,21 @@ def main(argv=None):
          "note": "contradictory **Type:** markers (" + t["marker_type"] + " vs "
                  + ", ".join(sorted(set(t["dup_types"]))) + ") — the first one wins"}
         for t in tasks if t.get("dup_types")]
+    # Glob-driven ambiguity: conservative full serialization with no pointer to
+    # WHY would read as a scheduling bug — name the globby paths.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "path(s) look like globs (" + ", ".join(t["glob_paths"][:3])
+                 + ") — task serialized via ambiguous-files; list concrete files "
+                 "to parallelize (a literal [slug]/{x} path also triggers this)"}
+        for t in tasks if t.get("glob_paths")]
+    # Plural text dependencies are not parsed into edges — surface so the
+    # ordering intent is not silently lost.
+    type_conflicts += [
+        {"task": t["id"], "edge": "",
+         "note": "plural text dependency ('depends on/after/requires Tasks …') is "
+                 "not parsed — encode each prerequisite as a **Depends-on:** marker"}
+        for t in tasks if TEXT_DEP_PLURAL.search(t["prose"])]
     # Files-entry near-misses: a dropped write path silently weakens overlap
     # inference — surface per task.
     type_conflicts += [
