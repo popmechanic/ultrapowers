@@ -943,6 +943,7 @@ async function scenarioReconcileTierOverride() {
 // ── Scenario: done-without-headSha is not mergeable ───────────────────────────
 async function scenarioDoneWithoutHeadShaNotMerged() {
   let mergePrompt = null
+  const reviewed = new Set()
   const waves = [
     [
       { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
@@ -952,6 +953,7 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => {
+      if (label.startsWith('review:')) reviewed.add(taskIdFromLabel(label))
       if (label === 'impl:A') {
         return { status: 'DONE', summary: 's', branch: 'wt-A', commit: 'c-A' } // no headSha
       }
@@ -975,6 +977,11 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
   eq(aTask && aTask.reviewVerdict, 'lost-coordinates', 'noHeadSha: A reviewVerdict is lost-coordinates (not clean)')
   assert(aTask && aTask.notes && /downgraded/.test(aTask.notes),
     'noHeadSha: A notes mention "downgraded" (got ' + (aTask && aTask.notes) + ')')
+  // Hardening: a coordinate-less DONE fails fast BEFORE review — no opus
+  // review is spent on a pipeline that cannot merge (GUARD would force a
+  // BLOCKED state the reviewer schema cannot express).
+  assert(!reviewed.has('A'), 'noHeadSha: no review dispatched for the coordinate-less task')
+  assert(reviewed.has('G'), 'noHeadSha: the good task was still reviewed')
   console.log('scenario done-without-headsha-not-merged: OK')
 }
 
@@ -1216,7 +1223,7 @@ async function scenarioIntraWaveDepAcrossChunks() {
 // ── Scenario: typo'd review depth and unknown baseline reach judgmentCalls ────
 async function scenarioTypoReviewAndUnknownBaseline() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap', review: 'agressive' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'opus', review: 'agressive' }],
   ]
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
@@ -1231,11 +1238,29 @@ async function scenarioTypoReviewAndUnknownBaseline() {
   })
   assert(r.judgmentCalls.some((j) => /unknown review/.test(j) && /agressive/.test(j)),
     'typoReview: typo\'d task.review surfaced as a judgment call, not just a log line')
+  assert(r.judgmentCalls.some((j) => /unknown tier/.test(j) && /opus/.test(j)),
+    'typoReview: typo\'d task.tier surfaced as a judgment call (alias, not a tier name)')
   assert(r.judgmentCalls.some((j) => /baseline unknown/.test(j)),
     'typoReview: setup omitting baselinePassed surfaced as a judgment call')
   assert(r.baseline && r.baseline.passed === undefined, 'typoReview: baseline.passed stays undefined (not coerced)')
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a && a.status, 'done', 'typoReview: task still completes on the run-default review depth')
+  // Second leg: baselinePassed: null (the natural JSON for "unknown") must hit
+  // the same unknown-baseline guard as an omitted field — === undefined alone
+  // lets null read silently as not-red.
+  const r2 = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'setup') {
+        return { branch: 'ultra/integration-sim', headSha: 'int0', baselinePassed: null }
+      }
+      return undefined
+    }),
+    args: { waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+            integrationBranch: 'ultra/integration-sim', stamp: 'sim' },
+    budget: undefined,
+  })
+  assert(r2.judgmentCalls.some((j) => /baseline unknown/.test(j)),
+    'typoReview: baselinePassed: null also surfaced as an unknown baseline')
   console.log('scenario typo-review-and-unknown-baseline: OK')
 }
 

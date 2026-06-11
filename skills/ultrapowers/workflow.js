@@ -56,10 +56,14 @@ const stamp = (ARGS && ARGS.stamp) || 'run'
 const integrationBranch =
   (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||
   ('ultra/integration-' + stamp)
+// dependencyEdges: human-readable edge strings, echoed into the report ONLY.
+// Dependency BLOCKING is driven by args.edges below — passing dependencyEdges
+// alone does not block anything.
 const dependencyEdges = (ARGS && ARGS.dependencyEdges) || []
-// Structured dependency pairs [[fromTaskId, toTaskId], ...] — optional. When
-// present, a failed task blocks its transitive dependents instead of letting
-// them run against a base that never received the prerequisite.
+// args.edges: structured dependency pairs [[fromTaskId, toTaskId], ...] —
+// optional. When present, a failed task blocks its transitive dependents
+// instead of letting them run against a base that never received the
+// prerequisite.
 // edgesSupplied: true iff the caller explicitly passed args.edges (even if []).
 // A compiler-generated plan with no dependencies legitimately yields edges: [].
 // The conservative-cascade branch must distinguish "edges omitted" (unsafe to
@@ -369,12 +373,36 @@ async function runTaskInner(task, baseSha) {
     judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
         '" — fell back to the run default (' + reviewProfile + ')')
   }
+  // Same posture for an unknown tier: a plan asking for top-tier work must not
+  // silently run a tier down (tierKey normalizes only 'most-capable').
+  if (task.tier && !TIER[tierKey(task.tier)]) {
+    log('task ' + task.id + ': unknown tier="' + task.tier +
+        '", falling back to standard')
+    judgmentCalls.push('task ' + task.id + ': unknown tier="' + task.tier +
+        '" — fell back to standard (valid: cheap, standard, mostCapable/most-capable)')
+  }
 
   let impl = await agent(
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
+  // Fail fast on a DONE without mergeable coordinates (schema requires
+  // branch/headSha, so this needs an engine bypass): dispatching the reviewer
+  // would thread "HEAD: undefined" into a checkout it cannot perform — the
+  // GUARD forces a BLOCKED state the reviewer schema cannot express — burning
+  // an opus review on a doomed pipeline. The wave-level lost sweep stays as
+  // second-line defense.
+  if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') &&
+      (!impl.branch || !impl.headSha)) {
+    judgmentCalls.push('task ' + task.id + ': reported done without mergeable ' +
+      'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
+    log('task ' + task.id + ' FAILED: done without mergeable coordinates — review skipped')
+    return { task: task.id, status: 'failed', branch: impl.branch,
+             reviewVerdict: 'lost-coordinates',
+             notes: 'reported done without mergeable coordinates — downgraded to failed before review',
+             tier: economics.tier, review: economics.review, fixIterations: 0 }
+  }
   if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
     return { task: task.id, status: 'failed', branch: impl.branch,
              reviewVerdict: 'not-reviewed', notes: impl.summary,
@@ -544,10 +572,11 @@ if (setup.baselinePassed === false) {
     (setup.baselineOutput || 'no output') + ') — task results inherit a red suite'
   )
   log('setup: baseline tests FAILED before any work began')
-} else if (setup.baselinePassed === undefined) {
+} else if (typeof setup.baselinePassed !== 'boolean') {
   // baselinePassed is required by the setup prompt but optional in the schema
-  // (same class as lost-coordinates): an unknown baseline must not silently
-  // read as not-red at the pre-merge gate.
+  // (same class as lost-coordinates): an unknown baseline — omitted OR null,
+  // the natural JSON for "unknown" — must not silently read as not-red at the
+  // pre-merge gate.
   judgmentCalls.push(
     'baseline unknown — setup did not report baselinePassed; treat later test ' +
     'results with care (the suite may have been red before any task ran)'
