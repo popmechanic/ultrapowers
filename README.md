@@ -33,7 +33,7 @@ the "execute the plan" step: brainstorming, planning, and branch-finishing hand 
 
 - **Throughput where the plan allows it.** Independent tasks run concurrently (up to 16 agents);
   dependent tasks wait only for the prior wave to land. Plans too small or too entangled to benefit
-  are detected up front and run sequentially — you don't pay parallelism overhead for nothing.
+  are detected up front and run sequentially through the same machinery (see Cost honesty below).
 - **Deterministic orchestration — and deterministic compilation.** The engine is a frozen,
   version-controlled Dynamic Workflow script (`skills/ultrapowers/workflow.js`) with the review
   discipline baked in at build time and drift-tested against its reference sources. A run never
