@@ -547,12 +547,22 @@ const unfinished = []
 // Surfaced, not thrown: on resume runs, edges referencing tasks completed in
 // the prior run are legitimately unbound.
 {
-  const waveTaskIds = new Set(WAVES.flat().map((t) => t.id))
+  const waveIndexOf = {}
+  WAVES.forEach((w, i) => w.forEach((t) => { waveIndexOf[t.id] = i }))
   for (const [a, b] of EDGES) {
-    if (!waveTaskIds.has(a) || !waveTaskIds.has(b)) {
+    if (!(a in waveIndexOf) || !(b in waveIndexOf)) {
       judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoint not in this run — ' +
         'unbound for dependency blocking (legitimate on resume runs; otherwise check for a typo)')
       log('edge ' + a + ' -> ' + b + ' has an unbound endpoint — dependency blocking will not fire for it')
+    } else if (waveIndexOf[a] >= waveIndexOf[b]) {
+      // Blocking binds only ACROSS dispatch boundaries: a dependent co-located
+      // with (or scheduled before) its prerequisite is already in flight when
+      // the failure lands. Compiler waves always layer dependents later;
+      // hand-authored or redirect waves may not — say so instead of letting
+      // the blocking guarantee silently evaporate.
+      judgmentCalls.push('edge ' + a + ' -> ' + b + ': \'' + b + '\' does not run after \'' + a +
+        '\' (same wave or earlier) — dependency blocking cannot bind; move the dependent to a later wave')
+      log('edge ' + a + ' -> ' + b + ' endpoints share a wave or are inverted — blocking will not fire')
     }
   }
 }
@@ -577,7 +587,7 @@ if (budgetExhausted()) {
     tests: { command: undefined, passed: false, output: 'not run — budget exhausted before setup' },
     baseline: {},
     waveMerges: [],
-    judgmentCalls: ['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched'],
+    judgmentCalls: judgmentCalls.concat(['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched']),
     unfinished,
     completenessFindings: [],
     blockedWaves: [],

@@ -1308,6 +1308,94 @@ async function scenarioUnboundEdgeEndpointsSurface() {
   console.log('scenario unbound-edge-endpoints-surface: OK')
 }
 
+
+// ── Scenario: same-wave edge endpoints surface (cannot block) ─────────────────
+async function scenarioSameWaveEdgeSurfaces() {
+  const waves = [[
+    { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+    { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['A', 'B']] }
+  const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
+  assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /same wave|does not run after/.test(j)),
+    'sameWave: co-located edge endpoints surfaced as a judgment call')
+  console.log('scenario same-wave-edge-surfaces: OK')
+}
+
+// ── Scenario: pre-setup budget deferral keeps earlier judgment calls ──────────
+async function scenarioBudgetDeferralKeepsJudgmentCalls() {
+  const r = await runWorkflow({
+    agent: makeAgent(),
+    args: { waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+            integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+            edges: [['ghost', 'A']] },
+    budget: { total: 100, remaining: 0 },
+  })
+  assert(r.judgmentCalls.some((j) => /budget exhausted before setup/.test(j)),
+    'budgetKeep: deferral judgment call present')
+  assert(r.judgmentCalls.some((j) => /ghost/.test(j)),
+    'budgetKeep: earlier unbound-edge judgment call NOT discarded by the early return')
+  console.log('scenario budget-deferral-keeps-judgment-calls: OK')
+}
+
+// ── Scenarios: merge/reconcile/integration throws are caught and contained ────
+async function scenarioMergeThrowContained() {
+  let reconciled = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) throw new Error('engine fault in merge')
+      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(reconciled, 'mergeThrow: a thrown merge agent degrades to CONFLICT and reconcile dispatches')
+  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeThrow: reconcile recovered the wave')
+  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeThrow: run completed normally')
+  console.log('scenario merge-throw-contained: OK')
+}
+
+async function scenarioReconcileThrowContained() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
+      if (label.startsWith('reconcile:')) throw new Error('engine fault in reconcile')
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(r.blockedWaves.length, 1, 'reconcileThrow: wave 1 blocked after both thrown reconciles')
+  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
+    'reconcileThrow: wave 2 cascade-blocked, run still returned a report')
+  console.log('scenario reconcile-throw-contained: OK')
+}
+
+async function scenarioIntegrationThrowContained() {
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'integration') throw new Error('engine fault in integration')
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(r.tests.passed, false, 'integrationThrow: tests reported not-passed')
+  assert(r.completenessFindings.some((f) => /did not run|verify the suite manually/.test(f)),
+    'integrationThrow: manual-verify finding present in the report')
+  assert(r.judgmentCalls.some((j) => /integration review failed to run/.test(j)),
+    'integrationThrow: surfaced as a judgment call')
+  console.log('scenario integration-throw-contained: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1323,6 +1411,11 @@ await scenarioBaselineRed()
 await scenarioTypoReviewAndUnknownBaseline()
 await scenarioFixRoundLostCoordinates()
 await scenarioUnboundEdgeEndpointsSurface()
+await scenarioSameWaveEdgeSurfaces()
+await scenarioBudgetDeferralKeepsJudgmentCalls()
+await scenarioMergeThrowContained()
+await scenarioReconcileThrowContained()
+await scenarioIntegrationThrowContained()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
 await scenarioPlanPath()
