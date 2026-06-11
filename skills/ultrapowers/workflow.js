@@ -202,7 +202,12 @@ const MERGE_PROMPT =
   'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
   'the given task-index order (deterministic, so conflicts are reproducible). ' +
   'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
-  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
+  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.' +
+  ' After ALL branches in your list are merged and the test suite passes, clean up' +
+  ' the merged branches only: use git worktree list to find each merged branch\'s' +
+  ' worktree, git worktree remove it, then git branch -d the branch. Leave any' +
+  ' branch you did NOT merge — and its worktree — untouched; failed and blocked' +
+  ' work must stay inspectable.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent on ' + integrationBranch + '. You are given a ' +

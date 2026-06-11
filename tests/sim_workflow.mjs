@@ -72,7 +72,8 @@ function makeAgent(handle) {
 
 // ── Scenario 1: happy path — everything DONE / PASS / MERGED ──────────────────
 async function scenarioHappy() {
-  const agent = async (_prompt, opts) => {
+  let mergePrompt = ''
+  const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
@@ -80,7 +81,10 @@ async function scenarioHappy() {
       return { status: 'DONE', summary: 'done ' + id, branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
     if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
-    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label.startsWith('merge:')) {
+      mergePrompt = prompt
+      return { status: 'MERGED', headSha: 'm-' + label }
+    }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
     throw new Error('unexpected agent label: ' + label)
   }
@@ -96,6 +100,7 @@ async function scenarioHappy() {
   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
+  assert(/git worktree remove/.test(mergePrompt), 'happy: merge prompt contains cleanup instruction (git worktree remove)')
   console.log('scenario happy: OK')
 }
 
