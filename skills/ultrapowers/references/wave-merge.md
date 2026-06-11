@@ -106,7 +106,7 @@ Caps and failure handling:
 After the final wave's merge agent completes successfully (or is blocked), the controller:
 
 1. Runs the full test suite one more time on the integration branch from the main checkout, regardless of whether the last wave passed its own test run. Log the result.
-2. Dispatches a **completeness-critic agent** using `superpowers:verification-before-completion`. Its prompt: "What plan requirement is unmet? What claim is unverified? What code path is untested?" The agent receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks, the blocked-wave log (if any), and the final test output.
+2. Dispatches a **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `workflow.js` at build time, not loaded from Superpowers at runtime. The agent receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks, the blocked-wave log (if any), and the final test output.
 3. All findings from the critic — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
 The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence):
@@ -127,8 +127,8 @@ Every truncation is surfaced explicitly:
 |---|---|---|
 | Reconciliation attempt 1 or 2 fails | `log()` | `## Blocked Waves` |
 | Wave marked `blocked` | `log()` | `## Blocked Waves` |
-| Downstream wave cascade-blocked | `log()` | `## Blocked Waves` |
-| Fix-loop cap reached | `log()` | `## Blocked Waves` |
+| Downstream wave cascade-blocked | `log()` (one line per blocked wave) | `unfinished` (`cascade-blocked by wave N` entries) |
+| Fix-loop cap reached | `log()` | failed task in `tasks[]` (`reviewVerdict: 'fix-loop-exhausted'`) |
 | Completeness-critic findings | — | `## Integration Review` |
 
 Nothing is swallowed. If a cap fires and nothing is logged, that is a bug in the workflow.
