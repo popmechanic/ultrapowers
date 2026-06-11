@@ -52,6 +52,21 @@ if (!validWaves) {
   )
 }
 
+// Duplicate ids would corrupt blockedByDep and report keying (tasks[],
+// waveMerges.branches). compile_plan.py hard-errors on duplicates at the plan
+// level; hand-authored waves must meet the same bar — refuse to run.
+{
+  const seenIds = new Set()
+  for (const w of WAVES) for (const t of w) {
+    if (seenIds.has(t.id)) {
+      throw new Error('ultrapowers: duplicate task id "' + t.id + '" across waves — task ids ' +
+        'must be unique (compile_plan.py enforces this at the plan level; hand-authored ' +
+        'waves must too). Refusing to run.')
+    }
+    seenIds.add(t.id)
+  }
+}
+
 const stamp = (ARGS && ARGS.stamp) || 'run'
 const integrationBranch =
   (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||

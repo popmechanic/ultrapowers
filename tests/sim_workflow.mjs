@@ -217,6 +217,21 @@ async function scenarioArgsThrow() {
   console.log('scenario args-throw: OK')
 }
 
+// ── Scenario: duplicate task ids across waves refuse to launch ────────────────
+async function scenarioDuplicateTaskId() {
+  const waves = [
+    [{ id: 'A', title: 'one', body: 'b1' }],
+    [{ id: 'A', title: 'two', body: 'b2' }],
+  ]
+  let threw = null
+  try {
+    await runWorkflow({ agent: makeAgent(), args: { waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+  } catch (e) { threw = e }
+  assert(threw && /duplicate task id "A"/.test(String(threw.message)),
+    'dupId: launch must throw naming the duplicated id (got ' + String(threw && threw.message) + ')')
+  console.log('scenario duplicate-task-id: OK')
+}
+
 // ── Scenario 5: args delivered as a JSON STRING (observed live in -p) ─────────
 // The args-probe showed args can arrive as a raw JSON string; workflow.js must
 // JSON.parse it and still run normally.
@@ -1495,6 +1510,7 @@ await scenarioFixLoop()
 await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
+await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
