@@ -202,3 +202,26 @@ def test_writing_plans_menu_still_carries_the_stale_checkpoint_wording():
         "writing-plans fixed its stale Inline-option wording — ultraplan SKILL.md "
         "explicitly calls it stale ('its own handoff text still says otherwise'); "
         "update ultraplan's Inline option to stop accusing upstream")
+
+
+def test_sdd_done_with_concerns_handling_unchanged():
+    text = (installed() / "skills/subagent-driven-development/SKILL.md").read_text()
+    assert "address them before review" in text, (
+        "SDD changed its DONE_WITH_CONCERNS handling — reviewer-prompts.md's "
+        "headless-downgrade note paraphrases it; re-audit the paraphrase")
+
+
+def test_code_reviewer_dropped_subchecks_still_exist():
+    text = (installed() / "skills/requesting-code-review/code-reviewer.md").read_text()
+    for sub in ("Type safety where applicable?", "Edge cases handled?"):
+        assert sub in text, (
+            sub + " is gone from code-reviewer.md — reviewer-prompts.md's "
+            "deliberate-drop ledger names it; re-audit the divergence note")
+
+
+def test_writing_plans_task_heading_still_adjacent_to_files():
+    text = (installed() / "skills/writing-plans/SKILL.md").read_text()
+    assert "### Task N: [Component Name]\n\n**Files:**" in text, (
+        "writing-plans now puts content between the task heading and the Files "
+        "block — dependency-analysis.md's contiguous-header-block rationale and "
+        "the compiler's marker placement rule assume adjacency; re-audit both")

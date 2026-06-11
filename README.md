@@ -117,7 +117,8 @@ analysis already infers — but release rituals, verification-only gate tasks, a
   `testCmd`); `release`/`manual` tasks are excluded into a **post-merge runbook**
   presented with the final report — never run headless, never silently dropped.
   (The contract also spells out the executor variance: a sequential executor runs
-  those same tasks inline, safely, because it keeps a human at every step.)
+  those same tasks inline — continuously, without fresh human eyes — so safety rests
+  on plan approval and on placing `release`/`manual` tasks last.)
 - **The `ultraplan` skill** — load it alongside `superpowers:writing-plans` when
   authoring a plan destined for `/ultrapowers`. It injects the markers and the
   worktree-pure authoring rules (self-contained bodies, ordering as `Depends-on:`,

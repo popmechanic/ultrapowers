@@ -74,9 +74,9 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   bodies fence-aware — headings inside code fences are content, not boundaries.
   Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>` on every plan. Marked plans: adopt its JSON as the transparency block's waves/edges/dispositions verbatim, applying judgment only to `"heuristic": true` entries and the derived knobs. Unmarked plans: the compiler applies the contract heuristics and flags every call — verify the flagged entries against `references/plan-markers.md` instead of hand-deriving.
   If the compiler reports `no implementation tasks` (gates/release/manual only — `waves: []`), do NOT launch the workflow (it refuses empty waves): compile the gates into run config as usual, then go straight to a Step-5-style presentation of the post-merge runbook for the human to execute or schedule.
-- **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), any `**Depends-on:**`
+- **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), its `reads` set (`Test:` paths), any `**Depends-on:**`
   markers (additive to inference), and any explicit `depends on` text.
-- **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
+- **Build the DAG** with the edge rules in `references/dependency-analysis.md` (marker, write-after-create, write-after-write, text, read-after-write); **run cycle detection** before computing waves.
   If a cycle is found, stop and surface it in plain language — never guess an ordering.
 - **Apply conservative defaults** and the **small-plan degrade** (exactly 1 implementation task, or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order). Two or more tasks with disjoint writes stay parallel; dependency edges still serialize them by topology within parallel mode.
 - **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope, per
