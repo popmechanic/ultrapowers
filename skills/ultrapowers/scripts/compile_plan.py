@@ -106,6 +106,7 @@ def parse_task(t):
     near_miss = []
     creates, modifies, reads = [], [], []
     in_files = False
+    files_entries_seen = False
     # The marker contract places **Type:**/**Depends-on:** "immediately after
     # the task heading". The header block is therefore the CONTIGUOUS run of
     # blank lines and marker(-shaped) lines that directly follows the heading;
@@ -176,14 +177,20 @@ def parse_task(t):
             (near_miss if in_header else late_markers).append(s)
         if s.startswith("**Files:**"):
             in_files = True
+            files_entries_seen = False
             continue
         if in_files:
-            # A blank line closes the Files section too — the upstream template
-            # keeps Files entries contiguous, and leaving the section open lets
-            # a later dash bullet ("- Test: run the suite manually") fabricate
-            # phantom paths via the first-token fallback below.
+            # A blank line closes the Files section — but only once at least one
+            # entry has been parsed: `**Files:**` followed by a blank line before
+            # its entries is legal formatting, and closing there would silently
+            # discard the whole block (empty writes -> ambiguous serialization,
+            # or worse a gate reclassification). After the first entry, blanks
+            # close the section so a later dash bullet ("- Test: run the suite
+            # manually") cannot fabricate phantom paths via the first-token
+            # fallback below.
             if not s:
-                in_files = False
+                if files_entries_seen:
+                    in_files = False
                 continue
             # A checkbox step closes the Files section. Without this, a prose
             # step shaped like a Files line (e.g. "- Modify: nothing in `b.txt`
@@ -200,6 +207,7 @@ def parse_task(t):
                 # whole prose tail. Paths containing spaces MUST be backticked.
                 paths = PATH_RE.findall(f.group(2)) or [f.group(2).strip().split()[0]]
                 paths = [p.split(":")[0] for p in paths]  # drop :line-range
+                files_entries_seen = True
                 if f.group(1) == "Create":
                     creates.extend(paths)
                 elif f.group(1) == "Modify":
@@ -430,6 +438,23 @@ def main(argv=None):
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
 
+    # A heading that LOOKS like a task heading but fails TASK_HEAD (e.g.
+    # `### Task 1.5:` — non-alphanumeric id) would silently fold its whole
+    # section into the PREVIOUS task: the task vanishes from the waves and its
+    # files corrupt the previous task's write set. Refuse loudly, like
+    # duplicate ids.
+    near_head = re.compile(r"^###\s*[Tt]ask\b")
+    bad_heads = [line.strip() for line, fenced in _fence_aware_lines(args.plan.read_text())
+                 if not fenced and near_head.match(line.strip())
+                 and not TASK_HEAD.match(line.strip())]
+    if bad_heads:
+        print("compile_plan: task heading(s) not recognized: "
+              + "; ".join(bad_heads[:3])
+              + " — ids must be alphanumeric (`### Task <id>: <title>`); a "
+              "malformed heading folds its task into the previous one. "
+              "Refusing to compile.", file=sys.stderr)
+        raise SystemExit(1)
+
     # Bug D: detect duplicate task IDs early
     ids = [t["id"] for t in tasks]
     dups = sorted({i for i in ids if ids.count(i) > 1})
@@ -472,7 +497,9 @@ def main(argv=None):
         {"task": t["id"], "edge": "",
          "note": "marker-like line(s) not recognized (check spelling/case: "
                  + "; ".join(sorted(set(t["near_miss"]))[:3])
-                 + ") — ignored, heuristics applied"}
+                 + ") — ignored"
+                 + (", heuristics applied" if not t.get("marker_type")
+                    else "; classification unaffected (a valid **Type:** won)")}
         for t in tasks if t.get("near_miss")]
     # `Depends-on: none` combined with concrete ids — ids won, none is void.
     type_conflicts += [

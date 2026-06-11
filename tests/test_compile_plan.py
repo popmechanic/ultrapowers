@@ -818,3 +818,54 @@ def test_override_conflict_edge_field_carries_why_label(tmp_path):
     assert override and _re.fullmatch(
         r"[A-Za-z0-9]+ -> [A-Za-z0-9]+ \((write-after-create|write-after-write|read-after-write|text|ambiguous-files)\)",
         override[0]["edge"])
+
+
+def test_blank_after_files_header_does_not_discard_entries(tmp_path):
+    plan = tmp_path / "blankhead.md"
+    plan.write_text(
+        "# Plan: Blank after Files\n\n"
+        "### Task A: spaced formatting\n\n**Type:** implementation\n\n"
+        "**Files:**\n\n- Create: `parser.py`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: modifier\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `parser.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["writes"] == ["parser.py"]
+    assert {"from": "A", "to": "B", "why": "write-after-create"} in out["dag_edges"]
+
+
+def test_near_miss_task_heading_is_a_loud_error(tmp_path):
+    plan = tmp_path / "headmiss.md"
+    plan.write_text(
+        "# Plan: Heading miss\n\n"
+        "### Task 1: first\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 1.5: dotted id folds away silently today\n\n"
+        "**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n\n"
+        "### Task 2: third\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `c.txt`\n\n- [ ] **Step 1:** c\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "heading" in p.stderr.lower()
+    assert "1.5" in p.stderr
+
+
+def test_near_miss_note_does_not_claim_heuristics_when_type_is_trusted(tmp_path):
+    plan = tmp_path / "notetail.md"
+    plan.write_text(
+        "# Plan: Note tail\n\n"
+        "### Task A: trusted type, typo'd dep\n\n"
+        "**Type:** gate\n**Depends-On:** B\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "gate" and by_id["A"]["heuristic"] is False
+    note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
+    assert "spelling" in note.lower()
+    assert "heuristics applied" not in note   # classification was NOT heuristic here
