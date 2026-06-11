@@ -1264,6 +1264,50 @@ async function scenarioTypoReviewAndUnknownBaseline() {
   console.log('scenario typo-review-and-unknown-baseline: OK')
 }
 
+
+// ── Scenario: fix-round DONE without coordinates also fails fast pre-review ───
+async function scenarioFixRoundLostCoordinates() {
+  let reviewCount = 0
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('review:A')) {
+        reviewCount += 1
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'broken' }] }
+      }
+      if (label === 'fix:A:1') {
+        return { status: 'DONE', summary: 's', commit: 'c-A2' } // no branch/headSha
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(reviewCount, 1, 'fixLost: no iter-2 review dispatched for a coordinate-less fix result')
+  const a = r.tasks.find((t) => t.task === 'A')
+  eq(a && a.status, 'failed', 'fixLost: task failed')
+  eq(a && a.reviewVerdict, 'lost-coordinates', 'fixLost: verdict lost-coordinates')
+  assert(r.judgmentCalls.some((j) => /without mergeable coordinates/.test(j)),
+    'fixLost: surfaced in judgmentCalls')
+  console.log('scenario fix-round-lost-coordinates: OK')
+}
+
+// ── Scenario: edges with endpoints outside the waves surface, never bind ──────
+async function scenarioUnboundEdgeEndpointsSurface() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['ghost', 'B']] }
+  const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
+  assert(r.judgmentCalls.some((j) => /ghost/.test(j) && /unbound|not in this run/.test(j)),
+    'unboundEdge: typo\'d edge endpoint surfaced as a judgment call')
+  const b = r.tasks.find((t) => t.task === 'B')
+  eq(b && b.status, 'done', 'unboundEdge: B still ran (ghost never fails, so no blocking)')
+  console.log('scenario unbound-edge-endpoints-surface: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1277,6 +1321,8 @@ await scenarioTierOverrideInvalid()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
 await scenarioTypoReviewAndUnknownBaseline()
+await scenarioFixRoundLostCoordinates()
+await scenarioUnboundEdgeEndpointsSurface()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
 await scenarioPlanPath()

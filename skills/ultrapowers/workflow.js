@@ -483,6 +483,20 @@ async function runTaskInner(task, baseSha) {
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
     noteConcerns(impl)
+    // Same fail-fast as the initial dispatch: a fix result claiming DONE
+    // without mergeable coordinates must not reach the iter-2 reviewer
+    // ("HEAD: undefined" → a doomed opus review). Engine-bypass class only —
+    // the schema requires branch/headSha.
+    if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') &&
+        (!impl.branch || !impl.headSha)) {
+      judgmentCalls.push('task ' + task.id + ': fix round reported done without mergeable ' +
+        'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
+      log('task ' + task.id + ' FAILED: fix round done without mergeable coordinates — review skipped')
+      return { task: task.id, status: 'failed', branch: impl.branch,
+               reviewVerdict: 'lost-coordinates',
+               notes: 'fix round reported done without mergeable coordinates — downgraded to failed before review',
+               tier: economics.tier, review: economics.review, fixIterations: 1 }
+    }
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, status: 'failed', branch: impl.branch,
                reviewVerdict: 'blocked-after-fix', notes: impl.summary,
@@ -527,6 +541,21 @@ const blockedWaves = []
 const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
+
+// An edge endpoint absent from this run's waves can never bind for dependency
+// blocking — a typo'd id would silently disable the guarantee for that pair.
+// Surfaced, not thrown: on resume runs, edges referencing tasks completed in
+// the prior run are legitimately unbound.
+{
+  const waveTaskIds = new Set(WAVES.flat().map((t) => t.id))
+  for (const [a, b] of EDGES) {
+    if (!waveTaskIds.has(a) || !waveTaskIds.has(b)) {
+      judgmentCalls.push('edge ' + a + ' -> ' + b + ': endpoint not in this run — ' +
+        'unbound for dependency blocking (legitimate on resume runs; otherwise check for a typo)')
+      log('edge ' + a + ' -> ' + b + ' has an unbound endpoint — dependency blocking will not fire for it')
+    }
+  }
+}
 
 const budgetExhausted = () => {
   if (typeof budget === 'undefined' || !budget) return false
