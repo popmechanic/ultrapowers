@@ -34,43 +34,63 @@ the "execute the plan" step and reuses its skills rather than duplicating them.*
 - **Throughput where the plan allows it.** Independent tasks run concurrently (up to 16 agents);
   dependent tasks wait exactly as long as they must. Plans too small or too entangled to benefit
   are detected up front and run sequentially — you don't pay parallelism overhead for nothing.
-- **Deterministic orchestration.** The engine is a frozen, version-controlled Dynamic Workflow
-  script (`skills/ultrapowers/workflow.js`) with the review discipline baked in at build time and
-  drift-tested against its reference sources. A run never improvises its own orchestration and
-  never depends on live superpowers skill resolution.
+- **Deterministic orchestration — and deterministic compilation.** The engine is a frozen,
+  version-controlled Dynamic Workflow script (`skills/ultrapowers/workflow.js`) with the review
+  discipline baked in at build time and drift-tested against its reference sources. A run never
+  improvises its own orchestration and never depends on live superpowers skill resolution. And for
+  marked plans (see ultraplan below), the wave computation itself is no longer model judgment: an
+  executable compiler (`skills/ultrapowers/scripts/compile_plan.py`) parses the plan — fence-aware —
+  into waves, dispositions, and dependency edges, reserving judgment for heuristic classifications
+  it explicitly flags.
+- **Built for drift.** ultrapowers depends on two substrates it doesn't control: superpowers'
+  plan conventions and the experimental Workflow engine. Both are tripwired. Compat tests
+  (`tests/test_superpowers_compat.py`) read the *installed* superpowers plugin and fail loudly if
+  the contract ultrapowers parses changes (validated against 5.1.0, attested in the skill); a
+  zero-agent probe workflow launches before every real run, so engine drift becomes a clean
+  sequential fallback instead of a mid-run crash.
 - **Review that understands parallelism.** Each task is verified by an independent reviewer that
   diffs the work against the exact integration SHA the task built on (`BASE...HEAD`) — not against
   `main`. Without that anchor, a reviewer in wave 3 would see waves 1–2's merged work in the diff
   and flag it as scope creep. Review depth is set per task: routine tasks get one pass, high-stakes
   tasks two independent passes.
-- **Nothing fails silently.** The test suite runs once before the first task, so pre-existing
-  failures aren't pinned on the wrong agent. Blocked tasks, merge conflicts, deferred work,
-  reviewer disagreements, and autonomous judgment calls all surface in a structured end-of-run
-  report — with per-task cost signals (model tier, review depth, fix rounds) so you can see whether
-  the parallelism paid off.
+- **Nothing fails silently — and one failure costs one task.** The test suite runs once before the
+  first task, so pre-existing failures aren't pinned on the wrong agent. A crashed agent call
+  degrades to a single failed task instead of killing the run; a failed task blocks its declared
+  dependents rather than letting them build on work that never landed; blocked tasks, merge
+  conflicts, deferred work, reviewer disagreements, and autonomous judgment calls all surface in a
+  structured end-of-run report — with per-task cost signals (model tier, review depth, fix rounds)
+  so you can see whether the parallelism paid off.
 
 ## How a run works
 
 You invoke **`/ultrapowers <plan-path>`** from inside the target repo. The skill then:
 
 1. **Preflights and validates** — confirms the Workflow tool exists on this surface (falling back
-   to sequential execution immediately if not) and that the plan has numbered tasks with explicit
-   file lists.
-2. **Computes waves** — builds a dependency graph from each task's file writes and explicit
-   "depends on" text, layers it into waves of safely-concurrent tasks, detects cycles, and degrades
-   small or fully-overlapping plans to a single sequential wave.
-3. **Shows you the wave plan** — dependency edges, wave ordering, derived knobs (test command,
-   per-task review depth). You approve or revise before any tokens are spent on implementation.
-4. **Launches the committed workflow** — a setup agent creates the integration branch and runs the
-   test baseline; then per wave: implementer agents work in isolated worktrees, reviewers verify
-   each result against its `BASE` SHA with a bounded fix loop, and a merge agent integrates the
-   wave's branches in deterministic order (with capped reconciliation on conflict, and cascade
-   blocking — never silent dropping — when a wave can't be integrated).
+   to sequential execution immediately if not), notes the installed superpowers version against the
+   attested one, and checks the plan has numbered tasks with explicit file lists.
+2. **Compiles waves** — marked plans go through the executable compiler (`compile_plan.py`):
+   classification (`implementation`/`gate`/`release`/`manual`), dependency edges from markers and
+   file overlaps, Kahn-layered waves, cycle detection, and the small-plan sequential degrade.
+   Unmarked plans get the same analysis by heuristic, with every reinterpretation flagged. Gates
+   compile into run configuration; release and manual tasks are deferred to a post-merge runbook —
+   a headless run never pushes, deploys, or waits on a human.
+3. **Shows you the wave plan** — dependency edges, wave ordering, dispositions (what was excluded
+   and why), derived knobs (test command, per-task review depth). You approve or revise before any
+   tokens are spent on implementation.
+4. **Launches the committed workflow** — after a zero-agent probe confirms the engine still behaves
+   as expected, a setup agent creates the integration branch and runs the test baseline; then per
+   wave: implementer agents work in isolated worktrees (anchored to the exact integration SHA they
+   build on), reviewers verify each result against that `BASE` with a bounded fix loop, and a merge
+   agent integrates the wave's branches in deterministic order (with capped reconciliation on
+   conflict, and cascade blocking — never silent dropping — when a wave or a dependency can't be
+   integrated). A crashed agent costs its task, not the run.
 5. **Reports for the pre-merge gate** — a completeness critic re-reads the original plan and the
-   integrated result, and you get the full report: per-task status, wave merges, test results,
-   judgment calls, anything unfinished. You approve the integration branch or **redirect** —
-   corrective re-runs go through the same engine (`resume` mode on the same branch), never an
-   improvised one-off.
+   integrated result, and you get the full report: per-task status, wave merges, blocked waves,
+   test results, judgment calls, anything unfinished, plus the post-merge runbook of deferred
+   release/manual steps. You approve — which sweeps the engine's worktrees deterministically
+   (`scripts/sweep_worktrees.sh`) and hands off to superpowers' branch-finishing skill — or
+   **redirect**: corrective re-runs go through the same engine (`resume` mode on the same branch),
+   never an improvised one-off.
 
 Three human gates, total: plan approval (before ultrapowers is involved), wave-plan approval, and
 pre-merge review. Everything in between runs autonomously and headless.
@@ -92,20 +112,25 @@ analysis already infers — but release rituals, verification-only gate tasks, a
   `skills/ultrapowers/references/plan-markers.md`:
   `**Type:** implementation | gate | release | manual` and
   `**Depends-on:** <task-ids>`. Sequential executors ignore them; ultrapowers
-  compiles them deterministically. Gates become run configuration (their suite
-  commands inform `testCmd`); `release`/`manual` tasks are excluded into a
-  **post-merge runbook** presented with the final report — never run headless,
-  never silently dropped.
+  compiles them mechanically via `scripts/compile_plan.py` — not by model
+  judgment. Gates become run configuration (their suite commands inform
+  `testCmd`); `release`/`manual` tasks are excluded into a **post-merge runbook**
+  presented with the final report — never run headless, never silently dropped.
+  (The contract also spells out the executor variance: a sequential executor runs
+  those same tasks inline, safely, because it keeps a human at every step.)
 - **The `ultraplan` skill** — load it alongside `superpowers:writing-plans` when
   authoring a plan destined for `/ultrapowers`. It injects the markers and the
   worktree-pure authoring rules (self-contained bodies, ordering as `Depends-on:`,
-  no branch instructions, concurrency-safe tests) at writing time, so the compile
-  step parses instead of inferring.
+  no branch instructions, concurrency-safe tests) at writing time, replaces
+  writing-plans' mandated execution header (which would otherwise steer any
+  skills-obedient agent into the sequential executor), and adds `/ultrapowers` as
+  a third option in the plan's execution handoff.
 
-Unmarked plans still run: the compiler classifies each task against the
+Unmarked plans still run: the same compiler classifies each task against the
 worktree-pure contract (no pushes, no human steps, no mutation outside the
-worktree) and surfaces every reinterpretation in the wave-plan approval gate —
-you approve the interpretation, not just the grouping.
+worktree) by evidence, flags every heuristic call, and surfaces each
+reinterpretation in the wave-plan approval gate — you approve the
+interpretation, not just the grouping.
 
 ## Install
 
