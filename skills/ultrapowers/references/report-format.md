@@ -47,7 +47,7 @@ The workflow produces a single structured report object that the main agent pres
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
 | `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED` (`SKIPPED` = no mergeable branches; integration branch untouched, no cascade)), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
 | `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished` |
-| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals, merges reported without a headSha, and a failed integration review |
+| `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals (one judgment call at launch-time exhaustion and one for the first mid-run deferral; every deferred task is itemized in `unfinished`), merges reported without a headSha, and a failed integration review |
 | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
 | `completenessFindings` | no | Gaps spotted during review that exceed the original spec |
 

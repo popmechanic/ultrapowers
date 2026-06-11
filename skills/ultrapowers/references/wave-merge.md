@@ -52,7 +52,7 @@ Each worktree is checked out on a runtime-assigned branch named:
 worktree-wf_<runId>-<n>
 ```
 
-Branches are locked for the duration of the run. When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists until the wave's merge agent has merged the branch and
+Branches are locked while their worktree exists (the merge agent removes merged branches' worktrees mid-run; failed/blocked branches stay locked until swept). When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists until the wave's merge agent has merged the branch and
 the suite passed — then the merge agent removes the worktree and deletes the
 branch. Failed/blocked branches and their worktrees are deliberately left for
 inspection; the orchestrating agent may sweep them after the pre-merge gate.
@@ -127,6 +127,7 @@ Every truncation is surfaced explicitly:
 | Wave marked `blocked` | `log()` | `blockedWaves` |
 | Downstream wave cascade-blocked | `log()` (one line per blocked wave) | `unfinished` (`cascade-blocked by wave N` entries) |
 | Fix-loop cap reached | `log()` | failed task in `tasks[]` (`reviewVerdict: 'fix-loop-exhausted'`) |
+| Budget exhausted (launch or mid-run) | `log()` | `unfinished` (`deferred (budget exhausted…)`) + one `judgmentCalls` entry |
 | Completeness-critic findings | — | `completenessFindings` |
 
 Nothing is swallowed. If a cap fires and nothing is logged, that is a bug in the workflow.
