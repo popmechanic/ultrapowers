@@ -47,9 +47,11 @@ Example:
 
 `Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
 marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if inference still finds one, the inferred edge wins (the compiler's conflict note names which kind: file, read, text, or ambiguous-files)
+author expects no incoming edges; if inference still finds one, the inferred edge wins (the compiler's conflict note carries the edge's literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `text`, or `ambiguous-files`)
 and the disagreement is surfaced in the transparency block
 under `marker_conflicts` — never silently dropped.
+
+`Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set.
 
 ## Type semantics (dispositions)
 
@@ -69,8 +71,8 @@ under `marker_conflicts` — never silently dropped.
 The dispositions above bind **ultrapowers**. A sequential executor
 (subagent-driven-development, executing-plans) reads the same plan and treats
 every task — including `gate`, `release`, and `manual` — as an ordinary task to
-execute in document order. Since superpowers 5.1.0, the sequential executors run
-**continuously** — subagent-driven-development explicitly instructs "Do not pause
+execute in document order. As of superpowers 5.1.0 both sequential executors run **continuously**
+(executing-plans dropped its batch checkpoints in 5.0.0; subagent-driven-development's explicit directive landed in 5.1.0) — subagent-driven-development explicitly instructs "Do not pause
 to check in with your human partner between tasks" — so a `release` push or a
 `manual` owner step in the plan **executes inline without fresh human eyes**. The
 safety comes from plan approval (the human approved exactly those steps when
@@ -110,7 +112,7 @@ a conservative regex subset: release evidence is the literal patterns `git push`
 the branch merges" — it does not recognize provider CLIs or other deploy idioms by
 name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
 write paths plus any test-runner/lint/git-status mention in the prose" (an existence
-check, not a proof that every step is read-only), and manual additionally fires on
+check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
 the phrase "on the deployment". All such classifications arrive flagged for
 re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
 precisely so the orchestrating agent re-judges them against the full contract above.
@@ -136,7 +138,10 @@ recorded in the transparency block):
   names concrete task pairs; blanket ordering is superseded by the computed DAG and
   the supersession is recorded as a judgment line;
 - extract task bodies **fence-aware** — a heading inside a ``` code fence is content,
-  not a section boundary (plans embed whole markdown documents in their steps).
+  not a section boundary (tilde `~~~` fences too; classification evidence and text
+  dependencies are likewise matched against fence-stripped prose only — fenced
+  examples never drive classification or edges) (plans embed whole markdown documents
+  in their steps).
 
 ## Authoring rules that complement the markers
 
