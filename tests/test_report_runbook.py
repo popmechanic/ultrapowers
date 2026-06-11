@@ -21,6 +21,13 @@ def test_report_contract_includes_blocked_waves():
     assert "clean up worktrees" not in text  # finishing-a-development-branch never will
 
 
+def test_report_approve_path_matches_skill_step5():
+    text = REPORT.read_text()
+    assert "tests.passed" in text          # the gate
+    assert "git checkout <integrationBranch>" in text  # the checkout before sweep/handoff
+    assert "SKIPPED" in text               # waveMerges vocabulary documents the skip status
+
+
 def test_report_format_documents_every_review_verdict():
     wf = (ROOT / "skills/ultrapowers/workflow.js").read_text()
     doc = REPORT.read_text()

@@ -107,11 +107,13 @@ async function scenarioHappy() {
 // ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
 async function scenarioFixLoop() {
   const reviewCalls = {}
+  let fixPrompt = ''
   const agent = async (_prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
       const id = taskIdFromLabel(label)
+      if (label === 'fix:A:1') { fixPrompt = _prompt }
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
     if (label.startsWith('review:')) {
@@ -133,6 +135,9 @@ async function scenarioFixLoop() {
   eq(a.fixIterations, 1, 'fixloop: one fix round recorded')
   assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
+  assert(fixPrompt.indexOf('BASE: sha-A') !== -1, 'fixLoop: fix round anchors BASE to the prior implementation HEAD')
+  assert(fixPrompt.indexOf('FIX ROUND') !== -1, 'fixLoop: fix preamble present')
+  assert(fixPrompt.indexOf('locked by its own worktree') !== -1, 'fixLoop: branch-lock warning present')
   console.log('scenario fix-loop: OK')
 }
 
@@ -790,6 +795,98 @@ async function scenarioTransitiveDepBlock() {
   console.log('scenario transitive-dep-block: OK')
 }
 
+// ── Scenario: fully dep-blocked wave does NOT cascade ─────────────────────────
+async function scenarioFullyBlockedWaveDoesNotCascade() {
+  const implCalled = new Set()
+  const waves = [
+    [
+      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+    ],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'Z', title: 'task Z', body: 'do Z', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['A', 'B']] }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalled.add(taskIdFromLabel(label))
+        return undefined
+      }
+      if (label.startsWith('review:') && taskIdFromLabel(label) === 'A') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('B'), 'noCascade: dep-blocked B never dispatched')
+  assert(implCalled.has('Z'), 'noCascade: unrelated wave-3 task Z DID dispatch')
+  const zr = r.tasks.find((t) => t.task === 'Z')
+  eq(zr && zr.status, 'done', 'noCascade: Z completed')
+  const w2 = r.waveMerges.find((m) => m.wave === 2)
+  eq(w2 && w2.status, 'SKIPPED', 'noCascade: wave-2 merge recorded SKIPPED')
+  eq(r.blockedWaves, [], 'noCascade: no wave recorded blocked')
+  assert(!r.unfinished.some((u) => /cascade-blocked/.test(u)), 'noCascade: nothing cascade-blocked')
+  console.log('scenario fully-blocked-wave-no-cascade: OK')
+}
+
+// ── Scenario: done-without-headSha is not mergeable ───────────────────────────
+async function scenarioDoneWithoutHeadShaNotMerged() {
+  let mergePrompt = null
+  const waves = [
+    [
+      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+      { id: 'G', title: 'good task', body: 'do G', tier: 'cheap' },
+    ],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'impl:A') {
+        return { status: 'DONE', summary: 's', branch: 'wt-A', commit: 'c-A' } // no headSha
+      }
+      if (label.startsWith('merge:')) {
+        mergePrompt = prompt
+        return { status: 'MERGED', headSha: 'm1' }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(mergePrompt !== null, 'noHeadSha: wave still merged (G is mergeable)')
+  assert(mergePrompt.indexOf('wt-A') === -1, 'noHeadSha: branch without headSha excluded from the merge list')
+  assert(mergePrompt.indexOf('wt-G') !== -1, 'noHeadSha: good branch merged')
+  console.log('scenario done-without-headsha-not-merged: OK')
+}
+
+// ── Scenario: intra-wave edge respected across 16-task chunks ─────────────────
+async function scenarioIntraWaveDepAcrossChunks() {
+  const tasks = Array.from({ length: 17 }, (_, i) =>
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+  const args = { waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 edges: [['T0', 'T16']] }
+  const implCalled = new Set()
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalled.add(taskIdFromLabel(label))
+        return undefined
+      }
+      if (label.startsWith('review:') && taskIdFromLabel(label) === 'T0') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(!implCalled.has('T16'), 'chunkDep: chunk-2 dependent of failed chunk-1 task never dispatched')
+  assert(r.unfinished.some((u) => /^T16: blocked/.test(u)), 'chunkDep: T16 surfaced in unfinished')
+  eq(r.tasks.filter((t) => t.status === 'done').length, 15, 'chunkDep: the other 15 completed')
+  console.log('scenario intra-wave-dep-across-chunks: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -817,4 +914,7 @@ await scenarioMetaAbsentEngine()
 await scenarioDependentBlockedByFailedTask()
 await scenarioChunkCap()
 await scenarioTransitiveDepBlock()
+await scenarioFullyBlockedWaveDoesNotCascade()
+await scenarioDoneWithoutHeadShaNotMerged()
+await scenarioIntraWaveDepAcrossChunks()
 console.log('ALL SCENARIOS PASSED')

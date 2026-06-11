@@ -71,10 +71,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   DAG. Gates compile into run config (their suite commands inform `testCmd`);
   `release`/`manual` tasks go verbatim into the post-merge runbook. Extract task
   bodies fence-aware — headings inside code fences are content, not boundaries.
-  For marked plans, do not hand-derive: run
-  `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>`
-  and adopt its JSON as the transparency block's waves/edges/dispositions verbatim,
-  applying judgment only to `"heuristic": true` entries and the derived knobs.
+  Run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan-path>` on every plan. Marked plans: adopt its JSON as the transparency block's waves/edges/dispositions verbatim, applying judgment only to `"heuristic": true` entries and the derived knobs. Unmarked plans: the compiler applies the contract heuristics and flags every call — verify the flagged entries against `references/plan-markers.md` instead of hand-deriving.
 - **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), any `**Depends-on:**`
   markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
@@ -212,7 +209,7 @@ present two choices:
   of engine worktrees and merged branches (unmerged failed-task branches are kept
   for inspection; never rely on the merge agents having cleaned up). Then proceed
   to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
-  carrying the post-merge runbook as its follow-up checklist.
+  the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
   corrective instructions appended to each task `body`), and relaunch the saved workflow

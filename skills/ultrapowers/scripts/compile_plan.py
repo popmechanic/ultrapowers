@@ -4,9 +4,10 @@
 Parses a plan into tasks (fence-aware), classifies each per the plan-markers
 contract (explicit **Type:** trusted; heuristics otherwise, flagged
 "heuristic": true), builds the dependency DAG (marker edges + file-overlap
-inference + read-after-write + ambiguous-files serialization + explicit text),
-runs Kahn layering with cycle detection, and emits the Step-3 transparency
-block as JSON on stdout.
+inference + read-after-write + ambiguous-files serialization + explicit text,
+with explicit/semantic edges taking precedence so document-order heuristics
+yield to any opposing earlier edge), runs Kahn layering with cycle detection,
+and emits the Step-3 transparency block as JSON on stdout.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
@@ -22,13 +23,13 @@ import sys
 from pathlib import Path
 
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
-FENCE = re.compile(r"^(`{3,})")
+FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends on|after|requires)\s+Task\s+([A-Za-z0-9]+)", re.I)
-GLOB_CHARS = re.compile(r"[*?\[]")
+GLOB_CHARS = re.compile(r"[*?\[{]")
 
 TYPES = ("implementation", "gate", "release", "manual")
 RELEASE_EV = re.compile(
@@ -41,15 +42,21 @@ GATE_EV = re.compile(
 
 
 def _fence_aware_lines(text):
-    """Yield (line, in_fence) — a heading inside an open fence is content."""
-    fence = None
+    """Yield (line, in_fence) — a heading inside an open fence is content.
+
+    Tracks both the fence character (backtick or tilde) and its length, per
+    CommonMark: a fence closes only on a run of the SAME character at least as
+    long as the opener. Tilde fences are the natural wrapper when the example
+    itself contains backtick fences.
+    """
+    fence = None  # the opening run, e.g. "```" or "~~~~", or None when closed
     for line in text.splitlines():
         m = FENCE.match(line.strip())
         if m:
-            tick = m.group(1)
+            run = m.group(1)
             if fence is None:
-                fence = tick
-            elif len(tick) >= len(fence):
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence):
                 fence = None
             yield line, True
             continue
@@ -106,7 +113,11 @@ def parse_task(t):
         if in_files:
             f = FILE_LINE.match(s)
             if f:
-                paths = PATH_RE.findall(f.group(2)) or [f.group(2).strip()]
+                # Prefer backticked paths; otherwise take the first
+                # whitespace-delimited token so an unbackticked line like
+                # "src/app.py — the new module" yields "src/app.py", not the
+                # whole prose tail. Paths containing spaces MUST be backticked.
+                paths = PATH_RE.findall(f.group(2)) or [f.group(2).strip().split()[0]]
                 paths = [p.split(":")[0] for p in paths]  # drop :line-range
                 if f.group(1) == "Create":
                     creates.extend(paths)
@@ -123,12 +134,19 @@ def parse_task(t):
         any(GLOB_CHARS.search(p) for p in all_paths)
     )
 
+    # Fence-stripped prose: classification evidence and text-dependency scanning
+    # run over this, not the raw body, so a fenced example (e.g. a bash snippet
+    # with `git push origin main`, or prose that says "runs after Task A") does
+    # not reclassify a task or fabricate a dependency edge.
+    prose = "\n".join(line for line, fenced in _fence_aware_lines(t["body"])
+                      if not fenced)
+
     t.update(marker_type=ttype, type_unparsed=type_unparsed,
              depends_on=deps, depends_none=deps_none,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
-             files_ambiguous=files_ambiguous)
+             files_ambiguous=files_ambiguous, prose=prose)
     return t
 
 
@@ -137,17 +155,23 @@ def classify(t):
     in plan-markers.md precedence: release -> manual -> gate -> implementation."""
     if t["marker_type"]:
         return t["marker_type"], False
-    body = t["body"]
-    if RELEASE_EV.search(body):
+    prose = t["prose"]  # fence-stripped: examples never drive classification
+    if RELEASE_EV.search(prose):
         return "release", True
-    if MANUAL_EV.search(body):
+    if MANUAL_EV.search(prose):
         return "manual", True
-    if not t["writes"] and GATE_EV.search(body):
+    if not t["writes"] and GATE_EV.search(prose):
         return "gate", True
     return "implementation", True
 
 
 def build_edges(impl):
+    # Edge precedence:
+    # explicit (marker, text) > semantic order-independent (write-after-create,
+    # read-after-write) > document-order heuristics (write-after-write,
+    # ambiguous-files), which yield to any opposing earlier edge.
+    # A cycle that survives this precedence is a genuine plan contradiction
+    # and stays a loud error.
     ids = {t["id"] for t in impl}
     edges, conflicts, seen = [], [], set()
 
@@ -163,6 +187,11 @@ def build_edges(impl):
                     "note": "Depends-on: none overridden by inferred edge (inferred edge wins)",
                 })
 
+    def opposed(a, b):
+        """Return True if the reverse edge (b -> a) is already recorded."""
+        return (b, a) in seen
+
+    # Tier 1: Explicit — marker edges
     for t in impl:
         for d in t["depends_on"]:
             if d in ids:
@@ -175,32 +204,45 @@ def build_edges(impl):
                             "(unknown id or gate/release/manual) — edge dropped",
                 })
 
+    # Tier 1: Explicit — text edges (moved up from bottom to enforce precedence).
+    # Scans fence-stripped prose so a fenced example saying "runs after Task A"
+    # does not fabricate a real dependency edge.
+    for b in impl:
+        for m in TEXT_DEP.finditer(b["prose"]):
+            if m.group(1) != b["id"]:
+                add(m.group(1), b["id"], "text")
+
+    # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
         for b in impl:
             if a["id"] == b["id"]:
                 continue
             if set(a["creates"]) & set(b["modifies"]):
                 add(a["id"], b["id"], "write-after-create")
-            if set(a["writes"]) & set(b["writes"]) and a["order"] < b["order"]:
-                add(a["id"], b["id"], "write-after-write")
             # read-after-write: b reads a file that a writes (no order condition)
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
 
-    for b in impl:
-        for m in TEXT_DEP.finditer(b["body"]):
-            if m.group(1) != b["id"]:
-                add(m.group(1), b["id"], "text")
+    # Tier 3: Document-order heuristics — yield to any opposing earlier edge
+    for a in impl:
+        for b in impl:
+            if a["id"] == b["id"]:
+                continue
+            # write-after-write: only add if doc order is forward AND no reverse already set
+            if (set(a["writes"]) & set(b["writes"])
+                    and a["order"] < b["order"]
+                    and not opposed(a["id"], b["id"])):
+                add(a["id"], b["id"], "write-after-write")
 
-    # ambiguous-files: serialize task T at its document position
+    # ambiguous-files: serialize task T at its document position, yielding to opposing edges
     for t in impl:
         if t["files_ambiguous"]:
             for u in impl:
                 if u["id"] == t["id"]:
                     continue
-                if u["order"] < t["order"]:
+                if u["order"] < t["order"] and not opposed(u["id"], t["id"]):
                     add(u["id"], t["id"], "ambiguous-files")
-                elif u["order"] > t["order"]:
+                elif u["order"] > t["order"] and not opposed(t["id"], u["id"]):
                     add(t["id"], u["id"], "ambiguous-files")
 
     return edges, conflicts
@@ -267,6 +309,13 @@ def main(argv=None):
         for t in tasks if t.get("type_unparsed")]
 
     impl = [t for t in tasks if t["disposition"] == "implementation"]
+    if not impl:
+        # Bug D: a gates/release/manual-only plan compiles to waves: [] —
+        # workflow.js refuses empty waves, so warn loudly while still emitting
+        # the JSON (exit 0): the runbook and gates remain meaningful.
+        print("compile_plan: no implementation tasks — nothing to wave "
+              "(plan is gates/release/manual only); the runbook and gates "
+              "still apply.", file=sys.stderr)
     edges, conflicts = build_edges(impl)
     waves = layer(impl, edges)
 
