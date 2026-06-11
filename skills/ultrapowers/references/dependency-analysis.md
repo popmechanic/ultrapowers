@@ -14,7 +14,7 @@ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
 Parse each task to extract two file sets:
 
 - **writes** = `Create:` paths ∪ `Modify:` paths (files the task changes on disk).
-- **reads** = `Test:` paths are treated as reads only — they do not generate outbound edges unless another task also writes them.
+- **reads** = `Test:` paths. A reader generates no outbound edges, but when another task writes a path this task reads, the compiler adds an edge writer → reader (`why: "read-after-write"`) — you cannot test a file that does not exist yet.
 
 Extract each task's verbatim body **fence-aware**: a heading inside a ``` code fence
 is content, not a section boundary — plans routinely embed whole markdown documents
@@ -69,9 +69,12 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
 3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan).
-4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task number or title). A phase-level reference (`after phase C`) expands to an edge from every task in that phase.
+4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2).
+5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
+
+Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `text`, `ambiguous-files`.
 
 ---
 
@@ -92,7 +95,7 @@ Each wave is a set of tasks that can execute in parallel — their dependencies 
 
 Apply these rules before finalizing the DAG:
 
-- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks.
+- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one — serializing it into its own wave at its document position.
 - **Implicit shared directories:** if two tasks each create or modify files in the same directory AND one task's description mentions scaffolding, initialization, or setup, serialize the scaffolding task before the other.
 - **Unknown paths:** a path that does not exist in the repo yet counts as a `Create:` — do not assume it is safe to write concurrently with another task that also lists that same path.
 
@@ -105,7 +108,7 @@ After building the adjacency list, run DFS-based cycle detection before computin
 If a cycle is found:
 
 1. **Abort wave computation immediately.**
-2. Surface the offending edge list to the human in plain language: "Cycle detected: T3 → T5 → T3 via shared file `foo/bar.ts`."
+2. Surface the offending edge list to the human in plain language: The compiler reports the unplaceable tasks: `compile_plan: cycle detected among tasks A, B — revise the plan to break it; refusing to guess an ordering.` When hand-deriving, name the offending edges too.
 3. Ask the human to revise the plan to break the cycle — do not guess an ordering or silently drop an edge.
 
 ---
@@ -114,10 +117,10 @@ If a cycle is found:
 
 If either condition is true:
 
-- Total task count ≤ 2, **or**
+- Implementation task count ≤ 2 (counted after classification removes gates, release, and manual tasks), **or**
 - Every task shares at least one path in its `writes` set with every other task (fully overlapping writes)
 
-…collapse to a single sequential wave `[[T1, T2, …, TN]]` in document order and skip worktree machinery entirely. Log the reason: `"Sequential mode: N tasks, overlapping writes."` Run tasks one at a time in the main worktree.
+…emit one single-task wave per task in topological (Kahn) order — `[[T1], [T2], …]` — so dependency edges are still honored. The run flows through the standard workflow machinery (worktrees, per-task review, per-wave merge); sequential mode simply means no two tasks ever execute concurrently. The compiler's `degrade_reason` reads `Sequential mode: N implementation tasks` (suffixed with `, fully overlapping writes` when that trigger fired).
 
 ---
 
