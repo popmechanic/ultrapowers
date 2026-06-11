@@ -85,7 +85,10 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 **Headless downgrade:** upstream treats `NEEDS_CONTEXT` as "answer the question and
 re-dispatch". A headless workflow cannot answer, so `workflow.js` records the task
 as `failed` with the question in `notes` — it surfaces at the pre-merge gate for a
-redirect rather than pausing a run that cannot pause.
+redirect rather than pausing a run that cannot pause. The same downgrade applies to
+`BLOCKED`: upstream's interactive ladder (add context → stronger model → split →
+human) cannot run headless, so a first-dispatch `BLOCKED` records the task as
+`failed` (`not-reviewed`) and surfaces at the pre-merge gate for a redirect.
 
 ---
 
@@ -157,7 +160,7 @@ Flag only issues worth fixing. Minor style nits that a linter would catch automa
 
 When the reviewer returns `FIX_REQUIRED`:
 
-1. Collect all `blocking` issues into a structured fix request and re-dispatch the implementer on the same branch with the issues appended to the original task text.
+1. Collect all `blocking` issues into a structured fix request and re-dispatch an implementer in a fresh worktree whose `BASE` is the prior implementation's HEAD (not the integration base) — anchoring to BASE hands it the work to amend. The prior branch stays locked by its worktree; the fix agent commits on its own engine-assigned branch and reports it, and that report supersedes the original mapping at merge time.
 2. The implementer runs the full red → green → refactor cycle again against the fix request.
 3. Cap at **2 iterations** total (initial + 1 fix round). If blocking issues remain after iteration 2, mark the task `FAILED` and surface it to the orchestrator with the accumulated issue list.
 4. The fix-round re-dispatch itself runs at the most-capable tier. If the implementer returns `BLOCKED` or `NEEDS_CONTEXT` after that re-dispatch, the task is marked `FAILED` (`reviewVerdict: 'blocked-after-fix'`) and surfaced at the pre-merge gate — never silently dropped.
@@ -171,6 +174,6 @@ When the reviewer returns `FIX_REQUIRED`:
 |------|----------|
 | **cheap** | Mechanical changes confined to 1–2 files with clear, unambiguous specs (renaming, adding a field, fixing a lint error) |
 | **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems |
-| **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, escalated `BLOCKED` tasks |
+| **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches |
 
 Assign tier at task-dispatch time based on estimated scope. Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models.
