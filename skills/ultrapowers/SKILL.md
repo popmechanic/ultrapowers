@@ -208,8 +208,11 @@ present two choices:
   off; present the failure and offer Redirect instead (finishing-a-development-branch's
   own precondition is a passing suite). If true: `git checkout <integrationBranch>`
   (its Step 1 verifies tests on the CURRENT checkout — it must see the integration
-  tree, not the base branch you restored for the report), then proceed to
-  `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
+  tree, not the base branch you restored for the report), then run
+  `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` — the deterministic sweep
+  of engine worktrees and merged branches (unmerged failed-task branches are kept
+  for inspection; never rely on the merge agents having cleaned up). Then proceed
+  to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
   carrying the post-merge runbook as its follow-up checklist.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
@@ -243,7 +246,7 @@ silently leave it implementing on main; it requires explicit consent for that.
 Operate with catastrophe-only escalation between the wave-plan gate and the pre-merge gate. Mid-run
 questions are not possible — the workflow is headless. Handle ambiguity by making a conservative,
 logged judgment call surfaced in the final report under `judgmentCalls`. Blocked tasks are never
-silently dropped: they appear in the report as failed tasks, blocked waves, or unfinished entries — never silently dropped. The only events that
+silently dropped: they appear in the report as failed tasks, blocked waves, or unfinished entries. The only events that
 warrant aborting before the pre-merge review are a dependency cycle (Step 2, requires human plan
 revision) or an inability to create the integration branch.
 
@@ -259,4 +262,5 @@ revision) or an inability to create the integration branch.
 - `references/workflow-template.md` — maintainer doc for `workflow.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
 - `scripts/validate_skill.py` — run `python3 scripts/validate_skill.py skills/ultrapowers` to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for marked plans: transparency-block JSON from a plan path.
+- `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
 - `probe.js` — the zero-agent engine preflight installed and launched at Step 4a½.

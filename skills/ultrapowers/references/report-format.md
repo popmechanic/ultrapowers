@@ -72,5 +72,5 @@ When the workflow completes, the main agent renders the report as a concise huma
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
 
-- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge and close the plan (the engine's merge agents already removed merged task worktrees; sweep any failed-task leftovers under .claude/worktrees/ before merging); the post-merge runbook travels with the handoff as its follow-up checklist.
+- **Approve** — run `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` (the deterministic sweep of engine worktrees and merged branches — do not assume the merge agents' prompted cleanup ran), then proceed to `superpowers:finishing-a-development-branch` to merge and close the plan; the post-merge runbook travels with the handoff as its follow-up checklist.
 - **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.

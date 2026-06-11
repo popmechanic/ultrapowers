@@ -36,11 +36,12 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 - `BASE`: sha of the integration-branch HEAD your work builds on
 
 **Workflow — red → green → refactor:**
-1. Read and restate the acceptance criteria from the task text before touching code.
-2. Write or update tests that encode those criteria. Confirm they fail (`pnpm check` or equivalent).
-3. Implement the minimum code to make them pass.
-4. Refactor for clarity without breaking tests.
-5. Run the full check suite one final time and confirm it is clean.
+1. Anchor to BASE first: run `git rev-parse HEAD`; if it differs from `BASE`, run `git reset --hard <BASE>` before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.
+2. Read and restate the acceptance criteria from the task text before touching code.
+3. Write or update tests that encode those criteria. Confirm they fail (`pnpm check` or equivalent).
+4. Implement the minimum code to make them pass.
+5. Refactor for clarity without breaking tests.
+6. Run the full check suite one final time and confirm it is clean.
 
 **Self-verify before reporting:**
 - Re-read the task. Confirm every stated requirement is addressed.

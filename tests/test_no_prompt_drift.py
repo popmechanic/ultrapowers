@@ -34,7 +34,8 @@ def baked_blocks():
 
 def test_expected_blocks_present():
     blocks = baked_blocks()
-    for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT"):
+    for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT",
+                 "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
         assert name in blocks, "missing BAKE marker for " + name
 
 
