@@ -26,7 +26,10 @@ from pathlib import Path
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
-MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*:", re.I)
+# Marker-shaped: bold-prefixed type/depends-on label in ANY colon position —
+# `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside form `**Type**:`
+# all count, so a near-miss never silently degrades to prose.
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends-on)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
 PATH_RE = re.compile(r"`([^`]+)`")
@@ -96,7 +99,7 @@ def split_tasks(text):
 
 def parse_task(t):
     ttype = None
-    type_unparsed = None
+    type_unparsed = []
     deps, deps_none, deps_mixed = [], False, False
     late_markers = []
     dup_types = []
@@ -114,6 +117,10 @@ def parse_task(t):
     in_header = True
     for line, fenced in _fence_aware_lines(t["body"]):
         if fenced:
+            # A fence is "other" content: a fenced example sitting immediately
+            # after the heading ends the header block, so markers following it
+            # are demoted to conflicts instead of trusted.
+            in_header = False
             continue
         s = line.strip()
         if TASK_HEAD.match(s):
@@ -129,19 +136,19 @@ def parse_task(t):
                 late_markers.append(s)
             else:
                 m = MARKER_TYPE.match(s)
-                if m and m.group(1) in TYPES:
+                val = m.group(1) if m else None
+                if val in TYPES:
                     if ttype is None:
-                        ttype = m.group(1)
-                    elif m.group(1) != ttype:
+                        ttype = val
+                    elif val != ttype:
                         # A second, DIFFERENT valid Type marker: first wins, but
                         # a direct contradiction between trusted markers must
                         # never vanish silently.
-                        dup_types.append(m.group(1))
-                elif ttype is None and type_unparsed is None:
-                    # Unparseable or unrecognized type marker
-                    remainder = s[len("**Type:**"):].strip()
-                    if remainder:
-                        type_unparsed = remainder
+                        dup_types.append(val)
+                else:
+                    # Unparseable, unrecognized, or empty value — recorded
+                    # regardless of whether a valid Type already won.
+                    type_unparsed.append(s[len("**Type:**"):].strip() or "<empty>")
         elif (m := MARKER_DEPS.match(s)):
             if not in_header:
                 late_markers.append(s)
@@ -161,14 +168,23 @@ def parse_task(t):
                     if deps_none and not has_none:
                         deps_mixed = True
                     deps.extend(id_tokens)
-        elif is_markerish and in_header:
-            # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type :**`)
-            # would otherwise silently degrade to heuristics with no feedback.
-            near_miss.append(s)
+        elif is_markerish:
+            # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type**:`)
+            # would otherwise silently degrade to heuristics with no feedback —
+            # inside the header they surface as spelling conflicts, after it as
+            # late markers, so every marker-shaped line is accounted for.
+            (near_miss if in_header else late_markers).append(s)
         if s.startswith("**Files:**"):
             in_files = True
             continue
         if in_files:
+            # A blank line closes the Files section too — the upstream template
+            # keeps Files entries contiguous, and leaving the section open lets
+            # a later dash bullet ("- Test: run the suite manually") fabricate
+            # phantom paths via the first-token fallback below.
+            if not s:
+                in_files = False
+                continue
             # A checkbox step closes the Files section. Without this, a prose
             # step shaped like a Files line (e.g. "- Modify: nothing in `b.txt`
             # should change yet") that sits AFTER a checkbox would keep parsing
@@ -433,7 +449,8 @@ def main(argv=None):
     # Bug E1: surface unparseable type markers as conflicts
     type_conflicts = [
         {"task": t["id"], "edge": "",
-         "note": "**Type:** " + repr(t["type_unparsed"]) + " is not a recognized type "
+         "note": "**Type:** " + ", ".join(repr(v) for v in t["type_unparsed"])
+                 + " is not a recognized type "
                  "(implementation/gate/release/manual) — marker ignored, heuristic applied"}
         for t in tasks if t.get("type_unparsed")]
     # Markers found outside the header block (after the Files block or the

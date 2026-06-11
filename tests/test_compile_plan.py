@@ -713,3 +713,108 @@ def test_near_miss_marker_spelling_surfaces_conflict(tmp_path):
     assert not any(e["why"] == "marker" for e in out["dag_edges"])
     assert any(c["task"] == "A" and "spelling" in c["note"].lower()
                for c in out["marker_conflicts"])
+
+
+def test_fenced_block_after_heading_ends_the_header(tmp_path):
+    plan = tmp_path / "fencehead.md"
+    plan.write_text(
+        "# Plan: Fence head\n\n"
+        "### Task A: example first\n\n"
+        "```bash\necho example\n```\n\n"
+        "**Type:** release\n**Depends-on:** B\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["A"]["disposition"] == "implementation"   # not a trusted release
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
+    assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_colon_outside_bold_marker_is_a_near_miss(tmp_path):
+    plan = tmp_path / "colonout.md"
+    plan.write_text(
+        "# Plan: Colon outside\n\n"
+        "### Task A: colon-outside markers\n\n"
+        "**Type**: gate\n**Depends-on**: B\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
+    assert any(c["task"] == "A" and "spelling" in c["note"].lower()
+               for c in out["marker_conflicts"])
+
+
+def test_late_near_miss_marker_also_surfaces(tmp_path):
+    plan = tmp_path / "latenear.md"
+    plan.write_text(
+        "# Plan: Late near miss\n\n"
+        "### Task A: typo after steps\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "**Depends-On:** B\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
+    assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_empty_and_second_unrecognized_type_values_surface(tmp_path):
+    plan = tmp_path / "emptytype.md"
+    plan.write_text(
+        "# Plan: Empty type\n\n"
+        "### Task A: empty value\n\n"
+        "**Type:**\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: valid then garbage\n\n"
+        "**Type:** gate\n**Type:** banana\n\n"
+        "**Files:** none\n\n- [ ] **Step 1:** Run: `pytest -q`\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["B"]["disposition"] == "gate"             # first valid wins
+    assert any(c["task"] == "A" and "not a recognized type" in c["note"]
+               for c in out["marker_conflicts"])
+    assert any(c["task"] == "B" and "banana" in c["note"]
+               for c in out["marker_conflicts"])
+
+
+def test_blank_line_closes_the_files_block(tmp_path):
+    plan = tmp_path / "blankfiles.md"
+    plan.write_text(
+        "# Plan: Blank closes files\n\n"
+        "### Task A: writer\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- Test: run the suite manually against `x.txt`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task B: independent\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `x.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    # The dash bullet after the blank line is prose, not a Files entry: no
+    # phantom 'run' or 'x.txt' read for task A, hence no edge to task B.
+    assert out["dag_edges"] == []
+
+
+def test_override_conflict_edge_field_carries_why_label(tmp_path):
+    import re as _re
+    plan = tmp_path / "whylabel.md"
+    plan.write_text(
+        "# Plan: Why label\n\n"
+        "### Task A: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `f.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task B: modifier claiming independence\n\n"
+        "**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Modify: `f.txt`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    override = [c for c in out["marker_conflicts"] if "overridden" in c["note"]]
+    assert override and _re.fullmatch(
+        r"[A-Za-z0-9]+ -> [A-Za-z0-9]+ \((write-after-create|write-after-write|read-after-write|text|ambiguous-files)\)",
+        override[0]["edge"])
