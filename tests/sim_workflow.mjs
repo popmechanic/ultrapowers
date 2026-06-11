@@ -891,12 +891,16 @@ async function scenarioBaseBranchThreaded() {
 // the implementer-side mostCapable". With tierOverrides: { mostCapable: 'sonnet' },
 // the reconcile agent must receive opts.model === 'sonnet', while the reviewer
 // must stay 'opus' (OVERRIDE-PROOF).
+// Also asserts setup and merge:wave* labels follow the overridden cheap tier,
+// pinning the last untested clause of the documented tier routing.
 async function scenarioReconcileTierOverride() {
   let reconcileModel = null
   let reviewerModel = null
+  const modelsByLabel = {}
 
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
+    modelsByLabel[label] = opts.model
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
       const id = taskIdFromLabel(label)
@@ -921,13 +925,18 @@ async function scenarioReconcileTierOverride() {
 
   await runWorkflow({
     agent,
-    args: Object.assign({}, baseArgs, { tierOverrides: { mostCapable: 'sonnet' } }),
+    args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'sonnet', mostCapable: 'sonnet' } }),
     budget: undefined,
   })
 
   assert(reconcileModel !== null, 'reconcileTier: reconcile agent was actually dispatched')
   eq(reconcileModel, 'sonnet', 'reconcileTier: reconcile uses overridden mostCapable model (sonnet)')
   eq(reviewerModel, 'opus', 'reconcileTier: reviewer stays opus despite mostCapable override (OVERRIDE-PROOF)')
+  // setup uses cheap tier; merge:wave* uses cheap tier — both must follow the override
+  eq(modelsByLabel['setup'], 'sonnet', 'reconcileTier: setup uses overridden cheap model (sonnet)')
+  const mergeWaveLabel = Object.keys(modelsByLabel).find((l) => /^merge:wave/.test(l))
+  assert(mergeWaveLabel !== undefined, 'reconcileTier: a merge:wave* agent was dispatched')
+  eq(modelsByLabel[mergeWaveLabel], 'sonnet', 'reconcileTier: merge:wave* uses overridden cheap model (sonnet) (label=' + mergeWaveLabel + ')')
   console.log('scenario reconcile-tier-override: OK')
 }
 
@@ -962,6 +971,10 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
     'noHeadSha: lost-done surfaced in judgmentCalls with "without mergeable coordinates"')
   const aTask = r.tasks.find((t) => t.task === 'A')
   eq(aTask && aTask.status, 'failed', 'noHeadSha: A task record has status failed (not done)')
+  // Fix C: lost-done record must carry reviewVerdict 'lost-coordinates' and notes mentioning 'downgraded'
+  eq(aTask && aTask.reviewVerdict, 'lost-coordinates', 'noHeadSha: A reviewVerdict is lost-coordinates (not clean)')
+  assert(aTask && aTask.notes && /downgraded/.test(aTask.notes),
+    'noHeadSha: A notes mention "downgraded" (got ' + (aTask && aTask.notes) + ')')
   console.log('scenario done-without-headsha-not-merged: OK')
 }
 
@@ -987,8 +1000,13 @@ async function scenarioMalformedEdgesThrow() {
 // waves [[A],[B]], NO edges; A's reviewer always returns blocking (fix-loop
 // exhaustion -> A failed -> wave 1 has zero mergeable). Without edges, the
 // SKIPPED-continue path is unsafe: later waves assume the prerequisite landed.
-// Fix C requires a conservative cascade-break instead.
+// Fix A (in workflow.js) requires a conservative cascade-break instead.
+//
+// Second leg: edges: [] EXPLICITLY SUPPLIED — the compiler proved independence.
+// A zero-mergeable wave with explicit edges=[] must NOT cascade; wave 2 dispatches
+// and completes, wave 1 merge records SKIPPED, blockedWaves stays empty.
 async function scenarioNoEdgesZeroMergeableCascades() {
+  // ── Leg 1: NO edges supplied (omitted) — cascade expected ────────────────────
   const implCalled = new Set()
   const waves = [
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
@@ -1014,7 +1032,158 @@ async function scenarioNoEdgesZeroMergeableCascades() {
   assert(r.blockedWaves.length === 1, 'noEdgesCascade: one blocked wave recorded (got ' + r.blockedWaves.length + ')')
   assert(r.unfinished.some((u) => /B/.test(u) && /cascade-blocked/.test(u)),
     'noEdgesCascade: B surfaced in unfinished with cascade-blocked')
+
+  // ── Leg 2: edges: [] EXPLICITLY SUPPLIED — compiler proved independence ──────
+  // A zero-mergeable wave 1 with edges=[] must NOT cascade; wave 2 dispatches
+  // and completes normally; wave 1 merge records SKIPPED; blockedWaves stays empty.
+  const implCalled2 = new Set()
+  const waves2 = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args2 = { waves: waves2, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [] }
+  const r2 = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalled2.add(taskIdFromLabel(label))
+        return undefined
+      }
+      if (label.startsWith('review:') && taskIdFromLabel(label) === 'A') {
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'always broken' }] }
+      }
+      return undefined
+    }),
+    args: args2, budget: undefined,
+  })
+  assert(implCalled2.has('B'), 'noEdgesExplicit: B dispatched when edges=[] (compiler proved independence)')
+  eq(r2.blockedWaves, [], 'noEdgesExplicit: blockedWaves empty when edges=[] supplied (got ' + JSON.stringify(r2.blockedWaves) + ')')
+  const w1merge2 = r2.waveMerges.find((m) => m.wave === 1)
+  eq(w1merge2 && w1merge2.status, 'SKIPPED', 'noEdgesExplicit: wave-1 merge is SKIPPED (no mergeable branches, but no cascade)')
+  assert(!r2.unfinished.some((u) => /cascade-blocked/.test(u)), 'noEdgesExplicit: nothing cascade-blocked when edges=[] supplied')
+
   console.log('scenario no-edges-zero-mergeable-cascades: OK')
+}
+
+// ── Scenario: lost-done blocks dependents (cross-wave and intra-wave chunks) ───
+// Fix B: the lost-done sweep must run inside the chunk loop so the NEXT chunk
+// sees the downgrade before dispatching intra-wave dependents.
+async function scenarioLostDoneBlocksDependents() {
+  // ── Leg (a): cross-wave — waves [[A],[B]], edges [['A','B']] ─────────────────
+  // A returns DONE without headSha => downgraded to failed => B in wave 2 never dispatches.
+  const implCalledA = new Set()
+  const wavesA = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const argsA = { waves: wavesA, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                  edges: [['A', 'B']] }
+  const rA = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        implCalledA.add(taskIdFromLabel(label))
+        if (taskIdFromLabel(label) === 'A') {
+          // DONE without headSha — lost-done
+          return { status: 'DONE', summary: 's', branch: 'wt-A', commit: 'c-A' }
+        }
+        return undefined
+      }
+      return undefined
+    }),
+    args: argsA, budget: undefined,
+  })
+  assert(!implCalledA.has('B'), 'lostDoneBlocks (cross-wave): impl:B must never dispatch when A is lost-done')
+  assert(rA.unfinished.some((u) => /^B: blocked/.test(u)),
+    'lostDoneBlocks (cross-wave): B surfaced in unfinished as blocked')
+
+  // ── Leg (b): intra-wave across chunks — 17-task wave, edges [['T0','T16']] ───
+  // T0 in chunk 1 returns DONE without headSha => downgraded to failed inside chunk loop.
+  // T16 in chunk 2 must see the failure BEFORE dispatch and never be dispatched.
+  // This test FAILS before Fix B (the sweep ran only after all chunks).
+  const tasks17 = Array.from({ length: 17 }, (_, i) =>
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+  const argsB = { waves: [tasks17], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                  edges: [['T0', 'T16']] }
+  const implCalledB = new Set()
+  const rB = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('impl:') || label.startsWith('fix:')) {
+        const id = taskIdFromLabel(label)
+        implCalledB.add(id)
+        if (id === 'T0') {
+          // DONE without headSha — lost-done; must be swept before chunk 2 runs
+          return { status: 'DONE', summary: 's', branch: 'wt-T0', commit: 'c-T0' }
+        }
+        return undefined
+      }
+      return undefined
+    }),
+    args: argsB, budget: undefined,
+  })
+  assert(!implCalledB.has('T16'), 'lostDoneBlocks (intra-wave): impl:T16 must never dispatch (Fix B)')
+  assert(rB.unfinished.some((u) => /^T16: blocked/.test(u)),
+    'lostDoneBlocks (intra-wave): T16 surfaced in unfinished as blocked')
+
+  console.log('scenario lost-done-blocks-dependents: OK')
+}
+
+// ── Scenario: mid-run budget deferral ─────────────────────────────────────────
+// A budget whose remaining() counter hits 0 after wave 1 completes must defer
+// all later waves; the integration review must still run; judgmentCalls must
+// include exactly one entry matching /budget exhausted mid-run/; no impl: dispatch
+// occurs after the budget flips; the report's tests field is populated.
+async function scenarioMidRunBudgetDeferral() {
+  // Budget: start at 2, decrement each call; wave 1 uses 1 call, so hits 0 for wave 2.
+  // We flip a flag after wave 1's merge agent is called so wave 2 sees remaining=0.
+  let mergeWave1Called = false
+  let budgetRemaining = 2
+
+  const budget = {
+    total: 2,
+    remaining: () => {
+      // After wave 1 merge completes, budget is exhausted
+      return mergeWave1Called ? 0 : budgetRemaining
+    },
+  }
+
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const implDispatched = []
+
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt, opts) => {
+      if (label.startsWith('impl:')) {
+        implDispatched.push(label)
+        return undefined
+      }
+      if (label.startsWith('merge:wave1')) {
+        // After this merge returns, budget is exhausted for wave 2
+        mergeWave1Called = true
+        return { status: 'MERGED', headSha: 'w1-head' }
+      }
+      return undefined
+    }),
+    args, budget,
+  })
+
+  // Wave 2 tasks must be in unfinished with budget-exhausted entries
+  assert(r.unfinished.some((u) => /^B:/.test(u) && /budget exhausted/.test(u)),
+    'midRunBudget: B in unfinished with budget exhausted (got ' + JSON.stringify(r.unfinished) + ')')
+  // Exactly one judgmentCall matching /budget exhausted mid-run/
+  const midRunCalls = r.judgmentCalls.filter((j) => /budget exhausted mid-run/.test(j))
+  eq(midRunCalls.length, 1, 'midRunBudget: exactly one judgmentCall matching /budget exhausted mid-run/ (got ' + midRunCalls.length + ')')
+  // No impl: dispatches after the budget flips (only A dispatched before flip, B never)
+  assert(!implDispatched.some((l) => l === 'impl:B'), 'midRunBudget: impl:B never dispatched after budget exhausted')
+  // Integration review still runs (tests field populated)
+  assert(r.tests !== undefined && r.tests.passed !== undefined,
+    'midRunBudget: integration review ran and tests field is populated')
+  // tests field should reflect the integration agent's response
+  assert(r.tests.command !== undefined || r.tests.output !== undefined,
+    'midRunBudget: integration review output is present')
+
+  console.log('scenario mid-run-budget-deferral: OK')
 }
 
 // ── Scenario: intra-wave edge respected across 16-task chunks ─────────────────
@@ -1077,4 +1246,6 @@ await scenarioMalformedEdgesThrow()
 await scenarioNoEdgesZeroMergeableCascades()
 await scenarioBaseBranchThreaded()
 await scenarioReconcileTierOverride()
+await scenarioLostDoneBlocksDependents()
+await scenarioMidRunBudgetDeferral()
 console.log('ALL SCENARIOS PASSED')
