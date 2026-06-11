@@ -1033,19 +1033,46 @@ def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_
     assert out["waves"] == [["1"], ["2"]]
 
 
-def test_plural_tasks_text_dependency_surfaces(tmp_path):
-    plan = tmp_path / "plural.md"
+def test_plural_text_dependency_parses_each_listed_id(tmp_path):
+    plan = tmp_path / "plural-parse.md"
     plan.write_text(
-        "# Plan: Plural\n\n"
-        "### Task 1: a\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: b\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.txt`\n\n"
+        "### Task 1: a\n\n**Files:**\n- Modify: `a.py`\n\n"
+        "### Task 2: b\n\n**Files:**\n- Modify: `b.py`\n\n"
         "- [ ] **Step 1:** This depends on Tasks 1 and 3 being merged first.\n\n"
-        "### Task 3: c\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `c.txt`\n\n- [ ] **Step 1:** c\n"
+        "### Task 3: c\n\n**Files:**\n- Modify: `c.py`\n"
     )
     out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "text"} in out["dag_edges"]
+    assert {"from": "3", "to": "2", "why": "text"} in out["dag_edges"]
+    # Parsed lists no longer surface the plural conflict:
+    assert not any("plural" in c["note"].lower() for c in out["marker_conflicts"])
+
+
+def test_plural_text_dependency_comma_list(tmp_path):
+    plan = tmp_path / "plural-comma.md"
+    plan.write_text(
+        "### Task 1: a\n\n**Files:**\n- Modify: `a.py`\n\n"
+        "### Task 2: b\n\n**Files:**\n- Modify: `b.py`\n\n"
+        "### Task 3: c\n\n**Files:**\n- Modify: `c.py`\n\n"
+        "Runs after Tasks 1, 2 and a final review.\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "3", "why": "text"} in out["dag_edges"]
+    assert {"from": "2", "to": "3", "why": "text"} in out["dag_edges"]
+
+
+def test_unparseable_plural_still_surfaces(tmp_path):
+    plan = tmp_path / "plural-vague.md"
+    plan.write_text(
+        "### Task 1: a\n\n**Files:**\n- Modify: `a.py`\n\n"
+        "### Task 2: b\n\n**Files:**\n- Modify: `b.py`\n\n"
+        "Runs after Tasks (the parser ones) are merged.\n"
+        # "(": not an id token, so TEXT_DEP_LIST cannot match — a bare word like
+        # "above" WOULD match as a ghost id and surface via the ghost-drop
+        # conflict instead, which is also loud, just differently worded.
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "text" for e in out["dag_edges"])
     assert any(c["task"] == "2" and "plural" in c["note"].lower()
                for c in out["marker_conflicts"])
 
