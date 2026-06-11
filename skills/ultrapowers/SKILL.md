@@ -59,7 +59,13 @@ structure. Each task object must be **self-contained**: `{ id, title, body, tier
 where `body` is the full verbatim task text (the workflow cannot resolve file references) and `review`
 (`'adversarial'` | `'lean'`, optional) is the per-task depth you derive below.
 
-- **Parse** each task's `writes` set (`Create:` ∪ `Modify:`) and any explicit `depends on` text.
+- **Classify first** per `references/plan-markers.md`: trust `**Type:**` markers when
+  present, else the contract heuristics there. Only `implementation` tasks enter the
+  DAG. Gates compile into run config (their suite commands inform `testCmd`);
+  `release`/`manual` tasks go verbatim into the post-merge runbook. Extract task
+  bodies fence-aware — headings inside code fences are content, not boundaries.
+- **Parse** each task's `writes` set (`Create:` ∪ `Modify:`), any `**Depends-on:**`
+  markers (additive to inference), and any explicit `depends on` text.
 - **Build the DAG** with the three edge rules; **run cycle detection** before computing waves.
   If a cycle is found, stop and surface it in plain language — never guess an ordering.
 - **Apply conservative defaults** and the **small-plan degrade** (≤2 tasks or fully overlapping
@@ -81,7 +87,9 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
     ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
     from the plan.
-- **Record** the DAG edges, wave list, mode, any degrade reason, and the derived knobs (the transparency block).
+- **Record** the DAG edges, wave list, mode, any degrade reason, the dispositions
+  (gates compiled into config, runbook entries, marker conflicts, inlined preamble
+  notes), and the derived knobs (the transparency block).
 
 ---
 
@@ -95,6 +103,11 @@ Render the transparency block from Step 2 for the human:
 4. **Derived knobs** — the test command you'll use, which tasks get `adversarial` vs `lean` review,
    and any tier overrides. Show them so the human can veto a wrong guess — they approve these, they
    do not author them.
+5. **Dispositions** — which tasks were excluded as `release`/`manual` (the post-merge
+   runbook), which gates were compiled into run config, any superseded ordering prose
+   or marker conflicts. The human approves this **interpretation** of the plan, not
+   just the grouping — a wrong classification gets caught here, before any tokens are
+   spent.
 
 Then ask the human to **approve the wave plan or revise the plan and re-run**. Do **not** launch
 the workflow without approval. This is the only mid-process gate between plan approval and the
@@ -159,10 +172,13 @@ reconciles failures, and runs a final integration/completeness review. See
 
 When the workflow returns, render its structured report per `references/report-format.md`:
 integration branch, wave plan, per-task status + review verdict, test result, judgment calls, and
-anything unfinished or flagged by the completeness critic. Then name the integration branch and
+anything unfinished or flagged by the completeness critic. Then render the **post-merge runbook** — the `release`/`manual` tasks excluded at
+compile time, verbatim and in document order — so nothing classified out of the run
+is forgotten. Then name the integration branch and
 present two choices:
 
-- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up.
+- **Approve** — proceed to `superpowers:finishing-a-development-branch` to merge /
+  open a PR / clean up, carrying the post-merge runbook as its follow-up checklist.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
   corrective instructions appended to each task `body`), and relaunch the saved `ultrapowers-run`
@@ -200,6 +216,7 @@ revision) or an inability to create the integration branch.
 ## Resources
 
 - `references/dependency-analysis.md` — plan → DAG → waves, cycle detection, small-plan degrade, the transparency block rendered at the Step 3 gate.
+- `references/plan-markers.md` — the parallel-execution marker contract (`Type:`, `Depends-on:`), the worktree-pure task contract, classification heuristics for unmarked plans, and the compile-time obligations (post-merge runbook, preamble inlining, fence-aware extraction).
 - `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `workflow.js`.
 - `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `workflow.js`.
 - `references/report-format.md` — structured report schema and the human-facing presentation order.
