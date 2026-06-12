@@ -1,0 +1,503 @@
+diff --git a/ledger/balance.py b/ledger/balance.py
+new file mode 100644
+index 0000000..fc1788f
+--- /dev/null
++++ b/ledger/balance.py
+@@ -0,0 +1,12 @@
++from typing import List
++from ledger.model import Entry
++
++
++def running_balance(entries: List[Entry]) -> List[int]:
++    """Return the cumulative sum of amount_cents for each entry."""
++    result = []
++    total = 0
++    for entry in entries:
++        total += entry.amount_cents
++        result.append(total)
++    return result
+diff --git a/ledger/cli.py b/ledger/cli.py
+new file mode 100644
+index 0000000..9682960
+--- /dev/null
++++ b/ledger/cli.py
+@@ -0,0 +1,29 @@
++import sys
++from typing import List
++
++from ledger.parse import parse_line
++from ledger.report import format_report
++
++
++def main(argv: List[str]) -> int:
++    """Read a ledger file, parse entries, and print a formatted report.
++
++    argv[0] should be the path to the ledger file.
++    Returns 0 on success, 1 on any ValueError.
++    """
++    file_path = argv[0]
++    with open(file_path) as f:
++        lines = f.readlines()
++
++    entries = []
++    try:
++        for line in lines:
++            if not line.strip():
++                continue
++            entries.append(parse_line(line.rstrip("\n")))
++    except ValueError as exc:
++        print(f"error: {exc}", file=sys.stderr)
++        return 1
++
++    print(format_report(entries))
++    return 0
+diff --git a/ledger/model.py b/ledger/model.py
+index d927cd3..0e250d3 100644
+--- a/ledger/model.py
++++ b/ledger/model.py
+@@ -1,8 +1,17 @@
++import re
+ from dataclasses import dataclass
+ 
++_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
++
+ 
+ @dataclass
+ class Entry:
+     date: str
+     description: str
+     amount_cents: int
++
++    def validate(self) -> None:
++        if not self.description.strip():
++            raise ValueError("empty description")
++        if not _DATE_RE.match(self.date):
++            raise ValueError("bad date")
+diff --git a/ledger/parse.py b/ledger/parse.py
+new file mode 100644
+index 0000000..bb8c18d
+--- /dev/null
++++ b/ledger/parse.py
+@@ -0,0 +1,22 @@
++import re
++from ledger.model import Entry
++
++_AMOUNT_RE = re.compile(r"^-?\d+\.\d{2}$")
++
++
++def parse_line(line: str) -> Entry:
++    fields = line.split("|")
++    if len(fields) != 3:
++        raise ValueError("bad line")
++
++    date, description, amount_str = fields
++
++    if not _AMOUNT_RE.match(amount_str):
++        raise ValueError("bad amount")
++
++    # Convert dollars with two decimal places to integer cents
++    amount_cents = round(float(amount_str) * 100)
++
++    entry = Entry(date=date, description=description, amount_cents=amount_cents)
++    entry.validate()
++    return entry
+diff --git a/ledger/report.py b/ledger/report.py
+new file mode 100644
+index 0000000..65744f7
+--- /dev/null
++++ b/ledger/report.py
+@@ -0,0 +1,23 @@
++from typing import List
++from ledger.model import Entry
++from ledger.balance import running_balance
++
++
++def format_cents(cents: int) -> str:
++    """Format an integer number of cents as a dollar string, e.g. 1000 -> '$10.00'."""
++    if cents < 0:
++        return f"-${-cents // 100}.{(-cents) % 100:02d}"
++    return f"${cents // 100}.{cents % 100:02d}"
++
++
++def format_report(entries: List[Entry]) -> str:
++    """Return a formatted multi-line report of entries with a running total line."""
++    if not entries:
++        return f"TOTAL {format_cents(0)}"
++
++    balances = running_balance(entries)
++    lines = []
++    for entry, balance in zip(entries, balances):
++        lines.append(f"{entry.date} {entry.description} {format_cents(entry.amount_cents)}")
++    lines.append(f"TOTAL {format_cents(balances[-1])}")
++    return "\n".join(lines)
+diff --git a/tests/test_balance.py b/tests/test_balance.py
+new file mode 100644
+index 0000000..31d2911
+--- /dev/null
++++ b/tests/test_balance.py
+@@ -0,0 +1,50 @@
++import pytest
++from ledger.parse import parse_line
++from ledger.balance import running_balance
++
++
++def make_entry(amount_str: str):
++    """Helper to build an Entry via parse_line for a given amount string."""
++    return parse_line(f"2024-01-01|test description|{amount_str}")
++
++
++def test_empty_list_returns_empty():
++    assert running_balance([]) == []
++
++
++def test_single_entry():
++    entry = make_entry("10.00")
++    assert running_balance([entry]) == [1000]
++
++
++def test_example_from_spec():
++    # amounts [1000, -450, 200] cents → [1000, 550, 750]
++    entries = [
++        make_entry("10.00"),   # 1000 cents
++        make_entry("-4.50"),   # -450 cents
++        make_entry("2.00"),    # 200 cents
++    ]
++    assert running_balance(entries) == [1000, 550, 750]
++
++
++def test_all_positive():
++    entries = [make_entry("1.00"), make_entry("2.00"), make_entry("3.00")]
++    assert running_balance(entries) == [100, 300, 600]
++
++
++def test_all_negative():
++    entries = [make_entry("-1.00"), make_entry("-2.00"), make_entry("-3.00")]
++    assert running_balance(entries) == [-100, -300, -600]
++
++
++def test_net_zero():
++    entries = [make_entry("5.00"), make_entry("-5.00")]
++    assert running_balance(entries) == [500, 0]
++
++
++def test_does_not_mutate_entries():
++    entries = [make_entry("1.00"), make_entry("2.00")]
++    result = running_balance(entries)
++    assert entries[0].amount_cents == 100
++    assert entries[1].amount_cents == 200
++    assert result == [100, 300]
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+new file mode 100644
+index 0000000..c3d057f
+--- /dev/null
++++ b/tests/test_cli.py
+@@ -0,0 +1,100 @@
++import pytest
++from ledger.cli import main
++
++
++def test_main_returns_zero_on_valid_file(tmp_path, capsys):
++    ledger_file = tmp_path / "ledger.txt"
++    ledger_file.write_text(
++        "2024-01-01|Coffee|5.00\n"
++        "2024-01-02|Lunch|12.50\n"
++    )
++    result = main([str(ledger_file)])
++    assert result == 0
++    captured = capsys.readouterr()
++    assert "2024-01-01 Coffee $5.00" in captured.out
++    assert "2024-01-02 Lunch $12.50" in captured.out
++    assert "TOTAL" in captured.out
++    assert captured.err == ""
++
++
++def test_main_skips_blank_lines(tmp_path, capsys):
++    ledger_file = tmp_path / "ledger.txt"
++    ledger_file.write_text(
++        "2024-01-01|Coffee|5.00\n"
++        "\n"
++        "   \n"
++        "2024-01-02|Tea|3.00\n"
++    )
++    result = main([str(ledger_file)])
++    assert result == 0
++    captured = capsys.readouterr()
++    assert "2024-01-01 Coffee $5.00" in captured.out
++    assert "2024-01-02 Tea $3.00" in captured.out
++
++
++def test_main_empty_file(tmp_path, capsys):
++    ledger_file = tmp_path / "empty.txt"
++    ledger_file.write_text("")
++    result = main([str(ledger_file)])
++    assert result == 0
++    captured = capsys.readouterr()
++    assert "TOTAL $0.00" in captured.out
++
++
++def test_main_only_blank_lines(tmp_path, capsys):
++    ledger_file = tmp_path / "blank.txt"
++    ledger_file.write_text("\n   \n\t\n")
++    result = main([str(ledger_file)])
++    assert result == 0
++    captured = capsys.readouterr()
++    assert "TOTAL $0.00" in captured.out
++
++
++def test_main_returns_one_on_bad_line(tmp_path, capsys):
++    ledger_file = tmp_path / "bad.txt"
++    ledger_file.write_text("not-a-valid-line\n")
++    result = main([str(ledger_file)])
++    assert result == 1
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert captured.err.startswith("error: ")
++
++
++def test_main_returns_one_on_bad_amount(tmp_path, capsys):
++    ledger_file = tmp_path / "bad_amount.txt"
++    ledger_file.write_text("2024-01-01|Coffee|abc\n")
++    result = main([str(ledger_file)])
++    assert result == 1
++    captured = capsys.readouterr()
++    assert captured.err.startswith("error: ")
++
++
++def test_main_returns_one_on_bad_date(tmp_path, capsys):
++    ledger_file = tmp_path / "bad_date.txt"
++    ledger_file.write_text("not-a-date|Coffee|5.00\n")
++    result = main([str(ledger_file)])
++    assert result == 1
++    captured = capsys.readouterr()
++    assert captured.err.startswith("error: ")
++
++
++def test_main_error_message_contains_valueerror_message(tmp_path, capsys):
++    ledger_file = tmp_path / "bad.txt"
++    ledger_file.write_text("only-two|fields\n")
++    result = main([str(ledger_file)])
++    assert result == 1
++    captured = capsys.readouterr()
++    # The error message format should be "error: <message>"
++    assert captured.err.strip().startswith("error:")
++    # stderr should have some message after "error: "
++    assert len(captured.err.strip()) > len("error:")
++
++
++def test_main_prints_to_stdout_not_stderr(tmp_path, capsys):
++    ledger_file = tmp_path / "ledger.txt"
++    ledger_file.write_text("2024-03-15|Groceries|42.00\n")
++    result = main([str(ledger_file)])
++    assert result == 0
++    captured = capsys.readouterr()
++    assert captured.err == ""
++    assert "TOTAL" in captured.out
+diff --git a/tests/test_parse.py b/tests/test_parse.py
+new file mode 100644
+index 0000000..626c47f
+--- /dev/null
++++ b/tests/test_parse.py
+@@ -0,0 +1,92 @@
++import pytest
++from ledger.parse import parse_line
++from ledger.model import Entry
++
++
++def test_parse_valid_positive_amount():
++    entry = parse_line("2026-01-15|coffee|4.50")
++    assert entry.date == "2026-01-15"
++    assert entry.description == "coffee"
++    assert entry.amount_cents == 450
++
++
++def test_parse_valid_negative_amount():
++    entry = parse_line("2026-01-15|coffee|-4.50")
++    assert entry.date == "2026-01-15"
++    assert entry.description == "coffee"
++    assert entry.amount_cents == -450
++
++
++def test_parse_returns_entry_instance():
++    entry = parse_line("2026-01-15|coffee|10.00")
++    assert isinstance(entry, Entry)
++
++
++def test_parse_too_few_fields_raises():
++    with pytest.raises(ValueError, match="bad line"):
++        parse_line("2026-01-15|coffee")
++
++
++def test_parse_too_many_fields_raises():
++    with pytest.raises(ValueError, match="bad line"):
++        parse_line("2026-01-15|coffee|-4.50|extra")
++
++
++def test_parse_empty_string_raises():
++    with pytest.raises(ValueError, match="bad line"):
++        parse_line("")
++
++
++def test_parse_single_field_raises():
++    with pytest.raises(ValueError, match="bad line"):
++        parse_line("2026-01-15")
++
++
++def test_parse_amount_no_decimal_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|-4")
++
++
++def test_parse_amount_one_decimal_place_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|-4.5")
++
++
++def test_parse_amount_three_decimal_places_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|-4.500")
++
++
++def test_parse_amount_non_numeric_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|abc")
++
++
++def test_parse_amount_letters_mixed_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|4.5x")
++
++
++def test_parse_amount_empty_raises():
++    with pytest.raises(ValueError, match="bad amount"):
++        parse_line("2026-01-15|coffee|")
++
++
++def test_parse_large_amount():
++    entry = parse_line("2026-01-15|salary|1000.00")
++    assert entry.amount_cents == 100000
++
++
++def test_parse_zero_amount():
++    entry = parse_line("2026-01-15|adjustment|0.00")
++    assert entry.amount_cents == 0
++
++
++def test_parse_calls_validate_bad_date_raises():
++    with pytest.raises(ValueError, match="bad date"):
++        parse_line("26-01-15|coffee|-4.50")
++
++
++def test_parse_calls_validate_empty_description_raises():
++    with pytest.raises(ValueError, match="empty description"):
++        parse_line("2026-01-15||-4.50")
+diff --git a/tests/test_report.py b/tests/test_report.py
+new file mode 100644
+index 0000000..a4e36c9
+--- /dev/null
++++ b/tests/test_report.py
+@@ -0,0 +1,61 @@
++import pytest
++from ledger.model import Entry
++from ledger.report import format_cents, format_report
++
++
++class TestFormatCents:
++    def test_positive(self):
++        assert format_cents(1000) == "$10.00"
++
++    def test_negative(self):
++        assert format_cents(-450) == "-$4.50"
++
++    def test_zero(self):
++        assert format_cents(0) == "$0.00"
++
++    def test_small_positive(self):
++        assert format_cents(5) == "$0.05"
++
++    def test_large(self):
++        assert format_cents(100000) == "$1000.00"
++
++
++class TestFormatReport:
++    def test_empty_entries(self):
++        result = format_report([])
++        assert result == "TOTAL $0.00"
++
++    def test_single_entry(self):
++        entries = [Entry(date="2024-01-01", description="Coffee", amount_cents=500)]
++        result = format_report(entries)
++        lines = result.split("\n")
++        assert len(lines) == 2
++        assert lines[0] == "2024-01-01 Coffee $5.00"
++        assert lines[1] == "TOTAL $5.00"
++
++    def test_multiple_entries(self):
++        entries = [
++            Entry(date="2024-01-01", description="Coffee", amount_cents=500),
++            Entry(date="2024-01-02", description="Refund", amount_cents=-200),
++        ]
++        result = format_report(entries)
++        lines = result.split("\n")
++        assert len(lines) == 3
++        assert lines[0] == "2024-01-01 Coffee $5.00"
++        assert lines[1] == "2024-01-02 Refund -$2.00"
++        assert lines[2] == "TOTAL $3.00"
++
++    def test_no_trailing_newline(self):
++        entries = [Entry(date="2024-01-01", description="Test", amount_cents=100)]
++        result = format_report(entries)
++        assert not result.endswith("\n")
++
++    def test_total_is_running_balance_last(self):
++        entries = [
++            Entry(date="2024-01-01", description="A", amount_cents=1000),
++            Entry(date="2024-01-02", description="B", amount_cents=2000),
++            Entry(date="2024-01-03", description="C", amount_cents=-500),
++        ]
++        result = format_report(entries)
++        lines = result.split("\n")
++        assert lines[-1] == "TOTAL $25.00"
+diff --git a/tests/test_validate.py b/tests/test_validate.py
+new file mode 100644
+index 0000000..1496a89
+--- /dev/null
++++ b/tests/test_validate.py
+@@ -0,0 +1,38 @@
++import pytest
++from ledger.model import Entry
++
++
++def test_validate_empty_description_raises():
++    e = Entry(date="2026-01-15", description="", amount_cents=100)
++    with pytest.raises(ValueError, match="empty description"):
++        e.validate()
++
++
++def test_validate_whitespace_only_description_raises():
++    e = Entry(date="2026-01-15", description="   ", amount_cents=100)
++    with pytest.raises(ValueError, match="empty description"):
++        e.validate()
++
++
++def test_validate_bad_date_raises():
++    e = Entry(date="26-01-15", description="coffee", amount_cents=100)
++    with pytest.raises(ValueError, match="bad date"):
++        e.validate()
++
++
++def test_validate_bad_date_with_extra_chars_raises():
++    e = Entry(date="2026-01-15X", description="coffee", amount_cents=100)
++    with pytest.raises(ValueError, match="bad date"):
++        e.validate()
++
++
++def test_validate_bad_date_non_numeric_raises():
++    e = Entry(date="YYYY-MM-DD", description="coffee", amount_cents=100)
++    with pytest.raises(ValueError, match="bad date"):
++        e.validate()
++
++
++def test_validate_valid_entry_returns_none():
++    e = Entry(date="2026-01-15", description="coffee", amount_cents=-450)
++    result = e.validate()
++    assert result is None
