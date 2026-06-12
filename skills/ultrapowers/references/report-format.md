@@ -79,6 +79,7 @@ When the workflow completes, the main agent renders the report as a concise huma
    rendered verbatim in document order. Sourced from the Step-2 dispositions (the
    main agent carries it), **not** from the workflow return — the schema above is
    unchanged. Empty runbook means the whole plan was waveable.
+11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, and any tier-misrank candidates (implementers above 1.5x the median turns of same-model peers). Advisory only: it informs the next run's tier assignments and never gates this one.
 
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
