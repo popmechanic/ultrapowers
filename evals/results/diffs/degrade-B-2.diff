@@ -1,0 +1,379 @@
+diff --git a/confkit/config.py b/confkit/config.py
+index 4bfd227..67ce83a 100644
+--- a/confkit/config.py
++++ b/confkit/config.py
+@@ -1,6 +1,76 @@
++import re
++
+ DEFAULTS = {"host": "localhost", "port": 8000, "debug": False}
+ 
+ 
+-def get_config():
+-    """Return a copy of the default configuration."""
+-    return dict(DEFAULTS)
++def parse_value(raw):
++    """Convert a raw string to a typed Python value.
++
++    - "true" / "false" (case-insensitive) → bool
++    - Optional leading '-' followed by one or more digits → int
++    - Anything else → the original string unchanged
++    """
++    if raw.lower() == "true":
++        return True
++    if raw.lower() == "false":
++        return False
++    if re.fullmatch(r"-?\d+", raw):
++        return int(raw)
++    return raw
++
++
++def load_env_overrides(environ):
++    """Return a dict of config overrides from *environ*.
++
++    Only keys with the ``CONFKIT_`` prefix are considered.  The prefix is
++    stripped and the remainder is lower-cased to form the config key.  Values
++    are passed through :func:`parse_value`.
++    """
++    prefix = "CONFKIT_"
++    return {
++        key[len(prefix):].lower(): parse_value(value)
++        for key, value in environ.items()
++        if key.startswith(prefix)
++    }
++
++
++def load_file(path):
++    """Load config key-value pairs from a file.
++
++    Rules:
++    - Each line is stripped of leading/trailing whitespace.
++    - Blank lines and lines starting with ``#`` are skipped.
++    - Every other line must contain ``=``; if not, ``ValueError("bad line")``
++      is raised.
++    - The line is split on the FIRST ``=``; the key is the stripped left side
++      and the value is :func:`parse_value` of the stripped right side.
++    """
++    result = {}
++    with open(path) as fh:
++        for line in fh:
++            line = line.strip()
++            if not line or line.startswith("#"):
++                continue
++            if "=" not in line:
++                raise ValueError("bad line")
++            key, _, raw_value = line.partition("=")
++            result[key.strip()] = parse_value(raw_value.strip())
++    return result
++
++
++def get_config(path=None, environ=None):
++    """Return a configuration dict.
++
++    Starts from a copy of :data:`DEFAULTS`.  If *path* is given the file is
++    loaded via :func:`load_file` and its values override the defaults.  If
++    *environ* is given :func:`load_env_overrides` is applied last, overriding
++    both defaults and file values.
++
++    Precedence (lowest → highest): defaults < file < environment.
++    """
++    cfg = dict(DEFAULTS)
++    if path is not None:
++        cfg.update(load_file(path))
++    if environ is not None:
++        cfg.update(load_env_overrides(environ))
++    return cfg
+diff --git a/tests/test_env_overrides.py b/tests/test_env_overrides.py
+new file mode 100644
+index 0000000..58f7bec
+--- /dev/null
++++ b/tests/test_env_overrides.py
+@@ -0,0 +1,98 @@
++import pytest
++from confkit.config import parse_value, load_env_overrides
++
++
++# --- parse_value ---
++
++def test_parse_value_true_lowercase():
++    assert parse_value("true") is True
++
++
++def test_parse_value_true_uppercase():
++    assert parse_value("TRUE") is True
++
++
++def test_parse_value_true_mixed():
++    assert parse_value("True") is True
++
++
++def test_parse_value_false_lowercase():
++    assert parse_value("false") is False
++
++
++def test_parse_value_false_uppercase():
++    assert parse_value("FALSE") is False
++
++
++def test_parse_value_false_mixed():
++    assert parse_value("False") is False
++
++
++def test_parse_value_positive_int():
++    assert parse_value("9000") == 9000
++    assert isinstance(parse_value("9000"), int)
++
++
++def test_parse_value_zero():
++    assert parse_value("0") == 0
++    assert isinstance(parse_value("0"), int)
++
++
++def test_parse_value_negative_int():
++    assert parse_value("-42") == -42
++    assert isinstance(parse_value("-42"), int)
++
++
++def test_parse_value_string_unchanged():
++    assert parse_value("localhost") == "localhost"
++
++
++def test_parse_value_string_with_digits_and_letters():
++    assert parse_value("8000abc") == "8000abc"
++
++
++def test_parse_value_empty_string():
++    assert parse_value("") == ""
++
++
++def test_parse_value_negative_sign_only():
++    # "-" alone is not an integer
++    assert parse_value("-") == "-"
++
++
++# --- load_env_overrides ---
++
++def test_load_env_overrides_basic():
++    result = load_env_overrides({"CONFKIT_PORT": "9000", "PATH": "/bin"})
++    assert result == {"port": 9000}
++
++
++def test_load_env_overrides_ignores_non_prefixed():
++    result = load_env_overrides({"PATH": "/bin", "HOME": "/root", "DEBUG": "true"})
++    assert result == {}
++
++
++def test_load_env_overrides_multiple_keys():
++    result = load_env_overrides({
++        "CONFKIT_HOST": "example.com",
++        "CONFKIT_PORT": "443",
++        "CONFKIT_DEBUG": "true",
++        "OTHER": "ignored",
++    })
++    assert result == {"host": "example.com", "port": 443, "debug": True}
++
++
++def test_load_env_overrides_key_lowercased():
++    result = load_env_overrides({"CONFKIT_MY_KEY": "hello"})
++    assert "my_key" in result
++    assert result["my_key"] == "hello"
++
++
++def test_load_env_overrides_empty_environ():
++    assert load_env_overrides({}) == {}
++
++
++def test_load_env_overrides_prefix_only_key():
++    # Key is exactly "CONFKIT_" — suffix is empty string ""
++    result = load_env_overrides({"CONFKIT_": "val"})
++    assert result == {"": "val"}
+diff --git a/tests/test_file_layer.py b/tests/test_file_layer.py
+new file mode 100644
+index 0000000..7be5897
+--- /dev/null
++++ b/tests/test_file_layer.py
+@@ -0,0 +1,185 @@
++import pytest
++import tempfile
++import os
++from confkit.config import load_file, get_config, DEFAULTS
++
++
++# --- load_file ---
++
++def _write_tmp(content):
++    """Write content to a temp file and return its path."""
++    f = tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False)
++    f.write(content)
++    f.close()
++    return f.name
++
++
++def test_load_file_basic():
++    path = _write_tmp("host=example.com\nport=9000\n")
++    try:
++        result = load_file(path)
++        assert result == {"host": "example.com", "port": 9000}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_strips_whitespace():
++    path = _write_tmp("  host = example.com  \n  port = 9000  \n")
++    try:
++        result = load_file(path)
++        assert result == {"host": "example.com", "port": 9000}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_skips_blank_lines():
++    path = _write_tmp("\n\nhost=example.com\n\nport=9000\n\n")
++    try:
++        result = load_file(path)
++        assert result == {"host": "example.com", "port": 9000}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_skips_comment_lines():
++    path = _write_tmp("# this is a comment\nhost=example.com\n# another comment\nport=9000\n")
++    try:
++        result = load_file(path)
++        assert result == {"host": "example.com", "port": 9000}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_splits_on_first_equals():
++    # value contains an '=' sign itself
++    path = _write_tmp("url=http://example.com?a=1&b=2\n")
++    try:
++        result = load_file(path)
++        assert result == {"url": "http://example.com?a=1&b=2"}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_bool_value():
++    path = _write_tmp("debug=true\n")
++    try:
++        result = load_file(path)
++        assert result == {"debug": True}
++        assert result["debug"] is True
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_int_value():
++    path = _write_tmp("port=8080\n")
++    try:
++        result = load_file(path)
++        assert result == {"port": 8080}
++        assert isinstance(result["port"], int)
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_bad_line_raises():
++    path = _write_tmp("this_line_has_no_equals\n")
++    try:
++        with pytest.raises(ValueError, match="bad line"):
++            load_file(path)
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_empty_file():
++    path = _write_tmp("")
++    try:
++        result = load_file(path)
++        assert result == {}
++    finally:
++        os.unlink(path)
++
++
++def test_load_file_only_comments_and_blanks():
++    path = _write_tmp("# comment\n\n# another comment\n\n")
++    try:
++        result = load_file(path)
++        assert result == {}
++    finally:
++        os.unlink(path)
++
++
++# --- get_config ---
++
++def test_get_config_no_args_returns_defaults():
++    cfg = get_config()
++    assert cfg == DEFAULTS
++
++
++def test_get_config_no_args_returns_copy():
++    cfg = get_config()
++    cfg["port"] = 1
++    assert DEFAULTS["port"] == 8000
++
++
++def test_get_config_with_path():
++    path = _write_tmp("host=example.com\nport=9000\n")
++    try:
++        cfg = get_config(path=path)
++        assert cfg["host"] == "example.com"
++        assert cfg["port"] == 9000
++        # defaults still present for unspecified keys
++        assert cfg["debug"] == DEFAULTS["debug"]
++    finally:
++        os.unlink(path)
++
++
++def test_get_config_with_environ():
++    cfg = get_config(environ={"CONFKIT_PORT": "7777"})
++    assert cfg["port"] == 7777
++    assert cfg["host"] == DEFAULTS["host"]
++    assert cfg["debug"] == DEFAULTS["debug"]
++
++
++def test_get_config_with_path_and_environ():
++    path = _write_tmp("host=filehost\nport=9000\ndebug=true\n")
++    try:
++        # env overrides file and defaults
++        cfg = get_config(path=path, environ={"CONFKIT_PORT": "1234", "CONFKIT_DEBUG": "false"})
++        assert cfg["host"] == "filehost"    # from file
++        assert cfg["port"] == 1234          # env overrides file
++        assert cfg["debug"] is False        # env overrides file
++    finally:
++        os.unlink(path)
++
++
++def test_get_config_precedence_file_over_defaults():
++    path = _write_tmp("port=5555\n")
++    try:
++        cfg = get_config(path=path)
++        assert cfg["port"] == 5555          # file overrides default
++        assert cfg["host"] == DEFAULTS["host"]  # default still used
++    finally:
++        os.unlink(path)
++
++
++def test_get_config_precedence_env_over_file():
++    path = _write_tmp("host=filehost\n")
++    try:
++        cfg = get_config(path=path, environ={"CONFKIT_HOST": "envhost"})
++        assert cfg["host"] == "envhost"     # env beats file
++    finally:
++        os.unlink(path)
++
++
++def test_get_config_precedence_env_over_defaults():
++    cfg = get_config(environ={"CONFKIT_HOST": "envhost"})
++    assert cfg["host"] == "envhost"
++
++
++def test_get_config_does_not_mutate_defaults():
++    path = _write_tmp("host=changed\n")
++    try:
++        get_config(path=path, environ={"CONFKIT_PORT": "9999"})
++        assert DEFAULTS["host"] == "localhost"
++        assert DEFAULTS["port"] == 8000
++    finally:
++        os.unlink(path)
