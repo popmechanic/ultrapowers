@@ -239,9 +239,7 @@
     padding: 0 18px 18px;
     font-size: 17px;
   }
-  .dag { flex-shrink: 0; }
-  .dag circle { fill: var(--ink-soft); }
-  .dag path, .dag line { stroke: var(--ink-faint); stroke-width: 1.5; fill: none; }
+  .mini { flex-shrink: 0; }
   @media (prefers-reduced-motion: reduce) { details.fixture summary .twist { transition: none; } }
   /* ---------- callouts ---------- */
   .note {
@@ -458,9 +456,14 @@
 
 <details class="fixture">
   <summary>
-    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
-      <circle cx="8" cy="6" r="3.5"/><circle cx="8" cy="20" r="3.5"/><circle cx="8" cy="34" r="3.5"/>
-      <circle cx="28" cy="6" r="3.5"/><circle cx="28" cy="20" r="3.5"/><circle cx="28" cy="34" r="3.5"/>
+    <svg class="mini" width="88" height="44" viewBox="0 0 160 80" aria-hidden="true">
+      <path d="M10,40 H20 M140,40 H150" stroke="#8a8a8a" stroke-width="1.5" fill="none"/>
+      <path d="M20,40 C30,40 31,12 42,12 H118 C129,12 130,40 140,40 M20,40 C30,40 31,23 42,23 H118 C129,23 130,40 140,40 M20,40 C30,40 31,34 42,34 H118 C129,34 130,40 140,40 M20,40 C30,40 31,46 42,46 H118 C129,46 130,40 140,40 M20,40 C30,40 31,57 42,57 H118 C129,57 130,40 140,40 M20,40 C30,40 31,68 42,68 H118 C129,68 130,40 140,40" stroke="#047857" stroke-width="1.6" fill="none"/>
+      <circle cx="20" cy="40" r="2.5" fill="#8a8a8a"/>
+      <circle cx="80" cy="12" r="3.5" fill="#047857"/><circle cx="80" cy="23" r="3.5" fill="#047857"/>
+      <circle cx="80" cy="34" r="3.5" fill="#047857"/><circle cx="80" cy="46" r="3.5" fill="#047857"/>
+      <circle cx="80" cy="57" r="3.5" fill="#047857"/><circle cx="80" cy="68" r="3.5" fill="#047857"/>
+      <circle cx="140" cy="40" r="4" fill="#7c3aed"/>
     </svg>
     <span><span class="fixname">wide</span><br><span class="fixsub">six tasks, zero dependencies — parallelism's best case</span></span>
     <span class="twist">›</span>
@@ -470,9 +473,16 @@
 
 <details class="fixture">
   <summary>
-    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
-      <circle cx="6" cy="20" r="3.5"/><circle cx="19" cy="20" r="3.5"/><circle cx="32" cy="20" r="3.5"/><circle cx="45" cy="20" r="3.5"/><circle cx="58" cy="20" r="3.5"/>
-      <line x1="9" y1="20" x2="15" y2="20"/><line x1="22" y1="20" x2="28" y2="20"/><line x1="35" y1="20" x2="41" y2="20"/><line x1="48" y1="20" x2="54" y2="20"/>
+    <svg class="mini" width="88" height="44" viewBox="0 0 160 80" aria-hidden="true">
+      <path d="M10,40 H20 M140,40 H150" stroke="#8a8a8a" stroke-width="1.5" fill="none"/>
+      <path d="M20,40 Q32,16 44,40 M44,40 Q56,16 68,40 M68,40 Q80,16 92,40 M92,40 Q104,16 116,40 M116,40 Q128,16 140,40" stroke="#047857" stroke-width="1.6" fill="none"/>
+      <circle cx="20" cy="40" r="2.5" fill="#8a8a8a"/>
+      <circle cx="32" cy="28" r="3.2" fill="#047857"/><circle cx="56" cy="28" r="3.2" fill="#047857"/>
+      <circle cx="80" cy="28" r="3.2" fill="#047857"/><circle cx="104" cy="28" r="3.2" fill="#047857"/>
+      <circle cx="128" cy="28" r="3.2" fill="#047857"/>
+      <circle cx="44" cy="40" r="2" fill="#7c3aed"/><circle cx="68" cy="40" r="2" fill="#7c3aed"/>
+      <circle cx="92" cy="40" r="2" fill="#7c3aed"/><circle cx="116" cy="40" r="2" fill="#7c3aed"/>
+      <circle cx="140" cy="40" r="4" fill="#7c3aed"/>
     </svg>
     <span><span class="fixname">chained</span><br><span class="fixsub">five tasks in a strict line — parallelism's worst case</span></span>
     <span class="twist">›</span>
@@ -482,13 +492,15 @@
 
 <details class="fixture">
   <summary>
-    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
-      <circle cx="8" cy="11" r="3.5"/><circle cx="8" cy="29" r="3.5"/>
-      <circle cx="28" cy="11" r="3.5"/><circle cx="28" cy="29" r="3.5"/>
-      <circle cx="45" cy="20" r="3.5"/><circle cx="59" cy="20" r="3.5"/>
-      <line x1="11.5" y1="11" x2="24" y2="11"/><line x1="11.5" y1="29" x2="24" y2="29"/>
-      <line x1="31" y1="13" x2="42" y2="18"/><line x1="31" y1="27" x2="42" y2="22"/>
-      <line x1="48.5" y1="20" x2="55" y2="20"/>
+    <svg class="mini" width="88" height="44" viewBox="0 0 160 80" aria-hidden="true">
+      <path d="M10,40 H20 M144,40 H150" stroke="#8a8a8a" stroke-width="1.5" fill="none"/>
+      <path d="M20,40 C27,40 28,26 35,26 H51 C60,26 62,40 66,40 M20,40 C27,40 28,54 35,54 H51 C60,54 62,40 66,40 M66,40 C72,40 73,28 79,28 H91 C99,28 101,40 104,40 M66,40 C72,40 73,52 79,52 H91 C99,52 101,40 104,40 M104,40 Q114,22 124,40 M124,40 Q134,22 144,40" stroke="#047857" stroke-width="1.6" fill="none"/>
+      <circle cx="20" cy="40" r="2.5" fill="#8a8a8a"/>
+      <circle cx="43" cy="26" r="3.5" fill="#047857"/><circle cx="43" cy="54" r="3.5" fill="#047857"/>
+      <circle cx="85" cy="28" r="3.5" fill="#047857"/><circle cx="85" cy="52" r="3.5" fill="#047857"/>
+      <circle cx="114" cy="31" r="3.2" fill="#047857"/><circle cx="134" cy="31" r="3.2" fill="#047857"/>
+      <circle cx="66" cy="40" r="2.5" fill="#7c3aed"/><circle cx="104" cy="40" r="2.5" fill="#7c3aed"/>
+      <circle cx="124" cy="40" r="2" fill="#7c3aed"/><circle cx="144" cy="40" r="4" fill="#7c3aed"/>
     </svg>
     <span><span class="fixname">mixed</span><br><span class="fixsub">a realistic diamond — some parallel, some sequential</span></span>
     <span class="twist">›</span>
@@ -498,13 +510,16 @@
 
 <details class="fixture">
   <summary>
-    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
-      <circle cx="14" cy="14" r="3.5"/><circle cx="14" cy="26" r="3.5"/>
-      <path d="M 24 12 C 34 6, 44 6, 52 12"/>
-      <path d="M 24 28 C 34 34, 44 34, 52 28"/>
-      <path d="M 24 16 L 52 24 M 24 24 L 52 16"/>
+    <svg class="mini" width="88" height="44" viewBox="0 0 160 80" aria-hidden="true">
+      <path d="M22,40 C32,40 34,16 48,16 H112 C126,16 128,40 138,40 M22,40 C32,40 34,64 48,64 H112 C126,64 128,40 138,40" stroke="#8a8a8a" stroke-width="1.2" fill="none" stroke-dasharray="3 3" opacity="0.4"/>
+      <path d="M10,40 H22 M138,40 H150" stroke="#8a8a8a" stroke-width="1.5" fill="none"/>
+      <path d="M22,40 Q51,16 80,40 M80,40 Q109,16 138,40" stroke="#047857" stroke-width="1.6" fill="none"/>
+      <circle cx="22" cy="40" r="2.5" fill="#8a8a8a"/>
+      <circle cx="51" cy="28" r="3.5" fill="#047857"/><circle cx="109" cy="28" r="3.5" fill="#047857"/>
+      <circle cx="80" cy="40" r="2.5" fill="#7c3aed"/>
+      <circle cx="138" cy="40" r="4" fill="#7c3aed"/>
     </svg>
-    <span><span class="fixname">degrade</span><br><span class="fixsub">two tasks that collide — testing graceful failure</span></span>
+    <span><span class="fixname">degrade</span><br><span class="fixsub">two tasks that collide — the fan it refused to run</span></span>
     <span class="twist">›</span>
   </summary>
   <div class="body"><p>Two tasks that both need to edit the same file. Running them in parallel would be a disaster, and the engine is supposed to notice this from the plan and quietly fall back to sequential mode rather than corrupting the work. It did, every time. This fixture exists to verify the engine knows when <em>not</em> to use its own party trick.</p></div>

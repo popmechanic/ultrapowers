@@ -112,3 +112,10 @@ def test_old_gantt_race_removed():
     assert 'class="track serial"' not in h
     assert "@keyframes grow" not in h
     assert 'id="replayBtn"' not in h
+
+
+def test_thumbnails_use_unified_grammar():
+    h = html()
+    assert h.count('class="mini"') == 4, "expected four grammar miniatures"
+    assert 'stroke-dasharray="3 3"' in h, "degrade ghost fan missing"
+    assert ".dag circle" not in h and ".dag path" not in h, "old .dag CSS lingers"
