@@ -5,16 +5,53 @@ import json
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 
+_WAIVER = "**Acceptance:** waived — inline test plan"
+
+
+def _with_waiver(path):
+    """Return a path to a copy of `path` that has an Acceptance waiver injected
+    immediately after the first line (plan title) if no **Acceptance:** line is
+    already present. Pre-existing fixtures that carry their own waiver or seal
+    are passed through unchanged. Returns the original path or a NamedTemporaryFile
+    path; caller is responsible for cleanup."""
+    text = pathlib.Path(path).read_text()
+    if "**Acceptance:**" in text:
+        return path, None  # already has one; no temp file needed
+    # Inject after the very first line so it sits at plan-header level
+    lines = text.splitlines(keepends=True)
+    insert_at = 1  # after line 0 (title)
+    injected = "".join(lines[:insert_at]) + _WAIVER + "\n\n" + "".join(lines[insert_at:])
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
+    tmp.write(injected)
+    tmp.close()
+    return tmp.name, tmp.name
+
 
 def compile_plan(path):
-    p = subprocess.run([sys.executable, str(COMPILER), str(path)],
-                       capture_output=True, text=True)
-    assert p.returncode == 0, p.stderr
-    return json.loads(p.stdout)
+    effective, tmp = _with_waiver(path)
+    try:
+        p = subprocess.run([sys.executable, str(COMPILER), str(effective)],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        return json.loads(p.stdout)
+    finally:
+        if tmp:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+
+
+def compile_plan_raw(path):
+    effective, tmp = _with_waiver(path)
+    try:
+        return subprocess.run([sys.executable, str(COMPILER), str(effective)],
+                              capture_output=True, text=True)
+    finally:
+        if tmp:
+            pathlib.Path(tmp).unlink(missing_ok=True)
 
 
 def test_marked_fixture_compiles_to_documented_waves():
@@ -51,6 +88,7 @@ def test_cycle_is_a_loud_error(tmp_path):
     plan = tmp_path / "cyclic.md"
     plan.write_text(
         "# Plan: Cycle\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
         "### Task A: first\n\n**Type:** implementation\n**Depends-on:** B\n\n"
         "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** write a\n\n"
         "### Task B: second\n\n**Type:** implementation\n**Depends-on:** A\n\n"
@@ -74,11 +112,6 @@ def test_small_plan_degrades_to_sequential(tmp_path):
     assert out["mode"] == "sequential"
     assert out["waves"] == [["1"]]
     assert out["degrade_reason"]
-
-
-def compile_plan_raw(path):
-    return subprocess.run([sys.executable, str(COMPILER), str(path)],
-                          capture_output=True, text=True)
 
 
 def test_marker_edge_orders_two_tasks_topologically(tmp_path):
@@ -1263,3 +1296,72 @@ def test_prose_reference_short_stem_requires_exact_or_basename(tmp_path):
 """)
     out = compile_plan(plan)
     assert {"from": "1", "to": "2", "why": "prose-reference"} in out["dag_edges"]
+
+
+# ---------------------------------------------------------------------------
+# Helpers for acceptance-marker tests
+# ---------------------------------------------------------------------------
+
+def compile_text(plan_markdown, tmp_path=None):
+    """Write plan_markdown to a temp file and compile it.
+
+    Returns (returncode, parsed_json_or_None, stderr_string).
+    """
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+        f.write(plan_markdown)
+        tmp = pathlib.Path(f.name)
+    p = subprocess.run([sys.executable, str(COMPILER), str(tmp)],
+                       capture_output=True, text=True)
+    tmp.unlink(missing_ok=True)
+    out = None
+    if p.returncode == 0:
+        try:
+            out = json.loads(p.stdout)
+        except json.JSONDecodeError:
+            pass
+    return p.returncode, out, p.stderr
+
+
+SEAL_LINE = "**Acceptance:** sealed a1b2c3d4e5f6 (sha256:" + "ab" * 32 + ")"
+WAIVE_LINE = "**Acceptance:** waived — fixture plan, exam not applicable"
+
+
+def _minimal_marked_plan(acceptance_line=None):
+    head = ["# Tiny Implementation Plan", ""]
+    if acceptance_line:
+        head += [acceptance_line, ""]
+    return "\n".join(head + [
+        "### Task 1: Thing",
+        "**Type:** implementation",
+        "**Depends-on:** none",
+        "**Files:**",
+        "- Create: `a.py`",
+        "- [ ] **Step 1: do it**",
+    ]) + "\n"
+
+
+def test_acceptance_sealed_parsed():
+    code, out, _ = compile_text(_minimal_marked_plan(SEAL_LINE))
+    assert code == 0
+    assert out["acceptance"] == {"mode": "sealed", "sealId": "a1b2c3d4e5f6",
+                                 "sha256": "ab" * 32}
+
+
+def test_acceptance_waived_parsed():
+    code, out, _ = compile_text(_minimal_marked_plan(WAIVE_LINE))
+    assert code == 0
+    assert out["acceptance"]["mode"] == "waived"
+    assert "not applicable" in out["acceptance"]["reason"]
+
+
+def test_marked_plan_without_acceptance_fails():
+    code, _, err = compile_text(_minimal_marked_plan())
+    assert code != 0
+    assert "Acceptance" in err and "sealed-acceptance" in err
+
+
+def test_fenced_acceptance_line_is_ignored():
+    plan = _minimal_marked_plan("```\n" + SEAL_LINE + "\n```")
+    code, _, err = compile_text(plan)
+    assert code != 0, "a fenced example must not count as the plan's seal"
