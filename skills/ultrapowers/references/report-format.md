@@ -81,8 +81,9 @@ When the workflow completes, the main agent renders the report as a concise huma
    unchanged. Empty runbook means the whole plan was waveable.
 11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, and any tier-misrank candidates (implementers above 1.5x the median turns of same-model peers). Advisory only: it informs the next run's tier assignments and never gates this one.
 
-This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
-approval). After the summary the agent names the integration branch and asks the human to choose:
+This pre-merge review is the **second and final gate** (after plan approval; the Step-3 wave plan
+is rendered for transparency but does not pause for approval). After the summary the agent names
+the integration branch and asks the human to choose:
 
 - **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand off; present the failure and offer Redirect instead. If true: `git checkout <integrationBranch>` (finishing-a-development-branch verifies tests on the CURRENT checkout, and the sweep classifies 'merged' against HEAD), then run `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` (the deterministic sweep — do not assume the merge agents' prompted cleanup ran; locked worktrees are kept by default (pass `--force` to remove them); concurrent runs in one repo remain unsupported), then proceed to `superpowers:finishing-a-development-branch`; the orchestrator carries the post-merge runbook and presents it again when that handoff completes.
 - **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.

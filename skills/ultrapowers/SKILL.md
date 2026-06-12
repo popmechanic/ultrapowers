@@ -9,8 +9,11 @@ allowed-tools: Workflow Skill Read Grep Glob Bash
 
 Autonomously implement an approved Superpowers plan via a **committed, parallel,
 worktree-isolated Dynamic Workflow**. This skill does not author a workflow at runtime: it
-validates the plan, computes the parallel wave plan, gets human approval of that wave plan,
-then launches the frozen `workflow.js` that ships with the skill. Each task runs in its own
+validates the plan, computes the parallel wave plan, renders that wave plan for transparency,
+then immediately launches the frozen `workflow.js` that ships with the skill. Choosing
+ultrapowers at the planning session's execution handoff (or invoking `/ultrapowers` on an
+approved plan) **is** the authorization to execute — there is no separate wave-plan approval
+pause. Each task runs in its own
 git worktree and passes an independent review (spec-compliance + code-quality in one pass by default;
 two passes under the `adversarial` profile) before its branch merges into a single integration branch. A human-readable report and a merge gate conclude the run.
 
@@ -35,8 +38,8 @@ project tree.
 **Preflight — confirm the Workflow tool exists on this surface.** The Workflow tool is an
 undocumented/experimental surface and is absent in some environments (e.g. Claude Code on the
 web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable, go directly to
-Step 6 and run the fallback — do **not** perform dependency analysis or ask the human to approve
-a wave plan that cannot launch.
+Step 6 and run the fallback — do **not** perform dependency analysis or render a wave plan that
+cannot launch.
 
 **Tested with superpowers 5.1.0.** Check the installed version (the directory name
 under `~/.claude/plugins/cache/claude-plugins-official/superpowers/`). A newer
@@ -81,8 +84,8 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
 - **Apply conservative defaults** and the **small-plan degrade** (exactly 1 implementation task, or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order). Two or more tasks with disjoint writes stay parallel; dependency edges still serialize them by topology within parallel mode.
 - **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope **and judgment-likelihood** (the risk classes in `references/reviewer-prompts.md` bump small-diff tasks to `standard`).
 - **Derive the run knobs yourself — do not ask the human to hand-tune them.** You read the plan and
-  run inside the repo, so you are the right party to set these; the human only approves them at the
-  Step-3 gate.
+  run inside the repo, so you are the right party to set these; they are shown in the Step-3
+  transparency render and audited at the pre-merge gate.
   - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
     monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
     built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
@@ -101,7 +104,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
 
 ---
 
-## Step 3 — Present the Wave Plan and Get Approval (human gate)
+## Step 3 — Render the Wave Plan (transparency, no pause)
 
 Render the transparency block from Step 2 for the human:
 
@@ -109,17 +112,24 @@ Render the transparency block from Step 2 for the human:
 2. **Dependency edges** — the edges that shaped the ordering.
 3. **Mode** — `parallel` or `sequential` (with the degrade reason if sequential).
 4. **Derived knobs** — the test command you'll use, which tasks get `adversarial` vs `lean` review,
-   and any tier overrides. Show them so the human can veto a wrong guess — they approve these, they
-   do not author them.
+   and any tier overrides. Show them so the human can see what you derived — they did not author
+   these.
 5. **Dispositions** — which tasks were excluded as `release`/`manual` (the post-merge
    runbook), which gates were compiled into run config, any superseded ordering prose
-   or marker conflicts. The human approves this **interpretation** of the plan, not
-   just the grouping — a wrong classification gets caught here, before any tokens are
-   spent.
+   or marker conflicts. This is the rendered **interpretation** of the plan, not
+   just the grouping — it reappears with the final report so a wrong classification
+   is auditable at the pre-merge gate.
 
-Then ask the human to **approve the wave plan or revise the plan and re-run**. Do **not** launch
-the workflow without approval. This is the only mid-process gate between plan approval and the
-pre-merge review, and it is where a bad parallelization guess gets caught before any tokens are spent.
+Then proceed **directly to Step 4 — do not ask for approval and do not pause.** The human already
+authorized execution: they approved the plan itself, then selected ultrapowers as the execution
+engine at the planning session's handoff (or invoked `/ultrapowers` on the approved plan). The
+render exists so they can audit the interpretation, not so they can approve it. There is no
+window to amend the wave plan before launch: if the human sees it is wrong, the recourse is to
+stop the run, revise the plan document, and re-invoke `/ultrapowers`. A bad parallelization or
+classification guess is otherwise caught at the pre-merge review (Step 5), which remains the
+run's human gate. The only Step-2/3 findings that stop the run
+are a dependency cycle or an inability to extract tasks — surface those and stop; everything else
+launches.
 
 ---
 
@@ -162,7 +172,7 @@ args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependenc
          edges, baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
 ```
 
-Pass the approved `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
+Pass the computed `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
 recorded `dependencyEdges`, plus the knobs you **derived in Step 2** (all optional; omitting them
 preserves standard behavior):
 
@@ -248,7 +258,7 @@ silently leave it implementing on main; it requires explicit consent for that.
 
 ## Autonomy Posture
 
-Operate with catastrophe-only escalation between the wave-plan gate and the pre-merge gate. Mid-run
+Operate with catastrophe-only escalation from the Step-3 render until the pre-merge gate. Mid-run
 questions are not possible — the workflow is headless. Handle ambiguity by making a conservative,
 logged judgment call surfaced in the final report under `judgmentCalls`. Blocked tasks are never
 silently dropped: they appear in the report as failed tasks, blocked waves, or unfinished entries. The only events that
@@ -259,7 +269,7 @@ revision) or an inability to create the integration branch.
 
 ## Resources
 
-- `references/dependency-analysis.md` — plan → DAG → waves, cycle detection, small-plan degrade, the transparency block rendered at the Step 3 gate.
+- `references/dependency-analysis.md` — plan → DAG → waves, cycle detection, small-plan degrade, the transparency block rendered at Step 3.
 - `references/plan-markers.md` — the parallel-execution marker contract (`Type:`, `Depends-on:`), the worktree-pure task contract, classification heuristics for unmarked plans, and the compile-time obligations (post-merge runbook, preamble inlining, fence-aware extraction).
 - `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `workflow.js`.
 - `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `workflow.js`.

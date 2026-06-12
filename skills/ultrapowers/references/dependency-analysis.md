@@ -131,10 +131,10 @@ If either condition is true:
 
 ## Transparency: Computed Output
 
-This block is what the main agent renders at the **Step-3 wave-plan approval gate** (see `SKILL.md`)
-so the human can sanity-check the parallelization before launch. The waves, dependency edges, and
-post-merge runbook reappear in the final report; the full block itself is rendered only at the
-Step-3 gate. Record the following:
+This block is what the main agent renders at the **Step-3 transparency render** (see `SKILL.md`)
+so the human can audit the parallelization — launch follows immediately, without an approval
+pause. The waves, dependency edges, and post-merge runbook reappear in the final report; the full
+block itself is rendered only at Step 3. Record the following:
 
 ```
 dag_edges:
@@ -166,4 +166,4 @@ mode: parallel   # or "sequential" if small-plan degrade applied
 degrade_reason:  # populated only in sequential mode
 ```
 
-Render this block verbatim at the Step-3 gate so the human can audit the scheduling decisions without re-running the analysis (the waves, edges, and runbook then reappear in the final report, per the note above).
+Render this block verbatim at Step 3 so the human can audit the scheduling decisions without re-running the analysis (the waves, edges, and runbook then reappear in the final report, per the note above).

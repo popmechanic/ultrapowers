@@ -1,5 +1,5 @@
 """The orchestrator SKILL.md must route the marker contract through its three
-human-facing steps: classify at Step 2, approve dispositions at Step 3, render
+human-facing steps: classify at Step 2, render dispositions at Step 3, render
 the post-merge runbook at Step 5."""
 import pathlib
 import re
@@ -13,7 +13,19 @@ def test_orchestrator_wires_the_contract_through_its_gates():
     assert "references/plan-markers.md" in text
     assert "Classify first" in text
     assert "post-merge runbook" in text
-    assert "dispositions" in text.lower()   # Step 3 approves the interpretation
+    assert "dispositions" in text.lower()   # Step 3 renders the interpretation
+
+
+def test_orchestrator_step3_renders_without_pausing():
+    # Feature decision 2026-06-12: selecting ultrapowers at the planning
+    # handoff (or invoking /ultrapowers) IS the authorization — Step 3 renders
+    # the wave plan for transparency and launches immediately. Guard against
+    # the approval pause drifting back in.
+    text = ORCHESTRATOR.read_text()
+    assert "do not ask for approval" in text
+    assert "Get Approval" not in text        # the old Step-3 heading
+    step5 = text[text.index("## Step 5"):]
+    assert "Approve" in step5                # the pre-merge gate still asks
 
 
 def test_orchestrator_launches_by_meta_name():

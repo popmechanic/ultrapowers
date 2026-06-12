@@ -52,3 +52,8 @@ def test_ultraplan_overrides_the_execution_header_and_handoff():
     assert "REQUIRED SUB-SKILL" in text          # quotes the upstream header it replaces
     assert "ultrapowers:ultrapowers" in text     # names the parallel executor
     assert "Execution Handoff" in text           # overrides writing-plans' two-option menu
+    # Anti-drift pin for the no-pause contract (2026-06-12): the handoff's
+    # option 1 must keep saying that selecting ultrapowers authorizes
+    # execution with no further approval pause (mirrors SKILL.md Step 3).
+    assert "authorizes execution" in text
+    assert "without a further approval pause" in text
