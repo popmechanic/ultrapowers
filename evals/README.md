@@ -1,0 +1,145 @@
+# ultrapowers evals
+
+A controlled comparison of plan-execution engines across **cost**, **clock time**, and
+**quality**. Designed to answer three questions with attribution, not just one headline:
+
+1. Is ultrapowers better than the serial superpowers baseline? (A vs B)
+2. What does model tiering cost in quality, at constant orchestration? (B vs C)
+3. What does the orchestration alone buy, at constant model spend? (A vs C)
+
+## Conditions
+
+| ID | Engine | Models |
+|----|--------|--------|
+| **A** | superpowers serial executor (`superpowers:subagent-driven-development`) | session defaults (run from your normal frontier-model session — this is the incumbent workflow, priced as you actually use it) |
+| **B** | `/ultrapowers` as shipped | tiered: haiku merges, sonnet implementers, opus reviewers/fixes |
+| **C** | `/ultrapowers`, all-frontier execution | at the Step-3 wave-plan gate, revise derived knobs to `tierOverrides: {cheap: 'opus', standard: 'opus'}` |
+
+All three conditions consume the **same frozen plan document** from the same baseline
+commit. Plans carry `**Type:**`/`**Depends-on:**` markers, which sequential executors
+ignore gracefully (see `skills/ultrapowers/references/plan-markers.md`).
+
+## Fixtures
+
+Four purpose-built fixture repos under `evals/fixtures/`, one per DAG regime:
+
+| Fixture | Regime | Expected wave shape (B/C) |
+|---------|--------|---------------------------|
+| `wide` | 6 independent tasks — parallelism's best case | 1 wave of 6 |
+| `chained` | 5 tasks in a strict dependency line — parallelism's worst case | 5 waves of 1 |
+| `mixed` | realistic diamond DAG, 6 tasks | `[1,4] → [2,3] → [5] → [6]` |
+| `degrade` | 2 tasks with fully overlapping writes — triggers sequential fallback | sequential mode |
+
+Each fixture contains:
+
+- `project/` — a small working Python project with a **green baseline test suite**
+- `plan.md` — the frozen, marked plan (never edit between runs)
+- `acceptance/` — **held-out acceptance tests**, written alongside the plan, never
+  shown to any executor. Copied in only at scoring time. This is the primary,
+  un-gameable quality signal.
+
+Verify every plan compiles to its intended shape before running anything:
+
+```sh
+python3 skills/ultrapowers/scripts/compile_plan.py evals/fixtures/wide/plan.md | python3 -m json.tool
+```
+
+## The matrix
+
+4 fixtures × 3 conditions × 3 repetitions = **36 runs**. Agentic runs are heavy-tailed:
+report medians with ranges, never single runs. Estimated budget: **$600–900** total
+(B ≈ $10–18/run, A ≈ $20–30, C ≈ $25–35; the degrade fixture runs much cheaper).
+
+Run IDs follow `<fixture>-<condition>-<rep>`, e.g. `wide-B-2`.
+
+## Protocol — one run, start to finish
+
+1. **Prepare** a fresh working repo (acceptance tests are NOT copied in):
+
+   ```sh
+   evals/scripts/prepare_run.sh wide /tmp/eval-runs/wide-B-1
+   ```
+
+2. **Execute.** Open a Claude Code session **in the run directory** and start a timer
+   (prepare records a start timestamp automatically; `score_run.py` uses it unless you
+   override).
+   - Condition A: invoke `superpowers:subagent-driven-development` on `docs/plans/plan.md`.
+   - Condition B: `/ultrapowers docs/plans/plan.md`; approve the wave plan as proposed.
+   - Condition C: `/ultrapowers docs/plans/plan.md`; at the Step-3 gate, revise knobs to
+     `tierOverrides: {cheap: 'opus', standard: 'opus'}`, then approve.
+
+   Stop the clock at the **pre-merge gate** (ultrapowers) or when the executor reports
+   the plan complete (serial). Do not approve the merge / finish the branch — scoring
+   happens on the integration branch.
+
+3. **Record cost.** Run `/cost` in the session and note the USD figure for this session
+   (plus any subagent spend it reports).
+
+4. **Score:**
+
+   ```sh
+   python3 evals/scripts/score_run.py wide /tmp/eval-runs/wide-B-1 \
+       --condition B --rep 1 --cost-usd 14.20 \
+       --fix-rounds 1 --blocked-tasks 0 --redirects 0
+   ```
+
+   This runs the fixture's own suite, then the held-out acceptance suite, captures the
+   `eval-baseline...HEAD` diff for the judge, and appends a row to
+   `evals/results/runs.jsonl`. Pull `--fix-rounds` / `--blocked-tasks` from the
+   ultrapowers end-of-run report (use 0 for condition A unless the executor reports
+   retries).
+
+## Metrics
+
+| Layer | Metric | Source |
+|-------|--------|--------|
+| Cost | USD per run | `/cost`, recorded at session end |
+| Clock | seconds, launch → pre-merge gate | prepare timestamp → scoring (or `--wall-clock-s`) |
+| Quality 1 | held-out acceptance pass rate | `score_run.py` (primary quality number) |
+| Quality 2 | blinded pairwise judge win rate | `judge.py` (frozen rubric, randomized order) |
+| Quality 3 | reliability counters: fix rounds, blocked tasks, human redirects | end-of-run report |
+
+## Judging
+
+Automated, blinded, pairwise:
+
+```sh
+export ANTHROPIC_API_KEY=...
+python3 evals/scripts/judge.py --fixture wide --cond-a A --cond-b B
+```
+
+The judge (a fresh-context `claude-opus-4-8`) sees the plan and two anonymized diffs in
+randomized order and returns a structured verdict on four criteria: correctness, plan
+fidelity, scope discipline, code quality. Results append to `evals/results/judgments.jsonl`.
+
+**Human calibration pass** (the vibe check, made rigorous): export a blinded sample,
+judge it yourself without peeking at the key, then reconcile:
+
+```sh
+python3 evals/scripts/judge.py --export-human 10   # writes evals/results/human/pair_NN/
+# ... fill in each pair_NN/VERDICT.txt with 1, 2, or tie ...
+python3 evals/scripts/judge.py --score-human       # agreement vs the LLM judge
+```
+
+Do not open `evals/results/human/KEY.json` until your verdicts are in.
+
+## Reporting
+
+```sh
+python3 evals/scripts/report.py
+```
+
+Emits the per-fixture × condition table (median cost, median clock, acceptance pass
+rate, suite green rate, fix rounds) plus judge win rates and human–judge agreement.
+
+## Validity notes
+
+- The plan documents and acceptance tests are frozen **before** the first run; never
+  edit them mid-matrix. If a plan turns out to be broken, fix it, bump the fixture, and
+  restart that fixture's cells.
+- Condition A executes `gate` tasks inline (sequential executors treat every task as
+  ordinary); ultrapowers compiles them into run config. Same verification either way.
+- Wall clock is sensitive to engine load and human latency at gates; treat it as
+  indicative, cost and acceptance rate as the hard numbers.
+- One eval, four fixtures — this measures *this* task distribution. Real-repo validity
+  is a follow-up, not a freebie.
