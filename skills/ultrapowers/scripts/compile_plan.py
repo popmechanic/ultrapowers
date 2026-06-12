@@ -353,6 +353,34 @@ def classify(t):
     return "implementation", True
 
 
+ACCEPT_SEALED = re.compile(
+    r"^\*\*Acceptance:\*\*\s*sealed\s+([0-9a-f]{8,40})\s*\(sha256:([0-9a-f]{64})\)\s*$",
+    re.I)
+ACCEPT_WAIVED = re.compile(r"^\*\*Acceptance:\*\*\s*waived\s*[—–-]\s*(.+?)\s*$", re.I)
+
+
+def parse_acceptance(text):
+    """Plan-level sealed-acceptance marker.
+
+    Fence-aware scan of the whole document (the line conventionally sits in
+    the plan header, but position is not load-bearing). Returns
+    {"mode": "sealed", "sealId", "sha256"} | {"mode": "waived", "reason"}
+    | {"mode": "missing"}.
+    Spec: docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md
+    """
+    for line, in_fence in _fence_aware_lines(text):
+        if in_fence:
+            continue
+        s = line.strip()
+        m = ACCEPT_SEALED.match(s)
+        if m:
+            return {"mode": "sealed", "sealId": m.group(1), "sha256": m.group(2)}
+        m = ACCEPT_WAIVED.match(s)
+        if m:
+            return {"mode": "waived", "reason": m.group(1)}
+    return {"mode": "missing"}
+
+
 # Minimum module-stem length for attribute-style prose matching (`schema.User`).
 # One- and two-letter stems (`a.txt` -> `a.`) match too much English to trust.
 PROSE_REF_MIN_STEM = 3
@@ -725,6 +753,16 @@ def main(argv=None):
                  "the none assertion is ignored"}
         for t in tasks if t.get("deps_mixed")]
 
+    acceptance = parse_acceptance(plan_text)
+    marked = any(not t.get("heuristic") for t in out_tasks)
+    if acceptance["mode"] == "missing" and marked:
+        sys.exit("error: marked plan has no **Acceptance:** line (sealed or waived). "
+                 "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
+                 "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
+    if acceptance["mode"] == "missing":
+        type_conflicts.append({"task": "", "edge": "",
+                               "note": "acceptance: missing (unmarked plan — warning only)"})
+
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     if not impl:
         # Bug D: a gates/release/manual-only plan compiles to waves: [] —
@@ -765,6 +803,7 @@ def main(argv=None):
         "waves": waves,
         "mode": mode,
         "degrade_reason": degrade,
+        "acceptance": acceptance,
     }, indent=2))
     return 0
 

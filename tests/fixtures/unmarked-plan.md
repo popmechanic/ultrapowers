@@ -4,6 +4,8 @@
 > fence-aware splitting. Only Task 5 carries a marker — a deliberately wrong
 > `Depends-on: none` that the file edge must override.
 
+**Acceptance:** waived — compiler test fixture
+
 ---
 
 ### Task 1: Create alpha
