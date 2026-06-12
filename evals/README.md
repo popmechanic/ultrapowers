@@ -122,6 +122,20 @@ further model tiering stretches one week of a Max plan**.
    ultrapowers end-of-run report (use 0 for condition A unless the executor reports
    retries).
 
+### Automated execution (protocol amendment, 2026-06-13)
+
+Conditions B and C may run unattended via `evals/scripts/night_runner.sh`
+(serial queue, headless `claude -p` sessions) with two approved amendments:
+(1) the human gates are scripted — the run receives standing answers (approve
+the wave plan as proposed; C revises `tierOverrides` first; stop at the
+pre-merge gate without merging) identical in content to the human-gated runs;
+(2) per-run `weekly_pct` is null — cost comes from `extract_tokens.py`
+(validated against the client's own accounting) and a single before/after
+`/usage` snapshot pair reconciles each batch. Automated rows are tagged
+`automated headless run` in notes. `autoscore.py` performs the mechanical
+scoring. Wall clock = headless process duration. Runs stay serial — parallel
+runs would contaminate the clock metric through contention.
+
 ## Metrics
 
 | Layer | Metric | Source |
