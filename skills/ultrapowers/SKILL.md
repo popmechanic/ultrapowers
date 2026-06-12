@@ -203,7 +203,7 @@ integration branch, wave plan, per-task status + review verdict, test result, ju
 anything unfinished or flagged by the completeness critic. Then render the **post-merge runbook** — the `release`/`manual` tasks excluded at
 compile time, verbatim and in document order — so nothing classified out of the run
 is forgotten. Then name the integration branch and
-present two choices:
+present these choices:
 
 - **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand
   off; present the failure and offer Redirect instead (finishing-a-development-branch's
@@ -217,6 +217,7 @@ present two choices:
   remain unsupported). Then proceed
   to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
   the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
+- **Salvage** — offer this whenever the report carries `failed` tasks or dep-blocked `unfinished` entries; it is Redirect with the corrective instructions derived from the report instead of typed by the human. Build the new `waves` array mechanically: every `failed` task plus every dep-blocked or cascade-blocked task from `unfinished`, preserving their original relative wave order and the Step-2 edges among them. To each failed task's `body`, append a `PRIOR ATTEMPT` note carrying: its kept branch and HEAD sha from `tasks[]`, the blocking issues from its `notes`, and any completeness-critic finding that names the task — plus the instruction that when the prior branch already contains correct work, the implementer should pull that content in (`git diff <sha>` / `git checkout <sha> -- <path>` against the named commit; BASE stays the integration HEAD) instead of reimplementing from scratch. Blocked tasks ride verbatim. Present the constructed salvage waves to the human for approval, then relaunch per the Redirect mechanics below (`resume: true`, same `integrationBranch`) and return to this gate when it completes.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
   corrective instructions appended to each task `body`), and relaunch the saved workflow
