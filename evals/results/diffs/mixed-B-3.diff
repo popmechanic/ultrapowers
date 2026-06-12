@@ -1,0 +1,731 @@
+diff --git a/apistub/app.py b/apistub/app.py
+new file mode 100644
+index 0000000..2d6e39f
+--- /dev/null
++++ b/apistub/app.py
+@@ -0,0 +1,36 @@
++"""Router for the apistub API."""
++import json
++import re
++from typing import Optional, Tuple
++
++from apistub.handlers import create_user, get_user
++from apistub.store import MemoryStore
++
++_GET_USER_RE = re.compile(r"^/users/(\d+)$")
++
++_NO_ROUTE = (404, json.dumps({"errors": ["no route"]}))
++
++
++def route(
++    store: MemoryStore,
++    method: str,
++    path: str,
++    payload: Optional[dict] = None,
++) -> Tuple[int, str]:
++    """Dispatch *method* + *path* to the appropriate handler.
++
++    Routes:
++        POST  /users          → create_user(store, payload)
++        GET   /users/<digits> → get_user(store, int(<digits>))
++        *     *               → (404, {"errors": ["no route"]})
++    """
++    if method == "POST" and path == "/users":
++        return create_user(store, payload)
++
++    if method == "GET":
++        match = _GET_USER_RE.fullmatch(path)
++        if match:
++            user_id = int(match.group(1))
++            return get_user(store, user_id)
++
++    return _NO_ROUTE
+diff --git a/apistub/handlers.py b/apistub/handlers.py
+new file mode 100644
+index 0000000..ac04966
+--- /dev/null
++++ b/apistub/handlers.py
+@@ -0,0 +1,34 @@
++"""Request handlers for the apistub users API."""
++import json
++from typing import Tuple
++
++from apistub.serialize import to_json
++from apistub.store import MemoryStore
++from apistub.validate import validate_payload
++
++
++def create_user(store: MemoryStore, payload: dict) -> Tuple[int, str]:
++    """Validate *payload* and, if valid, add a user to *store*.
++
++    Returns:
++        ``(201, to_json(user))`` on success.
++        ``(400, json.dumps({"errors": errors}))`` when validation fails.
++    """
++    errors = validate_payload(payload)
++    if errors:
++        return (400, json.dumps({"errors": errors}))
++    user = store.add(name=payload["name"], email=payload["email"])
++    return (201, to_json(user))
++
++
++def get_user(store: MemoryStore, user_id: int) -> Tuple[int, str]:
++    """Look up a user by *user_id* in *store*.
++
++    Returns:
++        ``(200, to_json(user))`` when found.
++        ``(404, json.dumps({"errors": ["not found"]}))`` when missing.
++    """
++    user = store.get(user_id)
++    if user is None:
++        return (404, json.dumps({"errors": ["not found"]}))
++    return (200, to_json(user))
+diff --git a/apistub/schema.py b/apistub/schema.py
+new file mode 100644
+index 0000000..12de8b9
+--- /dev/null
++++ b/apistub/schema.py
+@@ -0,0 +1,11 @@
++"""Schema definitions for the apistub users API."""
++from dataclasses import dataclass
++
++FIELDS = {"name": str, "email": str}
++
++
++@dataclass
++class User:
++    id: int
++    name: str
++    email: str
+diff --git a/apistub/serialize.py b/apistub/serialize.py
+new file mode 100644
+index 0000000..2900400
+--- /dev/null
++++ b/apistub/serialize.py
+@@ -0,0 +1,14 @@
++"""Serialization utilities for apistub."""
++import json
++
++from apistub.schema import User
++
++
++def to_json(user: User) -> str:
++    """Serialize a User to a JSON string.
++
++    Keys are in insertion order: id, name, email.
++    Uses default separators (', ' and ': ').
++    """
++    data = {"id": user.id, "name": user.name, "email": user.email}
++    return json.dumps(data)
+diff --git a/apistub/store.py b/apistub/store.py
+new file mode 100644
+index 0000000..b7b2f4f
+--- /dev/null
++++ b/apistub/store.py
+@@ -0,0 +1,32 @@
++"""In-memory user store."""
++from __future__ import annotations
++
++from typing import List, Optional
++
++from apistub import schema
++
++
++class MemoryStore:
++    """Thread-unsafe in-memory store for User objects."""
++
++    def __init__(self) -> None:
++        self._users: List[schema.User] = []
++        self._next_id: int = 1
++
++    def add(self, name: str, email: str) -> schema.User:
++        """Create a User with an auto-incrementing id and store it."""
++        user = schema.User(id=self._next_id, name=name, email=email)
++        self._users.append(user)
++        self._next_id += 1
++        return user
++
++    def get(self, user_id: int) -> Optional[schema.User]:
++        """Return the User with the given id, or None if not found."""
++        for user in self._users:
++            if user.id == user_id:
++                return user
++        return None
++
++    def list(self) -> List[schema.User]:
++        """Return all users in insertion order."""
++        return list(self._users)
+diff --git a/apistub/validate.py b/apistub/validate.py
+new file mode 100644
+index 0000000..4ea11cd
+--- /dev/null
++++ b/apistub/validate.py
+@@ -0,0 +1,27 @@
++"""Payload validation for the apistub users API."""
++from apistub import schema
++
++
++def validate_payload(payload: dict) -> list[str]:
++    """Validate *payload* against the declared schema fields.
++
++    Returns a list of error strings in the order they are detected:
++    - ``"missing: <key>"`` when a required field is absent.
++    - ``"wrong type: <key>"`` when a field is present but has the wrong type.
++    - ``"invalid: email"`` when ``email`` is a ``str`` but contains no ``"@"``.
++    An empty list means the payload is valid.
++    Unknown keys are silently ignored.
++    """
++    errors: list[str] = []
++
++    for key, expected_type in schema.FIELDS.items():
++        if key not in payload:
++            errors.append(f"missing: {key}")
++        elif not isinstance(payload[key], expected_type):
++            errors.append(f"wrong type: {key}")
++
++    email = payload.get("email")
++    if isinstance(email, str) and "@" not in email:
++        errors.append("invalid: email")
++
++    return errors
+diff --git a/tests/test_app.py b/tests/test_app.py
+new file mode 100644
+index 0000000..eb95ded
+--- /dev/null
++++ b/tests/test_app.py
+@@ -0,0 +1,150 @@
++"""Tests for apistub.app.route."""
++import json
++
++import pytest
++
++from apistub.store import MemoryStore
++
++
++def make_store():
++    return MemoryStore()
++
++
++class TestRoutePostUsers:
++    def test_post_users_creates_user(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "POST", "/users", {"name": "Alice", "email": "alice@example.com"})
++        assert status == 201
++        data = json.loads(body)
++        assert data["name"] == "Alice"
++        assert data["email"] == "alice@example.com"
++        assert "id" in data
++
++    def test_post_users_invalid_payload_returns_400(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "POST", "/users", {"name": "Alice"})
++        assert status == 400
++        data = json.loads(body)
++        assert "errors" in data
++
++    def test_post_users_delegates_to_create_user(self):
++        """route POST /users must delegate to create_user, not re-implement logic."""
++        from apistub.app import route
++
++        store = make_store()
++        payload = {"name": "Bob", "email": "bob@example.com"}
++        status, body = route(store, "POST", "/users", payload)
++        assert status == 201
++        assert len(store.list()) == 1
++
++
++class TestRouteGetUser:
++    def test_get_user_returns_200_for_existing_user(self):
++        from apistub.app import route
++        from apistub.handlers import create_user
++
++        store = make_store()
++        _, body = create_user(store, {"name": "Alice", "email": "alice@example.com"})
++        user_id = json.loads(body)["id"]
++
++        status, get_body = route(store, "GET", f"/users/{user_id}")
++        assert status == 200
++        data = json.loads(get_body)
++        assert data["id"] == user_id
++        assert data["name"] == "Alice"
++
++    def test_get_user_returns_404_for_missing_user(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "GET", "/users/9999")
++        assert status == 404
++        data = json.loads(body)
++        assert data["errors"] == ["not found"]
++
++    def test_get_user_converts_path_segment_to_int(self):
++        from apistub.app import route
++        from apistub.handlers import create_user
++
++        store = make_store()
++        _, body = create_user(store, {"name": "Carol", "email": "carol@example.com"})
++        user_id = json.loads(body)["id"]
++
++        # path segment is a string of digits; route must convert to int
++        status, _ = route(store, "GET", f"/users/{user_id}")
++        assert status == 200
++
++    def test_get_user_multi_digit_id(self):
++        from apistub.app import route
++        from apistub.handlers import create_user
++
++        store = make_store()
++        for i in range(12):
++            create_user(store, {"name": f"User{i}", "email": f"user{i}@example.com"})
++        _, body = create_user(store, {"name": "Last", "email": "last@example.com"})
++        user_id = json.loads(body)["id"]
++
++        status, get_body = route(store, "GET", f"/users/{user_id}")
++        assert status == 200
++        data = json.loads(get_body)
++        assert data["id"] == user_id
++
++
++class TestRouteNoRoute:
++    def test_unknown_path_returns_404_no_route(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "GET", "/unknown")
++        assert status == 404
++        data = json.loads(body)
++        assert data == {"errors": ["no route"]}
++
++    def test_delete_users_returns_404_no_route(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "DELETE", "/users")
++        assert status == 404
++        data = json.loads(body)
++        assert data == {"errors": ["no route"]}
++
++    def test_get_users_no_id_returns_404_no_route(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "GET", "/users")
++        assert status == 404
++        data = json.loads(body)
++        assert data == {"errors": ["no route"]}
++
++    def test_put_users_id_returns_404_no_route(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "PUT", "/users/1")
++        assert status == 404
++        data = json.loads(body)
++        assert data == {"errors": ["no route"]}
++
++    def test_no_route_body_is_json_string(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "PATCH", "/users/1/settings")
++        assert status == 404
++        assert isinstance(body, str)
++        json.loads(body)  # should not raise
++
++    def test_get_users_non_digit_segment_returns_404_no_route(self):
++        from apistub.app import route
++
++        store = make_store()
++        status, body = route(store, "GET", "/users/abc")
++        assert status == 404
++        data = json.loads(body)
++        assert data == {"errors": ["no route"]}
+diff --git a/tests/test_handlers.py b/tests/test_handlers.py
+new file mode 100644
+index 0000000..544d0c9
+--- /dev/null
++++ b/tests/test_handlers.py
+@@ -0,0 +1,122 @@
++"""Tests for apistub.handlers."""
++import json
++
++import pytest
++
++from apistub.store import MemoryStore
++
++
++def make_store():
++    return MemoryStore()
++
++
++class TestCreateUser:
++    def test_valid_payload_returns_201(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {"name": "Alice", "email": "alice@example.com"})
++        assert status == 201
++        data = json.loads(body)
++        assert data["name"] == "Alice"
++        assert data["email"] == "alice@example.com"
++        assert "id" in data
++
++    def test_valid_payload_stores_user(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        create_user(store, {"name": "Bob", "email": "bob@example.com"})
++        assert len(store.list()) == 1
++        user = store.list()[0]
++        assert user.name == "Bob"
++        assert user.email == "bob@example.com"
++
++    def test_missing_field_returns_400(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {"name": "Alice"})
++        assert status == 400
++        data = json.loads(body)
++        assert "errors" in data
++        assert any("missing" in e for e in data["errors"])
++
++    def test_wrong_type_returns_400(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {"name": 123, "email": "x@y.com"})
++        assert status == 400
++        data = json.loads(body)
++        assert "errors" in data
++        assert any("wrong type" in e for e in data["errors"])
++
++    def test_invalid_email_returns_400(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {"name": "Alice", "email": "notanemail"})
++        assert status == 400
++        data = json.loads(body)
++        assert "errors" in data
++        assert any("invalid" in e for e in data["errors"])
++
++    def test_invalid_payload_does_not_store_user(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        create_user(store, {"name": "Alice"})
++        assert len(store.list()) == 0
++
++    def test_body_is_json_string(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {"name": "Alice", "email": "alice@example.com"})
++        assert isinstance(body, str)
++        json.loads(body)  # should not raise
++
++    def test_error_body_is_json_string(self):
++        from apistub.handlers import create_user
++
++        store = make_store()
++        status, body = create_user(store, {})
++        assert isinstance(body, str)
++        json.loads(body)  # should not raise
++
++
++class TestGetUser:
++    def test_existing_user_returns_200(self):
++        from apistub.handlers import create_user, get_user
++
++        store = make_store()
++        _, body = create_user(store, {"name": "Alice", "email": "alice@example.com"})
++        user_id = json.loads(body)["id"]
++
++        status, body = get_user(store, user_id)
++        assert status == 200
++        data = json.loads(body)
++        assert data["id"] == user_id
++        assert data["name"] == "Alice"
++        assert data["email"] == "alice@example.com"
++
++    def test_missing_user_returns_404(self):
++        from apistub.handlers import get_user
++
++        store = make_store()
++        status, body = get_user(store, 9999)
++        assert status == 404
++        data = json.loads(body)
++        assert "errors" in data
++        assert data["errors"] == ["not found"]
++
++    def test_get_user_body_is_json_string(self):
++        from apistub.handlers import create_user, get_user
++
++        store = make_store()
++        _, body = create_user(store, {"name": "Alice", "email": "alice@example.com"})
++        user_id = json.loads(body)["id"]
++        _, get_body = get_user(store, user_id)
++        assert isinstance(get_body, str)
++        json.loads(get_body)  # should not raise
+diff --git a/tests/test_schema.py b/tests/test_schema.py
+new file mode 100644
+index 0000000..356b2c1
+--- /dev/null
++++ b/tests/test_schema.py
+@@ -0,0 +1,27 @@
++import dataclasses
++from apistub.schema import User, FIELDS
++
++
++def test_user_is_dataclass():
++    assert dataclasses.is_dataclass(User)
++
++
++def test_user_fields():
++    fields = {f.name: f.type for f in dataclasses.fields(User)}
++    assert fields == {"id": int, "name": str, "email": str}
++
++
++def test_user_instantiation():
++    u = User(id=1, name="Alice", email="alice@example.com")
++    assert u.id == 1
++    assert u.name == "Alice"
++    assert u.email == "alice@example.com"
++
++
++def test_fields_constant_keys_and_types():
++    assert FIELDS == {"name": str, "email": str}
++
++
++def test_fields_constant_insertion_order():
++    keys = list(FIELDS.keys())
++    assert keys == ["name", "email"], "name must come before email"
+diff --git a/tests/test_serialize.py b/tests/test_serialize.py
+new file mode 100644
+index 0000000..7e8a463
+--- /dev/null
++++ b/tests/test_serialize.py
+@@ -0,0 +1,53 @@
++"""Tests for apistub.serialize.to_json."""
++import json
++
++import pytest
++
++from apistub.schema import User
++from apistub.serialize import to_json
++
++
++def test_to_json_basic():
++    user = User(1, "Ada", "ada@ex.com")
++    result = to_json(user)
++    assert result == '{"id": 1, "name": "Ada", "email": "ada@ex.com"}'
++
++
++def test_to_json_returns_string():
++    user = User(42, "Bob", "bob@example.com")
++    result = to_json(user)
++    assert isinstance(result, str)
++
++
++def test_to_json_key_order():
++    user = User(7, "Carol", "carol@test.org")
++    result = to_json(user)
++    parsed = json.loads(result)
++    assert list(parsed.keys()) == ["id", "name", "email"]
++
++
++def test_to_json_values():
++    user = User(99, "Dave", "dave@place.net")
++    result = to_json(user)
++    parsed = json.loads(result)
++    assert parsed["id"] == 99
++    assert parsed["name"] == "Dave"
++    assert parsed["email"] == "dave@place.net"
++
++
++def test_to_json_default_separators():
++    # Default separators are (', ', ': ') which produces standard JSON spacing.
++    # Compact separators (',', ':') would produce no spaces.
++    user = User(1, "Ada", "ada@ex.com")
++    result = to_json(user)
++    # The result should contain ': ' and ', ' (default separators)
++    assert ": " in result
++    assert ", " in result
++
++
++def test_to_json_integer_id():
++    user = User(0, "Zero", "zero@example.com")
++    result = to_json(user)
++    parsed = json.loads(result)
++    assert parsed["id"] == 0
++    assert isinstance(parsed["id"], int)
+diff --git a/tests/test_store.py b/tests/test_store.py
+new file mode 100644
+index 0000000..bed0f49
+--- /dev/null
++++ b/tests/test_store.py
+@@ -0,0 +1,65 @@
++import pytest
++from apistub import schema
++from apistub.store import MemoryStore
++
++
++def test_add_returns_user_with_id_starting_at_1():
++    store = MemoryStore()
++    user = store.add("Alice", "alice@example.com")
++    assert user.id == 1
++    assert user.name == "Alice"
++    assert user.email == "alice@example.com"
++
++
++def test_add_auto_increments_id():
++    store = MemoryStore()
++    u1 = store.add("Alice", "alice@example.com")
++    u2 = store.add("Bob", "bob@example.com")
++    assert u1.id == 1
++    assert u2.id == 2
++
++
++def test_add_returns_schema_user():
++    store = MemoryStore()
++    user = store.add("Alice", "alice@example.com")
++    assert isinstance(user, schema.User)
++
++
++def test_get_returns_user_by_id():
++    store = MemoryStore()
++    added = store.add("Alice", "alice@example.com")
++    found = store.get(1)
++    assert found == added
++
++
++def test_get_returns_none_for_missing_id():
++    store = MemoryStore()
++    assert store.get(99) is None
++
++
++def test_get_returns_none_on_empty_store():
++    store = MemoryStore()
++    assert store.get(1) is None
++
++
++def test_list_returns_empty_for_new_store():
++    store = MemoryStore()
++    assert store.list() == []
++
++
++def test_list_returns_all_users_in_insertion_order():
++    store = MemoryStore()
++    u1 = store.add("Alice", "alice@example.com")
++    u2 = store.add("Bob", "bob@example.com")
++    u3 = store.add("Carol", "carol@example.com")
++    result = store.list()
++    assert result == [u1, u2, u3]
++
++
++def test_multiple_stores_are_independent():
++    store1 = MemoryStore()
++    store2 = MemoryStore()
++    store1.add("Alice", "alice@example.com")
++    assert store2.list() == []
++    u2 = store2.add("Bob", "bob@example.com")
++    assert u2.id == 1
+diff --git a/tests/test_validate.py b/tests/test_validate.py
+new file mode 100644
+index 0000000..9719083
+--- /dev/null
++++ b/tests/test_validate.py
+@@ -0,0 +1,88 @@
++"""Tests for apistub.validate.validate_payload."""
++import pytest
++from apistub.validate import validate_payload
++
++
++def test_valid_payload_returns_empty_list():
++    payload = {"name": "Alice", "email": "alice@example.com"}
++    assert validate_payload(payload) == []
++
++
++def test_missing_name():
++    payload = {"email": "alice@example.com"}
++    errors = validate_payload(payload)
++    assert "missing: name" in errors
++
++
++def test_missing_email():
++    payload = {"name": "Alice"}
++    errors = validate_payload(payload)
++    assert "missing: email" in errors
++
++
++def test_missing_both_fields():
++    payload = {}
++    errors = validate_payload(payload)
++    assert "missing: name" in errors
++    assert "missing: email" in errors
++
++
++def test_wrong_type_name():
++    payload = {"name": 123, "email": "alice@example.com"}
++    errors = validate_payload(payload)
++    assert "wrong type: name" in errors
++
++
++def test_wrong_type_email():
++    payload = {"name": "Alice", "email": 456}
++    errors = validate_payload(payload)
++    assert "wrong type: email" in errors
++
++
++def test_invalid_email_no_at_sign():
++    payload = {"name": "Alice", "email": "aliceexample.com"}
++    errors = validate_payload(payload)
++    assert "invalid: email" in errors
++
++
++def test_valid_email_with_at_sign():
++    payload = {"name": "Alice", "email": "alice@example.com"}
++    errors = validate_payload(payload)
++    assert "invalid: email" not in errors
++
++
++def test_unknown_keys_are_ignored():
++    payload = {"name": "Alice", "email": "alice@example.com", "extra": "ignored"}
++    assert validate_payload(payload) == []
++
++
++def test_fields_order_name_before_email():
++    """Missing errors should appear in FIELDS order: name then email."""
++    payload = {}
++    errors = validate_payload(payload)
++    assert errors.index("missing: name") < errors.index("missing: email")
++
++
++def test_wrong_type_email_does_not_trigger_invalid_email():
++    """If email is wrong type (not str), invalid: email should NOT appear."""
++    payload = {"name": "Alice", "email": 123}
++    errors = validate_payload(payload)
++    assert "wrong type: email" in errors
++    assert "invalid: email" not in errors
++
++
++def test_missing_email_does_not_trigger_invalid_email():
++    """If email is missing, invalid: email should NOT appear."""
++    payload = {"name": "Alice"}
++    errors = validate_payload(payload)
++    assert "missing: email" in errors
++    assert "invalid: email" not in errors
++
++
++def test_invalid_email_appended_after_field_loop():
++    """invalid: email should come after any field errors."""
++    payload = {"name": 99, "email": "noemail"}
++    errors = validate_payload(payload)
++    assert "wrong type: name" in errors
++    assert "invalid: email" in errors
++    assert errors.index("wrong type: name") < errors.index("invalid: email")
