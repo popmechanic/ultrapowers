@@ -267,6 +267,7 @@
   .vlbl { font-family: var(--sans); font-size: 12px; fill: var(--ink-faint); }
   .vnum { font-family: var(--sans); font-size: 11px; fill: var(--ink-soft); }
   .vclk { font-family: var(--mono); font-size: 12px; fill: var(--ink-soft); }
+  .capture .replay { display: none; }
 </style>
 </head>
 <body>
@@ -616,6 +617,7 @@
      to the completed state so no-JS readers see finished figures. */
   var RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
   var CAPTURE = /[?&]capture(=|&|$)/.test(location.search);
+  if (CAPTURE) document.documentElement.className += " capture";
   var FIGS = {};
   function $(id) { return document.getElementById(id); }
   function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
