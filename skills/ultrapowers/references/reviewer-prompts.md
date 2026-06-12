@@ -35,6 +35,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 - `BRANCH`: the branch you must work on (already checked out for you)
 - `BASE`: sha of the integration-branch HEAD your work builds on
 - `FILES`: the task's declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)
+- `SIBLING FILES`: files owned by tasks running in parallel with yours (may be absent). They do NOT exist at `BASE` and are not yours: never create, duplicate, modify, or delete a sibling-owned path. If your task cannot be implemented or tested without one, report `BLOCKED` naming the file — that is a missing dependency edge in the plan, not yours to work around.
 
 **Workflow — red → green → refactor:**
 1. Anchor to BASE first: run `git rev-parse HEAD`; if it differs from `BASE`, run `git reset --hard <BASE>` before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.
@@ -125,6 +126,8 @@ When `FILES` (the task's declared file scope) is provided: a deletion of any fil
 7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.
 
 8. Run the full check suite and confirm it passes.
+
+When `SIBLING FILES` is provided and the check suite fails ONLY because a sibling-owned file is absent at `BASE`, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.
 
 Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.
 
