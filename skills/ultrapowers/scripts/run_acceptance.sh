@@ -49,7 +49,11 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
   exit 1
 fi
 
-RUN_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runCmd"])' "$MANIFEST")"
+if ! RUN_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runCmd"])' "$MANIFEST" 2>/dev/null)" \
+   || [ -z "$RUN_CMD" ]; then
+  emit ERROR false 1 "manifest missing or invalid runCmd: $MANIFEST"
+  exit 1
+fi
 WT="$(mktemp -d)/exam"
 cleanup() { git -C "$REPO" worktree remove --force "$WT" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
