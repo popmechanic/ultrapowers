@@ -1,6 +1,6 @@
 ---
 name: ultraplan
-description: Use when writing or revising a Superpowers plan that will be executed by /ultrapowers — layers the parallel-execution markers (Type, Depends-on) and worktree-pure authoring rules on top of superpowers:writing-plans so the plan compiles into waves deterministically, without compile-time reinterpretation.
+description: Use together with superpowers:writing-plans on EVERY implementation plan while this plugin is installed (not only plans already destined for /ultrapowers) — layers the additive parallel-execution markers (Type, Depends-on) and worktree-pure authoring rules so the plan compiles into waves deterministically; marked plans remain fully executable by the sequential executors.
 ---
 
 # Ultraplan — Author Parallel-Ready Plans

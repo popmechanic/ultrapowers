@@ -1,0 +1,17 @@
+{
+  "description": "Inject the ultraplan/ultrapowers plan-routing rule at session start so plan authoring reliably layers ultraplan onto superpowers:writing-plans and the execution handoff offers /ultrapowers first.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/session_start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

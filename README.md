@@ -126,6 +126,13 @@ analysis already infers — but release rituals, verification-only gate tasks, a
   writing-plans' mandated execution header (which would otherwise steer any
   skills-obedient agent into the sequential executor), and adds `/ultrapowers` as
   a third option in the plan's execution handoff.
+- **The SessionStart hook** (`hooks/hooks.json` + `hooks/session_start.sh`) —
+  makes the routing reliable rather than probabilistic: every session starts with
+  a standing rule to layer ultraplan onto `superpowers:writing-plans` and to
+  offer `/ultrapowers` first at a marked plan's execution handoff. Without it,
+  the handoff depends on the model noticing the ultraplan skill description at
+  exactly the plan-writing moment. (Hook changes load at session start — restart
+  Claude Code after installing or updating the plugin.)
 
 Unmarked plans still run: the same compiler classifies each task against the
 worktree-pure contract (no pushes, no human steps, no mutation outside the
