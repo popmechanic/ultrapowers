@@ -298,6 +298,11 @@
     color: var(--ink-faint);
     line-height: 1.6;
   }
+  /* ---------- viz engine (unified agent grammar) ---------- */
+  .viz svg { display: block; width: 100%; height: auto; }
+  .vlbl { font-family: var(--sans); font-size: 12px; fill: var(--ink-faint); }
+  .vnum { font-family: var(--sans); font-size: 11px; fill: var(--ink-soft); }
+  .vclk { font-family: var(--mono); font-size: 12px; fill: var(--ink-soft); }
 </style>
 </head>
 <body>
@@ -533,6 +538,114 @@
 </footer>
 
 </article>
+
+<script>
+(function () {
+  "use strict";
+  /* viz engine: deterministic, seekable timelines for the orchestration
+     figures. Every figure is a list of segments; render(t) is a pure
+     function of elapsed ms, so rAF drives it live and the capture
+     harness drives it frame-by-frame via window.__seek. Markup defaults
+     to the completed state so no-JS readers see finished figures. */
+  var RM = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var CAPTURE = /[?&]capture(=|&|$)/.test(location.search);
+  var FIGS = {};
+  function $(id) { return document.getElementById(id); }
+  function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+  function easeInOut(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
+
+  function Figure(id) {
+    this.el = $(id);
+    this.segs = [];
+    this.duration = 0;
+    this.playing = false;
+  }
+  Figure.prototype.seg = function (t0, dur, fn) {
+    this.segs.push({ t0: t0, dur: dur, fn: fn });
+    this.duration = Math.max(this.duration, t0 + dur);
+    return this;
+  };
+  Figure.prototype.carve = function (t0, dur, pathId, dotId, marks, ease) {
+    var path = $(pathId), dot = dotId && $(dotId);
+    var L = path.getTotalLength();
+    var ms = (marks || []).map(function (m) {
+      return { x: m.x, el: $(m.id), fill: m.fill, pending: m.pending };
+    });
+    path.setAttribute("stroke-dasharray", String(L));
+    return this.seg(t0, dur, function (p) {
+      if (ease) p = ease(p);
+      path.setAttribute("stroke-dashoffset", String(L * (1 - p)));
+      var pt = path.getPointAtLength(L * p);
+      if (dot) {
+        dot.setAttribute("cx", String(pt.x));
+        dot.setAttribute("cy", String(pt.y));
+        dot.style.opacity = p > 0 && p < 1 ? "1" : "0";
+      }
+      ms.forEach(function (m) {
+        m.el.style.fill = p > 0 && pt.x >= m.x ? m.fill : m.pending;
+      });
+    });
+  };
+  Figure.prototype.fill = function (t0, id, color, pending) {
+    var el = $(id);
+    return this.seg(t0, 60, function (p) {
+      el.style.fill = p >= 1 ? color : pending;
+    });
+  };
+  Figure.prototype.fade = function (t0, id) {
+    var el = $(id);
+    return this.seg(t0, 400, function (p) { el.style.opacity = String(p); });
+  };
+  Figure.prototype.pulse = function (t0, id, r0, dr) {
+    var el = $(id);
+    return this.seg(t0, 650, function (p) {
+      el.setAttribute("r", String(r0 + p * dr));
+      el.setAttribute("opacity", String(p > 0 && p < 1 ? (1 - p) * 0.8 : 0));
+    });
+  };
+  Figure.prototype.render = function (t) {
+    this.segs.forEach(function (s) { s.fn(clamp01((t - s.t0) / s.dur)); });
+  };
+  Figure.prototype.play = function () {
+    if (this.playing) return;
+    var self = this, start = null;
+    this.playing = true;
+    requestAnimationFrame(function step(ts) {
+      if (start === null) start = ts;
+      var t = ts - start;
+      self.render(Math.min(t, self.duration));
+      if (t < self.duration) requestAnimationFrame(step);
+      else self.playing = false;
+    });
+  };
+
+  window.__vizRegister = function (id, replayId, build) {
+    var fig = new Figure(id);
+    build(fig, easeInOut);
+    FIGS[id] = fig;
+    if (CAPTURE) { fig.render(0); return fig; }
+    if (RM) { fig.render(fig.duration); return fig; }
+    fig.render(0);
+    var btn = replayId && $(replayId);
+    if (btn) btn.addEventListener("click", function () { fig.play(); });
+    if ("IntersectionObserver" in window) {
+      var seen = false;
+      new IntersectionObserver(function (entries, obs) {
+        if (!seen && entries[0].isIntersecting) {
+          seen = true; fig.play(); obs.disconnect();
+        }
+      }, { threshold: 0.45 }).observe(fig.el);
+    } else {
+      fig.play();
+    }
+    return fig;
+  };
+  if (CAPTURE) {
+    window.__seek = function (id, t) { FIGS[id].render(t); };
+    window.__figDuration = function (id) { return FIGS[id].duration; };
+  }
+})();
+</script>
 
 <script>
 (function () {
