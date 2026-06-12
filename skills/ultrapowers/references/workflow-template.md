@@ -37,7 +37,7 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 - `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
   is the full verbatim task text (the script cannot resolve file references). `review` is the optional
   per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
-  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task. `title` (completeness task list), `tier` (model selection), and `review` (per-task depth) are consumed; `acceptance` and `files` are currently UNUSED by the workflow — the verbatim `body` is authoritative for acceptance criteria and file lists.**
+  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task. `title` (completeness task list), `tier` (model selection), and `review` (per-task depth) are consumed; `acceptance` is currently UNUSED; `files` is threaded into the implementer/reviewer prompts as the `FILES` declared-scope line (string array of the task's Create/Modify/Test paths). The verbatim `body` remains authoritative for acceptance criteria.**
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).

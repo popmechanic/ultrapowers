@@ -46,7 +46,7 @@ if (!validWaves) {
   throw new Error(
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
     'task = { id, body, ... } (id and body are validated; title/tier/review are consumed by prompts; ' +
-    'acceptance/files are advisory). Refusing to run with an ' +
+    'acceptance is advisory; files feeds the FILES prompt line). Refusing to run with an ' +
     'undefined plan. When this happens, the SKILL.md fallback ' +
     '(superpowers:subagent-driven-development) runs instead.'
   )
@@ -166,6 +166,7 @@ const IMPLEMENTER_PROMPT = [
   '- WORKTREE_PATH: absolute path to your isolated worktree',
   '- BRANCH: the branch you must work on (already checked out for you)',
   '- BASE: sha of the integration-branch HEAD your work builds on',
+  '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
   '',
   'Workflow — red green refactor:',
   "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
@@ -180,6 +181,7 @@ const IMPLEMENTER_PROMPT = [
   '- Re-read the task. Confirm every stated requirement is addressed.',
   '- Run git diff BASE...HEAD (BASE is provided in your inputs) and verify no unrelated files are modified.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
+  '- If FILES is present: confirm every file you created, modified, or deleted is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
   '',
@@ -199,6 +201,7 @@ const REVIEWER_PROMPT = [
   '1. Check out the implementer HEAD sha as a DETACHED checkout (git checkout --detach <HEAD>) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run git diff BASE...HEAD yourself.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
+  'When FILES (the task\'s declared file scope) is provided: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; modifications outside FILES are blocking unless the task text plainly requires them.',
   '',
   'Code quality:',
   '4. Separation of concerns: each module or function has one clear responsibility; UI, logic, and data layers are not entangled.',
@@ -341,6 +344,14 @@ const isMergeable = (r) => r && r.status === 'done' && r.branch && r.headSha
 // actual test command instead of guessing ("pnpm check or equivalent").
 const testCmdLine = testCmd ? ('\nTEST COMMAND: ' + testCmd) : ''
 
+// task.files (advisory at validation) becomes the FILES prompt line: the
+// declared scope the implementer must stay inside and the reviewer enforces.
+// Eval run mixed-B-2 (2026-06-13): an implementer deleted a file its task
+// never named; nothing mechanical caught it before the fix loop burned out.
+const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
+  ? ('\nFILES: ' + task.files.join(', '))
+  : ''
+
 // Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
 // the orchestrating agent from the plan's per-task risk/tier — overrides the
 // run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
@@ -403,7 +414,7 @@ async function runTaskInner(task, baseSha) {
   }
 
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + '\nTASK:\n' + task.body,
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + filesLine(task) + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -435,7 +446,7 @@ async function runTaskInner(task, baseSha) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine
+      '\nBASE: ' + baseSha + testCmdLine + filesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -504,7 +515,7 @@ async function runTaskInner(task, baseSha) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine + '\nTASK:\n' + task.body +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine + filesLine(task) + '\nTASK:\n' + task.body +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +

@@ -1553,6 +1553,25 @@ async function scenarioBudgetDiesBeforeReconcile() {
   console.log('scenario budget-dies-before-reconcile: OK')
 }
 
+// ── Scenario: declared file scope is threaded into impl/review prompts ───────
+async function scenarioFileScope() {
+  const waves = [[
+    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap',
+      files: ['a.txt', 'tests/test_a.py'] },
+    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'cheap' }, // no files
+  ]]
+  const prompts = {}
+  const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
+  await runWorkflow({ agent, args: { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: [], edges: [] }, budget: undefined })
+  assert(prompts['impl:A'].includes('\nFILES: a.txt, tests/test_a.py'),
+    'scope: impl:A prompt carries the FILES line')
+  assert(prompts['review:A:1'].includes('\nFILES: a.txt, tests/test_a.py'),
+    'scope: review:A prompt carries the FILES line')
+  assert(!prompts['impl:B'].includes('\nFILES:'),
+    'scope: impl:B has no FILES line when task.files is absent')
+  console.log('scenario fileScope: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1604,4 +1623,5 @@ await scenarioBaseBranchThreaded()
 await scenarioReconcileTierOverride()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
+await scenarioFileScope()
 console.log('ALL SCENARIOS PASSED')
