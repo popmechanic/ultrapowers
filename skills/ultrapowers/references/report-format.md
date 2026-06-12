@@ -17,6 +17,10 @@ The workflow produces a single structured report object that the main agent pres
         "commit": {"type":"string"}, "reviewVerdict": {"type":"string"}, "notes": {"type":"string"},
         "tier": {"type":"string"}, "review": {"type":"string"}, "fixIterations": {"type":"integer"} } } },
     "tests": { "type": "object", "properties": { "command": {"type":"string"}, "passed": {"type":"boolean"}, "output": {"type":"string"} } },
+    "acceptance": { "oneOf": [{"type":"null"}, {"type":"object", "properties":
+      { "mode": {"type":"string","enum":["waived","sealed"]}, "reason": {"type":"string"},
+        "passed": {"type":["boolean","null"]}, "sealId": {"type":"string"},
+        "status": {"type":"string"}, "exitCode": {"type":"integer"}, "output": {"type":"string"} }}] },
     "baseline": { "type": "object", "properties": { "passed": {"type":"boolean"}, "output": {"type":"string"} } },
     "waveMerges": { "type": "array", "items": { "type": "object",
       "properties": { "wave": {"type":"integer"}, "status": {"type":"string"}, "headSha": {"type":"string"},
@@ -45,6 +49,7 @@ The workflow produces a single structured report object that the main agent pres
 | `tasks[].review` | no | Review depth applied: `lean` (one pass) or `adversarial` (two) |
 | `tasks[].fixIterations` | no | Fix rounds consumed (0 = clean on first review) |
 | `tests` | yes | Result of the suite run on the integration branch |
+| `acceptance` | no | Sealed acceptance exam result, placed directly after the test result in presentation order. `null` when no exam was requested. `{ mode: 'waived', reason, passed: null }` when the orchestrator waived the exam. `{ mode: 'sealed', sealId, status, passed, exitCode, output }` when `run_acceptance.sh` was run — `status` is `OK`, `SEAL_MISSING`, `SEAL_BROKEN`, or `ERROR`; `passed` is a boolean. A `passed: false` result pushes a judgment call requiring the gate to NOT Approve. |
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
 | `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED`/`DEFERRED`), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed. Status values: `MERGED` = integrated successfully; `CONFLICT`/`TEST_FAILED` = merge attempt failed (wave is blocked, later waves cascade-blocked); `SKIPPED` = no mergeable branches, integration branch untouched (cascades only when `args.edges` was omitted — an explicitly supplied empty array counts as supplied — and tasks actually ran); `DEFERRED` = budget exhausted before or during this wave's merge (see below) |
 | `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished`. Note: `DEFERRED` waves are NOT recorded here — a budget outcome is not a merge failure |

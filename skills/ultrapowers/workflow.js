@@ -101,6 +101,13 @@ const EDGES = edgesSupplied
 // reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
 // tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
 const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
+// acceptance: sealed-exam administration (spec 2026-06-12-sealed-acceptance).
+//   { mode: 'sealed', sealId, sha256, scriptPath }  — scriptPath is the
+//   absolute path to run_acceptance.sh, resolved by the orchestrator from the
+//   plugin root at launch (the workflow has no filesystem introspection), or
+//   { mode: 'waived', reason }. Absent → report.acceptance = null.
+const ACCEPTANCE = (ARGS && ARGS.acceptance && typeof ARGS.acceptance === 'object')
+  ? ARGS.acceptance : null
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
 const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
@@ -143,7 +150,7 @@ for (const k of Object.keys(tierOverrides)) {
 if (typeof meta !== 'undefined') {
   meta.phases = [{ title: 'Setup' }]
     .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
-    .concat([{ title: 'Integration Review' }])
+    .concat([{ title: 'Integration Review' }, { title: 'Acceptance' }])
 }
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
@@ -893,6 +900,40 @@ if (budgetExhausted()) {
   }
 }
 
+// ── Sealed acceptance exam: deterministic script is the authority; the agent
+// only relays its stdout (BAKE:ACCEPTANCE-EXAM). ──────────────────────────────
+let acceptance = null
+if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
+  acceptance = { mode: 'waived', reason: String(ACCEPTANCE.reason || ''), passed: null }
+} else if (ACCEPTANCE && ACCEPTANCE.mode === 'sealed') {
+  phase('Acceptance')
+  const cmd = 'bash ' + ACCEPTANCE.scriptPath + ' ' + ACCEPTANCE.sealId + ' ' +
+    integrationBranch + ' ' + ACCEPTANCE.sha256
+  try {
+    const exam = await agent(
+      'Run EXACTLY this command from the repository root and return its complete ' +
+      'stdout verbatim in the "raw" field. Do not interpret the result, do not fix ' +
+      'anything, do not retry, and do not run any other command. If the command ' +
+      'cannot be executed, put the reason in "raw".\n\nCOMMAND: ' + cmd,
+      { label: 'acceptance-exam', model: TIER.cheap,
+        schema: { type: 'object', required: ['raw'],
+                  properties: { raw: { type: 'string' } } } }
+    )
+    let parsed = null
+    try { parsed = JSON.parse(((exam && exam.raw || '').match(/\{[\s\S]*\}/) || ['null'])[0]) } catch (e) { parsed = null }
+    acceptance = (parsed && typeof parsed.passed === 'boolean')
+      ? { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: parsed.status,
+          passed: parsed.passed, exitCode: parsed.exitCode, output: parsed.output }
+      : { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: 'ERROR', passed: false,
+          output: 'unparseable exam output: ' + String(exam && exam.raw).slice(0, 2000) }
+  } catch (e) {
+    acceptance = { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: 'ERROR',
+                   passed: false, output: 'exam agent error: ' + String((e && e.message) || e) }
+  }
+  if (!acceptance.passed) judgmentCalls.push(
+    'sealed acceptance did not pass (' + acceptance.status + ') — gate must not Approve')
+}
+
 // ── Structured return value (matches references/report-format.md) ─────────────
 return {
   integrationBranch,
@@ -900,6 +941,7 @@ return {
   dependencyEdges,
   tasks: taskResults,
   tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  acceptance,
   baseline,
   waveMerges,
   judgmentCalls,
