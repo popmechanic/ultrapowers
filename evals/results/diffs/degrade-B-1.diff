@@ -1,0 +1,370 @@
+diff --git a/confkit/config.py b/confkit/config.py
+index 4bfd227..6669b4d 100644
+--- a/confkit/config.py
++++ b/confkit/config.py
+@@ -1,6 +1,77 @@
++import re
++
+ DEFAULTS = {"host": "localhost", "port": 8000, "debug": False}
+ 
++_INT_PATTERN = re.compile(r'^-?\d+$')
++
++
++def parse_value(raw):
++    """Parse a raw string value into a Python type.
++
++    - "true"/"false" (case-insensitive) -> True/False
++    - Optional leading '-' followed by all digits -> int
++    - Anything else -> the string unchanged
++    """
++    if raw.lower() == "true":
++        return True
++    if raw.lower() == "false":
++        return False
++    if _INT_PATTERN.match(raw):
++        return int(raw)
++    return raw
++
++
++def load_env_overrides(environ):
++    """Return a dict of config overrides from environment variables.
++
++    Keys starting with 'CONFKIT_' are included; the prefix is stripped
++    and the remainder is lowercased. Values are parsed via parse_value().
++    All other keys are ignored.
++    """
++    prefix = "CONFKIT_"
++    result = {}
++    for key, value in environ.items():
++        if key.startswith(prefix):
++            config_key = key[len(prefix):].lower()
++            result[config_key] = parse_value(value)
++    return result
++
++
++def load_file(path):
++    """Load config key-value pairs from a file.
++
++    - Strips each line.
++    - Skips blank lines and lines starting with '#'.
++    - Every other line must contain '=' or raises ValueError("bad line").
++    - Splits on the first '='; key is stripped left side, value is parse_value
++      of the stripped right side.
++    """
++    result = {}
++    with open(path) as f:
++        for line in f:
++            line = line.strip()
++            if not line or line.startswith("#"):
++                continue
++            if "=" not in line:
++                raise ValueError("bad line")
++            key, _, raw_value = line.partition("=")
++            result[key.strip()] = parse_value(raw_value.strip())
++    return result
++
++
++def get_config(path=None, environ=None):
++    """Return a configuration dict with merged layers.
++
++    Precedence (lowest to highest): DEFAULTS < file < environ.
+ 
+-def get_config():
+-    """Return a copy of the default configuration."""
+-    return dict(DEFAULTS)
++    Args:
++        path: optional path to a config file parsed by load_file().
++        environ: optional dict of environment variables parsed by
++                 load_env_overrides().
++    """
++    cfg = dict(DEFAULTS)
++    if path is not None:
++        cfg.update(load_file(path))
++    if environ is not None:
++        cfg.update(load_env_overrides(environ))
++    return cfg
+diff --git a/tests/test_env_overrides.py b/tests/test_env_overrides.py
+new file mode 100644
+index 0000000..151a891
+--- /dev/null
++++ b/tests/test_env_overrides.py
+@@ -0,0 +1,96 @@
++import pytest
++from confkit.config import parse_value, load_env_overrides
++
++
++class TestParseValue:
++    def test_true_lowercase(self):
++        assert parse_value("true") is True
++
++    def test_false_lowercase(self):
++        assert parse_value("false") is False
++
++    def test_true_uppercase(self):
++        assert parse_value("TRUE") is True
++
++    def test_false_uppercase(self):
++        assert parse_value("FALSE") is False
++
++    def test_true_mixed_case(self):
++        assert parse_value("True") is True
++
++    def test_false_mixed_case(self):
++        assert parse_value("False") is False
++
++    def test_integer_positive(self):
++        assert parse_value("9000") == 9000
++        assert isinstance(parse_value("9000"), int)
++
++    def test_integer_zero(self):
++        assert parse_value("0") == 0
++        assert isinstance(parse_value("0"), int)
++
++    def test_integer_negative(self):
++        assert parse_value("-42") == -42
++        assert isinstance(parse_value("-42"), int)
++
++    def test_string_passthrough(self):
++        assert parse_value("localhost") == "localhost"
++
++    def test_string_with_spaces(self):
++        assert parse_value("hello world") == "hello world"
++
++    def test_empty_string(self):
++        assert parse_value("") == ""
++
++    def test_float_string_passthrough(self):
++        # floats should not be converted to int
++        assert parse_value("3.14") == "3.14"
++
++    def test_hex_string_passthrough(self):
++        # hex strings should not be converted
++        assert parse_value("0xFF") == "0xFF"
++
++
++class TestLoadEnvOverrides:
++    def test_basic_example(self):
++        result = load_env_overrides({"CONFKIT_PORT": "9000", "PATH": "/bin"})
++        assert result == {"port": 9000}
++
++    def test_ignores_non_confkit_keys(self):
++        result = load_env_overrides({"PATH": "/bin", "HOME": "/home/user"})
++        assert result == {}
++
++    def test_lowercases_keys(self):
++        result = load_env_overrides({"CONFKIT_HOST": "example.com"})
++        assert "host" in result
++        assert result["host"] == "example.com"
++
++    def test_bool_value(self):
++        result = load_env_overrides({"CONFKIT_DEBUG": "true"})
++        assert result == {"debug": True}
++
++    def test_false_value(self):
++        result = load_env_overrides({"CONFKIT_DEBUG": "false"})
++        assert result == {"debug": False}
++
++    def test_multiple_confkit_keys(self):
++        result = load_env_overrides({
++            "CONFKIT_PORT": "8080",
++            "CONFKIT_HOST": "myhost",
++            "CONFKIT_DEBUG": "True",
++            "OTHER": "ignored",
++        })
++        assert result == {"port": 8080, "host": "myhost", "debug": True}
++
++    def test_empty_environ(self):
++        result = load_env_overrides({})
++        assert result == {}
++
++    def test_negative_int_value(self):
++        result = load_env_overrides({"CONFKIT_TIMEOUT": "-1"})
++        assert result == {"timeout": -1}
++
++    def test_key_with_underscore_in_name(self):
++        # CONFKIT_MAX_RETRIES → max_retries
++        result = load_env_overrides({"CONFKIT_MAX_RETRIES": "5"})
++        assert result == {"max_retries": 5}
+diff --git a/tests/test_file_layer.py b/tests/test_file_layer.py
+new file mode 100644
+index 0000000..775c62a
+--- /dev/null
++++ b/tests/test_file_layer.py
+@@ -0,0 +1,177 @@
++import os
++import tempfile
++import pytest
++from confkit.config import load_file, get_config, DEFAULTS
++
++
++class TestLoadFile:
++    def _write_tmp(self, content):
++        f = tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False)
++        f.write(content)
++        f.close()
++        return f.name
++
++    def test_basic_key_value(self):
++        path = self._write_tmp("host=example.com\n")
++        try:
++            result = load_file(path)
++            assert result == {"host": "example.com"}
++        finally:
++            os.unlink(path)
++
++    def test_strips_whitespace_around_key_and_value(self):
++        path = self._write_tmp("  host  =  example.com  \n")
++        try:
++            result = load_file(path)
++            assert result == {"host": "example.com"}
++        finally:
++            os.unlink(path)
++
++    def test_skips_blank_lines(self):
++        path = self._write_tmp("\nhost=example.com\n\nport=9000\n")
++        try:
++            result = load_file(path)
++            assert result == {"host": "example.com", "port": 9000}
++        finally:
++            os.unlink(path)
++
++    def test_skips_comment_lines(self):
++        path = self._write_tmp("# this is a comment\nhost=example.com\n")
++        try:
++            result = load_file(path)
++            assert result == {"host": "example.com"}
++        finally:
++            os.unlink(path)
++
++    def test_parses_bool_true(self):
++        path = self._write_tmp("debug=true\n")
++        try:
++            result = load_file(path)
++            assert result == {"debug": True}
++        finally:
++            os.unlink(path)
++
++    def test_parses_bool_false(self):
++        path = self._write_tmp("debug=false\n")
++        try:
++            result = load_file(path)
++            assert result == {"debug": False}
++        finally:
++            os.unlink(path)
++
++    def test_parses_integer(self):
++        path = self._write_tmp("port=8080\n")
++        try:
++            result = load_file(path)
++            assert result == {"port": 8080}
++            assert isinstance(result["port"], int)
++        finally:
++            os.unlink(path)
++
++    def test_splits_on_first_equals(self):
++        path = self._write_tmp("url=http://example.com=stuff\n")
++        try:
++            result = load_file(path)
++            assert result == {"url": "http://example.com=stuff"}
++        finally:
++            os.unlink(path)
++
++    def test_bad_line_raises_value_error(self):
++        path = self._write_tmp("no_equals_sign\n")
++        try:
++            with pytest.raises(ValueError, match="bad line"):
++                load_file(path)
++        finally:
++            os.unlink(path)
++
++    def test_empty_file_returns_empty_dict(self):
++        path = self._write_tmp("")
++        try:
++            result = load_file(path)
++            assert result == {}
++        finally:
++            os.unlink(path)
++
++    def test_only_comments_and_blanks_returns_empty_dict(self):
++        path = self._write_tmp("# comment\n\n# another comment\n")
++        try:
++            result = load_file(path)
++            assert result == {}
++        finally:
++            os.unlink(path)
++
++    def test_multiple_entries(self):
++        path = self._write_tmp("host=myhost\nport=9090\ndebug=true\n")
++        try:
++            result = load_file(path)
++            assert result == {"host": "myhost", "port": 9090, "debug": True}
++        finally:
++            os.unlink(path)
++
++
++class TestGetConfig:
++    def _write_tmp(self, content):
++        f = tempfile.NamedTemporaryFile(mode="w", suffix=".conf", delete=False)
++        f.write(content)
++        f.close()
++        return f.name
++
++    def test_no_args_returns_defaults(self):
++        result = get_config()
++        assert result == {"host": "localhost", "port": 8000, "debug": False}
++
++    def test_returns_copy_of_defaults(self):
++        cfg = get_config()
++        cfg["port"] = 1
++        assert DEFAULTS["port"] == 8000
++
++    def test_file_overrides_defaults(self):
++        path = self._write_tmp("host=filehost\nport=7000\n")
++        try:
++            result = get_config(path=path)
++            assert result["host"] == "filehost"
++            assert result["port"] == 7000
++            assert result["debug"] == False  # default preserved
++        finally:
++            os.unlink(path)
++
++    def test_env_overrides_defaults(self):
++        result = get_config(environ={"CONFKIT_PORT": "5000"})
++        assert result["port"] == 5000
++        assert result["host"] == "localhost"  # default preserved
++
++    def test_env_overrides_file(self):
++        path = self._write_tmp("port=7000\nhost=filehost\n")
++        try:
++            result = get_config(path=path, environ={"CONFKIT_PORT": "9999"})
++            assert result["port"] == 9999  # env wins over file
++            assert result["host"] == "filehost"  # file wins over default
++        finally:
++            os.unlink(path)
++
++    def test_precedence_defaults_less_than_file_less_than_env(self):
++        path = self._write_tmp("host=filehost\nport=7000\ndebug=true\n")
++        try:
++            result = get_config(
++                path=path,
++                environ={"CONFKIT_HOST": "envhost", "CONFKIT_DEBUG": "false"},
++            )
++            assert result["host"] == "envhost"  # env > file
++            assert result["port"] == 7000       # file > default
++            assert result["debug"] == False      # env > file
++        finally:
++            os.unlink(path)
++
++    def test_path_only_no_environ(self):
++        path = self._write_tmp("host=onlyfile\n")
++        try:
++            result = get_config(path=path)
++            assert result["host"] == "onlyfile"
++            assert result["port"] == 8000
++        finally:
++            os.unlink(path)
++
++    def test_environ_only_no_path(self):
++        result = get_config(environ={"CONFKIT_HOST": "envonly"})
++        assert result["host"] == "envonly"
++        assert result["port"] == 8000
