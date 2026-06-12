@@ -32,6 +32,11 @@ def test_session_start_script_emits_the_routing_rule():
     assert "/ultrapowers <plan-path>" in out
     assert "subagent-driven-development" in out   # the three-option handoff
     assert "executing-plans" in out
+    # Anti-drift pin for the no-pause contract (2026-06-12): selecting
+    # ultrapowers at the handoff IS the authorization. The hook is the copy
+    # every session reads — keep it in lockstep with SKILL.md Step 3.
+    assert "authorizes execution" in out
+    assert "no approval pause" in out
 
 
 def test_ultraplan_description_triggers_on_every_plan():

@@ -136,6 +136,22 @@ pre-merge gate without merging) identical in content to the human-gated runs;
 scoring. Wall clock = headless process duration. Runs stay serial — parallel
 runs would contaminate the clock metric through contention.
 
+### No Step-3 pause (protocol amendment, 2026-06-12)
+
+Ultrapowers removed the Step-3 wave-plan approval pause: the wave plan is
+rendered for transparency and the workflow launches immediately. The condition
+texts above are preserved as written for the historical runs; future
+repetitions map them as follows:
+
+- **Condition B:** invoke `/ultrapowers docs/plans/plan.md` — no approval step
+  exists or is needed; the wave plan executes as rendered.
+- **Condition C:** there is no longer a gate at which to revise the derived
+  knobs. State the override in the invocation itself, e.g.
+  `/ultrapowers docs/plans/plan.md — run all-frontier: tierOverrides
+  {cheap: 'opus', standard: 'opus'}`; the orchestrator translates a stated
+  budget posture into `tierOverrides` at Step 2.
+- The stop point is unchanged: the pre-merge gate. Do not approve the merge.
+
 ## Metrics
 
 | Layer | Metric | Source |

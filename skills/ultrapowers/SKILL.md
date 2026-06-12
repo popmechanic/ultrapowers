@@ -123,9 +123,11 @@ Render the transparency block from Step 2 for the human:
 Then proceed **directly to Step 4 — do not ask for approval and do not pause.** The human already
 authorized execution: they approved the plan itself, then selected ultrapowers as the execution
 engine at the planning session's handoff (or invoked `/ultrapowers` on the approved plan). The
-render exists so they can audit the interpretation — and interrupt if it is visibly wrong — not so
-they can approve it. A bad parallelization or classification guess is caught at the pre-merge
-review (Step 5), which remains the run's human gate. The only Step-2/3 findings that stop the run
+render exists so they can audit the interpretation, not so they can approve it. There is no
+window to amend the wave plan before launch: if the human sees it is wrong, the recourse is to
+stop the run, revise the plan document, and re-invoke `/ultrapowers`. A bad parallelization or
+classification guess is otherwise caught at the pre-merge review (Step 5), which remains the
+run's human gate. The only Step-2/3 findings that stop the run
 are a dependency cycle or an inability to extract tasks — surface those and stop; everything else
 launches.
 
