@@ -65,3 +65,26 @@ def test_all_scripts_parse():
                            capture_output=True, text=True)
         finally:
             f.unlink()
+
+
+def test_anatomy_figure_present():
+    h = html()
+    assert 'id="fig-anatomy"' in h
+    for label in ["worktrees — one isolated copy each", "one agent per task",
+                  "independent review", "merge agent · Haiku", "your gate",
+                  "integration branch", "Sonnet", "Opus"]:
+        assert label in h, f"anatomy label missing: {label}"
+
+
+def test_anatomy_has_human_gate_square():
+    # the single square in the grammar is the human gate
+    assert 'id="an-gate"' in html()
+
+
+def test_script_ids_exist_in_markup():
+    h = html()
+    ids = set()
+    for js in scripts():
+        ids |= set(re.findall(r'"((?:an|rc)-[a-z0-9]+)"', js))
+    for tok in sorted(ids):
+        assert f'id="{tok}"' in h, f"script references missing element id {tok}"
