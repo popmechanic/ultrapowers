@@ -294,6 +294,8 @@
 
 <p><a href="https://github.com/popmechanic/ultrapowers">Ultrapowers</a> is an execution engine I've been building (with Claude, naturally) that takes a finished Superpowers plan and runs it differently. Where the standard executor works through the plan one task at a time, ultrapowers reads the plan's dependency structure and compiles it into <strong>waves</strong>: every task that doesn't depend on another runs <em>simultaneously</em>, each agent in its own isolated copy of the project, with an independent reviewer checking each one's work before it merges.</p>
 
+<p>To be fair to the incumbent: Superpowers isn't allergic to parallelism — it ships a skill for dispatching agents in parallel on independent <em>investigations</em>, and its executor's one-task-at-a-time rule is a deliberate safety choice, not an oversight. Parallel agents building in one shared working copy would collide, so its rules forbid exactly that. What ultrapowers adds isn't the idea of parallel agents; it's the isolation and merge machinery — a worktree per task, a compiled dependency graph, a merge agent — that make parallelism safe for <em>construction</em> rather than just investigation.</p>
+
 <figure class="panel viz" id="fig-anatomy">
   <svg viewBox="0 0 680 240" role="img" aria-label="Anatomy of one wave: the integration branch forks into three isolated worktrees, a Sonnet worker carves each lane to its commit, an Opus reviewer carves the rest of the lane, a Haiku merge agent lands all three back on the trunk, and the run stops at a square human gate.">
     <text id="an-lbwt" class="vlbl" x="160" y="44" text-anchor="middle">worktrees — one isolated copy each</text>
