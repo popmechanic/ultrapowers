@@ -94,3 +94,21 @@ def test_worktree_cleaned_up(tmp_path):
     administer(vault, seal_id, digest, repo)
     listed = sh(["git", "worktree", "list"], cwd=repo).stdout.strip().splitlines()
     assert len(listed) == 1, "exam worktree leaked"
+
+
+def test_malformed_manifest_never_false_greens(tmp_path):
+    vault, seal_id, digest = make_vault(tmp_path)
+    (vault / seal_id / "manifest.json").write_text(json.dumps({"sealId": seal_id}))
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0, "corrupt manifest must not exit 0"
+    assert out["status"] == "ERROR" and out["passed"] is False
+
+
+def test_unreadable_branch_reports_error(tmp_path):
+    vault, seal_id, digest = make_vault(tmp_path)
+    repo = make_repo(tmp_path, feature_built=True)
+    r = sh(["bash", str(RUN), seal_id, "no-such-branch", digest,
+            "--vault", str(vault), "--repo", str(repo)], check=False)
+    out = json.loads(r.stdout)
+    assert r.returncode != 0 and out["status"] == "ERROR" and out["passed"] is False
