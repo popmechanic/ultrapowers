@@ -167,6 +167,7 @@ const IMPLEMENTER_PROMPT = [
   '- BRANCH: the branch you must work on (already checked out for you)',
   '- BASE: sha of the integration-branch HEAD your work builds on',
   '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
+  '- SIBLING FILES: files owned by tasks running in parallel with yours (may be absent). They do NOT exist at BASE and are not yours: never create, duplicate, modify, or delete a sibling-owned path. If your task cannot be implemented or tested without one, report BLOCKED naming the file — that is a missing dependency edge in the plan, not yours to work around.',
   '',
   'Workflow — red green refactor:',
   "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
@@ -210,6 +211,8 @@ const REVIEWER_PROMPT = [
   '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic.',
   '',
   '8. Run the full check suite and confirm it passes.',
+  '',
+  'When SIBLING FILES is provided and the check suite fails ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
@@ -352,6 +355,16 @@ const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
   ? ('\nFILES: ' + task.files.join(', '))
   : ''
 
+// Same-wave siblings own files this task must not touch — they are not at
+// BASE (a wave merges only after all its tasks finish). Naming them lets the
+// implementer and reviewer tell "missing sibling file" from "broken work".
+const siblingLine = (task, wave) => {
+  const sibs = wave
+    .filter((t) => t.id !== task.id && Array.isArray(t.files) && t.files.length)
+    .map((t) => t.id + ': ' + t.files.join(', '))
+  return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
+}
+
 // Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
 // the orchestrating agent from the plan's per-task risk/tier — overrides the
 // run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
@@ -362,9 +375,9 @@ const taskReviewProfile = (task) =>
 // A thrown agent() call (engine fault, schema failure, transient error) must
 // cost ONE task, never the run: parallel() is fail-fast, so an uncaught throw
 // in a 16-wide wave would reject the whole wave and lose the report.
-async function runTask(task, baseSha) {
+async function runTask(task, baseSha, siblings) {
   try {
-    return await runTaskInner(task, baseSha)
+    return await runTaskInner(task, baseSha, siblings)
   } catch (e) {
     const msg = String((e && e.message) || e)
     judgmentCalls.push('task ' + task.id + ': agent error — ' + msg)
@@ -376,7 +389,7 @@ async function runTask(task, baseSha) {
              review: taskReviewProfile(task), fixIterations: 0 }
   }
 }
-async function runTaskInner(task, baseSha) {
+async function runTaskInner(task, baseSha, siblings) {
   // Own-string lookup only: a prototype name like 'constructor' must never
   // resolve to an inherited function and ship as a model identifier.
   const tierValue = Object.prototype.hasOwnProperty.call(TIER, tierKey(task.tier))
@@ -413,8 +426,9 @@ async function runTaskInner(task, baseSha) {
         '" — fell back to standard (valid: cheap, standard, mostCapable/most-capable)')
   }
 
+  const siblingsStr = siblings || ''
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + filesLine(task) + '\nTASK:\n' + task.body,
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + filesLine(task) + siblingsStr + '\nTASK:\n' + task.body,
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -446,7 +460,7 @@ async function runTaskInner(task, baseSha) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine + filesLine(task)
+      '\nBASE: ' + baseSha + testCmdLine + filesLine(task) + siblingsStr
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -515,7 +529,7 @@ async function runTaskInner(task, baseSha) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine + filesLine(task) + '\nTASK:\n' + task.body +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine + filesLine(task) + siblingsStr + '\nTASK:\n' + task.body +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
@@ -734,7 +748,8 @@ for (let w = 0; w < WAVES.length; w++) {
       return true
     })
     if (runnable.length === 0) continue
-    const chunkResults = await parallel(runnable.map((task) => () => runTask(task, waveBaseSha)))
+    const chunkResults = await parallel(runnable.map((task) => () =>
+      runTask(task, waveBaseSha, siblingLine(task, WAVES[w]))))
     for (const r of chunkResults) { results.push(r); taskResults.push(r) }
     // Fix B: run the lost-done sweep immediately after each chunk so the NEXT
     // chunk's noteFailures() sees the downgrade before dispatching intra-wave
