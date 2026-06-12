@@ -441,7 +441,9 @@ def test_checkbox_step_shaped_like_files_line_adds_no_writes(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert "b.txt" not in by_id["A"]["writes"]
-    assert out["dag_edges"] == []
+    # Task A's prose mentions `b.txt` (even as a negation); the prose-reference
+    # rule infers B -> A because B creates b.txt and A's prose backticks it.
+    assert {"from": "B", "to": "A", "why": "prose-reference"} in out["dag_edges"]
 
 
 def test_shared_test_path_serializes(tmp_path):
@@ -798,8 +800,11 @@ def test_blank_line_closes_the_files_block(tmp_path):
     )
     out = compile_plan(plan)
     # The dash bullet after the blank line is prose, not a Files entry: no
-    # phantom 'run' or 'x.txt' read for task A, hence no edge to task B.
-    assert out["dag_edges"] == []
+    # phantom 'run' or 'x.txt' read for task A. However, task A's prose does
+    # backtick-reference `x.txt` which task B creates — the prose-reference
+    # rule correctly infers B -> A (A needs x.txt to test against).
+    assert {"from": "B", "to": "A", "why": "prose-reference"} in out["dag_edges"]
+    assert not any(e["why"] == "read-after-write" for e in out["dag_edges"])
 
 
 def test_override_conflict_edge_field_carries_why_label(tmp_path):
@@ -1162,3 +1167,99 @@ def test_inline_files_header_prose_value_surfaces(tmp_path):
     assert by_id["1"]["writes"] == []          # falls to ambiguous-files as before
     assert any(c["task"] == "1" and "inline" in c["note"].lower()
                for c in out["marker_conflicts"])
+
+
+PROSE_REF_PLAN = """# Demo Implementation Plan
+
+### Task 1: User schema
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `apistub/schema.py`
+- Test: `tests/test_schema.py`
+
+- [ ] **Step 1:** Define the `User` dataclass.
+
+### Task 4: In-memory store
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `apistub/store.py`
+- Test: `tests/test_store.py`
+
+- [ ] **Step 1:** `add(name, email)` creates and returns a `schema.User` with an auto-incrementing id.
+"""
+
+
+def test_prose_reference_edge_orders_creator_before_referencer(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(PROSE_REF_PLAN)
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "4", "why": "prose-reference"} in out["dag_edges"]
+    assert out["waves"] == [["1"], ["4"]]
+    notes = " ".join(c["note"] for c in out["marker_conflicts"])
+    # the inference itself is surfaced, and the authored `none` override too
+    assert "prose-reference" in notes
+    assert "Depends-on: none overridden" in notes
+
+
+def test_prose_reference_matches_basename_and_full_path(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(PROSE_REF_PLAN.replace(
+        "returns a `schema.User`", "import `apistub/schema.py` and `schema.py`"))
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "4", "why": "prose-reference"} in out["dag_edges"]
+
+
+def test_prose_reference_dedupes_against_declared_marker(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(PROSE_REF_PLAN.replace(
+        "**Depends-on:** none\n\n**Files:**\n- Create: `apistub/store.py`",
+        "**Depends-on:** 1\n\n**Files:**\n- Create: `apistub/store.py`"))
+    out = compile_plan(plan)
+    whys = [e["why"] for e in out["dag_edges"]]
+    assert "marker" in whys
+    assert "prose-reference" not in whys          # deduped by the seen-pair guard
+    assert out["marker_conflicts"] == []          # nothing newly inferred -> no note
+
+
+def test_prose_reference_ignores_fenced_examples(tmp_path):
+    plan = tmp_path / "plan.md"
+    fenced = PROSE_REF_PLAN.replace(
+        "- [ ] **Step 1:** `add(name, email)` creates and returns a `schema.User` with an auto-incrementing id.",
+        "- [ ] **Step 1:** Implement the store. Example output:\n\n```\nuser = schema.User(id=1)\n```")
+    plan.write_text(fenced)
+    out = compile_plan(plan)
+    assert all(e["why"] != "prose-reference" for e in out["dag_edges"])
+
+
+def test_prose_reference_short_stem_requires_exact_or_basename(tmp_path):
+    # stem 'a' (from a.txt) is below the minimum stem length: `a.something`
+    # must NOT match, but the exact backticked filename `a.txt` must.
+    plan = tmp_path / "plan.md"
+    plan.write_text("""# Demo Implementation Plan
+
+### Task 1: Alpha
+
+**Type:** implementation
+
+**Files:**
+- Create: `a.txt`
+
+- [ ] **Step 1:** Write `alpha` to the file.
+
+### Task 2: Beta
+
+**Type:** implementation
+
+**Files:**
+- Create: `b.txt`
+
+- [ ] **Step 1:** Write `a.member` style prose and copy the header from `a.txt`.
+""")
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "prose-reference"} in out["dag_edges"]

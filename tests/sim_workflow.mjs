@@ -1553,6 +1553,31 @@ async function scenarioBudgetDiesBeforeReconcile() {
   console.log('scenario budget-dies-before-reconcile: OK')
 }
 
+// ── Scenario: declared file scope is threaded into impl/review prompts ───────
+async function scenarioFileScope() {
+  const waves = [[
+    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap',
+      files: ['a.txt', 'tests/test_a.py'] },
+    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'cheap', files: ['b.txt'] },
+  ]]
+  const prompts = {}
+  const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
+  await runWorkflow({ agent, args: { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: [], edges: [] }, budget: undefined })
+  assert(prompts['impl:A'].includes('\nFILES: a.txt, tests/test_a.py'),
+    'scope: impl:A prompt carries the FILES line')
+  assert(prompts['review:A:1'].includes('\nFILES: a.txt, tests/test_a.py'),
+    'scope: review:A prompt carries the FILES line')
+  assert(prompts['impl:B'].includes('\nFILES: b.txt'),
+    'scope: impl:B now carries its own FILES line')
+  assert(prompts['impl:A'].includes('\nSIBLING FILES: B: b.txt'),
+    'sibling: impl:A names B-owned files')
+  assert(prompts['impl:B'].includes('\nSIBLING FILES: A: a.txt, tests/test_a.py'),
+    'sibling: impl:B names A-owned files')
+  assert(prompts['review:A:1'].includes('\nSIBLING FILES: B: b.txt'),
+    'sibling: review:A names B-owned files')
+  console.log('scenario fileScope: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1604,4 +1629,5 @@ await scenarioBaseBranchThreaded()
 await scenarioReconcileTierOverride()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
+await scenarioFileScope()
 console.log('ALL SCENARIOS PASSED')

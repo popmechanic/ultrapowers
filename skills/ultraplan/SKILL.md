@@ -104,5 +104,6 @@ After writing-plans' own self-review checklist, verify:
   affected task bodies.
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing relies on the executor's classification heuristics.
+- Every backticked mention of a file or module another task creates (`apistub/schema.py`, `schema.User`) has a matching `**Depends-on:**` on the referencing task — otherwise the compiler infers a `prose-reference` edge and surfaces it as a conflict at the wave-plan gate.
 
 (End of SKILL.md.)
