@@ -11,22 +11,46 @@
 # worktree), typically at the Step-5 Approve path with the integration branch
 # (or post-merge main) checked out, so "merged into HEAD" means what you expect.
 #
-# Run it only AFTER the run completes — it removes every wf_* worktree,
-# including locked ones. Do not sweep while another ultrapowers run is active
-# in this repo: in-flight uncommitted worktree state is unrecoverable.
+# Locked worktrees (possibly a live run's state) are kept by default and
+# reported; pass --force to remove them too (and force-delete unmerged branches,
+# as before). Concurrent runs in one repo remain unsupported.
 set -euo pipefail
 
-GIT_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
-ROOT="$(dirname "$GIT_COMMON")"
+# The MAIN worktree is the first entry of `git worktree list --porcelain`.
+# dirname(--git-common-dir) breaks when the git dir sits outside the repo
+# (--separate-git-dir) or under a superproject's .git (submodules) — the
+# latter would aim branch -d at the WRONG repository.
+ROOT="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
+# If --separate-git-dir was used, worktree list reports the git-dir, not the
+# working tree. Fall back to --show-toplevel in that case.
+if [ ! -e "$ROOT/.claude" ]; then
+  ROOT="$(git rev-parse --show-toplevel)"
+fi
 FORCE="${1:-}"
 if [ -n "$FORCE" ] && [ "$FORCE" != "--force" ]; then
   echo "usage: sweep_worktrees.sh [--force]" >&2
   exit 2
 fi
 
+is_locked() {
+  git -C "$ROOT" worktree list --porcelain | awk -v wt="$1" '
+    $1 == "worktree" { cur = substr($0, 10) }
+    $1 == "locked" && cur == wt { found = 1 }
+    END { exit !found }'
+}
+
 removed_worktrees=0
+kept_worktrees=0
 for wt in "$ROOT"/.claude/worktrees/wf_*; do
   [ -e "$wt" ] || continue
+  # A lock marks possibly-live state (a concurrent run, an untriaged redirect):
+  # keep it unless the caller explicitly forces. The branch survives too —
+  # `branch -d` fails while its worktree exists.
+  if [ "$FORCE" != "--force" ] && is_locked "$wt"; then
+    kept_worktrees=$((kept_worktrees + 1))
+    echo "kept (locked — possibly a live run; --force to remove): $wt"
+    continue
+  fi
   # Removing the worktree the caller is standing in succeeds (every later
   # command uses -C "$ROOT") but leaves their shell in an unlinked directory —
   # say so instead of letting subsequent commands fail confusingly.
@@ -66,4 +90,4 @@ while IFS= read -r br; do
   fi
 done < <(git -C "$ROOT" branch --list 'worktree-wf_*' --format='%(refname:short)')
 
-echo "swept: $removed_worktrees worktree(s) removed, $deleted branch(es) deleted, $kept kept"
+echo "swept: $removed_worktrees worktree(s) removed, $deleted branch(es) deleted, $kept kept, $kept_worktrees locked worktree(s) kept"

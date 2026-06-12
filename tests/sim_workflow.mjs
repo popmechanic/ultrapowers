@@ -217,6 +217,21 @@ async function scenarioArgsThrow() {
   console.log('scenario args-throw: OK')
 }
 
+// ── Scenario: duplicate task ids across waves refuse to launch ────────────────
+async function scenarioDuplicateTaskId() {
+  const waves = [
+    [{ id: 'A', title: 'one', body: 'b1' }],
+    [{ id: 'A', title: 'two', body: 'b2' }],
+  ]
+  let threw = null
+  try {
+    await runWorkflow({ agent: makeAgent(), args: { waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+  } catch (e) { threw = e }
+  assert(threw && /duplicate task id "A"/.test(String(threw.message)),
+    'dupId: launch must throw naming the duplicated id (got ' + String(threw && threw.message) + ')')
+  console.log('scenario duplicate-task-id: OK')
+}
+
 // ── Scenario 5: args delivered as a JSON STRING (observed live in -p) ─────────
 // The args-probe showed args can arrive as a raw JSON string; workflow.js must
 // JSON.parse it and still run normally.
@@ -1490,11 +1505,60 @@ async function scenarioStatuslessImplFailsFast() {
   console.log('scenario statusless-impl-fails-fast: OK')
 }
 
+// ── Scenario: budget dies mid-wave — no merge/reconcile/integration dispatch ──
+async function scenarioBudgetDiesMidWave() {
+  let implsDone = 0
+  const labels = []
+  const agent = makeAgent((label) => {
+    labels.push(label)
+    if (label.startsWith('impl:')) implsDone++
+    return undefined // fall through to default stub behavior
+  })
+  // Both wave-1 tasks dispatch (checks at wave/chunk top pass), then the
+  // budget reads 0 before the wave-1 merge.
+  const budget = { total: 100, remaining: () => (implsDone >= 2 ? 0 : 50) }
+  const r = await runWorkflow({ agent, args: baseArgs, budget })
+  assert(!labels.some((l) => l.startsWith('merge:')), 'budgetMidWave: no merge dispatched')
+  assert(!labels.some((l) => l.startsWith('reconcile:')), 'budgetMidWave: no reconcile dispatched')
+  assert(!labels.includes('integration'), 'budgetMidWave: no integration review dispatched')
+  assert(r.waveMerges.length === 1 && r.waveMerges[0].status === 'DEFERRED',
+    'budgetMidWave: wave-1 merge recorded as DEFERRED (got ' + JSON.stringify(r.waveMerges) + ')')
+  eq(r.blockedWaves, [], 'budgetMidWave: budget deferral is not a blocked wave')
+  assert(r.unfinished.some((u) => /^C: deferred \(budget exhausted/.test(u)),
+    'budgetMidWave: wave-2 task deferred with a budget reason')
+  assert(r.judgmentCalls.some((j) => /budget exhausted/.test(j)), 'budgetMidWave: cause in judgmentCalls')
+  assert(/budget exhausted/.test(r.tests.output), 'budgetMidWave: integration skip attributed to budget')
+  eq(r.tests.passed, false, 'budgetMidWave: tests cannot read as passed')
+  console.log('scenario budget-dies-mid-wave: OK')
+}
+
+// ── Scenario: budget dies after a CONFLICT merge — reconcile not dispatched ───
+async function scenarioBudgetDiesBeforeReconcile() {
+  let merged = false
+  const labels = []
+  const agent = makeAgent((label) => {
+    labels.push(label)
+    if (label.startsWith('merge:')) { merged = true; return { status: 'CONFLICT', detail: 'overlap' } }
+    return undefined
+  })
+  const budget = { total: 100, remaining: () => (merged ? 0 : 50) }
+  const r = await runWorkflow({ agent, args: baseArgs, budget })
+  assert(!labels.some((l) => l.startsWith('reconcile:')), 'budgetReconcile: no reconcile dispatched')
+  assert(r.waveMerges[0].status === 'DEFERRED',
+    'budgetReconcile: DEFERRED, not CONFLICT (got ' + JSON.stringify(r.waveMerges[0]) + ')')
+  eq(r.blockedWaves, [], 'budgetReconcile: not recorded as a merge failure')
+  assert(r.unfinished.some((u) => /^C: deferred \(budget exhausted/.test(u)),
+    'budgetReconcile: later tasks deferred, not cascade-blocked')
+  assert(!r.unfinished.some((u) => /cascade-blocked/.test(u)), 'budgetReconcile: no cascade-block wording')
+  console.log('scenario budget-dies-before-reconcile: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
 await scenarioArgsThrow()
+await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
@@ -1522,6 +1586,8 @@ await scenarioNeedsContextAfterFix()
 await scenarioResume()
 await scenarioResumeRequiresBranch()
 await scenarioAdversarialDedupe()
+await scenarioBudgetDiesMidWave()
+await scenarioBudgetDiesBeforeReconcile()
 await scenarioBudgetExhausted()
 await scenarioAgentThrowDegrades()
 await scenarioMergedWithoutHeadSha()

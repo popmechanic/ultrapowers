@@ -39,8 +39,16 @@ FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
-# Plural prose ("depends on Tasks 1 and 3") is NOT parsed into edges — surface
-# it so the author converts to Depends-on markers instead of losing ordering.
+# Plural conjunction/comma lists ("depends on Tasks 1 and 3", "after Tasks
+# 1, 2 and 3") parse into one text edge per listed id. A `Tasks` mention the
+# list regex cannot parse (e.g. "after Tasks above") still surfaces as a
+# conflict so ordering intent is never silently lost.
+TEXT_DEP_LIST = re.compile(
+    r"(?:depends\s+on|after|requires)[\s:*]+Tasks\s+"
+    r"((?:[A-Za-z0-9]+)(?:\s*(?:,|and|&)\s*[A-Za-z0-9]+)*)", re.I)
+LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
+# Plural prose that does NOT form a parseable id list — surface it so the
+# author can fix the ordering intent instead of losing it silently.
 TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
 
@@ -202,6 +210,25 @@ def parse_task(t):
         if s.startswith("**Files:**"):
             in_files = True
             files_entries_seen = False
+            # Inline header values: `**Files:** \`a.py\` \`b.py\`` carries the
+            # paths on the header line itself. Backticked paths are honored as
+            # writes (conservative: inline form does not distinguish
+            # Create/Modify/Test, and a write is the safe assumption). A
+            # non-backticked remainder surfaces a conflict instead of silently
+            # falling to ambiguous-files with no pointer.
+            rest = s[len("**Files:**"):].strip()
+            if rest:
+                inline = [p.split(":")[0] for p in PATH_RE.findall(rest) if p]
+                if inline:
+                    modifies.extend(inline)
+                    files_entries_seen = True
+                elif not rest.lower().startswith("none"):
+                    # "none" (with or without trailing prose) is a valid value
+                    # (common for gates); other prose without backticked paths
+                    # surfaces a conflict
+                    files_near_miss.append(
+                        s + "  <inline Files value has no backticked paths — "
+                        "backtick each path or use - Create/Modify/Test bullets>")
             continue
         if FILES_ISH.match(s):
             # `**Files**:` / `**files:**` never opens the block — every entry
@@ -412,6 +439,18 @@ def build_edges(impl):
                         b["id"], m.group(1) + " -> " + b["id"] + " (text)",
                         "text dependency names a task outside the implementation set "
                         "(unknown id or gate/release/manual) — edge dropped")
+        for m in TEXT_DEP_LIST.finditer(b["prose"]):
+            for ref in LIST_SPLIT.split(m.group(1)):
+                ref = ref.strip()
+                if not ref or ref == b["id"]:
+                    continue
+                if ref in ids:
+                    add(ref, b["id"], "text")
+                else:
+                    add_conflict(
+                        b["id"], ref + " -> " + b["id"] + " (text)",
+                        "text dependency names a task outside the implementation set "
+                        "(unknown id or gate/release/manual) — edge dropped")
 
     # Tier 2: Semantic, order-independent — write-after-create and read-after-write
     for a in impl:
@@ -461,6 +500,27 @@ def build_edges(impl):
     return edges, conflicts
 
 
+def find_cycle(members, edges):
+    """One concrete cycle among `members` as an edge list, or None.
+    Iterative DFS over the recorded edges restricted to the unplaced members —
+    small by construction (only the Kahn leftovers), so no perf concern."""
+    mset = set(members)
+    succ = {}
+    for e in edges:
+        if e["from"] in mset and e["to"] in mset:
+            succ.setdefault(e["from"], []).append(e)
+    for start in members:
+        stack = [(start, [])]
+        while stack:
+            node, path = stack.pop()
+            for e in succ.get(node, []):
+                if e["to"] == start:
+                    return path + [e]
+                if all(p["to"] != e["to"] for p in path):
+                    stack.append((e["to"], path + [e]))
+    return None
+
+
 def layer(impl, edges):
     order = [t["id"] for t in impl]
     indeg = {i: 0 for i in order}
@@ -482,8 +542,14 @@ def layer(impl, edges):
         ready = nxt
     if len(done) != len(order):
         members = [i for i in order if i not in done]
+        cyc = find_cycle(members, edges)
+        hint = ""
+        if cyc:
+            hint = (" One cycle: " + cyc[0]["from"] + " -> "
+                    + " -> ".join(f"{e['to']} ({e['why']})" for e in cyc)
+                    + " — break the weakest labeled constraint.")
         print(f"compile_plan: cycle detected among tasks {', '.join(members)} — "
-              "revise the plan to break it; refusing to guess an ordering.",
+              "revise the plan to break it; refusing to guess an ordering." + hint,
               file=sys.stderr)
         raise SystemExit(1)
     return waves
@@ -567,13 +633,15 @@ def main(argv=None):
                  + ") — task serialized via ambiguous-files; list concrete files "
                  "to parallelize (a literal [slug]/{x} path also triggers this)"}
         for t in tasks if t.get("glob_paths")]
-    # Plural text dependencies are not parsed into edges — surface so the
-    # ordering intent is not silently lost.
+    # Plural text dependencies that could NOT be parsed into an id list — surface
+    # so the ordering intent is not silently lost.
     type_conflicts += [
         {"task": t["id"], "edge": "",
-         "note": "plural text dependency ('depends on/after/requires Tasks …') is "
-                 "not parsed — encode each prerequisite as a **Depends-on:** marker"}
-        for t in tasks if TEXT_DEP_PLURAL.search(t["prose"])]
+         "note": "plural text dependency ('depends on/after/requires Tasks …') could "
+                 "not be parsed into task ids — encode each prerequisite as a "
+                 "**Depends-on:** marker"}
+        for t in tasks
+        if TEXT_DEP_PLURAL.search(t["prose"]) and not TEXT_DEP_LIST.search(t["prose"])]
     # Files-entry near-misses: a dropped write path silently weakens overlap
     # inference — surface per task.
     type_conflicts += [

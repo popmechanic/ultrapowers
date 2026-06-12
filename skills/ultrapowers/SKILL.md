@@ -133,9 +133,11 @@ install the copy now:
 
 ```
 mkdir -p .claude/workflows
-cp "${CLAUDE_SKILL_DIR}/workflow.js" .claude/workflows/ultrapowers-run.js
-cp "${CLAUDE_SKILL_DIR}/probe.js" .claude/workflows/ultrapowers-probe.js
+cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/workflow.js" .claude/workflows/ultrapowers-run.js
+cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/probe.js" .claude/workflows/ultrapowers-probe.js
 ```
+
+(`${CLAUDE_PLUGIN_ROOT}` resolves to this plugin's installed root — the directory containing `skills/`.)
 
 Run the copy unconditionally — it is byte-for-byte the committed script, so overwriting keeps any
 stale copy in sync with the installed plugin version. Never edit the copy. (The user may commit it
@@ -207,10 +209,11 @@ present two choices:
   own precondition is a passing suite). If true: `git checkout <integrationBranch>`
   (its Step 1 verifies tests on the CURRENT checkout — it must see the integration
   tree, not the base branch you restored for the report), then run
-  `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` — the deterministic sweep
+  `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` — the deterministic sweep
   of engine worktrees and merged branches (unmerged failed-task branches are kept
-  for inspection; never rely on the merge agents having cleaned up; do not sweep
-  while another ultrapowers run is active in this repo). Then proceed
+  for inspection; never rely on the merge agents having cleaned up; locked worktrees
+  are kept by default (pass `--force` to remove them); concurrent runs in one repo
+  remain unsupported). Then proceed
   to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
   the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the

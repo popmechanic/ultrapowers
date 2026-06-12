@@ -92,9 +92,22 @@ def test_sweep_survives_stale_dir_and_locked_worktree(tmp_path):
     p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert not stale.exists()
-    assert not wt_locked.exists()
+    assert wt_locked.exists()                       # locked => kept by default
+    assert "kept (locked" in p.stdout
     assert not wt_real.exists()
     assert "swept:" in p.stdout          # the summary line printed — no mid-sweep abort
+
+
+def test_sweep_force_removes_locked_worktree(tmp_path):
+    repo = make_repo(tmp_path)
+    wt_locked, br = add_engine_worktree(repo, "locked-f", "lf.txt", merge=True)
+    git(repo, "worktree", "lock", str(wt_locked))
+
+    p = subprocess.run(["bash", str(SWEEP), "--force"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt_locked.exists()
+    assert branches(repo) == []
 
 
 def test_sweep_force_keeps_checked_out_branch_and_finishes(tmp_path):
@@ -170,3 +183,25 @@ def test_sweep_warns_when_removing_the_callers_worktree(tmp_path):
     assert p.returncode == 0, p.stderr
     assert not wt.exists()
     assert "current directory" in p.stderr   # the caller is told their cwd is gone
+
+
+def test_sweep_root_survives_separate_git_dir(tmp_path):
+    # --separate-git-dir puts the git dir OUTSIDE the repo: dirname(common-dir)
+    # resolves to the git dir's parent, and the old derivation died with
+    # "fatal: not a git repository".
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    gitdir = tmp_path / "gitdir"
+    subprocess.run(["git", "init", "-b", "main", "--separate-git-dir", str(gitdir),
+                    str(repo)], check=True, capture_output=True)
+    git(repo, "config", "user.email", "sweep@test")
+    git(repo, "config", "user.name", "sweep test")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "init")
+    wt, br = add_engine_worktree(repo, "sep", "s.txt", merge=True)
+
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt.exists()
+    assert branches(repo) == []

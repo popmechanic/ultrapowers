@@ -21,6 +21,14 @@ Extract each task's verbatim body **fence-aware**: a heading inside a ``` code f
 is content, not a section boundary — plans routinely embed whole markdown documents
 inside their steps.
 
+> **Leniency note:** the tracker models info-stringed fence runs inside an open
+> fence as nested openers so balanced nested examples (e.g. a `~~~` wrapper
+> around a ``` example) stay content. On *unbalanced* trailing fences it is more
+> lenient than strict CommonMark: a trailing line that strict CommonMark would
+> keep fenced can be treated as prose and reach marker/text-dependency scanning.
+> This triggers only on malformed example markdown — keep fenced examples
+> balanced and the models agree.
+
 ---
 
 ## Classify Before Building the DAG
@@ -61,7 +69,7 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
    transparency block under `marker_conflicts`.
 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
 3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet).
-4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections.
+4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections. Plural conjunction/comma lists — `depends on Tasks 1 and 3` or `after Tasks 1, 2 and 3` — parse into one text edge per listed id (`why: "text"`); each parsed id that falls outside the implementation set surfaces as a dropped-ghost conflict. A plural `Tasks` mention that does not form a parseable id list (e.g. `after Tasks above`) still surfaces as a conflict so ordering intent is never silently lost.
 5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
@@ -105,7 +113,7 @@ After building the adjacency list, run cycle detection before accepting any wave
 If a cycle is found:
 
 1. **Abort wave computation immediately.**
-2. Surface the offending edge list to the human in plain language: The compiler reports the unplaceable tasks: `compile_plan: cycle detected among tasks A, B — revise the plan to break it; refusing to guess an ordering.` When hand-deriving, name the offending edges too.
+2. Surface the offending edge list to the human in plain language: The compiler reports the unplaceable tasks: `compile_plan: cycle detected among tasks A, B — revise the plan to break it; refusing to guess an ordering.` The compiler also prints one concrete cycle with each hop's why label (`One cycle: A -> B (write-after-write) -> A (marker)`) so the author knows exactly which constraint to break. When hand-deriving, name the offending edges too.
 3. Ask the human to revise the plan to break the cycle — do not guess an ordering or silently drop an edge.
 
 ---

@@ -52,6 +52,21 @@ if (!validWaves) {
   )
 }
 
+// Duplicate ids would corrupt blockedByDep and report keying (tasks[],
+// waveMerges.branches). compile_plan.py hard-errors on duplicates at the plan
+// level; hand-authored waves must meet the same bar — refuse to run.
+{
+  const seenIds = new Set()
+  for (const w of WAVES) for (const t of w) {
+    if (seenIds.has(t.id)) {
+      throw new Error('ultrapowers: duplicate task id "' + t.id + '" across waves — task ids ' +
+        'must be unique (compile_plan.py enforces this at the plan level; hand-authored ' +
+        'waves must too). Refusing to run.')
+    }
+    seenIds.add(t.id)
+  }
+}
+
 const stamp = (ARGS && ARGS.stamp) || 'run'
 const integrationBranch =
   (ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch) ||
@@ -113,8 +128,6 @@ for (const k of Object.keys(tierOverrides)) {
     throw new Error('ultrapowers: tierOverrides key "' + k +
       '" is not a tier (valid: cheap, standard, mostCapable). Refusing to launch.')
   }
-}
-for (const k in tierOverrides) {
   if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
     throw new Error(
       'ultrapowers: tierOverrides.' + k + ' = "' + tierOverrides[k] +
@@ -539,6 +552,10 @@ async function mergeWave(results, waveIdx) {
     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
   }
   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
+    if (budgetExhausted()) {
+      return { status: 'DEFERRED', detail: 'budget exhausted before reconciliation attempt ' +
+        attempt + ' (last merge status: ' + merge.status + ') — task branches intact, not merged' }
+    }
     log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
     try {
       merge = await agent(
@@ -724,7 +741,6 @@ for (let w = 0; w < WAVES.length; w++) {
     }
     noteFailures()
   }
-  noteFailures()
 
   // When every task in the wave is dep-blocked/failed (no mergeable branches),
   // skip the merge — but when NO edges were supplied (not even an empty array)
@@ -760,6 +776,23 @@ for (let w = 0; w < WAVES.length; w++) {
     continue
   }
 
+  if (budgetExhausted()) {
+    waveMerges.push({
+      wave: w + 1,
+      status: 'DEFERRED',
+      detail: 'budget exhausted before wave merge — task branches exist unmerged; rerun or redirect after raising the budget',
+      branches: mergeable.map((r) => r.task),
+    })
+    if (!budgetDeferred) {
+      budgetDeferred = true
+      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+    }
+    for (let d = w + 1; d < WAVES.length; d++) {
+      WAVES[d].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted before wave ' + (w + 1) + ' merge)'))
+    }
+    log('wave ' + (w + 1) + ' merge deferred: budget exhausted')
+    break
+  }
   const merge = await mergeWave(results, w)
   // Record every wave's merge outcome (success too) so the pre-merge gate can see
   // how integration actually went — not just failures. This is the report's record
@@ -774,6 +807,17 @@ for (let w = 0; w < WAVES.length; w++) {
     // merge succeeded (do not imply success: a CONFLICT wave still lists them).
     branches: results.filter(isMergeable).map((r) => r.task),
   })
+  if (merge.status === 'DEFERRED') {
+    if (!budgetDeferred) {
+      budgetDeferred = true
+      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+    }
+    for (let d = w + 1; d < WAVES.length; d++) {
+      WAVES[d].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted during wave ' + (w + 1) + ' merge)'))
+    }
+    log('wave ' + (w + 1) + ' merge deferred mid-reconciliation: budget exhausted')
+    break
+  }
   if (merge.status === 'MERGED' && !merge.headSha) {
     judgmentCalls.push('wave ' + (w + 1) + ': merge reported MERGED without headSha — ' +
       'review base stays at ' + String(waveBaseSha).slice(0, 12) +
@@ -797,22 +841,30 @@ for (let w = 0; w < WAVES.length; w++) {
 phase('Integration Review')
 const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
 let review
-try {
-  review = await agent(
-    GUARD + '\n\n' + COMPLETENESS_PROMPT +
-      '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
-      // A red baseline reframes the critic's own test run: failures it sees may be
-      // inherited, not introduced. Only thread it when it actually failed.
-      (baseline.passed === false
-        ? '\nBaseline: the test suite FAILED before any task ran — ' + (baseline.output || 'no output')
-        : ''),
-    { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
-  )
-} catch (e) {
-  const msg = String((e && e.message) || e)
-  judgmentCalls.push('integration review failed to run: ' + msg)
-  review = { testsPassed: false, output: 'integration agent error: ' + msg,
-             findings: ['integration review did not run — verify the suite manually before merging'] }
+if (budgetExhausted()) {
+  judgmentCalls.push('integration review deferred: budget exhausted — verify the suite manually before merging')
+  log('integration review deferred: budget exhausted')
+  review = { command: undefined, testsPassed: false,
+             output: 'not run — budget exhausted before integration review',
+             findings: ['integration review deferred: budget exhausted — verify the suite manually before merging'] }
+} else {
+  try {
+    review = await agent(
+      GUARD + '\n\n' + COMPLETENESS_PROMPT +
+        '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+        // A red baseline reframes the critic's own test run: failures it sees may be
+        // inherited, not introduced. Only thread it when it actually failed.
+        (baseline.passed === false
+          ? '\nBaseline: the test suite FAILED before any task ran — ' + (baseline.output || 'no output')
+          : ''),
+      { label: 'integration', model: REVIEWER_MODEL, schema: REVIEW_SCHEMA }
+    )
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    judgmentCalls.push('integration review failed to run: ' + msg)
+    review = { testsPassed: false, output: 'integration agent error: ' + msg,
+               findings: ['integration review did not run — verify the suite manually before merging'] }
+  }
 }
 
 // ── Structured return value (matches references/report-format.md) ─────────────

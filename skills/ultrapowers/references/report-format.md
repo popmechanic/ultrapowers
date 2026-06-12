@@ -46,11 +46,21 @@ The workflow produces a single structured report object that the main agent pres
 | `tasks[].fixIterations` | no | Fix rounds consumed (0 = clean on first review) |
 | `tests` | yes | Result of the suite run on the integration branch |
 | `baseline` | no | Result of the test run setup performed on the integration branch before wave 1; `passed: false` means tasks inherited a red suite |
-| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED` (`SKIPPED` = no mergeable branches, integration branch untouched; cascades only when `args.edges` was omitted — an explicitly supplied empty array counts as supplied — and tasks actually ran)), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed |
-| `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished` |
+| `waveMerges` | no | One entry per wave's integration merge: `wave`, `status` (`MERGED`/`CONFLICT`/`TEST_FAILED`/`SKIPPED`/`DEFERRED`), `headSha`, `command`, `detail`, and `branches` (the task IDs submitted to the merge — listed even on a failed merge). Surfaces *how* integration went, not just whether it failed. Status values: `MERGED` = integrated successfully; `CONFLICT`/`TEST_FAILED` = merge attempt failed (wave is blocked, later waves cascade-blocked); `SKIPPED` = no mergeable branches, integration branch untouched (cascades only when `args.edges` was omitted — an explicitly supplied empty array counts as supplied — and tasks actually ran); `DEFERRED` = budget exhausted before or during this wave's merge (see below) |
+| `blockedWaves` | no | Waves whose merge did not land (`wave`, `detail`); later waves were cascade-blocked into `unfinished`. Note: `DEFERRED` waves are NOT recorded here — a budget outcome is not a merge failure |
 | `judgmentCalls` | no | Any non-obvious decisions made autonomously during the run — including implementer `DONE_WITH_CONCERNS` concerns, a red baseline, reviewer verdict/severity mismatches, agent errors, budget deferrals (one judgment call at launch-time exhaustion and one for the first mid-run deferral; every deferred task is itemized in `unfinished`), merges reported without a headSha, tasks reported done without mergeable coordinates, an unknown or typo'd per-task review depth or tier (fell back to defaults), an unknown baseline (setup omitted baselinePassed or reported null), and edge-binding notes: an endpoint missing from this run's waves (unbound — expected on resume re-runs, otherwise a typo), a dependent in an EARLIER wave than its prerequisite (cannot bind), or endpoints sharing a wave (binding is chunk-position-dependent — fires only across 16-task chunk boundaries), plus a reviewer returning no recognizable verdict (treated as blocking, never merged as clean), and a failed integration review |
-| `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none) |
+| `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
 | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths |
+
+### `waveMerges[].status` values
+
+- `MERGED` — wave integrated successfully; `headSha` carries the new integration-branch HEAD.
+- `CONFLICT` / `TEST_FAILED` — merge attempt failed after reconciliation; the wave is recorded in `blockedWaves` and later waves are cascade-blocked.
+- `SKIPPED` — no mergeable branches in this wave; integration branch untouched. Cascades conservatively when `args.edges` was omitted and tasks actually ran; otherwise the next wave proceeds normally.
+- `DEFERRED` — budget exhausted before or during this wave's merge; the wave's task
+  branches exist unmerged, and later waves were deferred to `unfinished` (not
+  cascade-blocked). Rerun or redirect after raising the budget — this is a budget
+  outcome, never a merge failure.
 
 ## Presentation
 
@@ -73,5 +83,5 @@ When the workflow completes, the main agent renders the report as a concise huma
 This pre-merge review is the **third and final gate** (after plan approval and the Step-3 wave-plan
 approval). After the summary the agent names the integration branch and asks the human to choose:
 
-- **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand off; present the failure and offer Redirect instead. If true: `git checkout <integrationBranch>` (finishing-a-development-branch verifies tests on the CURRENT checkout, and the sweep classifies 'merged' against HEAD), then run `bash ${CLAUDE_SKILL_DIR}/scripts/sweep_worktrees.sh` (the deterministic sweep — do not assume the merge agents' prompted cleanup ran; never sweep while another ultrapowers run is active in this repo), then proceed to `superpowers:finishing-a-development-branch`; the orchestrator carries the post-merge runbook and presents it again when that handoff completes.
+- **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand off; present the failure and offer Redirect instead. If true: `git checkout <integrationBranch>` (finishing-a-development-branch verifies tests on the CURRENT checkout, and the sweep classifies 'merged' against HEAD), then run `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` (the deterministic sweep — do not assume the merge agents' prompted cleanup ran; locked worktrees are kept by default (pass `--force` to remove them); concurrent runs in one repo remain unsupported), then proceed to `superpowers:finishing-a-development-branch`; the orchestrator carries the post-merge runbook and presents it again when that handoff completes.
 - **Redirect** — provide corrective instructions; re-run the affected tasks before returning to this gate.
