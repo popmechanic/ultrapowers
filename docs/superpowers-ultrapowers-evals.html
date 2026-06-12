@@ -195,7 +195,7 @@
   .bar-row { display: grid; grid-template-columns: 150px 1fr 86px; align-items: center; gap: 12px; margin: 10px 0; }
   .bar-row .name { font-size: 14px; font-weight: 600; }
   .bar-row .gutter { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; height: 22px; overflow: hidden; }
-  .bar-row .fill { height: 100%; border-radius: 5px; transform-origin: left center; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+  .bar-row .fill { display: block; width: 100%; height: 100%; border-radius: 5px; transform-origin: left center; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
   .bar-row.a .fill { background: var(--blue); }
   .bar-row.b .fill { background: var(--green); }
   .bar-row.c .fill { background: var(--purple); }
