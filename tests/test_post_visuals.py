@@ -88,3 +88,27 @@ def test_script_ids_exist_in_markup():
         ids |= set(re.findall(r'"((?:an|rc)-[a-z0-9]+)"', js))
     for tok in sorted(ids):
         assert f'id="{tok}"' in h, f"script references missing element id {tok}"
+
+
+def test_race_figure_uses_real_run_data():
+    h = html()
+    assert 'id="fig-race"' in h
+    assert "mixed-A-1" in h and "mixed-B-1" in h, "figcaption must cite run ids"
+    # node x for the 42.6-min serial task-6 completion: 40 + 42.6*600/46.4
+    assert 'cx="590.9"' in h
+    # waves final merge at 16.9 min: 40 + 16.9*600/46.4
+    assert 'cx="258.6"' in h
+
+
+def test_race_figcaption_maps_task_names():
+    h = html()
+    for name in ["user schema", "payload validation", "serialization",
+                 "in-memory store", "handlers", "router"]:
+        assert name in h, f"task-name mapping missing: {name}"
+
+
+def test_old_gantt_race_removed():
+    h = html()
+    assert 'class="track serial"' not in h
+    assert "@keyframes grow" not in h
+    assert 'id="replayBtn"' not in h
