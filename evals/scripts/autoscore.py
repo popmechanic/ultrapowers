@@ -53,21 +53,29 @@ def run_cost(run_dir):
 
 
 def reliability_counters(run_dir):
-    """Sum fixIterations and count non-done tasks from the workflow result."""
+    """Sum fixIterations and count non-done tasks from the workflow result.
+
+    The transcript can carry several copies of the result with different
+    escaping; keep the last copy that actually parses to task entries —
+    an unparseable copy must not silently zero the counters.
+    """
     stem = pathlib.Path(run_dir).resolve().name
-    best = None
+    best = None  # (fixes, blocked)
     for proj in PROJECTS.glob(f"*-eval-runs-{stem}*"):
         for f in proj.glob("*.jsonl"):
             for line in open(f, errors="replace"):
-                if "fixIterations" in line and "integrationBranch" in line:
-                    best = line  # last one wins — final result supersedes drafts
+                if "fixIterations" not in line or "integrationBranch" not in line:
+                    continue
+                flat = line.replace("\\", "")
+                fixes = re.findall(r'fixIterations":\s*(\d+)', flat)
+                statuses = re.findall(r'"status":\s*"(\w+)"', flat)
+                if not fixes and not statuses:
+                    continue  # differently-escaped echo; unparseable
+                best = (sum(int(m) for m in fixes),
+                        sum(1 for s in statuses if s not in ("done", "MERGED")))
     if best is None:
         return 0, 0, "workflow result summary not found in transcript"
-    flat = best.replace("\\", "")
-    fixes = sum(int(m) for m in re.findall(r'fixIterations":\s*(\d+)', flat))
-    statuses = re.findall(r'"status":\s*"(\w+)"', flat)
-    blocked = sum(1 for s in statuses if s not in ("done", "MERGED"))
-    return fixes, blocked, ""
+    return best[0], best[1], ""
 
 
 def main():
