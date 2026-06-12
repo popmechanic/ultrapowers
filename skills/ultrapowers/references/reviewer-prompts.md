@@ -173,8 +173,8 @@ When the reviewer returns `FIX_REQUIRED`:
 
 | Tier | Use when |
 |------|----------|
-| **cheap** | Mechanical changes confined to 1–2 files with clear, unambiguous specs (renaming, adding a field, fixing a lint error) |
-| **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems |
+| **cheap** | Transcription-grade tasks only: the plan supplies complete code the author verified by running it, confined to 1–2 files, and the task touches none of the judgment-risk classes below |
+| **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify |
 | **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches |
 
-Assign tier at task-dispatch time based on estimated scope. Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models. `tierOverrides` reaches every non-review role: setup and merge run at the overridden `cheap`, reconcile and fix-rounds at the overridden `mostCapable`. Only the reviewer and completeness-critic models are pinned to the default most-capable, override-proof.
+Assign tier at task-dispatch time by estimated scope AND judgment-likelihood — realized difficulty tracks spec risk, not diff size (issue #20: the three heaviest implementations in run wf_df7eefdb-7b1 were all cheap-tier, and exactly the three that drew reviewer notes). Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models. `tierOverrides` reaches every non-review role: setup and merge run at the overridden `cheap`, reconcile and fix-rounds at the overridden `mostCapable`. Only the reviewer and completeness-critic models are pinned to the default most-capable, override-proof.

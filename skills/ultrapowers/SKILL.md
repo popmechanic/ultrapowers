@@ -79,8 +79,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
 - **Build the DAG** with the edge rules in `references/dependency-analysis.md` (marker, write-after-create, write-after-write, text, read-after-write); **run cycle detection** before computing waves.
   If a cycle is found, stop and surface it in plain language — never guess an ordering.
 - **Apply conservative defaults** and the **small-plan degrade** (exactly 1 implementation task, or fully overlapping writes → sequential mode: one single-task wave per task, in dependency order). Two or more tasks with disjoint writes stay parallel; dependency edges still serialize them by topology within parallel mode.
-- **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope, per
-  `references/reviewer-prompts.md`.
+- **Assign a model tier** per task (`cheap` / `standard` / `most-capable`) by estimated scope **and judgment-likelihood** (the risk classes in `references/reviewer-prompts.md` bump small-diff tasks to `standard`).
 - **Derive the run knobs yourself — do not ask the human to hand-tune them.** You read the plan and
   run inside the repo, so you are the right party to set these; the human only approves them at the
   Step-3 gate.
@@ -196,6 +195,8 @@ reconciles failures, and runs a final integration/completeness review. See
 out in the session repository and nothing switches it back — run `git checkout <baseBranch>` now.
 Skipping this makes every `git log`/`git merge` at this gate silently target the integration
 branch, so the work *looks* prematurely merged when it is not.
+
+**Optionally, audit the run's effort** (recommended after any sizable run): run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/audit_run.py <transcript-dir>` — the transcript directory is printed in the Workflow launch result ("Transcript dir:"). Include its effort table when presenting the report; flagged tier-misrank candidates feed the NEXT plan's tier assignments. The script is advisory by contract (read-only, exits 0 even when the engine's transcript layout has drifted) — never treat its absence of output as a gate failure.
 
 Then render the workflow's structured report per `references/report-format.md`:
 integration branch, wave plan, per-task status + review verdict, test result, judgment calls, and
