@@ -644,7 +644,7 @@ git commit -m "feat: sealing step in ultraplan; acceptance hard gate in ultrapow
 ### Task 5: Seal the eval fixtures
 
 **Type:** implementation
-**Depends-on:** 2
+**Depends-on:** 1, 2
 
 **Files:**
 - Create: `evals/scripts/seal_fixture.py`
