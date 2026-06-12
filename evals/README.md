@@ -47,10 +47,35 @@ python3 skills/ultrapowers/scripts/compile_plan.py evals/fixtures/wide/plan.md |
 ## The matrix
 
 4 fixtures × 3 conditions × 3 repetitions = **36 runs**. Agentic runs are heavy-tailed:
-report medians with ranges, never single runs. Estimated budget: **$600–900** total
-(B ≈ $10–18/run, A ≈ $20–30, C ≈ $25–35; the degrade fixture runs much cheaper).
+report medians with ranges, never single runs.
 
 Run IDs follow `<fixture>-<condition>-<rep>`, e.g. `wide-B-2`.
+
+**Budget — API billing:** estimated **$600–900** total (B ≈ $10–18/run, A ≈ $20–30,
+C ≈ $25–35; the degrade fixture runs much cheaper).
+
+**Budget — subscription plans (Max):** marginal cash cost ≈ $0; the binding constraint
+is **plan capacity**, and the 7-day limit is the ceiling that matters for a matrix this
+size. The only out-of-pocket spend is the judge (`judge.py` calls the API directly with
+a key): ~36 pairwise judgments ≈ **$10–30 total**.
+
+Capacity-safe schedule:
+
+- **One run per 5-hour window.** A run plus its scoring fits comfortably; don't stack
+  condition-C runs in one window.
+- **Calibrate before committing.** Run the two cheapest cells first (`degrade-B-1`,
+  `wide-B-1`) and check the `/usage` weekly delta. If one B run costs more than ~4% of
+  the weekly limit, spread the matrix over three weeks instead of two.
+- **Abort criterion:** if the weekly limit passes 50% with matrix runs remaining, stop
+  for the week — partial cells are fine, the report medians simply have fewer reps
+  until you resume.
+- **Order for early signal:** complete `mixed` across all three conditions first; it's
+  the most representative fixture, so if results are going to be boring or broken,
+  you'll know after ~9 runs.
+
+The B-vs-C comparison doubles as the subscriber headline: same orchestration, tiered vs
+all-frontier models, measured directly in weekly-limit percentage — i.e. **how much
+further model tiering stretches one week of a Max plan**.
 
 ## Protocol — one run, start to finish
 
@@ -72,8 +97,16 @@ Run IDs follow `<fixture>-<condition>-<rep>`, e.g. `wide-B-2`.
    the plan complete (serial). Do not approve the merge / finish the branch — scoring
    happens on the integration branch.
 
-3. **Record cost.** Run `/cost` in the session and note the USD figure for this session
-   (plus any subagent spend it reports).
+3. **Record cost.**
+   - **API billing:** run `/cost` in the session and note the USD figure (plus any
+     subagent spend it reports).
+   - **Subscription plans (Max):** two numbers per run. (a) Snapshot `/usage`'s
+     weekly-limit percentage immediately before and after the run — pass them as
+     `--weekly-pct-before/--weekly-pct-after`. (b) Pull per-model token totals from
+     the session transcript (community tools like ccusage automate this) and convert
+     to API-equivalent USD with `evals/scripts/api_equiv.py`; pass that as
+     `--cost-usd`. The weekly-% delta is the empirical capacity cost — it composes
+     into the "runs per week on a Max plan" headline in the report.
 
 4. **Score:**
 

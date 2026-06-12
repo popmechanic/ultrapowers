@@ -43,13 +43,15 @@ def main():
 
     for fixture in fixtures:
         print(f"## {fixture}\n")
-        print("| cond | n | median $ | median clock | acceptance | suite green | fix rounds (med) |")
-        print("|------|---|----------|--------------|------------|-------------|------------------|")
+        print("| cond | n | median API-equiv $ | weekly % (med) | median clock | acceptance | suite green | fix rounds (med) |")
+        print("|------|---|--------------------|----------------|--------------|------------|-------------|------------------|")
         for cond in conditions:
             rs = cells.get((fixture, cond))
             if not rs:
                 continue
             cost = median([r["cost_usd"] for r in rs])
+            pcts = [r["weekly_pct"] for r in rs if r.get("weekly_pct") is not None]
+            pct = f"{median(pcts):.1f}%" if pcts else "-"
             clock = median([r["wall_clock_s"] for r in rs])
             acc = [r["acceptance"] for r in rs]
             acc_rate = (sum(a["passed"] for a in acc) /
@@ -57,7 +59,7 @@ def main():
             green = sum(1 for r in rs
                         if r["suite"]["failed"] == 0 and r["suite"]["errors"] == 0)
             fixr = median([r["fix_rounds"] for r in rs])
-            print(f"| {cond} | {len(rs)} | ${cost:.2f} | {clock/60:.1f}m "
+            print(f"| {cond} | {len(rs)} | ${cost:.2f} | {pct} | {clock/60:.1f}m "
                   f"| {acc_rate:.0%} | {green}/{len(rs)} | {fixr:.0f} |")
         print()
 
@@ -78,11 +80,12 @@ def main():
             print(f"| {' vs '.join(conds)} | {row} |")
         print()
 
-    # Cross-condition headline (acceptance-weighted): cost per passing
-    # acceptance test, the single number that fuses economy and quality.
+    # Cross-condition headlines. Cost per passing acceptance test fuses
+    # economy and quality; runs-per-week is the subscriber-plan capacity
+    # headline (from /usage weekly-limit deltas, where recorded).
     print("## Cost per passing acceptance test\n")
-    print("| cond | total $ | acceptance passed | $/pass |")
-    print("|------|---------|-------------------|--------|")
+    print("| cond | total API-equiv $ | acceptance passed | $/pass | runs/week (Max plan) |")
+    print("|------|-------------------|-------------------|--------|----------------------|")
     by_cond = defaultdict(list)
     for r in runs:
         by_cond[r["condition"]].append(r)
@@ -90,8 +93,10 @@ def main():
         rs = by_cond[cond]
         total = sum(r["cost_usd"] for r in rs)
         passed = sum(r["acceptance"]["passed"] for r in rs)
-        per = total / passed if passed else float("inf")
-        print(f"| {cond} | ${total:.2f} | {passed} | ${per:.2f} |")
+        per = f"${total / passed:.2f}" if passed else "n/a"
+        pcts = [r["weekly_pct"] for r in rs if r.get("weekly_pct") is not None]
+        rpw = f"~{100 / median(pcts):.0f}" if pcts and median(pcts) > 0 else "-"
+        print(f"| {cond} | ${total:.2f} | {passed} | {per} | {rpw} |")
 
 
 if __name__ == "__main__":

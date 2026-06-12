@@ -57,7 +57,14 @@ def main():
     p.add_argument("run_dir")
     p.add_argument("--condition", required=True, choices=["A", "B", "C"])
     p.add_argument("--rep", required=True, type=int)
-    p.add_argument("--cost-usd", required=True, type=float)
+    p.add_argument("--cost-usd", required=True, type=float,
+                   help="API-equivalent USD: real API spend, or on a subscription "
+                        "plan the simulated figure from token counts x price table "
+                        "(see api_equiv.py)")
+    p.add_argument("--weekly-pct-before", type=float,
+                   help="weekly-limit %% from /usage before the run (Max plans)")
+    p.add_argument("--weekly-pct-after", type=float,
+                   help="weekly-limit %% from /usage after the run (Max plans)")
     p.add_argument("--branch", help="integration branch to score (default: current HEAD)")
     p.add_argument("--wall-clock-s", type=float,
                    help="override; default = now minus prepare_run timestamp")
@@ -109,6 +116,9 @@ def main():
         "rep": args.rep,
         "head": head,
         "cost_usd": args.cost_usd,
+        "weekly_pct": (round(args.weekly_pct_after - args.weekly_pct_before, 2)
+                       if args.weekly_pct_before is not None
+                       and args.weekly_pct_after is not None else None),
         "wall_clock_s": wall,
         "suite": {"passed": s_pass, "failed": s_fail, "errors": s_err, "total": s_total},
         "acceptance": {"passed": a_pass, "failed": a_fail, "errors": a_err, "total": a_total},
