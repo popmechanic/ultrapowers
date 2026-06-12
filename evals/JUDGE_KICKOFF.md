@@ -74,14 +74,17 @@ Walk me through this in order, one step at a time, waiting for me between steps:
    a running cost estimate. Stop and check with me if any judgment errors,
    refuses, or looks anomalous.
 
-6. **Human calibration pass (me).** Once a decent batch of judgments exists:
-   `python3 evals/scripts/judge.py --export-human 10` — I judge the blinded pairs
-   in `evals/results/human/pair_NN/VERDICT.txt` WITHOUT opening `KEY.json`, then
-   you run `--score-human` and report my agreement with the LLM judge.
+6. **Stability check (you, with my go-ahead — costs about as much as the
+   original judgments).** Once a decent batch of judgments exists:
+   `ANTHROPIC_API_KEY=$(cat ~/.config/ultrapowers-eval/judge.key) python3 evals/scripts/judge.py --check-stability`
+   re-judges every recorded pair with the diffs presented in the opposite
+   order. Report the stable/flipped count; flipped verdicts are position-bias
+   noise and read as ties in the win rates. (This replaces the former human
+   calibration pass — the operator does not code-review.)
 
 7. **Wrap (you).** Run `evals/scripts/report.py`, show me the full report
-   including win rates, and commit `evals/results/` (runs, diffs, judgments —
-   not the API key, which never touches disk in this repo).
+   including win rates, and commit `evals/results/` (runs, diffs, judgments,
+   stability — not the API key, which never enters this repo).
 
 Constraints: never echo, log, or cat-to-screen the API key, and never put it in
 the session environment — per-command prefix only; never re-judge already-judged

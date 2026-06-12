@@ -3,11 +3,17 @@
 
 Modes:
   --fixture wide --cond-a A --cond-b B    judge all rep-matched pairs via the API
-  --export-human N                        export N blinded pairs for human judging
-  --score-human                           reconcile human verdicts against the key
+  --check-stability                       re-judge every pair with presentation
+                                          order swapped; report verdict flips
 
 The judge is a fresh-context model that sees the frozen plan and two anonymized
 diffs in randomized order. It never learns which engine produced which diff.
+
+Reliability: there is no human calibration pass (the operator does not
+code-review). Judge validity rests on the self-pair smoke test (identical
+diffs must tie) and the stability check (a verdict that flips when the two
+diffs swap presentation order is position-bias noise; treat flipped verdicts
+as ties when reading win rates).
 """
 import argparse
 import json
@@ -18,7 +24,6 @@ import sys
 EVALS = pathlib.Path(__file__).resolve().parents[1]
 RESULTS = EVALS / "results"
 DIFFS = RESULTS / "diffs"
-HUMAN = RESULTS / "human"
 JUDGE_MODEL = "claude-opus-4-8"
 
 RUBRIC = """You are judging two independent implementations of the same approved plan.
@@ -83,39 +88,49 @@ def pair_materials(run_a, run_b, rng):
     return plan, diff_b, diff_a, {"1": run_b["run_id"], "2": run_a["run_id"]}
 
 
-def judge_pairs(fixture, cond_a, cond_b, seed):
+def ask_judge(client, plan, d1, d2):
+    """One blinded judgment. Returns the parsed verdict, or None on refusal."""
+    response = client.messages.create(
+        model=JUDGE_MODEL,
+        max_tokens=16000,
+        system=RUBRIC,
+        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+        messages=[{"role": "user", "content":
+                   f"<plan>\n{plan}\n</plan>\n\n"
+                   f"<diff_1>\n{d1}\n</diff_1>\n\n"
+                   f"<diff_2>\n{d2}\n</diff_2>"}],
+    )
+    if response.stop_reason == "refusal":
+        return None
+    return json.loads(next(b.text for b in response.content if b.type == "text"))
+
+
+def make_client():
     try:
         import anthropic
     except ImportError:
         raise SystemExit("pip install anthropic — the judge calls the Claude API")
-    client = anthropic.Anthropic()
+    return anthropic.Anthropic()
+
+
+def judge_pairs(fixture, cond_a, cond_b, seed):
+    client = make_client()
     rng = random.Random(seed)
     RESULTS.mkdir(parents=True, exist_ok=True)
     out = open(RESULTS / "judgments.jsonl", "a")
 
     for run_a, run_b in rep_matched_pairs(fixture, cond_a, cond_b):
         plan, d1, d2, mapping = pair_materials(run_a, run_b, rng)
-        response = client.messages.create(
-            model=JUDGE_MODEL,
-            max_tokens=16000,
-            system=RUBRIC,
-            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
-            messages=[{"role": "user", "content":
-                       f"<plan>\n{plan}\n</plan>\n\n"
-                       f"<diff_1>\n{d1}\n</diff_1>\n\n"
-                       f"<diff_2>\n{d2}\n</diff_2>"}],
-        )
-        if response.stop_reason == "refusal":
+        verdict = ask_judge(client, plan, d1, d2)
+        if verdict is None:
             print(f"judge refused pair {run_a['run_id']}/{run_b['run_id']}; skipping",
                   file=sys.stderr)
             continue
-        verdict = json.loads(next(b.text for b in response.content if b.type == "text"))
-        winner_label = verdict["winner"]
         record = {
             "fixture": fixture,
             "pair": [run_a["run_id"], run_b["run_id"]],
             "presented_as": mapping,
-            "winner_run_id": mapping.get(winner_label, "tie"),
+            "winner_run_id": mapping.get(verdict["winner"], "tie"),
             "verdict": verdict,
             "judge_model": JUDGE_MODEL,
         }
@@ -125,57 +140,47 @@ def judge_pairs(fixture, cond_a, cond_b, seed):
     out.close()
 
 
-def export_human(n, seed):
-    """Sample judged pairs (or build fresh ones) into blinded folders for Marcus."""
-    rng = random.Random(seed)
+def check_stability():
+    """Re-judge every recorded pair with presentation order swapped.
+
+    The dominant known failure mode of pairwise LLM judges is position bias.
+    A verdict that survives the swap is signal; one that flips is noise and
+    should be read as a tie. Appends to evals/results/stability.jsonl
+    (never to judgments.jsonl — rechecks must not inflate win rates).
+    """
     jpath = RESULTS / "judgments.jsonl"
     if not jpath.exists():
-        raise SystemExit("run the LLM judge first — the human pass calibrates against it")
+        raise SystemExit("no judgments to check — run the judge first")
     judgments = [json.loads(l) for l in jpath.read_text().splitlines() if l.strip()]
-    sample = rng.sample(judgments, min(n, len(judgments)))
-    HUMAN.mkdir(parents=True, exist_ok=True)
-    key = {}
-    for i, j in enumerate(sample, 1):
-        pdir = HUMAN / f"pair_{i:02d}"
-        pdir.mkdir(exist_ok=True)
-        fixture = j["fixture"]
-        plan = (EVALS / "fixtures" / fixture / "plan.md").read_text()
-        (pdir / "plan.md").write_text(plan)
-        # Re-randomize order independently of the LLM judge's presentation.
-        ids = list(j["pair"])
-        rng.shuffle(ids)
-        for label, rid in zip(("1", "2"), ids):
-            (pdir / f"diff_{label}.diff").write_text(
-                (DIFFS / f"{rid}.diff").read_text())
-        (pdir / "VERDICT.txt").write_text(
-            "# Replace this line with exactly one of: 1, 2, tie\n")
-        key[f"pair_{i:02d}"] = {"1": ids[0], "2": ids[1],
-                                "llm_winner_run_id": j["winner_run_id"]}
-    (HUMAN / "KEY.json").write_text(json.dumps(key, indent=2))
-    print(f"exported {len(sample)} blinded pairs to {HUMAN}/")
-    print("Fill in each VERDICT.txt. Do NOT open KEY.json until you're done.")
-
-
-def score_human():
-    key = json.loads((HUMAN / "KEY.json").read_text())
-    agree = disagree = ties = pending = 0
-    for pair, info in sorted(key.items()):
-        vfile = HUMAN / pair / "VERDICT.txt"
-        verdict = vfile.read_text().strip().splitlines()[-1].strip() if vfile.exists() else ""
-        if verdict not in ("1", "2", "tie"):
-            pending += 1
+    client = make_client()
+    out = open(RESULTS / "stability.jsonl", "a")
+    stable = 0
+    for j in judgments:
+        plan = (EVALS / "fixtures" / j["fixture"] / "plan.md").read_text()
+        # Present in the OPPOSITE order from the recorded judgment.
+        first, second = j["presented_as"]["2"], j["presented_as"]["1"]
+        verdict = ask_judge(client,
+                            plan,
+                            (DIFFS / f"{first}.diff").read_text(),
+                            (DIFFS / f"{second}.diff").read_text())
+        if verdict is None:
+            print(f"judge refused recheck of {j['pair']}; skipping", file=sys.stderr)
             continue
-        human_winner = info.get(verdict, "tie")
-        llm_winner = info["llm_winner_run_id"]
-        if human_winner == llm_winner:
-            agree += 1
-        elif "tie" in (human_winner, llm_winner):
-            ties += 1
-        else:
-            disagree += 1
-        print(f"{pair}: human={human_winner}  llm={llm_winner}")
-    print(f"\nagreement: {agree}  one-sided ties: {ties}  "
-          f"disagreement: {disagree}  pending: {pending}")
+        recheck_winner = {"1": first, "2": second}.get(verdict["winner"], "tie")
+        agree = recheck_winner == j["winner_run_id"]
+        stable += agree
+        out.write(json.dumps({
+            "pair": j["pair"],
+            "original_winner": j["winner_run_id"],
+            "swapped_order_winner": recheck_winner,
+            "stable": agree,
+            "verdict": verdict,
+            "judge_model": JUDGE_MODEL,
+        }) + "\n")
+        print(f"{j['pair'][0]} vs {j['pair'][1]}: original={j['winner_run_id']}  "
+              f"swapped={recheck_winner}  {'STABLE' if agree else 'FLIPPED'}")
+    out.close()
+    print(f"\nstability: {stable}/{len(judgments)} verdicts unchanged under order swap")
 
 
 def main():
@@ -183,15 +188,12 @@ def main():
     p.add_argument("--fixture")
     p.add_argument("--cond-a", choices=["A", "B", "C"])
     p.add_argument("--cond-b", choices=["A", "B", "C"])
-    p.add_argument("--export-human", type=int, metavar="N")
-    p.add_argument("--score-human", action="store_true")
+    p.add_argument("--check-stability", action="store_true")
     p.add_argument("--seed", type=int, default=20260612)
     args = p.parse_args()
 
-    if args.score_human:
-        score_human()
-    elif args.export_human:
-        export_human(args.export_human, args.seed)
+    if args.check_stability:
+        check_stability()
     elif args.fixture and args.cond_a and args.cond_b:
         judge_pairs(args.fixture, args.cond_a, args.cond_b, args.seed)
     else:

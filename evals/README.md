@@ -145,16 +145,20 @@ The judge (a fresh-context `claude-opus-4-8`) sees the plan and two anonymized d
 randomized order and returns a structured verdict on four criteria: correctness, plan
 fidelity, scope discipline, code quality. Results append to `evals/results/judgments.jsonl`.
 
-**Human calibration pass** (the vibe check, made rigorous): export a blinded sample,
-judge it yourself without peeking at the key, then reconcile:
+**Judge reliability** (no human code review — the operator is not expected to
+read diffs; this replaces the original human calibration pass): two automated
+checks stand in. (a) The self-pair smoke test: judging a diff against itself
+must return `tie` (see `JUDGE_KICKOFF.md` step 4). (b) The order-swap
+stability check:
 
 ```sh
-python3 evals/scripts/judge.py --export-human 10   # writes evals/results/human/pair_NN/
-# ... fill in each pair_NN/VERDICT.txt with 1, 2, or tie ...
-python3 evals/scripts/judge.py --score-human       # agreement vs the LLM judge
+python3 evals/scripts/judge.py --check-stability
 ```
 
-Do not open `evals/results/human/KEY.json` until your verdicts are in.
+re-judges every recorded pair with the two diffs presented in the opposite
+order — position bias is the dominant known failure mode of pairwise LLM
+judges. Results append to `evals/results/stability.jsonl`; read any flipped
+verdict as a tie when interpreting win rates.
 
 ## Reporting
 
@@ -163,7 +167,7 @@ python3 evals/scripts/report.py
 ```
 
 Emits the per-fixture × condition table (median cost, median clock, acceptance pass
-rate, suite green rate, fix rounds) plus judge win rates and human–judge agreement.
+rate, suite green rate, fix rounds) plus judge win rates.
 
 ## Validity notes
 
