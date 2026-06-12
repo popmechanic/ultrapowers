@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ULTRAPOWERS — swarm monitor</title>
+<style>
+  :root{
+    /* palette + knobs are set from THEME at startup; these are fallbacks */
+    --bg:#07080a; --screen-bg:radial-gradient(ellipse at 50% 48%,#101113 0%,#07080a 62%,#020203 100%);
+    --ink:#f5f6f0; --bright:#ffffff; --dim:#5a5d58; --faint:#2a2c2a;
+    --accent:#ffb347; --hud:#8a8d85; --agent:#ffffff; --hub-core:var(--bright);
+    --font:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --edge-w:1; --edge-w-live:1.6; --screen-radius:26px;
+    --scan-o:0; --vig-o:0; --glass-o:0; --grain-o:0; --dots-o:0; --flick:transparent;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;display:grid;place-items:center;font-family:var(--font);background:#101012}
+  .screen{position:relative;width:min(92vw,960px);aspect-ratio:4/3;overflow:hidden;
+          border-radius:var(--screen-radius);background:var(--screen-bg)}
+  svg{position:absolute;inset:0;width:100%;height:100%}
+
+  /* frames */
+  body[data-frame=crt]{background:#0b0b0d}
+  body[data-frame=crt] .bezel{padding:30px 34px;border-radius:36px;
+    background:linear-gradient(150deg,#202125,#0b0c0e 60%,#141518);
+    box-shadow:0 22px 70px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.06)}
+  body[data-frame=crt] .screen{box-shadow:inset 0 0 80px rgba(0,0,0,.85)}
+  body[data-frame=mat]{background:#d8d3c8}
+  body[data-frame=mat] .bezel{padding:44px;border-radius:4px;background:#fdfcf9;
+    border:1px solid #e4dfd3;box-shadow:0 20px 55px rgba(40,34,24,.25)}
+  body[data-frame=mat] .screen{border-radius:2px}
+  body[data-frame=panel]{background:#b9b6ad}
+  body[data-frame=panel] .bezel{padding:26px;border-radius:16px;
+    background:linear-gradient(#f0eee8,#d6d3ca);
+    box-shadow:0 16px 44px rgba(30,30,25,.4), inset 0 1px 0 rgba(255,255,255,.7)}
+  body[data-frame=panel] .screen{border-radius:8px;
+    box-shadow:inset 0 2px 8px rgba(30,30,25,.28)}
+  body[data-frame=none]{background:var(--bg)}
+  body[data-frame=none] .bezel{padding:0}
+  body[data-frame=none] .screen{width:min(96vw,1040px);border-radius:0}
+
+  /* optical overlays (each theme dials these via opacity vars) */
+  .ovl{position:absolute;inset:0;pointer-events:none}
+  .scanlines{opacity:var(--scan-o);mix-blend-mode:multiply;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.5) 0 1px,transparent 1px 3px)}
+  .vignette{opacity:var(--vig-o);
+    background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.42) 88%,rgba(0,0,0,.72) 100%)}
+  .glass{opacity:var(--glass-o);
+    background:radial-gradient(ellipse at 30% 18%,rgba(235,255,245,.06),transparent 55%)}
+  .grain{opacity:var(--grain-o);mix-blend-mode:multiply;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter><rect width="160" height="160" filter="url(%23n)" opacity="0.55"/></svg>')}
+  .dots{opacity:var(--dots-o);
+    background-image:radial-gradient(currentColor 1.2px,transparent 1.3px);
+    background-size:26px 26px;color:var(--faint)}
+  .flicker{background:var(--flick);opacity:0;animation:flick 3.7s infinite}
+  @keyframes flick{0%,93%,100%{opacity:0} 94%{opacity:.012} 95%{opacity:.03} 96%{opacity:.008}}
+
+  .brand{position:absolute;top:16px;right:20px;color:var(--hud);
+         font-size:11px;font-weight:600;letter-spacing:.46em;user-select:none}
+  .hud{position:absolute;top:14px;left:20px;color:var(--hud);font-size:11px;
+       letter-spacing:.18em;line-height:1.9}
+  .hud .mode{color:var(--ink)}
+  .hud .mode.depict{color:var(--accent)}
+  .hud .mode.lost{color:var(--accent);animation:lostblink 1.4s steps(2) infinite}
+  @keyframes lostblink{50%{opacity:.35}}
+  .legend{position:absolute;bottom:12px;left:20px;color:var(--hud);opacity:.8;
+          font-size:9.5px;letter-spacing:.22em;user-select:none}
+  .ticker{position:absolute;bottom:12px;right:20px;color:var(--hud);font-size:9.5px;
+          letter-spacing:.12em;max-width:46%;overflow:hidden;white-space:nowrap;
+          text-overflow:ellipsis;text-align:right}
+
+  /* station state grammar: structure changes, hue stays the wave's own.
+     Each station group carries its wave color via inline `color`. */
+  .stationG{color:var(--ink)}
+  .station{stroke:currentColor;fill:none;opacity:.28;transition:opacity .5s}
+  .pinfill{fill:var(--bg)}
+  .core{fill:none;opacity:.9;transition:fill .5s}
+  [data-state=working] .station{opacity:1}
+  [data-state=committed] .station{opacity:1}
+  [data-state=committed] .core{fill:currentColor}
+  [data-state=merged] .station{opacity:.65}
+  [data-state=merged] .core{fill:currentColor}
+  [data-state=stalled] .station{stroke:var(--accent);opacity:1;
+    animation:lostblink 1.1s steps(2) infinite}
+  .stlabel{fill:currentColor;opacity:.5;font-family:var(--font);font-size:10px;
+           letter-spacing:.14em;transition:opacity .5s}
+  [data-state=working] .stlabel,[data-state=committed] .stlabel{opacity:1}
+  [data-state=merged] .stlabel{opacity:.7}
+  .edge{fill:none;opacity:.3;stroke-width:var(--edge-w);transition:opacity .5s}
+  .edge.live{opacity:.95;stroke-width:var(--edge-w-live)}
+  .ring{fill:none;stroke:var(--faint);stroke-width:1}
+
+  @media (prefers-reduced-motion:reduce){ .flicker{display:none} }
+</style>
+</head>
+<body data-frame="crt">
+<div class="bezel"><div class="screen" id="screen">
+  <svg id="stage" viewBox="0 0 960 720" aria-label="ultrapowers agent swarm">
+    <defs>
+      <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b1"/>
+        <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b2"/>
+        <feMerge>
+          <feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+      <filter id="bloomSoft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="s1"/>
+        <feMerge><feMergeNode in="s1"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <g id="scene">
+      <g id="rings"></g>
+      <g id="edges"></g>
+      <g id="journeys"></g>
+      <g id="trails"></g>
+      <g id="stations"></g>
+      <g id="hub"></g>
+      <g id="agents"></g>
+    </g>
+  </svg>
+  <div class="ovl dots"></div>
+  <div class="ovl scanlines"></div>
+  <div class="ovl vignette"></div>
+  <div class="ovl glass"></div>
+  <div class="ovl grain"></div>
+  <div class="ovl flicker"></div>
+  <div class="brand">ULTRAPOWERS</div>
+  <div class="hud">
+    <div id="hudTitle"></div>
+    <div><span id="hudWave"></span> <span id="hudMode" class="mode depict">DEPICTION</span></div>
+  </div>
+  <div class="legend">SOLID GEOMETRY = OBSERVED FROM GIT &nbsp;&middot;&nbsp; ORBITS &amp; TRAVEL = DRAMATIZATION</div>
+  <div class="ticker" id="ticker"></div>
+</div></div>
+<script>
+'use strict';
+// ─── injected by render_viewer.py ───────────────────────────────────────────
+const DAG = {"title": "Apistub Users API", "mode": "parallel", "waves": [["1", "4"], ["2", "3"], ["5"], ["6"]], "edges": [["1", "2"], ["1", "3"], ["2", "5"], ["3", "5"], ["4", "5"], ["5", "6"]], "tasks": [{"id": "1", "title": "User schema"}, {"id": "2", "title": "Payload validation"}, {"id": "3", "title": "Serialization"}, {"id": "4", "title": "In-memory store"}, {"id": "5", "title": "Handlers"}, {"id": "6", "title": "Router"}]};
+const THEME = {"name": "eames", "frame": "mat", "glyph": "ring", "trail": "confetti", "bloom": 0, "rings": "solid", "edgeColor": "fromWave", "labelcase": "upper", "waveColors": ["#d2552b", "#2a7f78", "#e3a72f", "#5a4634"], "vars": {"bg": "#f4ead8", "ink": "#5a4634", "bright": "#3c2e22", "dim": "#a08c72", "faint": "#e6d9bf", "accent": "#d2552b", "hud": "#8c7a62", "agent": "#d2552b", "font": "Avenir,'Trebuchet MS',Verdana,sans-serif", "screen-bg": "#f4ead8", "grain-o": ".22"}} || {
+  name: 'asteroids', frame: 'crt', glyph: 'diamond', trail: 'glow',
+  bloom: 2, rings: 'none', edgeColor: 'mono', labelcase: 'upper',
+  waveColors: ['#f5f6f0'],
+  vars: { bg: '#07080a', ink: '#f5f6f0', bright: '#ffffff', dim: '#5a5d58',
+          faint: '#2a2c2a', accent: '#ffb347', hud: '#8a8d85', agent: '#ffffff',
+          'screen-bg': 'radial-gradient(ellipse at 50% 48%,#101113 0%,#07080a 62%,#020203 100%)',
+          'scan-o': '.18', 'vig-o': '1', 'glass-o': '1', 'flick': '#eef7f0' },
+};
+// ─────────────────────────────────────────────────────────────────────────────
+// Motion engine. Native stand-in for anime.js's svg.createMotionPath: an SVG
+// path sampled by getPointAtLength under one requestAnimationFrame loop. To
+// swap anime.js in, replace animate()/motionSampler() with createTimeline()
+// and svg.createMotionPath() — the choreography callsites stay identical.
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+const W = 960, H = 720, CX = W / 2, CY = H / 2;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// apply the theme
+document.body.dataset.frame = THEME.frame;
+document.body.dataset.theme = THEME.name;
+for (const k in THEME.vars)
+  document.documentElement.style.setProperty('--' + k, THEME.vars[k]);
+const scene = document.getElementById('scene');
+if (THEME.bloom === 2) scene.setAttribute('filter', 'url(#bloom)');
+else if (THEME.bloom === 1) scene.setAttribute('filter', 'url(#bloomSoft)');
+
+function el(tag, attrs, parent) {
+  const node = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const rand = mulberry32(hashStr(JSON.stringify(DAG.waves) + THEME.name));
+
+const easeInOut = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const easeOut = p => 1 - Math.pow(1 - p, 3);
+
+const tweens = [];
+let nowMs = 0;
+function animate(opts) { tweens.push({ ...opts, t0: nowMs + (opts.delay || 0) }); }
+function stepTweens() {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    if (nowMs < tw.t0) continue;
+    const p = Math.min(1, (nowMs - tw.t0) / tw.duration);
+    tw.update((tw.ease || easeInOut)(p));
+    if (p >= 1) { tweens.splice(i, 1); if (tw.onComplete) tw.onComplete(); }
+  }
+}
+function motionSampler(pathEl) {
+  const L = pathEl.getTotalLength();
+  return p => pathEl.getPointAtLength(Math.max(0, Math.min(1, p)) * L);
+}
+
+// ─── radial layout: hub = integration branch, rings = waves ─────────────────
+const polar = (r, a) => [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+const waves = DAG.waves;
+const nW = waves.length;
+const Rmax = Math.min(W, H) / 2 - 86;
+const R0 = nW === 1 ? Rmax * 0.62 : 142;
+const ringR = w => nW === 1 ? R0 : R0 + (Rmax - R0) * (w / (nW - 1));
+const waveColor = w => THEME.waveColors[w % THEME.waveColors.length];
+
+const taskWave = {}, preds = {};
+waves.forEach((wave, wi) => wave.forEach(id => { taskWave[id] = wi; preds[id] = []; }));
+DAG.edges.forEach(([f, t]) => { if (preds[t]) preds[t].push(f); });
+
+const angleOf = {};
+waves.forEach((wave, wi) => {
+  const desired = wave.map((id, i) => {
+    const ps = (preds[id] || []).filter(p => angleOf[p] !== undefined);
+    if (wi === 0 || !ps.length) return -Math.PI / 2 + (i / wave.length) * 2 * Math.PI;
+    const sx = ps.reduce((s, p) => s + Math.cos(angleOf[p]), 0);
+    const sy = ps.reduce((s, p) => s + Math.sin(angleOf[p]), 0);
+    return Math.atan2(sy, sx) + (rand() - .5) * 0.22;
+  });
+  const order = wave.map((id, i) => i).sort((a, b) => desired[a] - desired[b]);
+  const gap = Math.min(2 * Math.PI / wave.length, 0.6);
+  for (let pass = 0; pass < 40; pass++) {
+    for (let k = 0; k < order.length; k++) {
+      const a = order[k], b = order[(k + 1) % order.length];
+      let d = desired[b] - desired[a];
+      if (k === order.length - 1) d += 2 * Math.PI;
+      if (d < gap) { const push = (gap - d) / 2; desired[a] -= push; desired[b] += push; }
+    }
+  }
+  wave.forEach((id, i) => { angleOf[id] = desired[i]; });
+});
+
+// ─── scene construction: paths prefigured from the compiled DAG ─────────────
+const gRings = document.getElementById('rings');
+const gEdges = document.getElementById('edges');
+const gJourneys = document.getElementById('journeys');
+const gTrails = document.getElementById('trails');
+const gStations = document.getElementById('stations');
+const gHub = document.getElementById('hub');
+const gAgents = document.getElementById('agents');
+
+if (THEME.rings !== 'none')
+  waves.forEach((_, wi) => el('circle', { class: 'ring', cx: CX, cy: CY, r: ringR(wi),
+    'stroke-dasharray': THEME.rings === 'dashed' ? '4 7' : 'none' }, gRings));
+
+function journeyPath(st) { // hub → station, with a slight spiral curl
+  const a = st.angle, r = st.r;
+  const [sx, sy] = polar(30, a - 0.5);
+  const [c1x, c1y] = polar(r * 0.45, a - 0.55);
+  const [c2x, c2y] = polar(r * 0.82, a - 0.16);
+  const [ex, ey] = polar(r - 17, a);
+  return `M ${sx} ${sy} C ${c1x} ${c1y} ${c2x} ${c2y} ${ex} ${ey}`;
+}
+function edgePathD(a, b) { // station → station, bulging outward past the rings
+  const ma = Math.atan2((Math.sin(a.angle) + Math.sin(b.angle)) / 2,
+                        (Math.cos(a.angle) + Math.cos(b.angle)) / 2);
+  const mr = (a.r + b.r) / 2 + 26;
+  const [cx, cy] = polar(mr, ma);
+  return `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
+}
+
+// glyph vocabulary — every glyph provides a .station outline and a .core fill
+const GLYPHS = {
+  diamond(g) {
+    el('path', { class: 'station', 'stroke-width': 1.4, d: 'M 0 -11 L 11 0 L 0 11 L -11 0 Z' }, g);
+    el('path', { class: 'core', d: 'M 0 -5 L 5 0 L 0 5 L -5 0 Z' }, g);
+  },
+  ring(g) {
+    el('circle', { class: 'station', 'stroke-width': 1.8, r: 10 }, g);
+    el('circle', { class: 'core', r: 4.5 }, g);
+  },
+  square(g) {
+    el('rect', { class: 'station', 'stroke-width': 1.5, x: -9, y: -9, width: 18, height: 18 }, g);
+    el('rect', { class: 'core', x: -4, y: -4, width: 8, height: 8 }, g);
+  },
+  pin(g) { // transit-map station: solid disc with a heavy ring
+    el('circle', { class: 'station pinfill', 'stroke-width': 3.4, r: 8.5 }, g);
+    el('circle', { class: 'core', r: 3.4 }, g);
+  },
+  asterisk(g) { // brush ticks
+    for (let i = 0; i < 3; i++) {
+      const a = i * Math.PI / 3 + 0.26;
+      el('line', { class: 'station', 'stroke-width': 1.7, 'stroke-linecap': 'round',
+        x1: -11 * Math.cos(a), y1: -11 * Math.sin(a),
+        x2: 11 * Math.cos(a), y2: 11 * Math.sin(a) }, g);
+    }
+    el('circle', { class: 'core', r: 3.6 }, g);
+  },
+  primitives(g, ctx) { // bauhaus: circle / triangle / square by wave
+    const which = ctx.waveIndex % 3;
+    if (which === 0) el('circle', { class: 'station', 'stroke-width': 1.8, r: 10 }, g);
+    else if (which === 1) el('path', { class: 'station', 'stroke-width': 1.8,
+      d: 'M 0 -11 L 10 8 L -10 8 Z' }, g);
+    else el('rect', { class: 'station', 'stroke-width': 1.8, x: -9, y: -9, width: 18, height: 18 }, g);
+    el('circle', { class: 'core', r: 4 }, g);
+  },
+};
+
+const stations = {};
+DAG.tasks.forEach((t, ti) => {
+  const wi = taskWave[t.id];
+  const angle = angleOf[t.id], r = ringR(wi);
+  const [x, y] = polar(r, angle);
+  const g = el('g', { class: 'stationG', 'data-state': 'pending',
+    transform: `translate(${x} ${y})`, style: `color:${waveColor(wi)}` }, gStations);
+  (GLYPHS[THEME.glyph] || GLYPHS.diamond)(g, { waveIndex: wi, taskIndex: ti });
+  const lx = Math.cos(angle) * 24, ly = Math.sin(angle) * 24 + 3;
+  const label = el('text', { class: 'stlabel', x: lx, y: ly,
+    'text-anchor': Math.cos(angle) > 0.3 ? 'start' : Math.cos(angle) < -0.3 ? 'end' : 'middle' }, g);
+  label.textContent = THEME.labelcase === 'lower' ? 't' + t.id : 'T' + t.id;
+  const jp = el('path', { d: journeyPath({ angle, r }), fill: 'none', stroke: 'none' }, gJourneys);
+  stations[t.id] = { id: t.id, angle, r, x, y, el: g, journey: jp,
+                     state: 'pending', workPhase: rand() * 6.28, reviewer: null };
+});
+
+const edgeEls = DAG.edges.map(([f, t], i) => {
+  const a = stations[f], b = stations[t];
+  if (!a || !b) return null;
+  const color = THEME.edgeColor === 'index'
+    ? THEME.waveColors[i % THEME.waveColors.length]
+    : THEME.edgeColor === 'fromWave' ? waveColor(taskWave[f]) : 'var(--dim)';
+  const p = el('path', { class: 'edge', d: edgePathD(a, b), stroke: color }, gEdges);
+  return { from: f, to: t, el: p };
+}).filter(Boolean);
+
+// hub: the integration branch
+el('circle', { cx: CX, cy: CY, r: 20, fill: 'none', stroke: 'var(--ink)',
+  'stroke-width': 1.6, opacity: .8 }, gHub);
+el('circle', { cx: CX, cy: CY, r: 5, fill: 'var(--hub-core)' }, gHub);
+const hubArc = el('path', { fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.6,
+  d: `M ${CX + 27} ${CY} A 27 27 0 0 1 ${CX} ${CY + 27}` }, gHub);
+const hubPulse = el('circle', { cx: CX, cy: CY, r: 20, fill: 'none',
+  stroke: 'var(--ink)', 'stroke-width': 1.4, opacity: 0 }, gHub);
+const hubLabel = el('text', { x: CX, y: CY + 46, 'text-anchor': 'middle',
+  class: 'stlabel', style: 'color:var(--ink)' }, gHub);
+hubLabel.textContent = THEME.labelcase === 'lower' ? 'integration' : 'INTEGRATION';
+
+// ─── agents: points with theme-appropriate wakes ─────────────────────────────
+const TRAIL = THEME.trail === 'glow' ? 12 : THEME.trail === 'confetti' ? 10
+            : THEME.trail === 'dash' ? 6 : 0;
+function trailColor(i) {
+  if (THEME.trail === 'confetti')
+    return THEME.waveColors[Math.floor(rand() * THEME.waveColors.length)];
+  return 'var(--agent)';
+}
+function spawnAgent(radius) {
+  const dot = el('circle', { r: radius, fill: 'var(--agent)' }, gAgents);
+  const trail = [];
+  for (let i = 0; i < TRAIL; i++)
+    trail.push(el('circle', { r: radius * (1 - i / Math.max(1, TRAIL)) * 0.9,
+      fill: trailColor(i), opacity: 0 }, gTrails));
+  return { dot, trail, pts: [] };
+}
+function moveAgent(ag, x, y) {
+  ag.dot.setAttribute('cx', x); ag.dot.setAttribute('cy', y);
+  if (!TRAIL) return;
+  ag.pts.unshift([x, y]); if (ag.pts.length > TRAIL) ag.pts.pop();
+  const maxO = THEME.trail === 'glow' ? 0.42 : THEME.trail === 'confetti' ? 0.85 : 0.25;
+  ag.pts.forEach(([px, py], i) => {
+    const c = ag.trail[i];
+    c.setAttribute('cx', px); c.setAttribute('cy', py);
+    c.setAttribute('opacity', (1 - i / TRAIL) * maxO);
+  });
+}
+function retireAgent(ag) {
+  ag.dot.remove(); ag.trail.forEach(c => c.remove());
+}
+
+// ambient orbiters: the hub is never dead — the run is alive even between events
+const ambient = [];
+function setAmbient(n) {
+  while (ambient.length < n) {
+    const ag = spawnAgent(1.7);
+    ambient.push({ ag, r: 34 + ambient.length * 9, speed: 0.25 + rand() * 0.3,
+                   phase: rand() * 6.28, ecc: 0.5 + rand() * 0.35 });
+  }
+  while (ambient.length > n) retireAgent(ambient.pop().ag);
+}
+setAmbient(3);
+
+// ─── state machine + choreography ───────────────────────────────────────────
+const RANK = { pending: 0, working: 1, committed: 2, merged: 3, stalled: 9 };
+function setState(id, s) {
+  const st = stations[id];
+  if (!st || st.state === s) return;
+  if (s !== 'stalled' && RANK[s] < RANK[st.state]) return; // never downgrade
+  const prev = st.state;
+  st.state = s;
+  st.el.dataset.state = s;
+  if (reduced) return;
+  if (s === 'working' && prev === 'pending') dispatch(st);
+  if (s === 'merged') returnHome(st);
+  updateHud();
+}
+function dispatch(st) {
+  const ag = spawnAgent(2.7);
+  const sample = motionSampler(st.journey);
+  animate({ duration: 1500 + rand() * 700, ease: easeInOut,
+    update: p => { const pt = sample(p); moveAgent(ag, pt.x, pt.y); },
+    onComplete: () => { retireAgent(ag); startReviewerOrbit(st); } });
+}
+function startReviewerOrbit(st) { // dramatization: the elliptical review orbit
+  if (st.reviewer || st.state === 'merged') return;
+  st.reviewer = spawnAgent(1.8);
+}
+function stopReviewerOrbit(st) {
+  if (!st.reviewer) return;
+  retireAgent(st.reviewer); st.reviewer = null;
+}
+let mergeQueue = 0;
+function returnHome(st) {
+  stopReviewerOrbit(st);
+  const ag = spawnAgent(2.7);
+  const sample = motionSampler(st.journey);
+  animate({ delay: (mergeQueue++) * 380, duration: 1400, ease: easeInOut,
+    update: p => { const pt = sample(1 - p); moveAgent(ag, pt.x, pt.y); },
+    onComplete: () => {
+      retireAgent(ag); mergeQueue = Math.max(0, mergeQueue - 1);
+      pulseHub(); energizeEdges(st.id);
+    } });
+}
+function pulseHub() {
+  animate({ duration: 900, ease: easeOut, update: p => {
+    hubPulse.setAttribute('r', 20 + p * 46);
+    hubPulse.setAttribute('opacity', (1 - p) * 0.8);
+  } });
+}
+function energizeEdges(fromId) {
+  edgeEls.filter(e => e.from === fromId && !e.el.classList.contains('live')).forEach(e => {
+    const L = e.el.getTotalLength();
+    e.el.classList.add('live');
+    e.el.setAttribute('stroke-dasharray', L);
+    animate({ duration: 850, ease: easeOut,
+      update: p => e.el.setAttribute('stroke-dashoffset', L * (1 - p)) });
+  });
+}
+
+// DEPICTION schedule: a seeded, deterministic film of the approved wave plan.
+// Cancelled the moment real observations arrive.
+let schedule = [], depicting = true;
+function buildSchedule() {
+  schedule = []; let t = 1600;
+  waves.forEach(wave => {
+    const durs = wave.map(() => 5200 + rand() * 4500);
+    wave.forEach((id, i) => {
+      schedule.push({ t: t + i * 240, fn: () => setState(id, 'working') });
+      schedule.push({ t: t + i * 240 + durs[i] * 0.8, fn: () => setState(id, 'committed') });
+    });
+    const waveEnd = t + Math.max(...durs) + 700;
+    wave.forEach((id, i) => schedule.push({ t: waveEnd + i * 120, fn: () => setState(id, 'merged') }));
+    t = waveEnd + wave.length * 120 + 1400;
+  });
+  const k = Math.min(1.1, 72000 / t); // any plan plays in roughly a minute
+  schedule.forEach(ev => { ev.t *= k; });
+}
+buildSchedule();
+document.getElementById('screen').addEventListener('click', () => {
+  if (!depicting) return; // observing runs are not replayable fictions
+  Object.values(stations).forEach(st => {
+    st.state = 'pending'; st.el.dataset.state = 'pending'; stopReviewerOrbit(st);
+  });
+  edgeEls.forEach(e => { e.el.classList.remove('live'); e.el.removeAttribute('stroke-dasharray'); });
+  tweens.length = 0; mergeQueue = 0; t0 = performance.now(); buildSchedule();
+});
+
+// ─── observer: status.json written by swarm_watch.py (git is the truth) ─────
+const hudMode = document.getElementById('hudMode');
+const hudWave = document.getElementById('hudWave');
+const hudTitle = document.getElementById('hudTitle');
+const ticker = document.getElementById('ticker');
+hudTitle.textContent = (DAG.title || 'WAVE PLAN').toUpperCase();
+
+let lastOk = 0, everOk = false;
+const seenBranches = {};   // branch -> last known mapping/state
+function matchTask(text) {
+  const n = (text || '').toLowerCase();
+  for (const t of DAG.tasks) {
+    const id = String(t.id).toLowerCase();
+    for (const cand of ['task-' + id, 'task' + id, 't' + id, id]) {
+      const re = new RegExp('(^|[^a-z0-9])' + cand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^0-9]|$)');
+      if (re.test(n)) return t.id;
+    }
+  }
+  return null;
+}
+function gotStatus(s) {
+  lastOk = Date.now();
+  if (depicting) { depicting = false; schedule = []; }
+  let unmapped = 0;
+  (s.branches || []).forEach(b => {
+    const tid = matchTask(b.name + ' ' + (b.worktree || ''));
+    if (tid) seenBranches[b.name] = { tid };
+    if (!tid && !seenBranches[b.name]) { unmapped++; return; }
+    const id = (seenBranches[b.name] || {}).tid;
+    if (!id) return;
+    if (b.merged) setState(id, 'merged');
+    else if (b.ahead > 0) setState(id, 'committed');
+    else setState(id, 'working');
+  });
+  // a branch that vanished while integration advanced was merged-and-swept
+  const liveNames = new Set((s.branches || []).map(b => b.name));
+  Object.keys(seenBranches).forEach(name => {
+    if (!liveNames.has(name) && s.integration && s.integration.advanced)
+      setState(seenBranches[name].tid, 'merged');
+  });
+  (s.worktrees || []).forEach(w => {
+    const tid = matchTask((w.branch || '') + ' ' + w.path);
+    if (tid) setState(tid, 'working');
+  });
+  setAmbient(3 + Math.min(5, unmapped));
+  if (s.integration && s.integration.last_subject)
+    ticker.textContent = s.integration.last_subject.toUpperCase();
+  updateHud();
+}
+async function poll() {
+  try {
+    const r = await fetch('status.json', { cache: 'no-store' });
+    if (r.ok) { gotStatus(await r.json()); everOk = true; }
+  } catch (e) { /* file:// or watcher not running: stay in depiction */ }
+  setTimeout(poll, 2000);
+}
+function updateHud() {
+  let top = 0;
+  Object.values(stations).forEach(st => {
+    if (st.state !== 'pending') top = Math.max(top, taskWave[st.id] + 1);
+  });
+  hudWave.textContent = 'WAVE ' + Math.max(1, top) + '/' + nW;
+  const age = Date.now() - lastOk;
+  if (everOk && age < 8000) { hudMode.textContent = 'OBSERVING'; hudMode.className = 'mode'; }
+  else if (everOk) { hudMode.textContent = 'SIGNAL LOST'; hudMode.className = 'mode lost'; }
+  else { hudMode.textContent = 'DEPICTION'; hudMode.className = 'mode depict'; }
+}
+poll();
+
+// ─── the beam: one frame loop drives everything ─────────────────────────────
+let t0 = performance.now();
+function frame(ts) {
+  nowMs = ts - t0;
+  const tSec = ts / 1000;
+  if (depicting) {
+    while (schedule.length && schedule[0].t <= nowMs) schedule.shift().fn();
+    schedule.sort((a, b) => a.t - b.t);
+  }
+  stepTweens();
+  hubArc.setAttribute('transform', `rotate(${(tSec * 24) % 360} ${CX} ${CY})`);
+  ambient.forEach(o => {
+    const a = o.phase + tSec * o.speed;
+    moveAgent(o.ag, CX + o.r * Math.cos(a), CY + o.r * o.ecc * Math.sin(a));
+  });
+  Object.values(stations).forEach(st => {
+    if (st.state === 'working' || st.state === 'committed') {
+      const s = 1 + Math.sin(tSec * 3 + st.workPhase) * 0.07;
+      st.el.setAttribute('transform', `translate(${st.x} ${st.y}) scale(${s})`);
+    }
+    if (st.reviewer) {
+      const a = tSec * 1.7 + st.workPhase;
+      const rx = 23, ry = 10, rot = st.angle;
+      const ox = rx * Math.cos(a), oy = ry * Math.sin(a);
+      moveAgent(st.reviewer,
+        st.x + ox * Math.cos(rot) - oy * Math.sin(rot),
+        st.y + ox * Math.sin(rot) + oy * Math.cos(rot));
+    }
+  });
+  if ((ts | 0) % 2000 < 20) updateHud();
+  requestAnimationFrame(frame);
+}
+if (!reduced) requestAnimationFrame(frame);
+else updateHud();
+</script>
+</body>
+</html>
