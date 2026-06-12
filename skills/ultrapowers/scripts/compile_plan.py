@@ -4,11 +4,12 @@
 Parses a plan into tasks (fence-aware), classifies each per the plan-markers
 contract (explicit **Type:** trusted; heuristics otherwise, flagged
 "heuristic": true), builds the dependency DAG (marker edges + file-overlap
-inference + read-after-write + write-after-write whose overlap set covers
-writes union Test: paths + ambiguous-files serialization + explicit text,
-with explicit/semantic edges taking precedence so document-order heuristics
-yield by reachability to any opposing earlier path), runs Kahn layering with
-cycle detection, and emits the Step-3 transparency block as JSON on stdout.
+inference + read-after-write + prose-reference + write-after-write whose
+overlap set covers writes union Test: paths + ambiguous-files serialization +
+explicit text, with explicit/semantic edges taking precedence so
+document-order heuristics yield by reachability to any opposing earlier
+path), runs Kahn layering with cycle detection, and emits the Step-3
+transparency block as JSON on stdout.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
@@ -352,6 +353,30 @@ def classify(t):
     return "implementation", True
 
 
+# Minimum module-stem length for attribute-style prose matching (`schema.User`).
+# One- and two-letter stems (`a.txt` -> `a.`) match too much English to trust.
+PROSE_REF_MIN_STEM = 3
+
+
+def prose_references(creator_paths, prose):
+    """Backticked tokens in fence-stripped prose that reference a created path:
+    the exact path, its basename, or — for stems >= PROSE_REF_MIN_STEM — the
+    module stem used as an attribute reference (`schema.User` referencing
+    apistub/schema.py). Returns the set of matched created paths."""
+    tokens = {t.strip() for t in PATH_RE.findall(prose)}
+    hits = set()
+    for path in creator_paths:
+        base = path.rsplit("/", 1)[-1]
+        stem = base.rsplit(".", 1)[0]
+        for tok in tokens:
+            if tok == path or tok.endswith("/" + path) or tok == base:
+                hits.add(path)
+            elif (len(stem) >= PROSE_REF_MIN_STEM and tok != base
+                  and tok.startswith(stem + ".")):
+                hits.add(path)
+    return hits
+
+
 def build_edges(impl):
     # Edge precedence:
     # explicit (marker, text) > semantic order-independent (write-after-create,
@@ -462,6 +487,40 @@ def build_edges(impl):
             # read-after-write: b reads a file that a writes (no order condition)
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
+
+    # Tier 2.5: Semantic, order-independent — prose-reference. B's prose names a
+    # file A creates (backticked exact path, basename, or module-stem attribute
+    # like `schema.User`). Eval run mixed-B-2 (2026-06-13) is the motivating
+    # failure: a task spec said "returns a `schema.User`" while declaring
+    # Depends-on: none, waved parallel to the task creating apistub/schema.py,
+    # and its failure cascade-blocked the rest of the diamond. Prose matching is
+    # fuzzier than Files matching, so unlike tier 2 these edges are
+    # cycle-guarded like tier 3, and each NEWLY added edge is surfaced in
+    # marker_conflicts so the Step-3 gate shows the inference.
+    for a in impl:
+        if not a["creates"]:
+            continue
+        for b in impl:
+            if a["id"] == b["id"]:
+                continue
+            hits = prose_references(a["creates"], b["prose"])
+            if hits and not would_cycle(a["id"], b["id"]):
+                before = len(edges)
+                add(a["id"], b["id"], "prose-reference")
+                if len(edges) > before:
+                    # Use a distinct key ("inferred:" prefix) so this note coexists
+                    # with the "Depends-on: none overridden" note that add() may have
+                    # emitted for the same edge (both use (task, edge) as the dedup
+                    # key; without the prefix the conflict_seen guard would drop one).
+                    add_conflict(
+                        b["id"],
+                        "inferred: " + a["id"] + " -> " + b["id"] + " (prose-reference)",
+                        "prose-reference edge inferred: task prose references "
+                        + ", ".join(sorted(hits)[:3])
+                        + " created by Task " + a["id"]
+                        + " — declare **Depends-on:** " + a["id"]
+                        + " to make it explicit (or rewrite the mention if it is "
+                        "not a real dependency)")
 
     # Tier 3: Document-order heuristics — yield to any opposing earlier PATH.
     # Each tier-3 edge is reachability-checked against everything added before it
