@@ -1,9 +1,9 @@
 # Judge kickoff prompt
 
-Paste the block below into a fresh Claude Code session opened at the root of this
-repo. It onboards the operator (me) to the blinded quality judge — the ONLY part
-of the eval that spends real API dollars — and smoke-tests it before any real
-judging.
+Paste the block below into a **fresh Claude Code session** opened at the root of
+this repo — not the eval-coordinator session and never a condition-run session.
+It onboards the operator (me) to the blinded quality judge — the ONLY part of the
+eval that spends real API dollars — and smoke-tests it before any real judging.
 
 ---
 
@@ -26,20 +26,40 @@ Walk me through this in order, one step at a time, waiting for me between steps:
    pairs exist yet, say exactly which runs are missing and stop — except for the
    self-pair smoke test in step 4, which needs only ONE scored run.
 
-2. **API key (me, never you).** I create a key at console.anthropic.com and set a
-   spend limit on it (suggest $50). I will export it in my shell:
-   `export ANTHROPIC_API_KEY=sk-ant-...` — I will NEVER paste the key into this
-   chat, and you must never ask me to. You verify it's set without printing it:
-   `python3 -c "import os; print('key set' if os.environ.get('ANTHROPIC_API_KEY') else 'MISSING')"`.
-   Also check `pip show anthropic` and install it if missing.
+2. **API key (me, never you).** Walk me through this exactly, then wait:
+   (a) I create a key at console.anthropic.com → API Keys, and set a spend limit
+   on it (suggest $50).
+   (b) In MY TERMINAL — not in this chat — I store it in a locked file. Give me
+   these commands to copy:
+   ```sh
+   mkdir -p ~/.config/ultrapowers-eval
+   read -rs KEY   # paste the key at the silent prompt, press Enter
+   printf '%s' "$KEY" > ~/.config/ultrapowers-eval/judge.key
+   chmod 600 ~/.config/ultrapowers-eval/judge.key
+   unset KEY
+   ```
+   `read -rs` keeps the key out of shell history and off the screen; the file
+   keeps it out of this chat. **Do NOT have me `export ANTHROPIC_API_KEY` in the
+   shell that runs Claude Code** — Claude Code itself reads that variable, and on
+   a subscription plan it can silently switch the whole session to API-key
+   billing. The key must reach ONLY the judge process, via a per-command prefix:
+   ```sh
+   ANTHROPIC_API_KEY=$(cat ~/.config/ultrapowers-eval/judge.key) python3 evals/scripts/judge.py ...
+   ```
+   (c) You verify the file exists, is non-empty, and is mode 600 — without ever
+   printing its contents:
+   `test -s ~/.config/ultrapowers-eval/judge.key && stat -c %a ~/.config/ultrapowers-eval/judge.key`
+   (on macOS: `stat -f %Lp`). Also check `pip show anthropic` and install it if
+   missing.
 
 3. **Penny check (you).** One minimal API call to prove the key works before any
-   real spend — a tiny messages request, max_tokens 32, print the model and token
-   usage. Costs well under a cent. If it fails, debug auth before proceeding.
+   real spend — a tiny messages request, max_tokens 32, run with the per-command
+   key prefix above; print the model and token usage, never the key. Costs well
+   under a cent. If it fails, debug auth before proceeding.
 
 4. **Self-pair smoke test (you), ~$0.50.** Run the judge with BOTH conditions set
    to the same condition that has a scored run, e.g.:
-   `python3 evals/scripts/judge.py --fixture degrade --cond-a B --cond-b B`
+   `ANTHROPIC_API_KEY=$(cat ~/.config/ultrapowers-eval/judge.key) python3 evals/scripts/judge.py --fixture degrade --cond-a B --cond-b B`
    This pairs a run's diff against ITSELF — the correct verdict is `tie`, so it
    validates the key, the API call, the schema parsing, and the judge's sanity in
    one shot. Show me the verdict and the appended judgments.jsonl row. Then
@@ -63,8 +83,9 @@ Walk me through this in order, one step at a time, waiting for me between steps:
    including win rates, and commit `evals/results/` (runs, diffs, judgments —
    not the API key, which never touches disk in this repo).
 
-Constraints: never echo or log the API key; never re-judge already-judged pairs
-without asking; total spend stays under the key's limit and you surface a running
-estimate as you go.
+Constraints: never echo, log, or cat-to-screen the API key, and never put it in
+the session environment — per-command prefix only; never re-judge already-judged
+pairs without asking; total spend stays under the key's limit and you surface a
+running estimate as you go.
 
 Start with step 1.
