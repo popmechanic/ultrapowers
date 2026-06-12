@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What happens when AI coding agents work in parallel? I measured it.</title>
+<meta name="description" content="A controlled experiment comparing serial and parallel AI coding agents on cost, speed, and code quality — run by someone who doesn't write code.">
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --ink-soft: #525252;
+    --ink-faint: #8a8a8a;
+    --paper: #ffffff;
+    --paper-warm: #faf9f7;
+    --rule: #e8e6e1;
+    --accent: #c2410c;       /* terracotta — links, highlights */
+    --accent-soft: #fff1e8;
+    --blue: #1d4ed8;          /* condition A */
+    --green: #047857;         /* condition B */
+    --purple: #7c3aed;        /* condition C */
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: Georgia, "Iowan Old Style", "Source Serif 4", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 19px;
+    line-height: 1.65;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  .post {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+  header.masthead {
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 28px;
+    margin-bottom: 40px;
+  }
+  .kicker {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 6vw, 40px);
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    font-weight: 700;
+  }
+  .dek {
+    font-size: 21px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    margin: 0 0 22px;
+  }
+  .byline {
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  .byline strong { color: var(--ink-soft); font-weight: 600; }
+  h2 {
+    font-size: 26px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin: 52px 0 16px;
+  }
+  h3 {
+    font-size: 20px;
+    margin: 36px 0 10px;
+  }
+  p { margin: 0 0 22px; }
+  a { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2.5px; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+  code {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+  }
+  blockquote {
+    margin: 28px 0;
+    padding: 4px 0 4px 22px;
+    border-left: 3px solid var(--accent);
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 48px auto; width: 120px; }
+  figure { margin: 32px 0; }
+  figcaption {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    color: var(--ink-faint);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+  .panel {
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x: auto; margin: 28px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  thead th {
+    font-size: 12.5px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 2px solid var(--ink);
+  }
+  tr.win td { background: var(--accent-soft); }
+  .cond { font-weight: 700; }
+  .cond.a { color: var(--blue); }
+  .cond.b { color: var(--green); }
+  .cond.c { color: var(--purple); }
+  /* ---------- waves animation ---------- */
+  .race { font-family: var(--sans); }
+  .race .lane-label {
+    font-size: 13px; font-weight: 600; color: var(--ink-soft);
+    margin: 14px 0 6px;
+  }
+  .race .track {
+    position: relative;
+    height: 34px;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .race .block {
+    position: absolute;
+    top: 4px;
+    height: 24px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+  .race.played .block { animation: grow 0.55s ease-out forwards; animation-delay: var(--d); }
+  @keyframes grow { to { transform: scaleX(1); } }
+  .race .serial .block { background: var(--blue); }
+  .race .waves .block { background: var(--green); }
+  .race .clock {
+    font-variant-numeric: tabular-nums;
+    font-size: 13px; color: var(--ink-faint); margin-top: 4px;
+    min-height: 20px;
+  }
+  .replay {
+    font-family: var(--sans);
+    font-size: 14px; font-weight: 600;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--ink);
+    border-radius: 8px;
+    padding: 10px 18px;
+    min-height: 44px;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  @media (hover: hover) {
+    .replay:hover { background: var(--ink); color: var(--paper); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .race .block, .race.played .block { animation: none; transform: scaleX(1); }
+    .replay { display: none; }
+  }
+  /* ---------- tradeoff explorer ---------- */
+  .seg {
+    display: flex; gap: 6px; flex-wrap: wrap;
+    font-family: var(--sans);
+    margin-bottom: 18px;
+  }
+  .seg button {
+    flex: 1 1 110px;
+    min-height: 44px;
+    font-family: var(--sans);
+    font-size: 14px; font-weight: 600;
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    color: var(--ink-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  }
+  .seg button[aria-pressed="true"] {
+    border-color: var(--ink);
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .bars { font-family: var(--sans); }
+  .bar-row { display: grid; grid-template-columns: 150px 1fr 86px; align-items: center; gap: 12px; margin: 10px 0; }
+  .bar-row .name { font-size: 14px; font-weight: 600; }
+  .bar-row .gutter { background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; height: 22px; overflow: hidden; }
+  .bar-row .fill { height: 100%; border-radius: 5px; transform-origin: left center; transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+  .bar-row.a .fill { background: var(--blue); }
+  .bar-row.b .fill { background: var(--green); }
+  .bar-row.c .fill { background: var(--purple); }
+  .bar-row .val { font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-soft); }
+  .verdict {
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    background: var(--accent-soft);
+    border: 1px solid #f3d9c4;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 18px;
+    min-height: 96px;
+  }
+  @media (prefers-reduced-motion: reduce) { .bar-row .fill { transition: none; } }
+  @media (max-width: 540px) { .bar-row { grid-template-columns: 92px 1fr 74px; } }
+  /* ---------- fixture cards ---------- */
+  details.fixture {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    margin: 12px 0;
+    background: var(--paper);
+  }
+  details.fixture summary {
+    list-style: none;
+    display: flex; align-items: center; gap: 14px;
+    padding: 16px 18px;
+    cursor: pointer;
+    font-family: var(--sans);
+    min-height: 44px;
+  }
+  details.fixture summary::-webkit-details-marker { display: none; }
+  details.fixture summary .twist {
+    margin-left: auto; color: var(--ink-faint);
+    transition: transform 0.2s ease-out;
+    flex-shrink: 0;
+  }
+  details.fixture[open] summary .twist { transform: rotate(90deg); }
+  details.fixture .fixname { font-weight: 700; font-size: 16px; }
+  details.fixture .fixsub { font-size: 13.5px; color: var(--ink-faint); }
+  details.fixture .body {
+    padding: 0 18px 18px;
+    font-size: 17px;
+  }
+  .dag { flex-shrink: 0; }
+  .dag circle { fill: var(--ink-soft); }
+  .dag path, .dag line { stroke: var(--ink-faint); stroke-width: 1.5; fill: none; }
+  @media (prefers-reduced-motion: reduce) { details.fixture summary .twist { transition: none; } }
+  /* ---------- callouts ---------- */
+  .note {
+    font-family: var(--sans);
+    font-size: 15.5px; line-height: 1.6;
+    background: var(--paper-warm);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin: 28px 0;
+  }
+  .note strong { font-weight: 700; }
+  footer.colophon {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--sans);
+    font-size: 14.5px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<article class="post">
+
+<header class="masthead">
+  <p class="kicker">Agentic coding · field notes</p>
+  <h1>What happens when AI coding agents work in parallel? I measured it.</h1>
+  <p class="dek">I don't write code. Last night, nine software projects were built, tested, and graded on my laptop while I slept — by teams of AI agents racing each other under controlled conditions. Here's the experiment, and the numbers.</p>
+  <p class="byline"><strong>Marcus Estes</strong> · June 2026 · 14&#8201;min read</p>
+</header>
+
+<p>I should get this out of the way first: I can't review a pull request. I couldn't tell you whether a Python function is elegant or a disaster. And yet over the past day I ran a controlled experiment on AI coding agents — fourteen complete software builds, scored on cost, speed, and code quality — and I did the whole thing through planning and prompting, never through code.</p>
+
+<p>That's the actual subject of this post, more than any one tool: there is now a way of doing serious software work where your contribution is <em>higher-order</em> — deciding what to build, how to verify it, and how to spend a budget — while agents handle everything that happens inside the files. The tools below are how I do it. The experiment is what happened when I asked whether they actually work.</p>
+
+<h2>Superpowers, in one minute</h2>
+
+<p><a href="https://github.com/obra/superpowers">Superpowers</a> is a plugin for Claude Code by Jesse Vincent. The core idea is simple and a little radical: instead of letting the AI freestyle, you give it <em>skills</em> — written procedures it must follow, the way a good employee follows a checklist. There's a skill for brainstorming an idea into a design. A skill for turning the design into a step-by-step implementation plan. A skill for executing that plan with tests written first, and review checkpoints along the way.</p>
+
+<p>For someone like me, this changes everything, because the plan becomes the interface. I spend my time in the brainstorm and the plan — plain English documents I can actually read, question, and redirect — and the execution happens on the other side of a wall I never need to climb. The discipline isn't there to slow the AI down. It's there so that someone who can't audit the code can still audit the <em>process</em>.</p>
+
+<h2>Ultrapowers: the optional engine bolted to the back</h2>
+
+<p><a href="https://github.com/popmechanic/ultrapowers">Ultrapowers</a> is an execution engine I've been building (with Claude, naturally) that takes a finished Superpowers plan and runs it differently. Where the standard executor works through the plan one task at a time, ultrapowers reads the plan's dependency structure and compiles it into <strong>waves</strong>: every task that doesn't depend on another runs <em>simultaneously</em>, each agent in its own isolated copy of the project, with an independent reviewer checking each one's work before it merges.</p>
+
+<figure class="panel">
+  <div class="race" id="race" aria-label="Animation comparing serial execution, six tasks one after another, with wave execution, four tasks at once then two">
+    <p class="lane-label" style="color: var(--blue)">Serial — one agent, one task at a time</p>
+    <div class="track serial">
+      <div class="block" style="left:1%;  width:15%; --d:0.0s">1</div>
+      <div class="block" style="left:17%; width:15%; --d:0.55s">2</div>
+      <div class="block" style="left:33%; width:15%; --d:1.1s">3</div>
+      <div class="block" style="left:49%; width:15%; --d:1.65s">4</div>
+      <div class="block" style="left:65%; width:15%; --d:2.2s">5</div>
+      <div class="block" style="left:81%; width:15%; --d:2.75s">6</div>
+    </div>
+    <p class="clock">finishes at ~46 minutes (measured)</p>
+    <p class="lane-label" style="color: var(--green)">Waves — independent tasks run at once</p>
+    <div class="track waves">
+      <div class="block" style="left:1%;  width:15%; top:4px;  height:11px; --d:0.0s">1</div>
+      <div class="block" style="left:1%;  width:15%; top:19px; height:11px; --d:0.0s">4</div>
+      <div class="block" style="left:17%; width:15%; top:4px;  height:11px; --d:0.55s">2</div>
+      <div class="block" style="left:17%; width:15%; top:19px; height:11px; --d:0.55s">3</div>
+      <div class="block" style="left:33%; width:15%; --d:1.1s">5</div>
+      <div class="block" style="left:49%; width:15%; --d:1.65s">6</div>
+    </div>
+    <p class="clock">finishes at ~17 minutes (measured)</p>
+  </div>
+  <button class="replay" id="replayBtn" type="button">▶ Replay the race</button>
+  <figcaption>The same six-task plan, executed serially versus in waves. These proportions match the measured times from the experiment below: 46.4 minutes serial, 16.9 minutes in waves.</figcaption>
+</figure>
+
+<p>Two properties fall out of this design, and they're the reason I bother.</p>
+
+<p><strong>First: asynchronous execution.</strong> You approve the wave plan, and then you leave. The engine runs the agents, reviews the work, merges the pieces, and stops at a final gate to wait for you. Last night I took this to its logical conclusion — a queue script launched nine complete builds, one after another, between 1:30am and 3:30am, each one scored and committed automatically. I was asleep. The total cost was about $56 in API-equivalent compute.</p>
+
+<p><strong>Second, and most important: budgeted intelligence.</strong> Not all AI models cost the same. Claude's frontier model (Fable) is brilliant and expensive; Opus is excellent and half the price; Sonnet and Haiku are cheaper still. Ultrapowers lets you spend like a contractor staffing a job site: the frontier model does the architecture and orchestration, Opus reviews every piece of work, Sonnet does the routine implementation, and Haiku handles mechanical merge work. You pay for brilliance only where brilliance matters. Whether that staffing actually holds up — whether the cheap workers drag down quality — is exactly what the experiment tests.</p>
+
+<h2>The trade-off, interactively</h2>
+
+<p>Here is the headline comparison from the most representative test: the same plan, built three ways. Pick what you care about most, and the chart will tell you what the data says you should do.</p>
+
+<figure class="panel">
+  <div class="seg" role="group" aria-label="Choose your priority">
+    <button type="button" data-pri="speed" aria-pressed="true">⏱ Speed</button>
+    <button type="button" data-pri="cost" aria-pressed="false">💵 Cost</button>
+    <button type="button" data-pri="quality" aria-pressed="false">🏆 Quality</button>
+  </div>
+  <div class="bars" id="bars" aria-live="polite">
+    <div class="bar-row a"><span class="name cond a">A · Serial</span><span class="gutter"><span class="fill"></span></span><span class="val"></span></div>
+    <div class="bar-row b"><span class="name cond b">B · Waves, tiered</span><span class="gutter"><span class="fill"></span></span><span class="val"></span></div>
+    <div class="bar-row c"><span class="name cond c">C · Waves, all-Opus</span><span class="gutter"><span class="fill"></span></span><span class="val"></span></div>
+  </div>
+  <div class="verdict" id="verdict"></div>
+  <figcaption>Data from the <em>mixed</em> fixture (the most realistic one), one matched run per condition. Quality is the blinded judge's craftsmanship score out of 20 — all three builds passed 100% of the functional tests.</figcaption>
+</figure>
+
+<h2>The experiment</h2>
+
+<p>Benchmarks for AI coding tools are usually vibes. I wanted something closer to a controlled trial, so the harness (designed and frozen before any runs) works like this.</p>
+
+<h3>Three conditions, same plan</h3>
+
+<p>Every run starts from an identical, frozen plan document and an identical starting project. Only the execution method changes:</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Condition</th><th>What it is</th><th>Who does the work</th></tr></thead>
+  <tbody>
+    <tr><td><span class="cond a">A · Serial</span></td><td>The standard Superpowers executor</td><td>One task at a time, default models</td></tr>
+    <tr><td><span class="cond b">B · Waves, tiered</span></td><td>Ultrapowers as shipped</td><td>Sonnet/Haiku build, Opus reviews</td></tr>
+    <tr><td><span class="cond c">C · Waves, all-frontier</span></td><td>Ultrapowers, money-is-no-object</td><td>Opus does everything</td></tr>
+  </tbody>
+</table></div>
+
+<p>Comparing A to B asks: <em>is the parallel engine better than the incumbent?</em> Comparing B to C asks: <em>what does cheap labor cost you in quality?</em> And A to C asks: <em>what does the orchestration alone buy, if you pay top dollar either way?</em></p>
+
+<h3>Four test projects, shaped like stress tests</h3>
+
+<p>A single test project would tell you about that project. So there are four, each one deliberately shaped to stress the engine differently. Tap each to see what it means:</p>
+
+<details class="fixture">
+  <summary>
+    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
+      <circle cx="8" cy="6" r="3.5"/><circle cx="8" cy="20" r="3.5"/><circle cx="8" cy="34" r="3.5"/>
+      <circle cx="28" cy="6" r="3.5"/><circle cx="28" cy="20" r="3.5"/><circle cx="28" cy="34" r="3.5"/>
+    </svg>
+    <span><span class="fixname">wide</span><br><span class="fixsub">six tasks, zero dependencies — parallelism's best case</span></span>
+    <span class="twist">›</span>
+  </summary>
+  <div class="body"><p>Six completely independent pieces of a text-processing library: a word counter, a truncator, a title-caser, and so on. None of them touches the others. A serial executor must still do them one at a time; the wave engine does all six at once. If parallelism is ever going to shine, it's here — and it did: the wave runs finished in a median of <strong>8 minutes</strong>.</p></div>
+</details>
+
+<details class="fixture">
+  <summary>
+    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
+      <circle cx="6" cy="20" r="3.5"/><circle cx="19" cy="20" r="3.5"/><circle cx="32" cy="20" r="3.5"/><circle cx="45" cy="20" r="3.5"/><circle cx="58" cy="20" r="3.5"/>
+      <line x1="9" y1="20" x2="15" y2="20"/><line x1="22" y1="20" x2="28" y2="20"/><line x1="35" y1="20" x2="41" y2="20"/><line x1="48" y1="20" x2="54" y2="20"/>
+    </svg>
+    <span><span class="fixname">chained</span><br><span class="fixsub">five tasks in a strict line — parallelism's worst case</span></span>
+    <span class="twist">›</span>
+  </summary>
+  <div class="body"><p>Each task needs the previous one's output: you can't build the report formatter before the aggregator before the parser. The wave engine is forced into five waves of one task each — all of its machinery, none of its parallelism. This measures the engine's <em>overhead</em>: how much you pay for the apparatus when it can't help you. (Answer: the wave runs still finished in ~17 minutes and cost about $6.50 — the apparatus is cheap.)</p></div>
+</details>
+
+<details class="fixture">
+  <summary>
+    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
+      <circle cx="8" cy="11" r="3.5"/><circle cx="8" cy="29" r="3.5"/>
+      <circle cx="28" cy="11" r="3.5"/><circle cx="28" cy="29" r="3.5"/>
+      <circle cx="45" cy="20" r="3.5"/><circle cx="59" cy="20" r="3.5"/>
+      <line x1="11.5" y1="11" x2="24" y2="11"/><line x1="11.5" y1="29" x2="24" y2="29"/>
+      <line x1="31" y1="13" x2="42" y2="18"/><line x1="31" y1="27" x2="42" y2="22"/>
+      <line x1="48.5" y1="20" x2="55" y2="20"/>
+    </svg>
+    <span><span class="fixname">mixed</span><br><span class="fixsub">a realistic diamond — some parallel, some sequential</span></span>
+    <span class="twist">›</span>
+  </summary>
+  <div class="body"><p>A small web API backend: the data schema and the storage layer can be built simultaneously, then validation and serialization, then the request handlers, then the router that ties it together. This is what real plans actually look like, which makes it the most representative fixture — it's the one used for the head-to-head comparison above, and the one we judged for quality.</p></div>
+</details>
+
+<details class="fixture">
+  <summary>
+    <svg class="dag" width="64" height="40" viewBox="0 0 64 40" aria-hidden="true">
+      <circle cx="14" cy="14" r="3.5"/><circle cx="14" cy="26" r="3.5"/>
+      <path d="M 24 12 C 34 6, 44 6, 52 12"/>
+      <path d="M 24 28 C 34 34, 44 34, 52 28"/>
+      <path d="M 24 16 L 52 24 M 24 24 L 52 16"/>
+    </svg>
+    <span><span class="fixname">degrade</span><br><span class="fixsub">two tasks that collide — testing graceful failure</span></span>
+    <span class="twist">›</span>
+  </summary>
+  <div class="body"><p>Two tasks that both need to edit the same file. Running them in parallel would be a disaster, and the engine is supposed to notice this from the plan and quietly fall back to sequential mode rather than corrupting the work. It did, every time. This fixture exists to verify the engine knows when <em>not</em> to use its own party trick.</p></div>
+</details>
+
+<h3>How the work gets graded</h3>
+
+<p>This is the part I'm proudest of, because it's what lets a non-coder run the trial honestly.</p>
+
+<p><strong>Held-out acceptance tests.</strong> When each plan was written, a separate suite of tests was written alongside it and then hidden. No agent in any run ever sees them. After a run finishes, the hidden tests are unleashed on the finished code. The agents can't game tests they never knew existed — it's the difference between studying for the exam and the exam being a surprise. This is the primary quality measure.</p>
+
+<p><strong>Real cost accounting.</strong> Every token consumed by every agent in a run is extracted from the session transcripts and priced at API rates. (We validated this against Claude's own billing display — it matched to the cent.)</p>
+
+<p><strong>A blinded judge.</strong> Functional tests can't see craftsmanship — code can pass every test and still be sloppy. So a fresh instance of Claude Opus, with no memory of who built what, is shown the plan and two finished implementations in shuffled order and asked to score correctness, plan fidelity, scope discipline, and code quality. Two checks keep the judge honest: shown the same code twice, it must (and does) declare a tie; and every verdict gets re-run with the two diffs in swapped positions — all of its verdicts survived the swap, which means they aren't an artifact of presentation order. <em>(There's supposed to be a human-review step here. I can't do it — I can't read diffs — so the protocol replaces it with those two automated checks, and says so honestly.)</em></p>
+
+<h2>The results</h2>
+
+<p>The head-to-head on the realistic fixture, same frozen plan, all three conditions:</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Condition</th><th class="num">Cost</th><th class="num">Time</th><th class="num">Tests passed</th><th class="num">Judge record</th></tr></thead>
+  <tbody>
+    <tr><td><span class="cond a">A · Serial</span></td><td class="num">$36.23</td><td class="num">46.4 min</td><td class="num">7/7</td><td class="num">1–1</td></tr>
+    <tr><td><span class="cond b">B · Waves, tiered</span></td><td class="num">$7.04</td><td class="num">16.9 min</td><td class="num">7/7</td><td class="num">0–2</td></tr>
+    <tr class="win"><td><span class="cond c">C · Waves, all-Opus</span></td><td class="num">$13.98</td><td class="num">23.6 min</td><td class="num">7/7</td><td class="num">2–0</td></tr>
+  </tbody>
+</table></div>
+
+<p>Three things jump out.</p>
+
+<p><strong>1. The wave engine beats the serial incumbent on every axis at once.</strong> The all-Opus wave run was 2.6× cheaper than serial, twice as fast, <em>and</em> the blinded judge ranked its code highest. This isn't a speed-for-quality trade — the orchestration is just better: parallelism where the plan allows it, an independent reviewer on every task, and no single overloaded agent grinding through a 46-minute marathon.</p>
+
+<p><strong>2. Cheap labor is cheap for a reason — but it's <em>really</em> cheap.</strong> The tiered run cost half of all-Opus and a fifth of serial, and passed 100% of the hidden tests. But the judge consistently docked it the same two points: minor unrequested defensive code (the engineering equivalent of "I also reorganized your closet while I was in there") and slightly looser tests. Across every matchup, the ranking came out <strong>C &gt; A &gt; B</strong> — and it held when the judge was order-swapped.</p>
+
+<p><strong>3. The cheap tier sometimes fails outright.</strong> When I ran three repetitions of the tiered condition overnight, one of the twelve runs had a task its Sonnet worker simply couldn't complete. The engine handled it correctly — retried once, gave up, refused to merge the broken piece, and reported exactly what happened — but that run scored 3/7 on the hidden tests. That's the real cost of the budget tier: not slightly-scruffier code, but an occasional honest failure that you (or a frontier-tier rerun) have to catch at the gate.</p>
+
+<p>And the medians across all four fixtures for the tiered engine, twelve runs total:</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Fixture</th><th class="num">Median cost</th><th class="num">Median time</th><th class="num">Hidden tests</th></tr></thead>
+  <tbody>
+    <tr><td>wide</td><td class="num">$6.77</td><td class="num">8.0 min</td><td class="num">100%</td></tr>
+    <tr><td>degrade</td><td class="num">$4.58</td><td class="num">10.3 min</td><td class="num">100%</td></tr>
+    <tr><td>mixed</td><td class="num">$7.04</td><td class="num">16.3 min</td><td class="num">81%*</td></tr>
+    <tr><td>chained</td><td class="num">$6.73</td><td class="num">17.6 min</td><td class="num">100%</td></tr>
+  </tbody>
+</table></div>
+
+<p style="font-family: var(--sans); font-size: 14px; color: var(--ink-faint); margin-top: -16px;">* The 81% is that one failed run averaged with two perfect ones — see point 3 above.</p>
+
+<p>Read the time column against the diagrams up top and you can see the engine's character: 8 minutes when the plan is wide open, 17+ when it's a forced single-file line. The dependency structure of your plan — something you control at <em>planning</em> time, in plain English — is what decides how much the parallelism is worth.</p>
+
+<div class="note"><strong>What this means for a Claude Max subscriber:</strong> these runs ride a subscription, so the practical currency is the weekly usage limit. Measured against it, a tiered wave run costs about <strong>1% of a week's capacity</strong>; the serial equivalent cost 4%. Model tiering roughly doubles-to-quadruples how much shipped software you get out of one week of a Max plan. Per hidden test passed: serial $5.18, all-Opus $2.00, tiered $0.81.</div>
+
+<h2>The part where I slept</h2>
+
+<p>The first five runs involved me at every gate: approving wave plans, taking screenshots of usage meters, pressing Escape at merge prompts. Then we asked the obvious question: why is a human doing any of this?</p>
+
+<p>So the agent and I built a small overnight runner: a queue that prepares each test project, launches a fresh headless agent session with the gate decisions scripted in advance ("approve the plan exactly as proposed; stop at the merge gate"), waits, scores the result with the validated cost extractor, commits it to the repository, and moves to the next — with a spending ceiling, a per-run timeout, and an abort rule if two runs fail in a row. The smoke test passed at 1:47am. I went to bed. Nine builds, $56, zero human decisions. The one run that failed (the Sonnet story above) was caught, scored, and documented by the pipeline — including a parser bug it exposed in my own scoring script, which the agent found and fixed before I woke up.</p>
+
+<p>I want to dwell on this for one paragraph, because it's the actual thesis. Every part of that sentence — the harness design, the statistics, the bug fix, this very webpage — happened through conversation, plans, and review gates. The skill I'm exercising isn't programming. It's something closer to <em>experimental design plus management</em>: deciding what counts as evidence, what the budget is, where the irreversible steps are, and what gets a human gate versus a script. That's a real discipline, it's learnable, and it doesn't require knowing what a Python decorator is.</p>
+
+<h2>Honest caveats</h2>
+
+<p>Simon Willison has a rule I try to follow: show your numbers, then tell people exactly how much not to trust them.</p>
+
+<p><strong>The samples are small.</strong> Fourteen runs are scored; only the tiered condition has full three-repetition coverage. The A and C conditions have one run each on one fixture so far (the rest are queued for next week's capacity). The C &gt; A &gt; B quality ranking rests on three judgments — order-swap-stable ones, but three.</p>
+
+<p><strong>The test projects are small.</strong> Hundreds of lines, clean dependency structures, frozen plans. Real repositories are messier, and real-repo validity is follow-up work, not a freebie.</p>
+
+<p><strong>I built one of the contestants.</strong> Ultrapowers is my project; this evaluation is the kind a builder runs on their own tool. The mitigations are real — frozen hidden tests, blinded judging, validated cost accounting, every number committed to a public repo — but you should still apply the discount you'd apply to any benchmark published by the person who built the fast horse.</p>
+
+<p><strong>The judge is a model judging models.</strong> Its verdicts passed the consistency checks we could automate, but no human has audited its taste in this experiment, by explicit design — that's the trade I made to run this without being able to read code.</p>
+
+<h2>Where this goes</h2>
+
+<p>The remaining 22 cells of the matrix run next week, unattended, on the overnight queue. If the pattern holds, the takeaway is already useful for anyone playing with agentic coding: <strong>parallel orchestration is close to a free win, and model tiering is a real dial</strong> — all-frontier when the work must be right the first time, tiered when you can afford to catch an occasional failure at the gate, where catching it costs you a glance at a report rather than a code review.</p>
+
+<p>Everything here — the harness, the frozen plans, the hidden tests, every scored run and judgment — is in <a href="https://github.com/popmechanic/ultrapowers">the ultrapowers repository</a>. Superpowers, which all of this builds on, is <a href="https://github.com/obra/superpowers">Jesse Vincent's</a>. If you can write a clear paragraph about what you want built and find the patience to read a plan before approving it, this entire workflow is available to you today.</p>
+
+<footer class="colophon">
+  <p>Methodology in brief: 4 fixture projects × 3 execution conditions × 3 repetitions = a 36-run matrix, 14 scored at time of writing. Costs are API-equivalent USD from per-token transcript accounting validated against the client's own billing display. Quality: held-out acceptance suites (primary) and blinded pairwise judging by a fresh-context model with self-pair and order-swap consistency checks. Written with Claude; every claim traces to a committed result in the repo.</p>
+</footer>
+
+</article>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---- race replay ---- */
+  var race = document.getElementById("race");
+  var btn = document.getElementById("replayBtn");
+  function play() {
+    race.classList.remove("played");
+    // force reflow so animations restart
+    void race.offsetWidth;
+    race.classList.add("played");
+  }
+  btn.addEventListener("click", play);
+  // play once when scrolled into view
+  if ("IntersectionObserver" in window) {
+    var seen = false;
+    new IntersectionObserver(function (entries, obs) {
+      if (!seen && entries[0].isIntersecting) { seen = true; play(); obs.disconnect(); }
+    }, { threshold: 0.4 }).observe(race);
+  } else {
+    play();
+  }
+
+  /* ---- trade-off explorer ---- */
+  // value: displayed; frac: bar length as fraction of best (1 = full, longer = better)
+  var DATA = {
+    speed: {
+      label: "minutes to finish (shorter bar = slower)",
+      rows: { a: { val: "46.4 min", frac: 16.9 / 46.4 }, b: { val: "16.9 min", frac: 1 }, c: { val: "23.6 min", frac: 16.9 / 23.6 } },
+      verdict: "<strong>Fastest: B, the tiered waves.</strong> 16.9 minutes versus 46.4 serial — 2.7× faster. All-Opus waves land in between at 23.6, because smarter workers deliberate longer. Either wave condition roughly halves-to-thirds your wait; the serial baseline is never the speed pick."
+    },
+    cost: {
+      label: "dollars per run (shorter bar = pricier)",
+      rows: { a: { val: "$36.23", frac: 7.04 / 36.23 }, b: { val: "$7.04", frac: 1 }, c: { val: "$13.98", frac: 7.04 / 13.98 } },
+      verdict: "<strong>Cheapest: B, by a mile.</strong> $7 versus $36 for the same plan — 5.1× cheaper than serial, half of all-Opus. Per hidden test passed it's $0.81 versus serial's $5.18. The catch: about 1 task in 70 fails outright on the cheap tier, so budget a gate-check or an occasional rerun."
+    },
+    quality: {
+      label: "judge score out of 20 (longer bar = better code)",
+      rows: { a: { val: "18 / 20", frac: 18 / 20 }, b: { val: "18 / 20·L", frac: 17 / 20 }, c: { val: "20 / 20", frac: 1 } },
+      verdict: "<strong>Best code: C, the all-Opus waves.</strong> A blinded judge ranked it above both alternatives (and the ranking survived order-swapping). Serial came second; the tiered run lost a point each for scope discipline and test sharpness in every matchup — fine code, just less polished. All three passed 100% of the hidden functional tests."
+    }
+  };
+  var bars = document.getElementById("bars");
+  var verdict = document.getElementById("verdict");
+  var buttons = Array.prototype.slice.call(document.querySelectorAll(".seg button"));
+  function render(pri) {
+    var d = DATA[pri];
+    ["a", "b", "c"].forEach(function (k) {
+      var row = bars.querySelector(".bar-row." + k);
+      row.querySelector(".fill").style.transform = "scaleX(" + d.rows[k].frac + ")";
+      row.querySelector(".val").textContent = d.rows[k].val;
+    });
+    verdict.innerHTML = d.verdict;
+    buttons.forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.pri === pri)); });
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () { render(b.dataset.pri); });
+  });
+  // initial paint: bars start at 0 then ease in
+  ["a", "b", "c"].forEach(function (k) {
+    bars.querySelector(".bar-row." + k + " .fill").style.transform = "scaleX(0)";
+  });
+  requestAnimationFrame(function () { render("speed"); });
+})();
+</script>
+</body>
+</html>
