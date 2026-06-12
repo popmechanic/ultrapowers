@@ -25,6 +25,25 @@ The HUD badge states the mode plainly: `OBSERVING` (fresh status.json),
 `SIGNAL LOST` (watcher stopped), `DEPICTION` (no telemetry — a deterministic,
 seeded playback of the approved wave plan; click to replay).
 
+## Themes
+
+One template, ten skins — palettes plus structural switches (frame, station
+glyph, agent wake, bloom). `--theme NAME` picks one, `--all` renders every
+theme as `swarm-<name>.html`, `--list-themes` enumerates them.
+
+| Theme | Vibe |
+|---|---|
+| `asteroids` | gleaming offwhite vectors on black, CRT bezel, phosphor bloom (default) |
+| `riso` | two-ink risograph overprint — fluorescent pink + blue on warm paper, grain |
+| `bauhaus` | primaries + black on warm white; circle/triangle/square by wave; lowercase |
+| `eames` | mid-century playroom — cream, mustard, burnt orange, teal, walnut beads |
+| `transit` | the DAG as a subway map: thick route lines, white-disc stations, Helvetica |
+| `blueprint` | cyanotype — pale construction lines on deep blue, dashed wave rings |
+| `memphis` | Milano 1981 — pastel ground, dot grid, loud shapes, confetti wakes |
+| `sumi` | ink on washi, brush-tick stations, one vermillion seal at the hub |
+| `gadget` | light hardware panel, dark display ink, safety-orange LED accents |
+| `lewitt` | wall-drawing — thin lines in cycled color on gallery white |
+
 ## Usage
 
 ```sh

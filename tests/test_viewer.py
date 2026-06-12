@@ -49,6 +49,18 @@ def test_render_viewer_javascript_parses(tmp_path):
     run([node, "--check", str(js_file)])
 
 
+def test_render_viewer_all_themes(tmp_path):
+    out = run([sys.executable, str(SCRIPTS / "render_viewer.py"), "--list-themes"])
+    themes = out.stdout.split()
+    assert len(themes) == 10
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--out", str(tmp_path), "--all"])
+    for name in themes:
+        html = (tmp_path / f"swarm-{name}.html").read_text()
+        assert "/*__THEME_JSON__*/null" not in html
+        assert f'"name": "{name}"' in html
+
+
 def test_swarm_watch_observes_engine_footprints(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

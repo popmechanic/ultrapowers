@@ -6,65 +6,96 @@
 <title>ULTRAPOWERS — swarm monitor</title>
 <style>
   :root{
-    --phos-core:#d6ffe6; --phos:#57ffa3; --phos-mid:#2dbf76; --phos-dim:#14593a;
-    --phos-faint:#0c3424; --alert:#ffb347; --bg:#030806;
+    /* palette + knobs are set from THEME at startup; these are fallbacks */
+    --bg:#07080a; --screen-bg:radial-gradient(ellipse at 50% 48%,#101113 0%,#07080a 62%,#020203 100%);
+    --ink:#f5f6f0; --bright:#ffffff; --dim:#5a5d58; --faint:#2a2c2a;
+    --accent:#ffb347; --hud:#8a8d85; --agent:#ffffff; --hub-core:var(--bright);
+    --font:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+    --edge-w:1; --edge-w-live:1.6; --screen-radius:26px;
+    --scan-o:0; --vig-o:0; --glass-o:0; --grain-o:0; --dots-o:0; --flick:transparent;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:#0b0b0d;display:grid;place-items:center;
-       font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
-  .bezel{padding:30px 34px;border-radius:36px;
-         background:linear-gradient(150deg,#202125,#0b0c0e 60%,#141518);
-         box-shadow:0 22px 70px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.06)}
-  .screen{position:relative;width:min(92vw,960px);aspect-ratio:4/3;border-radius:26px;
-          overflow:hidden;background:radial-gradient(ellipse at 50% 48%,#08150e 0%,var(--bg) 62%,#010302 100%);
-          box-shadow:inset 0 0 80px rgba(0,0,0,.85)}
+  body{margin:0;display:grid;place-items:center;font-family:var(--font);background:#101012}
+  .screen{position:relative;width:min(92vw,960px);aspect-ratio:4/3;overflow:hidden;
+          border-radius:var(--screen-radius);background:var(--screen-bg)}
   svg{position:absolute;inset:0;width:100%;height:100%}
-  /* CRT layers — kept subtle: Vectrex is a vector monitor, the scanlines are a whisper */
-  .scanlines{position:absolute;inset:0;pointer-events:none;opacity:.22;mix-blend-mode:multiply;
+
+  /* frames */
+  body[data-frame=crt]{background:#0b0b0d}
+  body[data-frame=crt] .bezel{padding:30px 34px;border-radius:36px;
+    background:linear-gradient(150deg,#202125,#0b0c0e 60%,#141518);
+    box-shadow:0 22px 70px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.06)}
+  body[data-frame=crt] .screen{box-shadow:inset 0 0 80px rgba(0,0,0,.85)}
+  body[data-frame=mat]{background:#d8d3c8}
+  body[data-frame=mat] .bezel{padding:44px;border-radius:4px;background:#fdfcf9;
+    border:1px solid #e4dfd3;box-shadow:0 20px 55px rgba(40,34,24,.25)}
+  body[data-frame=mat] .screen{border-radius:2px}
+  body[data-frame=panel]{background:#b9b6ad}
+  body[data-frame=panel] .bezel{padding:26px;border-radius:16px;
+    background:linear-gradient(#f0eee8,#d6d3ca);
+    box-shadow:0 16px 44px rgba(30,30,25,.4), inset 0 1px 0 rgba(255,255,255,.7)}
+  body[data-frame=panel] .screen{border-radius:8px;
+    box-shadow:inset 0 2px 8px rgba(30,30,25,.28)}
+  body[data-frame=none]{background:var(--bg)}
+  body[data-frame=none] .bezel{padding:0}
+  body[data-frame=none] .screen{width:min(96vw,1040px);border-radius:0}
+
+  /* optical overlays (each theme dials these via opacity vars) */
+  .ovl{position:absolute;inset:0;pointer-events:none}
+  .scanlines{opacity:var(--scan-o);mix-blend-mode:multiply;
     background:repeating-linear-gradient(0deg,rgba(0,0,0,.5) 0 1px,transparent 1px 3px)}
-  .vignette{position:absolute;inset:0;pointer-events:none;
+  .vignette{opacity:var(--vig-o);
     background:radial-gradient(ellipse at center,transparent 52%,rgba(0,0,0,.42) 88%,rgba(0,0,0,.72) 100%)}
-  .glass{position:absolute;inset:0;pointer-events:none;
-    background:radial-gradient(ellipse at 30% 18%,rgba(190,255,220,.045),transparent 55%)}
-  .flicker{position:absolute;inset:0;pointer-events:none;background:#9affc9;opacity:0;
-    animation:flick 3.7s infinite}
+  .glass{opacity:var(--glass-o);
+    background:radial-gradient(ellipse at 30% 18%,rgba(235,255,245,.06),transparent 55%)}
+  .grain{opacity:var(--grain-o);mix-blend-mode:multiply;
+    background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2"/></filter><rect width="160" height="160" filter="url(%23n)" opacity="0.55"/></svg>')}
+  .dots{opacity:var(--dots-o);
+    background-image:radial-gradient(currentColor 1.2px,transparent 1.3px);
+    background-size:26px 26px;color:var(--faint)}
+  .flicker{background:var(--flick);opacity:0;animation:flick 3.7s infinite}
   @keyframes flick{0%,93%,100%{opacity:0} 94%{opacity:.012} 95%{opacity:.03} 96%{opacity:.008}}
-  .brand{position:absolute;top:16px;right:20px;color:var(--phos-dim);
-         font-size:11px;font-weight:600;letter-spacing:.46em;text-shadow:0 0 8px rgba(87,255,163,.35);
-         user-select:none}
-  .hud{position:absolute;top:14px;left:20px;color:var(--phos-mid);font-size:11px;
-       letter-spacing:.18em;text-shadow:0 0 6px rgba(87,255,163,.4);line-height:1.9}
-  .hud .mode{color:var(--phos)}
-  .hud .mode.depict{color:var(--alert);text-shadow:0 0 6px rgba(255,179,71,.4)}
-  .hud .mode.lost{color:var(--alert);animation:lostblink 1.4s steps(2) infinite}
+
+  .brand{position:absolute;top:16px;right:20px;color:var(--hud);
+         font-size:11px;font-weight:600;letter-spacing:.46em;user-select:none}
+  .hud{position:absolute;top:14px;left:20px;color:var(--hud);font-size:11px;
+       letter-spacing:.18em;line-height:1.9}
+  .hud .mode{color:var(--ink)}
+  .hud .mode.depict{color:var(--accent)}
+  .hud .mode.lost{color:var(--accent);animation:lostblink 1.4s steps(2) infinite}
   @keyframes lostblink{50%{opacity:.35}}
-  .legend{position:absolute;bottom:12px;left:20px;color:var(--phos-dim);font-size:9.5px;
-          letter-spacing:.22em;user-select:none}
-  .ticker{position:absolute;bottom:12px;right:20px;color:var(--phos-dim);font-size:9.5px;
+  .legend{position:absolute;bottom:12px;left:20px;color:var(--hud);opacity:.8;
+          font-size:9.5px;letter-spacing:.22em;user-select:none}
+  .ticker{position:absolute;bottom:12px;right:20px;color:var(--hud);font-size:9.5px;
           letter-spacing:.12em;max-width:46%;overflow:hidden;white-space:nowrap;
           text-overflow:ellipsis;text-align:right}
-  /* station + edge state colors live here so the SVG stays declarative */
-  .station{stroke:var(--phos-dim);fill:none;transition:stroke .6s}
-  [data-state=working] .station{stroke:var(--phos)}
-  [data-state=committed] .station{stroke:var(--phos-core)}
-  [data-state=committed] .core{fill:var(--phos-mid)}
-  [data-state=merged] .station{stroke:var(--phos-mid)}
-  [data-state=merged] .core{fill:var(--phos-dim)}
-  [data-state=stalled] .station{stroke:var(--alert);animation:lostblink 1.1s steps(2) infinite}
-  .core{fill:none;transition:fill .6s}
-  .stlabel{fill:var(--phos-dim);font:10px ui-monospace,Menlo,monospace;letter-spacing:.14em}
-  [data-state=working] .stlabel,[data-state=committed] .stlabel{fill:var(--phos)}
-  [data-state=merged] .stlabel{fill:var(--phos-mid)}
-  .edge{stroke:var(--phos-faint);fill:none;stroke-width:1}
-  .edge.live{stroke:var(--phos-mid)}
-  @media (prefers-reduced-motion:reduce){
-    .flicker{display:none}
-    /* the reduced-motion view is simply the wave plan as a still diagram */
-  }
+
+  /* station state grammar: structure changes, hue stays the wave's own.
+     Each station group carries its wave color via inline `color`. */
+  .stationG{color:var(--ink)}
+  .station{stroke:currentColor;fill:none;opacity:.28;transition:opacity .5s}
+  .pinfill{fill:var(--bg)}
+  .core{fill:none;opacity:.9;transition:fill .5s}
+  [data-state=working] .station{opacity:1}
+  [data-state=committed] .station{opacity:1}
+  [data-state=committed] .core{fill:currentColor}
+  [data-state=merged] .station{opacity:.65}
+  [data-state=merged] .core{fill:currentColor}
+  [data-state=stalled] .station{stroke:var(--accent);opacity:1;
+    animation:lostblink 1.1s steps(2) infinite}
+  .stlabel{fill:currentColor;opacity:.5;font-family:var(--font);font-size:10px;
+           letter-spacing:.14em;transition:opacity .5s}
+  [data-state=working] .stlabel,[data-state=committed] .stlabel{opacity:1}
+  [data-state=merged] .stlabel{opacity:.7}
+  .edge{fill:none;opacity:.3;stroke-width:var(--edge-w);transition:opacity .5s}
+  .edge.live{opacity:.95;stroke-width:var(--edge-w-live)}
+  .ring{fill:none;stroke:var(--faint);stroke-width:1}
+
+  @media (prefers-reduced-motion:reduce){ .flicker{display:none} }
 </style>
 </head>
-<body>
+<body data-frame="crt">
 <div class="bezel"><div class="screen" id="screen">
   <svg id="stage" viewBox="0 0 960 720" aria-label="ultrapowers agent swarm">
     <defs>
@@ -75,8 +106,13 @@
           <feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/>
         </feMerge>
       </filter>
+      <filter id="bloomSoft" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="s1"/>
+        <feMerge><feMergeNode in="s1"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
     </defs>
-    <g id="scene" filter="url(#bloom)">
+    <g id="scene">
+      <g id="rings"></g>
       <g id="edges"></g>
       <g id="journeys"></g>
       <g id="trails"></g>
@@ -85,10 +121,12 @@
       <g id="agents"></g>
     </g>
   </svg>
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
-  <div class="glass"></div>
-  <div class="flicker"></div>
+  <div class="ovl dots"></div>
+  <div class="ovl scanlines"></div>
+  <div class="ovl vignette"></div>
+  <div class="ovl glass"></div>
+  <div class="ovl grain"></div>
+  <div class="ovl flicker"></div>
   <div class="brand">ULTRAPOWERS</div>
   <div class="hud">
     <div id="hudTitle"></div>
@@ -101,6 +139,15 @@
 'use strict';
 // ─── injected by render_viewer.py ───────────────────────────────────────────
 const DAG = /*__DAG_JSON__*/null;
+const THEME = /*__THEME_JSON__*/null || {
+  name: 'asteroids', frame: 'crt', glyph: 'diamond', trail: 'glow',
+  bloom: 2, rings: 'none', edgeColor: 'mono', labelcase: 'upper',
+  waveColors: ['#f5f6f0'],
+  vars: { bg: '#07080a', ink: '#f5f6f0', bright: '#ffffff', dim: '#5a5d58',
+          faint: '#2a2c2a', accent: '#ffb347', hud: '#8a8d85', agent: '#ffffff',
+          'screen-bg': 'radial-gradient(ellipse at 50% 48%,#101113 0%,#07080a 62%,#020203 100%)',
+          'scan-o': '.18', 'vig-o': '1', 'glass-o': '1', 'flick': '#eef7f0' },
+};
 // ─────────────────────────────────────────────────────────────────────────────
 // Motion engine. Native stand-in for anime.js's svg.createMotionPath: an SVG
 // path sampled by getPointAtLength under one requestAnimationFrame loop. To
@@ -110,6 +157,15 @@ const DAG = /*__DAG_JSON__*/null;
 const SVGNS = 'http://www.w3.org/2000/svg';
 const W = 960, H = 720, CX = W / 2, CY = H / 2;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// apply the theme
+document.body.dataset.frame = THEME.frame;
+document.body.dataset.theme = THEME.name;
+for (const k in THEME.vars)
+  document.documentElement.style.setProperty('--' + k, THEME.vars[k]);
+const scene = document.getElementById('scene');
+if (THEME.bloom === 2) scene.setAttribute('filter', 'url(#bloom)');
+else if (THEME.bloom === 1) scene.setAttribute('filter', 'url(#bloomSoft)');
 
 function el(tag, attrs, parent) {
   const node = document.createElementNS(SVGNS, tag);
@@ -130,7 +186,7 @@ function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-const rand = mulberry32(hashStr(JSON.stringify(DAG.waves)));
+const rand = mulberry32(hashStr(JSON.stringify(DAG.waves) + THEME.name));
 
 const easeInOut = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
 const easeOut = p => 1 - Math.pow(1 - p, 3);
@@ -159,6 +215,7 @@ const nW = waves.length;
 const Rmax = Math.min(W, H) / 2 - 86;
 const R0 = nW === 1 ? Rmax * 0.62 : 142;
 const ringR = w => nW === 1 ? R0 : R0 + (Rmax - R0) * (w / (nW - 1));
+const waveColor = w => THEME.waveColors[w % THEME.waveColors.length];
 
 const taskWave = {}, preds = {};
 waves.forEach((wave, wi) => wave.forEach(id => { taskWave[id] = wi; preds[id] = []; }));
@@ -173,7 +230,6 @@ waves.forEach((wave, wi) => {
     const sy = ps.reduce((s, p) => s + Math.sin(angleOf[p]), 0);
     return Math.atan2(sy, sx) + (rand() - .5) * 0.22;
   });
-  // relax: enforce a minimum angular gap on the ring
   const order = wave.map((id, i) => i).sort((a, b) => desired[a] - desired[b]);
   const gap = Math.min(2 * Math.PI / wave.length, 0.6);
   for (let pass = 0; pass < 40; pass++) {
@@ -188,12 +244,17 @@ waves.forEach((wave, wi) => {
 });
 
 // ─── scene construction: paths prefigured from the compiled DAG ─────────────
+const gRings = document.getElementById('rings');
 const gEdges = document.getElementById('edges');
 const gJourneys = document.getElementById('journeys');
 const gTrails = document.getElementById('trails');
 const gStations = document.getElementById('stations');
 const gHub = document.getElementById('hub');
 const gAgents = document.getElementById('agents');
+
+if (THEME.rings !== 'none')
+  waves.forEach((_, wi) => el('circle', { class: 'ring', cx: CX, cy: CY, r: ringR(wi),
+    'stroke-dasharray': THEME.rings === 'dashed' ? '4 7' : 'none' }, gRings));
 
 function journeyPath(st) { // hub → station, with a slight spiral curl
   const a = st.angle, r = st.r;
@@ -211,57 +272,107 @@ function edgePathD(a, b) { // station → station, bulging outward past the ring
   return `M ${a.x} ${a.y} Q ${cx} ${cy} ${b.x} ${b.y}`;
 }
 
+// glyph vocabulary — every glyph provides a .station outline and a .core fill
+const GLYPHS = {
+  diamond(g) {
+    el('path', { class: 'station', 'stroke-width': 1.4, d: 'M 0 -11 L 11 0 L 0 11 L -11 0 Z' }, g);
+    el('path', { class: 'core', d: 'M 0 -5 L 5 0 L 0 5 L -5 0 Z' }, g);
+  },
+  ring(g) {
+    el('circle', { class: 'station', 'stroke-width': 1.8, r: 10 }, g);
+    el('circle', { class: 'core', r: 4.5 }, g);
+  },
+  square(g) {
+    el('rect', { class: 'station', 'stroke-width': 1.5, x: -9, y: -9, width: 18, height: 18 }, g);
+    el('rect', { class: 'core', x: -4, y: -4, width: 8, height: 8 }, g);
+  },
+  pin(g) { // transit-map station: solid disc with a heavy ring
+    el('circle', { class: 'station pinfill', 'stroke-width': 3.4, r: 8.5 }, g);
+    el('circle', { class: 'core', r: 3.4 }, g);
+  },
+  asterisk(g) { // brush ticks
+    for (let i = 0; i < 3; i++) {
+      const a = i * Math.PI / 3 + 0.26;
+      el('line', { class: 'station', 'stroke-width': 1.7, 'stroke-linecap': 'round',
+        x1: -11 * Math.cos(a), y1: -11 * Math.sin(a),
+        x2: 11 * Math.cos(a), y2: 11 * Math.sin(a) }, g);
+    }
+    el('circle', { class: 'core', r: 3.6 }, g);
+  },
+  primitives(g, ctx) { // bauhaus: circle / triangle / square by wave
+    const which = ctx.waveIndex % 3;
+    if (which === 0) el('circle', { class: 'station', 'stroke-width': 1.8, r: 10 }, g);
+    else if (which === 1) el('path', { class: 'station', 'stroke-width': 1.8,
+      d: 'M 0 -11 L 10 8 L -10 8 Z' }, g);
+    else el('rect', { class: 'station', 'stroke-width': 1.8, x: -9, y: -9, width: 18, height: 18 }, g);
+    el('circle', { class: 'core', r: 4 }, g);
+  },
+};
+
 const stations = {};
-DAG.tasks.forEach(t => {
-  const angle = angleOf[t.id], r = ringR(taskWave[t.id]);
+DAG.tasks.forEach((t, ti) => {
+  const wi = taskWave[t.id];
+  const angle = angleOf[t.id], r = ringR(wi);
   const [x, y] = polar(r, angle);
-  const g = el('g', { 'data-state': 'pending', transform: `translate(${x} ${y})` }, gStations);
-  // angular vector-era glyph: a diamond outline with a small inner core
-  el('path', { class: 'station', 'stroke-width': 1.4,
-    d: 'M 0 -11 L 11 0 L 0 11 L -11 0 Z' }, g);
-  el('path', { class: 'core', d: 'M 0 -5 L 5 0 L 0 5 L -5 0 Z' }, g);
+  const g = el('g', { class: 'stationG', 'data-state': 'pending',
+    transform: `translate(${x} ${y})`, style: `color:${waveColor(wi)}` }, gStations);
+  (GLYPHS[THEME.glyph] || GLYPHS.diamond)(g, { waveIndex: wi, taskIndex: ti });
   const lx = Math.cos(angle) * 24, ly = Math.sin(angle) * 24 + 3;
   const label = el('text', { class: 'stlabel', x: lx, y: ly,
     'text-anchor': Math.cos(angle) > 0.3 ? 'start' : Math.cos(angle) < -0.3 ? 'end' : 'middle' }, g);
-  label.textContent = 'T' + t.id;
+  label.textContent = THEME.labelcase === 'lower' ? 't' + t.id : 'T' + t.id;
   const jp = el('path', { d: journeyPath({ angle, r }), fill: 'none', stroke: 'none' }, gJourneys);
   stations[t.id] = { id: t.id, angle, r, x, y, el: g, journey: jp,
                      state: 'pending', workPhase: rand() * 6.28, reviewer: null };
 });
 
-const edgeEls = DAG.edges.map(([f, t]) => {
+const edgeEls = DAG.edges.map(([f, t], i) => {
   const a = stations[f], b = stations[t];
   if (!a || !b) return null;
-  const p = el('path', { class: 'edge', d: edgePathD(a, b) }, gEdges);
+  const color = THEME.edgeColor === 'index'
+    ? THEME.waveColors[i % THEME.waveColors.length]
+    : THEME.edgeColor === 'fromWave' ? waveColor(taskWave[f]) : 'var(--dim)';
+  const p = el('path', { class: 'edge', d: edgePathD(a, b), stroke: color }, gEdges);
   return { from: f, to: t, el: p };
 }).filter(Boolean);
 
 // hub: the integration branch
-el('circle', { cx: CX, cy: CY, r: 20, fill: 'none', stroke: 'var(--phos-mid)', 'stroke-width': 1.6 }, gHub);
-el('circle', { cx: CX, cy: CY, r: 5, fill: 'var(--phos)' }, gHub);
-const hubArc = el('path', { fill: 'none', stroke: 'var(--phos)', 'stroke-width': 1.6,
+el('circle', { cx: CX, cy: CY, r: 20, fill: 'none', stroke: 'var(--ink)',
+  'stroke-width': 1.6, opacity: .8 }, gHub);
+el('circle', { cx: CX, cy: CY, r: 5, fill: 'var(--hub-core)' }, gHub);
+const hubArc = el('path', { fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.6,
   d: `M ${CX + 27} ${CY} A 27 27 0 0 1 ${CX} ${CY + 27}` }, gHub);
 const hubPulse = el('circle', { cx: CX, cy: CY, r: 20, fill: 'none',
-  stroke: 'var(--phos)', 'stroke-width': 1.4, opacity: 0 }, gHub);
-const hubLabel = el('text', { x: CX, y: CY + 46, 'text-anchor': 'middle', class: 'stlabel' }, gHub);
-hubLabel.textContent = 'INTEGRATION';
+  stroke: 'var(--ink)', 'stroke-width': 1.4, opacity: 0 }, gHub);
+const hubLabel = el('text', { x: CX, y: CY + 46, 'text-anchor': 'middle',
+  class: 'stlabel', style: 'color:var(--ink)' }, gHub);
+hubLabel.textContent = THEME.labelcase === 'lower' ? 'integration' : 'INTEGRATION';
 
-// ─── agents: phosphor points with afterglow trails ──────────────────────────
-const TRAIL = 12;
+// ─── agents: points with theme-appropriate wakes ─────────────────────────────
+const TRAIL = THEME.trail === 'glow' ? 12 : THEME.trail === 'confetti' ? 10
+            : THEME.trail === 'dash' ? 6 : 0;
+function trailColor(i) {
+  if (THEME.trail === 'confetti')
+    return THEME.waveColors[Math.floor(rand() * THEME.waveColors.length)];
+  return 'var(--agent)';
+}
 function spawnAgent(radius) {
-  const dot = el('circle', { r: radius, fill: 'var(--phos-core)' }, gAgents);
+  const dot = el('circle', { r: radius, fill: 'var(--agent)' }, gAgents);
   const trail = [];
   for (let i = 0; i < TRAIL; i++)
-    trail.push(el('circle', { r: radius * (1 - i / TRAIL) * 0.9, fill: 'var(--phos)', opacity: 0 }, gTrails));
+    trail.push(el('circle', { r: radius * (1 - i / Math.max(1, TRAIL)) * 0.9,
+      fill: trailColor(i), opacity: 0 }, gTrails));
   return { dot, trail, pts: [] };
 }
 function moveAgent(ag, x, y) {
   ag.dot.setAttribute('cx', x); ag.dot.setAttribute('cy', y);
+  if (!TRAIL) return;
   ag.pts.unshift([x, y]); if (ag.pts.length > TRAIL) ag.pts.pop();
+  const maxO = THEME.trail === 'glow' ? 0.42 : THEME.trail === 'confetti' ? 0.85 : 0.25;
   ag.pts.forEach(([px, py], i) => {
     const c = ag.trail[i];
     c.setAttribute('cx', px); c.setAttribute('cy', py);
-    c.setAttribute('opacity', (1 - i / TRAIL) * 0.42);
+    c.setAttribute('opacity', (1 - i / TRAIL) * maxO);
   });
 }
 function retireAgent(ag) {
@@ -439,20 +550,16 @@ let t0 = performance.now();
 function frame(ts) {
   nowMs = ts - t0;
   const tSec = ts / 1000;
-  // scheduled depiction events
   if (depicting) {
     while (schedule.length && schedule[0].t <= nowMs) schedule.shift().fn();
     schedule.sort((a, b) => a.t - b.t);
   }
   stepTweens();
-  // hub: slow sweep of the arc segment
   hubArc.setAttribute('transform', `rotate(${(tSec * 24) % 360} ${CX} ${CY})`);
-  // ambient elliptical orbiters around the hub
   ambient.forEach(o => {
     const a = o.phase + tSec * o.speed;
     moveAgent(o.ag, CX + o.r * Math.cos(a), CY + o.r * o.ecc * Math.sin(a));
   });
-  // working stations: pulse + reviewer's elliptical orbit (the romance, dramatized)
   Object.values(stations).forEach(st => {
     if (st.state === 'working' || st.state === 'committed') {
       const s = 1 + Math.sin(tSec * 3 + st.workPhase) * 0.07;
@@ -471,9 +578,7 @@ function frame(ts) {
   requestAnimationFrame(frame);
 }
 if (!reduced) requestAnimationFrame(frame);
-else { // reduced motion: render final-state diagram driven by polls only
-  updateHud();
-}
+else updateHud();
 </script>
 </body>
 </html>
