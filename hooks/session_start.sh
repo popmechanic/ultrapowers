@@ -17,7 +17,9 @@ The ultrapowers plugin is installed. Two standing rules:
 
 2. At a marked plan's execution handoff, offer THREE options, parallel first:
    1. /ultrapowers <plan-path> (recommended for marked plans) — parallel
-      waves, worktree isolation, per-task review, two human gates.
+      waves, worktree isolation, per-task review, one pre-merge human gate.
+      Selecting this option authorizes execution: begin implementation
+      immediately after rendering the wave plan, with no approval pause.
    2. superpowers:subagent-driven-development (sequential).
    3. superpowers:executing-plans (inline).
 </ultrapowers-routing>

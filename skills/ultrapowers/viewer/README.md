@@ -5,8 +5,7 @@ phosphor hub, waves as concentric rings, tasks as vector-era stations, agents as
 bright points that fan out along prefigured motion paths and come home to merge.
 Vectrex-style bloom and afterglow; faint CRT framing; branded `ULTRAPOWERS` in
 the corner. It takes no input — it exists so the human has something true to
-watch during the autonomous stretch between the wave-plan gate and the pre-merge
-gate.
+watch during the autonomous stretch between launch and the pre-merge gate.
 
 ## Honesty contract
 
@@ -23,7 +22,7 @@ Two layers, labeled on screen and never mixed:
 
 The HUD badge states the mode plainly: `OBSERVING` (fresh status.json),
 `SIGNAL LOST` (watcher stopped), `DEPICTION` (no telemetry — a deterministic,
-seeded playback of the approved wave plan; click to replay).
+seeded playback of the computed wave plan; click to replay).
 
 ## Themes
 

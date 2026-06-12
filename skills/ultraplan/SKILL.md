@@ -29,7 +29,8 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 
 Placement is enforced: the compiler trusts markers only as the contiguous block
 immediately after the task heading — a marker after a description paragraph (or
-anywhere later) is ignored and surfaced as a conflict at the wave-plan gate.
+anywhere later) is ignored and surfaced as a conflict in the wave-plan
+transparency render.
 
 ## Replace the plan header
 
@@ -51,7 +52,9 @@ writing-plans ends by offering two execution options. On a marked plan, offer
 three — parallel first:
 
 1. **Ultrapowers (recommended for marked plans)** — `/ultrapowers <plan-path>`:
-   parallel waves, worktree isolation, per-task review, two human gates.
+   parallel waves, worktree isolation, per-task review, one pre-merge human gate.
+   Selecting this option authorizes execution: ultrapowers renders its wave plan
+   for transparency and launches immediately, without a further approval pause.
 2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
    review between tasks.
 3. **Inline** — superpowers:executing-plans, continuous inline execution (upstream removed batch checkpoints in superpowers 5.0.0; its own handoff text still says otherwise — trust the behavior, not the menu).
@@ -61,7 +64,7 @@ three — parallel first:
 - `implementation` — a worktree-pure diff. Waved and executed.
 - `gate` — verification only (suite, lint, status checks); writes nothing. Compiled
   into run configuration: its suite command informs `testCmd`, its expectations are
-  listed at the wave-plan approval gate. Never executed as a task.
+  listed in the wave-plan transparency render. Never executed as a task.
 - `release` — publish ritual: version bumps, pushes, marketplace re-pins, deploys.
   Excluded from the waves; carried verbatim into the post-merge runbook.
 - `manual` — requires a human or another machine (credentials, hardware, owner

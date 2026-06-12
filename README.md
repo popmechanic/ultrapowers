@@ -75,8 +75,9 @@ You invoke **`/ultrapowers <plan-path>`** from inside the target repo. The skill
    compile into run configuration; release and manual tasks are deferred to a post-merge runbook —
    a headless run never pushes, deploys, or waits on a human.
 3. **Shows you the wave plan** — dependency edges, wave ordering, dispositions (what was excluded
-   and why), derived knobs (test command, per-task review depth). You approve or revise before any
-   tokens are spent on implementation.
+   and why), derived knobs (test command, per-task review depth). Rendered for transparency, not
+   approval: choosing ultrapowers at the plan handoff (or invoking `/ultrapowers`) already
+   authorized the run, so execution begins immediately.
 4. **Launches the committed workflow** — after a zero-agent probe confirms the engine still behaves
    as expected, a setup agent creates the integration branch and runs the test baseline; then per
    wave: implementer agents work in isolated worktrees (anchored to the exact integration SHA they
@@ -92,8 +93,8 @@ You invoke **`/ultrapowers <plan-path>`** from inside the target repo. The skill
    **redirect**: corrective re-runs go through the same engine (`resume` mode on the same branch),
    never an improvised one-off.
 
-Three human gates, total: plan approval (before ultrapowers is involved), wave-plan approval, and
-pre-merge review. Everything in between runs autonomously and headless.
+Two human gates, total: plan approval (before ultrapowers is involved) and pre-merge review.
+Everything in between runs autonomously and headless.
 
 Deep dive: [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md) is the front door;
 [`skills/ultrapowers/references/`](skills/ultrapowers/references/) covers dependency analysis,
@@ -137,8 +138,8 @@ analysis already infers — but release rituals, verification-only gate tasks, a
 Unmarked plans still run: the same compiler classifies each task against the
 worktree-pure contract (no pushes, no human steps, no mutation outside the
 worktree) by evidence, flags every heuristic call, and surfaces each
-reinterpretation in the wave-plan approval gate — you approve the
-interpretation, not just the grouping.
+reinterpretation in the wave-plan transparency render (and again in the final
+report) — the interpretation, not just the grouping, is auditable.
 
 ## Install
 

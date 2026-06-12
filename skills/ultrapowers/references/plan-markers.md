@@ -61,7 +61,7 @@ Markers are honored only in the **header block** — the contiguous run of marke
 - `implementation` — a worktree-pure diff. Waved and executed.
 - `gate` — verification only (suite, lint, status checks); writes nothing. Compiled
   into run configuration: its suite command informs `testCmd`, its expectations are
-  listed at the wave-plan approval gate. Never executed as a task.
+  listed in the wave-plan transparency render. Never executed as a task.
 - `release` — publish ritual: version bumps, pushes, marketplace re-pins, deploys.
   Excluded from the waves; carried verbatim into the post-merge runbook.
 - `manual` — requires a human or another machine (credentials, hardware, owner
@@ -128,7 +128,8 @@ inlining and ordering-prose supersession remain the orchestrating agent's judgme
 recorded in the transparency block):
 
 - record every non-`implementation` disposition in the Step-3 transparency block —
-  the human approves the **interpretation** of the plan, not just the wave grouping;
+  the rendered **interpretation** of the plan (not just the wave grouping) is the
+  human's audit surface, and it reappears with the final report;
 - collect `release` and `manual` tasks, verbatim and in document order, into the
   **post-merge runbook**, rendered with the final report; on approval the
   orchestrating agent carries it through the finishing-a-development-branch
