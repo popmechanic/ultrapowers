@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
 
+**Acceptance:** sealed 08e1b4f94c8a (sha256:08e1b4f94c8aee238cb24fa8d6a3c7475e9547aaf22fc451ae2c755258045610)
+
 **Goal:** Add two configuration layers — environment-variable overrides, then file loading with merge precedence — to `confkit/config.py`. Both tasks edit the same module, so they must run sequentially.
 
 **Tech Stack:** Python 3.11 + pytest. Run the suite with `python3 -m pytest tests/ -q` from the repo root.
