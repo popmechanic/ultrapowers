@@ -65,9 +65,31 @@ fi
 mkdir -p "$WT/.ultra-acceptance"
 cp -R "$SUITE/." "$WT/.ultra-acceptance/"
 
+# No-tests-ran defense (closes the false-green path): a green exit only earns a
+# pass if the sealed suite actually executed at least one test. A runCmd that
+# never touches the suite (e.g. exits 0 trivially) or one that collects zero
+# tests proves nothing — accepting it would let an unbuilt feature pass the
+# exam. The sentinel conftest writes a marker the moment any collected test
+# runs; it only ever tightens the gate (absent marker on a green exit => ERROR)
+# and can never turn a red exam green.
+RAN_MARKER="$WT/.ultra-acceptance/.__ran__"
+cat > "$WT/.ultra-acceptance/conftest.py" <<EOF
+import pathlib
+def pytest_runtest_call(item):
+    pathlib.Path(__file__).with_name(".__ran__").write_text("1")
+EOF
+
 OUT="$( (cd "$WT" && eval "$RUN_CMD") 2>&1 )"
 CODE=$?
+# A NON-zero exit is left untouched — a collection error from a missing module
+# (feature absent) is an honest red per the spec, and an already-failing exam
+# can never false-green regardless of the marker.
 if [ "$CODE" -eq 0 ]; then
+  if [ ! -f "$RAN_MARKER" ]; then
+    emit ERROR false 1 "exam exited 0 but ran no sealed tests (zero tests collected or runCmd never executed the suite) — refusing to false-green:
+$OUT"
+    exit 1
+  fi
   emit OK true 0 "$OUT"
   exit 0
 fi

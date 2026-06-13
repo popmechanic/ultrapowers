@@ -112,3 +112,63 @@ def test_unreadable_branch_reports_error(tmp_path):
             "--vault", str(vault), "--repo", str(repo)], check=False)
     out = json.loads(r.stdout)
     assert r.returncode != 0 and out["status"] == "ERROR" and out["passed"] is False
+
+
+def _set_run_cmd(vault, seal_id, digest, run_cmd):
+    """Rewrite the manifest's runCmd while preserving the recorded hash."""
+    (vault / seal_id / "manifest.json").write_text(json.dumps({
+        "sealId": seal_id, "suiteSha256": digest, "runCmd": run_cmd}))
+
+
+def test_runcmd_that_skips_the_suite_never_false_greens(tmp_path):
+    """A runCmd that exits 0 without ever executing the sealed suite must NOT
+    report passed. Feature is ABSENT here, so an honest pass is impossible."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    _set_run_cmd(vault, seal_id, digest, "true")
+    repo = make_repo(tmp_path, feature_built=False)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0, "a runCmd that never runs the suite must not exit 0"
+    assert out["passed"] is False
+    assert out["status"] == "ERROR"
+
+
+def test_zero_collected_tests_with_swallowed_exit_never_false_greens(tmp_path):
+    """A runCmd that collects zero sealed tests yet exits 0 (exit swallowed with
+    `|| true`, the classic accidental false-green) must be ERROR, never a pass."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    _set_run_cmd(vault, seal_id, digest,
+                 "mkdir -p _empty && (python3 -m pytest _empty -q || true)")
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0, "zero collected tests with a swallowed exit must not exit 0"
+    assert out["passed"] is False
+    assert out["status"] == "ERROR"
+
+
+def test_collection_error_from_missing_module_is_honest_red(tmp_path):
+    """A suite whose import fails because the feature module is absent is the
+    canonical 'feature not built' case: an honest red (status OK, passed false),
+    NOT swallowed by the no-tests-ran guard, which only protects the green path."""
+    vault = tmp_path / "vault"
+    suite = vault / "pending" / "suite"
+    suite.mkdir(parents=True)
+    (suite / "test_exam.py").write_text(
+        "from featuremod import shiny\n\n\ndef test_shiny():\n    assert shiny() == 42\n")
+    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
+    seal_id = digest[:12]
+    (vault / "pending").rename(vault / seal_id)
+    (vault / seal_id / "manifest.json").write_text(json.dumps({
+        "sealId": seal_id, "suiteSha256": digest,
+        "runCmd": "python3 -m pytest .ultra-acceptance -q"}))
+    repo = make_repo(tmp_path, feature_built=False)  # featuremod absent
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0 and out["passed"] is False
+    assert out["status"] == "OK", "missing-module collection error is an honest red, not ERROR"
+
+
+def test_honest_green_still_passes_after_guard(tmp_path):
+    """Regression: the no-tests-ran defense must not break the real green path."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
