@@ -1671,6 +1671,71 @@ async function scenarioAcceptanceWaived() {
   console.log('scenario acceptance-waived: OK')
 }
 
+// ── Scenario: acceptance-sealed-unparseable — relay agent returns garbage ─────
+async function scenarioAcceptanceSealedUnparseable() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => ({ raw: 'the exam looked fine to me, all good' })),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'sealed', 'acceptance-sealed-unparseable: mode is sealed')
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-unparseable: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-unparseable: passed is false')
+  assert(typeof r.acceptance.output === 'string' && /unparseable exam output/.test(r.acceptance.output),
+    'acceptance-sealed-unparseable: output names the unparseable receipt (got ' +
+    JSON.stringify(r.acceptance.output) + ')')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-unparseable: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-unparseable: OK')
+}
+
+// ── Scenario: acceptance-sealed-missing-passed — receipt without passed bool ──
+async function scenarioAcceptanceSealedMissingPassed() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => ({ raw: '{"sealId":"abc123def456","status":"OK","output":"looks ok"}' })),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-missing-passed: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-missing-passed: passed is false')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-missing-passed: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-missing-passed: OK')
+}
+
+// ── Scenario: acceptance-sealed-agent-throws — exam dispatch raises ───────────
+async function scenarioAcceptanceSealedAgentThrows() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => { throw new Error('exam transport blew up') }),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'sealed', 'acceptance-sealed-agent-throws: mode is sealed')
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-agent-throws: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-agent-throws: passed is false')
+  assert(typeof r.acceptance.output === 'string' && /exam agent error/.test(r.acceptance.output),
+    'acceptance-sealed-agent-throws: output names the agent error (got ' +
+    JSON.stringify(r.acceptance.output) + ')')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-agent-throws: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-agent-throws: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1726,4 +1791,7 @@ await scenarioFileScope()
 await scenarioAcceptanceSealedGreen()
 await scenarioAcceptanceSealedRed()
 await scenarioAcceptanceWaived()
+await scenarioAcceptanceSealedUnparseable()
+await scenarioAcceptanceSealedMissingPassed()
+await scenarioAcceptanceSealedAgentThrows()
 console.log('ALL SCENARIOS PASSED')
