@@ -77,3 +77,30 @@ def test_malformed_entry_fails_loud():
     bad = "### #99: no state line\n**Score:** 1.0 — x\n"
     with pytest.raises(m.DocketError):
         m.parse_docket(bad)
+
+
+def test_duplicate_issue_numbers_fail_loud():
+    m = load()
+    dup = ("# Docket\n\n"
+           "### #5: a\n**State:** triaged\n**Score:** 1 — x\n\n"
+           "### #5: b\n**State:** triaged\n**Score:** 1 — x\n")
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket(dup)
+
+
+def test_cannot_park_from_terminal_state():
+    m = load()
+    e = m.parse_docket("# D\n\n### #1: x\n**State:** verified\n**Score:** 1 — x\n")[0]
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.transition(e, "parked")
+
+
+def test_transition_from_unknown_state_raises():
+    m = load()
+    import dataclasses, pytest
+    e = m.parse_docket("# D\n\n### #1: x\n**State:** accepted\n**Score:** 1 — x\n")[0]
+    bogus = dataclasses.replace(e, state="nonsense")
+    with pytest.raises(m.DocketError):
+        m.transition(bogus, "planned")
