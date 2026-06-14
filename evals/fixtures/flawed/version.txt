@@ -1,0 +1,4 @@
+1-flawed (2026-06-14)
+Preserves the intentional latent dependency: Task 4 (In-memory store) declares
+Depends-on: none but its spec requires add() to return a schema.User created by
+Task 1. Do NOT "fix" this — the bug IS the fixture. Promoted from mixed per #27.

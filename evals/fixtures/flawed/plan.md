@@ -57,7 +57,7 @@
 ### Task 4: In-memory store
 
 **Type:** implementation
-**Depends-on:** 1
+**Depends-on:** none
 
 **Files:**
 - Create: `apistub/store.py`
