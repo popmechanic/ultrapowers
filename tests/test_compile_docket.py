@@ -73,3 +73,48 @@ def test_only_queued_entries_considered():
     docket = DOCKET.replace("**State:** queued\n**Score:** 7.0", "**State:** accepted\n**Score:** 7.0")
     r = m.compile_docket(docket, writes_resolver=lambda p: WRITES[p])
     assert "pc.md" not in r["order"]
+
+
+def test_queued_entry_without_plan_fails_loud():
+    m = load()
+    docket = ("# Docket\n\n### #1: no plan\n**State:** queued\n"
+              "**Score:** 9.0 — x\n**Est-files:** a.py\n")
+    import pytest
+    with pytest.raises(Exception):
+        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+
+
+def test_duplicate_plan_paths_fail_loud():
+    m = load()
+    docket = ("# Docket\n\n"
+              "### #1: a\n**State:** queued\n**Score:** 9 — x\n**Est-files:** a.py\n"
+              "**Plan:** p.md\n**Seal:** aaa\n\n"
+              "### #2: b\n**State:** queued\n**Score:** 5 — x\n**Est-files:** b.py\n"
+              "**Plan:** p.md\n**Seal:** bbb\n")
+    import pytest
+    with pytest.raises(Exception):
+        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+
+
+def test_budget_passes_through():
+    m = load()
+    docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
+              "**Est-files:** a.py\n**Plan:** p.md\n**Seal:** aaa\n")
+    r = m.compile_docket(docket, writes_resolver=lambda p: {"a.py"}, budget_usd=42.0)
+    assert r["budget_usd"] == 42.0
+
+
+def test_real_plan_writes_unions_task_writes(tmp_path):
+    """Exercise the real plan_writes() path: compile an actual marked plan via
+    compile_plan.py and confirm its write-set is the union of task writes."""
+    m = load()
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Tiny Plan\n\n"
+        "**Acceptance:** suite — fixture\n\n"
+        "### Task 1: one\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Files:**\n- Create: `x/a.py`\n- [ ] **Step 1: do**\n\n"
+        "### Task 2: two\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Files:**\n- Create: `x/b.py`\n- [ ] **Step 1: do**\n")
+    writes = m.plan_writes(plan)
+    assert {"x/a.py", "x/b.py"} <= set(writes)
