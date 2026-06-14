@@ -105,7 +105,8 @@ const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()
 //   { mode: 'sealed', sealId, sha256, scriptPath }  — scriptPath is the
 //   absolute path to run_acceptance.sh, resolved by the orchestrator from the
 //   plugin root at launch (the workflow has no filesystem introspection), or
-//   { mode: 'waived', reason }. Absent → report.acceptance = null.
+//   { mode: 'waived', reason } or
+//   { mode: 'suite', reason }. Absent → report.acceptance = null.
 const ACCEPTANCE = (ARGS && ARGS.acceptance && typeof ARGS.acceptance === 'object')
   ? ARGS.acceptance : null
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
@@ -905,6 +906,13 @@ if (budgetExhausted()) {
 let acceptance = null
 if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
   acceptance = { mode: 'waived', reason: String(ACCEPTANCE.reason || ''), passed: null }
+} else if (ACCEPTANCE && ACCEPTANCE.mode === 'suite') {
+  // suite: verification is the committed test suite, not a held-out exam.
+  // acceptance.passed mirrors the integration test result; no agent, no vault.
+  acceptance = { mode: 'suite', passed: review.testsPassed,
+                 reason: String(ACCEPTANCE.reason || '') }
+  if (!acceptance.passed) judgmentCalls.push(
+    'suite acceptance did not pass (committed test suite failed) — gate must not Approve')
 } else if (ACCEPTANCE && ACCEPTANCE.mode === 'sealed') {
   phase('Acceptance')
   const cmd = 'bash ' + ACCEPTANCE.scriptPath + ' ' + ACCEPTANCE.sealId + ' ' +

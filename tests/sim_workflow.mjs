@@ -1788,10 +1788,63 @@ await scenarioReconcileTierOverride()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
 await scenarioFileScope()
+// ── Scenario: acceptance-suite-green — disposition bound to the committed suite
+async function scenarioAcceptanceSuiteGreen() {
+  let examDispatched = false
+  const agent = makeAcceptanceAgent((prompt, opts) => {
+    examDispatched = true
+    return { raw: '{}' }
+  })
+  const r = await runWorkflow({
+    agent,
+    args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'suite', 'acceptance-suite-green: mode is suite')
+  eq(r.acceptance && r.acceptance.passed, true, 'acceptance-suite-green: passed mirrors green tests')
+  eq(examDispatched, false, 'acceptance-suite-green: no held-out exam dispatched')
+  assert(!r.judgmentCalls.some((j) => /acceptance did not pass/.test(j)),
+    'acceptance-suite-green: no gate-blocking judgmentCall on green')
+  console.log('scenario acceptance-suite-green: OK')
+}
+
+// ── Scenario: acceptance-suite-red — failed committed suite blocks the gate ────
+async function scenarioAcceptanceSuiteRed() {
+  // Need a custom agent so we can make integration return testsPassed: false.
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    // No acceptance-exam should be dispatched for suite mode.
+    if (label === 'acceptance-exam') throw new Error('suite mode must not dispatch acceptance-exam')
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return { command: 'pytest', testsPassed: false, output: '1 failed', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({
+    agent,
+    args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'suite', 'acceptance-suite-red: mode is suite')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-suite-red: passed mirrors red tests')
+  assert(r.judgmentCalls.some((j) => /acceptance did not pass/.test(j)),
+    'acceptance-suite-red: red suite pushes a gate-blocking judgmentCall')
+  console.log('scenario acceptance-suite-red: OK')
+}
+
 await scenarioAcceptanceSealedGreen()
 await scenarioAcceptanceSealedRed()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSealedUnparseable()
 await scenarioAcceptanceSealedMissingPassed()
 await scenarioAcceptanceSealedAgentThrows()
+await scenarioAcceptanceSuiteGreen()
+await scenarioAcceptanceSuiteRed()
 console.log('ALL SCENARIOS PASSED')
