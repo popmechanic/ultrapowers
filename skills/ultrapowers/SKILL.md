@@ -163,6 +163,25 @@ or gitignore it; Step 4a keeps it current either way.)
 > exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
 > workflow installed above; if it cannot be launched, go to Step 6.
 
+## The read/write boundary
+
+ultrapowers runs two kinds of phase, and they have different rules:
+
+- **Write-side phases** — anything that creates branches, edits files, merges,
+  or otherwise mutates a repository — MUST be executed by a registry harness
+  (a `skills/ultrapowers/harnesses/<name>.harness.json` whose `writeSide` is
+  true), launched by its `meta.name`. Never author or improvise a write-side
+  harness at runtime.
+- **Read-only phases** — discovery, triage, research, scoring — MAY be
+  improvised at runtime as dynamic workflows, and an improvised workflow MUST
+  stay read-only.
+
+This is policy enforced by prompts and review, not a sandbox; the hard
+guarantee is that nothing improvised ever holds the merge keys. The
+determinism guard restated: never launch write-side work via the `ultracode`
+keyword or a prose "make me a workflow" request — that authors a new script at
+runtime, which is exactly the nondeterminism the registry exists to remove.
+
 **4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with
 `args = { ping: 'pong' }`. It spawns no agents and returns `{ ok: true, ... }` in
 seconds. If the launch errors or `ok` is not true, the engine has drifted — go
