@@ -1747,8 +1747,55 @@ async function scenarioAcceptanceSuiteRed() {
   console.log('scenario acceptance-suite-red: OK')
 }
 
+// ── Scenario: review-role discipline — the completeness critic is pinned to the
+// run's verified merge HEAD, and review roles carry read-only language (#29, #32).
+async function scenarioReviewDiscipline() {
+  let integrationPrompt = ''
+  let lastMergeHead = ''
+  const reviewPrompts = []
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) { reviewPrompts.push(prompt); return { verdict: 'PASS', issues: [] } }
+    if (label.startsWith('merge:')) {
+      lastMergeHead = 'MERGEHEAD-' + label   // distinct per wave; waveBaseSha ends on the last one
+      return { status: 'MERGED', headSha: lastMergeHead }
+    }
+    if (label === 'integration') {
+      integrationPrompt = prompt
+      return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  await runWorkflow({ agent, args: baseArgs, budget: undefined })
+
+  // #29 — the critic must operate on the exact tree the run produced.
+  assert(integrationPrompt.includes(lastMergeHead),
+    'review-discipline: completeness prompt carries the run merge HEAD sha (' + lastMergeHead + ')')
+  assert(/git checkout --detach/.test(integrationPrompt),
+    'review-discipline: completeness prompt instructs a detached checkout to the merge HEAD')
+  assert(/rev-parse HEAD/.test(integrationPrompt),
+    'review-discipline: completeness prompt requires a rev-parse HEAD self-check')
+  assert(/report BLOCKED/.test(integrationPrompt),
+    'review-discipline: completeness prompt requires BLOCKED on an unverified tree')
+
+  // #32 — review roles are read-only.
+  assert(/REVIEW role/.test(integrationPrompt) && /Do not write files/.test(integrationPrompt),
+    'review-discipline: completeness prompt carries read-only review-role language')
+  assert(reviewPrompts.length > 0 &&
+    reviewPrompts.every((p) => /REVIEW role/.test(p) && /Do not write files/.test(p)),
+    'review-discipline: per-task reviewer prompts carry read-only review-role language')
+
+  console.log('scenario review-discipline: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
 await scenarioAcceptanceSuiteRed()
+await scenarioReviewDiscipline()
 console.log('ALL SCENARIOS PASSED')

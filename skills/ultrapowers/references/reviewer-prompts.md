@@ -17,7 +17,7 @@ The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` 
 Every dispatched agent — implementer, reviewer, setup, merge, reconcile, completeness — MUST receive this guard verbatim at the TOP of its prompt:
 
 <!-- BAKE:GUARD -->
-SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the setup, merge, reconcile, and integration roles — the session repository's main checkout. Before any git command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string undefined, or not a git repo, STOP immediately and report BLOCKED. NEVER run git or write files in an unrelated repository, and NEVER fall back to your current working directory.
+SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the setup, merge, and reconcile roles — the session repository's main checkout, which those write-side roles may modify. Review roles (the per-task reviewer and the completeness critic) are READ-ONLY: they operate on a detached checkout and never write files, create commits, stage changes, or otherwise mutate any tree — their only output is their report payload. You operate in the workflow's launch working directory, the session repository; never resolve to, check out, or detach a DIFFERENT primary checkout of the same repository — moving the user's primary checkout off its branch is a forbidden, undisclosed side effect. Before any git command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string undefined, ambiguous, or not a git repo, STOP immediately and report BLOCKED. NEVER run git or write files in an unrelated repository, and NEVER fall back to your current working directory.
 <!-- /BAKE -->
 
 This guard is the sole safety net against an agent mutating the wrong repository. It directly forbids the failure mode found during live validation (2026-06-02): a `git -C undefined` target silently falling back to the session repo. Runtime worktree isolation (`isolation: 'worktree'`) already binds task agents to the session repo, so no absolute target path is passed; the guard backstops the non-isolated roles.
@@ -110,6 +110,8 @@ The reviewer always runs at the most-capable tier (`opus`): a weak reviewer's fa
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
+
+You are a REVIEW role. Do not write files, create commits, stage changes, or modify the tree in any way. Your only output is your findings/verdict. If the work is wrong, report it — never fix it.
 
 **Mandate:** verify everything independently. Do not trust the implementer report.
 
