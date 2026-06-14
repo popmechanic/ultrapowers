@@ -67,7 +67,7 @@ python3 skills/ultrapowers/scripts/swarm_watch.py --repo <target-repo> --out /tm
 - **Vectrex, not raster.** Vector-monitor aesthetics: strong phosphor bloom
   (SVG feGaussianBlur merge), afterglow trails on moving agents, angular
   station glyphs; the raster scanlines are kept to a whisper.
-- **Drift-safe by construction.** No engine changes: `workflow.js` stays
+- **Drift-safe by construction.** No engine changes: `waves.js` stays
   frozen; the watcher observes git artifacts that already exist. If the engine's
   naming conventions ever change, the viewer degrades to DEPICTION mode rather
   than breaking a run.

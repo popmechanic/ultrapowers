@@ -29,7 +29,7 @@ def test_report_approve_path_matches_skill_step5():
 
 
 def test_report_format_documents_every_review_verdict():
-    wf = (ROOT / "skills/ultrapowers/workflow.js").read_text()
+    wf = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
     doc = REPORT.read_text()
     verdicts = set()
     for frag in re.findall(r"reviewVerdict\s*[:=]([^\n]+)", wf):

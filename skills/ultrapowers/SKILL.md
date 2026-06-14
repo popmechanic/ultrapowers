@@ -10,7 +10,7 @@ allowed-tools: Workflow Skill Read Grep Glob Bash
 Autonomously implement an approved Superpowers plan via a **committed, parallel,
 worktree-isolated Dynamic Workflow**. This skill does not author a workflow at runtime: it
 validates the plan, computes the parallel wave plan, renders that wave plan for transparency,
-then immediately launches the frozen `workflow.js` that ships with the skill. Choosing
+then immediately launches the frozen `waves.js` that ships with the skill. Choosing
 ultrapowers at the planning session's execution handoff (or invoking `/ultrapowers` on an
 approved plan) **is** the authorization to execute — there is no separate wave-plan approval
 pause. Each task runs in its own
@@ -18,7 +18,7 @@ git worktree and passes an independent review (spec-compliance + code-quality in
 two passes under the `adversarial` profile) before its branch merges into a single integration branch. A human-readable report and a merge gate conclude the run.
 
 The discipline (implementer/reviewer/completeness prompts and schemas) is **baked into
-`workflow.js` at build time**, not loaded from Superpowers at runtime — so execution does not
+`waves.js` at build time**, not loaded from Superpowers at runtime — so execution does not
 depend on live `superpowers:*` skill resolution. Superpowers and ultrapowers hand off only
 through the plan file on disk.
 
@@ -137,18 +137,22 @@ launches.
 
 ## Step 4 — Launch the Committed Workflow
 
-**4a — Install the committed script as a project saved workflow (idempotent).** Saved workflows
+**4a — Install the committed scripts as project saved workflows (idempotent).** Saved workflows
 (`.claude/workflows/*.js`) are the documented deterministic launch surface: they run **by name**
 with `args`, instead of relying on ad-hoc script delivery. Plugins cannot ship saved workflows, so
-install the copy now:
+install the copies now by reading each `*.harness.json` manifest from the harnesses library:
 
-```
+```bash
 mkdir -p .claude/workflows
-cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/workflow.js" .claude/workflows/ultrapowers-run.js
-cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/probe.js" .claude/workflows/ultrapowers-probe.js
+for m in "${CLAUDE_PLUGIN_ROOT}"/skills/ultrapowers/harnesses/*.harness.json; do
+  f=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")
+  cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/harnesses/$f" ".claude/workflows/$f"
+done
 ```
 
 (`${CLAUDE_PLUGIN_ROOT}` resolves to this plugin's installed root — the directory containing `skills/`.)
+Harnesses are copied from `skills/ultrapowers/harnesses/` by manifest; the installed filename is
+immaterial because the engine resolves saved workflows by the script's `meta.name`, not the filename.
 
 Run the copy unconditionally — it is byte-for-byte the committed script, so overwriting keeps any
 stale copy in sync with the installed plugin version. Never edit the copy. (The user may commit it
@@ -159,6 +163,25 @@ or gitignore it; Step 4a keeps it current either way.)
 > exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
 > workflow installed above; if it cannot be launched, go to Step 6.
 
+## The read/write boundary
+
+ultrapowers runs two kinds of phase, and they have different rules:
+
+- **Write-side phases** — anything that creates branches, edits files, merges,
+  or otherwise mutates a repository — MUST be executed by a registry harness
+  (a `skills/ultrapowers/harnesses/<name>.harness.json` whose `writeSide` is
+  true), launched by its `meta.name`. Never author or improvise a write-side
+  harness at runtime.
+- **Read-only phases** — discovery, triage, research, scoring — MAY be
+  improvised at runtime as dynamic workflows, and an improvised workflow MUST
+  stay read-only.
+
+This is policy enforced by prompts and review, not a sandbox; the hard
+guarantee is that nothing improvised ever holds the merge keys. The
+determinism guard restated: never launch write-side work via the `ultracode`
+keyword or a prose "make me a workflow" request — that authors a new script at
+runtime, which is exactly the nondeterminism the registry exists to remove.
+
 **4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with
 `args = { ping: 'pong' }`. It spawns no agents and returns `{ ok: true, ... }` in
 seconds. If the launch errors or `ok` is not true, the engine has drifted — go
@@ -166,8 +189,8 @@ directly to Step 6; do not launch the real workflow.
 
 **4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
-`meta.name` (`ultrapowers`), **not** the installed filename (`ultrapowers-run.js`) — launching as
-`ultrapowers-run` fails with "not found". Pass:
+`meta.name` (`ultrapowers`), **not** the installed filename (`waves.js`) — launching as
+`waves` fails with "not found". Pass:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
@@ -264,11 +287,13 @@ revision) or an inability to create the integration branch.
 
 - `references/dependency-analysis.md` — plan → DAG → waves, cycle detection, small-plan degrade, the transparency block rendered at Step 3.
 - `references/plan-markers.md` — the parallel-execution marker contract (`Type:`, `Depends-on:`), the worktree-pure task contract, classification heuristics for unmarked plans, and the compile-time obligations (post-merge runbook, preamble inlining, fence-aware extraction).
-- `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `workflow.js`.
-- `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `workflow.js`.
+- `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `harnesses/waves.js`.
+- `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `harnesses/waves.js`.
 - `references/report-format.md` — structured report schema and the human-facing presentation order.
-- `references/workflow-template.md` — maintainer doc for `workflow.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
+- `references/workflow-template.md` — maintainer doc for `harnesses/waves.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
 - `scripts/validate_skill.py` — run `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` from the repo root (CI also runs it for `skills/ultraplan`) to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for plans (marked: adopted verbatim; unmarked: heuristic-flagged draft): transparency-block JSON from a plan path.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
-- `probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
+- `harnesses/probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
+- `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) used by Step 4a to install copies by glob.
+- `references/harness-ratchet.md` — the born-dynamic-then-frozen promotion path for new harness topologies (how a candidate becomes a registered, frozen harness).

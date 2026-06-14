@@ -1,11 +1,11 @@
-"""Anti-drift guard: the discipline baked into skills/ultrapowers/workflow.js
+"""Anti-drift guard: the discipline baked into skills/ultrapowers/harnesses/waves.js
 must match its single source of truth, references/reviewer-prompts.md.
 
 reviewer-prompts.md wraps each canonical block in
     <!-- BAKE:NAME -->  ...  <!-- /BAKE -->
 markers. We extract each block, normalize away all formatting (markdown
 emphasis, backticks, punctuation, possessive 's, whitespace), and assert the
-normalized words appear in the equally-normalized workflow.js. If someone edits
+normalized words appear in the equally-normalized waves.js. If someone edits
 one copy without the other, this test fails.
 """
 import pathlib, re
@@ -13,7 +13,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills/ultrapowers/references/reviewer-prompts.md"
-WORKFLOW = ROOT / "skills/ultrapowers/workflow.js"
+WORKFLOW = ROOT / "skills/ultrapowers/harnesses/waves.js"
 
 MARKER = re.compile(r"<!-- BAKE:([\w-]+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
 
@@ -46,14 +46,14 @@ def test_block_is_baked_into_workflow(name):
     expected = normalize(blocks[name])
     assert expected, "empty source block for " + name
     assert expected in wf, (
-        "drift: BAKE:" + name + " in reviewer-prompts.md does not match workflow.js.\n"
+        "drift: BAKE:" + name + " in reviewer-prompts.md does not match waves.js.\n"
         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected
     )
 
 
 # ── wave-merge.md prompts (setup/merge/reconcile/completeness) ────────────────
-# These blocks contain {{PLACEHOLDER}} tokens where workflow.js interpolates
-# runtime values; we assert the static fragments appear in workflow.js, in order.
+# These blocks contain {{PLACEHOLDER}} tokens where waves.js interpolates
+# runtime values; we assert the static fragments appear in waves.js, in order.
 
 WAVE_SOURCE = ROOT / "skills/ultrapowers/references/wave-merge.md"
 PLACEHOLDER = re.compile(r"\{\{\w+\}\}")
@@ -84,12 +84,12 @@ def test_wave_prompt_is_baked(name):
     for frag in fragments:
         idx = wf.find(frag, pos)
         assert idx >= 0, (
-            "drift: BAKE:" + name + " fragment missing or out of order in workflow.js. "
+            "drift: BAKE:" + name + " fragment missing or out of order in waves.js. "
             "Re-bake per references/workflow-template.md.\nfragment (normalized):\n" + frag)
         pos = idx + len(frag)
 
 
-# ── JSON schemas: enum/key drift between reviewer-prompts.md and workflow.js ──
+# ── JSON schemas: enum/key drift between reviewer-prompts.md and waves.js ──
 SCHEMA_BLOCKS = ["IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"]
 
 
@@ -101,5 +101,5 @@ def test_schema_block_is_baked(name):
     expected = normalize(blocks[name])
     assert expected, "empty source block for " + name
     assert expected in wf, (
-        "drift: BAKE:" + name + " in reviewer-prompts.md does not match workflow.js.\n"
+        "drift: BAKE:" + name + " in reviewer-prompts.md does not match waves.js.\n"
         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected)

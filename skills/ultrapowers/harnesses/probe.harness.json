@@ -1,0 +1,9 @@
+{
+  "name": "ultrapowers-probe",
+  "file": "probe.js",
+  "purpose": "zero-agent engine preflight",
+  "writeSide": false,
+  "version": "0.0.8",
+  "fixtures": "tests/test_probe.py",
+  "driftTest": null
+}

@@ -1,18 +1,21 @@
-# Workflow Maintainer Guide (`workflow.js`)
+# Workflow Maintainer Guide (`waves.js`)
 
-This skill ships a **committed** Dynamic Workflow at `skills/ultrapowers/workflow.js`. It is **not
+This skill ships a **committed** Dynamic Workflow at `skills/ultrapowers/harnesses/waves.js`. It is **not
 authored at runtime** — the main agent (SKILL.md) only computes waves and launches it. This file
 documents the committed script's structure, its input contract, and the procedure for re-baking the
 Superpowers discipline when it changes.
 
 ## Install path (saved workflow)
 
-The canonical source is `skills/ultrapowers/workflow.js` — the only copy that is edited, reviewed,
-and drift-tested. At launch time, SKILL.md Step 4a copies it to
-`.claude/workflows/ultrapowers-run.js` in the target project (and `probe.js` to
-`.claude/workflows/ultrapowers-probe.js` for the Step-4a½ preflight), because saved workflows are
-the documented deterministic launch surface (run by name, with `args`) and plugins cannot ship them.
-The installed copy is disposable: it is overwritten on every run and must never be edited in
+The canonical sources live under `skills/ultrapowers/harnesses/` — each harness has a
+`*.harness.json` manifest naming its file, purpose, and fixture/drift-test paths. At launch time,
+SKILL.md Step 4a reads each manifest and copies the harness file to `.claude/workflows/` in the
+target project, because saved workflows are the documented deterministic launch surface (run by
+`meta.name`, with `args`) and plugins cannot ship them. Specifically:
+- `harnesses/waves.js` → `.claude/workflows/waves.js` (installed name; launches by `meta.name` `ultrapowers`)
+- `harnesses/probe.js` → `.claude/workflows/probe.js` (installed name; launches by `meta.name` `ultrapowers-probe`)
+
+The installed copies are disposable: they are overwritten on every run and must never be edited in
 place. Never launch via the `ultracode` keyword — that makes Claude author a new script instead
 of running this one.
 
@@ -97,7 +100,7 @@ confirm it reports `waves` as an array.
 
 **Probe result (2026-06-03, claude v2.1.161 via `claude --plugin-dir ... -p`):** `args` arrived as a
 raw **JSON string** (`rawType: "string"`), not a parsed object — so `args.waves` was `undefined` until
-parsed. Fix applied: `workflow.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
+parsed. Fix applied: `waves.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
 reading `.waves` (and throws if the string is not valid JSON). After the fix the probe returns
 `{ rawType: "string", argsSeen: ["waves"], wavesType: "array" }`. The defensive parse handles both
 delivery forms (object or string), so the temp-file fallback is **not** needed. Re-run the probe if a
@@ -146,7 +149,7 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 `reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
-constant in `workflow.js`, and `args.tierOverrides` is merged over it per run (per-task `most-capable` is normalized to the
+constant in `waves.js`, and `args.tierOverrides` is merged over it per run (per-task `most-capable` is normalized to the
 `mostCapable` key and unknown *task* tiers fall back to `standard` with a judgment call; unknown
 override *keys or model values* throw at launch). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
 
@@ -160,7 +163,7 @@ accepted identifiers.
 1. Update the canonical prose in `references/reviewer-prompts.md` (implementer/spec/quality/GUARD,
    inside the `<!-- BAKE:NAME -->` markers) and the merge/setup/reconcile prompts in
    `references/wave-merge.md`.
-2. Copy the changed wording into the corresponding `const` blocks in `workflow.js`. Formatting need
+2. Copy the changed wording into the corresponding `const` blocks in `waves.js`. Formatting need
    not match (the drift test normalizes away markdown/backticks/punctuation), but the **words must**.
 3. Run `python3 -m pytest tests/test_no_prompt_drift.py` — it fails until the baked copy matches the
    source. Iterate until green.

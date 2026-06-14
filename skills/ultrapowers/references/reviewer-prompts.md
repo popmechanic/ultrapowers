@@ -6,9 +6,9 @@ These prompts are adapted from `superpowers:subagent-driven-development` (implem
 
 **Baked-from upstream reference:** `obra/superpowers` as of releases **v5.0.6 (2026-03-24)** and **v5.1.0 (2026-04-30)**. The upstream prompts live in separate files — `skills/subagent-driven-development/{implementer-prompt,spec-reviewer-prompt,code-quality-reviewer-prompt}.md` — and the code-quality reviewer delegates to `requesting-code-review/code-reviewer.md`. These are **paraphrases**, not verbatim copies (ultrapowers adds its own JSON schemas, verdict vocabulary, and the fix-loop cap for headless parsing; the model-tier scheme is adapted from subagent-driven-development's Model Selection section — include it in re-bake diffs). When re-baking, diff against the upstream files at or after the pinned releases. The baked quality checklist deliberately keeps only the separation-of-concerns / error-handling / DRY / test-quality categories from `code-reviewer.md` — its Architecture and Production-readiness categories are dropped for per-task scope (the integration review and human gates cover them), and the kept categories' type-safety, edge-case, and integration-test sub-checks are likewise left to the integration review (the completeness critic's untested-path mandate covers them). The merged spec+quality review topology is a **deliberate divergence** from 5.1.0's two-ordered-pass mandate (a trade of upstream's ordering for headless wall-clock), not a fidelity claim — see "Deliberate divergence from superpowers 5.1.0" under the reviewer prompt below.
 
-**This file is the single source of truth for the discipline baked into `skills/ultrapowers/workflow.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `workflow.js` (see the re-bake procedure in `workflow-template.md`).
+**This file is the single source of truth for the discipline baked into `skills/ultrapowers/harnesses/waves.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `waves.js` (see the re-bake procedure in `workflow-template.md`).
 
-The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block (here and in `wave-merge.md`, whose blocks use `{{...}}` placeholders for runtime interpolations) and asserts (whitespace-normalized) that it appears in `workflow.js`, so the baked copies can never silently diverge from their sources.
+The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block (here and in `wave-merge.md`, whose blocks use `{{...}}` placeholders for runtime interpolations) and asserts (whitespace-normalized) that it appears in `waves.js`, so the baked copies can never silently diverge from their sources.
 
 ---
 
@@ -86,7 +86,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 `headSha` is required for every status, including `BLOCKED` / `NEEDS_CONTEXT` — the worktree always has a HEAD (at minimum the provided `BASE` sha), and downstream steps refuse to operate on a guessed sha.
 
 **Headless downgrade:** upstream treats `NEEDS_CONTEXT` as "answer the question and
-re-dispatch". A headless workflow cannot answer, so `workflow.js` records the task
+re-dispatch". A headless workflow cannot answer, so `waves.js` records the task
 as `failed` with the question in `notes` — it surfaces at the pre-merge gate for a
 redirect rather than pausing a run that cannot pause. The same downgrade applies to
 `BLOCKED`: upstream's interactive ladder (add context → stronger model → split →

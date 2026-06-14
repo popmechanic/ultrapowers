@@ -2,7 +2,7 @@ import pathlib, shutil, subprocess
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / "skills/ultrapowers/workflow.js"
+WORKFLOW = ROOT / "skills/ultrapowers/harnesses/waves.js"
 
 
 def test_canary_plan_has_three_tasks_with_known_files():
