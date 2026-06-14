@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PROBE = ROOT / "skills/ultrapowers/probe.js"
+PROBE = ROOT / "skills/ultrapowers/harnesses/probe.js"
 
 
 def test_probe_shape():

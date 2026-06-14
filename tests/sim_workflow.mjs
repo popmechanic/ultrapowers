@@ -1,6 +1,6 @@
 // tests/sim_workflow.mjs
 //
-// Deterministic simulation of skills/ultrapowers/workflow.js. The real
+// Deterministic simulation of skills/ultrapowers/harnesses/waves.js. The real
 // research-preview Workflow engine can't run in CI, so we stub its globals
 // (agent, parallel, phase, log, args, budget) and execute the orchestrator the
 // same way the engine does (strip `export`, run the body as an async function).
@@ -11,7 +11,7 @@
 
 import fs from 'node:fs'
 
-const WF_URL = new URL('../skills/ultrapowers/workflow.js', import.meta.url)
+const WF_URL = new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url)
 const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
 
 function runWorkflow({ agent, args, budget, parallel: parallelOverride }) {

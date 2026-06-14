@@ -137,18 +137,22 @@ launches.
 
 ## Step 4 — Launch the Committed Workflow
 
-**4a — Install the committed script as a project saved workflow (idempotent).** Saved workflows
+**4a — Install the committed scripts as project saved workflows (idempotent).** Saved workflows
 (`.claude/workflows/*.js`) are the documented deterministic launch surface: they run **by name**
 with `args`, instead of relying on ad-hoc script delivery. Plugins cannot ship saved workflows, so
-install the copy now:
+install the copies now by reading each `*.harness.json` manifest from the harnesses library:
 
-```
+```bash
 mkdir -p .claude/workflows
-cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/workflow.js" .claude/workflows/ultrapowers-run.js
-cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/probe.js" .claude/workflows/ultrapowers-probe.js
+for m in "${CLAUDE_PLUGIN_ROOT}"/skills/ultrapowers/harnesses/*.harness.json; do
+  f=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")
+  cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/harnesses/$f" ".claude/workflows/$f"
+done
 ```
 
 (`${CLAUDE_PLUGIN_ROOT}` resolves to this plugin's installed root — the directory containing `skills/`.)
+Harnesses are copied from `skills/ultrapowers/harnesses/` by manifest; the installed filename is
+immaterial because the engine resolves saved workflows by the script's `meta.name`, not the filename.
 
 Run the copy unconditionally — it is byte-for-byte the committed script, so overwriting keeps any
 stale copy in sync with the installed plugin version. Never edit the copy. (The user may commit it
@@ -166,8 +170,8 @@ directly to Step 6; do not launch the real workflow.
 
 **4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
-`meta.name` (`ultrapowers`), **not** the installed filename (`ultrapowers-run.js`) — launching as
-`ultrapowers-run` fails with "not found". Pass:
+`meta.name` (`ultrapowers`), **not** the installed filename (`waves.js`) — launching as
+`waves` fails with "not found". Pass:
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
@@ -264,11 +268,12 @@ revision) or an inability to create the integration branch.
 
 - `references/dependency-analysis.md` — plan → DAG → waves, cycle detection, small-plan degrade, the transparency block rendered at Step 3.
 - `references/plan-markers.md` — the parallel-execution marker contract (`Type:`, `Depends-on:`), the worktree-pure task contract, classification heuristics for unmarked plans, and the compile-time obligations (post-merge runbook, preamble inlining, fence-aware extraction).
-- `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `workflow.js`.
-- `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `workflow.js`.
+- `references/reviewer-prompts.md` — **source of truth** for the implementer/reviewer prompts, the GUARD, and the JSON schemas baked into `harnesses/waves.js`.
+- `references/wave-merge.md` — integration branch setup, per-wave merge, reconciliation caps, cascade-blocking, completeness-critic — all baked into `harnesses/waves.js`.
 - `references/report-format.md` — structured report schema and the human-facing presentation order.
-- `references/workflow-template.md` — maintainer doc for `workflow.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
+- `references/workflow-template.md` — maintainer doc for `harnesses/waves.js`: structure, the `args` contract, concurrency math, model-tier mapping, the args-population probe, and the **re-bake procedure**.
 - `scripts/validate_skill.py` — run `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` from the repo root (CI also runs it for `skills/ultraplan`) to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for plans (marked: adopted verbatim; unmarked: heuristic-flagged draft): transparency-block JSON from a plan path.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
-- `probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
+- `harnesses/probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
+- `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) used by Step 4a to install copies by glob.

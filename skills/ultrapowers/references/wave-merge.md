@@ -3,7 +3,7 @@
 How a wave's worktree branches get merged into one integration branch, reconciled on failure, and finally reviewed.
 
 **Source-of-truth note:** the setup, merge, reconciliation, and completeness-critic prompts described
-here are **baked into `skills/ultrapowers/workflow.js`** as the `SETUP_PROMPT`, `MERGE_PROMPT`,
+here are **baked into `skills/ultrapowers/harnesses/waves.js`** as the `SETUP_PROMPT`, `MERGE_PROMPT`,
 `RECONCILE_PROMPT`, and `COMPLETENESS_PROMPT` constants. When you change the procedure here, re-bake
 those constants (see the re-bake procedure in `workflow-template.md`). The committed workflow runs
 this machinery; the main agent does not author it.

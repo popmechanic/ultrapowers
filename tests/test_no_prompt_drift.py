@@ -13,7 +13,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills/ultrapowers/references/reviewer-prompts.md"
-WORKFLOW = ROOT / "skills/ultrapowers/workflow.js"
+WORKFLOW = ROOT / "skills/ultrapowers/harnesses/waves.js"
 
 MARKER = re.compile(r"<!-- BAKE:([\w-]+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
 

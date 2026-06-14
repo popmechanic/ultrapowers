@@ -35,7 +35,7 @@ def test_orchestrator_launches_by_meta_name():
     text = ORCHESTRATOR.read_text()
     assert "`meta.name`" in text
     assert "not found" in text   # the failure mode is named, not just implied
-    workflow = (ROOT / "skills/ultrapowers/workflow.js").read_text()
+    workflow = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
     assert "name: 'ultrapowers'" in workflow   # the name Step 4b promises
 
 
