@@ -21,13 +21,14 @@ ignore gracefully (see `skills/ultrapowers/references/plan-markers.md`).
 
 ## Fixtures
 
-Four purpose-built fixture repos under `evals/fixtures/`, one per DAG regime:
+Five purpose-built fixture repos under `evals/fixtures/`, one per DAG regime:
 
 | Fixture | Regime | Expected wave shape (B/C) |
 |---------|--------|---------------------------|
 | `wide` | 6 independent tasks — parallelism's best case | 1 wave of 6 |
 | `chained` | 5 tasks in a strict dependency line — parallelism's worst case | 5 waves of 1 |
 | `mixed` | realistic diamond DAG, 6 tasks | `[1,4] → [2,3] → [5] → [6]` |
+| `flawed` | the `mixed` apistub task graph carried by a plan with a latent, undeclared dependency (Task 4's in-memory store must return a `schema.User` created by Task 1, yet declares `Depends-on: none`). Reuses mixed's project, reference, and held-out acceptance suite verbatim — only the plan differs. It measures the engine on *realistic (buggy) plans*, where `mixed` now measures it on *correct* ones. Promoted from the original mixed plan (#27). | `[1,4] → [2,3] → [5] → [6]` |
 | `degrade` | 2 tasks with fully overlapping writes — triggers sequential fallback | sequential mode |
 
 Each fixture contains:
@@ -46,7 +47,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py evals/fixtures/wide/plan.md |
 
 ## The matrix
 
-4 fixtures × 3 conditions × 3 repetitions = **36 runs**. Agentic runs are heavy-tailed:
+5 fixtures x 3 conditions x 3 reps = 45 runs (capacity-safe scheduling: one run
+per 5-hour window). Agentic runs are heavy-tailed:
 report medians with ranges, never single runs.
 
 Run IDs follow `<fixture>-<condition>-<rep>`, e.g. `wide-B-2`.
@@ -204,6 +206,26 @@ rate, suite green rate, fix rounds) plus judge win rates.
 - The plan documents and acceptance tests are frozen **before** the first run; never
   edit them mid-matrix. If a plan turns out to be broken, fix it, bump the fixture, and
   restart that fixture's cells.
+
+**Fixture versions.** Each fixture carries a `version.txt` recording its
+generation and what changed. When a frozen plan is found broken, fix it, bump
+`version.txt`, and restart that fixture's cells (per the validity rule above).
+The buggy first generation may instead be *promoted* to its own fixture (see
+`flawed`) so the stressor is measured deliberately rather than lost.
+
+**Engine versions & pooling.** Every run records the engine plugin_version (a
+release-bumped behavior proxy) plus its repo sha as provenance. `report.py`
+partitions medians by plugin_version and never pools across versions, and flags
+any population assembled from more than one sha as '(N shas)'.
+
+**Freeze-then-complete.** Complete the remaining cells of the matrix on the
+current frozen engine before merging engine-behavior changes (e.g. the
+eval-driven hardening plan). The hardened engine is then run and reported as a
+separate population, not merged into the frozen baseline's medians.
+
+**Plan coverage.** Each row records `tasks_planned`/`tasks_merged`; `report.py`
+shows median coverage and flags any cell that is suite-green but coverage < 100%
+(green-but-incomplete) — a half-merged plan can no longer read as a clean pass.
 - Condition A executes `gate` tasks inline (sequential executors treat every task as
   ordinary); ultrapowers compiles them into run config. Same verification either way.
 - Wall clock is sensitive to engine load and human latency at gates; treat it as

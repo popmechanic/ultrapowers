@@ -20,6 +20,8 @@ import tempfile
 import time
 import xml.etree.ElementTree as ET
 
+from engine_version import current_engine
+
 EVALS = pathlib.Path(__file__).resolve().parents[1]
 RESULTS = EVALS / "results"
 DIFFS = RESULTS / "diffs"
@@ -51,6 +53,24 @@ def pytest_counts(target, cwd):
     return total - failed - errors - skipped, failed, errors, total
 
 
+def assemble_row(*, run_id, fixture, condition, rep, head, cost_usd,
+                 weekly_pct_before, weekly_pct_after, wall, suite, acceptance,
+                 fix_rounds, blocked_tasks, redirects, notes, engine,
+                 tasks_planned, tasks_merged, scored_epoch):
+    weekly = (round(weekly_pct_after - weekly_pct_before, 2)
+              if weekly_pct_before is not None and weekly_pct_after is not None
+              else None)
+    return {
+        "run_id": run_id, "fixture": fixture, "condition": condition, "rep": rep,
+        "head": head, "cost_usd": cost_usd, "weekly_pct": weekly,
+        "wall_clock_s": wall, "suite": suite, "acceptance": acceptance,
+        "fix_rounds": fix_rounds, "blocked_tasks": blocked_tasks,
+        "tasks_planned": tasks_planned, "tasks_merged": tasks_merged,
+        "redirects": redirects, "engine": engine, "notes": notes,
+        "scored_epoch": scored_epoch,
+    }
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("fixture")
@@ -70,6 +90,10 @@ def main():
                    help="override; default = now minus prepare_run timestamp")
     p.add_argument("--fix-rounds", type=int, default=0)
     p.add_argument("--blocked-tasks", type=int, default=0)
+    p.add_argument("--tasks-planned", type=int, default=None,
+                   help="implementation tasks the engine planned")
+    p.add_argument("--tasks-merged", type=int, default=None,
+                   help="tasks that reached done/MERGED")
     p.add_argument("--redirects", type=int, default=0)
     p.add_argument("--notes", default="")
     args = p.parse_args()
@@ -109,25 +133,17 @@ def main():
                 ":(exclude).eval_meta.json"], run_dir).stdout
     (DIFFS / f"{run_id}.diff").write_text(diff)
 
-    row = {
-        "run_id": run_id,
-        "fixture": args.fixture,
-        "condition": args.condition,
-        "rep": args.rep,
-        "head": head,
-        "cost_usd": args.cost_usd,
-        "weekly_pct": (round(args.weekly_pct_after - args.weekly_pct_before, 2)
-                       if args.weekly_pct_before is not None
-                       and args.weekly_pct_after is not None else None),
-        "wall_clock_s": wall,
-        "suite": {"passed": s_pass, "failed": s_fail, "errors": s_err, "total": s_total},
-        "acceptance": {"passed": a_pass, "failed": a_fail, "errors": a_err, "total": a_total},
-        "fix_rounds": args.fix_rounds,
-        "blocked_tasks": args.blocked_tasks,
-        "redirects": args.redirects,
-        "notes": args.notes,
-        "scored_epoch": time.time(),
-    }
+    row = assemble_row(
+        run_id=run_id, fixture=args.fixture, condition=args.condition,
+        rep=args.rep, head=head, cost_usd=args.cost_usd,
+        weekly_pct_before=args.weekly_pct_before,
+        weekly_pct_after=args.weekly_pct_after, wall=wall,
+        suite={"passed": s_pass, "failed": s_fail, "errors": s_err, "total": s_total},
+        acceptance={"passed": a_pass, "failed": a_fail, "errors": a_err, "total": a_total},
+        fix_rounds=args.fix_rounds, blocked_tasks=args.blocked_tasks,
+        redirects=args.redirects, notes=args.notes, engine=current_engine(),
+        tasks_planned=args.tasks_planned, tasks_merged=args.tasks_merged,
+        scored_epoch=time.time())
     RESULTS.mkdir(parents=True, exist_ok=True)
     with open(RESULTS / "runs.jsonl", "a") as f:
         f.write(json.dumps(row) + "\n")

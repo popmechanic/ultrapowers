@@ -52,30 +52,39 @@ def run_cost(run_dir):
     return round(total, 2), len(files)
 
 
-def reliability_counters(run_dir):
-    """Sum fixIterations and count non-done tasks from the workflow result.
+def parse_counters(flat):
+    """Pull reliability counters from a de-escaped workflow-result line.
 
-    The transcript can carry several copies of the result with different
-    escaping; keep the last copy that actually parses to task entries —
-    an unparseable copy must not silently zero the counters.
+    Returns dict(fixes, blocked, planned, merged), or None if the line carries
+    no task entries (a differently-escaped echo must not silently zero them).
     """
+    fixes = re.findall(r'fixIterations":\s*(\d+)', flat)
+    statuses = re.findall(r'"status":\s*"(\w+)"', flat)
+    if not fixes and not statuses:
+        return None
+    return {
+        "fixes": sum(int(m) for m in fixes),
+        "blocked": sum(1 for s in statuses if s not in ("done", "MERGED")),
+        "planned": len(statuses),
+        "merged": sum(1 for s in statuses if s in ("done", "MERGED")),
+    }
+
+
+def reliability_counters(run_dir):
+    """Best (last parseable) counters from the workflow result transcript."""
     stem = pathlib.Path(run_dir).resolve().name
-    best = None  # (fixes, blocked)
+    best = None
     for proj in PROJECTS.glob(f"*-eval-runs-{stem}*"):
         for f in proj.glob("*.jsonl"):
             for line in open(f, errors="replace"):
                 if "fixIterations" not in line or "integrationBranch" not in line:
                     continue
-                flat = line.replace("\\", "")
-                fixes = re.findall(r'fixIterations":\s*(\d+)', flat)
-                statuses = re.findall(r'"status":\s*"(\w+)"', flat)
-                if not fixes and not statuses:
-                    continue  # differently-escaped echo; unparseable
-                best = (sum(int(m) for m in fixes),
-                        sum(1 for s in statuses if s not in ("done", "MERGED")))
+                c = parse_counters(line.replace("\\", ""))
+                if c is not None:
+                    best = c
     if best is None:
-        return 0, 0, "workflow result summary not found in transcript"
-    return best[0], best[1], ""
+        return None, "workflow result summary not found in transcript"
+    return best, ""
 
 
 def main():
@@ -89,7 +98,9 @@ def main():
 
     branch = integration_branch(args.run_dir)
     cost, n_files = run_cost(args.run_dir)
-    fixes, blocked, counter_note = reliability_counters(args.run_dir)
+    counters, counter_note = reliability_counters(args.run_dir)
+    if counters is None:
+        counters = {"fixes": 0, "blocked": 0, "planned": 0, "merged": 0}
 
     notes = ("automated headless run; gates scripted per approved protocol "
              "amendment; wall clock = headless process duration; cost via "
@@ -104,8 +115,10 @@ def main():
            "--cost-usd", f"{cost:.2f}",
            "--wall-clock-s", str(args.wall_clock_s),
            "--branch", branch,
-           "--fix-rounds", str(fixes),
-           "--blocked-tasks", str(blocked),
+           "--fix-rounds", str(counters["fixes"]),
+           "--blocked-tasks", str(counters["blocked"]),
+           "--tasks-planned", str(counters["planned"]),
+           "--tasks-merged", str(counters["merged"]),
            "--redirects", "0",
            "--notes", notes]
     proc = subprocess.run(cmd, capture_output=True, text=True)
