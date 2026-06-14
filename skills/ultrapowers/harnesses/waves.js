@@ -902,8 +902,10 @@ if (budgetExhausted()) {
   }
 }
 
-// ── Sealed acceptance exam: deterministic script is the authority; the agent
-// only relays its stdout (BAKE:ACCEPTANCE-EXAM). ──────────────────────────────
+// ── Acceptance disposition for the report. suite/waived are resolved here;
+// sealed is administered deterministically at the pre-merge gate, not in the
+// workflow — the engine has no shell and relaying the runner's JSON corrupts
+// it (#36). ───────────────────────────────────────────────────────────────────
 let acceptance = null
 if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
   acceptance = { mode: 'waived', reason: String(ACCEPTANCE.reason || ''), passed: null }
