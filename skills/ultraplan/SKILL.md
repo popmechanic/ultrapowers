@@ -119,6 +119,8 @@ The operator may instead record `**Acceptance:** waived — <reason>`; waivers
 surface verbatim at the wave-plan gate, in the report, and at the pre-merge
 gate. Never waive silently on the operator's behalf.
 
+When the operator reviews the appended coverage summary, point them to the vouching rubric in `ultrapowers` SKILL.md Step 3: they vouch by checking the summary faithfully and completely restates the spec — covered? / invented anything? / examples present? — not by reading the tests.
+
 ### Choosing the disposition
 
 Every marked plan declares one of three Acceptance dispositions:
