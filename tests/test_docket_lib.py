@@ -134,3 +134,17 @@ def test_non_numeric_score_fails_loud():
     import pytest
     with pytest.raises(m.DocketError):
         m.parse_docket("# D\n\n### #7: ok\n**State:** triaged\n**Score:** soon — x\n")
+
+
+def test_out_of_lifecycle_state_fails_loud():
+    m = load()
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket("# D\n\n### #1: x\n**State:** frobnicated\n**Score:** 1 — x\n")
+
+
+def test_every_real_state_parses():
+    m = load()
+    for s in ["triaged", "accepted", "planned", "queued", "executed", "verified", "parked"]:
+        body = f"# D\n\n### #1: x\n**State:** {s}\n**Score:** 1 — x\n"
+        assert m.parse_docket(body)[0].state == s

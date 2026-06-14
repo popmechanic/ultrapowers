@@ -44,6 +44,8 @@ def parse_docket(text):
             raise DocketError(f"issue #{cur[0]} missing State or Score")
         if not re.match(r"^\s*\d+(\.\d+)?(\s|$)", fields["Score"]):
             raise DocketError(f"issue #{cur[0]} has a non-numeric Score: {fields['Score']!r}")
+        if fields["State"] not in (set(LIFECYCLE) | {"parked"}):
+            raise DocketError(f"issue #{cur[0]} has unknown State: {fields['State']!r}")
         if cur[0] in seen:
             raise DocketError(f"duplicate issue #{cur[0]} in docket")
         seen.add(cur[0])

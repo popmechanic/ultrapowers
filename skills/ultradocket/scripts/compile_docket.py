@@ -49,6 +49,9 @@ def compile_docket(docket_text, writes_resolver=plan_writes, budget_usd=None):
     missing = [e.issue for e in entries if not e.plan]
     if missing:
         raise ValueError(f"queued docket entries missing a Plan: {missing}")
+    no_seal = [e.issue for e in entries if not e.seal]
+    if no_seal:
+        raise ValueError(f"queued docket entries missing a Seal: {no_seal}")
     plan_paths = [e.plan for e in entries]
     dupes = sorted({p for p in plan_paths if plan_paths.count(p) > 1})
     if dupes:

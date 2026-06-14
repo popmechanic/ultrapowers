@@ -104,6 +104,15 @@ def test_budget_passes_through():
     assert r["budget_usd"] == 42.0
 
 
+def test_queued_entry_without_seal_fails_loud():
+    m = load()
+    docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
+              "**Est-files:** a.py\n**Plan:** p.md\n")  # Plan present, Seal absent
+    import pytest
+    with pytest.raises(Exception):
+        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+
+
 def test_real_plan_writes_unions_task_writes(tmp_path):
     """Exercise the real plan_writes() path: compile an actual marked plan via
     compile_plan.py and confirm its write-set is the union of task writes."""
