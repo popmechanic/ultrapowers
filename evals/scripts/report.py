@@ -6,9 +6,10 @@ markdown report: per fixture x condition x engine-version medians for cost,
 clock, acceptance pass rate, suite green rate, plan coverage, and fix rounds;
 then judge win rates.
 
-Rows are partitioned by engine version (plugin_version + short sha): medians are
-never pooled across engine versions. A cell that is suite-green but has a run
-with plan coverage < 100% is flagged (green-but-incomplete).
+Rows are partitioned by engine plugin_version (sha kept as per-row provenance):
+medians are never pooled across engine versions. A cell spanning multiple shas
+is flagged '(N shas)'. A cell that is suite-green but has a run with plan
+coverage < 100% is flagged (green-but-incomplete).
 """
 import json
 import pathlib
@@ -31,11 +32,27 @@ def median(xs):
 
 
 def engine_key(r):
-    """Stable per-engine label; rows without an engine stamp group as unknown."""
+    """Partition key: the engine PLUGIN VERSION (behavior proxy).
+
+    A behavior change ships as a release version bump, so pooling by
+    plugin_version keeps pre/post-hardening runs in separate populations
+    while NOT fragmenting one release across the many dev shas its rows were
+    scored on. The sha is retained per-row as provenance.
+    """
     e = r.get("engine")
     if not e:
         return "unknown"
-    return f'{e.get("plugin_version", "?")}@{e.get("sha", "")[:7]}'
+    return e.get("plugin_version", "?")
+
+
+def engine_shas(rs):
+    return sorted({(r.get("engine") or {}).get("sha", "") for r in rs
+                   if (r.get("engine") or {}).get("sha")})
+
+
+def engine_label(eng, rs):
+    n = len(engine_shas(rs))
+    return f"{eng} ({n} shas)" if n > 1 else eng
 
 
 def is_green(r):
@@ -74,8 +91,9 @@ def main():
     print(f"{len(runs)} scored runs across {len(fixtures)} fixtures, "
           f"conditions {', '.join(conditions)}, "
           f"engine versions {', '.join(engines)}.\n")
-    print("> Medians are partitioned by engine version and never pooled across "
-          "them. ⚠ marks a cell that is suite-green but has a run with plan "
+    print("> Medians are partitioned by engine plugin_version (sha kept as "
+          "provenance; a cell spanning multiple shas is flagged '(N shas)'). "
+          "⚠ marks a cell that is suite-green but has a run with plan "
           "coverage < 100% (green-but-incomplete).\n")
 
     for fixture in fixtures:
@@ -105,7 +123,8 @@ def main():
                 if green_but_incomplete(rs):
                     cov += " ⚠"
                 fixr = median([r["fix_rounds"] for r in rs])
-                print(f"| {cond} | {eng} | {len(rs)} | ${cost:.2f} | {pct} "
+                label = engine_label(eng, rs)
+                print(f"| {cond} | {label} | {len(rs)} | ${cost:.2f} | {pct} "
                       f"| {clock/60:.1f}m | {acc_rate:.0%} | {green}/{len(rs)} "
                       f"| {cov} | {fixr:.0f} |")
         print()
@@ -144,7 +163,8 @@ def main():
         per = f"${total / passed:.2f}" if passed else "n/a"
         pcts = [r["weekly_pct"] for r in rs if r.get("weekly_pct") is not None]
         rpw = f"~{100 / median(pcts):.0f}" if pcts and median(pcts) > 0 else "-"
-        print(f"| {cond} | {eng} | ${total:.2f} | {passed} | {per} | {rpw} |")
+        label = engine_label(eng, rs)
+        print(f"| {cond} | {label} | ${total:.2f} | {passed} | {per} | {rpw} |")
 
 
 if __name__ == "__main__":

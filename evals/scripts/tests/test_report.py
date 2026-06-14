@@ -12,7 +12,7 @@ def test_engine_key_unknown_when_missing():
     assert report.engine_key({}) == "unknown"
     assert report.engine_key(
         {"engine": {"plugin_version": "0.0.9", "sha": "abcdef1234"}}
-    ) == "0.0.9@abcdef1"
+    ) == "0.0.9"
 
 
 def test_coverage_none_when_unplanned():
@@ -59,5 +59,20 @@ def test_main_adds_coverage_flags_and_splits_engines(tmp_path, monkeypatch, caps
     out = capsys.readouterr().out
     assert "coverage (med)" in out
     assert "⚠" in out                       # green-but-incomplete 0.0.9 row
-    assert "0.0.9@aaaaaaa" in out                # two engines, not pooled
-    assert "0.0.10@bbbbbbb" in out
+    assert "0.0.9" in out                        # two engines, not pooled
+    assert "0.0.10" in out
+
+
+def test_same_version_different_sha_pools_as_one(tmp_path, monkeypatch, capsys):
+    rows = [
+        _row(run_id="flawed-B-1", rep=1, fixture="flawed", engine={"plugin_version": "0.0.8", "sha": "a"*40}),
+        _row(run_id="flawed-B-2", rep=2, fixture="flawed", engine={"plugin_version": "0.0.8", "sha": "b"*40}),
+        _row(run_id="flawed-B-3", rep=3, fixture="flawed", engine={"plugin_version": "0.0.8", "sha": "c"*40}),
+    ]
+    (tmp_path / "runs.jsonl").write_text("".join(json.dumps(r)+"\n" for r in rows))
+    monkeypatch.setattr(report, "RESULTS", tmp_path)
+    report.main()
+    out = capsys.readouterr().out
+    assert "| B | 0.0.8" in out                 # pooled flawed/B cell
+    assert "(3 shas)" in out                     # multi-sha transparency flag
+    assert out.count("| B | 0.0.8") == 2         # one partition per table (fixture + cost), not six
