@@ -158,12 +158,19 @@ if (typeof meta !== 'undefined') {
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
   'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
-  'setup, merge, reconcile, and integration roles the session repository main ' +
-  'checkout. Before any git command, confirm the target directory exists and is ' +
-  'a git repository. If a path is missing, empty, the literal string undefined, ' +
-  'or not a git repo, STOP immediately and report BLOCKED. NEVER run git or ' +
-  'write files in an unrelated repository, and NEVER fall back to your current ' +
-  'working directory.'
+  'setup, merge, and reconcile roles the session repository main checkout, ' +
+  'which those write-side roles may modify. Review roles (the per-task reviewer ' +
+  'and the completeness critic) are READ-ONLY: they operate on a detached ' +
+  'checkout and never write files, create commits, stage changes, or otherwise ' +
+  'mutate any tree — their only output is their report payload. You operate in ' +
+  "the workflow's launch working directory, the session repository; never " +
+  'resolve to, check out, or detach a DIFFERENT primary checkout of the same ' +
+  "repository — moving the user's primary checkout off its branch is a " +
+  'forbidden, undisclosed side effect. Before any git command, confirm the ' +
+  'target directory exists and is a git repository. If a path is missing, ' +
+  'empty, the literal string undefined, ambiguous, or not a git repo, STOP ' +
+  'immediately and report BLOCKED. NEVER run git or write files in an unrelated ' +
+  'repository, and NEVER fall back to your current working directory.'
 
 // ── Baked discipline prompts (source: references/reviewer-prompts.md) ─────────
 // BAKE:IMPLEMENTER_PROMPT
@@ -204,6 +211,8 @@ const IMPLEMENTER_PROMPT = [
 // references/reviewer-prompts.md, "Deliberate divergence"). Always runs at most-capable.
 const REVIEWER_PROMPT = [
   'You are an independent reviewer. You receive the original task text and the implementer diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.',
+  '',
+  'You are a REVIEW role. Do not write files, create commits, stage changes, or modify the tree in any way. Your only output is your findings/verdict. If the work is wrong, report it — never fix it.',
   '',
   'Mandate: verify everything independently. Do not trust the implementer report.',
   '',
@@ -264,10 +273,23 @@ const RECONCILE_PROMPT =
   'branch, then ' + testInstruction + '. Report MERGED on success, or ' +
   'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
 
-const COMPLETENESS_PROMPT =
+// Completeness critic prompt, built per-dispatch so it pins the critic to the
+// EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
+// #29: a critic that reviews the wrong tree emits confident false findings — the
+// detached checkout is immune to the integration-branch lock, and an empty sha
+// forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
+const completenessPrompt = (mergeHeadSha) =>
+  'You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
+  'modify the tree in any way. Your only output is your findings/verdict. If the ' +
+  'work is wrong, report it — never fix it.\n' +
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
-  'What plan requirement is unmet? What claim is unverified? What code path is ' +
-  'untested? On ' + integrationBranch + ' from the main checkout, ' + testInstruction +
+  'First, put yourself on the exact tree the run produced: the integration HEAD ' +
+  'is ' + (mergeHeadSha || '') + '. If that value is empty, report BLOCKED and ' +
+  'produce no findings — do not guess a tree. Otherwise run git checkout --detach ' +
+  (mergeHeadSha || '') + ', then git rev-parse HEAD and confirm it equals ' +
+  (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
+  'findings. Only once you are verified on that tree: what plan requirement is ' +
+  'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
   ', then review the integrated result against the original plan. List every ' +
   'gap, unverified claim, and untested path.'
 
@@ -885,7 +907,7 @@ if (budgetExhausted()) {
 } else {
   try {
     review = await agent(
-      GUARD + '\n\n' + COMPLETENESS_PROMPT +
+      GUARD + '\n\n' + completenessPrompt(waveBaseSha) +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
