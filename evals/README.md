@@ -21,7 +21,7 @@ ignore gracefully (see `skills/ultrapowers/references/plan-markers.md`).
 
 ## Fixtures
 
-Four purpose-built fixture repos under `evals/fixtures/`, one per DAG regime:
+Five purpose-built fixture repos under `evals/fixtures/`, one per DAG regime:
 
 | Fixture | Regime | Expected wave shape (B/C) |
 |---------|--------|---------------------------|
@@ -213,11 +213,10 @@ generation and what changed. When a frozen plan is found broken, fix it, bump
 The buggy first generation may instead be *promoted* to its own fixture (see
 `flawed`) so the stressor is measured deliberately rather than lost.
 
-**Engine versions & pooling.** Every run row records the engine version that
-produced it: the plugin version (`.claude-plugin/plugin.json`) plus the
-ultrapowers repo HEAD sha (distinct from the row's `head`, which is the fixture
-repo). `report.py` partitions all medians by engine version and never pools rows
-across versions — pre- and post-hardening runs appear as separate populations.
+**Engine versions & pooling.** Every run records the engine plugin_version (a
+release-bumped behavior proxy) plus its repo sha as provenance. `report.py`
+partitions medians by plugin_version and never pools across versions, and flags
+any population assembled from more than one sha as '(N shas)'.
 
 **Freeze-then-complete.** Complete the remaining cells of the matrix on the
 current frozen engine before merging engine-behavior changes (e.g. the
