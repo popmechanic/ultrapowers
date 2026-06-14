@@ -36,8 +36,14 @@ def current_engine():
     return {"plugin_version": version, "sha": sha}
 
 
-def engine_at_epoch(epoch, branch="main"):
-    """The engine version that was HEAD at unix `epoch` (for backfill)."""
+def engine_at_epoch(epoch, branch="HEAD"):
+    """The engine version that was HEAD at unix `epoch` (for backfill).
+
+    Resolution walks the ancestry of `branch` (default HEAD, the actual checkout)
+    rather than a fixed `main`: the engine that produced a run is the commit in
+    the *current* line of history, so `engine_at_epoch(now)` returns HEAD from
+    any branch — feature branches included — not just after a merge to main.
+    """
     root = repo_root()
     iso = time.strftime("%Y-%m-%d %H:%M:%S +0000", time.gmtime(epoch))
     sha = _git(["rev-list", "-1", f"--before={iso}", branch], root)
