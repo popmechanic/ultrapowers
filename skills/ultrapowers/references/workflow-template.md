@@ -66,13 +66,16 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
   Values are validated at launch against `haiku` / `sonnet` / `opus`; an unknown alias throws
   before any agent runs.
 - `args.acceptance` — optional sealed acceptance exam descriptor. Shape:
-  `{ mode: 'sealed', sealId, sha256, scriptPath }` or `{ mode: 'waived', reason }`. When `sealed`,
+  `{ mode: 'sealed', sealId, sha256, scriptPath }` or `{ mode: 'waived', reason }` or
+  `{ mode: 'suite', reason }`. When `sealed`,
   the orchestrator resolves `scriptPath` to the absolute path of `run_acceptance.sh` from the plugin
   root at launch (the workflow has no filesystem introspection). The runner command is
   `bash <scriptPath> <sealId> <integrationBranch> <sha256>`; it must print one JSON object
   `{ sealId, status: OK|SEAL_MISSING|SEAL_BROKEN|ERROR, passed, exitCode, output }` and exit 0 iff
   verified-and-passed. The engine treats the script as the authority; the agent only relays its
-  stdout verbatim. When absent, `report.acceptance = null`.
+  stdout verbatim. When `suite`, no held-out exam is dispatched — the committed test suite
+  is the acceptance authority; `report.acceptance.passed` mirrors `tests.passed` (the integration
+  test result); a failing suite pushes a gate-blocking judgment call. When absent, `report.acceptance = null`.
 
 The script **validates `args.waves` and throws loudly** if it is missing or malformed, converting a
 silent `undefined` (which historically caused agents to mutate the session repo) into a safe, loud
