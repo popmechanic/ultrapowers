@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers` — it dogfoods the `**Type:**`/`**Depends-on:**` markers it implements (the current engine ignores them gracefully; file-overlap inference still produces a correct ordering).
 
+**Acceptance:** suite — engine/skill change; verified by the committed marker test suite, not a held-out exam.
+
 **Goal:** Make Superpowers plans compile deterministically into ultrapowers waves by (1) defining an additive per-task marker contract (`Type:`, `Depends-on:`), (2) teaching the compile step (dependency analysis) to classify tasks against a worktree-pure contract — markers when present, heuristics otherwise — and (3) shipping an authoring-side `ultraplan` skill so new plans are born parallel-clean.
 
 **Architecture:** One canonical contract document (`skills/ultrapowers/references/plan-markers.md`) consumed by three surfaces: the compiler reference (`dependency-analysis.md`, which classifies before building the DAG and emits dispositions + a post-merge runbook into the Step-3 transparency block), the orchestrator (`SKILL.md` Steps 2/3/5), and a new authoring skill (`skills/ultraplan/SKILL.md`) that mirrors the contract via BAKE-block anti-drift tests — the same pattern `test_no_prompt_drift.py` already uses for `workflow.js`. `workflow.js` is untouched: classification happens at compile time, excluded tasks never reach the workflow args, and the runbook is assembled by the main agent — **no re-bake required**.

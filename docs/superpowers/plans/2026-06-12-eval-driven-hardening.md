@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — engine hardening; verified by the committed test + sim suite, not a held-out exam.
+
 **Goal:** Ship the five skill improvements identified by the 2026-06-12/13 eval matrix — dependency lint, declared-file-scope guard, sibling wave context, exact-assertion test discipline, and a report-derived Salvage path at the pre-merge gate.
 
 **Architecture:** Three change surfaces. (1) `compile_plan.py` gains a new semantic edge tier (`prose-reference`) so an undeclared dependency expressed only in prose serializes the tasks instead of cascading at runtime — this is the root-cause fix for eval run mixed-B-2. (2) The baked implementer/reviewer discipline (`references/reviewer-prompts.md` → re-baked into `workflow.js`, guarded by `tests/test_no_prompt_drift.py`) gains a FILES scope rule, a SIBLING FILES rule, and exact-assertion test guidance; `workflow.js` threads the per-task data into the prompts at dispatch. (3) SKILL.md Step 5 and `report-format.md` gain a **Salvage** choice that mechanically rebuilds Redirect waves from the run report — no engine change, the `resume: true` path already exists.

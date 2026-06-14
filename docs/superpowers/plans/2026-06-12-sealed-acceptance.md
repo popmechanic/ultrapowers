@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — the founding acceptance plan; its verification is test_run_acceptance.py plus the compiler tests, so a held-out exam would be recursive.
+
 **Goal:** Promote the eval's held-out acceptance mechanism to an engine contract: every marked plan carries a sealed exam (authored from the spec alone, stored outside the repo, hash-pinned, red-at-baseline) that the engine administers deterministically at the pre-merge gate, where it hard-gates Approve alongside `tests.passed`.
 
 **Architecture:** Four seams: (1) two small scripts — a canonical suite hasher and a deterministic exam runner emitting JSON receipts; (2) `compile_plan.py` parses/enforces a plan-level `**Acceptance:**` marker; (3) `workflow.js` administers the exam in its final phase and adds an `acceptance` block to the structured report (re-bake discipline: prompt pinned in `reviewer-prompts.md`, contract docs updated); (4) the skills — ultraplan gains the sealing step + author-agent prompt, ultrapowers' SKILL.md carries acceptance through Steps 2–5. The eval fixtures get sealed so the contract is exercised by future eval runs.

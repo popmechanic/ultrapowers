@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — review-cycle fixes; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Close every fix-now finding from the iteration-1 three-agent review of ultrapowers 0.4.0: compiler correctness (degrade ordering, read edges, ambiguous-Files default, duplicate IDs, marker diagnostics), sweep containment, compat tripwires, baked-prompt hardening (required headSha, commit step), sim coverage gaps, and doc truth-ups across six documents.
 
 **Architecture:** Each task is a self-contained file-cluster fix: one code/script file plus its test file, or one doc plus any test that pins it. BAKE-block edits always change both copies (reference doc + workflow.js) in the same task so `tests/test_no_prompt_drift.py` stays green. Doc tasks carry exact replacement text so no judgment is needed.
