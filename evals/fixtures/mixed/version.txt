@@ -1,0 +1,4 @@
+2 (2026-06-14)
+Task 4 (In-memory store) Depends-on corrected to 1 (was none): add() returns a
+schema.User created by Task 1. Bumped after the latent dependency was promoted
+into the dedicated flawed fixture (#27). Restart mixed's matrix cells.
