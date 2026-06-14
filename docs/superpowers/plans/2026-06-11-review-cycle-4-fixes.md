@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — review-cycle fixes; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Close the iteration-4 findings: the `edges: []` vs edges-missing conflation, the lost-done sweep's chunk-timing hole, the four stale "SKIPPED never cascades" doc spots, compiler polish (conflict dedupe, zero-impl mode, heading-line text-dep exclusion, line-range coverage), and the remaining compat pins.
 
 **Architecture:** Same file-cluster discipline as prior cycles. Docs that describe behavior delivered by a code task depend on it.

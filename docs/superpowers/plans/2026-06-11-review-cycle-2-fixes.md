@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — review-cycle fixes; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Close every fix-now finding from the iteration-2 three-agent review: compiler edge-precedence cycles (the write-after-create backward case can never compile), fence/parse blind spots, workflow wave-merge semantics (a fully-blocked wave must not cascade), fix-round dispatch incoherence, the report-format Approve-path contradiction, and a batch of compat/doc tripwires.
 
 **Architecture:** Same file-cluster discipline as cycle 1: each task owns one code/script file plus its test file, or one doc plus its pinning test. Tasks 1→2 serialize on the compiler; tasks 3→4 serialize on workflow.js; docs that describe new behavior depend on the task that creates it.
