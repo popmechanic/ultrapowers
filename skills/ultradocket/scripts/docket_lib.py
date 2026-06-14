@@ -33,6 +33,7 @@ _FIELD = re.compile(r"^\*\*(State|Score|Est-files|Plan|Seal):\*\*\s*(.*?)\s*$")
 
 def parse_docket(text):
     entries = []
+    seen = set()
     cur = None
     fields = {}
 
@@ -41,6 +42,9 @@ def parse_docket(text):
             return
         if "State" not in fields or "Score" not in fields:
             raise DocketError(f"issue #{cur[0]} missing State or Score")
+        if cur[0] in seen:
+            raise DocketError(f"duplicate issue #{cur[0]} in docket")
+        seen.add(cur[0])
         est = [s.strip() for s in fields.get("Est-files", "").split(",") if s.strip()]
         entries.append(Entry(issue=cur[0], title=cur[1], state=fields["State"],
                              score=fields["Score"], est_files=est,
