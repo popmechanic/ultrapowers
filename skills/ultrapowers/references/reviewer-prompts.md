@@ -96,14 +96,6 @@ human) cannot run headless, so a first-dispatch `BLOCKED` records the task as
 
 ---
 
-## Acceptance exam
-
-<!-- BAKE:ACCEPTANCE-EXAM -->
-Run EXACTLY this command from the repository root and return its complete stdout verbatim in the "raw" field. Do not interpret the result, do not fix anything, do not retry, and do not run any other command. If the command cannot be executed, put the reason in "raw".
-<!-- /BAKE -->
-
----
-
 ## Reviewer prompt (spec-compliance + code-quality, merged)
 
 **Deliberate divergence from superpowers 5.1.0:** upstream subagent-driven-development

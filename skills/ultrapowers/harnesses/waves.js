@@ -101,12 +101,13 @@ const EDGES = edgesSupplied
 // reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
 // tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
 const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
-// acceptance: sealed-exam administration (spec 2026-06-12-sealed-acceptance).
-//   { mode: 'sealed', sealId, sha256, scriptPath }  — scriptPath is the
-//   absolute path to run_acceptance.sh, resolved by the orchestrator from the
-//   plugin root at launch (the workflow has no filesystem introspection), or
-//   { mode: 'waived', reason } or
-//   { mode: 'suite', reason }. Absent → report.acceptance = null.
+// acceptance: disposition carried into the report (spec 2026-06-14-sealed-acceptance-gate-fix).
+//   { mode: 'sealed', sealId, sha256 }  — recorded as PENDING_GATE; the SEALED exam is
+//     administered deterministically at the pre-merge gate (SKILL.md Step 5), NOT here:
+//     the workflow has no shell, and relaying the runner's JSON corrupts it (#36).
+//   { mode: 'waived', reason }  — static, passed: null.
+//   { mode: 'suite', reason }   — passed mirrors the committed-suite result.
+//   Absent → report.acceptance = null.
 const ACCEPTANCE = (ARGS && ARGS.acceptance && typeof ARGS.acceptance === 'object')
   ? ARGS.acceptance : null
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
@@ -151,7 +152,7 @@ for (const k of Object.keys(tierOverrides)) {
 if (typeof meta !== 'undefined') {
   meta.phases = [{ title: 'Setup' }]
     .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
-    .concat([{ title: 'Integration Review' }, { title: 'Acceptance' }])
+    .concat([{ title: 'Integration Review' }])
 }
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
@@ -914,32 +915,15 @@ if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
   if (!acceptance.passed) judgmentCalls.push(
     'suite acceptance did not pass (committed test suite failed) — gate must not Approve')
 } else if (ACCEPTANCE && ACCEPTANCE.mode === 'sealed') {
-  phase('Acceptance')
-  const cmd = 'bash ' + ACCEPTANCE.scriptPath + ' ' + ACCEPTANCE.sealId + ' ' +
-    integrationBranch + ' ' + ACCEPTANCE.sha256
-  try {
-    const exam = await agent(
-      'Run EXACTLY this command from the repository root and return its complete ' +
-      'stdout verbatim in the "raw" field. Do not interpret the result, do not fix ' +
-      'anything, do not retry, and do not run any other command. If the command ' +
-      'cannot be executed, put the reason in "raw".\n\nCOMMAND: ' + cmd,
-      { label: 'acceptance-exam', model: TIER.cheap,
-        schema: { type: 'object', required: ['raw'],
-                  properties: { raw: { type: 'string' } } } }
-    )
-    let parsed = null
-    try { parsed = JSON.parse(((exam && exam.raw || '').match(/\{[\s\S]*\}/) || ['null'])[0]) } catch (e) { parsed = null }
-    acceptance = (parsed && typeof parsed.passed === 'boolean')
-      ? { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: parsed.status,
-          passed: parsed.passed, exitCode: parsed.exitCode, output: parsed.output }
-      : { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: 'ERROR', passed: false,
-          output: 'unparseable exam output: ' + String(exam && exam.raw).slice(0, 2000) }
-  } catch (e) {
-    acceptance = { mode: 'sealed', sealId: ACCEPTANCE.sealId, status: 'ERROR',
-                   passed: false, output: 'exam agent error: ' + String((e && e.message) || e) }
-  }
-  if (!acceptance.passed) judgmentCalls.push(
-    'sealed acceptance did not pass (' + acceptance.status + ') — gate must not Approve')
+  // Sealed exams are administered deterministically at the pre-merge gate
+  // (SKILL.md Step 5), where the main session runs run_acceptance.sh directly
+  // and uses its exit code as the authority. The workflow engine cannot run a
+  // shell (agent() is its only subprocess route), and relaying the runner's
+  // JSON-object stdout through a cheap model corrupts it (issue #36). The
+  // workflow therefore records only the disposition; it does not administer.
+  acceptance = { mode: 'sealed', sealId: ACCEPTANCE.sealId, sha256: ACCEPTANCE.sha256,
+                 status: 'PENDING_GATE', passed: null,
+                 note: 'administered deterministically at the pre-merge gate' }
 }
 
 // ── Structured return value (matches references/report-format.md) ─────────────
