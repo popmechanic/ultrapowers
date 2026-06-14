@@ -93,6 +93,51 @@ While writing tasks:
    human, that part is its own `release` or `manual` task — implementation tasks
    never contain it.
 
+## Seal the exam (after plan approval)
+
+A marked plan is not execution-ready until it carries an `**Acceptance:**`
+line (the compiler refuses it otherwise). After the human approves the plan:
+
+1. Dispatch a fresh-context author subagent per
+   `references/seal-author-prompt.md`. Its inputs are ONLY: the spec text,
+   the repo's test conventions (framework, run command, naming), the base
+   branch name, and the vault path `~/.ultrapowers/acceptance/`. Never the
+   plan, never the task list, never this conversation's history.
+2. The author writes the suite into the vault, proves it RED against a
+   pristine baseline worktree (a suite that passes before the work exists
+   tests nothing — collection errors from missing modules count as red; the
+   suite's own syntax errors do not), writes `manifest.json`, and returns
+   ONLY: seal-id, sha256, red-run evidence, and a coverage summary mapping
+   spec criteria to test names.
+3. Append to the plan, after the header block:
+   `**Acceptance:** sealed <seal-id> (sha256:<hash>)` plus the coverage
+   summary as a short appendix (spec-derived, safe to show).
+4. Two consecutive green-at-baseline attempts → stop and tell the human: the
+   spec may describe behavior that already exists.
+
+The operator may instead record `**Acceptance:** waived — <reason>`; waivers
+surface verbatim at the wave-plan gate, in the report, and at the pre-merge
+gate. Never waive silently on the operator's behalf.
+
+### Choosing the disposition
+
+Every marked plan declares one of three Acceptance dispositions:
+
+- **`**Acceptance:** sealed <seal-id> (sha256:<hash>)`** — feature work whose
+  operator cannot read the code. A held-out exam, authored from the spec by an
+  independent agent (the sealing step above). This is the default.
+- **`**Acceptance:** suite — <reason>`** — ultrapowers' own engine / skill /
+  doc / prompt / script development, where the author and operator both read
+  the diffs and the committed test suite + drift pins + adversarial review are
+  the verification. No held-out exam is authored; the engine binds acceptance
+  to the committed test result (`acceptance.passed === tests.passed`).
+- **`**Acceptance:** waived — <reason>`** — verification genuinely skipped, by
+  explicit operator choice. Reserve this for the rare case where neither a
+  held-out exam nor the committed suite applies.
+
+Rule of thumb: building software *with* ultrapowers → `sealed`; building
+ultrapowers *itself* → `suite`; opting out → `waived`.
+
 ## Self-review additions
 
 After writing-plans' own self-review checklist, verify:
@@ -105,5 +150,6 @@ After writing-plans' own self-review checklist, verify:
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing relies on the executor's classification heuristics.
 - Every backticked mention of a file or module another task creates (`apistub/schema.py`, `schema.User`) has a matching `**Depends-on:**` on the referencing task — otherwise the compiler infers a `prose-reference` edge and surfaces it as a conflict at the wave-plan gate.
+- The plan carries an **Acceptance:** line — sealed, suite, or an explicit operator waiver (see "Choosing the disposition").
 
 (End of SKILL.md.)

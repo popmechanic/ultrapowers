@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
 
+**Acceptance:** sealed 9025f8f53bfc (sha256:9025f8f53bfc1b45b0181fb0a2b79f02edc4bb8d509f3a334fbc5ae982bfcc4e)
+
 **Goal:** Build an in-memory users API in six tasks forming a diamond: schema and storage are independent roots; validation and serialization build on the schema; handlers join all three; routing tops it off. No network code anywhere — `route` is a plain function.
 
 **Tech Stack:** Python 3.11 + pytest. Run the suite with `python3 -m pytest tests/ -q` from the repo root.

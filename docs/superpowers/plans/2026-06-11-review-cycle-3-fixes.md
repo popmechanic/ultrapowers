@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — review-cycle fixes; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Close the iteration-3 review findings: transitive edge-precedence cycles (P1), CommonMark closing-fence handling, Files-section step bleed, shared-Test-path serialization, done-without-headSha surfacing, malformed-edges fail-loud, edge-less cascade fallback, tierOverrides truth, plus compat pins and doc truth-ups.
 
 **Architecture:** Same file-cluster discipline: one code file plus its test file per task, or one or two docs plus their pinning test. Tasks sharing a file serialize via markers.

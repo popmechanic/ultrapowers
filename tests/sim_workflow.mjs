@@ -105,6 +105,8 @@ async function scenarioHappy() {
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
   assert(/git worktree remove/.test(mergePrompt), 'happy: merge prompt contains cleanup instruction (git worktree remove)')
+  // acceptance-absent: no acceptance arg supplied → report.acceptance must be null
+  eq(r.acceptance, null, 'happy: acceptance is null when not supplied (acceptance-absent)')
   console.log('scenario happy: OK')
 }
 
@@ -1578,6 +1580,162 @@ async function scenarioFileScope() {
   console.log('scenario fileScope: OK')
 }
 
+// Helper: build a complete raw agent for acceptance scenarios (the acceptance-exam
+// call does NOT prepend GUARD, so we cannot use makeAgent for these scenarios).
+// Handles all standard labels plus 'acceptance-exam', delegating to handleExam.
+function makeAcceptanceAgent(handleExam) {
+  return async (prompt, opts) => {
+    const label = opts.label || ''
+    // acceptance-exam prompt does NOT carry the GUARD (it is a relay-only dispatch).
+    if (label === 'acceptance-exam') {
+      return handleExam(prompt, opts)
+    }
+    // All other labels must carry the GUARD.
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+}
+
+// ── Scenario: acceptance-sealed-green — exam passes, no judgmentCall ──────────
+async function scenarioAcceptanceSealedGreen() {
+  let examPrompt = ''
+  const acceptanceArg = {
+    mode: 'sealed',
+    sealId: 'abc123def456',
+    sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent((prompt) => {
+      examPrompt = prompt
+      return { raw: '{"sealId":"abc123def456","status":"OK","passed":true,"exitCode":0,"output":"5 passed"}' }
+    }),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'sealed', 'acceptance-sealed-green: mode is sealed')
+  eq(r.acceptance && r.acceptance.passed, true, 'acceptance-sealed-green: passed is true')
+  eq(r.acceptance && r.acceptance.status, 'OK', 'acceptance-sealed-green: status is OK')
+  assert(!r.judgmentCalls.some((j) => /acceptance/.test(j)),
+    'acceptance-sealed-green: no acceptance-related judgmentCall (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  // Prompt must contain the verbatim command: bash <scriptPath> <sealId> <integrationBranch> <sha256>
+  assert(examPrompt.includes('bash /fake/run_acceptance.sh abc123def456 '),
+    'acceptance-sealed-green: exam prompt contains "bash /fake/run_acceptance.sh abc123def456 " (got ' + examPrompt.slice(0, 300) + ')')
+  console.log('scenario acceptance-sealed-green: OK')
+}
+
+// ── Scenario: acceptance-sealed-red — exam fails, judgmentCall pushed ─────────
+async function scenarioAcceptanceSealedRed() {
+  const acceptanceArg = {
+    mode: 'sealed',
+    sealId: 'abc123def456',
+    sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => {
+      return { raw: '{"sealId":"abc123def456","status":"FAIL","passed":false,"exitCode":1,"output":"2 failed"}' }
+    }),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-red: passed is false')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-red: judgmentCalls contains "sealed acceptance did not pass" (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-red: OK')
+}
+
+// ── Scenario: acceptance-waived — no exam agent dispatched ───────────────────
+async function scenarioAcceptanceWaived() {
+  let examDispatched = false
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => {
+      examDispatched = true
+      return { raw: '' }
+    }),
+    args: Object.assign({}, baseArgs, { acceptance: { mode: 'waived', reason: 'sim test' } }),
+    budget: undefined,
+  })
+  eq(r.acceptance, { mode: 'waived', reason: 'sim test', passed: null },
+    'acceptance-waived: report.acceptance deep-equals { mode: "waived", reason: "sim test", passed: null }')
+  assert(!examDispatched, 'acceptance-waived: no acceptance-exam agent was dispatched')
+  console.log('scenario acceptance-waived: OK')
+}
+
+// ── Scenario: acceptance-sealed-unparseable — relay agent returns garbage ─────
+async function scenarioAcceptanceSealedUnparseable() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => ({ raw: 'the exam looked fine to me, all good' })),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'sealed', 'acceptance-sealed-unparseable: mode is sealed')
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-unparseable: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-unparseable: passed is false')
+  assert(typeof r.acceptance.output === 'string' && /unparseable exam output/.test(r.acceptance.output),
+    'acceptance-sealed-unparseable: output names the unparseable receipt (got ' +
+    JSON.stringify(r.acceptance.output) + ')')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-unparseable: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-unparseable: OK')
+}
+
+// ── Scenario: acceptance-sealed-missing-passed — receipt without passed bool ──
+async function scenarioAcceptanceSealedMissingPassed() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => ({ raw: '{"sealId":"abc123def456","status":"OK","output":"looks ok"}' })),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-missing-passed: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-missing-passed: passed is false')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-missing-passed: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-missing-passed: OK')
+}
+
+// ── Scenario: acceptance-sealed-agent-throws — exam dispatch raises ───────────
+async function scenarioAcceptanceSealedAgentThrows() {
+  const acceptanceArg = {
+    mode: 'sealed', sealId: 'abc123def456', sha256: 'ab'.repeat(32),
+    scriptPath: '/fake/run_acceptance.sh',
+  }
+  const r = await runWorkflow({
+    agent: makeAcceptanceAgent(() => { throw new Error('exam transport blew up') }),
+    args: Object.assign({}, baseArgs, { acceptance: acceptanceArg }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'sealed', 'acceptance-sealed-agent-throws: mode is sealed')
+  eq(r.acceptance && r.acceptance.status, 'ERROR', 'acceptance-sealed-agent-throws: status is ERROR')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-sealed-agent-throws: passed is false')
+  assert(typeof r.acceptance.output === 'string' && /exam agent error/.test(r.acceptance.output),
+    'acceptance-sealed-agent-throws: output names the agent error (got ' +
+    JSON.stringify(r.acceptance.output) + ')')
+  assert(r.judgmentCalls.some((j) => /sealed acceptance did not pass/.test(j)),
+    'acceptance-sealed-agent-throws: judgmentCalls blocks the gate (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario acceptance-sealed-agent-throws: OK')
+}
+
 await scenarioHappy()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
@@ -1630,4 +1788,63 @@ await scenarioReconcileTierOverride()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
 await scenarioFileScope()
+// ── Scenario: acceptance-suite-green — disposition bound to the committed suite
+async function scenarioAcceptanceSuiteGreen() {
+  let examDispatched = false
+  const agent = makeAcceptanceAgent((prompt, opts) => {
+    examDispatched = true
+    return { raw: '{}' }
+  })
+  const r = await runWorkflow({
+    agent,
+    args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'suite', 'acceptance-suite-green: mode is suite')
+  eq(r.acceptance && r.acceptance.passed, true, 'acceptance-suite-green: passed mirrors green tests')
+  eq(examDispatched, false, 'acceptance-suite-green: no held-out exam dispatched')
+  assert(!r.judgmentCalls.some((j) => /acceptance did not pass/.test(j)),
+    'acceptance-suite-green: no gate-blocking judgmentCall on green')
+  console.log('scenario acceptance-suite-green: OK')
+}
+
+// ── Scenario: acceptance-suite-red — failed committed suite blocks the gate ────
+async function scenarioAcceptanceSuiteRed() {
+  // Need a custom agent so we can make integration return testsPassed: false.
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    // No acceptance-exam should be dispatched for suite mode.
+    if (label === 'acceptance-exam') throw new Error('suite mode must not dispatch acceptance-exam')
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return { command: 'pytest', testsPassed: false, output: '1 failed', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({
+    agent,
+    args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+    budget: undefined,
+  })
+  eq(r.acceptance && r.acceptance.mode, 'suite', 'acceptance-suite-red: mode is suite')
+  eq(r.acceptance && r.acceptance.passed, false, 'acceptance-suite-red: passed mirrors red tests')
+  assert(r.judgmentCalls.some((j) => /acceptance did not pass/.test(j)),
+    'acceptance-suite-red: red suite pushes a gate-blocking judgmentCall')
+  console.log('scenario acceptance-suite-red: OK')
+}
+
+await scenarioAcceptanceSealedGreen()
+await scenarioAcceptanceSealedRed()
+await scenarioAcceptanceWaived()
+await scenarioAcceptanceSealedUnparseable()
+await scenarioAcceptanceSealedMissingPassed()
+await scenarioAcceptanceSealedAgentThrows()
+await scenarioAcceptanceSuiteGreen()
+await scenarioAcceptanceSuiteRed()
 console.log('ALL SCENARIOS PASSED')

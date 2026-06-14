@@ -6,6 +6,8 @@
 > config); Task 5 → release (post-merge runbook). Task 2 has no `Type:` marker on
 > purpose — it must default to `implementation`.
 
+**Acceptance:** waived — compiler test fixture
+
 ---
 
 ### Task 1: Create alpha

@@ -98,6 +98,7 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
     ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
     from the plan.
+- **Acceptance:** the compiler output's `acceptance` field rides into the launch args in one of three forms: `{ mode:'sealed', sealId, sha256, scriptPath }`, `{ mode:'suite', reason }`, `{ mode:'waived', reason }`. For `sealed` mode the orchestrator resolves `scriptPath` to `<plugin-root>/skills/ultrapowers/scripts/run_acceptance.sh`. A compile failure for a missing Acceptance line is surfaced to the human with the ultraplan sealing step named as the remedy.
 - **Record** the DAG edges, wave list, mode, any degrade reason, the dispositions
   (gates compiled into config, runbook entries, marker conflicts, inlined preamble
   notes), and the derived knobs (the transparency block).
@@ -119,6 +120,7 @@ Render the transparency block from Step 2 for the human:
    or marker conflicts. This is the rendered **interpretation** of the plan, not
    just the grouping — it reappears with the final report so a wrong classification
    is auditable at the pre-merge gate.
+6. **Acceptance disposition** — render the acceptance disposition: `sealed <seal-id>` or the verbatim waiver reason. The human approves it with the rest of the interpretation.
 
 Then proceed **directly to Step 4 — do not ask for approval and do not pause.** The human already
 authorized execution: they approved the plan itself, then selected ultrapowers as the execution
@@ -169,7 +171,8 @@ or edit it) via the **Workflow** tool. The registry resolves saved workflows by 
 
 ```
 args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         edges, baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides? }
+         edges, baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides?,
+         acceptance?: { mode: 'sealed', sealId, sha256, scriptPath } | { mode: 'suite', reason } | { mode: 'waived', reason } }
 ```
 
 Pass the computed `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
@@ -215,18 +218,7 @@ compile time, verbatim and in document order — so nothing classified out of th
 is forgotten. Then name the integration branch and
 present these choices:
 
-- **Approve** — first gate on the report's `tests.passed`: if false, do NOT hand
-  off; present the failure and offer Redirect instead (finishing-a-development-branch's
-  own precondition is a passing suite). If true: `git checkout <integrationBranch>`
-  (its Step 1 verifies tests on the CURRENT checkout — it must see the integration
-  tree, not the base branch you restored for the report), then run
-  `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` — the deterministic sweep
-  of engine worktrees and merged branches (unmerged failed-task branches are kept
-  for inspection; never rely on the merge agents having cleaned up; locked worktrees
-  are kept by default (pass `--force` to remove them); concurrent runs in one repo
-  remain unsupported). Then proceed
-  to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up,
-  the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
+- **Approve** — gate on `tests.passed && (acceptance is null || acceptance.passed || acceptance.mode === 'waived')`: if `tests.passed` is false, do NOT hand off; present the failure and offer Redirect instead (finishing-a-development-branch's own precondition is a passing suite). If the acceptance exam is present and red, offer Redirect/Salvage; an operator override is recorded as a waiver-with-reason in the runbook and the final report. `SEAL_MISSING` / `SEAL_BROKEN` remedies: re-seal via the ultraplan sealing step (the spec still exists) or waive explicitly. A `suite` disposition reports `acceptance.passed === tests.passed`, so it is gated by the committed suite with no special case; the report renders `suite — <reason>` like the other dispositions. Render the `acceptance` block's raw output with the report — receipts, not narrative. If both gates pass: `git checkout <integrationBranch>` (its Step 1 verifies tests on the CURRENT checkout — it must see the integration tree, not the base branch you restored for the report), then run `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` — the deterministic sweep of engine worktrees and merged branches (unmerged failed-task branches are kept for inspection; never rely on the merge agents having cleaned up; locked worktrees are kept by default (pass `--force` to remove them); concurrent runs in one repo remain unsupported). Then proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up, the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Salvage** — offer this whenever the report carries `failed` tasks or dep-blocked `unfinished` entries; it is Redirect with the corrective instructions derived from the report instead of typed by the human. Build the new `waves` array mechanically: every `failed` task plus every dep-blocked or cascade-blocked task from `unfinished`, preserving their original relative wave order and the Step-2 edges among them. To each failed task's `body`, append a `PRIOR ATTEMPT` note carrying: its kept branch and HEAD sha from `tasks[]`, the blocking issues from its `notes`, and any completeness-critic finding that names the task — plus the instruction that when the prior branch already contains correct work, the implementer should pull that content in (`git diff <sha>` / `git checkout <sha> -- <path>` against the named commit; BASE stays the integration HEAD) instead of reimplementing from scratch. Blocked tasks ride verbatim. Present the constructed salvage waves to the human for approval, then relaunch per the Redirect mechanics below (`resume: true`, same `integrationBranch`) and return to this gate when it completes.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the

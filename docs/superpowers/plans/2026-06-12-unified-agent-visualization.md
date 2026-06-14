@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — docs/post change; verified by the committed post-visual test suite, not a held-out exam.
+
 **Goal:** Replace the blog post's three ad-hoc visuals with one consistent left-to-right fan-out/fan-in agent grammar (animated via a dependency-free seekable timeline engine), and add a capture script that exports the animations as looping GIF+MP4 for JS-free platforms.
 
 **Architecture:** All animation lives inline in `docs/superpowers-ultrapowers-evals.html` as deterministic, seekable timelines — pure functions of elapsed ms — driven by `requestAnimationFrame` for readers and by a `window.__seek` hook (enabled with `?capture`) for frame-exact export. Three figure changes (new anatomy figure, rebuilt race figure on real run data, redrawn fixture thumbnails) plus a standalone Python capture script using Playwright + ffmpeg.

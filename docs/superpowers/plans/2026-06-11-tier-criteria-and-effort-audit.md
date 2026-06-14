@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — engine/audit change; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Close issue #20 — sharpen the model-tier criteria around judgment-likelihood (docs) and add a deterministic post-run effort-audit script, shipped as 0.0.8.
 
 **Architecture:** Two independent lanes — a docs lane (Task 1) and a script lane (Task 2) — joined by an integration-docs task (Task 3) that touches files from both. Spec: `docs/superpowers/specs/2026-06-11-tier-criteria-and-effort-audit-design.md`.

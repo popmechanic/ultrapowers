@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
 
+**Acceptance:** sealed 4b5e2d78b16f (sha256:4b5e2d78b16f5d9c6128e32065081837c9350a285bf5c2ff953c86c979c0c466)
+
 **Goal:** Build a five-stage ledger pipeline — validation, parsing, balance computation, report formatting, CLI — where each stage builds strictly on the previous one.
 
 **Tech Stack:** Python 3.11 + pytest. Run the suite with `python3 -m pytest tests/ -q` from the repo root.

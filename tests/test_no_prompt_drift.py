@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "skills/ultrapowers/references/reviewer-prompts.md"
 WORKFLOW = ROOT / "skills/ultrapowers/workflow.js"
 
-MARKER = re.compile(r"<!-- BAKE:(\w+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
+MARKER = re.compile(r"<!-- BAKE:([\w-]+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
 
 
 def normalize(s: str) -> str:
@@ -35,11 +35,11 @@ def baked_blocks():
 def test_expected_blocks_present():
     blocks = baked_blocks()
     for name in ("GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT",
-                 "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA"):
+                 "IMPLEMENTER_SCHEMA", "REVIEWER_SCHEMA", "ACCEPTANCE-EXAM"):
         assert name in blocks, "missing BAKE marker for " + name
 
 
-@pytest.mark.parametrize("name", ["GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT"])
+@pytest.mark.parametrize("name", ["GUARD", "IMPLEMENTER_PROMPT", "REVIEWER_PROMPT", "ACCEPTANCE-EXAM"])
 def test_block_is_baked_into_workflow(name):
     blocks = baked_blocks()
     wf = normalize(WORKFLOW.read_text())

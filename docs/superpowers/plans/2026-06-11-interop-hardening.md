@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — engine interop change; verified by the committed compat/sim suite, not a held-out exam.
+
 **Goal:** Close every finding from the 2026-06-10 review — the two P1 engine bugs, the three superpowers-interop frictions, the doc drift — and the three structural gaps (no upstream version coupling, LLM-only compilation, no engine preflight), then release 0.4.0.
 
 **Architecture:** Three workstreams. (1) **Determinism:** a real compiler (`skills/ultrapowers/scripts/compile_plan.py`) mechanically parses marked plans into the transparency block — fence-aware splitting, marker/heuristic classification, DAG + Kahn waves — so LLM judgment shrinks to heuristic-flagged entries and run knobs. (2) **Engine hardening:** `workflow.js` gains failure containment (a thrown `agent()` call degrades to a failed task/CONFLICT merge instead of killing the run), dependency-aware cascade blocking via a new `args.edges`, worktree cleanup in the merge prompt, and small validations; every prompt change re-bakes through the existing BAKE/drift-test machinery. (3) **Interop truthing:** docs stop overclaiming (blockedWaves in the report contract, review-topology divergence stated honestly, executor-variance semantics for gate/release), the finishing-a-development-branch handoff is sequenced correctly, ultraplan amends the plan header that steers executors away from us, and new compat tests + an attestation + an engine probe detect drift in both substrates we depend on.

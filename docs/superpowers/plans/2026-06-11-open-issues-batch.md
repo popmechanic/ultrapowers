@@ -2,6 +2,8 @@
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**Acceptance:** suite — engine fixes; verified by the committed test suite, not a held-out exam.
+
 **Goal:** Fix ten open GitHub issues (#8–#16, #18) across workflow.js, compile_plan.py, sweep_worktrees.sh, and the docs; close #17 won't-fix; ship 0.6.0.
 
 **Architecture:** Four file-collision lanes serialized internally by Depends-on markers, parallel with each other: workflow.js (Tasks 1→2→3), compile_plan.py (4→5→6), sweep_worktrees.sh (7→8), docs (9, 10). Every behavior change is TDD'd against `tests/sim_workflow.mjs` (workflow logic) or pytest (compiler, sweep). Spec: `docs/superpowers/specs/2026-06-11-open-issues-batch-design.md`.
