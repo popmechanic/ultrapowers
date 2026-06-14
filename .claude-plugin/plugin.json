@@ -1,6 +1,6 @@
 {
   "name": "ultrapowers",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Autonomous, parallel, worktree-isolated execution of Superpowers plans via a committed Dynamic Workflow. Pairs with superpowers; invoke as /ultrapowers <plan-path> instead of subagent-driven-development.",
   "author": {
     "name": "Marcus Estes",
