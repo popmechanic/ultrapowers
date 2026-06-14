@@ -4,6 +4,7 @@ __pycache__/
 .DS_Store
 
 # ultrapowers run artifacts (installed copies + engine worktrees)
+# .claude/workflows/ holds Step-4a saved-workflow copies of skills/ultrapowers/
+# harnesses/*.js — install artifacts, regenerated every run, never source of truth.
 .claude/worktrees/
-.claude/workflows/ultrapowers-run.js
-.claude/workflows/ultrapowers-probe.js
+.claude/workflows/
