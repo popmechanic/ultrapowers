@@ -278,7 +278,17 @@ git commit -m "docs: document the sealed/suite/waived disposition decision rule"
 **Depends-on:** 1
 
 **Files:**
-- Modify (add one line each): `docs/superpowers/plans/2026-06-10-plan-marker-injection.md`, `docs/superpowers/plans/2026-06-11-interop-hardening.md`, `docs/superpowers/plans/2026-06-11-open-issues-batch.md`, `docs/superpowers/plans/2026-06-11-review-cycle-1-fixes.md`, `docs/superpowers/plans/2026-06-11-review-cycle-2-fixes.md`, `docs/superpowers/plans/2026-06-11-review-cycle-3-fixes.md`, `docs/superpowers/plans/2026-06-11-review-cycle-4-fixes.md`, `docs/superpowers/plans/2026-06-11-tier-criteria-and-effort-audit.md`, `docs/superpowers/plans/2026-06-12-eval-driven-hardening.md`, `docs/superpowers/plans/2026-06-12-unified-agent-visualization.md`, `docs/superpowers/plans/2026-06-12-sealed-acceptance.md`
+- Modify: `docs/superpowers/plans/2026-06-10-plan-marker-injection.md`
+- Modify: `docs/superpowers/plans/2026-06-11-interop-hardening.md`
+- Modify: `docs/superpowers/plans/2026-06-11-open-issues-batch.md`
+- Modify: `docs/superpowers/plans/2026-06-11-review-cycle-1-fixes.md`
+- Modify: `docs/superpowers/plans/2026-06-11-review-cycle-2-fixes.md`
+- Modify: `docs/superpowers/plans/2026-06-11-review-cycle-3-fixes.md`
+- Modify: `docs/superpowers/plans/2026-06-11-review-cycle-4-fixes.md`
+- Modify: `docs/superpowers/plans/2026-06-11-tier-criteria-and-effort-audit.md`
+- Modify: `docs/superpowers/plans/2026-06-12-eval-driven-hardening.md`
+- Modify: `docs/superpowers/plans/2026-06-12-unified-agent-visualization.md`
+- Modify: `docs/superpowers/plans/2026-06-12-sealed-acceptance.md`
 - Create: `tests/test_all_plans_compile.py`
 
 This task depends on Task 1: the `suite` lines it adds only compile once the compiler recognizes `suite`. (The `2026-06-13-suite-disposition.md` plan — this one — already carries its own suite line in its header, so it needs no backfill; the guard test will cover it automatically.)
