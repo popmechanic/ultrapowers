@@ -2,6 +2,10 @@
 """Compile queued docket entries into a collision-aware execution order plus a
 could-have-parallelized projection (recorded, not executed — the v2 seam).
 
+Execution order (v1): pure score-descending.  The collision graph informs the
+could-have-parallelized projection only; it does NOT reorder sequential
+execution (sequential execution needs no collision-based reordering).
+
 A plan's write-set comes from the authoritative compiler: run
 skills/ultrapowers/scripts/compile_plan.py <plan> and union tasks[].writes.
 Spec: docs/superpowers/specs/2026-06-12-docket-design.md
@@ -31,7 +35,25 @@ def plan_writes(plan_path):
 
 
 def compile_docket(docket_text, writes_resolver=plan_writes, budget_usd=None):
+    """Compile queued docket entries into execution order and parallelism projection.
+
+    Order is pure score-descending (v1).  The collision graph informs the
+    could-have-parallelized projection only; it does NOT reorder sequential
+    execution (sequential execution needs no collision-based reordering).
+
+    Raises ValueError for malformed queued entries: missing Plan or duplicate
+    Plan paths across entries.
+    """
     entries = [e for e in docket_lib.parse_docket(docket_text) if e.state == "queued"]
+
+    missing = [e.issue for e in entries if not e.plan]
+    if missing:
+        raise ValueError(f"queued docket entries missing a Plan: {missing}")
+    plan_paths = [e.plan for e in entries]
+    dupes = sorted({p for p in plan_paths if plan_paths.count(p) > 1})
+    if dupes:
+        raise ValueError(f"queued docket entries share a Plan path: {dupes}")
+
     by_score = sorted(entries, key=lambda e: -float(e.score.split()[0]))
     wsets = {e.plan: set(writes_resolver(e.plan)) for e in entries}
 
