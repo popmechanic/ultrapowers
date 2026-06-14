@@ -23,7 +23,7 @@ from pathlib import Path
 
 TASK_HEAD = re.compile(r"### Task ([A-Za-z0-9]+):")
 # First phrases of the baked prompts (reviewer-prompts.md / wave-merge.md).
-# tests/test_no_prompt_drift.py pins those sources into workflow.js, so the
+# tests/test_no_prompt_drift.py pins those sources into waves.js, so the
 # classifier inherits their stability; an unmatched prompt degrades to
 # "unknown", never to an error.
 ROLE_MARKERS = [

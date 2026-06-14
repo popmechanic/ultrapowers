@@ -770,7 +770,7 @@ def main(argv=None):
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     if not impl:
         # Bug D: a gates/release/manual-only plan compiles to waves: [] —
-        # workflow.js refuses empty waves, so warn loudly while still emitting
+        # waves.js refuses empty waves, so warn loudly while still emitting
         # the JSON (exit 0): the runbook and gates remain meaningful.
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the runbook and gates "

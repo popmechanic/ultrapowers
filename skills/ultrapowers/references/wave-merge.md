@@ -22,7 +22,7 @@ The timestamp is passed in via `args` at workflow startup — workflows cannot c
 
 The setup agent first checks out `args.baseBranch` when supplied (the orchestrator derives the repo's default branch in SKILL.md Step 2 — protects against a stale checkout left by a previous run), runs the project test command once to establish the **baseline**, and reports `baselinePassed` / `baselineOutput`. The workflow validates the setup report and **throws** if the integration branch was not created — no task runs against a missing branch. A red baseline does not abort the run; it is logged, recorded in the report's `baseline` field, and surfaced as a judgment call so the pre-merge gate can weigh every later test result against it.
 
-The canonical prompt wording (`{{...}}` tokens mark values `workflow.js` interpolates at run time; `{{BASE_STEP}}` is the optional base-branch checkout sentence):
+The canonical prompt wording (`{{...}}` tokens mark values `waves.js` interpolates at run time; `{{BASE_STEP}}` is the optional base-branch checkout sentence):
 
 <!-- BAKE:SETUP_PROMPT_CREATE -->
 You are the setup agent on the session repo main checkout. {{BASE_STEP}}Create the integration branch: git checkout -b {{INTEGRATION_BRANCH}}. Then establish the test baseline: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
@@ -105,7 +105,7 @@ Caps and failure handling:
 
 ## Integration and Completeness Review
 
-After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `workflow.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch from the main checkout (its result populates the report's `tests` field) and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
+After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `waves.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch from the main checkout (its result populates the report's `tests` field) and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
 The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence):
 

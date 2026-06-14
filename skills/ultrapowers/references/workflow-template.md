@@ -100,7 +100,7 @@ confirm it reports `waves` as an array.
 
 **Probe result (2026-06-03, claude v2.1.161 via `claude --plugin-dir ... -p`):** `args` arrived as a
 raw **JSON string** (`rawType: "string"`), not a parsed object — so `args.waves` was `undefined` until
-parsed. Fix applied: `workflow.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
+parsed. Fix applied: `waves.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
 reading `.waves` (and throws if the string is not valid JSON). After the fix the probe returns
 `{ rawType: "string", argsSeen: ["waves"], wavesType: "array" }`. The defensive parse handles both
 delivery forms (object or string), so the temp-file fallback is **not** needed. Re-run the probe if a
@@ -163,7 +163,7 @@ accepted identifiers.
 1. Update the canonical prose in `references/reviewer-prompts.md` (implementer/spec/quality/GUARD,
    inside the `<!-- BAKE:NAME -->` markers) and the merge/setup/reconcile prompts in
    `references/wave-merge.md`.
-2. Copy the changed wording into the corresponding `const` blocks in `workflow.js`. Formatting need
+2. Copy the changed wording into the corresponding `const` blocks in `waves.js`. Formatting need
    not match (the drift test normalizes away markdown/backticks/punctuation), but the **words must**.
 3. Run `python3 -m pytest tests/test_no_prompt_drift.py` — it fails until the baked copy matches the
    source. Iterate until green.

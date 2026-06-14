@@ -8,7 +8,7 @@ These prompts are adapted from `superpowers:subagent-driven-development` (implem
 
 **This file is the single source of truth for the discipline baked into `skills/ultrapowers/harnesses/waves.js`.** The discipline is no longer loaded from Superpowers at runtime — it is baked into the committed workflow as string/object constants at *build time*. When the upstream Superpowers skills change, refresh the blocks here and then re-bake them into `waves.js` (see the re-bake procedure in `workflow-template.md`).
 
-The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block (here and in `wave-merge.md`, whose blocks use `{{...}}` placeholders for runtime interpolations) and asserts (whitespace-normalized) that it appears in `workflow.js`, so the baked copies can never silently diverge from their sources.
+The prose blocks below are wrapped in `<!-- BAKE:NAME -->` … `<!-- /BAKE -->` markers. `tests/test_no_prompt_drift.py` extracts each marked block (here and in `wave-merge.md`, whose blocks use `{{...}}` placeholders for runtime interpolations) and asserts (whitespace-normalized) that it appears in `waves.js`, so the baked copies can never silently diverge from their sources.
 
 ---
 
@@ -86,7 +86,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 `headSha` is required for every status, including `BLOCKED` / `NEEDS_CONTEXT` — the worktree always has a HEAD (at minimum the provided `BASE` sha), and downstream steps refuse to operate on a guessed sha.
 
 **Headless downgrade:** upstream treats `NEEDS_CONTEXT` as "answer the question and
-re-dispatch". A headless workflow cannot answer, so `workflow.js` records the task
+re-dispatch". A headless workflow cannot answer, so `waves.js` records the task
 as `failed` with the question in `notes` — it surfaces at the pre-merge gate for a
 redirect rather than pausing a run that cannot pause. The same downgrade applies to
 `BLOCKED`: upstream's interactive ladder (add context → stronger model → split →

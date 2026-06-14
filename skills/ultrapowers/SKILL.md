@@ -10,7 +10,7 @@ allowed-tools: Workflow Skill Read Grep Glob Bash
 Autonomously implement an approved Superpowers plan via a **committed, parallel,
 worktree-isolated Dynamic Workflow**. This skill does not author a workflow at runtime: it
 validates the plan, computes the parallel wave plan, renders that wave plan for transparency,
-then immediately launches the frozen `workflow.js` that ships with the skill. Choosing
+then immediately launches the frozen `waves.js` that ships with the skill. Choosing
 ultrapowers at the planning session's execution handoff (or invoking `/ultrapowers` on an
 approved plan) **is** the authorization to execute — there is no separate wave-plan approval
 pause. Each task runs in its own
@@ -18,7 +18,7 @@ git worktree and passes an independent review (spec-compliance + code-quality in
 two passes under the `adversarial` profile) before its branch merges into a single integration branch. A human-readable report and a merge gate conclude the run.
 
 The discipline (implementer/reviewer/completeness prompts and schemas) is **baked into
-`workflow.js` at build time**, not loaded from Superpowers at runtime — so execution does not
+`waves.js` at build time**, not loaded from Superpowers at runtime — so execution does not
 depend on live `superpowers:*` skill resolution. Superpowers and ultrapowers hand off only
 through the plan file on disk.
 
@@ -296,3 +296,4 @@ revision) or an inability to create the integration branch.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
 - `harnesses/probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
 - `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) used by Step 4a to install copies by glob.
+- `references/harness-ratchet.md` — the born-dynamic-then-frozen promotion path for new harness topologies (how a candidate becomes a registered, frozen harness).

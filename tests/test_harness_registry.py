@@ -42,3 +42,10 @@ def test_candidates_are_not_registered():
     cand = HARNESSES / "candidates"
     assert cand.is_dir(), "candidates/ directory must exist (ratchet staging)"
     assert not list(cand.glob("*.harness.json")), "candidates must not carry registered manifests"
+
+
+def test_skill_links_the_ratchet_doc():
+    """The ratchet discipline must be reachable from the skill, not orphaned.
+    validate_skill only checks forward refs exist; this pins the inbound link."""
+    skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
+    assert "references/harness-ratchet.md" in skill, "SKILL.md must link the ratchet doc"
