@@ -1365,3 +1365,49 @@ def test_fenced_acceptance_line_is_ignored():
     plan = _minimal_marked_plan("```\n" + SEAL_LINE + "\n```")
     code, _, err = compile_text(plan)
     assert code != 0, "a fenced example must not count as the plan's seal"
+
+
+# ---------------------------------------------------------------------------
+# Text-based compile helpers (thin wrappers to avoid duplicating subprocess logic)
+# ---------------------------------------------------------------------------
+
+def compile_plan_text(plan_md):
+    import tempfile, os
+    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
+    pathlib.Path(p).write_text(plan_md)
+    try:
+        return compile_plan(pathlib.Path(p))
+    finally:
+        pathlib.Path(p).unlink(missing_ok=True)
+
+
+def compile_raw_text(plan_md):
+    import tempfile, os
+    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
+    pathlib.Path(p).write_text(plan_md)
+    try:
+        return compile_plan_raw(pathlib.Path(p))
+    finally:
+        pathlib.Path(p).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Suite acceptance disposition tests
+# ---------------------------------------------------------------------------
+
+def test_acceptance_suite_parsed():
+    out = compile_plan_text(_minimal_marked_plan(
+        "**Acceptance:** suite — verified by the committed suite"))
+    assert out["acceptance"]["mode"] == "suite"
+    assert "committed suite" in out["acceptance"]["reason"]
+
+
+def test_acceptance_suite_satisfies_enforcement():
+    r = compile_raw_text(_minimal_marked_plan("**Acceptance:** suite — x"))
+    assert r.returncode == 0
+
+
+def test_fenced_suite_line_is_ignored():
+    plan = _minimal_marked_plan("```\n**Acceptance:** suite — fenced\n```")
+    r = compile_raw_text(plan)
+    assert r.returncode != 0, "a fenced suite line must not count as a disposition"

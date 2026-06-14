@@ -357,6 +357,7 @@ ACCEPT_SEALED = re.compile(
     r"^\*\*Acceptance:\*\*\s*sealed\s+([0-9a-f]{8,40})\s*\(sha256:([0-9a-f]{64})\)\s*$",
     re.I)
 ACCEPT_WAIVED = re.compile(r"^\*\*Acceptance:\*\*\s*waived\s*[—–-]\s*(.+?)\s*$", re.I)
+ACCEPT_SUITE = re.compile(r"^\*\*Acceptance:\*\*\s*suite\s*[—–-]\s*(.+?)\s*$", re.I)
 
 
 def parse_acceptance(text):
@@ -365,7 +366,7 @@ def parse_acceptance(text):
     Fence-aware scan of the whole document (the line conventionally sits in
     the plan header, but position is not load-bearing). Returns
     {"mode": "sealed", "sealId", "sha256"} | {"mode": "waived", "reason"}
-    | {"mode": "missing"}.
+    | {"mode": "suite", "reason"} | {"mode": "missing"}.
     Spec: docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md
     """
     for line, in_fence in _fence_aware_lines(text):
@@ -378,6 +379,9 @@ def parse_acceptance(text):
         m = ACCEPT_WAIVED.match(s)
         if m:
             return {"mode": "waived", "reason": m.group(1)}
+        m = ACCEPT_SUITE.match(s)
+        if m:
+            return {"mode": "suite", "reason": m.group(1)}
     return {"mode": "missing"}
 
 
