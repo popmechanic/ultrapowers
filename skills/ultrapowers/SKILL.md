@@ -241,6 +241,13 @@ out in the session repository and nothing switches it back — run `git checkout
 Skipping this makes every `git log`/`git merge` at this gate silently target the integration
 branch, so the work *looks* prematurely merged when it is not.
 
+**Then assert the session checkout is clean and on the right tree — the deterministic guard for #29/#32.** A misbehaving review role cannot police itself and the engine has no shell, so this check lives here, where the main session does have one. On the session repo, before any gate decision:
+
+- `git status --porcelain` MUST be **empty**. A non-empty result means a role wrote outside the worktree discipline (as in #32) — that work is unreviewed by construction. Do **not** Approve: surface the diff to the human as a `BLOCKED` condition for explicit disposition; never silently absorb or `git reset` it away (silently moving trees is the very behavior #29 punished).
+- The integration branch HEAD MUST **equal** the report's last merge headSha: `git rev-parse <integrationBranch>` must match `waveMerges[<last>].headSha` from the report (read the branch without checking it out — you restored `<baseBranch>` above). A mismatch means the tree on disk is not the one the run produced (checkout drift, #29) — do **not** Approve; surface the mismatch as `BLOCKED` and re-verify before any merge.
+
+Only when the checkout is clean AND the integration HEAD matches the reported merge headSha do you proceed to the `tests.passed` / acceptance gating below.
+
 **Optionally, audit the run's effort** (recommended after any sizable run): run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/audit_run.py <transcript-dir>` — the transcript directory is printed in the Workflow launch result ("Transcript dir:"). Include its effort table when presenting the report; flagged tier-misrank candidates feed the NEXT plan's tier assignments. The script is advisory by contract (read-only, exits 0 even when the engine's transcript layout has drifted) — never treat its absence of output as a gate failure.
 
 Then render the workflow's structured report per `references/report-format.md`:
