@@ -104,3 +104,33 @@ def test_transition_from_unknown_state_raises():
     bogus = dataclasses.replace(e, state="nonsense")
     with pytest.raises(m.DocketError):
         m.transition(bogus, "planned")
+
+
+def test_header_without_space_after_colon_fails_loud():
+    m = load()
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket("# D\n\n### #7:title\n**State:** triaged\n**Score:** 1 — x\n")
+
+
+def test_stray_non_issue_heading_fails_loud():
+    m = load()
+    import pytest
+    bad = ("# D\n\n### #1: ok\n**State:** triaged\n**Score:** 1 — x\n"
+           "### bad header\n**State:** queued\n**Score:** 9 — y\n")
+    with pytest.raises(m.DocketError):
+        m.parse_docket(bad)
+
+
+def test_empty_title_fails_loud():
+    m = load()
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket("# D\n\n### #7: \n**State:** triaged\n**Score:** 1 — x\n")
+
+
+def test_non_numeric_score_fails_loud():
+    m = load()
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket("# D\n\n### #7: ok\n**State:** triaged\n**Score:** soon — x\n")

@@ -42,6 +42,8 @@ def parse_docket(text):
             return
         if "State" not in fields or "Score" not in fields:
             raise DocketError(f"issue #{cur[0]} missing State or Score")
+        if not re.match(r"^\s*\d+(\.\d+)?(\s|$)", fields["Score"]):
+            raise DocketError(f"issue #{cur[0]} has a non-numeric Score: {fields['Score']!r}")
         if cur[0] in seen:
             raise DocketError(f"duplicate issue #{cur[0]} in docket")
         seen.add(cur[0])
@@ -51,10 +53,15 @@ def parse_docket(text):
                              plan=fields.get("Plan") or None, seal=fields.get("Seal") or None))
 
     for line in text.splitlines():
-        h = _HEAD.match(line)
-        if h:
+        if line.startswith("### "):
             flush()
-            cur, fields = (h.group(1), h.group(2)), {}
+            h = _HEAD.match(line)
+            if not h:
+                raise DocketError(f"malformed issue header (expected '### #<n>: <title>'): {line!r}")
+            title = h.group(2).strip()
+            if not title:
+                raise DocketError(f"issue #{h.group(1)} has an empty title")
+            cur, fields = (h.group(1), title), {}
             continue
         f = _FIELD.match(line)
         if f and cur is not None:
