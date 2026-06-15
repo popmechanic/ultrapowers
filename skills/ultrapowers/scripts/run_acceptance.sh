@@ -5,22 +5,44 @@
 #
 # Usage: run_acceptance.sh <seal-id> <branch> <expected-sha256>
 #                          [--vault DIR] [--repo DIR]
+#    or: run_acceptance.sh --baseline --suite DIR --branch BASE --run CMD
+#                          [--bootstrap CMD] [--repo DIR]   (seal-time RED proof)
 # Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
 set -uo pipefail
 
-SEAL_ID="${1:?usage: run_acceptance.sh <seal-id> <branch> <sha256> [--vault DIR] [--repo DIR]}"
-BRANCH="${2:?missing branch}"
-EXPECTED="${3:?missing expected sha256}"
-shift 3
+SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
 VAULT="${HOME}/.ultrapowers/acceptance"
 REPO="$(pwd)"
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --vault) VAULT="$2"; shift 2 ;;
-    --repo)  REPO="$2";  shift 2 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
-  esac
-done
+B_SUITE=""; B_RUN=""; B_BOOT=""
+MODE="sealed"
+if [ "${1:-}" = "--baseline" ]; then
+  MODE="baseline"; shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --suite)     B_SUITE="$2"; shift 2 ;;
+      --branch)    BRANCH="$2";  shift 2 ;;
+      --run)       B_RUN="$2";   shift 2 ;;
+      --bootstrap) B_BOOT="$2";  shift 2 ;;
+      --repo)      REPO="$2";    shift 2 ;;
+      *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+  done
+  : "${B_SUITE:?--baseline requires --suite}"
+  : "${BRANCH:?--baseline requires --branch}"
+  : "${B_RUN:?--baseline requires --run}"
+else
+  SEAL_ID="${1:?usage: run_acceptance.sh <seal-id> <branch> <sha256> [--vault DIR] [--repo DIR]}"
+  BRANCH="${2:?missing branch}"
+  EXPECTED="${3:?missing expected sha256}"
+  shift 3
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --vault) VAULT="$2"; shift 2 ;;
+      --repo)  REPO="$2";  shift 2 ;;
+      *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+  done
+fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 emit() { # status passed exit_code output [redKind] → prints JSON, never fails
@@ -98,6 +120,18 @@ $OUT"
   fi
   return 0
 }
+
+# ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
+if [ "$MODE" = baseline ]; then
+  run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
+  if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
+    emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
+  fi
+  if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then
+    emit GREEN_AT_BASELINE true "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 1
+  fi
+  emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 1
+fi
 
 # ── Sealed gate path ──────────────────────────────────────────────────────────
 SUITE="$VAULT/$SEAL_ID/suite"
