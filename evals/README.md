@@ -7,6 +7,10 @@ A controlled comparison of plan-execution engines across **cost**, **clock time*
 2. What does model tiering cost in quality, at constant orchestration? (B vs C)
 3. What does the orchestration alone buy, at constant model spend? (A vs C)
 
+> Once a premium frontier model (Fable) is in play, the headline question narrows from
+> "which engine" to *where to spend the premium model* — see **Fable placement sweep**
+> below, which reuses these fixtures and scoring machinery.
+
 ## Conditions
 
 | ID | Engine | Models |
@@ -78,6 +82,71 @@ Capacity-safe schedule:
 The B-vs-C comparison doubles as the subscriber headline: same orchestration, tiered vs
 all-frontier models, measured directly in weekly-limit percentage — i.e. **how much
 further model tiering stretches one week of a Max plan**.
+
+## Fable placement sweep (planned — the headline experiment)
+
+> **Status: blocked, by design captured now.** Fable 5 is suspended under a US-government
+> export-control directive (2026-06-12; Anthropic's statement: <https://www.anthropic.com/news/fable-mythos-access>),
+> and the engine cannot yet *place* Fable (see Prerequisites). This section is the design
+> to run the moment both clear.
+
+The matrix above compares engines and model *tiering* on the `haiku/sonnet/opus` ladder.
+Once a premium frontier model exists, the economic question is narrower and sharper:
+**where in the pipeline does spending Fable's premium actually buy a _verified_ result —
+and where is it wasted?** ultrapowers' tier system is precisely the instrument for that:
+it assigns a model per role, so it can place Fable surgically at the verification
+checkpoints (review, fix, completeness critic) while cheaper models do the mechanical
+bulk (implement, merge, setup). Optimizing that placement is the point.
+
+Fable is the new top tier — a fourth rung above opus: `haiku < sonnet < opus < fable`.
+The sweep varies **where Fable sits** and scores each placement by **cost per passing
+acceptance test** — i.e. *how little Fable can you spend and still pass the held-out
+exams?*
+
+### Conditions (the placement ladder)
+
+| ID | Roles on Fable | Everything else | What it isolates |
+|----|----------------|-----------------|------------------|
+| **F-serial** | all roles, serial (no orchestration) | — | The incumbent: "just run the best model serially." Quality + cost ceiling, capacity floor. The thing orchestration must beat on cost-per-pass. |
+| **F-floor** | none — opus at verification | haiku merge/setup, sonnet implement, opus review/fix | The no-Fable reference (≡ the matrix's tiered condition **B**). Establishes the opus baseline pass-rate. Runnable on today's engine. |
+| **F-verify** | reviewers + fix-rounds + completeness critic only | haiku merge/setup, sonnet implement | **The hypothesis:** Fable only where claims are verified. Minimal Fable spend. |
+| **F-build** | + implementers | haiku merge/setup | Adds Fable to generation — tests whether Fable-authored code lifts the pass-rate enough to justify the spend. |
+| **F-all** | every role, parallel | — | All-Fable, orchestrated. Quality ceiling at parallel speed; cost still high. |
+
+Same five fixtures, same held-out acceptance suites, same `score_run.py` / `report.py`
+machinery and per-engine non-pooling. Each condition × 5 fixtures × 3 reps.
+
+### Questions it answers (with attribution)
+
+1. **Does Fable's value concentrate at verification?** `F-verify` vs `F-all` — if F-verify
+   holds F-all's acceptance pass-rate, the premium belongs only at the checkpoints.
+2. **Does Fable-authored code earn its cost?** `F-verify` vs `F-build`.
+3. **Does any Fable placement beat the opus floor enough to justify the premium?**
+   `F-verify`/`F-build`/`F-all` vs `F-floor`.
+4. **The headline:** does orchestrated *surgical* Fable (`F-verify`) match *naive serial*
+   Fable (`F-serial`) at a fraction of the Fable spend? That is the case for ultrapowers
+   as a Fable-economy instrument.
+
+The sharpest metric is **Fable tokens per passing acceptance test** (not just blended
+USD): add a Fable-only token column to the scorer so the premium model's spend is
+isolated from cheap-tier spend.
+
+### Prerequisites (none of this runs today)
+
+1. **Fable access restored** — currently suspended (link above); no timeline.
+2. **Engine learns the Fable tier.** `waves.js` validates tier values against
+   `haiku/sonnet/opus` only (`VALID_MODELS`, throws otherwise) and **hardwires the
+   reviewer + completeness critic to `DEFAULT_TIER.mostCapable` (opus), override-proof.**
+   So Fable cannot be named, and cannot be placed at verification, without an engine
+   change: add the `fable`/`claude-fable-5` alias, and make the **verification-role model
+   a first-class knob** (so `F-floor` and `F-verify` differ only in that knob). This is
+   the gating engine PR.
+3. **Fable pricing in `api_equiv.py`** for cost-per-pass in USD, plus the isolated
+   Fable-token column.
+
+Until (1) and (2) land, run **`F-floor`** (≡ condition B on the current `0.0.10` engine)
+as the standing opus baseline; Fable placements drop in later as their own engine-version
+population (`report.py` keeps them separate, never pooled).
 
 ## Protocol — one run, start to finish
 
@@ -198,8 +267,9 @@ verdict as a tie when interpreting win rates.
 python3 evals/scripts/report.py
 ```
 
-Emits the per-fixture × condition table (median cost, median clock, acceptance pass
-rate, suite green rate, fix rounds) plus judge win rates.
+Emits the per-fixture × condition table, partitioned by engine version (median cost,
+median clock, acceptance pass rate, suite green rate, **plan coverage**, **engine
+version**, fix rounds) plus judge win rates.
 
 ## Validity notes
 
@@ -230,5 +300,5 @@ shows median coverage and flags any cell that is suite-green but coverage < 100%
   ordinary); ultrapowers compiles them into run config. Same verification either way.
 - Wall clock is sensitive to engine load and human latency at gates; treat it as
   indicative, cost and acceptance rate as the hard numbers.
-- One eval, four fixtures — this measures *this* task distribution. Real-repo validity
+- One eval, five fixtures — this measures *this* task distribution. Real-repo validity
   is a follow-up, not a freebie.
