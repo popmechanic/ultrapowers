@@ -103,12 +103,17 @@ line (the compiler refuses it otherwise). After the human approves the plan:
    the repo's test conventions (framework, run command, naming), the base
    branch name, and the vault path `~/.ultrapowers/acceptance/`. Never the
    plan, never the task list, never this conversation's history.
-2. The author writes the suite into the vault, proves it RED against a
-   pristine baseline worktree (a suite that passes before the work exists
-   tests nothing — collection errors from missing modules count as red; the
-   suite's own syntax errors do not), writes `manifest.json`, and returns
-   ONLY: seal-id, sha256, red-run evidence, and a coverage summary mapping
-   spec criteria to test names.
+2. The author writes the suite into the vault, authoring an optional
+   `bootstrapCmd` when the repo's own libraries need an editable install /
+   setup to import, and proves it RED through the exact gate runner
+   (`run_acceptance.sh --baseline …`, which creates the worktree, runs the
+   bootstrap, then the suite, exactly as the pre-merge gate will) — a suite
+   that passes before the work exists tests nothing; a `redKind:"collection"`
+   red must fail on the feature's own import, not a still-unbootstrapped repo
+   library. The author writes `manifest.json` (recording `bootstrapCmd` so
+   seal-time and gate-time share one run context) and returns ONLY: seal-id,
+   sha256, red-run evidence, and a coverage summary mapping spec criteria to
+   test names.
 3. Append to the plan, after the header block:
    `**Acceptance:** sealed <seal-id> (sha256:<hash>)` plus the coverage
    summary as a short appendix (spec-derived, safe to show).
