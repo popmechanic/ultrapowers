@@ -7,6 +7,7 @@ worktree-wf_* / ultra/integration-* naming observed by swarm_watch.py
 (the same conventions sweep_worktrees.sh cleans up).
 """
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -73,6 +74,82 @@ def test_template_has_audit_drawer_inert_without_transcripts(tmp_path):
     assert "/*__AUDIT_JS__*/" in html
     # drawer references the Task 1 API by name
     assert "AuditProjection" in html
+
+
+# A richer synthetic agent than test_audit_run's: includes tool_use and
+# tool_result blocks so projection has something to render. Built in tmp_path
+# (not a committed fixture) so same-wave test runs stay concurrency-safe.
+IMPL_PROMPT = ("SAFETY: ...\n\nYou are an implementer subagent operating inside a dedicated git worktree.\n\n"
+               "TASK:\n### Task {tid}: do the thing\nbody\n")
+REVIEW_PROMPT = ("SAFETY: ...\n\nYou are an independent reviewer. You receive the original task text.\n\n"
+                 "### Task {tid}: do the thing\n")
+MERGE_PROMPT = "SAFETY: ...\n\nYou are the wave merge agent, operating on the session repo main checkout.\n"
+
+
+def _write_agent(run_dir, name, first_user, worktree="/wt/x"):
+    lines = [
+        json.dumps({"type": "user", "version": "2.1.177",
+                    "message": {"content": [{"type": "text", "text": first_user}]}}),
+        "not json {{{",  # malformed line, must be skipped
+        json.dumps({"type": "assistant", "version": "2.1.177",
+                    "message": {"model": "test-model",
+                                "usage": {"output_tokens": 11},
+                                "content": [{"type": "text", "text": "I'll start by reading the plan."},
+                                            {"type": "tool_use", "name": "Read", "input": {"file": "x.py"}}]}}),
+        json.dumps({"type": "user", "version": "2.1.177",
+                    "message": {"content": [{"type": "tool_result", "content": "240 lines"}]}}),
+    ]
+    (run_dir / f"agent-{name}.jsonl").write_text("\n".join(lines) + "\n")
+    (run_dir / f"agent-{name}.meta.json").write_text(
+        json.dumps({"agentType": "workflow-subagent", "worktreePath": worktree}))
+
+
+def _make_run(tmp_path):
+    run_dir = tmp_path / "wf_test"
+    run_dir.mkdir()
+    _write_agent(run_dir, "a1", IMPL_PROMPT.format(tid="1"))
+    _write_agent(run_dir, "a2", REVIEW_PROMPT.format(tid="1"))
+    _write_agent(run_dir, "a3", MERGE_PROMPT)
+    return run_dir
+
+
+def test_render_with_transcripts_bakes_index_and_symlinks(tmp_path):
+    run_dir = _make_run(tmp_path)
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    assert "/*__AUDIT_INDEX__*/null" not in html, "index placeholder not replaced"
+    assert "/*__AUDIT_JS__*/" not in html, "audit_project.js not inlined"
+    assert "globalThis.AuditProjection" in html, "module body inlined"
+    # impl agent classified to task '1' (== DAG station id '1')
+    assert '"role": "impl"' in html and '"task": "1"' in html
+    assert '"role": "merge"' in html  # run-level agent present
+    # live mode: symlink to the raw transcript next to swarm.html, no copy
+    link = out / "agent-a1.jsonl"
+    assert link.is_symlink(), "expected a symlink in live mode"
+    assert pathlib.Path(os.readlink(link)).name == "agent-a1.jsonl"
+
+
+def test_render_embed_bakes_content_without_symlinks(tmp_path):
+    run_dir = _make_run(tmp_path)
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--embed", "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    assert "/*__AUDIT_EMBED__*/null" not in html, "embed placeholder not replaced"
+    assert "240 lines" in html, "tool_result content baked for offline use"
+    assert not (out / "agent-a1.jsonl").exists(), "embed mode must not create symlinks"
+
+
+def test_transcripts_out_must_differ_from_run_dir(tmp_path):
+    run_dir = _make_run(tmp_path)
+    import subprocess as sp
+    p = sp.run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+                "--transcripts", str(run_dir), "--out", str(run_dir)],
+               capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "read-only" in (p.stdout + p.stderr).lower()
 
 
 def test_swarm_watch_observes_engine_footprints(tmp_path):
