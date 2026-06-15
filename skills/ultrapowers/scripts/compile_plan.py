@@ -52,6 +52,36 @@ LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
 # author can fix the ordering intent instead of losing it silently.
 TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
+# Whether a Files-entry token names a file, vs a bare identifier (function name),
+# a dotted attribute reference (`schema.User`), or a route. Files entries are
+# declared to list paths, so the rule keeps real paths and rejects identifier-
+# shaped tokens; admitting an identifier as a write fabricates spurious
+# write-after-write overlap between unrelated tasks.
+EXT_RE = re.compile(r"\.[a-z0-9]{1,8}$")  # real extensions are lowercase/digits
+
+
+def _is_pathlike(tok):
+    t = tok.strip().rstrip(",;").split(":", 1)[0].strip()  # drop a :line-range
+    if not t:
+        return False
+    if "/" in t:
+        return True                       # a relative/absolute path
+    if EXT_RE.search(t):
+        return True                       # a filename with a lowercase extension
+    # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
+    # no dot and no underscore (Makefile, Dockerfile, LICENSE, README, Jenkinsfile)
+    # — distinct from snake_case identifiers (cmd_apply_create, _build_parser) and
+    # dotted attribute refs (schema.User, Foo.Bar), which are dropped.
+    if "." not in t and "_" not in t and t[:1].isalpha() and (t[0].isupper() or t.isupper()):
+        return True
+    return False
+
+
+def _nonpath_near_miss(line, dropped):
+    """Single source for the 'non-path token(s) ignored' Files diagnostic so the
+    inline-header and bulleted branches surface dropped identifiers identically."""
+    return (line + "  <non-path token(s) ignored (" + ", ".join(dropped[:3])
+            + ") — Files entries list paths, not identifiers like function names>")
 
 
 def match_head(line):
@@ -219,10 +249,20 @@ def parse_task(t):
             # falling to ambiguous-files with no pointer.
             rest = s[len("**Files:**"):].strip()
             if rest:
-                inline = [p.split(":")[0] for p in PATH_RE.findall(rest) if p]
+                inline, nonpaths = [], []
+                for p in PATH_RE.findall(rest):
+                    if not p:
+                        continue
+                    (inline if _is_pathlike(p) else nonpaths).append(p.split(":")[0])
                 if inline:
                     modifies.extend(inline)
                     files_entries_seen = True
+                    if nonpaths:
+                        files_near_miss.append(_nonpath_near_miss(s, nonpaths))
+                elif nonpaths:
+                    # There WERE backticked tokens, just none path-like — say so,
+                    # rather than the misleading "no backticked paths".
+                    files_near_miss.append(_nonpath_near_miss(s, nonpaths))
                 elif not rest.lower().startswith("none"):
                     # "none" (with or without trailing prose) is a valid value
                     # (common for gates); other prose without backticked paths
@@ -273,16 +313,25 @@ def parse_task(t):
                 # whole prose tail. Paths containing spaces MUST be backticked.
                 backticked = PATH_RE.findall(f.group(2))
                 if backticked:
-                    paths = backticked
+                    # Keep only path-like backticked tokens. A Modify line naming a
+                    # function (`cmd_apply_create`) or a dotted attribute ref
+                    # (`schema.User`) is not a file; admitting it as a write invents
+                    # overlap edges to unrelated tasks. Partition once and surface
+                    # the dropped tokens so the author can fix the line.
+                    paths, dropped = [], []
+                    for b in backticked:
+                        (paths if _is_pathlike(b) else dropped).append(b)
+                    if dropped:
+                        files_near_miss.append(_nonpath_near_miss(s, dropped))
                 else:
                     tokens = f.group(2).strip().split()
                     first = tokens[0].rstrip(",;")
-                    # First token only, and only if it LOOKS like a path ("/" or
-                    # "." present) — a prose value ("run pytest manually") must
-                    # not fabricate a phantom path that defeats the conservative
-                    # ambiguous-files fallback. Strip list separators so
-                    # `a.py, b.py` still overlap-matches a.py elsewhere.
-                    if "/" in first or "." in first:
+                    # First token only, and only if it LOOKS like a path (same
+                    # _is_pathlike rule as backticked tokens, so backtick presence
+                    # never flips a token's classification) — a prose value ("run
+                    # pytest manually") must not fabricate a phantom path that
+                    # defeats the conservative ambiguous-files fallback.
+                    if _is_pathlike(first):
                         paths = [first]
                         if len(tokens) > 1:
                             files_near_miss.append(
@@ -429,10 +478,16 @@ def build_edges(impl):
     # naming the same ghost twice — surface exactly once.
     conflict_seen = set()
 
-    def add_conflict(task, edge, note):
+    # kind separates the two audiences a conflict entry can have:
+    #   "conflict"  — a malformed/ambiguous marker the human should fix.
+    #   "inference" — a benign edge the compiler inferred correctly (a
+    #                 write/prose edge overriding a `Depends-on: none`); it is
+    #                 informational, not a problem. SKILL.md renders the two
+    #                 buckets separately so genuine conflicts are not drowned out.
+    def add_conflict(task, edge, note, kind="conflict"):
         if (task, edge) not in conflict_seen:
             conflict_seen.add((task, edge))
-            conflicts.append({"task": task, "edge": edge, "note": note})
+            conflicts.append({"task": task, "edge": edge, "note": note, "kind": kind})
 
     def add(a, b, why):
         if a in ids and b in ids and a != b and (a, b) not in seen:
@@ -443,7 +498,8 @@ def build_edges(impl):
             if target["depends_none"] and why != "marker":
                 add_conflict(
                     b, f"{a} -> {b} ({why})",
-                    "Depends-on: none overridden by a conflicting edge — its why label is in the edge field")
+                    "Depends-on: none overridden by a conflicting edge — its why label is in the edge field",
+                    kind="inference")
 
     def would_cycle(a, b):
         """True if adding a -> b would close a cycle (b already reaches a)."""
@@ -552,7 +608,8 @@ def build_edges(impl):
                         + " created by Task " + a["id"]
                         + " — declare **Depends-on:** " + a["id"]
                         + " to make it explicit (or rewrite the mention if it is "
-                        "not a real dependency)")
+                        "not a real dependency)",
+                        kind="inference")
 
     # Tier 3: Document-order heuristics — yield to any opposing earlier PATH.
     # Each tier-3 edge is reachability-checked against everything added before it
@@ -649,7 +706,13 @@ def layer(impl, edges):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
+    ap.add_argument("--emit-launch", type=Path, default=None, dest="emit_launch",
+                    metavar="PATH",
+                    help="also write a launch-ready waves file (verbatim, "
+                         "fence-aware task bodies) to PATH; waves.js reads bodies "
+                         "from it via args.wavesPath so they never ride inline.")
     args = ap.parse_args(argv)
+    emit_launch = args.emit_launch
     plan_text = args.plan.read_text()
     # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
     # named diagnostic, not the generic 'no headings found'.)
@@ -667,11 +730,22 @@ def main(argv=None):
                  if not fenced and near_head.match(line.strip())
                  and not match_head(line)]
     if bad_heads:
+        # Precise "did you mean ###" hint when the ONLY fault is the heading
+        # LEVEL (two or four-plus hashes around an otherwise well-formed
+        # `Task <id>: <title>`). The caps/dotted-id cases keep the generic
+        # message — their level is fine, the id/case is not.
+        # \s* (not \s+) between the hashes and Task so a no-space mistake
+        # (`####Task 2:`) still gets the precise hint, not just the generic error.
+        wrong_level = re.compile(r"^(#{1,2}|#{4,6})\s*Task\s+[A-Za-z0-9]+:", re.I)
+        level_hint = ""
+        if any(wrong_level.match(h) for h in bad_heads):
+            level_hint = (" Task headings use EXACTLY three hashes — did you mean "
+                          "'### Task N: …' rather than '##' or '####'?")
         print("compile_plan: task heading(s) not recognized: "
               + "; ".join(bad_heads[:3])
               + " — ids must be alphanumeric (`### Task <id>: <title>`); a "
               "malformed heading folds its task into the previous one. "
-              "Refusing to compile.", file=sys.stderr)
+              "Refusing to compile." + level_hint, file=sys.stderr)
         raise SystemExit(1)
 
     tasks = [parse_task(t) for t in split_tasks(plan_text)]
@@ -797,18 +871,62 @@ def main(argv=None):
         # Bug A: flatten already-computed topological layering (not document order)
         waves = [[tid] for wave in waves for tid in wave]
 
-    print(json.dumps({
+    # Every conflict entry carries a `kind` ("conflict" needs human attention,
+    # "inference" is a benign auto-inferred edge). type_conflicts are all genuine
+    # conflicts; build_edges already tagged its inference entries.
+    marker_conflicts = [{**c, "kind": c.get("kind", "conflict")}
+                        for c in (type_conflicts + conflicts)]
+
+    # Launch-ready, single-source-of-truth task objects. The orchestrator passes
+    # these THROUGH instead of re-parsing the plan (which would let two parsers
+    # drift). `launch_waves` is LIGHT (no body) so the orchestrator can emit it
+    # inline as args.waves; the verbatim bodies — which can total tens of KB and
+    # must never be transcribed by a model — are written to the --emit-launch
+    # file and read by each task agent from disk (see SKILL.md Step 4b / waves.js
+    # args.wavesPath). The orchestrator still derives tier / review per task.
+    by_id = {t["id"]: t for t in tasks}
+
+    def _files_for(t):
+        return sorted(set(t["creates"]) | set(t["modifies"]) | set(t["reads"]))
+
+    launch_waves = [
+        [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
+          "depends_on": by_id[tid]["depends_on"]} for tid in wave]
+        for wave in waves]
+
+    result = {
         "tasks": out_tasks,
         "dag_edges": edges,
-        "marker_conflicts": type_conflicts + conflicts,
+        "marker_conflicts": marker_conflicts,
         "gates": [t["id"] for t in tasks if t["disposition"] == "gate"],
         "post_merge_runbook": [t["id"] for t in tasks
                                if t["disposition"] in ("release", "manual")],
         "waves": waves,
+        "launch_waves": launch_waves,
         "mode": mode,
         "degrade_reason": degrade,
         "acceptance": acceptance,
-    }, indent=2))
+    }
+
+    if emit_launch is not None:
+        # The launch file carries the FULL, verbatim, fence-aware task bodies
+        # (split_tasks already extracted them fence-aware). Each waves.js task
+        # agent reads its own entry by id from this file — bodies never ride
+        # inline in the Workflow call, and never transit a model.
+        launch_payload = {
+            "tasks": [{"id": tid, "title": by_id[tid]["title"],
+                       "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
+                       "depends_on": by_id[tid]["depends_on"]}
+                      for wave in waves for tid in wave],
+            "waves": waves,
+            "edges": [[e["from"], e["to"]] for e in edges],
+            "acceptance": acceptance,
+        }
+        emit_launch.parent.mkdir(parents=True, exist_ok=True)
+        emit_launch.write_text(json.dumps(launch_payload, indent=2))
+        result["launch_file"] = str(emit_launch)
+
+    print(json.dumps(result, indent=2))
     return 0
 
 

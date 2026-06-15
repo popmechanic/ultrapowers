@@ -34,14 +34,31 @@ The skill launches the workflow with:
 
 ```
 args = { waves, integrationBranch, stamp, dependencyEdges, edges,
-         baseBranch, planPath, resume?, testCmd?, reviewProfile?, tierOverrides?,
-         acceptance? }
+         baseBranch, planPath, wavesPath?, resume?, testCmd?, bootstrapCmd?,
+         reviewProfile?, tierOverrides?, acceptance? }
 ```
 
-- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review? }`. `body`
+- `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review?, testCmd? }`. `body`
   is the full verbatim task text (the script cannot resolve file references). `review` is the optional
   per-task depth (`'adversarial'` | `'lean'`) the orchestrating agent derives from the task's
-  risk/tier; it overrides the run-wide `reviewProfile`. **Only `id` and `body` are validated per task. `title` (completeness task list), `tier` (model selection), and `review` (per-task depth) are consumed; `acceptance` is currently UNUSED; `files` is threaded into the implementer/reviewer prompts as the `FILES` declared-scope line (string array of the task's Create/Modify/Test paths). The verbatim `body` remains authoritative for acceptance criteria.**
+  risk/tier; it overrides the run-wide `reviewProfile`. **`id` is always validated per task. `body` is
+  validated UNLESS `args.wavesPath` is supplied (see below), in which case each task agent reads its own
+  verbatim body from that file by id. `title` (completeness task list), `tier` (model selection),
+  `review` (per-task depth), and `testCmd` (per-task test command) are consumed; `acceptance` is
+  currently UNUSED; `files` is threaded into the implementer/reviewer prompts as the `FILES`
+  declared-scope line (string array of the task's Create/Modify/Test paths). The verbatim `body` remains
+  authoritative for acceptance criteria.**
+- `args.wavesPath` — absolute path to a launch-ready waves file the compiler wrote
+  (`compile_plan.py --emit-launch <path>`). It carries the FULL verbatim, fence-aware task bodies under a
+  top-level `tasks` array keyed by `id`. **This is the first-class large-plan delivery path.** A
+  multi-task plan's bodies can total tens of KB; an LLM orchestrator cannot reliably emit that as one
+  escaped inline JSON value, and relaying it through a phase-0 agent fares no better (a model still has to
+  echo every byte). So when `wavesPath` is supplied, the orchestrator passes only the LIGHT `launch_waves`
+  inline (id/title/files/tier/review — no bodies), and each implementer/reviewer/fix agent reads its own
+  verbatim body from the file **by absolute path** — the same fs-read mechanism `planPath` already uses.
+  No model ever transcribes a body, and delivery does not depend on `baseBranch` containing the plan
+  (the file is read off disk, not out of git). Inline bodies still work for small/back-compat plans, and
+  the two forms can mix (a task with an inline `body` uses it; one without reads from the file).
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
@@ -53,6 +70,17 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 
 - `args.testCmd` — exact project test command (e.g. `'make test'`, `'pnpm -w test'`). Overrides the
   built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
+  A per-task `task.testCmd` overrides it for that task's implementer/reviewer only (a polyglot plan may
+  have Python tasks running `pytest` and Bun tasks running `bun test`); the merge and completeness roles,
+  which test the integrated tree on the session main checkout, keep using the run-wide `testCmd` (so for
+  polyglot repos set it to a command that exercises BOTH stacks, e.g. `pytest -q && (cd app && bun test)`).
+- `args.bootstrapCmd` — a per-worktree setup command threaded into the FRESH, worktree-isolated roles
+  (implementer, reviewer, fix) so they install dependencies before testing. Engine worktrees are cut
+  clean from the integration HEAD: they have no `.venv`, no `node_modules`. A polyglot/monorepo repo
+  (pytest at root + `bun test` in `app/`) needs its stacks installed in each worktree before any suite
+  runs, e.g. `python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)`. The
+  non-isolated roles (setup/merge/reconcile/completeness) operate on the session main checkout, which
+  already has its deps, so they do NOT run it.
 - `args.baseBranch` — the repo's default branch; the setup agent checks it out before creating the
   integration branch (guards against a stale checkout from a previous run).
 - `args.planPath` — path to the plan document; threaded into the completeness prompt so the critic
@@ -103,8 +131,21 @@ raw **JSON string** (`rawType: "string"`), not a parsed object — so `args.wave
 parsed. Fix applied: `waves.js` now `JSON.parse`s `args` when `typeof args === 'string'` before
 reading `.waves` (and throws if the string is not valid JSON). After the fix the probe returns
 `{ rawType: "string", argsSeen: ["waves"], wavesType: "array" }`. The defensive parse handles both
-delivery forms (object or string), so the temp-file fallback is **not** needed. Re-run the probe if a
-future Claude Code version changes how `args` is delivered.
+delivery forms (object or string). Re-run the probe if a future Claude Code version changes how `args`
+is delivered.
+
+**Large-plan body delivery (supersedes the old "temp-file fallback is not needed" note).** The
+above only fixes *delivery form*; it does not fix *size*. A real run (a 14-task plan with ~88KB of
+task bodies, 2026-06-15) showed that an LLM orchestrator cannot reliably emit all bodies as one
+inline JSON value — escaping and transcription risk are too high — and the symmetric "phase-0 agent
+reads a temp file and returns the waves" handshake is no better, because a model still has to echo
+every byte of the bodies. The implemented fix routes the bodies around every model: `compile_plan.py
+--emit-launch <path>` writes the verbatim, fence-aware bodies to a file, the orchestrator passes
+`args.wavesPath` plus the LIGHT inline `launch_waves`, and each task agent reads its own body from the
+file by absolute path (see `args.wavesPath` above). This was a **code** change to `waves.js` (validation
++ dispatch construction), not a change to any baked discipline prompt, so the re-bake procedure below
+did not apply — but the harness changed, so `waves.harness.json` `version` was bumped and the drift
+(`test_no_prompt_drift.py`) and canary (`test_canary.py`) pins were re-confirmed green.
 
 Either way, the **GUARD** (baked into every agent prompt) is the backstop: it forbids any `git` in an
 unrelated repo or a cwd fallback.

@@ -1793,9 +1793,153 @@ async function scenarioReviewDiscipline() {
   console.log('scenario review-discipline: OK')
 }
 
+// ── Scenario: wavesPath file-backed bodies — large plans deliver bodies on disk ─
+// A task may omit its inline `body` when args.wavesPath is supplied; the impl and
+// reviewer then read the verbatim body from that file BY ID (no model transcribes
+// the multi-KB body). An inline body is still honored (mixed / back-compat).
+async function scenarioWavesPathFileBackedBodies() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'alpha', tier: 'cheap', files: ['a.txt'] },      // no body -> from file
+    { id: 'B', title: 'beta', tier: 'cheap', body: 'inline body for B' }, // inline body kept
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [] }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      prompts[label] = prompt
+      // The preflight confirms the file covers the bodyless task id 'A'.
+      if (label === 'waves-file-check') return { ok: true, ids: ['A', 'B'] }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(/waves-file-check/.test(Object.keys(prompts).join(',')),
+    'wavesPath: a preflight check agent ran before setup')
+  assert(/read your verbatim task text from the JSON file at \/repo\/\.claude\/ultrapowers\/waves-sim\.json/.test(prompts['impl:A']),
+    'wavesPath: impl:A reads its body from the file at wavesPath')
+  assert(prompts['impl:A'].includes('"id" is "A"'),
+    'wavesPath: impl:A points to its OWN id in the file')
+  assert(/read your verbatim task text from the JSON file/.test(prompts['review:A:1']),
+    'wavesPath: reviewer also reads A body from the file')
+  assert(prompts['impl:B'].includes('\nTASK:\ninline body for B'),
+    'wavesPath: an inline body is still embedded verbatim (mixed / back-compat)')
+  assert(r.tasks.every((t) => t.status === 'done'), 'wavesPath: validation passed, all tasks done')
+  console.log('scenario wavesPath-file-backed-bodies: OK')
+}
+
+// ── Scenario: a bodyless task without wavesPath must fail loud ─────────────────
+async function scenarioWavesPathRequiredForMissingBody() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: { waves: [[{ id: 'A', title: 'a', tier: 'cheap' }]], // no body AND no wavesPath
+              integrationBranch: 'ib', stamp: 's' },
+      budget: undefined })
+  } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
+  assert(threw, 'wavesPath-missing: a bodyless task without wavesPath must throw the fail-loud error')
+  console.log('scenario wavesPath-required-for-missing-body: OK')
+}
+
+// ── Scenario: wavesPath preflight fails loud on a missing file ────────────────
+async function scenarioWavesPathPreflightMissingFile() {
+  let implRan = false
+  let threw = false
+  const waves = [[{ id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] }]] // bodyless
+  const args = { waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/nope/waves.json' }
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'waves-file-check') return { ok: false, error: 'file not found' }
+        if (label.startsWith('impl:')) { implRan = true }
+        return undefined
+      }),
+      args, budget: undefined,
+    })
+  } catch (e) { threw = /wavesPath file unusable/.test(e.message) && /file not found/.test(e.message) }
+  assert(threw, 'preflightMissing: an unusable wavesPath file must throw before any task')
+  assert(!implRan, 'preflightMissing: no implementer runs after a failed preflight')
+  console.log('scenario wavesPath-preflight-missing-file: OK')
+}
+
+// ── Scenario: wavesPath preflight fails loud when a task id is not covered ─────
+async function scenarioWavesPathPreflightMissingId() {
+  let threw = false
+  const waves = [[
+    { id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] },   // bodyless
+    { id: 'B', title: 'b', tier: 'cheap', files: ['b.txt'] },   // bodyless
+  ]]
+  const args = { waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/x/waves.json', edges: [] }
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'waves-file-check') return { ok: true, ids: ['A'] } // B missing
+        return undefined
+      }),
+      args, budget: undefined,
+    })
+  } catch (e) { threw = /no body for task id\(s\): B/.test(e.message) }
+  assert(threw, 'preflightMissingId: a bodyless task absent from the file must throw, naming it')
+  console.log('scenario wavesPath-preflight-missing-id: OK')
+}
+
+// ── Scenario: an empty inline body with NO wavesPath fails loud ───────────────
+async function scenarioEmptyBodyNoWavesPathThrows() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: { waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'cheap' }]],
+              integrationBranch: 'ib', stamp: 's' },
+      budget: undefined })
+  } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
+  assert(threw, 'emptyBody: a whitespace-only body with no wavesPath must be rejected (no "file at undefined")')
+  console.log('scenario empty-body-no-wavespath-throws: OK')
+}
+
+// ── Scenario: bootstrapCmd + per-task testCmd (polyglot / fresh worktrees) ─────
+async function scenarioBootstrapAndPerTaskTestCmd() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'py task', body: 'do A', tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
+    { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+                 testCmd: 'make test',
+                 bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args, budget: undefined,
+  })
+  // bootstrap threaded into the FRESH worktree roles…
+  assert(/WORKTREE SETUP:.*bun install/.test(prompts['impl:A']),
+    'bootstrap: impl carries the per-worktree setup command')
+  assert(/WORKTREE SETUP:/.test(prompts['review:A:1']),
+    'bootstrap: reviewer carries the per-worktree setup command')
+  // …but NOT the non-isolated roles (they run on the main checkout, deps present).
+  assert(prompts['merge:wave1'] && !/WORKTREE SETUP:/.test(prompts['merge:wave1']),
+    'bootstrap: the merge agent does NOT get the worktree-setup line')
+  assert(prompts['integration'] && !/WORKTREE SETUP:/.test(prompts['integration']),
+    'bootstrap: the completeness critic does NOT get the worktree-setup line')
+  // per-task testCmd overrides the run-wide one for A; B falls back to the global.
+  assert(/TEST COMMAND: \.venv\/bin\/pytest -q/.test(prompts['impl:A']),
+    'perTaskTest: A uses its own testCmd')
+  assert(/TEST COMMAND: make test/.test(prompts['impl:B']),
+    'perTaskTest: B falls back to the run-wide testCmd')
+  assert(r.tasks.every((t) => t.status === 'done'), 'bootstrap: all tasks done')
+  console.log('scenario bootstrap-and-per-task-testcmd: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
 await scenarioAcceptanceSuiteRed()
 await scenarioReviewDiscipline()
+await scenarioWavesPathFileBackedBodies()
+await scenarioWavesPathRequiredForMissingBody()
+await scenarioWavesPathPreflightMissingFile()
+await scenarioWavesPathPreflightMissingId()
+await scenarioEmptyBodyNoWavesPathThrows()
+await scenarioBootstrapAndPerTaskTestCmd()
 console.log('ALL SCENARIOS PASSED')

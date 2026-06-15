@@ -81,6 +81,24 @@ def test_workflow_requires_headsha_and_commit_discipline():
     assert "two-ordered-pass" in wf      # deliberate-divergence comment present
 
 
+def test_workflow_supports_file_backed_bodies_and_polyglot_knobs():
+    """Large-plan body delivery (args.wavesPath) and polyglot/fresh-worktree
+    knobs (bootstrapCmd, per-task testCmd) must stay wired — they are the
+    first-class fixes for inline-88KB delivery and per-worktree bootstrap."""
+    wf = WORKFLOW.read_text()
+    # file-backed bodies: a task may omit its inline body when wavesPath supplies it
+    assert "ARGS.wavesPath" in wf
+    assert "read your verbatim task text from the JSON file at" in wf
+    # fail-loud preflight before spending task agents
+    assert "waves-file-check" in wf
+    assert "preflight" in wf.lower()
+    # per-worktree bootstrap for the fresh, isolated roles
+    assert "ARGS.bootstrapCmd" in wf
+    assert "WORKTREE SETUP:" in wf
+    # per-task test command override
+    assert "task.testCmd" in wf
+
+
 def test_default_test_detection_ladder_matches_wave_merge_doc():
     ladder = "pnpm check, npm test, pytest, cargo test, or go test ./..."
     wf = WORKFLOW.read_text()

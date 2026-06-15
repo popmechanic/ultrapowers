@@ -146,7 +146,11 @@ dag_edges:
 dispositions:
   - T5: gate → compiled into testCmd / wave verification (not executed)
   - T6: release → post-merge runbook
-marker_conflicts: []        # e.g. "Depends-on: none" overridden by a file edge
+marker_conflicts: []        # each entry carries kind: "conflict" (needs a human fix —
+                            # unparseable type, ghost dep, near-miss spelling, dropped
+                            # non-path Files token) or kind: "inference" (a benign edge the
+                            # compiler inferred — e.g. a file edge overriding "Depends-on: none",
+                            # or a prose-reference edge). Render the two buckets separately.
 inlined_notes:
   - "port table from the preamble → T3, T4 bodies"
 
@@ -168,3 +172,7 @@ degrade_reason:  # populated only in sequential mode
 ```
 
 Render this block verbatim at Step 3 so the human can audit the scheduling decisions without re-running the analysis (the waves, edges, and runbook then reappear in the final report, per the note above).
+
+## Launch-ready output (single source of truth)
+
+The compiler is the **only** parser of the plan; the orchestrator must not re-derive task structure (a second parser is a place for the two to drift). Alongside the transparency block the compiler emits `launch_waves` — the waves grouping as LIGHT task objects `{ id, title, files, depends_on }` (no body) — which the orchestrator passes straight through as `args.waves`, adding only the knobs that are genuinely its judgment (`tier`, `review`, per-task `testCmd`). Run with `--emit-launch <path>` to also write the FULL verbatim, fence-aware task bodies to `<path>`; the orchestrator passes `args.wavesPath: <path>` and each task agent reads its own body from disk by id, so a large plan's bodies never ride inline in the Workflow call (see `SKILL.md` Step 4b and `workflow-template.md`).

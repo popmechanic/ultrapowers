@@ -37,16 +37,32 @@ if (typeof ARGS === 'string') {
 }
 
 const WAVES = (ARGS && typeof ARGS === 'object') ? ARGS.waves : undefined
+// wavesPath: absolute path to a launch-ready waves file the compiler wrote
+// (compile_plan.py --emit-launch). It carries the FULL verbatim task bodies so
+// a large plan (tens of KB of bodies) need not ride inline in the Workflow call
+// — an LLM orchestrator cannot reliably emit that as one escaped JSON value.
+// When supplied, each task's inline `body` may be OMITTED: the implementer and
+// reviewer read their own verbatim body from this file BY ABSOLUTE PATH (the
+// same fs-read mechanism planPath already uses), so no model ever transcribes
+// the bodies. The light inline args.waves still carries id/title/files/tier/review.
+const wavesPath = (ARGS && typeof ARGS.wavesPath === 'string' && ARGS.wavesPath.trim()) || undefined
 const validWaves =
   Array.isArray(WAVES) && WAVES.length > 0 &&
   WAVES.every((w) =>
     Array.isArray(w) && w.length > 0 &&
-    w.every((t) => t && typeof t.id === 'string' && typeof t.body === 'string'))
+    // id is always required; a NON-EMPTY inline body satisfies delivery, else
+    // wavesPath must supply it from disk. An empty/whitespace body with no
+    // wavesPath is rejected here rather than producing a "file at undefined"
+    // prompt downstream.
+    w.every((t) => t && typeof t.id === 'string' &&
+      ((typeof t.body === 'string' && t.body.trim() !== '') || Boolean(wavesPath))))
 if (!validWaves) {
   throw new Error(
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
-    'task = { id, body, ... } (id and body are validated; title/tier/review are consumed by prompts; ' +
-    'acceptance is advisory; files feeds the FILES prompt line). Refusing to run with an ' +
+    'task = { id, body, ... } (id is always validated; body is validated unless ' +
+    'args.wavesPath is supplied, in which case each agent reads its body from that ' +
+    'file by id; title/tier/review/testCmd are consumed by prompts; acceptance is ' +
+    'advisory; files feeds the FILES prompt line). Refusing to run with an ' +
     'undefined plan. When this happens, the SKILL.md fallback ' +
     '(superpowers:subagent-driven-development) runs instead.'
   )
@@ -101,6 +117,14 @@ const EDGES = edgesSupplied
 // reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
 // tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
 const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
+// bootstrapCmd: a per-worktree setup command (e.g. install deps) the FRESH,
+// worktree-isolated roles (implementer, reviewer, fix) run before testing.
+// Engine worktrees are cut clean from the integration HEAD: they have no .venv,
+// no node_modules. A polyglot/monorepo repo (e.g. pytest at root + `bun test` in
+// app/) needs its stacks installed in each worktree before the suite can run.
+// The non-isolated roles (setup/merge/reconcile/completeness) operate on the
+// session main checkout, which already has its deps, so they do not run it.
+const bootstrapCmd = (ARGS && typeof ARGS.bootstrapCmd === 'string' && ARGS.bootstrapCmd.trim()) || undefined
 // acceptance: disposition carried into the report (spec 2026-06-14-sealed-acceptance-gate-fix).
 //   { mode: 'sealed', sealId, sha256 }  — recorded as PENDING_GATE; the SEALED exam is
 //     administered deterministically at the pre-merge gate (SKILL.md Step 5), NOT here:
@@ -375,8 +399,42 @@ const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 const isMergeable = (r) => r && r.status === 'done' && r.branch && r.headSha
 
 // Threaded into implementer/reviewer dispatches so task agents run the project's
-// actual test command instead of guessing ("pnpm check or equivalent").
-const testCmdLine = testCmd ? ('\nTEST COMMAND: ' + testCmd) : ''
+// actual test command instead of guessing ("pnpm check or equivalent"). A task
+// may carry its own `testCmd` (a polyglot plan often has Python tasks running
+// pytest and Bun tasks running `bun test`); it overrides the run-wide testCmd.
+const testCmdLine = (task) => {
+  const cmd = (task && typeof task.testCmd === 'string' && task.testCmd.trim()) || testCmd
+  return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
+}
+
+// Threaded into the FRESH worktree roles (implementer, reviewer, fix) so they
+// install dependencies before testing — engine worktrees carry no .venv /
+// node_modules. Empty when bootstrapCmd is not supplied (deps assumed present).
+const bootstrapLine = bootstrapCmd
+  ? ('\nWORKTREE SETUP: this is a fresh worktree with no installed dependencies; ' +
+     'run this before building or testing: ' + bootstrapCmd)
+  : ''
+
+// The verbatim task text block appended to implementer/reviewer dispatches. When
+// the task carries an inline `body`, it is embedded directly (small/back-compat
+// plans). Otherwise the body lives in the args.wavesPath file the compiler wrote:
+// the agent reads its own entry by id from disk, so a multi-KB body never has to
+// be transcribed by a model (neither the orchestrator inline, nor a relay agent).
+const taskBodyBlock = (task) => {
+  // A non-empty inline body wins (a whitespace-only body is treated as absent so
+  // it never shadows the file-backed body). Otherwise read from the wavesPath
+  // file — validation guarantees wavesPath is set whenever the body is empty, so
+  // the else branch can never interpolate "undefined".
+  const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
+  if (inlineBody) return '\nTASK:\n' + task.body
+  if (wavesPath) {
+    return '\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
+      ' — in its "tasks" array, find the object whose "id" is "' + task.id +
+      '" and use that object\'s "body" field as the authoritative task text. Do ' +
+      'not paraphrase it; that entry also lists your declared file scope.'
+  }
+  return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+}
 
 // task.files (advisory at validation) becomes the FILES prompt line: the
 // declared scope the implementer must stay inside and the reviewer enforces.
@@ -459,7 +517,7 @@ async function runTaskInner(task, baseSha, siblings) {
 
   const siblingsStr = siblings || ''
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine + filesLine(task) + siblingsStr + '\nTASK:\n' + task.body,
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -490,8 +548,8 @@ async function runTaskInner(task, baseSha, siblings) {
   for (let iter = 1; iter <= 2; iter++) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
-      '\n\nTASK:\n' + task.body + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine + filesLine(task) + siblingsStr
+      taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
+      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -560,7 +618,7 @@ async function runTaskInner(task, baseSha, siblings) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine + filesLine(task) + siblingsStr + '\nTASK:\n' + task.body +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
@@ -687,6 +745,54 @@ if (budgetExhausted()) {
     unfinished,
     completenessFindings: [],
     blockedWaves: [],
+  }
+}
+
+// ── wavesPath preflight (FAIL LOUD, before spending task agents) ──────────────
+// When bodies are delivered via the file, one cheap read-only agent confirms the
+// file exists, parses, and covers every bodyless task id — so a wrong/stale path
+// or a dropped id fails the run up front instead of failing N expensive worktree
+// agents that each cannot find their body. Skipped when every body is inline.
+const bodylessIds = WAVES.flat()
+  .filter((t) => !(typeof t.body === 'string' && t.body.trim() !== ''))
+  .map((t) => String(t.id))
+if (wavesPath && bodylessIds.length > 0) {
+  const WAVES_FILE_PREFLIGHT =
+    'You are a read-only preflight agent. Read the JSON file at WAVES_FILE in the ' +
+    'session repository with your file-read tool. Do NOT write, create, stage, or ' +
+    'modify anything — your only output is the JSON result. Parse the file and return ' +
+    '{ "ok": true, "ids": [...] } where ids lists every string value of "id" in its ' +
+    'top-level "tasks" array. If the file is missing, unreadable, or not valid JSON, ' +
+    'return { "ok": false, "error": "<short reason>" }. Return only the JSON object.'
+  const WAVES_FILE_SCHEMA = {
+    type: 'object',
+    required: ['ok'],
+    properties: {
+      ok: { type: 'boolean' },
+      ids: { type: 'array', items: { type: 'string' } },
+      error: { type: 'string' },
+    },
+  }
+  let probe
+  try {
+    probe = await agent(
+      GUARD + '\n\n' + WAVES_FILE_PREFLIGHT + '\nWAVES_FILE: ' + wavesPath,
+      { label: 'waves-file-check', model: TIER.cheap, schema: WAVES_FILE_SCHEMA })
+  } catch (e) {
+    throw new Error('ultrapowers: could not preflight args.wavesPath (' + wavesPath +
+      '): ' + String((e && e.message) || e) + '. Refusing to run before any task.')
+  }
+  if (!probe || probe.ok !== true) {
+    throw new Error('ultrapowers: args.wavesPath file unusable (' + wavesPath + '): ' +
+      ((probe && probe.error) || 'preflight did not confirm ok') +
+      '. Write it with compile_plan.py --emit-launch before launch.')
+  }
+  const have = new Set(Array.isArray(probe.ids) ? probe.ids.map(String) : [])
+  const missing = bodylessIds.filter((id) => !have.has(id))
+  if (missing.length) {
+    throw new Error('ultrapowers: args.wavesPath (' + wavesPath +
+      ') has no body for task id(s): ' + missing.join(', ') +
+      '. Re-run compile_plan.py --emit-launch so every bodyless task is covered.')
   }
 }
 
