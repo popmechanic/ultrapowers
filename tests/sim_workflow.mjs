@@ -1806,9 +1806,16 @@ async function scenarioWavesPathFileBackedBodies() {
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [] }
   const r = await runWorkflow({
-    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    agent: makeAgent((label, prompt) => {
+      prompts[label] = prompt
+      // The preflight confirms the file covers the bodyless task id 'A'.
+      if (label === 'waves-file-check') return { ok: true, ids: ['A', 'B'] }
+      return undefined
+    }),
     args, budget: undefined,
   })
+  assert(/waves-file-check/.test(Object.keys(prompts).join(',')),
+    'wavesPath: a preflight check agent ran before setup')
   assert(/read your verbatim task text from the JSON file at \/repo\/\.claude\/ultrapowers\/waves-sim\.json/.test(prompts['impl:A']),
     'wavesPath: impl:A reads its body from the file at wavesPath')
   assert(prompts['impl:A'].includes('"id" is "A"'),
@@ -1833,6 +1840,62 @@ async function scenarioWavesPathRequiredForMissingBody() {
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
   assert(threw, 'wavesPath-missing: a bodyless task without wavesPath must throw the fail-loud error')
   console.log('scenario wavesPath-required-for-missing-body: OK')
+}
+
+// ── Scenario: wavesPath preflight fails loud on a missing file ────────────────
+async function scenarioWavesPathPreflightMissingFile() {
+  let implRan = false
+  let threw = false
+  const waves = [[{ id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] }]] // bodyless
+  const args = { waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/nope/waves.json' }
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'waves-file-check') return { ok: false, error: 'file not found' }
+        if (label.startsWith('impl:')) { implRan = true }
+        return undefined
+      }),
+      args, budget: undefined,
+    })
+  } catch (e) { threw = /wavesPath file unusable/.test(e.message) && /file not found/.test(e.message) }
+  assert(threw, 'preflightMissing: an unusable wavesPath file must throw before any task')
+  assert(!implRan, 'preflightMissing: no implementer runs after a failed preflight')
+  console.log('scenario wavesPath-preflight-missing-file: OK')
+}
+
+// ── Scenario: wavesPath preflight fails loud when a task id is not covered ─────
+async function scenarioWavesPathPreflightMissingId() {
+  let threw = false
+  const waves = [[
+    { id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] },   // bodyless
+    { id: 'B', title: 'b', tier: 'cheap', files: ['b.txt'] },   // bodyless
+  ]]
+  const args = { waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/x/waves.json', edges: [] }
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'waves-file-check') return { ok: true, ids: ['A'] } // B missing
+        return undefined
+      }),
+      args, budget: undefined,
+    })
+  } catch (e) { threw = /no body for task id\(s\): B/.test(e.message) }
+  assert(threw, 'preflightMissingId: a bodyless task absent from the file must throw, naming it')
+  console.log('scenario wavesPath-preflight-missing-id: OK')
+}
+
+// ── Scenario: an empty inline body with NO wavesPath fails loud ───────────────
+async function scenarioEmptyBodyNoWavesPathThrows() {
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent(),
+      args: { waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'cheap' }]],
+              integrationBranch: 'ib', stamp: 's' },
+      budget: undefined })
+  } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
+  assert(threw, 'emptyBody: a whitespace-only body with no wavesPath must be rejected (no "file at undefined")')
+  console.log('scenario empty-body-no-wavespath-throws: OK')
 }
 
 // ── Scenario: bootstrapCmd + per-task testCmd (polyglot / fresh worktrees) ─────
@@ -1875,5 +1938,8 @@ await scenarioAcceptanceSuiteRed()
 await scenarioReviewDiscipline()
 await scenarioWavesPathFileBackedBodies()
 await scenarioWavesPathRequiredForMissingBody()
+await scenarioWavesPathPreflightMissingFile()
+await scenarioWavesPathPreflightMissingId()
+await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
 console.log('ALL SCENARIOS PASSED')

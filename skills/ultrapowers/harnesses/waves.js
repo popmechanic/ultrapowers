@@ -50,10 +50,12 @@ const validWaves =
   Array.isArray(WAVES) && WAVES.length > 0 &&
   WAVES.every((w) =>
     Array.isArray(w) && w.length > 0 &&
-    // id is always required; body is required UNLESS wavesPath supplies it from
-    // disk (a task may still carry an inline body, e.g. a small back-compat plan).
+    // id is always required; a NON-EMPTY inline body satisfies delivery, else
+    // wavesPath must supply it from disk. An empty/whitespace body with no
+    // wavesPath is rejected here rather than producing a "file at undefined"
+    // prompt downstream.
     w.every((t) => t && typeof t.id === 'string' &&
-      (typeof t.body === 'string' || !!wavesPath)))
+      ((typeof t.body === 'string' && t.body.trim() !== '') || Boolean(wavesPath))))
 if (!validWaves) {
   throw new Error(
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
@@ -418,13 +420,21 @@ const bootstrapLine = bootstrapCmd
 // plans). Otherwise the body lives in the args.wavesPath file the compiler wrote:
 // the agent reads its own entry by id from disk, so a multi-KB body never has to
 // be transcribed by a model (neither the orchestrator inline, nor a relay agent).
-const taskBodyBlock = (task) =>
-  (typeof task.body === 'string' && task.body)
-    ? ('\nTASK:\n' + task.body)
-    : ('\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
-       ' — in its "tasks" array, find the object whose "id" is "' + task.id +
-       '" and use that object\'s "body" field as the authoritative task text. Do ' +
-       'not paraphrase it; that entry also lists your declared file scope.')
+const taskBodyBlock = (task) => {
+  // A non-empty inline body wins (a whitespace-only body is treated as absent so
+  // it never shadows the file-backed body). Otherwise read from the wavesPath
+  // file — validation guarantees wavesPath is set whenever the body is empty, so
+  // the else branch can never interpolate "undefined".
+  const inlineBody = (typeof task.body === 'string' && task.body.trim() !== '')
+  if (inlineBody) return '\nTASK:\n' + task.body
+  if (wavesPath) {
+    return '\nTASK: read your verbatim task text from the JSON file at ' + wavesPath +
+      ' — in its "tasks" array, find the object whose "id" is "' + task.id +
+      '" and use that object\'s "body" field as the authoritative task text. Do ' +
+      'not paraphrase it; that entry also lists your declared file scope.'
+  }
+  return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
+}
 
 // task.files (advisory at validation) becomes the FILES prompt line: the
 // declared scope the implementer must stay inside and the reviewer enforces.
@@ -735,6 +745,54 @@ if (budgetExhausted()) {
     unfinished,
     completenessFindings: [],
     blockedWaves: [],
+  }
+}
+
+// ── wavesPath preflight (FAIL LOUD, before spending task agents) ──────────────
+// When bodies are delivered via the file, one cheap read-only agent confirms the
+// file exists, parses, and covers every bodyless task id — so a wrong/stale path
+// or a dropped id fails the run up front instead of failing N expensive worktree
+// agents that each cannot find their body. Skipped when every body is inline.
+const bodylessIds = WAVES.flat()
+  .filter((t) => !(typeof t.body === 'string' && t.body.trim() !== ''))
+  .map((t) => String(t.id))
+if (wavesPath && bodylessIds.length > 0) {
+  const WAVES_FILE_PREFLIGHT =
+    'You are a read-only preflight agent. Read the JSON file at WAVES_FILE in the ' +
+    'session repository with your file-read tool. Do NOT write, create, stage, or ' +
+    'modify anything — your only output is the JSON result. Parse the file and return ' +
+    '{ "ok": true, "ids": [...] } where ids lists every string value of "id" in its ' +
+    'top-level "tasks" array. If the file is missing, unreadable, or not valid JSON, ' +
+    'return { "ok": false, "error": "<short reason>" }. Return only the JSON object.'
+  const WAVES_FILE_SCHEMA = {
+    type: 'object',
+    required: ['ok'],
+    properties: {
+      ok: { type: 'boolean' },
+      ids: { type: 'array', items: { type: 'string' } },
+      error: { type: 'string' },
+    },
+  }
+  let probe
+  try {
+    probe = await agent(
+      GUARD + '\n\n' + WAVES_FILE_PREFLIGHT + '\nWAVES_FILE: ' + wavesPath,
+      { label: 'waves-file-check', model: TIER.cheap, schema: WAVES_FILE_SCHEMA })
+  } catch (e) {
+    throw new Error('ultrapowers: could not preflight args.wavesPath (' + wavesPath +
+      '): ' + String((e && e.message) || e) + '. Refusing to run before any task.')
+  }
+  if (!probe || probe.ok !== true) {
+    throw new Error('ultrapowers: args.wavesPath file unusable (' + wavesPath + '): ' +
+      ((probe && probe.error) || 'preflight did not confirm ok') +
+      '. Write it with compile_plan.py --emit-launch before launch.')
+  }
+  const have = new Set(Array.isArray(probe.ids) ? probe.ids.map(String) : [])
+  const missing = bodylessIds.filter((id) => !have.has(id))
+  if (missing.length) {
+    throw new Error('ultrapowers: args.wavesPath (' + wavesPath +
+      ') has no body for task id(s): ' + missing.join(', ') +
+      '. Re-run compile_plan.py --emit-launch so every bodyless task is covered.')
   }
 }
 

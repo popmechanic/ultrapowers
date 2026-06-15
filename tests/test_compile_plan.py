@@ -1445,22 +1445,76 @@ def test_modify_function_names_and_routes_are_not_writes(tmp_path):
     assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_extensionless_top_level_file_needs_a_slash(tmp_path):
-    # `Makefile` (no slash, no extension) is indistinguishable from an identifier
-    # and is dropped + surfaced; `./Makefile` qualifies via the slash.
+def test_extensionless_real_files_are_kept_identifiers_dropped(tmp_path):
+    # Bare conventional filenames (Capitalized / ALL-CAPS, no dot, no underscore)
+    # ARE files and must keep their write-after-write overlap; snake_case
+    # identifiers and dotted attribute refs are not files and are dropped.
     plan = tmp_path / "makef.md"
     plan.write_text(
         "# Plan: Makefile\n\n"
-        "### Task 1: bare\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `Makefile`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: slashed\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `./Makefile`\n\n- [ ] **Step 1:** b\n"
+        "### Task 1: edits the build files\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `Makefile`, `Dockerfile`, `LICENSE`\n- Modify: `helper_func`, `schema.User`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: also edits Makefile\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `Makefile`\n\n- [ ] **Step 1:** b\n"
     )
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["writes"] == []                 # bare token dropped
-    assert by_id["2"]["writes"] == ["./Makefile"]     # slash qualifies it
+    assert by_id["1"]["writes"] == ["Dockerfile", "LICENSE", "Makefile"]  # real files kept
+    assert "helper_func" not in by_id["1"]["writes"]   # snake_case identifier dropped
+    assert "schema.User" not in by_id["1"]["writes"]   # dotted attribute ref dropped
+    # the shared Makefile produces a real overlap edge (not lost to identifier noise)
+    assert {"from": "1", "to": "2", "why": "write-after-write"} in out["dag_edges"]
     assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_dotted_attribute_ref_is_not_a_write(tmp_path):
+    # `schema.User` (CamelCase attribute) must not be admitted as a write — that
+    # was the P3 gap: extension-only detection treated `.User` as an extension.
+    plan = tmp_path / "attr.md"
+    plan.write_text(
+        "# Plan: Attr ref\n\n"
+        "### Task 1: returns a model\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `schema.User`, `Foo.Bar`\n- Modify: `apistub/schema.py`\n\n"
+        "- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == ["apistub/schema.py"]
+    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_inline_files_all_nonpath_tokens_get_accurate_diagnostic(tmp_path):
+    # An inline **Files:** line whose backticked tokens are all non-path must say
+    # the tokens were ignored as non-paths, NOT the misleading "no backticked paths".
+    plan = tmp_path / "inlinemiss.md"
+    plan.write_text(
+        "# Plan: Inline nonpath\n\n"
+        "### Task 1: only identifiers\n\n**Type:** implementation\n\n"
+        "**Files:** `cmd_foo` `cmd_bar`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == []
+    note = next(c["note"] for c in out["marker_conflicts"]
+                if c["task"] == "1" and "Files" in c["note"])
+    assert "non-path token(s) ignored" in note      # accurate
+    assert "cmd_foo" in note                          # names the dropped tokens
+    assert "no backticked paths" not in note          # NOT the misleading message
+
+
+def test_no_space_wrong_level_heading_gets_three_hash_hint(tmp_path):
+    plan = tmp_path / "nospace.md"
+    plan.write_text(
+        "# Plan: No space\n\n"
+        "### Task 1: ok\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
+        "####Task 2: four hashes no space\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "EXACTLY three hashes" in p.stderr
 
 
 # ---------------------------------------------------------------------------

@@ -297,6 +297,7 @@ preserves standard behavior):
   Step 2 (the same edges rendered as prose in `dependencyEdges`). The workflow uses
   them to block transitive dependents of a failed task instead of dispatching them.
   Convert the compiler's `dag_edges` objects to bare pairs (`[e.from, e.to]`) — the workflow throws on malformed entries rather than silently disabling dependency blocking.
+  **`launch_waves` task objects carry `depends_on` for transparency, but the workflow ignores it — dependency blocking is driven ONLY by `args.edges`.** Always pass `edges`; do not assume the `depends_on` on the passed-through task objects substitutes for it, or blocking is silently disabled. (`wavesPath` likewise delivers only bodies; `edges`/`acceptance` in that file are inert — pass them as args.)
 
 The workflow validates `args.waves` and **throws loudly** if it is missing or malformed rather than
 risk mutating the wrong repository. Do not pause mid-run —

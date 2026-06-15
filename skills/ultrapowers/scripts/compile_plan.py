@@ -52,18 +52,36 @@ LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
 # author can fix the ordering intent instead of losing it silently.
 TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
-# A backticked token inside a Files entry counts as a path only if it LOOKS like
-# one: it contains a directory separator OR ends in a file extension. Bare
-# identifiers (function names like `cmd_apply_create`, `_build_parser`) and route
-# strings without an extension are NOT files; counting them as writes fabricates
-# spurious write-after-write overlap between unrelated tasks. An extensionless
-# top-level file (Makefile, Dockerfile) is written `./Makefile` so the slash
-# qualifies it.
-PATHLIKE = re.compile(r"/|\.[A-Za-z0-9]{1,8}$")
+# Whether a Files-entry token names a file, vs a bare identifier (function name),
+# a dotted attribute reference (`schema.User`), or a route. Files entries are
+# declared to list paths, so the rule keeps real paths and rejects identifier-
+# shaped tokens; admitting an identifier as a write fabricates spurious
+# write-after-write overlap between unrelated tasks.
+EXT_RE = re.compile(r"\.[a-z0-9]{1,8}$")  # real extensions are lowercase/digits
 
 
 def _is_pathlike(tok):
-    return bool(PATHLIKE.search(tok.strip().rstrip(",;:")))
+    t = tok.strip().rstrip(",;").split(":", 1)[0].strip()  # drop a :line-range
+    if not t:
+        return False
+    if "/" in t:
+        return True                       # a relative/absolute path
+    if EXT_RE.search(t):
+        return True                       # a filename with a lowercase extension
+    # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
+    # no dot and no underscore (Makefile, Dockerfile, LICENSE, README, Jenkinsfile)
+    # — distinct from snake_case identifiers (cmd_apply_create, _build_parser) and
+    # dotted attribute refs (schema.User, Foo.Bar), which are dropped.
+    if "." not in t and "_" not in t and t[:1].isalpha() and (t[0].isupper() or t.isupper()):
+        return True
+    return False
+
+
+def _nonpath_near_miss(line, dropped):
+    """Single source for the 'non-path token(s) ignored' Files diagnostic so the
+    inline-header and bulleted branches surface dropped identifiers identically."""
+    return (line + "  <non-path token(s) ignored (" + ", ".join(dropped[:3])
+            + ") — Files entries list paths, not identifiers like function names>")
 
 
 def match_head(line):
@@ -231,17 +249,20 @@ def parse_task(t):
             # falling to ambiguous-files with no pointer.
             rest = s[len("**Files:**"):].strip()
             if rest:
-                raw_inline = [p.split(":")[0] for p in PATH_RE.findall(rest) if p]
-                inline = [p for p in raw_inline if _is_pathlike(p)]
-                nonpaths = [p for p in raw_inline if not _is_pathlike(p)]
+                inline, nonpaths = [], []
+                for p in PATH_RE.findall(rest):
+                    if not p:
+                        continue
+                    (inline if _is_pathlike(p) else nonpaths).append(p.split(":")[0])
                 if inline:
                     modifies.extend(inline)
                     files_entries_seen = True
                     if nonpaths:
-                        files_near_miss.append(
-                            s + "  <non-path token(s) ignored ("
-                            + ", ".join(nonpaths[:3])
-                            + ") — Files lists paths, not identifiers>")
+                        files_near_miss.append(_nonpath_near_miss(s, nonpaths))
+                elif nonpaths:
+                    # There WERE backticked tokens, just none path-like — say so,
+                    # rather than the misleading "no backticked paths".
+                    files_near_miss.append(_nonpath_near_miss(s, nonpaths))
                 elif not rest.lower().startswith("none"):
                     # "none" (with or without trailing prose) is a valid value
                     # (common for gates); other prose without backticked paths
@@ -293,26 +314,24 @@ def parse_task(t):
                 backticked = PATH_RE.findall(f.group(2))
                 if backticked:
                     # Keep only path-like backticked tokens. A Modify line naming a
-                    # function (`cmd_apply_create`) or an API route fragment is not a
-                    # file; admitting it as a write invents overlap edges to unrelated
-                    # tasks. Surface the dropped tokens so the author can fix the line.
-                    paths = [b for b in backticked if _is_pathlike(b.split(":")[0])]
-                    dropped = [b for b in backticked if not _is_pathlike(b.split(":")[0])]
+                    # function (`cmd_apply_create`) or a dotted attribute ref
+                    # (`schema.User`) is not a file; admitting it as a write invents
+                    # overlap edges to unrelated tasks. Partition once and surface
+                    # the dropped tokens so the author can fix the line.
+                    paths, dropped = [], []
+                    for b in backticked:
+                        (paths if _is_pathlike(b) else dropped).append(b)
                     if dropped:
-                        files_near_miss.append(
-                            s + "  <non-path token(s) ignored ("
-                            + ", ".join(dropped[:3])
-                            + ") — Files entries list paths, not identifiers like "
-                            "function names or routes>")
+                        files_near_miss.append(_nonpath_near_miss(s, dropped))
                 else:
                     tokens = f.group(2).strip().split()
                     first = tokens[0].rstrip(",;")
-                    # First token only, and only if it LOOKS like a path ("/" or
-                    # "." present) — a prose value ("run pytest manually") must
-                    # not fabricate a phantom path that defeats the conservative
-                    # ambiguous-files fallback. Strip list separators so
-                    # `a.py, b.py` still overlap-matches a.py elsewhere.
-                    if "/" in first or "." in first:
+                    # First token only, and only if it LOOKS like a path (same
+                    # _is_pathlike rule as backticked tokens, so backtick presence
+                    # never flips a token's classification) — a prose value ("run
+                    # pytest manually") must not fabricate a phantom path that
+                    # defeats the conservative ambiguous-files fallback.
+                    if _is_pathlike(first):
                         paths = [first]
                         if len(tokens) > 1:
                             files_near_miss.append(
@@ -715,7 +734,9 @@ def main(argv=None):
         # LEVEL (two or four-plus hashes around an otherwise well-formed
         # `Task <id>: <title>`). The caps/dotted-id cases keep the generic
         # message — their level is fine, the id/case is not.
-        wrong_level = re.compile(r"^(#{1,2}|#{4,6})\s+Task\s+[A-Za-z0-9]+:\s+\S", re.I)
+        # \s* (not \s+) between the hashes and Task so a no-space mistake
+        # (`####Task 2:`) still gets the precise hint, not just the generic error.
+        wrong_level = re.compile(r"^(#{1,2}|#{4,6})\s*Task\s+[A-Za-z0-9]+:", re.I)
         level_hint = ""
         if any(wrong_level.match(h) for h in bad_heads):
             level_hint = (" Task headings use EXACTLY three hashes — did you mean "
