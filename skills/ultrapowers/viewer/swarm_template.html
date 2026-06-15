@@ -210,12 +210,7 @@ function drawerEls() {
   };
 }
 function roleLabel(a) { return a.task != null ? (a.role + ":" + a.task) : a.role; }
-function mkEl(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-}
+function mkEl(tag, cls, text) { return AuditProjection.makeEl(document, tag, cls, text); }
 function stopLive() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } liveAgentId = null; }
 function closeDrawer() { stopLive(); drawerEls().root.hidden = true; }
 document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
@@ -266,26 +261,7 @@ function fetchAndRender(a, d, quiet) {
 }
 
 function renderEvents(events, d, versions, unparsed) {
-  d.body.innerHTML = "";
-  events.forEach(function (ev) {
-    const row = mkEl("div", "ev ev-" + ev.kind);
-    const head = mkEl("div", "ev-head", AuditProjection.summaryLine(ev));
-    row.appendChild(head);
-    const full = ev.kind === "text" ? ev.text
-      : ev.kind === "tool_use" ? ev.input
-      : ev.kind === "tool_result" ? ev.result : "";
-    if (full && full.length > AuditProjection.CAPS.collapsed) {
-      const more = ev.truncated ? "\n… (+" + ev.truncated + " more chars — see raw file)" : "";
-      const pre = mkEl("pre", "ev-full", full + more);
-      pre.hidden = true;
-      head.style.cursor = "pointer";
-      head.onclick = function () { pre.hidden = !pre.hidden; };
-      row.appendChild(pre);
-    }
-    d.body.appendChild(row);
-  });
-  d.foot.textContent = "format " + ((versions && versions.join(", ")) || "?") +
-    (unparsed ? " · " + unparsed + " unparsed lines" : "");
+  AuditProjection.renderInto(document, d.body, d.foot, events, versions, unparsed);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

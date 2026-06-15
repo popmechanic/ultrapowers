@@ -84,7 +84,47 @@
     return "‹unrecognized block: " + ev.blockType + "›";
   }
 
-  var API = { CAPS: CAPS, parseLines: parseLines, projectAgent: projectAgent, summaryLine: summaryLine };
+  // ── DOM-agnostic rendering ──────────────────────────────────────────────
+  // These build the drawer's event list. They take a `doc` (anything with
+  // createElement) and element handles, so they run in a browser AND under a
+  // tiny test stub — no jsdom. The swarm template's mkEl/renderEvents are thin
+  // wrappers over makeEl/renderInto.
+  function makeEl(doc, tag, cls, text) {
+    var e = doc.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function renderInto(doc, bodyEl, footEl, events, versions, unparsed) {
+    bodyEl.innerHTML = "";
+    for (var i = 0; i < events.length; i++) {
+      var ev = events[i];
+      var row = makeEl(doc, "div", "ev ev-" + ev.kind);
+      var head = makeEl(doc, "div", "ev-head", summaryLine(ev));
+      row.appendChild(head);
+      var full = ev.kind === "text" ? ev.text
+        : ev.kind === "tool_use" ? ev.input
+        : ev.kind === "tool_result" ? ev.result : "";
+      if (full && full.length > CAPS.collapsed) {
+        var more = ev.truncated ? "\n… (+" + ev.truncated + " more chars — see raw file)" : "";
+        var pre = makeEl(doc, "pre", "ev-full", full + more);
+        pre.hidden = true;
+        head.style.cursor = "pointer";
+        // capture `pre` per iteration (var is function-scoped)
+        head.onclick = (function (preEl) { return function () { preEl.hidden = !preEl.hidden; }; })(pre);
+        row.appendChild(pre);
+      }
+      bodyEl.appendChild(row);
+    }
+    if (footEl) {
+      footEl.textContent = "format " + ((versions && versions.join(", ")) || "?") +
+        (unparsed ? " · " + unparsed + " unparsed lines" : "");
+    }
+  }
+
+  var API = { CAPS: CAPS, parseLines: parseLines, projectAgent: projectAgent,
+              summaryLine: summaryLine, makeEl: makeEl, renderInto: renderInto };
   if (typeof globalThis !== "undefined") globalThis.AuditProjection = API;
   if (typeof module !== "undefined" && module.exports) module.exports = API;
 })();

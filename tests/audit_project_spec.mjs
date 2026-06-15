@@ -61,5 +61,48 @@ eq(A.projectAgent(p2.entries).events, [{ kind: "text", text: "the task prompt", 
 eq(A.summaryLine({ kind: "tool_use", name: "Bash", input: "pytest -q" }), "⚙ Bash(pytest -q)", "summaryLine tool_use");
 eq(A.summaryLine({ kind: "unknown", blockType: "thinking" }), "‹unrecognized block: thinking›", "summaryLine unknown");
 
+// ── DOM-agnostic rendering (gap #2): drive the REAL render path via a stub doc,
+// no jsdom, no dependency. The swarm template's renderEvents/mkEl are thin
+// wrappers over these, so this exercises the click→render logic itself.
+function stubDoc() {
+  function el(tag) {
+    return {
+      tag: tag, className: "", textContent: "", innerHTML: "", hidden: false,
+      style: {}, children: [], onclick: null,
+      appendChild: function (c) { this.children.push(c); return c; },
+    };
+  }
+  return { createElement: function (tag) { return el(tag); } };
+}
+
+// makeEl builds a node with class + text
+const span = A.makeEl(stubDoc(), "span", "tab", "impl:6");
+eq(span.tag, "span", "makeEl tag");
+eq(span.className, "tab", "makeEl class");
+eq(span.textContent, "impl:6", "makeEl text");
+
+// renderInto: one row per event, head text == summaryLine, expand toggle, footer
+const doc = stubDoc();
+const body = doc.createElement("div");
+const foot = doc.createElement("div");
+const renderEntries = [
+  { type: "assistant", content: [{ type: "text", text: "short reasoning" }] },
+  { type: "assistant", content: [{ type: "tool_use", name: "Bash", input: { cmd: "pytest" } }] },
+  { type: "user", content: [{ type: "tool_result", content: "y".repeat(A.CAPS.collapsed + 20) }] },
+];
+const rendered = A.projectAgent(renderEntries).events;
+A.renderInto(doc, body, foot, rendered, ["2.1.177"], 1);
+
+eq(body.children.length, 3, "renderInto: one row per event");
+eq(body.children[0].children[0].textContent, A.summaryLine(rendered[0]), "renderInto: head text is summaryLine");
+eq(body.children[0].children.length, 1, "renderInto: short event has no expand pane");
+eq(body.children[2].children.length, 2, "renderInto: long event gets an expand pane");
+const longRow = body.children[2];
+eq(longRow.children[1].className, "ev-full", "renderInto: expand pane class");
+ok(longRow.children[1].hidden === true, "renderInto: expand pane starts hidden");
+longRow.children[0].onclick();  // simulate clicking the row head
+ok(longRow.children[1].hidden === false, "renderInto: clicking head reveals the pane");
+eq(foot.textContent, "format 2.1.177 · 1 unparsed lines", "renderInto: footer shows version + unparsed count");
+
 if (failed) { console.error(failed + " FAILED"); process.exit(1); }
 console.log("ALL TESTS PASSED");
