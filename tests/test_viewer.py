@@ -191,3 +191,49 @@ def test_swarm_watch_observes_engine_footprints(tmp_path):
     (branch,) = snap["branches"]
     assert branch["merged"] is True
     assert (tmp_path / "status.json").exists()
+
+
+def test_render_with_transcripts_full_inlined_script_parses(tmp_path):
+    # Gap #1: the suite only node --check'd the INERT template (no --transcripts),
+    # where /*__AUDIT_JS__*/ is a bare comment. With --transcripts the full
+    # audit_project.js is inlined; this asserts that full embedded script parses.
+    node = shutil.which("node")
+    if not node:
+        import pytest
+        pytest.skip("node not available")
+    run_dir = tmp_path / "wf_x"
+    run_dir.mkdir()
+    (run_dir / "agent-z1.jsonl").write_text(
+        json.dumps({"type": "user", "version": "2.1.177",
+                    "message": {"content": [{"type": "text",
+                        "text": "You are an implementer subagent operating inside a dedicated git worktree.\n### Task 1: x\n"}]}})
+        + "\n"
+        + json.dumps({"type": "assistant", "version": "2.1.177",
+                      "message": {"model": "m", "usage": {"output_tokens": 1},
+                          "content": [{"type": "text", "text": "hi"},
+                                      {"type": "tool_use", "name": "Read", "input": {"file": "a"}}]}})
+        + "\n")
+    (run_dir / "agent-z1.meta.json").write_text(
+        json.dumps({"agentType": "workflow-subagent", "worktreePath": "/wt"}))
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    assert "globalThis.AuditProjection" in html, "full audit_project.js was not inlined"
+    js = re.search(r"<script>\n(.*)</script>", html, re.S).group(1)
+    js_file = out / "embedded_full.js"
+    js_file.write_text(js)
+    run([node, "--check", str(js_file)])  # full inlined module must parse
+
+
+def test_transcripts_must_be_a_directory(tmp_path):
+    # Gap #3: render_viewer.py raises SystemExit when --transcripts is not a dir.
+    not_a_dir = tmp_path / "nope.txt"
+    not_a_dir.write_text("x")
+    out = tmp_path / "out"
+    p = subprocess.run(
+        [sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(not_a_dir), "--out", str(out)],
+        capture_output=True, text=True)
+    assert p.returncode != 0, "expected non-zero exit for a non-directory --transcripts"
+    assert "not a directory" in (p.stdout + p.stderr).lower()
