@@ -120,6 +120,14 @@ def _set_run_cmd(vault, seal_id, digest, run_cmd):
         "sealId": seal_id, "suiteSha256": digest, "runCmd": run_cmd}))
 
 
+def _write_manifest(vault, seal_id, digest, run_cmd, bootstrap_cmd=None):
+    """Write a manifest preserving the recorded hash; optionally a bootstrapCmd."""
+    m = {"sealId": seal_id, "suiteSha256": digest, "runCmd": run_cmd}
+    if bootstrap_cmd is not None:
+        m["bootstrapCmd"] = bootstrap_cmd
+    (vault / seal_id / "manifest.json").write_text(json.dumps(m))
+
+
 def test_runcmd_that_skips_the_suite_never_false_greens(tmp_path):
     """A runCmd that exits 0 without ever executing the sealed suite must NOT
     report passed. Feature is ABSENT here, so an honest pass is impossible."""
@@ -172,3 +180,94 @@ def test_honest_green_still_passes_after_guard(tmp_path):
     repo = make_repo(tmp_path, feature_built=True)
     code, out = administer(vault, seal_id, digest, repo)
     assert code == 0 and out["status"] == "OK" and out["passed"] is True
+
+
+def test_assertion_red_is_labeled(tmp_path):
+    """Feature built but wrong: a test executes and fails -> redKind 'assertion'."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    repo = make_repo(tmp_path, feature_built=True)
+    # break the feature so the executed test asserts false
+    (repo / "mod.py").write_text("def add(a, b):\n    return a - b\n")
+    sh(["git", "commit", "-aqm", "wrong"], cwd=repo)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0 and out["status"] == "OK" and out["passed"] is False
+    assert out["redKind"] == "assertion"
+
+
+def test_collection_red_is_labeled(tmp_path):
+    """Feature module absent: import fails at collection, no test runs -> 'collection'."""
+    vault = tmp_path / "vault"
+    suite = vault / "pending" / "suite"
+    suite.mkdir(parents=True)
+    (suite / "test_exam.py").write_text(
+        "from featuremod import shiny\n\n\ndef test_shiny():\n    assert shiny() == 42\n")
+    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
+    seal_id = digest[:12]
+    (vault / "pending").rename(vault / seal_id)
+    _write_manifest(vault, seal_id, digest, "python3 -m pytest .ultra-acceptance -q")
+    repo = make_repo(tmp_path, feature_built=False)  # featuremod absent -> import fails
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0 and out["status"] == "OK" and out["passed"] is False
+    assert out["redKind"] == "collection"
+
+
+def test_bootstrap_runs_before_suite(tmp_path):
+    """A bootstrapCmd that provisions a needed file lets the suite reach its
+    assertion and pass — proving bootstrap runs in the worktree before runCmd."""
+    vault = tmp_path / "vault"
+    suite = vault / "pending" / "suite"
+    suite.mkdir(parents=True)
+    (suite / "test_exam.py").write_text(
+        "from repolib import val\n\n\ndef test_val():\n    assert val() == 7\n")
+    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
+    seal_id = digest[:12]
+    (vault / "pending").rename(vault / seal_id)
+    _write_manifest(vault, seal_id, digest, "python3 -m pytest .ultra-acceptance -q",
+                    bootstrap_cmd="printf 'def val():\\n    return 7\\n' > repolib.py")
+    repo = make_repo(tmp_path, feature_built=True)  # repolib NOT committed at base
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
+
+
+def test_env_caused_collection_red_is_fixed_by_bootstrap(tmp_path):
+    """The finding scenario: a suite importing a repo library absent in a bare
+    worktree is a false red WITHOUT a bootstrap, and a true result WITH one."""
+    vault = tmp_path / "vault"
+    suite = vault / "pending" / "suite"
+    suite.mkdir(parents=True)
+    (suite / "test_exam.py").write_text(
+        "from repolib import val\n\n\ndef test_val():\n    assert val() == 7\n")
+    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
+    seal_id = digest[:12]
+    (vault / "pending").rename(vault / seal_id)
+    repo = make_repo(tmp_path, feature_built=True)
+    # No bootstrap: repolib is unimportable -> false red labeled 'collection'.
+    _write_manifest(vault, seal_id, digest, "python3 -m pytest .ultra-acceptance -q")
+    code, out = administer(vault, seal_id, digest, repo)
+    assert out["passed"] is False and out["redKind"] == "collection"
+    # With a bootstrap that provisions repolib -> honest green.
+    _write_manifest(vault, seal_id, digest, "python3 -m pytest .ultra-acceptance -q",
+                    bootstrap_cmd="printf 'def val():\\n    return 7\\n' > repolib.py")
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code == 0 and out["passed"] is True
+
+
+def test_bootstrap_failure_is_env_error_not_red(tmp_path):
+    """A bootstrapCmd that fails is EXAM_BOOTSTRAP_ERROR — never a feature red."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    _write_manifest(vault, seal_id, digest, "python3 -m pytest .ultra-acceptance -q",
+                    bootstrap_cmd="exit 3")
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code != 0
+    assert out["status"] == "EXAM_BOOTSTRAP_ERROR" and out["passed"] is False
+    assert "redKind" not in out
+
+
+def test_missing_module_collection_red_keeps_status_ok(tmp_path):
+    """Regression on the prior contract: a feature-absent collection error is
+    still status OK / passed False (now additionally labeled 'collection')."""
+    vault, seal_id, digest = make_vault(tmp_path)
+    repo = make_repo(tmp_path, feature_built=False)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert out["status"] == "OK" and out["passed"] is False
