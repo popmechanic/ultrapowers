@@ -27,24 +27,31 @@ def _version_from_text(text):
     return json.loads(text)["version"] if text.strip() else "unknown"
 
 
-def current_engine():
-    """The engine version at HEAD right now (for live scoring)."""
-    root = repo_root()
+def current_engine(root=None):
+    """The engine version at HEAD right now (for live scoring).
+
+    `root` overrides the repo (defaults to this plugin's repo) for hermetic tests.
+    """
+    root = root or repo_root()
     sha = _git(["rev-parse", "HEAD"], root)
     version = json.loads(
         (root / ".claude-plugin" / "plugin.json").read_text())["version"]
     return {"plugin_version": version, "sha": sha}
 
 
-def engine_at_epoch(epoch, branch="HEAD"):
+def engine_at_epoch(epoch, branch="HEAD", root=None):
     """The engine version that was HEAD at unix `epoch` (for backfill).
 
     Resolution walks the ancestry of `branch` (default HEAD, the actual checkout)
     rather than a fixed `main`: the engine that produced a run is the commit in
     the *current* line of history, so `engine_at_epoch(now)` returns HEAD from
-    any branch — feature branches included — not just after a merge to main.
+    any branch — feature branches included — not just after a merge to main. For
+    the real backfill case (historical rows whose epochs predate any current
+    feature branch) HEAD and main share that ancestry and resolve identically;
+    the explicit `branch` arg lets a caller pin a specific line. `root` overrides
+    the repo (defaults to this plugin's repo) for hermetic tests.
     """
-    root = repo_root()
+    root = root or repo_root()
     iso = time.strftime("%Y-%m-%d %H:%M:%S +0000", time.gmtime(epoch))
     sha = _git(["rev-list", "-1", f"--before={iso}", branch], root)
     if not sha:  # epoch predates the branch — use its first commit

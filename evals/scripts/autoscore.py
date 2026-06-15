@@ -70,11 +70,16 @@ def parse_counters(flat):
     }
 
 
-def reliability_counters(run_dir):
-    """Best (last parseable) counters from the workflow result transcript."""
+def reliability_counters(run_dir, projects_dir=None):
+    """Best (last parseable) counters from the workflow result transcript.
+
+    `projects_dir` overrides the transcript root (defaults to ~/.claude/projects)
+    for hermetic tests.
+    """
+    projects_dir = projects_dir or PROJECTS
     stem = pathlib.Path(run_dir).resolve().name
     best = None
-    for proj in PROJECTS.glob(f"*-eval-runs-{stem}*"):
+    for proj in projects_dir.glob(f"*-eval-runs-{stem}*"):
         for f in proj.glob("*.jsonl"):
             for line in open(f, errors="replace"):
                 if "fixIterations" not in line or "integrationBranch" not in line:

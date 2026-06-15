@@ -47,3 +47,27 @@ def test_assemble_row_computes_weekly_pct_delta():
         engine={"plugin_version": "0.0.10", "sha": "a" * 40},
         tasks_planned=6, tasks_merged=6, scored_epoch=1.0)
     assert row["weekly_pct"] == 1.5
+
+
+def test_reliability_counters_reads_a_fixture_transcript(tmp_path):
+    projects = tmp_path / "projects"
+    proj = projects / "myproj-eval-runs-wide-B-1"
+    proj.mkdir(parents=True)
+    # a workflow-result line as it appears in a real transcript: JSON-in-JSON,
+    # so the inner quotes are backslash-escaped (reliability_counters de-escapes).
+    line = ('prefix fixIterations\\": 1 integrationBranch\\": \\"ultra\\" '
+            '\\"status\\": \\"MERGED\\" \\"status\\": \\"done\\" '
+            '\\"status\\": \\"blocked\\"')
+    (proj / "transcript.jsonl").write_text(line + "\n")
+    counters, note = autoscore.reliability_counters(
+        tmp_path / "wide-B-1", projects_dir=projects)
+    assert note == ""
+    assert counters == {"fixes": 1, "blocked": 1, "planned": 3, "merged": 2}
+
+
+def test_reliability_counters_missing_transcript_returns_none(tmp_path):
+    projects = tmp_path / "projects"
+    projects.mkdir()
+    counters, note = autoscore.reliability_counters(
+        tmp_path / "wide-B-1", projects_dir=projects)
+    assert counters is None and "not found" in note
