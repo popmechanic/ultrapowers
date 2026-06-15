@@ -65,9 +65,23 @@ exists only as freeform prose — it must have numbered tasks with explicit file
 ## Step 2 — Analyze Dependencies and Compute Waves
 
 Follow `references/dependency-analysis.md` in full to turn the plan into a `waves: Task[][]`
-structure. Each task object must be **self-contained**: `{ id, title, body, tier, acceptance, files, review? }`,
-where `body` is the full verbatim task text (the workflow cannot resolve file references) and `review`
-(`'adversarial'` | `'lean'`, optional) is the per-task depth you derive below.
+structure. Each task object is `{ id, title, body, tier, acceptance, files, review?, testCmd? }`,
+where `body` is the full verbatim task text and `review` (`'adversarial'` | `'lean'`, optional) is the
+per-task depth you derive below.
+
+**Do not hand-assemble the task objects — the compiler emits them.** `compile_plan.py` already parses
+the plan fence-aware; re-parsing it yourself is the exact duplicate-parser drift `references/dependency-analysis.md`
+warns against. Run it with `--emit-launch` (Step 4b) and pass its `launch_waves` (id/title/files/depends_on)
+through, augmenting only the knobs that are genuinely yours to derive (`tier`, `review`, and any per-task
+`testCmd`).
+
+**Body delivery — do not put 88KB of bodies inline.** For anything but a tiny plan, deliver bodies via a
+file, not inline in the Workflow call: an LLM cannot reliably emit tens of KB of escaped JSON as one
+value. `compile_plan.py --emit-launch <path>` writes the verbatim, fence-aware bodies to `<path>`; you
+pass the LIGHT `launch_waves` inline as `args.waves` plus `args.wavesPath: <path>`, and each task agent
+reads its own body from the file by id (Step 4b). Inline `body` is still supported for small/back-compat
+plans, but **never** hand-author a body that is a pointer to a plan section — that silently breaks when
+`baseBranch` lacks the plan; the `--emit-launch` file is read off disk regardless of branch contents.
 
 - **Classify first** per `references/plan-markers.md`: trust header-block `**Type:**`
   markers when present (markers outside the contiguous block after the heading are
@@ -89,6 +103,17 @@ where `body` is the full verbatim task text (the workflow cannot resolve file re
   - **`testCmd`** — detect how *this* repo runs tests (inspect `package.json` scripts / `Makefile` /
     monorepo layout, or lift it from the plan's **Tech Stack** line). Set it only when the workflow's
     built-in detection ladder would guess wrong (monorepos, custom runners); otherwise omit.
+  - **Polyglot / monorepo repos (e.g. pytest at root + `bun test` in `app/`).** Two facts about the
+    engine drive the knobs: (1) the merge and completeness roles test the *integrated tree on the
+    session main checkout* (which has all deps), so set the run-wide `testCmd` to a single command that
+    exercises **both** stacks — `python3 -m pytest -q && (cd app && bun test)`; (2) task agents run in
+    **fresh worktrees with no `.venv` / `node_modules`**, so set **`bootstrapCmd`** to install every
+    stack the tasks touch — `python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)`
+    — it is threaded only into the worktree-isolated roles (implementer/reviewer/fix). Where a task is
+    single-stack, give it a per-task `testCmd` (e.g. `.venv/bin/pytest -q tests/test_x.py`) so its
+    implementer runs only the relevant suite; it overrides the run-wide `testCmd` for that task. A plan
+    that naturally writes `.venv/bin/pytest …` test steps is then correct because `bootstrapCmd` created
+    the `.venv` first.
   - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'` — strip the remote prefix; `origin/main` as a checkout target lands detached,
     falling back to the current branch). Always set it; it anchors the integration branch and the
     review diff base.
@@ -119,7 +144,12 @@ Render the transparency block from Step 2 for the human:
    runbook), which gates were compiled into run config, any superseded ordering prose
    or marker conflicts. This is the rendered **interpretation** of the plan, not
    just the grouping — it reappears with the final report so a wrong classification
-   is auditable at the pre-merge gate.
+   is auditable at the pre-merge gate. **Separate the two `marker_conflicts` buckets by their
+   `kind` field:** render `kind: "conflict"` entries (unparseable types, ghost dependencies,
+   near-miss spellings, dropped non-path Files tokens) as *needs attention*, and `kind: "inference"`
+   entries (a write/prose edge that correctly overrode a `Depends-on: none`, an inferred
+   prose-reference edge) as *informational inferences* — the latter are the compiler showing its work,
+   not problems to fix, so do not surface them as if they were.
 6. **Acceptance disposition** — render the acceptance disposition: `sealed <seal-id>` or the verbatim waiver reason. The human approves it with the rest of the interpretation.
 
    When the disposition is `sealed`, present the exam's plain-English **coverage summary** (appended to the plan by the ultraplan sealing step) and give the operator this rubric for vouching — it needs **no code-reading**:
@@ -230,17 +260,32 @@ or edit it) via the **Workflow** tool. The registry resolves saved workflows by 
 `waves` fails with "not found". Pass:
 
 ```
-args = { waves, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         edges, baseBranch, planPath, testCmd?, reviewProfile?, tierOverrides?,
+args = { waves, wavesPath?, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
+         edges, baseBranch, planPath, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides?,
          acceptance?: { mode: 'sealed', sealId, sha256, scriptPath } | { mode: 'suite', reason } | { mode: 'waived', reason } }
 ```
+
+**Assemble `waves` and `wavesPath` from the compiler, not by hand.** Run
+`compile_plan.py <plan-path> --emit-launch <abs-path>` where `<abs-path>` is a writable, absolute
+path the task agents can read — e.g. `"$(pwd)/.claude/ultrapowers/waves-<stamp>.json"` (`mkdir -p`
+its parent; it is read off disk, so it need not be committed and `.claude/` being gitignored is fine).
+Then build `args.waves` from the compiler's `launch_waves` (its light id/title/files/depends_on
+objects), adding the per-task `tier`/`review`/`testCmd` you derived — **do not include `body`** — and set
+`args.wavesPath` to `<abs-path>`. The bodies live in that file; each task agent reads its own by id, so
+nothing multi-KB rides inline. (For a tiny plan you may instead inline full `body` strings and omit
+`wavesPath` — both forms work, and they may mix.)
 
 Pass the computed `waves`, a timestamp `stamp` (the script cannot call `Date.now()`), and the
 recorded `dependencyEdges`, plus the knobs you **derived in Step 2** (all optional; omitting them
 preserves standard behavior):
 
 - `testCmd` — the exact test command for *this* repo (monorepos / non-standard runners), so the
-  merge and completeness agents don't have to guess.
+  merge and completeness agents don't have to guess. For polyglot repos make it run BOTH stacks (it
+  tests the integrated tree on the main checkout); a per-task `task.testCmd` narrows the command for an
+  individual implementer/reviewer.
+- `bootstrapCmd` — a per-worktree dependency-install command for fresh worktrees (which have no
+  `.venv` / `node_modules`), threaded only into the worktree-isolated roles. Required whenever the plan's
+  test steps assume installed deps (`.venv/bin/pytest …`, `bun test`) — see the polyglot guidance in Step 2.
 - `planPath` — the resolved plan path from Step 1, so the completeness critic reviews against the
   actual plan, not just the task list.
 - **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).

@@ -1411,3 +1411,199 @@ def test_fenced_suite_line_is_ignored():
     plan = _minimal_marked_plan("```\n**Acceptance:** suite — fenced\n```")
     r = compile_raw_text(plan)
     assert r.returncode != 0, "a fenced suite line must not count as a disposition"
+
+
+# ---------------------------------------------------------------------------
+# Problem 3: writes parsing must count only path-like tokens
+# ---------------------------------------------------------------------------
+
+def test_modify_function_names_and_routes_are_not_writes(tmp_path):
+    # A Modify block naming functions, and a body mentioning API routes, must not
+    # land in `writes` — bare identifiers and routes are not files, and treating
+    # them as writes fabricates spurious overlap edges between unrelated tasks.
+    plan = tmp_path / "funcs.md"
+    plan.write_text(
+        "# Plan: Functions and routes\n\n"
+        "### Task 1: parser\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Modify: `cmd_apply_create`, `_build_parser`\n- Modify: `apistub/cli.py`\n\n"
+        "- [ ] **Step 1:** Wire the `/api/ledger` and `/api/session/start` routes into `apistub/cli.py`.\n\n"
+        "### Task 2: handlers\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Modify: `apistub/handlers.py`\n\n"
+        "- [ ] **Step 1:** Implement the `/api/ledger` handler.\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    # Only the real path is a write; functions and routes are dropped.
+    assert by_id["1"]["writes"] == ["apistub/cli.py"]
+    assert "cmd_apply_create" not in by_id["1"]["writes"]
+    assert "_build_parser" not in by_id["1"]["writes"]
+    assert not any("/api/" in w for w in by_id["1"]["writes"])
+    # The two tasks edit disjoint real files -> no fabricated overlap edge.
+    assert not any(e["why"] == "write-after-write" for e in out["dag_edges"])
+    assert out["waves"] == [["1", "2"]]
+    # The dropped non-path tokens are surfaced so the author can fix the line.
+    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_extensionless_top_level_file_needs_a_slash(tmp_path):
+    # `Makefile` (no slash, no extension) is indistinguishable from an identifier
+    # and is dropped + surfaced; `./Makefile` qualifies via the slash.
+    plan = tmp_path / "makef.md"
+    plan.write_text(
+        "# Plan: Makefile\n\n"
+        "### Task 1: bare\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `Makefile`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: slashed\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `./Makefile`\n\n- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["writes"] == []                 # bare token dropped
+    assert by_id["2"]["writes"] == ["./Makefile"]     # slash qualifies it
+    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
+
+
+# ---------------------------------------------------------------------------
+# Problem 5: heading-level hint and conflict/inference separation
+# ---------------------------------------------------------------------------
+
+def test_wrong_level_heading_emits_three_hash_hint(tmp_path):
+    plan = tmp_path / "wronglevel.md"
+    plan.write_text(
+        "# Plan: Wrong level\n\n"
+        "### Task 1: ok\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
+        "## Task 2: two hashes\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "EXACTLY three hashes" in p.stderr
+    assert "did you mean" in p.stderr.lower()
+
+
+def test_caps_heading_does_not_get_level_hint(tmp_path):
+    # `### TASK 2:` is the right level (three hashes); the fault is the case, so
+    # the three-hash hint must NOT fire (it would mislead).
+    plan = tmp_path / "caps.md"
+    plan.write_text(
+        "# Plan: Caps\n\n"
+        "### Task 1: ok\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
+        "### TASK 2: all caps\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "heading" in p.stderr.lower()
+    assert "EXACTLY three hashes" not in p.stderr
+
+
+def test_conflicts_carry_kind_and_inferences_are_separated(tmp_path):
+    # A benign auto-inferred edge (write-after-create overriding Depends-on: none)
+    # is tagged kind="inference"; a genuine problem (ghost dependency) is
+    # kind="conflict". SKILL.md renders the two buckets separately.
+    plan = tmp_path / "kinds.md"
+    plan.write_text(
+        "# Plan: Kinds\n\n"
+        "### Task 1: creator\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `f.txt`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: modifier claiming independence\n\n"
+        "**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Modify: `f.txt`\n\n- [ ] **Step 1:** b\n\n"
+        "### Task 3: names a ghost\n\n**Type:** implementation\n**Depends-on:** 9\n\n"
+        "**Files:**\n- Create: `g.txt`\n\n- [ ] **Step 1:** c\n"
+    )
+    out = compile_plan(plan)
+    assert all("kind" in c for c in out["marker_conflicts"])
+    inferences = [c for c in out["marker_conflicts"] if c["kind"] == "inference"]
+    conflicts = [c for c in out["marker_conflicts"] if c["kind"] == "conflict"]
+    # the override of `Depends-on: none` by the file edge is an informational inference
+    assert any("overridden" in c["note"] for c in inferences)
+    # the ghost id 9 is a genuine conflict needing attention
+    assert any("9" in c["note"] and "edge dropped" in c["note"] for c in conflicts)
+
+
+# ---------------------------------------------------------------------------
+# Problem 1 / 2: launch-ready task objects (single source of truth) + emit-launch
+# ---------------------------------------------------------------------------
+
+LAUNCH_PLAN = (
+    "# Demo Implementation Plan\n\n"
+    "**Acceptance:** waived — demo\n\n"
+    "### Task 1: schema\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+    "**Files:**\n- Create: `apistub/schema.py`\n- Test: `tests/test_schema.py`\n\n"
+    "- [ ] **Step 1:** Define the `User` dataclass.\n\n"
+    "### Task 2: store\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+    "**Files:**\n- Create: `apistub/store.py`\n\n"
+    "- [ ] **Step 1:** Build the store on top of the schema.\n"
+)
+
+
+def test_launch_waves_is_light_and_grouped(tmp_path):
+    plan = tmp_path / "launch.md"
+    plan.write_text(LAUNCH_PLAN)
+    out = compile_plan(plan)
+    # grouped exactly like waves, but with title/files/depends_on per task and NO body
+    assert [[t["id"] for t in w] for w in out["launch_waves"]] == out["waves"]
+    t1 = out["launch_waves"][0][0]
+    assert t1["id"] == "1"
+    assert t1["title"] == "schema"
+    assert t1["files"] == ["apistub/schema.py", "tests/test_schema.py"]
+    assert "body" not in t1            # light: no body inline
+    t2 = out["launch_waves"][1][0]
+    assert t2["depends_on"] == ["1"]
+
+
+def test_emit_launch_writes_verbatim_bodies(tmp_path):
+    plan = tmp_path / "launch.md"
+    plan.write_text(LAUNCH_PLAN)
+    launch = tmp_path / "out" / "waves.json"   # parent dir does not exist yet
+    p = subprocess.run([sys.executable, str(COMPILER), str(plan),
+                        "--emit-launch", str(launch)],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = json.loads(p.stdout)
+    assert out["launch_file"] == str(launch)
+    payload = json.loads(launch.read_text())
+    # full, verbatim, fence-aware bodies — one entry per implementation task, by id
+    ids = [t["id"] for t in payload["tasks"]]
+    assert ids == ["1", "2"]
+    body1 = next(t["body"] for t in payload["tasks"] if t["id"] == "1")
+    assert "### Task 1: schema" in body1            # verbatim, includes the heading
+    assert "Define the `User` dataclass." in body1
+    assert payload["edges"] == [["1", "2"]]
+    assert payload["waves"] == out["waves"]
+    # files carried for FILES-scope/sibling threading
+    assert next(t for t in payload["tasks"] if t["id"] == "1")["files"] == \
+        ["apistub/schema.py", "tests/test_schema.py"]
+
+
+def test_emit_launch_preserves_fenced_headings_in_bodies(tmp_path):
+    # A `### Task 99:` inside a code fence is content, not a task; the verbatim
+    # body the compiler writes must keep it intact (fence-aware extraction).
+    plan = tmp_path / "fenced.md"
+    plan.write_text(
+        "# Demo Implementation Plan\n\n"
+        "**Acceptance:** waived — demo\n\n"
+        "### Task 1: documents a format\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** embed this example:\n\n"
+        "```markdown\n### Task 99: not a real task\n```\n"
+    )
+    launch = tmp_path / "waves.json"
+    p = subprocess.run([sys.executable, str(COMPILER), str(plan),
+                        "--emit-launch", str(launch)], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    payload = json.loads(launch.read_text())
+    assert [t["id"] for t in payload["tasks"]] == ["1"]   # 99 stayed fenced content
+    assert "### Task 99: not a real task" in payload["tasks"][0]["body"]
+
+
+def test_emit_launch_is_opt_in(tmp_path):
+    # Without the flag, no launch_file key and no file written (back-compat).
+    plan = tmp_path / "launch.md"
+    plan.write_text(LAUNCH_PLAN)
+    out = compile_plan(plan)
+    assert "launch_file" not in out
+    assert "launch_waves" in out            # the light grouping is always present
