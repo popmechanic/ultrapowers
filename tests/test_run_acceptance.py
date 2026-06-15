@@ -271,3 +271,45 @@ def test_missing_module_collection_red_keeps_status_ok(tmp_path):
     repo = make_repo(tmp_path, feature_built=False)
     code, out = administer(vault, seal_id, digest, repo)
     assert out["status"] == "OK" and out["passed"] is False
+
+
+def baseline(suite, branch, repo, run_cmd, bootstrap=None):
+    cmd = ["bash", str(RUN), "--baseline", "--suite", str(suite),
+           "--branch", branch, "--run", run_cmd, "--repo", str(repo)]
+    if bootstrap is not None:
+        cmd += ["--bootstrap", bootstrap]
+    r = sh(cmd, check=False)
+    return r.returncode, json.loads(r.stdout)
+
+
+def _bare_suite(tmp_path):
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "test_exam.py").write_text(
+        "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
+    return suite
+
+
+def test_baseline_mode_proves_red(tmp_path):
+    """Feature absent at baseline -> PROVEN_RED, exit 0 (the proof holds)."""
+    suite = _bare_suite(tmp_path)
+    repo = make_repo(tmp_path, feature_built=False)
+    code, out = baseline(suite, "main", repo, "python3 -m pytest .ultra-acceptance -q")
+    assert code == 0 and out["status"] == "PROVEN_RED" and out["passed"] is False
+
+
+def test_baseline_mode_rejects_green(tmp_path):
+    """Feature already present at baseline -> GREEN_AT_BASELINE, non-zero exit."""
+    suite = _bare_suite(tmp_path)
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = baseline(suite, "main", repo, "python3 -m pytest .ultra-acceptance -q")
+    assert code != 0 and out["status"] == "GREEN_AT_BASELINE" and out["passed"] is True
+
+
+def test_baseline_mode_surfaces_bootstrap_error(tmp_path):
+    """A failing bootstrap at baseline is an env error, not a proven red."""
+    suite = _bare_suite(tmp_path)
+    repo = make_repo(tmp_path, feature_built=False)
+    code, out = baseline(suite, "main", repo,
+                         "python3 -m pytest .ultra-acceptance -q", bootstrap="exit 4")
+    assert code != 0 and out["status"] == "EXAM_BOOTSTRAP_ERROR" and out["passed"] is False
