@@ -61,6 +61,20 @@ def test_render_viewer_all_themes(tmp_path):
         assert f'"name": "{name}"' in html
 
 
+def test_template_has_audit_drawer_inert_without_transcripts(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    # drawer markup present
+    assert 'id="drawer"' in html
+    assert "closeDrawer" in html
+    # placeholders present and inert (no --transcripts given)
+    assert "/*__AUDIT_INDEX__*/null" in html
+    assert "/*__AUDIT_EMBED__*/null" in html
+    assert "/*__AUDIT_JS__*/" in html
+    # drawer references the Task 1 API by name
+    assert "AuditProjection" in html
+
+
 def test_swarm_watch_observes_engine_footprints(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

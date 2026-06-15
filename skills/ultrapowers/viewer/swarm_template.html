@@ -93,6 +93,30 @@
   .ring{fill:none;stroke:var(--faint);stroke-width:1}
 
   @media (prefers-reduced-motion:reduce){ .flicker{display:none} }
+
+  .drawer{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:min(86%,640px);max-height:78%;display:flex;flex-direction:column;
+    background:var(--screen-bg);border:1px solid var(--dim);border-radius:10px;
+    box-shadow:0 10px 60px rgba(0,0,0,.6);color:var(--ink);font-family:var(--font);
+    z-index:20;overflow:hidden}
+  .drawer[hidden]{display:none}
+  .drawer-head{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--faint)}
+  .drawer-badge{font-size:11px;letter-spacing:.1em;color:var(--accent);
+    border:1px solid var(--accent);border-radius:4px;padding:1px 6px}
+  .drawer-title{flex:1;font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .drawer-x{background:none;border:1px solid var(--dim);color:var(--hud);
+    border-radius:4px;cursor:pointer;font:inherit;font-size:11px;padding:1px 6px}
+  .drawer-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px 12px}
+  .drawer-tabs .tab{background:none;border:1px solid var(--dim);color:var(--ink);
+    border-radius:4px;cursor:pointer;font:inherit;font-size:11px;padding:1px 8px}
+  .drawer-body{overflow:auto;padding:6px 12px;font-size:12px;line-height:1.45}
+  .drawer-body .ev{margin:4px 0}
+  .drawer-body .ev-head{white-space:pre-wrap}
+  .drawer-body .ev-tool_result .ev-head{opacity:.8}
+  .drawer-body pre.ev-full{white-space:pre-wrap;margin:4px 0 8px;padding:6px 8px;
+    background:rgba(127,127,127,.12);border-radius:6px;max-height:40vh;overflow:auto}
+  .drawer-foot{padding:6px 12px;border-top:1px solid var(--faint);font-size:10px;opacity:.6}
+  .stationG.clickable{cursor:pointer}
 </style>
 </head>
 <body data-frame="crt">
@@ -132,6 +156,16 @@
     <div id="hudTitle"></div>
     <div><span id="hudWave"></span> <span id="hudMode" class="mode depict">DEPICTION</span></div>
   </div>
+  <div id="drawer" class="drawer" hidden>
+    <div class="drawer-head">
+      <span id="drawerBadge" class="drawer-badge">LIVE</span>
+      <span id="drawerTitle" class="drawer-title"></span>
+      <button class="drawer-x" onclick="closeDrawer()">esc ✕</button>
+    </div>
+    <div id="drawerTabs" class="drawer-tabs"></div>
+    <div id="drawerBody" class="drawer-body"></div>
+    <div id="drawerFoot" class="drawer-foot"></div>
+  </div>
   <div class="legend">SOLID GEOMETRY = OBSERVED FROM GIT &nbsp;&middot;&nbsp; ORBITS &amp; TRAVEL = DRAMATIZATION</div>
   <div class="ticker" id="ticker"></div>
 </div></div>
@@ -148,6 +182,112 @@ const THEME = /*__THEME_JSON__*/null || {
           'screen-bg': 'radial-gradient(ellipse at 50% 48%,#101113 0%,#07080a 62%,#020203 100%)',
           'scan-o': '.18', 'vig-o': '1', 'glass-o': '1', 'flick': '#eef7f0' },
 };
+/*__AUDIT_JS__*/
+const AUDIT_INDEX = /*__AUDIT_INDEX__*/null;
+const AUDIT_EMBED = /*__AUDIT_EMBED__*/null;
+
+const audit = (function () {
+  if (!AUDIT_INDEX) return null;            // no transcripts baked: drawer disabled
+  const byTask = {}, runLevel = [];
+  AUDIT_INDEX.agents.forEach(function (a) {
+    if ((a.role === "impl" || a.role === "review") && a.task != null) {
+      (byTask[a.task] = byTask[a.task] || []).push(a);
+    } else { runLevel.push(a); }
+  });
+  return { byTask: byTask, runLevel: runLevel, index: AUDIT_INDEX };
+})();
+
+let liveTimer = null, liveAgentId = null;
+
+function drawerEls() {
+  return {
+    root: document.getElementById("drawer"),
+    title: document.getElementById("drawerTitle"),
+    badge: document.getElementById("drawerBadge"),
+    body: document.getElementById("drawerBody"),
+    foot: document.getElementById("drawerFoot"),
+    tabs: document.getElementById("drawerTabs"),
+  };
+}
+function roleLabel(a) { return a.task != null ? (a.role + ":" + a.task) : a.role; }
+function mkEl(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function stopLive() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } liveAgentId = null; }
+function closeDrawer() { stopLive(); drawerEls().root.hidden = true; }
+document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
+
+function openDrawer(agents, label) {
+  if (!audit || !agents || !agents.length) return;
+  const d = drawerEls();
+  d.root.hidden = false;
+  d.tabs.innerHTML = "";
+  agents.forEach(function (a) {
+    const b = mkEl("button", "tab", roleLabel(a));
+    b.onclick = function () { loadAgent(a, label); };
+    d.tabs.appendChild(b);
+  });
+  loadAgent(agents[0], label);
+}
+
+function loadAgent(a, label) {
+  stopLive();
+  const d = drawerEls();
+  d.title.textContent = (label ? label + " · " : "") + roleLabel(a) +
+    " · " + (a.model || "?") + " · " + a.turns + " turns";
+  d.body.textContent = "loading…";
+  if (AUDIT_EMBED && AUDIT_EMBED[a.id]) {
+    d.badge.textContent = "SNAPSHOT";
+    const ev = AuditProjection.projectAgent(AUDIT_EMBED[a.id]).events;
+    renderEvents(ev, d, (AUDIT_INDEX.versions || []), 0);
+  } else if (location.protocol === "file:") {
+    d.badge.textContent = "STATIC";
+    d.body.textContent = "Serve this folder over http for live transcripts, or re-render with --embed for offline content.";
+    d.foot.textContent = "";
+  } else {
+    d.badge.textContent = "LIVE";
+    liveAgentId = a.id;
+    fetchAndRender(a, d, false);
+    liveTimer = setInterval(function () { if (liveAgentId === a.id) fetchAndRender(a, d, true); }, 2000);
+  }
+}
+
+function fetchAndRender(a, d, quiet) {
+  fetch("./" + a.file, { cache: "no-store" })
+    .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+    .then(function (text) {
+      const p = AuditProjection.parseLines(text);
+      renderEvents(AuditProjection.projectAgent(p.entries).events, d, p.versions, p.unparsed);
+    })
+    .catch(function (err) { if (!quiet) d.body.textContent = "could not load " + a.file + " (" + err + ")"; });
+}
+
+function renderEvents(events, d, versions, unparsed) {
+  d.body.innerHTML = "";
+  events.forEach(function (ev) {
+    const row = mkEl("div", "ev ev-" + ev.kind);
+    const head = mkEl("div", "ev-head", AuditProjection.summaryLine(ev));
+    row.appendChild(head);
+    const full = ev.kind === "text" ? ev.text
+      : ev.kind === "tool_use" ? ev.input
+      : ev.kind === "tool_result" ? ev.result : "";
+    if (full && full.length > AuditProjection.CAPS.collapsed) {
+      const more = ev.truncated ? "\n… (+" + ev.truncated + " more chars — see raw file)" : "";
+      const pre = mkEl("pre", "ev-full", full + more);
+      pre.hidden = true;
+      head.style.cursor = "pointer";
+      head.onclick = function () { pre.hidden = !pre.hidden; };
+      row.appendChild(pre);
+    }
+    d.body.appendChild(row);
+  });
+  d.foot.textContent = "format " + ((versions && versions.join(", ")) || "?") +
+    (unparsed ? " · " + unparsed + " unparsed lines" : "");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Motion engine. Native stand-in for anime.js's svg.createMotionPath: an SVG
 // path sampled by getPointAtLength under one requestAnimationFrame loop. To
@@ -251,6 +391,10 @@ const gTrails = document.getElementById('trails');
 const gStations = document.getElementById('stations');
 const gHub = document.getElementById('hub');
 const gAgents = document.getElementById('agents');
+if (audit && audit.runLevel.length) {
+  gHub.style.cursor = "pointer";
+  gHub.addEventListener("click", function () { openDrawer(audit.runLevel, "run-level"); });
+}
 
 if (THEME.rings !== 'none')
   waves.forEach((_, wi) => el('circle', { class: 'ring', cx: CX, cy: CY, r: ringR(wi),
@@ -324,6 +468,10 @@ DAG.tasks.forEach((t, ti) => {
   const jp = el('path', { d: journeyPath({ angle, r }), fill: 'none', stroke: 'none' }, gJourneys);
   stations[t.id] = { id: t.id, angle, r, x, y, el: g, journey: jp,
                      state: 'pending', workPhase: rand() * 6.28, reviewer: null };
+  if (audit && audit.byTask[t.id]) {
+    g.classList.add("clickable");
+    g.addEventListener("click", function () { openDrawer(audit.byTask[t.id], "Task " + t.id); });
+  }
 });
 
 const edgeEls = DAG.edges.map(([f, t], i) => {
