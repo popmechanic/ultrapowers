@@ -149,7 +149,20 @@ launches.
 **4a — Install the committed scripts as project saved workflows (idempotent).** Saved workflows
 (`.claude/workflows/*.js`) are the documented deterministic launch surface: they run **by name**
 with `args`, instead of relying on ad-hoc script delivery. Plugins cannot ship saved workflows, so
-install the copies now by reading each `*.harness.json` manifest from the harnesses library:
+the copies must be installed into the project.
+
+The plugin's **SessionStart hook** (`hooks/session_start.sh`) does this install at the start of
+*every* session — that is the load-bearing install, because the engine snapshots its saved-workflow
+registry **once, at session start**. A copy that lands on disk before that snapshot is registered
+this session; a copy written *during* the session (the manual install below) is only registered
+**next** session. This is exactly why a fresh checkout's first `/ultrapowers` could fail with
+`Workflow "ultrapowers-probe" not found` even though Step 4a had just copied the file: the project
+`.claude/workflows/` is gitignored and starts empty, so at the registry snapshot only the plugin-
+shipped workflows existed. The hook closes that window for normal use.
+
+Still run the manual install below as an idempotent safety net (in case the hook did not run — hooks
+disabled, a non-hook surface, or a hand-installed skill). Install by reading each `*.harness.json`
+manifest from the harnesses library:
 
 ```bash
 mkdir -p .claude/workflows
@@ -170,7 +183,9 @@ or gitignore it; Step 4a keeps it current either way.)
 > **Determinism guard:** never trigger the run with the `ultracode` keyword or by asking for "a
 > workflow" in prose — that opt-in makes Claude **author a new script at runtime**, which is
 > exactly the nondeterminism this skill exists to remove. The only sanctioned launch is the saved
-> workflow installed above; if it cannot be launched, go to Step 6.
+> workflow installed above. If it cannot be launched, diagnose with the Step 4a½ preflight before
+> falling back — a freshly installed-this-session copy that the engine cannot yet see is a stale
+> registry (cured by a new session), **not** the engine drift that Step 6 exists for.
 
 ## The read/write boundary
 
@@ -193,8 +208,21 @@ runtime, which is exactly the nondeterminism the registry exists to remove.
 
 **4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with
 `args = { ping: 'pong' }`. It spawns no agents and returns `{ ok: true, ... }` in
-seconds. If the launch errors or `ok` is not true, the engine has drifted — go
-directly to Step 6; do not launch the real workflow.
+seconds. Branch on *how* it fails — the two failure modes have different cures:
+
+- **Not found** (`Workflow "ultrapowers-probe" not found. Available: ...`) — the engine's
+  saved-workflow registry, snapshotted at session start, predates the install. This is **not**
+  engine drift. Confirm the file is on disk (`.claude/workflows/probe.js`, with
+  `meta.name: 'ultrapowers-probe'`); if it is, the only cure is a **new session** (the
+  SessionStart hook will have installed it before the next snapshot). Tell the human:
+  "The ultrapowers workflows were just installed but the engine registers saved workflows only at
+  session start. Start a fresh session and re-run `/ultrapowers <plan-path>`." Do **not** route to
+  the sequential fallback for this case — a restart restores the parallel path. If the file is
+  genuinely absent after Step 4a (the install failed — e.g. no `python3`, unreadable
+  `${CLAUDE_PLUGIN_ROOT}`), report that install failure, then go to Step 6.
+- **Launches but `ok` is not true, or errors mid-run** — the engine accepted the workflow but the
+  args/return dialect changed under us. The engine has drifted — go directly to Step 6; do not
+  launch the real workflow.
 
 **4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
@@ -314,6 +342,7 @@ revision) or an inability to create the integration branch.
 - `scripts/validate_skill.py` — run `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` from the repo root (CI also runs it for `skills/ultraplan`) to verify frontmatter and reference integrity; expected output: `skill ok`.
 - `scripts/compile_plan.py` — deterministic compiler for plans (marked: adopted verbatim; unmarked: heuristic-flagged draft): transparency-block JSON from a plan path.
 - `scripts/sweep_worktrees.sh` — deterministic post-run sweep: removes engine worktrees, deletes merged `worktree-wf_*` branches, keeps unmerged ones (`--force` to delete after triage). Run at the Step-5 Approve path.
-- `harnesses/probe.js` — the zero-agent engine preflight installed at Step 4a, launched at Step 4a½.
-- `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) used by Step 4a to install copies by glob.
+- `harnesses/probe.js` — the zero-agent engine preflight installed by the SessionStart hook (and Step 4a as a safety net), launched at Step 4a½.
+- `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) read by both the SessionStart hook and Step 4a to install copies by glob.
+- `hooks/session_start.sh` — SessionStart hook: injects the plan-routing rule and installs the saved-workflow copies into `.claude/workflows/` *before* the engine snapshots its registry, so `/ultrapowers` can launch them by `meta.name` the same session.
 - `references/harness-ratchet.md` — the born-dynamic-then-frozen promotion path for new harness topologies (how a candidate becomes a registered, frozen harness).
