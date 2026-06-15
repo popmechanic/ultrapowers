@@ -6,6 +6,29 @@
 # Stdout from a SessionStart command hook becomes session context (exit 0).
 set -euo pipefail
 
+# Install the committed harnesses as project saved workflows NOW, at session
+# start, so the Workflow engine picks them up when it snapshots its saved-
+# workflow registry. The engine builds that registry once per session; a copy
+# made mid-session (SKILL.md Step 4a) is only registered NEXT session, which is
+# why a fresh checkout's first `/ultrapowers` saw "Workflow 'ultrapowers-probe'
+# not found" (the project .claude/workflows/ is gitignored and plugins cannot
+# ship saved workflows, so the dir was empty at the registry snapshot). Doing
+# the install here closes that window. Guarded so it can NEVER break the hook's
+# real contract — emitting the routing rule below; all output is swallowed and
+# any failure (no python3, read-only fs, etc.) just defers to Step 4a.
+(
+  set +eu
+  plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  harnesses="$plugin_root/skills/ultrapowers/harnesses"
+  dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
+  mkdir -p "$dest"
+  for m in "$harnesses"/*.harness.json; do
+    [ -e "$m" ] || continue
+    f="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")"
+    [ -n "$f" ] && [ -e "$harnesses/$f" ] && cp "$harnesses/$f" "$dest/$f"
+  done
+) >/dev/null 2>&1 || true
+
 cat <<'EOF'
 <ultrapowers-routing>
 The ultrapowers plugin is installed. Two standing rules:

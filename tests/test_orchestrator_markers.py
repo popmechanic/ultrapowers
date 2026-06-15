@@ -39,6 +39,21 @@ def test_orchestrator_launches_by_meta_name():
     assert "name: 'ultrapowers'" in workflow   # the name Step 4b promises
 
 
+def test_preflight_distinguishes_not_found_from_engine_drift():
+    # Regression for the fresh-checkout "Workflow 'ultrapowers-probe' not found"
+    # failure: a not-found probe means the registry snapshot predates the
+    # install (cured by a NEW session), NOT engine drift. The skill must name
+    # the restart cure and must NOT route this case to the sequential fallback,
+    # or the parallel path silently dies on every first run.
+    text = ORCHESTRATOR.read_text()
+    preflight = text[text.index("**4a½"):text.index("**4b")]
+    assert "not found" in preflight.lower()
+    assert "session" in preflight.lower()          # the restart cure is named
+    assert "session start" in preflight.lower()    # registry-snapshot timing explained
+    # The hook is the load-bearing install, documented in Step 4a.
+    assert "SessionStart hook" in text
+
+
 def test_orchestrator_restores_session_checkout_at_step_5():
     # The workflow's setup agent leaves the session checkout on the
     # integration branch; Step 5 must switch back before presenting the
