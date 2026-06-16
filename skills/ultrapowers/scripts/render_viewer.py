@@ -331,6 +331,8 @@ def main():
     print("  open http://localhost:8123/swarm.html")
     print()
     print(f"depiction only: open file://{out.resolve()}")
+    print()
+    print(f"one command (render + serve + URL): python3 {HERE / 'serve_viewer.py'} {args.plan}")
 
 
 if __name__ == "__main__":
