@@ -164,6 +164,12 @@ const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBran
 // planPath: where the original plan lives on disk, so the completeness critic
 // reviews against the actual plan (agents have fs access; this script does not).
 const planPath = (ARGS && typeof ARGS.planPath === 'string' && ARGS.planPath.trim()) || undefined
+// globalConstraints: the plan's project-wide requirements the compiler captured
+// from the plan header, '' when the plan had no `## Global Constraints` section.
+// Forwarded verbatim into the implementer (binding requirements) and reviewer
+// (attention lens) dispatches. (#1.4)
+const globalConstraints =
+  (ARGS && typeof ARGS.globalConstraints === 'string' && ARGS.globalConstraints.trim()) || ''
 // resume: the deterministic redirect path (SKILL.md Step 5). Setup checks out the
 // EXISTING integration branch instead of creating one; the waves carry only the
 // redirected tasks. Requires the branch to be named explicitly — never guessed.
@@ -228,6 +234,8 @@ const IMPLEMENTER_PROMPT = [
   '- BASE: sha of the integration-branch HEAD your work builds on',
   '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
   '- SIBLING FILES: files owned by tasks running in parallel with yours (may be absent). They do NOT exist at BASE and are not yours: never create, duplicate, modify, or delete a sibling-owned path. If your task cannot be implemented or tested without one, report BLOCKED naming the file — that is a missing dependency edge in the plan, not yours to work around.',
+  '- GLOBAL CONSTRAINTS: project-wide requirements (version floors, naming/copy rules, platform reqs) that bind every task (may be absent). Treat them as additional acceptance criteria your work must satisfy.',
+  '- INTERFACES - the exact neighboring signatures your task consumes and the contract it produces (may be absent). Consumes names symbols earlier tasks expose that you may call; Produces is the contract later tasks rely on — match those names and types exactly, since the implementers that consume them never see your code.',
   '',
   'Workflow — red green refactor:',
   "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
@@ -246,7 +254,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
   '',
-  'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.',
+  'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block. Keep your back-channel summary to 15 lines or fewer; put the full detail in your committed work and the JSON fields.',
 ].join('\n')
 
 // BAKE:REVIEWER_PROMPT
@@ -259,6 +267,8 @@ const REVIEWER_PROMPT = [
   'You are a REVIEW role. Do not write files, create commits, stage changes, or modify the tree in any way. Your only output is your findings/verdict. If the work is wrong, report it — never fix it.',
   '',
   'Mandate: verify everything independently. Do not trust the implementer report.',
+  '',
+  'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
   '',
   'Spec compliance:',
   '1. Check out the implementer HEAD sha as a DETACHED checkout (git checkout --detach <HEAD>) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run git diff BASE...HEAD yourself.',
@@ -278,7 +288,7 @@ const REVIEWER_PROMPT = [
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
-  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
+  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block. Your final message is your report: every line is a verdict or a finding carrying file:line evidence.',
 ].join('\n')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
@@ -464,6 +474,27 @@ const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
   ? ('\nFILES: ' + task.files.join(', '))
   : ''
 
+// The plan's Global Constraints, threaded into the implementer and reviewer
+// dispatches. Empty when no constraints were supplied. (#1.4)
+const globalConstraintsBlock = globalConstraints
+  ? ('\nGLOBAL CONSTRAINTS:\n' + globalConstraints)
+  : ''
+
+// A task's Interfaces (compile_plan.py emits { consumes:[...], produces:[...] }),
+// threaded so the worktree-isolated implementer learns the neighboring signatures
+// it consumes and the contract it must produce, and the reviewer can check the
+// produced contract. Empty when the task declared no interfaces. (#1.4)
+const interfacesLine = (task) => {
+  const i = task && task.interfaces
+  if (!i || typeof i !== 'object') return ''
+  const consumes = Array.isArray(i.consumes) ? i.consumes : []
+  const produces = Array.isArray(i.produces) ? i.produces : []
+  if (consumes.length === 0 && produces.length === 0) return ''
+  return '\nINTERFACES:' +
+    (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
+    (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
+}
+
 // Same-wave siblings own files this task must not touch — they are not at
 // BASE (a wave merges only after all its tasks finish). Naming them lets the
 // implementer and reviewer tell "missing sibling file" from "broken work".
@@ -537,7 +568,7 @@ async function runTaskInner(task, baseSha, siblings) {
 
   const siblingsStr = siblings || ''
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task),
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -569,7 +600,7 @@ async function runTaskInner(task, baseSha, siblings) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr
+      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -638,7 +669,7 @@ async function runTaskInner(task, baseSha, siblings) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task) +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +

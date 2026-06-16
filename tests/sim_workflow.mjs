@@ -1931,6 +1931,42 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   console.log('scenario bootstrap-and-per-task-testcmd: OK')
 }
 
+// ── Scenario: forwarded signals — the implementer and reviewer dispatches carry
+// the plan's Global Constraints and each task's Interfaces, and the prompts state
+// the terse output contract (#1.4, #2.4).
+async function scenarioForwardedSignals() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'alpha', body: 'do A', tier: 'cheap',
+      interfaces: { consumes: ['schema.User'], produces: ['createUser(name: string): User'] } },
+    { id: 'B', title: 'beta', body: 'do B', tier: 'cheap' }, // no interfaces
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+                 globalConstraints: 'Node >= 20. All copy uses sentence case.' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args, budget: undefined,
+  })
+  assert(/GLOBAL CONSTRAINTS:[\s\S]*Node >= 20/.test(prompts['impl:A']),
+    'forwarded: implementer dispatch carries the global constraints text')
+  assert(/GLOBAL CONSTRAINTS:[\s\S]*Node >= 20/.test(prompts['review:A:1']),
+    'forwarded: reviewer dispatch carries the global constraints text')
+  assert(/INTERFACES:[\s\S]*schema\.User/.test(prompts['impl:A']) &&
+         /createUser\(name: string\): User/.test(prompts['impl:A']),
+    'forwarded: implementer dispatch carries the task interfaces (consumes + produces)')
+  assert(/INTERFACES:[\s\S]*schema\.User/.test(prompts['review:A:1']),
+    'forwarded: reviewer dispatch carries the task interfaces')
+  assert(!/INTERFACES:/.test(prompts['impl:B']),
+    'forwarded: a task without interfaces gets no INTERFACES line')
+  assert(/final message is your report/i.test(prompts['review:A:1']) &&
+         /file:line/.test(prompts['review:A:1']),
+    'forwarded: reviewer prompt states the terse report contract')
+  assert(/15 lines/.test(prompts['impl:A']),
+    'forwarded: implementer prompt caps the back-channel at 15 lines')
+  assert(r.tasks.every((t) => t.status === 'done'), 'forwarded: all tasks done')
+  console.log('scenario forwarded-signals: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
@@ -1942,4 +1978,5 @@ await scenarioWavesPathPreflightMissingFile()
 await scenarioWavesPathPreflightMissingId()
 await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
+await scenarioForwardedSignals()
 console.log('ALL SCENARIOS PASSED')
