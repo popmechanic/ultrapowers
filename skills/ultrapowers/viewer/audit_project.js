@@ -123,8 +123,32 @@
     }
   }
 
+  // Partition the run index into per-task stations and run-level (hub) agents.
+  // Rule: a resolved task id wins (even if the role was misdetected); anything
+  // without one lands on the hub — no agent is ever unreachable. Returns null
+  // when no index was baked (drawer disabled), matching the template's guard.
+  function partitionAgents(index) {
+    if (!index || !index.agents) return null;
+    var byTask = {}, runLevel = [];
+    index.agents.forEach(function (a) {
+      if (a.task != null) (byTask[a.task] = byTask[a.task] || []).push(a);
+      else runLevel.push(a);
+    });
+    return { byTask: byTask, runLevel: runLevel, index: index };
+  }
+
+  // Live refresh: only repaint when the fetched transcript differs from what is
+  // already rendered, so expanded events and scroll position survive a tick.
+  // Signature is text length — an append-only JSONL changes length whenever it
+  // changes content.
+  function shouldRerender(prevSig, text) {
+    var sig = String(text == null ? "" : text).length;
+    return { render: sig !== prevSig, sig: sig };
+  }
+
   var API = { CAPS: CAPS, parseLines: parseLines, projectAgent: projectAgent,
-              summaryLine: summaryLine, makeEl: makeEl, renderInto: renderInto };
+              summaryLine: summaryLine, makeEl: makeEl, renderInto: renderInto,
+              partitionAgents: partitionAgents, shouldRerender: shouldRerender };
   if (typeof globalThis !== "undefined") globalThis.AuditProjection = API;
   if (typeof module !== "undefined" && module.exports) module.exports = API;
 })();
