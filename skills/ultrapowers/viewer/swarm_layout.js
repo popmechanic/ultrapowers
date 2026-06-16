@@ -60,7 +60,66 @@
     return { nodes: nodes, edges: outEdges, width: width, height: height, sinkId: SINK };
   }
 
-  var api = { computeGrid: computeGrid, SINK: SINK };
+  // Meso git-graph topology for ONE task, assembled from observed data: the
+  // integration trunk, the branch fork, real commit nodes, review gate(s), and
+  // the two-parent merge. sha/subject are real; the impl/fix tint is inferred
+  // (a second impl agent on a task is a fix round — the engine re-dispatches the
+  // implementer prompt, so there is no distinct "fix" role). Geometry only.
+  var M_MARGIN = 60, M_ROW = 64, M_LANE = 120, M_GATE_DX = 26;
+
+  function buildMeso(meso) {
+    var commits = (meso.commits || []).map(function (c) {
+      return { sha: c.sha, subject: c.subject, role: "impl", x: 0, y: 0 };
+    });
+    var agents = meso.agents || [];
+    var nImpl = agents.filter(function (a) { return a.role === "impl"; }).length;
+    var nReview = agents.filter(function (a) { return a.role === "review"; }).length;
+    var fixIters = Math.max(0, nImpl - 1);
+
+    var trunkX = M_MARGIN, branchX = M_MARGIN + M_LANE;
+    var forkY = M_MARGIN;
+
+    // tint the LAST fixIters commits as fix (keep >=1 impl)
+    var fixCount = Math.min(fixIters, Math.max(0, commits.length - 1));
+    var firstFix = commits.length - fixCount;
+    for (var i = 0; i < commits.length; i++)
+      commits[i].role = (i >= firstFix) ? "fix" : "impl";
+
+    // lay rows top->down: impl commits, then gate row, then fix commits
+    var row = 1;
+    for (var j = 0; j < firstFix; j++) {
+      commits[j].x = branchX; commits[j].y = forkY + row * M_ROW; row++;
+    }
+    var gates = [];
+    if (nReview > 0) {
+      var kind = (meso.reviewDepth === "lean") ? "lean"
+        : (meso.reviewDepth === "adversarial") ? "adversarial"
+        : (nReview >= 2 ? "adversarial" : "lean");
+      var gy = forkY + row * M_ROW; row++;
+      if (kind === "adversarial") {
+        gates.push({ lane: 0, kind: kind, x: branchX - M_GATE_DX, y: gy });
+        gates.push({ lane: 1, kind: kind, x: branchX + M_GATE_DX, y: gy });
+      } else {
+        gates.push({ lane: 0, kind: kind, x: branchX, y: gy });
+      }
+    }
+    for (var k = firstFix; k < commits.length; k++) {
+      commits[k].x = branchX; commits[k].y = forkY + row * M_ROW; row++;
+    }
+
+    var lastY = forkY + Math.max(1, row) * M_ROW;
+    var merge = meso.merged ? { x: trunkX, y: lastY + M_ROW } : null;
+    var bottomY = merge ? merge.y : lastY;
+    return {
+      trunk: { x: trunkX, y0: forkY, y1: bottomY },
+      fork: { x: branchX, y: forkY },
+      merge: merge, branchX: branchX, commits: commits, gates: gates,
+      width: branchX + M_LANE,
+      height: bottomY + M_MARGIN,
+    };
+  }
+
+  var api = { computeGrid: computeGrid, buildMeso: buildMeso, SINK: SINK };
   root.SwarmLayout = api;
   if (typeof module !== "undefined" && module.exports) module.exports = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
