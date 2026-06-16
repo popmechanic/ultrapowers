@@ -255,13 +255,17 @@ def _js_embed(obj):
 
 def render(dag, theme_name, out_path, audit_index=None, audit_embed=None, audit_js=None):
     html = TEMPLATE.read_text()
-    for ph in (DAG_PLACEHOLDER, THEME_PLACEHOLDER):
+    for ph in (DAG_PLACEHOLDER, THEME_PLACEHOLDER, AUDIT_JS_PLACEHOLDER):
         if ph not in html:
             raise SystemExit(f"template placeholder {ph} missing — swarm_template.html was edited?")
     html = html.replace(DAG_PLACEHOLDER, _js_embed(dag))
     html = html.replace(THEME_PLACEHOLDER, _js_embed(THEMES[theme_name]))
-    if audit_js is not None:
-        html = html.replace(AUDIT_JS_PLACEHOLDER, audit_js)
+    # The projection library is mandatory, not optional: swarm_template references
+    # AuditProjection at script load (not just inside the drawer), so it must always
+    # be defined or the whole viewer dies with a ReferenceError before it paints. The
+    # drawer goes inert through a null AUDIT_INDEX below, never through a missing lib.
+    html = html.replace(AUDIT_JS_PLACEHOLDER,
+                        audit_js if audit_js is not None else AUDIT_JS.read_text())
     if audit_index is not None:
         html = html.replace(AUDIT_INDEX_PLACEHOLDER, _js_embed(audit_index))
     if audit_embed is not None:
@@ -295,7 +299,9 @@ def main():
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    audit_index = audit_embed = audit_js = None
+    # The projection library is always inlined by render(); --transcripts only adds
+    # the per-run DATA (index, and embedded content when --embed).
+    audit_index = audit_embed = None
     if args.transcripts:
         run_dir = pathlib.Path(args.transcripts)
         if not run_dir.is_dir():
@@ -303,7 +309,6 @@ def main():
         if out_dir.resolve() == run_dir.resolve():
             raise SystemExit("--out must differ from --transcripts (transcripts are read-only)")
         audit_index = build_index(run_dir)
-        audit_js = AUDIT_JS.read_text()
         if args.embed:
             audit_embed = marshal_embed(run_dir)
         else:
@@ -316,11 +321,11 @@ def main():
     if args.all:
         for name in THEMES:
             print("wrote", render(dag, name, out_dir / f"swarm-{name}.html",
-                                  audit_index, audit_embed, audit_js))
+                                  audit_index, audit_embed))
         return
 
     out = render(dag, args.theme, out_dir / "swarm.html",
-                 audit_index, audit_embed, audit_js)
+                 audit_index, audit_embed)
     print(f"wrote {out}  (theme: {args.theme})")
     print(f"  {len(dag['tasks'])} tasks, {len(dag['edges'])} edges, "
           f"{len(dag['waves'])} waves, mode={dag['mode']}")
