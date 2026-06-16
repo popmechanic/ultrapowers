@@ -349,8 +349,10 @@ def test_viewer_uses_grid_layout(tmp_path):
     html = (tmp_path / "swarm.html").read_text()
     assert "SwarmLayout.computeGrid" in html, "template must lay out via the grid adapter"
     assert "INTEGRATION" in html  # the sink label retained
-    # radial scene primitives are gone
-    assert "concentric" not in html.lower()
+    # radial scene primitives are gone — assert on tokens that DID exist in the
+    # radial template (a plain "concentric" check was a tautology — never present).
+    for radial in ("journeyPath", "ringR", "setAmbient", "startReviewerOrbit"):
+        assert radial not in html, f"radial primitive {radial!r} still present"
 
 
 def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
