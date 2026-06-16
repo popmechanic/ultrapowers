@@ -22,6 +22,9 @@ import sys
 from pathlib import Path
 
 TASK_HEAD = re.compile(r"### Task ([A-Za-z0-9]+):")
+# The real engine prompt references the task by id rather than an inlined
+# header:  …find the object whose "id" is "2"…  (per-task impl/reviewer prompts).
+TASK_ID = re.compile(r'"id"\s+is\s+"([A-Za-z0-9]+)"')
 # First phrases of the baked prompts (reviewer-prompts.md / wave-merge.md).
 # tests/test_no_prompt_drift.py pins those sources into waves.js, so the
 # classifier inherits their stability; an unmatched prompt degrades to
@@ -58,7 +61,7 @@ def classify(text):
     for marker, role in ROLE_MARKERS:
         if marker in text:
             if role in ("impl", "review"):
-                m = TASK_HEAD.search(text)
+                m = TASK_ID.search(text) or TASK_HEAD.search(text)
                 return role + ":" + (m.group(1) if m else "?")
             return role
     return "unknown"
