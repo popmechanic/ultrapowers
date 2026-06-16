@@ -1116,6 +1116,19 @@ if (budgetExhausted()) {
   }
 }
 
+// agent() RETURNS null (it does not throw) when a subagent dies on a terminal API
+// error after retries (e.g. Overloaded) or is skipped mid-run — so the try/catch
+// above, which only handles throws, lets a null review slip through to the report
+// where review.testsPassed would crash the whole run AFTER every wave already
+// merged. Guard it: a dead completeness critic degrades to a non-passing,
+// manually-verifiable result and a judgment call, never a crash.
+if (!review || typeof review !== 'object') {
+  judgmentCalls.push('integration review returned no result — the completeness agent died (likely a transient API error after retries); verify the suite manually before merging')
+  review = { command: undefined, testsPassed: false,
+             output: 'integration review returned null — the completeness agent produced no result',
+             findings: ['integration review returned no result — verify the suite manually before merging'] }
+}
+
 // cannot-verify items with no usable completeness critic must not be dropped:
 // when the run recorded no merge HEAD, the critic reports BLOCKED, so the items
 // surface at the gate as judgment calls instead (#2.2 error handling).

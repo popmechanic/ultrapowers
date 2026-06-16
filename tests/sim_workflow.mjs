@@ -2084,4 +2084,42 @@ async function scenarioWarmCacheBootstrap() {
 }
 
 await scenarioWarmCacheBootstrap()
+
+// ── Scenario: a dead completeness critic must NOT crash the run. agent() RETURNS
+// null (it does not throw) when a subagent dies on a terminal API error after
+// retries (e.g. Overloaded). Regression for the live-run crash where a null
+// integration review reached review.testsPassed and threw AFTER every wave merged.
+async function scenarioIntegrationReviewNull() {
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return null   // the completeness agent died (Overloaded)
+    throw new Error('unexpected agent label: ' + label)
+  }
+  let r
+  try {
+    r = await runWorkflow({
+      agent,
+      args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+      budget: undefined,
+    })
+  } catch (e) {
+    assert(false, 'integration-null: run must NOT throw on a null completeness review (got: ' + ((e && e.message) || e) + ')')
+  }
+  assert(r && r.tests && r.tests.passed === false,
+    'integration-null: a dead critic yields tests.passed=false, not a crash')
+  assert(r.acceptance && r.acceptance.mode === 'suite' && r.acceptance.passed === false,
+    'integration-null: suite acceptance does not pass when the critic produced no result')
+  assert(r.judgmentCalls.some((j) => /returned no result|completeness agent died/i.test(j)),
+    'integration-null: the dead critic is surfaced as a judgment call')
+  console.log('scenario integration-review-null: OK')
+}
+
+await scenarioIntegrationReviewNull()
 console.log('ALL SCENARIOS PASSED')
