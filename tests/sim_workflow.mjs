@@ -1967,6 +1967,35 @@ async function scenarioForwardedSignals() {
   console.log('scenario forwarded-signals: OK')
 }
 
+// ── Scenario: pre-baked review packets — the implementer's final step generates
+// the packet, the reviewer reads it (guarded fallback to live git), and the
+// reviewer no longer runs the suite (#2.1, #2.3b).
+async function scenarioReviewPackets() {
+  const prompts = {}
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args: baseArgs, budget: undefined,
+  })
+  assert(/scripts\/review-package/.test(prompts['impl:A']),
+    'packets: implementer final step runs the review-package script')
+  assert(/last (stdout )?line|echoed/i.test(prompts['impl:A']) && /packet/i.test(prompts['impl:A']),
+    'packets: implementer reports the echoed packet path')
+  assert(/review packet/i.test(prompts['review:A:1']),
+    'packets: reviewer prompt references the pre-baked review packet')
+  assert(/do not run git/i.test(prompts['review:A:1']),
+    'packets: reviewer reads the packet instead of running git')
+  assert(/fall back|missing|does not match/i.test(prompts['review:A:1']),
+    'packets: reviewer has a guarded fallback to live git when the packet is missing or stale')
+  assert(!/Run the full check suite and confirm it passes/.test(prompts['review:A:1']),
+    'packets: reviewer no longer runs the full check suite')
+  assert(/BASE\.\.\.HEAD/.test(prompts['review:A:1']),
+    'packets: reviewer still anchors to BASE...HEAD')
+  assert(/REVIEW role/.test(prompts['review:A:1']) && /Do not write files/.test(prompts['review:A:1']),
+    'packets: reviewer stays read-only')
+  assert(r.tasks.every((t) => t.status === 'done'), 'packets: all tasks done')
+  console.log('scenario review-packets: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
@@ -1979,4 +2008,5 @@ await scenarioWavesPathPreflightMissingId()
 await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
 await scenarioForwardedSignals()
+await scenarioReviewPackets()
 console.log('ALL SCENARIOS PASSED')

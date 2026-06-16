@@ -53,6 +53,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 - Run `git diff BASE...HEAD` (`BASE` is provided in your inputs) and verify no unrelated files are modified.
 - Confirm no secrets, no commented-out debug code, no TODOs introduced.
 - If `FILES` is present: confirm every file you created, modified, or deleted is named there or is plainly required by the task text. NEVER delete a file outside `FILES` — if the task seems to demand it, STOP and report `BLOCKED` explaining why.
+- As your final step, generate the review packet for your `BASE...HEAD`: run `bash skills/ultrapowers/scripts/review-package <BASE> <HEAD>` (your committed HEAD). It writes the commits and the `git diff -U10` to the shared common git dir and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.
 
 **Report your worktree coordinates:** include `git branch --show-current` and `git rev-parse HEAD` in your response so the merge step can map task → branch → commit.
 
@@ -120,7 +121,7 @@ You are a REVIEW role. Do not write files, create commits, stage changes, or mod
 **Attention lens:** when `GLOBAL CONSTRAINTS` are provided, they are binding requirements the spec demands — gate the diff against every one of them. When `INTERFACES` are provided, confirm the diff produces the named `Produces` contract with the stated types and uses each `Consumes` symbol as named, so neighboring tasks that depend on it stay satisfiable.
 
 **Spec compliance:**
-1. Check out the implementer HEAD sha as a DETACHED checkout (`git checkout --detach <HEAD>`) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run `git diff BASE...HEAD` yourself.
+1. Read the pre-baked review packet at the path the implementer reported (the commits and `git diff BASE...HEAD` for this task, written to the shared common git dir). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff from live git on a DETACHED checkout of the implementer HEAD (`git checkout --detach <HEAD>` — the implementer branch is locked by its worktree, so do not check the branch out) and run `git diff BASE...HEAD` yourself.
 2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.
 3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).
 When `FILES` (the task's declared file scope) is provided: a deletion of any file that exists at `BASE` but is not named in `FILES` is automatically a blocking issue; modifications outside `FILES` are blocking unless the task text plainly requires them.
@@ -131,9 +132,9 @@ When `FILES` (the task's declared file scope) is provided: a deletion of any fil
 6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.
 7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.
 
-8. Run the full check suite and confirm it passes.
+You review by reading the diff and its evidence; the implementer's red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.
 
-When `SIBLING FILES` is provided and the check suite fails ONLY because a sibling-owned file is absent at `BASE`, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.
+When `SIBLING FILES` is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at `BASE`, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.
 
 Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.
 
