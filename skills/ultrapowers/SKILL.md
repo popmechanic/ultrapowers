@@ -306,6 +306,8 @@ branch, runs each wave (`parallel()` barrier, chunked to the 16-agent engine cap
 reconciles failures, and runs a final integration/completeness review. See
 `references/wave-merge.md` for the mechanics that are baked into the script.
 
+**After launch, offer the live view (interactive runs only).** The run is now headless, but this conversation is not — surface a one-line opt-in so the human can watch the autonomous stretch: *"Want to watch live? I'll serve the swarm at a localhost URL."* On yes, run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py <plan-path> --watch . <integrationBranch>` and hand back the printed `http://localhost:<port>/swarm.html` — `swarm_watch` animates agents fanning out and merging from git footprints. Tear it down at the gate (`serve_viewer.py --stop <dir>`). Skip the offer in a headless/non-interactive run — no one is watching, so do not spin up a server.
+
 ---
 
 ## Step 5 — Present the Pre-Merge Report (human gate)
@@ -324,7 +326,7 @@ Only when the checkout is clean AND the integration HEAD matches the reported me
 
 **Optionally, audit the run's effort** (recommended after any sizable run): run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/audit_run.py <transcript-dir>` — the transcript directory is printed in the Workflow launch result ("Transcript dir:"). Include its effort table when presenting the report; flagged tier-misrank candidates feed the NEXT plan's tier assignments. The script is advisory by contract (read-only, exits 0 even when the engine's transcript layout has drifted) — never treat its absence of output as a gate failure.
 
-To *read* the transcripts (not just their effort stats), render the swarm viewer with `--transcripts <transcript-dir>`: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/render_viewer.py <plan-path> --transcripts <transcript-dir> --out /tmp/swarm`, serve `/tmp/swarm` over http, and click a station to open its subagent's reasoning + tool I/O in the audit drawer (add `--embed` for a self-contained, offline file). Read-only; see `skills/ultrapowers/viewer/README.md`.
+To *read* the transcripts (not just their effort stats), offer the audit drawer as a one-line choice when presenting the report: *"Want to read any agent's transcript? I'll open the audit drawer."* On yes, first tear down the launch viewer if one is running (`python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py --stop <launch-dir>`), then run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py <plan-path> --transcripts <transcript-dir>` and hand back the printed URL; click a station to open its subagent's reasoning + tool I/O. Leave it running (the human is reading) with its `--stop` line printed; add `--embed` to `render_viewer.py` for a self-contained offline file. Read-only; see `skills/ultrapowers/viewer/README.md`.
 
 Then render the workflow's structured report per `references/report-format.md`:
 integration branch, wave plan, per-task status + review verdict, test result, judgment calls, and
