@@ -166,6 +166,12 @@ def parse_task(t):
     files_near_miss = []
     in_files = False
     files_entries_seen = False
+    # v6 `**Interfaces:**` block (spec 2026-06-16): opens on `**Interfaces:**`
+    # AFTER the Files block, before the first `- [ ]` step. `- Consumes:` /
+    # `- Produces:` sub-lines are captured verbatim after the label. Optional —
+    # absent leaves both lists empty (the v5 case).
+    consumes, produces = [], []
+    in_interfaces = False
     # The marker contract places **Type:**/**Depends-on:** "immediately after
     # the task heading". The header block is therefore the CONTIGUOUS run of
     # blank lines and marker(-shaped) lines that directly follows the heading;
@@ -277,6 +283,27 @@ def parse_task(t):
             # to the typo.
             files_near_miss.append(s + "  <Files header not recognized>")
             continue
+        if s.startswith("**Interfaces:**"):
+            # Opening the Interfaces block closes any open Files block cleanly,
+            # so its `- Consumes:`/`- Produces:` sub-lines are never run through
+            # the Files near-miss rule below.
+            in_files = False
+            in_interfaces = True
+            continue
+        if in_interfaces:
+            if not s:
+                continue  # blank lines inside the Interfaces block are fine
+            if s.startswith("- [") or TASK_HEAD.match(s):
+                in_interfaces = False  # a checkbox step (or next heading) ends it
+            else:
+                mi = re.match(r"^[-*+]\s*(Consumes|Produces)\s*:\s*(.+?)\s*$", s, re.I)
+                if mi:
+                    (consumes if mi.group(1).lower() == "consumes"
+                     else produces).append(mi.group(2).strip())
+                    continue
+                # Any other line ends the Interfaces block; fall through so a
+                # following marker/Files/step line is processed normally.
+                in_interfaces = False
         if in_files:
             # A blank line closes the Files section — but only once at least one
             # entry has been parsed: `**Files:**` followed by a blank line before
@@ -383,6 +410,7 @@ def parse_task(t):
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
+             interfaces={"consumes": consumes, "produces": produces},
              files_ambiguous=files_ambiguous, prose=prose)
     return t
 
@@ -432,6 +460,37 @@ def parse_acceptance(text):
         if m:
             return {"mode": "suite", "reason": m.group(1)}
     return {"mode": "missing"}
+
+
+# Top-level `## Global Constraints` section (v6, spec 2026-06-16). Fence-aware
+# whole-document scan: capture the verbatim body between the `## Global
+# Constraints` heading and the next heading of the same-or-shallower level (a
+# `#`/`##` line) or end of document. Optional — absent returns "" (the v5 case),
+# which must never warn. A trailing `---` rule or trailing blank lines are
+# trimmed so the body is the constraints text only, not the section framing.
+GLOBAL_CONSTRAINTS_HEAD = re.compile(r"^##\s+Global\s+Constraints\s*$", re.I)
+SECTION_BREAK = re.compile(r"^#{1,2}\s+\S")  # next `#`/`##` heading ends the section
+
+
+def parse_global_constraints(text):
+    lines = list(_fence_aware_lines(text))
+    start = None
+    for i, (line, in_fence) in enumerate(lines):
+        if not in_fence and GLOBAL_CONSTRAINTS_HEAD.match(line.strip()):
+            start = i + 1
+            break
+    if start is None:
+        return ""
+    body = []
+    for line, in_fence in lines[start:]:
+        if not in_fence and SECTION_BREAK.match(line.strip()):
+            break
+        body.append(line)
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and (not body[-1].strip() or body[-1].strip() in ("---", "***", "___")):
+        body.pop()
+    return "\n".join(body)
 
 
 # Minimum module-stem length for attribute-style prose matching (`schema.User`).
@@ -767,7 +826,8 @@ def main(argv=None):
         t["disposition"] = disp
         out_tasks.append({"id": t["id"], "title": t["title"], "disposition": disp,
                           "heuristic": heuristic, "writes": t["writes"],
-                          "depends_on": t["depends_on"]})
+                          "depends_on": t["depends_on"],
+                          "interfaces": t["interfaces"]})
 
     # Bug E1: surface unparseable type markers as conflicts
     type_conflicts = [
@@ -832,6 +892,7 @@ def main(argv=None):
         for t in tasks if t.get("deps_mixed")]
 
     acceptance = parse_acceptance(plan_text)
+    global_constraints = parse_global_constraints(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
     if acceptance["mode"] == "missing" and marked:
         sys.exit("error: marked plan has no **Acceptance:** line (sealed or waived). "
@@ -891,7 +952,8 @@ def main(argv=None):
 
     launch_waves = [
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
-          "depends_on": by_id[tid]["depends_on"]} for tid in wave]
+          "depends_on": by_id[tid]["depends_on"],
+          "interfaces": by_id[tid]["interfaces"]} for tid in wave]
         for wave in waves]
 
     result = {
@@ -906,6 +968,7 @@ def main(argv=None):
         "mode": mode,
         "degrade_reason": degrade,
         "acceptance": acceptance,
+        "globalConstraints": global_constraints,
     }
 
     if emit_launch is not None:
@@ -916,11 +979,13 @@ def main(argv=None):
         launch_payload = {
             "tasks": [{"id": tid, "title": by_id[tid]["title"],
                        "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
-                       "depends_on": by_id[tid]["depends_on"]}
+                       "depends_on": by_id[tid]["depends_on"],
+                       "interfaces": by_id[tid]["interfaces"]}
                       for wave in waves for tid in wave],
             "waves": waves,
             "edges": [[e["from"], e["to"]] for e in edges],
             "acceptance": acceptance,
+            "globalConstraints": global_constraints,
         }
         emit_launch.parent.mkdir(parents=True, exist_ok=True)
         emit_launch.write_text(json.dumps(launch_payload, indent=2))
