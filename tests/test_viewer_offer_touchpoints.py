@@ -12,12 +12,16 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 PLAN = ROOT / "tests/fixtures/marked-plan.md"
 
 
-def test_skill_offers_viewer_at_launch_and_gate():
+def test_skill_offers_one_live_readable_viewer():
     text = SKILL.read_text()
-    # launch offer (Step 4, live progress) + gate offer (Step 5, audit drawer)
-    assert text.count("serve_viewer.py") >= 2, "expected a serve_viewer offer at both launch and gate"
-    assert "--watch" in text, "launch offer should use the live-progress --watch mode"
-    assert "--transcripts" in text, "gate offer should use the audit-drawer --transcripts mode"
+    assert "serve_viewer.py" in text, "the live viewer must be offered"
+    # ONE launch command now streams transcripts during the run: both flags together
+    assert "--transcripts" in text and "--watch" in text, "live viewer uses both --transcripts and --watch"
+    import re
+    # the launch offer threads --transcripts and --watch into a single serve_viewer invocation
+    assert re.search(r"serve_viewer\.py[^\n]*--transcripts[^\n]*--watch", text), \
+        "launch offer must combine --transcripts and --watch in one command"
+    assert text.count("serve_viewer.py") >= 2, "still expect the offer + its --stop teardown line"
 
 
 def test_report_format_mentions_transcript_offer():
