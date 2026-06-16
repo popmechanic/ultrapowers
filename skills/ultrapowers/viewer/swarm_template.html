@@ -78,6 +78,12 @@
   .core{fill:none;opacity:0;transition:opacity .5s}
   [data-state=working] .node{opacity:1}
   [data-state=working] .core{fill:var(--accent);opacity:1}
+  [data-state=implementing] .node{opacity:1}
+  [data-state=implementing] .core{fill:var(--accent);opacity:1}
+  [data-state=under-review] .node{opacity:1;stroke-dasharray:3 3}
+  [data-state=under-review] .core{fill:var(--hud);opacity:1}
+  [data-state=fixing] .node{opacity:1}
+  [data-state=fixing] .core{fill:var(--accent);opacity:1;animation:lostblink 1.4s steps(2) infinite}
   [data-state=committed] .node{opacity:1}
   [data-state=committed] .core{fill:currentColor;opacity:1}
   [data-state=merged] .node{opacity:.7}
@@ -86,81 +92,92 @@
   .stlabel{fill:currentColor;opacity:.55;font-family:var(--font);font-size:11px;
            letter-spacing:.12em;text-anchor:middle;transition:opacity .5s}
   [data-state=working] .stlabel,[data-state=committed] .stlabel{opacity:1}
+  [data-state=implementing] .stlabel,[data-state=under-review] .stlabel,[data-state=fixing] .stlabel{opacity:1}
   .edge{fill:none;stroke:var(--dim);opacity:.34;stroke-width:var(--edge-w);transition:opacity .5s}
   .edge.live{opacity:.95;stroke-width:var(--edge-w-live)}
   .stationG.clickable{cursor:pointer}
 
   @media (prefers-reduced-motion:reduce){ .flicker{display:none} }
 
-  .drawer{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(86%,640px);max-height:78%;display:flex;flex-direction:column;
-    background:var(--screen-bg);border:1px solid var(--dim);border-radius:10px;
-    box-shadow:0 10px 60px rgba(0,0,0,.6);color:var(--ink);font-family:var(--font);
-    z-index:20;overflow:hidden}
-  .drawer[hidden]{display:none}
-  .drawer-head{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--faint)}
-  .drawer-badge{font-size:11px;letter-spacing:.1em;color:var(--accent);
-    border:1px solid var(--accent);border-radius:4px;padding:1px 6px}
-  .drawer-title{flex:1;font-size:12px;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .drawer-x{background:none;border:1px solid var(--dim);color:var(--hud);
-    border-radius:4px;cursor:pointer;font:inherit;font-size:11px;padding:1px 6px}
-  .drawer-tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px 12px}
-  .drawer-tabs .tab{background:none;border:1px solid var(--dim);color:var(--ink);
-    border-radius:4px;cursor:pointer;font:inherit;font-size:11px;padding:1px 8px}
-  .drawer-body{overflow:auto;padding:6px 12px;font-size:12px;line-height:1.45}
-  .drawer-body .ev{margin:4px 0}
-  .drawer-body .ev-head{white-space:pre-wrap}
-  .drawer-body .ev-tool_result .ev-head{opacity:.8}
-  .drawer-body pre.ev-full{white-space:pre-wrap;margin:4px 0 8px;padding:6px 8px;
+  .layout{position:absolute;inset:0;display:grid;grid-template-columns:58% 42%}
+  .stage-pane{position:relative;overflow:hidden}
+  .stage-pane svg{position:absolute;inset:0;width:100%;height:100%}
+  .sidebar{position:relative;display:flex;flex-direction:column;gap:8px;
+    padding:14px 14px 12px;border-left:1px solid var(--faint);overflow:hidden;
+    color:var(--ink);font-family:var(--font);font-size:11px;background:var(--bg)}
+  .readout{white-space:pre-wrap;line-height:1.5;letter-spacing:.04em;overflow:auto;max-height:42%}
+  .readout .wave{color:var(--hud);letter-spacing:.18em}
+  .readout .t{color:var(--ink)} .readout .t.dim{opacity:.5}
+  .feed{list-style:none;margin:0;padding:0;overflow:auto;flex:1;
+    border-top:1px solid var(--faint)}
+  .feed li{padding:2px 0;cursor:pointer;color:var(--hud);
+    font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  @media (hover:hover){ .feed li:hover{color:var(--ink)} }
+  .feed li .ts{opacity:.6;margin-right:6px}
+  .transcript{display:flex;flex-direction:column;min-height:0;flex:2;
+    border-top:1px solid var(--faint)}
+  .transcript[hidden]{display:none}
+  .tx-head{display:flex;align-items:center;gap:8px;padding:4px 0}
+  .tx-title{flex:1;opacity:.85;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tx-x{background:none;border:1px solid var(--dim);color:var(--hud);border-radius:4px;
+    cursor:pointer;font:inherit;font-size:10px;padding:1px 6px}
+  .tx-body{overflow:auto;flex:1;line-height:1.45}
+  .tx-body .ev{margin:4px 0} .tx-body .ev-head{white-space:pre-wrap}
+  .tx-body .ev-tool_result .ev-head{opacity:.8}
+  .tx-body pre.ev-full{white-space:pre-wrap;margin:4px 0 8px;padding:6px 8px;
     background:rgba(127,127,127,.12);border-radius:6px;max-height:40vh;overflow:auto}
-  .drawer-foot{padding:6px 12px;border-top:1px solid var(--faint);font-size:10px;opacity:.6}
+  .tx-foot{padding:4px 0;font-size:10px;opacity:.6}
 </style>
 </head>
 <body data-frame="crt">
 <div class="bezel"><div class="screen" id="screen">
-  <svg id="stage" viewBox="0 0 960 720" aria-label="ultrapowers agent swarm">
-    <defs>
-      <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b1"/>
-        <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b2"/>
-        <feMerge>
-          <feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/>
-        </feMerge>
-      </filter>
-      <filter id="bloomSoft" x="-40%" y="-40%" width="180%" height="180%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="s1"/>
-        <feMerge><feMergeNode in="s1"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
-    </defs>
-    <g id="scene">
-      <g id="edges"></g>
-      <g id="stations"></g>
-      <g id="sink"></g>
-    </g>
-  </svg>
-  <div class="ovl dots"></div>
-  <div class="ovl scanlines"></div>
-  <div class="ovl vignette"></div>
-  <div class="ovl glass"></div>
-  <div class="ovl grain"></div>
-  <div class="ovl flicker"></div>
-  <div class="brand">ULTRAPOWERS</div>
-  <div class="hud">
-    <div id="hudTitle"></div>
-    <div><span id="hudWave"></span> <span id="hudMode" class="mode depict">DEPICTION</span></div>
-  </div>
-  <div id="drawer" class="drawer" hidden>
-    <div class="drawer-head">
-      <span id="drawerBadge" class="drawer-badge">LIVE</span>
-      <span id="drawerTitle" class="drawer-title"></span>
-      <button class="drawer-x" onclick="closeDrawer()">esc ✕</button>
+  <div class="layout">
+    <div class="stage-pane">
+      <svg id="stage" viewBox="0 0 960 720" aria-label="ultrapowers agent swarm">
+        <defs>
+          <filter id="bloom" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2.2" result="b1"/>
+            <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b2"/>
+            <feMerge>
+              <feMergeNode in="b2"/><feMergeNode in="b1"/><feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <filter id="bloomSoft" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="s1"/>
+            <feMerge><feMergeNode in="s1"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g id="scene">
+          <g id="edges"></g>
+          <g id="stations"></g>
+          <g id="sink"></g>
+        </g>
+      </svg>
+      <div class="ovl dots"></div>
+      <div class="ovl scanlines"></div>
+      <div class="ovl vignette"></div>
+      <div class="ovl glass"></div>
+      <div class="ovl grain"></div>
+      <div class="ovl flicker"></div>
+      <div class="brand">ULTRAPOWERS</div>
+      <div class="hud">
+        <div id="hudTitle"></div>
+        <div><span id="hudWave"></span> <span id="hudMode" class="mode depict">DEPICTION</span></div>
+      </div>
+      <div class="legend">OBSERVING = STATION STATE FROM GIT &nbsp;&middot;&nbsp; DEPICTION = SEEDED PLAY OF THE WAVE PLAN</div>
+      <div class="ticker" id="ticker"></div>
     </div>
-    <div id="drawerTabs" class="drawer-tabs"></div>
-    <div id="drawerBody" class="drawer-body"></div>
-    <div id="drawerFoot" class="drawer-foot"></div>
+    <aside class="sidebar" id="sidebar">
+      <div id="readout" class="readout"></div>
+      <ul id="feed" class="feed" aria-label="cross-agent activity feed"></ul>
+      <section id="transcript" class="transcript" hidden>
+        <div class="tx-head"><span id="txTitle" class="tx-title"></span>
+          <button id="txClose" class="tx-x" type="button">esc ✕</button></div>
+        <div id="txBody" class="tx-body"></div>
+        <div id="txFoot" class="tx-foot"></div>
+      </section>
+    </aside>
   </div>
-  <div class="legend">OBSERVING = STATION STATE FROM GIT &nbsp;&middot;&nbsp; DEPICTION = SEEDED PLAY OF THE WAVE PLAN</div>
-  <div class="ticker" id="ticker"></div>
 </div></div>
 <script>
 'use strict';
@@ -186,51 +203,40 @@ const audit = AuditProjection.partitionAgents(AUDIT_INDEX);
 
 let liveTimer = null, liveAgentId = null, liveSig = null;
 
-function drawerEls() {
+function txEls() {
   return {
-    root: document.getElementById("drawer"),
-    title: document.getElementById("drawerTitle"),
-    badge: document.getElementById("drawerBadge"),
-    body: document.getElementById("drawerBody"),
-    foot: document.getElementById("drawerFoot"),
-    tabs: document.getElementById("drawerTabs"),
+    root: document.getElementById("transcript"),
+    title: document.getElementById("txTitle"),
+    body: document.getElementById("txBody"),
+    foot: document.getElementById("txFoot"),
   };
 }
 function roleLabel(a) { return a.task != null ? (a.role + ":" + a.task) : a.role; }
 function mkEl(tag, cls, text) { return AuditProjection.makeEl(document, tag, cls, text); }
 function stopLive() { if (liveTimer) { clearInterval(liveTimer); liveTimer = null; } liveAgentId = null; }
-function closeDrawer() { stopLive(); drawerEls().root.hidden = true; }
-document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
+function closeTranscript() { stopLive(); txEls().root.hidden = true; }
+document.getElementById("txClose").addEventListener("click", closeTranscript);
+document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeTranscript(); });
 
-function openDrawer(agents, label) {
+function focusAgent(agents, label) {
   if (!audit || !agents || !agents.length) return;
-  const d = drawerEls();
-  d.root.hidden = false;
-  d.tabs.innerHTML = "";
-  agents.forEach(function (a) {
-    const b = mkEl("button", "tab", roleLabel(a));
-    b.onclick = function () { loadAgent(a, label); };
-    d.tabs.appendChild(b);
-  });
+  txEls().root.hidden = false;
   loadAgent(agents[0], label);
 }
 
 function loadAgent(a, label) {
   stopLive();
-  const d = drawerEls();
+  const d = txEls();
   d.title.textContent = (label ? label + " · " : "") + roleLabel(a) +
     " · " + (a.model || "?") + " · " + a.turns + " turns";
   d.body.textContent = "loading…";
   if (AUDIT_EMBED && AUDIT_EMBED[a.id]) {
-    d.badge.textContent = "SNAPSHOT";
     const ev = AuditProjection.projectAgent(AUDIT_EMBED[a.id]).events;
     renderEvents(ev, d, (AUDIT_INDEX.versions || []), 0);
   } else if (location.protocol === "file:") {
-    d.badge.textContent = "STATIC";
     d.body.textContent = "Serve this folder over http for live transcripts, or re-render with --embed for offline content.";
     d.foot.textContent = "";
   } else {
-    d.badge.textContent = "LIVE";
     liveAgentId = a.id;
     liveSig = null;
     fetchAndRender(a, d, false);
@@ -330,7 +336,7 @@ DAG.tasks.forEach(t => {
   stations[id] = { id, x: p.x, y: p.y, el: g, state: 'pending' };
   if (audit && audit.byTask[t.id]) {
     g.classList.add('clickable');
-    g.addEventListener('click', function () { openDrawer(audit.byTask[t.id], 'Task ' + t.id); });
+    g.addEventListener('click', function () { focusAgent(audit.byTask[t.id], 'Task ' + t.id); });
   }
 });
 
@@ -345,12 +351,13 @@ if (sink) {
   label.textContent = 'INTEGRATION';
   if (audit && audit.runLevel.length) {
     g.classList.add('clickable');
-    g.addEventListener('click', function () { openDrawer(audit.runLevel, 'run-level'); });
+    g.addEventListener('click', function () { focusAgent(audit.runLevel, 'run-level'); });
   }
 }
 
 // ─── state machine: recolor stations, light satisfied edges (no flights) ─────
-const RANK = { pending: 0, working: 1, committed: 2, merged: 3, stalled: 9 };
+const RANK = { pending: 0, implementing: 1, 'under-review': 2, fixing: 3,
+               working: 1, committed: 4, merged: 5, stalled: 9 };
 function setState(id, s) {
   const st = stations[String(id)];
   if (!st || st.state === s) return;
@@ -459,6 +466,71 @@ function updateHud() {
   else { hudMode.textContent = 'DEPICTION'; hudMode.className = 'mode depict'; }
 }
 poll();
+
+// ─── sidebar: ASCII wave readout + live cross-agent feed (agents.json) ───────
+// The readout is the macro-level wave plan in text; the feed is the bounded
+// recentEvents ring from swarm_watch's agents.json. Clicking a feed line (or a
+// station) focuses that task's transcript in the #transcript region below.
+const readoutEl = document.getElementById('readout');
+const feedEl = document.getElementById('feed');
+const agentsByTask = {};   // taskId -> [agent]   (from agents.json)
+let agentsList = [];
+
+function fmtTime(ts) {
+  const d = new Date(ts * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function renderReadout() {
+  const lines = [];
+  waves.forEach((wave, wi) => {
+    lines.push('<div class="wave">━━ WAVE ' + (wi + 1) + ' ━━</div>');
+    wave.forEach(id => {
+      const st = stations[String(id)];
+      const s = st ? st.state : 'pending';
+      const dim = (s === 'pending') ? ' dim' : '';
+      lines.push('<div class="t' + dim + '">  T' + id + ' · ' + s + '</div>');
+    });
+  });
+  readoutEl.innerHTML = lines.join('');
+}
+function renderFeed(events) {
+  feedEl.innerHTML = '';
+  events.slice().reverse().forEach(ev => {
+    const li = mkEl('li', null);
+    const glyph = ev.kind === 'tool_use' ? '⚙' : ev.kind === 'tool_result' ? '→' : '●';
+    li.innerHTML = '<span class="ts">' + fmtTime(ev.ts) + '</span>' +
+      (ev.task != null ? 'T' + ev.task + ' ' : '') + glyph + ' ' +
+      (ev.text || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    if (ev.task != null && agentsByTask[ev.task])
+      li.addEventListener('click', () => focusAgent(agentsByTask[ev.task], 'T' + ev.task));
+    feedEl.appendChild(li);
+  });
+}
+function gotAgents(idx) {
+  agentsList = idx.agents || [];
+  for (const k in agentsByTask) delete agentsByTask[k];
+  agentsList.forEach(a => {
+    if (a.task != null) (agentsByTask[a.task] = agentsByTask[a.task] || []).push(a);
+    // enrich station state from the active role on the task
+    if (a.task != null && a.state === 'active') {
+      if (a.role === 'review') setState(a.task, 'under-review');
+      else if (a.role === 'impl' && a.iter > 0) setState(a.task, 'fixing');
+      else if (a.role === 'impl') setState(a.task, 'implementing');
+    }
+  });
+  renderFeed(idx.recentEvents || []);
+  renderReadout();
+}
+async function pollAgents() {
+  try {
+    const r = await fetch('agents.json', { cache: 'no-store' });
+    if (r.ok) gotAgents(await r.json());
+  } catch (e) { /* file:// or no run yet: readout still renders from DEPICTION */ }
+  setTimeout(pollAgents, 2000);
+}
+renderReadout();
+pollAgents();
 
 // ─── the beam: one frame loop drives the depiction schedule + the HUD ────────
 // The grid is static, so a station's "alive" feel is CSS (the [data-state]

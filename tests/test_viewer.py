@@ -95,19 +95,29 @@ def test_render_viewer_all_themes(tmp_path):
         assert f'"name": "{name}"' in html
 
 
-def test_template_has_audit_drawer_inert_without_transcripts(tmp_path):
+def test_template_has_audit_transcript_inert_without_transcripts(tmp_path):
     run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
     html = (tmp_path / "swarm.html").read_text()
-    # drawer markup present
-    assert 'id="drawer"' in html
-    assert "closeDrawer" in html
+    # The Phase-1 modal drawer is retired; the sidebar transcript region replaces it.
+    assert 'id="transcript"' in html
+    assert "closeTranscript" in html
     # The projection LIBRARY is always inlined — the template references
     # AuditProjection at script load, so it must be defined even with no run data.
     assert "/*__AUDIT_JS__*/" not in html, "library must be inlined, not left as a bare comment"
     assert "globalThis.AuditProjection" in html, "AuditProjection must be defined"
-    # The DATA stays inert (no --transcripts): drawer goes quiet via a null index.
+    # The DATA stays inert (no --transcripts): transcript goes quiet via a null index.
     assert "/*__AUDIT_INDEX__*/null" in html
     assert "/*__AUDIT_EMBED__*/null" in html
+
+
+def test_viewer_has_split_sidebar_and_feed(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert 'id="sidebar"' in html and 'id="readout"' in html and 'id="feed"' in html
+    assert 'id="transcript"' in html, "transcript region must live in the sidebar"
+    assert "agents.json" in html, "viewer must poll agents.json for the live feed"
+    # the Phase-1 modal drawer is retired in favor of the sidebar transcript region
+    assert 'id="drawer"' not in html, "modal drawer should be replaced by the sidebar"
 
 
 def test_viewer_boots_without_transcripts_under_dom_stub(tmp_path):
