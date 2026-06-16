@@ -1,0 +1,29 @@
+Superpowers v6 handoff snapshot — vendored, pinned, read-only.
+
+Source repo:   superpowers (dev branch, unreleased v6 / version 6.0.0)
+Local clone:   /tmp/superpowers-dev
+Branch:        dev
+Commit:        08fc48c (full: 08fc48cfd2449ebc0f224ccbbe9999f460308ae5)
+Vendored on:   2026-06-16
+
+Why this exists:
+  v6 is unreleased, so there is no installed superpowers plugin cache to
+  attest against. tests/test_superpowers_compat.py reads its v6 contract
+  tokens from this frozen snapshot until v6 reaches GA, at which point the
+  test's source-of-truth function (the GA-flip seam) is re-pointed at the
+  installed cache and the attested version is bumped.
+
+Files frozen here (copied verbatim from the source commit above):
+  skills/writing-plans/SKILL.md
+  skills/subagent-driven-development/SKILL.md
+  skills/subagent-driven-development/implementer-prompt.md
+  skills/subagent-driven-development/task-reviewer-prompt.md
+  skills/subagent-driven-development/scripts/task-brief
+  skills/subagent-driven-development/scripts/review-package
+  skills/requesting-code-review/code-reviewer.md
+  skills/receiving-code-review/SKILL.md
+
+Do not hand-edit these files. To refresh the snapshot, re-copy from the
+pinned commit (or a newer pinned commit) and update Commit + Vendored on
+above. A drift between this snapshot and shipped v6 is the intended
+tripwire once the GA-flip points the compat test at the installed cache.
