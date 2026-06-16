@@ -31,6 +31,14 @@ def free_port():
         return s.getsockname()[1]
 
 
+def build_watch_cmd(python, watch_script, repo, branch, out, transcripts):
+    cmd = [python, str(watch_script), "--repo", repo, "--out", str(out),
+           "--integration", branch]
+    if transcripts:
+        cmd += ["--transcripts", transcripts]
+    return cmd
+
+
 def stop(out_dir):
     pidpath = pathlib.Path(out_dir) / PIDFILE
     if not pidpath.exists():
@@ -76,7 +84,7 @@ def main():
     if args.watch:
         repo, branch = args.watch
         w = subprocess.Popen(
-            [sys.executable, str(WATCH), "--repo", repo, "--out", str(out), "--integration", branch],
+            build_watch_cmd(sys.executable, WATCH, repo, branch, out, args.transcripts),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         pids.append(w.pid)
 
