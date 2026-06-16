@@ -517,6 +517,19 @@ def prose_references(creator_paths, prose):
     return hits
 
 
+# Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
+# entry is matched by EXACT token equality — no substring/fuzzy match. Normalize
+# to the leading symbol token: strip a leading bullet/label residue and backticks,
+# then take the identifier up to the first '(' , whitespace, or ':' so
+# "`User` dataclass (id: int)" and "`User`" both reduce to "User", and
+# "validate_payload(payload) -> list[str]" reduces to "validate_payload".
+def _interface_token(entry):
+    s = entry.strip().strip("`").strip()
+    if not s:
+        return ""
+    return re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
+
+
 def build_edges(impl):
     # Edge precedence:
     # explicit (marker, text) > semantic order-independent (write-after-create,
@@ -634,6 +647,62 @@ def build_edges(impl):
             # read-after-write: b reads a file that a writes (no order condition)
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
+
+    # Interface tier (v6, spec 2026-06-16 §1.3). When B Consumes a symbol A
+    # Produces (EXACT normalized-token equality — never fuzzy), B depends on A:
+    # add a producer -> consumer edge. Recorded BEFORE the Tier 2.5 prose-
+    # reference loop so that when both would order the same pair, the explicit
+    # Interfaces edge wins the `why` label. The interface signal is the most
+    # informative `why` for its pair, so when an earlier tier (marker, file
+    # overlap) already recorded the (a, b) pair, its label is PROMOTED to
+    # "interface"; otherwise a fresh edge is added. Like prose-reference the
+    # symbols may not map to files, so it is cycle-guarded.
+    # Every edge NOT already covered by a Depends-on marker or a file-overlap edge
+    # is surfaced as a loud "undeclared dependency" finding: the plan runs
+    # correctly AND the author is told their Depends-on was wrong. A Consumes with
+    # no matching Produces is not an error.
+    produced = {a["id"]: {tok for p in a["interfaces"]["produces"]
+                          if (tok := _interface_token(p))}
+                for a in impl}
+    for b in impl:
+        b_consumes = {tok for c in b["interfaces"]["consumes"]
+                      if (tok := _interface_token(c))}
+        if not b_consumes:
+            continue
+        for a in impl:
+            if a["id"] == b["id"]:
+                continue
+            if not (b_consumes & produced.get(a["id"], set())):
+                continue
+            existing = next((e for e in edges
+                             if e["from"] == a["id"] and e["to"] == b["id"]), None)
+            if existing is None and would_cycle(a["id"], b["id"]):
+                continue
+            declared = a["id"] in b["depends_on"]
+            file_overlap = (existing is not None
+                            and existing["why"] in ("write-after-create",
+                                                    "write-after-write",
+                                                    "read-after-write"))
+            if existing is not None:
+                # Pair already ordered (marker / file overlap / earlier tier):
+                # promote its label to the more informative "interface".
+                existing["why"] = "interface"
+                added = False
+            else:
+                add(a["id"], b["id"], "interface")
+                added = True
+            if not declared and not file_overlap:
+                shared = sorted(b_consumes & produced[a["id"]])
+                add_conflict(
+                    b["id"],
+                    "undeclared: " + a["id"] + " -> " + b["id"] + " (interface)",
+                    "undeclared dependency: Task " + b["id"] + " Consumes "
+                    + ", ".join(shared[:3]) + " which Task " + a["id"]
+                    + " Produces, but Task " + b["id"]
+                    + " does not declare **Depends-on:** " + a["id"]
+                    + " and shares no file with it — add the marker"
+                    + ("" if added else " (edge already present)"),
+                    kind="undeclared-dependency")
 
     # Tier 2.5: Semantic, order-independent — prose-reference. B's prose names a
     # file A creates (backticked exact path, basename, or module-stem attribute

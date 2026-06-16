@@ -72,12 +72,13 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A �
 4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections. Plural conjunction/comma lists — `depends on Tasks 1 and 3` or `after Tasks 1, 2 and 3` — parse into one text edge per listed id (`why: "text"`); each parsed id that falls outside the implementation set surfaces as a dropped-ghost conflict. A plural `Tasks` mention that does not form a parseable id list (e.g. `after Tasks above`) still surfaces as a conflict so ordering intent is never silently lost.
 5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
 6. **Prose-reference:** B's fence-stripped prose contains a backticked reference to a path in A's `Create:` set — the exact path, its basename, or (for stems of 3+ characters) its module stem used as an attribute (`schema.User` referencing `apistub/schema.py`). Edge A → B (`why: "prose-reference"`). Because prose matching is fuzzier than `Files:` matching, these edges are cycle-guarded like the document-order heuristics, and each newly inferred edge is surfaced in `marker_conflicts` so the Step-3 gate shows the inference. Motivating failure: eval run mixed-B-2 (2026-06-13) — a task spec said "returns a `schema.User`" while declaring `Depends-on: none`, waved parallel to the schema task, and its failure cascade-blocked the rest of the diamond.
+7. **Interface (Consumes/Produces):** B's `**Interfaces:**` block `Consumes:` a symbol that A's `**Interfaces:**` block `Produces:`. Matching is **exact normalized-token equality** — each entry is reduced to its leading symbol token and compared by string equality; there is **no** substring or fuzzy matching (a false edge would silently re-order waves). Edge A → B (`why: "interface"`), producer → consumer. Order-independent in direction but cycle-guarded like prose-reference. A `Consumes` entry with no matching `Produces` anywhere is **not** an error. Every interface edge that is **not** already covered by a `**Depends-on:**` marker or a file-overlap edge (write-after-create / write-after-write / read-after-write) is surfaced in `marker_conflicts` as a loud **undeclared-dependency** finding (`kind: "undeclared-dependency"`) — the plan still compiles and runs, and the author is told their `Depends-on` was wrong. Motivating case: the `flawed` eval fixture — Task 4's store `Consumes: User` which Task 1 `Produces: User`, while Task 4 declares `Depends-on: none`; the interface edge orders Task 4 after Task 1 and the omission is reported.
 
 Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
 
-Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `prose-reference`, `text`, `ambiguous-files`.
+Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `interface`, `prose-reference`, `text`, `ambiguous-files`.
 
-Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing PATH — reachability through ALL earlier-recorded edges, not just a direct reverse edge (a reverse path always contains at least one explicit or semantic edge, since heuristics never create cycles). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing. `prose-reference` sits between the semantic rules and the document-order heuristics: order-independent in direction (creator → referencer) but cycle-guarded, so an explicit or semantic edge in the opposite direction always wins.
+Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing PATH — reachability through ALL earlier-recorded edges, not just a direct reverse edge (a reverse path always contains at least one explicit or semantic edge, since heuristics never create cycles). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing. `interface` and `prose-reference` both sit between the semantic rules and the document-order heuristics: order-independent in direction (producer → consumer; creator → referencer) but cycle-guarded, so an explicit or semantic edge in the opposite direction always wins. `interface` is recorded before `prose-reference`, so when both would order the same pair the explicit Interfaces signal wins the `why` label.
 
 ---
 
@@ -148,9 +149,12 @@ dispositions:
   - T6: release → post-merge runbook
 marker_conflicts: []        # each entry carries kind: "conflict" (needs a human fix —
                             # unparseable type, ghost dep, near-miss spelling, dropped
-                            # non-path Files token) or kind: "inference" (a benign edge the
-                            # compiler inferred — e.g. a file edge overriding "Depends-on: none",
-                            # or a prose-reference edge). Render the two buckets separately.
+                            # non-path Files token), kind: "undeclared-dependency" (an
+                            # Interfaces Consumes/Produces edge the author's Depends-on
+                            # omitted — fix at authoring), or kind: "inference" (a benign
+                            # edge the compiler inferred — e.g. a file edge overriding
+                            # "Depends-on: none", or a prose-reference edge). Render the
+                            # three buckets separately.
 inlined_notes:
   - "port table from the preamble → T3, T4 bodies"
 
