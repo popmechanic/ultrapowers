@@ -62,7 +62,7 @@ Add one helper and use it for every JSON blob inlined into the `<script>` (`AUDI
 def _js_embed(obj):
     s = json.dumps(obj)
     for ch, esc in (("<", "\\u003c"), (">", "\\u003e"),
-                    (" ", "\\u2028"), (" ", "\\u2029")):
+                    ("\u2028", "\\u2028"), ("\u2029", "\\u2029")):
         s = s.replace(ch, esc)
     return s
 ```
