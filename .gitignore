@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .DS_Store
+.superpowers/
 
 # ultrapowers run artifacts (installed copies + engine worktrees)
 # .claude/workflows/ holds Step-4a saved-workflow copies of skills/ultrapowers/
