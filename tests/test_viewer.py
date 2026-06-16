@@ -33,12 +33,15 @@ function elStub() {
     appendChild(c) { this.children.push(c); return c; }, removeChild() {},
     addEventListener() {}, remove() {},
     getTotalLength() { return 1; }, getPointAtLength() { return { x: 0, y: 0 }; },
+    getBBox() { return { x: 0, y: 0, width: 0, height: 0 }; },
+    querySelector() { return elStub(); }, querySelectorAll() { return []; },
   };
 }
 global.document = {
   body: elStub(), documentElement: elStub(),
   createElement() { return elStub(); }, createElementNS() { return elStub(); },
   getElementById() { return elStub(); }, addEventListener() {},
+  querySelector() { return elStub(); }, querySelectorAll() { return []; },
 };
 global.matchMedia = () => ({ matches: true, addEventListener() {} });
 global.location = { protocol: "http:" };
@@ -339,6 +342,15 @@ def test_render_inlines_d3dag_and_layout(tmp_path):
     assert "/*__SWARM_LAYOUT_JS__*/" not in html, "layout placeholder not replaced"
     assert "d3-dag Version 1.1.0" in html, "vendored d3-dag not inlined"
     assert "globalThis.SwarmLayout" in html or "root.SwarmLayout" in html, "layout adapter not inlined"
+
+
+def test_viewer_uses_grid_layout(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert "SwarmLayout.computeGrid" in html, "template must lay out via the grid adapter"
+    assert "INTEGRATION" in html  # the sink label retained
+    # radial scene primitives are gone
+    assert "concentric" not in html.lower()
 
 
 def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
