@@ -332,6 +332,15 @@ def test_index_classifies_task_id_from_real_prompt(tmp_path):
     assert '"task": null' in html, "run-level agent must be task null"
 
 
+def test_render_inlines_d3dag_and_layout(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert "/*__D3DAG_JS__*/" not in html, "d3-dag placeholder not replaced"
+    assert "/*__SWARM_LAYOUT_JS__*/" not in html, "layout placeholder not replaced"
+    assert "d3-dag Version 1.1.0" in html, "vendored d3-dag not inlined"
+    assert "globalThis.SwarmLayout" in html or "root.SwarmLayout" in html, "layout adapter not inlined"
+
+
 def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
     run_dir = tmp_path / "wf_unres"
     run_dir.mkdir()
