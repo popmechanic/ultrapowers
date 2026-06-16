@@ -85,6 +85,7 @@ When the workflow completes, the main agent renders the report as a concise huma
    main agent carries it), **not** from the workflow return — the schema above is
    unchanged. Empty runbook means the whole plan was waveable.
 11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, and any tier-misrank candidates (implementers above 1.5x the median turns of same-model peers). Advisory only: it informs the next run's tier assignments and never gates this one.
+12. **Transcript reading (optional):** offer to open the audit drawer — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py <plan-path> --transcripts <transcript-dir>` — so the human can read any agent's reasoning + tool I/O in a browser. One line, opt-in, read-only; skip in headless runs.
 
 This pre-merge review is the **second and final gate** (after plan approval; the Step-3 wave plan
 is rendered for transparency but does not pause for approval). After the summary the agent names
