@@ -166,6 +166,12 @@ def parse_task(t):
     files_near_miss = []
     in_files = False
     files_entries_seen = False
+    # v6 `**Interfaces:**` block (spec 2026-06-16): opens on `**Interfaces:**`
+    # AFTER the Files block, before the first `- [ ]` step. `- Consumes:` /
+    # `- Produces:` sub-lines are captured verbatim after the label. Optional —
+    # absent leaves both lists empty (the v5 case).
+    consumes, produces = [], []
+    in_interfaces = False
     # The marker contract places **Type:**/**Depends-on:** "immediately after
     # the task heading". The header block is therefore the CONTIGUOUS run of
     # blank lines and marker(-shaped) lines that directly follows the heading;
@@ -277,6 +283,27 @@ def parse_task(t):
             # to the typo.
             files_near_miss.append(s + "  <Files header not recognized>")
             continue
+        if s.startswith("**Interfaces:**"):
+            # Opening the Interfaces block closes any open Files block cleanly,
+            # so its `- Consumes:`/`- Produces:` sub-lines are never run through
+            # the Files near-miss rule below.
+            in_files = False
+            in_interfaces = True
+            continue
+        if in_interfaces:
+            if not s:
+                continue  # blank lines inside the Interfaces block are fine
+            if s.startswith("- [") or TASK_HEAD.match(s):
+                in_interfaces = False  # a checkbox step (or next heading) ends it
+            else:
+                mi = re.match(r"^[-*+]\s*(Consumes|Produces)\s*:\s*(.+?)\s*$", s, re.I)
+                if mi:
+                    (consumes if mi.group(1).lower() == "consumes"
+                     else produces).append(mi.group(2).strip())
+                    continue
+                # Any other line ends the Interfaces block; fall through so a
+                # following marker/Files/step line is processed normally.
+                in_interfaces = False
         if in_files:
             # A blank line closes the Files section — but only once at least one
             # entry has been parsed: `**Files:**` followed by a blank line before
@@ -383,6 +410,7 @@ def parse_task(t):
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
+             interfaces={"consumes": consumes, "produces": produces},
              files_ambiguous=files_ambiguous, prose=prose)
     return t
 
@@ -434,6 +462,37 @@ def parse_acceptance(text):
     return {"mode": "missing"}
 
 
+# Top-level `## Global Constraints` section (v6, spec 2026-06-16). Fence-aware
+# whole-document scan: capture the verbatim body between the `## Global
+# Constraints` heading and the next heading of the same-or-shallower level (a
+# `#`/`##` line) or end of document. Optional — absent returns "" (the v5 case),
+# which must never warn. A trailing `---` rule or trailing blank lines are
+# trimmed so the body is the constraints text only, not the section framing.
+GLOBAL_CONSTRAINTS_HEAD = re.compile(r"^##\s+Global\s+Constraints\s*$", re.I)
+SECTION_BREAK = re.compile(r"^#{1,2}\s+\S")  # next `#`/`##` heading ends the section
+
+
+def parse_global_constraints(text):
+    lines = list(_fence_aware_lines(text))
+    start = None
+    for i, (line, in_fence) in enumerate(lines):
+        if not in_fence and GLOBAL_CONSTRAINTS_HEAD.match(line.strip()):
+            start = i + 1
+            break
+    if start is None:
+        return ""
+    body = []
+    for line, in_fence in lines[start:]:
+        if not in_fence and SECTION_BREAK.match(line.strip()):
+            break
+        body.append(line)
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and (not body[-1].strip() or body[-1].strip() in ("---", "***", "___")):
+        body.pop()
+    return "\n".join(body)
+
+
 # Minimum module-stem length for attribute-style prose matching (`schema.User`).
 # One- and two-letter stems (`a.txt` -> `a.`) match too much English to trust.
 PROSE_REF_MIN_STEM = 3
@@ -456,6 +515,19 @@ def prose_references(creator_paths, prose):
                   and tok.startswith(stem + ".")):
                 hits.add(path)
     return hits
+
+
+# Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
+# entry is matched by EXACT token equality — no substring/fuzzy match. Normalize
+# to the leading symbol token: strip a leading bullet/label residue and backticks,
+# then take the identifier up to the first '(' , whitespace, or ':' so
+# "`User` dataclass (id: int)" and "`User`" both reduce to "User", and
+# "validate_payload(payload) -> list[str]" reduces to "validate_payload".
+def _interface_token(entry):
+    s = entry.strip().strip("`").strip()
+    if not s:
+        return ""
+    return re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
 
 
 def build_edges(impl):
@@ -575,6 +647,62 @@ def build_edges(impl):
             # read-after-write: b reads a file that a writes (no order condition)
             if set(a["writes"]) & set(b["reads"]):
                 add(a["id"], b["id"], "read-after-write")
+
+    # Interface tier (v6, spec 2026-06-16 §1.3). When B Consumes a symbol A
+    # Produces (EXACT normalized-token equality — never fuzzy), B depends on A:
+    # add a producer -> consumer edge. Recorded BEFORE the Tier 2.5 prose-
+    # reference loop so that when both would order the same pair, the explicit
+    # Interfaces edge wins the `why` label. The interface signal is the most
+    # informative `why` for its pair, so when an earlier tier (marker, file
+    # overlap) already recorded the (a, b) pair, its label is PROMOTED to
+    # "interface"; otherwise a fresh edge is added. Like prose-reference the
+    # symbols may not map to files, so it is cycle-guarded.
+    # Every edge NOT already covered by a Depends-on marker or a file-overlap edge
+    # is surfaced as a loud "undeclared dependency" finding: the plan runs
+    # correctly AND the author is told their Depends-on was wrong. A Consumes with
+    # no matching Produces is not an error.
+    produced = {a["id"]: {tok for p in a["interfaces"]["produces"]
+                          if (tok := _interface_token(p))}
+                for a in impl}
+    for b in impl:
+        b_consumes = {tok for c in b["interfaces"]["consumes"]
+                      if (tok := _interface_token(c))}
+        if not b_consumes:
+            continue
+        for a in impl:
+            if a["id"] == b["id"]:
+                continue
+            if not (b_consumes & produced.get(a["id"], set())):
+                continue
+            existing = next((e for e in edges
+                             if e["from"] == a["id"] and e["to"] == b["id"]), None)
+            if existing is None and would_cycle(a["id"], b["id"]):
+                continue
+            declared = a["id"] in b["depends_on"]
+            file_overlap = (existing is not None
+                            and existing["why"] in ("write-after-create",
+                                                    "write-after-write",
+                                                    "read-after-write"))
+            if existing is not None:
+                # Pair already ordered (marker / file overlap / earlier tier):
+                # promote its label to the more informative "interface".
+                existing["why"] = "interface"
+                added = False
+            else:
+                add(a["id"], b["id"], "interface")
+                added = True
+            if not declared and not file_overlap:
+                shared = sorted(b_consumes & produced[a["id"]])
+                add_conflict(
+                    b["id"],
+                    "undeclared: " + a["id"] + " -> " + b["id"] + " (interface)",
+                    "undeclared dependency: Task " + b["id"] + " Consumes "
+                    + ", ".join(shared[:3]) + " which Task " + a["id"]
+                    + " Produces, but Task " + b["id"]
+                    + " does not declare **Depends-on:** " + a["id"]
+                    + " and shares no file with it — add the marker"
+                    + ("" if added else " (edge already present)"),
+                    kind="undeclared-dependency")
 
     # Tier 2.5: Semantic, order-independent — prose-reference. B's prose names a
     # file A creates (backticked exact path, basename, or module-stem attribute
@@ -767,7 +895,8 @@ def main(argv=None):
         t["disposition"] = disp
         out_tasks.append({"id": t["id"], "title": t["title"], "disposition": disp,
                           "heuristic": heuristic, "writes": t["writes"],
-                          "depends_on": t["depends_on"]})
+                          "depends_on": t["depends_on"],
+                          "interfaces": t["interfaces"]})
 
     # Bug E1: surface unparseable type markers as conflicts
     type_conflicts = [
@@ -832,6 +961,7 @@ def main(argv=None):
         for t in tasks if t.get("deps_mixed")]
 
     acceptance = parse_acceptance(plan_text)
+    global_constraints = parse_global_constraints(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
     if acceptance["mode"] == "missing" and marked:
         sys.exit("error: marked plan has no **Acceptance:** line (sealed or waived). "
@@ -891,7 +1021,8 @@ def main(argv=None):
 
     launch_waves = [
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
-          "depends_on": by_id[tid]["depends_on"]} for tid in wave]
+          "depends_on": by_id[tid]["depends_on"],
+          "interfaces": by_id[tid]["interfaces"]} for tid in wave]
         for wave in waves]
 
     result = {
@@ -906,6 +1037,7 @@ def main(argv=None):
         "mode": mode,
         "degrade_reason": degrade,
         "acceptance": acceptance,
+        "globalConstraints": global_constraints,
     }
 
     if emit_launch is not None:
@@ -916,11 +1048,13 @@ def main(argv=None):
         launch_payload = {
             "tasks": [{"id": tid, "title": by_id[tid]["title"],
                        "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
-                       "depends_on": by_id[tid]["depends_on"]}
+                       "depends_on": by_id[tid]["depends_on"],
+                       "interfaces": by_id[tid]["interfaces"]}
                       for wave in waves for tid in wave],
             "waves": waves,
             "edges": [[e["from"], e["to"]] for e in edges],
             "acceptance": acceptance,
+            "globalConstraints": global_constraints,
         }
         emit_launch.parent.mkdir(parents=True, exist_ok=True)
         emit_launch.write_text(json.dumps(launch_payload, indent=2))

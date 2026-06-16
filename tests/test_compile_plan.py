@@ -1661,3 +1661,151 @@ def test_emit_launch_is_opt_in(tmp_path):
     out = compile_plan(plan)
     assert "launch_file" not in out
     assert "launch_waves" in out            # the light grouping is always present
+
+
+def test_global_constraints_and_interfaces_parse_into_new_fields(tmp_path):
+    plan = tmp_path / "v6.md"
+    plan.write_text(
+        "# Plan: V6 blocks\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "## Global Constraints\n\n"
+        "- Python 3.11+ only; no new third-party deps.\n"
+        "- All public names use snake_case.\n\n"
+        "---\n\n"
+        "### Task 1: schema\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `apistub/schema.py`\n\n"
+        "**Interfaces:**\n"
+        "- Produces: `User` dataclass (id: int, name: str, email: str)\n"
+        "- Produces: `FIELDS` dict\n\n"
+        "- [ ] **Step 1:** write schema\n\n"
+        "### Task 2: store\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Create: `apistub/store.py`\n\n"
+        "**Interfaces:**\n"
+        "- Consumes: `User` dataclass (id: int, name: str, email: str)\n\n"
+        "- [ ] **Step 1:** write store\n"
+    )
+    out = compile_plan(plan)
+    # Top-level Global Constraints captured verbatim (body only, header stripped).
+    assert "Python 3.11+ only; no new third-party deps." in out["globalConstraints"]
+    assert "All public names use snake_case." in out["globalConstraints"]
+    assert "## Global Constraints" not in out["globalConstraints"]
+    # Per-task interfaces, preserving the text after the Consumes:/Produces: label.
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["interfaces"]["produces"] == [
+        "`User` dataclass (id: int, name: str, email: str)",
+        "`FIELDS` dict",
+    ]
+    assert by_id["1"]["interfaces"]["consumes"] == []
+    assert by_id["2"]["interfaces"]["consumes"] == [
+        "`User` dataclass (id: int, name: str, email: str)",
+    ]
+    assert by_id["2"]["interfaces"]["produces"] == []
+    # The fields ride into the launch-ready objects the engine consumes.
+    lw_by_id = {t["id"]: t for wave in out["launch_waves"] for t in wave}
+    assert lw_by_id["1"]["interfaces"]["produces"][0].startswith("`User` dataclass")
+    # The Interfaces sub-lines are NOT mis-read as malformed Files entries.
+    assert not any(c["task"] in ("1", "2") and "Files" in c["note"]
+                   for c in out["marker_conflicts"])
+    # And they did not leak into the write sets (Files parsing stopped cleanly).
+    assert by_id["1"]["writes"] == ["apistub/schema.py"]
+    assert by_id["2"]["writes"] == ["apistub/store.py"]
+
+
+def test_v5_plan_compiles_clean_with_empty_interface_defaults(tmp_path):
+    plan = tmp_path / "v5.md"
+    plan.write_text(
+        "# Plan: V5 legacy\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: only\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n"
+    )
+    out = compile_plan(plan)
+    assert out["globalConstraints"] == ""
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["interfaces"] == {"consumes": [], "produces": []}
+    assert not any("Interface" in c["note"] or "Global Constraint" in c["note"]
+                   for c in out["marker_conflicts"])
+
+
+def test_interfaces_consumes_line_is_not_a_files_near_miss(tmp_path):
+    plan = tmp_path / "exempt.md"
+    plan.write_text(
+        "# Plan: Exemption\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: consumer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `app.py`\n\n"
+        "**Interfaces:**\n"
+        "- Consumes: `validate_payload(payload) -> list[str]`\n"
+        "- Produces: `route(store, method, path, payload=None)`\n\n"
+        "- [ ] **Step 1:** wire it\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["1"]["interfaces"]["consumes"] == [
+        "`validate_payload(payload) -> list[str]`"]
+    assert by_id["1"]["interfaces"]["produces"] == [
+        "`route(store, method, path, payload=None)`"]
+    assert by_id["1"]["writes"] == ["app.py"]
+    assert not any(c["task"] == "1" and "Files" in c["note"]
+                   for c in out["marker_conflicts"])
+
+
+EVAL_FLAWED = ROOT / "evals/fixtures/flawed/plan.md"
+
+
+def test_flawed_fixture_interface_edge_orders_task4_after_task1():
+    out = compile_plan(EVAL_FLAWED)
+    assert {"from": "1", "to": "4", "why": "interface"} in out["dag_edges"]
+    wave_of = {tid: i for i, wave in enumerate(out["waves"]) for tid in wave}
+    assert wave_of["4"] > wave_of["1"]
+    assert "4" not in out["waves"][0]
+
+
+def test_flawed_fixture_emits_undeclared_dependency_finding():
+    out = compile_plan(EVAL_FLAWED)
+    findings = [c for c in out["marker_conflicts"]
+                if c.get("kind") == "undeclared-dependency"]
+    assert any(c["task"] == "4" and "1 -> 4" in c["edge"]
+               and "undeclared" in c["note"].lower() for c in findings)
+
+
+def test_interface_edge_requires_exact_token_match(tmp_path):
+    plan = tmp_path / "nearmiss-iface.md"
+    plan.write_text(
+        "# Plan: Near-miss interface\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: producer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n"
+        "**Interfaces:**\n- Produces: `User`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: near consumer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `b.py`\n\n"
+        "**Interfaces:**\n- Consumes: `Users`\n\n"
+        "- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "interface" for e in out["dag_edges"])
+    assert not any(c.get("kind") == "undeclared-dependency"
+                   for c in out["marker_conflicts"])
+    assert out["waves"] == [["1", "2"]]
+
+
+def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
+    plan = tmp_path / "covered-iface.md"
+    plan.write_text(
+        "# Plan: Covered interface\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: producer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n"
+        "**Interfaces:**\n- Produces: `User` dataclass\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: declared consumer\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Create: `b.py`\n\n"
+        "**Interfaces:**\n- Consumes: `User` dataclass (id, name)\n\n"
+        "- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "interface"} in out["dag_edges"]
+    assert not any(c.get("kind") == "undeclared-dependency"
+                   for c in out["marker_conflicts"])
+    assert out["waves"] == [["1"], ["2"]]

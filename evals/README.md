@@ -302,3 +302,64 @@ shows median coverage and flags any cell that is suite-green but coverage < 100%
   indicative, cost and acceptance rate as the hard numbers.
 - One eval, five fixtures — this measures *this* task distribution. Real-repo validity
   is a follow-up, not a freebie.
+
+## Micro-test loop (prompt-phrasing tuning before full runs)
+
+The 45-cell matrix is the expensive, slow instrument. Before spending a single
+matrix run on a prompt change, tune the **phrasing** with the micro-test loop —
+one API call per sample, programmatic scoring, seconds and ~$0.15–0.30 per
+sample:
+
+```sh
+evals/scripts/run-micro.py --variants variants.json --scorer json_object \
+    --samples samples.json --n 5
+```
+
+`variants.json` is a list of `{name, instruction}` phrasings; `samples.json` is a
+list of sample dicts; `--scorer` names a programmatic check (`json_object`,
+`nonempty`, …) registered in `SCORERS`. The loop prints each variant's **mean**
+and **variance**.
+
+**It always runs a no-guidance control.** A `control-no-guidance` variant (empty
+instruction) is injected automatically and sorted to the top. That control is the
+bar every phrasing must clear: the v6 work measured that a *prohibition* on output
+shape can score **below** saying nothing at all. The rule that follows —
+**positive recipe, not prohibition** — is exactly what this loop is for. Use it to
+tune the baked reviewer/implementer contracts (§2.4) before committing to a full
+run. The model call is injected, so the scorer and aggregation are unit-tested
+offline in `tests/test_run_micro.py`.
+
+## Re-freeze protocol (when engine behavior changes)
+
+Engine-behavior changes (new prompts, new tiering, the v6 integration) invalidate
+the frozen baseline. To re-measure:
+
+1. **Bump the engine `0.0.x` version.** The plugin version is the behavior proxy
+   `report.py` partitions on; a behavior change with no version bump silently
+   pools two different engines.
+2. **Re-run the 45-cell matrix fresh on the new frozen version.** Do not reuse
+   rows produced by an older `plugin_version`. Old rows remain valid *as that
+   version's population* — historical, not current.
+3. **Never pool across `plugin_version`.** `report.py` partitions medians by
+   `plugin_version` and never pools across versions. Do not defeat this by hand.
+
+The old population is not deleted; it is a different engine. Report the re-frozen
+engine as its own population beside the prior one, never merged into it.
+
+## Per-component cost-attribution (finding the hot spots)
+
+Headline USD-per-run says *whether* a run was expensive; it does not say *where*
+the cost went. Attribute cost per component using the per-role turn/output-token
+proxies from `scripts/audit_run.py`. Fill one table per run (or per median cell):
+
+| Component | Turns | Output tokens | Share of run cost | Notes |
+|-----------|------:|--------------:|------------------:|-------|
+| Controller (orchestration) | | | | setup + wave planning + gate decisions |
+| Implementers (all tasks) | | | | the generative bulk; tiered model |
+| Reviewers (per-task) | | | | always-opus; the live-git + suite-run sink |
+| Final review (completeness critic) | | | | opus on the integrated tree |
+| **Total** | | | **100%** | reconcile against `/cost` or `extract_tokens.py` |
+
+Read the table for **share of run cost**, not absolute tokens: the largest share
+is the first place an efficiency lever pays off. Re-fill it after any efficiency
+change to confirm the share actually moved.

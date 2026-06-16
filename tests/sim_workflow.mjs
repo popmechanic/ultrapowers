@@ -1931,6 +1931,112 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   console.log('scenario bootstrap-and-per-task-testcmd: OK')
 }
 
+// ── Scenario: forwarded signals — the implementer and reviewer dispatches carry
+// the plan's Global Constraints and each task's Interfaces, and the prompts state
+// the terse output contract (#1.4, #2.4).
+async function scenarioForwardedSignals() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'alpha', body: 'do A', tier: 'cheap',
+      interfaces: { consumes: ['schema.User'], produces: ['createUser(name: string): User'] } },
+    { id: 'B', title: 'beta', body: 'do B', tier: 'cheap' }, // no interfaces
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+                 globalConstraints: 'Node >= 20. All copy uses sentence case.' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args, budget: undefined,
+  })
+  assert(/GLOBAL CONSTRAINTS:[\s\S]*Node >= 20/.test(prompts['impl:A']),
+    'forwarded: implementer dispatch carries the global constraints text')
+  assert(/GLOBAL CONSTRAINTS:[\s\S]*Node >= 20/.test(prompts['review:A:1']),
+    'forwarded: reviewer dispatch carries the global constraints text')
+  assert(/INTERFACES:[\s\S]*schema\.User/.test(prompts['impl:A']) &&
+         /createUser\(name: string\): User/.test(prompts['impl:A']),
+    'forwarded: implementer dispatch carries the task interfaces (consumes + produces)')
+  assert(/INTERFACES:[\s\S]*schema\.User/.test(prompts['review:A:1']),
+    'forwarded: reviewer dispatch carries the task interfaces')
+  assert(!/INTERFACES:/.test(prompts['impl:B']),
+    'forwarded: a task without interfaces gets no INTERFACES line')
+  assert(/final message is your report/i.test(prompts['review:A:1']) &&
+         /file:line/.test(prompts['review:A:1']),
+    'forwarded: reviewer prompt states the terse report contract')
+  assert(/15 lines/.test(prompts['impl:A']),
+    'forwarded: implementer prompt caps the back-channel at 15 lines')
+  assert(r.tasks.every((t) => t.status === 'done'), 'forwarded: all tasks done')
+  console.log('scenario forwarded-signals: OK')
+}
+
+// ── Scenario: pre-baked review packets — the implementer's final step generates
+// the packet, the reviewer reads it (guarded fallback to live git), and the
+// reviewer no longer runs the suite (#2.1, #2.3b).
+async function scenarioReviewPackets() {
+  const prompts = {}
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args: baseArgs, budget: undefined,
+  })
+  assert(/scripts\/review-package/.test(prompts['impl:A']),
+    'packets: implementer final step runs the review-package script')
+  assert(/last (stdout )?line|echoed/i.test(prompts['impl:A']) && /packet/i.test(prompts['impl:A']),
+    'packets: implementer reports the echoed packet path')
+  assert(/review packet/i.test(prompts['review:A:1']),
+    'packets: reviewer prompt references the pre-baked review packet')
+  assert(/do not run git/i.test(prompts['review:A:1']),
+    'packets: reviewer reads the packet instead of running git')
+  assert(/fall back|missing|does not match/i.test(prompts['review:A:1']),
+    'packets: reviewer has a guarded fallback to live git when the packet is missing or stale')
+  assert(!/Run the full check suite and confirm it passes/.test(prompts['review:A:1']),
+    'packets: reviewer no longer runs the full check suite')
+  assert(/BASE\.\.\.HEAD/.test(prompts['review:A:1']),
+    'packets: reviewer still anchors to BASE...HEAD')
+  assert(/REVIEW role/.test(prompts['review:A:1']) && /Do not write files/.test(prompts['review:A:1']),
+    'packets: reviewer stays read-only')
+  assert(r.tasks.every((t) => t.status === 'done'), 'packets: all tasks done')
+  console.log('scenario review-packets: OK')
+}
+
+// ── Scenario: cannot-verify-from-diff escalation — reviewers list requirements
+// they cannot judge from the diff; the engine routes them into the completeness
+// critic's checklist (#2.2).
+async function scenarioCannotVerifyEscalation() {
+  let integrationPrompt = ''
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      if (id === 'A') {
+        return { verdict: 'PASS', issues: [],
+                 cannotVerify: [{ requirement: 'end-to-end auth flow across tasks A and C',
+                                  why: 'token consumer lives in task C, not in this diff' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') {
+      integrationPrompt = prompt
+      return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  assert(/CANNOT-VERIFY/i.test(integrationPrompt),
+    'cannotVerify: the completeness prompt carries a cannot-verify checklist heading')
+  assert(integrationPrompt.includes('end-to-end auth flow across tasks A and C'),
+    'cannotVerify: the listed requirement reaches the completeness critic')
+  assert(integrationPrompt.includes('token consumer lives in task C'),
+    'cannotVerify: the why reaches the completeness critic')
+  assert(r.tasks.every((t) => t.status === 'done'), 'cannotVerify: all tasks still done (PASS verdict)')
+  console.log('scenario cannot-verify-escalation: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
@@ -1942,4 +2048,78 @@ await scenarioWavesPathPreflightMissingFile()
 await scenarioWavesPathPreflightMissingId()
 await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
+await scenarioForwardedSignals()
+await scenarioReviewPackets()
+await scenarioCannotVerifyEscalation()
+
+// ── Scenario: warm-cache bootstrap — the fresh-worktree bootstrap tries the warm
+// cache (restore) first and warms it (populate) after a real install; a miss
+// falls through to the real bootstrapCmd (#2.3a).
+async function scenarioWarmCacheBootstrap() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'py task', body: 'do A', tier: 'cheap' },
+    { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+                 bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args, budget: undefined,
+  })
+  assert(/warm_cache\.sh restore/.test(prompts['impl:A']),
+    'warmCache: implementer bootstrap tries warm_cache.sh restore first')
+  assert(/exit 3/.test(prompts['impl:A']) && /pip install -e \./.test(prompts['impl:A']),
+    'warmCache: a cache miss (exit 3) falls through to the real bootstrapCmd')
+  assert(/warm_cache\.sh populate/.test(prompts['impl:A']),
+    'warmCache: after a real install the implementer populates the cache')
+  assert(/warm_cache\.sh restore/.test(prompts['review:A:1']),
+    'warmCache: reviewer bootstrap also tries the warm cache')
+  assert(prompts['merge:wave1'] && !/warm_cache\.sh/.test(prompts['merge:wave1']),
+    'warmCache: the merge agent gets no worktree bootstrap')
+  assert(prompts['integration'] && !/warm_cache\.sh/.test(prompts['integration']),
+    'warmCache: the completeness critic gets no worktree bootstrap')
+  assert(r.tasks.every((t) => t.status === 'done'), 'warmCache: all tasks done')
+  console.log('scenario warm-cache-bootstrap: OK')
+}
+
+await scenarioWarmCacheBootstrap()
+
+// ── Scenario: a dead completeness critic must NOT crash the run. agent() RETURNS
+// null (it does not throw) when a subagent dies on a terminal API error after
+// retries (e.g. Overloaded). Regression for the live-run crash where a null
+// integration review reached review.testsPassed and threw AFTER every wave merged.
+async function scenarioIntegrationReviewNull() {
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') return null   // the completeness agent died (Overloaded)
+    throw new Error('unexpected agent label: ' + label)
+  }
+  let r
+  try {
+    r = await runWorkflow({
+      agent,
+      args: Object.assign({}, baseArgs, { acceptance: { mode: 'suite', reason: 'committed suite' } }),
+      budget: undefined,
+    })
+  } catch (e) {
+    assert(false, 'integration-null: run must NOT throw on a null completeness review (got: ' + ((e && e.message) || e) + ')')
+  }
+  assert(r && r.tests && r.tests.passed === false,
+    'integration-null: a dead critic yields tests.passed=false, not a crash')
+  assert(r.acceptance && r.acceptance.mode === 'suite' && r.acceptance.passed === false,
+    'integration-null: suite acceptance does not pass when the critic produced no result')
+  assert(r.judgmentCalls.some((j) => /returned no result|completeness agent died/i.test(j)),
+    'integration-null: the dead critic is surfaced as a judgment call')
+  console.log('scenario integration-review-null: OK')
+}
+
+await scenarioIntegrationReviewNull()
 console.log('ALL SCENARIOS PASSED')

@@ -164,6 +164,12 @@ const baseBranch = (ARGS && typeof ARGS.baseBranch === 'string' && ARGS.baseBran
 // planPath: where the original plan lives on disk, so the completeness critic
 // reviews against the actual plan (agents have fs access; this script does not).
 const planPath = (ARGS && typeof ARGS.planPath === 'string' && ARGS.planPath.trim()) || undefined
+// globalConstraints: the plan's project-wide requirements the compiler captured
+// from the plan header, '' when the plan had no `## Global Constraints` section.
+// Forwarded verbatim into the implementer (binding requirements) and reviewer
+// (attention lens) dispatches. (#1.4)
+const globalConstraints =
+  (ARGS && typeof ARGS.globalConstraints === 'string' && ARGS.globalConstraints.trim()) || ''
 // resume: the deterministic redirect path (SKILL.md Step 5). Setup checks out the
 // EXISTING integration branch instead of creating one; the waves carry only the
 // redirected tasks. Requires the branch to be named explicitly — never guessed.
@@ -228,25 +234,29 @@ const IMPLEMENTER_PROMPT = [
   '- BASE: sha of the integration-branch HEAD your work builds on',
   '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
   '- SIBLING FILES: files owned by tasks running in parallel with yours (may be absent). They do NOT exist at BASE and are not yours: never create, duplicate, modify, or delete a sibling-owned path. If your task cannot be implemented or tested without one, report BLOCKED naming the file — that is a missing dependency edge in the plan, not yours to work around.',
+  '- GLOBAL CONSTRAINTS: project-wide requirements (version floors, naming/copy rules, platform reqs) that bind every task (may be absent). Treat them as additional acceptance criteria your work must satisfy.',
+  '- INTERFACES - the exact neighboring signatures your task consumes and the contract it produces (may be absent). Consumes names symbols earlier tasks expose that you may call; Produces is the contract later tasks rely on — match those names and types exactly, since the implementers that consume them never see your code.',
   '',
   'Workflow — red green refactor:',
   "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
-  '2. Read and restate the acceptance criteria from the task text before touching code.',
-  '3. Write or update tests that encode those criteria. Where the task specifies exact outputs — error lists and their order, JSON shapes, return values — assert the full expected value with equality, not loose containment, and cover the type edge cases the spec implies (e.g. a bool passing an int check). Confirm they fail (pnpm check or equivalent).',
-  '4. Implement the minimum code to make them pass.',
-  '5. Refactor for clarity without breaking tests.',
-  '6. Run the full check suite one final time and confirm it is clean.',
-  '7. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
+  '2. If a WORKTREE SETUP line is present, run it before building or testing: it prefers a warm dependency cache (a near-instant hardlink-clone of a prebuilt node_modules / .venv) and falls through to a real install on a cache miss, then warms the cache for sibling worktrees. The cache is an optimization only — your work is correct whether it hits or misses.',
+  '3. Read and restate the acceptance criteria from the task text before touching code.',
+  '4. Write or update tests that encode those criteria. Where the task specifies exact outputs — error lists and their order, JSON shapes, return values — assert the full expected value with equality, not loose containment, and cover the type edge cases the spec implies (e.g. a bool passing an int check). Confirm they fail (pnpm check or equivalent).',
+  '5. Implement the minimum code to make them pass.',
+  '6. Refactor for clarity without breaking tests.',
+  '7. Run the full check suite one final time and confirm it is clean.',
+  '8. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
   '- Run git diff BASE...HEAD (BASE is provided in your inputs) and verify no unrelated files are modified.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '- If FILES is present: confirm every file you created, modified, or deleted is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
+  '- As your final step, generate the review packet for your BASE...HEAD: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared common git dir and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
   '',
-  'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block.',
+  'Return a single JSON object conforming to the implementer status schema below. No prose outside the JSON block. Keep your back-channel summary to 15 lines or fewer; put the full detail in your committed work and the JSON fields.',
 ].join('\n')
 
 // BAKE:REVIEWER_PROMPT
@@ -260,8 +270,10 @@ const REVIEWER_PROMPT = [
   '',
   'Mandate: verify everything independently. Do not trust the implementer report.',
   '',
+  'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
+  '',
   'Spec compliance:',
-  '1. Check out the implementer HEAD sha as a DETACHED checkout (git checkout --detach <HEAD>) — the implementer branch itself is locked by its worktree, so do not check the branch out. Run git diff BASE...HEAD yourself.',
+  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared common git dir). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff from live git on a DETACHED checkout of the implementer HEAD (git checkout --detach <HEAD> — the implementer branch is locked by its worktree, so do not check the branch out) and run git diff BASE...HEAD yourself.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   'When FILES (the task\'s declared file scope) is provided: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; modifications outside FILES are blocking unless the task text plainly requires them.',
@@ -272,13 +284,15 @@ const REVIEWER_PROMPT = [
   '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
   '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.',
   '',
-  '8. Run the full check suite and confirm it passes.',
+  'You review by reading the diff and its evidence; the implementer red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.',
   '',
-  'When SIBLING FILES is provided and the check suite fails ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
+  'For any requirement you cannot verify from the diff alone — it spans tasks, or it depends on unchanged code outside this diff — list it under cannotVerify with the requirement and why it is unverifiable from here, rather than crawling the repository to chase it. The completeness critic verifies these against the integrated tree.',
+  '',
+  'When SIBLING FILES is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
-  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block.',
+  'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block. Your final message is your report: every line is a verdict or a finding carrying file:line evidence.',
 ].join('\n')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
@@ -322,7 +336,7 @@ const RECONCILE_PROMPT =
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha) =>
+const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
   'You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
   'modify the tree in any way. Your only output is your findings/verdict. If the ' +
   'work is wrong, report it — never fix it.\n' +
@@ -334,8 +348,8 @@ const completenessPrompt = (mergeHeadSha) =>
   (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
-  ', then review the integrated result against the original plan. List every ' +
-  'gap, unverified claim, and untested path.'
+  ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  'List every gap, unverified claim, and untested path.'
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
@@ -363,6 +377,17 @@ const REVIEWER_SCHEMA = {
         properties: {
           severity: { enum: ['blocking', 'minor'] },
           detail: { type: 'string' },
+        },
+      },
+    },
+    cannotVerify: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['requirement', 'why'],
+        properties: {
+          requirement: { type: 'string' },
+          why: { type: 'string' },
         },
       },
     },
@@ -427,12 +452,21 @@ const testCmdLine = (task) => {
   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
 }
 
-// Threaded into the FRESH worktree roles (implementer, reviewer, fix) so they
-// install dependencies before testing — engine worktrees carry no .venv /
-// node_modules. Empty when bootstrapCmd is not supplied (deps assumed present).
+// The fresh-worktree bootstrap, wrapped with the warm dependency cache. The agent
+// first tries `warm_cache.sh restore <lockfile> <target>` (a near-instant
+// hardlink-clone of the prebuilt deps); exit 0 = hit, exit 3 = miss/lockfile
+// change → fall through to the real bootstrapCmd, then `warm_cache.sh populate
+// <lockfile> <source>` to warm the cache for sibling worktrees. Correctness never
+// depends on the cache (#2.3a). Only the FRESH worktree roles receive this; empty
+// when no bootstrapCmd was supplied.
 const bootstrapLine = bootstrapCmd
-  ? ('\nWORKTREE SETUP: this is a fresh worktree with no installed dependencies; ' +
-     'run this before building or testing: ' + bootstrapCmd)
+  ? ('\nWORKTREE SETUP: this is a fresh worktree with no installed dependencies. ' +
+     'First try the warm cache: run `bash skills/ultrapowers/scripts/warm_cache.sh restore <lockfile> <target_dir>` ' +
+     '(use the dependency lockfile and the directory deps install into for this stack). ' +
+     'If it exits 0 the cache hit and deps are in place. If it returns exit 3 (cache miss or lockfile change), ' +
+     'run the real install before building or testing: ' + bootstrapCmd +
+     ' — then warm the cache for siblings: `bash skills/ultrapowers/scripts/warm_cache.sh populate <lockfile> <source_dir>`. ' +
+     'The cache is an optimization only; build and test normally whether it hit or missed.')
   : ''
 
 // The verbatim task text block appended to implementer/reviewer dispatches. When
@@ -463,6 +497,27 @@ const taskBodyBlock = (task) => {
 const filesLine = (task) => (Array.isArray(task.files) && task.files.length)
   ? ('\nFILES: ' + task.files.join(', '))
   : ''
+
+// The plan's Global Constraints, threaded into the implementer and reviewer
+// dispatches. Empty when no constraints were supplied. (#1.4)
+const globalConstraintsBlock = globalConstraints
+  ? ('\nGLOBAL CONSTRAINTS:\n' + globalConstraints)
+  : ''
+
+// A task's Interfaces (compile_plan.py emits { consumes:[...], produces:[...] }),
+// threaded so the worktree-isolated implementer learns the neighboring signatures
+// it consumes and the contract it must produce, and the reviewer can check the
+// produced contract. Empty when the task declared no interfaces. (#1.4)
+const interfacesLine = (task) => {
+  const i = task && task.interfaces
+  if (!i || typeof i !== 'object') return ''
+  const consumes = Array.isArray(i.consumes) ? i.consumes : []
+  const produces = Array.isArray(i.produces) ? i.produces : []
+  if (consumes.length === 0 && produces.length === 0) return ''
+  return '\nINTERFACES:' +
+    (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
+    (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
+}
 
 // Same-wave siblings own files this task must not touch — they are not at
 // BASE (a wave merges only after all its tasks finish). Naming them lets the
@@ -537,7 +592,7 @@ async function runTaskInner(task, baseSha, siblings) {
 
   const siblingsStr = siblings || ''
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task),
+    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   noteConcerns(impl)
@@ -569,7 +624,7 @@ async function runTaskInner(task, baseSha, siblings) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr
+      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -586,10 +641,16 @@ async function runTaskInner(task, baseSha, siblings) {
       const r2 = await agent(reviewPrompt, reviewOpts(2))
       issues = (r1.issues || []).concat(r2.issues || [])
       verdicts = [r1.verdict, r2.verdict]
+      for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
+        cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+      }
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
       issues = review.issues || []
       verdicts = [review.verdict]
+      for (const cv of (review.cannotVerify || [])) {
+        cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+      }
     }
     // Dedupe identical findings — adversarial reviewers often agree verbatim,
     // and a doubled issue doubles the noise in the fix prompt and the report.
@@ -638,7 +699,7 @@ async function runTaskInner(task, baseSha, siblings) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + taskBodyBlock(task) +
+      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
@@ -709,6 +770,7 @@ const blockedWaves = []
 const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
+const cannotVerifyItems = []
 
 // An edge endpoint absent from this run's waves can never bind for dependency
 // blocking — a typo'd id would silently disable the guarantee for that pair.
@@ -1032,8 +1094,12 @@ if (budgetExhausted()) {
              findings: ['integration review deferred: budget exhausted — verify the suite manually before merging'] }
 } else {
   try {
+    const cannotVerifyChecklist = cannotVerifyItems.length
+      ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
+         cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
+      : ''
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha) +
+      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist) +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
@@ -1047,6 +1113,29 @@ if (budgetExhausted()) {
     judgmentCalls.push('integration review failed to run: ' + msg)
     review = { testsPassed: false, output: 'integration agent error: ' + msg,
                findings: ['integration review did not run — verify the suite manually before merging'] }
+  }
+}
+
+// agent() RETURNS null (it does not throw) when a subagent dies on a terminal API
+// error after retries (e.g. Overloaded) or is skipped mid-run — so the try/catch
+// above, which only handles throws, lets a null review slip through to the report
+// where review.testsPassed would crash the whole run AFTER every wave already
+// merged. Guard it: a dead completeness critic degrades to a non-passing,
+// manually-verifiable result and a judgment call, never a crash.
+if (!review || typeof review !== 'object') {
+  judgmentCalls.push('integration review returned no result — the completeness agent died (likely a transient API error after retries); verify the suite manually before merging')
+  review = { command: undefined, testsPassed: false,
+             output: 'integration review returned null — the completeness agent produced no result',
+             findings: ['integration review returned no result — verify the suite manually before merging'] }
+}
+
+// cannot-verify items with no usable completeness critic must not be dropped:
+// when the run recorded no merge HEAD, the critic reports BLOCKED, so the items
+// surface at the gate as judgment calls instead (#2.2 error handling).
+if (cannotVerifyItems.length && !waveBaseSha) {
+  for (const c of cannotVerifyItems) {
+    judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
+      ' — no completeness critic ran (no merge HEAD); verify manually before the gate')
   }
 }
 

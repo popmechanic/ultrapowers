@@ -41,12 +41,20 @@ web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable
 Step 6 and run the fallback — do **not** perform dependency analysis or render a wave plan that
 cannot launch.
 
-**Tested with superpowers 5.1.0.** Check the installed version (the directory name
-under `~/.claude/plugins/cache/claude-plugins-official/superpowers/`). A newer
-version is not a blocker — warn and continue: "ultrapowers was validated against
-superpowers 5.1.0; you have <X>. If plan parsing or a handoff misbehaves, suspect
-upstream drift first (run `python3 -m pytest tests/test_superpowers_compat.py` in
-the ultrapowers repo to localize it)."
+**Validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/.** v6 is unreleased; there is no installed cache to
+attest against yet, so the compat tripwire reads its contract tokens from that
+pinned snapshot (flip it to the live cache at the GA-FLIP SEAM in
+tests/test_superpowers_compat.py when v6 publishes). Check the installed version
+(the directory name under `~/.claude/plugins/cache/claude-plugins-official/superpowers/`).
+A different version is not a blocker — warn and continue: "ultrapowers was
+validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/; you have <X>. If plan parsing or a handoff
+misbehaves, suspect upstream drift first (run `python3 -m pytest tests/test_superpowers_compat.py` in the ultrapowers repo to localize it)."
+
+**v6 plan signals:** v6 adds two optional plan blocks — `## Global Constraints` in
+the header and a per-task `**Interfaces:**` block (`- Consumes:` / `- Produces:`).
+The parser stays additive-tolerant: a v5 plan without them still compiles. This
+attestation only fixes which contract the tripwire checks; how `compile_plan.py`
+consumes the blocks is wired in the compiler tasks.
 
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
 plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`

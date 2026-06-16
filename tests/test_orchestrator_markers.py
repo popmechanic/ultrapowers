@@ -68,7 +68,8 @@ def test_orchestrator_restores_session_checkout_at_step_5():
 
 def test_orchestrator_wires_the_hardening():
     text = ORCHESTRATOR.read_text()
-    assert re.search(r"Tested with superpowers \d+\.\d+\.\d+", text)
+    assert (re.search(r"Tested with superpowers \d+\.\d+\.\d+", text) or
+            re.search(r"vendored Superpowers v6 snapshot \(dev \w+\)", text))
     assert "scripts/compile_plan.py" in text       # Step 2 runs the compiler
     assert "ultrapowers-probe" in text             # Step 4 preflight
     assert "edges" in text                          # Step 4b passes structured pairs

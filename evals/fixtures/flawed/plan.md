@@ -19,6 +19,10 @@
 - Create: `apistub/schema.py`
 - Test: `tests/test_schema.py`
 
+**Interfaces:**
+- Produces: `User` dataclass (id: int, name: str, email: str)
+- Produces: `FIELDS` dict {"name": str, "email": str}
+
 - [ ] **Step 1: Write failing tests** for the schema module:
   - A dataclass `User` with fields `id: int`, `name: str`, `email: str`.
   - A module constant `FIELDS = {"name": str, "email": str}` — the creation-payload contract (insertion order matters: `name` first).
@@ -62,6 +66,9 @@
 **Files:**
 - Create: `apistub/store.py`
 - Test: `tests/test_store.py`
+
+**Interfaces:**
+- Consumes: `User` dataclass (id: int, name: str, email: str)
 
 - [ ] **Step 1: Write failing tests** for `class MemoryStore`:
   - `add(name, email)` creates and returns a `schema.User` with an auto-incrementing integer `id` starting at 1.
