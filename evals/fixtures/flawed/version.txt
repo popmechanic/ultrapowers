@@ -1,4 +1,7 @@
-1-flawed (2026-06-14)
+2-flawed (2026-06-16)
 Preserves the intentional latent dependency: Task 4 (In-memory store) declares
 Depends-on: none but its spec requires add() to return a schema.User created by
 Task 1. Do NOT "fix" this — the bug IS the fixture. Promoted from mixed per #27.
+v2 adds v6 **Interfaces:** blocks (Task 1 Produces `User`; Task 4 Consumes `User`)
+so the undeclared-dependency now surfaces as an exact-token Interfaces edge — the
+bug is unchanged (Task 4 still declares Depends-on: none).

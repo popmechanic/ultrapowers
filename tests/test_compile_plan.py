@@ -1748,3 +1748,64 @@ def test_interfaces_consumes_line_is_not_a_files_near_miss(tmp_path):
     assert by_id["1"]["writes"] == ["app.py"]
     assert not any(c["task"] == "1" and "Files" in c["note"]
                    for c in out["marker_conflicts"])
+
+
+EVAL_FLAWED = ROOT / "evals/fixtures/flawed/plan.md"
+
+
+def test_flawed_fixture_interface_edge_orders_task4_after_task1():
+    out = compile_plan(EVAL_FLAWED)
+    assert {"from": "1", "to": "4", "why": "interface"} in out["dag_edges"]
+    wave_of = {tid: i for i, wave in enumerate(out["waves"]) for tid in wave}
+    assert wave_of["4"] > wave_of["1"]
+    assert "4" not in out["waves"][0]
+
+
+def test_flawed_fixture_emits_undeclared_dependency_finding():
+    out = compile_plan(EVAL_FLAWED)
+    findings = [c for c in out["marker_conflicts"]
+                if c.get("kind") == "undeclared-dependency"]
+    assert any(c["task"] == "4" and "1 -> 4" in c["edge"]
+               and "undeclared" in c["note"].lower() for c in findings)
+
+
+def test_interface_edge_requires_exact_token_match(tmp_path):
+    plan = tmp_path / "nearmiss-iface.md"
+    plan.write_text(
+        "# Plan: Near-miss interface\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: producer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n"
+        "**Interfaces:**\n- Produces: `User`\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: near consumer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `b.py`\n\n"
+        "**Interfaces:**\n- Consumes: `Users`\n\n"
+        "- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert not any(e["why"] == "interface" for e in out["dag_edges"])
+    assert not any(c.get("kind") == "undeclared-dependency"
+                   for c in out["marker_conflicts"])
+    assert out["waves"] == [["1", "2"]]
+
+
+def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
+    plan = tmp_path / "covered-iface.md"
+    plan.write_text(
+        "# Plan: Covered interface\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: producer\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n"
+        "**Interfaces:**\n- Produces: `User` dataclass\n\n"
+        "- [ ] **Step 1:** a\n\n"
+        "### Task 2: declared consumer\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Create: `b.py`\n\n"
+        "**Interfaces:**\n- Consumes: `User` dataclass (id, name)\n\n"
+        "- [ ] **Step 1:** b\n"
+    )
+    out = compile_plan(plan)
+    assert {"from": "1", "to": "2", "why": "interface"} in out["dag_edges"]
+    assert not any(c.get("kind") == "undeclared-dependency"
+                   for c in out["marker_conflicts"])
+    assert out["waves"] == [["1"], ["2"]]
