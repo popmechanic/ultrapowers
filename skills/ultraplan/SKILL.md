@@ -93,6 +93,57 @@ While writing tasks:
    human, that part is its own `release` or `manual` task — implementation tasks
    never contain it.
 
+## Populate the v6 blocks — they are load-bearing here
+
+superpowers v6 adds two plan blocks. In ultrapowers they are **not just
+documentation** — the compiler reads them, so populate them deliberately:
+
+1. **`## Global Constraints`** (a header section, project-wide). Copy the spec's
+   binding, cross-cutting requirements verbatim — version floors, naming/copy
+   rules, platform requirements. ultrapowers forwards this block to **every
+   reviewer as its attention lens**, so a reviewer gates the work against exactly
+   what the spec demands.
+
+2. **`**Interfaces:**`** (per task, with `Consumes:` / `Produces:` sub-bullets).
+   `Produces:` names the function names and param/return types later tasks rely
+   on; `Consumes:` names the signatures this task uses from earlier tasks. A
+   worktree-isolated implementer sees only its own task body — Interfaces is how
+   it learns the names and types its neighbors expose.
+
+These are **load-bearing**: ultrapowers cross-checks each task's `Consumes`
+against the `Produces` of every other task. When Task B `Consumes:` a symbol Task
+A `Produces:`, the compiler infers B-depends-on-A — and if that edge is **not**
+already covered by B's `**Depends-on:**` (or a file-overlap edge), it surfaces a
+loud **"undeclared dependency"** finding in the wave-plan transparency render at
+the Step-3 gate. The plan still compiles and waves correctly; the finding tells
+you your `**Depends-on:**` was wrong — fix it at authoring time. So: whenever a
+task `Consumes:` something a sibling `Produces:`, add the matching
+`**Depends-on:**` yourself.
+
+**Marker placement is unchanged.** `**Type:**` and `**Depends-on:**` stay in the
+contiguous header block immediately after the `### Task N:` heading and before
+`**Files:**`. `**Interfaces:**` is **not** a header marker: it sits **after** the
+`**Files:**` block and before the first `- [ ]` step. Shape:
+
+```markdown
+### Task 4: Wire the health probe
+
+**Type:** implementation
+**Depends-on:** 1, 2
+
+**Files:**
+- Modify: `app/server/server.ts`
+
+**Interfaces:**
+- Consumes: `schema.User` (from Task 1), `makeProbe(port: number): Probe` (from Task 2)
+- Produces: `healthProbe(): Promise<HealthReport>`
+
+- [ ] **Step 1: …**
+```
+
+Because `**Interfaces:**` falls after `**Files:**`, it never enters the header
+marker block, and `**Type:**`/`**Depends-on:**` keep their exact pinned positions.
+
 ## Seal the exam (after plan approval)
 
 A marked plan is not execution-ready until it carries an `**Acceptance:**`
