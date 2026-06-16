@@ -8,3 +8,4 @@ __pycache__/
 # harnesses/*.js — install artifacts, regenerated every run, never source of truth.
 .claude/worktrees/
 .claude/workflows/
+.claude/ultrapowers/
