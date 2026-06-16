@@ -18,6 +18,36 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 PLAN = ROOT / "tests/fixtures/marked-plan.md"
 
+# Minimal browser host so the inlined viewer script can BOOT under node (not just
+# parse). matches:true puts it in reduced-motion mode, so construction runs but the
+# rAF loop never starts; fetch rejects and setTimeout is a no-op so poll() can't hold
+# the event loop open. Loaded via `node --require` so the script stays byte-identical
+# (its leading 'use strict' keeps top-of-file).
+DOM_STUB = """\
+function elStub() {
+  return {
+    style: { setProperty() {} }, dataset: {},
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    children: [], textContent: "", className: "", innerHTML: "", hidden: false,
+    setAttribute() {}, getAttribute() { return null; }, removeAttribute() {},
+    appendChild(c) { this.children.push(c); return c; }, removeChild() {},
+    addEventListener() {}, remove() {},
+    getTotalLength() { return 1; }, getPointAtLength() { return { x: 0, y: 0 }; },
+  };
+}
+global.document = {
+  body: elStub(), documentElement: elStub(),
+  createElement() { return elStub(); }, createElementNS() { return elStub(); },
+  getElementById() { return elStub(); }, addEventListener() {},
+};
+global.matchMedia = () => ({ matches: true, addEventListener() {} });
+global.location = { protocol: "http:" };
+global.fetch = () => Promise.reject(new Error("no network in test"));
+global.requestAnimationFrame = () => 0;
+global.setTimeout = () => 0;
+if (!global.performance) global.performance = { now: () => 0 };
+"""
+
 
 def run(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True)
@@ -68,12 +98,33 @@ def test_template_has_audit_drawer_inert_without_transcripts(tmp_path):
     # drawer markup present
     assert 'id="drawer"' in html
     assert "closeDrawer" in html
-    # placeholders present and inert (no --transcripts given)
+    # The projection LIBRARY is always inlined — the template references
+    # AuditProjection at script load, so it must be defined even with no run data.
+    assert "/*__AUDIT_JS__*/" not in html, "library must be inlined, not left as a bare comment"
+    assert "globalThis.AuditProjection" in html, "AuditProjection must be defined"
+    # The DATA stays inert (no --transcripts): drawer goes quiet via a null index.
     assert "/*__AUDIT_INDEX__*/null" in html
     assert "/*__AUDIT_EMBED__*/null" in html
-    assert "/*__AUDIT_JS__*/" in html
-    # drawer references the Task 1 API by name
-    assert "AuditProjection" in html
+
+
+def test_viewer_boots_without_transcripts_under_dom_stub(tmp_path):
+    # Regression for "ReferenceError: AuditProjection is not defined" at script load:
+    # the depiction-only render (no --transcripts) must BOOT, not just parse. node
+    # --check validates syntax only and cannot catch an undefined-reference runtime
+    # error, so this executes the inlined script under a tiny DOM/host stub.
+    node = shutil.which("node")
+    if not node:
+        import pytest
+        pytest.skip("node not available")
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    js = re.search(r"<script>\n(.*)</script>", html, re.S).group(1)
+    (tmp_path / "embedded.js").write_text(js)
+    (tmp_path / "stub.cjs").write_text(DOM_STUB)
+    p = subprocess.run(
+        [node, "--require", str(tmp_path / "stub.cjs"), str(tmp_path / "embedded.js")],
+        capture_output=True, text=True)
+    assert p.returncode == 0, "viewer script threw at load:\n" + p.stdout + p.stderr
 
 
 # A richer synthetic agent than test_audit_run's: includes tool_use and
