@@ -237,3 +237,58 @@ def test_transcripts_must_be_a_directory(tmp_path):
         capture_output=True, text=True)
     assert p.returncode != 0, "expected non-zero exit for a non-directory --transcripts"
     assert "not a directory" in (p.stdout + p.stderr).lower()
+
+
+def test_embed_escapes_script_close_in_transcript(tmp_path):
+    run_dir = tmp_path / "wf_nasty"
+    run_dir.mkdir()
+    nasty = "result with </script><!-- and   a line sep"
+    lines = [
+        json.dumps({"type": "user", "version": "2.1.177",
+                    "message": {"content": [{"type": "text",
+                        "text": ("You are an implementer subagent operating inside a "
+                                 'dedicated git worktree.\nfind the object whose "id" is "1"\n')}]}}),
+        json.dumps({"type": "user", "version": "2.1.177",
+                    "message": {"content": [{"type": "tool_result", "content": nasty}]}}),
+    ]
+    (run_dir / "agent-z1.jsonl").write_text("\n".join(lines) + "\n")
+    (run_dir / "agent-z1.meta.json").write_text(
+        json.dumps({"agentType": "workflow-subagent", "worktreePath": "/wt"}))
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--embed", "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    # the page has exactly one real closing tag — the transcript's </script> was escaped
+    assert html.count("</script>") == 1, "stray </script> from transcript not escaped"
+    # the AUDIT_EMBED blob still parses and round-trips the original content
+    blob = re.search(r"const AUDIT_EMBED = (\{.*?\});\n", html, re.S).group(1)
+    embed = json.loads(blob)                      # < etc. are valid JSON escapes
+    assert "</script>" in json.dumps(embed), "content must round-trip after JSON decode"
+
+
+def test_index_classifies_task_id_from_real_prompt(tmp_path):
+    run_dir = tmp_path / "wf_real"
+    run_dir.mkdir()
+    impl = ("You are an implementer subagent operating inside a dedicated git worktree.\n"
+            'find the object whose "id" is "1" and use its "body".\n')
+    _write_agent(run_dir, "a1", impl)             # per-task -> task "1"
+    _write_agent(run_dir, "a3", MERGE_PROMPT)     # run-level -> task null
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    assert '"task": "1"' in html, "real-shape per-task agent not classified to its id"
+    assert '"task": null' in html, "run-level agent must be task null"
+
+
+def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
+    run_dir = tmp_path / "wf_unres"
+    run_dir.mkdir()
+    impl_no_id = "You are an implementer subagent operating inside a dedicated git worktree.\nno id here\n"
+    _write_agent(run_dir, "a1", impl_no_id)
+    out = tmp_path / "out"
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
+         "--transcripts", str(run_dir), "--out", str(out)])
+    html = (out / "swarm.html").read_text()
+    assert '"task": null' in html, "unresolved task must serialize as null"
+    assert '"task": "?"' not in html, "the '?' sentinel must not reach the index"

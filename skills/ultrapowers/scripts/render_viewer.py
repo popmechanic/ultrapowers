@@ -185,7 +185,7 @@ def build_index(run_dir):
             "id": f.stem[len("agent-"):],
             "file": f.name,
             "role": role,
-            "task": (task or None),
+            "task": (task if task and task != "?" else None),
             "model": model,
             "turns": turns,
             "tools": tools,
@@ -242,19 +242,30 @@ def marshal_embed(run_dir):
     return out
 
 
+def _js_embed(obj):
+    """json.dumps for inlining inside <script>: escape the code points that let
+    transcript content break out of the script element or the JS string literal.
+    \\u003c renders as '<' in JS, so the decoded data is identical to the reader."""
+    s = json.dumps(obj)
+    for ch, esc in (("<", "\\u003c"), (">", "\\u003e"),
+                    (" ", "\\u2028"), (" ", "\\u2029")):
+        s = s.replace(ch, esc)
+    return s
+
+
 def render(dag, theme_name, out_path, audit_index=None, audit_embed=None, audit_js=None):
     html = TEMPLATE.read_text()
     for ph in (DAG_PLACEHOLDER, THEME_PLACEHOLDER):
         if ph not in html:
             raise SystemExit(f"template placeholder {ph} missing — swarm_template.html was edited?")
-    html = html.replace(DAG_PLACEHOLDER, json.dumps(dag))
-    html = html.replace(THEME_PLACEHOLDER, json.dumps(THEMES[theme_name]))
+    html = html.replace(DAG_PLACEHOLDER, _js_embed(dag))
+    html = html.replace(THEME_PLACEHOLDER, _js_embed(THEMES[theme_name]))
     if audit_js is not None:
         html = html.replace(AUDIT_JS_PLACEHOLDER, audit_js)
     if audit_index is not None:
-        html = html.replace(AUDIT_INDEX_PLACEHOLDER, json.dumps(audit_index))
+        html = html.replace(AUDIT_INDEX_PLACEHOLDER, _js_embed(audit_index))
     if audit_embed is not None:
-        html = html.replace(AUDIT_EMBED_PLACEHOLDER, json.dumps(audit_embed))
+        html = html.replace(AUDIT_EMBED_PLACEHOLDER, _js_embed(audit_embed))
     out_path.write_text(html)
     return out_path
 
