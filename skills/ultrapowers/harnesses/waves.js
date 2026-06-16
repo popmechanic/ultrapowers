@@ -239,12 +239,13 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Workflow — red green refactor:',
   "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
-  '2. Read and restate the acceptance criteria from the task text before touching code.',
-  '3. Write or update tests that encode those criteria. Where the task specifies exact outputs — error lists and their order, JSON shapes, return values — assert the full expected value with equality, not loose containment, and cover the type edge cases the spec implies (e.g. a bool passing an int check). Confirm they fail (pnpm check or equivalent).',
-  '4. Implement the minimum code to make them pass.',
-  '5. Refactor for clarity without breaking tests.',
-  '6. Run the full check suite one final time and confirm it is clean.',
-  '7. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
+  '2. If a WORKTREE SETUP line is present, run it before building or testing: it prefers a warm dependency cache (a near-instant hardlink-clone of a prebuilt node_modules / .venv) and falls through to a real install on a cache miss, then warms the cache for sibling worktrees. The cache is an optimization only — your work is correct whether it hits or misses.',
+  '3. Read and restate the acceptance criteria from the task text before touching code.',
+  '4. Write or update tests that encode those criteria. Where the task specifies exact outputs — error lists and their order, JSON shapes, return values — assert the full expected value with equality, not loose containment, and cover the type edge cases the spec implies (e.g. a bool passing an int check). Confirm they fail (pnpm check or equivalent).',
+  '5. Implement the minimum code to make them pass.',
+  '6. Refactor for clarity without breaking tests.',
+  '7. Run the full check suite one final time and confirm it is clean.',
+  '8. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
@@ -451,12 +452,21 @@ const testCmdLine = (task) => {
   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
 }
 
-// Threaded into the FRESH worktree roles (implementer, reviewer, fix) so they
-// install dependencies before testing — engine worktrees carry no .venv /
-// node_modules. Empty when bootstrapCmd is not supplied (deps assumed present).
+// The fresh-worktree bootstrap, wrapped with the warm dependency cache. The agent
+// first tries `warm_cache.sh restore <lockfile> <target>` (a near-instant
+// hardlink-clone of the prebuilt deps); exit 0 = hit, exit 3 = miss/lockfile
+// change → fall through to the real bootstrapCmd, then `warm_cache.sh populate
+// <lockfile> <source>` to warm the cache for sibling worktrees. Correctness never
+// depends on the cache (#2.3a). Only the FRESH worktree roles receive this; empty
+// when no bootstrapCmd was supplied.
 const bootstrapLine = bootstrapCmd
-  ? ('\nWORKTREE SETUP: this is a fresh worktree with no installed dependencies; ' +
-     'run this before building or testing: ' + bootstrapCmd)
+  ? ('\nWORKTREE SETUP: this is a fresh worktree with no installed dependencies. ' +
+     'First try the warm cache: run `bash skills/ultrapowers/scripts/warm_cache.sh restore <lockfile> <target_dir>` ' +
+     '(use the dependency lockfile and the directory deps install into for this stack). ' +
+     'If it exits 0 the cache hit and deps are in place. If it returns exit 3 (cache miss or lockfile change), ' +
+     'run the real install before building or testing: ' + bootstrapCmd +
+     ' — then warm the cache for siblings: `bash skills/ultrapowers/scripts/warm_cache.sh populate <lockfile> <source_dir>`. ' +
+     'The cache is an optimization only; build and test normally whether it hit or missed.')
   : ''
 
 // The verbatim task text block appended to implementer/reviewer dispatches. When

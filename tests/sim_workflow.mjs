@@ -2051,4 +2051,37 @@ await scenarioBootstrapAndPerTaskTestCmd()
 await scenarioForwardedSignals()
 await scenarioReviewPackets()
 await scenarioCannotVerifyEscalation()
+
+// ── Scenario: warm-cache bootstrap — the fresh-worktree bootstrap tries the warm
+// cache (restore) first and warms it (populate) after a real install; a miss
+// falls through to the real bootstrapCmd (#2.3a).
+async function scenarioWarmCacheBootstrap() {
+  const prompts = {}
+  const waves = [[
+    { id: 'A', title: 'py task', body: 'do A', tier: 'cheap' },
+    { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+                 bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .' }
+  const r = await runWorkflow({
+    agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
+    args, budget: undefined,
+  })
+  assert(/warm_cache\.sh restore/.test(prompts['impl:A']),
+    'warmCache: implementer bootstrap tries warm_cache.sh restore first')
+  assert(/exit 3/.test(prompts['impl:A']) && /pip install -e \./.test(prompts['impl:A']),
+    'warmCache: a cache miss (exit 3) falls through to the real bootstrapCmd')
+  assert(/warm_cache\.sh populate/.test(prompts['impl:A']),
+    'warmCache: after a real install the implementer populates the cache')
+  assert(/warm_cache\.sh restore/.test(prompts['review:A:1']),
+    'warmCache: reviewer bootstrap also tries the warm cache')
+  assert(prompts['merge:wave1'] && !/warm_cache\.sh/.test(prompts['merge:wave1']),
+    'warmCache: the merge agent gets no worktree bootstrap')
+  assert(prompts['integration'] && !/warm_cache\.sh/.test(prompts['integration']),
+    'warmCache: the completeness critic gets no worktree bootstrap')
+  assert(r.tasks.every((t) => t.status === 'done'), 'warmCache: all tasks done')
+  console.log('scenario warm-cache-bootstrap: OK')
+}
+
+await scenarioWarmCacheBootstrap()
 console.log('ALL SCENARIOS PASSED')
