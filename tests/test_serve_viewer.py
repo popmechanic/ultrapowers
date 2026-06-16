@@ -73,6 +73,22 @@ def test_transcripts_read_only(tmp_path):
         _serve(["--stop", str(out)])
 
 
+def test_build_watch_cmd_threads_transcripts():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("serve_viewer", SERVE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    cmd = mod.build_watch_cmd("python3", "/w/swarm_watch.py", "/repo",
+                              "ultra/integration-x", "/out", "/run/transcripts")
+    assert "--transcripts" in cmd
+    assert cmd[cmd.index("--transcripts") + 1] == "/run/transcripts"
+    assert "--integration" in cmd and "ultra/integration-x" in cmd
+    # no transcripts -> no flag (back-compat with --watch-only callers)
+    cmd2 = mod.build_watch_cmd("python3", "/w/swarm_watch.py", "/repo",
+                               "ultra/integration-x", "/out", None)
+    assert "--transcripts" not in cmd2
+
+
 def test_watch_writes_status(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
