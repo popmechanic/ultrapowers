@@ -35,7 +35,7 @@ the "execute the plan" step: brainstorming, planning, and branch-finishing hand 
   dependent tasks wait only for the prior wave to land. Plans too small or too entangled to benefit
   are detected up front and run sequentially through the same machinery (see Cost honesty below).
 - **Deterministic orchestration — and deterministic compilation.** The engine is a frozen,
-  version-controlled Dynamic Workflow script (`skills/ultrapowers/workflow.js`) with the review
+  version-controlled Dynamic Workflow script (`skills/ultrapowers/harnesses/waves.js`) with the review
   discipline baked in at build time and drift-tested against its reference sources. A run never
   improvises its own orchestration and never depends on live superpowers skill resolution. And for
   marked plans (see ultraplan below), the wave computation itself is no longer model judgment: an
@@ -44,8 +44,8 @@ the "execute the plan" step: brainstorming, planning, and branch-finishing hand 
   it explicitly flags.
 - **Built for drift.** ultrapowers depends on two substrates it doesn't control: superpowers'
   plan conventions and the experimental Workflow engine. Both are tripwired. Compat tests
-  (`tests/test_superpowers_compat.py`) read the *installed* superpowers plugin and fail loudly if
-  the contract ultrapowers parses changes (validated against 5.1.0, attested in the skill); a
+  (`tests/test_superpowers_compat.py`) read the vendored Superpowers snapshot and fail loudly if
+  the contract ultrapowers parses changes (validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/, attested in the skill); a
   zero-agent probe workflow launches before every real run, so engine drift becomes a clean
   sequential fallback instead of a mid-run crash.
 - **Review that understands parallelism.** Each task is verified by an independent reviewer that
@@ -99,7 +99,7 @@ Everything in between runs autonomously and headless.
 Deep dive: [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md) is the front door;
 [`skills/ultrapowers/references/`](skills/ultrapowers/references/) covers dependency analysis,
 the reviewer prompts and schemas, wave-merge mechanics, the report format, and the maintainer
-guide for `workflow.js`.
+guide for `harnesses/waves.js`.
 
 ## Authoring parallel-ready plans (ultraplan)
 
