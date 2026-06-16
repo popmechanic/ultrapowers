@@ -30,13 +30,16 @@ def test_orchestrator_step3_renders_without_pausing():
 
 def test_orchestrator_launches_by_meta_name():
     # The saved-workflow registry resolves by the script's meta.name
-    # ('ultrapowers'), NOT the installed filename ('ultrapowers-run.js') —
-    # confirmed live 2026-06-10: launching as 'ultrapowers-run' fails.
+    # ('ultrapowers-run'), NOT the installed filename ('waves.js') — launching
+    # as 'waves' fails with "not found". The workflow is named 'ultrapowers-run'
+    # (not 'ultrapowers') so the engine's auto-registered /<meta.name> command
+    # cannot shadow the /ultrapowers skill — see
+    # docs/bugs/2026-06-15-ultrapowers-command-collision.md.
     text = ORCHESTRATOR.read_text()
     assert "`meta.name`" in text
     assert "not found" in text   # the failure mode is named, not just implied
     workflow = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
-    assert "name: 'ultrapowers'" in workflow   # the name Step 4b promises
+    assert "name: 'ultrapowers-run'" in workflow   # the name Step 4b promises
 
 
 def test_preflight_distinguishes_not_found_from_engine_drift():

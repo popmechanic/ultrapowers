@@ -15,7 +15,13 @@
 // access — only agent() calls do work.
 
 export const meta = {
-  name: 'ultrapowers',
+  // 'ultrapowers-run', NOT 'ultrapowers': the engine auto-registers a saved
+  // workflow as a /<meta.name> slash command, and meta.name 'ultrapowers' would
+  // shadow the ultrapowers:ultrapowers SKILL (the documented /ultrapowers entry
+  // point), feeding a bare plan path straight into this engine (#collision,
+  // docs/bugs/2026-06-15-ultrapowers-command-collision.md). The probe follows
+  // the same convention ('ultrapowers-probe'). SKILL.md launches by this name.
+  name: 'ultrapowers-run',
   description: 'Execute an approved plan: parallel waves, worktree isolation, independent per-task review.',
   phases: [],
 }
@@ -29,9 +35,23 @@ export const meta = {
 // primary args.waves path works regardless of delivery form.
 let ARGS = (typeof args !== 'undefined') ? args : undefined
 if (typeof ARGS === 'string') {
+  // Compiled launch args serialize to a JSON object/array, so a string always
+  // begins with '{' or '['. Anything else (a bare plan path like
+  // 'docs/plans/feature.md') means this engine workflow was launched DIRECTLY
+  // instead of through the ultrapowers:ultrapowers SKILL, which is the only
+  // thing that compiles a plan path into args.waves (via compile_plan.py). Emit
+  // a redirect rather than the cryptic 'Unexpected identifier' parse error.
+  const looksLikeJson = /^\s*[\[{]/.test(ARGS)
   try {
     ARGS = JSON.parse(ARGS)
   } catch (e) {
+    if (!looksLikeJson) {
+      throw new Error(
+        'ultrapowers: launched with a raw string ("' + ARGS.slice(0, 80) + '"), not compiled ' +
+        'launch args. This is the engine workflow — do NOT launch it directly with a plan path. ' +
+        'Run the /ultrapowers skill (ultrapowers:ultrapowers) on the plan; it compiles the plan ' +
+        'into args.waves (via compile_plan.py) and launches this workflow for you.')
+    }
     throw new Error('ultrapowers: args was a string but not valid JSON: ' + e.message)
   }
 }

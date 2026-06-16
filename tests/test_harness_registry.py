@@ -22,7 +22,28 @@ def meta_name(js_path):
 
 def test_at_least_the_two_core_harnesses_registered():
     names = {json.loads(m.read_text())["name"] for m in manifests()}
-    assert {"ultrapowers", "ultrapowers-probe"} <= names
+    assert {"ultrapowers-run", "ultrapowers-probe"} <= names
+
+
+def test_no_writeside_harness_shadows_the_ultrapowers_command():
+    """Regression guard for the /ultrapowers command collision
+    (docs/bugs/2026-06-15-ultrapowers-command-collision.md): the engine
+    auto-registers a saved workflow as a /<meta.name> slash command. A
+    write-side harness named 'ultrapowers' would shadow the
+    ultrapowers:ultrapowers SKILL (the documented /ultrapowers entry point) and
+    feed a bare plan path straight into the engine. Forbid that name — for both
+    the manifest and the harness's own meta.name."""
+    for m in manifests():
+        spec = json.loads(m.read_text())
+        if spec.get("writeSide") is not True:
+            continue
+        assert spec["name"] != "ultrapowers", (
+            f"{m.name}: write-side harness named 'ultrapowers' shadows the "
+            "/ultrapowers skill command — rename it (e.g. 'ultrapowers-run')")
+        js = HARNESSES / spec["file"]
+        assert meta_name(js) != "ultrapowers", (
+            f"{spec['file']}: meta.name 'ultrapowers' shadows the /ultrapowers "
+            "skill command — rename it (e.g. 'ultrapowers-run')")
 
 
 def test_every_manifest_points_to_a_matching_harness():

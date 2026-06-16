@@ -12,7 +12,7 @@ The canonical sources live under `skills/ultrapowers/harnesses/` — each harnes
 SKILL.md Step 4a reads each manifest and copies the harness file to `.claude/workflows/` in the
 target project, because saved workflows are the documented deterministic launch surface (run by
 `meta.name`, with `args`) and plugins cannot ship them. Specifically:
-- `harnesses/waves.js` → `.claude/workflows/waves.js` (installed name; launches by `meta.name` `ultrapowers`)
+- `harnesses/waves.js` → `.claude/workflows/waves.js` (installed name; launches by `meta.name` `ultrapowers-run` — NOT `ultrapowers`, which would shadow the `/ultrapowers` skill command; see `docs/bugs/2026-06-15-ultrapowers-command-collision.md`)
 - `harnesses/probe.js` → `.claude/workflows/probe.js` (installed name; launches by `meta.name` `ultrapowers-probe`)
 
 The installed copies are disposable: they are overwritten on every run and must never be edited in

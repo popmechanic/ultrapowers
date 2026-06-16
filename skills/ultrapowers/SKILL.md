@@ -254,10 +254,12 @@ seconds. Branch on *how* it fails — the two failure modes have different cures
   args/return dialect changed under us. The engine has drifted — go directly to Step 6; do not
   launch the real workflow.
 
-**4b — Launch the saved workflow by name `ultrapowers`** (the committed script — do **not** author
+**4b — Launch the saved workflow by name `ultrapowers-run`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
-`meta.name` (`ultrapowers`), **not** the installed filename (`waves.js`) — launching as
-`waves` fails with "not found". Pass:
+`meta.name` (`ultrapowers-run`), **not** the installed filename (`waves.js`) — launching as
+`waves` fails with "not found". (The workflow is named `ultrapowers-run`, not `ultrapowers`, so the
+engine's auto-registered `/<meta.name>` command cannot shadow this `/ultrapowers` skill — see
+`docs/bugs/2026-06-15-ultrapowers-command-collision.md`.) Pass:
 
 ```
 args = { waves, wavesPath?, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
@@ -344,7 +346,7 @@ present these choices:
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
   corrective instructions appended to each task `body`), and relaunch the saved workflow
-  (Step 4, by `meta.name` `ultrapowers`) with `resume: true` and the **same** `integrationBranch`. The setup agent checks
+  (Step 4, by `meta.name` `ultrapowers-run`) with `resume: true` and the **same** `integrationBranch`. The setup agent checks
   out the existing branch instead of creating one; redirected work merges onto it. Never
   improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
   it completes.

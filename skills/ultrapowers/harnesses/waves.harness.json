@@ -1,9 +1,9 @@
 {
-  "name": "ultrapowers",
+  "name": "ultrapowers-run",
   "file": "waves.js",
   "purpose": "plan -> parallel waves -> independent review -> merge",
   "writeSide": true,
-  "version": "0.0.9",
+  "version": "0.0.10",
   "fixtures": "tests/test_workflow_sim.py",
   "driftTest": "tests/test_no_prompt_drift.py"
 }
