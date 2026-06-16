@@ -134,6 +134,8 @@ When `FILES` (the task's declared file scope) is provided: a deletion of any fil
 
 You review by reading the diff and its evidence; the implementer's red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.
 
+For any requirement you cannot verify from the diff alone — it spans tasks, or it depends on unchanged code outside this diff — list it under `cannotVerify` with the requirement and why it is unverifiable from here, rather than crawling the repository to chase it. The completeness critic verifies these against the integrated tree.
+
 When `SIBLING FILES` is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at `BASE`, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.
 
 Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.
@@ -160,6 +162,17 @@ Flag only issues worth fixing. Minor style nits that a linter would catch automa
         properties: {
           severity: { enum: ['blocking', 'minor'] },
           detail: { type: 'string' },
+        },
+      },
+    },
+    cannotVerify: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['requirement', 'why'],
+        properties: {
+          requirement: { type: 'string' },
+          why: { type: 'string' },
         },
       },
     },

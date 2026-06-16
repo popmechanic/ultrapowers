@@ -285,6 +285,8 @@ const REVIEWER_PROMPT = [
   '',
   'You review by reading the diff and its evidence; the implementer red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.',
   '',
+  'For any requirement you cannot verify from the diff alone — it spans tasks, or it depends on unchanged code outside this diff — list it under cannotVerify with the requirement and why it is unverifiable from here, rather than crawling the repository to chase it. The completeness critic verifies these against the integrated tree.',
+  '',
   'When SIBLING FILES is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
@@ -333,7 +335,7 @@ const RECONCILE_PROMPT =
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha) =>
+const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
   'You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
   'modify the tree in any way. Your only output is your findings/verdict. If the ' +
   'work is wrong, report it — never fix it.\n' +
@@ -345,8 +347,8 @@ const completenessPrompt = (mergeHeadSha) =>
   (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
-  ', then review the integrated result against the original plan. List every ' +
-  'gap, unverified claim, and untested path.'
+  ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  'List every gap, unverified claim, and untested path.'
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
@@ -374,6 +376,17 @@ const REVIEWER_SCHEMA = {
         properties: {
           severity: { enum: ['blocking', 'minor'] },
           detail: { type: 'string' },
+        },
+      },
+    },
+    cannotVerify: {
+      type: 'array',
+      items: {
+        type: 'object',
+        required: ['requirement', 'why'],
+        properties: {
+          requirement: { type: 'string' },
+          why: { type: 'string' },
         },
       },
     },
@@ -618,10 +631,16 @@ async function runTaskInner(task, baseSha, siblings) {
       const r2 = await agent(reviewPrompt, reviewOpts(2))
       issues = (r1.issues || []).concat(r2.issues || [])
       verdicts = [r1.verdict, r2.verdict]
+      for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
+        cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+      }
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
       issues = review.issues || []
       verdicts = [review.verdict]
+      for (const cv of (review.cannotVerify || [])) {
+        cannotVerifyItems.push({ task: task.id, requirement: cv.requirement, why: cv.why })
+      }
     }
     // Dedupe identical findings — adversarial reviewers often agree verbatim,
     // and a doubled issue doubles the noise in the fix prompt and the report.
@@ -741,6 +760,7 @@ const blockedWaves = []
 const waveMerges = []
 const judgmentCalls = []
 const unfinished = []
+const cannotVerifyItems = []
 
 // An edge endpoint absent from this run's waves can never bind for dependency
 // blocking — a typo'd id would silently disable the guarantee for that pair.
@@ -1064,8 +1084,12 @@ if (budgetExhausted()) {
              findings: ['integration review deferred: budget exhausted — verify the suite manually before merging'] }
 } else {
   try {
+    const cannotVerifyChecklist = cannotVerifyItems.length
+      ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
+         cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
+      : ''
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha) +
+      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist) +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
@@ -1079,6 +1103,16 @@ if (budgetExhausted()) {
     judgmentCalls.push('integration review failed to run: ' + msg)
     review = { testsPassed: false, output: 'integration agent error: ' + msg,
                findings: ['integration review did not run — verify the suite manually before merging'] }
+  }
+}
+
+// cannot-verify items with no usable completeness critic must not be dropped:
+// when the run recorded no merge HEAD, the critic reports BLOCKED, so the items
+// surface at the gate as judgment calls instead (#2.2 error handling).
+if (cannotVerifyItems.length && !waveBaseSha) {
+  for (const c of cannotVerifyItems) {
+    judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
+      ' — no completeness critic ran (no merge HEAD); verify manually before the gate')
   }
 }
 

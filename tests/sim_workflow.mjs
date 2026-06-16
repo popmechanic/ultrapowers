@@ -1996,6 +1996,47 @@ async function scenarioReviewPackets() {
   console.log('scenario review-packets: OK')
 }
 
+// ── Scenario: cannot-verify-from-diff escalation — reviewers list requirements
+// they cannot judge from the diff; the engine routes them into the completeness
+// critic's checklist (#2.2).
+async function scenarioCannotVerifyEscalation() {
+  let integrationPrompt = ''
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
+      'GUARD must head every dispatched prompt (label=' + label + ')')
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      if (id === 'A') {
+        return { verdict: 'PASS', issues: [],
+                 cannotVerify: [{ requirement: 'end-to-end auth flow across tasks A and C',
+                                  why: 'token consumer lives in task C, not in this diff' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm-' + label }
+    if (label === 'integration') {
+      integrationPrompt = prompt
+      return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  assert(/CANNOT-VERIFY/i.test(integrationPrompt),
+    'cannotVerify: the completeness prompt carries a cannot-verify checklist heading')
+  assert(integrationPrompt.includes('end-to-end auth flow across tasks A and C'),
+    'cannotVerify: the listed requirement reaches the completeness critic')
+  assert(integrationPrompt.includes('token consumer lives in task C'),
+    'cannotVerify: the why reaches the completeness critic')
+  assert(r.tasks.every((t) => t.status === 'done'), 'cannotVerify: all tasks still done (PASS verdict)')
+  console.log('scenario cannot-verify-escalation: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
@@ -2009,4 +2050,5 @@ await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
 await scenarioForwardedSignals()
 await scenarioReviewPackets()
+await scenarioCannotVerifyEscalation()
 console.log('ALL SCENARIOS PASSED')
