@@ -80,3 +80,21 @@ def test_unrecognized_prompt_counts_as_unknown(tmp_path):
     assert p.returncode == 0
     assert "| unknown | m | 1 | 10 |" in p.stdout
     assert "unclassified" in p.stdout
+
+
+IMPL_ID_2 = ("SAFETY: Operate ONLY inside the git worktree assigned to you.\n\n"
+             "You are an implementer subagent operating inside a dedicated git worktree.\n\n"
+             'TASK: read your verbatim task text from the JSON file at /tmp/waves.json — '
+             'in its "tasks" array, find the object whose "id" is "2" and use that '
+             "object's \"body\" field as the authoritative task text.\n")
+REVIEW_ID_3 = ("SAFETY: ...\n\nYou are an independent reviewer. You receive the original task text.\n\n"
+               'find the object whose "id" is "3" and use that object\'s "body" field.\n')
+
+
+def test_classifies_task_id_from_real_prompt_shape(tmp_path):
+    agent_file(tmp_path, "a1", IMPL_ID_2, "test-model", turns=1)
+    agent_file(tmp_path, "a2", REVIEW_ID_3, "judge-model", turns=1)
+    p = run_audit(tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert "| impl:2 | test-model | 1 | 10 |" in p.stdout
+    assert "| review:3 | judge-model | 1 | 10 |" in p.stdout

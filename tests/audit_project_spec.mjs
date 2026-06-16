@@ -104,5 +104,30 @@ longRow.children[0].onclick();  // simulate clicking the row head
 ok(longRow.children[1].hidden === false, "renderInto: clicking head reveals the pane");
 eq(foot.textContent, "format 2.1.177 · 1 unparsed lines", "renderInto: footer shows version + unparsed count");
 
+// partitionAgents: task!=null -> station; null -> hub; null index -> null
+eq(A.partitionAgents(null), null, "partitionAgents null index -> null");
+{
+  const idx = { agents: [
+    { id: "a", role: "impl",    task: "1" },
+    { id: "b", role: "review",  task: "1" },
+    { id: "c", role: "merge",   task: null },
+    { id: "d", role: "unknown", task: "2" },   // role-misdetect still reaches its station
+  ]};
+  const part = A.partitionAgents(idx);
+  eq(Object.keys(part.byTask).sort(), ["1", "2"], "partitionAgents groups by task id");
+  eq(part.byTask["1"].length, 2, "partitionAgents: two agents on task 1");
+  eq(part.byTask["2"][0].id, "d", "partitionAgents: task id wins over role");
+  eq(part.runLevel.map(function (a) { return a.id; }), ["c"], "partitionAgents: unresolved task -> hub");
+  ok(part.index === idx, "partitionAgents carries the index through");
+}
+
+// shouldRerender: first paint renders; unchanged -> skip; changed -> render
+{
+  const first = A.shouldRerender(undefined, "abc");
+  eq(first, { render: true, sig: 3 }, "shouldRerender: first paint renders");
+  eq(A.shouldRerender(first.sig, "abc").render, false, "shouldRerender: unchanged -> skip");
+  eq(A.shouldRerender(first.sig, "abcd"), { render: true, sig: 4 }, "shouldRerender: changed -> render");
+}
+
 if (failed) { console.error(failed + " FAILED"); process.exit(1); }
 console.log("ALL TESTS PASSED");
