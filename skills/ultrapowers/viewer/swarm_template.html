@@ -97,6 +97,23 @@
   .edge.live{opacity:.95;stroke-width:var(--edge-w-live)}
   .stationG.clickable{cursor:pointer}
 
+  /* fractal-zoom camera: macro grid ↔ meso git-graph (transform/opacity only) */
+  .crumbs{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:15;
+    color:var(--hud);font-family:var(--font);font-size:10px;letter-spacing:.16em}
+  .crumbs button{background:none;border:none;color:var(--hud);cursor:pointer;font:inherit;padding:0 2px}
+  .crumbs button[aria-current=true]{color:var(--ink)}
+  #scene{transition:transform .6s ease-in-out,opacity .6s ease-in-out;transform-origin:50% 50%}
+  #scene.zoomed{opacity:0;pointer-events:none}
+  .meso-layer[hidden]{display:none}
+  .meso-trunk{stroke:var(--ink);stroke-width:2;opacity:.5}
+  .meso-branch{stroke:var(--dim);stroke-width:1.6;fill:none;opacity:.8}
+  .meso-commit{fill:var(--bg);stroke:currentColor;stroke-width:1.6;cursor:pointer}
+  .meso-commit.fix{stroke-dasharray:3 2}
+  .meso-gate{fill:none;stroke:var(--hud);stroke-width:1.4;cursor:pointer}
+  .meso-merge{fill:var(--accent)}
+  .meso-label{fill:var(--ink);font-family:var(--font);font-size:10px}
+  @media (prefers-reduced-motion:reduce){ #scene{transition:none} }
+
   @media (prefers-reduced-motion:reduce){ .flicker{display:none} }
 
   .layout{position:absolute;inset:0;display:grid;grid-template-columns:58% 42%}
@@ -152,6 +169,7 @@
           <g id="stations"></g>
           <g id="sink"></g>
         </g>
+        <g id="meso" class="meso-layer" hidden></g>
       </svg>
       <div class="ovl dots"></div>
       <div class="ovl scanlines"></div>
@@ -166,6 +184,7 @@
       </div>
       <div class="legend">OBSERVING = STATION STATE FROM GIT &nbsp;&middot;&nbsp; DEPICTION = SEEDED PLAY OF THE WAVE PLAN</div>
       <div class="ticker" id="ticker"></div>
+      <div id="crumbs" class="crumbs" aria-label="zoom breadcrumb"></div>
     </div>
     <aside class="sidebar" id="sidebar">
       <div id="readout" class="readout"></div>
@@ -334,10 +353,11 @@ DAG.tasks.forEach(t => {
   const label = el('text', { class: 'stlabel', y: 26 }, g);
   label.textContent = 'T' + t.id;
   stations[id] = { id, x: p.x, y: p.y, el: g, state: 'pending' };
-  if (audit && audit.byTask[t.id]) {
-    g.classList.add('clickable');
-    g.addEventListener('click', function () { focusAgent(audit.byTask[t.id], 'Task ' + t.id); });
-  }
+  g.classList.add('clickable');
+  g.setAttribute('tabindex', '0');
+  g.setAttribute('role', 'button');
+  g.addEventListener('click', () => zoomToStation(String(t.id), g));
+  g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); zoomToStation(String(t.id), g); } });
 });
 
 // the integration sink
@@ -408,6 +428,7 @@ const ticker = document.getElementById('ticker');
 hudTitle.textContent = (DAG.title || 'WAVE PLAN').toUpperCase();
 
 let lastOk = 0, everOk = false;
+let lastStatus = {};       // freshest status.json (so renderMeso reads live commits[])
 const seenBranches = {};   // branch -> last known mapping/state
 function matchTask(text) {
   const n = (text || '').toLowerCase();
@@ -421,6 +442,7 @@ function matchTask(text) {
   return null;
 }
 function gotStatus(s) {
+  lastStatus = s;
   lastOk = Date.now();
   if (depicting) { depicting = false; schedule = []; }
   (s.branches || []).forEach(b => {
@@ -531,6 +553,98 @@ async function pollAgents() {
 }
 renderReadout();
 pollAgents();
+
+// ─── fractal zoom: macro grid ↔ meso git-graph ↔ micro transcript ───────────
+// `scene` and `el()` are already defined above; the macro grid lives in #scene,
+// the meso git-graph in #meso, and the micro transcript reuses the sidebar.
+const zoom = SwarmZoom.create();
+const mesoG = document.getElementById('meso');
+const crumbsEl = document.getElementById('crumbs');
+const stagePane = document.querySelector('.stage-pane');
+
+function renderCrumbs() {
+  crumbsEl.innerHTML = '';
+  const cs = zoom.crumbs();
+  cs.forEach((c, i) => {
+    const b = mkEl('button', null, c.label);
+    if (i === cs.length - 1) b.setAttribute('aria-current', 'true');
+    b.addEventListener('click', () => { goTo(c.level, zoom.focus().task); });
+    crumbsEl.appendChild(b);
+    if (i < cs.length - 1) crumbsEl.appendChild(mkEl('span', null, ' › '));
+  });
+}
+function clearMeso() { mesoG.innerHTML = ''; mesoG.hidden = true; }
+
+function renderMeso(taskId) {
+  // assemble from observed data: branch commits[] (status.json) + task agents (agents.json)
+  const br = (lastStatus.branches || []).find(b => matchTask(b.name + ' ' + (b.worktree || '')) == taskId);
+  const m = SwarmLayout.buildMeso({
+    commits: (br && br.commits) || [],
+    agents: (agentsByTask[taskId] || []).map(a => ({ role: a.role, iter: a.iter })),
+    merged: !!(br && br.merged),
+  });
+  mesoG.innerHTML = '';
+  document.getElementById('stage').setAttribute('viewBox', `0 0 ${m.width} ${m.height}`);
+  el('line', { class: 'meso-trunk', x1: m.trunk.x, y1: m.trunk.y0, x2: m.trunk.x, y2: m.trunk.y1 }, mesoG);
+  el('path', { class: 'meso-branch',
+    d: `M ${m.trunk.x} ${m.fork.y} L ${m.branchX} ${m.fork.y}` +
+       (m.merge ? ` M ${m.branchX} ${m.fork.y} L ${m.branchX} ${m.merge.y - 0} L ${m.trunk.x} ${m.merge.y}` : '') }, mesoG);
+  m.commits.forEach(c => {
+    const cl = 'meso-commit' + (c.role === 'fix' ? ' fix' : '');
+    const node = el('circle', { class: cl, cx: c.x, cy: c.y, r: 8 }, mesoG);
+    el('text', { class: 'meso-label', x: c.x + 14, y: c.y + 3 }, mesoG).textContent =
+      c.sha + ' ' + (c.subject || '').slice(0, 28);
+    node.addEventListener('click', ev => {
+      ev.stopPropagation();
+      const ags = agentsByTask[taskId] || [];
+      const impl = ags.find(a => a.role === 'impl') || ags[0];
+      if (impl) { zoom.toMicro(taskId, impl.id, 'T' + taskId); focusAgent([impl], 'T' + taskId); renderCrumbs(); }
+    });
+  });
+  m.gates.forEach(g => {
+    el('rect', { class: 'meso-gate', x: g.x - 7, y: g.y - 7, width: 14, height: 14, rx: 3 }, mesoG);
+  });
+  if (m.merge) el('circle', { class: 'meso-merge', cx: m.merge.x, cy: m.merge.y, r: 6 }, mesoG);
+  mesoG.hidden = false;
+}
+
+function goTo(level, taskId) {
+  if (level === 'macro') {
+    zoom.reset(); closeTranscript(); clearMeso();
+    scene.classList.remove('zoomed');
+    document.getElementById('stage').setAttribute('viewBox', `0 0 ${grid.width} ${grid.height}`);
+  } else if (level === 'meso') {
+    zoom.toMeso(taskId); closeTranscript(); renderMeso(taskId);
+    scene.classList.add('zoomed');
+  }
+  renderCrumbs();
+}
+
+function zoomToStation(taskId, node) {
+  // camera origin at the clicked node so the fly-in emanates from it
+  const r = node.getBBox ? node.getBBox() : null;
+  if (r) scene.style.transformOrigin = (r.x + r.width / 2) + 'px ' + (r.y + r.height / 2) + 'px';
+  goTo('meso', taskId);   // CSS .zoomed transition (or instant under reduced-motion) handles the rest
+}
+
+stagePane.addEventListener('click', e => { if (e.target === scene || e.target.tagName === 'svg') goTo('macro'); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (zoom.level() === 'macro') return;
+  goTo(zoom.out() === 'macro' ? 'macro' : 'meso', zoom.focus().task);
+});
+renderCrumbs();
+
+// optional: continuous wheel/pinch on the same scene transform (phase 3+).
+if (!reduced && typeof d3 !== 'undefined' && d3.zoom) {
+  try {
+    const zb = d3.zoom().scaleExtent([1, 8]).on('zoom', ev => {
+      scene.style.transform = 'translate(' + ev.transform.x + 'px,' + ev.transform.y +
+        'px) scale(' + ev.transform.k + ')';
+    });
+    d3.select(document.getElementById('stage')).call(zb);
+  } catch (e) { /* d3-zoom optional: never block the core click-to-zoom */ }
+}
 
 // ─── the beam: one frame loop drives the depiction schedule + the HUD ────────
 // The grid is static, so a station's "alive" feel is CSS (the [data-state]

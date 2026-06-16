@@ -386,3 +386,13 @@ def test_render_inlines_d3zoom_and_swarm_zoom(tmp_path):
     assert "globalThis.SwarmZoom" in html or "root.SwarmZoom" in html, "SwarmZoom not inlined"
     # d3-zoom merged onto the same global d3 as d3-dag (both present, neither clobbered)
     assert "globalThis.SwarmLayout" in html or "root.SwarmLayout" in html, "d3-dag/layout still inlined"
+
+
+def test_viewer_wires_fractal_zoom(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert "SwarmZoom.create" in html, "template must drive zoom via SwarmZoom"
+    assert "SwarmLayout.buildMeso" in html, "meso graph must be built by buildMeso"
+    assert 'id="crumbs"' in html and 'id="meso"' in html, "breadcrumb + meso group required"
+    assert "prefers-reduced-motion" in html  # reduced-motion path present
+    assert "d3.zoom" in html, "optional scroll/pinch wiring present"
