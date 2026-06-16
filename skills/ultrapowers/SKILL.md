@@ -324,6 +324,8 @@ Only when the checkout is clean AND the integration HEAD matches the reported me
 
 **Optionally, audit the run's effort** (recommended after any sizable run): run `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/audit_run.py <transcript-dir>` — the transcript directory is printed in the Workflow launch result ("Transcript dir:"). Include its effort table when presenting the report; flagged tier-misrank candidates feed the NEXT plan's tier assignments. The script is advisory by contract (read-only, exits 0 even when the engine's transcript layout has drifted) — never treat its absence of output as a gate failure.
 
+To *read* the transcripts (not just their effort stats), render the swarm viewer with `--transcripts <transcript-dir>`: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/render_viewer.py <plan-path> --transcripts <transcript-dir> --out /tmp/swarm`, serve `/tmp/swarm` over http, and click a station to open its subagent's reasoning + tool I/O in the audit drawer (add `--embed` for a self-contained, offline file). Read-only; see `skills/ultrapowers/viewer/README.md`.
+
 Then render the workflow's structured report per `references/report-format.md`:
 integration branch, wave plan, per-task status + review verdict, test result, judgment calls, and
 anything unfinished or flagged by the completeness critic. Then render the **post-merge runbook** — the `release`/`manual` tasks excluded at

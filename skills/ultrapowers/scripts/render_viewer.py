@@ -13,15 +13,27 @@ Usage:
 """
 import argparse
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import audit_run  # sibling module: first_user_text, classify, collect
+
 TEMPLATE = HERE.parent / "viewer" / "swarm_template.html"
 DAG_PLACEHOLDER = "/*__DAG_JSON__*/null"
 THEME_PLACEHOLDER = "/*__THEME_JSON__*/null"
+
+AUDIT_INDEX_PLACEHOLDER = "/*__AUDIT_INDEX__*/null"
+AUDIT_EMBED_PLACEHOLDER = "/*__AUDIT_EMBED__*/null"
+AUDIT_JS_PLACEHOLDER = "/*__AUDIT_JS__*/"
+AUDIT_JS = HERE.parent / "viewer" / "audit_project.js"
+
+# Mirror AuditProjection.CAPS in viewer/audit_project.js — keep in sync.
+AUDIT_CAPS = {"text": 8192, "toolInput": 4096, "toolResult": 8192, "collapsed": 200}
 
 
 def theme(name, frame, glyph, trail, bloom, rings, edge_color, labelcase,
@@ -139,13 +151,110 @@ def build_dag(plan, title):
     }
 
 
-def render(dag, theme_name, out_path):
+def build_index(run_dir):
+    """Metadata only — no transcript content. Reuses audit_run's classifier."""
+    agents = []
+    versions = set()
+    for f in sorted(run_dir.glob("agent-*.jsonl")):
+        role_full = audit_run.classify(audit_run.first_user_text(f))  # "impl:1" / "merge" / "unknown"
+        role, _, task = role_full.partition(":")
+        model, turns, out_tokens = audit_run.collect(f)
+        tools, first_line = 0, ""
+        for line in f.read_text().splitlines():
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("version"):
+                versions.add(d["version"])
+            if d.get("type") == "assistant":
+                for b in (d.get("message", {}).get("content") or []):
+                    if isinstance(b, dict):
+                        if b.get("type") == "tool_use":
+                            tools += 1
+                        if not first_line and b.get("type") == "text":
+                            first_line = (b.get("text") or "")[:AUDIT_CAPS["collapsed"]]
+        meta = {}
+        mp = f.with_suffix(".meta.json")
+        if mp.exists():
+            try:
+                meta = json.loads(mp.read_text())
+            except json.JSONDecodeError:
+                meta = {}
+        agents.append({
+            "id": f.stem[len("agent-"):],
+            "file": f.name,
+            "role": role,
+            "task": (task or None),
+            "model": model,
+            "turns": turns,
+            "tools": tools,
+            "outTokens": out_tokens,
+            "firstLine": first_line,
+            "worktree": meta.get("worktreePath", ""),
+        })
+    return {"runId": run_dir.name, "versions": sorted(versions), "agents": agents}
+
+
+def _trunc_block(b):
+    bt = b.get("type")
+    if bt == "text":
+        return {"type": "text", "text": (b.get("text") or "")[:AUDIT_CAPS["text"]]}
+    if bt == "tool_use":
+        inp = b.get("input")
+        s = json.dumps(inp if inp is not None else {})[:AUDIT_CAPS["toolInput"]]
+        return {"type": "tool_use", "name": b.get("name", "?"), "input": s}  # string input: see convergence rule
+    if bt == "tool_result":
+        c = b.get("content")
+        if isinstance(c, list):
+            c = " ".join((x.get("text") or "") for x in c if isinstance(x, dict))
+        elif not isinstance(c, str):
+            c = "" if c is None else str(c)
+        return {"type": "tool_result", "content": c[:AUDIT_CAPS["toolResult"]]}
+    return {"type": bt or "unknown"}
+
+
+def marshal_embed(run_dir):
+    """For --embed: truncated entries matching AuditProjection.parseLines, so the
+    one projectAgent renders both embedded and fetched data. One file at a time."""
+    out = {}
+    for f in sorted(run_dir.glob("agent-*.jsonl")):
+        entries = []
+        for line in f.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            t = d.get("type")
+            if t not in ("assistant", "user"):
+                continue
+            content = (d.get("message") or {}).get("content")
+            if isinstance(content, list):
+                blocks = [_trunc_block(b) for b in content if isinstance(b, dict)]
+            elif isinstance(content, str):
+                blocks = [{"type": "text", "text": content[:AUDIT_CAPS["text"]]}]
+            else:
+                blocks = []
+            entries.append({"type": t, "content": blocks})
+        out[f.stem[len("agent-"):]] = entries
+    return out
+
+
+def render(dag, theme_name, out_path, audit_index=None, audit_embed=None, audit_js=None):
     html = TEMPLATE.read_text()
     for ph in (DAG_PLACEHOLDER, THEME_PLACEHOLDER):
         if ph not in html:
             raise SystemExit(f"template placeholder {ph} missing — swarm_template.html was edited?")
     html = html.replace(DAG_PLACEHOLDER, json.dumps(dag))
     html = html.replace(THEME_PLACEHOLDER, json.dumps(THEMES[theme_name]))
+    if audit_js is not None:
+        html = html.replace(AUDIT_JS_PLACEHOLDER, audit_js)
+    if audit_index is not None:
+        html = html.replace(AUDIT_INDEX_PLACEHOLDER, json.dumps(audit_index))
+    if audit_embed is not None:
+        html = html.replace(AUDIT_EMBED_PLACEHOLDER, json.dumps(audit_embed))
     out_path.write_text(html)
     return out_path
 
@@ -159,6 +268,9 @@ def main():
     p.add_argument("--all", action="store_true",
                    help="render every theme as swarm-<theme>.html")
     p.add_argument("--list-themes", action="store_true")
+    p.add_argument("--transcripts", help="run transcript dir — enables the audit drawer")
+    p.add_argument("--embed", action="store_true",
+                   help="bake truncated transcript content for offline/file:// use")
     args = p.parse_args()
 
     if args.list_themes:
@@ -172,12 +284,32 @@ def main():
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    audit_index = audit_embed = audit_js = None
+    if args.transcripts:
+        run_dir = pathlib.Path(args.transcripts)
+        if not run_dir.is_dir():
+            raise SystemExit(f"--transcripts: not a directory: {run_dir}")
+        if out_dir.resolve() == run_dir.resolve():
+            raise SystemExit("--out must differ from --transcripts (transcripts are read-only)")
+        audit_index = build_index(run_dir)
+        audit_js = AUDIT_JS.read_text()
+        if args.embed:
+            audit_embed = marshal_embed(run_dir)
+        else:
+            for f in run_dir.glob("agent-*.jsonl"):  # live: symlink, never copy
+                link = out_dir / f.name
+                if link.is_symlink() or link.exists():
+                    link.unlink()
+                os.symlink(f.resolve(), link)
+
     if args.all:
         for name in THEMES:
-            print("wrote", render(dag, name, out_dir / f"swarm-{name}.html"))
+            print("wrote", render(dag, name, out_dir / f"swarm-{name}.html",
+                                  audit_index, audit_embed, audit_js))
         return
 
-    out = render(dag, args.theme, out_dir / "swarm.html")
+    out = render(dag, args.theme, out_dir / "swarm.html",
+                 audit_index, audit_embed, audit_js)
     print(f"wrote {out}  (theme: {args.theme})")
     print(f"  {len(dag['tasks'])} tasks, {len(dag['edges'])} edges, "
           f"{len(dag['waves'])} waves, mode={dag['mode']}")

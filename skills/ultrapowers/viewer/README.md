@@ -57,6 +57,39 @@ python3 skills/ultrapowers/scripts/swarm_watch.py --repo <target-repo> --out /tm
 # Depiction only (no run, no server): open file:///tmp/swarm/swarm.html
 ```
 
+## Reading transcripts (audit drawer)
+
+Pass a run's transcript dir to make stations clickable — clicking opens a drawer
+over the map showing that subagent's reasoning (`●`), tool calls (`⚙`), and
+results (`→`). The hub opens the run-level agents (setup, merge, reconcile,
+integration, unclassified). Find the dir at the "Transcript dir:" line printed
+when the Workflow launched, or:
+
+```sh
+ls -dt ~/.claude/projects/<project-slug>/*/subagents/workflows/*/ | head -1
+```
+
+```sh
+# Live: symlinks the raw transcripts next to swarm.html (no copy) and streams
+# the open agent's file (~2s refresh). Needs the local server (fetch is blocked
+# on file://).
+python3 skills/ultrapowers/scripts/render_viewer.py <plan.md> \
+    --transcripts <run-dir> --out /tmp/swarm
+(cd /tmp/swarm && python3 -m http.server 8123)   # open http://localhost:8123/swarm.html
+
+# Offline / shareable: bake truncated content into one self-contained file.
+python3 skills/ultrapowers/scripts/render_viewer.py <plan.md> \
+    --transcripts <run-dir> --embed --out /tmp/swarm   # open file:///tmp/swarm/swarm.html
+```
+
+Transcripts and worktrees are read-only; `--out` must differ from `--transcripts`.
+The drawer badge states provenance: `LIVE` (fetching + refreshing), `SNAPSHOT`
+(`--embed` content), or `STATIC` (opened over `file://` with no embedded content —
+serve over http or re-render with `--embed`). Content is truncated per
+`audit_project.js` `CAPS`; expand reveals more up to the cap, then points to the
+raw file. The drawer projects transcripts in the browser — it never loads whole
+files into an assistant's context.
+
 ## Design notes
 
 - **Paths are prefigured.** The DAG shape is fully known at compile time
