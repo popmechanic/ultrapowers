@@ -186,18 +186,9 @@ const THEME = /*__THEME_JSON__*/null || {
 const AUDIT_INDEX = /*__AUDIT_INDEX__*/null;
 const AUDIT_EMBED = /*__AUDIT_EMBED__*/null;
 
-const audit = (function () {
-  if (!AUDIT_INDEX) return null;            // no transcripts baked: drawer disabled
-  const byTask = {}, runLevel = [];
-  AUDIT_INDEX.agents.forEach(function (a) {
-    if ((a.role === "impl" || a.role === "review") && a.task != null) {
-      (byTask[a.task] = byTask[a.task] || []).push(a);
-    } else { runLevel.push(a); }
-  });
-  return { byTask: byTask, runLevel: runLevel, index: AUDIT_INDEX };
-})();
+const audit = AuditProjection.partitionAgents(AUDIT_INDEX);
 
-let liveTimer = null, liveAgentId = null;
+let liveTimer = null, liveAgentId = null, liveSig = null;
 
 function drawerEls() {
   return {
@@ -245,6 +236,7 @@ function loadAgent(a, label) {
   } else {
     d.badge.textContent = "LIVE";
     liveAgentId = a.id;
+    liveSig = null;
     fetchAndRender(a, d, false);
     liveTimer = setInterval(function () { if (liveAgentId === a.id) fetchAndRender(a, d, true); }, 2000);
   }
@@ -254,6 +246,9 @@ function fetchAndRender(a, d, quiet) {
   fetch("./" + a.file, { cache: "no-store" })
     .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
     .then(function (text) {
+      const decision = AuditProjection.shouldRerender(liveSig, text);
+      liveSig = decision.sig;
+      if (!decision.render) return;   // unchanged since last paint: keep expand + scroll
       const p = AuditProjection.parseLines(text);
       renderEvents(AuditProjection.projectAgent(p.entries).events, d, p.versions, p.unparsed);
     })
