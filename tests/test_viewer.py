@@ -366,3 +366,13 @@ def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
     html = (out / "swarm.html").read_text()
     assert '"task": null' in html, "unresolved task must serialize as null"
     assert '"task": "?"' not in html, "the '?' sentinel must not reach the index"
+
+
+def test_render_inlines_d3zoom_and_swarm_zoom(tmp_path):
+    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert "/*__D3ZOOM_JS__*/" not in html, "d3-zoom placeholder not replaced"
+    assert "/*__SWARM_ZOOM_JS__*/" not in html, "swarm_zoom placeholder not replaced"
+    assert "globalThis.SwarmZoom" in html or "root.SwarmZoom" in html, "SwarmZoom not inlined"
+    # d3-zoom merged onto the same global d3 as d3-dag (both present, neither clobbered)
+    assert "globalThis.SwarmLayout" in html or "root.SwarmLayout" in html, "d3-dag/layout still inlined"

@@ -37,6 +37,11 @@ SWARM_LAYOUT_PLACEHOLDER = "/*__SWARM_LAYOUT_JS__*/"
 D3DAG_JS = HERE.parent / "viewer" / "vendor" / "d3-dag.iife.min.js"
 SWARM_LAYOUT_JS = HERE.parent / "viewer" / "swarm_layout.js"
 
+D3ZOOM_PLACEHOLDER = "/*__D3ZOOM_JS__*/"
+SWARM_ZOOM_PLACEHOLDER = "/*__SWARM_ZOOM_JS__*/"
+D3ZOOM_JS = HERE.parent / "viewer" / "vendor" / "d3-zoom.iife.min.js"
+SWARM_ZOOM_JS = HERE.parent / "viewer" / "swarm_zoom.js"
+
 # Mirror AuditProjection.CAPS in viewer/audit_project.js — keep in sync.
 AUDIT_CAPS = {"text": 8192, "toolInput": 4096, "toolResult": 8192, "collapsed": 200}
 
@@ -258,15 +263,17 @@ def render(dag, theme_name, out_path, audit_index=None, audit_embed=None, audit_
     # drawer goes inert through a null AUDIT_INDEX below, never through a missing lib.
     html = html.replace(AUDIT_JS_PLACEHOLDER,
                         audit_js if audit_js is not None else AUDIT_JS.read_text())
-    # d3-dag IIFE and the grid layout adapter are mandatory — the template references
-    # d3 and SwarmLayout at load; a missing inline would crash the viewer immediately.
-    for ph in (D3DAG_PLACEHOLDER, SWARM_LAYOUT_PLACEHOLDER):
+    # d3-dag IIFE, d3-zoom IIFE, and the layout/zoom adapters are mandatory — the
+    # template references d3 and SwarmLayout/SwarmZoom at load; a missing inline
+    # would crash the viewer immediately.
+    for ph in (D3DAG_PLACEHOLDER, SWARM_LAYOUT_PLACEHOLDER,
+               D3ZOOM_PLACEHOLDER, SWARM_ZOOM_PLACEHOLDER):
         if ph not in html:
             raise SystemExit(f"template placeholder {ph} missing — swarm_template.html was edited?")
-    # Prepend a semicolon guard: the d3-dag IIFE doesn't end with ';', so without
-    # it the following '(function ...' would be parsed as a function-call continuation.
     html = html.replace(D3DAG_PLACEHOLDER, D3DAG_JS.read_text())
+    html = html.replace(D3ZOOM_PLACEHOLDER, ";\n" + D3ZOOM_JS.read_text())
     html = html.replace(SWARM_LAYOUT_PLACEHOLDER, ";\n" + SWARM_LAYOUT_JS.read_text())
+    html = html.replace(SWARM_ZOOM_PLACEHOLDER, ";\n" + SWARM_ZOOM_JS.read_text())
     if audit_index is not None:
         html = html.replace(AUDIT_INDEX_PLACEHOLDER, _js_embed(audit_index))
     if audit_embed is not None:
