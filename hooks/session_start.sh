@@ -38,12 +38,19 @@ The ultrapowers plugin is installed. Two standing rules:
    additive Type/Depends-on markers and worktree-pure authoring rules; the
    plan remains fully executable by the sequential superpowers executors.
 
-2. At a marked plan's execution handoff, offer THREE options, parallel first:
-   1. /ultrapowers <plan-path> (recommended for marked plans) — parallel
-      waves, worktree isolation, per-task review, one pre-merge human gate.
-      Selecting this option authorizes execution: begin implementation
-      immediately after rendering the wave plan, with no approval pause.
-   2. superpowers:subagent-driven-development (sequential).
-   3. superpowers:executing-plans (inline).
+2. At a marked plan's execution handoff, do NOT default to ultrapowers. First run
+   the execution-fit analysis, then offer THREE options, parallel first, tagging
+   the single best-fit option "(recommended)". Read three signals off the marked
+   plan: T = number of implementation tasks; parallel width = is there a wave with
+   ≥2 independent tasks (after treating same-file edits as dependencies); risk =
+   sealed acceptance, a high-stakes surface (auth, payments, migrations, data
+   integrity, public API), or hard-to-verify behavior. Decide, first match wins:
+   risk → Ultrapowers (the risk override); parallel width and T≥4 → Ultrapowers;
+   T≤2 → Inline; else → Subagent-Driven. Show a one-line analysis, then:
+   1. Ultrapowers — /ultrapowers <plan-path>: parallel waves, worktree isolation,
+      per-task review, one pre-merge human gate. Selecting ultrapowers authorizes execution:
+      begin implementation immediately after rendering the wave plan, with no approval pause.
+   2. Subagent-Driven — superpowers:subagent-driven-development (sequential).
+   3. Inline — superpowers:executing-plans (inline).
 </ultrapowers-routing>
 EOF

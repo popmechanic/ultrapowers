@@ -89,3 +89,19 @@ def test_ultraplan_description_triggers_on_every_plan():
     frontmatter = (ROOT / "skills/ultraplan/SKILL.md").read_text().split("---")[1]
     assert "EVERY implementation plan" in frontmatter
     assert "superpowers:writing-plans" in frontmatter
+
+
+def test_session_start_recommends_by_analysis_not_reflex():
+    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = p.stdout
+    low = out.lower()
+    # The reflex crown is gone — the hook instructs an analysis and forbids
+    # defaulting to ultrapowers.
+    assert "do not default to ultrapowers" in low
+    assert "parallel width" in out
+    assert "t≥4" in low
+    assert "risk override" in out
+    # The old unconditional tag is absent.
+    assert "(recommended for marked plans)" not in out
