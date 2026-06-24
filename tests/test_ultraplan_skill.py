@@ -57,3 +57,15 @@ def test_ultraplan_overrides_the_execution_header_and_handoff():
     # execution with no further approval pause (mirrors SKILL.md Step 3).
     assert "authorizes execution" in text
     assert "without a further approval pause" in text
+
+
+def test_ultraplan_shapes_decomposition_before_annotating():
+    text = ULTRAPLAN.read_text()
+    # The new up-front shaping phase exists...
+    assert "Shape the decomposition" in text
+    # ...with its load-bearing moves and the justification gate...
+    assert "contract-first" in text
+    assert "would a good engineer" in text
+    assert "Parallelization rationale" in text
+    # ...and an explicit escape valve so linear specs are not forced to widen.
+    assert "no latent parallelism" in text
