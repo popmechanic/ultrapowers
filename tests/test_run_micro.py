@@ -93,6 +93,11 @@ def test_parse_markers_reads_task_dependency_lines():
     assert dag == {"1": [], "2": ["1"], "3": ["1", "2"]}
 
 
+def test_parse_markers_drops_trailing_text_after_dep_ids():
+    dag = run_micro._parse_markers("Task 1: deps=none\nTask 2: deps=1, 3  # note\n")
+    assert dag == {"1": [], "2": ["1", "3"]}
+
+
 def test_max_wave_width_linear_chain_is_one():
     dag = {"1": [], "2": ["1"], "3": ["2"]}
     assert run_micro._max_wave_width(dag) == 1

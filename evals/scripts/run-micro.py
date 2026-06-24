@@ -48,7 +48,11 @@ def _parse_markers(text):
         if rest.lower() in ("none", "-", ""):
             deps = []
         else:
-            deps = [d.strip() for d in rest.split(",") if d.strip()]
+            deps = []
+            for d in rest.split(","):
+                d = d.strip()
+                if d:
+                    deps.append(d.split()[0])  # leading token; drop trailing prose/comments
         dag[tid] = deps
     return dag
 
