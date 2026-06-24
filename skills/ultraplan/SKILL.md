@@ -46,18 +46,69 @@ Without this, the header literally directs any skills-obedient agent into the
 sequential executor — the parallel run happens only because a human typed
 `/ultrapowers`.
 
-## Execution Handoff (third option)
+## Execution Handoff (analyze, then recommend)
 
 writing-plans ends by offering two execution options. On a marked plan, offer
-three — parallel first:
+three — parallel first — but do **not** default to Ultrapowers. First run the
+execution-fit analysis below, then tag the single best-fit option as
+**(recommended)**. The plugin is named Ultrapowers, but the recommendation is
+earned per plan, not granted by reflex — recommending Subagent-Driven or Inline
+when the plan does not benefit from parallel waves is the correct, honest
+outcome.
 
-1. **Ultrapowers (recommended for marked plans)** — `/ultrapowers <plan-path>`:
-   parallel waves, worktree isolation, per-task review, one pre-merge human gate.
-   Selecting this option authorizes execution: ultrapowers renders its wave plan
-   for transparency and launches immediately, without a further approval pause.
+### The fit analysis
+
+Read three signals off the marked plan you just authored:
+
+- **T** — the number of `implementation` tasks (`gate` / `release` / `manual`
+  tasks do not run in waves and are not counted).
+- **parallel width** — yes/no: is there at least one wave with ≥2 independent
+  tasks, *after* treating same-file `Modify` pairs as dependencies (this is how
+  the compiler nets out file contention, so two tasks colliding on a shared file
+  are not width)? Compute it by hand from the `**Depends-on:**` graph plus the
+  `**Files:**` blocks.
+- **risk** — true if Acceptance is `sealed` (the operator cannot read the diff),
+  or the work touches a high-stakes surface (auth, payments, migrations, data
+  integrity, public API), or behavior is hard to verify by reading.
+
+Decide with the first branch that matches:
+
+1. **risk → Ultrapowers** — the **risk override**. Independent per-task review,
+   the held-out sealed exam, and one pre-merge gate are the value here, not
+   speed. Name the specific risk in the rationale.
+2. **parallel width and T≥4 → Ultrapowers** — real parallel speedup clears the
+   worktree/merge overhead.
+3. **T≤2 → Inline** — too small to spin up machinery.
+4. **else → Subagent-Driven** — linear chains, or narrow plans where parallel
+   benefit does not pay; fresh-context isolation + review between tasks still
+   earns its keep.
+
+The bar in branch 2 is deliberately conservative: because the risk override
+already carries every quality-critical plan, T≥4 only ever trades away marginal
+parallelism on small low-risk plans, never verification. T is a proxy for
+effort, so a handful of heavy fully-independent tasks may route to Subagent-Driven
+— slower than ideal but still reviewed; accept it rather than lowering the bar.
+
+### Render
+
+Show a one-line analysis citing the signals, then the three options with
+**(recommended)** on the analyzed winner. Ultrapowers stays listed first for
+discoverability regardless of which option won:
+
+1. **Ultrapowers** — `/ultrapowers <plan-path>`: parallel waves, worktree
+   isolation, per-task review, one pre-merge human gate. Selecting this option
+   authorizes execution: ultrapowers renders its wave plan for transparency and
+   launches immediately, without a further approval pause.
 2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
    review between tasks.
 3. **Inline** — superpowers:executing-plans, continuous inline execution (upstream removed batch checkpoints in superpowers 5.0.0; its own handoff text still says otherwise — trust the behavior, not the menu).
+
+Example analysis lines:
+
+- `6 implementation tasks, widest wave 3, low risk → Ultrapowers (recommended).`
+- `4 tasks, linear chain, touches auth → Ultrapowers (recommended; risk: auth).`
+- `4 tasks in a linear chain, low risk → Subagent-Driven (recommended).`
+- `2 trivial tasks → Inline (recommended).`
 
 ## Choose the right Type
 

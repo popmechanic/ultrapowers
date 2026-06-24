@@ -57,3 +57,16 @@ def test_ultraplan_overrides_the_execution_header_and_handoff():
     # execution with no further approval pause (mirrors SKILL.md Step 3).
     assert "authorizes execution" in text
     assert "without a further approval pause" in text
+
+
+def test_ultraplan_handoff_analyzes_before_recommending():
+    text = ULTRAPLAN.read_text()
+    # The reflex crown is gone: no unconditional "recommended for marked plans".
+    assert "(recommended for marked plans)" not in text
+    # The handoff now runs a fit analysis grounded in the rubric.
+    assert "parallel width" in text
+    assert "risk override" in text
+    assert "T≥4" in text
+    # All three lanes are named as recommendable outcomes.
+    for lane in ("Ultrapowers", "Subagent-Driven", "Inline"):
+        assert lane in text
