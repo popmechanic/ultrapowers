@@ -11,7 +11,7 @@
   },
   {
     "_regime": "contract",
-    "_ground_truth_width": 3,
+    "_ground_truth_width": 4,
     "spec": "Build a JSON event bus: a publisher, and three consumers (audit log, email notifier, metrics counter) that each handle the same Event shape. Once the Event type is fixed, the publisher and the three consumers can be built independently."
   },
   {

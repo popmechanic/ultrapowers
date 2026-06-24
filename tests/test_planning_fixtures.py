@@ -38,6 +38,10 @@ def test_variants_define_current_and_shaped():
     assert {"ultraplan-current", "ultraplan-shaped"} <= names
     for v in variants:
         assert v["instruction"].strip()
+    fmt = "`Task <id>: deps=<comma-separated task ids, or none>`. No prose."
+    inst = {v["name"]: v["instruction"] for v in variants}
+    assert inst["ultraplan-current"].endswith(fmt)
+    assert inst["ultraplan-shaped"].endswith(fmt)
 
 
 def test_scorers_reward_revelation_and_flag_manufacturing():
