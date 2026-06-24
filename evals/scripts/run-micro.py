@@ -14,6 +14,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -34,9 +35,64 @@ def _score_nonempty(output, sample):
     return 1.0 if isinstance(output, str) and output.strip() else 0.0
 
 
+def _parse_markers(text):
+    """Parse 'Task <id>: deps=<ids|none>' lines into {id: [dep_ids]}.
+    Tolerant: lines that don't match are ignored; ids are strings."""
+    dag = {}
+    for line in text.splitlines():
+        m = re.match(r"\s*Task\s+([A-Za-z0-9]+)\s*:\s*deps\s*=\s*(.+)", line, re.I)
+        if not m:
+            continue
+        tid = m.group(1)
+        rest = m.group(2).strip()
+        if rest.lower() in ("none", "-", ""):
+            deps = []
+        else:
+            deps = []
+            for d in rest.split(","):
+                d = d.strip()
+                if d:
+                    deps.append(d.split()[0])  # leading token; drop trailing prose/comments
+        dag[tid] = deps
+    return dag
+
+
+def _max_wave_width(dag):
+    """Layered (Kahn) max wave width of a dependency DAG. A dep id that is not
+    itself a task in the dag is treated as already-satisfied. A cycle stops
+    layering (width reflects what could be layered)."""
+    remaining = dict(dag)
+    done = set()
+    width = 0
+    while remaining:
+        ready = [t for t, deps in remaining.items()
+                 if all(d in done or d not in dag for d in deps)]
+        if not ready:
+            break
+        width = max(width, len(ready))
+        for t in ready:
+            done.add(t)
+            del remaining[t]
+    return width
+
+
+def _score_wave_width(output, sample):
+    """Max wave width of the produced decomposition (efficacy; higher = wider)."""
+    return float(_max_wave_width(_parse_markers(output)))
+
+
+def _score_wave_overshoot(output, sample):
+    """Width above the spec's honest ground truth (manufacturing; 0 = honest).
+    Requires sample['_ground_truth_width']."""
+    width = _max_wave_width(_parse_markers(output))
+    return float(max(0, width - sample["_ground_truth_width"]))
+
+
 SCORERS = {
     "json_object": _score_json_object,
     "nonempty": _score_nonempty,
+    "wave_width": _score_wave_width,
+    "wave_overshoot": _score_wave_overshoot,
 }
 
 
@@ -52,7 +108,10 @@ def aggregate(scores):
 
 
 def compose_prompt(instruction, sample):
-    body = json.dumps(sample, sort_keys=True)
+    # Keys starting with "_" are scorer-only metadata (e.g. ground-truth answers)
+    # and must never reach the model.
+    visible = {k: v for k, v in sample.items() if not str(k).startswith("_")}
+    body = json.dumps(visible, sort_keys=True)
     return (instruction + "\n\n" + body) if instruction.strip() else body
 
 
