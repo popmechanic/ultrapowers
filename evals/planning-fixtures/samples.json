@@ -1,0 +1,27 @@
+[
+  {
+    "_regime": "latent",
+    "_ground_truth_width": 4,
+    "spec": "Add a health-check endpoint to each of four independent microservices (auth, billing, search, notifications). Each service is its own module with its own tests; the endpoints share no code and no files."
+  },
+  {
+    "_regime": "latent",
+    "_ground_truth_width": 3,
+    "spec": "Add a new optional field `archived: bool` to three unrelated data models (Project, Invoice, Comment), each in its own file, with a migration and tests per model. The models do not reference each other."
+  },
+  {
+    "_regime": "contract",
+    "_ground_truth_width": 4,
+    "spec": "Build a JSON event bus: a publisher, and three consumers (audit log, email notifier, metrics counter) that each handle the same Event shape. Once the Event type is fixed, the publisher and the three consumers can be built independently."
+  },
+  {
+    "_regime": "linear",
+    "_ground_truth_width": 1,
+    "spec": "Parse a CSV file, then validate the parsed rows against a schema, then transform valid rows into domain objects, then persist them. Each step consumes the previous step's output directly."
+  },
+  {
+    "_regime": "linear",
+    "_ground_truth_width": 1,
+    "spec": "Implement a three-stage compiler pass: tokenizer, then parser that consumes the tokens, then a type-checker that consumes the parse tree. Each stage needs the prior stage's full output."
+  }
+]

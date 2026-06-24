@@ -70,3 +70,15 @@ def test_ultraplan_handoff_analyzes_before_recommending():
     # All three lanes are named as recommendable outcomes.
     for lane in ("Ultrapowers", "Subagent-Driven", "Inline"):
         assert lane in text
+
+
+def test_ultraplan_shapes_decomposition_before_annotating():
+    text = ULTRAPLAN.read_text()
+    # The new up-front shaping phase exists...
+    assert "Shape the decomposition" in text
+    # ...with its load-bearing moves and the justification gate...
+    assert "contract-first" in text
+    assert "would a good engineer" in text
+    assert "Parallelization rationale" in text
+    # ...and an explicit escape valve so linear specs are not forced to widen.
+    assert "no latent parallelism" in text

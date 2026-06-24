@@ -85,3 +85,54 @@ def test_run_suite_always_includes_no_guidance_control():
     names = [v["name"] for v in report["variants"]]
     assert run_micro.CONTROL_NAME in names
     assert "recipe" in names
+
+
+def test_parse_markers_reads_task_dependency_lines():
+    text = "Task 1: deps=none\nTask 2: deps=1\nTask 3: deps=1, 2\nnoise line\n"
+    dag = run_micro._parse_markers(text)
+    assert dag == {"1": [], "2": ["1"], "3": ["1", "2"]}
+
+
+def test_parse_markers_drops_trailing_text_after_dep_ids():
+    dag = run_micro._parse_markers("Task 1: deps=none\nTask 2: deps=1, 3  # note\n")
+    assert dag == {"1": [], "2": ["1", "3"]}
+
+
+def test_max_wave_width_linear_chain_is_one():
+    dag = {"1": [], "2": ["1"], "3": ["2"]}
+    assert run_micro._max_wave_width(dag) == 1
+
+
+def test_max_wave_width_all_independent_is_n():
+    dag = {"1": [], "2": [], "3": [], "4": []}
+    assert run_micro._max_wave_width(dag) == 4
+
+
+def test_max_wave_width_diamond():
+    # 1 -> {2,3} -> 4 : widest wave is {2,3} = 2
+    dag = {"1": [], "2": ["1"], "3": ["1"], "4": ["2", "3"]}
+    assert run_micro._max_wave_width(dag) == 2
+
+
+def test_wave_width_scorer_returns_width():
+    out = "Task 1: deps=none\nTask 2: deps=none\nTask 3: deps=1"
+    assert run_micro.SCORERS["wave_width"](out, sample={}) == 2.0
+
+
+def test_wave_overshoot_is_zero_when_within_ground_truth():
+    out = "Task 1: deps=none\nTask 2: deps=none"  # width 2
+    assert run_micro.SCORERS["wave_overshoot"](out, {"_ground_truth_width": 2}) == 0.0
+    assert run_micro.SCORERS["wave_overshoot"](out, {"_ground_truth_width": 4}) == 0.0
+
+
+def test_wave_overshoot_flags_manufactured_width():
+    out = "Task 1: deps=none\nTask 2: deps=none\nTask 3: deps=none"  # width 3
+    # linear-trap ground truth is 1 → 2 units of manufactured breadth
+    assert run_micro.SCORERS["wave_overshoot"](out, {"_ground_truth_width": 1}) == 2.0
+
+
+def test_compose_prompt_hides_underscore_metadata_from_model():
+    prompt = run_micro.compose_prompt("Decompose:", {"spec": "do X", "_ground_truth_width": 3})
+    assert "do X" in prompt
+    assert "_ground_truth_width" not in prompt
+    assert "3" not in prompt

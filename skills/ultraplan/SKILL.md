@@ -17,6 +17,45 @@ A plan written with these markers remains fully executable by the sequential
 executors (subagent-driven-development, executing-plans) — markers are additive
 bold-labeled lines that sequential readers simply ignore.
 
+## Shape the decomposition (before drawing tasks)
+
+ultraplan is titled "Author Parallel-Ready Plans," but markers only *describe* a
+decomposition writing-plans already drew — and writing-plans biases toward a
+linear narrative, manufacturing `Depends-on` edges that are really just
+reading order. Before you draw tasks, shape the decomposition to reveal the
+independence the sequential pen glides over. Five moves:
+
+1. **Map independent units.** Separate work that truly needs another unit's
+   *output* from work that merely *reads* as a sequence.
+2. **Front-load contracts (contract-first).** Where a consumer would wait on a
+   producer, fix the shared interface up front as its own small early task that
+   `Produces:` the signatures; consumers `Consume:` + `Depends-on:` it and build
+   against the contract in parallel. This is the highest-leverage move, and it
+   uses only the existing marker machinery.
+3. **Cut along file seams.** Draw boundaries so same-wave tasks do not `Modify`
+   the same file. Where genuinely-independent work collides on one file, consider
+   splitting the file along its real responsibility seam.
+4. **Interrogate every dependency.** For each `Depends-on` you are about to write:
+   true data/interface dependency, or just the order you happened to think of it?
+   Keep the real ones; drop the authoring-order ones.
+5. **Right-size against overhead.** Never split below a real unit of work to
+   inflate width — worktree overhead and the execution-fit recommender reward only
+   genuine independent mass.
+
+**The justification gate.** Moves 2 and 3 reshape the architecture, so each one
+must (a) name a concrete independence win it produces, and (b) pass *"would a good engineer make this move even without parallelism in mind?"*. A contract introduced
+only to fan out, or a file split only to dodge a collision, fails the gate — drop
+it. For every architectural move that survives the gate, add a
+`**Parallelization rationale:** <named independence win>` line in that task's body,
+**after the `**Interfaces:**` block** (never in the `**Type:**`/`**Depends-on:**`
+header block), so the operator can audit it when reviewing the plan.
+
+**Escape valve.** It is correct to conclude there is **no latent parallelism** in a
+spec and move on — small or inherently-linear work should not be reshaped. The gate
+plus this escape valve are what keep shaping from manufacturing breadth; a plan that
+genuinely does not fan out should stay narrow, and the recommender will route it to
+a sequential executor honestly.
+
 ## Add markers to every task
 
 Markers are bold-labeled lines placed immediately after the task heading, before the
@@ -251,6 +290,11 @@ ultrapowers *itself* → `suite`; opting out → `waived`.
 
 After writing-plans' own self-review checklist, verify:
 
+- Decomposition was shaped before annotation: every contract-first task and
+  seam-split names its independence win and passes the good-engineer test, and
+  each surviving architectural move carries a `**Parallelization rationale:**`
+  line — or the plan is intentionally narrow because the work has no latent
+  parallelism.
 - Every task carries an explicit `**Type:**` (or is intentionally default
   `implementation`).
 - Every cross-task constraint appears as `**Depends-on:**` on the downstream task.
