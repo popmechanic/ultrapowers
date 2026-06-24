@@ -8,6 +8,9 @@ real parallelism without manufacturing it? Rides the micro-loop
   `_ground_truth_width` are scorer-only (the `_` prefix hides them from the model).
   Ground truth is the honest max wave width of the work's true dependency
   structure (`linear` traps are 1).
+  **Only `_`-prefixed *keys* are hidden — never write the honest width into the
+  visible `spec` prose (spell numbers out, e.g. "four services", not "4"), or you
+  leak the answer to the model and the eval measures nothing.**
 - `variants.json` — `ultraplan-current` (decompose only) vs `ultraplan-shaped`
   (the shaping recipe). The loop auto-injects `control-no-guidance` as the floor.
 
