@@ -105,10 +105,18 @@ def check(superpowers_root):
     superpowers install root. An absent file counts every one of its entries as
     missing (no partial-tree skip).
 
-    Tokens are matched as complete lines: each token must appear followed by a
-    newline (or end-of-file) in the target file. This prevents a shorter token
-    (e.g. "### Task N:") from being satisfied by a longer token that starts with
-    it (e.g. "### Task N: [Component Name]") on the same line."""
+    Matching is plain substring containment (`token in file_text`): the contract
+    only asks whether the literal token appears ANYWHERE in the target file, which
+    is how the consuming parsers actually find it. Real upstream SKILL.md files
+    carry these tokens mid-line (e.g. "### Task N:" lives inside the heading
+    "### Task N: [Component Name]", "- Test:" inside "- Test: `path`"), so a
+    line-anchored match that required each token to TERMINATE a line would falsely
+    report most of them missing against a perfectly healthy install.
+
+    Note the deliberate consequence: a token that is a substring of another token
+    in the same file (e.g. "### Task N:" within "### Task N: [Component Name]") is
+    satisfied whenever the longer one is present — correct here, because in real
+    upstream files the two are the same occurrence."""
     root = pathlib.Path(superpowers_root)
     missing = []
     for entry in MANIFEST:
@@ -119,10 +127,7 @@ def check(superpowers_root):
         if entry.get("exists_only"):
             continue
         text = path.read_text()
-        # Ensure trailing newline so tokens at EOF are also matched by tok+"\n".
-        if not text.endswith("\n"):
-            text += "\n"
         tokens = entry.get("any_of", [entry.get("token")])
-        if not any((tok + "\n") in text for tok in tokens):
+        if not any(tok in text for tok in tokens):
             missing.append(entry)
     return Report(ok=not missing, missing=missing, checked=len(MANIFEST))
