@@ -38,6 +38,13 @@ ROLE_MARKERS = [
     ("What plan requirement is unmet?", "integration"),
 ]
 
+# Absolute thrash heuristic (no same-model-peer requirement, unlike the relative
+# misrank detector): an implementer doing many turns for little output. Tuned so
+# healthy implementers (~90 tokens/turn) are not flagged; a genuine thrasher
+# (<40 tokens/turn over >=30 turns) is.
+THRASH_MIN_TURNS = 30
+THRASH_MAX_PER_TURN = 40
+
 
 def first_user_text(path):
     for line in path.read_text().splitlines():
@@ -92,7 +99,8 @@ def audit(transcript_dir):
     files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
     if not files:
         return {"agents": [], "totals": {"turns": 0, "outputTokens": 0},
-                "misrankCandidates": [], "note": f"no agent-*.jsonl under {transcript_dir}"}
+                "misrankCandidates": [], "escalatedTasks": [], "thrashCandidates": [],
+                "note": f"no agent-*.jsonl under {transcript_dir}"}
     agents = []
     for f in files:
         role = classify(first_user_text(f))
@@ -112,7 +120,20 @@ def audit(transcript_dir):
         misrank.extend(a for a in group if med and a["turns"] > 1.5 * med)
     totals = {"turns": sum(a["turns"] for a in agents),
               "outputTokens": sum(a["outputTokens"] for a in agents)}
-    return {"agents": agents, "totals": totals, "misrankCandidates": misrank}
+    # escalatedTasks: a task with more than one implementer transcript — the
+    # auto-escalate retry leaves a second impl:<id> transcript at a higher model.
+    impl_by_task = {}
+    for a in agents:
+        if a["role"].startswith("impl:"):
+            impl_by_task.setdefault(a["role"].split(":", 1)[1], []).append(a)
+    escalated = sorted(tid for tid, lst in impl_by_task.items() if len(lst) > 1)
+    # thrashCandidates: absolute high-turns/low-output, no same-model peer needed.
+    thrash = [a for a in agents
+              if a["role"].startswith("impl")
+              and a["turns"] >= THRASH_MIN_TURNS
+              and (a["outputTokens"] / a["turns"] if a["turns"] else 0) < THRASH_MAX_PER_TURN]
+    return {"agents": agents, "totals": totals, "misrankCandidates": misrank,
+            "escalatedTasks": escalated, "thrashCandidates": thrash}
 
 
 def main(argv=None):
@@ -159,6 +180,17 @@ def main(argv=None):
             print(f"- {role} on {model}: {turns} turns — consider a higher tier for tasks like this")
     else:
         print("\nNo tier-misrank candidates (no implementer exceeded 1.5x its same-model median).")
+
+    # Peer-free signals (reuse audit(); the duplicate read is advisory and cheap).
+    data = audit(root)
+    if data.get("escalatedTasks"):
+        print("\n**Escalated tasks** (an agent-error triggered a tier retry): " +
+              ", ".join(data["escalatedTasks"]))
+    if data.get("thrashCandidates"):
+        print("\n**Thrash candidates** (high turns / low output — likely wrong tier):")
+        for a in data["thrashCandidates"]:
+            print(f"- {a['role']} on {a['model']}: {a['turns']} turns, "
+                  f"{a['outputTokens']} output tokens")
     return 0
 
 
