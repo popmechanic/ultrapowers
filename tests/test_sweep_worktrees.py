@@ -205,3 +205,24 @@ def test_sweep_root_survives_separate_git_dir(tmp_path):
     assert p.returncode == 0, p.stderr
     assert not wt.exists()
     assert branches(repo) == []
+
+
+def test_sweep_scoped_to_runid_spares_sibling_run(tmp_path):
+    repo = make_repo(tmp_path)
+    wt_a, _ = add_engine_worktree(repo, "AAA-1", "aaa.txt", merge=False)
+    wt_b, _ = add_engine_worktree(repo, "BBB-1", "bbb.txt", merge=False)
+    p = subprocess.run(["bash", str(SWEEP), "--run", "AAA", "--force"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt_a.exists()
+    assert wt_b.exists()  # sibling run survives
+    assert any("BBB" in b for b in branches(repo))
+
+
+def test_sweep_no_scope_is_repo_wide(tmp_path):
+    repo = make_repo(tmp_path)
+    wt_a, _ = add_engine_worktree(repo, "AAA-2", "aaa2.txt", merge=False)
+    wt_b, _ = add_engine_worktree(repo, "BBB-2", "bbb2.txt", merge=False)
+    subprocess.run(["bash", str(SWEEP), "--force"], cwd=repo,
+                   capture_output=True, text=True)
+    assert not wt_a.exists() and not wt_b.exists()  # both removed (back-compat)
