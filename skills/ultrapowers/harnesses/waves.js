@@ -850,6 +850,8 @@ if (budgetExhausted()) {
     tests: { command: undefined, passed: false, output: 'not run — budget exhausted before setup' },
     baseline: {},
     waveMerges: [],
+    coverage: { tasks_merged: 0, tasks_planned: WAVES.flat().length, complete: false },
+    missingDeliverables: [],
     judgmentCalls: judgmentCalls.concat(['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched']),
     unfinished,
     completenessFindings: [],
@@ -1192,6 +1194,23 @@ if (ACCEPTANCE && ACCEPTANCE.mode === 'waived') {
                  note: 'administered deterministically at the pre-merge gate' }
 }
 
+// ── Structural coverage + missing-deliverables signals ───────────────────────
+// The engine has no git, so it emits only what it can observe structurally: how
+// many planned tasks actually merged, and which failed/blocked tasks left their
+// declared files unproduced. A green integration suite with tasks_merged <
+// tasks_planned is the false-green the gate must catch (the git tree-diff that
+// confirms presence is the completeness critic's job).
+const mergedBranches = new Set()
+for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (wm.branches || [])) mergedBranches.add(b)
+const tasksPlanned = WAVES.flat().length
+const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
+                   complete: mergedBranches.size >= tasksPlanned }
+const blockedIds = new Set(unfinished.map((u) => (typeof u === 'string' ? u : u && u.task)).filter(Boolean))
+const missingDeliverables = taskResults
+  .filter((t) => t.status === 'failed' || blockedIds.has(t.task))
+  .map((t) => ({ task: t.task, files: (WAVES.flat().find((w) => w.id === t.task) || {}).files || [] }))
+  .filter((m) => m.files.length)
+
 // ── Structured return value (matches references/report-format.md) ─────────────
 return {
   integrationBranch,
@@ -1202,6 +1221,8 @@ return {
   acceptance,
   baseline,
   waveMerges,
+  coverage,
+  missingDeliverables,
   judgmentCalls,
   unfinished,
   completenessFindings: review.findings || [],
