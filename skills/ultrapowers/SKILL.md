@@ -41,6 +41,18 @@ web). Check for it now (e.g. ToolSearch `select:Workflow`). If it is unavailable
 Step 6 and run the fallback — do **not** perform dependency analysis or render a wave plan that
 cannot launch.
 
+**Self-host skew preflight (when `/ultrapowers` runs inside the ultrapowers repo itself).** When the working directory is the ultrapowers repository, the installed plugin cache may lag `main` — launching the stale cache means the self-test exercises the wrong engine ([ae56a1205e971b82]). Detect skew before launch:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/check_engine_skew.sh \
+  "${CLAUDE_PLUGIN_ROOT}" "$(git rev-parse --show-toplevel)"
+```
+
+- On `IN_SYNC` — the cached engine matches repo `main`; proceed.
+- On `SKEW` — install the repo engine into `.claude/workflows/` before launch so the run exercises the current repo code, not the stale cached copy: copy `$(git rev-parse --show-toplevel)/skills/ultrapowers/harnesses/waves.js` to `.claude/workflows/waves.js`. This overwrite is safe — Step 4a already treats the installed file as ephemeral and overwrites it each run. After installing, continue to the plan check below.
+
+This preflight only applies when self-hosting (the repo root matches the plugin root's parent tree). In ordinary project use the cache is the correct engine; skip it.
+
 **Validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/.** v6 is unreleased; there is no installed cache to
 attest against yet, so the compat tripwire reads its contract tokens from that
 pinned snapshot (flip it to the live cache at the GA-FLIP SEAM in
@@ -244,9 +256,18 @@ determinism guard restated: never launch write-side work via the `ultracode`
 keyword or a prose "make me a workflow" request — that authors a new script at
 runtime, which is exactly the nondeterminism the registry exists to remove.
 
-**4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with
-`args = { ping: 'pong' }`. It spawns no agents and returns `{ ok: true, ... }` in
-seconds. Branch on *how* it fails — the two failure modes have different cures:
+**4a½ — Engine preflight.** Launch the saved workflow `ultrapowers-probe` with a representative
+payload to verify that the by-name launch delivers args faithfully — a tiny `ping`-only probe can
+pass while a real-sized payload is silently dropped ([fb8635c59d4fea1c]). Pass:
+
+```
+args = { ping: 'pong', waves: [{ id: 'probe-1', title: 'probe', body: 'b' }] }
+```
+
+The probe spawns no agents and returns `{ ok: true, ping: 'pong', echoWaves: 1, echoFirstId: 'probe-1', ... }`
+in seconds. **Assert the round-trip**: verify `result.echoWaves === 1` and `result.echoFirstId === 'probe-1'`
+(the probe echoes back the waves count and first task id so a by-name launch's arg delivery is
+confirmed, not just `ping`). Branch on *how* it fails — the failure modes have different cures:
 
 - **Not found** (`Workflow "ultrapowers-probe" not found. Available: ...`) — the engine's
   saved-workflow registry, snapshotted at session start, predates the install. This is **not**
@@ -261,6 +282,9 @@ seconds. Branch on *how* it fails — the two failure modes have different cures
 - **Launches but `ok` is not true, or errors mid-run** — the engine accepted the workflow but the
   args/return dialect changed under us. The engine has drifted — go directly to Step 6; do not
   launch the real workflow.
+- **`echoWaves` or `echoFirstId` mismatch** — the by-name launch is dropping or truncating the
+  `waves` arg ([fb8635c5]). This is a payload round-trip failure: go to Step 6 (sequential
+  fallback). Do **not** launch the real workflow with an arg-delivery failure confirmed.
 
 **4b — Acquire the run lock and snapshot the session checkout** (the deterministic actor — the engine cannot do this; it has no shell or runId). Before launching the workflow, acquire a run lock so a second concurrent `/ultrapowers` run in this repo is refused loudly, and snapshot the current session checkout so it can be restored exactly at the gate regardless of what the setup agent checks out:
 
@@ -350,6 +374,7 @@ If `check` fails, another run has replaced the lock — surface as `BLOCKED` and
 **Then assert the session checkout is clean and on the right tree — the deterministic guard for #29/#32.** A misbehaving review role cannot police itself and the engine has no shell, so this check lives here, where the main session does have one. On the session repo, before any gate decision:
 
 - `git status --porcelain` MUST be **empty**. A non-empty result means a role wrote outside the worktree discipline (as in #32) — that work is unreviewed by construction. Do **not** Approve: surface the diff to the human as a `BLOCKED` condition for explicit disposition; never silently absorb or `git reset` it away (silently moving trees is the very behavior #29 punished).
+- **Result-schema degrade guard:** before indexing `waveMerges[last].headSha`, check that `waveMerges` is present, non-empty, and that its last entry has a `headSha`. A budget-exhausted run (no waves merged before the budget hit) or a SKIPPED-only run may produce an empty or absent `waveMerges`. Do **not** attempt to read `waveMerges[last].headSha` in those cases — surface **"merge-sha guard unavailable — result lacks waveMerges[last].headSha"** as `BLOCKED`. This turns a crash (`cbf0d886651f723c`) into a deterministic gate refusal. Do not Approve; ask the operator to inspect the budget/SKIPPED outcome and redirect or re-run with an increased budget.
 - The integration branch HEAD MUST **equal** the report's last merge headSha: `git rev-parse <integrationBranch>` must match `waveMerges[<last>].headSha` from the report (read the branch without checking it out — you restored `<baseBranch>` above). A mismatch means the tree on disk is not the one the run produced (checkout drift, #29) — do **not** Approve; surface the mismatch as `BLOCKED` and re-verify before any merge.
 - The report's `gitVerified` MUST be **true** — the completeness critic confirmed, via its own `git rev-parse HEAD`, that it reviewed the recorded merge HEAD. A false `gitVerified` (the critic could not confirm it was on the integration tree — possible checkout drift, #29; or the critic died/degraded) means the completeness review is **unverified**: treat it as `BLOCKED` pending a manual integration-tree check; do **not** Approve. This is the report-driven counterpart that hardens the `git rev-parse <integrationBranch>` check above into a gate.
 - `missingDeliverables` MUST be **empty** after the completeness critic's tree-diff. The critic reads the plan and, for every failed or blocked task, checks whether its declared `Create:` paths actually exist in the integration tree; if it confirmed any are genuinely absent, treat as `BLOCKED` — a failed/blocked task left its deliverables unproduced (do not let a green suite paper over it).

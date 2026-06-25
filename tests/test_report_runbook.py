@@ -35,6 +35,15 @@ def test_skill_wires_run_lock_and_scoped_sweep():
     assert "sweep_worktrees.sh --run" in skill
 
 
+def test_skill_has_skew_preflight_probe_roundtrip_and_schema_degrade():
+    skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
+    assert "check_engine_skew.sh" in skill
+    assert "round-trip" in skill or "roundtrip" in skill or "echoWaves" in skill
+    assert "merge-sha guard unavailable" in skill
+    fmt = (ROOT / "skills/ultrapowers/references/report-format.md").read_text()
+    assert "waveMerges" in fmt and ("may be empty" in fmt or "missing" in fmt)
+
+
 def test_report_format_documents_every_review_verdict():
     wf = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
     doc = REPORT.read_text()
