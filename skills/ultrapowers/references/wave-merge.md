@@ -52,10 +52,7 @@ Each worktree is checked out on a runtime-assigned branch named:
 worktree-wf_<runId>-<n>
 ```
 
-Branches are locked while their worktree exists (the merge agent removes merged branches' worktrees mid-run; failed/blocked branches stay locked until swept). When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists until the wave's merge agent has merged the branch and
-the suite passed — then the merge agent removes the worktree and deletes the
-branch. Failed/blocked branches and their worktrees are deliberately left for
-inspection; the orchestrating agent may sweep them after the pre-merge gate.
+Branches are locked while their worktree exists (worktrees and branches stay until the deterministic Step-5 sweep removes them; the merge agent itself never removes worktrees or deletes branches). When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree and its branch persist after merge — they are removed by the deterministic `sweep_worktrees.sh` at the Step-5 gate, not by the merge agent. Failed/blocked branches and their worktrees are likewise left for inspection until the orchestrating agent sweeps them after the pre-merge gate.
 
 Each implementer agent is responsible for self-reporting its branch name and HEAD sha at the end of its run. This self-report is the only mechanism by which the merge step learns the task-to-branch mapping — the script cannot inspect the filesystem to discover branches.
 
@@ -75,8 +72,7 @@ The merge agent:
 The canonical prompt wording:
 
 <!-- BAKE:MERGE_PROMPT -->
-You are the wave merge agent, operating on the session repo main checkout (no worktree). Check out {{INTEGRATION_BRANCH}}. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
-After ALL branches in your list are merged and the test suite passes, clean up the merged branches only: use git worktree list to find each merged branch's worktree, git worktree remove it, then git branch -d the branch. Leave any branch you did NOT merge — and its worktree — untouched; failed and blocked work must stay inspectable.
+You are the wave merge agent, operating on the session repo main checkout (no worktree). Check out {{INTEGRATION_BRANCH}}. Before merging, echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
 <!-- /BAKE -->
 
 A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred, or reported done without mergeable coordinates) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run when dependency edges were supplied (they decide what downstream work is blocked) or when nothing in the wave actually ran. When `args.edges` was NOT supplied and tasks did run, the workflow cannot know what depends on the lost work — it records the `SKIPPED` merge plus a `blockedWaves` entry ('no mergeable branches and no dependency edges supplied — cascading conservatively') and cascade-blocks later waves.
@@ -90,7 +86,7 @@ On a merge conflict or a failed post-merge test, the controller dispatches a sin
 The canonical prompt wording:
 
 <!-- BAKE:RECONCILE_PROMPT -->
-You are the reconciliation agent on {{INTEGRATION_BRANCH}}. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
+You are the reconciliation agent on {{INTEGRATION_BRANCH}}. Before merging, echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
 <!-- /BAKE -->
 
 Caps and failure handling:

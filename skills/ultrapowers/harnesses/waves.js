@@ -315,18 +315,19 @@ const SETUP_PROMPT = resume
 
 const MERGE_PROMPT =
   'You are the wave merge agent, operating on the session repo main checkout (no ' +
-  'worktree). Check out ' + integrationBranch + '. Merge each reported branch in ' +
-  'the given task-index order (deterministic, so conflicts are reproducible). ' +
+  'worktree). Check out ' + integrationBranch + '. Before merging, echo git ' +
+  'rev-parse HEAD and git branch --show-current; if the branch is not the ' +
+  'integration branch you were asked to operate on, report BLOCKED and merge ' +
+  'nothing — do not detach or move any other checkout. Merge each reported branch ' +
+  'in the given task-index order (deterministic, so conflicts are reproducible). ' +
   'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
-  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.' +
-  ' After ALL branches in your list are merged and the test suite passes, clean up' +
-  ' the merged branches only: use git worktree list to find each merged branch\'s' +
-  ' worktree, git worktree remove it, then git branch -d the branch. Leave any' +
-  ' branch you did NOT merge — and its worktree — untouched; failed and blocked' +
-  ' work must stay inspectable.'
+  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
 
 const RECONCILE_PROMPT =
-  'You are the reconciliation agent on ' + integrationBranch + '. You are given a ' +
+  'You are the reconciliation agent on ' + integrationBranch + '. Before merging, ' +
+  'echo git rev-parse HEAD and git branch --show-current; if the branch is not the ' +
+  'integration branch you were asked to operate on, report BLOCKED and merge ' +
+  'nothing — do not detach or move any other checkout. You are given a ' +
   'merge conflict diff or failing test output. Resolve it on the integration ' +
   'branch, then ' + testInstruction + '. Report MERGED on success, or ' +
   'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'

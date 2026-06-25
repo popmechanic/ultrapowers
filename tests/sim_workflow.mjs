@@ -104,7 +104,8 @@ async function scenarioHappy() {
   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
-  assert(/git worktree remove/.test(mergePrompt), 'happy: merge prompt contains cleanup instruction (git worktree remove)')
+  assert(!/git worktree remove/.test(mergePrompt), 'happy: merge prompt no longer instructs cleanup (deterministic Step-5 sweep handles it)')
+  assert(/git branch --show-current/.test(mergePrompt), 'happy: merge prompt asserts the integration HEAD before merging')
   // acceptance-absent: no acceptance arg supplied → report.acceptance must be null
   eq(r.acceptance, null, 'happy: acceptance is null when not supplied (acceptance-absent)')
   console.log('scenario happy: OK')

@@ -103,3 +103,17 @@ def test_schema_block_is_baked(name):
     assert expected in wf, (
         "drift: BAKE:" + name + " in reviewer-prompts.md does not match waves.js.\n"
         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected)
+
+
+# ── merge/reconcile HEAD-assert + cleanup-out-of-prompt ───────────────────────
+def test_merge_prompt_does_not_instruct_cleanup():
+    wf = normalize(WORKFLOW.read_text())
+    # the merge agent must NOT be told to remove worktrees or delete branches —
+    # cleanup is the deterministic sweep at the Step-5 gate, not a merge-prompt step
+    for forbidden in ("worktree remove", "git branch d", "delete the branch", "clean up the merged branches"):
+        assert normalize(forbidden) not in wf, f"merge prompt still instructs cleanup: {forbidden!r}"
+
+
+def test_merge_prompt_asserts_head():
+    wf = normalize(WORKFLOW.read_text())
+    assert normalize("git rev-parse HEAD") in wf and normalize("git branch --show-current") in wf
