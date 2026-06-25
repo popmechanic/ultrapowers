@@ -32,7 +32,7 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # all count, so a near-miss never silently degrades to prose.
 MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
-FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
+FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
@@ -66,6 +66,8 @@ def _is_pathlike(tok):
         return False
     if "/" in t:
         return True                       # a relative/absolute path
+    if t.startswith(".") and len(t) > 1 and " " not in t:
+        return True                       # dotfile: .gitignore, .dockerignore, .gitattributes
     if EXT_RE.search(t):
         return True                       # a filename with a lowercase extension
     # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
@@ -102,6 +104,29 @@ MANUAL_EV = re.compile(
     r"(the owner runs|cannot be done from this machine|on the deployment)", re.I)
 GATE_EV = re.compile(
     r"(pytest|npm test|bun test|cargo test|go test|ruff|eslint|git status|git log)", re.I)
+# Implementation verbs beyond build/QA. A task that writes nothing AND whose
+# fence-stripped prose carries none of these is pure verification — the
+# EMPTY_WRITES_GATE rule below treats it as a gate.
+IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\b", re.I)
+# Positive build/verification/QA evidence. The EMPTY_WRITES_GATE rule fires only
+# when this matches, so a prose-only task with no writes AND no build/QA steps
+# (e.g. a reference-notes task) is NOT swept into the gate bucket — it stays
+# `implementation` for the orchestrator to re-judge. GATE_EV already covers the
+# explicit test-runner/lint/git-status idioms; this adds the build/QA verbs those
+# miss ("run the full build and the QA acceptance check").
+BUILDQA_EV = re.compile(
+    r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
+
+
+def _has_implementation_prose(prose):
+    """True when the prose contains an implementation verb beyond build/QA.
+
+    The prose is already fence-stripped (parse_task strips fenced lines), so a
+    verb inside a fenced example never counts. Conservative by design: any
+    genuine implementation verb keeps an empty-writes task as `implementation`;
+    prose that only describes running build/test/QA returns False so
+    EMPTY_WRITES_GATE can reclassify it as a gate."""
+    return bool(IMPL_PROSE_EV.search(prose))
 
 
 def _fence_aware_lines(text):
@@ -326,6 +351,11 @@ def parse_task(t):
                 in_files = False
             f = FILE_LINE.match(s) if in_files else None
             if in_files and not f and re.match(r"^[-*+]\s", s):
+                # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
+                # (common on gates/verification tasks) — not a near-miss. Skip it
+                # so it never surfaces a phantom conflict ([76c7ef053adbf62e]).
+                if s.lstrip("-*+ ").strip().lower() == "none":
+                    continue
                 # TOTAL rule: ANY bullet inside an open Files block that is not a
                 # checkbox and fails FILE_LINE is a near-miss — colon-less
                 # natural English, unknown labels (Read:/Delete:), wrong case or
@@ -372,9 +402,12 @@ def parse_task(t):
                     files_entries_seen = True
                 if f.group(1) == "Create":
                     creates.extend(paths)
-                elif f.group(1) == "Modify":
+                elif f.group(1) in ("Modify", "Test fixture(s)", "Fixture(s)"):
+                    # A declared test fixture is a file the task OWNS and writes
+                    # (test data committed alongside the code) — treat it as a
+                    # write so two tasks touching the same fixture serialize.
                     modifies.extend(paths)
-                elif f.group(1) == "Test":
+                else:  # Test — the suite the task reads/runs, not a write
                     reads.extend(paths)
             elif s and not s.startswith("-"):
                 in_files = False
@@ -426,6 +459,15 @@ def classify(t):
     if MANUAL_EV.search(prose):
         return "manual", True
     if not t["writes"] and GATE_EV.search(prose):
+        return "gate", True
+    # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
+    # build/verification (positive build/QA evidence, no implementation prose) is
+    # a gate, not implementation — otherwise it draws an ambiguous-files fan-in
+    # from every upstream task and forces a serial tail ([c171bd23cbab3265]). The
+    # build/QA-evidence guard keeps a prose-only task (no writes, no build/QA
+    # steps) classified `implementation` rather than swept into the gate bucket.
+    if (not t["writes"] and BUILDQA_EV.search(prose)
+            and not _has_implementation_prose(prose)):
         return "gate", True
     return "implementation", True
 

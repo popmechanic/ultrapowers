@@ -1809,3 +1809,69 @@ def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
     assert not any(c.get("kind") == "undeclared-dependency"
                    for c in out["marker_conflicts"])
     assert out["waves"] == [["1"], ["2"]]
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Files-label coverage (fixtures / bulleted None / dotfiles) +
+# empty-writes build/QA -> gate classification (issue #65 family)
+# ---------------------------------------------------------------------------
+
+def test_files_parser_accepts_fixture_label_none_and_dotfiles():
+    # Title line first so compile_plan_text's waiver injection (after line 0)
+    # lands at plan level, not inside Task 1's marker header block.
+    plan = '''# Plan: fixture/dotfile coverage
+
+### Task 1: Build
+**Type:** implementation
+
+**Files:**
+- Modify: `.gitignore`
+- Test fixture(s): `evals/fixtures/x/plan.md`
+
+- [ ] step
+'''
+    out = compile_plan_text(plan)
+    t1 = {t["id"]: t for t in out["tasks"]}["1"]
+    assert ".gitignore" in t1["writes"]
+    assert "evals/fixtures/x/plan.md" in (t1["writes"] + t1.get("reads", []))
+    assert not any("ignored" in c["note"] or "near" in c["note"].lower()
+                   for c in out["marker_conflicts"] if c.get("task") == "1")
+
+
+def test_bulleted_none_in_files_is_not_a_conflict():
+    plan = '''# Plan: bulleted none
+
+### Task 1: Verify
+**Type:** gate
+
+**Files:**
+- None
+
+- [ ] run pytest
+'''
+    out = compile_plan_text(plan)
+    assert not any(c.get("task") == "1" for c in out["marker_conflicts"])
+
+
+def test_empty_writes_buildqa_task_classifies_as_gate():
+    plan = '''# Plan: empty-writes build/QA gate
+
+### Task 1: Build the bundle
+**Type:** implementation
+
+**Files:**
+- Create: `src/a.py`
+
+- [ ] write code
+
+### Task 2: Final verification
+**Files:**
+- None
+
+- [ ] Run the full build and the QA acceptance check.
+'''
+    out = compile_plan_text(plan)
+    t2 = {t["id"]: t for t in out["tasks"]}["2"]
+    assert t2["disposition"] == "gate"
+    assert "2" in out["gates"]
+    assert "2" not in [e["to"] for e in out["dag_edges"] if e.get("why", "").startswith("ambiguous")]
