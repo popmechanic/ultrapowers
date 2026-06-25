@@ -22,10 +22,20 @@ set -euo pipefail
   harnesses="$plugin_root/skills/ultrapowers/harnesses"
   dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
   mkdir -p "$dest"
+  installed_set=""
   for m in "$harnesses"/*.harness.json; do
     [ -e "$m" ] || continue
     f="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")"
     [ -n "$f" ] && [ -e "$harnesses/$f" ] && cp "$harnesses/$f" "$dest/$f"
+    [ -n "$f" ] && installed_set="$installed_set $f"
+  done
+  # GC: remove any .js files in the workflows dir that are not in the current
+  # manifest set — stale orphans from older plugin versions (e.g. workflow.js
+  # from 0.0.6) would otherwise accumulate and shadow the current harnesses.
+  for existing in "$dest"/*.js; do
+    [ -e "$existing" ] || continue
+    base="$(basename "$existing")"
+    case " $installed_set " in *" $base "*) : ;; *) rm -f "$existing" ;; esac
   done
 ) >/dev/null 2>&1 || true
 

@@ -34,3 +34,10 @@ def test_probe_executes_and_echoes():
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert '"ok":true' in p.stdout.replace(" ", "")
+
+
+def test_probe_echoes_representative_payload():
+    # the probe must echo back a non-tiny waves payload, not just ping=pong,
+    # so a by-name launch's arg delivery is actually verified ([fb8635c59d4fea1c])
+    src = (ROOT / "skills/ultrapowers/harnesses/probe.js").read_text()
+    assert "waves" in src and "echo" in src.lower()
