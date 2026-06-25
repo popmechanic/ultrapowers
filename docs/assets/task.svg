@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 500" width="760" height="500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">One task, up close: its worktree branch, commits, review, and merge</title>
+  <desc id="d">Zoom into a single circle from the plan graph and it is a task with a life of its own. It forks a fresh git worktree branch off the integration tip; one agent builds it commit by commit; an independent review checks it against exactly where it forked, plus a sealed exam for high-stakes work that the agent never sees; it takes a fix round if the review asks; then it merges back, two parents, onto the one integration branch.</desc>
+
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="am" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6EE7D2"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="758" height="498" rx="16" fill="#0E1726" stroke="#1F2D44" stroke-width="1.5"/>
+
+  <text x="716" y="44" text-anchor="end" fill="#4B5C78" font-size="11" letter-spacing="2" font-weight="600">ONE TASK, UP CLOSE</text>
+
+  <!-- integration trunk (amber) -->
+  <path d="M170 78 L170 472" fill="none" stroke="#F2B45B" stroke-width="2.6" opacity="0.95"/>
+  <text x="170" y="66" text-anchor="middle" fill="#F2D9A6" font-size="12" font-weight="600">integration branch</text>
+
+  <!-- the task branch (mint): fork, commit line, merge -->
+  <path d="M170 130 C 235 132, 305 152, 360 178" fill="none" stroke="#6EE7D2" stroke-width="2.2" opacity="0.9" filter="url(#glow)"/>
+  <path d="M360 178 L360 388" fill="none" stroke="#6EE7D2" stroke-width="2.2" opacity="0.9"/>
+  <path d="M360 388 C 305 414, 240 421, 182 421" fill="none" stroke="#6EE7D2" stroke-width="2.2" opacity="0.9" filter="url(#glow)" marker-end="url(#am)"/>
+
+  <!-- fork node (on the trunk) -->
+  <circle cx="170" cy="130" r="8" fill="#2A2113" stroke="#F2B45B" stroke-width="1.7"/>
+  <circle cx="170" cy="130" r="3.2" fill="#F2B45B"/>
+  <text x="150" y="126" text-anchor="end" fill="#9DB0CE" font-size="12" font-weight="600">forks a fresh</text>
+  <text x="150" y="141" text-anchor="end" fill="#7E93B2" font-size="11">worktree branch</text>
+
+  <!-- commits -->
+  <g>
+    <circle cx="360" cy="205" r="12" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/>
+    <circle cx="360" cy="205" r="4.5" fill="#6EE7D2" filter="url(#glow)"/>
+    <circle cx="360" cy="268" r="12" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/>
+    <circle cx="360" cy="268" r="4.5" fill="#6EE7D2" filter="url(#glow)"/>
+    <text x="392" y="231" fill="#9DB0CE" font-size="12" font-weight="600">one agent builds it,</text>
+    <text x="392" y="246" fill="#7E93B2" font-size="11">commit by commit</text>
+  </g>
+
+  <!-- review gate -->
+  <g>
+    <path d="M360 316 L376 332 L360 348 L344 332 Z" fill="#2A2113" stroke="#F2B45B" stroke-width="1.7"/>
+    <text x="392" y="322" fill="#9DB0CE" font-size="12" font-weight="600">an independent review</text>
+    <text x="392" y="337" fill="#7E93B2" font-size="11">checks it against exactly</text>
+    <text x="392" y="352" fill="#7E93B2" font-size="11">where it forked — plus a</text>
+    <text x="392" y="367" fill="#7E93B2" font-size="11">sealed exam it can't see</text>
+  </g>
+
+  <!-- fix commit -->
+  <g>
+    <circle cx="360" cy="388" r="12" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/>
+    <circle cx="360" cy="388" r="4.5" fill="#6EE7D2" filter="url(#glow)"/>
+    <text x="392" y="393" fill="#7E93B2" font-size="11">a fix round, if asked</text>
+  </g>
+
+  <!-- merge node (two parents, on the trunk) -->
+  <circle cx="170" cy="420" r="10" fill="#2A2113" stroke="#F2B45B" stroke-width="1.8"/>
+  <circle cx="170" cy="420" r="4" fill="#F2B45B" filter="url(#glow)"/>
+  <text x="150" y="416" text-anchor="end" fill="#9DB0CE" font-size="12" font-weight="600">merges back,</text>
+  <text x="150" y="431" text-anchor="end" fill="#7E93B2" font-size="11">two parents</text>
+
+  <text x="716" y="484" text-anchor="end" fill="#3C4A63" font-size="10.5" letter-spacing="2" font-weight="600">ULTRAPOWERS</text>
+</svg>
