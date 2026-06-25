@@ -17,6 +17,9 @@ import audit_run  # noqa: E402  (provides audit())
 
 SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
                   "transcript dir", "recommended", "depends-on")
+SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
+
+ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
 
 
 def _block_text(block):
@@ -70,6 +73,8 @@ def slice_transcript(records):
         if not txt:
             continue
         if rtype == "user" and b.get("type") == "text":
+            if len(txt) > SLICE_TURN_MAX:
+                txt = txt[:SLICE_TURN_MAX] + f"\n…[truncated {len(txt) - SLICE_TURN_MAX} chars]"
             lines.append(f"**user:** {txt}")
         elif any(k in txt.lower() for k in SLICE_KEYWORDS):
             lines.append(f"**{rtype}:** {txt}")
@@ -297,6 +302,23 @@ def _engine_epoch(records, origin, timeline=None):
     return {"epoch": epoch, "asOf": ts, "basis": basis}
 
 
+def classify_session_kind(records, audit, gate_report, planning_found):
+    """Distinguish a real /ultrapowers engine run from a non-engine Workflow
+    session (research fan-out, issue drafting) that merely used the Workflow
+    tool. Engine signals: a recognized engine role among the audited agents, OR
+    a real integration branch in the gate report, OR a captured plan. A session
+    with none of these is 'meta' (e.g. [c9b028bf4da18d99]: ~200 role:unknown
+    agents, planningFound=false, no integration branch)."""
+    roles = {a.get("role", "").split(":", 1)[0] for a in (audit or {}).get("agents", [])}
+    if roles & ENGINE_ROLES:
+        return "engine"
+    if gate_report and isinstance(gate_report.get("integrationBranch"), str):
+        return "engine"
+    if planning_found:
+        return "engine"
+    return "meta"
+
+
 def build_bundle(session_path, project_slug, cache_dir, home_slug):
     try:
         records = _records(session_path)
@@ -308,18 +330,26 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     run_id = hashlib.sha256(f"{project_slug}/{session_id}".encode()).hexdigest()[:16]
     tdir = _transcript_dir(records)
     origin = classify_origin(project_slug, home_slug)
+    plan_path = _plan_path(records)
+    gate_report = _gate_report(records)
+    audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
+    planning_found = stitch_planning(plan_path, Path(session_path).parent.parent,
+                                     records)["planningFound"]
+    session_kind = classify_session_kind(records, audit, gate_report, planning_found)
+    if session_kind != "engine":
+        return None
     bundle = {
         "runId": run_id,
         "sessionId": session_id,
         "projectSlug": project_slug,
         "origin": origin,
+        "sessionKind": session_kind,
         "engineVersion": _engine_epoch(records, origin),
-        "planPath": _plan_path(records),
+        "planPath": plan_path,
         "transcriptDir": tdir,
-        "gateReport": _gate_report(records),
-        "audit": audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"},
-        "planningFound": stitch_planning(_plan_path(records),
-                                         Path(session_path).parent.parent, records)["planningFound"],
+        "gateReport": gate_report,
+        "audit": audit,
+        "planningFound": planning_found,
     }
     out = Path(cache_dir) / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -343,27 +373,38 @@ def _save_watermark(cache_dir, seen):
     (Path(cache_dir) / "watermark.json").write_text(json.dumps(sorted(seen)))
 
 
-def harvest(projects_root, cache_dir, home_slug):
+def harvest(projects_root, cache_dir, home_slug, *, project=None, session=None):
     projects_root, cache_dir = Path(projects_root), Path(cache_dir)
     seen = _load_watermark(cache_dir)
     new_bundles = []
+    seen_tdirs: set = set()
     if not projects_root.is_dir():
         print(f"ultralearn: no projects root at {projects_root}", file=sys.stderr)
         return []
     for proj in sorted(projects_root.iterdir()):
         if not proj.is_dir():
             continue
-        for session in sorted(proj.glob("*.jsonl")):
-            key = f"{proj.name}/{session.stem}"
+        if project and proj.name != project:
+            continue
+        for sess in sorted(proj.glob("*.jsonl")):
+            if session and sess.stem != session:
+                continue
+            key = f"{proj.name}/{sess.stem}"
             if key in seen:
                 continue
             try:
-                bundle = build_bundle(session, proj.name, cache_dir, home_slug)
+                bundle = build_bundle(sess, proj.name, cache_dir, home_slug)
             except Exception as exc:  # advisory: never crash a sweep
                 print(f"ultralearn: skipped {key}: {exc}", file=sys.stderr)
                 bundle = None
             seen.add(key)
             if bundle is not None:
+                bdata = json.loads((bundle / "bundle.json").read_text())
+                tdir_val = bdata.get("transcriptDir")
+                if tdir_val and tdir_val in seen_tdirs:
+                    continue  # same run, already emitted
+                if tdir_val:
+                    seen_tdirs.add(tdir_val)
                 new_bundles.append(bundle)
     _save_watermark(cache_dir, seen)
     return new_bundles
@@ -375,9 +416,25 @@ def _default_home_slug():
 
 def main(argv=None):
     argv = argv or sys.argv[1:]
-    projects = Path(argv[0]) if argv else Path.home() / ".claude/projects"
+    projects = None
+    project_filter = None
+    session_filter = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--project" and i + 1 < len(argv):
+            project_filter = argv[i + 1]; i += 2
+        elif a == "--session" and i + 1 < len(argv):
+            session_filter = argv[i + 1]; i += 2
+        elif not a.startswith("--"):
+            projects = Path(a); i += 1
+        else:
+            i += 1
+    if projects is None:
+        projects = Path.home() / ".claude/projects"
     cache = Path.home() / ".claude/ultralearn"
-    bundles = harvest(projects, cache, _default_home_slug())
+    bundles = harvest(projects, cache, _default_home_slug(),
+                      project=project_filter, session=session_filter)
     print(f"ultralearn: {len(bundles)} new run bundle(s) under {cache}/runs")
     for b in bundles:
         print(f"  - {b}")

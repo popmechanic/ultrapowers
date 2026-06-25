@@ -203,3 +203,79 @@ def test_build_bundle_includes_engine_version(tmp_path):
     assert "engineVersion" in bundle
     assert set(bundle["engineVersion"]) == {"epoch", "asOf", "basis"}
     assert bundle["engineVersion"]["basis"] == "foreign-date-upper-bound"
+
+
+# --- P3: engine-fingerprint, dedup, provenance, truncation, targeting ---
+def _agent_file(d, n, first_user_text):
+    """An agent-*.jsonl whose first user turn drives audit_run.classify's role."""
+    d.mkdir(parents=True, exist_ok=True)
+    rec = {"type": "user", "message": {"role": "user",
+           "content": [{"type": "text", "text": first_user_text}]}}
+    (d / f"agent-{n}.jsonl").write_text(json.dumps(rec) + "\n")
+
+
+def _run_session(tdir, *, with_integration):
+    """A session that passes is_real_run: a Workflow tool_use + a tool_result
+    naming the transcript dir (and optionally an integrationBranch)."""
+    tr = f"Transcript dir: {tdir}"
+    if with_integration:
+        tr += '\nresult {"integrationBranch":"ultra/x","waveMerges":[]}'
+    return [
+        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                            "input": {"name": "ultrapowers-run"}}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": tr}]}]),
+    ]
+
+
+def test_non_engine_workflow_session_is_not_an_engine_run(tmp_path):
+    # all agents role:unknown, no integration branch, no planning -> meta, dropped
+    tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_meta"
+    _agent_file(tdir, 1, "Search the web for X and draft an issue.")
+    _agent_file(tdir, 2, "Summarize the findings.")
+    session = tmp_path / "s.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=False)) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
+    assert out is None
+
+
+def test_real_engine_session_is_kept_and_tagged(tmp_path):
+    tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_real"
+    _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
+    _agent_file(tdir, 2, "You are the wave merge agent, operating on the session repo main checkout.")
+    session = tmp_path / "s.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["sessionKind"] == "engine"
+
+
+def test_same_run_double_emitted_is_deduped(tmp_path):
+    proj = tmp_path / "projects" / "-Users-x-proj"
+    tdir = tmp_path / "projects" / "-Users-x-proj" / "subagents" / "workflows" / "wf_dup"
+    _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
+    for stem in ("s1", "s2"):
+        (proj / f"{stem}.jsonl").parent.mkdir(parents=True, exist_ok=True)
+        (proj / f"{stem}.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
+    bundles = h.harvest(tmp_path / "projects", tmp_path / "cache", "-Users-x-home")
+    assert len(bundles) == 1  # one transcriptDir -> one bundle
+
+
+def test_slice_truncates_oversized_user_turn():
+    recs = [_rec("user", [{"type": "text", "text": "X" * 40000}]),
+            _rec("user", [{"type": "text", "text": "build the thing"}])]
+    out = h.slice_transcript(recs)
+    assert "build the thing" in out
+    assert "X" * 40000 not in out and len(out) < 40000
+
+
+def test_harvest_targets_a_single_project(tmp_path):
+    for slug in ("-Users-x-aaa", "-Users-x-bbb"):
+        tdir = tmp_path / "projects" / slug / "subagents" / "workflows" / f"wf_{slug[-3:]}"
+        _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
+        sess = tmp_path / "projects" / slug / "s.jsonl"
+        sess.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
+    bundles = h.harvest(tmp_path / "projects", tmp_path / "cache", "-Users-x-home", project="-Users-x-aaa")
+    slugs = {json.loads((b / "bundle.json").read_text())["projectSlug"] for b in bundles}
+    assert slugs == {"-Users-x-aaa"}
