@@ -95,7 +95,11 @@ When the workflow completes, the main agent renders the report as a concise huma
 10. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
    rendered verbatim in document order. Sourced from the Step-2 dispositions (the
    main agent carries it), **not** from the workflow return — the schema above is
-   unchanged. Empty runbook means the whole plan was waveable.
+   unchanged. Empty runbook means the whole plan was waveable. Before handing off
+   to `finishing-a-development-branch`, apply the checks in
+   `references/finishing-notes.md`: detect allowed merge methods (recommend squash
+   when accumulated merge commits would block rebase) and warn when the integration
+   base is far ahead of the deploy target.
 11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, and any tier-misrank candidates (implementers above 1.5x the median turns of same-model peers). Advisory only: it informs the next run's tier assignments and never gates this one.
 12. **Live viewer (optional):** if the launch-time live viewer is still serving, point the human at its `http://localhost:<port>/swarm.html` — live station state, the cross-agent feed, and click-to-zoom into any agent's transcript. Otherwise offer to open one: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py <plan-path> --transcripts <transcript-dir>`. One line, opt-in, read-only; skip in headless runs.
 
