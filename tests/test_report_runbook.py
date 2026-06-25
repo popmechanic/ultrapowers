@@ -28,6 +28,13 @@ def test_report_approve_path_matches_skill_step5():
     assert "SKIPPED" in text               # waveMerges vocabulary documents the skip status
 
 
+def test_skill_wires_run_lock_and_scoped_sweep():
+    skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
+    assert "run_lock.sh acquire" in skill and "run_lock.sh snapshot" in skill
+    assert "run_lock.sh restore" in skill
+    assert "sweep_worktrees.sh --run" in skill
+
+
 def test_report_format_documents_every_review_verdict():
     wf = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
     doc = REPORT.read_text()
