@@ -2169,6 +2169,35 @@ async function scenarioEscalateBounded() {
   console.log('scenario escalate-bounded: OK')
 }
 
+// ── Scenario: coverage column + structural missing-deliverables (green != done) ─
+// A classic false-green: one task fails (its tests are absent, so the suite is
+// still green) while the integration suite passes. The structural signals must
+// expose tasks_merged < tasks_planned and flag the unmerged task's deliverables.
+async function scenarioCoverageAndMissingDeliverables() {
+  // Two tasks; B fails at impl. A merges, suite is green -> classic false green.
+  const WAVES = [[{ id: 'A', title: 'a', body: 'b', files: ['a.py'] },
+                  { id: 'B', title: 'b', body: 'b', files: ['b.py'] }]]
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label === 'impl:A') return { status: 'DONE', summary: 's', branch: 'wt-A', headSha: 'sha-A', commit: 'c-A' }
+    if (label === 'impl:B') throw new Error('persistent agent error')
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm', branches: ['A'] }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [] }, budget: undefined })
+  eq(r.coverage.tasks_planned, 2, 'coverage: 2 tasks planned')
+  eq(r.coverage.tasks_merged, 1, 'coverage: 1 task merged')
+  eq(r.coverage.complete, false, 'coverage: not complete (merged<planned)')
+  assert(r.tests.passed === true, 'coverage: suite green despite incompleteness (the false-green)')
+  assert(r.missingDeliverables.some(m => m.task === 'B' && m.files.includes('b.py')),
+         'missingDeliverables: B\'s b.py flagged as unmerged')
+  console.log('scenario coverage-and-missing-deliverables: OK')
+}
+
 await scenarioEscalateRecovers()
 await scenarioEscalateBounded()
+await scenarioCoverageAndMissingDeliverables()
 console.log('ALL SCENARIOS PASSED')
