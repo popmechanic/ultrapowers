@@ -262,7 +262,16 @@ seconds. Branch on *how* it fails — the two failure modes have different cures
   args/return dialect changed under us. The engine has drifted — go directly to Step 6; do not
   launch the real workflow.
 
-**4b — Launch the saved workflow by name `ultrapowers-run`** (the committed script — do **not** author
+**4b — Acquire the run lock and snapshot the session checkout** (the deterministic actor — the engine cannot do this; it has no shell or runId). Before launching the workflow, acquire a run lock so a second concurrent `/ultrapowers` run in this repo is refused loudly, and snapshot the current session checkout so it can be restored exactly at the gate regardless of what the setup agent checks out:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh acquire <runId>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh snapshot
+```
+
+Use the run's transcript-dir stem (`wf_<runId>`) as `<runId>` — it is printed in the Workflow launch result; for the acquire step, a provisional id (e.g. the `stamp` value) is acceptable and can be updated once the runId is known. If `run_lock.sh acquire` exits non-zero, another `/ultrapowers` run holds this repo — **STOP** and tell the operator to serialize runs (see CLAUDE.md); do not launch.
+
+**4c — Launch the saved workflow by name `ultrapowers-run`** (the committed script — do **not** author
 or edit it) via the **Workflow** tool. The registry resolves saved workflows by the script's
 `meta.name` (`ultrapowers-run`), **not** the installed filename (`waves.js`) — launching as
 `waves` fails with "not found". (The workflow is named `ultrapowers-run`, not `ultrapowers`, so the
@@ -322,10 +331,21 @@ reconciles failures, and runs a final integration/completeness review. See
 
 ## Step 5 — Present the Pre-Merge Report (human gate)
 
-**First, restore the session checkout.** The workflow's setup agent checks the integration branch
-out in the session repository and nothing switches it back — run `git checkout <baseBranch>` now.
-Skipping this makes every `git log`/`git merge` at this gate silently target the integration
-branch, so the work *looks* prematurely merged when it is not.
+**First, restore the session checkout.** Restore the exact session checkout this run started from (not an assumed base — the snapshot recorded before launch is the authority). The workflow's setup agent checks out the integration branch in the session repository and nothing switches it back:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh restore
+```
+
+Skipping this (or using a bare `git checkout <baseBranch>`) makes every `git log`/`git merge` at this gate silently target the integration branch, so the work *looks* prematurely merged when it is not.
+
+Then confirm this run still owns the lock before any merge decision (a concurrent run cannot have snuck in):
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh check <runId>
+```
+
+If `check` fails, another run has replaced the lock — surface as `BLOCKED` and do not Approve.
 
 **Then assert the session checkout is clean and on the right tree — the deterministic guard for #29/#32.** A misbehaving review role cannot police itself and the engine has no shell, so this check lives here, where the main session does have one. On the session repo, before any gate decision:
 
@@ -351,7 +371,14 @@ present these choices:
 
   Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_acceptance.sh <sealId> <integrationBranch> <sha256>` (the `sealId`/`sha256` are the values the orchestrator carried from compile and echoed in the report's `PENDING_GATE` disposition; the script creates its own detached worktree of the branch, so it is agnostic to the current checkout). **The script's exit code is the authority:** exit 0 ⇒ acceptance passed; any non-zero exit ⇒ do NOT Approve. Render the emitted JSON object verbatim with the report — receipts, not narrative.
 
-  A non-zero exit carries a descriptive `status`: a red exam (`status: OK, passed: false`) offers Redirect/Salvage — its `redKind` says which kind of red: `assertion` (a sealed test executed and failed — the feature is built but wrong) or `collection` (no test executed — an import/collection failure, i.e. the feature or a module it needs is absent); `EXAM_BOOTSTRAP_ERROR` (the seal's `bootstrapCmd` failed on this branch, so the exam environment could not be prepared) is **not** a feature red — do NOT Approve and do NOT record it as a waiver-of-red: fix the environment or re-seal with a corrected `bootstrapCmd`, then re-administer; `SEAL_BROKEN` (vault tampered) or `SEAL_MISSING` (vault gone) offers re-seal via the ultraplan sealing step (the spec still exists) or an explicit waiver; a runner `ERROR` surfaces its reason. An operator override of a red/broken/missing exam is recorded as a waiver-with-reason in the runbook and the final report. Only when `tests.passed` AND the acceptance gate both pass: `git checkout <integrationBranch>` (its Step 1 verifies tests on the CURRENT checkout — it must see the integration tree, not the base branch you restored for the report), then run `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh` — the deterministic sweep of engine worktrees and merged branches (unmerged failed-task branches are kept for inspection; never rely on the merge agents having cleaned up; locked worktrees are kept by default (pass `--force` to remove them); concurrent runs in one repo remain unsupported). Then proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up, the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
+  A non-zero exit carries a descriptive `status`: a red exam (`status: OK, passed: false`) offers Redirect/Salvage — its `redKind` says which kind of red: `assertion` (a sealed test executed and failed — the feature is built but wrong) or `collection` (no test executed — an import/collection failure, i.e. the feature or a module it needs is absent); `EXAM_BOOTSTRAP_ERROR` (the seal's `bootstrapCmd` failed on this branch, so the exam environment could not be prepared) is **not** a feature red — do NOT Approve and do NOT record it as a waiver-of-red: fix the environment or re-seal with a corrected `bootstrapCmd`, then re-administer; `SEAL_BROKEN` (vault tampered) or `SEAL_MISSING` (vault gone) offers re-seal via the ultraplan sealing step (the spec still exists) or an explicit waiver; a runner `ERROR` surfaces its reason. An operator override of a red/broken/missing exam is recorded as a waiver-with-reason in the runbook and the final report. Only when `tests.passed` AND the acceptance gate both pass: `git checkout <integrationBranch>` (its Step 1 verifies tests on the CURRENT checkout — it must see the integration tree, not the base branch you restored for the report), then sweep only this run's worktrees and release the lock:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh --run <runId>
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh release <runId>
+```
+
+The `--run <runId>` scope removes only this run's worktrees and merged branches, sparing any sibling run's worktrees (unmerged failed-task branches are kept for inspection; never rely on the merge agents having cleaned up; pass `--force` to also remove locked worktrees). Then proceed to `superpowers:finishing-a-development-branch` to merge / open a PR / clean up, the orchestrator carries the post-merge runbook and presents it again when finishing-a-development-branch completes (the upstream skill takes no checklist input).
 - **Salvage** — offer this whenever the report carries `failed` tasks or dep-blocked `unfinished` entries; it is Redirect with the corrective instructions derived from the report instead of typed by the human. Build the new `waves` array mechanically: every `failed` task plus every dep-blocked or cascade-blocked task from `unfinished`, preserving their original relative wave order and the Step-2 edges among them. To each failed task's `body`, append a `PRIOR ATTEMPT` note carrying: its kept branch and HEAD sha from `tasks[]`, the blocking issues from its `notes`, and any completeness-critic finding that names the task — plus the instruction that when the prior branch already contains correct work, the implementer should pull that content in (`git diff <sha>` / `git checkout <sha> -- <path>` against the named commit; BASE stays the integration HEAD) instead of reimplementing from scratch. Blocked tasks ride verbatim. Present the constructed salvage waves to the human for approval, then relaunch per the Redirect mechanics below (`resume: true`, same `integrationBranch`) and return to this gate when it completes.
 - **Redirect** — provide corrective instructions. Build a new `waves` array containing **only the
   affected tasks** (preserving their relative order and any edges between them, with the
