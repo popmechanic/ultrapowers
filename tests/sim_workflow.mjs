@@ -2198,6 +2198,38 @@ async function scenarioCoverageAndMissingDeliverables() {
   console.log('scenario coverage-and-missing-deliverables: OK')
 }
 
+// ── Scenario: cascade-blocked task surfaces in missingDeliverables ────────────
+// B fails at impl; C depends_on B (edges [['B','C']]) so C is cascade-blocked,
+// lands in `unfinished` as a STRING ("C: blocked — depends on a failed task"),
+// and is NEVER dispatched (so C is absent from taskResults). A missingDeliverables
+// computation that filters taskResults alone can never see C; the fix must build
+// the missing-id set from BOTH the failed taskResults AND the bare ids parsed out
+// of the `unfinished` strings, looking files up from WAVES.
+async function scenarioMissingDeliverablesCascade() {
+  const WAVES = [[{ id: 'B', title: 'b', body: 'b', files: ['b.py'] }],
+                 [{ id: 'C', title: 'c', body: 'c', files: ['c.py'] }]]
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label === 'impl:B') throw new Error('persistent agent error')
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'SKIPPED', branches: [] }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [], edges: [['B', 'C']] }, budget: undefined })
+  // C was cascade-blocked, never dispatched: it is absent from taskResults but
+  // present in `unfinished` as a string whose bare id is "C".
+  assert(!r.tasks.some(t => t.task === 'C'), 'cascade: C was never dispatched (absent from taskResults)')
+  assert(r.unfinished.some(u => typeof u === 'string' && u.split(/[:\s]/)[0] === 'C'),
+         'cascade: C landed in unfinished as a string')
+  assert(r.missingDeliverables.some(m => m.task === 'C' && m.files.includes('c.py')),
+         'missingDeliverables: cascade-blocked C\'s c.py surfaced via the blocked-id path')
+  assert(r.missingDeliverables.some(m => m.task === 'B' && m.files.includes('b.py')),
+         'missingDeliverables: failed B\'s b.py also present')
+  console.log('scenario missing-deliverables-cascade: OK')
+}
+
 // ── Scenario: git-verified ground truth + visual-eyeball channel (#29 hard gate) ─
 // The completeness critic confirms (via its own `git rev-parse HEAD`) that it
 // reviewed the recorded merge HEAD and reports it as `onIntegrationHead`; the
@@ -2248,6 +2280,7 @@ async function scenarioGitUnverifiedJudgmentCall() {
 await scenarioEscalateRecovers()
 await scenarioEscalateBounded()
 await scenarioCoverageAndMissingDeliverables()
+await scenarioMissingDeliverablesCascade()
 await scenarioGitVerifiedAndVisualEyeball()
 await scenarioGitUnverifiedJudgmentCall()
 console.log('ALL SCENARIOS PASSED')
