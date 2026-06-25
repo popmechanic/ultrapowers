@@ -74,11 +74,58 @@ def slice_transcript(records):
 
 
 def _plan_path(records):
+    # Authoritative: the Workflow tool_use input carries the launch args, which
+    # hold planPath. In the transcript `input.args` is a JSON STRING (sometimes a
+    # dict); parse either form.
+    for _r, b in _iter_blocks(records):
+        if isinstance(b, dict) and b.get("type") == "tool_use" \
+                and b.get("name") == "Workflow":
+            args = (b.get("input") or {}).get("args")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = None
+            if isinstance(args, dict):
+                pp = args.get("planPath")
+                if isinstance(pp, str) and pp.strip():
+                    return pp.strip()
+    # Fallback: a real `/ultrapowers <path>` invocation — skip the literal
+    # `<plan-path>` placeholder that appears in skill prose (doc-dense sessions).
     for _r, b in _iter_blocks(records):
         txt = _block_text(b)
         if "/ultrapowers " in txt:
-            tail = txt.split("/ultrapowers ", 1)[1].split()[0].strip()
-            return tail or None
+            tail = txt.split("/ultrapowers ", 1)[1].split()[0].strip().strip("`")
+            if tail and not tail.startswith("<"):
+                return tail
+    return None
+
+
+def _balanced_json(txt, start):
+    """Parse the JSON object beginning at txt[start] using brace matching, so
+    trailing text or a later unrelated object does not corrupt the slice."""
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(txt)):
+        c = txt[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif c == "\\":
+                esc = True
+            elif c == '"':
+                in_str = False
+            continue
+        if c == '"':
+            in_str = True
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(txt[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
     return None
 
 
@@ -109,28 +156,49 @@ def _records(session_path):
 
 
 def _gate_report(records):
+    # Scan every "integrationBranch" mention, parse the enclosing JSON object,
+    # and accept only one with a real top-level integrationBranch *value* — this
+    # rejects report-format schema prose (where "integrationBranch" sits inside a
+    # "required" array) and any other decoy.
     for _r, b in _iter_blocks(records):
         txt = _block_text(b)
-        i = txt.find('{"integrationBranch"')
-        if i == -1:
-            i = txt.find('"integrationBranch"')
-            if i != -1:
-                i = txt.rfind("{", 0, i)
-        if i != -1:
-            try:
-                return json.loads(txt[i:txt.rindex("}") + 1])
-            except (json.JSONDecodeError, ValueError):
-                continue
+        idx = 0
+        while True:
+            k = txt.find('"integrationBranch"', idx)
+            if k == -1:
+                break
+            start = txt.rfind("{", 0, k + 1)
+            if start != -1:
+                obj = _balanced_json(txt, start)
+                if isinstance(obj, dict) and isinstance(obj.get("integrationBranch"), str) \
+                        and obj["integrationBranch"]:
+                    return obj
+            idx = k + 1
     return None
 
 
 def _transcript_dir(records):
+    # Collect every absolute-path "Transcript dir:" from tool_result blocks
+    # (prose mentions are not absolute paths), then prefer a dir that actually
+    # holds agent transcripts — a session may launch several workflows (e.g. the
+    # zero-agent probe before the real run); the probe's dir would zero the audit.
+    candidates = []
     for _r, b in _iter_blocks(records):
+        if not (isinstance(b, dict) and b.get("type") == "tool_result"):
+            continue
         txt = _block_text(b)
         if "Transcript dir:" in txt:
             tail = txt.split("Transcript dir:", 1)[1].strip().splitlines()[0]
-            return tail.strip().rstrip("\\").strip() or None
-    return None
+            tail = tail.strip().rstrip("\\").strip()
+            if tail.startswith("/"):
+                candidates.append(tail)
+    if not candidates:
+        return None
+    for c in candidates:
+        p = Path(c)
+        if p.is_dir() and any(p.glob("agent-*.jsonl")):
+            return c
+    return candidates[-1]
 
 
 def build_bundle(session_path, project_slug, cache_dir, home_slug):
