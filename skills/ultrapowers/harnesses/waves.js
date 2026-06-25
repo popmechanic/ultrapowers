@@ -1233,10 +1233,17 @@ for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (
 const tasksPlanned = WAVES.flat().length
 const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
                    complete: mergedBranches.size >= tasksPlanned }
-const blockedIds = new Set(unfinished.map((u) => (typeof u === 'string' ? u : u && u.task)).filter(Boolean))
-const missingDeliverables = taskResults
-  .filter((t) => t.status === 'failed' || blockedIds.has(t.task))
-  .map((t) => ({ task: t.task, files: (WAVES.flat().find((w) => w.id === t.task) || {}).files || [] }))
+// Build the missing-id set from BOTH sources and look up files from WAVES, not
+// from taskResults: a cascade-blocked task that never ran is absent from
+// taskResults, and `unfinished` carries bare ids only inside strings like
+// "C: cascade-blocked by wave 2" — so parse the leading id out of each string.
+const failedIds = taskResults.filter((t) => t.status === 'failed').map((t) => t.task)
+const blockedIds = unfinished
+  .map((u) => (typeof u === 'string' ? u.split(/[:\s]/)[0] : (u && u.task)))
+  .filter(Boolean) // "C: cascade-blocked …" -> "C"
+const missingIds = [...new Set([...failedIds, ...blockedIds])]
+const missingDeliverables = missingIds
+  .map((id) => ({ task: id, files: ((WAVES.flat().find((w) => w.id === id) || {}).files) || [] }))
   .filter((m) => m.files.length)
 
 // ── Structured return value (matches references/report-format.md) ─────────────
