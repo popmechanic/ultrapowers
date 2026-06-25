@@ -81,11 +81,15 @@ run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
   mkdir -p "$EXAM_WT/.ultra-acceptance"
   cp -R "$SUITE_DIR/." "$EXAM_WT/.ultra-acceptance/"
   local RAN_MARKER="$EXAM_WT/.ultra-acceptance/.__ran__"
-  cat > "$EXAM_WT/.ultra-acceptance/conftest.py" <<'CONF'
+  # Inject the pytest ran-marker plugin only for pytest suites; non-pytest
+  # frameworks detect "tests ran" from the runner's own output via RAN_PATTERN.
+  if [ "${FRAMEWORK:-pytest}" = "pytest" ]; then
+    cat > "$EXAM_WT/.ultra-acceptance/conftest.py" <<'CONF'
 import pathlib
 def pytest_runtest_call(item):
     pathlib.Path(__file__).with_name(".__ran__").write_text("1")
 CONF
+  fi
   # Bootstrap the worktree's environment (editable install / dep setup) before
   # the suite so the repo's own libraries import. A failed bootstrap is an ENV
   # error, never a red: the environment could not be prepared.
@@ -98,12 +102,21 @@ CONF
 $BOUT"; return 0
     fi
   fi
-  local OUT CODE
+  local OUT CODE ran
   OUT="$( (cd "$EXAM_WT" && eval "$RUN_CMD") 2>&1 )"; CODE=$?
+  # Determine whether any tests actually ran. For pytest: check the injected
+  # ran-marker file. For non-pytest frameworks: match the runner's stdout/stderr
+  # against the manifest's ranPattern (a configurable extended regex).
+  ran=0
+  if [ "${FRAMEWORK:-pytest}" = "pytest" ]; then
+    [ -f "$RAN_MARKER" ] && ran=1
+  elif [ -n "${RAN_PATTERN:-}" ] && printf '%s' "$OUT" | grep -Eq "${RAN_PATTERN}"; then
+    ran=1
+  fi
   if [ "$CODE" -eq 0 ]; then
     # No-tests-ran defense (false-green guard): a green exit earns a pass only
     # if the sealed suite actually executed a test.
-    if [ ! -f "$RAN_MARKER" ]; then
+    if [ "$ran" -eq 0 ]; then
       R_STATUS=ERROR; R_PASSED=false; R_CODE=1
       R_OUTPUT="exam exited 0 but ran no sealed tests (zero tests collected or runCmd never executed the suite) — refusing to false-green:
 $OUT"
@@ -111,18 +124,19 @@ $OUT"
       R_STATUS=OK; R_PASSED=true; R_CODE=0; R_OUTPUT="$OUT"
     fi
   else
-    # Non-zero WITH a tests-ran marker => a test executed and failed (assertion
+    # Non-zero WITH a tests-ran signal => a test executed and failed (assertion
     # red). WITHOUT it => nothing executed (collection/import red). The bootstrap
     # above means an env-caused collection error can no longer reach here, so a
     # surviving collection red is genuine feature-absence.
     R_STATUS=OK; R_PASSED=false; R_CODE=$CODE; R_OUTPUT="$OUT"
-    if [ -f "$RAN_MARKER" ]; then R_REDKIND=assertion; else R_REDKIND=collection; fi
+    if [ "$ran" -eq 1 ]; then R_REDKIND=assertion; else R_REDKIND=collection; fi
   fi
   return 0
 }
 
 # ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
 if [ "$MODE" = baseline ]; then
+  FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
   run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
   if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
     emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
@@ -153,6 +167,8 @@ if ! RUN_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[
   exit 1
 fi
 BOOTSTRAP_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("bootstrapCmd") or "")' "$MANIFEST" 2>/dev/null || true)"
+FRAMEWORK="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("framework") or "pytest")' "$MANIFEST" 2>/dev/null || echo "pytest")"
+RAN_PATTERN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("ranPattern") or "")' "$MANIFEST" 2>/dev/null || true)"
 
 run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
 emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"

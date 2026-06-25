@@ -29,18 +29,31 @@ def make_repo(tmp_path, feature_built):
     return repo
 
 
-def make_vault(tmp_path):
+def make_vault(tmp_path, *, run_cmd=None, framework=None, ran_pattern=None,
+               suite_files=None):
+    """Create a vault entry. Accepts optional keyword args for non-pytest suites.
+    Returns (vault_path, seal_id, digest) — same triple in all cases so the new
+    tests can store it as a single variable and pass it to run_acceptance()."""
     suite = tmp_path / "vault" / "pending" / "suite"
     suite.mkdir(parents=True)
-    (suite / "test_exam.py").write_text(
-        "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
+    if suite_files is None:
+        (suite / "test_exam.py").write_text(
+            "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
+    else:
+        for name, content in suite_files.items():
+            (suite / name).write_text(content)
+    if run_cmd is None:
+        run_cmd = "python3 -m pytest .ultra-acceptance -q"
     digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
     seal_id = digest[:12]
     entry = tmp_path / "vault" / seal_id
     (tmp_path / "vault" / "pending").rename(entry)
-    (entry / "manifest.json").write_text(json.dumps({
-        "sealId": seal_id, "suiteSha256": digest,
-        "runCmd": "python3 -m pytest .ultra-acceptance -q"}))
+    manifest = {"sealId": seal_id, "suiteSha256": digest, "runCmd": run_cmd}
+    if framework is not None:
+        manifest["framework"] = framework
+    if ran_pattern is not None:
+        manifest["ranPattern"] = ran_pattern
+    (entry / "manifest.json").write_text(json.dumps(manifest))
     return tmp_path / "vault", seal_id, digest
 
 
@@ -313,3 +326,34 @@ def test_baseline_mode_surfaces_bootstrap_error(tmp_path):
     code, out = baseline(suite, "main", repo,
                          "python3 -m pytest .ultra-acceptance -q", bootstrap="exit 4")
     assert code != 0 and out["status"] == "EXAM_BOOTSTRAP_ERROR" and out["passed"] is False
+
+
+# ── framework-agnostic ("tests actually ran") tests ───────────────────────────
+
+def run_acceptance(repo, vault):
+    """Wrapper: vault is the (vault_path, seal_id, digest) triple from make_vault."""
+    vault_path, seal_id, digest = vault
+    _, out = administer(vault_path, seal_id, digest, repo)
+    return out
+
+
+def test_non_pytest_green_suite_certifies(tmp_path):
+    """A non-pytest suite that exits 0 and emits the ranPattern must certify OK.
+    Suite scripts live in .ultra-acceptance/ (the sealed suite dir); runCmd must
+    reference them via that path from the exam worktree root."""
+    repo = make_repo(tmp_path, feature_built=True)
+    vault = make_vault(tmp_path, run_cmd="bash .ultra-acceptance/run.sh",
+                       framework="generic", ran_pattern=r"[0-9]+ passed",
+                       suite_files={"run.sh": 'echo "1 passed"; exit 0\n'})
+    res = run_acceptance(repo, vault)
+    assert res["status"] == "OK" and res["passed"] is True
+
+
+def test_non_pytest_red_suite_is_assertion(tmp_path):
+    """A non-pytest suite that exits non-zero and emits the ranPattern is redKind assertion."""
+    repo = make_repo(tmp_path, feature_built=False)
+    vault = make_vault(tmp_path, run_cmd="bash .ultra-acceptance/run.sh",
+                       framework="generic", ran_pattern=r"[0-9]+ (passed|failed)",
+                       suite_files={"run.sh": 'echo "1 failed"; exit 1\n'})
+    res = run_acceptance(repo, vault)
+    assert res["passed"] is False and res["redKind"] == "assertion"
