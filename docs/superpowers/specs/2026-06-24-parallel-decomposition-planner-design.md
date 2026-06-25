@@ -1,7 +1,15 @@
 # Parallel-Decomposition Planner — Design
 
 **Date:** 2026-06-24
-**Status:** Approved, ready for planning
+**Status:** Implemented (PR #57). **Amended 2026-06-24 (post-merge):** the eval
+deliverable described below — the micro-loop scorers, `evals/planning-fixtures/`,
+and their tests — was **removed** so the distributed plugin requires no Anthropic
+API key (those scripts called the API directly via the SDK; see PR
+`chore/remove-api-eval-tooling`). The shipped planner (the ultraplan shaping phase +
+justification gate + recorded rationale) is unchanged; its honesty now rests on the
+in-repo mechanisms — the self-review gate, the min-work-size rule, and the
+**recommender as scorecard** — not on a committed eval. The eval sections below are
+retained as design history.
 
 ## Problem
 
@@ -38,8 +46,9 @@ recommender ships first so it can measure the planner's output.
 ## Goal
 
 ultraplan reveals genuine latent parallelism in plans it helps author, without
-manufacturing artificial breadth, and the claim is verified by an eval — not
-asserted.
+manufacturing artificial breadth, defended by the justification gate, the
+min-work-size rule, and the recommender scorecard. (The originally-planned committed
+eval was removed post-merge — see the amendment note above.)
 
 ## Non-goals
 
@@ -197,6 +206,7 @@ Grow ultraplan from an annotator into a decomposition shaper: a five-move phase
 that reveals latent independence and may reshape architecture (contract-first,
 seam-splitting) under a justification gate, with surviving moves recording an
 auditable rationale. Honesty is defended in depth (self-review gate, min-size
-rule, recommender scorecard, operator audit) and *proven* by a micro-loop eval
-whose ground-truth-width ceiling catches manufactured breadth structurally. All
-prompt-and-eval work, one plan's worth, `suite` acceptance.
+rule, recommender scorecard, operator audit). (A micro-loop eval was originally
+shipped to *prove* this structurally, then removed post-merge to keep the plugin
+API-key-free — see the amendment note.) All prompt work, one plan's worth, `suite`
+acceptance.

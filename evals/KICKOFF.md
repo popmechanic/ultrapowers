@@ -51,8 +51,6 @@ Procedure — walk me through it one run at a time, waiting for my numbers betwe
 
 Constraints:
 
-- Do NOT run `evals/scripts/judge.py` — it spends real API dollars. Judging is
-  deferred until more cells exist.
 - If my `/usage` weekly figure crosses 50%, stop scheduling runs for this week.
 - If a harness SCRIPT errors, fix the script and commit the fix; never touch
   fixtures, plans, or acceptance tests.

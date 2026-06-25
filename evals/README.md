@@ -62,8 +62,8 @@ C ≈ $25–35; the degrade fixture runs much cheaper).
 
 **Budget — subscription plans (Max):** marginal cash cost ≈ $0; the binding constraint
 is **plan capacity**, and the 7-day limit is the ceiling that matters for a matrix this
-size. The only out-of-pocket spend is the judge (`judge.py` calls the API directly with
-a key): ~36 pairwise judgments ≈ **$10–30 total**.
+size. All runs execute inside Claude Code sessions (`claude -p`), so there is no
+out-of-pocket API spend — the harness contains no script that calls the API directly.
 
 Capacity-safe schedule:
 
@@ -230,36 +230,7 @@ repetitions map them as follows:
 | Cost | USD per run | `/cost`, recorded at session end |
 | Clock | seconds, launch → pre-merge gate | prepare timestamp → scoring (or `--wall-clock-s`) |
 | Quality 1 | held-out acceptance pass rate | `score_run.py` (primary quality number) |
-| Quality 2 | blinded pairwise judge win rate | `judge.py` (frozen rubric, randomized order) |
-| Quality 3 | reliability counters: fix rounds, blocked tasks, human redirects | end-of-run report |
-
-## Judging
-
-Automated, blinded, pairwise:
-
-```sh
-export ANTHROPIC_API_KEY=...
-python3 evals/scripts/judge.py --fixture wide --cond-a A --cond-b B
-```
-
-The judge (a fresh-context `claude-opus-4-8`) sees the plan and two anonymized diffs in
-randomized order and returns a structured verdict on four criteria: correctness, plan
-fidelity, scope discipline, code quality. Results append to `evals/results/judgments.jsonl`.
-
-**Judge reliability** (no human code review — the operator is not expected to
-read diffs; this replaces the original human calibration pass): two automated
-checks stand in. (a) The self-pair smoke test: judging a diff against itself
-must return `tie` (see `JUDGE_KICKOFF.md` step 4). (b) The order-swap
-stability check:
-
-```sh
-python3 evals/scripts/judge.py --check-stability
-```
-
-re-judges every recorded pair with the two diffs presented in the opposite
-order — position bias is the dominant known failure mode of pairwise LLM
-judges. Results append to `evals/results/stability.jsonl`; read any flipped
-verdict as a tie when interpreting win rates.
+| Quality 2 | reliability counters: fix rounds, blocked tasks, human redirects | end-of-run report |
 
 ## Reporting
 
@@ -269,7 +240,7 @@ python3 evals/scripts/report.py
 
 Emits the per-fixture × condition table, partitioned by engine version (median cost,
 median clock, acceptance pass rate, suite green rate, **plan coverage**, **engine
-version**, fix rounds) plus judge win rates.
+version**, fix rounds).
 
 ## Validity notes
 
@@ -302,32 +273,6 @@ shows median coverage and flags any cell that is suite-green but coverage < 100%
   indicative, cost and acceptance rate as the hard numbers.
 - One eval, five fixtures — this measures *this* task distribution. Real-repo validity
   is a follow-up, not a freebie.
-
-## Micro-test loop (prompt-phrasing tuning before full runs)
-
-The 45-cell matrix is the expensive, slow instrument. Before spending a single
-matrix run on a prompt change, tune the **phrasing** with the micro-test loop —
-one API call per sample, programmatic scoring, seconds and ~$0.15–0.30 per
-sample:
-
-```sh
-evals/scripts/run-micro.py --variants variants.json --scorer json_object \
-    --samples samples.json --n 5
-```
-
-`variants.json` is a list of `{name, instruction}` phrasings; `samples.json` is a
-list of sample dicts; `--scorer` names a programmatic check (`json_object`,
-`nonempty`, …) registered in `SCORERS`. The loop prints each variant's **mean**
-and **variance**.
-
-**It always runs a no-guidance control.** A `control-no-guidance` variant (empty
-instruction) is injected automatically and sorted to the top. That control is the
-bar every phrasing must clear: the v6 work measured that a *prohibition* on output
-shape can score **below** saying nothing at all. The rule that follows —
-**positive recipe, not prohibition** — is exactly what this loop is for. Use it to
-tune the baked reviewer/implementer contracts (§2.4) before committing to a full
-run. The model call is injected, so the scorer and aggregation are unit-tested
-offline in `tests/test_run_micro.py`.
 
 ## Re-freeze protocol (when engine behavior changes)
 
