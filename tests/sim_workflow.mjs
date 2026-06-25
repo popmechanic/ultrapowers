@@ -2197,7 +2197,56 @@ async function scenarioCoverageAndMissingDeliverables() {
   console.log('scenario coverage-and-missing-deliverables: OK')
 }
 
+// ── Scenario: git-verified ground truth + visual-eyeball channel (#29 hard gate) ─
+// The completeness critic confirms (via its own `git rev-parse HEAD`) that it
+// reviewed the recorded merge HEAD and reports it as `onIntegrationHead`; the
+// engine surfaces that as `gitVerified`. Deliverables that are present and
+// structurally complete but only confirmable in a browser surface under
+// `visualEyeballItems` so the operator's attention goes exactly there.
+async function scenarioGitVerifiedAndVisualEyeball() {
+  const WAVES = [[{ id: 'A', title: 'a', body: 'b', files: ['ui.tsx'] }]]
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label === 'impl:A') return { status: 'DONE', summary: 's', branch: 'wt-A', headSha: 'sha-A', commit: 'c-A' }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'mfinal', branches: ['A'] }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok',
+      findings: [], onIntegrationHead: true, visualEyeball: ['ui.tsx renders the new panel — verify in a browser'] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [] }, budget: undefined })
+  eq(r.gitVerified, true, 'gitVerified: critic confirmed it reviewed the merge HEAD')
+  assert(r.visualEyeballItems.some(v => /browser/i.test(v)), 'visualEyeballItems: browser item surfaced')
+  console.log('scenario git-verified-and-visual-eyeball: OK')
+}
+
+// ── Scenario: critic could NOT confirm it reviewed the recorded merge HEAD ─────
+// onIntegrationHead:false → gitVerified false AND a checkout-drift judgment call
+// (#29). The gate treats an unverified completeness review as BLOCKED.
+async function scenarioGitUnverifiedJudgmentCall() {
+  const WAVES = [[{ id: 'A', title: 'a', body: 'b', files: ['ui.tsx'] }]]
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label === 'impl:A') return { status: 'DONE', summary: 's', branch: 'wt-A', headSha: 'sha-A', commit: 'c-A' }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'mfinal', branches: ['A'] }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok',
+      findings: [], onIntegrationHead: false, visualEyeball: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [] }, budget: undefined })
+  eq(r.gitVerified, false, 'gitVerified: false when the critic could not confirm the merge HEAD')
+  eq(r.visualEyeballItems, [], 'visualEyeballItems: empty when none surfaced')
+  assert(r.judgmentCalls.some(j => /could NOT confirm|checkout drift|#29/i.test(j)),
+    'gitVerified false pushes a checkout-drift judgment call')
+  console.log('scenario git-unverified-judgment-call: OK')
+}
+
 await scenarioEscalateRecovers()
 await scenarioEscalateBounded()
 await scenarioCoverageAndMissingDeliverables()
+await scenarioGitVerifiedAndVisualEyeball()
+await scenarioGitUnverifiedJudgmentCall()
 console.log('ALL SCENARIOS PASSED')
