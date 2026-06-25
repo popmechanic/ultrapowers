@@ -219,6 +219,21 @@ def test_sweep_scoped_to_runid_spares_sibling_run(tmp_path):
     assert any("BBB" in b for b in branches(repo))
 
 
+def test_sweep_run_accepts_wf_prefixed_runid(tmp_path):
+    # The SKILL/run_lock identify a run as the wf_<id> transcript stem, while the
+    # globs prepend wf_ themselves; --run must accept BOTH wf_<id> and bare <id>,
+    # else a wf_-prefixed scope builds a wf_wf_<id>-* glob that silently sweeps 0.
+    repo = make_repo(tmp_path)
+    wt_a, _ = add_engine_worktree(repo, "AAA-9", "aaa9.txt", merge=True)
+    wt_b, _ = add_engine_worktree(repo, "BBB-9", "bbb9.txt", merge=True)
+    p = subprocess.run(["bash", str(SWEEP), "--run", "wf_AAA"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt_a.exists()                     # wf_-prefixed scope matched
+    assert wt_b.exists()                         # sibling run spared
+    assert "1 worktree(s) removed" in p.stdout
+
+
 def test_sweep_no_scope_is_repo_wide(tmp_path):
     repo = make_repo(tmp_path)
     wt_a, _ = add_engine_worktree(repo, "AAA-2", "aaa2.txt", merge=False)

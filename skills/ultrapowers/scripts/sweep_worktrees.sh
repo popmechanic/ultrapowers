@@ -57,6 +57,11 @@ fi
 if [ -z "$RUN_SCOPE" ] && [ -f "$ROOT/.claude/ultrapowers/RUN_LOCK" ]; then
   RUN_SCOPE="$(cat "$ROOT/.claude/ultrapowers/RUN_LOCK")"
 fi
+# --run / RUNID / RUN_LOCK may carry the wf_-prefixed transcript stem (wf_<id>)
+# or the bare <id>. The globs below prepend wf_ themselves, so strip a leading
+# wf_ to avoid a double-prefix glob (wf_wf_<id>-*) that matches nothing and
+# silently sweeps zero (confirmed 2026-06-25 — a wf_-prefixed --run no-op'd a run).
+RUN_SCOPE="${RUN_SCOPE#wf_}"
 
 is_locked() {
   git -C "$ROOT" worktree list --porcelain | awk -v wt="$1" '
