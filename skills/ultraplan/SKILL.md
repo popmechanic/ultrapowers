@@ -160,6 +160,11 @@ Example analysis lines:
 - `manual` — requires a human or another machine (credentials, hardware, owner
   action). Excluded from the waves; carried verbatim into the post-merge runbook.
 
+A task with no `writes` whose steps are build/verification-only (no implementation
+verb in its prose) compiles to `gate`, not `implementation` — otherwise its empty
+Files block would draw an ambiguous-files fan-in from every upstream task and force
+a serial tail. If a verification task is genuinely empty-Files, mark it `gate`.
+
 ## Authoring rules (the worktree-pure contract)
 
 Every `implementation` task must be a pure diff against the integration branch.

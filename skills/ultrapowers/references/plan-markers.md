@@ -115,7 +115,7 @@ the branch merges" — it does not recognize provider CLIs or other deploy idiom
 name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
 write paths plus any test-runner/lint/git-status mention in the prose" (an existence
 check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
-the phrase "on the deployment". All such classifications arrive flagged for
+the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — otherwise the empty Files block would draw an ambiguous-files fan-in from every upstream task and force a serial tail. All such classifications arrive flagged for
 re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
 precisely so the orchestrating agent re-judges them against the full contract above.
 

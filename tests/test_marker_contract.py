@@ -92,3 +92,11 @@ def test_contract_documents_compiler_manual_and_gate_heuristics():
     # heuristic itself omits; pin that claim specifically.
     assert "on the deployment" in doc, (
         "plan-markers.md no longer discloses the 'on the deployment' manual pattern")
+
+
+def test_contract_documents_empty_writes_gate_rule():
+    src = (ROOT / "skills/ultrapowers/scripts/compile_plan.py").read_text()
+    doc = (ROOT / "skills/ultrapowers/references/plan-markers.md").read_text()
+    # the empty-writes build/QA -> gate rule must be disclosed in the contract doc
+    assert "empty" in doc.lower() and "writes" in doc.lower() and "gate" in doc.lower()
+    assert "EMPTY_WRITES_GATE" in src  # the rule's named marker in the compiler
