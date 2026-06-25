@@ -151,3 +151,55 @@ def test_gate_report_extracts_real_report_skipping_decoy():
         'usage {"tokens":5}'}]}])]
     gr = h._gate_report(recs)
     assert gr is not None and gr["integrationBranch"] == "ultra/real"
+
+
+# --- engine epoch: map a run's launch time to the version current then. The
+# timeline is date-ordered so the 0.x → 0.0.x reset resolves correctly, and the
+# comparison must normalize a UTC 'Z' run stamp against git's numeric offset.
+TIMELINE = (
+    ("2026-06-11T07:00:00-07:00", "0.6.0"),   # 14:00Z
+    ("2026-06-11T12:00:00-07:00", "0.0.6"),   # 19:00Z — same-day reset, later
+    ("2026-06-14T09:00:00-07:00", "0.0.9"),
+    ("2026-06-25T00:54:35-07:00", "0.0.19"),
+)
+
+
+def _ts(stamp):
+    return {"type": "user", "timestamp": stamp, "message": {"role": "user", "content": []}}
+
+
+def test_engine_epoch_picks_latest_release_at_or_before_run():
+    out = h._engine_epoch([_ts("2026-06-20T10:00:00.000Z")], "home", TIMELINE)
+    assert out["epoch"] == "0.0.9"
+    assert out["basis"] == "home-repo-date"
+
+
+def test_engine_epoch_handles_version_reset_by_timestamp_not_semver():
+    # a run at 20:00Z on reset day is AFTER the 0.0.6 reset (19:00Z), not 0.6.0
+    out = h._engine_epoch([_ts("2026-06-11T20:00:00.000Z")], "home", TIMELINE)
+    assert out["epoch"] == "0.0.6"
+
+
+def test_engine_epoch_normalizes_utc_against_git_offset():
+    # 14:30Z is AFTER the 0.6.0 commit (14:00Z) but BEFORE 0.0.6 (19:00Z);
+    # naive string compare of '...-07:00' vs '...Z' would get this wrong
+    out = h._engine_epoch([_ts("2026-06-11T14:30:00.000Z")], "foreign", TIMELINE)
+    assert out["epoch"] == "0.6.0"
+    assert out["basis"] == "foreign-date-upper-bound"
+
+
+def test_engine_epoch_unknown_without_timestamp():
+    out = h._engine_epoch([_rec("user", [{"type": "text", "text": "no ts"}])], "home", TIMELINE)
+    assert out["epoch"] is None and out["basis"] == "unknown"
+
+
+def test_build_bundle_includes_engine_version(tmp_path):
+    session = tmp_path / "sess.jsonl"
+    recs = [dict(REAL[0], timestamp="2026-06-20T10:00:00.000Z")] + REAL[1:]
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
+                         tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert "engineVersion" in bundle
+    assert set(bundle["engineVersion"]) == {"epoch", "asOf", "basis"}
+    assert bundle["engineVersion"]["basis"] == "foreign-date-upper-bound"

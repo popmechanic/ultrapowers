@@ -4,9 +4,12 @@ build per-run bundles into a local cache. Read-only and advisory: malformed or
 missing input is skipped with a diagnostic, never raised."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
+import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
@@ -201,6 +204,99 @@ def _transcript_dir(records):
     return candidates[-1]
 
 
+def _repo_root():
+    return Path(__file__).resolve().parents[3]
+
+
+def _to_dt(s):
+    """Parse an ISO8601 string (with 'Z' or numeric offset) to a tz-aware
+    datetime; None on failure. Needed because run timestamps are UTC 'Z' while
+    git %cI carries a numeric offset — string compare across them is wrong."""
+    if not isinstance(s, str):
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+@functools.lru_cache(maxsize=1)
+def _release_timeline():
+    """(iso_datetime, version) pairs, oldest-first, from the repo's
+    .claude-plugin/plugin.json history — the authoritative version-over-time map
+    (handles the 0.x → 0.0.x reset because it is date-ordered, not semver).
+    Advisory: returns () on any error (no git / not a repo)."""
+    root = _repo_root()
+    try:
+        log = subprocess.run(
+            ["git", "-C", str(root), "log", "--format=%H%x09%cI",
+             "--", ".claude-plugin/plugin.json"],
+            capture_output=True, text=True, timeout=30)
+        if log.returncode != 0:
+            return ()
+        rows = []
+        for line in log.stdout.splitlines():
+            h, _, dt = line.partition("\t")
+            if not h:
+                continue
+            show = subprocess.run(
+                ["git", "-C", str(root), "show", f"{h}:.claude-plugin/plugin.json"],
+                capture_output=True, text=True, timeout=30)
+            if show.returncode != 0:
+                continue
+            try:
+                ver = json.loads(show.stdout).get("version")
+            except json.JSONDecodeError:
+                ver = None
+            if ver:
+                rows.append((dt, ver))
+        rows.sort()  # oldest-first by ISO date
+        seen, timeline = set(), []
+        for dt, ver in rows:
+            if ver not in seen:           # keep each version's first appearance
+                seen.add(ver)
+                timeline.append((dt, ver))
+        return tuple(timeline)
+    except (OSError, subprocess.SubprocessError):
+        return ()
+
+
+def _run_timestamp(records):
+    """Earliest record timestamp (≈ when the run launched), or None."""
+    for r in records:
+        ts = r.get("timestamp") if isinstance(r, dict) else None
+        if isinstance(ts, str) and ts:
+            return ts
+    return None
+
+
+def _engine_epoch(records, origin, timeline=None):
+    """Resolve which ultrapowers version was current when the run launched.
+
+    home   → the repo epoch at that date (a self-dev run may be AT or slightly
+             AHEAD of it, since dev runs often install the repo-HEAD engine).
+    foreign→ an UPPER BOUND: the latest release by that date; the project's
+             installed plugin cache may lag behind it ("installed plugin lags
+             the repo"). Returns {epoch, asOf, basis}; epoch None if unknown."""
+    if timeline is None:
+        timeline = _release_timeline()
+    ts = _run_timestamp(records)
+    basis = "home-repo-date" if origin == "home" else "foreign-date-upper-bound"
+    run_dt = _to_dt(ts)
+    if run_dt is None or not timeline:
+        return {"epoch": None, "asOf": ts, "basis": basis if run_dt else "unknown"}
+    epoch = None
+    for dt, ver in timeline:              # oldest-first
+        rel_dt = _to_dt(dt)
+        if rel_dt is None:
+            continue
+        if rel_dt <= run_dt:
+            epoch = ver
+        else:
+            break
+    return {"epoch": epoch, "asOf": ts, "basis": basis}
+
+
 def build_bundle(session_path, project_slug, cache_dir, home_slug):
     try:
         records = _records(session_path)
@@ -211,11 +307,13 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     session_id = Path(session_path).stem
     run_id = hashlib.sha256(f"{project_slug}/{session_id}".encode()).hexdigest()[:16]
     tdir = _transcript_dir(records)
+    origin = classify_origin(project_slug, home_slug)
     bundle = {
         "runId": run_id,
         "sessionId": session_id,
         "projectSlug": project_slug,
-        "origin": classify_origin(project_slug, home_slug),
+        "origin": origin,
+        "engineVersion": _engine_epoch(records, origin),
         "planPath": _plan_path(records),
         "transcriptDir": tdir,
         "gateReport": _gate_report(records),
