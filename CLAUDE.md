@@ -22,7 +22,7 @@ ultrapowers extends (does not fork) superpowers.
 ## Commands
 
 ```bash
-python3 -m pytest        # the test gate (pytest.ini scopes it to tests/ + evals/scripts/tests/)
+python3 -m pytest        # the test gate (pytest.ini scopes it to tests/)
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers   # validate a skill dir
 python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # compile a marked plan to its waves
 ```
@@ -39,7 +39,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - `hooks/session_start.sh` — injects the plan-routing rule into every session and installs the harnesses.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
 - `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
-- `evals/` — a Python harness comparing execution engines (cost / clock / quality).
+- `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
+  test data by `tests/test_compile_plan.py` and `tests/test_fixture_seals.py`.
 
 ## How features are built here
 
