@@ -53,20 +53,36 @@ bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/check_engine_skew.sh \
 
 This preflight only applies when self-hosting (the repo root matches the plugin root's parent tree). In ordinary project use the cache is the correct engine; skip it.
 
-**Validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/.** v6 is unreleased; there is no installed cache to
-attest against yet, so the compat tripwire reads its contract tokens from that
-pinned snapshot (flip it to the live cache at the GA-FLIP SEAM in
-tests/test_superpowers_compat.py when v6 publishes). Check the installed version
-(the directory name under `~/.claude/plugins/cache/claude-plugins-official/superpowers/`).
-A different version is not a blocker — warn and continue: "ultrapowers was
-validated against the vendored Superpowers v6 snapshot (dev 08fc48c) in tests/fixtures/superpowers-v6/; you have <X>. If plan parsing or a handoff
-misbehaves, suspect upstream drift first (run `python3 -m pytest tests/test_superpowers_compat.py` in the ultrapowers repo to localize it)."
+**Superpowers compatibility preflight.** Before computing waves, verify the
+*active* superpowers still exposes the contract tokens ultrapowers depends on.
+Tested with superpowers 6.0.3 — the contract manifest lives in
+`skills/ultrapowers/scripts/superpowers_contract.py` (`TESTED_AGAINST`).
+The active install is the one Claude Code actually serves skills from — resolved
+from `enabledPlugins` + `installed_plugins.json`, **not** by listing a cache
+directory (an earlier check listed one hard-coded path and so read a *disabled*
+install's version). Run:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/check_superpowers_compat.py
+```
+
+Act on the result:
+
+- **Exit 0** — proceed. If it printed an `advisory:` line (your superpowers
+  version differs from the tested-against version but every contract token is
+  present), relay that line once and continue.
+- **Exit 0 with a skip notice** (superpowers not installed/resolvable) — proceed;
+  the workflow path does not depend on live superpowers.
+- **Non-zero** — a contract token ultrapowers depends on is missing. STOP and
+  surface a human gate: quote the missing tokens the script printed (file + token
+  + why) and ask the operator to confirm continuing despite the contract break,
+  or abort. Suspect upstream drift first;
+  `python3 -m pytest tests/test_superpowers_compat.py` localizes it in the
+  ultrapowers repo.
 
 **v6 plan signals:** v6 adds two optional plan blocks — `## Global Constraints` in
 the header and a per-task `**Interfaces:**` block (`- Consumes:` / `- Produces:`).
-The parser stays additive-tolerant: a v5 plan without them still compiles. This
-attestation only fixes which contract the tripwire checks; how `compile_plan.py`
-consumes the blocks is wired in the compiler tasks.
+The parser stays additive-tolerant: a v5 plan without them still compiles.
 
 Resolve `<plan-path>` (the argument to `/ultrapowers`). Verify it is a `superpowers:writing-plans`
 plan document. The current `writing-plans` template heads the file `# <Feature> Implementation Plan`
