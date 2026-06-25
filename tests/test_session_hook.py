@@ -105,3 +105,17 @@ def test_session_start_recommends_by_analysis_not_reflex():
     assert "risk override" in out
     # The old unconditional tag is absent.
     assert "(recommended for marked plans)" not in out
+
+
+def test_session_start_gcs_stale_workflow(tmp_path):
+    # pre-seed an orphan workflow not in the current manifest set; assert it's removed
+    import os
+    wf = tmp_path / ".claude" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "workflow.js").write_text("// stale 0.0.6 orphan\n")
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, p.stderr
+    assert not (wf / "workflow.js").exists()   # orphan GC'd
+    assert (wf / "waves.js").exists()          # current manifest survives
