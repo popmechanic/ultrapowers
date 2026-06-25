@@ -433,6 +433,15 @@ const TIER = Object.assign({}, DEFAULT_TIER, tierOverrides)
 // Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
 // (this map); normalize so both resolve. Unknown tiers fall back to standard.
 const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
+// Escalate a tier name one rung for the single post-error retry; the top tier
+// (and any unknown tier) retries in place, so every agent-error yields exactly
+// one retry. Mirrors the DEFAULT_TIER ladder; tierKey normalizes 'most-capable'.
+const TIER_LADDER = ['cheap', 'standard', 'mostCapable']
+const escalateTier = (t) => {
+  const i = TIER_LADDER.indexOf(tierKey(t))
+  if (i === -1) return 'mostCapable'
+  return TIER_LADDER[Math.min(i + 1, TIER_LADDER.length - 1)]
+}
 // Review / completeness roles always run at the strongest model, OVERRIDE-PROOF:
 // tierOverrides remap implementer tiers only — a weak reviewer's failure mode is
 // the silent false PASS, so it must never be downgradable. (Reconcile is a fixer,
@@ -539,25 +548,43 @@ const taskReviewProfile = (task) =>
 // A thrown agent() call (engine fault, schema failure, transient error) must
 // cost ONE task, never the run: parallel() is fail-fast, so an uncaught throw
 // in a 16-wide wave would reject the whole wave and lose the report.
+const resolvedModel = (name) => {
+  const v = Object.prototype.hasOwnProperty.call(TIER, tierKey(name)) ? TIER[tierKey(name)] : undefined
+  return (typeof v === 'string') ? v : TIER.standard
+}
 async function runTask(task, baseSha, siblings) {
   try {
     return await runTaskInner(task, baseSha, siblings)
   } catch (e) {
     const msg = String((e && e.message) || e)
-    judgmentCalls.push('task ' + task.id + ': agent error — ' + msg)
-    log('task ' + task.id + ' FAILED on agent error: ' + msg)
-    const safeTier = Object.prototype.hasOwnProperty.call(TIER, tierKey(task.tier))
-      ? TIER[tierKey(task.tier)] : undefined
-    return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
-             notes: msg, tier: (typeof safeTier === 'string') ? safeTier : TIER.standard,
-             review: taskReviewProfile(task), fixIterations: 0 }
+    // One bounded retry at a stronger tier: a cheap-tier implementer that trips
+    // the StructuredOutput contract (or a transient fault) recovers in place
+    // instead of failing the task and cascade-blocking its dependents.
+    const retryTier = escalateTier(task.tier)
+    judgmentCalls.push('task ' + task.id + ': agent error at ' + (task.tier || 'standard') +
+      ' — retrying once at ' + retryTier + ': ' + msg)
+    log('task ' + task.id + ' agent error — escalating to ' + retryTier)
+    try {
+      const res = await runTaskInner(task, baseSha, siblings, retryTier)
+      judgmentCalls.push('task ' + task.id + ': recovered after escalation to ' + retryTier)
+      return res
+    } catch (e2) {
+      const msg2 = String((e2 && e2.message) || e2)
+      judgmentCalls.push('task ' + task.id + ': agent error after escalation to ' + retryTier + ' — ' + msg2)
+      log('task ' + task.id + ' FAILED after escalation: ' + msg2)
+      return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
+               notes: msg2, tier: resolvedModel(retryTier),
+               review: taskReviewProfile(task), fixIterations: 0 }
+    }
   }
 }
-async function runTaskInner(task, baseSha, siblings) {
+async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // Own-string lookup only: a prototype name like 'constructor' must never
-  // resolve to an inherited function and ship as a model identifier.
-  const tierValue = Object.prototype.hasOwnProperty.call(TIER, tierKey(task.tier))
-    ? TIER[tierKey(task.tier)] : undefined
+  // resolve to an inherited function and ship as a model identifier. An
+  // escalation retry passes tierOverride, which supersedes task.tier here.
+  const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
+  const tierValue = Object.prototype.hasOwnProperty.call(TIER, tierKey(tierName))
+    ? TIER[tierKey(tierName)] : undefined
   const baseModel = (typeof tierValue === 'string') ? tierValue : TIER.standard
   // Run economics, reported per task so the pre-merge gate can judge cost vs. benefit.
   const economics = { tier: baseModel, review: taskReviewProfile(task) }

@@ -2122,4 +2122,53 @@ async function scenarioIntegrationReviewNull() {
 }
 
 await scenarioIntegrationReviewNull()
+
+// ── Scenario: tier escalation — first impl throws, retry at next tier succeeds ──
+async function scenarioEscalateRecovers() {
+  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]]
+  const implModels = []
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:')) {
+      implModels.push(opts.model)
+      if (implModels.length === 1) throw new Error('subagent completed without calling StructuredOutput')
+      return { status: 'DONE', summary: 's', branch: 'wt-A', headSha: 'sha-A', commit: 'c-A' }
+    }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: ONE, dependencyEdges: [] }, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'done', 'escalate: task A recovered to done (got ' + JSON.stringify(a) + ')')
+  eq(implModels[0], 'haiku', 'escalate: first attempt ran at cheap/haiku')
+  eq(implModels[1], 'sonnet', 'escalate: retry ran at escalated standard/sonnet')
+  assert(r.judgmentCalls.some((j) => /escalat/i.test(j) && j.includes('A')), 'escalate: escalation recorded in judgmentCalls')
+  console.log('scenario escalate-recovers: OK')
+}
+
+// ── Scenario: escalation bounded — two throws → task fails (exactly one retry) ──
+async function scenarioEscalateBounded() {
+  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]]
+  let implCount = 0
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:')) { implCount++; throw new Error('persistent agent error') }
+    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm' }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: ONE, dependencyEdges: [] }, budget: undefined })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'failed' && a.reviewVerdict === 'agent-error', 'bounded: task A failed after retry (got ' + JSON.stringify(a) + ')')
+  eq(implCount, 2, 'bounded: exactly one retry — 2 impl attempts (got ' + implCount + ')')
+  console.log('scenario escalate-bounded: OK')
+}
+
+await scenarioEscalateRecovers()
+await scenarioEscalateBounded()
 console.log('ALL SCENARIOS PASSED')
