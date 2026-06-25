@@ -13,7 +13,12 @@
 #
 # Locked worktrees (possibly a live run's state) are kept by default and
 # reported; pass --force to remove them too (and force-delete unmerged branches,
-# as before). Concurrent runs in one repo remain unsupported.
+# as before).
+#
+# Pass --run <runId> to scope removal to a single run's worktrees and branches
+# (.claude/worktrees/wf_<runId>-* and worktree-wf_<runId>-*).  When --run is
+# not given, RUNID env var is consulted, then the RUN_LOCK file; if none is
+# set, the existing repo-wide wf_* behavior is preserved unchanged.
 set -euo pipefail
 
 # The MAIN worktree is the first entry of `git worktree list --porcelain`.
@@ -26,10 +31,31 @@ ROOT="$(git worktree list --porcelain | head -1 | sed 's/^worktree //')"
 if [ ! -e "$ROOT/.claude" ]; then
   ROOT="$(git rev-parse --show-toplevel)"
 fi
-FORCE="${1:-}"
-if [ -n "$FORCE" ] && [ "$FORCE" != "--force" ]; then
-  echo "usage: sweep_worktrees.sh [--force]" >&2
-  exit 2
+
+FORCE=""
+RUN_SCOPE=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) FORCE="--force" ;;
+    --run)
+      shift
+      RUN_SCOPE="${1:?--run requires a runId argument}"
+      ;;
+    *)
+      echo "usage: sweep_worktrees.sh [--run <runId>] [--force]" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+# Fall back to RUNID env or RUN_LOCK file when --run not given
+if [ -z "$RUN_SCOPE" ] && [ -n "${RUNID:-}" ]; then
+  RUN_SCOPE="$RUNID"
+fi
+if [ -z "$RUN_SCOPE" ] && [ -f "$ROOT/.claude/ultrapowers/RUN_LOCK" ]; then
+  RUN_SCOPE="$(cat "$ROOT/.claude/ultrapowers/RUN_LOCK")"
 fi
 
 is_locked() {
@@ -41,7 +67,15 @@ is_locked() {
 
 removed_worktrees=0
 kept_worktrees=0
-for wt in "$ROOT"/.claude/worktrees/wf_*; do
+# Build glob suffix: scoped = "<runId>-*"; unscoped = "*" (repo-wide, back-compat)
+if [ -n "$RUN_SCOPE" ]; then
+  WT_SUFFIX="${RUN_SCOPE}-*"
+  BR_PATTERN="worktree-wf_${RUN_SCOPE}-*"
+else
+  WT_SUFFIX="*"
+  BR_PATTERN="worktree-wf_*"
+fi
+for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
   [ -e "$wt" ] || continue
   # A lock marks possibly-live state (a concurrent run, an untriaged redirect):
   # keep it unless the caller explicitly forces. The branch survives too —
@@ -88,6 +122,6 @@ while IFS= read -r br; do
       echo "kept (unmerged — failed/blocked work; --force to delete): $br"
     fi
   fi
-done < <(git -C "$ROOT" branch --list 'worktree-wf_*' --format='%(refname:short)')
+done < <(git -C "$ROOT" branch --list "$BR_PATTERN" --format='%(refname:short)')
 
 echo "swept: $removed_worktrees worktree(s) removed, $deleted branch(es) deleted, $kept kept, $kept_worktrees locked worktree(s) kept"
