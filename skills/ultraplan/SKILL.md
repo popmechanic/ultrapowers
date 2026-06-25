@@ -71,6 +71,12 @@ immediately after the task heading — a marker after a description paragraph (o
 anywhere later) is ignored and surfaced as a conflict in the wave-plan
 transparency render.
 
+A plan carrying **no markers at all** still compiles, but every disposition is
+guessed: the compiler sets `allHeuristic` and the Step-3 transparency render
+flags it with **`0 markers — all dispositions inferred`**, so the operator knows
+the entire wave plan rests on heuristics rather than an authored contract. Mark
+your tasks to replace those guesses with a trusted classification.
+
 ## Replace the plan header
 
 writing-plans mandates this header line on every plan:

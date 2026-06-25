@@ -1875,3 +1875,98 @@ def test_empty_writes_buildqa_task_classifies_as_gate():
     assert t2["disposition"] == "gate"
     assert "2" in out["gates"]
     assert "2" not in [e["to"] for e in out["dag_edges"] if e.get("why", "").startswith("ambiguous")]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: compiler diagnostics — description-inferred edge class, 0-markers
+# flag, gate-heading boundary, absence-assertion lint.
+# (A `# Plan: …` title line precedes each marked plan so compile_plan_text's
+# waiver injection — after line 0 — lands at plan level, not inside Task 1's
+# marker header block; this mirrors the convention used throughout this file.)
+# ---------------------------------------------------------------------------
+
+def test_description_inferred_edge_has_distinct_kind():
+    plan = '''# Plan: description-inferred edge
+
+### Task 1: Ledger
+**Type:** implementation
+
+**Files:**
+- Create: `merge_ledger.py`
+
+- [ ] write it
+
+### Task 2: Reader
+**Type:** implementation
+
+**Files:**
+- Create: `reader.py`
+
+**Interfaces:**
+- Produces: a reader that complements `merge_ledger.py` by role.
+
+- [ ] write it
+'''
+    out = compile_plan_text(plan)
+    desc_edges = [c for c in out["marker_conflicts"] if c.get("kind") == "description-inferred"]
+    assert desc_edges, "a backticked filename in a description must warn as description-inferred"
+
+
+def test_zero_markers_plan_flags_all_heuristic():
+    plan = '''# Plan: zero markers
+
+### Task 1: A
+**Files:**
+- Create: `a.py`
+
+- [ ] do
+
+### Task 2: B
+**Files:**
+- Create: `b.py`
+
+- [ ] do
+'''
+    out = compile_plan_text(plan)
+    assert out["allHeuristic"] is True
+    assert any("0 markers" in c["note"] or "all dispositions inferred" in c["note"]
+               for c in out["marker_conflicts"])
+
+
+def test_non_task_gate_heading_is_a_boundary():
+    plan = '''# Plan: boundary fixture
+
+### Task 1: Build
+**Type:** implementation
+
+**Files:**
+- Create: `a.py`
+
+- [ ] do
+
+## Final Gate
+**Type:** gate
+**Depends-on:** 1
+
+- [ ] run pytest
+'''
+    out = compile_plan_text(plan)
+    # the gate heading's markers must NOT fold into Task 1 as stray-marker conflicts
+    assert not any(c.get("task") == "1" and "outside the header block" in c["note"]
+                   for c in out["marker_conflicts"])
+
+
+def test_absence_assertion_self_contradiction_is_linted():
+    plan = '''# Plan: absence assertion
+
+### Task 1: Add banner
+**Type:** implementation
+
+**Files:**
+- Modify: `app.py`
+
+- [ ] Insert the literal text `LEGACY_FLAG` into app.py.
+- [ ] Verify: `grep LEGACY_FLAG app.py` returns no matches.
+'''
+    out = compile_plan_text(plan)
+    assert any(c.get("kind") == "absence-assertion" for c in out["marker_conflicts"])

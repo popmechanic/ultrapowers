@@ -116,6 +116,11 @@ IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\
 # miss ("run the full build and the QA acceptance check").
 BUILDQA_EV = re.compile(
     r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
+# Absence-assertion lint ([a2fade95c36b2357]). An INSERT step writes a literal
+# token; a later ABSENCE assertion greps for it and expects nothing — a vacuous
+# self-contradiction the verification can never pass.
+INSERT_STEP = re.compile(r"\b(insert|add the literal|write the text)\b", re.I)
+ABSENCE_PHRASE = re.compile(r"no matches|returns nothing|\babsent\b", re.I)
 
 
 def _has_implementation_prose(prose):
@@ -163,18 +168,35 @@ def _fence_aware_lines(text):
         yield line, bool(stack)
 
 
+# A non-`### Task` heading that NAMES a gate/acceptance SECTION (`## Final Gate`,
+# `## Acceptance exam`) is a section boundary, not task content: it CLOSES the
+# current task so its `**Type:**`/`**Depends-on:**` markers no longer fold into
+# the preceding task's body as stray late_markers ([c682212cdeb736ad]). Task
+# headings (`### Task N:`) are matched FIRST in split_tasks, so a
+# `### Task 4: Suite gate` stays a task and is never treated as a boundary.
+GATE_SECTION_HEAD = re.compile(r"^#{1,4}\s+.*\b(gate|acceptance)\b", re.I)
+
+
 def split_tasks(text):
     lines = list(_fence_aware_lines(text))
-    heads = []
+    heads, gate_boundaries = [], []
     for i, (line, fenced) in enumerate(lines):
         if fenced:
             continue
         h = match_head(line)
         if h:
             heads.append((h.group(1), h.group(2).strip(), i))
+        elif GATE_SECTION_HEAD.match(line.strip()):
+            # A recognized non-task gate/acceptance section: captured only as a
+            # boundary that ends the preceding task (it writes nothing — its
+            # content is excluded from every task body).
+            gate_boundaries.append(i)
     tasks = []
     for n, (tid, title, start) in enumerate(heads):
-        end = heads[n + 1][2] if n + 1 < len(heads) else len(lines)
+        next_head = heads[n + 1][2] if n + 1 < len(heads) else len(lines)
+        # End at the next task heading OR the first gate/acceptance section
+        # boundary that opens after this task starts — whichever comes first.
+        end = min([next_head] + [b for b in gate_boundaries if start < b < next_head])
         body = "\n".join(l for l, _ in lines[start:end]).strip()
         tasks.append({"id": tid, "title": title, "body": body, "order": n})
     return tasks
@@ -430,8 +452,21 @@ def parse_task(t):
     # task TITLED "cleanup after Task 1 lands" would otherwise fabricate a real
     # text edge. Prose BETWEEN headings still folds into the preceding task's
     # body and stays scanned; only the heading line itself is excluded.
-    prose = "\n".join(line for line, fenced in _fence_aware_lines(t["body"])
-                      if not fenced and not TASK_HEAD.match(line))
+    prose_lines = [line for line, fenced in _fence_aware_lines(t["body"])
+                   if not fenced and not TASK_HEAD.match(line)]
+    prose = "\n".join(prose_lines)
+    # Region split for the prose-reference tier: everything BEFORE the first
+    # `- [ ]` checkbox step is the DESCRIPTION region (markers, `**Files:**`,
+    # `**Interfaces:**` Produces/Consumes, description paragraphs); from the first
+    # checkbox on is the STEP region. A backticked sibling-file name appearing
+    # ONLY in the description region injects a phantom serializing edge
+    # ([108894a8435da7c7]) — the prose-reference tier warns it as
+    # kind="description-inferred" rather than the procedural kind="inference".
+    desc_lines, step_lines, in_steps = [], [], False
+    for line in prose_lines:
+        if not in_steps and re.match(r"^\s{0,3}- \[", line):
+            in_steps = True
+        (step_lines if in_steps else desc_lines).append(line)
 
     t.update(marker_type=ttype, type_unparsed=type_unparsed,
              # ids win over a contradictory `none` (the none assertion is void
@@ -444,7 +479,9 @@ def parse_task(t):
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
              interfaces={"consumes": consumes, "produces": produces},
-             files_ambiguous=files_ambiguous, prose=prose)
+             files_ambiguous=files_ambiguous, prose=prose,
+             prose_desc="\n".join(desc_lines),
+             prose_steps="\n".join(step_lines))
     return t
 
 
@@ -557,6 +594,24 @@ def prose_references(creator_paths, prose):
                   and tok.startswith(stem + ".")):
                 hits.add(path)
     return hits
+
+
+def _desc_field_label(creator_paths, desc_text):
+    """A human label for the description-region field that backticks one of
+    creator_paths — used to name the field in a description-inferred warning."""
+    for line in desc_text.splitlines():
+        if not prose_references(creator_paths, line):
+            continue
+        low = line.strip().lower()
+        if "produces" in low:
+            return "a `Produces:` interface field"
+        if "consumes" in low:
+            return "a `Consumes:` interface field"
+        if (low.startswith("**files") or FILE_LINE.match(line.strip())
+                or FILE_ISH.match(line.strip())):
+            return "a `**Files:**` entry"
+        return "a description paragraph"
+    return "a description/Interfaces field"
 
 
 # Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
@@ -761,7 +816,9 @@ def build_edges(impl):
         for b in impl:
             if a["id"] == b["id"]:
                 continue
-            hits = prose_references(a["creates"], b["prose"])
+            desc_hits = prose_references(a["creates"], b["prose_desc"])
+            step_hits = prose_references(a["creates"], b["prose_steps"])
+            hits = desc_hits | step_hits
             if hits and not would_cycle(a["id"], b["id"]):
                 before = len(edges)
                 add(a["id"], b["id"], "prose-reference")
@@ -770,16 +827,34 @@ def build_edges(impl):
                     # with the "Depends-on: none overridden" note that add() may have
                     # emitted for the same edge (both use (task, edge) as the dedup
                     # key; without the prefix the conflict_seen guard would drop one).
-                    add_conflict(
-                        b["id"],
-                        "inferred: " + a["id"] + " -> " + b["id"] + " (prose-reference)",
-                        "prose-reference edge inferred: task prose references "
-                        + ", ".join(sorted(hits)[:3])
-                        + " created by Task " + a["id"]
-                        + " — declare **Depends-on:** " + a["id"]
-                        + " to make it explicit (or rewrite the mention if it is "
-                        "not a real dependency)",
-                        kind="inference")
+                    edge = "inferred: " + a["id"] + " -> " + b["id"] + " (prose-reference)"
+                    if desc_hits and not step_hits:
+                        # The reference lives ONLY in a description/Interfaces
+                        # field (no step body uses it): a backticked filename
+                        # there injects a phantom serializing edge — a distinct,
+                        # softer warning class than a procedural step reference.
+                        field = _desc_field_label(a["creates"], b["prose_desc"])
+                        add_conflict(
+                            b["id"], edge,
+                            "description-inferred edge: Task " + b["id"] + "'s "
+                            + field + " backticks "
+                            + ", ".join(sorted(desc_hits)[:3])
+                            + " created by Task " + a["id"]
+                            + " — a filename in a description/Interfaces field "
+                            "injects a serializing edge; declare **Depends-on:** "
+                            + a["id"] + " if it is a real dependency, or rewrite "
+                            "the mention if it is not",
+                            kind="description-inferred")
+                    else:
+                        add_conflict(
+                            b["id"], edge,
+                            "prose-reference edge inferred: task prose references "
+                            + ", ".join(sorted(hits)[:3])
+                            + " created by Task " + a["id"]
+                            + " — declare **Depends-on:** " + a["id"]
+                            + " to make it explicit (or rewrite the mention if it is "
+                            "not a real dependency)",
+                            kind="inference")
 
     # Tier 3: Document-order heuristics — yield to any opposing earlier PATH.
     # Each tier-3 edge is reachability-checked against everything added before it
@@ -1001,6 +1076,31 @@ def main(argv=None):
          "note": "Depends-on: none combined with concrete ids — the ids win; "
                  "the none assertion is ignored"}
         for t in tasks if t.get("deps_mixed")]
+    # Absence-assertion self-contradiction ([a2fade95c36b2357]): a task INSERTS a
+    # literal token (an `Insert`/`add the literal`/`write the text` step that
+    # backticks it) and a LATER step asserts that token ABSENT (a `grep …` paired
+    # with "no matches"/"returns nothing"/"absent"). The verification can never
+    # pass. Conservative: a token must appear in BOTH an insert step and an
+    # absence assertion of the same task, and the assertion must come after the
+    # insert (processing the body in order enforces "later").
+    for t in tasks:
+        inserted, flagged = {}, set()
+        for line in t["prose"].splitlines():
+            if INSERT_STEP.search(line):
+                for tok in PATH_RE.findall(line):
+                    inserted.setdefault(tok, True)
+            if "grep" in line.lower() and ABSENCE_PHRASE.search(line):
+                for tok in sorted(inserted):
+                    if tok in flagged:
+                        continue
+                    if re.search(r"\b" + re.escape(tok) + r"\b", line):
+                        flagged.add(tok)
+                        type_conflicts.append({"task": t["id"], "edge": "",
+                            "kind": "absence-assertion",
+                            "note": "task " + t["id"] + " inserts `" + tok
+                                    + "` and a later step asserts it absent — a "
+                                    "vacuous absence assertion (mirror the "
+                                    "sealed-exam RED-at-BASE proof)"})
 
     acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
@@ -1012,6 +1112,14 @@ def main(argv=None):
     if acceptance["mode"] == "missing":
         type_conflicts.append({"task": "", "edge": "",
                                "note": "acceptance: missing (unmarked plan — warning only)"})
+    # 0-markers: no task carries a trusted **Type:**/**Depends-on:** marker, so
+    # EVERY disposition was guessed. Surface it loudly (and expose `allHeuristic`
+    # on the result) so the Step-3 render can flag a heuristic-only wave plan.
+    if not marked:
+        type_conflicts.append({"task": "", "edge": "",
+            "kind": "all-heuristic",
+            "note": "0 markers — all dispositions inferred; the wave plan is "
+                    "heuristic-only"})
 
     impl = [t for t in tasks if t["disposition"] == "implementation"]
     if not impl:
@@ -1078,6 +1186,7 @@ def main(argv=None):
         "launch_waves": launch_waves,
         "mode": mode,
         "degrade_reason": degrade,
+        "allHeuristic": not marked,
         "acceptance": acceptance,
         "globalConstraints": global_constraints,
     }
