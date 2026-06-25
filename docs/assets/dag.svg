@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 710" width="980" height="710" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
+  <title id="t">How ultrapowers runs a plan: one plan fans out into parallel waves and back into one merged PR</title>
+  <desc id="d">A single approved plan fans out into Wave 1, four independent tasks that run in parallel, each in its own git worktree built by one agent and checked by an independent review. Wave 2 and Wave 3 hold tasks that each wait only for the upstream tasks they depend on, so the dependency edges cross between lanes. Every branch finally fans back in and merges into one pull request for a single human approval. Arrows point from a task to the work that depends on it.</desc>
+
+  <defs>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="1.3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="am" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6EE7D2"/>
+    </marker>
+    <marker id="aa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#F2B45B"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="978" height="708" rx="16" fill="#0E1726" stroke="#1F2D44" stroke-width="1.5"/>
+
+  <!-- wave grouping bands -->
+  <g>
+    <rect x="34" y="190" width="912" height="50" rx="11" fill="#9FB6D8" opacity="0.035"/>
+    <rect x="34" y="345" width="912" height="50" rx="11" fill="#9FB6D8" opacity="0.035"/>
+    <rect x="34" y="495" width="912" height="50" rx="11" fill="#9FB6D8" opacity="0.035"/>
+  </g>
+  <g font-size="11" letter-spacing="1.3" font-weight="600" fill="#6F86A6">
+    <text x="48" y="219">WAVE 1</text>
+    <text x="48" y="374">WAVE 2</text>
+    <text x="48" y="524">WAVE 3</text>
+  </g>
+
+  <!-- dependency edges (mint, arrow = direction of "is needed by") -->
+  <g fill="none" stroke="#6EE7D2" stroke-width="1.8" opacity="0.82" filter="url(#glow)">
+    <!-- fan out: plan -> wave 1 -->
+    <path d="M490 100 C490 155 160 147 160 202" marker-end="url(#am)"/>
+    <path d="M490 100 C490 155 390 147 390 202" marker-end="url(#am)"/>
+    <path d="M490 100 C490 155 590 147 590 202" marker-end="url(#am)"/>
+    <path d="M490 100 C490 155 820 147 820 202" marker-end="url(#am)"/>
+    <!-- wave 1 -> wave 2 (crossing dependencies) -->
+    <path d="M160 228 C160 283 250 302 250 357" marker-end="url(#am)"/>
+    <path d="M160 228 C160 283 440 302 440 357" marker-end="url(#am)"/>
+    <path d="M390 228 C390 283 250 302 250 357" marker-end="url(#am)"/>
+    <path d="M390 228 C390 283 440 302 440 357" marker-end="url(#am)"/>
+    <path d="M390 228 C390 283 620 302 620 357" marker-end="url(#am)"/>
+    <path d="M590 228 C590 283 620 302 620 357" marker-end="url(#am)"/>
+    <path d="M590 228 C590 283 800 302 800 357" marker-end="url(#am)"/>
+    <path d="M820 228 C820 283 800 302 800 357" marker-end="url(#am)"/>
+    <!-- wave 2 -> wave 3 -->
+    <path d="M250 383 C250 438 380 452 380 507" marker-end="url(#am)"/>
+    <path d="M440 383 C440 438 380 452 380 507" marker-end="url(#am)"/>
+    <path d="M620 383 C620 438 610 452 610 507" marker-end="url(#am)"/>
+    <path d="M800 383 C800 438 610 452 610 507" marker-end="url(#am)"/>
+  </g>
+
+  <!-- fan in: wave 3 -> one merged PR (amber) -->
+  <g fill="none" stroke="#F2B45B" stroke-width="2" opacity="0.9" filter="url(#glow)">
+    <path d="M380 533 C380 588 490 559 490 614" marker-end="url(#aa)"/>
+    <path d="M610 533 C610 588 490 559 490 614" marker-end="url(#aa)"/>
+  </g>
+
+  <!-- plan source (the single starting point) -->
+  <g>
+    <rect x="466" y="34" width="48" height="60" rx="6" fill="#16202E" stroke="#8FA6C4" stroke-width="1.5"/>
+    <path d="M502 34 L514 46 L502 46 Z" fill="#0E1726" stroke="#8FA6C4" stroke-width="1.5"/>
+    <g stroke="#42526E" stroke-width="2" stroke-linecap="round">
+      <line x1="476" y1="58" x2="504" y2="58"/><line x1="476" y1="68" x2="504" y2="68"/>
+      <line x1="476" y1="78" x2="496" y2="78"/>
+    </g>
+    <text x="458" y="58" text-anchor="end" fill="#9DB0CE" font-size="12.5" font-weight="600">your approved plan</text>
+    <text x="458" y="74" text-anchor="end" fill="#7E93B2" font-size="11">one starting point</text>
+  </g>
+
+  <!-- task nodes -->
+  <g>
+    <g><circle cx="160" cy="215" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="160" cy="215" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="390" cy="215" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="390" cy="215" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="590" cy="215" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="590" cy="215" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="820" cy="215" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="820" cy="215" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+
+    <g><circle cx="250" cy="370" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="250" cy="370" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="440" cy="370" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="440" cy="370" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="620" cy="370" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="620" cy="370" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="800" cy="370" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="800" cy="370" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+
+    <g><circle cx="380" cy="520" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="380" cy="520" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+    <g><circle cx="610" cy="520" r="13" fill="#16202E" stroke="#8FA6C4" stroke-width="1.6"/><circle cx="610" cy="520" r="5" fill="#6EE7D2" filter="url(#glow)"/></g>
+  </g>
+
+  <!-- merged PR sink (the single ending point) -->
+  <g>
+    <circle cx="490" cy="630" r="17" fill="#2A2113" stroke="#F2B45B" stroke-width="1.9"/>
+    <circle cx="490" cy="630" r="6.5" fill="#F2B45B" filter="url(#glow)"/>
+    <text x="516" y="627" fill="#F2D9A6" font-size="13" font-weight="600">one merged pull request</text>
+    <text x="516" y="643" fill="#7E93B2" font-size="11">your single human approval</text>
+  </g>
+
+  <!-- annotations -->
+  <g>
+    <!-- fan out -->
+    <path d="M188 154 C 232 153, 278 152, 323 151" fill="none" stroke="#6E84A6" stroke-width="1.3" stroke-dasharray="1 5"/>
+    <circle cx="323" cy="151" r="2.5" fill="#6E84A6"/>
+    <text x="44" y="138" fill="#9DB0CE" font-size="12" font-weight="600">fans out</text>
+    <text x="44" y="154" fill="#7E93B2" font-size="11">parallel tasks, each its</text>
+    <text x="44" y="169" fill="#7E93B2" font-size="11">own worktree + agent</text>
+
+    <!-- cross-dependency insight -->
+    <path d="M198 304 C 246 302, 284 300, 316 298" fill="none" stroke="#6E84A6" stroke-width="1.3" stroke-dasharray="1 5"/>
+    <circle cx="316" cy="298" r="2.5" fill="#6E84A6"/>
+    <text x="44" y="290" fill="#9DB0CE" font-size="12" font-weight="600">crossing edges</text>
+    <text x="44" y="306" fill="#7E93B2" font-size="11">each task waits only for</text>
+    <text x="44" y="321" fill="#7E93B2" font-size="11">what it actually needs</text>
+
+    <!-- review note -->
+    <path d="M762 458 C 712 476, 662 494, 618 508" fill="none" stroke="#6E84A6" stroke-width="1.3" stroke-dasharray="1 5"/>
+    <circle cx="618" cy="508" r="2.5" fill="#6E84A6"/>
+    <text x="936" y="430" text-anchor="end" fill="#9DB0CE" font-size="12" font-weight="600">checked, then merged</text>
+    <text x="936" y="446" text-anchor="end" fill="#7E93B2" font-size="11">an independent review gates</text>
+    <text x="936" y="461" text-anchor="end" fill="#7E93B2" font-size="11">every result before it counts</text>
+
+    <!-- fan in -->
+    <path d="M200 608 C 292 610, 386 615, 472 620" fill="none" stroke="#6E84A6" stroke-width="1.3" stroke-dasharray="1 5"/>
+    <circle cx="472" cy="620" r="2.5" fill="#6E84A6"/>
+    <text x="44" y="600" fill="#9DB0CE" font-size="12" font-weight="600">fans back in</text>
+    <text x="44" y="616" fill="#7E93B2" font-size="11">all branches converge on</text>
+    <text x="44" y="631" fill="#7E93B2" font-size="11">one branch you approve</text>
+  </g>
+
+  <!-- direction legend + brand -->
+  <g font-size="11">
+    <line x1="48" y1="678" x2="74" y2="678" stroke="#6EE7D2" stroke-width="1.8" marker-end="url(#am)"/>
+    <text x="84" y="682" fill="#5C6F8C">arrows point from a task to the work that depends on it</text>
+    <text x="936" y="690" text-anchor="end" fill="#3C4A63" letter-spacing="2" font-weight="600">ULTRAPOWERS</text>
+  </g>
+</svg>
