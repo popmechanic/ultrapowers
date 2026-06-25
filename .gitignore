@@ -10,3 +10,6 @@ __pycache__/
 .claude/worktrees/
 .claude/workflows/
 .claude/ultrapowers/
+
+# ultralearn local cache — raw bundles, slices, verbatim evidence (never committed)
+.claude/ultralearn/
