@@ -169,7 +169,10 @@ Render the transparency block from Step 2 for the human:
    near-miss spellings, dropped non-path Files tokens) as *needs attention*, and `kind: "inference"`
    entries (a write/prose edge that correctly overrode a `Depends-on: none`, an inferred
    prose-reference edge) as *informational inferences* — the latter are the compiler showing its work,
-   not problems to fix, so do not surface them as if they were.
+   not problems to fix, so do not surface them as if they were. When the compiler reports
+   `allHeuristic: true` (the plan carries zero `Type:`/`Depends-on:` markers), the render
+   shows **`0 markers — all dispositions inferred`** so the operator knows every disposition
+   was heuristic, not authored.
 6. **Acceptance disposition** — render the acceptance disposition: `sealed <seal-id>` or the verbatim waiver reason. The human approves it with the rest of the interpretation.
 
    When the disposition is `sealed`, present the exam's plain-English **coverage summary** (appended to the plan by the ultraplan sealing step) and give the operator this rubric for vouching — it needs **no code-reading**:
