@@ -79,13 +79,8 @@ def test_orchestrator_wires_the_hardening():
 
 def test_step3_render_documents_zero_marker_flag():
     # The all-heuristic surface ("0 markers — all dispositions inferred") must be
-    # documented for the operator. THIS task owns skills/ultraplan/SKILL.md (the
-    # authoring skill), where the flag is described; the orchestrator Step-3
-    # render lives in skills/ultrapowers/SKILL.md — a SIBLING-owned file this
-    # task must not modify. Accept the flag documented in either surface so the
-    # pin is green in isolation and remains green after integration.
-    texts = [(ROOT / "skills/ultraplan/SKILL.md").read_text()]
-    orchestrator = ROOT / "skills/ultrapowers/SKILL.md"
-    if orchestrator.exists():
-        texts.append(orchestrator.read_text())
-    assert any("all dispositions inferred" in t or "0 markers" in t for t in texts)
+    # documented in the orchestrator's Step-3 render section so an operator knows
+    # when every disposition was inferred rather than authored.
+    # skills/ultrapowers/SKILL.md owns the Step-3 render; assert it directly.
+    text = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
+    assert "all dispositions inferred" in text or "0 markers" in text
