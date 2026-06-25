@@ -83,6 +83,38 @@ def collect(path):
     return model, turns, out_tokens
 
 
+def audit(transcript_dir):
+    """Structured effort audit for one per-run engine transcript dir.
+
+    Advisory by contract: a missing/empty/drifted dir returns a dict with an
+    empty 'agents' list and a 'note' — never raises."""
+    d = Path(transcript_dir)
+    files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
+    if not files:
+        return {"agents": [], "totals": {"turns": 0, "outputTokens": 0},
+                "misrankCandidates": [], "note": f"no agent-*.jsonl under {transcript_dir}"}
+    agents = []
+    for f in files:
+        role = classify(first_user_text(f))
+        model, turns, out_tokens = collect(f)
+        agents.append({"role": role, "model": model, "turns": turns,
+                       "outputTokens": out_tokens})
+    agents.sort(key=lambda a: -a["turns"])
+    impls = [a for a in agents if a["role"].startswith("impl")]
+    by_model = {}
+    for a in impls:
+        by_model.setdefault(a["model"], []).append(a)
+    misrank = []
+    for group in by_model.values():
+        if len(group) < 2:
+            continue
+        med = statistics.median(a["turns"] for a in group)
+        misrank.extend(a for a in group if med and a["turns"] > 1.5 * med)
+    totals = {"turns": sum(a["turns"] for a in agents),
+              "outputTokens": sum(a["outputTokens"] for a in agents)}
+    return {"agents": agents, "totals": totals, "misrankCandidates": misrank}
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1:
