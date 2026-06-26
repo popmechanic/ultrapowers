@@ -313,9 +313,10 @@ async function scenarioPortability() {
   // testCmd threaded into the merge + integration/completeness prompts.
   assert(seen.mergeHadCmd, 'portability: testCmd threaded into merge prompt')
   assert(seen.integrationHadCmd, 'portability: testCmd threaded into integration prompt')
-  // ...and into the implementer/reviewer dispatches, so task agents don't guess.
+  // ...and into the implementer dispatch, so the building task agent doesn't guess.
   assert(seen.implHadCmd, 'portability: testCmd threaded into implementer dispatch')
-  assert(seen.reviewHadCmd, 'portability: testCmd threaded into reviewer dispatch')
+  // ...but NOT into the read-only reviewer, which never builds or tests (A1).
+  assert(!seen.reviewHadCmd, 'portability: testCmd NOT threaded into reviewer dispatch (read-only role)')
   assert(r.tasks.every((t) => t.status === 'done'), 'portability: all tasks done')
   console.log('scenario portability: OK')
 }
@@ -1913,12 +1914,13 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
     agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
     args, budget: undefined,
   })
-  // bootstrap threaded into the FRESH worktree roles…
+  // bootstrap threaded into the FRESH worktree role (only the implementer builds)…
   assert(/WORKTREE SETUP:.*bun install/.test(prompts['impl:A']),
     'bootstrap: impl carries the per-worktree setup command')
-  assert(/WORKTREE SETUP:/.test(prompts['review:A:1']),
-    'bootstrap: reviewer carries the per-worktree setup command')
-  // …but NOT the non-isolated roles (they run on the main checkout, deps present).
+  // …but NOT the non-isolated roles (they run on the main checkout, deps present) —
+  // the read-only reviewer is now one of them (A2): it only reads the diff.
+  assert(prompts['review:A:1'] && !/WORKTREE SETUP:/.test(prompts['review:A:1']),
+    'bootstrap: the read-only reviewer does NOT get the worktree-setup line')
   assert(prompts['merge:wave1'] && !/WORKTREE SETUP:/.test(prompts['merge:wave1']),
     'bootstrap: the merge agent does NOT get the worktree-setup line')
   assert(prompts['integration'] && !/WORKTREE SETUP:/.test(prompts['integration']),
@@ -2074,8 +2076,8 @@ async function scenarioWarmCacheBootstrap() {
     'warmCache: a cache miss (exit 3) falls through to the real bootstrapCmd')
   assert(/warm_cache\.sh populate/.test(prompts['impl:A']),
     'warmCache: after a real install the implementer populates the cache')
-  assert(/warm_cache\.sh restore/.test(prompts['review:A:1']),
-    'warmCache: reviewer bootstrap also tries the warm cache')
+  assert(prompts['review:A:1'] && !/warm_cache\.sh/.test(prompts['review:A:1']),
+    'warmCache: the read-only reviewer gets no worktree bootstrap (A2)')
   assert(prompts['merge:wave1'] && !/warm_cache\.sh/.test(prompts['merge:wave1']),
     'warmCache: the merge agent gets no worktree bootstrap')
   assert(prompts['integration'] && !/warm_cache\.sh/.test(prompts['integration']),

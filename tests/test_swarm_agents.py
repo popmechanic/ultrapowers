@@ -96,6 +96,54 @@ def test_status_carries_branch_commits(tmp_path):
     assert isinstance(c["sha"], str) and c["sha"]
 
 
+def test_snapshot_memoizes_per_branch_git_across_polls(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def g(*a):
+        return _run(["git", "-C", str(repo), *a])
+
+    g("init", "-q"); g("config", "commit.gpgsign", "false")
+    g("config", "user.name", "t"); g("config", "user.email", "t@t")
+    (repo / "f.txt").write_text("base\n"); g("add", "-A"); g("commit", "-qm", "baseline")
+    g("checkout", "-qb", "ultra/integration-test")
+    g("worktree", "add", "-q", "-b", "worktree-wf_impl-t4",
+      str(repo / ".claude/worktrees/wf_impl-t4"))
+    wt = repo / ".claude/worktrees/wf_impl-t4"
+    _run(["git", "config", "commit.gpgsign", "false"], cwd=wt)
+    (wt / "t4.txt").write_text("one\ntwo\n")
+    _run(["git", "add", "-A"], cwd=wt); _run(["git", "commit", "-qm", "feat: t4"], cwd=wt)
+
+    swarm_watch._BRANCH_CACHE.clear()
+
+    calls = {"per_branch": 0}
+    real_git = swarm_watch.git
+
+    def counting_git(r, *a):
+        if a[:2] == ("rev-list", "--count") or a[0] == "log":
+            calls["per_branch"] += 1
+        return real_git(r, *a)
+
+    real_run = swarm_watch.subprocess.run
+
+    def counting_run(cmd, *a, **k):
+        if isinstance(cmd, list) and "merge-base" in cmd:
+            calls["per_branch"] += 1
+        return real_run(cmd, *a, **k)
+
+    monkeypatch.setattr(swarm_watch, "git", counting_git)
+    monkeypatch.setattr(swarm_watch.subprocess, "run", counting_run)
+
+    snap1 = swarm_watch.snapshot(repo, "ultra/integration-test")
+    first = calls["per_branch"]
+    assert first >= 1, "first poll should run per-branch git"
+
+    calls["per_branch"] = 0
+    snap2 = swarm_watch.snapshot(repo, "ultra/integration-test")
+    assert calls["per_branch"] == 0, "unchanged branch must be served from cache"
+    assert snap1["branches"] == snap2["branches"], "memoized output must match a fresh poll"
+
+
 def test_watch_once_writes_agents_json(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

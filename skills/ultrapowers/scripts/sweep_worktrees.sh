@@ -63,11 +63,15 @@ fi
 # silently sweeps zero (confirmed 2026-06-25 — a wf_-prefixed --run no-op'd a run).
 RUN_SCOPE="${RUN_SCOPE#wf_}"
 
+# Compute the set of locked worktree paths ONCE (a single porcelain pass) instead
+# of re-running `git worktree list` for every worktree — the old per-worktree call
+# was O(N^2) in worktree count, worst exactly when a wide run left the most.
+LOCKED_PATHS="$(git -C "$ROOT" worktree list --porcelain | awk '
+  $1 == "worktree" { cur = substr($0, 10) }
+  $1 == "locked"   { print cur }')"
 is_locked() {
-  git -C "$ROOT" worktree list --porcelain | awk -v wt="$1" '
-    $1 == "worktree" { cur = substr($0, 10) }
-    $1 == "locked" && cur == wt { found = 1 }
-    END { exit !found }'
+  # Membership test against the precomputed newline-delimited set — no git call.
+  printf '%s\n' "$LOCKED_PATHS" | grep -Fxq -- "$1"
 }
 
 removed_worktrees=0

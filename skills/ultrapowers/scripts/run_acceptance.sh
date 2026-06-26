@@ -161,14 +161,32 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
   exit 1
 fi
 
-if ! RUN_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runCmd"])' "$MANIFEST" 2>/dev/null)" \
-   || [ -z "$RUN_CMD" ]; then
+# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
+# A missing/unreadable manifest or empty runCmd yields an empty first line, which
+# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
+read_manifest() {
+  python3 -c '
+import json, sys
+try:
+    m = json.load(open(sys.argv[1]))
+except Exception:
+    m = {}
+print(m.get("runCmd") or "")
+print(m.get("bootstrapCmd") or "")
+print(m.get("framework") or "pytest")
+print(m.get("ranPattern") or "")
+' "$1"
+}
+{ IFS= read -r RUN_CMD
+  IFS= read -r BOOTSTRAP_CMD
+  IFS= read -r FRAMEWORK
+  IFS= read -r RAN_PATTERN
+} < <(read_manifest "$MANIFEST")
+
+if [ -z "$RUN_CMD" ]; then
   emit ERROR false 1 "manifest missing or invalid runCmd: $MANIFEST"
   exit 1
 fi
-BOOTSTRAP_CMD="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("bootstrapCmd") or "")' "$MANIFEST" 2>/dev/null || true)"
-FRAMEWORK="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("framework") or "pytest")' "$MANIFEST" 2>/dev/null || echo "pytest")"
-RAN_PATTERN="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("ranPattern") or "")' "$MANIFEST" 2>/dev/null || true)"
 
 run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
 emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"

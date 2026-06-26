@@ -23,11 +23,23 @@ set -euo pipefail
   dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
   mkdir -p "$dest"
   installed_set=""
-  for m in "$harnesses"/*.harness.json; do
-    [ -e "$m" ] || continue
-    f="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")"
-    [ -n "$f" ] && [ -e "$harnesses/$f" ] && cp "$harnesses/$f" "$dest/$f"
-    [ -n "$f" ] && installed_set="$installed_set $f"
+  # One python3 pass lists every manifest's `file` (was one spawn per manifest).
+  files="$(python3 -c "
+import glob, json, os, sys
+for m in sorted(glob.glob(os.path.join(sys.argv[1], '*.harness.json'))):
+    try:
+        f = json.load(open(m)).get('file')
+    except Exception:
+        continue
+    if f:
+        print(f)
+" "$harnesses")"
+  for f in $files; do
+    [ -e "$harnesses/$f" ] || continue
+    # Skip the copy when the installed copy is byte-identical (the common no-change
+    # session) — avoids an unconditional 74KB write of waves.js every session start.
+    cmp -s "$harnesses/$f" "$dest/$f" 2>/dev/null || cp "$harnesses/$f" "$dest/$f"
+    installed_set="$installed_set $f"
   done
   # GC: remove any .js files in the workflows dir that are not in the current
   # manifest set — stale orphans from older plugin versions (e.g. workflow.js

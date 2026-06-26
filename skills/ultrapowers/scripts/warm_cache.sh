@@ -39,28 +39,13 @@ hash_lockfile() {
 clone_tree() {
   local src="$1" dst="$2"
   mkdir -p "$dst"
-  if cp_al_supported; then
-    cp -al "$src/." "$dst/"
-  else
-    cp -aR "$src/." "$dst/"
-  fi
-}
-
-_CP_AL=""
-cp_al_supported() {
-  if [ -z "$_CP_AL" ]; then
-    local probe src dst
-    probe="$(mktemp -d)"
-    src="$probe/s"; dst="$probe/d"
-    mkdir -p "$src"; : > "$src/f"
-    if cp -al "$src/." "$dst/" >/dev/null 2>&1; then
-      _CP_AL="yes"
-    else
-      _CP_AL="no"
-    fi
-    rm -rf "$probe"
-  fi
-  [ "$_CP_AL" = "yes" ]
+  # Try a hardlink-clone (near-instant); fall back to a deep copy when hardlinks
+  # are unsupported or cross-device (cache dir on a different filesystem than the
+  # worktree). Try-then-fallback instead of a probe: the old probe ran in $TMPDIR
+  # — possibly a different fs than the real cache->worktree clone — and, unguarded
+  # under `set -e`, a genuine cross-device `cp -al` ABORTED the whole restore. This
+  # attempts the real clone and recovers.
+  cp -al "$src/." "$dst/" 2>/dev/null || cp -aR "$src/." "$dst/"
 }
 
 cmd_restore() {

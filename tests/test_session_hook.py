@@ -119,3 +119,18 @@ def test_session_start_gcs_stale_workflow(tmp_path):
     assert p.returncode == 0, p.stderr
     assert not (wf / "workflow.js").exists()   # orphan GC'd
     assert (wf / "waves.js").exists()          # current manifest survives
+
+
+def test_session_start_install_is_idempotent():
+    with tempfile.TemporaryDirectory() as proj:
+        for _ in range(2):
+            p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
+                               capture_output=True, text=True,
+                               env={"CLAUDE_PROJECT_DIR": proj, "PATH": _path()})
+            assert p.returncode == 0, p.stderr
+        wf = pathlib.Path(proj) / ".claude" / "workflows"
+        for m in sorted((ROOT / "skills/ultrapowers/harnesses").glob("*.harness.json")):
+            spec = json.loads(m.read_text())
+            installed = wf / spec["file"]
+            assert installed.exists(), f"hook did not install {spec['file']}"
+            assert installed.read_text() == (ROOT / "skills/ultrapowers/harnesses" / spec["file"]).read_text()

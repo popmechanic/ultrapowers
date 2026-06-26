@@ -58,31 +58,54 @@ def worktrees(repo):
     return items
 
 
+# Memoize per-branch git results across polls, keyed by (branch sha, integration
+# sha). A branch whose sha hasn't moved (and whose integration base hasn't moved)
+# has identical ahead/merged/commits — recomputing rev-list/merge-base/log every
+# 2s poll is pure waste. Unbounded by design: bounded in practice by distinct shas.
+_BRANCH_CACHE = {}
+
+
 def snapshot(repo, integration):
     wts = worktrees(repo)
     wt_by_branch = {w.get("branch"): w for w in wts if w.get("branch")}
+
+    integ_sha = git(repo, "rev-parse", integration) if integration else ""
 
     branches = []
     out = git(repo, "for-each-ref", "--format=%(refname:short) %(objectname)",
               "refs/heads/worktree-wf_*")
     for line in out.splitlines():
         name, sha = line.split()
-        entry = {"name": name, "sha": sha, "ahead": 0, "merged": False,
-                 "worktree": (wt_by_branch.get(name) or {}).get("path", "")}
+        wt_path = (wt_by_branch.get(name) or {}).get("path", "")
         if integration:
-            ahead = git(repo, "rev-list", "--count", f"{integration}..{name}")
-            entry["ahead"] = int(ahead) if ahead.isdigit() else 0
-            entry["merged"] = subprocess.run(
-                ["git", "-C", str(repo), "merge-base", "--is-ancestor",
-                 name, integration], capture_output=True).returncode == 0
-        entry["commits"] = branch_commits(repo, integration, name)
+            key = (name, sha, integ_sha)
+            cached = _BRANCH_CACHE.get(key)
+            if cached is None:
+                ahead_s = git(repo, "rev-list", "--count", f"{integration}..{name}")
+                ahead = int(ahead_s) if ahead_s.isdigit() else 0
+                merged = subprocess.run(
+                    ["git", "-C", str(repo), "merge-base", "--is-ancestor",
+                     name, integration], capture_output=True).returncode == 0
+                commits = branch_commits(repo, integration, name)
+                cached = (ahead, merged, commits)
+                _BRANCH_CACHE[key] = cached
+            ahead, merged, commits = cached
+            entry = {"name": name, "sha": sha, "ahead": ahead, "merged": merged,
+                     "worktree": wt_path, "commits": commits}
+        else:
+            entry = {"name": name, "sha": sha, "ahead": 0, "merged": False,
+                     "worktree": wt_path, "commits": branch_commits(repo, integration, name)}
         branches.append(entry)
 
     integ = None
     if integration:
-        sha = git(repo, "rev-parse", integration)
-        subject = git(repo, "log", "-1", "--format=%s", integration)
-        integ = {"branch": integration, "sha": sha, "last_subject": subject}
+        # integ_sha already resolved above; memoize the log call so a second poll
+        # against an unchanged integration head skips the git log entirely.
+        integ_key = ("integ", integ_sha)
+        if integ_key not in _BRANCH_CACHE:
+            _BRANCH_CACHE[integ_key] = git(repo, "log", "-1", "--format=%s", integration)
+        integ = {"branch": integration, "sha": integ_sha,
+                 "last_subject": _BRANCH_CACHE[integ_key]}
     return {"branches": branches,
             "worktrees": [{"path": w["path"], "branch": w.get("branch", ""),
                            "locked": w.get("locked", False)} for w in wts],

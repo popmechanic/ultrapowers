@@ -212,9 +212,10 @@ const GUARD =
   'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
   'setup, merge, and reconcile roles the session repository main checkout, ' +
   'which those write-side roles may modify. Review roles (the per-task reviewer ' +
-  'and the completeness critic) are READ-ONLY: they operate on a detached ' +
-  'checkout and never write files, create commits, stage changes, or otherwise ' +
-  'mutate any tree — their only output is their report payload. You operate in ' +
+  'and the completeness critic) are READ-ONLY: they read the diff or a ' +
+  'detached inspection checkout and never write files, create commits, stage ' +
+  'changes, check out or switch a branch, or otherwise mutate a working tree — ' +
+  'their only output is their report payload. You operate in ' +
   "the workflow's launch working directory, the session repository; never " +
   'resolve to, check out, or detach a DIFFERENT primary checkout of the same ' +
   "repository — moving the user's primary checkout off its branch is a " +
@@ -251,10 +252,9 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Run git diff BASE...HEAD (BASE is provided in your inputs) and verify no unrelated files are modified.',
+  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared common git dir and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
+  '- Read the packet\'s ## Files changed section (the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, confirm every changed path is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
-  '- If FILES is present: confirm every file you created, modified, or deleted is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
-  '- As your final step, generate the review packet for your BASE...HEAD: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared common git dir and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
   '',
@@ -275,7 +275,7 @@ const REVIEWER_PROMPT = [
   'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
   '',
   'Spec compliance:',
-  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared common git dir). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff from live git on a DETACHED checkout of the implementer HEAD (git checkout --detach <HEAD> — the implementer branch is locked by its worktree, so do not check the branch out) and run git diff BASE...HEAD yourself.',
+  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared common git dir). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   'When FILES (the task\'s declared file scope) is provided: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; modifications outside FILES are blocking unless the task text plainly requires them.',
@@ -666,10 +666,10 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     const reviewPrompt =
       GUARD + '\n\n' + REVIEWER_PROMPT +
       taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
+      '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
-      isolation: 'worktree', model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
+      model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
     })
     // 'adversarial' runs two independent reviewers over the same diff and unions
     // their findings; 'lean' (default) runs one. Per-task, falling back to the run default.

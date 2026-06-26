@@ -110,3 +110,34 @@ def test_no_args_prints_usage(tmp_path):
     p = run(tmp_path)
     assert p.returncode == 2
     assert "usage" in p.stderr.lower()
+
+
+def test_restore_falls_back_when_hardlink_fails_cross_device(tmp_path):
+    lock = make_lockfile(tmp_path, "bun.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    p = run(tmp_path, "populate", str(lock), str(src))
+    assert p.returncode == 0, p.stderr
+
+    # Shim `cp` so a hardlink-clone (`cp -al`) FAILS only when the destination is
+    # the worktree target — letting any probe in a temp dir succeed. This is the
+    # cross-device case: the probe's filesystem supports hardlinks but the real
+    # cache->worktree clone does not.
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "cp").write_text(
+        '#!/usr/bin/env bash\n'
+        'dst="${@: -1}"\n'
+        'for a in "$@"; do\n'
+        '  if [ "$a" = "-al" ]; then\n'
+        '    case "$dst" in *fresh_worktree*) exit 1 ;; *) exec /bin/cp "$@" ;; esac\n'
+        '  fi\n'
+        'done\n'
+        'exec /bin/cp "$@"\n')
+    (shim / "cp").chmod(0o755)
+
+    target = tmp_path / "fresh_worktree" / "node_modules"
+    target.parent.mkdir(parents=True)
+    p = run(tmp_path, "restore", str(lock), str(target),
+            env_extra={"PATH": f"{shim}:{os.environ['PATH']}"})
+    assert p.returncode == 0, p.stderr
+    assert (target / "dep-a/index.js").read_text() == "A\n"
