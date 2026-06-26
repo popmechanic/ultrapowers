@@ -22,11 +22,16 @@ runs inside Claude Code — no API key, no external calls.
    `bundle.json` and `slice.md`. The agent returns a JSON array of findings.
    Dispatch readers in parallel. Every reader applies all five lenses,
    including the open-ended `frontier` pass that catches emergent behavior.
-3. **Merge.** Collect the findings and merge them behind the redaction guard:
-   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup)`
-   where `origin_lookup(runId)` reads `origin` from the cached `bundle.json`
-   (fail closed to `foreign`). Then `regenerate_digest(...)` rewrites
-   `docs/superpowers/observations/ledger.md`. **Foreign verbatim evidence never
+3. **Merge.** Collect the findings and merge them behind the redaction guard.
+   Build both bundle lookups once and pass them to `merge_findings`:
+   `origin_lookup, engine_lookup = bundle_lookups("~/.claude/ultralearn")`, then
+   `merge_findings(findings, "docs/superpowers/observations/ledger.jsonl", origin_lookup, engine_lookup)`.
+   `origin_lookup(runId)` reads `origin` from the cached `bundle.json` (fail
+   closed to `foreign`); `engine_lookup(runId)` reads `engineVersion.epoch`, so
+   each ledger entry records the ultrapowers version the finding was observed
+   under — letting `distill` weigh whether a finding predates a fix. Then
+   `regenerate_digest(...)` rewrites `docs/superpowers/observations/ledger.md`
+   (the version shows as `_(vX.Y.Z)_`). **Foreign verbatim evidence never
    lands** — the guard drops it.
    Script: `python3 skills/ultralearn/scripts/merge_ledger.py`
 
@@ -35,10 +40,14 @@ runs inside Claude Code — no API key, no external calls.
 Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
 across runs, rank by frequency × severity × novelty, and draft improvement
 proposals — each mapped to a real surface (`references/*.md`, the routing hook,
-ultraplan, `report-format.md`/`SKILL.md`, `README`). Output draft GitHub issues
-and/or spec stubs under `docs/superpowers/specs/`. **Nothing is filed or
-committed without operator approval** — present the drafts and let the operator
-choose. This human gate is the loop's governor, mirroring the pre-merge gate.
+ultraplan, `report-format.md`/`SKILL.md`, `README`). Weigh each finding's
+`engineVersion`: a cluster seen only under versions older than the current
+release may already be addressed — flag it as possibly-stale and confirm against
+the current engine before proposing a fix, rather than re-solving a closed
+problem. Output draft GitHub issues and/or spec stubs under
+`docs/superpowers/specs/`. **Nothing is filed or committed without operator
+approval** — present the drafts and let the operator choose. This human gate is
+the loop's governor, mirroring the pre-merge gate.
 
 ## Privacy (two tiers — the repo is public)
 

@@ -65,3 +65,51 @@ def test_regenerate_digest_groups_by_lens(tmp_path):
     m.regenerate_digest(ledger, digest)
     text = digest.read_text()
     assert "friction" in text and "frontier" in text
+
+
+def test_engine_version_stamped_when_lookup_provided(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings([_finding(title="a")], ledger,
+                     lambda rid: "home", lambda rid: "0.0.10")
+    entry = json.loads(ledger.read_text().splitlines()[0])
+    assert entry["engineVersion"] == "0.0.10"
+
+
+def test_engine_version_absent_without_lookup(tmp_path):
+    # Backward compatible: the 3-arg form stamps no engineVersion.
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings([_finding(title="a")], ledger, lambda rid: "home")
+    entry = json.loads(ledger.read_text().splitlines()[0])
+    assert "engineVersion" not in entry
+
+
+def test_engine_version_none_epoch_is_omitted(tmp_path):
+    # An unknown epoch (None) must not write engineVersion: null noise.
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings([_finding(title="a")], ledger,
+                     lambda rid: "home", lambda rid: None)
+    entry = json.loads(ledger.read_text().splitlines()[0])
+    assert "engineVersion" not in entry
+
+
+def test_digest_shows_engine_version(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings([_finding(title="a", lens="friction")], ledger,
+                     lambda rid: "home", lambda rid: "0.0.10")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    assert "0.0.10" in digest.read_text()
+
+
+def test_bundle_lookups_reads_cache_and_fails_closed(tmp_path):
+    run = tmp_path / "runs" / "r1"
+    run.mkdir(parents=True)
+    (run / "bundle.json").write_text(json.dumps(
+        {"origin": "home",
+         "engineVersion": {"epoch": "0.0.12", "asOf": "t", "basis": "home-repo-date"}}))
+    origin_lookup, engine_lookup = m.bundle_lookups(tmp_path)
+    assert origin_lookup("r1") == "home"
+    assert engine_lookup("r1") == "0.0.12"
+    # missing bundle: origin fails closed to foreign, epoch is unknown
+    assert origin_lookup("missing") == "foreign"
+    assert engine_lookup("missing") is None
