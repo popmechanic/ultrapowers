@@ -83,16 +83,15 @@ def test_render_viewer_javascript_parses(tmp_path):
     run([node, "--check", str(js_file)])
 
 
-def test_render_viewer_all_themes(tmp_path):
+def test_render_viewer_theme_is_baked(tmp_path):
     out = run([sys.executable, str(SCRIPTS / "render_viewer.py"), "--list-themes"])
     themes = out.stdout.split()
-    assert len(themes) == 10
+    assert themes == ["asteroids"]
     run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
-         "--out", str(tmp_path), "--all"])
-    for name in themes:
-        html = (tmp_path / f"swarm-{name}.html").read_text()
-        assert "/*__THEME_JSON__*/null" not in html
-        assert f'"name": "{name}"' in html
+         "--out", str(tmp_path)])
+    html = (tmp_path / "swarm.html").read_text()
+    assert "/*__THEME_JSON__*/null" not in html
+    assert '"name": "asteroids"' in html
 
 
 def test_template_has_audit_transcript_inert_without_transcripts(tmp_path):
@@ -122,7 +121,7 @@ def test_viewer_has_split_sidebar_and_feed(tmp_path):
 
 def test_viewer_boots_without_transcripts_under_dom_stub(tmp_path):
     # Regression for "ReferenceError: AuditProjection is not defined" at script load:
-    # the depiction-only render (no --transcripts) must BOOT, not just parse. node
+    # the static (no --transcripts) render must BOOT, not just parse. node
     # --check validates syntax only and cannot catch an undefined-reference runtime
     # error, so this executes the inlined script under a tiny DOM/host stub.
     node = shutil.which("node")

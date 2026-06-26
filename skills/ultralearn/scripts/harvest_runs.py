@@ -137,17 +137,16 @@ def _balanced_json(txt, start):
     return None
 
 
-def stitch_planning(plan_path, projects_root, session_records):
+def stitch_planning(plan_path, session_records):
+    """True when this session itself authored the plan (a Write/Edit to plan_path)."""
     if not plan_path:
-        return {"planningFound": False, "planningSlice": "", "planningSource": None}
+        return False
     for _r, b in _iter_blocks(session_records):
         if isinstance(b, dict) and b.get("type") == "tool_use" \
                 and b.get("name") in ("Write", "Edit") \
                 and (b.get("input") or {}).get("file_path", "").endswith(plan_path.lstrip(".")):
-            return {"planningFound": True,
-                    "planningSlice": slice_transcript(session_records),
-                    "planningSource": "same-session"}
-    return {"planningFound": False, "planningSlice": "", "planningSource": None}
+            return True
+    return False
 
 
 def _records(session_path):
@@ -333,8 +332,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     plan_path = _plan_path(records)
     gate_report = _gate_report(records)
     audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
-    planning_found = stitch_planning(plan_path, Path(session_path).parent.parent,
-                                     records)["planningFound"]
+    planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found)
     if session_kind != "engine":
         return None

@@ -478,4 +478,3 @@ revision) or an inability to create the integration branch.
 - `harnesses/probe.js` — the zero-agent engine preflight installed by the SessionStart hook (and Step 4a as a safety net), launched at Step 4a½.
 - `harnesses/waves.harness.json`, `harnesses/probe.harness.json` — per-harness manifests (name, file, purpose, fixtures, driftTest) read by both the SessionStart hook and Step 4a to install copies by glob.
 - `hooks/session_start.sh` — SessionStart hook: injects the plan-routing rule and installs the saved-workflow copies into `.claude/workflows/` *before* the engine snapshots its registry, so `/ultrapowers` can launch them by `meta.name` the same session.
-- `references/harness-ratchet.md` — the born-dynamic-then-frozen promotion path for new harness topologies (how a candidate becomes a registered, frozen harness).

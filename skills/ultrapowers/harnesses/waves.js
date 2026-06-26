@@ -1,4 +1,4 @@
-// skills/ultrapowers/workflow.js
+// skills/ultrapowers/harnesses/waves.js
 //
 // COMMITTED Dynamic Workflow for ultrapowers. This file is NOT authored at
 // runtime — it ships frozen and is launched by SKILL.md with args.waves.
@@ -81,8 +81,8 @@ if (!validWaves) {
     'ultrapowers: args.waves missing or malformed. Expected Task[][] where each ' +
     'task = { id, body, ... } (id is always validated; body is validated unless ' +
     'args.wavesPath is supplied, in which case each agent reads its body from that ' +
-    'file by id; title/tier/review/testCmd are consumed by prompts; acceptance is ' +
-    'advisory; files feeds the FILES prompt line). Refusing to run with an ' +
+    'file by id; title/tier/review/testCmd are consumed by prompts; ' +
+    'files feeds the FILES prompt line). Refusing to run with an ' +
     'undefined plan. When this happens, the SKILL.md fallback ' +
     '(superpowers:subagent-driven-development) runs instead.'
   )
@@ -154,6 +154,8 @@ const bootstrapCmd = (ARGS && typeof ARGS.bootstrapCmd === 'string' && ARGS.boot
 //   Absent → report.acceptance = null.
 const ACCEPTANCE = (ARGS && ARGS.acceptance && typeof ARGS.acceptance === 'object')
   ? ARGS.acceptance : null
+// Pushed onto judgmentCalls at every budget-exhaustion checkpoint (one note per site).
+const BUDGET_DEFERRED_NOTE = 'budget exhausted mid-run — remaining work deferred to unfinished'
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
 const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
@@ -369,7 +371,6 @@ const IMPLEMENTER_SCHEMA = {
     concerns: { type: 'array', items: { type: 'string' } },
     branch: { type: 'string' },
     headSha: { type: 'string' },
-    commit: { type: 'string' },
   },
 }
 const REVIEWER_SCHEMA = {
@@ -408,7 +409,6 @@ const MERGE_SCHEMA = {
     status: { enum: ['MERGED', 'CONFLICT', 'TEST_FAILED'] },
     headSha: { type: 'string' },
     detail: { type: 'string' },
-    command: { type: 'string' },
   },
 }
 const SETUP_SCHEMA = {
@@ -724,7 +724,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         judgmentCalls.push('task ' + task.id +
           ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
       }
-      return { task: task.id, status: 'done', branch: impl.branch, commit: impl.commit,
+      return { task: task.id, status: 'done', branch: impl.branch,
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail)
                  .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
@@ -985,7 +985,7 @@ for (let w = 0; w < WAVES.length; w++) {
     log('wave ' + (w + 1) + ' deferred: budget exhausted')
     if (!budgetDeferred) {
       budgetDeferred = true
-      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+      judgmentCalls.push(BUDGET_DEFERRED_NOTE)
     }
     continue
   }
@@ -1000,7 +1000,7 @@ for (let w = 0; w < WAVES.length; w++) {
       log('wave ' + (w + 1) + ' chunk deferred: budget exhausted mid-wave')
       if (!budgetDeferred) {
         budgetDeferred = true
-        judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+        judgmentCalls.push(BUDGET_DEFERRED_NOTE)
       }
       continue
     }
@@ -1076,7 +1076,7 @@ for (let w = 0; w < WAVES.length; w++) {
     })
     if (!budgetDeferred) {
       budgetDeferred = true
-      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+      judgmentCalls.push(BUDGET_DEFERRED_NOTE)
     }
     for (let d = w + 1; d < WAVES.length; d++) {
       WAVES[d].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted before wave ' + (w + 1) + ' merge)'))
@@ -1092,7 +1092,6 @@ for (let w = 0; w < WAVES.length; w++) {
     wave: w + 1,
     status: merge.status,
     headSha: merge.headSha,
-    command: merge.command,
     detail: merge.detail,
     // Task branches submitted to the merge agent — accurate whether or not the
     // merge succeeded (do not imply success: a CONFLICT wave still lists them).
@@ -1101,7 +1100,7 @@ for (let w = 0; w < WAVES.length; w++) {
   if (merge.status === 'DEFERRED') {
     if (!budgetDeferred) {
       budgetDeferred = true
-      judgmentCalls.push('budget exhausted mid-run — remaining work deferred to unfinished')
+      judgmentCalls.push(BUDGET_DEFERRED_NOTE)
     }
     for (let d = w + 1; d < WAVES.length; d++) {
       WAVES[d].forEach((t) => unfinished.push(t.id + ': deferred (budget exhausted during wave ' + (w + 1) + ' merge)'))

@@ -76,7 +76,6 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
     concerns: { type: 'array', items: { type: 'string' } },
     branch: { type: 'string' },
     headSha: { type: 'string' },
-    commit: { type: 'string' },
   },
 }
 ```

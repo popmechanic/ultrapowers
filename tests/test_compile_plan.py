@@ -84,6 +84,29 @@ def test_unmarked_fixture_heuristics_and_conflict():
     assert {"from": "2", "to": "5", "why": "write-after-write"} in out["dag_edges"]
 
 
+def test_manual_step_classifies_by_heuristic(tmp_path):
+    # Behavioral guard for the manual branch in classify() (MANUAL_EV): an
+    # unmarked task whose prose says a human must run it off-machine must
+    # compile to disposition "manual", flagged heuristic. Without this, a
+    # regression in the MANUAL_EV regex would pass CI (only the source pattern
+    # was pinned, never the behavior).
+    plan = tmp_path / "manual.md"
+    plan.write_text(
+        "# Plan: Manual step\n\n"
+        "**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: build the thing\n\n"
+        "**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** write a\n\n"
+        "### Task 2: provision the cluster\n\n**Depends-on:** 1\n\n"
+        "- [ ] **Step 1:** the owner runs the provisioning by hand; this "
+        "cannot be done from this machine\n"
+    )
+    out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["2"]["disposition"] == "manual"
+    assert by_id["2"]["heuristic"] is True
+
+
 def test_cycle_is_a_loud_error(tmp_path):
     plan = tmp_path / "cyclic.md"
     plan.write_text(

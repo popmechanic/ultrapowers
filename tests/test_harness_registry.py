@@ -1,7 +1,6 @@
 """The harness library contract: every manifest names a real harness file whose
-meta.name matches, with existing fixtures and (optional) drift test. Candidates
-are not registered. No execution — meta.name is read by regex, like the drift
-test does."""
+meta.name matches, with existing fixtures and (optional) drift test. No
+execution — meta.name is read by regex, like the drift test does."""
 import json
 import pathlib
 import re
@@ -57,16 +56,3 @@ def test_every_manifest_points_to_a_matching_harness():
         assert (ROOT / spec["fixtures"]).exists(), f"{m.name}: fixtures path missing"
         if spec["driftTest"] is not None:
             assert (ROOT / spec["driftTest"]).exists(), f"{m.name}: driftTest path missing"
-
-
-def test_candidates_are_not_registered():
-    cand = HARNESSES / "candidates"
-    assert cand.is_dir(), "candidates/ directory must exist (ratchet staging)"
-    assert not list(cand.glob("*.harness.json")), "candidates must not carry registered manifests"
-
-
-def test_skill_links_the_ratchet_doc():
-    """The ratchet discipline must be reachable from the skill, not orphaned.
-    validate_skill only checks forward refs exist; this pins the inbound link."""
-    skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
-    assert "references/harness-ratchet.md" in skill, "SKILL.md must link the ratchet doc"

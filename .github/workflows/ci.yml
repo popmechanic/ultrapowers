@@ -33,5 +33,8 @@ jobs:
       - name: Validate ultralearn skill
         run: python skills/ultrapowers/scripts/validate_skill.py skills/ultralearn
 
+      - name: Validate ultradocket skill
+        run: python skills/ultrapowers/scripts/validate_skill.py skills/ultradocket
+
       - name: Run tests
         run: python -m pytest tests/ -v

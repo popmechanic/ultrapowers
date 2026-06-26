@@ -59,8 +59,8 @@ runs at machine speed.
 ## Mode: run (`/ultradocket run`)
 
 Compile and drain the queue. **Not yet implemented** — this is part 3c
-(`docket-run`), the write-side harness born via the ratchet that part 2's
-harness library establishes. Until it lands, compile a preview with the
+(`docket-run`), the deferred write-side harness that drains the queue. Until
+it lands, compile a preview with the
 `compile_docket.py` tool that lives next to `docket_lib.py` in this skill's
 own scripts directory and is delivered by part 2 (docket-compile). From inside
 that directory, run it against the docket to see the collision-aware order,
