@@ -443,7 +443,8 @@ const REVIEW_SCHEMA = {
     // sandbox could not execute, each tagged with a reason so the gate can route
     // runtime/external items to an explicit acknowledgement.
     onIntegrationHead: { type: 'boolean' },
-    deferredVerification: { type: 'array', items: { type: 'object', properties: {
+    deferredVerification: { type: 'array', items: { type: 'object',
+      required: ['deliverable', 'reason'], properties: {
       deliverable: { type: 'string' },
       reason: { type: 'string', enum: ['browser', 'runtime', 'external', 'manual'] },
       why: { type: 'string' } } } },

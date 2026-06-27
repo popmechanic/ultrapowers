@@ -80,7 +80,8 @@ approve" checklist (today's §9a behavior). One new *input* to an existing rule;
 
 ### 2.3 Where the field is produced
 The completeness critic emits this list. Its prompt is baked into `waves.js` from
-`references/reviewer-prompts.md` (anti-drift). The change is a prompt edit: instruct the
+`references/wave-merge.md` (the `BAKE:COMPLETENESS_PROMPT` block, pinned by
+`tests/test_no_prompt_drift.py`). The change is a prompt edit: instruct the
 critic to tag each deferred item with its reason rather than emitting bare strings. The
 budget-deferred early-return path in `waves.js` (~line 871) that sets `visualEyeballItems: []`
 becomes `deferredVerification: []`.
@@ -102,9 +103,10 @@ class over a guard that handles one case).
 
 - `references/report-format.md` — schema, field reference, presentation §9a (rename +
   group by reason), and the Approve disposition wording in §7 / Approve bullet.
-- `references/reviewer-prompts.md` — completeness-critic prompt: emit reason-tagged items.
-  **Then re-bake `harnesses/waves.js`** per `references/workflow-template.md` and keep
-  `tests/test_no_prompt_drift.py` green (never edit only the baked copy).
+- `references/wave-merge.md` — completeness-critic prompt (`BAKE:COMPLETENESS_PROMPT`):
+  emit reason-tagged items. **Then re-bake `harnesses/waves.js`** per
+  `references/workflow-template.md` and keep `tests/test_no_prompt_drift.py` green
+  (never edit only the baked copy).
 - `harnesses/waves.js` — the budget-deferred early-return literal; the field name in the
   returned report object.
 - `skills/ultrapowers/SKILL.md` — Step 5 gate: the new `runtime`/`external` ⇒ acknowledgement input.
