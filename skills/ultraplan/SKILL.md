@@ -56,6 +56,23 @@ plus this escape valve are what keep shaping from manufacturing breadth; a plan 
 genuinely does not fan out should stay narrow, and the recommender will route it to
 a sequential executor honestly.
 
+## Efforts too large for one plan
+
+When a spec is decomposed into several plans run as separate `/ultrapowers`
+invocations, per-phase green does **not** establish integrated green — each run's
+completeness critic sees only its own plan's tree, never the seams between phases
+(this is where a holistic review catches integration bugs that every per-phase
+gate passed). So when you author one plan of a multi-plan effort:
+
+1. Design the decomposition so the **final** plan carries an **integration-spanning
+   acceptance** — a sealed exam or suite whose checks exercise behavior that crosses
+   the earlier phases, run against a tree that already contains them.
+2. Never let N green per-phase gates stand in for one integrated-green gate; an
+   integration bug lives precisely *between* phases, where no single-phase exam looks.
+3. If the effort genuinely cannot end in an integration acceptance, declare it at the
+   final gate as an explicit waiver ("cross-phase integration unverified — phases
+   sealed separately"), never silently.
+
 ## Add markers to every task
 
 Markers are bold-labeled lines placed immediately after the task heading, before the
