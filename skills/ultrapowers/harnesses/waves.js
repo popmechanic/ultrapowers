@@ -358,8 +358,12 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
   'planPath; for every task reported failed or blocked, check whether its declared ' +
   'Create: paths exist in the tree — list any that are genuinely absent as missing ' +
   'deliverables. For any deliverable that is present and structurally complete but ' +
-  'whose behavior can only be confirmed in a browser or live UI, list it under ' +
-  "visualEyeball so the operator's attention goes exactly there."
+  'whose behavior the sandbox could not execute, list it under deferredVerification ' +
+  'as an object { deliverable, reason, why }, where reason is one of ' +
+  "'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — " +
+  "process boot, device, deploy target), 'external' (an unreachable " +
+  "service/credential/network), or 'manual' (requires human judgment), so the gate " +
+  'can route runtime/external items to an explicit acknowledgement.'
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
@@ -431,11 +435,15 @@ const REVIEW_SCHEMA = {
     findings: { type: 'array', items: { type: 'string' } },
     // #29: the critic's own git-verified ground truth. onIntegrationHead is true
     // iff it confirmed (via git rev-parse HEAD) it reviewed the recorded merge
-    // HEAD; false means it could not — possible checkout drift. visualEyeball
-    // lists deliverables present-and-structurally-complete but only confirmable
-    // in a browser/live UI, so the operator's attention goes exactly there.
+    // HEAD; false means it could not — possible checkout drift. deferredVerification
+    // lists deliverables present-and-structurally-complete but whose behavior the
+    // sandbox could not execute, each tagged with a reason so the gate can route
+    // runtime/external items to an explicit acknowledgement.
     onIntegrationHead: { type: 'boolean' },
-    visualEyeball: { type: 'array', items: { type: 'string' } },
+    deferredVerification: { type: 'array', items: { type: 'object', properties: {
+      deliverable: { type: 'string' },
+      reason: { type: 'string', enum: ['browser', 'runtime', 'external', 'manual'] },
+      why: { type: 'string' } } } },
   },
 }
 
@@ -868,7 +876,7 @@ if (budgetExhausted()) {
     coverage: { tasks_merged: 0, tasks_planned: WAVES.flat().length, complete: false },
     missingDeliverables: [],
     gitVerified: false,
-    visualEyeballItems: [],
+    deferredVerification: [],
     judgmentCalls: judgmentCalls.concat(['run deferred: budget exhausted before setup — no setup, task, or review agents dispatched']),
     unfinished,
     completenessFindings: [],
@@ -1174,14 +1182,15 @@ if (!review || typeof review !== 'object') {
              findings: ['integration review returned no result — verify the suite manually before merging'] }
 }
 
-// ── Git-verified ground truth (#29) + visual-eyeball channel ──────────────────
+// ── Git-verified ground truth (#29) + deferred-verification channel ───────────
 // gitVerified is true ONLY when the completeness critic confirmed (via its own
 // git rev-parse HEAD) that it reviewed the recorded merge HEAD. A false value —
 // or an absent flag from a dead/degraded critic — leaves gitVerified false, so
-// the gate cannot mistake an unverified review for a clean one. visualEyeball
-// carries the critic's verified-by-construction-but-needs-a-browser items.
+// the gate cannot mistake an unverified review for a clean one. deferredVerification
+// carries the critic's verified-by-construction-but-not-sandbox-executable items,
+// each tagged with a reason (browser/runtime/external/manual).
 const gitVerified = !!(review && review.onIntegrationHead)
-const visualEyeballItems = (review && Array.isArray(review.visualEyeball)) ? review.visualEyeball : []
+const deferredVerification = (review && Array.isArray(review.deferredVerification)) ? review.deferredVerification : []
 if (review && review.onIntegrationHead === false)
   judgmentCalls.push('completeness critic could NOT confirm it reviewed the recorded merge HEAD — possible checkout drift (#29); verify the integration tree before merging')
 
@@ -1258,7 +1267,7 @@ return {
   coverage,
   missingDeliverables,
   gitVerified,
-  visualEyeballItems,
+  deferredVerification,
   judgmentCalls,
   unfinished,
   completenessFindings: review.findings || [],

@@ -2232,14 +2232,16 @@ async function scenarioMissingDeliverablesCascade() {
   console.log('scenario missing-deliverables-cascade: OK')
 }
 
-// ── Scenario: git-verified ground truth + visual-eyeball channel (#29 hard gate) ─
+// ── Scenario: git-verified ground truth + deferred-verification channel (#29) ───
 // The completeness critic confirms (via its own `git rev-parse HEAD`) that it
 // reviewed the recorded merge HEAD and reports it as `onIntegrationHead`; the
 // engine surfaces that as `gitVerified`. Deliverables that are present and
-// structurally complete but only confirmable in a browser surface under
-// `visualEyeballItems` so the operator's attention goes exactly there.
-async function scenarioGitVerifiedAndVisualEyeball() {
+// structurally complete but whose behavior the sandbox could not execute surface
+// under `deferredVerification` as reason-tagged objects { deliverable, reason, why }
+// so the gate can route runtime/external items to an explicit acknowledgement.
+async function scenarioGitVerifiedAndDeferredVerification() {
   const WAVES = [[{ id: 'A', title: 'a', body: 'b', files: ['ui.tsx'] }]]
+  const item = { deliverable: 'ui.tsx renders the new panel', reason: 'browser', why: 'live UI render' }
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
@@ -2247,13 +2249,13 @@ async function scenarioGitVerifiedAndVisualEyeball() {
     if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'mfinal', branches: ['A'] }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok',
-      findings: [], onIntegrationHead: true, visualEyeball: ['ui.tsx renders the new panel — verify in a browser'] }
+      findings: [], onIntegrationHead: true, deferredVerification: [item] }
     throw new Error('unexpected agent label: ' + label)
   }
   const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [] }, budget: undefined })
   eq(r.gitVerified, true, 'gitVerified: critic confirmed it reviewed the merge HEAD')
-  assert(r.visualEyeballItems.some(v => /browser/i.test(v)), 'visualEyeballItems: browser item surfaced')
-  console.log('scenario git-verified-and-visual-eyeball: OK')
+  eq(r.deferredVerification, [item], 'deferredVerification: reason-tagged object surfaced verbatim')
+  console.log('scenario git-verified-and-deferred-verification: OK')
 }
 
 // ── Scenario: critic could NOT confirm it reviewed the recorded merge HEAD ─────
@@ -2268,12 +2270,12 @@ async function scenarioGitUnverifiedJudgmentCall() {
     if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
     if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'mfinal', branches: ['A'] }
     if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok',
-      findings: [], onIntegrationHead: false, visualEyeball: [] }
+      findings: [], onIntegrationHead: false, deferredVerification: [] }
     throw new Error('unexpected agent label: ' + label)
   }
   const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [] }, budget: undefined })
   eq(r.gitVerified, false, 'gitVerified: false when the critic could not confirm the merge HEAD')
-  eq(r.visualEyeballItems, [], 'visualEyeballItems: empty when none surfaced')
+  eq(r.deferredVerification, [], 'deferredVerification: empty when none surfaced')
   assert(r.judgmentCalls.some(j => /could NOT confirm|checkout drift|#29/i.test(j)),
     'gitVerified false pushes a checkout-drift judgment call')
   console.log('scenario git-unverified-judgment-call: OK')
@@ -2283,6 +2285,6 @@ await scenarioEscalateRecovers()
 await scenarioEscalateBounded()
 await scenarioCoverageAndMissingDeliverables()
 await scenarioMissingDeliverablesCascade()
-await scenarioGitVerifiedAndVisualEyeball()
+await scenarioGitVerifiedAndDeferredVerification()
 await scenarioGitUnverifiedJudgmentCall()
 console.log('ALL SCENARIOS PASSED')

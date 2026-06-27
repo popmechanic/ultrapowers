@@ -40,14 +40,23 @@ runs inside Claude Code — no API key, no external calls.
 Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
 across runs, rank by frequency × severity × novelty, and draft improvement
 proposals — each mapped to a real surface (`references/*.md`, the routing hook,
-ultraplan, `report-format.md`/`SKILL.md`, `README`). Weigh each finding's
-`engineVersion`: a cluster seen only under versions older than the current
-release may already be addressed — flag it as possibly-stale and confirm against
-the current engine before proposing a fix, rather than re-solving a closed
-problem. Output draft GitHub issues and/or spec stubs under
-`docs/superpowers/specs/`. **Nothing is filed or committed without operator
-approval** — present the drafts and let the operator choose. This human gate is
-the loop's governor, mirroring the pre-merge gate.
+ultraplan, `report-format.md`/`SKILL.md`, `README`). Draft each proposal against
+`references/distilling-proposals.md`; prefer `structural`/`simplification`
+framings, and for any recurring cluster record the consolidation attempt before
+proposing an additive guard. Weigh each finding's `engineVersion`: a cluster seen
+only under versions older than the current release may already be addressed — flag
+it as possibly-stale and confirm against the current engine before proposing a
+fix, rather than re-solving a closed problem. Output draft GitHub issues and/or
+spec stubs under `docs/superpowers/specs/`. **Nothing is filed or committed
+without operator approval** — present the drafts and let the operator choose.
+This human gate is the loop's governor, mirroring the pre-merge gate.
+
+Before ranking proposals, run the complexity ratchet:
+`python3 skills/ultralearn/scripts/complexity_metric.py --baseline skills/ultralearn/complexity-baseline.json`
+Surface any `RATCHET:` deltas in the distill output. When a gate-spec surface is
+over baseline, make a consolidation pass on that surface the top-ranked proposal
+rather than a new feature. The ratchet is advisory — it informs ranking, it does
+not block.
 
 ## Privacy (two tiers — the repo is public)
 

@@ -1,0 +1,12 @@
+{
+  "distinctIssueRefs": 5,
+  "engineLoc": 1115,
+  "longestRuleChars": 3280,
+  "parensPerLine": {
+    "skills/ultrapowers/SKILL.md": 0.3479,
+    "skills/ultrapowers/references/dependency-analysis.md": 0.3352,
+    "skills/ultrapowers/references/report-format.md": 0.6154,
+    "skills/ultrapowers/references/reviewer-prompts.md": 0.2439,
+    "skills/ultrapowers/references/wave-merge.md": 0.3435
+  }
+}
