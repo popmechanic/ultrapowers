@@ -431,6 +431,25 @@ The `--run <runId>` scope removes only this run's worktrees and merged branches,
   out the existing branch instead of creating one; redirected work merges onto it. Never
   improvise an ad-hoc re-run — this is the deterministic redirect path. Return to this gate when
   it completes.
+- **Terminal teardown — release the lock on every exit that is not a relaunch.** Approve
+  already releases the lock and sweeps inline (above). On **any other terminal exit** —
+  the operator declines to Approve, you Abort (a Step-2 dependency cycle is pre-lock, but
+  an inability to create the integration branch can abort *after* Step 4b acquired the
+  lock), or the operator chooses to abandon a `BLOCKED` condition rather than Redirect —
+  **release the run lock** so it does not wedge the next run in this repo. `RUN_LOCK` has
+  no timeout; a held lock makes the next `/ultrapowers` `acquire` refuse loudly. `release`
+  is id-scoped and no-ops if a concurrent run replaced the lock, so it is always safe:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh release <runId>
+```
+
+  Do **not** auto-sweep the worktrees on these paths — on a `BLOCKED`/failed exit the
+  engine worktrees and unmerged task branches are the operator's **triage evidence**.
+  Instead tell the operator they are kept and how to remove them when done inspecting:
+  `bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh --run <runId>`.
+  (Redirect and Salvage are **not** terminal — they relaunch on the same
+  `integrationBranch` and deliberately keep both the lock and the worktrees.)
 
 ---
 
