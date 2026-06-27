@@ -576,6 +576,24 @@ async function scenarioPlanPath() {
   console.log('scenario plan-path: OK')
 }
 
+// ── Scenario: global constraints reach the completeness critic (P3) ───────────
+async function scenarioGlobalConstraints() {
+  let integrationPrompt = ''
+  await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'integration') { integrationPrompt = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { globalConstraints: 'Versioning stays 0.0.x; no new dependencies.' }),
+    budget: undefined,
+  })
+  assert(integrationPrompt.includes('Versioning stays 0.0.x; no new dependencies.'),
+    'globalConstraints: the actual constraints reach the completeness critic')
+  assert(/across the whole integrated tree/.test(integrationPrompt),
+    'globalConstraints: completeness critic is told to verify them holistically, not per-task')
+  console.log('scenario global-constraints: OK')
+}
+
 // ── Scenario: FIX_REQUIRED verdict with zero blocking issues is flagged (F7) ──
 async function scenarioVerdictMismatch() {
   const r = await runWorkflow({
@@ -1674,6 +1692,7 @@ await scenarioIntegrationThrowContained()
 await scenarioBaseShaThreading()
 await scenarioConcernsPropagate()
 await scenarioPlanPath()
+await scenarioGlobalConstraints()
 await scenarioVerdictMismatch()
 await scenarioNeedsContextAfterFix()
 await scenarioResume()

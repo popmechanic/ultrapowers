@@ -352,6 +352,9 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
   ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  'When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, ' +
+  'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
+  'list any constraint the integrated result violates as a blocking gap. ' +
   'List every gap, unverified claim, and untested path. ' +
   'After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in ' +
   'your result (false if you could not confirm it). Read the plan at the provided ' +
@@ -1152,7 +1155,7 @@ if (budgetExhausted()) {
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist) +
+      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist) + globalConstraintsBlock +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
