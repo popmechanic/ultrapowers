@@ -110,7 +110,7 @@ coverage on every defect class; splitting them would give each class a single dr
 delete the resampling redundancy that is the mechanism's whole value (an adversarial
 audit confirmed the split is a net safety regression, not the upgrade it looks like).
 
-The reviewer runs at the most-capable tier (`opus`) wherever risk is real: a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks only genuine risk/data-layer tasks `adversarial` (two independent full-spectrum passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk surface, not its tier, and not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
+The reviewer runs at the most-capable tier (`opus`) wherever risk is real — a weak reviewer's failure mode is the silent false `PASS`, worse than no reviewer — with ONE narrow exception: a `lean` review of a `cheap`-tier task (a trivial, non-risk diff by the narrowed adversarial trigger) runs at the **sonnet floor**. The floor is never haiku, is built from `DEFAULT_TIER` so `tierOverrides` cannot weaken it, and never applies to adversarial passes, `standard`/`most-capable`-tier reviews, the completeness critic, reconcile, or fix rounds. Review *depth* is still set per task (see above).
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
@@ -198,10 +198,11 @@ When the reviewer returns `FIX_REQUIRED`:
 
 ## Model tiers
 
-| Tier | Use when |
-|------|----------|
-| **cheap** | Transcription-grade tasks only: the plan supplies complete code the author verified by running it, confined to 1–2 files, and the task touches none of the judgment-risk classes below |
-| **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify |
-| **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches |
+| Tier | Use when | Notes |
+|------|----------|-------|
+| **cheap** | Transcription-grade tasks only: the plan supplies complete code the author verified by running it, confined to 1–2 files, and the task touches none of the judgment-risk classes below | |
+| **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify | |
+| **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches | |
+| per-task reviewer | `opus` (floor: `sonnet` for `lean`+`cheap`) | override-proof; `DEFAULT_TIER`-based |
 
 Assign tier at task-dispatch time by estimated scope AND judgment-likelihood — realized difficulty tracks spec risk, not diff size (issue #20: the three heaviest implementations in run wf_df7eefdb-7b1 were all cheap-tier, and exactly the three that drew reviewer notes). Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models. `tierOverrides` reaches every non-review role: setup and merge run at the overridden `cheap`, reconcile and fix-rounds at the overridden `mostCapable`. Only the reviewer and completeness-critic models are pinned to the default most-capable, override-proof.

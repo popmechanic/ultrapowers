@@ -583,6 +583,16 @@ const siblingLine = (task, wave) => {
 const taskReviewProfile = (task) =>
   (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
 
+// Per-task reviewer model. Built from DEFAULT_TIER (NOT TIER) so tierOverrides
+// can never weaken the gate. By the narrowed adversarial trigger, a lean review
+// on a cheap-tier task is a trivial non-risk diff — review it at the sonnet
+// floor. Everything else (adversarial, standard/most-capable tier, any risk
+// task) stays opus. Never haiku.
+const reviewerModelFor = (task) =>
+  (taskReviewProfile(task) === 'lean' && tierKey(task.tier) === 'cheap')
+    ? DEFAULT_TIER.standard
+    : DEFAULT_TIER.mostCapable
+
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 // A thrown agent() call (engine fault, schema failure, transient error) must
 // cost ONE task, never the run: parallel() is fail-fast, so an uncaught throw
@@ -703,7 +713,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
       '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
-      model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
+      model: reviewerModelFor(task), schema: REVIEWER_SCHEMA,
     })
     // 'adversarial' runs two independent reviewers over the same diff and unions
     // their findings; 'lean' (default) runs one. Per-task, falling back to the run default.

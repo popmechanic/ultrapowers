@@ -2357,4 +2357,32 @@ async function runEscalationScenario(firstFailure) {
 }
 console.log('scenario escalation-classifier: OK')
 
+// ── Fork B: reviewer floor — sonnet only for lean+cheap, opus everywhere else ─
+{
+  const models = {}
+  const agent = async (prompt, opts) => {
+    const label = (opts && opts.label) || ''
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
+    if (label.startsWith('impl:')) return { status: 'done', branch: 'worktree-' + label.slice(5), headSha: 'sha-' + label }
+    if (label.startsWith('review:')) { models[label.split(':')[1]] = opts.model; return { verdict: 'approve', issues: [] } }
+    if (label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
+    if (label === 'integration') { models.integration = opts.model; return { verdict: 'approve', issues: [] } }
+    return { status: 'done', branch: 'w', headSha: 'sha' }
+  }
+  const args = {
+    waves: [[
+      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },        // → sonnet floor
+      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },   // → opus (adversarial)
+      { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },         // → opus (not cheap)
+    ]],
+    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
+  }
+  await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  eq(models.a, 'sonnet', 'lean+cheap task reviewed at sonnet floor')
+  eq(models.b, 'opus', 'adversarial task reviewed at opus')
+  eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
+  eq(models.integration, 'opus', 'completeness critic stays opus')
+}
+console.log('scenario reviewer-floor: OK')
+
 console.log('ALL SCENARIOS PASSED')

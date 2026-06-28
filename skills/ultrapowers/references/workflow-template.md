@@ -194,6 +194,12 @@ constant in `waves.js`, and `args.tierOverrides` is merged over it per run (per-
 `mostCapable` key and unknown *task* tiers fall back to `standard` with a judgment call; unknown
 override *keys or model values* throw at launch). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
 
+The per-task reviewer model is `reviewerModelFor(task)`: `DEFAULT_TIER.standard`
+(sonnet) for a `lean` review of a `cheap`-tier task, `DEFAULT_TIER.mostCapable`
+(opus) otherwise. It is built from `DEFAULT_TIER`, not `TIER`, so `tierOverrides`
+cannot weaken the gate. The completeness critic, reconcile, and fix rounds keep
+opus / `TIER.mostCapable`.
+
 **Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
 the agent returns "There's an issue with the selected model" and does no work — whereas
 `haiku` / `sonnet` / `opus` work. Re-verify with a model probe if a future version changes the
