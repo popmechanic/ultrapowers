@@ -636,12 +636,14 @@ async function runTask(task, baseSha, siblings) {
     log('task ' + task.id + ' agent error — retrying at ' + retryTier)
     try {
       const res = await runTaskInner(task, baseSha, siblings, retryTier)
-      judgmentCalls.push('task ' + task.id + ': recovered after escalation to ' + retryTier)
+      judgmentCalls.push('task ' + task.id + ': recovered after ' +
+        (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier)
       return res
     } catch (e2) {
       const msg2 = String((e2 && e2.message) || e2)
-      judgmentCalls.push('task ' + task.id + ': agent error after escalation to ' + retryTier + ' — ' + msg2)
-      log('task ' + task.id + ' FAILED after escalation: ' + msg2)
+      judgmentCalls.push('task ' + task.id + ': agent error after ' +
+        (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier + ' — ' + msg2)
+      log('task ' + task.id + ' FAILED after retry: ' + msg2)
       return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
                notes: msg2, tier: resolvedModel(retryTier),
                review: taskReviewProfile(task), fixIterations: 0 }
