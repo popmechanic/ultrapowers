@@ -34,7 +34,7 @@ The skill launches the workflow with:
 
 ```
 args = { waves, integrationBranch, stamp, dependencyEdges, edges,
-         baseBranch, planPath, wavesPath?, resume?, testCmd?, bootstrapCmd?,
+         baseBranch, planPath, wavesPath?, waveLabels?, resume?, testCmd?, bootstrapCmd?,
          reviewProfile?, tierOverrides?, acceptance? }
 ```
 
@@ -62,6 +62,11 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
 - `args.integrationBranch` — required for resume; otherwise defaults to ultra/integration-<stamp>.
 - `args.stamp` — a timestamp string (the script cannot call `Date.now()`).
 - `args.dependencyEdges` — human-readable edges for the report (optional).
+- `args.waveLabels` — optional `string[]`, one label per wave in wave order. Each entry names the
+  wave by its deliverable theme (e.g. `'Data layer'`, `'API surface'`). When a non-empty string is
+  supplied for wave `w`, it replaces the fallback `'Wave N · <joined task titles>'` in the live
+  progress UI, the `meta.phases` registration, and the wave-loop `phase()` call. Omit or leave
+  sparse (missing entries fall through to the deterministic title-join).
 - `args.edges` — structured dependency pairs `[[fromTaskId, toTaskId], ...]` (optional; omitting it and supplying `[]` differ — see the SKIPPED-cascade note under Structure). A failed
   task blocks its transitive dependents (computed via fixed-point closure, re-checked before every
   16-task chunk) instead of letting them run against a base that never received the prerequisite.
@@ -159,7 +164,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 
 ## Structure (read the file for specifics)
 
-- `meta` + `meta.phases` computed from `WAVES` as `{ title: 'Wave N' }` objects (+ Setup, Integration Review). The assignment is wrapped in a typeof-guard because newer engines extract the meta literal at parse time and do not expose the binding to the executing body; phase() calls group progress regardless.
+- `meta` + `meta.phases` computed from `WAVES` using `waveLabel(i)` (+ Setup, Integration Review). `waveLabel(w)` returns `ARGS.waveLabels[w]` when a non-empty string, else `'Wave N · <joined task titles, truncated>'`; a bare `'Wave N'` is never emitted when the wave has titled tasks. The assignment is wrapped in a typeof-guard because newer engines extract the meta literal at parse time and do not expose the binding to the executing body; phase() calls group progress regardless.
 - Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
   merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
 - `runTask(task, baseSha)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance
