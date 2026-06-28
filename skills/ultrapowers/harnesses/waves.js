@@ -469,6 +469,18 @@ const escalateTier = (t) => {
   if (i === -1) return 'mostCapable'
   return TIER_LADDER[Math.min(i + 1, TIER_LADDER.length - 1)]
 }
+// Classify an agent() fault so the single retry uses the right lever.
+// A StructuredOutput/schema contract trip is capability-fixable — a stronger
+// model is the documented win. Everything else (a transient fault, or an
+// Overloaded null-return surfaced as an AGENT_NULL throw) is NOT capability-
+// fixable: a more-contended top tier just re-hits the wall, so retry in place.
+const isSchemaTrip = (msg) =>
+  /schema|structuredoutput|did not conform|required propert|invalid (?:enum|json)/i.test(msg)
+// A structural fault — an import/module that resolves to nothing — usually means
+// a sibling deliverable this task depends on is absent (a missing Depends-on
+// edge), which no model capability fixes. Diagnose it; do NOT fail-fast.
+const looksStructural = (msg) =>
+  /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
 // Review / completeness roles always run at the strongest model, OVERRIDE-PROOF:
 // tierOverrides remap implementer tiers only — a weak reviewer's failure mode is
 // the silent false PASS, so it must never be downgradable. (Reconcile is a fixer,
@@ -584,13 +596,18 @@ async function runTask(task, baseSha, siblings) {
     return await runTaskInner(task, baseSha, siblings)
   } catch (e) {
     const msg = String((e && e.message) || e)
-    // One bounded retry at a stronger tier: a cheap-tier implementer that trips
-    // the StructuredOutput contract (or a transient fault) recovers in place
-    // instead of failing the task and cascade-blocking its dependents.
-    const retryTier = escalateTier(task.tier)
+    // Default the one retry to the SAME tier; escalate one rung ONLY for a
+    // capability-fixable schema trip. Never escalate an Overloaded/null fault.
+    const capabilityFixable = isSchemaTrip(msg)
+    const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
+    if (looksStructural(msg)) {
+      judgmentCalls.push('task ' + task.id + ': agent error looks structural (' + msg +
+        ') — looks like a missing Depends-on edge; a tier change will not fix it')
+    }
     judgmentCalls.push('task ' + task.id + ': agent error at ' + (task.tier || 'standard') +
-      ' — retrying once at ' + retryTier + ': ' + msg)
-    log('task ' + task.id + ' agent error — escalating to ' + retryTier)
+      ' — retrying once at ' + retryTier +
+      (capabilityFixable ? ' (schema trip → escalate)' : ' (same tier)') + ': ' + msg)
+    log('task ' + task.id + ' agent error — retrying at ' + retryTier)
     try {
       const res = await runTaskInner(task, baseSha, siblings, retryTier)
       judgmentCalls.push('task ' + task.id + ': recovered after escalation to ' + retryTier)
@@ -649,6 +666,11 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
+  // agent() RETURNS null (not throws) on terminal Overloaded/skip. Surface it as
+  // a tagged throw so the single retry routes it to the SAME tier (it is not a
+  // schema trip) instead of letting a null-deref blind-escalate a contention
+  // failure to a more-contended top model.
+  if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
   noteConcerns(impl)
   // Fail fast on a DONE without mergeable coordinates (schema requires
   // branch/headSha, so this needs an engine bypass): dispatching the reviewer

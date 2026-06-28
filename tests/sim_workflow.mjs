@@ -2306,4 +2306,55 @@ await scenarioCoverageAndMissingDeliverables()
 await scenarioMissingDeliverablesCascade()
 await scenarioGitVerifiedAndDeferredVerification()
 await scenarioGitUnverifiedJudgmentCall()
+
+// ── Fork C: agent-error escalation is classified ─────────────────────────────
+async function runEscalationScenario(firstFailure) {
+  const attempts = []
+  const agent = async (prompt, opts) => {
+    const label = opts && opts.label
+    if (label === 'impl:1') {
+      attempts.push(opts.model)
+      if (attempts.length === 1) {
+        if (firstFailure === 'null') return null            // terminal Overloaded
+        throw new Error(firstFailure)                       // thrown fault
+      }
+      return { status: 'done', branch: 'worktree-1', headSha: 'sha-impl-1', summary: 'ok' }
+    }
+    if (label && label.startsWith('review:1')) return { verdict: 'approve', issues: [] }
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
+    if (label && label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
+    if (label === 'integration') return { verdict: 'approve', issues: [] }
+    return { status: 'done', branch: 'worktree-1', headSha: 'sha-x' }
+  }
+  const args = {
+    waves: [[{ id: '1', title: 'T1', body: 'b', tier: 'cheap', review: 'lean' }]],
+    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
+  }
+  const report = await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  return { attempts, report }
+}
+
+// A schema/StructuredOutput trip is capability-fixable → escalate one rung (cheap→sonnet).
+{
+  const { attempts } = await runEscalationScenario('StructuredOutput schema validation failed')
+  eq(attempts, ['haiku', 'sonnet'], 'schema trip escalates cheap→sonnet')
+}
+// A generic transient throw is NOT capability-fixable → retry at the SAME tier.
+{
+  const { attempts } = await runEscalationScenario('socket hang up')
+  eq(attempts, ['haiku', 'haiku'], 'non-schema fault retries at same tier')
+}
+// An Overloaded null-return must NOT blind-escalate → same tier, no top-tier burn.
+{
+  const { attempts } = await runEscalationScenario('null')
+  eq(attempts, ['haiku', 'haiku'], 'Overloaded null retries at same tier')
+}
+// A structural fault is diagnosed as a likely missing Depends-on edge.
+{
+  const { report } = await runEscalationScenario("Cannot find module './sibling'")
+  assert(report.judgmentCalls.some((j) => j.includes('missing Depends-on edge')),
+    'structural fault diagnosed as missing Depends-on edge')
+}
+console.log('scenario escalation-classifier: OK')
+
 console.log('ALL SCENARIOS PASSED')
