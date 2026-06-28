@@ -1056,14 +1056,21 @@ if (wavesPath && bodylessIds.length > 0) {
   }
 }
 
-// W2: pre-register every phase up front so the live roadmap shows all waves as
-// pending, not one-at-a-time. phase() is keyed by title — re-calling a title
-// re-activates its existing group box (engine: same phase string → same group
-// box). The real Setup/loop/Integration-Review calls below re-activate each in
-// turn. FALLBACK (if a live run shows the roadmap reordering/duplicating rather
-// than pre-listing): replace this loop with one log() line —
+// W2: pre-register every phase up front so the live roadmap shows all phases as
+// pending, not one-at-a-time — and in EXECUTION ORDER. phase() is keyed by title
+// — re-calling a title re-activates its existing group box (engine: same phase
+// string → same group box) IN PLACE; it does not move it. The engine lists
+// phases in FIRST-registration order, so the phase that runs first must be
+// registered first. Setup runs first: registering it AFTER the waves (as the
+// pre-register change first did) sorted the early-running Setup to the BOTTOM of
+// the list (#setup-at-bottom). So register Setup first, then the waves, then
+// Integration Review — and re-activate Setup just before its agent so the setup
+// progress groups under it without disturbing its top position. FALLBACK (if a
+// live run shows the roadmap reordering/duplicating rather than pre-listing):
+// replace this block with one log() line —
 //   log('Roadmap: Setup · ' + WAVES.map((_, w) => waveLabel(w)).join(' · ') + ' · Integration Review')
 // and leave the per-wave phase() activation below unchanged.
+phase('Setup')
 for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
 phase('Integration Review')
 phase('Setup')
