@@ -153,9 +153,14 @@ plans, but **never** hand-author a body that is a pointer to a plan section — 
   - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'` — strip the remote prefix; `origin/main` as a checkout target lands detached,
     falling back to the current branch). Always set it; it anchors the integration branch and the
     review diff base.
-  - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
-    passes) or `lean` (one) from its risk and tier: high-stakes or `most-capable` tasks warrant
-    `adversarial`; routine `cheap` tasks stay `lean`. This is derived from the plan, not asked.
+  - **Per-task review depth (`task.review`)** — mark a task `adversarial` (two
+    independent review passes) only when it is on a **genuine risk surface**
+    (sealed acceptance, or it touches auth / payments / migrations / public-API /
+    data-integrity — read from its `Type` / `Files` / body) **OR** it is a
+    **foundation / data-layer** task (owns the persistence/data layer and/or has
+    downstream dependents — the class that has caught real wiring bugs). Tier alone
+    never triggers it: routine `cheap`/`standard` tasks with no risk signal stay
+    `lean` (one pass). This is derived from the plan, not asked.
   - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
     ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
     from the plan.

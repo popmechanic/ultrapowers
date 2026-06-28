@@ -103,12 +103,14 @@ human) cannot run headless, so a first-dispatch `BLOCKED` records the task as
 **Deliberate divergence from superpowers 5.1.0:** upstream subagent-driven-development
 mandates two ORDERED review passes (spec compliance first, then code quality) and
 red-flags merging them. Ultrapowers runs ONE merged spec+quality pass per fix-loop
-iteration (`lean`), or two independent merged passes (`adversarial`) — a deliberate
-trade of upstream's ordering for headless wall-clock, not an implementation of it.
-If upstream's evidence later shows the ordering matters, the adversarial profile is
-the place to restore it (pass 1 spec-only, pass 2 quality-only).
+iteration (`lean`), or two independent **full-spectrum** passes (`adversarial`) whose
+findings are unioned. We deliberately **do not split** the two passes into spec-only +
+quality-only: today both passes check the full spectrum, so the union gives double
+coverage on every defect class; splitting them would give each class a single draw and
+delete the resampling redundancy that is the mechanism's whole value (an adversarial
+audit confirmed the split is a net safety regression, not the upgrade it looks like).
 
-The reviewer always runs at the most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks high-stakes / `most-capable` tasks `adversarial` (two independent passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk/tier, not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
+The reviewer runs at the most-capable tier (`opus`) wherever risk is real: a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks only genuine risk/data-layer tasks `adversarial` (two independent full-spectrum passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk surface, not its tier, and not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
