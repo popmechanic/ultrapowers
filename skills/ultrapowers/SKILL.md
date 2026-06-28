@@ -328,7 +328,7 @@ engine's auto-registered `/<meta.name>` command cannot shadow this `/ultrapowers
 
 ```
 args = { waves, wavesPath?, integrationBranch: 'ultra/integration-<stamp>', stamp, dependencyEdges,
-         edges, baseBranch, planPath, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides?,
+         edges, baseBranch, planPath, waveLabels?, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides?,
          acceptance?: { mode: 'sealed', sealId, sha256, scriptPath } | { mode: 'suite', reason } | { mode: 'waived', reason } }
 ```
 
@@ -355,6 +355,12 @@ preserves standard behavior):
   test steps assume installed deps (`.venv/bin/pytest …`, `bun test`) — see the polyglot guidance in Step 2.
 - `planPath` — the resolved plan path from Step 1, so the completeness critic reviews against the
   actual plan, not just the task list.
+- `waveLabels` — a short, human-readable **deliverable theme** per wave (one
+  string per wave, in wave order), so the live progress UI names each wave by
+  what it delivers instead of "Wave N". Derive it from the wave's task
+  titles/deliverables you already computed in Step 2 (e.g. `['Data layer',
+  'API surface', 'Wiring + integration']`). Omit it to let the engine fall back
+  to a deterministic join of the wave's task titles.
 - **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).
   `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
   overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —

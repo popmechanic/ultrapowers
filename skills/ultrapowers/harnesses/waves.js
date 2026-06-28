@@ -66,6 +66,22 @@ const WAVES = (ARGS && typeof ARGS === 'object') ? ARGS.waves : undefined
 // same fs-read mechanism planPath already uses), so no model ever transcribes
 // the bodies. The light inline args.waves still carries id/title/files/tier/review.
 const wavesPath = (ARGS && typeof ARGS.wavesPath === 'string' && ARGS.wavesPath.trim()) || undefined
+
+// W1: name each wave by what it DELIVERS. Prefer the orchestrator-synthesized
+// deliverable label (ARGS.waveLabels[w]); fall back to a deterministic join of
+// the wave's task titles, truncated. A bare "Wave N" is never shown when the
+// wave has titled tasks. Used by the meta.phases mutation, the wave loop, and
+// the W2 roadmap pre-registration.
+const waveLabel = (w) => {
+  const supplied = (ARGS && Array.isArray(ARGS.waveLabels)) ? ARGS.waveLabels[w] : undefined
+  if (typeof supplied === 'string' && supplied.trim()) return supplied.trim()
+  const titles = WAVES[w].map((t) => t && t.title).filter(Boolean).join(', ')
+  if (!titles) return 'Wave ' + (w + 1)
+  const MAX = 80
+  const shown = titles.length > MAX ? titles.slice(0, MAX - 1) + '…' : titles
+  return 'Wave ' + (w + 1) + ' · ' + shown
+}
+
 const validWaves =
   Array.isArray(WAVES) && WAVES.length > 0 &&
   WAVES.every((w) =>
@@ -203,7 +219,7 @@ for (const k of Object.keys(tierOverrides)) {
 // phase() calls group progress regardless, so the mutation is best-effort.
 if (typeof meta !== 'undefined') {
   meta.phases = [{ title: 'Setup' }]
-    .concat(WAVES.map((_, i) => ({ title: 'Wave ' + (i + 1) })))
+    .concat(WAVES.map((_, i) => ({ title: waveLabel(i) })))
     .concat([{ title: 'Integration Review' }])
 }
 
@@ -1033,7 +1049,7 @@ for (let w = 0; w < WAVES.length; w++) {
     }
     continue
   }
-  phase('Wave ' + (w + 1))
+  phase(waveLabel(w))
   noteFailures()
   const results = []
   for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {

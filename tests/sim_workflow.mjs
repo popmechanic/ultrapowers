@@ -14,9 +14,9 @@ import fs from 'node:fs'
 const WF_URL = new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url)
 const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
 
-function runWorkflow({ agent, args, budget, parallel: parallelOverride }) {
+function runWorkflow({ agent, args, budget, parallel: parallelOverride, phase: phaseRecorder }) {
   const parallel = parallelOverride || ((thunks) => Promise.all(thunks.map((t) => t())))
-  const phase = () => {}
+  const phase = typeof phaseRecorder === 'function' ? phaseRecorder : () => {}
   const log = () => {}
   // Execute the workflow body as the engine would: an async wrapper whose
   // trailing `return {...}` becomes the resolved report.
@@ -2384,5 +2384,38 @@ console.log('scenario escalation-classifier: OK')
   eq(models.integration, 'opus', 'completeness critic stays opus')
 }
 console.log('scenario reviewer-floor: OK')
+
+// ── W1: wave labels are semantic, never a bare "Wave N" ──────────────────────
+async function runLabelScenario(waveLabels) {
+  const phases = []
+  const agent = async (prompt, opts) => {
+    const label = (opts && opts.label) || ''
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
+    if (label.startsWith('impl:')) return { status: 'done', branch: 'worktree-' + label.slice(5), headSha: 'sha-' + label }
+    if (label.startsWith('review:')) return { verdict: 'approve', issues: [] }
+    if (label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
+    if (label === 'integration') return { verdict: 'approve', issues: [] }
+    return { status: 'done', branch: 'w', headSha: 'sha' }
+  }
+  const args = {
+    waves: [[{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }]],
+    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
+    ...(waveLabels ? { waveLabels } : {}),
+  }
+  await runWorkflow({ agent, args, phase: (t) => phases.push(t), budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  return phases
+}
+// Orchestrator-supplied label wins.
+{
+  const phases = await runLabelScenario(['Data layer'])
+  assert(phases.includes('Data layer'), 'supplied waveLabel is used')
+}
+// No supplied label → deterministic title-join fallback, never a bare "Wave 1".
+{
+  const phases = await runLabelScenario(null)
+  assert(phases.some((p) => p.startsWith('Wave 1 · ') && p.includes('Schema')), 'fallback joins task titles')
+  assert(!phases.includes('Wave 1'), 'bare "Wave 1" is never shown alone')
+}
+console.log('scenario wave-labels: OK')
 
 console.log('ALL SCENARIOS PASSED')
