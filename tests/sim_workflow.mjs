@@ -356,6 +356,66 @@ async function scenarioPerTaskReview() {
   console.log('scenario per-task-review: OK')
 }
 
+// ── Scenario 7b: ENGINE-derived review depth (risk-based, no orchestrator input) ─
+// The adversarial second pass is chosen by the ENGINE from deterministic task
+// properties — NOT set by the orchestrator (no task.review on any of these).
+// Proves the decision moved into the engine: a risk-path file and a
+// foundation/contract root (Produces a contract, Consumes nothing) each draw two
+// passes; a plain consumer module draws one.
+async function scenarioEngineRiskReview() {
+  const reviewCount = {}
+  const agent = makeAgent((label) => {
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCount[id] = (reviewCount[id] || 0) + 1
+      return { verdict: 'PASS', issues: [] }
+    }
+    return undefined
+  })
+  const waves = [[
+    // risk path (auth) — no review field
+    { id: 'R', title: 'Auth module', body: 'build auth', files: ['src/auth.js'], tier: 'cheap' },
+    // foundation/contract root: Produces, Consumes nothing — non-risk filename,
+    // so this exercises the interface-root branch, not the path branch
+    { id: 'F', title: 'Core engine', body: 'build core', files: ['src/engine.js'],
+      interfaces: { produces: ['Api'], consumes: [] }, tier: 'cheap' },
+    // plain consumer module — no risk path, consumes a contract
+    { id: 'P', title: 'Contacts list', body: 'build contacts', files: ['src/contacts.js'],
+      interfaces: { produces: ['Contacts'], consumes: ['Api'] }, tier: 'cheap' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  assert(reviewCount['R'] === 2, 'engine-review: R (risk path src/auth.js) → adversarial/2 (got ' + reviewCount['R'] + ')')
+  assert(reviewCount['F'] === 2, 'engine-review: F (foundation root, produces+!consumes) → adversarial/2 (got ' + reviewCount['F'] + ')')
+  assert(reviewCount['P'] === 1, 'engine-review: P (plain consumer) → lean/1 (got ' + reviewCount['P'] + ')')
+  assert(r.tasks.every((t) => t.status === 'done'), 'engine-review: all done')
+  console.log('scenario engine-risk-review: OK')
+}
+
+// ── Scenario 7c: ENGINE-DERIVED wave labels (no orchestrator waveLabels) ──────
+// With no ARGS.waveLabels, the engine must still name each wave meaningfully and
+// deterministically: a single-task wave by its own title, a multi-task wave by
+// the noun its titles share. The crude 'Wave N · joined titles' is gone.
+async function scenarioDerivedWaveLabels() {
+  const phases = []
+  const waves = [
+    [{ id: '1', title: 'Data layer + scaffold', body: 'b', tier: 'cheap' }],
+    [{ id: '2', title: 'Contacts module', body: 'b', tier: 'cheap' },
+     { id: '3', title: 'Deals module', body: 'b', tier: 'cheap' },
+     { id: '4', title: 'Activities module', body: 'b', tier: 'cheap' },
+     { id: '5', title: 'Auth module', body: 'b', tier: 'cheap' }],
+    [{ id: '6', title: 'Integration server', body: 'b', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
+  await runWorkflow({ agent: makeAgent(), args, phase: (t) => phases.push(t),
+    budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  assert(phases.includes('Data layer + scaffold'), 'derived: single-task wave → its title (got ' + JSON.stringify(phases) + ')')
+  assert(phases.includes('4 Modules'), 'derived: multi-task wave → shared noun "4 Modules" (got ' + JSON.stringify(phases) + ')')
+  assert(phases.includes('Integration server'), 'derived: wave 3 → its title')
+  assert(!phases.some((p) => /^Wave \d+ ·/.test(p)), 'derived: no crude "Wave N · join" labels remain')
+  console.log('scenario derived-wave-labels: OK')
+}
+
 // ── Scenario 8: adversarial dissent — second reviewer catches what first misses ─
 // The whole point of 'adversarial': a clean first reviewer must NOT shield a task
 // when an independent second reviewer finds a blocker. Exercises the issue union
@@ -1673,6 +1733,8 @@ await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
+await scenarioEngineRiskReview()
+await scenarioDerivedWaveLabels()
 await scenarioAdversarialDissent()
 await scenarioTierOverrideInvalid()
 await scenarioSetupFailure()
@@ -2410,10 +2472,12 @@ async function runLabelScenario(waveLabels) {
   const phases = await runLabelScenario(['Data layer'])
   assert(phases.includes('Data layer'), 'supplied waveLabel is used')
 }
-// No supplied label → deterministic title-join fallback, never a bare "Wave 1".
+// No supplied label → engine-derived label; a single-task wave is named by its
+// own title (not a crude "Wave N · join"), and never a bare "Wave 1".
 {
   const phases = await runLabelScenario(null)
-  assert(phases.some((p) => p.startsWith('Wave 1 · ') && p.includes('Schema')), 'fallback joins task titles')
+  assert(phases.includes('Schema'), 'single-task wave is derived from its title')
+  assert(!phases.some((p) => /^Wave \d+ ·/.test(p)), 'crude "Wave N · join" label is gone')
   assert(!phases.includes('Wave 1'), 'bare "Wave 1" is never shown alone')
 }
 console.log('scenario wave-labels: OK')

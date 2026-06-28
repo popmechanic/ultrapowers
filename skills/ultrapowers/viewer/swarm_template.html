@@ -304,6 +304,7 @@ function el(tag, attrs, parent) {
 }
 // ─── grid layout: positions are prefigured from the compiled DAG ────────────
 const waves = DAG.waves;
+const waveLabels = DAG.waveLabels || [];
 const nW = waves.length;
 const taskWave = {};
 waves.forEach((wave, wi) => wave.forEach(id => { taskWave[String(id)] = wi; }));
@@ -436,7 +437,9 @@ function updateHud() {
   Object.values(stations).forEach(st => {
     if (st.state !== 'pending') top = Math.max(top, taskWave[st.id] + 1);
   });
-  hudWave.textContent = 'WAVE ' + Math.max(1, top) + '/' + nW;
+  const cur = Math.max(1, top);
+  const lbl = waveLabels[cur - 1];
+  hudWave.textContent = 'WAVE ' + cur + '/' + nW + (lbl ? ' · ' + lbl : '');
   const age = Date.now() - lastOk;
   if (everOk && age < 8000) { hudMode.textContent = 'OBSERVING'; hudMode.className = 'mode'; }
   else if (everOk) { hudMode.textContent = 'SIGNAL LOST'; hudMode.className = 'mode lost'; }

@@ -67,19 +67,65 @@ const WAVES = (ARGS && typeof ARGS === 'object') ? ARGS.waves : undefined
 // the bodies. The light inline args.waves still carries id/title/files/tier/review.
 const wavesPath = (ARGS && typeof ARGS.wavesPath === 'string' && ARGS.wavesPath.trim()) || undefined
 
-// W1: name each wave by what it DELIVERS. Prefer the orchestrator-synthesized
-// deliverable label (ARGS.waveLabels[w]); fall back to a deterministic join of
-// the wave's task titles, truncated. A bare "Wave N" is never shown when the
-// wave has titled tasks. Used by the meta.phases mutation, the wave loop, and
-// the W2 roadmap pre-registration.
+// W1: name each wave by what it DELIVERS. Precedence mirrors review depth:
+//   (1) an orchestrator-synthesized override (ARGS.waveLabels[w]), then
+//   (2) an ENGINE-DERIVED deterministic label (deriveWaveLabel) — so a wave is
+//       always meaningfully named WITHOUT depending on the orchestrator passing
+//       labels (an early run shipped none and every header degraded to 'Wave N').
+// Used by the meta.phases mutation, the wave loop, and the W2 roadmap.
+const TITLE_STOP = new Set(['the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'with', 'in', 'on', 'at', 'by', 'via', 'plus'])
+const titleWords = (s) => (String(s || '').toLowerCase().match(/[a-z][a-z]+/g) || [])
+  .filter((wd) => wd.length >= 3 && !TITLE_STOP.has(wd))
+// A content word shared by EVERY task title in the wave (e.g. all '… module'),
+// longest-first so the most specific shared theme wins; '' if none is universal.
+function sharedTitleNoun(tasks) {
+  let inter = null
+  for (const t of tasks) {
+    const ws = new Set(titleWords(t && t.title))
+    inter = inter === null ? ws : new Set([...inter].filter((wd) => ws.has(wd)))
+    if (inter.size === 0) return ''
+  }
+  return inter && inter.size ? [...inter].sort((a, b) => b.length - a.length || a.localeCompare(b))[0] : ''
+}
+// The deepest parent directory shared by every file the wave touches ('src/api').
+// '' when any task lists no path-bearing file (then there is no shared dir).
+function commonFileDir(tasks) {
+  let common = null
+  for (const t of tasks) {
+    const files = (Array.isArray(t && t.files) ? t.files : []).filter((f) => typeof f === 'string' && f.includes('/'))
+    if (!files.length) return ''
+    for (const f of files) {
+      const segs = f.split('/').slice(0, -1)
+      if (common === null) { common = segs; continue }
+      let i = 0
+      while (i < common.length && i < segs.length && common[i] === segs[i]) i++
+      common = common.slice(0, i)
+      if (!common.length) return ''
+    }
+  }
+  return common && common.length ? common.join('/') : ''
+}
+// Deterministic, always-meaningful label from the wave's own tasks: a single-task
+// wave is its task title; a multi-task wave is the shared title-noun (pluralized,
+// counted), else the common file directory, else a plain count.
+function deriveWaveLabel(wave) {
+  const tasks = (Array.isArray(wave) ? wave : []).filter(Boolean)
+  if (!tasks.length) return ''
+  const clip = (s, n = 56) => { s = String(s || '').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
+  if (tasks.length === 1) return clip(tasks[0].title || ('Task ' + tasks[0].id))
+  const noun = sharedTitleNoun(tasks)
+  if (noun) {
+    const cap = noun.charAt(0).toUpperCase() + noun.slice(1)
+    return tasks.length + ' ' + (cap.endsWith('s') ? cap : cap + 's')
+  }
+  const dir = commonFileDir(tasks)
+  if (dir) return clip(dir) + ' · ' + tasks.length + ' tasks'
+  return tasks.length + ' parallel tasks'
+}
 const waveLabel = (w) => {
   const supplied = (ARGS && Array.isArray(ARGS.waveLabels)) ? ARGS.waveLabels[w] : undefined
   if (typeof supplied === 'string' && supplied.trim()) return supplied.trim()
-  const titles = WAVES[w].map((t) => t && t.title).filter(Boolean).join(', ')
-  if (!titles) return 'Wave ' + (w + 1)
-  const MAX = 80
-  const shown = titles.length > MAX ? titles.slice(0, MAX - 1) + '…' : titles
-  return 'Wave ' + (w + 1) + ' · ' + shown
+  return deriveWaveLabel(WAVES[w]) || ('Wave ' + (w + 1))
 }
 
 const validWaves =
@@ -213,15 +259,11 @@ for (const k of Object.keys(tierOverrides)) {
   }
 }
 
-// meta.phases must be { title } objects, one per wave (+ setup + review).
-// Newer engines extract the meta literal at parse time and do NOT expose
-// `meta` to the executing body (runtime mutation throws ReferenceError there);
-// phase() calls group progress regardless, so the mutation is best-effort.
-if (typeof meta !== 'undefined') {
-  meta.phases = [{ title: 'Setup' }]
-    .concat(WAVES.map((_, i) => ({ title: waveLabel(i) })))
-    .concat([{ title: 'Integration Review' }])
-}
+// Wave phase titles are NOT injected by mutating the meta literal: the current
+// harness extracts meta at parse time and does not expose it to the executing body
+// (the old runtime reassignment silently no-op'd / threw there). The live progress
+// tree is labeled entirely by the phase(waveLabel(w)) roadmap below, which DOES take
+// effect; the meta literal at the top keeps its empty phases.
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
@@ -593,11 +635,39 @@ const siblingLine = (task, wave) => {
   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
 }
 
-// Review depth per task: an explicit task.review ('adversarial' | 'lean') — set by
-// the orchestrating agent from the plan's per-task risk/tier — overrides the
-// run-wide reviewProfile default. Spend the extra adversarial pass only where asked.
-const taskReviewProfile = (task) =>
-  (task.review === 'adversarial' || task.review === 'lean') ? task.review : reviewProfile
+// Risk-surface detection — the engine-deterministic basis for the adversarial
+// second review pass. This decision used to live in the orchestrating LLM (it set
+// task.review per SKILL.md guidance), which made it vary run-to-run on the SAME
+// plan (one run double-reviewed 3 tasks, a re-run only 2). It now lives HERE so a
+// given plan always yields the same review depth. A task is a risk surface when:
+//   (1) a declared file path or its title names a high-stakes surface — auth,
+//       payments, migrations, secrets/crypto, or the persistence/data layer; OR
+//   (2) it is a foundation/contract ROOT: it Produces an interface other tasks
+//       build on while Consuming nothing itself, so a missed bug there cascades.
+// Tokens are separator-bounded so 'feedback'/'restore' don't trip 'db'/'store'.
+// The token set is intentionally tunable — widen/narrow it for your repo's risks.
+const RISK_PATH = /(?:^|[/_.\-])(auth|login|signin|session|password|passwd|secret|credential|token|oauth|jwt|crypto|secur|payment|billing|invoice|charge|checkout|stripe|money|ledger|migrat|schema|database|db|persist)s?(?:[/_.\-]|$)/i
+const isRiskSurface = (task) => {
+  const fields = []
+  if (Array.isArray(task.files)) fields.push(...task.files)
+  if (typeof task.title === 'string') fields.push(task.title)
+  if (fields.some((f) => typeof f === 'string' && RISK_PATH.test(f))) return true
+  const iface = (task && task.interfaces) || {}
+  const produces = Array.isArray(iface.produces) ? iface.produces : []
+  const consumes = Array.isArray(iface.consumes) ? iface.consumes : []
+  return produces.length > 0 && consumes.length === 0
+}
+
+// Review depth per task. Precedence: an explicit task.review override (the plan/
+// operator escape hatch) wins; then a run-wide reviewProfile:'adversarial' forces
+// every task; otherwise the engine DERIVES it from the risk surface above. The
+// orchestrator no longer needs to set task.review (SKILL.md Step 2) — it is now a
+// deterministic engine property, not an LLM judgment call.
+const taskReviewProfile = (task) => {
+  if (task.review === 'adversarial' || task.review === 'lean') return task.review
+  if (reviewProfile === 'adversarial') return 'adversarial'
+  return isRiskSurface(task) ? 'adversarial' : 'lean'
+}
 
 // Per-task reviewer model. Built from DEFAULT_TIER (NOT TIER) so tierOverrides
 // can never weaken the gate. By the narrowed adversarial trigger, a lean review

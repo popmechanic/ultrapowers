@@ -108,8 +108,9 @@ per-task depth you derive below.
 **Do not hand-assemble the task objects — the compiler emits them.** `compile_plan.py` already parses
 the plan fence-aware; re-parsing it yourself is the exact duplicate-parser drift `references/dependency-analysis.md`
 warns against. Run it with `--emit-launch` (Step 4b) and pass its `launch_waves` (id/title/files/depends_on)
-through, augmenting only the knobs that are genuinely yours to derive (`tier`, `review`, and any per-task
-`testCmd`).
+through, augmenting only the knobs that are genuinely yours to derive (`tier` and any per-task
+`testCmd`). Review depth is no longer one of them — the engine derives it (see Step 2's review-depth note);
+pass `review` only as a deliberate per-task override.
 
 **Body delivery — do not put 88KB of bodies inline.** For anything but a tiny plan, deliver bodies via a
 file, not inline in the Workflow call: an LLM cannot reliably emit tens of KB of escaped JSON as one
@@ -153,14 +154,17 @@ plans, but **never** hand-author a body that is a pointer to a plan section — 
   - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'` — strip the remote prefix; `origin/main` as a checkout target lands detached,
     falling back to the current branch). Always set it; it anchors the integration branch and the
     review diff base.
-  - **Per-task review depth (`task.review`)** — mark a task `adversarial` (two
-    independent review passes) only when it is on a **genuine risk surface**
-    (sealed acceptance, or it touches auth / payments / migrations / public-API /
-    data-integrity — read from its `Type` / `Files` / body) **OR** it is a
-    **foundation / data-layer** task (owns the persistence/data layer and/or has
-    downstream dependents — the class that has caught real wiring bugs). Tier alone
-    never triggers it: routine `cheap`/`standard` tasks with no risk signal stay
-    `lean` (one pass). This is derived from the plan, not asked.
+  - **Per-task review depth — derived by the engine, not by you.** The engine
+    deterministically grants the `adversarial` second review pass when a task sits on
+    a **genuine risk surface** (its `Files`/title name auth / payments / migrations /
+    secrets / the persistence **data-layer**) **OR** it is a **foundation / contract
+    root** (it Produces an interface other tasks consume while Consuming nothing — the
+    class that has caught real wiring bugs). Everything else stays `lean` (one pass);
+    tier alone never triggers it. **Leave `task.review` unset** so the engine decides —
+    the decision is now a deterministic engine property, not your judgment call. Set
+    `task.review` (`'adversarial'` | `'lean'`) on a single task ONLY to deliberately
+    override the engine for that task; `reviewProfile: 'adversarial'` still forces two
+    passes run-wide.
   - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
     ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
     from the plan.
@@ -355,16 +359,19 @@ preserves standard behavior):
   test steps assume installed deps (`.venv/bin/pytest …`, `bun test`) — see the polyglot guidance in Step 2.
 - `planPath` — the resolved plan path from Step 1, so the completeness critic reviews against the
   actual plan, not just the task list.
-- `waveLabels` — a short, human-readable **deliverable theme** per wave (one
-  string per wave, in wave order), so the live progress UI names each wave by
-  what it delivers instead of "Wave N". Derive it from the wave's task
-  titles/deliverables you already computed in Step 2 (e.g. `['Data layer',
-  'API surface', 'Wiring + integration']`). Omit it to let the engine fall back
-  to a deterministic join of the wave's task titles.
-- **Per-task review depth** rides on each task object as `task.review` (`'adversarial'` | `'lean'`).
-  `reviewProfile` sets the *run-wide default* for tasks that don't specify one; a task's own `review`
-  overrides it. So high-stakes tasks get two independent review passes while routine ones stay lean —
-  without paying for the extra pass everywhere.
+- `waveLabels` — one deterministic deliverable theme per wave, in wave order.
+  **`compile_plan.py` emits these** (the `waveLabels` field in its output): a single-task
+  wave by its title, a multi-task wave by the noun its titles share (e.g. `4 Modules`),
+  else the common file directory — never a bare "Wave N". **Thread compile's `waveLabels`
+  straight into `args.waveLabels`** so the live `/workflows` tree and the swarm viewer name
+  every wave identically (the engine carries its own equivalent derivation as a fallback
+  for label-less launches). You may substitute a hand-written theme (e.g. `['Data layer',
+  'Feature modules', 'Integration']`), but normally just pass compile's through.
+- **Per-task review depth** is derived by the **engine** from each task's risk surface (its
+  files/title/interfaces) — high-stakes and foundation/contract-root tasks get two independent review
+  passes while routine ones stay lean, without paying for the extra pass everywhere, and without depending
+  on orchestrator judgment. `task.review` (`'adversarial'` | `'lean'`) is an optional per-task **override**;
+  `reviewProfile: 'adversarial'` forces two passes run-wide.
 - `tierOverrides` — e.g. `{ cheap: 'sonnet' }` to remap *implementer* tiers (reviewers and the completeness critic stay at the strongest model regardless; setup/merge run at the overridden `cheap`, and reconcile/fix-rounds at the overridden `mostCapable`).
 - `edges` — the structured dependency pairs `[[fromTaskId, toTaskId], ...]` from
   Step 2 (the same edges rendered as prose in `dependencyEdges`). The workflow uses

@@ -78,6 +78,7 @@ def build_dag(plan, title):
         "title": title,
         "mode": compiled["mode"],
         "waves": compiled["waves"],
+        "waveLabels": compiled.get("waveLabels", []),
         "edges": [[e["from"], e["to"]] for e in compiled["dag_edges"]],
         "tasks": [{"id": t["id"], "title": t["title"]} for t in impl],
     }
