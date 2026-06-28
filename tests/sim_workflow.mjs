@@ -2418,4 +2418,34 @@ async function runLabelScenario(waveLabels) {
 }
 console.log('scenario wave-labels: OK')
 
+// ── W2: the full wave roadmap is pre-registered before work starts ────────────
+{
+  const phases = []
+  let firstImplAtPhaseCount = -1
+  const agent = async (prompt, opts) => {
+    const label = (opts && opts.label) || ''
+    if (label.startsWith('impl:') && firstImplAtPhaseCount === -1) firstImplAtPhaseCount = phases.length
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
+    if (label.startsWith('impl:')) return { status: 'done', branch: 'worktree-' + label.slice(5), headSha: 'sha-' + label }
+    if (label.startsWith('review:')) return { verdict: 'approve', issues: [] }
+    if (label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
+    if (label === 'integration') return { verdict: 'approve', issues: [] }
+    return { status: 'done', branch: 'w', headSha: 'sha' }
+  }
+  const args = {
+    waves: [
+      [{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }],
+      [{ id: '2', title: 'API', body: 'b', tier: 'cheap', review: 'lean' }],
+    ],
+    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
+    waveLabels: ['Data layer', 'API surface'],
+  }
+  await runWorkflow({ agent, args, phase: (t) => phases.push(t), budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  const preamble = phases.slice(0, firstImplAtPhaseCount)
+  assert(preamble.includes('Setup'), 'roadmap pre-registers Setup before work')
+  assert(preamble.includes('Data layer') && preamble.includes('API surface'), 'roadmap pre-registers every wave before work')
+  assert(preamble.includes('Integration Review'), 'roadmap pre-registers Integration Review before work')
+}
+console.log('scenario wave-roadmap-preview: OK')
+
 console.log('ALL SCENARIOS PASSED')

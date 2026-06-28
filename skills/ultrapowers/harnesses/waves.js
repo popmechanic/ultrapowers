@@ -984,6 +984,16 @@ if (wavesPath && bodylessIds.length > 0) {
   }
 }
 
+// W2: pre-register every phase up front so the live roadmap shows all waves as
+// pending, not one-at-a-time. phase() is keyed by title — re-calling a title
+// re-activates its existing group box (engine: same phase string → same group
+// box). The real Setup/loop/Integration-Review calls below re-activate each in
+// turn. FALLBACK (if a live run shows the roadmap reordering/duplicating rather
+// than pre-listing): replace this loop with one log() line —
+//   log('Roadmap: Setup · ' + WAVES.map((_, w) => waveLabel(w)).join(' · ') + ' · Integration Review')
+// and leave the per-wave phase() activation below unchanged.
+for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
+phase('Integration Review')
 phase('Setup')
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
