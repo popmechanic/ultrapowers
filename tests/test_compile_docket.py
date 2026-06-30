@@ -1,5 +1,5 @@
 """Portfolio compiler: collision graph + execution order + parallelism
-projection over queued docket entries, with an injectable writes_resolver so
+projection over queued docket entries, with an injectable facts_resolver so
 tests need no real plans on disk."""
 import importlib.util
 import pathlib
@@ -47,7 +47,7 @@ DOCKET = """# Docket
 
 def test_collisions_detected():
     m = load()
-    r = m.compile_docket(DOCKET, writes_resolver=lambda p: WRITES[p])
+    r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
     pairs = {tuple(sorted(c["plans"])) for c in r["collisions"]}
     assert ("pa.md", "pb.md") in pairs
     assert ("pa.md", "pc.md") not in pairs
@@ -55,14 +55,14 @@ def test_collisions_detected():
 
 def test_order_sequences_collisions_by_score():
     m = load()
-    r = m.compile_docket(DOCKET, writes_resolver=lambda p: WRITES[p])
+    r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
     ia, ib = r["order"].index("pa.md"), r["order"].index("pb.md")
     assert ia < ib
 
 
 def test_parallelism_projection_groups_disjoint_plans():
     m = load()
-    r = m.compile_docket(DOCKET, writes_resolver=lambda p: WRITES[p])
+    r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
     proj = r["could_have_parallelized"]
     assert proj["max_concurrent"] >= 2
     assert proj["critical_path_len"] == 2  # A->B chain is the longest
@@ -71,7 +71,7 @@ def test_parallelism_projection_groups_disjoint_plans():
 def test_only_queued_entries_considered():
     m = load()
     docket = DOCKET.replace("**State:** queued\n**Score:** 7.0", "**State:** accepted\n**Score:** 7.0")
-    r = m.compile_docket(docket, writes_resolver=lambda p: WRITES[p])
+    r = m.compile_docket(docket, facts_resolver=lambda p: (WRITES[p], "sealed"))
     assert "pc.md" not in r["order"]
 
 
@@ -81,7 +81,7 @@ def test_queued_entry_without_plan_fails_loud():
               "**Score:** 9.0 — x\n**Est-files:** a.py\n")
     import pytest
     with pytest.raises(Exception):
-        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+        m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
 
 
 def test_duplicate_plan_paths_fail_loud():
@@ -93,24 +93,50 @@ def test_duplicate_plan_paths_fail_loud():
               "**Plan:** p.md\n**Seal:** bbb\n")
     import pytest
     with pytest.raises(Exception):
-        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+        m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
 
 
 def test_budget_passes_through():
     m = load()
     docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
               "**Est-files:** a.py\n**Plan:** p.md\n**Seal:** aaa\n")
-    r = m.compile_docket(docket, writes_resolver=lambda p: {"a.py"}, budget_usd=42.0)
+    r = m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"), budget_usd=42.0)
     assert r["budget_usd"] == 42.0
 
 
-def test_queued_entry_without_seal_fails_loud():
+def test_sealed_entry_without_seal_fails_loud():
+    """A sealed-disposition queued entry with no Seal still fails loud."""
     m = load()
     docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
               "**Est-files:** a.py\n**Plan:** p.md\n")  # Plan present, Seal absent
     import pytest
     with pytest.raises(Exception):
-        m.compile_docket(docket, writes_resolver=lambda p: {"a.py"})
+        m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "sealed"))
+
+
+def test_suite_entry_without_seal_compiles():
+    """A suite-disposition queued entry needs no Seal — it compiles."""
+    m = load()
+    docket = ("# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
+              "**Est-files:** a.py\n**Plan:** p.md\n")  # no Seal — legal for suite
+    r = m.compile_docket(docket, facts_resolver=lambda p: ({"a.py"}, "suite"))
+    assert r["order"] == ["p.md"]
+
+
+def test_mixed_sealed_and_suite_queue_compiles():
+    """A queue mixing a sealed (sealed entry) and a suite (seal-less) plan
+    compiles; order is score-descending."""
+    m = load()
+    docket = ("# Docket\n\n"
+              "### #1: sealed\n**State:** queued\n**Score:** 9 — x\n"
+              "**Est-files:** a.py\n**Plan:** pa.md\n**Seal:** aaa111aaa111\n\n"
+              "### #2: suite\n**State:** queued\n**Score:** 5 — x\n"
+              "**Est-files:** b.py\n**Plan:** pb.md\n")  # suite, no Seal
+    modes = {"pa.md": "sealed", "pb.md": "suite"}
+    writes = {"pa.md": {"a.py"}, "pb.md": {"b.py"}}
+    r = m.compile_docket(docket, facts_resolver=lambda p: (writes[p], modes[p]))
+    assert r["order"] == ["pa.md", "pb.md"]
+    assert r["collisions"] == []
 
 
 def test_real_plan_writes_unions_task_writes(tmp_path):

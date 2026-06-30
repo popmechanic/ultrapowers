@@ -357,3 +357,50 @@ def test_non_pytest_red_suite_is_assertion(tmp_path):
                        suite_files={"run.sh": 'echo "1 failed"; exit 1\n'})
     res = run_acceptance(repo, vault)
     assert res["passed"] is False and res["redKind"] == "assertion"
+
+
+def make_suite_repo(tmp_path, test_body, *, name="repo"):
+    """A repo whose COMMITTED suite is tests/test_committed.py."""
+    repo = tmp_path / name
+    (repo / "tests").mkdir(parents=True)
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    (repo / "tests" / "test_committed.py").write_text(test_body)
+    sh(["git", "add", "."], cwd=repo)
+    sh(["git", "commit", "-qm", "base"], cwd=repo)
+    return repo
+
+
+def suite_gate(repo, branch="main", run=None):
+    cmd = ["bash", str(RUN), "--suite-gate", "--branch", branch, "--repo", str(repo)]
+    if run:
+        cmd += ["--run", run]
+    r = sh(cmd, check=False)
+    return r.returncode, json.loads(r.stdout)
+
+
+def test_suite_gate_green_passes(tmp_path):
+    repo = make_suite_repo(tmp_path, "def test_ok():\n    assert True\n")
+    code, out = suite_gate(repo)            # default run cmd = python3 -m pytest
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
+    assert out["sealId"] == "(suite)"
+
+
+def test_suite_gate_red_parks(tmp_path):
+    repo = make_suite_repo(tmp_path, "def test_ok():\n    assert False\n")
+    code, out = suite_gate(repo)
+    assert code != 0 and out["passed"] is False and out["exitCode"] != 0
+
+
+def test_suite_gate_no_tests_never_false_greens(tmp_path):
+    repo = make_suite_repo(tmp_path, "# no tests here\n")
+    code, out = suite_gate(repo)            # pytest exits 5 (no tests collected)
+    assert code != 0 and out["passed"] is False and out["status"] == "ERROR"
+
+
+def test_suite_gate_worktree_cleaned_up(tmp_path):
+    repo = make_suite_repo(tmp_path, "def test_ok():\n    assert True\n")
+    suite_gate(repo)
+    listed = sh(["git", "worktree", "list"], cwd=repo).stdout.strip().splitlines()
+    assert len(listed) == 1, "suite-gate worktree leaked"
