@@ -67,10 +67,12 @@ One iteration:
    record the chosen engine. Do **not** restate the rubric's branch clauses
    here; reference it. The value is one of `ultrapowers | subagent-driven |
    inline`.
-5. **Write back** in one atomic entry update — plan path, seal-id, and engine —
-   advancing the entry `accepted → planned → queued` via `docket_lib.transition`
-   (`planned` is the intermediate: approved, seal not yet issued). Never
-   hand-edit the docket prose.
+5. **Write back** in one atomic entry update — plan path, engine, and (for
+   `sealed` plans only) the seal-id — advancing the entry
+   `accepted → planned → queued` via `docket_lib.transition` (`planned` is the
+   intermediate: approved, seal not yet issued for sealed plans; for
+   `suite`/`waived` plans there is no seal and the entry advances straight to
+   `queued`). Never hand-edit the docket prose.
 6. **Auto-advance** to the next `accepted` entry.
 
 The sweep loops until no `accepted` entry remains or the operator stops. Docket
@@ -78,9 +80,10 @@ state is durable, so a sweep may span sittings freely: stopping is simply not
 continuing; resuming re-reads the remaining `accepted` entries. No new
 persistence mechanism is introduced.
 
-**If sealing fails**, the entry stays `planned` (approved, unsealed) and the
-sweep continues; it surfaces for a retry on a later sweep. It is never `queued`,
-so the drain never picks up an unsealed plan.
+**If sealing fails** (a `sealed`-disposition plan only — `suite` and `waived`
+plans author no seal and are never "sealing failures"), the entry stays `planned`
+(approved, unsealed) and the sweep continues; it surfaces for a retry on a later
+sweep. It is never `queued`, so the drain never picks up an unsealed sealed plan.
 
 **In-sweep controls**, offered at each iteration boundary:
 
@@ -117,17 +120,26 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
    - `inline` → invoke `superpowers:executing-plans` against the per-plan branch.
-3. **Administer the sealed exam** against the plan's branch with
-   `run_acceptance.sh <sealId> <branch> <sha256>` (exit-code authority; it makes
-   its own detached worktree, so it is agnostic to the current checkout).
+3. **Administer the correctness gate** against the plan's branch, dispatched on
+   the plan's disposition (its `**Acceptance:**` line, read as `acceptance.mode`
+   from `compile_plan`). Each runner makes its own detached worktree (agnostic to
+   the current checkout) and is exit-code authority:
+   - `sealed` → `run_acceptance.sh <sealId> <branch> <sha256>` — the held-out exam.
+   - `suite` → `run_acceptance.sh --suite-gate --branch <branch>` — the committed
+     suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass. This is the
+     disposition for ultrapowers' own engine/skill/doc work, which authors no
+     held-out exam.
+   - `waived` → no gate exists; **park for the operator** at the end gate. Never
+     auto-merge unverified work.
 4. **Merge or park** — the deterministic step:
-   - **Green exam** → merge the plan branch into the docket integration line;
+   - **Green gate** → merge the plan branch into the docket integration line;
      advance the entry `queued → executed` via `docket_lib.transition`; the next
      plan branches off the new HEAD.
-   - **Red exam or executor failure** → **park**: keep the branch, transition the
-     entry to `parked` with a reason (the exam's `redKind` or the failure), and
+   - **Red gate or executor failure** → **park**: keep the branch, transition the
+     entry to `parked` with a reason (the gate's `redKind` or the failure), and
      skip the plan's collision-dependents (from `compile_docket`'s collision
-     graph). Disjoint plans continue.
+     graph). Disjoint plans continue. (Covers a red suite gate the same way as a
+     red sealed exam — the JSON contract is identical.)
    - **Missing/uncompilable Plan** → `compile_docket`/`plan_writes` raises a
      friendly error naming the plan; park that entry with the reason before
      spending execution cost. Never surface a raw stack trace.
