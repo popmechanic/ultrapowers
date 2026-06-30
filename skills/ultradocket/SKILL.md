@@ -106,8 +106,13 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
 1. **Branch** off the current docket integration line HEAD.
 2. **Dispatch by the entry's recorded `Engine`**, auto-advancing any
    human-in-the-loop checkpoint (see "The exam-gated auto-approve" below):
-   - `ultrapowers` → launch the committed `waves` saved workflow via the
-     Workflow tool (the same top-level launch `/ultrapowers` uses). It
+   - `ultrapowers` → run the plan through the committed waves engine: compile it
+     (`compile_plan.py --emit-launch`), then launch the saved workflow **by its
+     `meta.name` `ultrapowers-run`** (not `waves` — that is the harness file, and
+     launching by it fails "not found") via the Workflow tool, following
+     `/ultrapowers` Steps 2–4 for the engine probe, run lock, and args assembly.
+     Do **not** invoke `/ultrapowers`' own Step-5 gate — the drain administers the
+     sealed exam (step 3) and the docket-line merge (step 4) below instead. Waves
      self-isolates with per-task worktrees and tiers per task.
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
