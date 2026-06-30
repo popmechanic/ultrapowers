@@ -1,6 +1,6 @@
 ---
 name: ultradocket
-description: Use when the operator has a backlog rather than a single idea — triage open GitHub issues against business objectives into a ranked docket, plan accepted issues one at a time via superpowers, and compile the approved plans into a collision-aware portfolio. The execution drain is /ultradocket run (part 3c). Optional; the single-feature superpowers flow is unchanged when not summoned.
+description: Use when the operator has a backlog rather than a single idea — triage open issues into a ranked docket, sweep the accepted queue into sealed engine-tagged plans, and drain that queue through an autonomous build. Optional; the single-feature superpowers flow is unchanged when not summoned.
 ---
 
 # Ultradocket
@@ -44,17 +44,52 @@ Lifecycle: `triaged → accepted → planned → queued → executed → verifie
 non-terminal state → `parked`. Transitions go through `docket_lib.transition`,
 never hand-edited prose.
 
-## Mode: plan (`/ultradocket plan`)
+## Mode: plan (`/ultradocket plan`) — the continuous sweep
 
-Pop the next `accepted` entry (highest score). Open a normal superpowers
-brainstorm pre-seeded with the issue body, the triage notes, and the relevant
-line(s) of `docs/objectives.md` — a well-defined issue is half a spec, so the
-interview is short. Hand off to the standard brainstorm → writing-plans →
-ultraplan → sealing pipeline. On completion, record the plan path and seal
-into the entry (`State: queued`; `planned` is the intermediate where the plan
-is approved but the seal is not yet issued). Throughput is capped by operator
-attention here, by design — everything downstream of the operator's signature
-runs at machine speed.
+Bare `/ultradocket plan` is a **continuous sweep**: it drains the entire
+`accepted` queue through back-to-back, pre-seeded brainstorms, in docket-rank
+order, until the queue is empty or the operator stops. There is no single-issue
+form — the sweep is the only planning entry point. Throughput is capped by
+operator attention here, by design; everything downstream of the operator's
+signature runs at machine speed in the drain (`run` mode).
+
+One iteration:
+
+1. **Pop** the highest-rank `accepted` entry.
+2. **Pre-seed** a standard `superpowers:brainstorming` session with the issue
+   body, the triage notes, and the matched line(s) of `docs/objectives.md`. A
+   well-defined issue is half a spec, so the interview is short.
+3. **Plan** through the normal pipeline: brainstorm → `superpowers:writing-plans`
+   + `ultrapowers:ultraplan` → operator approval → the ultraplan sealing step.
+4. **Choose the engine.** Apply the **shared execution-fit rubric** — the same
+   one the routing hook and ultraplan use (pinned by
+   `tests/test_recommendation_rubric.py`) — to the finished marked plan, and
+   record the chosen engine. Do **not** restate the rubric's branch clauses
+   here; reference it. The value is one of `ultrapowers | subagent-driven |
+   inline`.
+5. **Write back** in one atomic entry update — plan path, seal-id, and engine —
+   advancing the entry `accepted → planned → queued` via `docket_lib.transition`
+   (`planned` is the intermediate: approved, seal not yet issued). Never
+   hand-edit the docket prose.
+6. **Auto-advance** to the next `accepted` entry.
+
+The sweep loops until no `accepted` entry remains or the operator stops. Docket
+state is durable, so a sweep may span sittings freely: stopping is simply not
+continuing; resuming re-reads the remaining `accepted` entries. No new
+persistence mechanism is introduced.
+
+**If sealing fails**, the entry stays `planned` (approved, unsealed) and the
+sweep continues; it surfaces for a retry on a later sweep. It is never `queued`,
+so the drain never picks up an unsealed plan.
+
+**In-sweep controls**, offered at each iteration boundary:
+
+- **continue** — the default; plan the next entry.
+- **skip-park** — park this entry with a reason (covers both "I don't want to
+  build this" and "this issue is underspecified / needs decomposition") via
+  `docket_lib.transition` (→ `parked`), then continue.
+- **stop** — end the sweep here; the remaining `accepted` entries are untouched
+  and picked up on the next `/ultradocket plan`.
 
 ## Mode: run (`/ultradocket run`)
 
