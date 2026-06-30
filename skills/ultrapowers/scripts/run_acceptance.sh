@@ -14,6 +14,7 @@ SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
 VAULT="${HOME}/.ultrapowers/acceptance"
 REPO="$(pwd)"
 B_SUITE=""; B_RUN=""; B_BOOT=""
+SG_RUN="python3 -m pytest"
 MODE="sealed"
 if [ "${1:-}" = "--baseline" ]; then
   MODE="baseline"; shift
@@ -30,6 +31,17 @@ if [ "${1:-}" = "--baseline" ]; then
   : "${B_SUITE:?--baseline requires --suite}"
   : "${BRANCH:?--baseline requires --branch}"
   : "${B_RUN:?--baseline requires --run}"
+elif [ "${1:-}" = "--suite-gate" ]; then
+  MODE="suite-gate"; SEAL_ID="(suite)"; shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --branch) BRANCH="$2"; shift 2 ;;
+      --run)    SG_RUN="$2"; shift 2 ;;
+      --repo)   REPO="$2";   shift 2 ;;
+      *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+  done
+  : "${BRANCH:?--suite-gate requires --branch}"
 else
   SEAL_ID="${1:?usage: run_acceptance.sh <seal-id> <branch> <sha256> [--vault DIR] [--repo DIR]}"
   BRANCH="${2:?missing branch}"
@@ -133,6 +145,27 @@ $OUT"
   fi
   return 0
 }
+
+# ── Suite-gate mode (committed-suite gate for suite-disposition plans) ────────
+# Runs the repo's OWN committed suite (already on the branch) in a detached
+# worktree. No held-out suite is mounted. pytest exit codes are the authority:
+# 0 => pass; 5 => no tests collected (false-green guard); anything else => red.
+if [ "$MODE" = "suite-gate" ]; then
+  EXAM_WT="$(mktemp -d)/suite-gate"
+  if ! git -C "$REPO" worktree add --detach "$EXAM_WT" "$BRANCH" >/dev/null 2>&1; then
+    emit ERROR false 1 "could not create suite-gate worktree for branch $BRANCH in $REPO"
+    exit 1
+  fi
+  OUT="$( (cd "$EXAM_WT" && eval "$SG_RUN") 2>&1 )"; CODE=$?
+  if [ "$CODE" -eq 0 ]; then
+    emit OK true 0 "$OUT"; exit 0
+  elif [ "$CODE" -eq 5 ]; then
+    emit ERROR false 5 "committed suite collected no tests — refusing to false-green:
+$OUT"; exit 1
+  else
+    emit OK false "$CODE" "$OUT" assertion; exit 1
+  fi
+fi
 
 # ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
 if [ "$MODE" = baseline ]; then
