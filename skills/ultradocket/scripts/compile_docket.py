@@ -23,13 +23,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 COMPILE_PLAN = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 
 
-def plan_writes(plan_path):
-    """Authoritative write-set of a plan: union of its tasks' writes.
-
-    A missing or uncompilable Plan raises a friendly ValueError naming the plan
-    (so the drain parks that entry with a clear reason) rather than leaking a raw
-    CalledProcessError stack trace (#34).
-    """
+def plan_facts(plan_path):
+    """Authoritative (writes, acceptance-mode) of a plan, from ONE compile_plan
+    invocation. A missing/uncompilable Plan raises a friendly ValueError naming
+    the plan (so the drain parks that entry with a clear reason) rather than a raw
+    CalledProcessError stack trace (#34)."""
     try:
         out = subprocess.run([sys.executable, str(COMPILE_PLAN), str(plan_path)],
                              capture_output=True, text=True, check=True).stdout
@@ -41,34 +39,45 @@ def plan_writes(plan_path):
     writes = set()
     for t in data.get("tasks", []):
         writes.update(t.get("writes", []))
-    return writes
+    mode = (data.get("acceptance") or {}).get("mode", "missing")
+    return writes, mode
 
 
-def compile_docket(docket_text, writes_resolver=plan_writes, budget_usd=None):
-    """Compile queued docket entries into execution order and parallelism projection.
+def plan_writes(plan_path):
+    """Write-set only (union of task writes), for callers that don't need the
+    disposition. Thin wrapper over plan_facts."""
+    return plan_facts(plan_path)[0]
 
-    Order is pure score-descending (v1).  The collision graph informs the
-    could-have-parallelized projection only; it does NOT reorder sequential
-    execution (sequential execution needs no collision-based reordering).
 
-    Raises ValueError for malformed queued entries: missing Plan or duplicate
-    Plan paths across entries.
+def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
+    """Compile queued docket entries into execution order and parallelism
+    projection. A Seal is required only for `sealed`-disposition plans; `suite`
+    and `waived` plans are verified by the committed suite / operator and carry
+    no held-out seal. Order is pure score-descending (v1).
+
+    Raises ValueError for malformed queued entries: missing Plan, missing Seal
+    on a sealed-disposition plan, or duplicate Plan paths across entries.
     """
     entries = [e for e in docket_lib.parse_docket(docket_text) if e.state == "queued"]
 
     missing = [e.issue for e in entries if not e.plan]
     if missing:
         raise ValueError(f"queued docket entries missing a Plan: {missing}")
-    no_seal = [e.issue for e in entries if not e.seal]
+
+    # Resolve each plan once: (writes, acceptance mode). Uncompilable -> friendly raise.
+    facts = {e.plan: facts_resolver(e.plan) for e in entries}
+
+    no_seal = [e.issue for e in entries if facts[e.plan][1] == "sealed" and not e.seal]
     if no_seal:
-        raise ValueError(f"queued docket entries missing a Seal: {no_seal}")
+        raise ValueError(f"queued sealed-disposition entries missing a Seal: {no_seal}")
+
     plan_paths = [e.plan for e in entries]
     dupes = sorted({p for p in plan_paths if plan_paths.count(p) > 1})
     if dupes:
         raise ValueError(f"queued docket entries share a Plan path: {dupes}")
 
     by_score = sorted(entries, key=lambda e: -float(e.score.split()[0]))
-    wsets = {e.plan: set(writes_resolver(e.plan)) for e in entries}
+    wsets = {e.plan: set(facts[e.plan][0]) for e in entries}
 
     collisions = []
     for i, a in enumerate(by_score):
