@@ -13,22 +13,22 @@ Ultrapowers is an extension to [superpowers](https://github.com/obra/superpowers
 Have you ever asked Claude to do ambitious work and blown through your five-hour token budget before it
 finished? (If you haven't, you're not trying hard enough;)
 
-Smarter models invite bigger asks. "Product people" love this. You can finally think at the scale
+Frontier models invite bigger asks. "Product people" love this. You can finally think at the scale
 of the whole feature, the whole idea, the whole business, instead of the next function. But pointing a frontier model
-at a huge body of work and saying "build it" is the most expensive way to get it done. The premium
+at a huge body of work and saying "build it" is the most expensive way to get it done. The frontier
 model writes every line, reviews itself, and drags one ever-growing transcript the whole way. You
-watch your usage drain, and the work still isn't finished.
+max out your subscription-subsidized tokens, and the work still isn't finished.
 
-## Spend your best model where it counts
+## Spend your frontier model where it counts
 
-ultrapowers makes ambition affordable by using your expensive model only where it changes the
+ultrapowers makes ambition affordable by using your frontier model only where it changes the
 outcome.
 
-- **Your best model plans.** It thinks hard, once, and writes a detailed plan — exact steps, often
+- **Your frontier model plans.** It thinks hard, once, and writes a detailed plan — exact steps, often
   the actual code.
 - **Cheaper models build.** A plan that complete makes each task closer to transcription than
   invention, so a cheaper model does it well.
-- **Your best model checks the work.** Quality is the one place it never cuts corners.
+- **Your frontier model checks the work.** Quality is the one place it never cuts corners.
 - **Each task stays out of your main session.** You don't re-pay for one giant, ballooning
   transcript.
 - **It won't over-spend.** If a plan won't benefit from the heavy parallel machinery, ultrapowers
@@ -41,7 +41,7 @@ savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to 
 
 ## What you get
 
-**1. Affordable ambition.** You don't pay frontier prices to write boilerplate. Your best model
+**1. Affordable ambition.** You don't pay frontier prices to write boilerplate. Your frontier model
 plans and checks; cheaper models do the building in between.
 
 **2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
@@ -145,14 +145,15 @@ branch.
 ### Zoom in again: the agents at work
 
 Now watch a wave run. Every node in the graph becomes a live agent, building its task in its own
-worktree — and a single wave fans out to *forty-six of them at once*:
+worktree — a wave fans out to as many agents as the plan calls for, running them all at once. Here,
+that's *forty-six*:
 
 <p align="center">
   <img src="docs/assets/swarm.gif" width="840" alt="One wave of an ultrapowers run: all 46 of its agents shown as nodes between the plan above and the integration branch below. Each node's ring colour is its model — Haiku, Sonnet, or Opus — and an inner arc fills as that agent builds its task.">
 </p>
 
 Each ring's colour is the model that agent runs on: the builders are Haiku and Sonnet, the reviewers
-Opus. That's the whole idea in one picture — cheap models do the building, your best model does the
+Opus. That's the whole idea in one picture — cheap models do the building, your frontier model does the
 judging — multiplied across dozens of agents at the same time.
 
 And this is exactly what it looks like running in Claude Code:
