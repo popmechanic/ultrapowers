@@ -148,3 +148,37 @@ def test_every_real_state_parses():
     for s in ["triaged", "accepted", "planned", "queued", "executed", "verified", "parked"]:
         body = f"# D\n\n### #1: x\n**State:** {s}\n**Score:** 1 — x\n"
         assert m.parse_docket(body)[0].state == s
+
+
+def test_parse_and_round_trip_engine():
+    m = load()
+    text = ("# Docket\n\n### #214: x\n**State:** queued\n**Score:** 8.5 — y\n"
+            "**Est-files:** a.py\n**Plan:** p.md\n**Seal:** abc123\n"
+            "**Engine:** ultrapowers\n")
+    e = m.parse_docket(text)[0]
+    assert e.engine == "ultrapowers"
+    again = m.parse_docket(m.serialize_docket([e]))[0]
+    assert again.engine == "ultrapowers"
+
+
+def test_engine_optional_defaults_none():
+    m = load()
+    e = m.parse_docket("# D\n\n### #1: x\n**State:** accepted\n**Score:** 1 — x\n")[0]
+    assert e.engine is None
+
+
+def test_unknown_engine_fails_loud():
+    m = load()
+    bad = ("# D\n\n### #1: x\n**State:** queued\n**Score:** 1 — x\n"
+           "**Est-files:** a.py\n**Plan:** p.md\n**Seal:** abc\n**Engine:** turbo\n")
+    import pytest
+    with pytest.raises(m.DocketError):
+        m.parse_docket(bad)
+
+
+def test_all_valid_engines_parse():
+    m = load()
+    for eng in ("ultrapowers", "subagent-driven", "inline"):
+        text = (f"# D\n\n### #1: x\n**State:** queued\n**Score:** 1 — x\n"
+                f"**Est-files:** a.py\n**Plan:** p.md\n**Seal:** abc\n**Engine:** {eng}\n")
+        assert m.parse_docket(text)[0].engine == eng

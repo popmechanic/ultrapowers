@@ -10,6 +10,7 @@ import re
 
 LIFECYCLE = ["triaged", "accepted", "planned", "queued", "executed", "verified"]
 TERMINAL = {"verified", "parked"}
+ENGINES = ("ultrapowers", "subagent-driven", "inline")
 
 
 class DocketError(Exception):
@@ -25,10 +26,11 @@ class Entry:
     est_files: list
     plan: str = None
     seal: str = None
+    engine: str = None
 
 
 _HEAD = re.compile(r"^###\s+#(\d+):\s+(.*?)\s*$")
-_FIELD = re.compile(r"^\*\*(State|Score|Est-files|Plan|Seal):\*\*\s*(.*?)\s*$")
+_FIELD = re.compile(r"^\*\*(State|Score|Est-files|Plan|Seal|Engine):\*\*\s*(.*?)\s*$")
 
 
 def parse_docket(text):
@@ -46,13 +48,17 @@ def parse_docket(text):
             raise DocketError(f"issue #{cur[0]} has a non-numeric Score: {fields['Score']!r}")
         if fields["State"] not in (set(LIFECYCLE) | {"parked"}):
             raise DocketError(f"issue #{cur[0]} has unknown State: {fields['State']!r}")
+        engine = fields.get("Engine") or None
+        if engine is not None and engine not in ENGINES:
+            raise DocketError(f"issue #{cur[0]} has unknown Engine: {engine!r}")
         if cur[0] in seen:
             raise DocketError(f"duplicate issue #{cur[0]} in docket")
         seen.add(cur[0])
         est = [s.strip() for s in fields.get("Est-files", "").split(",") if s.strip()]
         entries.append(Entry(issue=cur[0], title=cur[1], state=fields["State"],
                              score=fields["Score"], est_files=est,
-                             plan=fields.get("Plan") or None, seal=fields.get("Seal") or None))
+                             plan=fields.get("Plan") or None, seal=fields.get("Seal") or None,
+                             engine=engine))
 
     for line in text.splitlines():
         if line.startswith("### "):
@@ -83,6 +89,8 @@ def serialize_docket(entries):
             out.append(f"**Plan:** {e.plan}")
         if e.seal:
             out.append(f"**Seal:** {e.seal}")
+        if e.engine:
+            out.append(f"**Engine:** {e.engine}")
         out.append("")
     return "\n".join(out)
 
