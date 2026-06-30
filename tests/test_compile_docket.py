@@ -127,3 +127,59 @@ def test_real_plan_writes_unions_task_writes(tmp_path):
         "**Files:**\n- Create: `x/b.py`\n- [ ] **Step 1: do**\n")
     writes = m.plan_writes(plan)
     assert {"x/a.py", "x/b.py"} <= set(writes)
+
+
+def test_uncompilable_plan_raises_friendly_error(tmp_path):
+    """A queued entry whose Plan is missing/uncompilable must raise a friendly
+    error naming the plan, not a raw CalledProcessError stack trace (#34)."""
+    m = load()
+    import subprocess, pytest
+    missing = tmp_path / "does-not-exist.md"
+    with pytest.raises(ValueError) as ei:
+        m.plan_writes(missing)
+    assert str(missing) in str(ei.value)
+    assert not isinstance(ei.value, subprocess.CalledProcessError)
+
+
+def _fixture_plan(p, *creates):
+    body = "# P\n\n**Acceptance:** suite — fixture\n\n"
+    for i, c in enumerate(creates, 1):
+        body += (f"### Task {i}: t{i}\n**Type:** implementation\n**Depends-on:** none\n"
+                 f"**Files:**\n- Create: `{c}`\n- [ ] **Step 1: do**\n\n")
+    p.write_text(body)
+
+
+def test_compile_docket_real_resolver_over_real_plans(tmp_path):
+    """Drive compile_docket() with the DEFAULT resolver (no injection) over real
+    fixture plans on disk — the real plan_writes path inside compile_docket (#34)."""
+    m = load()
+    pa, pb = tmp_path / "pa.md", tmp_path / "pb.md"
+    _fixture_plan(pa, "x/a.py")
+    _fixture_plan(pb, "x/b.py")
+    docket = (f"# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
+              f"**Est-files:** x/a.py\n**Plan:** {pa}\n**Seal:** aaa\n\n"
+              f"### #2: b\n**State:** queued\n**Score:** 5 — x\n"
+              f"**Est-files:** x/b.py\n**Plan:** {pb}\n**Seal:** bbb\n")
+    r = m.compile_docket(docket)  # default resolver → real plan_writes()
+    assert r["order"] == [str(pa), str(pb)]
+    assert r["collisions"] == []  # disjoint writes
+
+
+def test_cli_main_prints_json(tmp_path, capsys):
+    """compile_docket.main(): argparse + file read + JSON print + --budget-usd (#34)."""
+    m = load()
+    pa = tmp_path / "pa.md"
+    _fixture_plan(pa, "x/a.py")
+    docket = tmp_path / "docket.md"
+    docket.write_text(f"# Docket\n\n### #1: a\n**State:** queued\n**Score:** 9 — x\n"
+                      f"**Est-files:** x/a.py\n**Plan:** {pa}\n**Seal:** aaa\n")
+    import sys, json
+    saved = sys.argv
+    sys.argv = ["compile_docket.py", str(docket), "--budget-usd", "12.5"]
+    try:
+        m.main()
+    finally:
+        sys.argv = saved
+    out = json.loads(capsys.readouterr().out)
+    assert out["budget_usd"] == 12.5
+    assert out["order"] == [str(pa)]

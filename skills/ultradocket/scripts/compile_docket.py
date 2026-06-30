@@ -24,9 +24,19 @@ COMPILE_PLAN = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 
 
 def plan_writes(plan_path):
-    """Authoritative write-set of a plan: union of its tasks' writes."""
-    out = subprocess.run([sys.executable, str(COMPILE_PLAN), str(plan_path)],
-                         capture_output=True, text=True, check=True).stdout
+    """Authoritative write-set of a plan: union of its tasks' writes.
+
+    A missing or uncompilable Plan raises a friendly ValueError naming the plan
+    (so the drain parks that entry with a clear reason) rather than leaking a raw
+    CalledProcessError stack trace (#34).
+    """
+    try:
+        out = subprocess.run([sys.executable, str(COMPILE_PLAN), str(plan_path)],
+                             capture_output=True, text=True, check=True).stdout
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or e.stdout or "").strip().splitlines()
+        reason = detail[-1] if detail else f"exit {e.returncode}"
+        raise ValueError(f"queued plan {plan_path!r} failed to compile: {reason}") from e
     data = json.loads(out)
     writes = set()
     for t in data.get("tasks", []):
