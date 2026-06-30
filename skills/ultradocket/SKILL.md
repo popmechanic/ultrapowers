@@ -115,7 +115,7 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      launching by it fails "not found") via the Workflow tool, following
      `/ultrapowers` Steps 2–4 for the engine probe, run lock, and args assembly.
      Do **not** invoke `/ultrapowers`' own Step-5 gate — the drain administers the
-     sealed exam (step 3) and the docket-line merge (step 4) below instead. Waves
+     correctness gate (step 3) and the docket-line merge (step 4) below instead. Waves
      self-isolates with per-task worktrees and tiers per task.
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
