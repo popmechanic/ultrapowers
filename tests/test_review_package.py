@@ -1,7 +1,8 @@
 """End-to-end test for the review-package script — the pre-baked review packet
 (spec §2.1). A REAL temp repo with two commits touching one file; asserts the
-packet is written to the SHARED common git dir, is echoed on stdout, and carries
-the commit subjects, the ## Diff header, and a +/- diff hunk."""
+packet is written to the SHARED scratch dir under `.superpowers/ultra` (outside
+`.git/`, yet resolving identically from every linked worktree), is echoed on
+stdout, and carries the commit subjects, the ## Diff header, and a +/- diff hunk."""
 import pathlib
 import subprocess
 
@@ -36,7 +37,7 @@ def run_script(repo, *args):
                           capture_output=True, text=True)
 
 
-def test_review_package_writes_to_common_git_dir_and_echoes_path(tmp_path):
+def test_review_package_writes_to_shared_superpowers_dir_and_echoes_path(tmp_path):
     repo, base, head = make_repo(tmp_path)
     p = run_script(repo, base, head)
     assert p.returncode == 0, p.stderr
@@ -46,7 +47,12 @@ def test_review_package_writes_to_common_git_dir_and_echoes_path(tmp_path):
         git(repo, "rev-parse", "--git-common-dir").stdout.strip())
     if not common.is_absolute():
         common = (repo / common)
-    assert out_path.resolve().parent == (common / "ultra").resolve()
+    # The scratch dir is derived from the RESOLVED PARENT of --git-common-dir
+    # (the main repo root, shared by every linked worktree), under .superpowers/.
+    expected_dir = (common.resolve().parent / ".superpowers" / "ultra")
+    assert out_path.resolve().parent == expected_dir.resolve()
+    # It must escape the protected .git/ entirely.
+    assert ".git" not in out_path.resolve().parts, out_path
     body = out_path.read_text()
     assert "# Review package:" in body
     assert "first commit subject" in body
@@ -56,6 +62,31 @@ def test_review_package_writes_to_common_git_dir_and_echoes_path(tmp_path):
     assert "## Diff" in body
     assert "-original line" in body
     assert "+changed line" in body
+
+
+def test_packet_dir_shared_across_worktrees(tmp_path):
+    """The property .git/…/ultra had and we must keep: the implementer's isolated
+    worktree and the reviewer's main checkout resolve the SAME scratch dir. Derive
+    it from --git-common-dir's parent, never from the CWD/worktree root."""
+    repo, base, head = make_repo(tmp_path)
+    # A linked worktree off the same repo (detached HEAD at `head`, so it does
+    # not collide with main's checked-out branch).
+    wt = tmp_path / "linked-wt"
+    git(repo, "worktree", "add", "--detach", str(wt), head)
+
+    p_main = run_script(repo, base, head)
+    p_wt = run_script(wt, base, head)
+    assert p_main.returncode == 0, p_main.stderr
+    assert p_wt.returncode == 0, p_wt.stderr
+
+    main_path = pathlib.Path(p_main.stdout.strip().splitlines()[-1]).resolve()
+    wt_path = pathlib.Path(p_wt.stdout.strip().splitlines()[-1]).resolve()
+    # Both runs land in the SAME shared .superpowers/ultra directory.
+    assert main_path.parent == wt_path.parent, (main_path, wt_path)
+    assert main_path.parent.name == "ultra"
+    assert main_path.parent.parent.name == ".superpowers"
+    assert ".git" not in main_path.parts, main_path
+    assert ".git" not in wt_path.parts, wt_path
 
 
 def test_review_package_honors_explicit_outfile(tmp_path):
