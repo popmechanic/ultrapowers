@@ -32,3 +32,28 @@ git rev-list --count <deploy-target>..<base>
 
 If the base is far ahead (dozens of commits), warn that finishing this branch
 deploys far more than the reviewed change ([64016ca13dd763a4]).
+
+## Cross-phase integration review — one holistic critic before the final PR
+
+Per-task and per-wave reviews (and per-phase reviews, in a multi-run pipeline)
+certify *local* correctness only; none of them evaluates the fully-integrated
+tree across phases against the *combined* plan. That is a structural blind spot:
+six green per-phase sealed gates once still let ~21 cross-phase integration bugs
+through — including a crash — because every gate was judging its own slice, not
+the whole.
+
+For a multi-phase or multi-run pipeline, before opening the final PR, run one
+**holistic cross-phase review**: the completeness-critic role over the
+fully-integrated tree, evaluated against the *combined* plan (not any single
+phase's slice), gated before the PR. Findings that span phase seams — a caller
+left dangling by another phase's rename, duplicated or diverging state, behavior
+that only breaks once every phase is present — are exactly what this review
+exists to catch, and they land in the report's `completenessFindings` alongside
+the single-run critic's (see `references/report-format.md`).
+
+This is a new *invocation* of the existing completeness-critic role at the
+finishing handoff, not a new harness or subsystem; a single-run pipeline already
+receives this review over its own integrated tree, so scope the extra pass to
+work that actually spanned multiple phases or runs. Do not hand off to
+`finishing-a-development-branch` until the holistic review is clean or its
+findings are explicitly dispositioned.
