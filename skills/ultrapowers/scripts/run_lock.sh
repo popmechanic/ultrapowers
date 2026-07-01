@@ -60,8 +60,18 @@ case "$cmd" in
     h="$(cut -f2 "$SNAP")"
     if [ -n "$b" ]; then
       git -C "$ROOT" checkout "$b"
+      cur="$(git -C "$ROOT" branch --show-current)"
+      if [ "$cur" != "$b" ]; then
+        echo "run_lock.sh restore: expected to land on branch '$b' but HEAD is '${cur:-<detached>}' — refusing to gate the wrong tree (#68)." >&2
+        exit 1
+      fi
     else
       git -C "$ROOT" checkout "$h"
+      cur="$(git -C "$ROOT" rev-parse HEAD)"
+      if [ "$cur" != "$h" ]; then
+        echo "run_lock.sh restore: expected detached HEAD at '$h' but HEAD is '$cur' — refusing to gate the wrong tree (#68)." >&2
+        exit 1
+      fi
     fi
     ;;
 
