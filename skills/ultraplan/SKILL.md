@@ -238,6 +238,15 @@ you your `**Depends-on:**` was wrong — fix it at authoring time. So: whenever 
 task `Consumes:` something a sibling `Produces:`, add the matching
 `**Depends-on:**` yourself.
 
+**One edge the compiler cannot see: a test-only import.** The cross-check above
+catches a dependency you named in `Consumes:`/`Produces:`, but a dependency that
+lives **only** inside a test's `import` of a sibling task's symbol is invisible —
+ultrapowers reads markers, `Test:` overlap, and prose, never source or test *file
+contents*. When a task's **test** imports a symbol a sibling task owns, declare it
+as an explicit `**Depends-on:**` on the importing task; otherwise the two run in
+parallel off a base where the imported sibling does not yet exist and the wave
+cascade-blocks.
+
 **Marker placement is unchanged.** `**Type:**` and `**Depends-on:**` stay in the
 contiguous header block immediately after the `### Task N:` heading and before
 `**Files:**`. `**Interfaces:**` is **not** a header marker: it sits **after** the
