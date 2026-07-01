@@ -161,6 +161,13 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   task's body, never only in a preamble.
 - Encode ordering as `**Depends-on:**` on the downstream task; never write global
   ordering prose.
+- Describe a sibling task **by role, not by filename**. In a `Produces:`/`Consumes:`
+  interface field — and in any description prose before the first `- [ ]` step — name
+  what the sibling *does*, never its output path. Backticking a sibling's filename in a
+  description field injects a *phantom* serializing edge: the compiler cannot tell a real
+  dependency from a passing mention, so it infers the edge and warns `description-inferred`.
+  The write-time fix is not to add a `**Depends-on:**` — it is to not write the filename.
+  Reserve backticked paths for this task's own `**Files:**` entries.
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.

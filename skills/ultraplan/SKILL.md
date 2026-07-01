@@ -247,6 +247,17 @@ as an explicit `**Depends-on:**` on the importing task; otherwise the two run in
 parallel off a base where the imported sibling does not yet exist and the wave
 cascade-blocks.
 
+**Describe siblings by role, not by filename.** In a `Produces:`/`Consumes:`
+field — and in any description prose above the first `- [ ]` step — name what a
+sibling task *does*, never its output path. Backticking a sibling's filename
+there (`app/schema.py`, `schema.User`) injects a **phantom serializing edge**:
+the compiler cannot tell a genuine dependency from a passing mention, so it
+infers the edge and warns `description-inferred` at the Step-3 gate. The
+write-time fix is **not** to add a `**Depends-on:**` — it is to not write the
+filename: describe the sibling by its role, and reserve backticked paths for
+this task's own `**Files:**` entries. (This is the write-time rule; the
+self-review checklist below still catches a slip that survives to review.)
+
 **Marker placement is unchanged.** `**Type:**` and `**Depends-on:**` stay in the
 contiguous header block immediately after the `### Task N:` heading and before
 `**Files:**`. `**Interfaces:**` is **not** a header marker: it sits **after** the
