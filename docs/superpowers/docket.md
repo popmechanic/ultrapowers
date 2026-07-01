@@ -8,7 +8,7 @@
 **Engine:** ultrapowers
 
 ### #69: engine: cross-phase integration review before the final PR
-**State:** queued
+**State:** executed
 **Score:** 8 — integration-correctness; finishing-handoff review for multi-phase seams; med-risk (dense finishing path); suite-disposition
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/references/finishing-notes.md, skills/ultrapowers/references/report-format.md
 **Plan:** docs/superpowers/plans/2026-07-01-cross-phase-integration-review.md
@@ -20,14 +20,14 @@
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 
 ### #68: run_lock.sh restore landed on the wrong branch in a multi-run session — add a post-restore guard
-**State:** queued
+**State:** executed
 **Score:** 7 — integration-correctness; deterministic post-restore HEAD guard; non-reproducible so hard to validate; suite-disposition
 **Est-files:** skills/ultrapowers/scripts/run_lock.sh, tests/test_run_lock.py
 **Plan:** docs/superpowers/plans/2026-07-01-run-lock-restore-guard.md
 **Engine:** inline
 
 ### #71: ultraplan: declare test-only dependencies as explicit Depends-on
-**State:** queued
+**State:** executed
 **Score:** 7 — authoring-robustness; doc-only guidance across two mirrors plus drift pins; low-risk; suite-disposition
 **Est-files:** skills/ultrapowers/references/plan-markers.md, skills/ultraplan/SKILL.md, tests/test_recommendation_rubric.py
 **Plan:** docs/superpowers/plans/2026-07-01-test-import-depends-on.md
