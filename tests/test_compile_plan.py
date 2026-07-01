@@ -2014,3 +2014,36 @@ def test_absence_assertion_self_contradiction_is_linted():
 '''
     out = compile_plan_text(plan)
     assert any(c.get("kind") == "absence-assertion" for c in out["marker_conflicts"])
+
+
+def test_bare_none_files_entry_is_silent():
+    """A gate task whose `**Files:**` block is only `- None` is an explicit
+    empty-Files declaration: it must contribute no writes and raise no near-miss
+    / marker_conflicts entry for the `- None` line ([76c7ef053adbf62e], #65)."""
+    plan = '''# Plan: bare None Files
+
+### Task 1: Build the module
+**Type:** implementation
+
+**Files:**
+- Create: `a.txt`
+
+- [ ] **Step 1:** write a
+
+### Task 2: Suite gate
+**Type:** gate
+
+**Files:**
+- None
+
+- [ ] **Step 1:** run the full pytest suite
+'''
+    out = compile_plan_text(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
+    # The gate task's bare `- None` Files block contributes no writes ...
+    assert by_id["2"]["writes"] == []
+    # ... and surfaces no near-miss / marker_conflicts entry for that line.
+    assert not any(c.get("task") == "2" for c in out["marker_conflicts"])
+    assert not any(
+        "None" in (c.get("note", "") + c.get("edge", ""))
+        for c in out["marker_conflicts"])
