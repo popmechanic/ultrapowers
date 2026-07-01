@@ -58,7 +58,7 @@ def test_block_is_baked_into_workflow(name):
 WAVE_SOURCE = ROOT / "skills/ultrapowers/references/wave-merge.md"
 PLACEHOLDER = re.compile(r"\{\{\w+\}\}")
 WAVE_PROMPTS = ["SETUP_PROMPT_CREATE", "SETUP_PROMPT_RESUME", "MERGE_PROMPT",
-                "RECONCILE_PROMPT", "COMPLETENESS_PROMPT"]
+                "RECONCILE_PROMPT", "COMPLETENESS_PROMPT", "COMPLETENESS_ANCESTRY"]
 
 
 def wave_blocks():
