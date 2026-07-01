@@ -351,6 +351,7 @@ After writing-plans' own self-review checklist, verify:
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing relies on the executor's classification heuristics.
 - Every backticked mention of a file or module another task creates (`apistub/schema.py`, `schema.User`) has a matching `**Depends-on:**` on the referencing task — otherwise the compiler infers a `prose-reference` edge and surfaces it as a conflict at the wave-plan gate.
+- Every **test-asserted literal** traces to content the same task prescribes. Walk each task's test steps: every exact string, symbol, or behavior a test checks for must appear in what that task's implementation steps produce. A test asserting a literal the task never writes is a plan contradiction — the test is the authority (the implementer will make the assertion pass), so fix the plan to prescribe that content, or drop the assertion.
 - The plan carries an **Acceptance:** line — sealed, suite, or an explicit operator waiver (see "Choosing the disposition").
 
 (End of SKILL.md.)
