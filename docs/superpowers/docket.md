@@ -34,7 +34,7 @@
 **Engine:** inline
 
 ### #65: ultraplan: harden compile_plan.py Files-parser + make description-edge guidance load-bearing
-**State:** queued
+**State:** executed
 **Score:** 7 — authoring-robustness; partly landed already (9b9f191+8f5b5ad) so re-scope to the remainder; needs compiler-internals expertise; suite-disposition
 **Est-files:** skills/ultraplan/SKILL.md, skills/ultrapowers/references/plan-markers.md, skills/ultrapowers/scripts/compile_plan.py
 **Plan:** docs/superpowers/plans/2026-07-01-ultraplan-compile-plan-hardening.md
