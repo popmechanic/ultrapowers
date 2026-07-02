@@ -39,7 +39,9 @@ def test_skill_has_skew_preflight_probe_roundtrip_and_schema_degrade():
     skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
     assert "check_engine_skew.sh" in skill
     assert "round-trip" in skill or "roundtrip" in skill or "echoWaves" in skill
-    assert "merge-sha guard unavailable" in skill
+    # The merge-sha guard moved from SKILL.md prose into the gate script — Task 2
+    # emits that literal from gate_check.py, whose exit code is the authority.
+    assert "merge-sha guard unavailable" in (ROOT / "skills/ultrapowers/scripts/gate_check.py").read_text()
     fmt = (ROOT / "skills/ultrapowers/references/report-format.md").read_text()
     assert "waveMerges" in fmt and ("may be empty" in fmt or "missing" in fmt)
 
