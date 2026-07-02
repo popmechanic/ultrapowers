@@ -21,3 +21,9 @@ def test_waived_is_parked_not_auto_merged():
     low = SKILL.lower()
     # waived work is never auto-merged unverified — it parks for the operator.
     assert "waived" in low and "park" in low
+
+
+def test_drain_arms_js_gate_with_base():
+    # The suite-gate only runs the harness .mjs sims when the drain passes the
+    # integration-line base to diff against (issue #79). Pin that it is documented.
+    assert "--base" in SKILL

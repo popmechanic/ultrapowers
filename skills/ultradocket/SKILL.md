@@ -125,10 +125,14 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    from `compile_plan`). Each runner makes its own detached worktree (agnostic to
    the current checkout) and is exit-code authority:
    - `sealed` → `run_acceptance.sh <sealId> <branch> <sha256>` — the held-out exam.
-   - `suite` → `run_acceptance.sh --suite-gate --branch <branch>` — the committed
-     suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass. This is the
-     disposition for ultrapowers' own engine/skill/doc work, which authors no
-     held-out exam.
+   - `suite` → `run_acceptance.sh --suite-gate --branch <branch> --base <docket-integration-line-HEAD>`
+     — the committed suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass.
+     Passing `--base` (the ref the plan branched from) arms the JS-behavioral
+     guard: when the branch changed `skills/ultrapowers/harnesses/*.js`, the gate
+     also runs the harness `.mjs` sims (exit-code + pass-sentinel authority), so a
+     `waves.js`-behavioral plan cannot ride a Python-only green (issue #79). This
+     is the disposition for ultrapowers' own engine/skill/doc work, which authors
+     no held-out exam.
    - `waived` → no gate exists; **park for the operator** at the end gate. Never
      auto-merge unverified work.
 4. **Merge or park** — the deterministic step:
