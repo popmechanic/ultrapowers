@@ -15,9 +15,10 @@
 **Engine:** inline
 
 ### #64: Harvester extractors mis-parse doc-dense / self-referential sessions
-**State:** triaged
+**State:** parked
 **Score:** 8 — integration-correctness; BUT core fix appears already landed in main (4b9ef85+3736ea8) — verify and close, do not plan; suite-disposition
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
+**Notes:** issue CLOSED as already-fixed (4b9ef85+3736ea8); verify-and-close, never built — not a drain entry
 
 ### #68: run_lock.sh restore landed on the wrong branch in a multi-run session — add a post-restore guard
 **State:** verified
