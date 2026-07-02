@@ -392,10 +392,11 @@ async function scenarioEngineRiskReview() {
   console.log('scenario engine-risk-review: OK')
 }
 
-// ── Scenario 7c: ENGINE-DERIVED wave labels (no orchestrator waveLabels) ──────
-// With no ARGS.waveLabels, the engine must still name each wave meaningfully and
-// deterministically: a single-task wave by its own title, a multi-task wave by
-// the noun its titles share. The crude 'Wave N · joined titles' is gone.
+// ── Scenario 7c: ENGINE fallback labels (no orchestrator waveLabels) ─────────
+// Label-less launches are hand-authored (Salvage/Redirect) waves; compiled
+// launches always carry ARGS.waveLabels from compile_plan.py, the only rich
+// label source. The engine fallback is deliberately minimal: a single-task
+// wave is named by its own title, a multi-task wave is 'Wave N'.
 async function scenarioDerivedWaveLabels() {
   const phases = []
   const waves = [
@@ -409,10 +410,10 @@ async function scenarioDerivedWaveLabels() {
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   await runWorkflow({ agent: makeAgent(), args, phase: (t) => phases.push(t),
     budget: { total: null, spent: () => 0, remaining: () => Infinity } })
-  assert(phases.includes('Data layer + scaffold'), 'derived: single-task wave → its title (got ' + JSON.stringify(phases) + ')')
-  assert(phases.includes('4 Modules'), 'derived: multi-task wave → shared noun "4 Modules" (got ' + JSON.stringify(phases) + ')')
-  assert(phases.includes('Integration server'), 'derived: wave 3 → its title')
-  assert(!phases.some((p) => /^Wave \d+ ·/.test(p)), 'derived: no crude "Wave N · join" labels remain')
+  assert(phases.includes('Data layer + scaffold'), 'fallback: single-task wave → its title (got ' + JSON.stringify(phases) + ')')
+  assert(phases.includes('Wave 2'), 'fallback: label-less multi-task wave → Wave N (got ' + JSON.stringify(phases) + ')')
+  assert(phases.includes('Integration server'), 'fallback: wave 3 → its title')
+  assert(!phases.includes('4 Modules'), 'fallback: shared-noun derivation removed from the engine')
   console.log('scenario derived-wave-labels: OK')
 }
 
