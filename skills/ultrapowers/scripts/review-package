@@ -5,11 +5,14 @@
 #
 # Usage: review-package BASE HEAD [OUTFILE]
 #
-# Default OUTFILE: <common-git-dir>/ultra/review-<base7>..<head7>.diff. Unlike
-# v6's per-worktree `git rev-parse --git-path sdd`, ultrapowers' implementer and
-# reviewer run in DIFFERENT linked worktrees, so the packet must live somewhere
-# both can see: --git-common-dir resolves to the same shared location for every
-# linked worktree of the repo.
+# Default OUTFILE: <main-repo-root>/.superpowers/ultra/review-<base7>..<head7>.diff.
+# Unlike v6's per-worktree `git rev-parse --git-path sdd`, ultrapowers' implementer
+# and reviewer run in DIFFERENT linked worktrees, so the packet must live somewhere
+# both can see. We derive it from the RESOLVED PARENT of --git-common-dir (the main
+# repo root, identical for every linked worktree) and write under .superpowers/ —
+# already gitignored — so the scratch stays SHARED across worktrees yet escapes the
+# protected .git/ that superpowers fled in v6.0.3. Do NOT switch to a worktree-relative
+# .superpowers/ off the CWD: that would hand each worktree a different dir and break sharing.
 #
 # Echoes the final output path on stdout so callers learn where it wrote.
 set -euo pipefail
@@ -28,7 +31,9 @@ git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&
 if [ $# -eq 3 ]; then
   out=$3
 else
-  dir=$(git rev-parse --git-common-dir)/ultra
+  common=$(git rev-parse --git-common-dir)
+  common=$(cd "$common" && pwd)          # absolutize (handles the bare ".git" case)
+  dir="$(dirname "$common")/.superpowers/ultra"   # main repo root, shared by every worktree
   mkdir -p "$dir"
   dir=$(cd "$dir" && pwd)   # absolute, so the echoed path works from any cwd
   out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"

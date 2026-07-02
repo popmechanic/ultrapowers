@@ -310,7 +310,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared common git dir and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
+  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared scratch dir under .superpowers/ (outside .git/) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
   '- Read the packet\'s ## Files changed section (the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, confirm every changed path is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '',
@@ -333,7 +333,7 @@ const REVIEWER_PROMPT = [
   'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
   '',
   'Spec compliance:',
-  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared common git dir). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
+  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared scratch dir under .superpowers/, outside .git/). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   'When FILES (the task\'s declared file scope) is provided: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; modifications outside FILES are blocking unless the task text plainly requires them.',
@@ -397,7 +397,23 @@ const RECONCILE_PROMPT =
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
+const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => {
+  // #70: the integration ancestry assertion. The critic is already detached on the
+  // integration HEAD, so it is the one role that can cheaply prove nothing the run
+  // reported as merged was silently dropped. mergedShas carries every mergeable done
+  // task's recorded headSha; the critic asserts each is an ancestor of HEAD and
+  // returns the misses under ancestryMisses. Omitted when nothing merged.
+  const ancestryBlock = (mergedShas && mergedShas.length)
+    ? (' You are also given mergedShas, the recorded head sha of every mergeable ' +
+       'done task. For each entry, assert that its commit landed in this integration ' +
+       'tree by running git merge-base --is-ancestor <headSha> HEAD; return under ' +
+       'ancestryMisses every task whose recorded head is not an ancestor of the ' +
+       'current HEAD (an empty ancestryMisses when they all are). A recorded head ' +
+       'that is not an ancestor is a silently dropped task, and the controller ' +
+       'treats a non-empty ancestryMisses as BLOCKED. mergedShas: ' +
+       JSON.stringify(mergedShas))
+    : ''
+  return (
   'You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
   'modify the tree in any way. Your only output is your findings/verdict. If the ' +
   'work is wrong, report it — never fix it.\n' +
@@ -424,7 +440,9 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist) =>
   "'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — " +
   "process boot, device, deploy target), 'external' (an unreachable " +
   "service/credential/network), or 'manual' (requires human judgment), so the gate " +
-  'can route runtime/external items to an explicit acknowledgement.'
+  'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock
+  )
+}
 
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
@@ -506,6 +524,14 @@ const REVIEW_SCHEMA = {
       deliverable: { type: 'string' },
       reason: { type: 'string', enum: ['browser', 'runtime', 'external', 'manual'] },
       why: { type: 'string' } } } },
+    // #70: the integration ancestry misses. Each entry is a mergeable done task
+    // whose recorded headSha the critic could NOT confirm is an ancestor of the
+    // integration HEAD (git merge-base --is-ancestor failed) — a silent drop. A
+    // non-empty ancestryMisses forces the run BLOCKED (gitVerified withheld).
+    ancestryMisses: { type: 'array', items: { type: 'object',
+      required: ['task', 'headSha'], properties: {
+      task: { type: 'string' },
+      headSha: { type: 'string' } } } },
   },
 }
 
@@ -1123,6 +1149,11 @@ const noteFailures = () => {
 // Review diff base: the integration-branch HEAD a wave's worktrees build on.
 // Wave 1 starts at the setup HEAD; each successful merge advances it.
 let waveBaseSha = setup.headSha
+// #70: accumulate the recorded {task, headSha} of every mergeable done task from
+// each successfully-merged wave. After the final merge the completeness critic
+// asserts each headSha is an ancestor of the integration HEAD (nothing silently
+// dropped); a miss forces the run BLOCKED.
+const mergedShas = []
 // Guard: record a judgmentCall only once for the first mid-run budget deferral.
 let budgetDeferred = false
 
@@ -1264,6 +1295,11 @@ for (let w = 0; w < WAVES.length; w++) {
     log('wave ' + (w + 1) + ': MERGED without headSha; review base frozen')
   }
   if (merge.status === 'MERGED' && merge.headSha) waveBaseSha = merge.headSha
+  // #70: this wave's branches landed — record their recorded head shas so the
+  // completeness critic can assert each is an ancestor of the final integration HEAD.
+  if (merge.status === 'MERGED') {
+    mergedShas.push(...results.filter(isMergeable).map((r) => ({ task: r.task, headSha: r.headSha })))
+  }
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
     log('wave ' + (w + 1) + ' BLOCKED: ' + (merge.detail || merge.status))
@@ -1293,7 +1329,7 @@ if (budgetExhausted()) {
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist) + globalConstraintsBlock +
+      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist, mergedShas) + globalConstraintsBlock +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
@@ -1330,7 +1366,26 @@ if (!review || typeof review !== 'object') {
 // the gate cannot mistake an unverified review for a clean one. deferredVerification
 // carries the critic's verified-by-construction-but-not-sandbox-executable items,
 // each tagged with a reason (browser/runtime/external/manual).
-const gitVerified = !!(review && review.onIntegrationHead)
+// ── Integration ancestry assertion (#70) ─────────────────────────────────────
+// The completeness critic, detached on the integration HEAD, asserted for every
+// mergeable done task's recorded headSha that `git merge-base --is-ancestor <sha>
+// HEAD` succeeds. A non-empty ancestryMisses means a task the run reported as
+// merged never landed in the integration tree — a silent drop. Name each and
+// force the run BLOCKED: withhold gitVerified (SKILL.md Step 5 reads a false
+// gitVerified as do-not-Approve) so the gate cannot mistake a lossy run for clean.
+const ancestryMisses = (review && Array.isArray(review.ancestryMisses)) ? review.ancestryMisses : []
+if (ancestryMisses.length) {
+  for (const m of ancestryMisses) {
+    judgmentCalls.push('integration ancestry miss (#70): task ' + (m && m.task) +
+      ' reported merged (headSha ' + String((m && m.headSha) || '').slice(0, 12) +
+      ') is NOT an ancestor of the integration HEAD — silently dropped; the run is BLOCKED, do not merge')
+  }
+  log('BLOCKED: ' + ancestryMisses.length + ' task(s) missing from the integration ancestry (#70)')
+}
+
+// gitVerified is true ONLY when the critic confirmed it reviewed the recorded merge
+// HEAD AND no mergeable task fell out of the integration ancestry (#29 + #70).
+const gitVerified = !!(review && review.onIntegrationHead) && ancestryMisses.length === 0
 const deferredVerification = (review && Array.isArray(review.deferredVerification)) ? review.deferredVerification : []
 if (review && review.onIntegrationHead === false)
   judgmentCalls.push('completeness critic could NOT confirm it reviewed the recorded merge HEAD — possible checkout drift (#29); verify the integration tree before merging')
@@ -1408,6 +1463,7 @@ return {
   coverage,
   missingDeliverables,
   gitVerified,
+  ancestryMisses,
   deferredVerification,
   judgmentCalls,
   unfinished,
