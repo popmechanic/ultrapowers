@@ -2448,6 +2448,77 @@ console.log('scenario escalation-classifier: OK')
 }
 console.log('scenario reviewer-floor: OK')
 
+// ── Reviewer floor is override-proof: tierOverrides never weaken the gate ────
+{
+  const models = {}
+  const agent = async (prompt, opts) => {
+    const label = (opts && opts.label) || ''
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
+    if (label.startsWith('impl:')) return { status: 'done', branch: 'worktree-' + label.slice(5), headSha: 'sha-' + label }
+    if (label.startsWith('review:')) { models[label.split(':')[1]] = opts.model; return { verdict: 'PASS', issues: [] } }
+    if (label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
+    if (label === 'integration') { models.integration = opts.model; return { command: 't', testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true } }
+    return { status: 'done', branch: 'w', headSha: 'sha' }
+  }
+  const args = {
+    waves: [[
+      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },
+      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },
+      { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },
+    ]],
+    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
+    tierOverrides: { cheap: 'sonnet', mostCapable: 'haiku' },
+  }
+  await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  eq(models.a, 'sonnet', 'override-proof: lean+cheap floor stays DEFAULT_TIER sonnet')
+  eq(models.b, 'opus', 'override-proof: tierOverrides.mostCapable cannot downgrade the adversarial reviewer')
+  eq(models.c, 'opus', 'override-proof: standard-tier lean review stays opus')
+  eq(models.integration, 'opus', 'override-proof: completeness critic pinned to opus')
+}
+console.log('scenario reviewer-floor-override-proof: OK')
+
+// ── Role isolation + prompt hygiene: writers get worktrees, readers do not ───
+// (Replaces the deleted source-pin test_review_dispatch_lean.py behaviorally:
+// A2 = reviewer non-isolated; A1 = reviewer prompt carries no bootstrap/test line.)
+{
+  const iso = {}, prompts = {}
+  let firstReview = true
+  const agent = async (prompt, opts) => {
+    const label = (opts && opts.label) || ''
+    iso[label] = opts.isolation
+    prompts[label] = prompt
+    if (label === 'setup') return { branch: 'ultra/int', headSha: 'int0', baselinePassed: true }
+    if (label.startsWith('impl:') || label.startsWith('fix:'))
+      return { status: 'DONE', summary: 's', branch: 'wt-A', headSha: 'sha-' + label }
+    if (label.startsWith('review:')) {
+      if (firstReview) {
+        firstReview = false
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'x' }] }
+      }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: 'm1' }
+    if (label === 'integration') return { command: 't', testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true }
+    throw new Error('unexpected label ' + label)
+  }
+  const args = {
+    waves: [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]],
+    integrationBranch: 'ultra/int', stamp: 's', edges: [],
+    testCmd: 'make test', bootstrapCmd: 'make deps',
+  }
+  await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
+  eq(iso['impl:A'], 'worktree', 'implementer is worktree-isolated')
+  eq(iso['fix:A:1'], 'worktree', 'fix round is worktree-isolated')
+  assert(iso['review:A:1'] === undefined, 'reviewer dispatch carries no isolation (A2)')
+  assert(iso['merge:wave1'] === undefined, 'merge agent is non-isolated')
+  assert(iso['integration'] === undefined, 'completeness critic is non-isolated')
+  assert(prompts['impl:A'].includes('WORKTREE SETUP'), 'implementer receives the bootstrap line')
+  assert(prompts['impl:A'].includes('TEST COMMAND'), 'implementer receives the test command')
+  assert(!prompts['review:A:1'].includes('WORKTREE SETUP'), 'reviewer prompt has no bootstrap line (A1)')
+  assert(!prompts['review:A:1'].includes('TEST COMMAND'), 'reviewer prompt has no test command (A1)')
+}
+console.log('scenario role-isolation: OK')
+
 // ── W1: wave labels are semantic, never a bare "Wave N" ──────────────────────
 async function runLabelScenario(waveLabels) {
   const phases = []
