@@ -67,60 +67,19 @@ const WAVES = (ARGS && typeof ARGS === 'object') ? ARGS.waves : undefined
 // the bodies. The light inline args.waves still carries id/title/files/tier/review.
 const wavesPath = (ARGS && typeof ARGS.wavesPath === 'string' && ARGS.wavesPath.trim()) || undefined
 
-// W1: name each wave by what it DELIVERS. Precedence mirrors review depth:
-//   (1) an orchestrator-synthesized override (ARGS.waveLabels[w]), then
-//   (2) an ENGINE-DERIVED deterministic label (deriveWaveLabel) — so a wave is
-//       always meaningfully named WITHOUT depending on the orchestrator passing
-//       labels (an early run shipped none and every header degraded to 'Wave N').
-// Used by the meta.phases mutation, the wave loop, and the W2 roadmap.
-const TITLE_STOP = new Set(['the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'with', 'in', 'on', 'at', 'by', 'via', 'plus'])
-const titleWords = (s) => (String(s || '').toLowerCase().match(/[a-z][a-z]+/g) || [])
-  .filter((wd) => wd.length >= 3 && !TITLE_STOP.has(wd))
-// A content word shared by EVERY task title in the wave (e.g. all '… module'),
-// longest-first so the most specific shared theme wins; '' if none is universal.
-function sharedTitleNoun(tasks) {
-  let inter = null
-  for (const t of tasks) {
-    const ws = new Set(titleWords(t && t.title))
-    inter = inter === null ? ws : new Set([...inter].filter((wd) => ws.has(wd)))
-    if (inter.size === 0) return ''
-  }
-  return inter && inter.size ? [...inter].sort((a, b) => b.length - a.length || a.localeCompare(b))[0] : ''
-}
-// The deepest parent directory shared by every file the wave touches ('src/api').
-// '' when any task lists no path-bearing file (then there is no shared dir).
-function commonFileDir(tasks) {
-  let common = null
-  for (const t of tasks) {
-    const files = (Array.isArray(t && t.files) ? t.files : []).filter((f) => typeof f === 'string' && f.includes('/'))
-    if (!files.length) return ''
-    for (const f of files) {
-      const segs = f.split('/').slice(0, -1)
-      if (common === null) { common = segs; continue }
-      let i = 0
-      while (i < common.length && i < segs.length && common[i] === segs[i]) i++
-      common = common.slice(0, i)
-      if (!common.length) return ''
-    }
-  }
-  return common && common.length ? common.join('/') : ''
-}
-// Deterministic, always-meaningful label from the wave's own tasks: a single-task
-// wave is its task title; a multi-task wave is the shared title-noun (pluralized,
-// counted), else the common file directory, else a plain count.
-function deriveWaveLabel(wave) {
+// W1: a wave is named by (1) an orchestrator-supplied ARGS.waveLabels entry —
+// compile_plan.py emits these (--emit-args / waveLabels) and SKILL.md threads
+// them through — else (2) a single-task wave's own title, else (3) 'Wave N'.
+// The rich shared-noun / common-directory derivation lives ONLY in
+// compile_plan.py now; the engine no longer mirrors it in a second language
+// (label-less launches are hand-authored Salvage/Redirect waves, where a
+// plain 'Wave N' is acceptable). Used by the meta.phases mutation, the wave
+// loop, and the W2 roadmap.
+const deriveWaveLabel = (wave) => {
   const tasks = (Array.isArray(wave) ? wave : []).filter(Boolean)
-  if (!tasks.length) return ''
-  const clip = (s, n = 56) => { s = String(s || '').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
-  if (tasks.length === 1) return clip(tasks[0].title || ('Task ' + tasks[0].id))
-  const noun = sharedTitleNoun(tasks)
-  if (noun) {
-    const cap = noun.charAt(0).toUpperCase() + noun.slice(1)
-    return tasks.length + ' ' + (cap.endsWith('s') ? cap : cap + 's')
-  }
-  const dir = commonFileDir(tasks)
-  if (dir) return clip(dir) + ' · ' + tasks.length + ' tasks'
-  return tasks.length + ' parallel tasks'
+  if (tasks.length !== 1) return ''
+  const s = String(tasks[0].title || ('Task ' + tasks[0].id)).trim()
+  return s.length > 56 ? s.slice(0, 55) + '…' : s
 }
 const waveLabel = (w) => {
   const supplied = (ARGS && Array.isArray(ARGS.waveLabels)) ? ARGS.waveLabels[w] : undefined

@@ -10,4 +10,4 @@ def test_finishing_handoff_documents_cross_phase_review():
     assert "cross-phase" in blob or "cross phase" in blob
     assert "holistic" in blob
     # gated before the final PR
-    assert "pr" in blob
+    assert "final pr" in blob

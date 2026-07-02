@@ -44,6 +44,9 @@ elif [ "${1:-}" = "--suite-gate" ]; then
     esac
   done
   : "${BRANCH:?--suite-gate requires --branch}"
+  if [ -z "$SG_BASE" ]; then
+    echo "run_acceptance: warning — --suite-gate without --base: harness-JS sim guard disarmed (a branch that changed harnesses/*.js rides a Python-only green; pass --base <ref> to arm it)" >&2
+  fi
 else
   SEAL_ID="${1:?usage: run_acceptance.sh <seal-id> <branch> <sha256> [--vault DIR] [--repo DIR]}"
   BRANCH="${2:?missing branch}"
@@ -60,7 +63,8 @@ fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 emit() { # status passed exit_code output [redKind] → prints JSON, never fails
-  STATUS="$1" PASSED="$2" CODE="$3" OUTPUT="$4" REDKIND="${5:-}" SEAL="$SEAL_ID" python3 - <<'EOF'
+  OUTPUT_TAIL="$(printf '%s' "$4" | tail -c 8000)"
+  STATUS="$1" PASSED="$2" CODE="$3" OUTPUT="$OUTPUT_TAIL" REDKIND="${5:-}" SEAL="$SEAL_ID" python3 - <<'EOF'
 import json, os
 obj = {
     "sealId": os.environ["SEAL"],
@@ -81,7 +85,12 @@ EOF
 # runs the optional bootstrap, then the run command, and classifies into R_*
 # globals WITHOUT emitting or exiting — each caller owns its own exit contract.
 EXAM_WT=""
-cleanup() { [ -n "$EXAM_WT" ] && git -C "$REPO" worktree remove --force "$EXAM_WT" >/dev/null 2>&1 || true; }
+cleanup() {
+  if [ -n "$EXAM_WT" ]; then
+    git -C "$REPO" worktree remove --force "$EXAM_WT" >/dev/null 2>&1 || true
+    rm -rf "$(dirname "$EXAM_WT")" 2>/dev/null || true
+  fi
+}
 trap cleanup EXIT
 
 run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
