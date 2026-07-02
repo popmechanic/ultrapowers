@@ -51,6 +51,13 @@ author expects no incoming edges; if another rule still finds one, the conflicti
 and the disagreement is surfaced in the transparency block
 under `marker_conflicts` — never silently dropped.
 
+A dependency that lives **only** inside a test's `import` of a sibling task's symbol is
+invisible to the compiler by design — it infers edges from markers, `Test:` path overlap,
+and prose references, never from source or test *file contents*. When a task's **test**
+imports a symbol a sibling task owns, declare it as an explicit `**Depends-on:**` on the
+importing task; otherwise the two run in parallel off a base where the imported sibling does
+not yet exist and the wave cascade-blocks.
+
 Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; Files entries with a wrong label case, colon spacing, bullet character, or unbackticked multi-path values are surfaced and dropped from overlap inference; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
 
 `Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set. The same drop-and-surface rule covers text dependencies naming excluded tasks, and self-referential markers.
@@ -154,6 +161,13 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   task's body, never only in a preamble.
 - Encode ordering as `**Depends-on:**` on the downstream task; never write global
   ordering prose.
+- Describe a sibling task **by role, not by filename**. In a `Produces:`/`Consumes:`
+  interface field — and in any description prose before the first `- [ ]` step — name
+  what the sibling *does*, never its output path. Backticking a sibling's filename in a
+  description field injects a *phantom* serializing edge: the compiler cannot tell a real
+  dependency from a passing mention, so it infers the edge and warns `description-inferred`.
+  The write-time fix is not to add a `**Depends-on:**` — it is to not write the filename.
+  Reserve backticked paths for this task's own `**Files:**` entries.
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.

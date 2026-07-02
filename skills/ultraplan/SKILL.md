@@ -238,6 +238,26 @@ you your `**Depends-on:**` was wrong — fix it at authoring time. So: whenever 
 task `Consumes:` something a sibling `Produces:`, add the matching
 `**Depends-on:**` yourself.
 
+**One edge the compiler cannot see: a test-only import.** The cross-check above
+catches a dependency you named in `Consumes:`/`Produces:`, but a dependency that
+lives **only** inside a test's `import` of a sibling task's symbol is invisible —
+ultrapowers reads markers, `Test:` overlap, and prose, never source or test *file
+contents*. When a task's **test** imports a symbol a sibling task owns, declare it
+as an explicit `**Depends-on:**` on the importing task; otherwise the two run in
+parallel off a base where the imported sibling does not yet exist and the wave
+cascade-blocks.
+
+**Describe siblings by role, not by filename.** In a `Produces:`/`Consumes:`
+field — and in any description prose above the first `- [ ]` step — name what a
+sibling task *does*, never its output path. Backticking a sibling's filename
+there (`app/schema.py`, `schema.User`) injects a **phantom serializing edge**:
+the compiler cannot tell a genuine dependency from a passing mention, so it
+infers the edge and warns `description-inferred` at the Step-3 gate. The
+write-time fix is **not** to add a `**Depends-on:**` — it is to not write the
+filename: describe the sibling by its role, and reserve backticked paths for
+this task's own `**Files:**` entries. (This is the write-time rule; the
+self-review checklist below still catches a slip that survives to review.)
+
 **Marker placement is unchanged.** `**Type:**` and `**Depends-on:**` stay in the
 contiguous header block immediately after the `### Task N:` heading and before
 `**Files:**`. `**Interfaces:**` is **not** a header marker: it sits **after** the
@@ -331,6 +351,7 @@ After writing-plans' own self-review checklist, verify:
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing relies on the executor's classification heuristics.
 - Every backticked mention of a file or module another task creates (`apistub/schema.py`, `schema.User`) has a matching `**Depends-on:**` on the referencing task — otherwise the compiler infers a `prose-reference` edge and surfaces it as a conflict at the wave-plan gate.
+- Every **test-asserted literal** traces to content the same task prescribes. Walk each task's test steps: every exact string, symbol, or behavior a test checks for must appear in what that task's implementation steps produce. A test asserting a literal the task never writes is a plan contradiction — the test is the authority (the implementer will make the assertion pass), so fix the plan to prescribe that content, or drop the assertion.
 - The plan carries an **Acceptance:** line — sealed, suite, or an explicit operator waiver (see "Choosing the disposition").
 
 (End of SKILL.md.)
