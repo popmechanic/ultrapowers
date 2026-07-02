@@ -27,3 +27,16 @@ def test_drain_arms_js_gate_with_base():
     # The suite-gate only runs the harness .mjs sims when the drain passes the
     # integration-line base to diff against (issue #79). Pin that it is documented.
     assert "--base" in SKILL
+
+
+def test_triage_records_rationale_in_notes():
+    # #74: triage rationale is durable — recorded in the **Notes:** field, which
+    # survives lifecycle transitions, rather than packed into the Score line.
+    assert "**Notes:**" in SKILL
+
+
+def test_triage_does_not_guess_disposition():
+    # #74: disposition is decided at planning (sweep step 3), never guessed at triage.
+    low = SKILL.lower()
+    assert "do not guess" in low and "disposition" in low
+    assert "decided at planning" in low

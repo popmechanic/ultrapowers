@@ -29,6 +29,12 @@ using the entry format below, every entry `State: triaged`. Then present the
 **docket gate**: the operator strikes, reorders, and sets a budget ceiling;
 accepted entries become `State: accepted`.
 
+Record each entry's triage rationale in the durable `**Notes:**` field (it
+survives every lifecycle transition, unlike free text packed into the `Score`
+line). Triage does **not** assign an acceptance disposition —
+that is decided at planning (sweep step 3). Do not guess `sealed`/`suite` at
+triage; conflating the acceptance mode with "self-contained" is a known triage trap.
+
 Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 
 ```
@@ -36,6 +42,7 @@ Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 **State:** accepted
 **Score:** 8.5 — revenue-reliability objective
 **Est-files:** services/billing/*, lib/webhooks.py
+**Notes:** triage rationale — durable, survives transitions (e.g. "already fixed in main, verify & close")
 **Plan:** docs/superpowers/plans/2026-06-14-stripe-webhook-retry.md
 **Seal:** a1b2c3d4e5f6
 ```
