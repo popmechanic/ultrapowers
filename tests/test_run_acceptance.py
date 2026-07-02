@@ -506,3 +506,42 @@ def test_suite_gate_harness_diff_no_sim_is_error(tmp_path):
     br = _branch_editing(repo, "skills/ultrapowers/harnesses/waves.js", "// harness v2\n")
     code, out = suite_gate(repo, branch=br, base="main")
     assert code != 0 and out["passed"] is False and out["status"] == "ERROR"
+
+
+def test_suite_gate_without_base_warns_disarmed(tmp_path):
+    repo = make_repo(tmp_path, feature_built=True)
+    p = sh(["bash", str(RUN), "--suite-gate", "--branch", "main",
+            "--run", "echo ok", "--repo", str(repo)], check=False)
+    assert p.returncode == 0
+    assert "harness-JS sim guard disarmed" in p.stderr
+
+
+def test_suite_gate_with_base_does_not_warn(tmp_path):
+    repo = make_repo(tmp_path, feature_built=True)
+    p = sh(["bash", str(RUN), "--suite-gate", "--branch", "main",
+            "--base", "main", "--run", "echo ok", "--repo", str(repo)],
+           check=False)
+    assert p.returncode == 0
+    assert "disarmed" not in p.stderr
+
+
+def test_exam_worktree_temp_parent_is_cleaned(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path, feature_built=True)
+    tdir = tmp_path / "tmpdir"
+    tdir.mkdir()
+    monkeypatch.setenv("TMPDIR", str(tdir))
+    p = sh(["bash", str(RUN), "--suite-gate", "--branch", "main",
+            "--run", "echo ok", "--repo", str(repo)], check=False)
+    assert p.returncode == 0
+    assert list(tdir.iterdir()) == [], "mktemp parent dir leaked"
+
+
+def test_huge_exam_output_still_emits_json_receipt(tmp_path):
+    repo = make_repo(tmp_path, feature_built=True)
+    big = "python3 -c \"print('x' * 400000)\""
+    p = sh(["bash", str(RUN), "--suite-gate", "--branch", "main",
+            "--run", big, "--repo", str(repo)], check=False)
+    assert p.returncode == 0
+    obj = json.loads(p.stdout)
+    assert obj["passed"] is True
+    assert len(obj["output"]) <= 8000
