@@ -27,10 +27,11 @@ class Entry:
     plan: str = None
     seal: str = None
     engine: str = None
+    notes: str = None
 
 
 _HEAD = re.compile(r"^###\s+#(\d+):\s+(.*?)\s*$")
-_FIELD = re.compile(r"^\*\*(State|Score|Est-files|Plan|Seal|Engine):\*\*\s*(.*?)\s*$")
+_FIELD = re.compile(r"^\*\*(State|Score|Est-files|Plan|Seal|Engine|Notes):\*\*\s*(.*?)\s*$")
 
 
 def parse_docket(text):
@@ -58,7 +59,7 @@ def parse_docket(text):
         entries.append(Entry(issue=cur[0], title=cur[1], state=fields["State"],
                              score=fields["Score"], est_files=est,
                              plan=fields.get("Plan") or None, seal=fields.get("Seal") or None,
-                             engine=engine))
+                             engine=engine, notes=fields.get("Notes") or None))
 
     for line in text.splitlines():
         if line.startswith("### "):
@@ -91,6 +92,8 @@ def serialize_docket(entries):
             out.append(f"**Seal:** {e.seal}")
         if e.engine:
             out.append(f"**Engine:** {e.engine}")
+        if e.notes:
+            out.append(f"**Notes:** {e.notes}")
         out.append("")
     return "\n".join(out)
 
