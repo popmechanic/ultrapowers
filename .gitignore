@@ -13,3 +13,8 @@ __pycache__/
 
 # ultralearn local cache — raw bundles, slices, verbatim evidence (never committed)
 .claude/ultralearn/
+
+# ultralearn committed-digest output — regenerable from the local run cache
+# (merge_ledger.py / regenerate_digest); ~600KB and growing, so untracked.
+docs/superpowers/observations/ledger.jsonl
+docs/superpowers/observations/ledger.md
