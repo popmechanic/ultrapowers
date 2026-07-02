@@ -2047,3 +2047,85 @@ def test_bare_none_files_entry_is_silent():
     assert not any(
         "None" in (c.get("note", "") + c.get("edge", ""))
         for c in out["marker_conflicts"])
+
+
+def test_uppercase_extension_paths_serialize_same_file_writers(tmp_path):
+    """Fable review HIGH finding: `Config.YAML` (uppercase ext, no slash) was
+    dropped from write-sets, so two tasks modifying it waved in parallel."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: Upper\n\n**Acceptance:** waived — inline\n\n"
+        "### Task A: writer one\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `Config.YAML`\n- Modify: `a_only.py`\n\n"
+        "- [ ] **Step 1:** edit config\n\n"
+        "### Task B: writer two\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `Config.YAML`\n- Modify: `b_only.py`\n\n"
+        "- [ ] **Step 1:** edit config again\n")
+    out = compile_plan(plan)
+    a = next(t for t in out["tasks"] if t["id"] == "A")
+    b = next(t for t in out["tasks"] if t["id"] == "B")
+    assert "Config.YAML" in a["writes"] and "Config.YAML" in b["writes"]
+    assert any(e["from"] == "A" and e["to"] == "B" and e["why"] == "write-after-write"
+               for e in out["dag_edges"])
+    assert out["waves"] == [["A"], ["B"]]
+
+
+def test_mixed_case_attr_ref_still_dropped_from_files(tmp_path):
+    """`schema.User` in a Files entry is an identifier, not a path — it must
+    stay dropped (surfaced as a near-miss), or it fabricates overlap edges."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: Attr\n\n**Acceptance:** waived — inline\n\n"
+        "### Task A: uses attr ref\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `schema.User`\n- Modify: `real.py`\n\n"
+        "- [ ] **Step 1:** work\n")
+    out = compile_plan(plan)
+    a = next(t for t in out["tasks"] if t["id"] == "A")
+    assert a["writes"] == ["real.py"]
+    assert any("schema.User" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_prose_section_heading_with_task_word_and_colon_compiles(tmp_path):
+    """Fable review MEDIUM finding: `## Task tracking: overview` refused the
+    whole plan with a misleading three-hashes hint."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: Sections\n\n**Acceptance:** waived — inline\n\n"
+        "### Task A: real work\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `a.py`\n\n- [ ] **Step 1:** work\n\n"
+        "## Task tracking: overview\n\nprose about tracking\n\n"
+        "## Task list: what remains\n\nmore prose\n")
+    out = compile_plan(plan)
+    assert [t["id"] for t in out["tasks"]] == ["A"]
+
+
+def test_wrong_level_task_id_heading_still_refuses(tmp_path):
+    """The heading net must keep catching genuinely mis-leveled task headings —
+    `## Task 2:` folds its content into the previous task silently."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: Bad level\n\n**Acceptance:** waived — inline\n\n"
+        "### Task 1: real work\n\n**Files:**\n- Modify: `a.py`\n\n"
+        "- [ ] **Step 1:** work\n\n"
+        "## Task 2: mis-leveled\n\n**Files:**\n- Modify: `b.py`\n\n"
+        "- [ ] **Step 1:** more work\n")
+    p = compile_plan_raw(plan)
+    assert p.returncode != 0
+    assert "not recognized" in p.stderr
+
+
+def test_global_constraints_stop_at_first_task_heading(tmp_path):
+    """Found at launch of this very plan: a `## Global Constraints` section
+    followed directly by `### Task` headings swallowed the entire rest of the
+    document (54KB) into globalConstraints — which the engine then appends to
+    every implementer/reviewer prompt."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: GC\n\n**Acceptance:** waived — inline\n\n"
+        "## Global Constraints\n\n- Rule one.\n- Rule two.\n\n---\n\n"
+        "### Task A: work\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `a.py`\n\n- [ ] **Step 1:** do it\n")
+    out = compile_plan(plan)
+    gc = out["globalConstraints"]
+    assert "Rule one." in gc and "Rule two." in gc
+    assert "Task A" not in gc and "Step 1" not in gc

@@ -57,7 +57,13 @@ GLOB_CHARS = re.compile(r"[*?\[{]")
 # declared to list paths, so the rule keeps real paths and rejects identifier-
 # shaped tokens; admitting an identifier as a write fabricates spurious
 # write-after-write overlap between unrelated tasks.
-EXT_RE = re.compile(r"\.[a-z0-9]{1,8}$")  # real extensions are lowercase/digits
+# Real extensions are 1-8 alphanumerics, matched case-insensitively — but ONLY
+# when the extension is all-lowercase (`config.yaml`) or all-uppercase
+# (`Config.YAML`, `x.SQL`). A mixed-case tail (`schema.User`, `Foo.Bar`) is a
+# dotted attribute reference, not a file. Erring toward "path" is the safe
+# direction: a false write-set entry costs parallelism (an extra edge); a
+# DROPPED write-set entry lets two tasks modify one file in the same wave.
+EXT_RE = re.compile(r"\.([A-Za-z0-9]{1,8})$")
 
 
 def _is_pathlike(tok):
@@ -68,8 +74,11 @@ def _is_pathlike(tok):
         return True                       # a relative/absolute path
     if t.startswith(".") and len(t) > 1 and " " not in t:
         return True                       # dotfile: .gitignore, .dockerignore, .gitattributes
-    if EXT_RE.search(t):
-        return True                       # a filename with a lowercase extension
+    m = EXT_RE.search(t)
+    if m:
+        ext = m.group(1)
+        if ext == ext.lower() or ext == ext.upper():
+            return True                   # real extension (any case), not Mixed.Case
     # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
     # no dot and no underscore (Makefile, Dockerfile, LICENSE, README, Jenkinsfile)
     # — distinct from snake_case identifiers (cmd_apply_create, _build_parser) and
@@ -562,7 +571,10 @@ def parse_global_constraints(text):
         return ""
     body = []
     for line, in_fence in lines[start:]:
-        if not in_fence and SECTION_BREAK.match(line.strip()):
+        # The section ends at the next #/## heading OR the first task heading —
+        # plans commonly go straight from Global Constraints to `### Task 1:`,
+        # and without this stop the section swallows every task body.
+        if not in_fence and (SECTION_BREAK.match(line.strip()) or match_head(line)):
             break
         body.append(line)
     while body and not body[0].strip():
@@ -1040,7 +1052,14 @@ def main(argv=None):
     # malformation); (b) ANY heading level carrying the id-colon shape
     # (`## Task 2:`, `##### Task 2:` — wrong level, would fold silently).
     # Section titles like "## Task Structure" or "## Tasks" match neither.
-    near_head = re.compile(r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+[^\s:]+:)", re.I)
+    # (b)'s token must LOOK like a task id — contain a digit, or be <= 3 chars
+    # (`2`, `A3`, `C4b`, `IV`) — so prose section headings whose second word is
+    # an English word (`## Task tracking: overview`, `## Task list: …`) compile
+    # as section boundaries instead of refusing the plan. Residual ambiguity:
+    # a <=3-char word (`## Task ids:`) still flags; retitle such sections.
+    near_head = re.compile(
+        r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+(?:[^\s:]*\d[^\s:]*|[^\s:]{1,3})\s*:)",
+        re.I)
     bad_heads = [line.strip() for line, fenced in _fence_aware_lines(plan_text)
                  if not fenced and near_head.match(line.strip())
                  and not match_head(line)]
