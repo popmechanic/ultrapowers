@@ -72,6 +72,20 @@ def test_park_allowed_from_any_active_state():
     assert m.transition(e, "parked").state == "parked"
 
 
+def test_park_from_queued_round_trips_as_parked():
+    """The drain parks a red QUEUED plan (queued -> parked). That parked state
+    must persist across a serialize/parse cycle so a later compile_docket sees it
+    as parked, not queued — the data-model half of 'a parked entry is excluded
+    from a subsequent drain compile'."""
+    m = load()
+    e = m.parse_docket(SAMPLE)[1]  # queued
+    parked = m.transition(e, "parked")
+    again = m.parse_docket(m.serialize_docket([parked]))[0]
+    assert again.state == "parked"
+    # identity fields survive the round trip (nothing silently dropped)
+    assert again.issue == e.issue and again.plan == e.plan
+
+
 def test_malformed_entry_fails_loud():
     m = load()
     bad = "### #99: no state line\n**Score:** 1.0 — x\n"

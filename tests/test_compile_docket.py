@@ -6,10 +6,18 @@ import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MOD = ROOT / "skills/ultradocket/scripts/compile_docket.py"
+DOCKET_LIB = ROOT / "skills/ultradocket/scripts/docket_lib.py"
 
 
 def load():
     spec = importlib.util.spec_from_file_location("compile_docket", MOD)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_docket_lib():
+    spec = importlib.util.spec_from_file_location("docket_lib", DOCKET_LIB)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -58,6 +66,57 @@ def test_order_sequences_collisions_by_score():
     r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
     ia, ib = r["order"].index("pa.md"), r["order"].index("pb.md")
     assert ia < ib
+
+
+def test_collision_pair_is_rank_ordered_so_drain_can_name_the_dependent():
+    """When a colliding plan parks, the drain skips its collision-DEPENDENTS —
+    the lower-ranked plans sharing a write. For the drain to tell which side to
+    skip, compile_docket must emit each collision pair rank-ordered: plans[0] the
+    higher-score plan (kept) and plans[1] the dependent (skipped on a park). The
+    detection test above sorts the pair, hiding this ordering contract — pin it."""
+    m = load()
+    r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
+    pair = next(c for c in r["collisions"] if set(c["plans"]) == {"pa.md", "pb.md"})
+    # pa.md scores 9.0, pb.md 5.0 -> pa kept first, pb is the dependent to skip.
+    assert pair["plans"] == ["pa.md", "pb.md"]
+
+
+def test_parking_a_plan_yields_its_collision_dependents_to_skip():
+    """Model the drain's 'skip the parked plan's collision-dependents' step over
+    the REAL compile_docket collision output: parking the higher-ranked plan of a
+    colliding pair marks the lower-ranked plan for skip; a disjoint plan marks
+    nothing; and the low plan of a pair (nobody's dependent) marks nothing."""
+    m = load()
+    r = m.compile_docket(DOCKET, facts_resolver=lambda p: (WRITES[p], "sealed"))
+
+    def dependents_of(parked, collisions):
+        # A dependent is a lower-ranked plan sharing a write with `parked`, i.e.
+        # the second member of any rank-ordered pair whose first member is it.
+        return {c["plans"][1] for c in collisions if c["plans"][0] == parked}
+
+    assert dependents_of("pa.md", r["collisions"]) == {"pb.md"}  # A parks -> skip B
+    assert dependents_of("pc.md", r["collisions"]) == set()      # disjoint -> skip nothing
+    assert dependents_of("pb.md", r["collisions"]) == set()      # low plan -> nothing depends on it
+
+
+def test_parked_entry_is_excluded_from_a_subsequent_compile():
+    """End-to-end sweep-skip-park -> later-drain-compile: the sweep's skip-park
+    (docket_lib.transition -> parked) must remove an entry from what the drain
+    later compiles, since compile_docket considers only `queued` entries. Park
+    the higher-ranked plan of the colliding pair via the REAL transition,
+    re-serialize with the REAL serializer, then compile: the parked plan is gone
+    from order, its collision with the survivor disappears, and the freed
+    dependent plus the disjoint plan remain."""
+    m = load()
+    dl = load_docket_lib()
+    entries = dl.parse_docket(DOCKET)
+    # #1 -> pa.md (kept side of the pa<->pb collision); park it like a red drain.
+    parked = [dl.transition(e, "parked") if e.issue == "1" else e for e in entries]
+    r = m.compile_docket(dl.serialize_docket(parked),
+                         facts_resolver=lambda p: (WRITES[p], "sealed"))
+    assert "pa.md" not in r["order"]                       # parked -> excluded
+    assert set(r["order"]) == {"pb.md", "pc.md"}           # survivors remain
+    assert r["collisions"] == []                           # the only collision was pa<->pb
 
 
 def test_parallelism_projection_groups_disjoint_plans():

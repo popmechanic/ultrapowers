@@ -401,6 +401,20 @@ def test_suite_gate_red_parks(tmp_path):
     assert code != 0 and out["passed"] is False and out["exitCode"] != 0
 
 
+def test_suite_gate_red_carries_assertion_redkind(tmp_path):
+    """The drain parks a red suite-gate keyed on its redKind (ultradocket SKILL:
+    park 'with a reason (the gate's redKind or the failure)'). A committed suite
+    with a deliberately failing test must label the red 'assertion' — a test
+    executed and failed — so the drain records a precise park reason, not just a
+    bare non-zero exit. suite is the drain's dominant disposition, so this is the
+    red the park decision most often keys on; the plain suite-gate path never
+    asserted the label before."""
+    repo = make_suite_repo(tmp_path, "def test_ok():\n    assert False\n")
+    code, out = suite_gate(repo)
+    assert code != 0 and out["passed"] is False
+    assert out["redKind"] == "assertion"
+
+
 def test_suite_gate_no_tests_never_false_greens(tmp_path):
     repo = make_suite_repo(tmp_path, "# no tests here\n")
     code, out = suite_gate(repo)            # pytest exits 5 (no tests collected)
