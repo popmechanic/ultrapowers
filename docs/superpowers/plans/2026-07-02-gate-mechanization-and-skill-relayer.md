@@ -23,7 +23,9 @@
 
 ---
 
-### Task 1: Compiler correctness — uppercase-extension paths and the heading net
+## Tasks
+
+### Task 1: Compiler correctness — uppercase-extension paths, the heading net, and Global Constraints capture
 
 **Type:** implementation
 **Depends-on:** none
@@ -98,12 +100,29 @@ def test_wrong_level_task_id_heading_still_refuses(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode != 0
     assert "not recognized" in p.stderr
+
+
+def test_global_constraints_stop_at_first_task_heading(tmp_path):
+    """Found at launch of this very plan: a `## Global Constraints` section
+    followed directly by `### Task` headings swallowed the entire rest of the
+    document (54KB) into globalConstraints — which the engine then appends to
+    every implementer/reviewer prompt."""
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# Plan: GC\n\n**Acceptance:** waived — inline\n\n"
+        "## Global Constraints\n\n- Rule one.\n- Rule two.\n\n---\n\n"
+        "### Task A: work\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `a.py`\n\n- [ ] **Step 1:** do it\n")
+    out = compile_plan(plan)
+    gc = out["globalConstraints"]
+    assert "Rule one." in gc and "Rule two." in gc
+    assert "Task A" not in gc and "Step 1" not in gc
 ```
 
 - [ ] **Step 2: Run them to confirm the failures**
 
-Run: `python3 -m pytest tests/test_compile_plan.py -q -k "uppercase_extension or mixed_case_attr or prose_section_heading or wrong_level_task_id"`
-Expected: FAIL on `test_uppercase_extension_paths_serialize_same_file_writers` (writes missing `Config.YAML`) and `test_prose_section_heading_with_task_word_and_colon_compiles` (compiler exits 1); the other two may already pass (they pin behavior that must survive the fix).
+Run: `python3 -m pytest tests/test_compile_plan.py -q -k "uppercase_extension or mixed_case_attr or prose_section_heading or wrong_level_task_id or global_constraints_stop"`
+Expected: FAIL on `test_uppercase_extension_paths_serialize_same_file_writers` (writes missing `Config.YAML`), `test_prose_section_heading_with_task_word_and_colon_compiles` (compiler exits 1), and `test_global_constraints_stop_at_first_task_heading` (task body leaks into globalConstraints); the other two may already pass (they pin behavior that must survive the fix).
 
 - [ ] **Step 3: Fix `_is_pathlike`** in `skills/ultrapowers/scripts/compile_plan.py`. Replace the `EXT_RE` definition and its use:
 
@@ -140,10 +159,23 @@ and inside `_is_pathlike`, replace the line `if EXT_RE.search(t): return True` w
         re.I)
 ```
 
-- [ ] **Step 5: Run the four tests to verify they pass**
+- [ ] **Step 4b: Fix the Global Constraints capture.** In `parse_global_constraints`, the section must also end at the first task heading — not only at a `#`/`##` heading. Replace the body-collection loop's break condition:
 
-Run: `python3 -m pytest tests/test_compile_plan.py -q -k "uppercase_extension or mixed_case_attr or prose_section_heading or wrong_level_task_id"`
-Expected: 4 passed
+```python
+    body = []
+    for line, in_fence in lines[start:]:
+        # The section ends at the next #/## heading OR the first task heading —
+        # plans commonly go straight from Global Constraints to `### Task 1:`,
+        # and without this stop the section swallows every task body.
+        if not in_fence and (SECTION_BREAK.match(line.strip()) or match_head(line)):
+            break
+        body.append(line)
+```
+
+- [ ] **Step 5: Run the five tests to verify they pass**
+
+Run: `python3 -m pytest tests/test_compile_plan.py -q -k "uppercase_extension or mixed_case_attr or prose_section_heading or wrong_level_task_id or global_constraints_stop"`
+Expected: 5 passed
 
 - [ ] **Step 6: Run the full compiler test file and the whole suite**
 
