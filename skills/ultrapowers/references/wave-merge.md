@@ -114,6 +114,36 @@ In the structured report this lands in `tests` and `completenessFindings`; block
 
 ---
 
+## Integration Ancestry Assertion
+
+A wave can report a task as merged (a `done` result with a `branch` and `headSha`)
+and yet have that commit never reach the integration HEAD — a reconciliation that
+dropped it, a merge that silently lost it. The engine used to surface such a loss
+only indirectly, when a downstream dependency edge failed against the missing base.
+`#70` closes that gap with a cryptographic assertion administered by the completeness
+critic, which is the one role already sitting detached on the integration HEAD.
+
+The controller accumulates, across every successfully-merged wave, the recorded
+`headSha` of each mergeable `done` task into a `mergedShas` set and passes it into
+the completeness prompt. The critic, already on the integration HEAD, asserts for
+each recorded `headSha` that `git merge-base --is-ancestor <headSha> HEAD` succeeds;
+any task whose commit is **not** an ancestor of HEAD was silently dropped from the
+integration and is returned under `ancestryMisses`. The controller treats a non-empty
+`ancestryMisses` as **BLOCKED**: it pushes a judgment call naming each dropped task
+and withholds `gitVerified`/green, so the pre-merge gate cannot mistake a run that
+lost work for a clean one. When `mergedShas` is empty (no wave merged), the ancestry
+instruction is omitted — there is nothing to assert.
+
+The canonical prompt wording appended to the completeness prompt (`{{MERGED_SHAS}}`
+is the JSON list of `{task, headSha}` entries interpolated at dispatch; omitted when
+empty):
+
+<!-- BAKE:COMPLETENESS_ANCESTRY -->
+You are also given mergedShas, the recorded head sha of every mergeable done task. For each entry, assert that its commit landed in this integration tree by running git merge-base --is-ancestor <headSha> HEAD; return under ancestryMisses every task whose recorded head is not an ancestor of the current HEAD (an empty ancestryMisses when they all are). A recorded head that is not an ancestor is a silently dropped task, and the controller treats a non-empty ancestryMisses as BLOCKED. mergedShas: {{MERGED_SHAS}}
+<!-- /BAKE -->
+
+---
+
 ## No Silent Caps
 
 Every truncation is surfaced explicitly:
