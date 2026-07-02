@@ -2,13 +2,19 @@
 against a throwaway git repo and a tmp vault (no real ~/.ultrapowers use)."""
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "run_acceptance.sh"
 HASH = SCRIPTS / "seal_hash.py"
+
+NODE = shutil.which("node")
+needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
 
 
 def sh(cmd, cwd=None, check=True):
@@ -372,10 +378,12 @@ def make_suite_repo(tmp_path, test_body, *, name="repo"):
     return repo
 
 
-def suite_gate(repo, branch="main", run=None):
+def suite_gate(repo, branch="main", run=None, base=None):
     cmd = ["bash", str(RUN), "--suite-gate", "--branch", branch, "--repo", str(repo)]
     if run:
         cmd += ["--run", run]
+    if base:
+        cmd += ["--base", base]
     r = sh(cmd, check=False)
     return r.returncode, json.loads(r.stdout)
 
@@ -404,3 +412,83 @@ def test_suite_gate_worktree_cleaned_up(tmp_path):
     suite_gate(repo)
     listed = sh(["git", "worktree", "list"], cwd=repo).stdout.strip().splitlines()
     assert len(listed) == 1, "suite-gate worktree leaked"
+
+
+# ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
+
+def make_js_suite_repo(tmp_path, *, sim_body=None, name="jsrepo"):
+    """Repo with a committed pytest suite, a harness JS file, and (optionally) a
+    harness sim under tests/. `sim_body=None` means no harness sim exists."""
+    repo = tmp_path / name
+    (repo / "tests").mkdir(parents=True)
+    (repo / "skills" / "ultrapowers" / "harnesses").mkdir(parents=True)
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    (repo / "tests" / "test_committed.py").write_text("def test_ok():\n    assert True\n")
+    (repo / "skills/ultrapowers/harnesses" / "waves.js").write_text("// harness v1\n")
+    (repo / "README.md").write_text("v1\n")
+    if sim_body is not None:
+        (repo / "tests" / "harness_sim.mjs").write_text(sim_body)
+    sh(["git", "add", "."], cwd=repo)
+    sh(["git", "commit", "-qm", "base"], cwd=repo)
+    return repo
+
+
+def _branch_editing(repo, path, text, branch="feat"):
+    """Create `branch` off HEAD, change one file, commit, return to main."""
+    sh(["git", "checkout", "-q", "-b", branch], cwd=repo)
+    (repo / path).write_text(text)
+    sh(["git", "commit", "-qam", "change"], cwd=repo)
+    sh(["git", "checkout", "-q", "main"], cwd=repo)
+    return branch
+
+
+GREEN_SIM = "// exercises harnesses/waves.js\nconsole.log('checked harness');\nconsole.log('ALL SCENARIOS PASSED');\n"
+RED_SIM = "// exercises harnesses/waves.js\nconsole.log('checking harness');\nprocess.exit(1);\n"
+SILENT_SIM = "// exercises harnesses/waves.js\nconsole.log('did setup but asserted nothing');\n"
+
+
+@needs_node
+def test_suite_gate_runs_harness_sims_green(tmp_path):
+    repo = make_js_suite_repo(tmp_path, sim_body=GREEN_SIM)
+    br = _branch_editing(repo, "skills/ultrapowers/harnesses/waves.js", "// harness v2\n")
+    code, out = suite_gate(repo, branch=br, base="main")
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
+    assert "ALL SCENARIOS PASSED" in out["output"]
+
+
+@needs_node
+def test_suite_gate_red_sim_parks(tmp_path):
+    repo = make_js_suite_repo(tmp_path, sim_body=RED_SIM)
+    br = _branch_editing(repo, "skills/ultrapowers/harnesses/waves.js", "// harness v2\n")
+    code, out = suite_gate(repo, branch=br, base="main")
+    assert code != 0 and out["passed"] is False and out["redKind"] == "assertion"
+
+
+@needs_node
+def test_suite_gate_sim_false_green_is_error(tmp_path):
+    repo = make_js_suite_repo(tmp_path, sim_body=SILENT_SIM)
+    br = _branch_editing(repo, "skills/ultrapowers/harnesses/waves.js", "// harness v2\n")
+    code, out = suite_gate(repo, branch=br, base="main")
+    assert code != 0 and out["passed"] is False and out["status"] == "ERROR"
+
+
+@needs_node
+def test_suite_gate_no_harness_diff_skips_sims(tmp_path):
+    # A red sim exists, but the branch changes only a non-harness file, so the
+    # sim must NOT run — proving detection gates on the diff (no regression).
+    repo = make_js_suite_repo(tmp_path, sim_body=RED_SIM)
+    br = _branch_editing(repo, "README.md", "v2\n")
+    code, out = suite_gate(repo, branch=br, base="main")
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
+
+
+@needs_node
+def test_suite_gate_harness_diff_no_sim_is_error(tmp_path):
+    # Harness JS changed but no tests/*.mjs exercises harnesses/ -> refuse to
+    # green unverified JS (empty run-set is a hard error).
+    repo = make_js_suite_repo(tmp_path, sim_body=None)
+    br = _branch_editing(repo, "skills/ultrapowers/harnesses/waves.js", "// harness v2\n")
+    code, out = suite_gate(repo, branch=br, base="main")
+    assert code != 0 and out["passed"] is False and out["status"] == "ERROR"
