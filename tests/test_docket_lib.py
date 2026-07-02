@@ -196,3 +196,34 @@ def test_all_valid_engines_parse():
         text = (f"# D\n\n### #1: x\n**State:** queued\n**Score:** 1 — x\n"
                 f"**Est-files:** a.py\n**Plan:** p.md\n**Seal:** abc\n**Engine:** {eng}\n")
         assert m.parse_docket(text)[0].engine == eng
+
+
+def test_notes_field_parses_and_round_trips():
+    m = load()
+    text = ("# Docket\n\n### #9: t\n**State:** triaged\n**Score:** 8 — x\n"
+            "**Est-files:** a.py\n**Notes:** core fix already landed; verify & close\n")
+    e = m.parse_docket(text)[0]
+    assert e.notes == "core fix already landed; verify & close"
+    reparsed = m.parse_docket(m.serialize_docket([e]))[0]
+    assert reparsed.notes == e.notes
+
+
+def test_notes_survives_transition():
+    """The exact bug: rationale was destroyed on the first accepted->planned."""
+    m = load()
+    text = ("# Docket\n\n### #9: t\n**State:** accepted\n**Score:** 8 — x\n"
+            "**Est-files:** a.py\n**Notes:** partly landed; re-scope to remainder\n")
+    e = m.parse_docket(text)[0]
+    e2 = m.transition(e, "planned")
+    out = m.serialize_docket([e2])
+    assert "**Notes:** partly landed; re-scope to remainder" in out
+    assert m.parse_docket(out)[0].notes == e.notes
+
+
+def test_no_notes_emits_no_notes_line():
+    m = load()
+    text = ("# Docket\n\n### #9: t\n**State:** triaged\n**Score:** 8 — x\n"
+            "**Est-files:** a.py\n")
+    e = m.parse_docket(text)[0]
+    assert e.notes is None
+    assert "**Notes:**" not in m.serialize_docket([e])
