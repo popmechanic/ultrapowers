@@ -642,8 +642,9 @@ def _interface_token(entry):
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
 # engine reads these via args.waveLabels (so the live /workflows tree is labeled
 # without orchestrator judgment) AND the swarm viewer reads them from build_dag.
-# This is the canonical mirror of waves.js `deriveWaveLabel` (kept in sync); the
-# engine's JS copy is only a fallback for label-less direct launches.
+# The engine's JS fallback is deliberately minimal (single-task title or
+# 'Wave N'); this function is the only rich label source, delivered via
+# --emit-args/waveLabels.
 TITLE_STOP = {"the", "a", "an", "and", "or", "for", "to", "of", "with", "in",
               "on", "at", "by", "via", "plus"}
 
@@ -1038,8 +1039,19 @@ def main(argv=None):
                     help="also write a launch-ready waves file (verbatim, "
                          "fence-aware task bodies) to PATH; waves.js reads bodies "
                          "from it via args.wavesPath so they never ride inline.")
+    ap.add_argument("--emit-args", type=Path, default=None, dest="emit_args",
+                    metavar="PATH",
+                    help="also write the complete Workflow launch-args skeleton "
+                         "(waves/wavesPath/edges/acceptance/waveLabels/"
+                         "globalConstraints/planPath) to PATH; the orchestrator "
+                         "adds only per-task tier/review/testCmd and run knobs. "
+                         "Requires --emit-launch.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
+    emit_args = args.emit_args
+    if emit_args is not None and emit_launch is None:
+        sys.exit("error: --emit-args requires --emit-launch (task bodies must "
+                 "ride via the launch file, so wavesPath is always populated)")
     plan_text = args.plan.read_text()
     # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
     # named diagnostic, not the generic 'no headings found'.)
@@ -1305,6 +1317,25 @@ def main(argv=None):
         emit_launch.parent.mkdir(parents=True, exist_ok=True)
         emit_launch.write_text(json.dumps(launch_payload, indent=2))
         result["launch_file"] = str(emit_launch)
+
+    if emit_args is not None:
+        # The complete launch-args skeleton: everything deterministic rides
+        # from here so the orchestrator never hand-assembles edges/acceptance
+        # (forgetting args.edges silently disabled dependency blocking).
+        args_payload = {
+            "waves": launch_waves,
+            "wavesPath": str(emit_launch.resolve()),
+            "edges": [[e["from"], e["to"]] for e in edges],
+            "dependencyEdges": [f"{e['from']} -> {e['to']} ({e['why']})"
+                                for e in edges],
+            "acceptance": acceptance,
+            "waveLabels": wave_labels,
+            "globalConstraints": global_constraints,
+            "planPath": str(args.plan.resolve()),
+        }
+        emit_args.parent.mkdir(parents=True, exist_ok=True)
+        emit_args.write_text(json.dumps(args_payload, indent=2))
+        result["args_file"] = str(emit_args)
 
     print(json.dumps(result, indent=2))
     return 0

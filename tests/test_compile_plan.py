@@ -54,6 +54,17 @@ def compile_plan_raw(path):
             pathlib.Path(tmp).unlink(missing_ok=True)
 
 
+def compile_plan_raw_with(path, extra):
+    effective, tmp = _with_waiver(path)
+    try:
+        return subprocess.run(
+            [sys.executable, str(COMPILER), str(effective)] + list(extra),
+            capture_output=True, text=True)
+    finally:
+        if tmp:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+
+
 def test_marked_fixture_compiles_to_documented_waves():
     out = compile_plan(ROOT / "tests/fixtures/marked-plan.md")
     assert out["waves"] == [["1", "2"], ["3"]]
@@ -2129,3 +2140,33 @@ def test_global_constraints_stop_at_first_task_heading(tmp_path):
     gc = out["globalConstraints"]
     assert "Rule one." in gc and "Rule two." in gc
     assert "Task A" not in gc and "Step 1" not in gc
+
+
+def test_emit_args_writes_complete_launch_skeleton(tmp_path):
+    launch = tmp_path / "waves.json"
+    argsf = tmp_path / "args.json"
+    p = compile_plan_raw_with(ROOT / "tests/fixtures/marked-plan.md",
+                              ["--emit-launch", str(launch),
+                               "--emit-args", str(argsf)])
+    assert p.returncode == 0, p.stderr
+    out = json.loads(p.stdout)
+    skel = json.loads(argsf.read_text())
+    assert skel["waves"] == out["launch_waves"]
+    assert skel["wavesPath"] == str(launch.resolve())
+    assert skel["edges"] == [[e["from"], e["to"]] for e in out["dag_edges"]]
+    assert skel["dependencyEdges"] == [
+        f"{e['from']} -> {e['to']} ({e['why']})" for e in out["dag_edges"]]
+    assert skel["acceptance"] == out["acceptance"]
+    assert skel["waveLabels"] == out["waveLabels"]
+    assert skel["globalConstraints"] == out["globalConstraints"]
+    assert pathlib.Path(skel["planPath"]).is_absolute()
+    assert out["args_file"] == str(argsf)
+
+
+def test_emit_args_requires_emit_launch(tmp_path):
+    argsf = tmp_path / "args.json"
+    p = compile_plan_raw_with(ROOT / "tests/fixtures/marked-plan.md",
+                              ["--emit-args", str(argsf)])
+    assert p.returncode != 0
+    assert "--emit-args requires --emit-launch" in (p.stderr + p.stdout)
+    assert not argsf.exists()
