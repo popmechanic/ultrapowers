@@ -15,6 +15,7 @@ VAULT="${HOME}/.ultrapowers/acceptance"
 REPO="$(pwd)"
 B_SUITE=""; B_RUN=""; B_BOOT=""
 SG_RUN="python3 -m pytest"
+SG_BASE=""
 MODE="sealed"
 if [ "${1:-}" = "--baseline" ]; then
   MODE="baseline"; shift
@@ -37,6 +38,7 @@ elif [ "${1:-}" = "--suite-gate" ]; then
     case "$1" in
       --branch) BRANCH="$2"; shift 2 ;;
       --run)    SG_RUN="$2"; shift 2 ;;
+      --base)   SG_BASE="$2"; shift 2 ;;
       --repo)   REPO="$2";   shift 2 ;;
       *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -146,6 +148,62 @@ $OUT"
   return 0
 }
 
+# ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
+# After a green pytest suite-gate, if the branch changed harness JS, run the
+# harness .mjs sims so JS behavior is exit-code-gated too. Sets J_* globals;
+# never emits or exits. node exits 0 for a no-op script, so a pass requires exit
+# 0 AND a printed sentinel — exit code alone would re-open the false-green hole.
+run_js_sims() { # $1=worktree $2=base_ref  → sets J_STATUS J_PASSED J_CODE J_OUTPUT J_REDKIND
+  local WT="$1" BASE="$2"
+  J_STATUS=OK; J_PASSED=true; J_CODE=0; J_OUTPUT=""; J_REDKIND=""
+  # Detection: did this branch touch harness JS vs the base? Three-dot diffs
+  # against the merge-base, correct even if the base line advanced.
+  local CHANGED
+  CHANGED="$(git -C "$WT" diff --name-only "$BASE"...HEAD 2>/dev/null \
+              | grep -E '^skills/ultrapowers/harnesses/.*\.js$' || true)"
+  if [ -z "$CHANGED" ]; then
+    return 0   # harnesses untouched → nothing to run, gate stays green
+  fi
+  # node is required to exercise the JS. Missing node is an environment error,
+  # never feature-absence — do not false-green by silently skipping.
+  if ! command -v node >/dev/null 2>&1; then
+    J_STATUS=ERROR; J_PASSED=false; J_CODE=1
+    J_OUTPUT="harness JS changed but 'node' is not on PATH — cannot run harness sims:
+$CHANGED"; return 0
+  fi
+  # Discover harness sims: the tests/*.mjs that exercise the harness (reference
+  # harnesses/). Excludes the viewer specs (which reference viewer/).
+  local SIMS="" f
+  for f in "$WT"/tests/*.mjs; do
+    [ -e "$f" ] || continue
+    if grep -q 'harnesses/' "$f"; then SIMS="$SIMS $f"; fi
+  done
+  if [ -z "${SIMS// /}" ]; then
+    # Harness JS changed but nothing exercises it → refuse to green unverified JS.
+    J_STATUS=ERROR; J_PASSED=false; J_CODE=1
+    J_OUTPUT="harness JS changed but no harness sim (tests/*.mjs referencing harnesses/) exists to exercise it — refusing to green unverified JS:
+$CHANGED"; return 0
+  fi
+  local SENTINEL='ALL (SCENARIOS|TESTS) PASSED'
+  local sim SOUT SCODE ACC=""
+  for sim in $SIMS; do
+    SOUT="$( (cd "$WT" && node "$sim") 2>&1 )"; SCODE=$?
+    ACC="$ACC
+--- sim $(basename "$sim") (exit $SCODE) ---
+$SOUT"
+    if [ "$SCODE" -ne 0 ]; then
+      J_STATUS=OK; J_PASSED=false; J_CODE=$SCODE; J_REDKIND=assertion
+      J_OUTPUT="harness sim $(basename "$sim") failed (exit $SCODE):$ACC"; return 0
+    fi
+    if ! printf '%s' "$SOUT" | grep -Eq "$SENTINEL"; then
+      J_STATUS=ERROR; J_PASSED=false; J_CODE=1
+      J_OUTPUT="harness sim $(basename "$sim") exited 0 but printed no pass sentinel (/$SENTINEL/) — refusing to false-green:$ACC"; return 0
+    fi
+  done
+  J_STATUS=OK; J_PASSED=true; J_CODE=0; J_OUTPUT="harness sims passed:$ACC"
+  return 0
+}
+
 # ── Suite-gate mode (committed-suite gate for suite-disposition plans) ────────
 # Runs the repo's OWN committed suite (already on the branch) in a detached
 # worktree. No held-out suite is mounted. pytest exit codes are the authority:
@@ -158,6 +216,17 @@ if [ "$MODE" = "suite-gate" ]; then
   fi
   OUT="$( (cd "$EXAM_WT" && eval "$SG_RUN") 2>&1 )"; CODE=$?
   if [ "$CODE" -eq 0 ]; then
+    # pytest green. If a base was given AND this branch changed harness JS, also
+    # run the harness .mjs sims so JS behavior is exit-code-gated (issue #79).
+    if [ -n "$SG_BASE" ]; then
+      run_js_sims "$EXAM_WT" "$SG_BASE"
+      if [ "$J_STATUS" != OK ] || [ "$J_PASSED" != true ]; then
+        emit "$J_STATUS" "$J_PASSED" "$J_CODE" "pytest passed; $J_OUTPUT" "$J_REDKIND"
+        exit 1
+      fi
+      emit OK true 0 "$OUT
+$J_OUTPUT"; exit 0
+    fi
     emit OK true 0 "$OUT"; exit 0
   elif [ "$CODE" -eq 5 ]; then
     emit ERROR false 5 "committed suite collected no tests — refusing to false-green:

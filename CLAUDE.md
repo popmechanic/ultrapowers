@@ -60,6 +60,14 @@ suite is the verification; no held-out exam).
   execution-handoff rubric is shared between `hooks/session_start.sh` and `ultraplan/SKILL.md`
   (pinned by `tests/test_recommendation_rubric.py`). Change the source `.md`, re-bake per
   `references/workflow-template.md`, and keep the pin green — never edit only the baked copy.
+- **The suite-gate runs the `.mjs` harness sims when harness JS changes.** For a
+  `suite`-disposition branch, `run_acceptance.sh --suite-gate --base <ref>` diffs
+  `<ref>...HEAD`; if `skills/ultrapowers/harnesses/*.js` was touched it runs the
+  `tests/*.mjs` that reference `harnesses/` via `node`, gated on exit code **and** a
+  `ALL (SCENARIOS|TESTS) PASSED` sentinel. So a new harness sim MUST print that
+  sentinel on success, and harness JS with no covering sim fails the gate (never a
+  shallow green). The viewer specs (`swarm_*`, `audit_*`) reference `viewer/` and
+  are not run by the gate.
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script.
