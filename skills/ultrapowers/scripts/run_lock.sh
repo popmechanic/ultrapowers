@@ -10,7 +10,9 @@
 #                    exit non-zero with a refusal if a DIFFERENT id holds it
 #   check    <id>  — exit 0 iff RUN_LOCK holds <id>; non-zero otherwise
 #   release  <id>  — remove RUN_LOCK iff it holds <id> (no-op if mismatch)
-#   snapshot       — record current branch + HEAD sha to CHECKOUT_SNAPSHOT
+#   snapshot       — record current branch + HEAD sha to CHECKOUT_SNAPSHOT,
+#                    and the porcelain dirty set to DIRTY_SNAPSHOT (the gate
+#                    blocks only on dirt that appears AFTER this)
 #   restore        — checkout the branch/sha recorded in CHECKOUT_SNAPSHOT
 #
 # Advisory: never force-moves a tree.  All operations are idempotent and silent
@@ -21,6 +23,7 @@ ROOT="$(git rev-parse --show-toplevel)"
 DIR="$ROOT/.claude/ultrapowers"
 LOCK="$DIR/RUN_LOCK"
 SNAP="$DIR/CHECKOUT_SNAPSHOT"
+DIRTY="$DIR/DIRTY_SNAPSHOT"
 mkdir -p "$DIR"
 
 cmd="${1:-}"
@@ -49,6 +52,7 @@ case "$cmd" in
     branch="$(git -C "$ROOT" branch --show-current)"
     sha="$(git -C "$ROOT" rev-parse HEAD)"
     printf '%s\t%s' "$branch" "$sha" > "$SNAP"
+    git -C "$ROOT" status --porcelain > "$DIRTY"
     ;;
 
   restore)
