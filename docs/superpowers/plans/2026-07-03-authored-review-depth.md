@@ -174,8 +174,8 @@ git commit -m "feat(compiler): parse **Review:** marker, pre-emit per-task revie
 - Test: `tests/test_marker_contract.py`
 
 **Interfaces:**
-- Consumes: the compiler's `**Review:**` marker semantics (valid values `adversarial`/`lean`, header-block placement, unmarked = lean) from the marker-parsing task
-- Produces: the canonical marker contract documents `**Review:**`; the ultraplan skill mirrors it and carries the authoring rubric plus two new authoring-guidance notes (shrink-budget pattern, escalation-prone tiering)
+- Consumes: compiler `**Review:**` marker semantics (valid values `adversarial`/`lean`, header-block placement, unmarked = lean) from the marker-parsing task
+- Produces: canonical-contract documentation of `**Review:**`; the ultraplan skill mirrors it and carries the authoring rubric plus two new authoring-guidance notes (shrink-budget pattern, escalation-prone tiering)
 
 - [ ] **Step 1: Extend the canonical contract**
 
@@ -335,8 +335,8 @@ git commit -m "feat(engine)!: delete review-depth heuristics; authored review sl
 - Modify: `skills/ultrapowers/harnesses/waves.js`
 
 **Interfaces:**
-- Consumes: the reviewer-prompt source layout left by the heuristic-deletion task (same two files — write-after-write ordering)
-- Produces: the baked reviewer prompt instructs regenerate-and-byte-compare for committed generated artifacts
+- Consumes: reviewer-prompt source layout left by the heuristic-deletion task (same two files — write-after-write ordering)
+- Produces: baked reviewer-prompt instruction to regenerate-and-byte-compare for committed generated artifacts
 
 - [ ] **Step 1: Edit the canonical prompt source**
 
@@ -578,7 +578,7 @@ git commit -m "feat(finishing): deferredVerification is a per-item post-merge ch
 - Test: `tests/test_ultra_run.py`
 
 **Interfaces:**
-- Consumes: the engine's authored-review behavior (heuristics deleted) from the engine task — SKILL.md must describe the shipped behavior, so this task serializes after it
+- Consumes: engine authored-review behavior (heuristics deleted) from the engine task — SKILL.md must describe the shipped behavior, so this task serializes after it
 - Produces: `ultra_run.py --validate-knobs <argsFile>` (exit 0 = knobs safe; non-zero with output on a dirty/failing `bootstrapCmd`); SKILL.md describes plan-authored review depth and the knob-validation step
 
 - [ ] **Step 1: Write the failing tests**
