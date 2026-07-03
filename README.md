@@ -80,6 +80,14 @@ Skip it for small or tightly-connected plans, where the work has to happen in or
 plain Superpowers is the better tool — and ultrapowers will tell you so rather than spin up
 machinery you don't need.
 
+In field use the human surface compresses to exactly the designed touchpoints:
+on a recent 7-task production run the operator's entire involvement was the
+planning decisions, vouching for the sealed exam's coverage at launch, and one
+physical-world check no tooling could reach (confirming an email landed in a
+personal inbox) — everything between launch and the pre-merge gate ran
+autonomously, and the operator's unrelated work-in-progress was restored
+byte-for-byte.
+
 ## How it works
 
 ultrapowers is built on **Dynamic Workflows** — a capability Claude Code added to its own runtime,
