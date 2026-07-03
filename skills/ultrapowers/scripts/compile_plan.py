@@ -643,17 +643,53 @@ def _desc_field_label(creator_paths, desc_text):
     return "a description/Interfaces field"
 
 
+# Placeholder interface values — 'Consumes: nothing (…)' is authoring prose
+# for "no contract", never a producible symbol. Tokenizing them to "" deletes
+# the placeholder-pairing edge class at the representation (2026-07-03
+# foreign run: 'nothing' paired 'nothing' -> spurious edges -> a wasted wave).
+PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})
+
+
 # Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
 # entry is matched by EXACT token equality — no substring/fuzzy match. Normalize
 # to the leading symbol token: strip a leading bullet/label residue and backticks,
 # then take the identifier up to the first '(' , whitespace, or ':' so
 # "`User` dataclass (id: int)" and "`User`" both reduce to "User", and
 # "validate_payload(payload) -> list[str]" reduces to "validate_payload".
+# A leading token that is a placeholder (bare or followed by trailing prose,
+# e.g. "nothing (test-data-only change)" or "none — standalone") normalizes
+# to "" so placeholder Consumes/Produces lines can never pair into an edge.
 def _interface_token(entry):
     s = entry.strip().strip("`").strip()
     if not s:
         return ""
-    return re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
+    token = re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
+    return "" if token.lower() in PLACEHOLDER_TOKENS else token
+
+
+# A symbol list is backticked or bare identifier tokens (optionally with a
+# signature tail), comma-separated. Sentences are authoring mistakes that the
+# interface matcher would silently mis-tokenize (taking only the first word) —
+# surface them so authors fix the Interfaces line instead of it silently
+# failing to pair with anything.
+_SYMBOL_OK = re.compile(r"^`?[A-Za-z_][\w.\-]*`?(\s*\(.*)?(\s*->.*)?$")
+
+
+def _symbol_list_violations(entries):
+    """Human-readable violations for non-placeholder, non-symbol interface
+    values. Empty list == every entry is either a placeholder or a proper
+    symbol list. Used by the `--check` CLI mode (a later task)."""
+    out = []
+    for entry in entries:
+        s = entry.strip()
+        if not s or _interface_token(s) == "":
+            continue  # empty or placeholder — fine
+        parts = [p.strip() for p in s.split(",")]
+        if not all(_SYMBOL_OK.match(p) for p in parts if p):
+            out.append(
+                "interface value is not a symbol list (backticked or bare "
+                "identifiers, comma-separated): %r" % s)
+    return out
 
 
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
