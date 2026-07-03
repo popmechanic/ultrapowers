@@ -99,3 +99,40 @@ def test_uncompilable_plan_fails_compile_stage(tmp_path):
     assert r.returncode != 0
     receipt = json.loads(r.stdout)
     assert receipt["stages"][-1]["stage"] == "compile"
+
+
+def run_validate_knobs(repo, args_path):
+    return sh([sys.executable, str(RUN), "--validate-knobs", str(args_path)],
+              cwd=repo, check=False)
+
+
+def test_validate_knobs_passes_a_clean_noop_bootstrap(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_knobs_blocks_a_failing_bootstrap(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "false"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+
+
+def test_validate_knobs_blocks_a_tree_dirtying_bootstrap(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "touch dirt.txt"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+
+
+def test_validate_knobs_is_a_noop_without_bootstrap(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"testCmd": "pytest"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr

@@ -37,8 +37,10 @@ LLM_DERIVES = [
     "tasks[].tier in the launch file (slots pre-emitted as null; never a "
     "top-level launch key, never tierOverrides, which remaps tier names to models)",
     "testCmd — run-wide and/or per-task, only when detection would guess wrong",
-    "bootstrapCmd — per-worktree dependency install for fresh worktrees",
-    "review-depth overrides (task.review) only as deliberate exceptions",
+    "bootstrapCmd — per-worktree dependency install for fresh worktrees; "
+    "validate with --validate-knobs before launch",
+    "nothing for review depth — it is plan-authored (**Review:** marker), "
+    "pre-emitted like tier slots",
 ]
 
 
@@ -46,12 +48,54 @@ def sh(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
 
 
+def validate_knobs(args_path, root):
+    """Pre-launch knob validation: a bootstrapCmd must be a clean no-op on the
+    session checkout — a bad knob otherwise fails inside every worktree
+    simultaneously. Exit 0 = safe (or no bootstrapCmd); non-zero shows why."""
+    try:
+        knobs = json.loads(Path(args_path).read_text())
+    except (OSError, json.JSONDecodeError) as e:
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "unreadable args file: %s" % e}))
+        return 1
+    cmd = knobs.get("bootstrapCmd")
+    if not (isinstance(cmd, str) and cmd.strip()):
+        print(json.dumps({"ok": True, "stage": "knob-validate",
+                          "detail": "no bootstrapCmd — nothing to validate"}))
+        return 0
+    before = sh(["git", "status", "--porcelain"], cwd=root).stdout
+    proc = subprocess.run(cmd, shell=True, cwd=root,
+                          capture_output=True, text=True)
+    after = sh(["git", "status", "--porcelain"], cwd=root).stdout
+    ok = proc.returncode == 0 and before == after
+    print(json.dumps({"ok": ok, "stage": "knob-validate",
+                      "exit": proc.returncode,
+                      "treeClean": before == after,
+                      "output": (proc.stdout + proc.stderr)[-2000:]}))
+    return 0 if ok else 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("plan", type=Path)
+    ap.add_argument("plan", type=Path, nargs="?")
     ap.add_argument("--stamp", default=None)
     ap.add_argument("--repo", type=Path, default=Path.cwd())
+    ap.add_argument("--validate-knobs", type=Path, default=None,
+                    metavar="ARGSFILE", dest="validate_knobs",
+                    help="pre-launch knob validation only; skips the launch pipeline")
     a = ap.parse_args(argv)
+
+    if a.validate_knobs is not None:
+        r = sh(["git", "rev-parse", "--show-toplevel"], cwd=a.repo)
+        if r.returncode != 0:
+            print(json.dumps({"ok": False, "stage": "knob-validate",
+                              "detail": r.stderr or "not inside a git repository"}))
+            return 1
+        return validate_knobs(a.validate_knobs, Path(r.stdout.strip()))
+
+    if a.plan is None:
+        ap.error("plan is required unless --validate-knobs is given")
+
     stamp = a.stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     stages = []
