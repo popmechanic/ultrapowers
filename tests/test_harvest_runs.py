@@ -164,22 +164,58 @@ def make_records_with_text(text):
     return [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": text}]}])]
 
 
+def _real_receipt(verdict, gate_exit):
+    # Mirror ultra_gate.py's exact serialized key order and nested shape: the
+    # "gateCheck" dict lands directly before "gateCheckExit", so a synthetic
+    # fixture cannot reconstruct the old '"gateCheckExit"'-anchor blind spot.
+    return {"mode": "gate", "stamp": "20260703-000000",
+            "reportPath": "/tmp/r.json", "branch": "ultra/integration-x",
+            "gateCheck": {"verdict": verdict,
+                          "checks": [{"name": "lock", "ok": True, "detail": ""}],
+                          "acks": []},
+            "gateCheckExit": gate_exit,
+            "acceptance": {"disposition": "suite", "exit": 0},
+            "verdict": verdict}
+
+
 def test_gate_report_prefers_printed_ultra_gate_receipt(tmp_path):
-    receipt = {"mode": "gate", "stamp": "20260703-000000",
-               "gateCheckExit": 2, "verdict": "NEEDS_ACK",
-               "acceptance": {"disposition": "suite", "exit": 0}}
+    receipt = _real_receipt("NEEDS_ACK", 2)
     records = make_records_with_text(  # use the file's existing record builder
-        "gate administered:\n" + json.dumps(receipt) + "\ndone")
+        "gate administered:\n" + json.dumps(receipt, indent=2) + "\ndone")
     got = h._gate_report(records)
     assert got is not None and got["verdict"] == "NEEDS_ACK"
 
 
 def test_gate_report_takes_last_receipt_when_rerun(tmp_path):
-    first = {"mode": "gate", "gateCheckExit": 1, "verdict": "BLOCKED"}
-    second = {"mode": "gate", "gateCheckExit": 2, "verdict": "NEEDS_ACK"}
+    first = _real_receipt("BLOCKED", 1)
+    second = _real_receipt("NEEDS_ACK", 2)
     records = make_records_with_text(
-        json.dumps(first) + "\nre-ran after parking docs\n" + json.dumps(second))
+        json.dumps(first, indent=2) + "\nre-ran after parking docs\n"
+        + json.dumps(second, indent=2))
     assert h._gate_report(records)["verdict"] == "NEEDS_ACK"
+
+
+def test_gate_report_parses_real_ultra_gate_serialized_receipt(tmp_path):
+    # Regression: ultra_gate.py serializes the NESTED "gateCheck" dict directly
+    # before "gateCheckExit", so anchoring on '"gateCheckExit"' + rfind('{')
+    # lands on the gateCheck sub-object (verdict but no mode=="gate") and real
+    # printed receipts MISS. Build the receipt in ultra_gate.py's exact key
+    # order and shape, serialize the way it does (indent=2), and require the
+    # OUTER receipt back.
+    receipt = {"mode": "gate", "stamp": "20260703-000000",
+               "reportPath": "/tmp/r.json", "branch": "ultra/integration-x",
+               "gateCheck": {"verdict": "PASS",
+                             "checks": [{"name": "lock", "ok": True, "detail": ""}],
+                             "acks": []},
+               "gateCheckExit": 0,
+               "acceptance": {"disposition": "suite", "exit": 0},
+               "verdict": "PASS"}
+    records = make_records_with_text(
+        "gate administered:\n" + json.dumps(receipt, indent=2) + "\ndone")
+    got = h._gate_report(records)
+    assert got is not None
+    assert got.get("mode") == "gate"
+    assert got["verdict"] == "PASS"
 
 
 def test_gate_report_falls_back_to_legacy_scan(tmp_path):

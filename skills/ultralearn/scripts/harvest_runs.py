@@ -170,16 +170,18 @@ def _gate_report(records):
     receipt = None
     for _r, b in _iter_blocks(records):
         txt = _block_text(b)
-        i = txt.find('"gateCheckExit"')
+        # Anchor on '"mode"' — ultra_gate.py serializes it as the receipt's
+        # FIRST key, so rfind('{', ...) from the anchor reaches the receipt's
+        # OUTER opening brace. (Anchoring on '"gateCheckExit"' landed instead on
+        # the nested "gateCheck" dict serialized right before it.)
+        i = txt.find('"mode"')
         while i != -1:
-            # _balanced_json brace-matches FROM an opening "{" — scan back from
-            # the found key to the enclosing brace, same as the legacy pass.
             start = txt.rfind("{", 0, i + 1)
             if start != -1:
                 obj = _balanced_json(txt, start)
                 if isinstance(obj, dict) and obj.get("mode") == "gate" and "verdict" in obj:
                     receipt = obj
-            i = txt.find('"gateCheckExit"', i + 1)
+            i = txt.find('"mode"', i + 1)
     if receipt is not None:
         return receipt
     # Pass 2 (legacy, pre-driver sessions): scan every "integrationBranch"
