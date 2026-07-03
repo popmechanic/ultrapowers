@@ -5,15 +5,16 @@ SKILL = ROOT / "skills/ultrapowers/SKILL.md"
 PROMPTS = ROOT / "skills/ultrapowers/references/reviewer-prompts.md"
 
 
-def test_skill_trigger_is_risk_based_not_tier_alone():
+def test_skill_review_depth_is_plan_authored_not_engine_derived():
     src = SKILL.read_text()
     # The mis-firing proxy must be gone: tier alone must not warrant adversarial.
     assert "most-capable` tasks warrant\n  `adversarial`" not in src
     assert "most-capable` tasks warrant `adversarial`" not in src
-    # The narrowed trigger names concrete risk surfaces and the data-layer class.
-    assert "risk surface" in src
-    assert "data-layer" in src
-    assert "auth" in src and "migrations" in src
+    # Review depth is a plan-authored property (the ultraplan `**Review:**`
+    # marker), not an engine-derived risk-lexicon heuristic (#87 deletion).
+    assert "plan-authored" in src
+    assert "**Review:**" in src
+    assert "engine-derived" not in src
 
 
 def test_prompts_record_no_split_decision():

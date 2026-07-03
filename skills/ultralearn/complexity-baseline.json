@@ -1,11 +1,11 @@
 {
   "compileFlags": 2,
   "engineKnobs": 17,
-  "engineLoc": 1434,
+  "engineLoc": 1406,
   "enumStates": 15,
   "gateChecks": 8,
   "lockVerbs": 5,
   "skillSteps": 8,
-  "skillWords": 1785,
+  "skillWords": 1798,
   "standingConcepts": 55
 }

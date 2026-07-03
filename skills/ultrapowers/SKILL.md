@@ -74,11 +74,15 @@ the checklist:
   `.venv`/`node_modules`).
 - **`baseBranch`** — already derived in `receipt.baseBranch`; pass it through.
 
-Review depth stays **engine-derived**: the `adversarial` second pass is granted on
-a genuine **risk surface** (files/title naming auth, payments, migrations,
-secrets, or the persistence **data-layer**) **OR** a foundation/contract root
-(Produces an interface while Consuming nothing); else `lean`. Leave `task.review`
-unset; set it only as a deliberate override. *Rationale: § Step 4.*
+Validate filled knobs before launch: `python3
+${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py --validate-knobs
+<argsFile>` — a `bootstrapCmd` must no-op cleanly on the session checkout.
+
+Review depth is **plan-authored**: the ultraplan `**Review:**` marker compiles
+into each task's `review` slot (`lean` when unmarked) — the render shows
+exactly what the engine will do. Do not set `task.review` yourself; the
+run-wide `reviewProfile: adversarial` hatch can only raise depth.
+*Rationale: § Step 4.*
 
 ## Step 3 — Render the wave plan (transparency, no pause)
 
@@ -88,7 +92,7 @@ classification is auditable at the gate:
 1. **Waves** — task IDs per wave, in order.
 2. **Dependency `edges`** — those that shaped the ordering.
 3. **Mode** — `parallel`/`sequential` (with the degrade reason).
-4. **Derived knobs** — `testCmd`, engine-assigned review depth, tier overrides.
+4. **Derived knobs** — `testCmd`, plan-authored review depth, tier overrides.
 5. **Dispositions** — release/manual → runbook, gates → run config. Render the two
    `marker_conflicts` buckets **separately by `kind`:** `kind: "conflict"` as
    *needs attention*, `kind: "inference"` as *informational*. When it reports
