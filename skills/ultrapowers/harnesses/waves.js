@@ -302,6 +302,7 @@ const REVIEWER_PROMPT = [
   '5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
   '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
   '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.',
+  '8. When the diff commits a generated artifact (a baked copy, a regenerated baseline, a build output), regenerate it with its generator and byte-compare against the committed copy — never eyeball equivalence. A hand-edited artifact that reads plausibly is exactly the false green this catches.',
   '',
   'You review by reading the diff and its evidence; the implementer red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.',
   '',
