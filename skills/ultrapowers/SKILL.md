@@ -74,15 +74,13 @@ the checklist:
   `.venv`/`node_modules`).
 - **`baseBranch`** — already derived in `receipt.baseBranch`; pass it through.
 
-Validate filled knobs before launch: `python3
-${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py --validate-knobs
-<argsFile>` — a `bootstrapCmd` must no-op cleanly on the session checkout.
+Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
+`bootstrapCmd` no-ops cleanly on the session checkout.
 
-Review depth is **plan-authored**: the ultraplan `**Review:**` marker compiles
-into each task's `review` slot (`lean` when unmarked) — the render shows
-exactly what the engine will do. Do not set `task.review` yourself; the
-run-wide `reviewProfile: adversarial` hatch can only raise depth.
-*Rationale: § Step 4.*
+Review depth is **plan-authored**: ultraplan's `**Review:**` marker fills each
+task's `review` slot (`lean` when unmarked), shown in the render; never set
+`task.review` yourself — the run-wide `reviewProfile: adversarial` hatch only
+raises depth. *Rationale: § Step 4.*
 
 ## Step 3 — Render the wave plan (transparency, no pause)
 
