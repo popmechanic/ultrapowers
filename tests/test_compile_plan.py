@@ -2196,3 +2196,83 @@ def test_emit_launch_pre_emits_tier_slots(tmp_path):
     assert payload["tasks"], "no tasks emitted"
     for t in payload["tasks"]:
         assert "tier" in t and t["tier"] is None
+
+
+# ---------------------------------------------------------------------------
+# **Review:** marker (#87) — authored review-depth slot, pre-emitted like tier
+# ---------------------------------------------------------------------------
+
+REVIEW_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Risky core
+
+**Type:** implementation
+**Depends-on:** none
+**Review:** adversarial
+
+**Files:**
+- Modify: `src/a.py`
+
+- [ ] **Step 1: do it**
+
+### Task 2: Quiet follower
+
+**Type:** implementation
+**Depends-on:** 1
+
+**Files:**
+- Modify: `src/b.py`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def _emit_launch_payload(tmp_path, plan_markdown, name="plan.md"):
+    """Write plan_markdown to tmp_path and compile it with --emit-launch,
+    returning the parsed launch-file payload. Asserts a clean compile —
+    callers that expect a compile error use _compile_raw instead."""
+    plan = tmp_path / name
+    plan.write_text(plan_markdown)
+    launch = tmp_path / "launch.json"
+    p = sh([sys.executable, str(COMPILER), str(plan),
+            "--emit-launch", str(launch)])
+    assert p.returncode == 0, p.stderr
+    return json.loads(launch.read_text())
+
+
+def _compile_raw(tmp_path, plan_markdown, name="plan.md"):
+    """Write plan_markdown to tmp_path and run the compiler, returning the
+    completed subprocess (non-zero exit allowed, not checked here)."""
+    plan = tmp_path / name
+    plan.write_text(plan_markdown)
+    return sh([sys.executable, str(COMPILER), str(plan)], check=False)
+
+
+def test_review_marker_emits_adversarial_slot(tmp_path):
+    payload = _emit_launch_payload(tmp_path, REVIEW_PLAN)
+    by_id = {t["id"]: t for t in payload["tasks"]}
+    assert by_id["1"]["review"] == "adversarial"
+
+
+def test_unmarked_task_emits_lean_review_slot(tmp_path):
+    payload = _emit_launch_payload(tmp_path, REVIEW_PLAN)
+    by_id = {t["id"]: t for t in payload["tasks"]}
+    assert by_id["2"]["review"] == "lean"
+
+
+def test_invalid_review_value_is_a_compile_error(tmp_path):
+    bad = REVIEW_PLAN.replace("**Review:** adversarial", "**Review:** paranoid")
+    p = _compile_raw(tmp_path, bad, name="bad.md")
+    assert p.returncode != 0
+    assert "Task 1" in p.stderr and "adversarial" in p.stderr and "lean" in p.stderr
+
+
+def test_duplicate_review_marker_is_a_compile_error(tmp_path):
+    dup = REVIEW_PLAN.replace(
+        "**Review:** adversarial",
+        "**Review:** adversarial\n**Review:** lean")
+    p = _compile_raw(tmp_path, dup, name="dup.md")
+    assert p.returncode != 0
+    assert "duplicate" in p.stderr.lower() and "Task 1" in p.stderr

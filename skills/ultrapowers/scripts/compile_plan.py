@@ -27,11 +27,15 @@ from pathlib import Path
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
-# Marker-shaped: bold-prefixed type/depends-on label in ANY colon position —
-# `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside form `**Type**:`
-# all count, so a near-miss never silently degrades to prose.
-MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on)\s*(?:\*\*)?\s*:", re.I)
+# Marker-shaped: bold-prefixed type/depends-on/review label in ANY colon
+# position — `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside
+# form `**Type**:` all count, so a near-miss never silently degrades to prose.
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
+# Authored review-depth marker (ultraplan #87): `**Review:** adversarial|lean`.
+# Valid values are enforced where it is consumed in parse_task — an invalid
+# or duplicate value is a compile-time SystemExit, never a silent default.
+MARKER_REVIEW = re.compile(r"^\*\*Review:\*\*\s*([a-z-]+)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
@@ -290,6 +294,19 @@ def parse_task(t):
                     if deps_none and not has_none:
                         deps_mixed = True
                     deps.extend(id_tokens)
+        elif (m := MARKER_REVIEW.match(s)):
+            if not in_header:
+                late_markers.append(s)
+            else:
+                val = m.group(1)
+                if val not in ("adversarial", "lean"):
+                    raise SystemExit(
+                        "Task {}: invalid **Review:** value {!r} "
+                        "(valid: adversarial, lean)".format(t["id"], val))
+                if t.get("review"):
+                    raise SystemExit(
+                        "Task {}: duplicate **Review:** marker".format(t["id"]))
+                t["review"] = val
         elif is_markerish and s.rstrip() == "**Depends-on:**":
             # Exact marker, missing value — a spelling diagnosis would mislead;
             # outside the header it is a placement violation like any late marker.
@@ -1310,7 +1327,11 @@ def main(argv=None):
                        # Pre-emitted slot: the orchestrator fills per-task tiers
                        # HERE (never as a top-level launch key, never via
                        # tierOverrides, which remaps tier names to models).
-                       "tier": None}
+                       "tier": None,
+                       # Authored value — filled by the plan's **Review:**
+                       # marker, "lean" when unmarked. Unlike the tier slot,
+                       # the orchestrator fills nothing here.
+                       "review": by_id[tid].get("review") or "lean"}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,
