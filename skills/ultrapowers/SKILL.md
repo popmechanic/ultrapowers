@@ -19,70 +19,52 @@ integration branch; a report and a pre-merge gate conclude the run. Run from
 agent to this session repo; not a detached HEAD.
 *Rationale: `references/design-rationale.md` § Step 4.*
 
-## Step 1 — Preflight & plan check
+## Step 1 — Preflight, compile & lock (deterministic)
 
 **Workflow-tool preflight.** The Workflow tool is absent on some surfaces (e.g.
 the web). Check for it (ToolSearch `select:Workflow`). If unavailable, go to
 Step 6 — do not analyze dependencies.
 
-**Self-host skew** (only when `/ultrapowers` runs inside the ultrapowers repo):
+**Run the pre-launch driver:**
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/check_engine_skew.sh \
-  "${CLAUDE_PLUGIN_ROOT}" "$(git rev-parse --show-toplevel)"
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --stamp <stamp>
 ```
 
-`IN_SYNC` → proceed. `SKEW` → copy the repo's
-`skills/ultrapowers/harnesses/waves.js` into `.claude/workflows/waves.js`, then
-continue; otherwise skip. *Rationale: § Step 1.*
+One call runs every deterministic stage fail-closed — git-repo check,
+worktree-capability probe, self-host engine skew, superpowers compatibility,
+compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock +
+checkout snapshot, and `baseBranch` derivation — and writes the receipt to
+`.claude/ultrapowers/run-<stamp>/receipt.json`. **Exit 0** → read the receipt and
+continue. **Non-zero** → the last stage names the failure:
 
-**Superpowers compatibility.** Verify the *active* superpowers still exposes the
-contract tokens ultrapowers needs. Tested with superpowers 6.0.3 — manifest
-`scripts/superpowers_contract.py` (`TESTED_AGAINST`). Run:
+- `superpowers-compat` → a contract token is missing: **STOP** and surface the
+  human gate, quoting the missing tokens; confirm continuing or abort.
+  (Tested with superpowers 6.0.3. A version advisory at exit 0 rides in the stage
+  detail — relay it once.)
+- `lock` → another run holds this repo, serialize runs.
+- `worktree-probe` / `git-repo` → fix the environment (a repo that cannot cut
+  worktrees cannot run waves).
+- `compile` → fix the plan.
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/check_superpowers_compat.py
-```
+The stamp is the lock id for the whole run; `wf_<runId>` is only for sweeps.
+*Rationale: § Step 1.*
 
-- **Exit 0** — proceed; relay any `advisory:` line once, or a skip notice if
-  superpowers is not resolvable (the workflow path does not need it).
-- **Non-zero** — a contract token is missing: STOP and surface a human gate,
-  quoting the missing tokens; confirm continuing or abort.
-
-**Plan check.** Resolve `<plan-path>`. Accept a `superpowers:writing-plans`
-document — any markdown with `### Task N:` headings carrying `**Files:**` blocks
-and `- [ ]` steps (the task shape is the reliable signal; an "Implementation
-Plan"/"Plan:" heading is a convenience). If none, stop and tell the user to run
-`superpowers:brainstorming` then `superpowers:writing-plans`. v6 adds optional
-`## Global Constraints` and per-task `**Interfaces:**` blocks; the parser stays
-additive-tolerant.
-
-## Step 2 — Compile
-
-Do **not** hand-assemble waves, edges, or task objects — the compiler emits them.
-Run:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/compile_plan.py <plan> \
-  --emit-launch <abs> --emit-args <abs2>
-```
-
-`--emit-launch <abs>` writes the verbatim, fence-aware task bodies to `<abs>`
-(absolute; each agent reads its own). `--emit-args <abs2>` writes the complete
-launch-args skeleton (`waves`,
-`wavesPath`, `edges`, `dependencyEdges`, `acceptance`, `waveLabels`, `planPath`,
-`globalConstraints`) — that skeleton **is** the launch payload; merge derived
-knobs in, do not rebuild it.
+## Step 2 — Judge and fill (LLM-owned)
 
 **Classify first** per `references/plan-markers.md`: trust header-block
 `**Type:**` / `**Depends-on:**` markers when present (out-of-block markers →
 conflicts), else the contract heuristics there. Only `implementation` tasks enter
 the DAG; gates inform run config; `release`/`manual` tasks ride into the
-post-merge runbook. Adopt the compiler's JSON verbatim — waves, edges,
-dispositions — judgment only on `"heuristic": true` entries. If it reports `no
-implementation tasks` (`waves: []`), do not launch; present the runbook instead.
+post-merge runbook. Adopt the compiler's JSON verbatim (`receipt.compile`) —
+waves, edges, dispositions — judgment only on `"heuristic": true` entries. If it
+reports `no implementation tasks` (`waves: []`), do not launch; present the
+runbook instead.
 
-**Derive only your knobs** and merge them in:
+**Derive only your knobs**, which land in named slots — per-task `tier` fills the
+receipt's `launchFile` (slots pre-emitted as `null`); `testCmd` / `bootstrapCmd`
+and any review override ride the launch args. The receipt's `llmDerives` list is
+the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope and
   judgment-likelihood.
@@ -90,9 +72,7 @@ implementation tasks` (`waves: []`), do not launch; present the runbook instead.
   (monorepos, custom runners); polyglot → exercise **both** stacks.
 - **`bootstrapCmd`** — a per-worktree dependency install for fresh worktrees (no
   `.venv`/`node_modules`).
-- **`baseBranch`** — the repo default
-  (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'`);
-  always set it.
+- **`baseBranch`** — already derived in `receipt.baseBranch`; pass it through.
 
 Review depth stays **engine-derived**: the `adversarial` second pass is granted on
 a genuine **risk surface** (files/title naming auth, payments, migrations,
@@ -130,54 +110,29 @@ the run here. *Rationale: § Step 3.*
 
 ## Step 4 — Launch
 
-**4a — Install the committed workflows (idempotent).** The **SessionStart hook**
-(`hooks/session_start.sh`) installs them before the engine snapshots its registry
-at session start — the load-bearing install; the manual copy below is a safety
-net:
+**4a½ — Engine preflight.** The driver installed the committed workflows, but the
+engine registers saved workflows only at **session start**, so a first-run
+snapshot can predate the install (the **SessionStart hook** is the load-bearing
+install; the driver's mid-session copy is the safety net). Launch the probe from
+the receipt — `receipt.probe.name` with `receipt.probe.args` — and assert the
+round-trip `receipt.probe.assert` (`echoWaves === 1`, `echoFirstId === 'probe-1'`;
+it spawns no agents). Branch on how it fails:
 
-```bash
-mkdir -p .claude/workflows
-for m in "${CLAUDE_PLUGIN_ROOT}"/skills/ultrapowers/harnesses/*.harness.json; do
-  f=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")
-  cp "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/harnesses/$f" ".claude/workflows/$f"
-done
-```
-
-Copy unconditionally; never edit the copy. *Never launch via the `ultracode`
-keyword or a prose "make me a workflow"; rationale: § Step 4 / § Step 4a.*
-
-**4a½ — Engine preflight.** Launch `ultrapowers-probe` to check arg delivery. Pass
-`args = { ping: 'pong', waves: [{ id: 'probe-1', title: 'probe', body: 'b' }] }`;
-it spawns no agents. **Assert the round-trip:** `result.echoWaves === 1` and
-`result.echoFirstId === 'probe-1'`. Branch on how it fails:
-
-- **Not found** (`Workflow "ultrapowers-probe" not found`) — the engine registers
-  saved workflows only at session start, so the snapshot predates the install.
-  **Not** engine drift: the only cure is a **new session** (the SessionStart hook
-  installs before the next snapshot) — do **not** route to the sequential
-  fallback. If the file is genuinely absent, the Step-4a install failed; go Step 6.
+- **Not found** (`Workflow "ultrapowers-probe" not found`) — the registry snapshot
+  predates the install. **Not** engine drift: the only cure is a **new session**
+  (the SessionStart hook installs before the next snapshot) — do **not** route to
+  the sequential fallback. If the file is genuinely absent, the install failed; go
+  Step 6.
 - **Launches but `ok` is not true / errors mid-run** — engine drift; go to Step 6.
 - **`echoWaves`/`echoFirstId` mismatch** — a payload round-trip failure; go to
   Step 6. *Rationale: § Step 4a½.*
 
-**4b — Acquire the run lock and snapshot the checkout** (no shell or runId in the
-engine):
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh acquire <runId>
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh snapshot
-```
-
-Use the transcript stem `wf_<runId>` (a provisional id is fine at `acquire`). If
-`acquire` exits non-zero, another run holds this repo — **STOP** and serialize
-runs.
-
-**4c — Launch the saved workflow by `meta.name` `ultrapowers-run`** via the
-Workflow tool (never author or edit it). Pass the `--emit-args` skeleton with
-derived knobs merged in:
+**4c — Launch the saved workflow by `meta.name`** (`receipt.workflowName` =
+`ultrapowers-run`) via the Workflow tool (never author or edit it). Pass the
+`receipt.argsFile` skeleton with your derived knobs merged in:
 
 ```
-args = { ...emittedArgs, integrationBranch: 'ultra/integration-<stamp>', stamp,
+args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
          baseBranch, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides? }
 ```
 
@@ -198,55 +153,38 @@ Hand back the printed URL; tear it down at the gate with
 
 ## Step 5 — Pre-merge gate (human gate)
 
-**1. Restore the session checkout.** The setup agent left it on the integration
-branch; **restore the session checkout** this run started from (the pre-launch
-snapshot is the authority) — never a bare `git checkout <baseBranch>` (it strands
-the gate on the integration branch):
+Save the Workflow tool's raw result JSON verbatim to a file (the driver unwraps
+the envelope itself; gate fields live under `result.*`), then **run the gate
+driver:**
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh restore
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
+  --stamp <stamp> --result <saved-result.json>
 ```
 
-**2. Save the report** JSON verbatim to `.claude/ultrapowers/report-<stamp>.json`.
+Its first act is to restore the session checkout the run started from — the
+pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
+the gate on the integration branch). It then saves the report, runs
+`gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+pre-existing operator files pass with a note), and administers acceptance per the
+compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
+`tests.passed` is triage context; the **exit code is the authority**:
 
-**3. Run the deterministic gate checks:**
+- **0 (PASS)** → render the report and offer **Approve**.
+- **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement first.
+- **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
 
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/gate_check.py \
-  --run-id <runId> --branch <integrationBranch> --report <path>
-```
+Render the report per `references/report-format.md` plus the **post-merge runbook**
+(`release`/`manual` tasks, verbatim), then present:
 
-It checks the lock, tree cleanliness, the merge-sha guard, HEAD-vs-report
-(#29/#32), `gitVerified`, ancestry, and deliverables — fail-closed, so a
-hand-edited report can only BLOCK. **Exit 1 (BLOCKED)** → present
-the failing checks, do NOT Approve. **Exit 2 (NEEDS_ACK)** → present the acks for
-explicit operator acknowledgement before Approve. **Exit 0** → continue.
-*Rationale: § Step 5.*
-
-**4. Administer acceptance deterministically, per disposition.** Exit code is the
-authority; the report's `tests.passed` is triage context.
-
-- **`sealed`** → `bash …/run_acceptance.sh <sealId> <integrationBranch> <sha256>`
-  (its own detached worktree). Exit 0 ⇒ passed, non-zero ⇒ do NOT Approve; render
-  the emitted JSON verbatim. *Why here, not the workflow: § Step 5 (#36).*
-- **`suite` AND unmarked (`null`)** →
-  `bash …/run_acceptance.sh --suite-gate --branch <integrationBranch> --run <derived testCmd> --base <baseBranch>`.
-- **`waived`** → record the waiver verbatim.
-
-**5. Render the report** per `references/report-format.md` plus the **post-merge
-runbook** (`release`/`manual` tasks, verbatim), then present:
-
-- **Approve** — only on gate_check exit 0 (or an acknowledged exit 2) **AND**
-  acceptance exit 0. Then `git checkout <integrationBranch>` (re-verifies tests on
-  the integration tree), sweep, and release:
-  ```bash
-  bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/sweep_worktrees.sh --run <runId>
-  bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh release <runId>
-  ```
-  When work spanned **multiple phases or runs**, run one **holistic cross-phase**
-  review of the fully-integrated tree against the *combined* plan and gate on it
-  **before the final PR** (single-run pipelines already got it at Step 4), then
-  apply the two `references/finishing-notes.md` checks and proceed to
+- **Approve** — only on PASS (or an acknowledged NEEDS_ACK). Run
+  `ultra_gate.py --approve --stamp <stamp> --wf-run <wf_runId>` — it does
+  `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
+  sweeps the run's worktrees, and releases the lock. When work spanned **multiple
+  phases or runs**, run one **holistic cross-phase** review of the fully-integrated
+  tree against the *combined* plan and gate on it **before the final PR**
+  (single-run pipelines already got it at Step 4), then apply the two
+  `references/finishing-notes.md` checks and proceed to
   `superpowers:finishing-a-development-branch`, carrying the runbook.
 - **Salvage** — offer whenever the report has `failed` tasks or dep-blocked
   `unfinished` entries. Build the new `waves` mechanically: every `failed` task
@@ -260,14 +198,10 @@ runbook** (`release`/`manual` tasks, verbatim), then present:
   bodies and relaunch `ultrapowers-run` with `resume: true` and the **same**
   `integrationBranch`. Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
-  abandoned `BLOCKED`), **release the run lock** so it does not wedge the next run
-  (`RUN_LOCK` has no timeout):
-  ```bash
-  bash ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/run_lock.sh release <runId>
-  ```
-  Do **not** auto-sweep — the worktrees and unmerged branches are triage evidence;
-  tell the operator how to remove them: `sweep_worktrees.sh --run <runId>`.
-  (Redirect and Salvage are not terminal.)
+  abandoned `BLOCKED`), release the run lock so it does not wedge the next run
+  (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
+  the worktrees as triage evidence — tell the operator how to remove them:
+  `sweep_worktrees.sh --run <wf_runId>`. (Redirect and Salvage are not terminal.)
 
 ## Step 6 — Fallback
 
@@ -298,6 +232,9 @@ cycle or an inability to create the integration branch.
 - `references/report-format.md` — report schema and presentation order.
 - `references/finishing-notes.md` — merge-method and deploy-scope checks.
 - `references/workflow-template.md` — maintainer doc + re-bake procedure.
-- `scripts/gate_check.py`, `scripts/run_acceptance.sh` — Step-5 gate and runner.
+- `scripts/ultra_run.py`, `scripts/ultra_gate.py` — the deterministic Step-1
+  pre-launch driver and the Step-5 gate driver (one receipt each).
+- `scripts/gate_check.py`, `scripts/run_acceptance.sh` — the gate checks and
+  acceptance runner the gate driver administers.
 - `scripts/compile_plan.py` — the plan compiler (`--emit-launch`/`--emit-args`).
 - `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep and run lock.

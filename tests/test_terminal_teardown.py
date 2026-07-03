@@ -10,9 +10,12 @@ SKILL = ROOT / "skills/ultrapowers/SKILL.md"
 
 def test_lock_release_is_not_approve_exclusive():
     text = SKILL.read_text()
-    # Approve releases inline; the terminal-teardown note releases on the
-    # non-Approve exits too. More than one `release` call ⇒ not Approve-only.
-    assert text.count("run_lock.sh release") >= 2
+    # The lock release moved into the gate driver: Approve releases via
+    # `ultra_gate.py --approve` and the terminal-teardown path releases via
+    # `ultra_gate.py --teardown` on the non-Approve exits too. Both verbs present
+    # ⇒ release is not Approve-exclusive.
+    assert "--approve" in text and "--teardown" in text
+    assert text.count("ultra_gate.py") >= 2
 
 
 def test_terminal_teardown_section_exists_and_points_at_sweep():

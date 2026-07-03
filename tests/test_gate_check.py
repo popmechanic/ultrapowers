@@ -151,3 +151,67 @@ def test_malformed_report_blocks(tmp_path):
     p, out = run_gate(repo, "{not json")
     assert p.returncode == 1 and out["verdict"] == "BLOCKED"
     assert not check_named(out, "report-parse")["ok"]
+
+
+def test_preexisting_dirt_passes_with_note(tmp_path):
+    """Dirt recorded in DIRTY_SNAPSHOT predates the run — the gate must not
+    block on it or accuse a role (2026-07-03 distill: stash-dance class)."""
+    repo, head = make_repo(tmp_path)
+    (repo / "operator-notes.md").write_text("deliberately uncommitted\n")
+    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(good_report(head)))
+    r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+            "--branch", "ultra/int", "--report", str(report),
+            "--repo", str(repo)], check=False)
+    out = json.loads(r.stdout)
+    clean = [c for c in out["checks"] if c["name"] == "clean-tree"][0]
+    assert clean["ok"] is True
+    assert "pre-existing" in clean["detail"]
+    assert r.returncode in (0, 2)
+
+
+def test_new_dirt_still_blocks(tmp_path):
+    repo, head = make_repo(tmp_path)
+    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
+    (repo / "smuggled.py").write_text("appeared after snapshot\n")
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(good_report(head)))
+    r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+            "--branch", "ultra/int", "--report", str(report),
+            "--repo", str(repo)], check=False)
+    out = json.loads(r.stdout)
+    clean = [c for c in out["checks"] if c["name"] == "clean-tree"][0]
+    assert clean["ok"] is False
+    assert "smuggled.py" in clean["detail"]
+    assert r.returncode == 1
+
+
+def test_no_snapshot_falls_back_strict(tmp_path):
+    """Runs launched before Task 2 have no DIRTY_SNAPSHOT: every dirt line
+    blocks, exactly the old behavior (fail-closed)."""
+    repo, head = make_repo(tmp_path)
+    (repo / "any.txt").write_text("dirt\n")
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(good_report(head)))
+    r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+            "--branch", "ultra/int", "--report", str(report),
+            "--repo", str(repo)], check=False)
+    out = json.loads(r.stdout)
+    clean = [c for c in out["checks"] if c["name"] == "clean-tree"][0]
+    assert clean["ok"] is False
+    assert r.returncode == 1
+
+
+def test_verdict_echoes_repo_and_lock_context(tmp_path):
+    """A wrong-cwd invocation must be self-diagnosing (2026-07-03 distill:
+    mislocated gate_check produced a spurious BLOCKED)."""
+    repo, head = make_repo(tmp_path)
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps(good_report(head)))
+    r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+            "--branch", "ultra/int", "--report", str(report),
+            "--repo", str(repo)], check=False)
+    out = json.loads(r.stdout)
+    assert out["repo"] == str(repo.resolve())
+    assert out["lock"].endswith(".claude/ultrapowers/RUN_LOCK")

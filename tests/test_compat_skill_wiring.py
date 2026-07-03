@@ -7,7 +7,11 @@ SKILL = ROOT / "skills/ultrapowers/SKILL.md"
 
 def test_step1_invokes_compat_script():
     text = SKILL.read_text()
-    assert "check_superpowers_compat.py" in text
+    # The compat check now runs as the `superpowers-compat` stage inside the
+    # pre-launch driver (ultra_run.py); Step 1 documents the stage and its
+    # missing-token failure gate rather than invoking the script by hand.
+    assert "ultra_run.py" in text
+    assert "superpowers-compat" in text
 
 
 def test_step1_documents_graded_behavior():

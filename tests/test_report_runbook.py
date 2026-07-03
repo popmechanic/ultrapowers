@@ -30,14 +30,21 @@ def test_report_approve_path_matches_skill_step5():
 
 def test_skill_wires_run_lock_and_scoped_sweep():
     skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
-    assert "run_lock.sh acquire" in skill and "run_lock.sh snapshot" in skill
-    assert "run_lock.sh restore" in skill
-    assert "sweep_worktrees.sh --run" in skill
+    # The lock choreography moved into the drivers: ultra_run.py acquires the
+    # lock + snapshots the checkout at Step 1; ultra_gate.py restores that
+    # checkout at the gate; the scoped worktree sweep rides the driver verbs.
+    assert "ultra_run.py" in skill                      # acquire + snapshot
+    assert "run lock" in skill.lower() and "snapshot" in skill.lower()
+    assert "ultra_gate.py" in skill                     # gate restores the checkout
+    assert "restore the session checkout" in skill
+    assert "sweep_worktrees.sh --run" in skill          # scoped sweep triage hint
 
 
 def test_skill_has_skew_preflight_probe_roundtrip_and_schema_degrade():
     skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
-    assert "check_engine_skew.sh" in skill
+    # The self-host skew check moved into the pre-launch driver's `engine skew`
+    # stage; Step 1 still names it so the operator knows it ran.
+    assert "engine skew" in skill.lower()
     assert "round-trip" in skill or "roundtrip" in skill or "echoWaves" in skill
     # The merge-sha guard moved from SKILL.md prose into the gate script — Task 2
     # emits that literal from gate_check.py, whose exit code is the authority.

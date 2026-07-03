@@ -11,6 +11,9 @@ AGAINST, so a corrupted or hand-edited report can only produce BLOCKED,
 never a false PASS. This script does not administer acceptance (that is
 run_acceptance.sh, per disposition) and does not release locks or sweep
 worktrees (explicit orchestrator actions on this verdict).
+
+The clean-tree check compares against the dirty set recorded at snapshot
+time (`DIRTY_SNAPSHOT`); with no snapshot it treats all dirt as new.
 """
 from __future__ import annotations
 
@@ -27,10 +30,12 @@ def sh(cmd, cwd):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
 
 
-def emit(checks, acks):
+def emit(checks, acks, context=None):
     blocked = any(not c["ok"] for c in checks)
     verdict = "BLOCKED" if blocked else ("NEEDS_ACK" if acks else "PASS")
-    print(json.dumps({"verdict": verdict, "checks": checks, "acks": acks}, indent=2))
+    out = {"verdict": verdict, "checks": checks, "acks": acks}
+    out.update(context or {})
+    print(json.dumps(out, indent=2))
     return 1 if blocked else (2 if acks else 0)
 
 
@@ -41,6 +46,9 @@ def main(argv=None):
     ap.add_argument("--report", required=True, type=Path)
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     a = ap.parse_args(argv)
+
+    context = {"repo": str(a.repo.resolve()),
+               "lock": str((a.repo / ".claude/ultrapowers/RUN_LOCK").resolve())}
 
     checks, acks = [], []
 
@@ -54,7 +62,7 @@ def main(argv=None):
             raise ValueError("report is not a JSON object")
     except Exception as e:  # unreadable, unparseable, wrong shape — all BLOCKED
         check("report-parse", False, "report unreadable or malformed: " + str(e))
-        return emit(checks, acks)
+        return emit(checks, acks, context)
     check("report-parse", True)
 
     r = sh(["bash", str(HERE / "run_lock.sh"), "check", a.run_id], cwd=a.repo)
@@ -64,12 +72,24 @@ def main(argv=None):
           " — a concurrent run may have replaced it; do not Approve")
 
     r = sh(["git", "status", "--porcelain"], cwd=a.repo)
-    dirty = r.stdout.strip()
-    ok = r.returncode == 0 and not dirty
-    check("clean-tree", ok,
-          "" if ok else
-          "session checkout is dirty — a role wrote outside the worktree "
-          "discipline (#32); that work is unreviewed by construction:\n" + dirty)
+    lines = {l for l in r.stdout.splitlines() if l.strip()}
+    snap = a.repo / ".claude/ultrapowers/DIRTY_SNAPSHOT"
+    baseline = ({l for l in snap.read_text().splitlines() if l.strip()}
+                if snap.is_file() else set())
+    new_dirt = sorted(lines - baseline)
+    preexisting = sorted(lines & baseline)
+    ok = r.returncode == 0 and not new_dirt
+    if not ok:
+        detail = ("dirt appeared after the pre-launch snapshot — a role wrote "
+                  "outside the worktree discipline (#32); that work is "
+                  "unreviewed by construction:\n" + "\n".join(new_dirt))
+    elif preexisting:
+        detail = ("pre-existing dirt carried through from before launch, not "
+                  "gate-relevant: " +
+                  ", ".join(p.split(None, 1)[-1] for p in preexisting))
+    else:
+        detail = ""
+    check("clean-tree", ok, detail)
 
     wm = report.get("waveMerges")
     shape_ok = (isinstance(wm, list) and wm and isinstance(wm[-1], dict)
@@ -126,7 +146,7 @@ def main(argv=None):
                                 "execute it against the target]"
                                 if d.get("reason") in ("runtime", "external")
                                 else "")})
-    return emit(checks, acks)
+    return emit(checks, acks, context)
 
 
 if __name__ == "__main__":
