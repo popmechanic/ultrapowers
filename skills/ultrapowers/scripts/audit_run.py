@@ -35,7 +35,17 @@ ROLE_MARKERS = [
     ("You are the setup agent", "setup"),
     ("You are the wave merge agent", "merge"),
     ("You are the reconciliation agent", "reconcile"),
-    ("What plan requirement is unmet?", "integration"),
+    # Bugfix: this marker previously read "What ..." (capital W); the actual
+    # baked completeness-critic prompt (references/wave-merge.md's
+    # COMPLETENESS_PROMPT block, baked into waves.js's completenessPrompt())
+    # reads lowercase "what plan requirement is unmet?" — the capitalized form
+    # never matched, so every completeness-critic transcript classified
+    # "unknown". Corrected case only; role name and marker phrase unchanged.
+    ("what plan requirement is unmet?", "integration"),
+    # The wavesPath preflight agent (label "waves-file-check", cheap tier,
+    # dispatched near line 1028 of waves.js) had no marker at all and also
+    # classified "unknown".
+    ("You are a read-only preflight agent", "waves-file-check"),
 ]
 
 # Absolute thrash heuristic (no same-model-peer requirement, unlike the relative

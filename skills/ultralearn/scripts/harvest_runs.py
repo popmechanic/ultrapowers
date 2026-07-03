@@ -163,10 +163,30 @@ def _records(session_path):
 
 
 def _gate_report(records):
-    # Scan every "integrationBranch" mention, parse the enclosing JSON object,
-    # and accept only one with a real top-level integrationBranch *value* — this
-    # rejects report-format schema prose (where "integrationBranch" sits inside a
-    # "required" array) and any other decoy.
+    # Pass 1 (0.0.31+ driver era): ultra_gate.py prints its gate receipt on
+    # every administered gate — a JSON object with mode=="gate" and a
+    # "verdict". Prefer it over the legacy scan below; take the LAST one found
+    # (a re-run's receipt supersedes an earlier BLOCKED/NEEDS_ACK one).
+    receipt = None
+    for _r, b in _iter_blocks(records):
+        txt = _block_text(b)
+        i = txt.find('"gateCheckExit"')
+        while i != -1:
+            # _balanced_json brace-matches FROM an opening "{" — scan back from
+            # the found key to the enclosing brace, same as the legacy pass.
+            start = txt.rfind("{", 0, i + 1)
+            if start != -1:
+                obj = _balanced_json(txt, start)
+                if isinstance(obj, dict) and obj.get("mode") == "gate" and "verdict" in obj:
+                    receipt = obj
+            i = txt.find('"gateCheckExit"', i + 1)
+    if receipt is not None:
+        return receipt
+    # Pass 2 (legacy, pre-driver sessions): scan every "integrationBranch"
+    # mention, parse the enclosing JSON object, and accept only one with a real
+    # top-level integrationBranch *value* — this rejects report-format schema
+    # prose (where "integrationBranch" sits inside a "required" array) and any
+    # other decoy.
     for _r, b in _iter_blocks(records):
         txt = _block_text(b)
         idx = 0

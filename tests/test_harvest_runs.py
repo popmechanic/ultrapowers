@@ -153,6 +153,46 @@ def test_gate_report_extracts_real_report_skipping_decoy():
     assert gr is not None and gr["integrationBranch"] == "ultra/real"
 
 
+# --- 0.0.31+ driver era: ultra_gate.py prints a gate receipt (mode=="gate",
+# has a "verdict") on every administered gate. _gate_report must prefer that
+# printed receipt over the legacy integrationBranch scan, which stays as the
+# fallback for pre-driver sessions.
+def make_records_with_text(text):
+    """Minimal record shape _gate_report walks: one user record whose sole
+    content block is a tool_result text block carrying the given text (mirrors
+    the file's existing _gate_report fixtures above)."""
+    return [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": text}]}])]
+
+
+def test_gate_report_prefers_printed_ultra_gate_receipt(tmp_path):
+    receipt = {"mode": "gate", "stamp": "20260703-000000",
+               "gateCheckExit": 2, "verdict": "NEEDS_ACK",
+               "acceptance": {"disposition": "suite", "exit": 0}}
+    records = make_records_with_text(  # use the file's existing record builder
+        "gate administered:\n" + json.dumps(receipt) + "\ndone")
+    got = h._gate_report(records)
+    assert got is not None and got["verdict"] == "NEEDS_ACK"
+
+
+def test_gate_report_takes_last_receipt_when_rerun(tmp_path):
+    first = {"mode": "gate", "gateCheckExit": 1, "verdict": "BLOCKED"}
+    second = {"mode": "gate", "gateCheckExit": 2, "verdict": "NEEDS_ACK"}
+    records = make_records_with_text(
+        json.dumps(first) + "\nre-ran after parking docs\n" + json.dumps(second))
+    assert h._gate_report(records)["verdict"] == "NEEDS_ACK"
+
+
+def test_gate_report_falls_back_to_legacy_scan(tmp_path):
+    # a transcript with a real report JSON (integrationBranch) but no printed
+    # receipt must keep working exactly as before (pre-driver sessions).
+    legacy = {"integrationBranch": "ultra/integration-20260701-000000",
+              "tasks": [], "gitVerified": True}
+    records = make_records_with_text("final report:\n" + json.dumps(legacy))
+    got = h._gate_report(records)
+    assert got is not None
+    assert got["integrationBranch"].startswith("ultra/integration-")
+
+
 # --- engine epoch: map a run's launch time to the version current then. The
 # timeline is date-ordered so the 0.x → 0.0.x reset resolves correctly, and the
 # comparison must normalize a UTC 'Z' run stamp against git's numeric offset.
