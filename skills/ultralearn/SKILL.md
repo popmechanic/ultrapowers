@@ -41,9 +41,11 @@ Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
 across runs, rank by frequency × severity × novelty, and draft improvement
 proposals — each mapped to a real surface (`references/*.md`, the routing hook,
 ultraplan, `report-format.md`/`SKILL.md`, `README`). Draft each proposal against
-`references/distilling-proposals.md`; prefer `structural`/`simplification`
-framings, and for any recurring cluster record the consolidation attempt before
-proposing an additive guard. Weigh each finding's `engineVersion`: a cluster seen
+`references/distilling-proposals.md`, which is **structural-first**: before
+drafting any fix, answer what simpler architecture change would delete the
+whole defect class — a reactive per-defect guard is the fallback, and for any
+recurring cluster the consolidation attempt is recorded before an additive
+guard is proposed. Weigh each finding's `engineVersion`: a cluster seen
 only under versions older than the current release may already be addressed — flag
 it as possibly-stale and confirm against the current engine before proposing a
 fix, rather than re-solving a closed problem. Output draft GitHub issues and/or

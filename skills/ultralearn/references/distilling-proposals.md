@@ -44,11 +44,24 @@ this proposal is adopted?
 
 Use one of: `up` | `flat` | `down`.
 
-## The governing rule
+## The governing rule — structural-first
 
-> *prefer `structural`/`simplification`; an `additive-guard` on a recurring
-> cluster requires a recorded `consolidationAttempted`. The rubric prefers —
-> it does not forbid; some edge cases are genuinely irreducible.*
+Before drafting ANY fix for a defect cluster, first answer: *what simpler
+representation or architecture change would delete this whole class?* Draft
+that answer as the primary proposal; a reactive per-defect guard is the
+fallback, and on a recurring cluster it requires a recorded
+`consolidationAttempted`.
+
+Why this order is the default, not a taste: reactive guards accrete
+complexity, and accreted complexity breeds the next edge case — the loop
+chases its own tail. Validated in practice 2026-07-03: four recurring ledger
+classes (launch-args schema guessing, pre-existing-dirt stash-dance, prose
+choreography drift, wrong-cwd gate) had each drawn reactive fixes across 3–4
+runs; one structural move — the deterministic driver — retired all four at
+once by removing the conditions that generated them.
+
+> *The rubric prefers — it does not forbid; some edge cases are genuinely
+> irreducible (say why in one line, via `consolidationAttempted`).*
 
 ## The deletion candidate (mandatory, one per cycle)
 
