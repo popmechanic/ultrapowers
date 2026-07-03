@@ -2170,3 +2170,29 @@ def test_emit_args_requires_emit_launch(tmp_path):
     assert p.returncode != 0
     assert "--emit-args requires --emit-launch" in (p.stderr + p.stdout)
     assert not argsf.exists()
+
+
+def sh(cmd, cwd=None, check=True):
+    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+
+
+def test_emit_launch_pre_emits_tier_slots(tmp_path):
+    """Per-task tier slots are pre-emitted as null so the orchestrator fills
+    slots instead of guessing the launch-args schema (2026-07-03 distill:
+    identical two-bounce launch rejection in three runs)."""
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# P\n\n**Acceptance:** waived — test fixture\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
+        "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
+    )
+    launch = tmp_path / "launch.json"
+    args = tmp_path / "args.json"
+    sh([sys.executable, str(COMPILER), str(plan),
+        "--emit-launch", str(launch), "--emit-args", str(args)])
+    payload = json.loads(launch.read_text())
+    assert payload["tasks"], "no tasks emitted"
+    for t in payload["tasks"]:
+        assert "tier" in t and t["tier"] is None

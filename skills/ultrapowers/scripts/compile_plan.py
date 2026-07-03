@@ -1306,7 +1306,11 @@ def main(argv=None):
             "tasks": [{"id": tid, "title": by_id[tid]["title"],
                        "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
                        "depends_on": by_id[tid]["depends_on"],
-                       "interfaces": by_id[tid]["interfaces"]}
+                       "interfaces": by_id[tid]["interfaces"],
+                       # Pre-emitted slot: the orchestrator fills per-task tiers
+                       # HERE (never as a top-level launch key, never via
+                       # tierOverrides, which remaps tier names to models).
+                       "tier": None}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,
