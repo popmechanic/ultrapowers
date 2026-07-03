@@ -41,6 +41,11 @@ FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
 FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
+# A Files-block bullet carrying a `Label: value` shape (ANY label, canonical or
+# not), used ONLY to feed _files_violations the verbatim (label, rest) pairs.
+# A colon-less natural-English bullet ("- Modify the config") does not match and
+# stays a soft near-miss; `- none` is filtered by the caller before capture.
+FILES_LABEL_LINE = re.compile(r"^[-*+]\s*([A-Za-z][A-Za-z0-9()/ _-]*?)\s*:\s*(.+?)\s*$")
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
@@ -224,6 +229,10 @@ def parse_task(t):
     near_miss = []
     creates, modifies, reads = [], [], []
     files_near_miss = []
+    # Verbatim (label, rest) for every `Label: value` Files bullet (canonical or
+    # not) — the strict-grammar input to _files_violations (#85). Unknown-label
+    # lines are CAPTURED here, not dropped, so they surface as loud violations.
+    files_raw = []
     in_files = False
     files_entries_seen = False
     # v6 `**Interfaces:**` block (spec 2026-06-16): opens on `**Interfaces:**`
@@ -398,6 +407,15 @@ def parse_task(t):
             if s.startswith("- ["):
                 in_files = False
             f = FILE_LINE.match(s) if in_files else None
+            # Strict-grammar capture (#85): record EVERY `Label: value` Files
+            # bullet — canonical or not — so _files_violations can flag annotated
+            # lines, unknown labels, and globs. `- none` is an explicit empty
+            # declaration (never a violation) and is not captured.
+            if in_files and s.lstrip("-*+ ").strip().lower() != "none":
+                mlabel = FILES_LABEL_LINE.match(s)
+                if mlabel:
+                    files_raw.append((mlabel.group(1).strip(),
+                                      mlabel.group(2).strip()))
             if in_files and not f and re.match(r"^[-*+]\s", s):
                 # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
                 # (common on gates/verification tasks) — not a near-miss. Skip it
@@ -500,7 +518,8 @@ def parse_task(t):
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
-             files_near_miss=files_near_miss, glob_paths=sorted(set(glob_paths)),
+             files_near_miss=files_near_miss, files_raw=files_raw,
+             glob_paths=sorted(set(glob_paths)),
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -689,6 +708,60 @@ def _symbol_list_violations(entries):
             out.append(
                 "interface value is not a symbol list (backticked or bare "
                 "identifiers, comma-separated): %r" % s)
+    return out
+
+
+# Strict Files grammar (#85). A Files bullet must be a bare canonical label
+# followed by one or more backticked paths and NOTHING else. `Test fixture(s)` /
+# `Fixture(s)` remain canonical aliases (used by existing tests/fixtures). Three
+# things are loud violations, each carrying a did-you-mean fix:
+#   * an UNKNOWN LABEL (Delete/Read/… or a wrong-case `modify:`),
+#   * a GLOB path (`*`, `?`, `[` — a `{` brace is deliberately left to the softer
+#     ambiguous-files serialization so `src/{a,b}.py` stays a warning, not a bail),
+#   * a TRAILING ANNOTATION after the path(s) ("(only the pool init, lines 12-40)").
+# An annotated line contributes NOTHING silently: it always surfaces here, so a
+# same-wave write race can never hide behind a parenthetical (2026-07-03 foreign
+# run: the two most contended files silently lost overlap coverage).
+CANONICAL_FILE_LABELS = ("Create", "Modify", "Test", "Test fixture(s)",
+                         "Fixture(s)")
+_LABEL_SUGGEST = {"delete": "Modify", "remove": "Modify", "read": "Test",
+                  "create-or-modify": "Modify", "add": "Create"}
+_FILES_GLOB_CHARS = "*?["
+
+
+def _files_violations(task):
+    """Grammar violations for one task's Files block, each with a did-you-mean
+    fix. Reads the task's recorded `files_raw` — the verbatim (label, rest) pairs
+    captured for every `Label: value` Files bullet, canonical or not. Empty list
+    == the block is canonical. An unbackticked canonical value ("- Create: a.py,
+    b.py") is NOT flagged here: it is handled tolerantly by the existing
+    "backtick each path" near-miss, so overlap inference is never blocked by a
+    formatting-only miss."""
+    out = []
+    for label, rest in task.get("files_raw", []):
+        paths = PATH_RE.findall(rest)
+        if label not in CANONICAL_FILE_LABELS:
+            shown = paths[0] if paths else rest.strip()
+            suggest = _LABEL_SUGGEST.get(label.lower(), "Create/Modify/Test")
+            out.append("Task %s: unknown Files label %r for `%s` — use %s"
+                       % (task.get("id"), label, shown, suggest))
+            continue
+        if not paths:
+            continue  # unbackticked value — soft near-miss, not a grammar bail
+        globby = [p for p in paths if any(c in p for c in _FILES_GLOB_CHARS)]
+        if globby:
+            out.append("Task %s: glob `%s` — enumerate the concrete paths"
+                       % (task.get("id"), globby[0]))
+            continue
+        # Anything left after removing the backticked path(s) and list
+        # separators is a trailing prose annotation.
+        residue = re.sub(r"[\s,;]+", "", PATH_RE.sub("", rest))
+        if residue:
+            out.append(
+                "Task %s: Files line has a trailing annotation.\n"
+                "  got:  - %s: %s\n"
+                "  fix:  - %s: `%s`   (move the note into the task prose)"
+                % (task.get("id"), label, rest, label, paths[0]))
     return out
 
 
@@ -1158,6 +1231,18 @@ def main(argv=None):
     if dups:
         print("compile_plan: duplicate task id(s): " + ", ".join(dups) +
               " — task headings must be unique; refusing to compile.", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Strict Files grammar (#85): an annotated Files line, an unknown label, or a
+    # glob is a loud compile error — never a silent overlap drop. Collected across
+    # every task so the author sees all diagnostics at once, and raised BEFORE
+    # edge building so a violating line never reaches overlap inference partially.
+    files_violations = [v for t in tasks for v in _files_violations(t)]
+    if files_violations:
+        print("compile_plan: Files grammar violation(s) — refusing to compile "
+              "(an annotated / unknown-label / glob Files line silently drops "
+              "overlap coverage):\n" + "\n".join(files_violations),
+              file=sys.stderr)
         raise SystemExit(1)
 
     out_tasks = []

@@ -202,6 +202,9 @@ def test_missing_files_block_is_conservatively_serialized(tmp_path):
 
 
 def test_glob_paths_are_ambiguous(tmp_path):
+    # #85: a `*` glob in a Files path is now a LOUD compile error (enumerate the
+    # concrete paths), not a silent ambiguous-files serialization. Same scenario
+    # as the old tolerant pin, flipped to the strict grammar.
     plan = tmp_path / "glob.md"
     plan.write_text(
         "# Plan: Glob\n\n"
@@ -210,8 +213,9 @@ def test_glob_paths_are_ambiguous(tmp_path):
         "### Task 2: globby\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/*.ts`\n\n- [ ] **Step 1:** sweep the sources\n"
     )
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "2", "why": "ambiguous-files"} in out["dag_edges"]
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "src/*.ts" in p.stderr and "enumerate" in p.stderr.lower()
 
 
 def test_duplicate_task_ids_are_a_loud_error(tmp_path):
@@ -998,17 +1002,34 @@ def test_four_hash_and_caps_headings_error_loudly(tmp_path):
 
 
 def test_near_miss_files_entry_surfaces_conflict(tmp_path):
+    # A spaced-colon label (`- Modify : x`) is STILL a canonical label, just
+    # mis-spaced, so it stays a SOFT near-miss: compile succeeds and surfaces a
+    # conflict. (The wrong-CASE label case is now loud — see
+    # test_lowercase_files_label_is_a_loud_violation, #85.)
     plan = tmp_path / "filesmiss.md"
     plan.write_text(
         "# Plan: Files near miss\n\n"
         "### Task 1: spaced colon\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify : `shared.py`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: lowercase label\n\n**Type:** implementation\n\n"
-        "**Files:**\n- modify: `shared.py`\n\n- [ ] **Step 1:** b\n"
+        "### Task 2: other\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
     )
     out = compile_plan(plan)
     assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
-    assert any(c["task"] == "2" and "Files" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_lowercase_files_label_is_a_loud_violation(tmp_path):
+    # #85: a wrong-case label (`- modify:`) is an unknown label under the strict
+    # grammar — a loud compile error with a did-you-mean, not a silent near-miss.
+    plan = tmp_path / "lowerlabel.md"
+    plan.write_text(
+        "# Plan: Lowercase label\n\n"
+        "### Task 1: lowercase label\n\n**Type:** implementation\n\n"
+        "**Files:**\n- modify: `shared.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "modify" in p.stderr and "Create/Modify/Test" in p.stderr
 
 
 def test_empty_depends_on_value_diagnosed_as_missing(tmp_path):
@@ -1092,20 +1113,23 @@ def test_files_header_near_miss_surfaces(tmp_path):
 
 
 def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
+    # #85: an unknown Files label (`- Delete:`) is now a LOUD compile error with a
+    # did-you-mean, not a silent near-miss drop. (A colon-less natural-English
+    # bullet stays a soft near-miss, but the Delete violation bails first.) Same
+    # scenario as the old tolerant pin, flipped to the strict grammar.
     plan = tmp_path / "bullets.md"
     plan.write_text(
         "# Plan: Unparsed bullets\n\n"
-        "### Task 1: natural english\n\n**Type:** implementation\n\n"
+        "### Task 1: unknown label\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify `src/app.py` to wire it in\n- Delete: `old.py`\n- Modify: `keep.py`\n\n"
         "- [ ] **Step 1:** a\n\n"
         "### Task 2: writer\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
-    by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["writes"] == ["keep.py"]      # valid entry after misses survives
-    drops = [c for c in out["marker_conflicts"] if c["task"] == "1" and "Files" in c["note"]]
-    assert drops, "colon-less and unknown-label bullets must surface"
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "Delete" in p.stderr and "old.py" in p.stderr
+    assert "Modify" in p.stderr      # the did-you-mean suggestion
 
 
 def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_path):
@@ -1190,6 +1214,9 @@ def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
 
 
 def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
+    # #85: a bracket route (`app/[slug]/page.tsx`) reads as a glob and is now a
+    # LOUD compile error naming the path and telling the author to enumerate,
+    # not a soft ambiguous-files conflict. Same scenario, flipped to strict.
     plan = tmp_path / "globwhy.md"
     plan.write_text(
         "# Plan: Glob why\n\n"
@@ -1198,9 +1225,9 @@ def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
         "### Task 2: other\n\n**Type:** implementation\n\n"
         "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
-    assert any(c["task"] == "1" and "glob" in c["note"].lower()
-               for c in out["marker_conflicts"])
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "app/[slug]/page.tsx" in p.stderr and "enumerate" in p.stderr.lower()
 
 
 def test_all_wrong_level_plan_gets_the_heading_diagnostic(tmp_path):
@@ -1958,6 +1985,103 @@ def test_symbol_list_violations_flags_sentences():
     assert len(bad) == 1 and "symbol" in bad[0].lower()
     assert _symbol_list_violations(["`User`", "validate_payload(p) -> list"]) == []
     assert _symbol_list_violations(["nothing (placeholder)"]) == []
+
+
+# ---------------------------------------------------------------------------
+# Strict Files grammar (#85): annotations, unknown labels, and globs are loud
+# violations. An annotated Files line contributes NOTHING silently — it always
+# surfaces with the extracted-path fix, so a same-wave write race can never hide
+# behind a parenthetical (2026-07-03 foreign run: the two most contended files
+# silently lost overlap coverage).
+# ---------------------------------------------------------------------------
+
+ANNOTATED_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Shared file owner
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/lib/db.js` (only the pool init, lines 12-40)
+
+- [ ] **Step 1: do it**
+
+### Task 2: Other writer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/lib/db.js`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_annotated_files_line_is_a_violation_with_extract_fix():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "1", "files_raw": [
+        ("Modify", "`src/lib/db.js` (only the pool init, lines 12-40)")]})
+    assert len(v) == 1
+    assert "src/lib/db.js" in v[0]          # the extracted path is shown
+    assert "annotation" in v[0].lower()      # named for what it is
+
+
+def test_unknown_label_is_a_violation_with_did_you_mean():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "3", "files_raw": [("Delete", "`old/x.py`")]})
+    assert len(v) == 1 and "Modify" in v[0]
+
+
+def test_glob_is_a_violation():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "4", "files_raw": [("Modify", "`src/**/*.py`")]})
+    assert len(v) == 1 and "enumerate" in v[0].lower()
+
+
+def test_annotated_line_fails_plain_compile_loudly():
+    # front-door: plain compile on a violating plan is a loud error, not a silent
+    # overlap drop (#85). Adapted to the subprocess helper (compile_raw_text):
+    # SystemExit surfaces as a non-zero exit with the path on stderr.
+    r = compile_raw_text(ANNOTATED_PLAN)
+    assert r.returncode != 0
+    assert "src/lib/db.js" in r.stderr
+
+
+def test_canonical_files_block_compiles_clean():
+    # The strict gate must not fire on a canonical block: bare labels, backticked
+    # paths, no annotation. Multiple backticked paths on one bullet and the
+    # `- none` empty declaration both stay legal.
+    plan = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: writer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `src/a.py`
+- Modify: `src/b.py`
+
+- [ ] **Step 1: do it**
+
+### Task 2: gate
+
+**Type:** gate
+
+**Files:**
+- None
+
+- [ ] run pytest
+"""
+    out = compile_plan_text(plan)
+    assert not [c for c in out["marker_conflicts"] if "annotation" in c["note"].lower()]
+    assert "src/a.py" in {f for t in out["tasks"] for f in t["writes"]}
 
 
 # ---------------------------------------------------------------------------
