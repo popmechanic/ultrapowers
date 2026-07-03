@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 
 _WAIVER = "**Acceptance:** waived — inline test plan"
 
@@ -1864,6 +1865,99 @@ def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
     assert not any(c.get("kind") == "undeclared-dependency"
                    for c in out["marker_conflicts"])
     assert out["waves"] == [["1"], ["2"]]
+
+
+# ---------------------------------------------------------------------------
+# Task 1 (grammar-hardening plan, issue #85): interface placeholders parse as
+# empty; symbol-list violations. 2026-07-03 foreign-run regression: a
+# 'Produces: nothing' / 'Consumes: nothing' pairing fabricated an interface
+# edge (and an undeclared-dependency finding) out of pure authoring prose,
+# wasting a wave. Placeholder Consumes/Produces values must never pair.
+# ---------------------------------------------------------------------------
+
+PLACEHOLDER_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Cleanup
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `data/fixtures.json`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing (test-data-only change)
+
+- [ ] **Step 1: do it**
+
+### Task 2: Leaf A
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/a.py`
+
+**Interfaces:**
+- Consumes: nothing (standalone)
+- Produces: `helper_a() -> str`
+
+- [ ] **Step 1: do it**
+
+### Task 3: Leaf B
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/b.py`
+
+**Interfaces:**
+- Consumes: none
+- Produces: `helper_b() -> str`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_placeholder_interfaces_produce_zero_edges():
+    # 2026-07-03 foreign-run regression: 'Produces: nothing' paired with
+    # 'Consumes: nothing' created two spurious edges and a wasted wave.
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    interface_edges = [e for e in out["dag_edges"] if e.get("why") == "interface"]
+    assert interface_edges == []
+
+
+def test_placeholder_interfaces_emit_no_undeclared_dependency():
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    assert not [c for c in out.get("marker_conflicts", [])
+                if c.get("kind") == "undeclared-dependency"]
+
+
+def test_all_three_tasks_share_wave_one():
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    assert sorted(out["waves"][0]) == ["1", "2", "3"]
+
+
+def test_placeholder_token_set():
+    from compile_plan import _interface_token
+    for raw in ("nothing", "none", "N/A", "nothing (test-data-only change)",
+                "`nothing`", "none — standalone"):
+        assert _interface_token(raw) == "", raw
+    assert _interface_token("`User` dataclass (id: int)") == "User"
+    assert _interface_token("validate_payload(payload) -> list[str]") == "validate_payload"
+
+
+def test_symbol_list_violations_flags_sentences():
+    from compile_plan import _symbol_list_violations
+    bad = _symbol_list_violations(
+        ["the launch file gains a review key that the engine consumes later"])
+    assert len(bad) == 1 and "symbol" in bad[0].lower()
+    assert _symbol_list_violations(["`User`", "validate_payload(p) -> list"]) == []
+    assert _symbol_list_violations(["nothing (placeholder)"]) == []
 
 
 # ---------------------------------------------------------------------------
