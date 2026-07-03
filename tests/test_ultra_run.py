@@ -1,0 +1,101 @@
+"""ultra_run.py: the deterministic pre-launch driver (SKILL.md Steps 1-4b).
+Every stage is exercised against a throwaway git repo; the receipt and exit
+code are the contract the orchestrator consumes."""
+import json
+import pathlib
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "skills/ultrapowers/scripts"
+RUN = SCRIPTS / "ultra_run.py"
+
+PLAN = (
+    "# P\n\n**Acceptance:** waived — test fixture\n\n"
+    "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+    "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
+    "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** 1\n\n"
+    "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
+)
+
+
+def sh(cmd, cwd=None, check=True):
+    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+
+
+def make_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    (repo / ".gitignore").write_text(".claude/\n")
+    (repo / "plan.md").write_text(PLAN)
+    sh(["git", "add", "."], cwd=repo)
+    sh(["git", "commit", "-qm", "base"], cwd=repo)
+    return repo
+
+
+def run_driver(repo, *extra):
+    return sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1", *extra],
+              cwd=repo, check=False)
+
+
+def test_happy_path_receipt(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is True
+    assert receipt["lockId"] == "t1"          # the stamp IS the lock id
+    assert all(s["ok"] for s in receipt["stages"])
+    stage_names = [s["stage"] for s in receipt["stages"]]
+    for expected in ("git-repo", "worktree-probe", "engine-skew",
+                     "superpowers-compat", "compile", "install",
+                     "lock", "snapshot"):
+        assert expected in stage_names
+    run_dir = repo / ".claude/ultrapowers/run-t1"
+    assert (run_dir / "receipt.json").is_file()
+    assert (run_dir / "launch.json").is_file()
+    assert (run_dir / "args.json").is_file()
+    # Task-1 contract: tier slots pre-emitted, named in llmDerives
+    launch = json.loads((run_dir / "launch.json").read_text())
+    assert all(t["tier"] is None for t in launch["tasks"])
+    assert any("tier" in d for d in receipt["llmDerives"])
+    # lock + snapshot actually happened, with the dirty set recorded
+    assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
+    assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
+    # probe contract pre-computed for the orchestrator
+    assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
+    assert receipt["workflowName"] == "ultrapowers-run"
+
+
+def test_not_a_git_repo_fails_first_stage(tmp_path):
+    bare = tmp_path / "not-a-repo"
+    bare.mkdir()
+    (bare / "plan.md").write_text(PLAN)
+    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
+           cwd=bare, check=False)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    assert receipt["stages"][-1]["stage"] == "git-repo"
+
+
+def test_held_lock_fails_lock_stage(tmp_path):
+    repo = make_repo(tmp_path)
+    sh(["bash", str(SCRIPTS / "run_lock.sh"), "acquire", "other-run"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["stages"][-1]["stage"] == "lock"
+    assert receipt["stages"][-1]["ok"] is False
+
+
+def test_uncompilable_plan_fails_compile_stage(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "plan.md").write_text("# not a plan\n\nno tasks here\n")
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["stages"][-1]["stage"] == "compile"
