@@ -49,7 +49,9 @@ def test_preflight_distinguishes_not_found_from_engine_drift():
     # the restart cure and must NOT route this case to the sequential fallback,
     # or the parallel path silently dies on every first run.
     text = ORCHESTRATOR.read_text()
-    preflight = text[text.index("**4a½"):text.index("**4b")]
+    # 4a and 4b folded into the pre-launch driver; the 4a½ preflight now runs
+    # between the probe label and the 4c launch label.
+    preflight = text[text.index("**4a½"):text.index("**4c")]
     assert "not found" in preflight.lower()
     assert "session" in preflight.lower()          # the restart cure is named
     assert "session start" in preflight.lower()    # registry-snapshot timing explained
