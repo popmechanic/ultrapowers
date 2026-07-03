@@ -12,30 +12,29 @@ BASELINE = ROOT / "skills/ultralearn/complexity-baseline.json"
 
 def test_baseline_is_shape_current():
     base = json.loads(BASELINE.read_text())
-    for k in ("parensPerLine", "longestRuleChars", "distinctIssueRefs", "engineLoc"):
-        assert k in base
+    live = cm.compute_metrics(Path(cm.__file__).resolve().parents[3])
+    assert set(base) == set(live)  # same counters, no stale or missing keys
+    assert all(isinstance(v, int) for v in live.values())
+    assert live["standingConcepts"] == sum(live[k] for k in cm.CONCEPT_KEYS)
+
+
+def test_all_surfaces_exist():
     root = Path(cm.__file__).resolve().parents[3]
-    raw = cm.compute_metrics([str(root / p) for p in cm.GATE_SURFACES])
-    live = {str(Path(k).relative_to(root)) for k in raw["parensPerLine"]}
-    assert set(base["parensPerLine"]) == live  # same surfaces
+    for path in set(cm.SURFACES.values()):
+        assert (root / path).is_file(), f"metric surface missing: {path}"
 
 
 def test_verdict_is_quiet_at_baseline_and_flags_regressions():
-    base = {"parensPerLine": {"a.md": 0.5}, "longestRuleChars": 100,
-            "distinctIssueRefs": 3, "engineLoc": 1000}
+    base = {"skillSteps": 15, "engineKnobs": 9, "skillWords": 2000}
     assert cm.verdict(base, base) == []
-    worse = {"parensPerLine": {"a.md": 0.7}, "longestRuleChars": 150,
-             "distinctIssueRefs": 3, "engineLoc": 1200}
+    worse = {"skillSteps": 16, "engineKnobs": 9, "skillWords": 2100}
     lines = cm.verdict(worse, base)
-    assert any(l.startswith("parensPerLine[a.md] rose") for l in lines)
-    assert "longestRuleChars rose 100 -> 150" in lines
-    assert "engineLoc rose 1000 -> 1200" in lines
-    assert not any("distinctIssueRefs" in l for l in lines)  # unchanged → silent
+    assert "skillSteps rose 15 -> 16" in lines
+    assert "skillWords rose 2000 -> 2100" in lines
+    assert not any("engineKnobs" in l for l in lines)  # unchanged -> silent
 
 
 def test_verdict_ignores_improvements():
-    base = {"parensPerLine": {"a.md": 0.5}, "longestRuleChars": 100,
-            "distinctIssueRefs": 3, "engineLoc": 1000}
-    better = {"parensPerLine": {"a.md": 0.3}, "longestRuleChars": 80,
-              "distinctIssueRefs": 2, "engineLoc": 900}
+    base = {"skillSteps": 15, "skillWords": 2000}
+    better = {"skillSteps": 14, "skillWords": 1900}
     assert cm.verdict(better, base) == []

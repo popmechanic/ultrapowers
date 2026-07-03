@@ -269,7 +269,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared scratch dir under .superpowers/ (outside .git/) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
+  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared scratch dir under .superpowers/ (outside .git/) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced. If the script is absent (it ships with the ultrapowers plugin, not the target project), skip the packet and report your BASE and HEAD shas instead — the reviewer recovers the diff from those.',
   '- Read the packet\'s ## Files changed section (the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, confirm every changed path is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '',
@@ -308,6 +308,8 @@ const REVIEWER_PROMPT = [
   'For any requirement you cannot verify from the diff alone — it spans tasks, or it depends on unchanged code outside this diff — list it under cannotVerify with the requirement and why it is unverifiable from here, rather than crawling the repository to chase it. The completeness critic verifies these against the integrated tree.',
   '',
   'When SIBLING FILES is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
+  '',
+  'Plan-supplied code is not privileged: when the diff faithfully transcribes code from the approved plan and that code carries a genuine defect, report it rather than waiving it as spec-faithful. Prefix the detail plan-defect: — and when fixing it would mean diverging from explicit plan text, report severity minor so the finding routes to the pre-merge gate for a plan-level decision instead of a fix round the implementer cannot resolve.',
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
@@ -557,6 +559,7 @@ const bootstrapLine = bootstrapCmd
      'If it exits 0 the cache hit and deps are in place. If it returns exit 3 (cache miss or lockfile change), ' +
      'run the real install before building or testing: ' + bootstrapCmd +
      ' — then warm the cache for siblings: `bash skills/ultrapowers/scripts/warm_cache.sh populate <lockfile> <source_dir>`. ' +
+     'If the script itself is absent (exit 127 — it ships with the ultrapowers plugin, not the target project), skip the cache steps and just run the real install. ' +
      'The cache is an optimization only; build and test normally whether it hit or missed.')
   : ''
 

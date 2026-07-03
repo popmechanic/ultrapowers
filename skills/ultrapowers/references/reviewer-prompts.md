@@ -20,7 +20,7 @@ Every dispatched agent — implementer, reviewer, setup, merge, reconcile, compl
 SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the setup, merge, and reconcile roles — the session repository's main checkout, which those write-side roles may modify. Review roles (the per-task reviewer and the completeness critic) are READ-ONLY: they read the diff or a detached inspection checkout and never write files, create commits, stage changes, check out or switch a branch, or otherwise mutate a working tree — their only output is their report payload. You operate in the workflow's launch working directory, the session repository; never resolve to, check out, or detach a DIFFERENT primary checkout of the same repository — moving the user's primary checkout off its branch is a forbidden, undisclosed side effect. Before any git command, confirm the target directory exists and is a git repository. If a path is missing, empty, the literal string undefined, ambiguous, or not a git repo, STOP immediately and report BLOCKED. NEVER run git or write files in an unrelated repository, and NEVER fall back to your current working directory.
 <!-- /BAKE -->
 
-This guard is the sole safety net against an agent mutating the wrong repository. It directly forbids the failure mode found during live validation (2026-06-02): a `git -C undefined` target silently falling back to the session repo. Runtime worktree isolation (`isolation: 'worktree'`) already binds task agents to the session repo, so no absolute target path is passed; the guard backstops the non-isolated roles.
+This guard is the sole safety net against an agent mutating the wrong repository. It directly forbids the failure mode found during the 2026-06-02 live validation: a `git -C undefined` target silently falling back to the session repo. Runtime worktree isolation — `isolation: 'worktree'` — already binds task agents to the session repo, so no absolute target path is passed; the guard backstops the non-isolated roles.
 
 ---
 
@@ -51,7 +51,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
 
 **Self-verify before reporting:**
 - Re-read the task. Confirm every stated requirement is addressed.
-- Generate the review packet for your `BASE..HEAD` first: run `bash skills/ultrapowers/scripts/review-package <BASE> <HEAD>` (your committed HEAD). It writes the commits and the `git diff -U10` to the shared scratch dir under `.superpowers/` (outside `.git/`) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.
+- Generate the review packet for your `BASE..HEAD` first: run `bash skills/ultrapowers/scripts/review-package <BASE> <HEAD>` (your committed HEAD). It writes the commits and the `git diff -U10` to the shared scratch dir under `.superpowers/` (outside `.git/`) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced. If the script is absent (it ships with the ultrapowers plugin, not the target project), skip the packet and report your `BASE` and `HEAD` shas instead — the reviewer recovers the diff from those.
 - Read the packet's `## Files changed` section (the `git diff --stat` of your `BASE..HEAD`): verify no unrelated files are modified. If `FILES` is present, confirm every changed path is named there or is plainly required by the task text. NEVER delete a file outside `FILES` — if the task seems to demand it, STOP and report `BLOCKED` explaining why.
 - Confirm no secrets, no commented-out debug code, no TODOs introduced.
 
@@ -138,6 +138,8 @@ You review by reading the diff and its evidence; the implementer's red green ref
 For any requirement you cannot verify from the diff alone — it spans tasks, or it depends on unchanged code outside this diff — list it under `cannotVerify` with the requirement and why it is unverifiable from here, rather than crawling the repository to chase it. The completeness critic verifies these against the integrated tree.
 
 When `SIBLING FILES` is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at `BASE`, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.
+
+Plan-supplied code is not privileged: when the diff faithfully transcribes code from the approved plan and that code carries a genuine defect, report it rather than waiving it as spec-faithful. Prefix the detail `plan-defect:` — and when fixing it would mean diverging from explicit plan text, report severity `minor` so the finding routes to the pre-merge gate for a plan-level decision instead of a fix round the implementer cannot resolve.
 
 Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.
 

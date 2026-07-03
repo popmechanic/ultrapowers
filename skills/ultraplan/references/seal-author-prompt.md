@@ -19,7 +19,7 @@ You must never ask for, read, or be told the implementation plan.
    with `runCmd` then invoking `.venv/bin/python -m pytest …`). Leave
    `bootstrapCmd` empty when the bare checkout already imports.
 3. Prove RED through the EXACT gate runner — never an ad-hoc pytest call:
-   `python3 <plugin>/skills/ultrapowers/scripts/run_acceptance.sh --baseline \
+   `bash <plugin>/skills/ultrapowers/scripts/run_acceptance.sh --baseline \
      --suite <vault>/pending/suite --branch <base> --run "<runCmd>" \
      [--bootstrap "<bootstrapCmd>"]`.
    It must report `PROVEN_RED` (exit 0) because the feature is absent. If it

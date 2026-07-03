@@ -50,6 +50,15 @@ Use one of: `up` | `flat` | `down`.
 > cluster requires a recorded `consolidationAttempted`. The rubric prefers —
 > it does not forbid; some edge cases are genuinely irreducible.*
 
+## The deletion candidate (mandatory, one per cycle)
+
+Every distill output must include at least one `simplification` proposal — a
+standing rule, guard, knob, or subsystem the evidence suggests could be removed.
+The lenses are friction-biased and will never nominate a deletion on their own;
+this requirement is the loop's counterweight. A weak nomination is acceptable
+and still counts: state the candidate, the evidence that would justify removal,
+and what currently blocks it. Ranking it last is fine; omitting it is not.
+
 ## Output schema (one object per proposal)
 
 - `title` (string) — a one-line headline.

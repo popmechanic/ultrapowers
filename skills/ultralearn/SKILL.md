@@ -58,6 +58,13 @@ over baseline, make a consolidation pass on that surface the top-ranked proposal
 rather than a new feature. The ratchet is advisory — it informs ranking, it does
 not block.
 
+**Deletion candidate (mandatory).** Every distill cycle must nominate at least
+one `simplification` proposal — a rule, guard, knob, or subsystem the evidence
+suggests the engine could shed — even when ranked last. The sensing lenses hunt
+friction, so left alone the loop only ever accretes; the deletion candidate is
+its counterweight. Weak nominations are fine: name the candidate, what evidence
+would justify removing it, and what currently blocks removal.
+
 ## Privacy (two tiers — the repo is public)
 
 - Local, gitignored (`~/.claude/ultralearn/`): raw bundles, full slices,
