@@ -8,6 +8,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 AUDIT = ROOT / "skills/ultrapowers/scripts/audit_run.py"
+sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+
+# Every engine role prompt must classify; each marker string must exist
+# verbatim in the baked source so classifier and engine cannot drift apart.
+ENGINE_SOURCES = [
+    (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text(),
+    (ROOT / "skills/ultrapowers/references/wave-merge.md").read_text(),
+]
 
 IMPL_7 = ("SAFETY: Operate ONLY inside the git worktree assigned to you.\n\n"
           "You are an implementer subagent operating inside a dedicated git worktree.\n\n"
@@ -98,3 +106,15 @@ def test_classifies_task_id_from_real_prompt_shape(tmp_path):
     assert p.returncode == 0, p.stderr
     assert "| impl:2 | test-model | 1 | 10 |" in p.stdout
     assert "| review:3 | judge-model | 1 | 10 |" in p.stdout
+
+
+def test_every_role_marker_exists_in_baked_sources():
+    from audit_run import ROLE_MARKERS
+    for marker, _role in ROLE_MARKERS:
+        assert any(marker in src for src in ENGINE_SOURCES), marker
+
+
+def test_no_engine_prompt_classifies_unknown():
+    from audit_run import classify, ROLE_MARKERS
+    for marker, role in ROLE_MARKERS:
+        assert classify("xxx " + marker + " yyy") != "unknown"
