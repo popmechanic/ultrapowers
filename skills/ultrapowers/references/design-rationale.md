@@ -171,3 +171,11 @@ so the second rubric question (invented anything?) is as load-bearing as the
 first (everything covered?). If the operator cannot vouch, the remedy is to
 re-seal (the ultraplan sealing step) or waive explicitly — never rubber-stamp a
 summary that does not match the spec.
+
+**2026-07-03 field evidence (foreign engine run, engine 0.0.30).** A 7-task
+production run confirmed the attention-moving thesis directly: the operator's
+only involvement was the planning decisions, vouching for the sealed exam's
+coverage at launch, and one physical-world check no tooling could reach
+(confirming an email landed in a personal inbox). Everything from launch to
+the pre-merge gate ran unattended, and the operator's unrelated
+work-in-progress came back byte-for-byte intact.

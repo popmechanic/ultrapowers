@@ -57,3 +57,15 @@ receives this review over its own integrated tree, so scope the extra pass to
 work that actually spanned multiple phases or runs. Do not hand off to
 `finishing-a-development-branch` until the holistic review is clean or its
 findings are explicitly dispositioned.
+
+## Deferred-verification checklist
+
+The gate report's `deferredVerification` array is a post-merge obligation
+list, not a footnote. After the merge lands, walk it item by item: attempt
+closure where tooling exists (run the runtime path, drive the browser flow,
+hit the deployed service), and report per-item status in the finishing
+summary — `closed` (verified, say how), `still-open` (say what blocks it),
+or `needs-human` (say exactly what the operator must do). The checklist
+authorizes no new autonomous actions — anything beyond already-authorized
+tooling stays `needs-human`. An item nobody closes survives in the summary
+by name; it must never silently evaporate between the gate and the handoff.

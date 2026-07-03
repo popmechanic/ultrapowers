@@ -82,6 +82,15 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   `release`, or `manual`.
 - `**Depends-on:**` — comma-separated task IDs from the plan's own numbering
   (`2`, `A3`, `C4b`), or `none`.
+- `**Review:**` — optional; one of `adversarial` or `lean`. Names the tasks that
+  earn a second independent review pass. Unmarked tasks are `lean`. An invalid
+  or duplicate value is a compile error.
+
+While marking the plan, decide review depth explicitly: mark
+`**Review:** adversarial` on tasks whose failure is costly or hard to see —
+auth, payments, migrations, data integrity, public API, or behavior that is
+hard to verify by reading (the routing rubric's risk list). Everything else
+stays lean. The engine derives nothing: unmarked means lean, by construction.
 
 Placement is enforced: the compiler trusts markers only as the contiguous block
 immediately after the task heading — a marker after a description paragraph (or
@@ -210,6 +219,14 @@ While writing tasks:
 5. **Split impure steps out.** If a task would push, deploy, ssh, or wait on a
    human, that part is its own `release` or `manual` task — implementation tasks
    never contain it.
+- **Shrink budgets are acceptance criteria.** When a task edits a
+  complexity-ratcheted surface (SKILL.md, gate-spec docs), state the numeric
+  ceiling in the task body ("skillWords < N, standingConcepts ≤ M") — agents
+  treat a stated budget as a hard criterion, and it forces net simplification.
+- **Tier escalation-prone tasks up front.** Large single-file refactors
+  (one big UI component, one long module rewrite) are the tasks that blow the
+  StructuredOutput retry cap at lower tiers and pay the task twice — mark
+  them `most-capable` in the plan rather than letting the launch guess.
 
 ## Populate the v6 blocks — they are load-bearing here
 

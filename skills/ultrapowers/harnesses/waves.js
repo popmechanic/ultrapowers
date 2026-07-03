@@ -302,6 +302,7 @@ const REVIEWER_PROMPT = [
   '5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
   '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
   '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.',
+  '8. When the diff commits a generated artifact (a baked copy, a regenerated baseline, a build output), regenerate it with its generator and byte-compare against the committed copy — never eyeball equivalence. A hand-edited artifact that reads plausibly is exactly the false green this catches.',
   '',
   'You review by reading the diff and its evidence; the implementer red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.',
   '',
@@ -623,49 +624,21 @@ const siblingLine = (task, wave) => {
   return sibs.length ? ('\nSIBLING FILES: ' + sibs.join(' | ')) : ''
 }
 
-// Risk-surface detection — the engine-deterministic basis for the adversarial
-// second review pass. This decision used to live in the orchestrating LLM (it set
-// task.review per SKILL.md guidance), which made it vary run-to-run on the SAME
-// plan (one run double-reviewed 3 tasks, a re-run only 2). It now lives HERE so a
-// given plan always yields the same review depth. A task is a risk surface when:
-//   (1) a declared file path or its title names a high-stakes surface — auth,
-//       payments, migrations, secrets/crypto, or the persistence/data layer; OR
-//   (2) it is a foundation/contract ROOT: it Produces an interface other tasks
-//       build on while Consuming nothing itself, so a missed bug there cascades.
-// Tokens are separator-bounded so 'feedback'/'restore' don't trip 'db'/'store'.
-// The token set is intentionally tunable — widen/narrow it for your repo's risks.
-const RISK_PATH = /(?:^|[/_.\-])(auth|login|signin|session|password|passwd|secret|credential|token|oauth|jwt|crypto|secur|payment|billing|invoice|charge|checkout|stripe|money|ledger|migrat|schema|database|db|persist)s?(?:[/_.\-]|$)/i
-const isRiskSurface = (task) => {
-  const fields = []
-  if (Array.isArray(task.files)) fields.push(...task.files)
-  if (typeof task.title === 'string') fields.push(task.title)
-  if (fields.some((f) => typeof f === 'string' && RISK_PATH.test(f))) return true
-  const iface = (task && task.interfaces) || {}
-  const produces = Array.isArray(iface.produces) ? iface.produces : []
-  const consumes = Array.isArray(iface.consumes) ? iface.consumes : []
-  return produces.length > 0 && consumes.length === 0
-}
+// Review depth per task — an AUTHORED plan property (ultraplan `**Review:**`),
+// pre-emitted by compile_plan.py into every task's `review` slot ('lean' when
+// unmarked). Force-up semantics: the run-wide reviewProfile:'adversarial' escape
+// hatch can only raise depth, never lower an authored adversarial.
+// (The heuristic era — RISK_PATH lexicon, isRiskSurface, contract-root
+// detection — is deleted: #87. The render now reports a value the engine
+// actually uses, by construction.)
+const taskReviewProfile = (task) =>
+  (task.review === 'adversarial' || reviewProfile === 'adversarial')
+    ? 'adversarial' : 'lean'
 
-// Review depth per task. Precedence: an explicit task.review override (the plan/
-// operator escape hatch) wins; then a run-wide reviewProfile:'adversarial' forces
-// every task; otherwise the engine DERIVES it from the risk surface above. The
-// orchestrator no longer needs to set task.review (SKILL.md Step 2) — it is now a
-// deterministic engine property, not an LLM judgment call.
-const taskReviewProfile = (task) => {
-  if (task.review === 'adversarial' || task.review === 'lean') return task.review
-  if (reviewProfile === 'adversarial') return 'adversarial'
-  return isRiskSurface(task) ? 'adversarial' : 'lean'
-}
-
-// Per-task reviewer model. Built from DEFAULT_TIER (NOT TIER) so tierOverrides
-// can never weaken the gate. By the narrowed adversarial trigger, a lean review
-// on a cheap-tier task is a trivial non-risk diff — review it at the sonnet
-// floor. Everything else (adversarial, standard/most-capable tier, any risk
-// task) stays opus. Never haiku.
-const reviewerModelFor = (task) =>
-  (taskReviewProfile(task) === 'lean' && tierKey(task.tier) === 'cheap')
-    ? DEFAULT_TIER.standard
-    : DEFAULT_TIER.mostCapable
+// Per-task reviewer model: uniformly most-capable, built from DEFAULT_TIER so
+// tierOverrides can never weaken the gate. (The lean+cheap sonnet floor is
+// deleted with the heuristics — never economize on the checker.)
+const reviewerModelFor = () => DEFAULT_TIER.mostCapable
 
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────
 // A thrown agent() call (engine fault, schema failure, transient error) must

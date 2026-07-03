@@ -321,10 +321,11 @@ async function scenarioPortability() {
   console.log('scenario portability: OK')
 }
 
-// ── Scenario 7: per-task review depth — task.review overrides the run default ──
-// The plan (via the orchestrating agent) marks high-stakes tasks 'adversarial'
-// while routine tasks use the lean default; we should spend the extra review
-// pass only where it was asked for.
+// ── Scenario 7: per-task review depth — the authored review slot ─────────────
+// The plan's ultraplan `**Review:**` marker, compiled by compile_plan.py into
+// task.review, marks high-stakes tasks 'adversarial' while routine tasks use
+// the lean default; we should spend the extra review pass only where it was
+// authored.
 async function scenarioPerTaskReview() {
   const reviewCount = {}
   const agent = async (_prompt, opts) => {
@@ -356,13 +357,13 @@ async function scenarioPerTaskReview() {
   console.log('scenario per-task-review: OK')
 }
 
-// ── Scenario 7b: ENGINE-derived review depth (risk-based, no orchestrator input) ─
-// The adversarial second pass is chosen by the ENGINE from deterministic task
-// properties — NOT set by the orchestrator (no task.review on any of these).
-// Proves the decision moved into the engine: a risk-path file and a
-// foundation/contract root (Produces a contract, Consumes nothing) each draw two
-// passes; a plain consumer module draws one.
-async function scenarioEngineRiskReview() {
+// ── Scenario 7b: no engine-derived depth — unmarked risk-looking task stays lean (#87) ─
+// The heuristic era (RISK_PATH lexicon, isRiskSurface, contract-root detection)
+// is deleted: a task whose files/title would have tripped the old lexicon
+// draws exactly ONE pass when unmarked, and an explicit `review: 'lean'` on a
+// risk-looking path also stays lean — depth is authored, never derived from
+// file paths, titles, or interface shape.
+async function scenarioNoEngineDerivedDepth() {
   const reviewCount = {}
   const agent = makeAgent((label) => {
     if (label.startsWith('review:')) {
@@ -373,23 +374,42 @@ async function scenarioEngineRiskReview() {
     return undefined
   })
   const waves = [[
-    // risk path (auth) — no review field
-    { id: 'R', title: 'Auth module', body: 'build auth', files: ['src/auth.js'], tier: 'cheap' },
-    // foundation/contract root: Produces, Consumes nothing — non-risk filename,
-    // so this exercises the interface-root branch, not the path branch
-    { id: 'F', title: 'Core engine', body: 'build core', files: ['src/engine.js'],
-      interfaces: { produces: ['Api'], consumes: [] }, tier: 'cheap' },
-    // plain consumer module — no risk path, consumes a contract
-    { id: 'P', title: 'Contacts list', body: 'build contacts', files: ['src/contacts.js'],
-      interfaces: { produces: ['Contacts'], consumes: ['Api'] }, tier: 'cheap' },
+    // risk-looking path/title (auth + "Payment migration"), no review field —
+    // would have tripped the old RISK_PATH lexicon; must stay lean now.
+    { id: 'R', title: 'Payment migration', body: 'build it', files: ['src/auth/login.py'], tier: 'cheap' },
+    // same risk-looking path, but explicitly authored lean — also stays lean.
+    { id: 'L', title: 'Auth cleanup', body: 'build it', files: ['src/auth/login.py'], tier: 'cheap', review: 'lean' },
   ]]
   const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   const r = await runWorkflow({ agent, args, budget: undefined })
-  assert(reviewCount['R'] === 2, 'engine-review: R (risk path src/auth.js) → adversarial/2 (got ' + reviewCount['R'] + ')')
-  assert(reviewCount['F'] === 2, 'engine-review: F (foundation root, produces+!consumes) → adversarial/2 (got ' + reviewCount['F'] + ')')
-  assert(reviewCount['P'] === 1, 'engine-review: P (plain consumer) → lean/1 (got ' + reviewCount['P'] + ')')
-  assert(r.tasks.every((t) => t.status === 'done'), 'engine-review: all done')
-  console.log('scenario engine-risk-review: OK')
+  assert(reviewCount['R'] === 1, 'no-engine-derived: unmarked risk-looking task stays lean/1 (got ' + reviewCount['R'] + ')')
+  assert(reviewCount['L'] === 1, 'no-engine-derived: explicit lean on risk-looking path stays lean/1 (got ' + reviewCount['L'] + ')')
+  assert(r.tasks.every((t) => t.status === 'done'), 'no-engine-derived: all done')
+  console.log('scenario no-engine-derived-depth: OK')
+}
+
+// ── Scenario 7d: force-up — reviewProfile:'adversarial' can only RAISE depth ──
+// The run-wide escape hatch forces every task to adversarial, including one
+// whose authored slot says 'lean' — the hatch never lowers an authored
+// adversarial, it only ever raises.
+async function scenarioForceUpReviewProfile() {
+  const reviewCount = {}
+  const agent = makeAgent((label) => {
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      reviewCount[id] = (reviewCount[id] || 0) + 1
+      return { verdict: 'PASS', issues: [] }
+    }
+    return undefined
+  })
+  const waves = [[
+    { id: 'L', title: 'routine', body: 'build it', tier: 'cheap', review: 'lean' },
+  ]]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [], reviewProfile: 'adversarial' }
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  assert(reviewCount['L'] === 2, 'force-up: reviewProfile adversarial raises an authored-lean task to 2 passes (got ' + reviewCount['L'] + ')')
+  assert(r.tasks.every((t) => t.status === 'done'), 'force-up: all done')
+  console.log('scenario force-up-review-profile: OK')
 }
 
 // ── Scenario 7c: ENGINE fallback labels (no orchestrator waveLabels) ─────────
@@ -1734,7 +1754,8 @@ await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
 await scenarioPerTaskReview()
-await scenarioEngineRiskReview()
+await scenarioNoEngineDerivedDepth()
+await scenarioForceUpReviewProfile()
 await scenarioDerivedWaveLabels()
 await scenarioAdversarialDissent()
 await scenarioTierOverrideInvalid()
@@ -2420,7 +2441,10 @@ async function runEscalationScenario(firstFailure) {
 }
 console.log('scenario escalation-classifier: OK')
 
-// ── Fork B: reviewer floor — sonnet only for lean+cheap, opus everywhere else ─
+// ── Reviewer model is uniformly most-capable and override-proof (#87) ────────
+// The sonnet floor is deleted: every per-task reviewer call — lean or
+// adversarial, any tier — uses DEFAULT_TIER.mostCapable, and tierOverrides
+// remapping mostCapable can never weaken it.
 {
   const models = {}
   const agent = async (prompt, opts) => {
@@ -2434,48 +2458,21 @@ console.log('scenario escalation-classifier: OK')
   }
   const args = {
     waves: [[
-      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },        // → sonnet floor
-      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },   // → opus (adversarial)
-      { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },         // → opus (not cheap)
-    ]],
-    integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
-  }
-  await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
-  eq(models.a, 'sonnet', 'lean+cheap task reviewed at sonnet floor')
-  eq(models.b, 'opus', 'adversarial task reviewed at opus')
-  eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
-  eq(models.integration, 'opus', 'completeness critic stays opus')
-}
-console.log('scenario reviewer-floor: OK')
-
-// ── Reviewer floor is override-proof: tierOverrides never weaken the gate ────
-{
-  const models = {}
-  const agent = async (prompt, opts) => {
-    const label = (opts && opts.label) || ''
-    if (label === 'setup') return { branch: 'ultra/int', headSha: 'sha-setup', baselinePassed: true }
-    if (label.startsWith('impl:')) return { status: 'done', branch: 'worktree-' + label.slice(5), headSha: 'sha-' + label }
-    if (label.startsWith('review:')) { models[label.split(':')[1]] = opts.model; return { verdict: 'PASS', issues: [] } }
-    if (label.startsWith('merge')) return { status: 'MERGED', headSha: 'sha-merge' }
-    if (label === 'integration') { models.integration = opts.model; return { command: 't', testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true } }
-    return { status: 'done', branch: 'w', headSha: 'sha' }
-  }
-  const args = {
-    waves: [[
-      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },
-      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },
-      { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },
+      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },        // → opus (uniform)
+      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },   // → opus
+      { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },         // → opus
     ]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
     tierOverrides: { cheap: 'sonnet', mostCapable: 'haiku' },
   }
   await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
-  eq(models.a, 'sonnet', 'override-proof: lean+cheap floor stays DEFAULT_TIER sonnet')
-  eq(models.b, 'opus', 'override-proof: tierOverrides.mostCapable cannot downgrade the adversarial reviewer')
-  eq(models.c, 'opus', 'override-proof: standard-tier lean review stays opus')
-  eq(models.integration, 'opus', 'override-proof: completeness critic pinned to opus')
+  eq(models.a, 'opus', 'lean+cheap task reviewed at the uniform most-capable model (no sonnet floor)')
+  eq(models.b, 'opus', 'adversarial task reviewed at opus')
+  eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
+  eq(models.integration, 'opus', 'completeness critic stays opus')
+  eq(models.a, 'opus', 'override-proof: tierOverrides.mostCapable cannot downgrade the reviewer')
 }
-console.log('scenario reviewer-floor-override-proof: OK')
+console.log('scenario reviewer-model-uniform-override-proof: OK')
 
 // ── Role isolation + prompt hygiene: writers get worktrees, readers do not ───
 // (Replaces the deleted source-pin test_review_dispatch_lean.py behaviorally:

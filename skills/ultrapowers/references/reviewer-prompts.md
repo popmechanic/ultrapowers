@@ -110,7 +110,11 @@ coverage on every defect class; splitting them would give each class a single dr
 delete the resampling redundancy that is the mechanism's whole value (an adversarial
 audit confirmed the split is a net safety regression, not the upgrade it looks like).
 
-The reviewer runs at the most-capable tier (`opus`) wherever risk is real — a weak reviewer's failure mode is the silent false `PASS`, worse than no reviewer — with ONE narrow exception: a `lean` review of a `cheap`-tier task (a trivial, non-risk diff by the narrowed adversarial trigger) runs at the **sonnet floor**. The floor is never haiku, is built from `DEFAULT_TIER` so `tierOverrides` cannot weaken it, and never applies to adversarial passes, `standard`/`most-capable`-tier reviews, the completeness critic, reconcile, or fix rounds. Review *depth* is still set per task (see above).
+The reviewer always runs at the most-capable tier (`opus`), built from
+`DEFAULT_TIER` so `tierOverrides` cannot weaken it — a weak reviewer's failure
+mode is the silent false `PASS`, worse than no reviewer. Review *depth* is a
+plan-authored property: the ultraplan `**Review:**` marker, compiled into each
+task's `review` slot; unmarked tasks are `lean`.
 
 <!-- BAKE:REVIEWER_PROMPT -->
 You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
@@ -132,6 +136,7 @@ When `FILES` (the task's declared file scope) is provided: a deletion of any fil
 5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.
 6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.
 7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.
+8. When the diff commits a generated artifact (a baked copy, a regenerated baseline, a build output), regenerate it with its generator and byte-compare against the committed copy — never eyeball equivalence. A hand-edited artifact that reads plausibly is exactly the false green this catches.
 
 You review by reading the diff and its evidence; the implementer's red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.
 
@@ -205,6 +210,6 @@ When the reviewer returns `FIX_REQUIRED`:
 | **cheap** | Transcription-grade tasks only: the plan supplies complete code the author verified by running it, confined to 1–2 files, and the task touches none of the judgment-risk classes below | |
 | **standard** | Multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify | |
 | **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches | |
-| per-task reviewer | `opus` (floor: `sonnet` for `lean`+`cheap`) | override-proof; `DEFAULT_TIER`-based |
+| per-task reviewer | `opus` — uniform, no floor | override-proof; `DEFAULT_TIER`-based |
 
 Assign tier at task-dispatch time by estimated scope AND judgment-likelihood — realized difficulty tracks spec risk, not diff size (issue #20: the three heaviest implementations in run wf_df7eefdb-7b1 were all cheap-tier, and exactly the three that drew reviewer notes). Reviewers always run at `most-capable` to avoid false `PASS` verdicts from weaker models. `tierOverrides` reaches every non-review role: setup and merge run at the overridden `cheap`, reconcile and fix-rounds at the overridden `mostCapable`. Only the reviewer and completeness-critic models are pinned to the default most-capable, override-proof.

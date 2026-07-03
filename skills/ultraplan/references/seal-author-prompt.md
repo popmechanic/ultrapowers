@@ -35,5 +35,9 @@ You must never ask for, read, or be told the implementation plan.
    `manifest.json`: { sealId, planPath: null, specPath, suiteSha256, runCmd,
    bootstrapCmd, createdAt, baselineSha, redEvidence (≤2000 chars), coverage:
    [{criterion, tests[]}] }.
+   The coverage summary MUST also list every spec section the suite deliberately
+   does not cover (browser-only, target-runtime-only, environment it cannot
+   execute) with a one-line reason each — exclusions are vouched by the operator
+   and flow into the gate's `deferredVerification` checklist.
 5. Remove the worktree. Return ONLY: sealId, suiteSha256, redEvidence,
    coverage summary. Never return suite contents.

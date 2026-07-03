@@ -15,3 +15,12 @@ def test_finishing_notes_cover_merge_method_and_deploy_scope():
 def test_finishing_notes_are_referenced_not_orphaned():
     assert "finishing-notes.md" in SKILL.read_text()
     assert "finishing-notes.md" in FMT.read_text()
+
+
+def test_finishing_notes_define_the_deferred_verification_checklist():
+    text = NOTES.read_text()
+    assert "deferredVerification" in text
+    for status in ("closed", "still-open", "needs-human"):
+        assert status in text
+    # tracking-only contract: the checklist must not authorize new actions
+    assert "authorizes no new autonomous actions" in text

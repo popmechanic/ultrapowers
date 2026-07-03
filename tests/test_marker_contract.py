@@ -27,6 +27,27 @@ def test_contract_defines_both_markers_and_all_types():
         assert t in text, f"type '{t}' missing from the contract"
 
 
+def test_contract_review_marker_lives_in_marker_syntax_block():
+    # The Review marker (#87) is documented as an extension of the existing
+    # MARKER_SYNTAX block, not a new BAKE block — that keeps the existing
+    # mirror pin (test_ultraplan_mirrors_the_canonical_contract) authoritative.
+    blocks = contract_blocks()
+    syntax = blocks["MARKER_SYNTAX"]
+    assert "**Review:**" in syntax
+    assert "adversarial" in syntax
+    assert "lean" in syntax
+
+
+def test_contract_documents_review_marker_semantics():
+    text = CONTRACT.read_text()
+    assert "**Review:**" in text
+    assert "adversarial" in text
+    assert "lean" in text
+    # unmarked = lean, and an invalid/duplicate value is a compile error —
+    # these are the semantics the compiler (task 1) actually implements.
+    assert "compile error" in text.lower() or "compile-time" in text.lower()
+
+
 def test_contract_has_bake_blocks_for_mirroring():
     blocks = contract_blocks()
     for name in ("MARKER_SYNTAX", "TYPE_SEMANTICS"):

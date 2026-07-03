@@ -82,3 +82,33 @@ def test_ultraplan_shapes_decomposition_before_annotating():
     assert "Parallelization rationale" in text
     # ...and an explicit escape valve so linear specs are not forced to widen.
     assert "no latent parallelism" in text
+
+
+def test_ultraplan_mirrors_the_review_marker_line():
+    # BAKE:MARKER_SYNTAX now includes **Review:** — the existing whole-block
+    # mirror pin above already enforces this verbatim, but pin the marker
+    # itself directly too so a future BAKE-block edit can't silently drop it.
+    blocks = contract_blocks()
+    assert "**Review:**" in blocks["MARKER_SYNTAX"]
+    text = normalize(ULTRAPLAN.read_text())
+    assert normalize("**Review:**") in text
+    assert "adversarial" in text
+    assert "lean" in text
+
+
+def test_ultraplan_carries_the_review_authoring_rubric():
+    text = ULTRAPLAN.read_text()
+    # Authoring rubric (#87): decide review depth explicitly at plan-writing
+    # time, using the same risk list the execution-handoff rubric uses.
+    assert "decide review depth explicitly" in text
+    assert "**Review:** adversarial" in text
+    assert "The engine derives nothing" in text
+    assert "unmarked means lean" in text
+
+
+def test_ultraplan_carries_shrink_budget_and_escalation_guidance():
+    text = ULTRAPLAN.read_text()
+    # Two new authoring-guidance notes (#87): the shrink-budget pattern and
+    # escalation-prone tiering.
+    assert "Shrink budgets are acceptance criteria." in text
+    assert "Tier escalation-prone tasks up front." in text
