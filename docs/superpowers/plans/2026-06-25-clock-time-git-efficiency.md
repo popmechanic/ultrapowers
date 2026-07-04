@@ -31,10 +31,15 @@ The six implementation tasks were shaped by **file seam** (ultraplan move #3): e
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/harnesses/waves.js` (reviewer dispatch `reviewOpts` + `reviewPrompt` assembly; baked `GUARD`, `REVIEWER_PROMPT`, `IMPLEMENTER_PROMPT` consts)
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `GUARD`, `REVIEWER_PROMPT`, `IMPLEMENTER_PROMPT` BAKE blocks — the SOURCE of truth)
-- Modify: `skills/ultrapowers/harnesses/waves.harness.json` (bump `version`)
-- Test: `tests/test_review_dispatch_lean.py` (new), `tests/test_no_prompt_drift.py` (existing pin)
+- Modify: `skills/ultrapowers/harnesses/waves.js`, `GUARD`
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`, `GUARD`
+- Modify: `skills/ultrapowers/harnesses/waves.harness.json`
+- Test: `tests/test_review_dispatch_lean.py`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/harnesses/waves.js` (reviewer dispatch `reviewOpts` + `reviewPrompt` assembly; baked `GUARD`, `REVIEWER_PROMPT`, `IMPLEMENTER_PROMPT` consts)
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `GUARD`, `REVIEWER_PROMPT`, `IMPLEMENTER_PROMPT` BAKE blocks — the SOURCE of truth)
+Files-note — `skills/ultrapowers/harnesses/waves.harness.json` (bump `version`)
+Files-note — `tests/test_review_dispatch_lean.py` (new), `tests/test_no_prompt_drift.py` (existing pin)
 
 **Interfaces:**
 - Consumes: none
@@ -182,8 +187,11 @@ git commit -m "perf(review): drop reviewer worktree+bootstrap, dedupe implemente
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/sweep_worktrees.sh` (`is_locked` + its call site)
-- Test: `tests/test_sweep_worktrees.py` (existing characterization pin)
+- Modify: `skills/ultrapowers/scripts/sweep_worktrees.sh`
+- Test: `tests/test_sweep_worktrees.py`
+
+Files-note — `skills/ultrapowers/scripts/sweep_worktrees.sh` (`is_locked` + its call site)
+Files-note — `tests/test_sweep_worktrees.py` (existing characterization pin)
 
 **Interfaces:**
 - Consumes: none
@@ -249,8 +257,11 @@ git commit -m "perf(sweep): compute worktree lock-set in one pass (was O(N^2))"
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/swarm_watch.py` (`snapshot`)
-- Test: `tests/test_swarm_agents.py` (add a memoization spy test)
+- Modify: `skills/ultrapowers/scripts/swarm_watch.py`
+- Test: `tests/test_swarm_agents.py`
+
+Files-note — `skills/ultrapowers/scripts/swarm_watch.py` (`snapshot`)
+Files-note — `tests/test_swarm_agents.py` (add a memoization spy test)
 
 **Interfaces:**
 - Consumes: none
@@ -389,8 +400,11 @@ git commit -m "perf(swarm_watch): memoize per-branch git by (branch sha, integra
 **Depends-on:** none
 
 **Files:**
-- Modify: `hooks/session_start.sh` (the harness-install loop)
-- Test: `tests/test_session_hook.py` (existing install/emit/GC pins + an idempotency test)
+- Modify: `hooks/session_start.sh`
+- Test: `tests/test_session_hook.py`
+
+Files-note — `hooks/session_start.sh` (the harness-install loop)
+Files-note — `tests/test_session_hook.py` (existing install/emit/GC pins + an idempotency test)
 
 **Interfaces:**
 - Consumes: none
@@ -484,8 +498,11 @@ git commit -m "perf(session-hook): one python3 for manifests + cmp-guarded harne
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/run_acceptance.sh` (manifest field extraction)
-- Test: `tests/test_run_acceptance.py` (existing field-parse + malformed-manifest pins)
+- Modify: `skills/ultrapowers/scripts/run_acceptance.sh`
+- Test: `tests/test_run_acceptance.py`
+
+Files-note — `skills/ultrapowers/scripts/run_acceptance.sh` (manifest field extraction)
+Files-note — `tests/test_run_acceptance.py` (existing field-parse + malformed-manifest pins)
 
 **Interfaces:**
 - Consumes: none
@@ -569,8 +586,11 @@ git commit -m "perf(run_acceptance): read manifest fields in one python3 pass"
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/warm_cache.sh` (`clone_tree`; delete `cp_al_supported` + `_CP_AL`)
-- Test: `tests/test_warm_cache.py` (add a cross-device-fallback test)
+- Modify: `skills/ultrapowers/scripts/warm_cache.sh`
+- Test: `tests/test_warm_cache.py`
+
+Files-note — `skills/ultrapowers/scripts/warm_cache.sh` (`clone_tree`; delete `cp_al_supported` + `_CP_AL`)
+Files-note — `tests/test_warm_cache.py` (add a cross-device-fallback test)
 
 **Interfaces:**
 - Consumes: none
@@ -675,7 +695,9 @@ git commit -m "fix(warm_cache): hardlink try-then-fallback (fixes cross-device r
 **Type:** gate
 
 **Files:**
-- Test: `tests/` (the whole suite)
+- Test: `tests/`
+
+Files-note — `tests/` (the whole suite)
 
 Verification only — writes nothing. The committed pytest suite is the acceptance authority for this `suite`-disposition plan.
 

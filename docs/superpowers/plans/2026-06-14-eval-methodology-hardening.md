@@ -177,8 +177,10 @@ git commit -m "evals: add engine_version helper (plugin version + repo sha)"
 **Depends-on:** none
 
 **Files:**
-- Modify: `evals/scripts/report.py` (full rewrite below)
+- Modify: `evals/scripts/report.py`
 - Test: `evals/scripts/tests/test_report.py`
+
+Files-note — `evals/scripts/report.py` (full rewrite below)
 
 `report.py` must (a) add a `coverage (med)` column = median of `tasks_merged / tasks_planned`, (b) flag any cell with `⚠` when a run in it is suite-green yet coverage < 100%, and (c) partition every table by engine version (`plugin_version@shortsha`) so medians are never pooled across engine versions. Rows missing the new fields degrade gracefully (`engine` → `unknown`, coverage → `-`). The row-schema fields this reads are `tasks_planned`, `tasks_merged`, and `engine{plugin_version, sha}` (canonical shape in the plan preamble).
 
@@ -433,11 +435,14 @@ git commit -m "evals: report shows plan coverage + flags green-but-incomplete; p
 **Depends-on:** none
 
 **Files:**
-- Create: `evals/fixtures/flawed/` (recursive copy of the mixed fixture directory)
+- Create: `evals/fixtures/flawed/`
 - Create: `evals/fixtures/flawed/version.txt`
-- Modify: `evals/fixtures/mixed/plan.md` (Task 4 dependency)
+- Modify: `evals/fixtures/mixed/plan.md`
 - Create: `evals/fixtures/mixed/version.txt`
 - Test: `evals/scripts/tests/test_fixtures.py`
+
+Files-note — `evals/fixtures/flawed/` (recursive copy of the mixed fixture directory)
+Files-note — `evals/fixtures/mixed/plan.md` (Task 4 dependency)
 
 `flawed` is "mixed with the latent-dependency plan, preserved." Copy the whole `mixed/` directory FIRST (capturing today's buggy `plan.md`, plus `project/`, `reference/`, `acceptance/` unchanged), THEN fix `mixed/plan.md` so the two diverge by exactly the one corrected marker. The buggy plan declares Task 4 `**Depends-on:** none` while its spec requires `add()` to return a `schema.User` from Task 1; `mixed` must instead declare `**Depends-on:** 1`. Note: Task 1 also carries `**Depends-on:** none`, so scope the edit to the Task 4 block (heading included) — do not global-replace.
 
@@ -555,9 +560,12 @@ git commit -m "evals: promote buggy mixed plan to flawed fixture; fix mixed Task
 **Depends-on:** 1
 
 **Files:**
-- Modify: `evals/scripts/score_run.py` (import the engine_version helper from Task 1, add args, extract `assemble_row`)
-- Modify: `evals/scripts/autoscore.py` (extract pure `parse_counters`, derive planned/merged)
+- Modify: `evals/scripts/score_run.py`
+- Modify: `evals/scripts/autoscore.py`
 - Test: `evals/scripts/tests/test_scorers.py`
+
+Files-note — `evals/scripts/score_run.py` (import the engine_version helper from Task 1, add args, extract `assemble_row`)
+Files-note — `evals/scripts/autoscore.py` (extract pure `parse_counters`, derive planned/merged)
 
 Both scorers must persist the canonical new fields (`engine{plugin_version, sha}`, `tasks_planned`, `tasks_merged` — shape in the plan preamble). `score_run.py` reads the live engine via `current_engine()` from the `evals/scripts/engine_version.py` helper (created in Task 1) and gains `--tasks-planned`/`--tasks-merged` args (parallel to the existing `--fix-rounds`/`--blocked-tasks`); its row assembly is extracted into a pure `assemble_row(...)` so it can be tested without a git working tree. `autoscore.py`'s transcript-parsing is extracted into a pure `parse_counters(flat)` that additionally derives `planned` (total task statuses) and `merged` (statuses in `done`/`MERGED`), which it forwards to `score_run.py`.
 
@@ -772,9 +780,12 @@ git commit -m "evals: scorers stamp engine version + plan coverage (#26, #28)"
 **Depends-on:** 1
 
 **Files:**
-- Create: `evals/scripts/migrate_runs.py` (imports the engine_version helper from Task 1)
-- Modify: `evals/results/runs.jsonl` (data; rewritten by running the script)
+- Create: `evals/scripts/migrate_runs.py`
+- Modify: `evals/results/runs.jsonl`
 - Test: `evals/scripts/tests/test_migrate_runs.py`
+
+Files-note — `evals/scripts/migrate_runs.py` (imports the engine_version helper from Task 1)
+Files-note — `evals/results/runs.jsonl` (data; rewritten by running the script)
 
 One idempotent script owns the data file. It (1) relabels every legacy `mixed` row to `flawed` (those runs executed the buggy plan now living in the `flawed` fixture — relabel `run_id` prefix and `fixture`), then (2) backfills `engine` from each row's `scored_epoch` via `engine_at_epoch` (created in Task 1) and `tasks_planned`/`tasks_merged` from the per-fixture implementation-task count minus `blocked_tasks`. Re-running must be a no-op: already-`flawed` rows are not re-prefixed and present fields are untouched. The resolver is injectable so the test stays hermetic (no git).
 

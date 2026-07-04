@@ -20,7 +20,9 @@
 **Files:**
 - Modify: `skills/ultrapowers/references/reviewer-prompts.md`
 - Modify: `skills/ultrapowers/SKILL.md`
-- Test: `tests/test_report_runbook.py` (existing pins only — update if the suite flags changed phrasing)
+- Test: `tests/test_report_runbook.py`
+
+Files-note — `tests/test_report_runbook.py` (existing pins only — update if the suite flags changed phrasing)
 
 - [ ] **Step 1: Rework the Model tiers table**
 

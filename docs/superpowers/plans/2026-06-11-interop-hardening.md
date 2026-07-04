@@ -21,8 +21,11 @@
 - Create: `skills/ultrapowers/scripts/compile_plan.py`
 - Create: `tests/fixtures/unmarked-plan.md`
 - Create: `tests/test_compile_plan.py`
-- Modify: `skills/ultrapowers/references/dependency-analysis.md` (wire the compiler in; add `derived_knobs` to the transparency block; soften the final-report claim)
-- Modify: `tests/test_marker_compiler.py` (append three assertions)
+- Modify: `skills/ultrapowers/references/dependency-analysis.md`
+- Modify: `tests/test_marker_compiler.py`
+
+Files-note — `skills/ultrapowers/references/dependency-analysis.md` (wire the compiler in; add `derived_knobs` to the transparency block; soften the final-report claim)
+Files-note — `tests/test_marker_compiler.py` (append three assertions)
 
 Context: today the orchestrating agent derives waves by following prose — nondeterministic. Marked plans are mechanically parseable; this task makes them compile deterministically. The existing fixture `tests/fixtures/marked-plan.md` (5 tasks: 1,2 independent; 3 depends on 1; 4 is `gate`; 5 is `release`; task 2 has no `**Type:**` on purpose) becomes a real executable test.
 
@@ -470,8 +473,11 @@ git commit -m "feat: deterministic compile_plan.py — marked plans compile mech
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/workflow.js` (runTask wrapper, mergeWave catches, integration catch, headSha judgment, resume-aware setup error, tierOverrides key validation, budget check per chunk)
-- Modify: `tests/sim_workflow.mjs` (new scenarios)
+- Modify: `skills/ultrapowers/workflow.js`
+- Modify: `tests/sim_workflow.mjs`
+
+Files-note — `skills/ultrapowers/workflow.js` (runTask wrapper, mergeWave catches, integration catch, headSha judgment, resume-aware setup error, tierOverrides key validation, budget check per chunk)
+Files-note — `tests/sim_workflow.mjs` (new scenarios)
 
 Context: `workflow.js` has zero try/catch around `agent()` calls. `parallel()` is fail-fast, so one engine-side agent error in a 16-wide wave rejects the wave, the exception propagates, and a multi-hour headless run dies with **no structured report**. Coordination note: this file is also modified by the dependency-cascade and worktree-cleanup tasks — those declare `Depends-on:` on this task; make your changes self-contained and committed.
 
@@ -616,9 +622,13 @@ git commit -m "fix: contain agent errors (task/merge/integration), surface headS
 **Depends-on:** 2
 
 **Files:**
-- Modify: `skills/ultrapowers/workflow.js` (accept `args.edges`, skip transitive dependents of failed tasks)
-- Modify: `tests/sim_workflow.mjs` (one scenario)
-- Modify: `tests/test_canary.py` (one assertion)
+- Modify: `skills/ultrapowers/workflow.js`, `args.edges`
+- Modify: `tests/sim_workflow.mjs`
+- Modify: `tests/test_canary.py`
+
+Files-note — `skills/ultrapowers/workflow.js` (accept `args.edges`, skip transitive dependents of failed tasks)
+Files-note — `tests/sim_workflow.mjs` (one scenario)
+Files-note — `tests/test_canary.py` (one assertion)
 
 Context: today only failed **merges** cascade; a wave-N task that fails review leaves its wave mergeable, so wave-N+1 tasks whose `Depends-on:` prerequisite never landed still dispatch — running against a base missing the dependency. The orchestrating agent already records edges as prose strings; this adds a structured form.
 
@@ -699,9 +709,13 @@ git commit -m "feat: failed tasks block their transitive dependents via structur
 **Depends-on:** 3
 
 **Files:**
-- Modify: `skills/ultrapowers/references/wave-merge.md` (MERGE_PROMPT BAKE block + the "persists until the merge step consumes it" sentence + the test-detection ladder wording)
-- Modify: `skills/ultrapowers/workflow.js` (re-bake MERGE_PROMPT)
-- Modify: `tests/sim_workflow.mjs` (assert cleanup instruction reaches the merge agent)
+- Modify: `skills/ultrapowers/references/wave-merge.md`
+- Modify: `skills/ultrapowers/workflow.js`
+- Modify: `tests/sim_workflow.mjs`
+
+Files-note — `skills/ultrapowers/references/wave-merge.md` (MERGE_PROMPT BAKE block + the "persists until the merge step consumes it" sentence + the test-detection ladder wording)
+Files-note — `skills/ultrapowers/workflow.js` (re-bake MERGE_PROMPT)
+Files-note — `tests/sim_workflow.mjs` (assert cleanup instruction reaches the merge agent)
 
 Context: a real run leaves every task worktree (`.claude/worktrees/wf_*`) and branch (`worktree-wf_*`) behind — 16 leftovers observed. The merge agent is the right janitor: it knows which branches merged. **Re-bake discipline:** the MERGE_PROMPT lives canonically in `wave-merge.md` inside `<!-- BAKE:MERGE_PROMPT -->` markers and is duplicated as a `const` in `workflow.js`; `tests/test_no_prompt_drift.py` fails unless both copies match after normalization — edit the BAKE block first, then mirror the same text into the workflow constant.
 
@@ -756,7 +770,9 @@ git commit -m "feat: merge agent cleans up merged worktrees/branches; fix stale 
 
 **Files:**
 - Modify: `skills/ultrapowers/references/report-format.md`
-- Modify: `tests/test_report_runbook.py` (append one test)
+- Modify: `tests/test_report_runbook.py`
+
+Files-note — `tests/test_report_runbook.py` (append one test)
 
 Context: `workflow.js` returns `blockedWaves` and even comments that the return "matches references/report-format.md" — but the schema, field table, and presentation order omit it, so a Step-5 agent following the doc verbatim silently drops blocked waves from the human gate. The doc also promises `finishing-a-development-branch` will "clean up worktrees", which its provenance rules forbid.
 
@@ -821,7 +837,9 @@ git commit -m "fix: report contract carries blockedWaves; stop promising cleanup
 
 **Files:**
 - Modify: `skills/ultrapowers/references/reviewer-prompts.md`
-- Modify: `tests/test_no_prompt_drift.py` (cover the two JSON schemas)
+- Modify: `tests/test_no_prompt_drift.py`
+
+Files-note — `tests/test_no_prompt_drift.py` (cover the two JSON schemas)
 
 Context: the doc justifies the merged single review pass by citing "v5.0.6's direction", but installed superpowers 5.1.0 reasserts two-stage review (spec first, then quality — with red flags against merging them). The divergence is fine; the claim of fidelity is not. Separately, the implementer/reviewer JSON schemas in this doc have no `<!-- BAKE -->` markers, so the drift test never checks them against `workflow.js` — an enum edit in either copy passes CI. Note: BAKE markers must wrap text that ALREADY matches the workflow constants — wrap, don't rewrite, the schema blocks.
 
@@ -888,7 +906,9 @@ git commit -m "docs: state the review-topology divergence from 5.1.0 honestly; B
 
 **Files:**
 - Modify: `skills/ultrapowers/references/plan-markers.md`
-- Modify: `tests/test_marker_contract.py` (append one test)
+- Modify: `tests/test_marker_contract.py`
+
+Files-note — `tests/test_marker_contract.py` (append one test)
 
 Context: we advertise "sequential executors ignore the markers" as graceful degradation, but for `gate` and `release` the ignoring changes semantics: ultrapowers never executes them; subagent-driven-development runs them as ordinary tasks (push included — acceptable there because a human approves each task). The same document prescribing different behavior per executor must say so explicitly.
 
@@ -945,7 +965,9 @@ git commit -m "docs: plan-markers states the executor-variance semantics for gat
 
 **Files:**
 - Modify: `skills/ultraplan/SKILL.md`
-- Modify: `tests/test_ultraplan_skill.py` (append one test)
+- Modify: `tests/test_ultraplan_skill.py`
+
+Files-note — `tests/test_ultraplan_skill.py` (append one test)
 
 Context: writing-plans mandates a header on every plan — `> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans…` — and its Execution Handoff offers only those two options. Combined with using-superpowers' "you MUST use the skill" rule, that header steers any orchestrating agent away from ultrapowers. Ultraplan, as the authoring overlay, must rewrite the header and add the third option.
 
@@ -1197,8 +1219,11 @@ git commit -m "test: upstream-drift tripwires against the installed superpowers 
 **Depends-on:** 1, 3, 9
 
 **Files:**
-- Modify: `skills/ultrapowers/SKILL.md` (sole owner of this file in this plan)
-- Modify: `tests/test_orchestrator_markers.py` (append one test)
+- Modify: `skills/ultrapowers/SKILL.md`
+- Modify: `tests/test_orchestrator_markers.py`
+
+Files-note — `skills/ultrapowers/SKILL.md` (sole owner of this file in this plan)
+Files-note — `tests/test_orchestrator_markers.py` (append one test)
 
 Context: this task threads every new capability through the orchestrator's steps. It depends on the compiler (Step 2 invokes `scripts/compile_plan.py` — the validator requires that file to exist), structured edges (Step 4b passes them), and the probe (Step 4 launches it).
 
@@ -1313,8 +1338,10 @@ git commit -m "feat: orchestrator wires compiler, probe, edges, attestation, and
 
 **Files:**
 - Modify: `.gitignore`
-- Modify: `.claude-plugin/plugin.json` (keywords only)
+- Modify: `.claude-plugin/plugin.json`
 - Modify: `skills/ultrapowers/references/workflow-template.md`
+
+Files-note — `.claude-plugin/plugin.json` (keywords only)
 
 - [ ] **Step 1: `.gitignore`.** Append:
 
@@ -1366,8 +1393,11 @@ git commit -m "chore: gitignore run artifacts, drop ultracode keyword, fix workf
 **Depends-on:** none
 
 **Files:**
-- Modify: `.claude-plugin/plugin.json` (version)
-- Modify: `.claude-plugin/marketplace.json` (plugins[0].version)
+- Modify: `.claude-plugin/plugin.json`
+- Modify: `.claude-plugin/marketplace.json`
+
+Files-note — `.claude-plugin/plugin.json` (version)
+Files-note — `.claude-plugin/marketplace.json` (plugins[0].version)
 
 Run after the branch merges — under ultrapowers execution this rides the post-merge runbook.
 

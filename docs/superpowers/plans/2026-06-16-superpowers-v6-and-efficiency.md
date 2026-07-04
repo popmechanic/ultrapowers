@@ -207,8 +207,11 @@ git commit -m "test(fixtures): vendor pinned superpowers v6 handoff snapshot (08
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/compile_plan.py` (a `## Global Constraints` section parser, a per-task `**Interfaces:**` block parser, the `**Files:**` loop's stop-at-Interfaces exemption, and the two new fields in the output payloads)
-- Modify: `tests/test_compile_plan.py` (three new failing-first tests appended — labeled Modify, not Test, so the file-overlap inference agrees with Task 7's `Depends-on: 2` instead of inferring a reversed read-after-write edge)
+- Modify: `skills/ultrapowers/scripts/compile_plan.py`
+- Modify: `tests/test_compile_plan.py`, `Depends-on: 2`
+
+Files-note — `skills/ultrapowers/scripts/compile_plan.py` (a `## Global Constraints` section parser, a per-task `**Interfaces:**` block parser, the `**Files:**` loop's stop-at-Interfaces exemption, and the two new fields in the output payloads)
+Files-note — `tests/test_compile_plan.py` (three new failing-first tests appended — labeled Modify, not Test, so the file-overlap inference agrees with Task 7's `Depends-on: 2` instead of inferring a reversed read-after-write edge)
 
 This task implements spec §1.2. The compiler is ultrapowers' sole plan parser, so the two v6 blocks are read here or nowhere. Both blocks are **optional**: a v5 plan (no `## Global Constraints`, no `**Interfaces:**`) must still compile clean, with `globalConstraints: ""` and every task's `interfaces` defaulting to `{"consumes": [], "produces": []}` — absence is the v5 case and must never warn. The output contract the engine track consumes is fixed: a top-level `globalConstraints` string and a per-task `interfaces` object `{"consumes": [...], "produces": [...]}`, present in the per-task objects (`tasks[]`), the light `launch_waves[]` objects, and the `--emit-launch` launch-file `tasks[]` (the three places `waves.js` reads task/plan data), plus `globalConstraints` at the top level of both the compiled output and the launch payload.
 
@@ -550,8 +553,11 @@ git commit -m "feat(compile): parse v6 Global Constraints + per-task Interfaces 
 **Depends-on:** none
 
 **Files:**
-- Create: `skills/ultrapowers/scripts/review-package` (bash, `chmod +x`)
-- Test: `tests/test_review_package.py` (new pytest, real-temp-repo style)
+- Create: `skills/ultrapowers/scripts/review-package`
+- Test: `tests/test_review_package.py`
+
+Files-note — `skills/ultrapowers/scripts/review-package` (bash, `chmod +x`)
+Files-note — `tests/test_review_package.py` (new pytest, real-temp-repo style)
 
 This task implements spec §2.1 — adopt v6's `review-package` (commits + `git diff --stat` + `git diff -U10` → one file the reviewer reads in a single call) but adapt its storage to ultrapowers' reality. v6 writes the packet to a **per-worktree** git path (`git rev-parse --git-path sdd`); in ultrapowers the implementer and reviewer run in **different linked worktrees**, so a per-worktree path is invisible to the reviewer. The adaptation writes to the **shared common git dir** (`git rev-parse --git-common-dir`), which resolves to the same location for every linked worktree of the repo, under `ultra/review-<shortbase>..<shorthead>.diff`.
 
@@ -747,8 +753,11 @@ git commit -m "feat: review-package writes the pre-baked diff to the shared comm
 **Depends-on:** none
 
 **Files:**
-- Create: `skills/ultrapowers/scripts/warm_cache.sh` (bash, `chmod +x`)
-- Test: `tests/test_warm_cache.py` (new pytest, subprocess-against-a-real-bash-script style)
+- Create: `skills/ultrapowers/scripts/warm_cache.sh`
+- Test: `tests/test_warm_cache.py`
+
+Files-note — `skills/ultrapowers/scripts/warm_cache.sh` (bash, `chmod +x`)
+Files-note — `tests/test_warm_cache.py` (new pytest, subprocess-against-a-real-bash-script style)
 
 This task implements spec §2.3 sub-lever **(a)** only — warm-cache the dependency install. (The §2.3(b) reviewer suite-run cut is Task 10.) Today every fresh worktree re-runs `bootstrapCmd` (`pip install -e .`, `bun install`, …) per worktree, per task, per fix-round. This script lets the engine bootstrap a dependency tree **once** into a warm cache keyed by the lockfile hash, then hardlink-clone it into each implementer's worktree near-instantly. Task 12 wires the engine's baked bootstrap step to this exact CLI.
 
@@ -1129,9 +1138,13 @@ git commit -m "docs(README): fix workflow.js path drift, drop stale 5.1.0 claim,
 **Depends-on:** none
 
 **Files:**
-- Create: `evals/scripts/run-micro.py` (the one-API-call-per-sample micro-test loop)
-- Modify: `evals/README.md` (append the micro-test loop, re-freeze protocol, and cost-attribution table sections)
-- Test: `tests/test_run_micro.py` (offline — exercises the pure scorer + per-variant aggregation, never a live API call)
+- Create: `evals/scripts/run-micro.py`
+- Modify: `evals/README.md`
+- Test: `tests/test_run_micro.py`
+
+Files-note — `evals/scripts/run-micro.py` (the one-API-call-per-sample micro-test loop)
+Files-note — `evals/README.md` (append the micro-test loop, re-freeze protocol, and cost-attribution table sections)
+Files-note — `tests/test_run_micro.py` (offline — exercises the pure scorer + per-variant aggregation, never a live API call)
 
 This task implements spec §2.4 (the micro-test harness) and §2.5 (the measurement protocol). It is the cheap prompt-phrasing instrument used *before* spending on full runs: one API call per sample, programmatic scoring, an always-present no-guidance control, and per-variant mean + variance. The model call is isolated behind an injectable `call_model` so the unit test runs the scorer and aggregation offline.
 
@@ -1487,10 +1500,15 @@ git commit -m "feat(evals): micro-test loop + re-freeze and cost-attribution pro
 **Depends-on:** 2
 
 **Files:**
-- Modify: `skills/ultrapowers/scripts/compile_plan.py` (a new `interface` edge tier in `build_edges`, before layering, plus the undeclared-dependency finding)
-- Modify: `tests/test_compile_plan.py` (new failing-first tests)
-- Modify: `skills/ultrapowers/references/dependency-analysis.md` (document Interfaces-as-edge-source + the undeclared-dependency finding)
-- Modify: `evals/fixtures/flawed/plan.md` (add `**Interfaces:**` to Tasks 1 and 4) and `evals/fixtures/flawed/version.txt` (bump the version note)
+- Modify: `skills/ultrapowers/scripts/compile_plan.py`
+- Modify: `tests/test_compile_plan.py`
+- Modify: `skills/ultrapowers/references/dependency-analysis.md`
+- Modify: `evals/fixtures/flawed/plan.md`, `evals/fixtures/flawed/version.txt`
+
+Files-note — `skills/ultrapowers/scripts/compile_plan.py` (a new `interface` edge tier in `build_edges`, before layering, plus the undeclared-dependency finding)
+Files-note — `tests/test_compile_plan.py` (new failing-first tests)
+Files-note — `skills/ultrapowers/references/dependency-analysis.md` (document Interfaces-as-edge-source + the undeclared-dependency finding)
+Files-note — `evals/fixtures/flawed/plan.md` (add `**Interfaces:**` to Tasks 1 and 4) and `evals/fixtures/flawed/version.txt` (bump the version note)
 
 This task implements spec §1.3 — *judgment call #1*. It builds on Task 2's `task.interfaces` field (hence `Depends-on: 2`). When Task B `Consumes` an entry that exactly matches an entry Task A `Produces`, B depends on A; add a producer→consumer edge (`add(A, B, "interface")`, i.e. `{"from": A, "to": B}`, the codebase's "from = prerequisite" convention) into the edge set **before** layering, so the Interfaces edge joins file-overlap / `Depends-on` / text-dep edges in the Kahn layering.
 
@@ -1793,8 +1811,11 @@ git commit -m "feat(compile): Interfaces Consumes/Produces edges + undeclared-de
 **Depends-on:** 1
 
 **Files:**
-- Modify: `tests/test_superpowers_compat.py` (the source-of-truth path, the rebake/token assertions, the attestation-version regex)
-- Modify: `skills/ultrapowers/SKILL.md` (the attestation line + a short note naming the new v6 plan signals)
+- Modify: `tests/test_superpowers_compat.py`
+- Modify: `skills/ultrapowers/SKILL.md`
+
+Files-note — `tests/test_superpowers_compat.py` (the source-of-truth path, the rebake/token assertions, the attestation-version regex)
+Files-note — `skills/ultrapowers/SKILL.md` (the attestation line + a short note naming the new v6 plan signals)
 
 This task implements spec §1.1's re-attestation half. Task 1 froze the pinned v6 handoff surface into `tests/fixtures/superpowers-v6/`; this task points the tripwire at that snapshot and updates what it attests against. v6 deleted `spec-reviewer-prompt.md` and `code-quality-reviewer-prompt.md` (merged into one `task-reviewer-prompt.md`) and added `## Global Constraints` and `**Interfaces:**`. The parser stays additive-tolerant — a v5 plan still compiles — so this task changes only what the suite ATTESTS.
 
@@ -2032,9 +2053,13 @@ git commit -m "test: re-attest compat tripwire to vendored Superpowers v6 snapsh
 **Depends-on:** 2
 
 **Files:**
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
-- Modify: `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array, the `REVIEWER_PROMPT` array, a `globalConstraints` arg read, a `globalConstraintsBlock` / `interfacesLine(task)` helper, and the three dispatch sites ~540, ~570, ~641)
-- Test: `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`
+- Modify: `skills/ultrapowers/harnesses/waves.js`
+- Test: `tests/sim_workflow.mjs`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
+Files-note — `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array, the `REVIEWER_PROMPT` array, a `globalConstraints` arg read, a `globalConstraintsBlock` / `interfacesLine(task)` helper, and the three dispatch sites ~540, ~570, ~641)
+Files-note — `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
 
 This task implements spec §1.4 (forward Global Constraints + Interfaces into the baked prompts) and §2.4's terse-contract clause. The compiler (Task 2) emits top-level `globalConstraints` and per-task `interfaces: {consumes, produces}`; this task consumes `args.globalConstraints` and `task.interfaces` and threads them into the implementer and reviewer dispatches.
 
@@ -2268,9 +2293,13 @@ git commit -m "feat: forward Global Constraints + Interfaces into baked prompts;
 **Depends-on:** 9, 3
 
 **Files:**
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
-- Modify: `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array, the `REVIEWER_PROMPT` array)
-- Test: `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`
+- Modify: `skills/ultrapowers/harnesses/waves.js`
+- Test: `tests/sim_workflow.mjs`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
+Files-note — `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array, the `REVIEWER_PROMPT` array)
+Files-note — `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
 
 This task implements spec §2.1 (pre-baked review packets) and §2.3 sub-lever (b) (cut the reviewer's full-suite run). It consumes the review-package script from Task 3: `bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> [OUTFILE]` writes the packet to the shared common git dir and ECHOES the output path as its last stdout line. The implementer's final step generates the packet and reports the echoed path; the reviewer reads that packet instead of running `git checkout --detach`+`git diff`, with a guarded fallback to live git when the packet is missing or its HEAD differs. Separately, the reviewer's full-suite run (current step 8) is removed: the reviewer reads, it does not re-test.
 
@@ -2426,11 +2455,17 @@ git commit -m "feat: pre-baked review packets; cut the reviewer suite run (spec 
 **Depends-on:** 10
 
 **Files:**
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:REVIEWER_PROMPT -->` and `<!-- BAKE:REVIEWER_SCHEMA -->` blocks)
-- Modify: `skills/ultrapowers/references/wave-merge.md` (the `<!-- BAKE:COMPLETENESS_PROMPT -->` block)
-- Modify: `skills/ultrapowers/references/report-format.md` (the reviewer-verdict / `completenessFindings` documentation)
-- Modify: `skills/ultrapowers/harnesses/waves.js` (the `REVIEWER_SCHEMA` const, the `REVIEWER_PROMPT` array, the per-task issue-collection loop, the `completenessPrompt` function, and the completeness dispatch)
-- Test: `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`
+- Modify: `skills/ultrapowers/references/wave-merge.md`
+- Modify: `skills/ultrapowers/references/report-format.md`
+- Modify: `skills/ultrapowers/harnesses/waves.js`
+- Test: `tests/sim_workflow.mjs`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:REVIEWER_PROMPT -->` and `<!-- BAKE:REVIEWER_SCHEMA -->` blocks)
+Files-note — `skills/ultrapowers/references/wave-merge.md` (the `<!-- BAKE:COMPLETENESS_PROMPT -->` block)
+Files-note — `skills/ultrapowers/references/report-format.md` (the reviewer-verdict / `completenessFindings` documentation)
+Files-note — `skills/ultrapowers/harnesses/waves.js` (the `REVIEWER_SCHEMA` const, the `REVIEWER_PROMPT` array, the per-task issue-collection loop, the `completenessPrompt` function, and the completeness dispatch)
+Files-note — `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
 
 This task implements spec §2.2. The per-task reviewer, being worktree-isolated, structurally cannot judge requirements that span tasks or live in unchanged code; rather than crawl the repo, it LISTS those requirements and the engine ROUTES them to the completeness critic, which runs at opus on the integrated tree with the plan in hand. Add `cannotVerify: [{requirement, why}]` to the **reviewer verdict schema** (`REVIEWER_SCHEMA` — the schema the per-task reviewer returns; NOT `REVIEW_SCHEMA`, which is the completeness critic's return schema); the reviewer fills it; the engine collects it across a task's reviewers and threads it into the completeness-critic prompt as a checklist; `report-format.md` documents both.
 
@@ -2687,9 +2722,13 @@ git commit -m "feat: cannot-verify-from-diff escalation to the completeness crit
 **Depends-on:** 11, 4
 
 **Files:**
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` block)
-- Modify: `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array and the `bootstrapLine` assembly)
-- Test: `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`
+- Modify: `skills/ultrapowers/harnesses/waves.js`
+- Test: `tests/sim_workflow.mjs`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:IMPLEMENTER_PROMPT -->` block)
+Files-note — `skills/ultrapowers/harnesses/waves.js` (the `IMPLEMENTER_PROMPT` array and the `bootstrapLine` assembly)
+Files-note — `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
 
 This task implements spec §2.3 sub-lever (a). It consumes the warm_cache script from Task 4: `bash skills/ultrapowers/scripts/warm_cache.sh restore <lockfile> <target_dir>` hardlink-clones cached deps into the target (exit 0 = hit; exit 3 = miss), and `... populate <lockfile> <source_dir>` warms the cache after a real install. The implementer's bootstrap step tries `restore` first and, on exit 3, falls through to the real `bootstrapCmd`; after a real install it runs `populate`. Correctness never depends on the cache. This is threaded into the `bootstrapLine` const (the per-worktree setup line only the fresh, worktree-isolated roles receive).
 
@@ -2980,4 +3019,3 @@ Expectations:
 - No `release`/`manual` work in this change — it is all worktree-pure diffs plus one `gate`. ✓
 - The plan carries an `**Acceptance:** suite` line. ✓
 - Worktree-purity: within each wave the write sets are disjoint (Wave 1: T1/T2/T3/T4/T5/T6 — fixtures / compile_plan.py / review-package / warm_cache.sh / README / evals; Wave 2: T7 / T8 / T9 — compile_plan.py / compat+SKILL.md / engine-prompts; Wave 3: T10 / T13 — engine-prompts / ultraplan; Wave 4: T11 alone; Wave 5: T12 alone). The engine chain (9→10→11→12) serializes on the three shared files. ✓
-

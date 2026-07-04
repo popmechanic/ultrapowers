@@ -279,7 +279,9 @@ git commit -m "fix: budget exhaustion defers merge/reconcile/integration instead
 
 **Files:**
 - Modify: `skills/ultrapowers/workflow.js`
-- Test: `tests/sim_workflow.mjs` (no new scenarios — the whole existing suite is the regression net)
+- Test: `tests/sim_workflow.mjs`
+
+Files-note — `tests/sim_workflow.mjs` (no new scenarios — the whole existing suite is the regression net)
 
 - [ ] **Step 1: Remove the dead wave-level `noteFailures()`**
 

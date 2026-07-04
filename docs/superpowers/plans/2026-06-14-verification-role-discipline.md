@@ -41,10 +41,15 @@ python3 -m pytest tests/ -q
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/references/wave-merge.md` (the `<!-- BAKE:COMPLETENESS_PROMPT -->` block)
-- Modify: `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:GUARD -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
-- Modify: `skills/ultrapowers/harnesses/waves.js` (the `GUARD` const, `REVIEWER_PROMPT` array, `COMPLETENESS_PROMPT` const + its dispatch site)
-- Test: `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
+- Modify: `skills/ultrapowers/references/wave-merge.md`
+- Modify: `skills/ultrapowers/references/reviewer-prompts.md`
+- Modify: `skills/ultrapowers/harnesses/waves.js`, `GUARD`
+- Test: `tests/sim_workflow.mjs`, `tests/test_no_prompt_drift.py`
+
+Files-note — `skills/ultrapowers/references/wave-merge.md` (the `<!-- BAKE:COMPLETENESS_PROMPT -->` block)
+Files-note — `skills/ultrapowers/references/reviewer-prompts.md` (the `<!-- BAKE:GUARD -->` and `<!-- BAKE:REVIEWER_PROMPT -->` blocks)
+Files-note — `skills/ultrapowers/harnesses/waves.js` (the `GUARD` const, `REVIEWER_PROMPT` array, `COMPLETENESS_PROMPT` const + its dispatch site)
+Files-note — `tests/sim_workflow.mjs` (new scenario), `tests/test_no_prompt_drift.py` (existing, must stay green)
 
 This task implements spec sections #1 (critic on a known, verified tree), #2 (review roles read-only), and #3 (the GUARD names the linked-worktree / foreign-primary-checkout hazard). It is verified by a new self-asserting simulation scenario and by the existing anti-drift guard.
 
@@ -269,7 +274,9 @@ git commit -m "fix: pin completeness critic to verified merge HEAD; review roles
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/SKILL.md` (Step 5, the pre-merge gate)
+- Modify: `skills/ultrapowers/SKILL.md`
+
+Files-note — `skills/ultrapowers/SKILL.md` (Step 5, the pre-merge gate)
 
 This task implements spec section #4 — the deterministic guard the misbehaving role cannot fake. It is orchestrator prose executed by the main session at the gate (the engine has no shell). Per the spec's §Testing, this is exercised by inspection at the next real run, not a unit test; its verification here is that `validate_skill.py` and `pytest tests/` stay green and the prose matches the spec. No source/baked re-bake is involved (SKILL.md is not baked into `waves.js`).
 
@@ -312,7 +319,9 @@ git commit -m "fix: gate-side clean-checkout + integration-HEAD assertion before
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultrapowers/references/report-format.md` (the `completenessFindings` field row and the Approve presentation bullet)
+- Modify: `skills/ultrapowers/references/report-format.md`
+
+Files-note — `skills/ultrapowers/references/report-format.md` (the `completenessFindings` field row and the Approve presentation bullet)
 
 This task implements spec section #5 — the report doc records the critic's `BLOCKED`-on-wrong-tree path and the gate's clean-checkout precondition. It documents designed behavior (drawn from this plan/spec, not from Task 1's or Task 2's symbols), so it carries no dependency on them and runs in parallel. Verification is `validate_skill.py` + `pytest tests/` staying green and review against the spec.
 

@@ -820,8 +820,10 @@ git commit -m "feat(viewer): SwarmZoom — DOM-free macro/meso/micro zoom state 
 
 **Files:**
 - Modify: `skills/ultrapowers/scripts/render_viewer.py`
-- Modify: `skills/ultrapowers/viewer/swarm_template.html` (add two placeholders only — the body rewrite is Tasks 6 & 7)
+- Modify: `skills/ultrapowers/viewer/swarm_template.html`
 - Modify: `tests/test_viewer.py`
+
+Files-note — `skills/ultrapowers/viewer/swarm_template.html` (add two placeholders only — the body rewrite is Tasks 6 & 7)
 
 **Interfaces:**
 - Consumes: the committed `skills/ultrapowers/viewer/vendor/d3-zoom.iife.min.js` (pre-flight) and `skills/ultrapowers/viewer/swarm_zoom.js` (Task 4); the existing inline machinery (`D3DAG_PLACEHOLDER`, `SWARM_LAYOUT_PLACEHOLDER`, the mandatory-placeholder check loop in `render`).

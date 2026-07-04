@@ -254,7 +254,9 @@ git commit -m "refactor(ultrapowers): extract reusable audit() from audit_run.py
 - Create: `skills/ultralearn/scripts/harvest_runs.py`
 - Modify: `.gitignore`
 - Test: `tests/test_harvest_runs.py`
-- Create: `tests/fixtures/ultralearn/projects/` (synthetic transcripts, created in the test steps)
+- Create: `tests/fixtures/ultralearn/projects/`
+
+Files-note — `tests/fixtures/ultralearn/projects/` (synthetic transcripts, created in the test steps)
 
 **Interfaces:**
 - Consumes: `audit(transcript_dir) -> dict` (from Task 2, importable from `skills/ultrapowers/scripts/audit_run.py`).

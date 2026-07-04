@@ -29,8 +29,11 @@
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultraplan/SKILL.md` (add a new section + a self-review item)
-- Test: `tests/test_ultraplan_skill.py` (add one test)
+- Modify: `skills/ultraplan/SKILL.md`
+- Test: `tests/test_ultraplan_skill.py`
+
+Files-note — `skills/ultraplan/SKILL.md` (add a new section + a self-review item)
+Files-note — `tests/test_ultraplan_skill.py` (add one test)
 
 **Interfaces:**
 - Consumes: none
@@ -148,8 +151,11 @@ git commit -m "feat(ultraplan): shape the decomposition before annotating"
 **Depends-on:** none
 
 **Files:**
-- Modify: `evals/scripts/run-micro.py` (add helpers + two scorers; tweak `compose_prompt`)
-- Test: `tests/test_run_micro.py` (add tests)
+- Modify: `evals/scripts/run-micro.py`
+- Test: `tests/test_run_micro.py`
+
+Files-note — `evals/scripts/run-micro.py` (add helpers + two scorers; tweak `compose_prompt`)
+Files-note — `tests/test_run_micro.py` (add tests)
 
 **Interfaces:**
 - Consumes: none
