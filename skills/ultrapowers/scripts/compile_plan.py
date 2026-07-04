@@ -715,46 +715,44 @@ def _desc_field_label(creator_paths, desc_text):
 PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})
 
 
-# Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
-# entry is matched by EXACT token equality — no substring/fuzzy match. Normalize
-# to the leading symbol token: strip a leading bullet/label residue and backticks,
-# then take the identifier up to the first '(' , whitespace, or ':' so
-# "`User` dataclass (id: int)" and "`User`" both reduce to "User", and
-# "validate_payload(payload) -> list[str]" reduces to "validate_payload".
-# A leading token that is a placeholder (bare or followed by trailing prose,
-# e.g. "nothing (test-data-only change)" or "none — standalone") normalizes
-# to "" so placeholder Consumes/Produces lines can never pair into an edge.
+# Interface-token normalization (v6, spec 2026-06-16 §1.3; hardened by the #85
+# redirect). A Consumes/Produces entry is matched by EXACT token equality — no
+# substring/fuzzy match — and ONLY a symbol-shaped lead yields a token. A prose
+# contract description (this repo's established house style for Interfaces) tokens
+# to "" and can NEVER pair into an interface edge. The 2026-07-03 live incident
+# motivating this: a leading bare word 'the' tokenized identically across two
+# prose values, pairing 'Produces: the baked reviewer prompt …' with 'Consumes:
+# the reviewer-prompt source layout …' into a spurious edge that over-serialized
+# a real run. A symbol lead is either:
+#   * a backticked symbol — the FIRST backtick span is the symbol, and any prose
+#     tail after the closing backtick is allowed ("`User` dataclass (id, name)"
+#     and "`User`" both reduce to "User", "`validate(p)`" to "validate"); OR
+#   * a bare identifier standing alone, or immediately followed by a '(' signature,
+#     '->', or '=' ("validate_payload(payload) -> list[str]" -> "validate_payload",
+#     "User" -> "User").
+# A bare word followed by more prose words ("every task object …", the "compiler"
+# in "compiler `**Review:**` marker semantics") is documentation, not a symbol —
+# it tokens to "". Placeholder normalization stays on top: a leading token in
+# PLACEHOLDER_TOKENS (bare or with trailing prose, "nothing (test-data-only
+# change)") normalizes to "" so placeholder Consumes/Produces never pair.
+_BARE_SYMBOL_LEAD = re.compile(r"([A-Za-z_][\w.\-]*)\s*(?:$|\(|->|=)")
+
+
 def _interface_token(entry):
-    s = entry.strip().strip("`").strip()
+    s = entry.strip()
     if not s:
         return ""
-    token = re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
+    if s.startswith("`"):
+        m = re.match(r"`([^`]+)`", s)
+        if not m:
+            return ""  # a lone opening backtick with no close — not a symbol
+        token = re.split(r"[(\s:]", m.group(1), 1)[0].strip("`").strip()
+    else:
+        m = _BARE_SYMBOL_LEAD.match(s)
+        if not m:
+            return ""  # a bare word trailed by more prose — documentation
+        token = m.group(1)
     return "" if token.lower() in PLACEHOLDER_TOKENS else token
-
-
-# A symbol list is backticked or bare identifier tokens (optionally with a
-# signature tail), comma-separated. Sentences are authoring mistakes that the
-# interface matcher would silently mis-tokenize (taking only the first word) —
-# surface them so authors fix the Interfaces line instead of it silently
-# failing to pair with anything.
-_SYMBOL_OK = re.compile(r"^`?[A-Za-z_][\w.\-]*`?(\s*\(.*)?(\s*->.*)?$")
-
-
-def _symbol_list_violations(entries):
-    """Human-readable violations for non-placeholder, non-symbol interface
-    values. Empty list == every entry is either a placeholder or a proper
-    symbol list. Used by the `--check` CLI mode (a later task)."""
-    out = []
-    for entry in entries:
-        s = entry.strip()
-        if not s or _interface_token(s) == "":
-            continue  # empty or placeholder — fine
-        parts = [p.strip() for p in s.split(",")]
-        if not all(_SYMBOL_OK.match(p) for p in parts if p):
-            out.append(
-                "interface value is not a symbol list (backticked or bare "
-                "identifiers, comma-separated): %r" % s)
-    return out
 
 
 # Strict Files grammar (#85). A Files bullet must be a bare canonical label
@@ -836,11 +834,16 @@ def collect_violations(plan_path):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
     pass instead of exiting at the first: Files grammar (_files_violations,
-    which also covers the catch-all-bullet rule), interface symbol-list
-    grammar (_symbol_list_violations), and marker-value validation (currently
-    **Review:** — parse_task raises immediately in the normal compile path;
-    here raise_on_marker_error=False makes it accumulate per task instead of
-    aborting on the first task with a bad marker).
+    which also covers the catch-all-bullet rule) and marker-value validation
+    (currently **Review:** — parse_task raises immediately in the normal compile
+    path; here raise_on_marker_error=False makes it accumulate per task instead
+    of aborting on the first task with a bad marker).
+
+    Interface values are NOT grammar-checked: a prose contract description is
+    valid documentation and this repo's house style (#85 redirect). The
+    tokenizer (_interface_token) makes prose structurally inert — a bare-word
+    lead never tokens, so a prose Interfaces line can never pair into an edge —
+    so there is nothing to flag.
 
     A malformed heading, zero task headings, or duplicate task ids abort
     early as a single violation — the rest of the parse cannot proceed
@@ -871,9 +874,6 @@ def collect_violations(plan_path):
         violations.extend(t.get("marker_violations", []))
     for t in tasks:
         violations.extend(_files_violations(t))
-    for t in tasks:
-        entries = t["interfaces"]["consumes"] + t["interfaces"]["produces"]
-        violations.extend(_symbol_list_violations(entries))
     return violations
 
 

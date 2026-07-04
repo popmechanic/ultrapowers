@@ -1978,13 +1978,64 @@ def test_placeholder_token_set():
     assert _interface_token("validate_payload(payload) -> list[str]") == "validate_payload"
 
 
-def test_symbol_list_violations_flags_sentences():
-    from compile_plan import _symbol_list_violations
-    bad = _symbol_list_violations(
-        ["the launch file gains a review key that the engine consumes later"])
-    assert len(bad) == 1 and "symbol" in bad[0].lower()
-    assert _symbol_list_violations(["`User`", "validate_payload(p) -> list"]) == []
-    assert _symbol_list_violations(["nothing (placeholder)"]) == []
+def test_symbol_lead_with_prose_tail_still_tokens():
+    # The tokenizer hardening (#85 redirect): a SYMBOL lead tokens (a backticked
+    # symbol, any prose tail allowed; or a bare identifier alone / immediately
+    # followed by a `(`-signature, `->`, or `=`), but a bare word followed by
+    # more prose words is documentation and can never pair.
+    from compile_plan import _interface_token
+    assert _interface_token("`User` dataclass (id, name)") == "User"
+    assert _interface_token("compiler `**Review:**` marker semantics") == ""
+    assert _interface_token("validate_payload(payload) -> list[str]") == "validate_payload"
+    assert _interface_token("every task object in the file carries a key") == ""
+
+
+PROSE_INTERFACE_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Bake the reviewer prompt
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `harnesses/waves.js`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: the baked reviewer prompt instructs regenerate-and-byte-compare
+
+- [ ] **Step 1: do it**
+
+### Task 2: Rework the reviewer source
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `references/reviewer-prompts.md`
+
+**Interfaces:**
+- Consumes: the reviewer-prompt source layout
+- Produces: `helper() -> str`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_prose_interfaces_never_pair():
+    # 2026-07-03 live incident (this cycle's redirect round): a leading bare
+    # word 'the' tokenized identically across two prose Interfaces values, so
+    # 'Produces: the baked reviewer prompt …' paired 'Consumes: the reviewer-
+    # prompt source layout …' into a spurious interface edge that over-serialized
+    # a real run. Prose contract descriptions are this repo's house style; they
+    # must be structurally inert — zero interface edges, zero undeclared-
+    # dependency findings.
+    out = compile_plan_text(PROSE_INTERFACE_PLAN)
+    assert [e for e in out["dag_edges"] if e.get("why") == "interface"] == []
+    assert [c for c in out["marker_conflicts"]
+            if c.get("kind") == "undeclared-dependency"] == []
 
 
 # ---------------------------------------------------------------------------

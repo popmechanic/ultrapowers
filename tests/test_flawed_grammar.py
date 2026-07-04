@@ -10,7 +10,6 @@ CORPUS = Path("evals/fixtures/flawed/grammar")
 
 EXPECT = {
     "annotated-files.md": "annotation",
-    "prose-placeholder.md": "symbol",
     "glob.md": "enumerate",
     "unknown-label.md": "unknown files label",
     "double-catch-all.md": "catch-all",
