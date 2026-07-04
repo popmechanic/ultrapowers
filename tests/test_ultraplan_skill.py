@@ -122,7 +122,12 @@ def test_contract_documents_the_files_grammar():
     assert "Create" in text and "Modify" in text and "Test" in text
     assert "catch-all" in text
     assert "glob" in text.lower()
-    assert "annotation" in text.lower()
+    # Pin the annotation bail to the Files-grammar section specifically. The
+    # old `"annotation" in text.lower()` was satisfied by the preamble line
+    # "Additive per-task annotations", not the Files grammar (Task-6 review,
+    # #85 redirect); "parenthetical note" appears only in the Files bullet
+    # that forbids a trailing annotation on a path.
+    assert "parenthetical note" in text.lower()
 
 
 def test_contract_documents_the_interfaces_grammar():

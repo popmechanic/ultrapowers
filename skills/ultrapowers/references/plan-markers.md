@@ -167,8 +167,8 @@ nothing else:
   (`modify:`) — is a compile-time violation naming a canonical replacement
   (a `Delete:`/`Remove:` line suggests `Modify`, a `Read:` line suggests
   `Test`, an `add:` line suggests `Create`).
-- **One backticked path per bullet, nothing trailing it.** A parenthetical
-  note after the path (`` `src/lib/db.js` (only the pool init, lines 12-40) ``)
+- **One backticked path per bullet, nothing trailing it.** A parenthetical note
+  after the path (`` `src/lib/db.js` (only the pool init, lines 12-40) ``)
   is a violation: the note belongs in the task's prose, never on the Files
   line, because an annotated line would otherwise contribute nothing to
   write-overlap inference and a same-wave collision could hide behind it.
@@ -194,13 +194,21 @@ violating task (`SystemExit`) instead of collecting every one.
 
 ## Interfaces grammar
 
-`**Interfaces:**` `Consumes:`/`Produces:` entries are **symbol lists**: one or
-more comma-separated identifiers, each backticked or bare, optionally
-carrying a call or return-type tail (`` `helper(x: int) -> str` ``). A
-sentence describing what a task does, rather than naming a symbol, is a
-compile-time violation — the interface matcher would otherwise silently
-mis-tokenize it (taking only its first word) instead of pairing it against a
-sibling's contract.
+A `**Interfaces:**` `Consumes:`/`Produces:` value is valid grammar in either of
+two shapes — the compiler rejects neither:
+
+- **Symbol-led** — the value **LEADS with the symbol it names**: a backticked
+  identifier, or a bare identifier optionally followed by its signature
+  (`` `helper(x: int) -> str` ``, or a bare `helper` / `helper(x: int) -> str`).
+  Comma-separate several to name more than one (a symbol list). **Only a
+  symbol-led value tokenizes to a symbol that can pair against a sibling's
+  contract to form a dependency edge** — so recommend a symbol-led value for
+  anything a sibling consumes.
+- **Free prose** — a sentence describing the contract in words rather than
+  leading with a symbol. It documents the interface for a human reader but
+  tokenizes to empty (a bare word trailed by more prose never leads with a
+  symbol), so it never forms an edge. This is valid grammar, not a violation;
+  the compiler simply infers no interface edge from it.
 
 A **placeholder** value — `nothing`, `none`, `n/a`, `na`, bare or followed by
 trailing prose (`nothing (test-data-only change)`, `none — standalone`) —
