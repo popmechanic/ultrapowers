@@ -226,13 +226,21 @@ def split_tasks(text):
     return tasks
 
 
-def parse_task(t):
+def parse_task(t, raise_on_marker_error=True):
+    """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
+    validation failure (currently: an invalid or duplicate **Review:** value)
+    is reported: True (the normal compile path, default) raises SystemExit
+    immediately, so main() dies loudly at the first one found; False (the
+    --check collecting mode, #85) records the same message into the returned
+    task's `marker_violations` list instead, so collect_violations can gather
+    every task's violations in one pass rather than aborting at the first."""
     ttype = None
     type_unparsed = []
     deps, deps_none, deps_mixed = [], False, False
     late_markers = []
     dup_types = []
     near_miss = []
+    marker_violations = []
     creates, modifies, reads = [], [], []
     files_near_miss = []
     # Every `- catch-all: <prose>` bullet's prose, in document order (#85). A
@@ -320,13 +328,18 @@ def parse_task(t):
             else:
                 val = m.group(1)
                 if val not in ("adversarial", "lean"):
-                    raise SystemExit(
-                        "Task {}: invalid **Review:** value {!r} "
-                        "(valid: adversarial, lean)".format(t["id"], val))
-                if t.get("review"):
-                    raise SystemExit(
-                        "Task {}: duplicate **Review:** marker".format(t["id"]))
-                t["review"] = val
+                    msg = ("Task {}: invalid **Review:** value {!r} "
+                           "(valid: adversarial, lean)".format(t["id"], val))
+                    if raise_on_marker_error:
+                        raise SystemExit(msg)
+                    marker_violations.append(msg)
+                elif t.get("review"):
+                    msg = "Task {}: duplicate **Review:** marker".format(t["id"])
+                    if raise_on_marker_error:
+                        raise SystemExit(msg)
+                    marker_violations.append(msg)
+                else:
+                    t["review"] = val
         elif is_markerish and s.rstrip() == "**Depends-on:**":
             # Exact marker, missing value — a spelling diagnosis would mislead;
             # outside the header it is a placement violation like any late marker.
@@ -541,6 +554,11 @@ def parse_task(t):
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
+             # Marker-VALUE validation failures collected instead of raised
+             # (only populated when raise_on_marker_error=False — the --check
+             # CLI mode, #85); empty in the normal compile path since a
+             # violation there raises SystemExit immediately instead.
+             marker_violations=marker_violations,
              files_near_miss=files_near_miss, files_raw=files_raw,
              # First `- catch-all:` bullet wins as the authoritative prose (a
              # second is a violation, not a silent overwrite — see
@@ -795,6 +813,68 @@ def _files_violations(task):
                 "  fix:  - %s: `%s`   (move the note into the task prose)"
                 % (task.get("id"), label, rest, label, paths[0]))
     return out
+
+
+# Malformed task-heading detection, factored out of main() so --check (#85)
+# can reuse the exact same net: a heading that LOOKS like a task heading but
+# fails TASK_HEAD (e.g. `### Task 1.5:` — non-alphanumeric id) would silently
+# fold its whole section into the PREVIOUS task. See main()'s original
+# comment (still there, verbatim) for the two-net rationale.
+NEAR_HEAD = re.compile(
+    r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+(?:[^\s:]*\d[^\s:]*|[^\s:]{1,3})\s*:)",
+    re.I)
+
+
+def _malformed_task_headings(plan_text):
+    """Heading lines that LOOK like a task heading but fail TASK_HEAD."""
+    return [line.strip() for line, fenced in _fence_aware_lines(plan_text)
+            if not fenced and NEAR_HEAD.match(line.strip())
+            and not match_head(line)]
+
+
+def collect_violations(plan_path):
+    """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
+    parse as main() but collects EVERY violation across the whole plan in one
+    pass instead of exiting at the first: Files grammar (_files_violations,
+    which also covers the catch-all-bullet rule), interface symbol-list
+    grammar (_symbol_list_violations), and marker-value validation (currently
+    **Review:** — parse_task raises immediately in the normal compile path;
+    here raise_on_marker_error=False makes it accumulate per task instead of
+    aborting on the first task with a bad marker).
+
+    A malformed heading, zero task headings, or duplicate task ids abort
+    early as a single violation — the rest of the parse cannot proceed
+    safely without well-formed, uniquely-identified tasks (same as main()'s
+    loud SystemExit for these three cases)."""
+    plan_text = plan_path.read_text()
+
+    bad_heads = _malformed_task_headings(plan_text)
+    if bad_heads:
+        return ["task heading(s) not recognized: " + "; ".join(bad_heads[:3])
+                + " — ids must be alphanumeric (`### Task <id>: <title>`); a "
+                "malformed heading folds its task into the previous one."]
+
+    raw_tasks = split_tasks(plan_text)
+    if not raw_tasks:
+        return ["no '### Task N:' headings found."]
+
+    ids = [t["id"] for t in raw_tasks]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if dups:
+        return ["duplicate task id(s): " + ", ".join(dups)
+                + " — task headings must be unique."]
+
+    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw_tasks]
+
+    violations = []
+    for t in tasks:
+        violations.extend(t.get("marker_violations", []))
+    for t in tasks:
+        violations.extend(_files_violations(t))
+    for t in tasks:
+        entries = t["interfaces"]["consumes"] + t["interfaces"]["produces"]
+        violations.extend(_symbol_list_violations(entries))
+    return violations
 
 
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
@@ -1224,9 +1304,27 @@ def main(argv=None):
                          "globalConstraints/planPath) to PATH; the orchestrator "
                          "adds only per-task tier/review/testCmd and run knobs. "
                          "Requires --emit-launch.")
+    ap.add_argument("--check", action="store_true",
+                    help="authoring-time grammar validation only (#85): print "
+                         "every violation with a did-you-mean fix and exit 2, "
+                         "or print 'PLAN OK' and exit 0 — never emits waves. "
+                         "Mutually exclusive with --emit-launch/--emit-args.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
+    if args.check and (emit_launch is not None or emit_args is not None):
+        sys.exit("error: --check is mutually exclusive with --emit-launch/"
+                 "--emit-args (--check only validates grammar; it never emits "
+                 "launch files)")
+    if args.check:
+        violations = collect_violations(args.plan)
+        if violations:
+            print("\n\n".join(violations))
+            print()
+            print(f"{len(violations)} violation(s)")
+            return 2
+        print("PLAN OK")
+        return 0
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
                  "ride via the launch file, so wavesPath is always populated)")
@@ -1247,12 +1345,7 @@ def main(argv=None):
     # an English word (`## Task tracking: overview`, `## Task list: …`) compile
     # as section boundaries instead of refusing the plan. Residual ambiguity:
     # a <=3-char word (`## Task ids:`) still flags; retitle such sections.
-    near_head = re.compile(
-        r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+(?:[^\s:]*\d[^\s:]*|[^\s:]{1,3})\s*:)",
-        re.I)
-    bad_heads = [line.strip() for line, fenced in _fence_aware_lines(plan_text)
-                 if not fenced and near_head.match(line.strip())
-                 and not match_head(line)]
+    bad_heads = _malformed_task_headings(plan_text)
     if bad_heads:
         # Precise "did you mean ###" hint when the ONLY fault is the heading
         # LEVEL (two or four-plus hashes around an otherwise well-formed
