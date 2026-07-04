@@ -2494,3 +2494,118 @@ def test_duplicate_review_marker_is_a_compile_error(tmp_path):
     p = _compile_raw(tmp_path, dup, name="dup.md")
     assert p.returncode != 0
     assert "duplicate" in p.stderr.lower() and "Task 1" in p.stderr
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (grammar-hardening plan, issue #85): the catch-all Files construct.
+# `- catch-all: <prose>` declares an open write set the author cannot
+# enumerate as concrete paths — the task must never share a wave with any
+# other implementation task, and more than one bullet per task is a
+# violation.
+# ---------------------------------------------------------------------------
+
+CATCHALL_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Independent A
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/a.py`
+
+- [ ] **Step 1: do it**
+
+### Task 2: Re-pointer sweep
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `docs/manual.md`
+- catch-all: any doc-pinning test the full suite shows red — reconcile each pin preserving its semantics
+
+- [ ] **Step 1: do it**
+
+### Task 3: Independent B
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/b.py`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_catch_all_parses_and_is_not_a_violation():
+    out = compile_plan_text(CATCHALL_PLAN)  # compiles loudly-clean
+    assert out is not None
+
+
+def test_catch_all_task_never_shares_a_wave():
+    # 2026-07-03 home-run regression: a catch-all task was safe only because
+    # it happened to ride the serial tail; now it is serial by construction.
+    out = compile_plan_text(CATCHALL_PLAN)
+    for wave in out["waves"]:
+        if "2" in wave:
+            assert wave == ["2"]
+
+
+def test_second_catch_all_bullet_is_a_violation():
+    doubled = CATCHALL_PLAN.replace(
+        "- catch-all: any doc-pinning test",
+        "- catch-all: one thing\n- catch-all: any doc-pinning test")
+    r = compile_raw_text(doubled)
+    assert r.returncode != 0
+    # Specifically the "more than one" diagnosis, not just any mention of the
+    # word "catch-all" (a bare unrecognized bullet would ALSO mention the
+    # literal label name, which would make this pass for the wrong reason).
+    assert "more than one catch-all" in r.stderr.lower()
+
+
+def test_catch_all_conflict_edges_are_labeled():
+    out = compile_plan_text(CATCHALL_PLAN)
+    assert any(e.get("why") == "catch-all" for e in out["dag_edges"])
+
+
+def test_catch_all_surfaces_in_emitted_launch_task(tmp_path):
+    payload = _emit_launch_payload(tmp_path, CATCHALL_PLAN, name="catchall.md")
+    by_id = {t["id"]: t for t in payload["tasks"]}
+    assert by_id["2"]["catchAll"] == (
+        "any doc-pinning test the full suite shows red — reconcile each pin "
+        "preserving its semantics")
+    assert by_id["1"]["catchAll"] is None
+
+
+def test_catch_all_bullet_parses_into_task_dict():
+    from compile_plan import split_tasks, parse_task
+    plan = """### Task 1: X
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `a.py`
+- catch-all: reconcile every red pin
+
+- [ ] **Step 1: do it**
+"""
+    t = parse_task(split_tasks(plan)[0])
+    assert t["catch_all"] == "reconcile every red pin"
+    assert t["catch_all_raw"] == ["reconcile every red pin"]
+
+
+def test_files_violations_flags_second_catch_all_bullet():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "2", "catch_all_raw": ["one thing", "two thing"]})
+    assert len(v) == 1 and "catch-all" in v[0].lower()
+
+
+def test_files_violations_allows_single_catch_all_bullet():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "2", "catch_all_raw": ["one thing"], "files_raw": []})
+    assert v == []

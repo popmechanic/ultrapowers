@@ -46,6 +46,12 @@ FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 # A colon-less natural-English bullet ("- Modify the config") does not match and
 # stays a soft near-miss; `- none` is filtered by the caller before capture.
 FILES_LABEL_LINE = re.compile(r"^[-*+]\s*([A-Za-z][A-Za-z0-9()/ _-]*?)\s*:\s*(.+?)\s*$")
+# The catch-all Files bullet (#85): `- catch-all: <prose>` declares an open
+# write set the author cannot enumerate as concrete paths. Matched BEFORE
+# FILES_LABEL_LINE routes the bullet into files_raw (which would otherwise
+# flag it as an unknown label "catch-all") — a catch-all bullet is a distinct
+# construct, not a Files grammar violation.
+CATCH_ALL_LINE = re.compile(r"^[-*+]\s*catch-all\s*:\s*(.+)$", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
@@ -229,6 +235,11 @@ def parse_task(t):
     near_miss = []
     creates, modifies, reads = [], [], []
     files_near_miss = []
+    # Every `- catch-all: <prose>` bullet's prose, in document order (#85). A
+    # task declares AT MOST one — a second is a grammar violation surfaced by
+    # _files_violations, so every one seen is recorded here rather than the
+    # second silently overwriting the first.
+    catch_all_raw = []
     # Verbatim (label, rest) for every `Label: value` Files bullet (canonical or
     # not) — the strict-grammar input to _files_violations (#85). Unknown-label
     # lines are CAPTURED here, not dropped, so they surface as loud violations.
@@ -406,6 +417,18 @@ def parse_task(t):
             # with "- [": close, then fall through to normal processing.
             if s.startswith("- ["):
                 in_files = False
+            cm = CATCH_ALL_LINE.match(s) if in_files else None
+            if cm:
+                # `- catch-all: <prose>` (#85): a declared OPEN write set —
+                # the task's scope cannot be enumerated as concrete paths, so
+                # it conflicts with every other implementation task for
+                # scheduling (build_edges orders it after everything else,
+                # forcing it into its own wave). Every occurrence is recorded
+                # (not just the first) so a second bullet surfaces as a
+                # violation instead of silently overwriting the first.
+                catch_all_raw.append(cm.group(1).strip())
+                files_entries_seen = True
+                continue
             f = FILE_LINE.match(s) if in_files else None
             # Strict-grammar capture (#85): record EVERY `Label: value` Files
             # bullet — canonical or not — so _files_violations can flag annotated
@@ -519,6 +542,11 @@ def parse_task(t):
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
              files_near_miss=files_near_miss, files_raw=files_raw,
+             # First `- catch-all:` bullet wins as the authoritative prose (a
+             # second is a violation, not a silent overwrite — see
+             # catch_all_raw, consumed by _files_violations).
+             catch_all=(catch_all_raw[0] if catch_all_raw else None),
+             catch_all_raw=catch_all_raw,
              glob_paths=sorted(set(glob_paths)),
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
@@ -738,6 +766,10 @@ def _files_violations(task):
     "backtick each path" near-miss, so overlap inference is never blocked by a
     formatting-only miss."""
     out = []
+    if len(task.get("catch_all_raw", [])) > 1:
+        out.append(
+            "Task %s: more than one catch-all bullet — a task declares at "
+            "most one open write set" % task.get("id"))
     for label, rest in task.get("files_raw", []):
         paths = PATH_RE.findall(rest)
         if label not in CANONICAL_FILE_LABELS:
@@ -1099,6 +1131,26 @@ def build_edges(impl):
                 elif u["order"] > t["order"] and not would_cycle(t["id"], u["id"]):
                     add(t["id"], u["id"], "ambiguous-files")
 
+    # Catch-all tier (#85): `- catch-all: <prose>` declares an OPEN write set
+    # that cannot be scoped to concrete paths, so it conflicts with every
+    # other implementation task for scheduling — it must never share a wave
+    # with anything. Order every other task before it, UNLESS an earlier tier
+    # (or an earlier catch-all pass) already ordered the catch-all task
+    # before that other task — would_cycle(u, t) is True exactly when t
+    # already (transitively) reaches u, i.e. the plan already put the
+    # catch-all task first; that existing order is respected rather than
+    # forced into a cycle. Runs last, after every file-overlap tier, so it
+    # sees the complete edge set.
+    for t in impl:
+        if not t.get("catch_all"):
+            continue
+        for u in impl:
+            if u["id"] == t["id"]:
+                continue
+            if would_cycle(u["id"], t["id"]):
+                continue  # t already precedes u — respect the existing order
+            add(u["id"], t["id"], "catch-all")
+
     return edges, conflicts
 
 
@@ -1411,7 +1463,11 @@ def main(argv=None):
     launch_waves = [
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
           "depends_on": by_id[tid]["depends_on"],
-          "interfaces": by_id[tid]["interfaces"]} for tid in wave]
+          "interfaces": by_id[tid]["interfaces"],
+          # Declared open write set (#85, additive — None when the task has
+          # no `- catch-all:` bullet). waves.js ignores unknown fields today;
+          # not touched by this plan.
+          "catchAll": by_id[tid].get("catch_all")} for tid in wave]
         for wave in waves]
 
     # One deterministic label per wave (same order as waves/launch_waves). The
@@ -1452,7 +1508,11 @@ def main(argv=None):
                        # Authored value — filled by the plan's **Review:**
                        # marker, "lean" when unmarked. Unlike the tier slot,
                        # the orchestrator fills nothing here.
-                       "review": by_id[tid].get("review") or "lean"}
+                       "review": by_id[tid].get("review") or "lean",
+                       # Declared open write set (#85) — shown to the
+                       # implementer prompt so a catch-all task's scope is
+                       # never silently invisible. None when absent.
+                       "catchAll": by_id[tid].get("catch_all")}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,
