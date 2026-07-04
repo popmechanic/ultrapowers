@@ -61,7 +61,7 @@ imports a symbol a sibling task owns, declare it as an explicit `**Depends-on:**
 importing task; otherwise the two run in parallel off a base where the imported sibling does
 not yet exist and the wave cascade-blocks.
 
-Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; Files entries with a wrong label case, colon spacing, bullet character, or unbackticked multi-path values are surfaced and dropped from overlap inference; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
+Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; a Files entry with an unknown or wrong-case label (`Delete:`, `modify:`) is a loud, named compile-time violation carrying a did-you-mean canonical-label fix (see Files grammar below) — never silently dropped; a canonical-label line with a wrong colon spacing, bullet character, or unbackticked multi-path value is a formatting-only near-miss, still tolerated and surfaced-but-dropped from overlap inference so one stray bullet never fails the whole compile; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
 
 `Depends-on` edges bind only between `implementation` tasks: a marker naming a `gate`/`release`/`manual` task (or an unknown id) is dropped at compile time and surfaced in `marker_conflicts` — ordering against excluded tasks is meaningless once they leave the wave set. The same drop-and-surface rule covers text dependencies naming excluded tasks, and self-referential markers.
 
@@ -155,6 +155,58 @@ recorded in the transparency block):
   dependencies are likewise matched against fence-stripped prose only — fenced
   examples never drive classification or edges) (plans embed whole markdown documents
   in their steps).
+
+## Files grammar
+
+A `**Files:**` bullet is a canonical label, a colon, and one backticked path —
+nothing else:
+
+- **Canonical labels:** `Create`, `Modify`, `Test` (`Test fixture(s)` /
+  `Fixture(s)` remain accepted aliases). Any other label — an unknown verb
+  (`Delete:`, `Read:`, `Remove:`) or a wrong-case spelling of a known one
+  (`modify:`) — is a compile-time violation naming a canonical replacement
+  (a `Delete:`/`Remove:` line suggests `Modify`, a `Read:` line suggests
+  `Test`, an `add:` line suggests `Create`).
+- **One backticked path per bullet, nothing trailing it.** A parenthetical
+  note after the path (`` `src/lib/db.js` (only the pool init, lines 12-40) ``)
+  is a violation: the note belongs in the task's prose, never on the Files
+  line, because an annotated line would otherwise contribute nothing to
+  write-overlap inference and a same-wave collision could hide behind it.
+- **No globs.** `*`, `?`, or `[` in a path is a violation naming the
+  offending path — enumerate the concrete files the task touches instead.
+  (A `{` brace, e.g. `src/{a,b}.py`, is deliberately left to the softer
+  ambiguous-files serialization — a warning, not a compile-time bail.)
+- **At most one `- catch-all: <prose>` bullet per task.** It declares an open
+  write set that cannot be scoped to concrete paths (a broad reconciliation
+  sweep, "fix whatever the suite shows red"). A catch-all task conflicts with
+  every other implementation task for scheduling and never shares a wave with
+  anything — the compiler orders every other task before it (edges labeled
+  `catch-all`). A second catch-all bullet in the same task is a violation.
+- **The canonical empty form** is `**Files:** none` (header-inline) or a lone
+  `- none` bullet under the header — legal for `gate`/`release`/`manual`
+  tasks or a truly-empty `implementation` task, and never a violation.
+
+`scripts/compile_plan.py --check <plan.md>` runs this grammar — plus the
+Interfaces grammar below — over an entire plan in one pass, printing every
+violation with its did-you-mean fix and exiting 2, or printing `PLAN OK` and
+exiting 0. Plain compile enforces the same rules but stops at the first
+violating task (`SystemExit`) instead of collecting every one.
+
+## Interfaces grammar
+
+`**Interfaces:**` `Consumes:`/`Produces:` entries are **symbol lists**: one or
+more comma-separated identifiers, each backticked or bare, optionally
+carrying a call or return-type tail (`` `helper(x: int) -> str` ``). A
+sentence describing what a task does, rather than naming a symbol, is a
+compile-time violation — the interface matcher would otherwise silently
+mis-tokenize it (taking only its first word) instead of pairing it against a
+sibling's contract.
+
+A **placeholder** value — `nothing`, `none`, `n/a`, `na`, bare or followed by
+trailing prose (`nothing (test-data-only change)`, `none — standalone`) —
+tokenizes to empty and can never pair into an interface edge. Placeholder
+Consumes/Produces lines are always legal; they are the correct way to say
+"this task has no interface contract."
 
 ## Authoring rules that complement the markers
 
