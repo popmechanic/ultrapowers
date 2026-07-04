@@ -228,6 +228,19 @@ While writing tasks:
   StructuredOutput retry cap at lower tiers and pay the task twice — mark
   them `most-capable` in the plan rather than letting the launch guess.
 
+## The final authoring step — validate
+
+A marked plan is not done until it passes the grammar check (the compiler
+lives in the ultrapowers skill's own scripts directory):
+
+    COMPILE_PLAN=skills/ultrapowers/scripts
+    python3 $COMPILE_PLAN/compile_plan.py --check <plan.md>
+
+Exit 0 (`PLAN OK`) — hand the plan off. Any violation prints a did-you-mean
+fix; apply it and re-run. The runtime parser accepts exactly this grammar and
+rejects the rest loudly, so a plan that skips the check fails at compile time
+instead — at launch, when a fix costs a session instead of seconds.
+
 ## Populate the v6 blocks — they are load-bearing here
 
 superpowers v6 adds two plan blocks. In ultrapowers they are **not just
