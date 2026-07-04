@@ -1,5 +1,5 @@
 {
-  "compileFlags": 2,
+  "compileFlags": 3,
   "engineKnobs": 17,
   "engineLoc": 1407,
   "enumStates": 15,
@@ -7,5 +7,5 @@
   "lockVerbs": 5,
   "skillSteps": 8,
   "skillWords": 1784,
-  "standingConcepts": 55
+  "standingConcepts": 56
 }

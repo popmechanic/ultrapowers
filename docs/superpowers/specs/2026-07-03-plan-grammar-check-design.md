@@ -142,7 +142,7 @@ simply inert to edge inference. The validator was deleted, not tightened;
 (b) **"Historical plans are not migrated" was overturned in-run.** Design §3
 said compiling an old plan that violates the new grammar would just error with
 diagnostics, leaving `docs/superpowers/plans/` untouched. During the wave-2
-reconciliation we instead canonicalized all 21 historical marked plans,
+reconciliation we instead canonicalized the 21 historical marked plans that violated the narrowed grammar (of 48 marked plans total; the other 27 were already canonical),
 because `tests/test_all_plans_compile.py` guards that every committed marked
 plan still compiles, and keeping that guard at full strength was judged more
 valuable than preserving the plans' historical annotation style. Migrating the
