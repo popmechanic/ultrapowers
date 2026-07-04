@@ -345,7 +345,9 @@ git commit -m "fix(viewer): null unresolved task + escape inlined JSON for --emb
 
 **Files:**
 - Modify: `skills/ultrapowers/viewer/swarm_template.html`
-- Test: `tests/test_swarm_wiring.py` (create)
+- Test: `tests/test_swarm_wiring.py`
+
+Files-note — `tests/test_swarm_wiring.py` (create)
 
 Wire the template to the Task 1 helpers and stop the live tick from clobbering open events. Replace the inline `audit` partition with `AuditProjection.partitionAgents(AUDIT_INDEX)` (same `null`-guard, new task-id rule), and make `fetchAndRender` skip the repaint when the fetched transcript is unchanged via `AuditProjection.shouldRerender`. Because the template now *references* `partitionAgents`/`shouldRerender` (defined in `audit_project.js` by Task 1), this task Depends-on 1.
 

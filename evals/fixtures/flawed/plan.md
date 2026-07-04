@@ -20,8 +20,8 @@
 - Test: `tests/test_schema.py`
 
 **Interfaces:**
-- Produces: `User` dataclass (id: int, name: str, email: str)
-- Produces: `FIELDS` dict {"name": str, "email": str}
+- Produces: `User`
+- Produces: `FIELDS`
 
 - [ ] **Step 1: Write failing tests** for the schema module:
   - A dataclass `User` with fields `id: int`, `name: str`, `email: str`.
@@ -68,7 +68,7 @@
 - Test: `tests/test_store.py`
 
 **Interfaces:**
-- Consumes: `User` dataclass (id: int, name: str, email: str)
+- Consumes: `User`
 
 - [ ] **Step 1: Write failing tests** for `class MemoryStore`:
   - `add(name, email)` creates and returns a `schema.User` with an auto-incrementing integer `id` starting at 1.

@@ -112,3 +112,37 @@ def test_ultraplan_carries_shrink_budget_and_escalation_guidance():
     # escalation-prone tiering.
     assert "Shrink budgets are acceptance criteria." in text
     assert "Tier escalation-prone tasks up front." in text
+
+
+def test_contract_documents_the_files_grammar():
+    # plan-markers.md is the canonical contract (#85): it must document the
+    # narrowed Files grammar the compiler now enforces — canonical labels,
+    # the annotation/glob bail, and the catch-all construct.
+    text = CONTRACT.read_text()
+    assert "Create" in text and "Modify" in text and "Test" in text
+    assert "catch-all" in text
+    assert "glob" in text.lower()
+    # Pin the annotation bail to the Files-grammar section specifically. The
+    # old `"annotation" in text.lower()` was satisfied by the preamble line
+    # "Additive per-task annotations", not the Files grammar (Task-6 review,
+    # #85 redirect); "parenthetical note" appears only in the Files bullet
+    # that forbids a trailing annotation on a path.
+    assert "parenthetical note" in text.lower()
+
+
+def test_contract_documents_the_interfaces_grammar():
+    # plan-markers.md documents the symbol-list rule and the placeholder
+    # forms that tokenize to empty (#85).
+    text = CONTRACT.read_text()
+    assert "symbol list" in text.lower()
+    for placeholder in ("nothing", "none", "n/a"):
+        assert placeholder in text
+
+
+def test_ultraplan_ends_authoring_with_the_check_step():
+    # #85: a marked plan is not done until `--check` passes — this is the
+    # mandatory final authoring step, not an optional suggestion.
+    text = ULTRAPLAN.read_text()
+    assert "compile_plan.py --check" in text
+    assert "PLAN OK" in text
+    assert "not done until it passes the grammar check" in text

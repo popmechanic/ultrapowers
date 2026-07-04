@@ -27,8 +27,11 @@
 **Depends-on:** none
 
 **Files:**
-- Modify: `skills/ultraplan/SKILL.md` (replace the `## Execution Handoff (third option)` section)
-- Test: `tests/test_ultraplan_skill.py` (add one test)
+- Modify: `skills/ultraplan/SKILL.md`
+- Test: `tests/test_ultraplan_skill.py`
+
+Files-note — `skills/ultraplan/SKILL.md` (replace the `## Execution Handoff (third option)` section)
+Files-note — `tests/test_ultraplan_skill.py` (add one test)
 
 **Interfaces:**
 - Consumes: none
@@ -164,8 +167,11 @@ git commit -m "feat(ultraplan): analyze fit, then recommend at the handoff"
 **Depends-on:** none
 
 **Files:**
-- Modify: `hooks/session_start.sh` (rule 2 inside the `<ultrapowers-routing>` heredoc)
-- Test: `tests/test_session_hook.py` (add one test)
+- Modify: `hooks/session_start.sh`
+- Test: `tests/test_session_hook.py`
+
+Files-note — `hooks/session_start.sh` (rule 2 inside the `<ultrapowers-routing>` heredoc)
+Files-note — `tests/test_session_hook.py` (add one test)
 
 **Interfaces:**
 - Consumes: none

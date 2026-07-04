@@ -223,8 +223,10 @@ git commit -m "feat(viewer): d3-dag grid layout adapter (swarm_layout.js) + node
 
 **Files:**
 - Modify: `skills/ultrapowers/scripts/render_viewer.py`
-- Modify: `skills/ultrapowers/viewer/swarm_template.html` (add two placeholders only — full template surgery is Task 3)
+- Modify: `skills/ultrapowers/viewer/swarm_template.html`
 - Modify: `tests/test_viewer.py`
+
+Files-note — `skills/ultrapowers/viewer/swarm_template.html` (add two placeholders only — full template surgery is Task 3)
 
 **Interfaces:**
 - Consumes: `skills/ultrapowers/viewer/swarm_layout.js` (from Task 1), the committed `skills/ultrapowers/viewer/vendor/d3-dag.iife.min.js`.
@@ -337,7 +339,9 @@ git commit -m "feat(viewer): inline vendored d3-dag + layout adapter; palette-on
 
 **Files:**
 - Modify: `skills/ultrapowers/viewer/swarm_template.html`
-- Modify: `tests/test_viewer.py` (extend the DOM stub + add a grid-render assertion)
+- Modify: `tests/test_viewer.py`
+
+Files-note — `tests/test_viewer.py` (extend the DOM stub + add a grid-render assertion)
 
 **Interfaces:**
 - Consumes: `SwarmLayout.computeGrid(dag, d3)` and `SwarmLayout.SINK` (Task 1, inlined by Task 2); the d3-dag global `d3` (`d3.graphConnect`, `d3.grid`, inlined by Task 2); the unchanged baked `DAG` (`tasks`, `edges`, `waves`, `title`) and `THEME` (now `name`/`frame`/`waveColors`/`vars`).

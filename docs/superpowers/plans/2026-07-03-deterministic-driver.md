@@ -1096,7 +1096,9 @@ git commit -m "feat(driver): ultra_gate.py — envelope unwrap, gate checks, acc
 **Files:**
 - Modify: `skills/ultrapowers/SKILL.md`
 - Modify: `skills/ultralearn/complexity-baseline.json`
-- Test: `tests/test_path_variables.py` (and any other SKILL.md-pinning test that the full suite shows red — reconcile each pin to the new prose while preserving its pinned semantics; known SKILL.md-grepping tests include `tests/test_compat_skill_wiring.py`, `tests/test_report_runbook.py`, `tests/test_salvage_gate.py`, `tests/test_literal_trace_selfreview.py`, `tests/test_cross_phase_review.py`, `tests/test_finishing_notes.py`, `tests/test_check_superpowers_compat.py`, `tests/test_merge_ledger.py`, `tests/test_gate_check.py`)
+- Test: `tests/test_path_variables.py`, `tests/test_compat_skill_wiring.py`, `tests/test_report_runbook.py`, `tests/test_salvage_gate.py`, `tests/test_literal_trace_selfreview.py`, `tests/test_cross_phase_review.py`, `tests/test_finishing_notes.py`, `tests/test_check_superpowers_compat.py`, `tests/test_merge_ledger.py`, `tests/test_gate_check.py`
+
+Files-note — `tests/test_path_variables.py` (and any other SKILL.md-pinning test that the full suite shows red — reconcile each pin to the new prose while preserving its pinned semantics; known SKILL.md-grepping tests include `tests/test_compat_skill_wiring.py`, `tests/test_report_runbook.py`, `tests/test_salvage_gate.py`, `tests/test_literal_trace_selfreview.py`, `tests/test_cross_phase_review.py`, `tests/test_finishing_notes.py`, `tests/test_check_superpowers_compat.py`, `tests/test_merge_ledger.py`, `tests/test_gate_check.py`)
 
 **Interfaces:**
 - Consumes: `ultra_run.py` receipt contract (Task 4), `ultra_gate.py` receipt + verbs (Task 5)

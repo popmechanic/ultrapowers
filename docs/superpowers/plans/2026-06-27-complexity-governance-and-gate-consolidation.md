@@ -73,7 +73,9 @@ git commit -m "feat(report): replace visualEyeballItems with reason-tagged defer
 
 **Files:**
 - Modify: `skills/ultrapowers/harnesses/waves.js`
-- Test: `tests/sim_workflow.mjs` (manual sim — update its expectations)
+- Test: `tests/sim_workflow.mjs`
+
+Files-note — `tests/sim_workflow.mjs` (manual sim — update its expectations)
 
 **Interfaces:**
 - Self-contained: the field contract is a spec decision restated verbatim in this task's own body (Steps 2–3). No build-time symbol is consumed from or produced for A1/A3 — the three share only the spec-fixed contract, so no interface edge is declared.

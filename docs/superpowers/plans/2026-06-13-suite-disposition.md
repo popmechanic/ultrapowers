@@ -225,7 +225,9 @@ git commit -m "feat: engine records the suite acceptance disposition (no held-ou
 **Files:**
 - Modify: `skills/ultraplan/SKILL.md`
 - Modify: `skills/ultrapowers/SKILL.md`
-- Modify: `tests/test_ultraplan_skill.py` (only if it pins section content; run it and update pins, never weaken assertions)
+- Modify: `tests/test_ultraplan_skill.py`
+
+Files-note — `tests/test_ultraplan_skill.py` (only if it pins section content; run it and update pins, never weaken assertions)
 
 - [ ] **Step 1: Add the decision rule to ultraplan**
 

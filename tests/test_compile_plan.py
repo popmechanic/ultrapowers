@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
+sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 
 _WAIVER = "**Acceptance:** waived — inline test plan"
 
@@ -201,6 +202,9 @@ def test_missing_files_block_is_conservatively_serialized(tmp_path):
 
 
 def test_glob_paths_are_ambiguous(tmp_path):
+    # #85: a `*` glob in a Files path is now a LOUD compile error (enumerate the
+    # concrete paths), not a silent ambiguous-files serialization. Same scenario
+    # as the old tolerant pin, flipped to the strict grammar.
     plan = tmp_path / "glob.md"
     plan.write_text(
         "# Plan: Glob\n\n"
@@ -209,8 +213,9 @@ def test_glob_paths_are_ambiguous(tmp_path):
         "### Task 2: globby\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/*.ts`\n\n- [ ] **Step 1:** sweep the sources\n"
     )
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "2", "why": "ambiguous-files"} in out["dag_edges"]
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "src/*.ts" in p.stderr and "enumerate" in p.stderr.lower()
 
 
 def test_duplicate_task_ids_are_a_loud_error(tmp_path):
@@ -997,17 +1002,34 @@ def test_four_hash_and_caps_headings_error_loudly(tmp_path):
 
 
 def test_near_miss_files_entry_surfaces_conflict(tmp_path):
+    # A spaced-colon label (`- Modify : x`) is STILL a canonical label, just
+    # mis-spaced, so it stays a SOFT near-miss: compile succeeds and surfaces a
+    # conflict. (The wrong-CASE label case is now loud — see
+    # test_lowercase_files_label_is_a_loud_violation, #85.)
     plan = tmp_path / "filesmiss.md"
     plan.write_text(
         "# Plan: Files near miss\n\n"
         "### Task 1: spaced colon\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify : `shared.py`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: lowercase label\n\n**Type:** implementation\n\n"
-        "**Files:**\n- modify: `shared.py`\n\n- [ ] **Step 1:** b\n"
+        "### Task 2: other\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
     )
     out = compile_plan(plan)
     assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
-    assert any(c["task"] == "2" and "Files" in c["note"] for c in out["marker_conflicts"])
+
+
+def test_lowercase_files_label_is_a_loud_violation(tmp_path):
+    # #85: a wrong-case label (`- modify:`) is an unknown label under the strict
+    # grammar — a loud compile error with a did-you-mean, not a silent near-miss.
+    plan = tmp_path / "lowerlabel.md"
+    plan.write_text(
+        "# Plan: Lowercase label\n\n"
+        "### Task 1: lowercase label\n\n**Type:** implementation\n\n"
+        "**Files:**\n- modify: `shared.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "modify" in p.stderr and "Create/Modify/Test" in p.stderr
 
 
 def test_empty_depends_on_value_diagnosed_as_missing(tmp_path):
@@ -1091,20 +1113,23 @@ def test_files_header_near_miss_surfaces(tmp_path):
 
 
 def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
+    # #85: an unknown Files label (`- Delete:`) is now a LOUD compile error with a
+    # did-you-mean, not a silent near-miss drop. (A colon-less natural-English
+    # bullet stays a soft near-miss, but the Delete violation bails first.) Same
+    # scenario as the old tolerant pin, flipped to the strict grammar.
     plan = tmp_path / "bullets.md"
     plan.write_text(
         "# Plan: Unparsed bullets\n\n"
-        "### Task 1: natural english\n\n**Type:** implementation\n\n"
+        "### Task 1: unknown label\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify `src/app.py` to wire it in\n- Delete: `old.py`\n- Modify: `keep.py`\n\n"
         "- [ ] **Step 1:** a\n\n"
         "### Task 2: writer\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/app.py`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
-    by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["writes"] == ["keep.py"]      # valid entry after misses survives
-    drops = [c for c in out["marker_conflicts"] if c["task"] == "1" and "Files" in c["note"]]
-    assert drops, "colon-less and unknown-label bullets must surface"
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "Delete" in p.stderr and "old.py" in p.stderr
+    assert "Modify" in p.stderr      # the did-you-mean suggestion
 
 
 def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_path):
@@ -1189,6 +1214,9 @@ def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
 
 
 def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
+    # #85: a bracket route (`app/[slug]/page.tsx`) reads as a glob and is now a
+    # LOUD compile error naming the path and telling the author to enumerate,
+    # not a soft ambiguous-files conflict. Same scenario, flipped to strict.
     plan = tmp_path / "globwhy.md"
     plan.write_text(
         "# Plan: Glob why\n\n"
@@ -1197,9 +1225,9 @@ def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
         "### Task 2: other\n\n**Type:** implementation\n\n"
         "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
-    assert any(c["task"] == "1" and "glob" in c["note"].lower()
-               for c in out["marker_conflicts"])
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "app/[slug]/page.tsx" in p.stderr and "enumerate" in p.stderr.lower()
 
 
 def test_all_wrong_level_plan_gets_the_heading_diagnostic(tmp_path):
@@ -1867,6 +1895,247 @@ def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Task 1 (grammar-hardening plan, issue #85): interface placeholders parse as
+# empty; symbol-list violations. 2026-07-03 foreign-run regression: a
+# 'Produces: nothing' / 'Consumes: nothing' pairing fabricated an interface
+# edge (and an undeclared-dependency finding) out of pure authoring prose,
+# wasting a wave. Placeholder Consumes/Produces values must never pair.
+# ---------------------------------------------------------------------------
+
+PLACEHOLDER_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Cleanup
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `data/fixtures.json`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing (test-data-only change)
+
+- [ ] **Step 1: do it**
+
+### Task 2: Leaf A
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/a.py`
+
+**Interfaces:**
+- Consumes: nothing (standalone)
+- Produces: `helper_a() -> str`
+
+- [ ] **Step 1: do it**
+
+### Task 3: Leaf B
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/b.py`
+
+**Interfaces:**
+- Consumes: none
+- Produces: `helper_b() -> str`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_placeholder_interfaces_produce_zero_edges():
+    # 2026-07-03 foreign-run regression: 'Produces: nothing' paired with
+    # 'Consumes: nothing' created two spurious edges and a wasted wave.
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    interface_edges = [e for e in out["dag_edges"] if e.get("why") == "interface"]
+    assert interface_edges == []
+
+
+def test_placeholder_interfaces_emit_no_undeclared_dependency():
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    assert not [c for c in out.get("marker_conflicts", [])
+                if c.get("kind") == "undeclared-dependency"]
+
+
+def test_all_three_tasks_share_wave_one():
+    out = compile_plan_text(PLACEHOLDER_PLAN)
+    assert sorted(out["waves"][0]) == ["1", "2", "3"]
+
+
+def test_placeholder_token_set():
+    from compile_plan import _interface_token
+    for raw in ("nothing", "none", "N/A", "nothing (test-data-only change)",
+                "`nothing`", "none — standalone"):
+        assert _interface_token(raw) == "", raw
+    assert _interface_token("`User` dataclass (id: int)") == "User"
+    assert _interface_token("validate_payload(payload) -> list[str]") == "validate_payload"
+
+
+def test_symbol_lead_with_prose_tail_still_tokens():
+    # The tokenizer hardening (#85 redirect): a SYMBOL lead tokens (a backticked
+    # symbol, any prose tail allowed; or a bare identifier alone / immediately
+    # followed by a `(`-signature, `->`, or `=`), but a bare word followed by
+    # more prose words is documentation and can never pair.
+    from compile_plan import _interface_token
+    assert _interface_token("`User` dataclass (id, name)") == "User"
+    assert _interface_token("compiler `**Review:**` marker semantics") == ""
+    assert _interface_token("validate_payload(payload) -> list[str]") == "validate_payload"
+    assert _interface_token("every task object in the file carries a key") == ""
+
+
+PROSE_INTERFACE_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Bake the reviewer prompt
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `harnesses/waves.js`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: the baked reviewer prompt instructs regenerate-and-byte-compare
+
+- [ ] **Step 1: do it**
+
+### Task 2: Rework the reviewer source
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `references/reviewer-prompts.md`
+
+**Interfaces:**
+- Consumes: the reviewer-prompt source layout
+- Produces: `helper() -> str`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_prose_interfaces_never_pair():
+    # 2026-07-03 live incident (this cycle's redirect round): a leading bare
+    # word 'the' tokenized identically across two prose Interfaces values, so
+    # 'Produces: the baked reviewer prompt …' paired 'Consumes: the reviewer-
+    # prompt source layout …' into a spurious interface edge that over-serialized
+    # a real run. Prose contract descriptions are this repo's house style; they
+    # must be structurally inert — zero interface edges, zero undeclared-
+    # dependency findings.
+    out = compile_plan_text(PROSE_INTERFACE_PLAN)
+    assert [e for e in out["dag_edges"] if e.get("why") == "interface"] == []
+    assert [c for c in out["marker_conflicts"]
+            if c.get("kind") == "undeclared-dependency"] == []
+
+
+# ---------------------------------------------------------------------------
+# Strict Files grammar (#85): annotations, unknown labels, and globs are loud
+# violations. An annotated Files line contributes NOTHING silently — it always
+# surfaces with the extracted-path fix, so a same-wave write race can never hide
+# behind a parenthetical (2026-07-03 foreign run: the two most contended files
+# silently lost overlap coverage).
+# ---------------------------------------------------------------------------
+
+ANNOTATED_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Shared file owner
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/lib/db.js` (only the pool init, lines 12-40)
+
+- [ ] **Step 1: do it**
+
+### Task 2: Other writer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/lib/db.js`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_annotated_files_line_is_a_violation_with_extract_fix():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "1", "files_raw": [
+        ("Modify", "`src/lib/db.js` (only the pool init, lines 12-40)")]})
+    assert len(v) == 1
+    assert "src/lib/db.js" in v[0]          # the extracted path is shown
+    assert "annotation" in v[0].lower()      # named for what it is
+
+
+def test_unknown_label_is_a_violation_with_did_you_mean():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "3", "files_raw": [("Delete", "`old/x.py`")]})
+    assert len(v) == 1 and "Modify" in v[0]
+
+
+def test_glob_is_a_violation():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "4", "files_raw": [("Modify", "`src/**/*.py`")]})
+    assert len(v) == 1 and "enumerate" in v[0].lower()
+
+
+def test_annotated_line_fails_plain_compile_loudly():
+    # front-door: plain compile on a violating plan is a loud error, not a silent
+    # overlap drop (#85). Adapted to the subprocess helper (compile_raw_text):
+    # SystemExit surfaces as a non-zero exit with the path on stderr.
+    r = compile_raw_text(ANNOTATED_PLAN)
+    assert r.returncode != 0
+    assert "src/lib/db.js" in r.stderr
+
+
+def test_canonical_files_block_compiles_clean():
+    # The strict gate must not fire on a canonical block: bare labels, backticked
+    # paths, no annotation. Multiple backticked paths on one bullet and the
+    # `- none` empty declaration both stay legal.
+    plan = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: writer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `src/a.py`
+- Modify: `src/b.py`
+
+- [ ] **Step 1: do it**
+
+### Task 2: gate
+
+**Type:** gate
+
+**Files:**
+- None
+
+- [ ] run pytest
+"""
+    out = compile_plan_text(plan)
+    assert not [c for c in out["marker_conflicts"] if "annotation" in c["note"].lower()]
+    assert "src/a.py" in {f for t in out["tasks"] for f in t["writes"]}
+
+
+# ---------------------------------------------------------------------------
 # Task 2: Files-label coverage (fixtures / bulleted None / dotfiles) +
 # empty-writes build/QA -> gate classification (issue #65 family)
 # ---------------------------------------------------------------------------
@@ -2276,3 +2545,118 @@ def test_duplicate_review_marker_is_a_compile_error(tmp_path):
     p = _compile_raw(tmp_path, dup, name="dup.md")
     assert p.returncode != 0
     assert "duplicate" in p.stderr.lower() and "Task 1" in p.stderr
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (grammar-hardening plan, issue #85): the catch-all Files construct.
+# `- catch-all: <prose>` declares an open write set the author cannot
+# enumerate as concrete paths — the task must never share a wave with any
+# other implementation task, and more than one bullet per task is a
+# violation.
+# ---------------------------------------------------------------------------
+
+CATCHALL_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Independent A
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/a.py`
+
+- [ ] **Step 1: do it**
+
+### Task 2: Re-pointer sweep
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `docs/manual.md`
+- catch-all: any doc-pinning test the full suite shows red — reconcile each pin preserving its semantics
+
+- [ ] **Step 1: do it**
+
+### Task 3: Independent B
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/b.py`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_catch_all_parses_and_is_not_a_violation():
+    out = compile_plan_text(CATCHALL_PLAN)  # compiles loudly-clean
+    assert out is not None
+
+
+def test_catch_all_task_never_shares_a_wave():
+    # 2026-07-03 home-run regression: a catch-all task was safe only because
+    # it happened to ride the serial tail; now it is serial by construction.
+    out = compile_plan_text(CATCHALL_PLAN)
+    for wave in out["waves"]:
+        if "2" in wave:
+            assert wave == ["2"]
+
+
+def test_second_catch_all_bullet_is_a_violation():
+    doubled = CATCHALL_PLAN.replace(
+        "- catch-all: any doc-pinning test",
+        "- catch-all: one thing\n- catch-all: any doc-pinning test")
+    r = compile_raw_text(doubled)
+    assert r.returncode != 0
+    # Specifically the "more than one" diagnosis, not just any mention of the
+    # word "catch-all" (a bare unrecognized bullet would ALSO mention the
+    # literal label name, which would make this pass for the wrong reason).
+    assert "more than one catch-all" in r.stderr.lower()
+
+
+def test_catch_all_conflict_edges_are_labeled():
+    out = compile_plan_text(CATCHALL_PLAN)
+    assert any(e.get("why") == "catch-all" for e in out["dag_edges"])
+
+
+def test_catch_all_surfaces_in_emitted_launch_task(tmp_path):
+    payload = _emit_launch_payload(tmp_path, CATCHALL_PLAN, name="catchall.md")
+    by_id = {t["id"]: t for t in payload["tasks"]}
+    assert by_id["2"]["catchAll"] == (
+        "any doc-pinning test the full suite shows red — reconcile each pin "
+        "preserving its semantics")
+    assert by_id["1"]["catchAll"] is None
+
+
+def test_catch_all_bullet_parses_into_task_dict():
+    from compile_plan import split_tasks, parse_task
+    plan = """### Task 1: X
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `a.py`
+- catch-all: reconcile every red pin
+
+- [ ] **Step 1: do it**
+"""
+    t = parse_task(split_tasks(plan)[0])
+    assert t["catch_all"] == "reconcile every red pin"
+    assert t["catch_all_raw"] == ["reconcile every red pin"]
+
+
+def test_files_violations_flags_second_catch_all_bullet():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "2", "catch_all_raw": ["one thing", "two thing"]})
+    assert len(v) == 1 and "catch-all" in v[0].lower()
+
+
+def test_files_violations_allows_single_catch_all_bullet():
+    from compile_plan import _files_violations
+    v = _files_violations({"id": "2", "catch_all_raw": ["one thing"], "files_raw": []})
+    assert v == []

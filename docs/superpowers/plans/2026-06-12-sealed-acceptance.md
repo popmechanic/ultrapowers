@@ -273,7 +273,9 @@ git commit -m "feat: sealed-acceptance hasher and deterministic exam runner"
 **Files:**
 - Modify: `skills/ultrapowers/scripts/compile_plan.py`
 - Modify: `tests/test_compile_plan.py`
-- Modify: `tests/fixtures/marked-plan.md` (and any other marked plan fixture under `tests/fixtures/` — find them with `grep -rl "Depends-on" tests/fixtures/`)
+- Modify: `tests/fixtures/marked-plan.md`, `tests/fixtures/`, `grep -rl "Depends-on" tests/fixtures/`
+
+Files-note — `tests/fixtures/marked-plan.md` (and any other marked plan fixture under `tests/fixtures/` — find them with `grep -rl "Depends-on" tests/fixtures/`)
 
 Contract (restated): the plan-level marker is `**Acceptance:** sealed <seal-id> (sha256:<64-hex>)` or `**Acceptance:** waived — <reason>`, on its own line outside any task body and outside code fences. A **marked** plan (any task carrying explicit markers, i.e. any task with `heuristic: false`) with neither form fails compilation. Unmarked plans get a disposition warning instead.
 
@@ -417,7 +419,9 @@ git commit -m "feat: compiler parses and enforces the plan-level Acceptance mark
 - Modify: `skills/ultrapowers/references/reviewer-prompts.md`
 - Modify: `skills/ultrapowers/references/report-format.md`
 - Modify: `skills/ultrapowers/references/workflow-template.md`
-- Modify: `tests/test_no_prompt_drift.py` (only if its expected-blocks list is explicit)
+- Modify: `tests/test_no_prompt_drift.py`
+
+Files-note — `tests/test_no_prompt_drift.py` (only if its expected-blocks list is explicit)
 
 Contract (restated): the runner is `run_acceptance.sh <seal-id> <branch> <sha256>`; it prints one JSON object `{ sealId, status: OK|SEAL_MISSING|SEAL_BROKEN|ERROR, passed, exitCode, output }` and exits 0 iff verified-and-passed. The engine must treat the script as the authority — the agent only relays output. This task follows the **re-bake discipline**: the new prompt text lands in `reviewer-prompts.md` inside a `<!-- BAKE:... -->` block first, then verbatim in `workflow.js`.
 
@@ -531,7 +535,9 @@ git commit -m "feat: engine administers sealed acceptance exam, reports receipts
 - Modify: `skills/ultraplan/SKILL.md`
 - Create: `skills/ultraplan/references/seal-author-prompt.md`
 - Modify: `skills/ultrapowers/SKILL.md`
-- Modify: `tests/test_ultraplan_skill.py`, `tests/test_orchestrator_markers.py` (only where they pin section lists/content — run them and update pins, never weaken assertions)
+- Modify: `tests/test_ultraplan_skill.py`, `tests/test_orchestrator_markers.py`
+
+Files-note — `tests/test_ultraplan_skill.py`, `tests/test_orchestrator_markers.py` (only where they pin section lists/content — run them and update pins, never weaken assertions)
 
 - [ ] **Step 1: Add the sealing step to ultraplan**
 

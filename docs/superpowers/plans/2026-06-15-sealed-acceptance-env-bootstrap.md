@@ -536,7 +536,9 @@ gate-time match."
 **Depends-on:** 1
 
 **Files:**
-- Modify: `skills/ultrapowers/SKILL.md` (the Step 5 sealed-gate paragraph)
+- Modify: `skills/ultrapowers/SKILL.md`
+
+Files-note — `skills/ultrapowers/SKILL.md` (the Step 5 sealed-gate paragraph)
 
 A doc-only edit teaching the operator to read the runner's new statuses. It depends only on the runner statuses Task 1 introduced, and edits a file no other task touches — so it runs in parallel with Tasks 2/3.
 

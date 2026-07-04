@@ -119,3 +119,32 @@ finishing pass.
 - Validating unmarked (pure-superpowers) plans — `--check` targets marked
   plans; sequential executors are unaffected.
 - Any change to wave semantics beyond catch-all serialization.
+
+## Amendments (2026-07-03, at the pre-merge gate)
+
+Two deviations from this design surfaced in execution and are recorded here
+so the spec matches what shipped.
+
+(a) **The symbol-list *rejection* rule was mis-specified.** Design §2 rejected
+any Interface value that "is not a symbol list … full sentences are rejected,"
+and Task 6 implemented that as a `_symbol_list_violations` check. It was wrong
+on both ends: it rejected this repo's own prose-Interfaces house style (a
+`Consumes:`/`Produces:` line that reads as a sentence is legitimate
+documentation), and it false-positived annotated symbols whose leading token
+was a real identifier. The redirect replaced the rejection with a structural
+fix — `_interface_token` accepts only a **symbol-shaped lead** (a backticked
+identifier, or a bare identifier followed by end-of-string, `(`, `->`, or `=`)
+and tokenizes everything else to empty, so prose is valid grammar that is
+simply inert to edge inference. The validator was deleted, not tightened;
+`plan-markers.md`'s Interfaces grammar now documents the two valid shapes
+(symbol-led vs. free prose) rather than a rejection rule.
+
+(b) **"Historical plans are not migrated" was overturned in-run.** Design §3
+said compiling an old plan that violates the new grammar would just error with
+diagnostics, leaving `docs/superpowers/plans/` untouched. During the wave-2
+reconciliation we instead canonicalized all 21 historical marked plans,
+because `tests/test_all_plans_compile.py` guards that every committed marked
+plan still compiles, and keeping that guard at full strength was judged more
+valuable than preserving the plans' historical annotation style. Migrating the
+plans (rather than weakening or scoping the guard) keeps the whole committed
+corpus a live, compile-checked demonstration of the canonical grammar.

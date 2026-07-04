@@ -459,8 +459,11 @@ git commit -m "feat: compiler classifies tasks against the marker contract befor
 **Files:**
 - Create: `skills/ultraplan/SKILL.md`
 - Create: `tests/test_ultraplan_skill.py`
-- Modify: `tests/test_validate_skill.py` (add one test after `test_ultrapowers_skill_validates`)
-- Modify: `.github/workflows/ci.yml` (add a validate step)
+- Modify: `tests/test_validate_skill.py`
+- Modify: `.github/workflows/ci.yml`
+
+Files-note — `tests/test_validate_skill.py` (add one test after `test_ultrapowers_skill_validates`)
+Files-note — `.github/workflows/ci.yml` (add a validate step)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -637,8 +640,10 @@ git commit -m "feat: ultraplan authoring skill — markers + worktree-pure rules
 **Depends-on:** 1, 2
 
 **Files:**
-- Modify: `skills/ultrapowers/SKILL.md` (Step 2 bullets, Step 3 list, Step 5 first paragraph + Approve bullet, Resources list)
+- Modify: `skills/ultrapowers/SKILL.md`
 - Create: `tests/test_orchestrator_markers.py`
+
+Files-note — `skills/ultrapowers/SKILL.md` (Step 2 bullets, Step 3 list, Step 5 first paragraph + Approve bullet, Resources list)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -764,8 +769,10 @@ git commit -m "feat: orchestrator classifies via the marker contract and surface
 **Depends-on:** 1
 
 **Files:**
-- Modify: `skills/ultrapowers/references/report-format.md` (Presentation list + Approve bullet)
+- Modify: `skills/ultrapowers/references/report-format.md`
 - Create: `tests/test_report_runbook.py`
+
+Files-note — `skills/ultrapowers/references/report-format.md` (Presentation list + Approve bullet)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -835,7 +842,9 @@ git commit -m "feat: pre-merge report presents the post-merge runbook from compi
 **Depends-on:** 2, 3
 
 **Files:**
-- Modify: `README.md` (insert one section between `## How a run works` and `## Install`)
+- Modify: `README.md`
+
+Files-note — `README.md` (insert one section between `## How a run works` and `## Install`)
 
 - [ ] **Step 1: Implement**
 
@@ -915,8 +924,11 @@ Expected: empty output (every task committed its own changes)
 **Type:** release
 
 **Files:**
-- Modify: `.claude-plugin/plugin.json` (version)
-- Modify: `.claude-plugin/marketplace.json` (plugins[0].version)
+- Modify: `.claude-plugin/plugin.json`
+- Modify: `.claude-plugin/marketplace.json`
+
+Files-note — `.claude-plugin/plugin.json` (version)
+Files-note — `.claude-plugin/marketplace.json` (plugins[0].version)
 
 Run after the branch merges (this is the publish ritual — it belongs to the post-merge runbook under ultrapowers execution, or runs as the final sequential task otherwise).
 

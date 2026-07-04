@@ -692,7 +692,9 @@ git commit -m "feat(compat): wire SKILL.md Step 1 to the resolver-grounded prefl
 
 **Files:**
 - Modify: `tests/test_superpowers_compat.py`
-- Test: `tests/test_superpowers_compat.py` (this file is its own test)
+- Test: `tests/test_superpowers_compat.py`
+
+Files-note — `tests/test_superpowers_compat.py` (this file is its own test)
 
 **Interfaces:**
 - Consumes: `MANIFEST`, `check` (Task 1); `resolve_active` (Task 2).
@@ -865,7 +867,9 @@ git commit -m "docs(compat): record the .git/ultra latent fragility"
 **Depends-on:** 1, 2, 3, 4, 5, 6
 
 **Files:**
-- Test: `tests/` (whole suite)
+- Test: `tests/`
+
+Files-note — `tests/` (whole suite)
 
 The pre-merge verification for this plan. Runs the committed suite; nothing to implement.
 

@@ -933,7 +933,9 @@ git commit -m "feat(sealed): framework-agnostic tests-actually-ran detection for
 Evidence: `[5000bc37c482ec5c]` — `marketplace.json` silently lagged `plugin.json` (the documented "plugin.json wins silently if they drift" gotcha, observed live). A pytest assertion catches it; CI already runs `pytest tests/`, so no `ci.yml` edit is needed.
 
 **Files:**
-- Test: `tests/test_version_sync.py` (new)
+- Test: `tests/test_version_sync.py`
+
+Files-note — `tests/test_version_sync.py` (new)
 
 **Interfaces:**
 - Consumes: `.claude-plugin/plugin.json` (`.version`), `.claude-plugin/marketplace.json` (`.plugins[]` entry where `name == "ultrapowers"`, `.version`).
@@ -1271,7 +1273,9 @@ Evidence: `[40e2f6491024d6f4]` / `[d3329657e0b6fbec]` / `[02b3fec6c5122a9c]` —
 
 **Files:**
 - Modify: `skills/ultrapowers/SKILL.md`
-- Test: `tests/test_report_runbook.py` (string-presence pin for the new gate steps)
+- Test: `tests/test_report_runbook.py`
+
+Files-note — `tests/test_report_runbook.py` (string-presence pin for the new gate steps)
 
 **Interfaces:**
 - Consumes: `run_lock.sh acquire|check|release|snapshot|restore` and `sweep_worktrees.sh --run <runId>` (Task 4).
@@ -1418,7 +1422,9 @@ Evidence: `[b117ab5d53e5b96a]` (accumulated per-wave merge commits made the inte
 - Create: `skills/ultrapowers/references/finishing-notes.md`
 - Modify: `skills/ultrapowers/SKILL.md`
 - Modify: `skills/ultrapowers/references/report-format.md`
-- Test: `tests/test_finishing_notes.py` (new)
+- Test: `tests/test_finishing_notes.py`
+
+Files-note — `tests/test_finishing_notes.py` (new)
 
 **Interfaces:**
 - Consumes: `finishing-a-development-branch` handoff in SKILL.md Step 5 + the report-format.md item-10 runbook (both touched by Tasks 11/12 — hence `Depends-on: 12`).

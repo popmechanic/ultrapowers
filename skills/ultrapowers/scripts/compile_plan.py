@@ -41,6 +41,17 @@ FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
 FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
+# A Files-block bullet carrying a `Label: value` shape (ANY label, canonical or
+# not), used ONLY to feed _files_violations the verbatim (label, rest) pairs.
+# A colon-less natural-English bullet ("- Modify the config") does not match and
+# stays a soft near-miss; `- none` is filtered by the caller before capture.
+FILES_LABEL_LINE = re.compile(r"^[-*+]\s*([A-Za-z][A-Za-z0-9()/ _-]*?)\s*:\s*(.+?)\s*$")
+# The catch-all Files bullet (#85): `- catch-all: <prose>` declares an open
+# write set the author cannot enumerate as concrete paths. Matched BEFORE
+# FILES_LABEL_LINE routes the bullet into files_raw (which would otherwise
+# flag it as an unknown label "catch-all") — a catch-all bullet is a distinct
+# construct, not a Files grammar violation.
+CATCH_ALL_LINE = re.compile(r"^[-*+]\s*catch-all\s*:\s*(.+)$", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
@@ -215,15 +226,32 @@ def split_tasks(text):
     return tasks
 
 
-def parse_task(t):
+def parse_task(t, raise_on_marker_error=True):
+    """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
+    validation failure (currently: an invalid or duplicate **Review:** value)
+    is reported: True (the normal compile path, default) raises SystemExit
+    immediately, so main() dies loudly at the first one found; False (the
+    --check collecting mode, #85) records the same message into the returned
+    task's `marker_violations` list instead, so collect_violations can gather
+    every task's violations in one pass rather than aborting at the first."""
     ttype = None
     type_unparsed = []
     deps, deps_none, deps_mixed = [], False, False
     late_markers = []
     dup_types = []
     near_miss = []
+    marker_violations = []
     creates, modifies, reads = [], [], []
     files_near_miss = []
+    # Every `- catch-all: <prose>` bullet's prose, in document order (#85). A
+    # task declares AT MOST one — a second is a grammar violation surfaced by
+    # _files_violations, so every one seen is recorded here rather than the
+    # second silently overwriting the first.
+    catch_all_raw = []
+    # Verbatim (label, rest) for every `Label: value` Files bullet (canonical or
+    # not) — the strict-grammar input to _files_violations (#85). Unknown-label
+    # lines are CAPTURED here, not dropped, so they surface as loud violations.
+    files_raw = []
     in_files = False
     files_entries_seen = False
     # v6 `**Interfaces:**` block (spec 2026-06-16): opens on `**Interfaces:**`
@@ -300,13 +328,18 @@ def parse_task(t):
             else:
                 val = m.group(1)
                 if val not in ("adversarial", "lean"):
-                    raise SystemExit(
-                        "Task {}: invalid **Review:** value {!r} "
-                        "(valid: adversarial, lean)".format(t["id"], val))
-                if t.get("review"):
-                    raise SystemExit(
-                        "Task {}: duplicate **Review:** marker".format(t["id"]))
-                t["review"] = val
+                    msg = ("Task {}: invalid **Review:** value {!r} "
+                           "(valid: adversarial, lean)".format(t["id"], val))
+                    if raise_on_marker_error:
+                        raise SystemExit(msg)
+                    marker_violations.append(msg)
+                elif t.get("review"):
+                    msg = "Task {}: duplicate **Review:** marker".format(t["id"])
+                    if raise_on_marker_error:
+                        raise SystemExit(msg)
+                    marker_violations.append(msg)
+                else:
+                    t["review"] = val
         elif is_markerish and s.rstrip() == "**Depends-on:**":
             # Exact marker, missing value — a spelling diagnosis would mislead;
             # outside the header it is a placement violation like any late marker.
@@ -397,7 +430,28 @@ def parse_task(t):
             # with "- [": close, then fall through to normal processing.
             if s.startswith("- ["):
                 in_files = False
+            cm = CATCH_ALL_LINE.match(s) if in_files else None
+            if cm:
+                # `- catch-all: <prose>` (#85): a declared OPEN write set —
+                # the task's scope cannot be enumerated as concrete paths, so
+                # it conflicts with every other implementation task for
+                # scheduling (build_edges orders it after everything else,
+                # forcing it into its own wave). Every occurrence is recorded
+                # (not just the first) so a second bullet surfaces as a
+                # violation instead of silently overwriting the first.
+                catch_all_raw.append(cm.group(1).strip())
+                files_entries_seen = True
+                continue
             f = FILE_LINE.match(s) if in_files else None
+            # Strict-grammar capture (#85): record EVERY `Label: value` Files
+            # bullet — canonical or not — so _files_violations can flag annotated
+            # lines, unknown labels, and globs. `- none` is an explicit empty
+            # declaration (never a violation) and is not captured.
+            if in_files and s.lstrip("-*+ ").strip().lower() != "none":
+                mlabel = FILES_LABEL_LINE.match(s)
+                if mlabel:
+                    files_raw.append((mlabel.group(1).strip(),
+                                      mlabel.group(2).strip()))
             if in_files and not f and re.match(r"^[-*+]\s", s):
                 # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
                 # (common on gates/verification tasks) — not a near-miss. Skip it
@@ -500,7 +554,18 @@ def parse_task(t):
              depends_on=deps, depends_none=deps_none and not deps,
              deps_mixed=deps_mixed, late_markers=late_markers,
              dup_types=dup_types, near_miss=near_miss,
-             files_near_miss=files_near_miss, glob_paths=sorted(set(glob_paths)),
+             # Marker-VALUE validation failures collected instead of raised
+             # (only populated when raise_on_marker_error=False — the --check
+             # CLI mode, #85); empty in the normal compile path since a
+             # violation there raises SystemExit immediately instead.
+             marker_violations=marker_violations,
+             files_near_miss=files_near_miss, files_raw=files_raw,
+             # First `- catch-all:` bullet wins as the authoritative prose (a
+             # second is a violation, not a silent overwrite — see
+             # catch_all_raw, consumed by _files_violations).
+             catch_all=(catch_all_raw[0] if catch_all_raw else None),
+             catch_all_raw=catch_all_raw,
+             glob_paths=sorted(set(glob_paths)),
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -643,17 +708,173 @@ def _desc_field_label(creator_paths, desc_text):
     return "a description/Interfaces field"
 
 
-# Interface-token normalization (v6, spec 2026-06-16 §1.3). A Consumes/Produces
-# entry is matched by EXACT token equality — no substring/fuzzy match. Normalize
-# to the leading symbol token: strip a leading bullet/label residue and backticks,
-# then take the identifier up to the first '(' , whitespace, or ':' so
-# "`User` dataclass (id: int)" and "`User`" both reduce to "User", and
-# "validate_payload(payload) -> list[str]" reduces to "validate_payload".
+# Placeholder interface values — 'Consumes: nothing (…)' is authoring prose
+# for "no contract", never a producible symbol. Tokenizing them to "" deletes
+# the placeholder-pairing edge class at the representation (2026-07-03
+# foreign run: 'nothing' paired 'nothing' -> spurious edges -> a wasted wave).
+PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})
+
+
+# Interface-token normalization (v6, spec 2026-06-16 §1.3; hardened by the #85
+# redirect). A Consumes/Produces entry is matched by EXACT token equality — no
+# substring/fuzzy match — and ONLY a symbol-shaped lead yields a token. A prose
+# contract description (this repo's established house style for Interfaces) tokens
+# to "" and can NEVER pair into an interface edge. The 2026-07-03 live incident
+# motivating this: a leading bare word 'the' tokenized identically across two
+# prose values, pairing 'Produces: the baked reviewer prompt …' with 'Consumes:
+# the reviewer-prompt source layout …' into a spurious edge that over-serialized
+# a real run. A symbol lead is either:
+#   * a backticked symbol — the FIRST backtick span is the symbol, and any prose
+#     tail after the closing backtick is allowed ("`User` dataclass (id, name)"
+#     and "`User`" both reduce to "User", "`validate(p)`" to "validate"); OR
+#   * a bare identifier standing alone, or immediately followed by a '(' signature,
+#     '->', or '=' ("validate_payload(payload) -> list[str]" -> "validate_payload",
+#     "User" -> "User").
+# A bare word followed by more prose words ("every task object …", the "compiler"
+# in "compiler `**Review:**` marker semantics") is documentation, not a symbol —
+# it tokens to "". Placeholder normalization stays on top: a leading token in
+# PLACEHOLDER_TOKENS (bare or with trailing prose, "nothing (test-data-only
+# change)") normalizes to "" so placeholder Consumes/Produces never pair.
+_BARE_SYMBOL_LEAD = re.compile(r"([A-Za-z_][\w.\-]*)\s*(?:$|\(|->|=)")
+
+
 def _interface_token(entry):
-    s = entry.strip().strip("`").strip()
+    s = entry.strip()
     if not s:
         return ""
-    return re.split(r"[(\s:]", s, 1)[0].strip("`").strip()
+    if s.startswith("`"):
+        m = re.match(r"`([^`]+)`", s)
+        if not m:
+            return ""  # a lone opening backtick with no close — not a symbol
+        token = re.split(r"[(\s:]", m.group(1), 1)[0].strip("`").strip()
+    else:
+        m = _BARE_SYMBOL_LEAD.match(s)
+        if not m:
+            return ""  # a bare word trailed by more prose — documentation
+        token = m.group(1)
+    return "" if token.lower() in PLACEHOLDER_TOKENS else token
+
+
+# Strict Files grammar (#85). A Files bullet must be a bare canonical label
+# followed by one or more backticked paths and NOTHING else. `Test fixture(s)` /
+# `Fixture(s)` remain canonical aliases (used by existing tests/fixtures). Three
+# things are loud violations, each carrying a did-you-mean fix:
+#   * an UNKNOWN LABEL (Delete/Read/… or a wrong-case `modify:`),
+#   * a GLOB path (`*`, `?`, `[` — a `{` brace is deliberately left to the softer
+#     ambiguous-files serialization so `src/{a,b}.py` stays a warning, not a bail),
+#   * a TRAILING ANNOTATION after the path(s) ("(only the pool init, lines 12-40)").
+# An annotated line contributes NOTHING silently: it always surfaces here, so a
+# same-wave write race can never hide behind a parenthetical (2026-07-03 foreign
+# run: the two most contended files silently lost overlap coverage).
+CANONICAL_FILE_LABELS = ("Create", "Modify", "Test", "Test fixture(s)",
+                         "Fixture(s)")
+_LABEL_SUGGEST = {"delete": "Modify", "remove": "Modify", "read": "Test",
+                  "create-or-modify": "Modify", "add": "Create"}
+_FILES_GLOB_CHARS = "*?["
+
+
+def _files_violations(task):
+    """Grammar violations for one task's Files block, each with a did-you-mean
+    fix. Reads the task's recorded `files_raw` — the verbatim (label, rest) pairs
+    captured for every `Label: value` Files bullet, canonical or not. Empty list
+    == the block is canonical. An unbackticked canonical value ("- Create: a.py,
+    b.py") is NOT flagged here: it is handled tolerantly by the existing
+    "backtick each path" near-miss, so overlap inference is never blocked by a
+    formatting-only miss."""
+    out = []
+    if len(task.get("catch_all_raw", [])) > 1:
+        out.append(
+            "Task %s: more than one catch-all bullet — a task declares at "
+            "most one open write set" % task.get("id"))
+    for label, rest in task.get("files_raw", []):
+        paths = PATH_RE.findall(rest)
+        if label not in CANONICAL_FILE_LABELS:
+            shown = paths[0] if paths else rest.strip()
+            suggest = _LABEL_SUGGEST.get(label.lower(), "Create/Modify/Test")
+            out.append("Task %s: unknown Files label %r for `%s` — use %s"
+                       % (task.get("id"), label, shown, suggest))
+            continue
+        if not paths:
+            continue  # unbackticked value — soft near-miss, not a grammar bail
+        globby = [p for p in paths if any(c in p for c in _FILES_GLOB_CHARS)]
+        if globby:
+            out.append("Task %s: glob `%s` — enumerate the concrete paths"
+                       % (task.get("id"), globby[0]))
+            continue
+        # Anything left after removing the backticked path(s) and list
+        # separators is a trailing prose annotation.
+        residue = re.sub(r"[\s,;]+", "", PATH_RE.sub("", rest))
+        if residue:
+            out.append(
+                "Task %s: Files line has a trailing annotation.\n"
+                "  got:  - %s: %s\n"
+                "  fix:  - %s: `%s`   (move the note into the task prose)"
+                % (task.get("id"), label, rest, label, paths[0]))
+    return out
+
+
+# Malformed task-heading detection, factored out of main() so --check (#85)
+# can reuse the exact same net: a heading that LOOKS like a task heading but
+# fails TASK_HEAD (e.g. `### Task 1.5:` — non-alphanumeric id) would silently
+# fold its whole section into the PREVIOUS task. See main()'s original
+# comment (still there, verbatim) for the two-net rationale.
+NEAR_HEAD = re.compile(
+    r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+(?:[^\s:]*\d[^\s:]*|[^\s:]{1,3})\s*:)",
+    re.I)
+
+
+def _malformed_task_headings(plan_text):
+    """Heading lines that LOOK like a task heading but fail TASK_HEAD."""
+    return [line.strip() for line, fenced in _fence_aware_lines(plan_text)
+            if not fenced and NEAR_HEAD.match(line.strip())
+            and not match_head(line)]
+
+
+def collect_violations(plan_path):
+    """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
+    parse as main() but collects EVERY violation across the whole plan in one
+    pass instead of exiting at the first: Files grammar (_files_violations,
+    which also covers the catch-all-bullet rule) and marker-value validation
+    (currently **Review:** — parse_task raises immediately in the normal compile
+    path; here raise_on_marker_error=False makes it accumulate per task instead
+    of aborting on the first task with a bad marker).
+
+    Interface values are NOT grammar-checked: a prose contract description is
+    valid documentation and this repo's house style (#85 redirect). The
+    tokenizer (_interface_token) makes prose structurally inert — a bare-word
+    lead never tokens, so a prose Interfaces line can never pair into an edge —
+    so there is nothing to flag.
+
+    A malformed heading, zero task headings, or duplicate task ids abort
+    early as a single violation — the rest of the parse cannot proceed
+    safely without well-formed, uniquely-identified tasks (same as main()'s
+    loud SystemExit for these three cases)."""
+    plan_text = plan_path.read_text()
+
+    bad_heads = _malformed_task_headings(plan_text)
+    if bad_heads:
+        return ["task heading(s) not recognized: " + "; ".join(bad_heads[:3])
+                + " — ids must be alphanumeric (`### Task <id>: <title>`); a "
+                "malformed heading folds its task into the previous one."]
+
+    raw_tasks = split_tasks(plan_text)
+    if not raw_tasks:
+        return ["no '### Task N:' headings found."]
+
+    ids = [t["id"] for t in raw_tasks]
+    dups = sorted({i for i in ids if ids.count(i) > 1})
+    if dups:
+        return ["duplicate task id(s): " + ", ".join(dups)
+                + " — task headings must be unique."]
+
+    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw_tasks]
+
+    violations = []
+    for t in tasks:
+        violations.extend(t.get("marker_violations", []))
+    for t in tasks:
+        violations.extend(_files_violations(t))
+    return violations
 
 
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
@@ -990,6 +1211,26 @@ def build_edges(impl):
                 elif u["order"] > t["order"] and not would_cycle(t["id"], u["id"]):
                     add(t["id"], u["id"], "ambiguous-files")
 
+    # Catch-all tier (#85): `- catch-all: <prose>` declares an OPEN write set
+    # that cannot be scoped to concrete paths, so it conflicts with every
+    # other implementation task for scheduling — it must never share a wave
+    # with anything. Order every other task before it, UNLESS an earlier tier
+    # (or an earlier catch-all pass) already ordered the catch-all task
+    # before that other task — would_cycle(u, t) is True exactly when t
+    # already (transitively) reaches u, i.e. the plan already put the
+    # catch-all task first; that existing order is respected rather than
+    # forced into a cycle. Runs last, after every file-overlap tier, so it
+    # sees the complete edge set.
+    for t in impl:
+        if not t.get("catch_all"):
+            continue
+        for u in impl:
+            if u["id"] == t["id"]:
+                continue
+            if would_cycle(u["id"], t["id"]):
+                continue  # t already precedes u — respect the existing order
+            add(u["id"], t["id"], "catch-all")
+
     return edges, conflicts
 
 
@@ -1063,9 +1304,27 @@ def main(argv=None):
                          "globalConstraints/planPath) to PATH; the orchestrator "
                          "adds only per-task tier/review/testCmd and run knobs. "
                          "Requires --emit-launch.")
+    ap.add_argument("--check", action="store_true",
+                    help="authoring-time grammar validation only (#85): print "
+                         "every violation with a did-you-mean fix and exit 2, "
+                         "or print 'PLAN OK' and exit 0 — never emits waves. "
+                         "Mutually exclusive with --emit-launch/--emit-args.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
+    if args.check and (emit_launch is not None or emit_args is not None):
+        sys.exit("error: --check is mutually exclusive with --emit-launch/"
+                 "--emit-args (--check only validates grammar; it never emits "
+                 "launch files)")
+    if args.check:
+        violations = collect_violations(args.plan)
+        if violations:
+            print("\n\n".join(violations))
+            print()
+            print(f"{len(violations)} violation(s)")
+            return 2
+        print("PLAN OK")
+        return 0
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
                  "ride via the launch file, so wavesPath is always populated)")
@@ -1086,12 +1345,7 @@ def main(argv=None):
     # an English word (`## Task tracking: overview`, `## Task list: …`) compile
     # as section boundaries instead of refusing the plan. Residual ambiguity:
     # a <=3-char word (`## Task ids:`) still flags; retitle such sections.
-    near_head = re.compile(
-        r"^(#{3,4}\s*task\b|#{1,6}\s*task\s+(?:[^\s:]*\d[^\s:]*|[^\s:]{1,3})\s*:)",
-        re.I)
-    bad_heads = [line.strip() for line, fenced in _fence_aware_lines(plan_text)
-                 if not fenced and near_head.match(line.strip())
-                 and not match_head(line)]
+    bad_heads = _malformed_task_headings(plan_text)
     if bad_heads:
         # Precise "did you mean ###" hint when the ONLY fault is the heading
         # LEVEL (two or four-plus hashes around an otherwise well-formed
@@ -1122,6 +1376,18 @@ def main(argv=None):
     if dups:
         print("compile_plan: duplicate task id(s): " + ", ".join(dups) +
               " — task headings must be unique; refusing to compile.", file=sys.stderr)
+        raise SystemExit(1)
+
+    # Strict Files grammar (#85): an annotated Files line, an unknown label, or a
+    # glob is a loud compile error — never a silent overlap drop. Collected across
+    # every task so the author sees all diagnostics at once, and raised BEFORE
+    # edge building so a violating line never reaches overlap inference partially.
+    files_violations = [v for t in tasks for v in _files_violations(t)]
+    if files_violations:
+        print("compile_plan: Files grammar violation(s) — refusing to compile "
+              "(an annotated / unknown-label / glob Files line silently drops "
+              "overlap coverage):\n" + "\n".join(files_violations),
+              file=sys.stderr)
         raise SystemExit(1)
 
     out_tasks = []
@@ -1290,7 +1556,11 @@ def main(argv=None):
     launch_waves = [
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
           "depends_on": by_id[tid]["depends_on"],
-          "interfaces": by_id[tid]["interfaces"]} for tid in wave]
+          "interfaces": by_id[tid]["interfaces"],
+          # Declared open write set (#85, additive — None when the task has
+          # no `- catch-all:` bullet). waves.js ignores unknown fields today;
+          # not touched by this plan.
+          "catchAll": by_id[tid].get("catch_all")} for tid in wave]
         for wave in waves]
 
     # One deterministic label per wave (same order as waves/launch_waves). The
@@ -1331,7 +1601,11 @@ def main(argv=None):
                        # Authored value — filled by the plan's **Review:**
                        # marker, "lean" when unmarked. Unlike the tier slot,
                        # the orchestrator fills nothing here.
-                       "review": by_id[tid].get("review") or "lean"}
+                       "review": by_id[tid].get("review") or "lean",
+                       # Declared open write set (#85) — shown to the
+                       # implementer prompt so a catch-all task's scope is
+                       # never silently invisible. None when absent.
+                       "catchAll": by_id[tid].get("catch_all")}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,
