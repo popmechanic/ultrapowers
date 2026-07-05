@@ -2,7 +2,7 @@
 
 You are the distill agent. You have read the ledger findings and are drafting
 proposals for how the ultrapowers engine/skill/reference surfaces should change.
-Every proposal you draft MUST carry the three fields below. Return proposals as
+Every proposal you draft MUST carry the four fields below. Return proposals as
 a JSON array.
 
 ## Required proposal fields
@@ -35,6 +35,17 @@ delete this whole cluster?"*
   variation is environmental, not representational").
 - If the cluster does not meet the ≥3-run / ≥2-distill threshold, set this
   field to `null`.
+
+### `canaryMetric`
+
+**Required when the proposal trades authoring or verification rigor for token
+or clock efficiency** — looser plan bodies, fewer or lighter review passes, a
+skipped check; `null` otherwise. Name the single post-adoption number that
+will tell the next distill whether the quality gamble is paying. Default: the
+**redirect-round rate** — the per-run redirect-round count the sensing rubric
+requires, compared across `engineVersion` before and after adoption. A rising
+canary means the trade is failing; flag it and draft the reversal as a
+proposal rather than letting the regression stand.
 
 ### `netConceptDelta`
 
@@ -78,6 +89,7 @@ and what currently blocks it. Ranking it last is fine; omitting it is not.
 - `surface` (string) — the repo path(s) a fix would touch.
 - `complexityEffect` (string) — one of `additive-guard` | `structural` | `simplification`.
 - `consolidationAttempted` (string | null) — required for recurring clusters; null otherwise.
+- `canaryMetric` (string | null) — required for rigor-for-efficiency trades; null otherwise.
 - `netConceptDelta` (string) — one of `up` | `flat` | `down`.
 - `rationale` (string) — why this proposal addresses the ledger finding.
 - `runIds` (string[]) — the run IDs whose findings motivate this proposal.

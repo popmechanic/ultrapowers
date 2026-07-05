@@ -23,6 +23,19 @@ def test_ci_validates_ultralearn():
     assert "skills/ultralearn" in CI.read_text()
 
 
+def test_rigor_trade_proposals_must_name_a_canary_metric():
+    """2026-07-04: a proposal that trades authoring/verification rigor for
+    token or clock efficiency is a quality gamble; adopted without a named
+    post-adoption metric, nothing ever tells the loop whether the gamble
+    paid. The rubric must require a canaryMetric field on such proposals,
+    defaulting to the redirect-round rate the sensing rubric measures."""
+    rubric = (ROOT / "skills/ultralearn/references/distilling-proposals.md").read_text()
+    assert "canaryMetric" in rubric, "canaryMetric field missing from proposal rubric"
+    low = rubric.lower()
+    assert "redirect-round rate" in low, "default canary (redirect-round rate) missing"
+    assert "canaryMetric" in SKILL.read_text(), "canary check missing from distill verb"
+
+
 def test_distill_is_structural_first():
     """2026-07-03 discovery (deterministic-driver cycle): holistic architecture
     fixes beat reactive per-defect guards — one structural move retired four

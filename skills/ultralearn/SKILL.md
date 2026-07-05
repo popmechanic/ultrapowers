@@ -48,7 +48,12 @@ recurring cluster the consolidation attempt is recorded before an additive
 guard is proposed. Weigh each finding's `engineVersion`: a cluster seen
 only under versions older than the current release may already be addressed — flag
 it as possibly-stale and confirm against the current engine before proposing a
-fix, rather than re-solving a closed problem. Output draft GitHub issues and/or
+fix, rather than re-solving a closed problem. The same version stamp powers the
+reverse check: for each previously adopted proposal that carried a
+`canaryMetric` (required on any rigor-for-efficiency trade; default = the
+redirect-round rate every sensed run records), compare the canary across runs
+before and after the adopting version — a rising canary means the trade is
+failing, and drafting its reversal belongs in this distill's output. Output draft GitHub issues and/or
 spec stubs under `docs/superpowers/specs/`. **Nothing is filed or committed
 without operator approval** — present the drafts and let the operator choose.
 This human gate is the loop's governor, mirroring the pre-merge gate.

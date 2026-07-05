@@ -24,6 +24,16 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    impossible against files that do not yet exist. Flag anything of that
    character.
 
+## The redirect-round count (required, exactly one per bundle)
+
+Always emit one `friction` finding recording the run's **redirect-round
+count**: the number of times completed work was sent back for another round —
+per-task review fix cycles plus gate/operator redirects (resume relaunches).
+Emit it even when the count is 0, at severity 0 — the zero is the data; a
+bundle with no count finding reads as unmeasured, not clean. Across runs this
+count becomes the redirect-round *rate*, the canary metric distill watches to
+judge whether an adopted rigor-for-efficiency trade is paying.
+
 ## Output schema (one object per finding)
 
 - `runId` (string) — copy from `bundle.json`.
