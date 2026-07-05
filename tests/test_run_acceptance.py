@@ -93,6 +93,25 @@ def test_red_exam_fails_honestly(tmp_path):
     assert out["exitCode"] != 0
 
 
+def test_suite_shipping_its_own_conftest_survives_marker_injection(tmp_path):
+    # Regression: the ran-marker plugin used to OVERWRITE the suite's own
+    # conftest.py, stranding every fixture-using test in a "fixture not found"
+    # setup error (false red at the gate). It must append. A green here proves
+    # both halves: the suite's fixtures survived AND the marker still fired
+    # (a green without the ran-marker is refused as false-green).
+    vault, seal_id, digest = make_vault(tmp_path, suite_files={
+        "conftest.py": (
+            "import pytest\n\n\n"
+            "@pytest.fixture\ndef expected():\n    return 5"),  # no trailing \n on purpose
+        "test_exam.py": (
+            "from mod import add\n\n\n"
+            "def test_add(expected):\n    assert add(2, 3) == expected\n"),
+    })
+    repo = make_repo(tmp_path, feature_built=True)
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code == 0 and out["status"] == "OK" and out["passed"] is True
+
+
 def test_broken_seal_refuses_to_run(tmp_path):
     vault, seal_id, digest = make_vault(tmp_path)
     (vault / seal_id / "suite" / "test_exam.py").write_text("assert True\n")

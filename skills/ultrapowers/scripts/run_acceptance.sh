@@ -106,8 +106,12 @@ run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
   local RAN_MARKER="$EXAM_WT/.ultra-acceptance/.__ran__"
   # Inject the pytest ran-marker plugin only for pytest suites; non-pytest
   # frameworks detect "tests ran" from the runner's own output via RAN_PATTERN.
+  # APPEND, never overwrite: a sealed suite may ship its own conftest.py
+  # (fixtures, sys.path setup) — clobbering it strands every fixture-using
+  # test in a "fixture not found" setup error (false red at the gate).
   if [ "${FRAMEWORK:-pytest}" = "pytest" ]; then
-    cat > "$EXAM_WT/.ultra-acceptance/conftest.py" <<'CONF'
+    printf '\n' >> "$EXAM_WT/.ultra-acceptance/conftest.py"
+    cat >> "$EXAM_WT/.ultra-acceptance/conftest.py" <<'CONF'
 import pathlib
 def pytest_runtest_call(item):
     pathlib.Path(__file__).with_name(".__ran__").write_text("1")
