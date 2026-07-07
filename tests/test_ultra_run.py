@@ -175,3 +175,15 @@ def test_validate_knobs_rejects_a_missing_review(tmp_path):
     assert r.returncode != 0
     verdict = json.loads(r.stdout)
     assert "review" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_malformed_wave_entry_with_a_verdict(tmp_path):
+    # A malformed entry must produce the JSON verdict contract, not a traceback.
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [["just-a-string-entry"]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "not an object" in verdict["detail"]
