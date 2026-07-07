@@ -63,31 +63,36 @@ def validate_knobs(args_path, root):
         print(json.dumps({"ok": False, "stage": "knob-validate",
                           "detail": "unreadable args file: %s" % e}))
         return 1
-    for wi, wave in enumerate(knobs.get("waves") or []):
-        if not isinstance(wave, list):
-            print(json.dumps({"ok": False, "stage": "knob-validate",
-                              "detail": "waves[%d] is not a list" % wi}))
-            return 1
-        for t in wave:
-            if not isinstance(t, dict):
+    try:
+        for wi, wave in enumerate(knobs.get("waves") or []):
+            if not isinstance(wave, list):
                 print(json.dumps({"ok": False, "stage": "knob-validate",
-                                  "detail": "waves[%d] entry %r is not an object"
-                                            % (wi, t)}))
+                                  "detail": "waves[%d] is not a list" % wi}))
                 return 1
-            tid = t.get("id", "?")
-            if t.get("tier") not in VALID_TIERS:
-                print(json.dumps({"ok": False, "stage": "knob-validate",
-                                  "detail": "task %s: tier %r is not "
-                                            "null|cheap|standard|mostCapable "
-                                            "(alias most-capable)"
-                                            % (tid, t.get("tier"))}))
-                return 1
-            if t.get("review") not in VALID_REVIEWS:
-                print(json.dumps({"ok": False, "stage": "knob-validate",
-                                  "detail": "task %s: review %r is not "
-                                            "lean|adversarial"
-                                            % (tid, t.get("review"))}))
-                return 1
+            for t in wave:
+                if not isinstance(t, dict):
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "waves[%d] entry %r is not an object"
+                                                % (wi, t)}))
+                    return 1
+                tid = t.get("id", "?")
+                if t.get("tier") not in VALID_TIERS:
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "task %s: tier %r is not "
+                                                "null|cheap|standard|mostCapable "
+                                                "(alias most-capable)"
+                                                % (tid, t.get("tier"))}))
+                    return 1
+                if t.get("review") not in VALID_REVIEWS:
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "task %s: review %r is not "
+                                                "lean|adversarial"
+                                                % (tid, t.get("review"))}))
+                    return 1
+    except TypeError as e:
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "malformed waves shape: %s" % e}))
+        return 1
     cmd = knobs.get("bootstrapCmd")
     if not (isinstance(cmd, str) and cmd.strip()):
         print(json.dumps({"ok": True, "stage": "knob-validate",

@@ -187,3 +187,24 @@ def test_validate_knobs_rejects_a_malformed_wave_entry_with_a_verdict(tmp_path):
     verdict = json.loads(r.stdout)
     assert verdict["ok"] is False
     assert "not an object" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_non_list_waves_value_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": 5}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+
+
+def test_validate_knobs_rejects_an_unhashable_tier_value_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": ["mostCapable"], "review": "lean"}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
