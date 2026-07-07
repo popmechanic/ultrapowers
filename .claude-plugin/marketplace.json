@@ -10,7 +10,7 @@
       "name": "ultrapowers",
       "source": "./",
       "description": "committed parallel workflow executor for Superpowers plans (/ultrapowers)",
-      "version": "0.0.32"
+      "version": "0.0.33"
     }
   ]
 }
