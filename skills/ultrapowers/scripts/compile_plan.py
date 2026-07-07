@@ -1547,7 +1547,8 @@ def main(argv=None):
     # inline as args.waves; the verbatim bodies — which can total tens of KB and
     # must never be transcribed by a model — are written to the --emit-launch
     # file and read by each task agent from disk (see SKILL.md Step 4b / waves.js
-    # args.wavesPath). The orchestrator still derives tier / review per task.
+    # args.wavesPath). The orchestrator still derives tier per task; review is
+    # plan-authored.
     by_id = {t["id"]: t for t in tasks}
 
     def _files_for(t):
