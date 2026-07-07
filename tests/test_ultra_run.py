@@ -58,9 +58,14 @@ def test_happy_path_receipt(tmp_path):
     assert (run_dir / "receipt.json").is_file()
     assert (run_dir / "launch.json").is_file()
     assert (run_dir / "args.json").is_file()
-    # Task-1 contract: tier slots pre-emitted, named in llmDerives
+    # Knob contract (#89): slots ride the args wave entries the engine reads;
+    # the launch file carries bodies + context only.
     launch = json.loads((run_dir / "launch.json").read_text())
-    assert all(t["tier"] is None for t in launch["tasks"])
+    assert all("tier" not in t and "review" not in t for t in launch["tasks"])
+    skel = json.loads((run_dir / "args.json").read_text())
+    entries = [t for wave in skel["waves"] for t in wave]
+    assert entries and all(t["tier"] is None for t in entries)
+    assert all(t["review"] in ("lean", "adversarial") for t in entries)
     assert any("tier" in d for d in receipt["llmDerives"])
     # lock + snapshot actually happened, with the dirty set recorded
     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"

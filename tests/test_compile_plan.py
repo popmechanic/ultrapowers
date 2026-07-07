@@ -2445,10 +2445,10 @@ def sh(cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
 
 
-def test_emit_launch_pre_emits_tier_slots(tmp_path):
-    """Per-task tier slots are pre-emitted as null so the orchestrator fills
-    slots instead of guessing the launch-args schema (2026-07-03 distill:
-    identical two-bounce launch rejection in three runs)."""
+def test_emit_args_pre_emits_knob_slots(tmp_path):
+    """Per-task knob slots ride the args wave entries — the object waves.js
+    actually reads (#89: launch-file slots were filled but never consumed).
+    tier is a null slot the orchestrator fills; review is plan-authored."""
     plan = tmp_path / "plan.md"
     plan.write_text(
         "# P\n\n**Acceptance:** waived — test fixture\n\n"
@@ -2461,10 +2461,31 @@ def test_emit_launch_pre_emits_tier_slots(tmp_path):
     args = tmp_path / "args.json"
     sh([sys.executable, str(COMPILER), str(plan),
         "--emit-launch", str(launch), "--emit-args", str(args)])
+    skel = json.loads(args.read_text())
+    entries = [t for wave in skel["waves"] for t in wave]
+    assert entries, "no wave entries emitted"
+    for t in entries:
+        assert "tier" in t and t["tier"] is None
+        assert t["review"] == "lean"
+
+
+def test_emit_launch_carries_no_knob_slots(tmp_path):
+    """The launch file is bodies + context only. A tier/review key here is
+    the dual channel regrowing — the exact defect #89 removed."""
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# P\n\n**Acceptance:** waived — test fixture\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n"
+    )
+    launch = tmp_path / "launch.json"
+    args = tmp_path / "args.json"
+    sh([sys.executable, str(COMPILER), str(plan),
+        "--emit-launch", str(launch), "--emit-args", str(args)])
     payload = json.loads(launch.read_text())
     assert payload["tasks"], "no tasks emitted"
     for t in payload["tasks"]:
-        assert "tier" in t and t["tier"] is None
+        assert "tier" not in t and "review" not in t
 
 
 # ---------------------------------------------------------------------------
@@ -2511,6 +2532,21 @@ def _emit_launch_payload(tmp_path, plan_markdown, name="plan.md"):
     return json.loads(launch.read_text())
 
 
+def _emit_args_entries(tmp_path, plan_markdown, name="plan.md"):
+    """Compile plan_markdown with --emit-launch/--emit-args and return the
+    args skeleton's wave entries keyed by task id — the knob channel the
+    engine reads (#89). Asserts a clean compile."""
+    plan = tmp_path / name
+    plan.write_text(plan_markdown)
+    launch = tmp_path / "launch.json"
+    argsf = tmp_path / "args.json"
+    p = sh([sys.executable, str(COMPILER), str(plan),
+            "--emit-launch", str(launch), "--emit-args", str(argsf)])
+    assert p.returncode == 0, p.stderr
+    skel = json.loads(argsf.read_text())
+    return {t["id"]: t for wave in skel["waves"] for t in wave}
+
+
 def _compile_raw(tmp_path, plan_markdown, name="plan.md"):
     """Write plan_markdown to tmp_path and run the compiler, returning the
     completed subprocess (non-zero exit allowed, not checked here)."""
@@ -2520,14 +2556,12 @@ def _compile_raw(tmp_path, plan_markdown, name="plan.md"):
 
 
 def test_review_marker_emits_adversarial_slot(tmp_path):
-    payload = _emit_launch_payload(tmp_path, REVIEW_PLAN)
-    by_id = {t["id"]: t for t in payload["tasks"]}
+    by_id = _emit_args_entries(tmp_path, REVIEW_PLAN)
     assert by_id["1"]["review"] == "adversarial"
 
 
 def test_unmarked_task_emits_lean_review_slot(tmp_path):
-    payload = _emit_launch_payload(tmp_path, REVIEW_PLAN)
-    by_id = {t["id"]: t for t in payload["tasks"]}
+    by_id = _emit_args_entries(tmp_path, REVIEW_PLAN)
     assert by_id["2"]["review"] == "lean"
 
 
