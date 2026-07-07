@@ -70,8 +70,10 @@ identity and context (`title`, `files`, `depends_on`, `interfaces`,
 
 ### 3. `SKILL.md` — Step 2/4 wording
 
-The four knob-placement passages (Step 2 tier fill, review slot description,
-derived-knobs list, args-shape sketch) reworded to the args channel. Net word
+The four knob-placement passages (Step 2 tier fill, the `--validate-knobs`
+sentence, review slot description, args-shape sketch) reworded to the args
+channel. (The Step-3 derived-knobs render list is already channel-neutral and
+stays.) Net word
 count stays roughly flat; the complexity ratchet watches `skillWords`.
 
 ### 4. Tests — migrate the wrong-channel pins, pin against regrowth
