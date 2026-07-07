@@ -66,7 +66,7 @@ reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
-- **`testCmd`** — run-wide/per-task when detection guesses wrong (monorepos,
+- **`testCmd`** — run-wide and/or per-task when detection guesses wrong (monorepos,
   custom runners); polyglot → exercise **both** stacks.
 - **`bootstrapCmd`** — per-worktree install (fresh worktrees; no
   `.venv`/`node_modules`).
@@ -79,7 +79,7 @@ Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
 `task.review` yourself — the run-wide `reviewProfile: adversarial` hatch
-raises depth. *Rationale: § Step 4.*
+only raises depth. *Rationale: § Step 4.*
 
 ## Step 3 — Render the wave plan (transparency, no pause)
 
