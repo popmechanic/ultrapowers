@@ -66,7 +66,7 @@ def test_happy_path_receipt(tmp_path):
     entries = [t for wave in skel["waves"] for t in wave]
     assert entries and all(t["tier"] is None for t in entries)
     assert all(t["review"] in ("lean", "adversarial") for t in entries)
-    assert any("tier" in d for d in receipt["llmDerives"])
+    assert any("waves[][].tier" in d for d in receipt["llmDerives"])
     # lock + snapshot actually happened, with the dirty set recorded
     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
     assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
@@ -141,3 +141,37 @@ def test_validate_knobs_is_a_noop_without_bootstrap(tmp_path):
     args_path.write_text(json.dumps({"testCmd": "pytest"}))
     r = run_validate_knobs(repo, args_path)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_knobs_accepts_filled_knob_slots(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": "mostCapable", "review": "adversarial"},
+         {"id": "2", "tier": None, "review": "lean"}],
+        [{"id": "3", "tier": "most-capable", "review": "lean"}],
+    ]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_knobs_rejects_an_unknown_tier(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": "opus", "review": "lean"}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "task 1" in verdict["detail"] and "tier" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_missing_review(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [[{"id": "1", "tier": None}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert "review" in verdict["detail"]
