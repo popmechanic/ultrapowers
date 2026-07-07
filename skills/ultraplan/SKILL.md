@@ -317,8 +317,10 @@ marker block, and `**Type:**`/`**Depends-on:**` keep their exact pinned position
 A marked plan is not execution-ready until it carries an `**Acceptance:**`
 line (the compiler refuses it otherwise). After the human approves the plan:
 
-1. Dispatch a fresh-context author subagent per
-   `references/seal-author-prompt.md`. Its inputs are ONLY: the spec text,
+1. Dispatch a fresh-context author subagent — agent type
+   `ultrapowers:seal-author`, whose definition pins the reasoning-effort
+   knob so sealing cost never rides the session's ambient effort setting —
+   per `references/seal-author-prompt.md`. Its inputs are ONLY: the spec text,
    the repo's test conventions (framework, run command, naming), the base
    branch name, and the vault path `~/.ultrapowers/acceptance/`. Never the
    plan, never the task list, never this conversation's history.

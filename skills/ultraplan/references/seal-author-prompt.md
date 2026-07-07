@@ -1,7 +1,10 @@
 # Seal author prompt (sealed acceptance)
 
-Dispatch a fresh subagent (most-capable tier) with exactly this brief plus
-the four inputs — spec text, test conventions, base branch, vault path.
+Dispatch a fresh subagent of agent type `ultrapowers:seal-author`
+(most-capable tier at dispatch; the reasoning-effort knob is pinned in the
+plugin's `agents/seal-author.md` definition, never inherited from the
+session) with exactly this brief plus the four inputs — spec text, test
+conventions, base branch, vault path.
 
 ---
 
