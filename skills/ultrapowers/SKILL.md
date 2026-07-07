@@ -53,34 +53,33 @@ The stamp is the lock id for the whole run; `wf_<runId>` is only for sweeps.
 ## Step 2 — Judge and fill (LLM-owned)
 
 **Classify first** per `references/plan-markers.md`: trust header-block
-`**Type:**` / `**Depends-on:**` markers when present (out-of-block markers →
-conflicts), else the contract heuristics there. Only `implementation` tasks enter
-the DAG; gates inform run config; `release`/`manual` tasks ride into the
-post-merge runbook. Adopt the compiler's JSON verbatim (`receipt.compile`) —
-waves, edges, dispositions — judgment only on `"heuristic": true` entries. If it
-reports `no implementation tasks` (`waves: []`), do not launch; present the
-runbook instead.
+`**Type:**` / `**Depends-on:**` markers (out-of-block → conflicts), else the
+contract heuristics. Only `implementation` tasks enter the DAG; gates
+inform run config; `release`/`manual` tasks ride the post-merge runbook. Adopt
+the compiler's JSON verbatim (`receipt.compile`) — waves, edges, dispositions —
+judgment only on `"heuristic": true` entries. If it reports `no implementation
+tasks` (`waves: []`), do not launch; present the runbook.
 
 **Derive only your knobs**, which land in named slots — per-task `tier` fills the
-receipt's `launchFile` (slots pre-emitted as `null`); `testCmd` / `bootstrapCmd`
-and any review override ride the launch args. The receipt's `llmDerives` list is
-the checklist:
+wave entries of the receipt's `argsFile` (slots pre-emitted as `null`; the engine
+reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
+same args file. The receipt's `llmDerives` list is the checklist:
 
-- **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope and
-  judgment-likelihood.
-- **`testCmd`** — run-wide and/or per-task, only when detection would guess wrong
-  (monorepos, custom runners); polyglot → exercise **both** stacks.
-- **`bootstrapCmd`** — a per-worktree dependency install for fresh worktrees (no
+- **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
+- **`testCmd`** — run-wide and/or per-task when detection guesses wrong (monorepos,
+  custom runners); polyglot → exercise **both** stacks.
+- **`bootstrapCmd`** — per-worktree install (fresh worktrees; no
   `.venv`/`node_modules`).
-- **`baseBranch`** — already derived in `receipt.baseBranch`; pass it through.
+- **`baseBranch`** — derived in `receipt.baseBranch`; pass through.
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
-`bootstrapCmd` no-ops cleanly on the session checkout.
+`bootstrapCmd` no-ops cleanly on the session checkout and each wave entry's
+`tier`/`review` value is one the engine accepts.
 
-Review depth is **plan-authored**: ultraplan's `**Review:**` marker fills each
-task's `review` slot (`lean` when unmarked), shown in the render; never set
-`task.review` yourself — the run-wide `reviewProfile: adversarial` hatch only
-raises depth. *Rationale: § Step 4.*
+Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
+wave entry's `review` slot (`lean` when unmarked; rendered); never set
+`task.review` yourself — the run-wide `reviewProfile: adversarial` hatch
+only raises depth. *Rationale: § Step 4.*
 
 ## Step 3 — Render the wave plan (transparency, no pause)
 
@@ -137,6 +136,8 @@ it spawns no agents). Branch on how it fails:
 args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
          baseBranch, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides? }
 ```
+
+Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
 
 `args.edges` drives dependency blocking (the workflow ignores task `depends_on`) —
 always pass it, or blocking is silently disabled. The headless workflow creates

@@ -1547,7 +1547,8 @@ def main(argv=None):
     # inline as args.waves; the verbatim bodies — which can total tens of KB and
     # must never be transcribed by a model — are written to the --emit-launch
     # file and read by each task agent from disk (see SKILL.md Step 4b / waves.js
-    # args.wavesPath). The orchestrator still derives tier / review per task.
+    # args.wavesPath). The orchestrator still derives tier per task; review is
+    # plan-authored.
     by_id = {t["id"]: t for t in tasks}
 
     def _files_for(t):
@@ -1557,9 +1558,15 @@ def main(argv=None):
         [{"id": tid, "title": by_id[tid]["title"], "files": _files_for(by_id[tid]),
           "depends_on": by_id[tid]["depends_on"],
           "interfaces": by_id[tid]["interfaces"],
+          # Single-channel knob slots (#89): waves.js reads task.tier and
+          # task.review from these inline entries — the ONLY channel (workflow
+          # scripts cannot read files, so knobs never ride the launch file).
+          # The orchestrator fills tier; review is plan-authored (**Review:**
+          # marker, "lean" when unmarked) and never touched.
+          "tier": None,
+          "review": by_id[tid].get("review") or "lean",
           # Declared open write set (#85, additive — None when the task has
-          # no `- catch-all:` bullet). waves.js ignores unknown fields today;
-          # not touched by this plan.
+          # no `- catch-all:` bullet).
           "catchAll": by_id[tid].get("catch_all")} for tid in wave]
         for wave in waves]
 
@@ -1594,14 +1601,9 @@ def main(argv=None):
                        "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
                        "depends_on": by_id[tid]["depends_on"],
                        "interfaces": by_id[tid]["interfaces"],
-                       # Pre-emitted slot: the orchestrator fills per-task tiers
-                       # HERE (never as a top-level launch key, never via
-                       # tierOverrides, which remaps tier names to models).
-                       "tier": None,
-                       # Authored value — filled by the plan's **Review:**
-                       # marker, "lean" when unmarked. Unlike the tier slot,
-                       # the orchestrator fills nothing here.
-                       "review": by_id[tid].get("review") or "lean",
+                       # No knob slots here (#89): the engine cannot read this
+                       # file — tier/review ride the args wave entries. Task
+                       # agents read only their body + context from this file.
                        # Declared open write set (#85) — shown to the
                        # implementer prompt so a catch-all task's scope is
                        # never silently invisible. None when absent.

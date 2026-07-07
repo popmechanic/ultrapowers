@@ -58,10 +58,15 @@ def test_happy_path_receipt(tmp_path):
     assert (run_dir / "receipt.json").is_file()
     assert (run_dir / "launch.json").is_file()
     assert (run_dir / "args.json").is_file()
-    # Task-1 contract: tier slots pre-emitted, named in llmDerives
+    # Knob contract (#89): slots ride the args wave entries the engine reads;
+    # the launch file carries bodies + context only.
     launch = json.loads((run_dir / "launch.json").read_text())
-    assert all(t["tier"] is None for t in launch["tasks"])
-    assert any("tier" in d for d in receipt["llmDerives"])
+    assert all("tier" not in t and "review" not in t for t in launch["tasks"])
+    skel = json.loads((run_dir / "args.json").read_text())
+    entries = [t for wave in skel["waves"] for t in wave]
+    assert entries and all(t["tier"] is None for t in entries)
+    assert all(t["review"] in ("lean", "adversarial") for t in entries)
+    assert any("waves[][].tier" in d for d in receipt["llmDerives"])
     # lock + snapshot actually happened, with the dirty set recorded
     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
     assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
@@ -136,3 +141,81 @@ def test_validate_knobs_is_a_noop_without_bootstrap(tmp_path):
     args_path.write_text(json.dumps({"testCmd": "pytest"}))
     r = run_validate_knobs(repo, args_path)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_knobs_accepts_filled_knob_slots(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": "mostCapable", "review": "adversarial"},
+         {"id": "2", "tier": None, "review": "lean"}],
+        [{"id": "3", "tier": "most-capable", "review": "lean"}],
+    ]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_validate_knobs_rejects_an_unknown_tier(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": "opus", "review": "lean"}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "task 1" in verdict["detail"] and "tier" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_missing_review(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [[{"id": "1", "tier": None}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert "review" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_malformed_wave_entry_with_a_verdict(tmp_path):
+    # A malformed entry must produce the JSON verdict contract, not a traceback.
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [["just-a-string-entry"]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "not an object" in verdict["detail"]
+
+
+def test_validate_knobs_rejects_a_non_list_waves_value_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": 5}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+
+
+def test_validate_knobs_rejects_an_unhashable_tier_value_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"waves": [
+        [{"id": "1", "tier": ["mostCapable"], "review": "lean"}]]}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+
+
+def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps([1, 2]))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "not a JSON object" in verdict["detail"]

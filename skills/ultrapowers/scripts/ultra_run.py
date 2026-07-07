@@ -34,14 +34,18 @@ PROBE = {"name": "ultrapowers-probe",
          "assert": {"echoWaves": 1, "echoFirstId": "probe-1"}}
 
 LLM_DERIVES = [
-    "tasks[].tier in the launch file (slots pre-emitted as null; never a "
-    "top-level launch key, never tierOverrides, which remaps tier names to models)",
+    "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
+    "the engine reads knobs ONLY from these inline entries — never a top-level "
+    "launch key, never tierOverrides, which remaps tier names to models)",
     "testCmd — run-wide and/or per-task, only when detection would guess wrong",
     "bootstrapCmd — per-worktree dependency install for fresh worktrees; "
     "validate with --validate-knobs before launch",
     "nothing for review depth — it is plan-authored (**Review:** marker), "
-    "pre-emitted like tier slots",
+    "pre-filled on the args wave entries",
 ]
+
+VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
+VALID_REVIEWS = {"lean", "adversarial"}
 
 
 def sh(cmd, cwd=None):
@@ -49,14 +53,49 @@ def sh(cmd, cwd=None):
 
 
 def validate_knobs(args_path, root):
-    """Pre-launch knob validation: a bootstrapCmd must be a clean no-op on the
-    session checkout — a bad knob otherwise fails inside every worktree
-    simultaneously. Exit 0 = safe (or no bootstrapCmd); non-zero shows why."""
+    """Pre-launch knob validation, fail-closed (#89): every wave entry's
+    tier/review must be a value the engine accepts, and a bootstrapCmd must
+    be a clean no-op on the session checkout — a bad knob otherwise fails
+    inside every worktree simultaneously. Exit 0 = safe."""
     try:
         knobs = json.loads(Path(args_path).read_text())
     except (OSError, json.JSONDecodeError) as e:
         print(json.dumps({"ok": False, "stage": "knob-validate",
                           "detail": "unreadable args file: %s" % e}))
+        return 1
+    if not isinstance(knobs, dict):
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "args file is not a JSON object: %r" % knobs}))
+        return 1
+    try:
+        for wi, wave in enumerate(knobs.get("waves") or []):
+            if not isinstance(wave, list):
+                print(json.dumps({"ok": False, "stage": "knob-validate",
+                                  "detail": "waves[%d] is not a list" % wi}))
+                return 1
+            for t in wave:
+                if not isinstance(t, dict):
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "waves[%d] entry %r is not an object"
+                                                % (wi, t)}))
+                    return 1
+                tid = t.get("id", "?")
+                if t.get("tier") not in VALID_TIERS:
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "task %s: tier %r is not "
+                                                "null|cheap|standard|mostCapable "
+                                                "(alias most-capable)"
+                                                % (tid, t.get("tier"))}))
+                    return 1
+                if t.get("review") not in VALID_REVIEWS:
+                    print(json.dumps({"ok": False, "stage": "knob-validate",
+                                      "detail": "task %s: review %r is not "
+                                                "lean|adversarial"
+                                                % (tid, t.get("review"))}))
+                    return 1
+    except TypeError as e:
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "malformed waves shape: %s" % e}))
         return 1
     cmd = knobs.get("bootstrapCmd")
     if not (isinstance(cmd, str) and cmd.strip()):
