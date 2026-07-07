@@ -208,3 +208,14 @@ def test_validate_knobs_rejects_an_unhashable_tier_value_with_a_verdict(tmp_path
     assert r.returncode != 0
     verdict = json.loads(r.stdout)
     assert verdict["ok"] is False
+
+
+def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps([1, 2]))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "not a JSON object" in verdict["detail"]

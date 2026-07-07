@@ -63,6 +63,10 @@ def validate_knobs(args_path, root):
         print(json.dumps({"ok": False, "stage": "knob-validate",
                           "detail": "unreadable args file: %s" % e}))
         return 1
+    if not isinstance(knobs, dict):
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "args file is not a JSON object: %r" % knobs}))
+        return 1
     try:
         for wi, wave in enumerate(knobs.get("waves") or []):
             if not isinstance(wave, list):
