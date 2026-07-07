@@ -41,11 +41,14 @@ Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
 across runs, rank by frequency × severity × novelty, and draft improvement
 proposals — each mapped to a real surface (`references/*.md`, the routing hook,
 ultraplan, `report-format.md`/`SKILL.md`, `README`). Draft each proposal against
-`references/distilling-proposals.md`, which is **structural-first**: before
-drafting any fix, answer what simpler architecture change would delete the
-whole defect class — a reactive per-defect guard is the fallback, and for any
-recurring cluster the consolidation attempt is recorded before an additive
-guard is proposed. Weigh each finding's `engineVersion`: a cluster seen
+`references/distilling-proposals.md`, which is **structural-first**: *make the
+defect inexpressible, not detected*. A guard is a standing tax collected from
+every future run; a representation change is paid once — so before drafting
+any fix, name what made the defect possible and propose the change to that.
+A reactive per-defect guard is the fallback (on a recurring cluster the
+consolidation attempt is recorded first), machinery is earned by recurrence
+(first occurrence → prose or a watch-item; second → build), and at most one
+additive guard per cycle is recommended for adoption. Weigh each finding's `engineVersion`: a cluster seen
 only under versions older than the current release may already be addressed — flag
 it as possibly-stale and confirm against the current engine before proposing a
 fix, rather than re-solving a closed problem. The same version stamp powers the

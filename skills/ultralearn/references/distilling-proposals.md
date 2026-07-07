@@ -55,21 +55,34 @@ this proposal is adopted?
 
 Use one of: `up` | `flat` | `down`.
 
-## The governing rule — structural-first
+## The governing rule — make the defect inexpressible, not detected
 
-Before drafting ANY fix for a defect cluster, first answer: *what simpler
-representation or architecture change would delete this whole class?* Draft
-that answer as the primary proposal; a reactive per-defect guard is the
-fallback, and on a recurring cluster it requires a recorded
-`consolidationAttempted`.
+Every fix is a claim about where a defect lives. A guard claims it lives in
+the world and must be caught; a structural change claims it lives in our
+representation and can be made impossible. The ledger keeps ruling for the
+representation — and the two age differently. A representation change is paid
+once. A guard is a standing tax — one more concept to hold, one more check
+that can false-red — collected from every future run; most of the engine's
+observed clock bloat is these taxes compounding, not slow work. This is why
+the rubric is structural-first: reactive guards accrete, and accreted
+complexity breeds the next edge case — the loop chases its own tail.
 
-Why this order is the default, not a taste: reactive guards accrete
-complexity, and accreted complexity breeds the next edge case — the loop
-chases its own tail. Validated in practice 2026-07-03: four recurring ledger
-classes (launch-args schema guessing, pre-existing-dirt stash-dance, prose
-choreography drift, wrong-cwd gate) had each drawn reactive fixes across 3–4
-runs; one structural move — the deterministic driver — retired all four at
-once by removing the conditions that generated them.
+So before drafting ANY fix, name what made the defect *possible* and propose
+the change to that; the per-defect guard is the fallback, and on a recurring
+cluster it requires a recorded `consolidationAttempted`. Twice validated: the
+deterministic driver (2026-07-03) retired four guard-accreting classes at
+once; the launch-file knob slots (2026-07-07) — themselves a prior cycle's
+fix — became the next cycle's defect.
+
+Two budget rules keep the portfolio honest across cycles:
+
+- **Machinery is earned by recurrence.** A first occurrence gets a prose fix
+  or a watch-item naming the recurrence that would justify a build; the build
+  happens on the second occurrence. Never ship enforcement machinery around a
+  prose rule that has not yet been given the chance to fail.
+- **One additive guard per cycle.** Structural changes and deletions are
+  unbudgeted; recommend at most one `additive-guard` for adoption per
+  distill — the rest park as watch-items, however tempting.
 
 > *The rubric prefers — it does not forbid; some edge cases are genuinely
 > irreducible (say why in one line, via `consolidationAttempted`).*
