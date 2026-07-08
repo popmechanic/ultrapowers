@@ -312,34 +312,73 @@ contiguous header block immediately after the `### Task N:` heading and before
 Because `**Interfaces:**` falls after `**Files:**`, it never enters the header
 marker block, and `**Type:**`/`**Depends-on:**` keep their exact pinned positions.
 
-## Seal the exam (after plan approval)
+## Seal the exam (dispatch at spec approval, collect at plan approval)
 
 A marked plan is not execution-ready until it carries an `**Acceptance:**`
-line (the compiler refuses it otherwise). After the human approves the plan:
+line (the compiler refuses it otherwise). Every input the acceptance author
+needs exists before the plan does, so a `sealed` plan front-runs its seal in
+the background and collects it after the human approves the plan. Collection
+is content-addressed by the spec hash: an edited spec can never match a
+stale seal, by construction.
 
-1. Dispatch a fresh-context author subagent — agent type
+### Dispatch at invocation (before drawing tasks)
+
+When this skill is invoked alongside writing-plans — the spec-approval
+moment — and before any tasks are drawn:
+
+1. Decide the Acceptance disposition first (see "Choosing the disposition").
+   Only a clear `sealed` front-runs; `suite`, `waived`, and ambiguous cases
+   skip dispatch — collect-time falls back to a synchronous seal.
+2. Compute the spec hash: `shasum -a 256 <spec-file>` → `specSha256`.
+3. Dedup against the vault `~/.ultrapowers/acceptance/`: a sealed dir whose
+   `manifest.json` records this `specSha256`, a
+   `pending-<first-12-hex>/outcome.json` failure record, or a pending dir
+   whose background author is still running all mean this spec is already
+   handled — skip.
+4. Otherwise create `<vault>/pending-<first-12-hex-of-specSha256>/`, write
+   the dispatch receipt `dispatch.json` there
+   (`{specPath, specSha256, dispatchedAt}` — crashed-dispatch detection and
+   stale-spec cleanup read this receipt instead of guessing), and dispatch
+   a fresh-context author subagent in the background — agent type
    `ultrapowers:seal-author`, whose definition pins the reasoning-effort
-   knob so sealing cost never rides the session's ambient effort setting —
-   per `references/seal-author-prompt.md`. Its inputs are ONLY: the spec text,
+   knob so sealing cost never rides the session's ambient setting — per
+   `references/seal-author-prompt.md`. Its inputs are ONLY: the spec text,
    the repo's test conventions (framework, run command, naming), the base
-   branch name, and the vault path `~/.ultrapowers/acceptance/`. Never the
-   plan, never the task list, never this conversation's history.
-2. The author writes the suite into the vault, authoring an optional
-   `bootstrapCmd` when the repo's own libraries need an editable install /
-   setup to import, and proves it RED through the exact gate runner
-   (`run_acceptance.sh --baseline …`, which creates the worktree, runs the
-   bootstrap, then the suite, exactly as the pre-merge gate will) — a suite
-   that passes before the work exists tests nothing; a `redKind:"collection"`
-   red must fail on the feature's own import, not a still-unbootstrapped repo
-   library. The author writes `manifest.json` (recording `bootstrapCmd` so
-   seal-time and gate-time share one run context) and returns ONLY: seal-id,
-   sha256, red-run evidence, and a coverage summary mapping spec criteria to
-   test names.
-3. Append to the plan, after the header block:
-   `**Acceptance:** sealed <seal-id> (sha256:<hash>)` plus the coverage
-   summary as a short appendix (spec-derived, safe to show).
-4. Two consecutive green-at-baseline attempts → stop and tell the human: the
-   spec may describe behavior that already exists.
+   branch name, the vault path, the spec hash, and the pending dir. Never
+   the plan (it does not exist yet), never this conversation's history.
+   Plan authoring proceeds in the foreground without waiting.
+
+The author works inside its per-dispatch pending dir, proves the suite RED
+through the exact gate runner (`run_acceptance.sh --baseline …`), seals on
+success, and on GREEN_AT_BASELINE or an unfixable EXAM_BOOTSTRAP_ERROR
+leaves `outcome.json` in the pending dir as a durable failure record — the
+brief owns that discipline end to end.
+
+### Collect at plan approval
+
+After the human approves the plan, hash the spec file as approved
+(`shasum -a 256`) and take the first matching case:
+
+1. **A sealed dir's manifest records this `specSha256`** → append to the
+   plan, after the header block: `**Acceptance:** sealed <seal-id>
+   (sha256:<hash>)` plus the coverage summary as a short appendix
+   (spec-derived, safe to show). Zero wait.
+2. **An `outcome.json` failure record matches** → surface it
+   at plan approval, never silently after: GREEN_AT_BASELINE counts as attempt #1
+   toward the two-attempt stop rule below; EXAM_BOOTSTRAP_ERROR surfaces
+   with its evidence before any re-dispatch.
+3. **The background author is still running** → say so and wait for it —
+   the residual wait is bounded by today's synchronous cost minus the time
+   already elapsed.
+4. **No record for this hash** — the spec was edited after dispatch (a
+   stale hash can never match), the dispatch crashed (a pending dir with
+   no `outcome.json` and no live author), or nothing was dispatched →
+   remove superseded `pending-*` dirs whose `dispatch.json` names this
+   spec path, then dispatch synchronously with the same brief and inputs
+   and wait. Never worse than the status quo.
+
+Two consecutive green-at-baseline attempts → stop and tell the human: the
+spec may describe behavior that already exists.
 
 The operator may instead record `**Acceptance:** waived — <reason>`; waivers
 surface verbatim at the wave-plan gate, in the report, and at the pre-merge
