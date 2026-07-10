@@ -564,3 +564,149 @@ def test_huge_exam_output_still_emits_json_receipt(tmp_path):
     obj = json.loads(p.stdout)
     assert obj["passed"] is True
     assert len(obj["output"]) <= 8000
+
+
+# --- baseline --manifest: the RED proof reads the fields the gate reads ---
+
+def write_draft(tmp_path, **fields):
+    draft = tmp_path / "draft-manifest.json"
+    draft.write_text(json.dumps(fields))
+    return draft
+
+
+def make_pytest_suite(tmp_path):
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "test_exam.py").write_text(
+        "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
+    return suite
+
+
+# A framework-free fake runner: prints a summary line on both outcomes, so
+# ranPattern can detect "tests ran" red or green. Runs from the worktree root.
+SH_RUNNER = (
+    "if grep -q 'return a + b' mod.py; "
+    "then echo 'TESTS RAN: 1 passed'; exit 0; "
+    "else echo 'TESTS RAN: 1 failed'; exit 1; fi\n")
+
+
+def make_sh_suite(tmp_path):
+    suite = tmp_path / "suite"
+    suite.mkdir()
+    (suite / "run.sh").write_text(SH_RUNNER)
+    return suite
+
+
+def baseline_manifest(repo, suite, draft):
+    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
+            "--branch", "main", "--manifest", str(draft),
+            "--repo", str(repo)], check=False)
+    return r.returncode, json.loads(r.stdout)
+
+
+def test_manifest_baseline_proves_red_reading_draft_fields(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_pytest_suite(tmp_path)
+    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
+    code, out = baseline_manifest(repo, suite, draft)
+    assert code == 0
+    assert out["status"] == "PROVEN_RED"
+
+
+def test_incoherent_nonpytest_runcmd_without_framework(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_sh_suite(tmp_path)
+    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh")
+    code, out = baseline_manifest(repo, suite, draft)
+    assert code == 1
+    assert out["status"] == "MANIFEST_INCOHERENT"
+    assert "framework" in out["output"]
+
+
+def test_incoherent_nonpytest_framework_without_ranpattern(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_sh_suite(tmp_path)
+    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
+                        framework="sh")
+    code, out = baseline_manifest(repo, suite, draft)
+    assert code == 1
+    assert out["status"] == "MANIFEST_INCOHERENT"
+    assert "ranPattern" in out["output"]
+
+
+def test_incoherent_draft_missing_runcmd(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_pytest_suite(tmp_path)
+    draft = write_draft(tmp_path, framework="pytest")
+    code, out = baseline_manifest(repo, suite, draft)
+    assert code == 1
+    assert out["status"] == "MANIFEST_INCOHERENT"
+    assert "runCmd" in out["output"]
+
+
+def test_coherent_nonpytest_manifest_proves_red(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_sh_suite(tmp_path)
+    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
+                        framework="sh", ranPattern="TESTS RAN")
+    code, out = baseline_manifest(repo, suite, draft)
+    assert code == 0
+    assert out["status"] == "PROVEN_RED"
+    assert out["redKind"] == "assertion"     # the pattern saw the tests run
+
+
+def test_manifest_flag_mutually_exclusive_with_run_flags(tmp_path):
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = make_pytest_suite(tmp_path)
+    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
+    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
+            "--branch", "main", "--manifest", str(draft),
+            "--run", "python3 -m pytest .ultra-acceptance -q",
+            "--repo", str(repo)], check=False)
+    assert r.returncode == 2
+    assert "mutually exclusive" in r.stderr
+
+
+def test_manifest_first_nonpytest_seal_certifies_at_gate(tmp_path):
+    # The end-to-end the field runs needed: author manifest-first, prove RED,
+    # finalize, build the feature, administer at the gate — green, no false-red.
+    repo = make_repo(tmp_path, feature_built=False)
+    suite = tmp_path / "vault" / "pending-x" / "suite"
+    suite.mkdir(parents=True)
+    (suite / "run.sh").write_text(SH_RUNNER)
+    draft = tmp_path / "vault" / "pending-x" / "manifest.json"
+    draft.write_text(json.dumps({
+        "runCmd": "sh .ultra-acceptance/run.sh",
+        "framework": "sh", "ranPattern": "TESTS RAN"}))
+    code, out = baseline_manifest(repo, suite, draft)
+    assert (code, out["status"]) == (0, "PROVEN_RED")
+    # finalize: hash, rename into the vault, complete the manifest
+    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
+    entry = tmp_path / "vault" / digest[:12]
+    (tmp_path / "vault" / "pending-x").rename(entry)
+    manifest = json.loads((entry / "manifest.json").read_text())
+    manifest.update({"sealId": digest[:12], "suiteSha256": digest})
+    (entry / "manifest.json").write_text(json.dumps(manifest))
+    # build the feature and administer
+    (repo / "mod.py").write_text("def add(a, b):\n    return a + b\n")
+    sh(["git", "add", "."], cwd=repo)
+    sh(["git", "commit", "-qm", "feature"], cwd=repo)
+    code, out = administer(tmp_path / "vault", digest[:12], digest, repo)
+    assert code == 0
+    assert out["passed"] is True
+
+
+# --- legacy-seal gate diagnosis ---
+
+def test_legacy_nonpytest_manifest_refusal_names_the_cause(tmp_path):
+    # A pre-consolidation seal: green non-pytest suite, manifest lacking
+    # framework/ranPattern. Still refuses (unchanged), but the message now
+    # names the real cause instead of the generic no-tests-ran text.
+    repo = make_repo(tmp_path, feature_built=True)
+    vault, seal_id, digest = make_vault(
+        tmp_path, run_cmd="sh .ultra-acceptance/run.sh",
+        suite_files={"run.sh": "echo 'TESTS RAN: 1 passed'\nexit 0\n"})
+    code, out = administer(vault, seal_id, digest, repo)
+    assert code == 1
+    assert out["passed"] is False
+    assert "framework/ranPattern" in out["output"]
