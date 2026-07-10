@@ -304,6 +304,15 @@ def drive_run(workdir, plan):
     # The session transcript is where token usage lives; the headless result JSON
     # carries the printed pre-merge gate report.
     gate_report = _read_gate_report(result_path)
+    if not gate_report:
+        # Derive-don't-parse fallback: the engine's gate driver writes its receipt
+        # to disk in the workdir; trust that over the session's printed text.
+        receipts = sorted((workdir / ".claude/ultrapowers").glob("run-*/gate-receipt.json"))
+        if receipts:
+            try:
+                gate_report = json.loads(receipts[-1].read_text()).get("gateCheck") or {}
+            except (OSError, json.JSONDecodeError):
+                pass
     transcript = _session_transcript(result_path)
     return transcript, gate_report, "headless"
 
@@ -319,9 +328,24 @@ def _read_gate_report(result_path):
     if not isinstance(text, str):
         return {}
     for chunk in _json_objects(text):
-        if "gateVerdict" in chunk or "verdict" in chunk:
-            return chunk
+        found = _find_verdict(chunk)
+        if found is not None:
+            return found
     return {}
+
+
+def _find_verdict(obj):
+    """The driven session may print the gate receipt bare or nested (e.g.
+    {"gate": {...}, "report": {...}}); find the first dict carrying a verdict."""
+    if not isinstance(obj, dict):
+        return None
+    if "gateVerdict" in obj or "verdict" in obj:
+        return obj
+    for key in ("gate", "gateCheck", "report"):
+        found = _find_verdict(obj.get(key))
+        if found is not None:
+            return found
+    return None
 
 
 def _json_objects(text):
@@ -352,7 +376,7 @@ def _session_transcript(result_path):
     except (OSError, json.JSONDecodeError):
         session_id = None
     if session_id:
-        matches = glob.glob(str(Path.home() / ".claude/projects/**/%s.jsonl" % session_id),
+        matches = glob.glob(str(Path.home() / ".claude/projects/**" / ("%s.jsonl" % session_id)),
                             recursive=True)
         if matches:
             return Path(matches[0])
@@ -360,11 +384,18 @@ def _session_transcript(result_path):
 
 
 def save_diff(workdir, plan):
-    """Capture the eval-baseline...HEAD integration diff for the judge."""
+    """Capture the integrated diff for the judge. The driven session stops at the
+    pre-merge gate with the checkout restored to the baseline, so the integrated
+    work lives on the run's ultra/integration-* branch, not HEAD."""
     env = _git_env()
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=str(workdir),
+    branches = subprocess.run(
+        ["git", "branch", "--list", "ultra/integration-*", "--format=%(refname:short)"],
+        cwd=str(workdir), capture_output=True, text=True, env=env).stdout.split()
+    target = sorted(branches)[-1] if branches else "HEAD"
+    head = subprocess.run(["git", "rev-parse", target], cwd=str(workdir),
                           capture_output=True, text=True, env=env).stdout.strip()
-    diff = subprocess.run(["git", "diff", "eval-baseline...HEAD"], cwd=str(workdir),
+    diff = subprocess.run(["git", "diff", "eval-baseline...%s" % target, "--", ".",
+                           ":(exclude).claude"], cwd=str(workdir),
                           capture_output=True, text=True, env=env).stdout
     dest = Path(plan["diffPath"])
     dest.parent.mkdir(parents=True, exist_ok=True)
