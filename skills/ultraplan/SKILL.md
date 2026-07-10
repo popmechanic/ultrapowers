@@ -327,8 +327,10 @@ When this skill is invoked alongside writing-plans — the spec-approval
 moment — and before any tasks are drawn:
 
 1. Decide the Acceptance disposition first (see "Choosing the disposition").
-   Only a clear `sealed` front-runs; `suite`, `waived`, and ambiguous cases
-   skip dispatch — collect-time falls back to a synchronous seal.
+   Dispatch happens **only when the operator has explicitly requested
+   sealing** (e.g. "seal this plan"). When sealing was not requested, skip
+   dispatch entirely and skip collect at plan approval — the plan takes
+   `**Acceptance:** suite — <reason>` directly.
 2. Compute the spec hash: `shasum -a 256 <spec-file>` → `specSha256`.
 3. Dedup against the vault `~/.ultrapowers/acceptance/`: a sealed dir whose
    `manifest.json` records this `specSha256`, a
@@ -399,20 +401,19 @@ When the operator reviews the appended coverage summary, point them to the vouch
 
 Every marked plan declares one of three Acceptance dispositions:
 
-- **`**Acceptance:** sealed <seal-id> (sha256:<hash>)`** — feature work whose
-  operator cannot read the code. A held-out exam, authored from the spec by an
-  independent agent (the sealing step above). This is the default.
-- **`**Acceptance:** suite — <reason>`** — ultrapowers' own engine / skill /
-  doc / prompt / script development, where the author and operator both read
-  the diffs and the committed test suite + drift pins + adversarial review are
-  the verification. No held-out exam is authored; the engine binds acceptance
-  to the committed test result (`acceptance.passed === tests.passed`).
+- **`**Acceptance:** suite — <reason>`** — the default for every plan. The
+  committed test suite plus per-task adversarial-capable review is the
+  verification; the engine binds acceptance to the committed test result
+  (`acceptance.passed === tests.passed`).
+- **`**Acceptance:** sealed <seal-id> (sha256:<hash>)`** — opt-in, on explicit
+  operator request only ("seal this plan"). A held-out exam authored from the
+  spec by an independent agent, for work whose diff the operator will not read
+  and where the committed suite is authored by the same run it judges.
 - **`**Acceptance:** waived — <reason>`** — verification genuinely skipped, by
-  explicit operator choice. Reserve this for the rare case where neither a
-  held-out exam nor the committed suite applies.
+  explicit operator choice.
 
-Rule of thumb: building software *with* ultrapowers → `sealed`; building
-ultrapowers *itself* → `suite`; opting out → `waived`.
+Rule of thumb: `suite` unless the operator asks to seal; never seal or waive
+silently on the operator's behalf.
 
 ## Self-review additions
 
