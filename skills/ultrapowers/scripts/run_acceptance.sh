@@ -5,15 +5,16 @@
 #
 # Usage: run_acceptance.sh <seal-id> <branch> <expected-sha256>
 #                          [--vault DIR] [--repo DIR]
-#    or: run_acceptance.sh --baseline --suite DIR --branch BASE --run CMD
-#                          [--bootstrap CMD] [--repo DIR]   (seal-time RED proof)
+#    or: run_acceptance.sh --baseline --suite DIR --branch BASE
+#                          (--manifest FILE | --run CMD [--bootstrap CMD])
+#                          [--repo DIR]   (seal-time RED proof)
 # Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
 set -uo pipefail
 
 SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
 VAULT="${HOME}/.ultrapowers/acceptance"
 REPO="$(pwd)"
-B_SUITE=""; B_RUN=""; B_BOOT=""
+B_SUITE=""; B_RUN=""; B_BOOT=""; B_MANIFEST=""
 SG_RUN="python3 -m pytest"
 SG_BASE=""
 MODE="sealed"
@@ -25,13 +26,21 @@ if [ "${1:-}" = "--baseline" ]; then
       --branch)    BRANCH="$2";  shift 2 ;;
       --run)       B_RUN="$2";   shift 2 ;;
       --bootstrap) B_BOOT="$2";  shift 2 ;;
+      --manifest)  B_MANIFEST="$2"; shift 2 ;;
       --repo)      REPO="$2";    shift 2 ;;
       *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
   done
   : "${B_SUITE:?--baseline requires --suite}"
   : "${BRANCH:?--baseline requires --branch}"
-  : "${B_RUN:?--baseline requires --run}"
+  if [ -n "$B_MANIFEST" ]; then
+    if [ -n "$B_RUN" ] || [ -n "$B_BOOT" ]; then
+      echo "--manifest is mutually exclusive with --run/--bootstrap" >&2
+      exit 2
+    fi
+  else
+    : "${B_RUN:?--baseline requires --run (or --manifest)}"
+  fi
 elif [ "${1:-}" = "--suite-gate" ]; then
   MODE="suite-gate"; SEAL_ID="(suite)"; shift
   while [ $# -gt 0 ]; do
@@ -161,6 +170,23 @@ $OUT"
   return 0
 }
 
+# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
+# A missing/unreadable manifest or empty runCmd yields an empty first line, which
+# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
+read_manifest() {
+  python3 -c '
+import json, sys
+try:
+    m = json.load(open(sys.argv[1]))
+except Exception:
+    m = {}
+print(m.get("runCmd") or "")
+print(m.get("bootstrapCmd") or "")
+print(m.get("framework") or "pytest")
+print(m.get("ranPattern") or "")
+' "$1"
+}
+
 # ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
 # After a green pytest suite-gate, if the branch changed harness JS, run the
 # harness .mjs sims so JS behavior is exit-code-gated too. Sets J_* globals;
@@ -251,7 +277,36 @@ fi
 
 # ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
 if [ "$MODE" = baseline ]; then
-  FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
+  if [ -n "$B_MANIFEST" ]; then
+    # Manifest-proven sealing: the RED proof reads the exact fields the gate
+    # will read, and refuses a draft the gate would misread — framework
+    # defaults to pytest at the gate, so a non-pytest runCmd without an
+    # explicit framework/ranPattern false-reds every green exam.
+    if [ ! -f "$B_MANIFEST" ]; then
+      emit MANIFEST_INCOHERENT false 2 "manifest draft not found: $B_MANIFEST"
+      exit 1
+    fi
+    { IFS= read -r B_RUN
+      IFS= read -r B_BOOT
+      IFS= read -r FRAMEWORK
+      IFS= read -r RAN_PATTERN
+    } < <(read_manifest "$B_MANIFEST")
+    if [ -z "$B_RUN" ]; then
+      emit MANIFEST_INCOHERENT false 2 "manifest draft missing runCmd: $B_MANIFEST"
+      exit 1
+    fi
+    if [ "$FRAMEWORK" = "pytest" ]; then
+      if ! printf '%s' "$B_RUN" | grep -q "pytest"; then
+        emit MANIFEST_INCOHERENT false 2 "framework is 'pytest' (or absent) but runCmd does not invoke pytest — a non-pytest suite must declare framework and ranPattern in the manifest: $B_RUN"
+        exit 1
+      fi
+    elif [ -z "$RAN_PATTERN" ]; then
+      emit MANIFEST_INCOHERENT false 2 "framework '$FRAMEWORK' requires a ranPattern (the no-tests-ran defense has no marker outside pytest)"
+      exit 1
+    fi
+  else
+    FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
+  fi
   run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
   if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
     emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
@@ -276,22 +331,6 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
   exit 1
 fi
 
-# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
-# A missing/unreadable manifest or empty runCmd yields an empty first line, which
-# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
-read_manifest() {
-  python3 -c '
-import json, sys
-try:
-    m = json.load(open(sys.argv[1]))
-except Exception:
-    m = {}
-print(m.get("runCmd") or "")
-print(m.get("bootstrapCmd") or "")
-print(m.get("framework") or "pytest")
-print(m.get("ranPattern") or "")
-' "$1"
-}
 { IFS= read -r RUN_CMD
   IFS= read -r BOOTSTRAP_CMD
   IFS= read -r FRAMEWORK
@@ -304,6 +343,15 @@ if [ -z "$RUN_CMD" ]; then
 fi
 
 run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
+# Legacy-seal diagnosis: a pre-consolidation manifest that omits framework/
+# ranPattern for a non-pytest runCmd hits the no-tests-ran refusal with a
+# generic message; name the real cause. Behavior unchanged — still refuses.
+case "$R_OUTPUT" in
+  *"ran no sealed tests"*)
+    if [ "$FRAMEWORK" = "pytest" ] && ! printf '%s' "$RUN_CMD" | grep -q "pytest"; then
+      R_OUTPUT="manifest omits framework/ranPattern for a non-pytest runCmd — re-seal or add the fields (the pytest ran-marker cannot see this runner). $R_OUTPUT"
+    fi ;;
+esac
 emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"
 if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then exit 0; fi
 exit 1
