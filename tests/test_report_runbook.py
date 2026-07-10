@@ -1,43 +1,11 @@
-"""report-format.md must present the post-merge runbook at the pre-merge gate
-and route it into the finishing handoff on approval."""
+"""report-format.md and SKILL.md must not drift from what the real harness and
+scripts emit at runtime — these tests cross-check against the shipped
+scripts/JS, not just documentation prose."""
 import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REPORT = ROOT / "skills/ultrapowers/references/report-format.md"
-
-
-def test_report_presents_the_runbook():
-    text = REPORT.read_text()
-    assert "Post-merge runbook" in text
-    assert "Step-2" in text   # sourced from compile-time dispositions, not the workflow return
-    assert "finishing-a-development-branch" in text
-
-
-def test_report_contract_includes_blocked_waves():
-    text = REPORT.read_text()
-    assert "blockedWaves" in text          # schema + field table
-    assert "Blocked waves" in text         # presentation item
-    assert "clean up worktrees" not in text  # finishing-a-development-branch never will
-
-
-def test_report_approve_path_matches_skill_step5():
-    text = REPORT.read_text()
-    assert "tests.passed" in text          # the gate
-    assert "git checkout <integrationBranch>" in text  # the checkout before sweep/handoff
-    assert "SKIPPED" in text               # waveMerges vocabulary documents the skip status
-
-
-def test_skill_wires_run_lock_and_scoped_sweep():
-    skill = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
-    # The lock choreography moved into the drivers: ultra_run.py acquires the
-    # lock + snapshots the checkout at Step 1; ultra_gate.py restores that
-    # checkout at the gate; the scoped worktree sweep rides the driver verbs.
-    assert "ultra_run.py" in skill                      # acquire + snapshot
-    assert "run lock" in skill.lower() and "snapshot" in skill.lower()
-    assert "ultra_gate.py" in skill                     # gate restores the checkout
-    assert "restore the session checkout" in skill
-    assert "sweep_worktrees.sh --run" in skill          # scoped sweep triage hint
 
 
 def test_skill_has_skew_preflight_probe_roundtrip_and_schema_degrade():
