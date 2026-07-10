@@ -46,14 +46,22 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 
 Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans` +
 `ultrapowers:ultraplan` markers → plan in `docs/superpowers/plans/` → execute (subagent-driven,
-or `/ultrapowers` itself) → PR. Engine/skill/doc changes use `**Acceptance:** suite` (the committed
-suite is the verification; no held-out exam).
+or `/ultrapowers` itself) → PR. Plans default to `**Acceptance:** suite` (the committed
+suite is the verification; no held-out exam unless the operator asks to seal).
 
 ## Conventions & gotchas (non-obvious — read before editing)
 
-- **Versioning stays `0.0.x`.** A release bumps **both** `plugin.json` **and** `marketplace.json`
+- **Versioning:** 0.x.y — minor bumps for architectural releases (0.1.0 = the subtraction
+  release), patch bumps otherwise. A release bumps **both** `plugin.json` **and** `marketplace.json`
   to the same value — `plugin.json` wins silently if they drift, and they have. Release commit
   `chore(release): 0.0.x — …`, committed to `main`.
+- **The verification periphery is FROZEN (0.1.0).** The sealing subsystem
+  (`collect_seal.py`, `seal_hash.py`, `run_acceptance.sh`, the seal-author
+  agent + brief), the gate scripts (`gate_check.py`, `ultra_gate.py`,
+  `run_lock.sh`), and the compiler's diagnostic vocabulary change only for an
+  eval-measured regression (`evals/ab_runner.py` numbers), never on an
+  incident narrative alone. Sealed acceptance is opt-in ("seal this plan");
+  `suite` is the default disposition.
 - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
   `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
