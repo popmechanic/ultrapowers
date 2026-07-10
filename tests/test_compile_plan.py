@@ -231,22 +231,6 @@ def test_duplicate_task_ids_are_a_loud_error(tmp_path):
     assert "cycle" not in p.stderr.lower()
 
 
-def test_unparseable_type_marker_surfaces_conflict(tmp_path):
-    plan = tmp_path / "typo.md"
-    plan.write_text(
-        "# Plan: Typo\n\n"
-        "### Task 1: misspelled\n\n**Type:** implmentation\n\n"
-        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: plain\n\n**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
-    )
-    out = compile_plan(plan)
-    by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["disposition"] == "implementation"
-    assert by_id["1"]["heuristic"] is True
-    assert any(c["task"] == "1" and "not a recognized type" in c["note"]
-               for c in out["marker_conflicts"])
-
-
 def test_depends_on_outside_impl_set_surfaces_conflict(tmp_path):
     plan = tmp_path / "ghost.md"
     plan.write_text(
@@ -430,27 +414,6 @@ def test_brace_glob_flags_ambiguous(tmp_path):
     )
     out = compile_plan(plan)
     assert {"from": "A", "to": "B", "why": "ambiguous-files"} in out["dag_edges"]
-
-
-def test_wave_labels_are_derived_per_wave(tmp_path):
-    # compile emits a deterministic, meaningful label per wave (single source the
-    # engine reads via args.waveLabels and the swarm viewer reads from build_dag).
-    plan = tmp_path / "wl.md"
-    plan.write_text(
-        "# Plan: WL\n\n**Acceptance:** suite — pytest\n\n"
-        "### Task 1: Data layer\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `src/db.js`\n\n**Interfaces:**\n- Produces: `x`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: Contacts module\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `src/contacts.js`\n\n**Interfaces:**\n- Consumes: `x`\n\n- [ ] **Step 1:** b\n\n"
-        "### Task 3: Deals module\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `src/deals.js`\n\n**Interfaces:**\n- Consumes: `x`\n\n- [ ] **Step 1:** c\n"
-    )
-    out = compile_plan(plan)
-    labels = out["waveLabels"]
-    assert len(labels) == len(out["waves"])
-    # wave 1 = [Task 1] single → its title; wave 2 = [Task 2, Task 3] share "module" → "2 Modules"
-    assert labels[0] == "Data layer"
-    assert "2 Modules" in labels
 
 
 def test_zero_implementation_plan_warns_loudly(tmp_path):
@@ -670,7 +633,9 @@ def test_multiple_depends_on_lines_accumulate(tmp_path):
     assert out["waves"] == [["A", "B"], ["C"]]
 
 
-def test_depends_none_plus_ids_conflict_ids_win(tmp_path):
+def test_depends_none_plus_ids_ids_win(tmp_path):
+    # ids win over a contradictory `none` (across multiple **Depends-on:** lines);
+    # the none assertion is void and the marker edge still forms.
     plan = tmp_path / "mixeddep.md"
     plan.write_text(
         "# Plan: Mixed dep\n\n"
@@ -682,7 +647,8 @@ def test_depends_none_plus_ids_conflict_ids_win(tmp_path):
     )
     out = compile_plan(plan)
     assert {"from": "A", "to": "B", "why": "marker"} in out["dag_edges"]
-    assert any(c["task"] == "B" and "none" in c["note"] for c in out["marker_conflicts"])
+    by_id = {t["id"]: t for t in out["tasks"]}
+    assert by_id["B"]["depends_on"] == ["A"]
     assert out["waves"] == [["A"], ["B"]]
 
 
@@ -759,7 +725,9 @@ def test_marker_after_description_paragraph_is_demoted(tmp_path):
     assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_conflicting_type_markers_surface_first_wins(tmp_path):
+def test_conflicting_type_markers_first_wins(tmp_path):
+    # A second, different valid **Type:** marker is ignored — the first wins and
+    # the task stays a trusted gate.
     plan = tmp_path / "duptype.md"
     plan.write_text(
         "# Plan: Dup type\n\n"
@@ -771,28 +739,11 @@ def test_conflicting_type_markers_surface_first_wins(tmp_path):
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["A"]["disposition"] == "gate"             # first wins
     assert by_id["A"]["heuristic"] is False
-    assert any(c["task"] == "A" and "contradictory" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_inline_none_plus_ids_surfaces_mixed_conflict(tmp_path):
-    plan = tmp_path / "inlinemix.md"
-    plan.write_text(
-        "# Plan: Inline mix\n\n"
-        "### Task A: base\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task B: mixed inline\n\n**Type:** implementation\n"
-        "**Depends-on:** none, A\n\n"
-        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
-    )
-    out = compile_plan(plan)
-    assert {"from": "A", "to": "B", "why": "marker"} in out["dag_edges"]
-    assert any(c["task"] == "B" and "none" in c["note"] and "ids win" in c["note"]
-               for c in out["marker_conflicts"])
-    # 'none' must not be treated as a ghost task id
-    assert not any("none ->" in c.get("edge", "") for c in out["marker_conflicts"])
-
-
-def test_near_miss_marker_spelling_surfaces_conflict(tmp_path):
+def test_near_miss_marker_spelling_degrades_to_heuristics(tmp_path):
+    # A typo'd marker (`**type:**`, `**Depends-On:**`) is not trusted: the task
+    # falls to the heuristic classifier and no marker edge is fabricated.
     plan = tmp_path / "nearmiss.md"
     plan.write_text(
         "# Plan: Near miss\n\n"
@@ -806,8 +757,6 @@ def test_near_miss_marker_spelling_surfaces_conflict(tmp_path):
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["A"]["disposition"] == "implementation"   # heuristics, not the typo'd gate
     assert not any(e["why"] == "marker" for e in out["dag_edges"])
-    assert any(c["task"] == "A" and "spelling" in c["note"].lower()
-               for c in out["marker_conflicts"])
 
 
 def test_fenced_block_after_heading_ends_the_header(tmp_path):
@@ -828,7 +777,9 @@ def test_fenced_block_after_heading_ends_the_header(tmp_path):
     assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_colon_outside_bold_marker_is_a_near_miss(tmp_path):
+def test_colon_outside_bold_marker_is_not_trusted(tmp_path):
+    # `**Type**: gate` (colon outside the bold) is a near-miss: not trusted, so
+    # no marker edge forms and the task is not a trusted gate.
     plan = tmp_path / "colonout.md"
     plan.write_text(
         "# Plan: Colon outside\n\n"
@@ -840,8 +791,6 @@ def test_colon_outside_bold_marker_is_a_near_miss(tmp_path):
     )
     out = compile_plan(plan)
     assert not any(e["why"] == "marker" for e in out["dag_edges"])
-    assert any(c["task"] == "A" and "spelling" in c["note"].lower()
-               for c in out["marker_conflicts"])
 
 
 def test_late_near_miss_marker_also_surfaces(tmp_path):
@@ -860,7 +809,9 @@ def test_late_near_miss_marker_also_surfaces(tmp_path):
     assert any(c["task"] == "A" and "header" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_empty_and_second_unrecognized_type_values_surface(tmp_path):
+def test_empty_and_second_unrecognized_type_values_ignored(tmp_path):
+    # An empty `**Type:**` and a second, unrecognized value are both ignored:
+    # Task A falls to the heuristic classifier, Task B keeps its first valid type.
     plan = tmp_path / "emptytype.md"
     plan.write_text(
         "# Plan: Empty type\n\n"
@@ -874,10 +825,7 @@ def test_empty_and_second_unrecognized_type_values_surface(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["B"]["disposition"] == "gate"             # first valid wins
-    assert any(c["task"] == "A" and "not a recognized type" in c["note"]
-               for c in out["marker_conflicts"])
-    assert any(c["task"] == "B" and "banana" in c["note"]
-               for c in out["marker_conflicts"])
+    assert by_id["A"]["heuristic"] is True                 # empty Type ignored
 
 
 def test_blank_line_closes_the_files_block(tmp_path):
@@ -951,7 +899,9 @@ def test_near_miss_task_heading_is_a_loud_error(tmp_path):
     assert "1.5" in p.stderr
 
 
-def test_near_miss_note_does_not_claim_heuristics_when_type_is_trusted(tmp_path):
+def test_trusted_type_wins_alongside_typod_dep_marker(tmp_path):
+    # A valid **Type:** is trusted even when an adjacent near-miss dep marker
+    # (`**Depends-On:**`) degrades to prose; the task stays a trusted gate.
     plan = tmp_path / "notetail.md"
     plan.write_text(
         "# Plan: Note tail\n\n"
@@ -964,9 +914,7 @@ def test_near_miss_note_does_not_claim_heuristics_when_type_is_trusted(tmp_path)
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["A"]["disposition"] == "gate" and by_id["A"]["heuristic"] is False
-    note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
-    assert "spelling" in note.lower()
-    assert "heuristics applied" not in note   # classification was NOT heuristic here
+    assert not any(e["why"] == "marker" for e in out["dag_edges"])
 
 
 def test_indented_valid_heading_is_a_real_task(tmp_path):
@@ -1001,23 +949,6 @@ def test_four_hash_and_caps_headings_error_loudly(tmp_path):
         assert "heading" in p.stderr.lower(), bad
 
 
-def test_near_miss_files_entry_surfaces_conflict(tmp_path):
-    # A spaced-colon label (`- Modify : x`) is STILL a canonical label, just
-    # mis-spaced, so it stays a SOFT near-miss: compile succeeds and surfaces a
-    # conflict. (The wrong-CASE label case is now loud — see
-    # test_lowercase_files_label_is_a_loud_violation, #85.)
-    plan = tmp_path / "filesmiss.md"
-    plan.write_text(
-        "# Plan: Files near miss\n\n"
-        "### Task 1: spaced colon\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify : `shared.py`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: other\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
-    )
-    out = compile_plan(plan)
-    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
-
-
 def test_lowercase_files_label_is_a_loud_violation(tmp_path):
     # #85: a wrong-case label (`- modify:`) is an unknown label under the strict
     # grammar — a loud compile error with a did-you-mean, not a silent near-miss.
@@ -1030,18 +961,6 @@ def test_lowercase_files_label_is_a_loud_violation(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode == 1
     assert "modify" in p.stderr and "Create/Modify/Test" in p.stderr
-
-
-def test_empty_depends_on_value_diagnosed_as_missing(tmp_path):
-    plan = tmp_path / "emptydep.md"
-    plan.write_text(
-        "# Plan: Empty dep\n\n"
-        "### Task A: empty value\n\n**Type:** implementation\n**Depends-on:**\n\n"
-        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n"
-    )
-    out = compile_plan(plan)
-    note = next(c["note"] for c in out["marker_conflicts"] if c["task"] == "A")
-    assert "missing" in note.lower() and "value" in note.lower()
 
 
 def test_wrong_level_task_headings_error_loudly(tmp_path):
@@ -1071,7 +990,9 @@ def test_section_titles_with_task_word_stay_legal(tmp_path):
     assert [t["id"] for t in out["tasks"]] == ["1"]
 
 
-def test_asterisk_bullet_files_entry_surfaces_and_keeps_block_open(tmp_path):
+def test_asterisk_bullet_files_entry_keeps_block_open(tmp_path):
+    # A `* Modify:` bullet (wrong bullet char) is not a canonical entry, but the
+    # Files block stays open so a valid `- Modify:` entry after it still parses.
     plan = tmp_path / "starbullet.md"
     plan.write_text(
         "# Plan: Star bullet\n\n"
@@ -1084,10 +1005,11 @@ def test_asterisk_bullet_files_entry_surfaces_and_keeps_block_open(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert "c.py" in by_id["1"]["writes"]          # valid entry after the star survives
-    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_unbackticked_comma_paths_lose_no_overlap_and_surface(tmp_path):
+def test_unbackticked_comma_paths_lose_no_overlap(tmp_path):
+    # An unbackticked comma list keeps the first path in the write set, so the
+    # write-after-create overlap edge is not lost.
     plan = tmp_path / "commapaths.md"
     plan.write_text(
         "# Plan: Comma paths\n\n"
@@ -1098,18 +1020,6 @@ def test_unbackticked_comma_paths_lose_no_overlap_and_surface(tmp_path):
     )
     out = compile_plan(plan)
     assert {"from": "1", "to": "2", "why": "write-after-create"} in out["dag_edges"]
-    assert any(c["task"] == "1" and "backtick" in c["note"] for c in out["marker_conflicts"])
-
-
-def test_files_header_near_miss_surfaces(tmp_path):
-    plan = tmp_path / "fileshead.md"
-    plan.write_text(
-        "# Plan: Files header miss\n\n"
-        "### Task 1: colon outside\n\n**Type:** implementation\n\n"
-        "**Files**:\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n"
-    )
-    out = compile_plan(plan)
-    assert any(c["task"] == "1" and "Files" in c["note"] for c in out["marker_conflicts"])
 
 
 def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
@@ -1132,7 +1042,7 @@ def test_unparsed_bullets_in_files_block_surface_and_keep_block_open(tmp_path):
     assert "Modify" in p.stderr      # the did-you-mean suggestion
 
 
-def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_path):
+def test_depends_space_variant_text_rule_tolerates_punctuation(tmp_path):
     plan = tmp_path / "depspace.md"
     plan.write_text(
         "# Plan: Depends space\n\n"
@@ -1143,10 +1053,8 @@ def test_depends_space_variant_surfaces_and_text_rule_tolerates_punctuation(tmp_
         "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
     )
     out = compile_plan(plan)
-    # The space-spelled marker is surfaced as a near-miss AND the text rule
-    # tolerates the `:**` punctuation, so the ordering edge is recovered.
-    assert any(c["task"] == "2" and ("spelling" in c["note"].lower() or "header" in c["note"])
-               for c in out["marker_conflicts"])
+    # The space-spelled marker degrades to prose, but the text rule tolerates the
+    # `:**` punctuation, so the ordering edge is recovered.
     assert {"from": "1", "to": "2", "why": "text"} in out["dag_edges"]
     assert out["waves"] == [["1"], ["2"]]
 
@@ -1179,22 +1087,6 @@ def test_plural_text_dependency_comma_list(tmp_path):
     assert {"from": "2", "to": "3", "why": "text"} in out["dag_edges"]
 
 
-def test_unparseable_plural_still_surfaces(tmp_path):
-    plan = tmp_path / "plural-vague.md"
-    plan.write_text(
-        "### Task 1: a\n\n**Files:**\n- Modify: `a.py`\n\n"
-        "### Task 2: b\n\n**Files:**\n- Modify: `b.py`\n\n"
-        "Runs after Tasks (the parser ones) are merged.\n"
-        # "(": not an id token, so TEXT_DEP_LIST cannot match — a bare word like
-        # "above" WOULD match as a ghost id and surface via the ghost-drop
-        # conflict instead, which is also loud, just differently worded.
-    )
-    out = compile_plan(plan)
-    assert not any(e["why"] == "text" for e in out["dag_edges"])
-    assert any(c["task"] == "2" and "plural" in c["note"].lower()
-               for c in out["marker_conflicts"])
-
-
 def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
     plan = tmp_path / "phantom.md"
     plan.write_text(
@@ -1206,9 +1098,7 @@ def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
     )
     out = compile_plan(plan)
     # 'run' must not become a phantom read path: with no real paths task 1 stays
-    # AMBIGUOUS (conservative ambiguous-files serialization), and the prose value
-    # is surfaced.
-    assert any(c["task"] == "1" for c in out["marker_conflicts"])
+    # AMBIGUOUS (conservative ambiguous-files serialization).
     assert any(e["why"] == "ambiguous-files" for e in out["dag_edges"])
     assert not any(e["why"] == "read-after-write" for e in out["dag_edges"])
 
@@ -1272,7 +1162,7 @@ def test_inline_files_header_backticked_paths_parse(tmp_path):
     assert out["waves"] == [["1", "2"]]
 
 
-def test_inline_files_header_prose_value_surfaces(tmp_path):
+def test_inline_files_header_prose_value_has_no_writes(tmp_path):
     plan = tmp_path / "inline-prose.md"
     plan.write_text(
         "### Task 1: a\n\n**Files:** see the bullets in the spec\n\n"
@@ -1281,8 +1171,6 @@ def test_inline_files_header_prose_value_surfaces(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == []          # falls to ambiguous-files as before
-    assert any(c["task"] == "1" and "inline" in c["note"].lower()
-               for c in out["marker_conflicts"])
 
 
 PROSE_REF_PLAN = """# Demo Implementation Plan
@@ -1524,8 +1412,6 @@ def test_modify_function_names_and_routes_are_not_writes(tmp_path):
     # The two tasks edit disjoint real files -> no fabricated overlap edge.
     assert not any(e["why"] == "write-after-write" for e in out["dag_edges"])
     assert out["waves"] == [["1", "2"]]
-    # The dropped non-path tokens are surfaced so the author can fix the line.
-    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
 
 
 def test_extensionless_real_files_are_kept_identifiers_dropped(tmp_path):
@@ -1548,7 +1434,6 @@ def test_extensionless_real_files_are_kept_identifiers_dropped(tmp_path):
     assert "schema.User" not in by_id["1"]["writes"]   # dotted attribute ref dropped
     # the shared Makefile produces a real overlap edge (not lost to identifier noise)
     assert {"from": "1", "to": "2", "why": "write-after-write"} in out["dag_edges"]
-    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
 
 
 def test_dotted_attribute_ref_is_not_a_write(tmp_path):
@@ -1564,12 +1449,11 @@ def test_dotted_attribute_ref_is_not_a_write(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == ["apistub/schema.py"]
-    assert any(c["task"] == "1" and "non-path" in c["note"] for c in out["marker_conflicts"])
 
 
-def test_inline_files_all_nonpath_tokens_get_accurate_diagnostic(tmp_path):
-    # An inline **Files:** line whose backticked tokens are all non-path must say
-    # the tokens were ignored as non-paths, NOT the misleading "no backticked paths".
+def test_inline_files_all_nonpath_tokens_have_no_writes(tmp_path):
+    # An inline **Files:** line whose backticked tokens are all non-path
+    # identifiers contributes no writes (falls to ambiguous-files).
     plan = tmp_path / "inlinemiss.md"
     plan.write_text(
         "# Plan: Inline nonpath\n\n"
@@ -1579,11 +1463,6 @@ def test_inline_files_all_nonpath_tokens_get_accurate_diagnostic(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == []
-    note = next(c["note"] for c in out["marker_conflicts"]
-                if c["task"] == "1" and "Files" in c["note"])
-    assert "non-path token(s) ignored" in note      # accurate
-    assert "cmd_foo" in note                          # names the dropped tokens
-    assert "no backticked paths" not in note          # NOT the misleading message
 
 
 def test_no_space_wrong_level_heading_gets_three_hash_hint(tmp_path):
@@ -2203,7 +2082,7 @@ def test_empty_writes_buildqa_task_classifies_as_gate():
 
 # ---------------------------------------------------------------------------
 # Task 3: compiler diagnostics — description-inferred edge class, 0-markers
-# flag, gate-heading boundary, absence-assertion lint.
+# flag, gate-heading boundary.
 # (A `# Plan: …` title line precedes each marked plan so compile_plan_text's
 # waiver injection — after line 0 — lands at plan level, not inside Task 1's
 # marker header block; this mirrors the convention used throughout this file.)
@@ -2280,22 +2159,6 @@ def test_non_task_gate_heading_is_a_boundary():
                    for c in out["marker_conflicts"])
 
 
-def test_absence_assertion_self_contradiction_is_linted():
-    plan = '''# Plan: absence assertion
-
-### Task 1: Add banner
-**Type:** implementation
-
-**Files:**
-- Modify: `app.py`
-
-- [ ] Insert the literal text `LEGACY_FLAG` into app.py.
-- [ ] Verify: `grep LEGACY_FLAG app.py` returns no matches.
-'''
-    out = compile_plan_text(plan)
-    assert any(c.get("kind") == "absence-assertion" for c in out["marker_conflicts"])
-
-
 def test_bare_none_files_entry_is_silent():
     """A gate task whose `**Files:**` block is only `- None` is an explicit
     empty-Files declaration: it must contribute no writes and raise no near-miss
@@ -2352,7 +2215,7 @@ def test_uppercase_extension_paths_serialize_same_file_writers(tmp_path):
 
 def test_mixed_case_attr_ref_still_dropped_from_files(tmp_path):
     """`schema.User` in a Files entry is an identifier, not a path — it must
-    stay dropped (surfaced as a near-miss), or it fabricates overlap edges."""
+    stay dropped, or it fabricates overlap edges."""
     plan = tmp_path / "p.md"
     plan.write_text(
         "# Plan: Attr\n\n**Acceptance:** waived — inline\n\n"
@@ -2362,7 +2225,6 @@ def test_mixed_case_attr_ref_still_dropped_from_files(tmp_path):
     out = compile_plan(plan)
     a = next(t for t in out["tasks"] if t["id"] == "A")
     assert a["writes"] == ["real.py"]
-    assert any("schema.User" in c["note"] for c in out["marker_conflicts"])
 
 
 def test_prose_section_heading_with_task_word_and_colon_compiles(tmp_path):
@@ -2426,7 +2288,6 @@ def test_emit_args_writes_complete_launch_skeleton(tmp_path):
     assert skel["dependencyEdges"] == [
         f"{e['from']} -> {e['to']} ({e['why']})" for e in out["dag_edges"]]
     assert skel["acceptance"] == out["acceptance"]
-    assert skel["waveLabels"] == out["waveLabels"]
     assert skel["globalConstraints"] == out["globalConstraints"]
     assert pathlib.Path(skel["planPath"]).is_absolute()
     assert out["args_file"] == str(argsf)

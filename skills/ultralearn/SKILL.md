@@ -61,13 +61,6 @@ spec stubs under `docs/superpowers/specs/`. **Nothing is filed or committed
 without operator approval** — present the drafts and let the operator choose.
 This human gate is the loop's governor, mirroring the pre-merge gate.
 
-Before ranking proposals, run the complexity ratchet:
-`python3 skills/ultralearn/scripts/complexity_metric.py --baseline skills/ultralearn/complexity-baseline.json`
-Surface any `RATCHET:` deltas in the distill output. When a gate-spec surface is
-over baseline, make a consolidation pass on that surface the top-ranked proposal
-rather than a new feature. The ratchet is advisory — it informs ranking, it does
-not block.
-
 **Deletion candidate (mandatory).** Every distill cycle must nominate at least
 one `simplification` proposal — a rule, guard, knob, or subsystem the evidence
 suggests the engine could shed — even when ranked last. The sensing lenses hunt

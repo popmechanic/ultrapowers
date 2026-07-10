@@ -56,16 +56,11 @@ FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
 # Plural conjunction/comma lists ("depends on Tasks 1 and 3", "after Tasks
-# 1, 2 and 3") parse into one text edge per listed id. A `Tasks` mention the
-# list regex cannot parse (e.g. "after Tasks above") still surfaces as a
-# conflict so ordering intent is never silently lost.
+# 1, 2 and 3") parse into one text edge per listed id.
 TEXT_DEP_LIST = re.compile(
     r"(?:depends\s+on|after|requires)[\s:*]+Tasks\s+"
     r"((?:[A-Za-z0-9]+)(?:\s*(?:,|and|&)\s*[A-Za-z0-9]+)*)", re.I)
 LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
-# Plural prose that does NOT form a parseable id list — surface it so the
-# author can fix the ordering intent instead of losing it silently.
-TEXT_DEP_PLURAL = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Tasks\b", re.I)
 GLOB_CHARS = re.compile(r"[*?\[{]")
 # Whether a Files-entry token names a file, vs a bare identifier (function name),
 # a dotted attribute reference (`schema.User`), or a route. Files entries are
@@ -103,13 +98,6 @@ def _is_pathlike(tok):
     return False
 
 
-def _nonpath_near_miss(line, dropped):
-    """Single source for the 'non-path token(s) ignored' Files diagnostic so the
-    inline-header and bulleted branches surface dropped identifiers identically."""
-    return (line + "  <non-path token(s) ignored (" + ", ".join(dropped[:3])
-            + ") — Files entries list paths, not identifiers like function names>")
-
-
 def match_head(line):
     """The single source of truth for task headings: TASK_HEAD on the
     stripped text, accepting CommonMark's up-to-3 leading spaces. Used by
@@ -140,11 +128,6 @@ IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\
 # miss ("run the full build and the QA acceptance check").
 BUILDQA_EV = re.compile(
     r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
-# Absence-assertion lint ([a2fade95c36b2357]). An INSERT step writes a literal
-# token; a later ABSENCE assertion greps for it and expects nothing — a vacuous
-# self-contradiction the verification can never pass.
-INSERT_STEP = re.compile(r"\b(insert|add the literal|write the text)\b", re.I)
-ABSENCE_PHRASE = re.compile(r"no matches|returns nothing|\babsent\b", re.I)
 
 
 def _has_implementation_prose(prose):
@@ -235,14 +218,10 @@ def parse_task(t, raise_on_marker_error=True):
     task's `marker_violations` list instead, so collect_violations can gather
     every task's violations in one pass rather than aborting at the first."""
     ttype = None
-    type_unparsed = []
-    deps, deps_none, deps_mixed = [], False, False
+    deps, deps_none = [], False
     late_markers = []
-    dup_types = []
-    near_miss = []
     marker_violations = []
     creates, modifies, reads = [], [], []
-    files_near_miss = []
     # Every `- catch-all: <prose>` bullet's prose, in document order (#85). A
     # task declares AT MOST one — a second is a grammar violation surfaced by
     # _files_violations, so every one seen is recorded here rather than the
@@ -291,18 +270,10 @@ def parse_task(t, raise_on_marker_error=True):
             else:
                 m = MARKER_TYPE.match(s)
                 val = m.group(1) if m else None
-                if val in TYPES:
-                    if ttype is None:
-                        ttype = val
-                    elif val != ttype:
-                        # A second, DIFFERENT valid Type marker: first wins, but
-                        # a direct contradiction between trusted markers must
-                        # never vanish silently.
-                        dup_types.append(val)
-                else:
-                    # Unparseable, unrecognized, or empty value — recorded
-                    # regardless of whether a valid Type already won.
-                    type_unparsed.append(s[len("**Type:**"):].strip() or "<empty>")
+                if val in TYPES and ttype is None:
+                    # First valid Type wins; a later or unrecognized value is
+                    # ignored (the marker degrades to the heuristic classifier).
+                    ttype = val
         elif (m := MARKER_DEPS.match(s)):
             if not in_header:
                 late_markers.append(s)
@@ -310,17 +281,12 @@ def parse_task(t, raise_on_marker_error=True):
                 # Accumulate across repeated **Depends-on:** lines — first-wins
                 # silently dropped declared prerequisites. `none` combined with
                 # concrete ids (across lines OR inline, `none, A`) is
-                # contradictory: ids win, surfaced as a conflict.
+                # contradictory: the ids win (the none assertion is void).
                 tokens = [d.strip() for d in m.group(1).split(",") if d.strip()]
                 id_tokens = [d for d in tokens if d.lower() != "none"]
-                has_none = len(id_tokens) != len(tokens)
-                if has_none:
-                    if deps or id_tokens:
-                        deps_mixed = True
+                if len(id_tokens) != len(tokens):
                     deps_none = True
                 if id_tokens:
-                    if deps_none and not has_none:
-                        deps_mixed = True
                     deps.extend(id_tokens)
         elif (m := MARKER_REVIEW.match(s)):
             if not in_header:
@@ -341,53 +307,36 @@ def parse_task(t, raise_on_marker_error=True):
                 else:
                     t["review"] = val
         elif is_markerish and s.rstrip() == "**Depends-on:**":
-            # Exact marker, missing value — a spelling diagnosis would mislead;
-            # outside the header it is a placement violation like any late marker.
-            (near_miss if in_header else late_markers).append(s + "  <missing value>")
+            # Exact marker, missing value. Inside the header it silently
+            # degrades to the heuristics; outside it is a placement violation
+            # surfaced like any late marker.
+            if not in_header:
+                late_markers.append(s + "  <missing value>")
         elif is_markerish:
-            # Near-miss spellings (`**type:**`, `**Depends-On:**`, `**Type**:`)
-            # would otherwise silently degrade to heuristics with no feedback —
-            # inside the header they surface as spelling conflicts, after it as
-            # late markers, so every marker-shaped line is accounted for.
-            (near_miss if in_header else late_markers).append(s)
+            # A marker-shaped line that is not a trusted marker (`**type:**`,
+            # `**Depends-On:**`, `**Type**:`). Inside the header it degrades to
+            # the heuristics; after the header it surfaces as a late marker.
+            if not in_header:
+                late_markers.append(s)
         if s.startswith("**Files:**"):
             in_files = True
             files_entries_seen = False
             # Inline header values: `**Files:** \`a.py\` \`b.py\`` carries the
-            # paths on the header line itself. Backticked paths are honored as
-            # writes (conservative: inline form does not distinguish
+            # paths on the header line itself. Backticked path-like tokens are
+            # honored as writes (conservative: inline form does not distinguish
             # Create/Modify/Test, and a write is the safe assumption). A
-            # non-backticked remainder surfaces a conflict instead of silently
-            # falling to ambiguous-files with no pointer.
+            # non-path remainder is ignored and falls to ambiguous-files.
             rest = s[len("**Files:**"):].strip()
             if rest:
-                inline, nonpaths = [], []
-                for p in PATH_RE.findall(rest):
-                    if not p:
-                        continue
-                    (inline if _is_pathlike(p) else nonpaths).append(p.split(":")[0])
+                inline = [p.split(":")[0] for p in PATH_RE.findall(rest)
+                          if p and _is_pathlike(p)]
                 if inline:
                     modifies.extend(inline)
                     files_entries_seen = True
-                    if nonpaths:
-                        files_near_miss.append(_nonpath_near_miss(s, nonpaths))
-                elif nonpaths:
-                    # There WERE backticked tokens, just none path-like — say so,
-                    # rather than the misleading "no backticked paths".
-                    files_near_miss.append(_nonpath_near_miss(s, nonpaths))
-                elif not rest.lower().startswith("none"):
-                    # "none" (with or without trailing prose) is a valid value
-                    # (common for gates); other prose without backticked paths
-                    # surfaces a conflict
-                    files_near_miss.append(
-                        s + "  <inline Files value has no backticked paths — "
-                        "backtick each path or use - Create/Modify/Test bullets>")
             continue
         if FILES_ISH.match(s):
-            # `**Files**:` / `**files:**` never opens the block — every entry
-            # under it would drop to ambiguous serialization with no pointer
-            # to the typo.
-            files_near_miss.append(s + "  <Files header not recognized>")
+            # `**Files**:` / `**files:**` never opens the block — entries under
+            # it fall to ambiguous serialization.
             continue
         if s.startswith("**Interfaces:**"):
             # Opening the Interfaces block closes any open Files block cleanly,
@@ -453,17 +402,10 @@ def parse_task(t, raise_on_marker_error=True):
                     files_raw.append((mlabel.group(1).strip(),
                                       mlabel.group(2).strip()))
             if in_files and not f and re.match(r"^[-*+]\s", s):
-                # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
-                # (common on gates/verification tasks) — not a near-miss. Skip it
-                # so it never surfaces a phantom conflict ([76c7ef053adbf62e]).
-                if s.lstrip("-*+ ").strip().lower() == "none":
-                    continue
-                # TOTAL rule: ANY bullet inside an open Files block that is not a
-                # checkbox and fails FILE_LINE is a near-miss — colon-less
-                # natural English, unknown labels (Read:/Delete:), wrong case or
-                # bullet char — surfaced, and the block stays open so valid
-                # entries after it survive.
-                files_near_miss.append(s)
+                # A non-canonical bullet inside an open Files block — a bare
+                # `- None` empty declaration, colon-less natural English, an
+                # unknown label, or a wrong bullet char — contributes no write.
+                # The block stays open so valid entries after it survive.
                 continue
             if f:
                 # Prefer backticked paths; otherwise take the first
@@ -475,13 +417,8 @@ def parse_task(t, raise_on_marker_error=True):
                     # Keep only path-like backticked tokens. A Modify line naming a
                     # function (`cmd_apply_create`) or a dotted attribute ref
                     # (`schema.User`) is not a file; admitting it as a write invents
-                    # overlap edges to unrelated tasks. Partition once and surface
-                    # the dropped tokens so the author can fix the line.
-                    paths, dropped = [], []
-                    for b in backticked:
-                        (paths if _is_pathlike(b) else dropped).append(b)
-                    if dropped:
-                        files_near_miss.append(_nonpath_near_miss(s, dropped))
+                    # overlap edges to unrelated tasks.
+                    paths = [b for b in backticked if _is_pathlike(b)]
                 else:
                     tokens = f.group(2).strip().split()
                     first = tokens[0].rstrip(",;")
@@ -490,15 +427,7 @@ def parse_task(t, raise_on_marker_error=True):
                     # never flips a token's classification) — a prose value ("run
                     # pytest manually") must not fabricate a phantom path that
                     # defeats the conservative ambiguous-files fallback.
-                    if _is_pathlike(first):
-                        paths = [first]
-                        if len(tokens) > 1:
-                            files_near_miss.append(
-                                s + "  <only the first path is used — backtick each path>")
-                    else:
-                        paths = []
-                        files_near_miss.append(
-                            s + "  <value is prose, not a path — backtick real paths>")
+                    paths = [first] if _is_pathlike(first) else []
                 paths = [p.split(":")[0] for p in paths if p]  # drop :line-range
                 if paths:
                     files_entries_seen = True
@@ -514,11 +443,13 @@ def parse_task(t, raise_on_marker_error=True):
             elif s and not s.startswith("-"):
                 in_files = False
 
+    # A task with no concrete paths, or one whose paths carry glob chars (a `{`
+    # brace survives the strict Files grammar), is ambiguous — serialized
+    # conservatively by the ambiguous-files tier in build_edges.
     all_paths = creates + modifies + reads
-    glob_paths = [p for p in all_paths if GLOB_CHARS.search(p)]
     files_ambiguous = (
         (not creates and not modifies and not reads) or
-        bool(glob_paths)
+        bool([p for p in all_paths if GLOB_CHARS.search(p)])
     )
 
     # Fence-stripped prose: classification evidence and text-dependency scanning
@@ -548,24 +479,22 @@ def parse_task(t, raise_on_marker_error=True):
             in_steps = True
         (step_lines if in_steps else desc_lines).append(line)
 
-    t.update(marker_type=ttype, type_unparsed=type_unparsed,
+    t.update(marker_type=ttype,
              # ids win over a contradictory `none` (the none assertion is void
-             # once concrete prerequisites are declared; surfaced via deps_mixed)
+             # once concrete prerequisites are declared).
              depends_on=deps, depends_none=deps_none and not deps,
-             deps_mixed=deps_mixed, late_markers=late_markers,
-             dup_types=dup_types, near_miss=near_miss,
+             late_markers=late_markers,
              # Marker-VALUE validation failures collected instead of raised
              # (only populated when raise_on_marker_error=False — the --check
              # CLI mode, #85); empty in the normal compile path since a
              # violation there raises SystemExit immediately instead.
              marker_violations=marker_violations,
-             files_near_miss=files_near_miss, files_raw=files_raw,
+             files_raw=files_raw,
              # First `- catch-all:` bullet wins as the authoritative prose (a
              # second is a violation, not a silent overwrite — see
              # catch_all_raw, consumed by _files_violations).
              catch_all=(catch_all_raw[0] if catch_all_raw else None),
              catch_all_raw=catch_all_raw,
-             glob_paths=sorted(set(glob_paths)),
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
@@ -875,77 +804,6 @@ def collect_violations(plan_path):
     for t in tasks:
         violations.extend(_files_violations(t))
     return violations
-
-
-# Deterministic, meaningful per-wave label. compile_plan is the single source: the
-# engine reads these via args.waveLabels (so the live /workflows tree is labeled
-# without orchestrator judgment) AND the swarm viewer reads them from build_dag.
-# The engine's JS fallback is deliberately minimal (single-task title or
-# 'Wave N'); this function is the only rich label source, delivered via
-# --emit-args/waveLabels.
-TITLE_STOP = {"the", "a", "an", "and", "or", "for", "to", "of", "with", "in",
-              "on", "at", "by", "via", "plus"}
-
-
-def _title_words(s):
-    return [w for w in re.findall(r"[a-z][a-z]+", (s or "").lower())
-            if len(w) >= 3 and w not in TITLE_STOP]
-
-
-def _shared_title_noun(tasks):
-    """The content word shared by EVERY task title (longest-first), or ''."""
-    inter = None
-    for t in tasks:
-        ws = set(_title_words(t.get("title")))
-        inter = ws if inter is None else (inter & ws)
-        if not inter:
-            return ""
-    return sorted(inter, key=lambda w: (-len(w), w))[0] if inter else ""
-
-
-def _common_file_dir(tasks):
-    """The deepest parent directory shared by every file the wave touches, or ''."""
-    common = None
-    for t in tasks:
-        files = [f for f in (t.get("files") or []) if isinstance(f, str) and "/" in f]
-        if not files:
-            return ""
-        for f in files:
-            segs = f.split("/")[:-1]
-            if common is None:
-                common = segs
-            else:
-                i = 0
-                while i < len(common) and i < len(segs) and common[i] == segs[i]:
-                    i += 1
-                common = common[:i]
-            if not common:
-                return ""
-    return "/".join(common) if common else ""
-
-
-def derive_wave_label(tasks):
-    """A single-task wave is named by its title; a multi-task wave by the noun its
-    titles share (pluralized + counted, e.g. '4 Modules'), else the common file
-    directory, else a plain count."""
-    tasks = [t for t in tasks if t]
-    if not tasks:
-        return ""
-
-    def clip(s, n=56):
-        s = (s or "").strip()
-        return (s[:n - 1] + "…") if len(s) > n else s
-
-    if len(tasks) == 1:
-        return clip(tasks[0].get("title") or ("Task " + str(tasks[0].get("id", ""))))
-    noun = _shared_title_noun(tasks)
-    if noun:
-        cap = noun[0].upper() + noun[1:]
-        return str(len(tasks)) + " " + (cap if cap.endswith("s") else cap + "s")
-    d = _common_file_dir(tasks)
-    if d:
-        return clip(d) + " · " + str(len(tasks)) + " tasks"
-    return str(len(tasks)) + " parallel tasks"
 
 
 def build_edges(impl):
@@ -1300,7 +1158,7 @@ def main(argv=None):
     ap.add_argument("--emit-args", type=Path, default=None, dest="emit_args",
                     metavar="PATH",
                     help="also write the complete Workflow launch-args skeleton "
-                         "(waves/wavesPath/edges/acceptance/waveLabels/"
+                         "(waves/wavesPath/edges/acceptance/"
                          "globalConstraints/planPath) to PATH; the orchestrator "
                          "adds only per-task tier/review/testCmd and run knobs. "
                          "Requires --emit-launch.")
@@ -1399,92 +1257,14 @@ def main(argv=None):
                           "depends_on": t["depends_on"],
                           "interfaces": t["interfaces"]})
 
-    # Bug E1: surface unparseable type markers as conflicts
-    type_conflicts = [
-        {"task": t["id"], "edge": "",
-         "note": "**Type:** " + ", ".join(repr(v) for v in t["type_unparsed"])
-                 + " is not a recognized type "
-                 "(implementation/gate/release/manual) — marker ignored, heuristic applied"}
-        for t in tasks if t.get("type_unparsed")]
     # Markers found outside the header block (after the Files block or the
     # first checkbox step) are never trusted — surface each task once.
-    type_conflicts += [
+    type_conflicts = [
         {"task": t["id"], "edge": "",
          "note": "marker line(s) outside the header block ignored ("
                  + "; ".join(sorted(set(t["late_markers"]))[:3])
                  + ") — markers go immediately after the task heading"}
         for t in tasks if t.get("late_markers")]
-    # Contradictory trusted Type markers: first wins, surfaced loudly.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "contradictory **Type:** markers (" + t["marker_type"] + " vs "
-                 + ", ".join(sorted(set(t["dup_types"]))) + ") — the first one wins"}
-        for t in tasks if t.get("dup_types")]
-    # Glob-driven ambiguity: conservative full serialization with no pointer to
-    # WHY would read as a scheduling bug — name the globby paths.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "path(s) look like globs (" + ", ".join(t["glob_paths"][:3])
-                 + ") — task serialized via ambiguous-files; list concrete files "
-                 "to parallelize (a literal [slug]/{x} path also triggers this)"}
-        for t in tasks if t.get("glob_paths")]
-    # Plural text dependencies that could NOT be parsed into an id list — surface
-    # so the ordering intent is not silently lost.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "plural text dependency ('depends on/after/requires Tasks …') could "
-                 "not be parsed into task ids — encode each prerequisite as a "
-                 "**Depends-on:** marker"}
-        for t in tasks
-        if TEXT_DEP_PLURAL.search(t["prose"]) and not TEXT_DEP_LIST.search(t["prose"])]
-    # Files-entry near-misses: a dropped write path silently weakens overlap
-    # inference — surface per task.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "Files entr(y/ies) not recognized (check label case/colon: "
-                 + "; ".join(sorted(set(t["files_near_miss"]))[:3])
-                 + ") — path(s) dropped from overlap inference"}
-        for t in tasks if t.get("files_near_miss")]
-    # Near-miss marker spellings: degraded to heuristics, but never silently.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "marker-like line(s) not recognized (check spelling/case, or a missing value: "
-                 + "; ".join(sorted(set(t["near_miss"]))[:3])
-                 + ") — ignored"
-                 + (", heuristics applied" if not t.get("marker_type")
-                    else "; classification unaffected (a valid **Type:** won)")}
-        for t in tasks if t.get("near_miss")]
-    # `Depends-on: none` combined with concrete ids — ids won, none is void.
-    type_conflicts += [
-        {"task": t["id"], "edge": "",
-         "note": "Depends-on: none combined with concrete ids — the ids win; "
-                 "the none assertion is ignored"}
-        for t in tasks if t.get("deps_mixed")]
-    # Absence-assertion self-contradiction ([a2fade95c36b2357]): a task INSERTS a
-    # literal token (an `Insert`/`add the literal`/`write the text` step that
-    # backticks it) and a LATER step asserts that token ABSENT (a `grep …` paired
-    # with "no matches"/"returns nothing"/"absent"). The verification can never
-    # pass. Conservative: a token must appear in BOTH an insert step and an
-    # absence assertion of the same task, and the assertion must come after the
-    # insert (processing the body in order enforces "later").
-    for t in tasks:
-        inserted, flagged = {}, set()
-        for line in t["prose"].splitlines():
-            if INSERT_STEP.search(line):
-                for tok in PATH_RE.findall(line):
-                    inserted.setdefault(tok, True)
-            if "grep" in line.lower() and ABSENCE_PHRASE.search(line):
-                for tok in sorted(inserted):
-                    if tok in flagged:
-                        continue
-                    if re.search(r"\b" + re.escape(tok) + r"\b", line):
-                        flagged.add(tok)
-                        type_conflicts.append({"task": t["id"], "edge": "",
-                            "kind": "absence-assertion",
-                            "note": "task " + t["id"] + " inserts `" + tok
-                                    + "` and a later step asserts it absent — a "
-                                    "vacuous absence assertion (mirror the "
-                                    "sealed-exam RED-at-BASE proof)"})
 
     acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
@@ -1570,10 +1350,6 @@ def main(argv=None):
           "catchAll": by_id[tid].get("catch_all")} for tid in wave]
         for wave in waves]
 
-    # One deterministic label per wave (same order as waves/launch_waves). The
-    # orchestrator threads these into args.waveLabels; the viewer reads them too.
-    wave_labels = [derive_wave_label(wave) for wave in launch_waves]
-
     result = {
         "tasks": out_tasks,
         "dag_edges": edges,
@@ -1583,7 +1359,6 @@ def main(argv=None):
                                if t["disposition"] in ("release", "manual")],
         "waves": waves,
         "launch_waves": launch_waves,
-        "waveLabels": wave_labels,
         "mode": mode,
         "degrade_reason": degrade,
         "allHeuristic": not marked,
@@ -1610,7 +1385,6 @@ def main(argv=None):
                        "catchAll": by_id[tid].get("catch_all")}
                       for wave in waves for tid in wave],
             "waves": waves,
-            "waveLabels": wave_labels,
             "edges": [[e["from"], e["to"]] for e in edges],
             "acceptance": acceptance,
             "globalConstraints": global_constraints,
@@ -1630,7 +1404,6 @@ def main(argv=None):
             "dependencyEdges": [f"{e['from']} -> {e['to']} ({e['why']})"
                                 for e in edges],
             "acceptance": acceptance,
-            "waveLabels": wave_labels,
             "globalConstraints": global_constraints,
             "planPath": str(args.plan.resolve()),
         }
