@@ -71,7 +71,34 @@ def run_judge(prompt):
     payload = json.loads(result.stdout)
     # `--output-format json` wraps the assistant's final text in `result`.
     text = payload.get("result", payload.get("response", result.stdout))
-    return json.loads(text)
+    return _extract_json(text)
+
+
+def _extract_json(text):
+    """The judge is told to return ONLY JSON, but models preface or fence it;
+    pull the last complete top-level object carrying a verdict out of the text."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    depth, start, objs = 0, None, []
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    objs.append(json.loads(text[start:i + 1]))
+                except json.JSONDecodeError:
+                    pass
+                start = None
+    for obj in reversed(objs):
+        if isinstance(obj, dict) and "verdict" in obj:
+            return obj
+    sys.exit("judge returned no parseable JSON verdict; raw text:\n" + text[:2000])
 
 
 def main():
