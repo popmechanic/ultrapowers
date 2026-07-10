@@ -1,0 +1,298 @@
+diff --git a/tests/test_ngrams.py b/tests/test_ngrams.py
+new file mode 100644
+index 0000000..68aca73
+--- /dev/null
++++ b/tests/test_ngrams.py
+@@ -0,0 +1,33 @@
++import pytest
++
++from textkit.ngrams import ngrams
++
++
++def test_basic_bigrams():
++    assert ngrams(["a", "b", "c"], 2) == [("a", "b"), ("b", "c")]
++
++
++def test_unigrams():
++    assert ngrams(["a", "b", "c"], 1) == [("a",), ("b",), ("c",)]
++
++
++def test_n_equals_len_returns_single_tuple():
++    assert ngrams(["a", "b", "c"], 3) == [("a", "b", "c")]
++
++
++def test_n_greater_than_len_returns_empty_list():
++    assert ngrams(["a", "b"], 3) == []
++
++
++def test_empty_tokens_returns_empty_list():
++    assert ngrams([], 2) == []
++
++
++def test_n_less_than_one_raises_value_error():
++    with pytest.raises(ValueError):
++        ngrams(["a", "b", "c"], 0)
++
++
++def test_negative_n_raises_value_error():
++    with pytest.raises(ValueError):
++        ngrams(["a", "b", "c"], -1)
+diff --git a/tests/test_redact.py b/tests/test_redact.py
+new file mode 100644
+index 0000000..e94abbd
+--- /dev/null
++++ b/tests/test_redact.py
+@@ -0,0 +1,17 @@
++from textkit.redact import redact
++
++
++def test_replaces_whole_word_with_stars():
++    assert redact("scandal!", ["scandal"]) == "*******!"
++
++
++def test_leaves_substring_matches_unchanged():
++    assert redact("scandals", ["scandal"]) == "scandals"
++
++
++def test_case_insensitive_multiple_occurrences():
++    assert redact("Tell Alice that ALICE called", ["alice"]) == "Tell ***** that ***** called"
++
++
++def test_empty_words_returns_text_unchanged():
++    assert redact("Tell Alice that ALICE called", []) == "Tell Alice that ALICE called"
+diff --git a/tests/test_reverse_words.py b/tests/test_reverse_words.py
+new file mode 100644
+index 0000000..96873c0
+--- /dev/null
++++ b/tests/test_reverse_words.py
+@@ -0,0 +1,21 @@
++from textkit.reverse_words import reverse_words
++
++
++def test_basic():
++    assert reverse_words("one  two three") == "three two one"
++
++
++def test_empty_string():
++    assert reverse_words("") == ""
++
++
++def test_whitespace_only():
++    assert reverse_words("   \t\n  ") == ""
++
++
++def test_single_word():
++    assert reverse_words("hello") == "hello"
++
++
++def test_collapses_extra_whitespace_between_words():
++    assert reverse_words("a\tb\nc") == "c b a"
+diff --git a/tests/test_titlecase.py b/tests/test_titlecase.py
+new file mode 100644
+index 0000000..f1b7386
+--- /dev/null
++++ b/tests/test_titlecase.py
+@@ -0,0 +1,33 @@
++from textkit.titlecase import titlecase
++
++
++def test_example():
++    assert titlecase("the lord of the rings") == "The Lord of the Rings"
++
++
++def test_empty_string():
++    assert titlecase("") == ""
++
++
++def test_whitespace_only():
++    assert titlecase("   ") == ""
++
++
++def test_single_minor_word_capitalized():
++    assert titlecase("the") == "The"
++
++
++def test_collapses_whitespace():
++    assert titlecase("a  tale   of the\tcity") == "A Tale of the City"
++
++
++def test_normalizes_mixed_case():
++    assert titlecase("THE great GATSBY") == "The Great Gatsby"
++
++
++def test_last_word_minor_is_capitalized():
++    assert titlecase("a day to") == "A Day To"
++
++
++def test_all_minor_words_lowercased_in_middle():
++    assert titlecase("this and that or the other") == "This and That or the Other"
+diff --git a/tests/test_truncate.py b/tests/test_truncate.py
+new file mode 100644
+index 0000000..9e6e83e
+--- /dev/null
++++ b/tests/test_truncate.py
+@@ -0,0 +1,32 @@
++import pytest
++
++from textkit.truncate import truncate
++
++
++def test_returns_unchanged_when_within_limit():
++    assert truncate("hello", 10) == "hello"
++
++
++def test_returns_unchanged_when_exactly_at_limit():
++    assert truncate("hello", 5) == "hello"
++
++
++def test_truncates_and_appends_default_ellipsis():
++    assert truncate("hello brave world", 10) == "hello b..."
++
++
++def test_truncates_with_custom_ellipsis():
++    assert truncate("hello brave world", 10, ellipsis=">>") == "hello br>>"
++
++
++def test_rstrips_trailing_whitespace_before_ellipsis():
++    assert truncate("hello      world", 8) == "hello..."
++
++
++def test_raises_value_error_when_limit_less_than_ellipsis_length():
++    with pytest.raises(ValueError):
++        truncate("hello world", 2)
++
++
++def test_limit_equal_to_ellipsis_length_is_allowed():
++    assert truncate("hello world", 3) == "..."
+diff --git a/tests/test_word_count.py b/tests/test_word_count.py
+new file mode 100644
+index 0000000..a79a4aa
+--- /dev/null
++++ b/tests/test_word_count.py
+@@ -0,0 +1,26 @@
++from textkit.word_count import word_count
++
++
++def test_basic_counts():
++    assert word_count("The cat and the hat") == {
++        "the": 2,
++        "cat": 1,
++        "and": 1,
++        "hat": 1,
++    }
++
++
++def test_apostrophe_splits_into_two_words():
++    assert word_count("Don't") == {"don": 1, "t": 1}
++
++
++def test_empty_string_returns_empty_dict():
++    assert word_count("") == {}
++
++
++def test_no_word_characters_returns_empty_dict():
++    assert word_count("!!! --- ,,,") == {}
++
++
++def test_lowercases_before_counting():
++    assert word_count("Cat cat CAT") == {"cat": 3}
+diff --git a/textkit/ngrams.py b/textkit/ngrams.py
+new file mode 100644
+index 0000000..38b713f
+--- /dev/null
++++ b/textkit/ngrams.py
+@@ -0,0 +1,8 @@
++def ngrams(tokens, n):
++    """Return a list of tuples of n consecutive tokens.
++
++    Raises ValueError if n < 1. Returns [] when n > len(tokens).
++    """
++    if n < 1:
++        raise ValueError("n must be >= 1")
++    return [tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1)]
+diff --git a/textkit/redact.py b/textkit/redact.py
+new file mode 100644
+index 0000000..a3aeeda
+--- /dev/null
++++ b/textkit/redact.py
+@@ -0,0 +1,12 @@
++import re
++
++
++def redact(text, words):
++    """Replace each whole-word, case-insensitive occurrence of any word in
++    `words` with "*" repeated to the match's length."""
++    words = list(words)
++    if not words:
++        return text
++
++    pattern = r"\b(?:" + "|".join(re.escape(word) for word in words) + r")\b"
++    return re.sub(pattern, lambda m: "*" * len(m.group(0)), text, flags=re.IGNORECASE)
+diff --git a/textkit/reverse_words.py b/textkit/reverse_words.py
+new file mode 100644
+index 0000000..60969cc
+--- /dev/null
++++ b/textkit/reverse_words.py
+@@ -0,0 +1,6 @@
++def reverse_words(text):
++    """Split on whitespace, reverse word order, join with single spaces.
++
++    Empty or whitespace-only input returns "".
++    """
++    return " ".join(reversed(text.split()))
+diff --git a/textkit/titlecase.py b/textkit/titlecase.py
+new file mode 100644
+index 0000000..ba11988
+--- /dev/null
++++ b/textkit/titlecase.py
+@@ -0,0 +1,18 @@
++MINOR_WORDS = {"a", "an", "and", "as", "at", "but", "by", "for", "in", "of", "on", "or", "the", "to"}
++
++
++def titlecase(text):
++    """Title-case text, lowercasing minor words except at the start or end."""
++    words = text.split()
++    if not words:
++        return ""
++
++    last_index = len(words) - 1
++    result = []
++    for index, word in enumerate(words):
++        lowered = word.lower()
++        if index in (0, last_index) or lowered not in MINOR_WORDS:
++            result.append(lowered[:1].upper() + lowered[1:])
++        else:
++            result.append(lowered)
++    return " ".join(result)
+diff --git a/textkit/truncate.py b/textkit/truncate.py
+new file mode 100644
+index 0000000..3867cc9
+--- /dev/null
++++ b/textkit/truncate.py
+@@ -0,0 +1,7 @@
++def truncate(text, limit, ellipsis="..."):
++    """Truncate ``text`` to ``limit`` characters, appending ``ellipsis`` if cut short."""
++    if limit < len(ellipsis):
++        raise ValueError("limit must be at least as long as the ellipsis")
++    if len(text) <= limit:
++        return text
++    return text[: limit - len(ellipsis)].rstrip() + ellipsis
+diff --git a/textkit/word_count.py b/textkit/word_count.py
+new file mode 100644
+index 0000000..2163dd5
+--- /dev/null
++++ b/textkit/word_count.py
+@@ -0,0 +1,13 @@
++import re
++
++
++def word_count(text):
++    """Return a dict mapping each word to its count.
++
++    Words are maximal runs matching [a-z0-9]+ after lowercasing the input,
++    so "Don't" yields "don" and "t" as separate words.
++    """
++    counts = {}
++    for word in re.findall(r"[a-z0-9]+", text.lower()):
++        counts[word] = counts.get(word, 0) + 1
++    return counts

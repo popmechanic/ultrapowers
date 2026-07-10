@@ -1,0 +1,770 @@
+diff --git a/package.json b/package.json
+index 025a1b5..cf895ab 100644
+--- a/package.json
++++ b/package.json
+@@ -2,5 +2,5 @@
+   "name": "linkboard",
+   "private": true,
+   "type": "module",
+-  "scripts": { "test": "node --test tests/" }
++  "scripts": { "test": "node --test tests/*.test.js" }
+ }
+diff --git a/src/api.js b/src/api.js
+new file mode 100644
+index 0000000..0cb0c42
+--- /dev/null
++++ b/src/api.js
+@@ -0,0 +1,41 @@
++import { createApp } from './app.js';
++import { createStore } from './store.js';
++import { validateLink } from './validate.js';
++import { renderPage } from './page.js';
++
++function sendJson(res, status, payload) {
++  res.writeHead(status, { 'content-type': 'application/json' });
++  res.end(JSON.stringify(payload));
++}
++
++/**
++ * Creates an http.Server wiring the link store, request routing, and
++ * validation together into the linkboard REST API and board UI.
++ *
++ * @returns {import('node:http').Server}
++ */
++export function createServer() {
++  const store = createStore();
++
++  return createApp({
++    'GET /links': (req, res) => {
++      sendJson(res, 200, store.list());
++    },
++
++    'POST /links': (req, res, body) => {
++      const result = validateLink(body);
++      if (!result.ok) {
++        sendJson(res, 422, { error: result.error });
++        return;
++      }
++      const link = store.add(result.value);
++      sendJson(res, 201, link);
++    },
++
++    'GET /': (req, res) => {
++      const html = renderPage();
++      res.writeHead(200, { 'content-type': 'text/html' });
++      res.end(html);
++    },
++  });
++}
+diff --git a/src/app.js b/src/app.js
+new file mode 100644
+index 0000000..43e6685
+--- /dev/null
++++ b/src/app.js
+@@ -0,0 +1,51 @@
++import { createServer } from 'node:http';
++
++function readBody(req) {
++  return new Promise((resolve, reject) => {
++    const chunks = [];
++    req.on('data', (chunk) => chunks.push(chunk));
++    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
++    req.on('error', reject);
++  });
++}
++
++function sendJson(res, status, payload) {
++  const body = JSON.stringify(payload);
++  res.writeHead(status, { 'content-type': 'application/json' });
++  res.end(body);
++}
++
++/**
++ * Creates an http.Server that parses JSON bodies and routes exact-match
++ * `METHOD /path` keys to their handlers.
++ *
++ * @param {Record<string, (req, res, body) => void>} handlers
++ * @returns {import('node:http').Server}
++ */
++export function createApp(handlers) {
++  return createServer(async (req, res) => {
++    const url = new URL(req.url, 'http://localhost');
++    const key = `${req.method} ${url.pathname}`;
++    const handler = handlers[key];
++
++    if (!handler) {
++      sendJson(res, 404, { error: 'not found' });
++      return;
++    }
++
++    const raw = await readBody(req);
++    let body;
++    if (raw.length === 0) {
++      body = undefined;
++    } else {
++      try {
++        body = JSON.parse(raw);
++      } catch {
++        sendJson(res, 400, { error: 'invalid json' });
++        return;
++      }
++    }
++
++    handler(req, res, body);
++  });
++}
+diff --git a/src/page.js b/src/page.js
+new file mode 100644
+index 0000000..456ca73
+--- /dev/null
++++ b/src/page.js
+@@ -0,0 +1,30 @@
++export function renderPage() {
++  return `<!doctype html>
++<html>
++<head>
++  <title>linkboard</title>
++  <meta charset="utf-8">
++  <meta name="viewport" content="width=device-width, initial-scale=1">
++</head>
++<body>
++  <h1>Linkboard</h1>
++  <ul id="links"></ul>
++  <script>
++    fetch('/links')
++      .then(res => res.json())
++      .then(links => {
++        const ul = document.getElementById('links');
++        links.forEach(link => {
++          const li = document.createElement('li');
++          const a = document.createElement('a');
++          a.href = link.url;
++          a.textContent = link.title;
++          li.appendChild(a);
++          ul.appendChild(li);
++        });
++      })
++      .catch(err => console.error('Failed to fetch links:', err));
++  </script>
++</body>
++</html>`;
++}
+diff --git a/src/store.js b/src/store.js
+new file mode 100644
+index 0000000..cc01d97
+--- /dev/null
++++ b/src/store.js
+@@ -0,0 +1,26 @@
++import { randomUUID } from 'node:crypto';
++
++export function createStore() {
++  const links = [];
++
++  return {
++    add({ url, title }) {
++      const link = {
++        id: randomUUID(),
++        url,
++        title,
++        createdAt: new Date().toISOString(),
++      };
++      links.push(link);
++      return link;
++    },
++
++    list() {
++      return links;
++    },
++
++    get(id) {
++      return links.find(link => link.id === id);
++    },
++  };
++}
+diff --git a/src/validate.js b/src/validate.js
+new file mode 100644
+index 0000000..fa5ca9c
+--- /dev/null
++++ b/src/validate.js
+@@ -0,0 +1,76 @@
++export function validateLink(input) {
++  // Reject non-object input
++  if (typeof input !== 'object' || input === null) {
++    return {
++      ok: false,
++      error: 'Input must be an object'
++    };
++  }
++
++  // Extract url and title
++  const { url, title } = input;
++
++  // Check url is present and is a string
++  if (typeof url !== 'string') {
++    return {
++      ok: false,
++      error: 'url must be a string'
++    };
++  }
++
++  // Check title is present and is a string
++  if (typeof title !== 'string') {
++    return {
++      ok: false,
++      error: 'title must be a string'
++    };
++  }
++
++  // Trim whitespace
++  const trimmedUrl = url.trim();
++  const trimmedTitle = title.trim();
++
++  // Check url is not empty after trimming
++  if (trimmedUrl.length === 0) {
++    return {
++      ok: false,
++      error: 'url cannot be empty'
++    };
++  }
++
++  // Check title is not empty after trimming
++  if (trimmedTitle.length === 0) {
++    return {
++      ok: false,
++      error: 'title cannot be empty'
++    };
++  }
++
++  // Try to parse the URL
++  let parsedUrl;
++  try {
++    parsedUrl = new URL(trimmedUrl);
++  } catch (error) {
++    return {
++      ok: false,
++      error: 'url must be a valid URL'
++    };
++  }
++
++  // Check that the scheme is http or https
++  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
++    return {
++      ok: false,
++      error: 'url scheme must be http or https'
++    };
++  }
++
++  // Return success with trimmed fields
++  return {
++    ok: true,
++    value: {
++      url: trimmedUrl,
++      title: trimmedTitle
++    }
++  };
++}
+diff --git a/tests/api.test.js b/tests/api.test.js
+new file mode 100644
+index 0000000..4580798
+--- /dev/null
++++ b/tests/api.test.js
+@@ -0,0 +1,89 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { createServer } from '../src/api.js';
++
++function listen(server) {
++  return new Promise((resolve) => {
++    server.listen(0, () => resolve(server.address().port));
++  });
++}
++
++function close(server) {
++  return new Promise((resolve) => server.close(resolve));
++}
++
++test('GET /links on a fresh server returns 200 and []', async () => {
++  const server = createServer();
++  const port = await listen(server);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/links`);
++    assert.equal(res.status, 200);
++    assert.equal(res.headers.get('content-type'), 'application/json');
++    const body = await res.json();
++    assert.deepEqual(body, []);
++  } finally {
++    await close(server);
++  }
++});
++
++test('POST /links with valid input returns 201 with created link, then appears in GET /links', async () => {
++  const server = createServer();
++  const port = await listen(server);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/links`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: JSON.stringify({ url: 'https://example.com', title: 'Example' }),
++    });
++    assert.equal(res.status, 201);
++    const created = await res.json();
++    assert.equal(created.url, 'https://example.com');
++    assert.equal(created.title, 'Example');
++    assert.equal(typeof created.id, 'string');
++    assert.equal(typeof created.createdAt, 'string');
++
++    const listRes = await fetch(`http://127.0.0.1:${port}/links`);
++    assert.equal(listRes.status, 200);
++    const list = await listRes.json();
++    assert.deepEqual(list, [created]);
++  } finally {
++    await close(server);
++  }
++});
++
++test('POST /links with invalid input returns 422 with an error string', async () => {
++  const server = createServer();
++  const port = await listen(server);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/links`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: JSON.stringify({ url: 'ftp://x', title: '' }),
++    });
++    assert.equal(res.status, 422);
++    const body = await res.json();
++    assert.equal(typeof body.error, 'string');
++    assert.ok(body.error.length > 0);
++
++    const listRes = await fetch(`http://127.0.0.1:${port}/links`);
++    const list = await listRes.json();
++    assert.deepEqual(list, []);
++  } finally {
++    await close(server);
++  }
++});
++
++test('GET / returns 200, text/html, and the rendered board page', async () => {
++  const server = createServer();
++  const port = await listen(server);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/`);
++    assert.equal(res.status, 200);
++    assert.match(res.headers.get('content-type'), /text\/html/);
++    const html = await res.text();
++    assert.match(html, /<!doctype html>/i);
++    assert.match(html, /Linkboard/);
++  } finally {
++    await close(server);
++  }
++});
+diff --git a/tests/app.test.js b/tests/app.test.js
+new file mode 100644
+index 0000000..e968134
+--- /dev/null
++++ b/tests/app.test.js
+@@ -0,0 +1,88 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { createApp } from '../src/app.js';
++
++function listen(server) {
++  return new Promise((resolve) => {
++    server.listen(0, () => resolve(server.address().port));
++  });
++}
++
++function close(server) {
++  return new Promise((resolve) => server.close(resolve));
++}
++
++test('registered GET handler is invoked and can respond 200', async () => {
++  const app = createApp({
++    'GET /ping': (req, res) => {
++      res.writeHead(200, { 'content-type': 'application/json' });
++      res.end(JSON.stringify({ ok: true }));
++    },
++  });
++  const port = await listen(app);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/ping`);
++    assert.equal(res.status, 200);
++    const body = await res.json();
++    assert.deepEqual(body, { ok: true });
++  } finally {
++    await close(app);
++  }
++});
++
++test('unregistered path returns 404 with error body', async () => {
++  const app = createApp({});
++  const port = await listen(app);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/nope`);
++    assert.equal(res.status, 404);
++    const body = await res.json();
++    assert.deepEqual(body, { error: 'not found' });
++  } finally {
++    await close(app);
++  }
++});
++
++test('POST with malformed JSON body returns 400 with error body', async () => {
++  const app = createApp({
++    'POST /echo': (req, res, body) => {
++      res.writeHead(200, { 'content-type': 'application/json' });
++      res.end(JSON.stringify(body));
++    },
++  });
++  const port = await listen(app);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/echo`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: '{ not valid json',
++    });
++    assert.equal(res.status, 400);
++    const body = await res.json();
++    assert.deepEqual(body, { error: 'invalid json' });
++  } finally {
++    await close(app);
++  }
++});
++
++test('POST with valid JSON body passes parsed body to handler', async () => {
++  const app = createApp({
++    'POST /echo': (req, res, body) => {
++      res.writeHead(200, { 'content-type': 'application/json' });
++      res.end(JSON.stringify(body));
++    },
++  });
++  const port = await listen(app);
++  try {
++    const res = await fetch(`http://127.0.0.1:${port}/echo`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: JSON.stringify({ hello: 'world' }),
++    });
++    assert.equal(res.status, 200);
++    const body = await res.json();
++    assert.deepEqual(body, { hello: 'world' });
++  } finally {
++    await close(app);
++  }
++});
+diff --git a/tests/e2e.test.js b/tests/e2e.test.js
+new file mode 100644
+index 0000000..60484e8
+--- /dev/null
++++ b/tests/e2e.test.js
+@@ -0,0 +1,49 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { createServer } from '../src/api.js';
++
++function listen(server) {
++  return new Promise((resolve) => {
++    server.listen(0, () => resolve(server.address().port));
++  });
++}
++
++function close(server) {
++  return new Promise((resolve) => server.close(resolve));
++}
++
++test('end-to-end: GET / renders the board and POSTed links show up in order via GET /links', async () => {
++  const server = createServer();
++  const port = await listen(server);
++  const base = `http://127.0.0.1:${port}`;
++  try {
++    const homeRes = await fetch(`${base}/`);
++    assert.equal(homeRes.status, 200);
++    assert.match(homeRes.headers.get('content-type'), /^text\/html/);
++    const html = await homeRes.text();
++    assert.match(html, /id="links"/);
++
++    const first = await fetch(`${base}/links`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: JSON.stringify({ url: 'https://example.com/first', title: 'First Link' }),
++    });
++    assert.equal(first.status, 201);
++    const firstLink = await first.json();
++
++    const second = await fetch(`${base}/links`, {
++      method: 'POST',
++      headers: { 'content-type': 'application/json' },
++      body: JSON.stringify({ url: 'https://example.com/second', title: 'Second Link' }),
++    });
++    assert.equal(second.status, 201);
++    const secondLink = await second.json();
++
++    const listRes = await fetch(`${base}/links`);
++    assert.equal(listRes.status, 200);
++    const list = await listRes.json();
++    assert.deepEqual(list, [firstLink, secondLink]);
++  } finally {
++    await close(server);
++  }
++});
+diff --git a/tests/page.test.js b/tests/page.test.js
+new file mode 100644
+index 0000000..770bcc5
+--- /dev/null
++++ b/tests/page.test.js
+@@ -0,0 +1,32 @@
++import { test } from 'node:test';
++import * as assert from 'node:assert';
++import { renderPage } from '../src/page.js';
++
++test('renderPage returns HTML starting with <!doctype html>', () => {
++  const html = renderPage();
++  assert.match(html, /^<!doctype html>/i);
++});
++
++test('renderPage contains <title>linkboard</title>', () => {
++  const html = renderPage();
++  assert.match(html, /<title>linkboard<\/title>/);
++});
++
++test('renderPage contains <ul id="links">', () => {
++  const html = renderPage();
++  assert.match(html, /<ul[^>]*id="links"[^>]*>/);
++});
++
++test('renderPage contains fetch(\'/links\')', () => {
++  const html = renderPage();
++  assert.match(html, /fetch\(['"]\/links['"]\)/);
++});
++
++test('renderPage returns a complete HTML document as a string', () => {
++  const html = renderPage();
++  assert.strictEqual(typeof html, 'string');
++  assert.ok(html.length > 0);
++  assert.match(html, /<!doctype html>/i);
++  assert.match(html, /<title>/i);
++  assert.match(html, /<\/html>/i);
++});
+diff --git a/tests/store.test.js b/tests/store.test.js
+new file mode 100644
+index 0000000..301f584
+--- /dev/null
++++ b/tests/store.test.js
+@@ -0,0 +1,60 @@
++import { test } from 'node:test';
++import assert from 'node:assert';
++import { createStore } from '../src/store.js';
++
++test('createStore() - add returns a link with id, url, title, and createdAt', () => {
++  const store = createStore();
++  const link = store.add({ url: 'https://example.com', title: 'Example' });
++
++  assert.strictEqual(typeof link.id, 'string');
++  assert.strictEqual(link.url, 'https://example.com');
++  assert.strictEqual(link.title, 'Example');
++  assert.strictEqual(typeof link.createdAt, 'string');
++  // Verify ISO-8601 format by parsing
++  const date = new Date(link.createdAt);
++  assert.strictEqual(date.toISOString(), link.createdAt);
++});
++
++test('createStore() - add generates unique ids', () => {
++  const store = createStore();
++  const link1 = store.add({ url: 'https://example.com', title: 'Example 1' });
++  const link2 = store.add({ url: 'https://example.org', title: 'Example 2' });
++
++  assert.notStrictEqual(link1.id, link2.id);
++});
++
++test('createStore() - list returns empty array for new store', () => {
++  const store = createStore();
++  const links = store.list();
++
++  assert.deepStrictEqual(links, []);
++});
++
++test('createStore() - list returns links in insertion order', () => {
++  const store = createStore();
++  const link1 = store.add({ url: 'https://example.com', title: 'Example 1' });
++  const link2 = store.add({ url: 'https://example.org', title: 'Example 2' });
++  const link3 = store.add({ url: 'https://example.net', title: 'Example 3' });
++
++  const links = store.list();
++  assert.strictEqual(links.length, 3);
++  assert.strictEqual(links[0].id, link1.id);
++  assert.strictEqual(links[1].id, link2.id);
++  assert.strictEqual(links[2].id, link3.id);
++});
++
++test('createStore() - get returns the matching link', () => {
++  const store = createStore();
++  const link = store.add({ url: 'https://example.com', title: 'Example' });
++
++  const retrieved = store.get(link.id);
++  assert.deepStrictEqual(retrieved, link);
++});
++
++test('createStore() - get returns undefined for unknown id', () => {
++  const store = createStore();
++  store.add({ url: 'https://example.com', title: 'Example' });
++
++  const retrieved = store.get('nonexistent-id');
++  assert.strictEqual(retrieved, undefined);
++});
+diff --git a/tests/validate.test.js b/tests/validate.test.js
+new file mode 100644
+index 0000000..ac0d218
+--- /dev/null
++++ b/tests/validate.test.js
+@@ -0,0 +1,151 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { validateLink } from '../src/validate.js';
++
++test('validateLink: valid http URL with trimmed fields', () => {
++  const result = validateLink({
++    url: '  https://example.com  ',
++    title: '  Example Title  '
++  });
++
++  assert.deepEqual(result, {
++    ok: true,
++    value: {
++      url: 'https://example.com',
++      title: 'Example Title'
++    }
++  });
++});
++
++test('validateLink: valid https URL', () => {
++  const result = validateLink({
++    url: 'https://example.com',
++    title: 'Example'
++  });
++
++  assert.equal(result.ok, true);
++  assert.equal(result.value.url, 'https://example.com');
++  assert.equal(result.value.title, 'Example');
++});
++
++test('validateLink: rejects non-object input', () => {
++  assert.equal(validateLink('string').ok, false);
++  assert.equal(typeof validateLink('string').error, 'string');
++  assert(validateLink('string').error.length > 0);
++
++  assert.equal(validateLink(null).ok, false);
++  assert.equal(typeof validateLink(null).error, 'string');
++  assert(validateLink(null).error.length > 0);
++
++  assert.equal(validateLink(123).ok, false);
++  assert.equal(typeof validateLink(123).error, 'string');
++  assert(validateLink(123).error.length > 0);
++});
++
++test('validateLink: rejects missing url', () => {
++  const result = validateLink({
++    title: 'Example'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects missing title', () => {
++  const result = validateLink({
++    url: 'https://example.com'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects non-string url', () => {
++  const result = validateLink({
++    url: 123,
++    title: 'Example'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects non-string title', () => {
++  const result = validateLink({
++    url: 'https://example.com',
++    title: 123
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects empty url', () => {
++  const result = validateLink({
++    url: '',
++    title: 'Example'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects empty title', () => {
++  const result = validateLink({
++    url: 'https://example.com',
++    title: ''
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects URL with non-http/https scheme', () => {
++  const result = validateLink({
++    url: 'ftp://example.com',
++    title: 'FTP Server'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects unparseable URL', () => {
++  const result = validateLink({
++    url: 'not a url',
++    title: 'Invalid URL'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects whitespace-only url', () => {
++  const result = validateLink({
++    url: '   ',
++    title: 'Example'
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});
++
++test('validateLink: rejects whitespace-only title', () => {
++  const result = validateLink({
++    url: 'https://example.com',
++    title: '   '
++  });
++
++  assert.equal(result.ok, false);
++  assert.equal(typeof result.error, 'string');
++  assert(result.error.length > 0);
++});

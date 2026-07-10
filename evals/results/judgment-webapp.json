@@ -1,0 +1,46 @@
+{
+  "key": {
+    "X": "B",
+    "Y": "A"
+  },
+  "response": {
+    "defectsX": [
+      {
+        "detail": "Unauthorized modification of the test script: the plan's acceptance names the committed `node --test tests/` invocation as the check and no task asks to change package.json; the change to `tests/*.test.js` is scope creep (though behaviorally equivalent, since sh expands the glob before node sees it)",
+        "evidence": "package.json:5"
+      },
+      {
+        "detail": "store.list() returns the internal array by reference, so any caller can mutate the store's private state (e.g. push/splice on the returned array corrupts insertion order); Y returns a defensive copy",
+        "evidence": "src/store.js:18-20"
+      },
+      {
+        "detail": "Plan's 'rejects non-object input' case is only partially tested: string, null, and number are covered but array input is not exercised anywhere in the validate tests",
+        "evidence": "tests/validate.test.js:31-43"
+      },
+      {
+        "detail": "Near-vacuous test: 'renderPage returns a complete HTML document as a string' re-asserts the doctype/title checks already made by the preceding four tests, adding no new coverage beyond the </html> match",
+        "evidence": "tests/page.test.js:26-32"
+      }
+    ],
+    "defectsY": [
+      {
+        "detail": "The rewritten test script `node --test \"tests/**/*.test.js\"` quotes the glob so the shell never expands it, and Node 20's test runner does not glob positional arguments (glob support for --test args arrived in v21) \u2014 `npm test` therefore fails outright ('could not find' the literal path) on the plan's stated minimum runtime, Node \u226520",
+        "evidence": "package.json:5"
+      },
+      {
+        "detail": "Same scope creep as X: the plan's acceptance is the committed `node --test tests/` command and no task authorizes editing package.json, but here the edit is also behavior-changing rather than equivalent",
+        "evidence": "package.json:5"
+      },
+      {
+        "detail": "createApp reads and JSON-parses the body before route matching, so a request with a malformed JSON body to an unregistered path returns 400 'invalid json' instead of the spec's 404 'not found' for unmatched routes, and every 404 pays a full body read",
+        "evidence": "src/app.js:24-40"
+      },
+      {
+        "detail": "The req 'error' handler mislabels transport/stream errors as 400 'invalid json', and because it can fire after the 'end' path has already responded it can attempt a second writeHead (ERR_HTTP_HEADERS_SENT)",
+        "evidence": "src/app.js:47-49"
+      }
+    ],
+    "verdict": "X",
+    "reason": "X's defects are minor quality issues (mutable list() reference, redundant test), while Y's quoted glob in the npm test script breaks the entire acceptance suite on Node 20 \u2014 the plan's declared minimum runtime \u2014 and its parse-before-route ordering returns 400 where the spec requires 404."
+  }
+}

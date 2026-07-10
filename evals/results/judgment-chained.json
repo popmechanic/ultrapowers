@@ -1,0 +1,46 @@
+{
+  "key": {
+    "X": "B",
+    "Y": "A"
+  },
+  "response": {
+    "defectsX": [
+      {
+        "detail": "format_cents does dollar math in binary floating point (cents / 100.0 then :.2f) instead of exact integer/decimal arithmetic \u2014 latent precision defect for very large magnitudes, and inconsistent with the parser's own Decimal-based rationale",
+        "evidence": "ledger/report.py:22-28"
+      },
+      {
+        "detail": "Scope-creep stress test iterates parse_line over 200,001 amounts (range(-100000, 100001)), bloating suite runtime far beyond what the plan's parse spec asks for",
+        "evidence": "tests/test_parse.py:56-63 (test_all_cents_convert_exactly)"
+      },
+      {
+        "detail": "CLI strips only '\\n' (line.rstrip('\\n')), so a CRLF-terminated file leaves a trailing '\\r' on the amount field and every line fails with 'bad amount'",
+        "evidence": "ledger/cli.py:38"
+      },
+      {
+        "detail": "Comment/docstring noise restating the next line ('# Split on |', '# Read the file', '# Print error message to stderr') throughout \u2014 narration, not constraints",
+        "evidence": "ledger/cli.py:23-49, ledger/parse.py:20-38"
+      },
+      {
+        "detail": "test_validate_edge_case_dates labels '2026-02-29' a 'leap year' check though 2026 is not a leap year and validate is pattern-only \u2014 misleading test intent (behavior asserted is still correct per spec)",
+        "evidence": "tests/test_validate.py:66-73"
+      }
+    ],
+    "defectsY": [
+      {
+        "detail": "test_validate covers whitespace-only description but never the empty string '' case the spec names first ('description.strip() is empty') \u2014 minor coverage gap",
+        "evidence": "tests/test_validate.py:6-9"
+      },
+      {
+        "detail": "CLI strips the whole line (line.strip()) before parsing, so leading/trailing whitespace around a record (e.g. ' 2026-01-15|coffee|4.50 ') is silently accepted \u2014 slightly more lenient than the plan's DATE|DESCRIPTION|AMOUNT format implies",
+        "evidence": "ledger/cli.py:16-17"
+      },
+      {
+        "detail": "test_format_cents only asserts the three spec examples; no case for sub-dollar cents (e.g. 5 \u2192 '$0.05') to pin the :02d remainder padding",
+        "evidence": "tests/test_report.py:5-13"
+      }
+    ],
+    "verdict": "Y",
+    "reason": "Both meet the spec, but Y uses exact integer arithmetic end-to-end (X's format_cents reintroduces float math) and its tests are tight and spec-shaped, while X carries a 200k-iteration stress test, CRLF fragility in the CLI, and heavy comment noise \u2014 Y's gaps are only minor test-coverage nits."
+  }
+}
