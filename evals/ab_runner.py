@@ -298,9 +298,14 @@ def drive_run(workdir, plan):
                 workdir, DRIVE_PROMPT.format(plan=plan["planPath"]).splitlines()[0]))
     result_path = workdir / ".headless-result.json"
     prompt = DRIVE_PROMPT.format(plan="docs/plans/plan.md")
+    env = dict(os.environ)
+    # The print-mode harness kills background waits at 600s by default; a waved
+    # run (the Workflow tool is a background task) routinely outlives that.
+    env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] = "0"
     with open(result_path, "w") as out:
         subprocess.run(["claude", "-p", prompt] + CLAUDE_FLAGS,
-                       cwd=str(workdir), stdout=out, stderr=subprocess.STDOUT, check=False)
+                       cwd=str(workdir), stdout=out, stderr=subprocess.STDOUT,
+                       check=False, env=env)
     # The session transcript is where token usage lives; the headless result JSON
     # carries the printed pre-merge gate report.
     gate_report = _read_gate_report(result_path)
@@ -317,13 +322,29 @@ def drive_run(workdir, plan):
     return transcript, gate_report, "headless"
 
 
+def _load_result(result_path):
+    """Load the harness result object. The file mixes stderr with the JSON
+    (stderr=STDOUT), so fall back to extracting the object carrying session_id
+    from the noise when a whole-file parse fails."""
+    try:
+        text = Path(result_path).read_text()
+    except OSError:
+        return {}
+    try:
+        raw = json.loads(text)
+        return raw if isinstance(raw, dict) else {}
+    except json.JSONDecodeError:
+        pass
+    for chunk in _json_objects(text):
+        if isinstance(chunk, dict) and "session_id" in chunk:
+            return chunk
+    return {}
+
+
 def _read_gate_report(result_path):
     """Parse the pre-merge gate report the driven session printed. The headless
     result JSON wraps the final assistant text; find the last JSON object in it."""
-    try:
-        raw = json.loads(Path(result_path).read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
+    raw = _load_result(result_path)
     text = raw.get("result") if isinstance(raw, dict) else None
     if not isinstance(text, str):
         return {}
@@ -370,11 +391,7 @@ def _session_transcript(result_path):
     """Locate the session transcript for the driven run. `claude --output-format
     json` reports its session_id; the transcript is
     ~/.claude/projects/<slug>/<session_id>.jsonl."""
-    try:
-        raw = json.loads(Path(result_path).read_text())
-        session_id = raw.get("session_id")
-    except (OSError, json.JSONDecodeError):
-        session_id = None
+    session_id = _load_result(result_path).get("session_id")
     if session_id:
         matches = glob.glob(str(Path.home() / ".claude/projects/**" / ("%s.jsonl" % session_id)),
                             recursive=True)
