@@ -356,26 +356,35 @@ brief owns that discipline end to end.
 
 ### Collect at plan approval
 
-After the human approves the plan, hash the spec file as approved
-(`shasum -a 256`) and take the first matching case:
+After the human approves the plan, run the deterministic collector against
+the spec file as approved (it lives in the ultrapowers skill's own scripts
+directory, same as the plan compiler above):
 
-1. **A sealed dir's manifest records this `specSha256`** → append to the
-   plan, after the header block: `**Acceptance:** sealed <seal-id>
-   (sha256:<hash>)` plus the coverage summary as a short appendix
-   (spec-derived, safe to show). Zero wait.
-2. **An `outcome.json` failure record matches** → surface it
+    COLLECT=skills/ultrapowers/scripts
+    python3 $COLLECT/collect_seal.py <spec-file>
+
+It hashes the spec (`specSha256`), scans the vault, and reports exactly one
+case as JSON. Act on the case it names:
+
+1. **`sealed`** → append the reported `acceptanceLine` to the plan
+   **verbatim**, after the header block, plus the coverage summary as a
+   short appendix (spec-derived, safe to show). Zero wait, zero
+   transcription — the line already carries the suite hash; hand-copying
+   between the manifest's two hashes was a live false-block defect.
+2. **`failure`** — an `outcome.json` failure record matches → surface it
    at plan approval, never silently after: GREEN_AT_BASELINE counts as attempt #1
    toward the two-attempt stop rule below; EXAM_BOOTSTRAP_ERROR surfaces
    with its evidence before any re-dispatch.
-3. **The background author is still running** → say so and wait for it —
-   the residual wait is bounded by today's synchronous cost minus the time
-   already elapsed.
-4. **No record for this hash** — the spec was edited after dispatch (a
-   stale hash can never match), the dispatch crashed (a pending dir with
-   no `outcome.json` and no live author), or nothing was dispatched →
-   remove superseded `pending-*` dirs whose `dispatch.json` names this
-   spec path, then dispatch synchronously with the same brief and inputs
-   and wait. Never worse than the status quo.
+3. **`pending`** — a dispatch receipt exists with no outcome → the
+   background author is still running; say so and wait for it — the
+   residual wait is bounded by today's synchronous cost minus the time
+   already elapsed. If no background author is actually alive for it, the
+   dispatch crashed: treat as `none`.
+4. **`none`** — the spec was edited after dispatch (a stale hash can never
+   match), the dispatch crashed, or nothing was dispatched → remove
+   superseded `pending-*` dirs whose `dispatch.json` names this spec path,
+   then dispatch synchronously with the same brief and inputs and wait.
+   Never worse than the status quo.
 
 Two consecutive green-at-baseline attempts → stop and tell the human: the
 spec may describe behavior that already exists.

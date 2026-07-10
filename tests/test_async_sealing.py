@@ -74,6 +74,18 @@ def test_skill_collects_content_addressed_at_plan_approval():
     assert "shasum -a 256" in SKILL
 
 
+def test_skill_collect_is_mechanical_not_transcribed():
+    assert "collect_seal.py" in SKILL, (
+        "the collect step must derive the Acceptance line via the "
+        "deterministic collector — hand-copying a hash between the "
+        "manifest's two sha256 values was a live SEAL_BROKEN false-block"
+    )
+    assert "verbatim" in SKILL, (
+        "the orchestrator appends the reported acceptanceLine verbatim; "
+        "re-typing it reopens the transcription channel"
+    )
+
+
 def test_skill_surfaces_async_failures_at_plan_approval():
     assert "outcome.json" in SKILL
     assert "at plan approval, never silently after" in SKILL
