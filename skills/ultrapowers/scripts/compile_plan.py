@@ -806,6 +806,77 @@ def collect_violations(plan_path):
     return violations
 
 
+# Deterministic, meaningful per-wave label. compile_plan is the single source: the
+# engine reads these via args.waveLabels (so the live /workflows tree is labeled
+# without orchestrator judgment) AND the swarm viewer reads them from build_dag.
+# The engine's JS fallback is deliberately minimal (single-task title or
+# 'Wave N'); this function is the only rich label source, delivered via
+# --emit-args/waveLabels.
+TITLE_STOP = {"the", "a", "an", "and", "or", "for", "to", "of", "with", "in",
+              "on", "at", "by", "via", "plus"}
+
+
+def _title_words(s):
+    return [w for w in re.findall(r"[a-z][a-z]+", (s or "").lower())
+            if len(w) >= 3 and w not in TITLE_STOP]
+
+
+def _shared_title_noun(tasks):
+    """The content word shared by EVERY task title (longest-first), or ''."""
+    inter = None
+    for t in tasks:
+        ws = set(_title_words(t.get("title")))
+        inter = ws if inter is None else (inter & ws)
+        if not inter:
+            return ""
+    return sorted(inter, key=lambda w: (-len(w), w))[0] if inter else ""
+
+
+def _common_file_dir(tasks):
+    """The deepest parent directory shared by every file the wave touches, or ''."""
+    common = None
+    for t in tasks:
+        files = [f for f in (t.get("files") or []) if isinstance(f, str) and "/" in f]
+        if not files:
+            return ""
+        for f in files:
+            segs = f.split("/")[:-1]
+            if common is None:
+                common = segs
+            else:
+                i = 0
+                while i < len(common) and i < len(segs) and common[i] == segs[i]:
+                    i += 1
+                common = common[:i]
+            if not common:
+                return ""
+    return "/".join(common) if common else ""
+
+
+def derive_wave_label(tasks):
+    """A single-task wave is named by its title; a multi-task wave by the noun its
+    titles share (pluralized + counted, e.g. '4 Modules'), else the common file
+    directory, else a plain count."""
+    tasks = [t for t in tasks if t]
+    if not tasks:
+        return ""
+
+    def clip(s, n=56):
+        s = (s or "").strip()
+        return (s[:n - 1] + "…") if len(s) > n else s
+
+    if len(tasks) == 1:
+        return clip(tasks[0].get("title") or ("Task " + str(tasks[0].get("id", ""))))
+    noun = _shared_title_noun(tasks)
+    if noun:
+        cap = noun[0].upper() + noun[1:]
+        return str(len(tasks)) + " " + (cap if cap.endswith("s") else cap + "s")
+    d = _common_file_dir(tasks)
+    if d:
+        return clip(d) + " · " + str(len(tasks)) + " tasks"
+    return str(len(tasks)) + " parallel tasks"
+
+
 def build_edges(impl):
     # Edge precedence:
     # explicit (marker, text) > semantic order-independent (write-after-create,
@@ -1158,7 +1229,7 @@ def main(argv=None):
     ap.add_argument("--emit-args", type=Path, default=None, dest="emit_args",
                     metavar="PATH",
                     help="also write the complete Workflow launch-args skeleton "
-                         "(waves/wavesPath/edges/acceptance/"
+                         "(waves/wavesPath/edges/acceptance/waveLabels/"
                          "globalConstraints/planPath) to PATH; the orchestrator "
                          "adds only per-task tier/review/testCmd and run knobs. "
                          "Requires --emit-launch.")
@@ -1350,6 +1421,10 @@ def main(argv=None):
           "catchAll": by_id[tid].get("catch_all")} for tid in wave]
         for wave in waves]
 
+    # One deterministic label per wave (same order as waves/launch_waves). The
+    # orchestrator threads these into args.waveLabels; the viewer reads them too.
+    wave_labels = [derive_wave_label(wave) for wave in launch_waves]
+
     result = {
         "tasks": out_tasks,
         "dag_edges": edges,
@@ -1359,6 +1434,7 @@ def main(argv=None):
                                if t["disposition"] in ("release", "manual")],
         "waves": waves,
         "launch_waves": launch_waves,
+        "waveLabels": wave_labels,
         "mode": mode,
         "degrade_reason": degrade,
         "allHeuristic": not marked,
@@ -1385,6 +1461,7 @@ def main(argv=None):
                        "catchAll": by_id[tid].get("catch_all")}
                       for wave in waves for tid in wave],
             "waves": waves,
+            "waveLabels": wave_labels,
             "edges": [[e["from"], e["to"]] for e in edges],
             "acceptance": acceptance,
             "globalConstraints": global_constraints,
@@ -1404,6 +1481,7 @@ def main(argv=None):
             "dependencyEdges": [f"{e['from']} -> {e['to']} ({e['why']})"
                                 for e in edges],
             "acceptance": acceptance,
+            "waveLabels": wave_labels,
             "globalConstraints": global_constraints,
             "planPath": str(args.plan.resolve()),
         }

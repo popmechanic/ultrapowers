@@ -164,7 +164,7 @@ literal" rule is obsolete. Run the skill from inside the target repo.
 
 ## Structure (read the file for specifics)
 
-- `meta` + `meta.phases` computed from `WAVES` using `waveLabel(i)` (+ Setup, Integration Review). `waveLabel(w)` returns `ARGS.waveLabels[w]` when a non-empty string, else `'Wave N · <joined task titles, truncated>'`; a bare `'Wave N'` is never emitted when the wave has titled tasks. The assignment is wrapped in a typeof-guard because newer engines extract the meta literal at parse time and do not expose the binding to the executing body; phase() calls group progress regardless.
+- `meta` + `meta.phases` computed from `WAVES` using `waveLabel(i)` (+ Setup, Integration Review). `waveLabel(w)` returns `ARGS.waveLabels[w]` when a non-empty string (the rich labels `compile_plan.py` derives and `--emit-args` threads through), else a single-task wave's own title, else `'Wave N'` — the engine deliberately keeps no rich derivation of its own. The assignment is wrapped in a typeof-guard because newer engines extract the meta literal at parse time and do not expose the binding to the executing body; phase() calls group progress regardless. The full roadmap is pre-registered in execution order BEFORE any agent runs (including the wavesPath preflight) — an agent dispatched before the first phase() would mint an implicit "Phase 0" group that sorts above Setup.
 - Baked constants: `GUARD`, `IMPLEMENTER_PROMPT`, `REVIEWER_PROMPT` (spec-compliance + code-quality
   merged), `SETUP/MERGE/RECONCILE/COMPLETENESS_PROMPT`, and the `*_SCHEMA` objects.
 - `runTask(task, baseSha)` — implement (`isolation: 'worktree'`) → one independent review pass (spec-compliance

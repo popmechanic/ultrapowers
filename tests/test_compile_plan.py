@@ -416,6 +416,27 @@ def test_brace_glob_flags_ambiguous(tmp_path):
     assert {"from": "A", "to": "B", "why": "ambiguous-files"} in out["dag_edges"]
 
 
+def test_wave_labels_are_derived_per_wave(tmp_path):
+    # compile emits a deterministic, meaningful label per wave (single source the
+    # engine reads via args.waveLabels and the swarm viewer reads from build_dag).
+    plan = tmp_path / "wl.md"
+    plan.write_text(
+        "# Plan: WL\n\n**Acceptance:** suite — pytest\n\n"
+        "### Task 1: Data layer\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `src/db.js`\n\n**Interfaces:**\n- Produces: `x`\n\n- [ ] **Step 1:** a\n\n"
+        "### Task 2: Contacts module\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `src/contacts.js`\n\n**Interfaces:**\n- Consumes: `x`\n\n- [ ] **Step 1:** b\n\n"
+        "### Task 3: Deals module\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `src/deals.js`\n\n**Interfaces:**\n- Consumes: `x`\n\n- [ ] **Step 1:** c\n"
+    )
+    out = compile_plan(plan)
+    labels = out["waveLabels"]
+    assert len(labels) == len(out["waves"])
+    # wave 1 = [Task 1] single → its title; wave 2 = [Task 2, Task 3] share "module" → "2 Modules"
+    assert labels[0] == "Data layer"
+    assert "2 Modules" in labels
+
+
 def test_zero_implementation_plan_warns_loudly(tmp_path):
     plan = tmp_path / "zeroimpl.md"
     plan.write_text(
@@ -2288,6 +2309,7 @@ def test_emit_args_writes_complete_launch_skeleton(tmp_path):
     assert skel["dependencyEdges"] == [
         f"{e['from']} -> {e['to']} ({e['why']})" for e in out["dag_edges"]]
     assert skel["acceptance"] == out["acceptance"]
+    assert skel["waveLabels"] == out["waveLabels"]
     assert skel["globalConstraints"] == out["globalConstraints"]
     assert pathlib.Path(skel["planPath"]).is_absolute()
     assert out["args_file"] == str(argsf)
