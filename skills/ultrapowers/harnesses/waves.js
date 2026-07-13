@@ -974,10 +974,15 @@ if (budgetExhausted()) {
 // file exists, parses, and covers every bodyless task id — so a wrong/stale path
 // or a dropped id fails the run up front instead of failing N expensive worktree
 // agents that each cannot find their body. Skipped when every body is inline.
+// Defined here, RUN below — after the W2 roadmap pre-registration. An agent
+// dispatched before any phase() call creates an implicit unnamed group
+// ("Phase 0") that permanently sorts ABOVE Setup (#setup-at-bottom); running
+// after the roadmap groups the preflight under the active Setup phase.
 const bodylessIds = WAVES.flat()
   .filter((t) => !(typeof t.body === 'string' && t.body.trim() !== ''))
   .map((t) => String(t.id))
-if (wavesPath && bodylessIds.length > 0) {
+async function preflightWavesFile() {
+  if (!(wavesPath && bodylessIds.length > 0)) return
   const WAVES_FILE_PREFLIGHT =
     'You are a read-only preflight agent. Read the JSON file at WAVES_FILE in the ' +
     'session repository with your file-read tool. Do NOT write, create, stage, or ' +
@@ -1017,6 +1022,7 @@ if (wavesPath && bodylessIds.length > 0) {
   }
 }
 
+
 // W2: pre-register every phase up front so the live roadmap shows all phases as
 // pending, not one-at-a-time — and in EXECUTION ORDER. phase() is keyed by title
 // — re-calling a title re-activates its existing group box (engine: same phase
@@ -1035,6 +1041,9 @@ phase('Setup')
 for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
 phase('Integration Review')
 phase('Setup')
+// The wavesPath preflight runs here — after the roadmap, under the active Setup
+// phase — so its agent never mints a pre-Setup "Phase 0" group (#setup-at-bottom).
+await preflightWavesFile()
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
 if (!setup || setup.branch !== integrationBranch || !setup.headSha) {

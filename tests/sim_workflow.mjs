@@ -1933,6 +1933,41 @@ async function scenarioWavesPathFileBackedBodies() {
   console.log('scenario wavesPath-file-backed-bodies: OK')
 }
 
+// ── Scenario: roadmap registers before the wavesPath preflight (#setup-at-bottom) ─
+// The engine lists phases in FIRST-registration order. An agent dispatched before
+// any phase() call lands in an implicit unnamed group ("Phase 0") that permanently
+// sorts ABOVE Setup in the live view — so the W2 roadmap pre-registration must run
+// before the waves-file-check preflight agent, and supplied args.waveLabels must be
+// the registered wave titles.
+async function scenarioRoadmapRegistersBeforePreflight() {
+  const events = []
+  const waves = [
+    [{ id: 'A', title: 'alpha', tier: 'cheap' }], // bodyless → preflight runs
+    [{ id: 'B', title: 'beta', tier: 'cheap' }, { id: 'C', title: 'gamma', tier: 'cheap' }],
+  ]
+  const args = { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+                 wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [],
+                 waveLabels: ['Data layer', '2 Modules'] }
+  await runWorkflow({
+    agent: makeAgent((label) => {
+      events.push('agent:' + label)
+      if (label === 'waves-file-check') return { ok: true, ids: ['A', 'B', 'C'] }
+      return undefined
+    }),
+    args, budget: undefined,
+    phase: (t) => events.push('phase:' + t),
+  })
+  const firstAgent = events.findIndex((e) => e.startsWith('agent:'))
+  assert(events[firstAgent] === 'agent:waves-file-check',
+    'roadmap-order: preflight is the first agent dispatched (got ' + events[firstAgent] + ')')
+  eq(events.slice(0, firstAgent),
+     ['phase:Setup', 'phase:Data layer', 'phase:2 Modules',
+      'phase:Integration Review', 'phase:Setup'],
+     'roadmap-order: the full execution-order roadmap (Setup first, supplied wave ' +
+     'labels, Integration Review) must be registered before the preflight agent runs')
+  console.log('scenario roadmap-registers-before-preflight: OK')
+}
+
 // ── Scenario: a bodyless task without wavesPath must fail loud ─────────────────
 async function scenarioWavesPathRequiredForMissingBody() {
   let threw = false
@@ -2149,6 +2184,7 @@ await scenarioAcceptanceSuiteGreen()
 await scenarioAcceptanceSuiteRed()
 await scenarioReviewDiscipline()
 await scenarioWavesPathFileBackedBodies()
+await scenarioRoadmapRegistersBeforePreflight()
 await scenarioWavesPathRequiredForMissingBody()
 await scenarioWavesPathPreflightMissingFile()
 await scenarioWavesPathPreflightMissingId()
