@@ -10,7 +10,7 @@ tripwire (tests/test_superpowers_compat.py) against it, then bump TESTED_AGAINST
 from dataclasses import dataclass, field
 import pathlib
 
-TESTED_AGAINST = "6.0.3"  # latest released superpowers whose contract we verified
+TESTED_AGAINST = "6.1.1"  # latest released superpowers whose contract we verified
 
 MANIFEST = [
     # writing-plans template shape — compile_plan.py + Step-1 shape check parse these

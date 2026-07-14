@@ -108,4 +108,4 @@ def test_check_reports_absent_file_as_missing(tmp_path):
 
 
 def test_tested_against_is_pinned():
-    assert sc.TESTED_AGAINST == "6.0.3"
+    assert sc.TESTED_AGAINST == "6.1.1"
