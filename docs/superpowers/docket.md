@@ -33,9 +33,11 @@
 **Notes:** Observed: session on a feature branch 2 ahead (containing the plan itself), driver derived baseBranch=main → plan unreachable from integration HEAD, merge-back conflicted. Derive-don't-assume: base = branch the operator launched from (rev-parse at preflight), fall back to repo default only on detached HEAD with a loud receipt note. Self-hosted runs on this repo launch from main and are unaffected. Small driver fix, not the frozen periphery; good early drain candidate. Family relative of #84 (session-checkout coupling).
 
 ### #99: --validate-knobs must probe bootstrapCmd in a throwaway worktree
-**State:** accepted
+**State:** queued
 **Score:** 7 — engine-mutates-operator-environment family (with the 0.0.35 snapshot-restore data destruction); recurrence bar met at family level
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py
+**Plan:** docs/superpowers/plans/2026-07-27-validate-knobs-worktree-probe.md
+**Engine:** inline
 **Notes:** Observed @0.1.1: a wrong bootstrapCmd draft executed against the live session env stripped the test runner from the operator's venv; the agent restoring it unprompted is not a design. Relocate the probe to a disposable worktree, judge no-op-ness by resulting tree state. Design caveat to carry into the plan: name which side effects the worktree boundary does NOT contain (shared global package caches). Small driver fix, not the frozen periphery; good early drain candidate.
 
 ### #95: Loose ends from the #90 build — drainable items 1–4 ONLY (split at triage)
