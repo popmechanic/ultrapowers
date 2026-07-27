@@ -9,6 +9,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
+sys.path.insert(0, str(SCRIPTS))
+from ultra_run import prune_run_dirs  # noqa: E402
 
 PLAN = (
     "# P\n\n**Acceptance:** waived — test fixture\n\n"
@@ -263,3 +265,45 @@ def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
     receipt = json.loads(r.stdout)
     assert any(s["stage"] == "scratch-hygiene" and s["ok"]
                for s in receipt["stages"])
+
+
+def test_check_rejects_run_dir(tmp_path):
+    repo = make_repo(tmp_path)
+    r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
+            "--check", "--run-dir", str(tmp_path / "rd")], cwd=repo, check=False)
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "--check is mutually exclusive" in out
+    assert "--run-dir" in out
+
+
+def test_prune_run_dirs_keeps_newest_including_a_live_run(tmp_path):
+    # Direct unit test of prune_run_dirs: the driver-level test's "run-t1"
+    # stamp can never match RUN_DIR_RE, so it proves nothing about a real
+    # run dir surviving the prune. Seed 12 stale dirs plus a newest dir
+    # standing in for the current run.
+    state = tmp_path / "state"
+    state.mkdir()
+    stale = [f"run-202601{day:02d}-000000" for day in range(10, 22)]  # 12
+    for name in stale:
+        (state / name).mkdir()
+    current = "run-20260122-000000"          # newest — stands in for a live run
+    (state / current).mkdir()
+    # Decoys the prune must NEVER touch.
+    (state / "scratch").mkdir()
+    (state / "pending-abc123def456").mkdir()
+    (state / "run-keepme").mkdir()
+
+    removed = prune_run_dirs(state, keep=10)
+
+    survivors = sorted(d.name for d in state.iterdir()
+                       if d.name.startswith("run-2026"))
+    assert current in survivors
+    assert len(survivors) == 10
+    expected_pruned = stale[:3]              # the 3 oldest of the 13 stamped dirs
+    assert sorted(removed) == sorted(expected_pruned)
+    for name in expected_pruned:
+        assert not (state / name).exists()
+    assert (state / "scratch").is_dir()
+    assert (state / "pending-abc123def456").is_dir()
+    assert (state / "run-keepme").is_dir()

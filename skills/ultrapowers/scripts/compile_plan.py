@@ -1249,10 +1249,11 @@ def main(argv=None):
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
-    if args.check and (emit_launch is not None or emit_args is not None):
+    if args.check and (emit_launch is not None or emit_args is not None
+                       or args.run_dir is not None):
         sys.exit("error: --check is mutually exclusive with --emit-launch/"
-                 "--emit-args (--check only validates grammar; it never emits "
-                 "launch files)")
+                 "--emit-args/--run-dir (--check only validates grammar; it "
+                 "never emits launch files)")
     if args.check:
         violations = collect_violations(args.plan)
         if violations:
