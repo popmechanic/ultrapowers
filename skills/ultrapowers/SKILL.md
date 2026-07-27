@@ -66,10 +66,13 @@ reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
-- **`testCmd`** — run-wide and/or per-task when detection guesses wrong (monorepos,
-  custom runners); polyglot → exercise **both** stacks.
-- **`bootstrapCmd`** — per-worktree install (fresh worktrees; no
-  `.venv`/`node_modules`).
+- **`testCmd`** — run-wide resolution moved into the driver (pass `--test-cmd`
+  to `ultra_run.py`, else its deterministic detection ladder stamps it;
+  `receipt.testCmd`/`receipt.testCmdSource` record the outcome). Derive only
+  **per-task** `testCmd` on wave entries, for polyglot plans.
+- **`bootstrapCmd`** — pass `--bootstrap-cmd` to `ultra_run.py` (per-worktree
+  install for fresh worktrees); it is validated, stamped into the receipt, and
+  the pre-merge gate provisions its acceptance worktree from it.
 - **`baseBranch`** — derived in `receipt.baseBranch`; pass through.
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
@@ -134,7 +137,7 @@ it spawns no agents). Branch on how it fails:
 
 ```
 args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
-         baseBranch, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides? }
+         baseBranch, reviewProfile?, tierOverrides? }
 ```
 
 Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.

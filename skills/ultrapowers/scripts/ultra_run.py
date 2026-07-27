@@ -59,6 +59,37 @@ def prune_run_dirs(state_dir, keep=KEEP_RUNS):
         shutil.rmtree(d, ignore_errors=True)
     return [d.name for d in doomed if not d.exists()]
 
+def detect_test_cmd(root):
+    """Deterministic test-command detection ladder (#96). File presence only,
+    no LLM, no execution. Returns (command, rule) or (None, None)."""
+    root = Path(root)
+    if (root / "pytest.ini").is_file():
+        return "python3 -m pytest", "pytest-ini"
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file() and "[tool.pytest" in pyproject.read_text(errors="ignore"):
+        return "python3 -m pytest", "pyproject-pytest"
+    pkg = root / "package.json"
+    if pkg.is_file():
+        try:
+            scripts = json.loads(pkg.read_text()).get("scripts") or {}
+        except (json.JSONDecodeError, AttributeError):
+            scripts = {}
+        if "test" in scripts:
+            if (root / "pnpm-lock.yaml").is_file():
+                return "pnpm test", "package-json-pnpm"
+            if (root / "bun.lock").is_file() or (root / "bun.lockb").is_file():
+                return "bun test", "package-json-bun"
+            return "npm test", "package-json-npm"
+    mk = root / "Makefile"
+    if mk.is_file() and re.search(r"^test\s*:", mk.read_text(errors="ignore"), re.M):
+        return "make test", "makefile-test"
+    if (root / "go.mod").is_file():
+        return "go test ./...", "go-mod"
+    if (root / "Cargo.toml").is_file():
+        return "cargo test", "cargo-toml"
+    return None, None
+
+
 PROBE = {"name": "ultrapowers-probe",
          "args": {"ping": "pong",
                   "waves": [{"id": "probe-1", "title": "probe", "body": "b"}]},
@@ -68,9 +99,11 @@ LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
     "the engine reads knobs ONLY from these inline entries — never a top-level "
     "launch key, never tierOverrides, which remaps tier names to models)",
-    "testCmd — run-wide and/or per-task, only when detection would guess wrong",
-    "bootstrapCmd — per-worktree dependency install for fresh worktrees; "
-    "validate with --validate-knobs before launch",
+    "waves[][].testCmd per task, only for polyglot plans where one task's stack "
+    "differs from the run-wide command (run-wide testCmd is driver-derived — "
+    "knob or detection — and already stamped in the args file and receipt)",
+    "nothing for bootstrapCmd — pass --bootstrap-cmd to the preflight driver "
+    "instead, so the receipt and the gate share the validated value",
     "nothing for review depth — it is plan-authored (**Review:** marker), "
     "pre-filled on the args wave entries",
 ]
@@ -153,6 +186,11 @@ def main(argv=None):
     ap.add_argument("--validate-knobs", type=Path, default=None,
                     metavar="ARGSFILE", dest="validate_knobs",
                     help="pre-launch knob validation only; skips the launch pipeline")
+    ap.add_argument("--test-cmd", default=None,
+                    help="run-wide suite command; wins over detection")
+    ap.add_argument("--bootstrap-cmd", default=None,
+                    help="per-worktree dependency install; stamped into the "
+                         "receipt so the gate provisions its acceptance worktree")
     a = ap.parse_args(argv)
 
     if a.validate_knobs is not None:
@@ -250,6 +288,22 @@ def main(argv=None):
         return bail()
     receipt["compile"] = json.loads(r.stdout)
 
+    if a.test_cmd:
+        test_cmd, test_src = a.test_cmd, "knob"
+    else:
+        test_cmd, rule = detect_test_cmd(root)
+        test_src = ("detected:" + rule) if test_cmd else None
+    if not stage("test-command", bool(test_cmd),
+                 ("%s (%s)" % (test_cmd, test_src)) if test_cmd else
+                 "no test command detected — pass --test-cmd <run-wide suite "
+                 "command>; the gate refuses to run without one"):
+        return bail()
+    args_obj = json.loads(args_file.read_text())
+    args_obj["testCmd"] = test_cmd
+    if a.bootstrap_cmd:
+        args_obj["bootstrapCmd"] = a.bootstrap_cmd
+    args_file.write_text(json.dumps(args_obj, indent=2))
+
     wf_dir = root / ".claude/workflows"
     wf_dir.mkdir(parents=True, exist_ok=True)
     installed = []
@@ -281,7 +335,10 @@ def main(argv=None):
     receipt.update({"ok": True, "lockId": stamp, "baseBranch": base,
                     "launchFile": str(launch), "argsFile": str(args_file),
                     "workflowName": "ultrapowers-run", "probe": PROBE,
-                    "llmDerives": LLM_DERIVES})
+                    "llmDerives": LLM_DERIVES,
+                    "testCmd": test_cmd, "testCmdSource": test_src})
+    if a.bootstrap_cmd:
+        receipt["bootstrapCmd"] = a.bootstrap_cmd
     (run_dir / "receipt.json").write_text(json.dumps(receipt, indent=2))
     print(json.dumps(receipt, indent=2))
     return 0
