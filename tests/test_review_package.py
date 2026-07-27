@@ -141,6 +141,8 @@ def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
     out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
     assert out_path.exists()
     assert out_path.resolve().parent == dest.resolve()
-    assert out_path.name.startswith("review-") and out_path.name.endswith(".diff")
+    base7 = git(repo, "rev-parse", "--short", base).stdout.strip()
+    head7 = git(repo, "rev-parse", "--short", head).stdout.strip()
+    assert out_path.name == f"review-{base7}..{head7}.diff"
     body = out_path.read_text()
     assert "# Review package:" in body and "## Commits" in body
