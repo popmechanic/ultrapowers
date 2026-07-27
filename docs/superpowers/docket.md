@@ -17,9 +17,11 @@
 **Notes:** Two measurement-integrity defects: stale gate evidence (23-run family — bundles store the first BLOCKED receipt for runs that actually recovered and merged, miscounting false-reds as terminal) and synthetic contamination (6 of 21 "field" bundles this pass were A/B eval cells flowing into the redirect-canary/clean-pass statistics). Fix: last-receipt-per-stamp with ordinal + truncated flag; origin: synthetic for eval-cell-convention paths. Not the frozen periphery. Ranked above the driver cosmetics because bad sensing corrupts every future triage.
 
 ### #97: Receipt stage details must state the stage's own verdict
-**State:** accepted
+**State:** queued
 **Score:** 7.5 — single most frequent ledger finding (14/118 runs, every version 0.0.35→0.1.11); receipt honesty of a fail-closed driver
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py
+**Plan:** docs/superpowers/plans/2026-07-27-receipt-stage-verdicts.md
+**Engine:** inline
 **Notes:** git-repo stage reports ok:true with "not inside a git repository" detail; worktree-probe detail is raw porcelain; one compile detail was a 2KB raw-JSON dump. One emission-point change in ultra_run.py's stage() path: detail states the stage's own conclusion, probe stdout/stderr attach only on failure. Pin with a test asserting no ok:true stage carries known failure phrasings. Small structural driver fix, not the frozen periphery; good early drain candidate.
 
 ### #100: Derive baseBranch from the launched checkout, not the repo default branch
