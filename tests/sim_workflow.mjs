@@ -49,6 +49,21 @@ const PATH_ARGS = { pluginRoot: '/opt/plug', runDir: '/repo/.claude/ultrapowers/
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
   dependencyEdges: ['A -> C'], ...PATH_ARGS }
 
+// The engine-authored span of a dispatched prompt: everything before the first
+// plan-authored block (the task body, the plan's Global Constraints, its
+// Interfaces). Only that span is <pluginRoot>/<runDir>-substituted — plan prose
+// that mentions the literal tokens (the plan that built this feature does) must
+// reach the agent verbatim, so placeholder assertions scope to this span.
+const PLAN_AUTHORED_MARKERS = ['\nTASK:', '\nGLOBAL CONSTRAINTS:', '\nINTERFACES:']
+function engineAuthoredSpan(prompt) {
+  let cut = prompt.length
+  for (const marker of PLAN_AUTHORED_MARKERS) {
+    const i = prompt.indexOf(marker)
+    if (i !== -1 && i < cut) cut = i
+  }
+  return prompt.slice(0, cut)
+}
+
 function taskIdFromLabel(label) {
   // labels look like impl:A, review:A:1, fix:A:1
   return label.split(':')[1]
@@ -64,9 +79,11 @@ function makeAgent(handle) {
     assert(prompt.startsWith('SAFETY: Operate ONLY inside the git worktree'),
       'GUARD must head every dispatched prompt (label=' + label + ')')
     // Path placeholders are baked literals; a dispatch that leaks one un-substituted
-    // sends an agent to a nonexistent path, so no role may carry them.
-    assert(!prompt.includes('<pluginRoot>') && !prompt.includes('<runDir>'),
-      'path placeholders must be substituted before dispatch (label=' + label + ')')
+    // sends an agent to a nonexistent path, so no role may carry them in the
+    // engine-authored span. (Plan-authored prose after it keeps its own text.)
+    const engineSpan = engineAuthoredSpan(prompt)
+    assert(!engineSpan.includes('<pluginRoot>') && !engineSpan.includes('<runDir>'),
+      'path placeholders must be substituted in the engine-authored span before dispatch (label=' + label + ')')
     if (handle) {
       const r = handle(label, prompt, opts)
       if (r !== undefined) return r
@@ -501,12 +518,19 @@ async function scenarioAdversarialDedupe() {
     if (label.startsWith('fix:A')) { fixPrompt = prompt }
     return undefined
   })
-  const waves = [[{ id: 'A', title: 't', body: 'do A', tier: 'standard', review: 'adversarial' }]]
+  const FIX_PLAN_PROSE = 'do A — plan prose names <runDir>/review/ verbatim'
+  const waves = [[{ id: 'A', title: 't', body: FIX_PLAN_PROSE, tier: 'standard', review: 'adversarial' }]]
   const r = await runWorkflow({
     agent, args: { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's' }, budget: undefined,
   })
   const count = (fixPrompt.match(/missing null check/g) || []).length
   eq(count, 1, 'dedupe: identical findings from both reviewers appear once in the fix prompt')
+  // The fix-round dispatch splits the same way as the initial one: engine text
+  // substituted, plan-authored body verbatim.
+  assert(fixPrompt.includes('bash /opt/plug/skills/ultrapowers/scripts/review-package'),
+    'dedupe: the fix-round dispatch substitutes the engine-authored packet path')
+  assert(fixPrompt.includes(FIX_PLAN_PROSE),
+    'dedupe: the fix-round dispatch leaves plan-authored prose tokens verbatim')
   eq(r.tasks.find((t) => t.task === 'A').status, 'done', 'dedupe: task recovers after the fix')
   console.log('scenario adversarial-dedupe: OK')
 }
@@ -2075,12 +2099,16 @@ async function scenarioEmptyBodyNoWavesPathThrows() {
 // ── Scenario: bootstrapCmd + per-task testCmd (polyglot / fresh worktrees) ─────
 async function scenarioBootstrapAndPerTaskTestCmd() {
   const prompts = {}
+  // A's body and the plan's Global Constraints both quote the literal placeholder
+  // tokens — exactly what a plan about this feature writes. They must survive.
+  const PLAN_PROSE = 'do A — the plan text names <runDir>/review/ and <pluginRoot> verbatim'
+  const PLAN_CONSTRAINT = 'Engine exhaust lives in <runDir>/review/.'
   const waves = [[
-    { id: 'A', title: 'py task', body: 'do A', tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
+    { id: 'A', title: 'py task', body: PLAN_PROSE, tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
     { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
   ]]
   const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
-                 testCmd: 'make test',
+                 testCmd: 'make test', globalConstraints: PLAN_CONSTRAINT,
                  bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)' }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
@@ -2108,12 +2136,23 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
     'packet OUTFILE directory rides under runDir')
   assert(!prompts['impl:A'].includes('If the script is absent'),
     'script-absent fallback branch is deleted')
-  assert(!prompts['impl:A'].includes('<pluginRoot>') && !prompts['impl:A'].includes('<runDir>'),
-    'placeholders are substituted in dispatched prompts')
+  assert(!engineAuthoredSpan(prompts['impl:A']).includes('<pluginRoot>') &&
+         !engineAuthoredSpan(prompts['impl:A']).includes('<runDir>'),
+    'placeholders are substituted in the engine-authored span of dispatched prompts')
   assert(prompts['review:A:1'].includes('/repo/.claude/ultrapowers/run-sim/review/'),
     'reviewer prompt names the run scratch dir')
   assert(!prompts['review:A:1'].includes('.superpowers'),
     'old scratch location gone from reviewer prompt')
+  // …and the substitution stops at the engine's own text: plan-authored prose
+  // that quotes the tokens reaches implementer and reviewer unmangled.
+  assert(prompts['impl:A'].includes(PLAN_PROSE),
+    'plan-authored task body keeps its literal <runDir>/<pluginRoot> tokens (impl)')
+  assert(prompts['impl:A'].includes('GLOBAL CONSTRAINTS:\n' + PLAN_CONSTRAINT),
+    'plan-authored global constraints keep their literal tokens (impl)')
+  assert(prompts['review:A:1'].includes(PLAN_PROSE),
+    'plan-authored task body keeps its literal tokens (review)')
+  assert(prompts['review:A:1'].includes('GLOBAL CONSTRAINTS:\n' + PLAN_CONSTRAINT),
+    'plan-authored global constraints keep their literal tokens (review)')
   assert(r.tasks.every((t) => t.status === 'done'), 'bootstrap: all tasks done')
   console.log('scenario bootstrap-and-per-task-testcmd: OK')
 }

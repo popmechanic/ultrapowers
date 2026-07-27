@@ -330,6 +330,11 @@ const REVIEWER_PROMPT = [
 
 // Path placeholders are baked as literal <pluginRoot>/<runDir> tokens (so the
 // prompt-drift pin sees source-identical text) and filled at dispatch time.
+// Apply this ONLY to engine-authored text (GUARD + the baked prompts). Plan-
+// authored spans — the task body, the plan's Global Constraints, its Interfaces
+// — pass through verbatim: a plan is free to quote the literal tokens (the plan
+// that built this feature does), and rewriting that prose would silently hand
+// the implementer a mangled spec.
 const fillPaths = (s) =>
   s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
 
@@ -738,7 +743,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
 
   const siblingsStr = siblings || ''
   let impl = await agent(
-    fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task)),
+    fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT) + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   // agent() RETURNS null (not throws) on terminal Overloaded/skip. Surface it as
@@ -772,10 +777,9 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
   // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
   for (let iter = 1; iter <= 2; iter++) {
-    const reviewPrompt = fillPaths(
-      GUARD + '\n\n' + REVIEWER_PROMPT +
+    const reviewPrompt = fillPaths(GUARD + '\n\n' + REVIEWER_PROMPT) +
       taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task))
+      '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       model: reviewerModelFor(task), schema: REVIEWER_SCHEMA,
@@ -850,12 +854,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
+      fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT) + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
         ' Resolve these blocking issues on top of it, commit on YOUR assigned branch, and report YOUR branch and HEAD:\n' +
-        blocking.map((b) => '- ' + b.detail).join('\n')),
+        blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
     noteConcerns(impl)
