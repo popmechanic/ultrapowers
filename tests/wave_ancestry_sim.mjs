@@ -39,7 +39,10 @@ const WAVES = [
   ],
   [{ id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' }],
 ]
-const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [['A', 'C']] }
+// pluginRoot/runDir are absolute-path launch args the harness now refuses to
+// launch without (see tests/sim_workflow.mjs for that contract).
+const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [['A', 'C']],
+  pluginRoot: '/opt/plug', runDir: '/repo/.claude/ultrapowers/run-sim' }
 
 // Stub every role to success; let each scenario override the integration critic's
 // review result to inject (or omit) ancestryMisses. Also captures the completeness

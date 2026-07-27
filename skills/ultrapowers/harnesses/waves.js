@@ -218,6 +218,17 @@ for (const k of Object.keys(tierOverrides)) {
   }
 }
 
+// Path args are absolute or nothing: agents run from worktrees and detached
+// checkouts, so a relative (or absent) pluginRoot/runDir resolves somewhere
+// different for every role. Catch it at launch rather than at first dispatch.
+for (const k of ['pluginRoot', 'runDir']) {
+  if (typeof ARGS[k] !== 'string' || !ARGS[k].startsWith('/')) {
+    throw new Error('ultrapowers: args.' + k + ' missing or not an absolute path. ' +
+      'ultra_run.py emits both keys via compile_plan.py --run-dir; a hand-authored ' +
+      'salvage/redirect launch must carry them too. Refusing to launch.')
+  }
+}
+
 // Wave phase titles are NOT injected by mutating the meta literal: the current
 // harness extracts meta at parse time and does not expose it to the executing body
 // (the old runtime reassignment silently no-op'd / threw there). The live progress
@@ -269,7 +280,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Generate the review packet for your BASE..HEAD first: run bash skills/ultrapowers/scripts/review-package <BASE> <HEAD> (your committed HEAD). It writes the commits and the git diff -U10 to the shared scratch dir under .superpowers/ (outside .git/) and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced. If the script is absent (it ships with the ultrapowers plugin, not the target project), skip the packet and report your BASE and HEAD shas instead — the reviewer recovers the diff from those.',
+  '- Generate the review packet for your BASE..HEAD first: run bash <pluginRoot>/skills/ultrapowers/scripts/review-package <BASE> <HEAD> <runDir>/review/ (your committed HEAD; the trailing slash makes the last argument a target directory receiving the default-named packet). It writes the commits and the git diff -U10 under the run scratch dir — outside anything git tracks — and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
   '- Read the packet\'s ## Files changed section (the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, confirm every changed path is named there or is plainly required by the task text. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '',
@@ -292,7 +303,7 @@ const REVIEWER_PROMPT = [
   'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
   '',
   'Spec compliance:',
-  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written to the shared scratch dir under .superpowers/, outside .git/). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
+  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written under the run scratch dir <runDir>/review/). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   'When FILES (the task\'s declared file scope) is provided: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; modifications outside FILES are blocking unless the task text plainly requires them.',
@@ -316,6 +327,11 @@ const REVIEWER_PROMPT = [
   '',
   'Return a single JSON object conforming to the reviewer verdict schema. No prose outside the JSON block. Your final message is your report: every line is a verdict or a finding carrying file:line evidence.',
 ].join('\n')
+
+// Path placeholders are baked as literal <pluginRoot>/<runDir> tokens (so the
+// prompt-drift pin sees source-identical text) and filled at dispatch time.
+const fillPaths = (s) =>
+  s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
 // testInstruction: honor an explicit args.testCmd, else fall back to detection.
@@ -722,7 +738,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
 
   const siblingsStr = siblings || ''
   let impl = await agent(
-    GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
+    fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task)),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
   // agent() RETURNS null (not throws) on terminal Overloaded/skip. Surface it as
@@ -756,10 +772,10 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
   // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
   for (let iter = 1; iter <= 2; iter++) {
-    const reviewPrompt =
+    const reviewPrompt = fillPaths(
       GUARD + '\n\n' + REVIEWER_PROMPT +
       taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
-      '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
+      '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task))
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
       model: reviewerModelFor(task), schema: REVIEWER_SCHEMA,
@@ -834,12 +850,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     // amend rather than a blank slate. The prior branch stays locked by its worktree;
     // the fix agent commits on its own engine-assigned branch and reports it.
     impl = await agent(
-      GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
+      fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
         ' Resolve these blocking issues on top of it, commit on YOUR assigned branch, and report YOUR branch and HEAD:\n' +
-        blocking.map((b) => '- ' + b.detail).join('\n'),
+        blocking.map((b) => '- ' + b.detail).join('\n')),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
     noteConcerns(impl)
