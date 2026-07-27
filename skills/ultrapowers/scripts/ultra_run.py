@@ -33,19 +33,31 @@ RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
 KEEP_RUNS = 10
 
 
+def _run_dirs(state_dir):
+    """All state_dir entries matching the strict run-<stamp> pattern, sorted
+    oldest-first (the stamp format sorts lexicographically = chronologically)."""
+    if not state_dir.is_dir():
+        return []
+    return sorted(d for d in state_dir.iterdir()
+                  if d.is_dir() and RUN_DIR_RE.match(d.name))
+
+
+def _doomed(state_dir, keep):
+    runs = _run_dirs(state_dir)
+    return runs[:-keep] if keep else runs
+
+
 def prune_run_dirs(state_dir, keep=KEEP_RUNS):
     """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
     strict run-<stamp> names — everything else under the state dir
     (scratch/, pending seal dirs, operator files) is not ours to touch.
-    Stamp format sorts lexicographically = chronologically."""
-    if not state_dir.is_dir():
-        return []
-    runs = sorted(d for d in state_dir.iterdir()
-                  if d.is_dir() and RUN_DIR_RE.match(d.name))
-    doomed = runs[:-keep] if keep else runs
+    Stamp format sorts lexicographically = chronologically. Returns only the
+    names actually removed — a failed rmtree (ignore_errors=True swallows
+    the exception) must not be reported as pruned."""
+    doomed = _doomed(state_dir, keep)
     for d in doomed:
         shutil.rmtree(d, ignore_errors=True)
-    return [d.name for d in doomed]
+    return [d.name for d in doomed if not d.exists()]
 
 PROBE = {"name": "ultrapowers-probe",
          "args": {"ping": "pong",
@@ -210,15 +222,23 @@ def main(argv=None):
 
     # Scratch hygiene: the state dir self-ignores (content `*`) so every run
     # dir is structurally invisible to git in any repo, and old run records
-    # are pruned keep-newest-10 (runs serialize on RUN_LOCK, so no dir here
-    # is live). Exhaust (<runDir>/review) is deleted earlier, at the SKILL.md
-    # gate step; this prune is the crash backstop that gives cleanup a
-    # trigger even when a run died before its gate.
+    # are pruned keep-newest-10 — a live run's stamp is always the newest, so
+    # the keep-10 window always retains it regardless of lock state. Exhaust
+    # (<runDir>/review) is deleted earlier, at the SKILL.md gate step; this
+    # prune is the crash backstop that gives cleanup a trigger even when a
+    # run died before its gate.
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / ".gitignore").write_text("*\n")
+    doomed_names = [d.name for d in _doomed(state_dir, KEEP_RUNS)]
     pruned = prune_run_dirs(state_dir)
-    stage("scratch-hygiene", True,
-          "pruned %d old run dir(s)" % len(pruned) if pruned else "nothing to prune")
+    if not doomed_names:
+        detail = "nothing to prune"
+    else:
+        detail = "pruned %d old run dir(s)" % len(pruned)
+        failed = [n for n in doomed_names if n not in pruned]
+        if failed:
+            detail += "; %d removal failed: %s" % (len(failed), ", ".join(failed))
+    stage("scratch-hygiene", True, detail)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
