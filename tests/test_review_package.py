@@ -1,8 +1,9 @@
 """End-to-end test for the review-package script — the pre-baked review packet
 (spec §2.1). A REAL temp repo with two commits touching one file; asserts the
-packet is written to the SHARED scratch dir under `.superpowers/ultra` (outside
-`.git/`, yet resolving identically from every linked worktree), is echoed on
-stdout, and carries the commit subjects, the ## Diff header, and a +/- diff hunk."""
+packet is written to the SHARED scratch dir under `.claude/ultrapowers/scratch`
+(outside `.git/`, yet resolving identically from every linked worktree), is
+echoed on stdout, and carries the commit subjects, the ## Diff header, and a
++/- diff hunk."""
 import pathlib
 import subprocess
 
@@ -37,7 +38,7 @@ def run_script(repo, *args):
                           capture_output=True, text=True)
 
 
-def test_review_package_writes_to_shared_superpowers_dir_and_echoes_path(tmp_path):
+def test_review_package_writes_to_shared_scratch_dir_and_echoes_path(tmp_path):
     repo, base, head = make_repo(tmp_path)
     p = run_script(repo, base, head)
     assert p.returncode == 0, p.stderr
@@ -48,8 +49,9 @@ def test_review_package_writes_to_shared_superpowers_dir_and_echoes_path(tmp_pat
     if not common.is_absolute():
         common = (repo / common)
     # The scratch dir is derived from the RESOLVED PARENT of --git-common-dir
-    # (the main repo root, shared by every linked worktree), under .superpowers/.
-    expected_dir = (common.resolve().parent / ".superpowers" / "ultra")
+    # (the main repo root, shared by every linked worktree), under
+    # .claude/ultrapowers/scratch.
+    expected_dir = (common.resolve().parent / ".claude" / "ultrapowers" / "scratch")
     assert out_path.resolve().parent == expected_dir.resolve()
     # It must escape the protected .git/ entirely.
     assert ".git" not in out_path.resolve().parts, out_path
@@ -81,10 +83,11 @@ def test_packet_dir_shared_across_worktrees(tmp_path):
 
     main_path = pathlib.Path(p_main.stdout.strip().splitlines()[-1]).resolve()
     wt_path = pathlib.Path(p_wt.stdout.strip().splitlines()[-1]).resolve()
-    # Both runs land in the SAME shared .superpowers/ultra directory.
+    # Both runs land in the SAME shared .claude/ultrapowers/scratch directory.
     assert main_path.parent == wt_path.parent, (main_path, wt_path)
-    assert main_path.parent.name == "ultra"
-    assert main_path.parent.parent.name == ".superpowers"
+    assert main_path.parent.name == "scratch"
+    assert main_path.parent.parent.name == "ultrapowers"
+    assert main_path.parent.parent.parent.name == ".claude"
     assert ".git" not in main_path.parts, main_path
     assert ".git" not in wt_path.parts, wt_path
 
@@ -111,3 +114,33 @@ def test_review_package_rejects_bad_rev(tmp_path):
     p = run_script(repo, base, "nope-not-a-rev")
     assert p.returncode == 2
     assert "HEAD" in p.stderr
+
+
+def test_default_lands_in_claude_ultrapowers_scratch(tmp_path):
+    repo, base, head = make_repo(tmp_path)
+    p = run_script(repo, base, head)
+    assert p.returncode == 0, p.stderr
+    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
+    assert out_path.exists()
+    expected_dir = (repo / ".claude" / "ultrapowers" / "scratch").resolve()
+    assert out_path.resolve().parent == expected_dir
+    # The parent self-ignore makes the scratch invisible to git in ANY repo.
+    ignore = repo / ".claude" / "ultrapowers" / ".gitignore"
+    assert ignore.read_text() == "*\n"
+    status = git(repo, "status", "--porcelain").stdout
+    assert status == "", f"engine scratch visible to git: {status}"
+    # The old location is never created.
+    assert not (repo / ".superpowers").exists()
+
+
+def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
+    repo, base, head = make_repo(tmp_path)
+    dest = tmp_path / "exhaust" / "review"
+    p = run_script(repo, base, head, str(dest) + "/")
+    assert p.returncode == 0, p.stderr
+    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
+    assert out_path.exists()
+    assert out_path.resolve().parent == dest.resolve()
+    assert out_path.name.startswith("review-") and out_path.name.endswith(".diff")
+    body = out_path.read_text()
+    assert "# Review package:" in body and "## Commits" in body

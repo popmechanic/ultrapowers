@@ -5,14 +5,20 @@
 #
 # Usage: review-package BASE HEAD [OUTFILE]
 #
-# Default OUTFILE: <main-repo-root>/.superpowers/ultra/review-<base7>..<head7>.diff.
+# Default OUTFILE: <main-repo-root>/.claude/ultrapowers/scratch/review-<base7>..<head7>.diff.
+# An OUTFILE ending in a trailing slash (/) is treated as a target directory
+# (created if absent) that receives that same default-named packet.
+#
 # Unlike v6's per-worktree `git rev-parse --git-path sdd`, ultrapowers' implementer
 # and reviewer run in DIFFERENT linked worktrees, so the packet must live somewhere
 # both can see. We derive it from the RESOLVED PARENT of --git-common-dir (the main
-# repo root, identical for every linked worktree) and write under .superpowers/ —
-# already gitignored — so the scratch stays SHARED across worktrees yet escapes the
-# protected .git/ that superpowers fled in v6.0.3. Do NOT switch to a worktree-relative
-# .superpowers/ off the CWD: that would hand each worktree a different dir and break sharing.
+# repo root, identical for every linked worktree) and write under
+# .claude/ultrapowers/scratch/ — whose parent .gitignore (content `*`) self-ignores
+# the whole engine-scratch tree — so the scratch stays SHARED across worktrees, is
+# structurally invisible to git in ANY repo, yet escapes the protected .git/ that
+# superpowers fled in v6.0.3. Do NOT switch to a worktree-relative
+# .claude/ultrapowers/ off the CWD: that would hand each worktree a different dir
+# and break sharing.
 #
 # Echoes the final output path on stdout so callers learn where it wrote.
 set -euo pipefail
@@ -28,15 +34,39 @@ head=$2
 git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
 git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
 
-if [ $# -eq 3 ]; then
-  out=$3
-else
+default_dir() {
+  # Default scratch: <main-repo-root>/.claude/ultrapowers/scratch — derived from
+  # the RESOLVED PARENT of --git-common-dir (identical for every linked
+  # worktree, so implementer and reviewer worktrees see one shared path). The
+  # parent .gitignore self-ignores (content `*`), so engine scratch is
+  # structurally invisible to git status/add in ANY repo — the property the
+  # old .superpowers/ location only had when superpowers' own scripts had run.
   common=$(git rev-parse --git-common-dir)
   common=$(cd "$common" && pwd)          # absolutize (handles the bare ".git" case)
-  dir="$(dirname "$common")/.superpowers/ultra"   # main repo root, shared by every worktree
-  mkdir -p "$dir"
-  dir=$(cd "$dir" && pwd)   # absolute, so the echoed path works from any cwd
-  out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
+  local root parent
+  root="$(dirname "$common")"
+  parent="$root/.claude/ultrapowers"
+  mkdir -p "$parent/scratch"
+  printf '*\n' > "$parent/.gitignore"
+  ( cd "$parent/scratch" && pwd )
+}
+
+default_name() {
+  echo "review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
+}
+
+if [ $# -eq 3 ]; then
+  case $3 in
+    */)
+      mkdir -p "$3"
+      out="$(cd "$3" && pwd)/$(default_name)"
+      ;;
+    *)
+      out=$3
+      ;;
+  esac
+else
+  out="$(default_dir)/$(default_name)"
 fi
 
 {
