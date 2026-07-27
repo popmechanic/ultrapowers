@@ -219,3 +219,47 @@ def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
     verdict = json.loads(r.stdout)
     assert verdict["ok"] is False
     assert "not a JSON object" in verdict["detail"]
+
+
+def test_args_skeleton_carries_plugin_root_and_run_dir(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    skel = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
+    assert skel["pluginRoot"] == str(ROOT)
+    assert skel["runDir"] == str((repo / ".claude/ultrapowers/run-t1").resolve())
+
+
+def test_run_dir_requires_emit_args(tmp_path):
+    repo = make_repo(tmp_path)
+    r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
+            "--run-dir", str(tmp_path / "rd")], cwd=repo, check=False)
+    assert r.returncode != 0
+    assert "--run-dir requires --emit-args" in (r.stdout + r.stderr)
+
+
+def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
+    repo = make_repo(tmp_path)
+    state = repo / ".claude/ultrapowers"
+    state.mkdir(parents=True)
+    # 12 stale stamp-format run dirs; the 2 oldest must be pruned (keep 10).
+    for day in range(10, 22):
+        (state / f"run-202601{day:02d}-000000").mkdir()
+    # Decoys that the prune must NEVER touch: non-matching names.
+    (state / "scratch").mkdir()
+    (state / "pending-abc123def456").mkdir()
+    (state / "run-keepme").mkdir()          # prefix collides, format does not
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    survivors = sorted(d.name for d in state.iterdir()
+                       if d.name.startswith("run-2026"))
+    assert len(survivors) == 10
+    assert survivors[0] == "run-20260112-000000"   # the 2 oldest are gone
+    assert (state / "scratch").is_dir()
+    assert (state / "pending-abc123def456").is_dir()
+    assert (state / "run-keepme").is_dir()
+    assert (state / "run-t1").is_dir()             # the current run, untouched
+    assert (state / ".gitignore").read_text() == "*\n"
+    receipt = json.loads(r.stdout)
+    assert any(s["stage"] == "scratch-hygiene" and s["ok"]
+               for s in receipt["stages"])

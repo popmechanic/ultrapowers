@@ -24,6 +24,10 @@ import re
 import sys
 from pathlib import Path
 
+# scripts -> ultrapowers -> skills -> plugin root; identical to ultra_run.py's
+# PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
@@ -1238,6 +1242,10 @@ def main(argv=None):
                          "every violation with a did-you-mean fix and exit 2, "
                          "or print 'PLAN OK' and exit 0 — never emits waves. "
                          "Mutually exclusive with --emit-launch/--emit-args.")
+    ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
+                    help="absolute per-run directory; stamped into the args "
+                         "skeleton as runDir (with pluginRoot) so the engine "
+                         "routes all scratch there")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1257,6 +1265,9 @@ def main(argv=None):
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
                  "ride via the launch file, so wavesPath is always populated)")
+    if args.run_dir is not None and emit_args is None:
+        sys.exit("error: --run-dir requires --emit-args (the keys ride the "
+                 "launch-args skeleton)")
     plan_text = args.plan.read_text()
     # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
     # named diagnostic, not the generic 'no headings found'.)
@@ -1485,6 +1496,9 @@ def main(argv=None):
             "globalConstraints": global_constraints,
             "planPath": str(args.plan.resolve()),
         }
+        if args.run_dir is not None:
+            args_payload["pluginRoot"] = str(PLUGIN_ROOT)
+            args_payload["runDir"] = str(args.run_dir.resolve())
         emit_args.parent.mkdir(parents=True, exist_ok=True)
         emit_args.write_text(json.dumps(args_payload, indent=2))
         result["args_file"] = str(emit_args)

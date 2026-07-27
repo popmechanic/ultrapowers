@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,24 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 HARNESSES = HERE.parent / "harnesses"
 PLUGIN_ROOT = HERE.parents[2]
+
+RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
+KEEP_RUNS = 10
+
+
+def prune_run_dirs(state_dir, keep=KEEP_RUNS):
+    """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
+    strict run-<stamp> names — everything else under the state dir
+    (scratch/, pending seal dirs, operator files) is not ours to touch.
+    Stamp format sorts lexicographically = chronologically."""
+    if not state_dir.is_dir():
+        return []
+    runs = sorted(d for d in state_dir.iterdir()
+                  if d.is_dir() and RUN_DIR_RE.match(d.name))
+    doomed = runs[:-keep] if keep else runs
+    for d in doomed:
+        shutil.rmtree(d, ignore_errors=True)
+    return [d.name for d in doomed]
 
 PROBE = {"name": "ultrapowers-probe",
          "args": {"ping": "pong",
@@ -189,10 +208,23 @@ def main(argv=None):
     if not stage("superpowers-compat", r.returncode == 0, r.stdout + r.stderr):
         return bail()
 
+    # Scratch hygiene: the state dir self-ignores (content `*`) so every run
+    # dir is structurally invisible to git in any repo, and old run records
+    # are pruned keep-newest-10 (runs serialize on RUN_LOCK, so no dir here
+    # is live). Exhaust (<runDir>/review) is deleted earlier, at the SKILL.md
+    # gate step; this prune is the crash backstop that gives cleanup a
+    # trigger even when a run died before its gate.
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / ".gitignore").write_text("*\n")
+    pruned = prune_run_dirs(state_dir)
+    stage("scratch-hygiene", True,
+          "pruned %d old run dir(s)" % len(pruned) if pruned else "nothing to prune")
+
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
     r = sh([sys.executable, str(HERE / "compile_plan.py"), str(a.plan),
-            "--emit-launch", str(launch), "--emit-args", str(args_file)],
+            "--emit-launch", str(launch), "--emit-args", str(args_file),
+            "--run-dir", str(run_dir.resolve())],
            cwd=root)
     if not stage("compile", r.returncode == 0, r.stderr or r.stdout):
         return bail()

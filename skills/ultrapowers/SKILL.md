@@ -177,6 +177,11 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
 - **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement first.
 - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
 
+Whatever the verdict, delete the run's review exhaust now —
+`rm -rf .claude/ultrapowers/run-<stamp>/review` — the packets are regenerable
+from the BASE/HEAD shas recorded in the report; the run's records
+(transcripts, receipts, launch/args) stay for the viewer and later harvests.
+
 Render the report per `references/report-format.md` plus the **post-merge runbook**
 (`release`/`manual` tasks, verbatim), then present:
 
