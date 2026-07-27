@@ -10,7 +10,7 @@ tripwire (tests/test_superpowers_compat.py) against it, then bump TESTED_AGAINST
 from dataclasses import dataclass, field
 import pathlib
 
-TESTED_AGAINST = "6.1.1"  # latest released superpowers whose contract we verified
+TESTED_AGAINST = "6.2.0"  # latest released superpowers whose contract we verified
 
 MANIFEST = [
     # writing-plans template shape — compile_plan.py + Step-1 shape check parse these
@@ -52,7 +52,9 @@ MANIFEST = [
     {"rel": "skills/subagent-driven-development/SKILL.md",
      "token": "Do not pause to check in with your human partner between tasks",
      "why": "exact sentence plan-markers.md quotes"},
-    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "without explicit user consent",
+    {"rel": "skills/subagent-driven-development/SKILL.md",
+     "any_of": ["without explicit user consent",
+                "partner's explicit consent"],
      "why": "Step 6 fallback relies on the main/master consent red flag"},
     {"rel": "skills/subagent-driven-development/SKILL.md", "token": "spec compliance",
      "why": "unified task-reviewer design is built on this verdict"},
@@ -84,7 +86,8 @@ MANIFEST = [
      "why": "reviewer-prompts.md deliberate-drop ledger names it"},
     # other handoff skills ultrapowers gates on
     {"rel": "skills/finishing-a-development-branch/SKILL.md",
-     "token": "Cannot proceed with merge/PR until tests pass",
+     "any_of": ["Cannot proceed with merge/PR until tests pass",
+                "A green run only proves the tree it ran on"],
      "why": "Step 5 gates the Approve path on this precondition"},
     {"rel": "skills/verification-before-completion/SKILL.md", "token": "Evidence before claims",
      "why": "wave-merge.md + reviewer-prompts.md cite it as the critic's source"},
