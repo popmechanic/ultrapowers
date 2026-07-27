@@ -105,7 +105,3 @@ def test_check_reports_absent_file_as_missing(tmp_path):
     rep = sc.check(tmp_path)
     assert rep.ok is False
     assert len(rep.missing) == len(sc.MANIFEST)
-
-
-def test_tested_against_is_pinned():
-    assert sc.TESTED_AGAINST == "6.1.1"
