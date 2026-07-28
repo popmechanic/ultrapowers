@@ -53,19 +53,35 @@ const LAUNCH_ARGS = { ...PATH_ARGS, testCmd: 'pnpm check' }
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
   testCmd: 'pnpm check', dependencyEdges: ['A -> C'], ...PATH_ARGS }
 
-// The engine-authored span of a dispatched prompt: everything before the first
-// plan-authored block (the task body, the plan's Global Constraints, its
-// Interfaces). Only that span is <pluginRoot>/<runDir>-substituted — plan prose
-// that mentions the literal tokens (the plan that built this feature does) must
-// reach the agent verbatim, so placeholder assertions scope to this span.
-const PLAN_AUTHORED_MARKERS = ['\nTASK:', '\nGLOBAL CONSTRAINTS:', '\nINTERFACES:']
+// Plan-authored literals the running scenario dispatched (task bodies, global
+// constraints). The guard subtracts them, so it covers ALL engine-authored
+// text — including segments appended after the plan blocks, where the FIX
+// ROUND preamble lives (#95: first-marker truncation provably missed it).
+let planAuthoredTexts = []
+
+// The engine-authored span of a dispatched prompt: the prompt minus the
+// plan-authored literals the running scenario registered. Only engine text is
+// <pluginRoot>/<runDir>-substituted — plan prose that quotes the literal
+// tokens must reach the agent verbatim, so token-quoting scenarios register
+// those exact literals; every other scenario leaves the registry empty and
+// the ENTIRE prompt is guarded.
 function engineAuthoredSpan(prompt) {
-  let cut = prompt.length
-  for (const marker of PLAN_AUTHORED_MARKERS) {
-    const i = prompt.indexOf(marker)
-    if (i !== -1 && i < cut) cut = i
-  }
-  return prompt.slice(0, cut)
+  let span = prompt
+  for (const t of planAuthoredTexts) if (t) span = span.split(t).join('')
+  return span
+}
+
+// Guard self-test: engine text placed AFTER the first plan block must stay
+// inside the guarded span.
+{
+  planAuthoredTexts = ['plan body quoting <runDir> verbatim']
+  const probe = 'preamble\nTASK:\nplan body quoting <runDir> verbatim' +
+                '\n\nFIX ROUND — engine text leaking <runDir>'
+  assert(engineAuthoredSpan(probe).includes('<runDir>'),
+    'guard self-test: engine text after the plan blocks stays guarded')
+  assert(!engineAuthoredSpan(probe).includes('plan body quoting'),
+    'guard self-test: registered plan-authored literals are subtracted')
+  planAuthoredTexts = []
 }
 
 function taskIdFromLabel(label) {
@@ -523,6 +539,7 @@ async function scenarioAdversarialDedupe() {
     return undefined
   })
   const FIX_PLAN_PROSE = 'do A — plan prose names <runDir>/review/ verbatim'
+  planAuthoredTexts = [FIX_PLAN_PROSE]
   const waves = [[{ id: 'A', title: 't', body: FIX_PLAN_PROSE, tier: 'standard', review: 'adversarial' }]]
   const r = await runWorkflow({
     agent, args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's' }, budget: undefined,
@@ -536,6 +553,7 @@ async function scenarioAdversarialDedupe() {
   assert(fixPrompt.includes(FIX_PLAN_PROSE),
     'dedupe: the fix-round dispatch leaves plan-authored prose tokens verbatim')
   eq(r.tasks.find((t) => t.task === 'A').status, 'done', 'dedupe: task recovers after the fix')
+  planAuthoredTexts = []
   console.log('scenario adversarial-dedupe: OK')
 }
 
@@ -2107,6 +2125,7 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   // tokens — exactly what a plan about this feature writes. They must survive.
   const PLAN_PROSE = 'do A — the plan text names <runDir>/review/ and <pluginRoot> verbatim'
   const PLAN_CONSTRAINT = 'Engine exhaust lives in <runDir>/review/.'
+  planAuthoredTexts = [PLAN_PROSE, PLAN_CONSTRAINT]
   const waves = [[
     { id: 'A', title: 'py task', body: PLAN_PROSE, tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
     { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
@@ -2158,6 +2177,7 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   assert(prompts['review:A:1'].includes('GLOBAL CONSTRAINTS:\n' + PLAN_CONSTRAINT),
     'plan-authored global constraints keep their literal tokens (review)')
   assert(r.tasks.every((t) => t.status === 'done'), 'bootstrap: all tasks done')
+  planAuthoredTexts = []
   console.log('scenario bootstrap-and-per-task-testcmd: OK')
 }
 
