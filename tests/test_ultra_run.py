@@ -377,3 +377,61 @@ def test_preflight_fails_closed_when_nothing_detected(tmp_path):
     failing = [s for s in receipt["stages"] if not s["ok"]]
     assert failing and failing[-1]["stage"] == "test-command"
     assert "--test-cmd" in failing[-1]["detail"]
+
+
+# --- #97: stage details state the stage's own verdict ---
+
+FAILURE_PHRASINGS = ("not inside a git repository", "Preparing worktree",
+                     "no branch resolvable")
+
+
+def test_green_stages_never_carry_failure_phrasings(tmp_path):
+    # Generic over ALL stages, so stages added by later plans are covered too.
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    for s in receipt["stages"]:
+        if s["ok"]:
+            for phrase in FAILURE_PHRASINGS:
+                assert phrase not in s["detail"], (s["stage"], s["detail"])
+
+
+def test_git_repo_success_detail_is_repo_root(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
+    assert s["detail"] == str(repo.resolve())
+
+
+def test_worktree_probe_success_detail_is_conclusion(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "worktree-probe")
+    assert s["detail"] == "worktree capability verified (probe cut and removed)"
+
+
+def test_compile_success_detail_is_summary_not_json(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "compile")
+    assert not s["detail"].startswith("{")
+    assert "task(s)" in s["detail"] and "wave(s)" in s["detail"]
+    assert (receipt["compile"]["acceptance"] or {}).get("mode", "unmarked") in s["detail"]
+
+
+def test_failure_details_survive_not_a_repo(tmp_path):
+    # The failure path keeps its message — run the driver OUTSIDE any git repo.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "plan.md").write_text("# nothing")
+    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t9"],
+           cwd=plain, check=False)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
+    assert s["ok"] is False
+    assert ("not inside a git repository" in s["detail"]) or ("fatal" in s["detail"])

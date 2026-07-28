@@ -209,9 +209,9 @@ def main(argv=None):
     stages = []
     receipt = {"ok": False, "stamp": stamp, "stages": stages}
 
-    def stage(name, ok, detail=""):
+    def stage(name, ok, success="", failure=""):
         stages.append({"stage": name, "ok": bool(ok),
-                       "detail": str(detail).strip()[-2000:]})
+                       "detail": str(success if ok else failure).strip()[-2000:]})
         return bool(ok)
 
     def bail():
@@ -220,7 +220,8 @@ def main(argv=None):
 
     r = sh(["git", "rev-parse", "--show-toplevel"], cwd=a.repo)
     if not stage("git-repo", r.returncode == 0,
-                 r.stderr or "not inside a git repository"):
+                 success=r.stdout.strip(),
+                 failure=r.stderr or "not inside a git repository"):
         return bail()
     root = Path(r.stdout.strip())
     state_dir = root / ".claude/ultrapowers"
@@ -233,7 +234,9 @@ def main(argv=None):
     wt_ok = r.returncode == 0
     if wt_ok:
         sh(["git", "worktree", "remove", "--force", str(probe_wt)], cwd=root)
-    if not stage("worktree-probe", wt_ok, r.stderr):
+    if not stage("worktree-probe", wt_ok,
+                 success="worktree capability verified (probe cut and removed)",
+                 failure=r.stderr):
         return bail()
 
     # Self-host skew: only meaningful when the target repo IS the plugin repo.
@@ -246,16 +249,20 @@ def main(argv=None):
             shutil.copy2(HARNESSES / "waves.js",
                          root / ".claude/workflows/waves.js")
             stage("engine-skew", True,
-                  "SKEW — repo waves.js copied into .claude/workflows")
-        elif not stage("engine-skew", r.returncode == 0, out or "IN_SYNC"):
+                  success="SKEW — repo waves.js copied into .claude/workflows")
+        elif not stage("engine-skew", r.returncode == 0,
+                       success=out or "IN_SYNC",
+                       failure=out or "skew check failed"):
             return bail()
     else:
-        stage("engine-skew", True, "skipped — not self-hosting")
+        stage("engine-skew", True, success="skipped — not self-hosting")
 
     # Superpowers compatibility: non-zero means a contract token is missing —
     # the orchestrator surfaces the human gate; the driver just fails closed.
     r = sh([sys.executable, str(HERE / "check_superpowers_compat.py")], cwd=root)
-    if not stage("superpowers-compat", r.returncode == 0, r.stdout + r.stderr):
+    if not stage("superpowers-compat", r.returncode == 0,
+                 success="contract verified against the enabled superpowers",
+                 failure=r.stdout + r.stderr):
         return bail()
 
     # Scratch hygiene: the state dir self-ignores (content `*`) so every run
@@ -276,7 +283,7 @@ def main(argv=None):
         failed = [n for n in doomed_names if n not in pruned]
         if failed:
             detail += "; %d removal failed: %s" % (len(failed), ", ".join(failed))
-    stage("scratch-hygiene", True, detail)
+    stage("scratch-hygiene", True, success=detail)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
@@ -284,9 +291,17 @@ def main(argv=None):
             "--emit-launch", str(launch), "--emit-args", str(args_file),
             "--run-dir", str(run_dir.resolve())],
            cwd=root)
-    if not stage("compile", r.returncode == 0, r.stderr or r.stdout):
+    compile_obj, summary = None, ""
+    if r.returncode == 0:
+        compile_obj = json.loads(r.stdout)
+        waves = compile_obj.get("waves") or []
+        mode = (compile_obj.get("acceptance") or {}).get("mode") or "unmarked"
+        summary = "%d task(s) in %d wave(s); acceptance: %s" % (
+            sum(len(w) for w in waves), len(waves), mode)
+    if not stage("compile", r.returncode == 0,
+                 success=summary, failure=r.stderr or r.stdout):
         return bail()
-    receipt["compile"] = json.loads(r.stdout)
+    receipt["compile"] = compile_obj
 
     if a.test_cmd:
         test_cmd, test_src = a.test_cmd, "knob"
@@ -294,9 +309,9 @@ def main(argv=None):
         test_cmd, rule = detect_test_cmd(root)
         test_src = ("detected:" + rule) if test_cmd else None
     if not stage("test-command", bool(test_cmd),
-                 ("%s (%s)" % (test_cmd, test_src)) if test_cmd else
-                 "no test command detected — pass --test-cmd <run-wide suite "
-                 "command>; the gate refuses to run without one"):
+                 success=("%s (%s)" % (test_cmd, test_src)) if test_cmd else "",
+                 failure="no test command detected — pass --test-cmd <run-wide "
+                         "suite command>; the gate refuses to run without one"):
         return bail()
     args_obj = json.loads(args_file.read_text())
     args_obj["testCmd"] = test_cmd
@@ -312,14 +327,19 @@ def main(argv=None):
         shutil.copy2(HARNESSES / fname, wf_dir / fname)
         installed.append(fname)
     if not stage("install", bool(installed),
-                 "installed: " + ", ".join(installed)):
+                 success="installed: " + ", ".join(installed),
+                 failure="no harness manifests found under " + str(HARNESSES)):
         return bail()
 
     r = sh(["bash", str(HERE / "run_lock.sh"), "acquire", stamp], cwd=root)
-    if not stage("lock", r.returncode == 0, r.stderr):
+    if not stage("lock", r.returncode == 0,
+                 success="lock acquired: " + stamp,
+                 failure=r.stderr or r.stdout):
         return bail()
     r = sh(["bash", str(HERE / "run_lock.sh"), "snapshot"], cwd=root)
-    if not stage("snapshot", r.returncode == 0, r.stderr):
+    if not stage("snapshot", r.returncode == 0,
+                 success="checkout snapshot recorded",
+                 failure=r.stderr):
         return bail()
 
     r = sh(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
@@ -328,7 +348,8 @@ def main(argv=None):
         base = r.stdout.strip().split("/", 1)[-1]
     else:  # no remote HEAD (fresh/local repo): the current branch is the base
         base = sh(["git", "branch", "--show-current"], cwd=root).stdout.strip()
-    stage("base-branch", bool(base), base or "no branch resolvable")
+    stage("base-branch", bool(base),
+          success=base, failure="no branch resolvable")
     if not base:
         return bail()
 
