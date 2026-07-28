@@ -2600,3 +2600,22 @@ def test_implementation_files_noise_still_blocks_compile(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode != 0
     assert "unknown files label" in (p.stdout + p.stderr).lower()
+
+
+def test_markerless_files_noise_still_blocks_compile(tmp_path):
+    # The exemption keys on the EXPLICIT **Type:** marker, never on classify()'s
+    # heuristic result: an unknown Files label is itself what empties `writes`,
+    # which is what sends a marker-less task into the gate heuristic. Keying on
+    # the heuristic would let a broken Files block buy its own exemption — the
+    # task would silently drop out of the wave plan and lose overlap coverage.
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# P\n\n**Acceptance:** waived — test\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
+        "### Task 2: B\n\n"
+        "**Files:**\n- Tweak: `cli.py`\n\n"
+        "- [ ] **Step 1: wire the CLI, then run pytest**\n")
+    p = compile_plan_raw(plan)
+    assert p.returncode != 0
+    assert "unknown files label" in (p.stdout + p.stderr).lower()

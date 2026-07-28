@@ -706,6 +706,25 @@ _LABEL_SUGGEST = {"delete": "Modify", "remove": "Modify", "read": "Test",
 _FILES_GLOB_CHARS = "*?["
 
 
+# Dispositions whose Files block is exempt from the strict grammar (#91): a
+# gate/manual/release task never enters overlap inference, so its placeholder
+# Files text ("- Verify: `(none)`") is structurally inert.
+#
+# The exemption keys on the EXPLICIT `**Type:**` marker (`marker_type`) and
+# NEVER on classify()'s heuristic result. An unknown Files label is itself what
+# empties `writes`, and empty writes is what sends classify() into its gate
+# heuristic — so a heuristic-keyed exemption would let a marker-less
+# implementation task with a typo'd label buy its own exemption, compile
+# silently as a "gate", drop out of the wave plan, and lose overlap coverage.
+# A task with no explicit marker stays fully Files-checked.
+FILES_EXEMPT_MARKERS = frozenset({"gate", "manual", "release"})
+
+
+def _files_grammar_exempt(task):
+    """True iff the task carries an EXPLICIT non-implementation Type marker."""
+    return task.get("marker_type") in FILES_EXEMPT_MARKERS
+
+
 def _files_violations(task):
     """Grammar violations for one task's Files block, each with a did-you-mean
     fix. Reads the task's recorded `files_raw` — the verbatim (label, rest) pairs
@@ -805,10 +824,11 @@ def collect_violations(plan_path):
     violations = []
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
-    # Files grammar is disposition-scoped (#91): only implementation tasks
-    # enter overlap inference, so only their Files blocks are checked.
+    # Files grammar is disposition-scoped (#91): only EXPLICITLY marked
+    # gate/manual/release tasks are exempt — see _files_grammar_exempt for why
+    # this must never key on the heuristic classifier.
     for t in tasks:
-        if classify(t)[0] != "implementation":
+        if _files_grammar_exempt(t):
             continue
         violations.extend(_files_violations(t))
     return violations
@@ -1331,13 +1351,15 @@ def main(argv=None):
     # Dispositions resolve BEFORE the Files gate (#91): Files grammar feeds
     # overlap inference, which only implementation tasks enter — a
     # gate/manual/release task's placeholder Files text is structurally
-    # inert and must neither block compile nor warn.
+    # inert and must neither block compile nor warn. The exemption itself keys
+    # on the EXPLICIT marker, not on the stamped (possibly heuristic)
+    # disposition — see _files_grammar_exempt.
     for t in tasks:
         disp, heuristic = classify(t)
         t["disposition"], t["heuristic"] = disp, heuristic
 
     files_violations = [v for t in tasks
-                        if t["disposition"] == "implementation"
+                        if not _files_grammar_exempt(t)
                         for v in _files_violations(t)]
     if files_violations:
         print("compile_plan: Files grammar violation(s) — refusing to compile "

@@ -177,3 +177,17 @@ def test_check_still_flags_files_grammar_on_implementation_tasks(tmp_path):
     proc = run_check(tmp_path, plan)
     assert proc.returncode == 2
     assert "unknown files label" in (proc.stdout + proc.stderr).lower()
+
+
+def test_check_still_flags_files_grammar_on_markerless_tasks(tmp_path):
+    # Marker-less task: the unknown label empties `writes`, which alone would
+    # make classify() call it a heuristic gate. The exemption is explicit-marker
+    # only, so --check must still flag it (a broken Files block never exempts
+    # itself).
+    plan = CANONICAL + (
+        "\n### Task 3: C\n\n"
+        "**Files:**\n- Tweak: `src/c.py`\n\n"
+        "- [ ] **Step 1: wire it up, then run pytest**\n")
+    proc = run_check(tmp_path, plan)
+    assert proc.returncode == 2
+    assert "unknown files label" in (proc.stdout + proc.stderr).lower()
