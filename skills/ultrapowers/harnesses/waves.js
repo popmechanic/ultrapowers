@@ -230,7 +230,7 @@ if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
   'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
-  'setup, merge, and reconcile roles the session repository main checkout, ' +
+  "setup, merge, and reconcile roles the run's dedicated integration worktree, " +
   'which those write-side roles may modify. Review roles (the per-task reviewer ' +
   'and the completeness critic) are READ-ONLY: they read the diff or a ' +
   'detached inspection checkout and never write files, create commits, stage ' +
@@ -343,22 +343,31 @@ const testInstruction = 'run the project test command `' + testCmd + '`'
 // BLOCKED gate is never Approved).
 const INTEGRATION_WT = '.claude/worktrees/wf_' + stamp + '-integration'
 
+// {{BOOTSTRAP_LINE}} for the setup role — ONE sentence shared by both the fresh
+// and the resume prompt. The resume path can also have to create the worktree
+// (the branch survived a redirect, its worktree did not), and a freshly created
+// tree has no dependencies either; "after creating it" makes the install a no-op
+// on the reuse branch of that fork.
+const setupBootstrapLine = bootstrapCmd
+  ? ('WORKTREE SETUP: after creating it, run `' + bootstrapCmd +
+     '` inside ' + INTEGRATION_WT + ' — fresh worktrees have no installed ' +
+     'dependencies, and merge agents run the test suite there. ')
+  : ''
+
 const SETUP_PROMPT = resume
   ? ('You are the setup agent. The EXISTING integration branch ' + integrationBranch +
      ' must already exist; report BLOCKED if it does not, and do not create a new ' +
      'branch. Materialize its dedicated worktree: if ' + INTEGRATION_WT + ' already ' +
      'exists, check out ' + integrationBranch + ' inside it; otherwise run ' +
      'git worktree add ' + INTEGRATION_WT + ' ' + integrationBranch + ' from the ' +
-     'session repo root. Then establish the test baseline inside ' + INTEGRATION_WT +
+     'session repo root. ' + setupBootstrapLine +
+     'Then establish the test baseline inside ' + INTEGRATION_WT +
      ': ' + testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
   : ('You are the setup agent. The engine never mutates the session checkout: ' +
      'create the dedicated integration worktree instead. From the session repo root ' +
      'run: git worktree add ' + INTEGRATION_WT + ' -b ' + integrationBranch +
-     (baseBranch ? (' ' + baseBranch) : '') + '. ' +
-     (bootstrapCmd ? ('WORKTREE SETUP: after creating it, run `' + bootstrapCmd +
-       '` inside ' + INTEGRATION_WT + ' — fresh worktrees have no installed ' +
-       'dependencies, and merge agents run the test suite there. ') : '') +
+     (baseBranch ? (' ' + baseBranch) : '') + '. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT + ': ' +
      testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
