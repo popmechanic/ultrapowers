@@ -139,3 +139,17 @@ def test_digest_tags_synthetic_rows(tmp_path):
     field_line = next(line for line in text.splitlines() if "field" in line)
     assert "_(synthetic)_" in synth_line and "_(abstracted)_" not in synth_line
     assert "_(abstracted)_" in field_line
+
+
+def test_bundle_lookups_expands_tilde(tmp_path, monkeypatch):
+    # The skill doc's own example call passes ~/.claude/ultralearn; an
+    # unexpanded tilde made every bundle read fail closed to 'foreign' and
+    # silently dropped the engine-version stamp (#91 item 2).
+    monkeypatch.setenv("HOME", str(tmp_path))
+    bundle_dir = tmp_path / ".claude/ultralearn/runs/r9"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "bundle.json").write_text(json.dumps(
+        {"origin": "home", "engineVersion": {"epoch": "0.1.12"}}))
+    origin, engine = m.bundle_lookups("~/.claude/ultralearn")
+    assert origin("r9") == "home"
+    assert engine("r9") == "0.1.12"
