@@ -104,7 +104,7 @@ def bundle_lookups(cache_dir):
     engine epoch is None when the bundle or field is missing. Each bundle is read
     at most once. Pass both to merge_findings so ledger entries carry the
     ultrapowers version a finding was observed under, surfaced in the digest."""
-    cache_dir = Path(cache_dir)
+    cache_dir = Path(cache_dir).expanduser()
     cache = {}
 
     def _bundle(run_id):
