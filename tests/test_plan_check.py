@@ -84,6 +84,19 @@ def test_check_is_exclusive_with_emit(tmp_path):
     assert proc.returncode != 0
 
 
+def test_check_is_exclusive_with_run_dir(tmp_path):
+    # The runtime rejects --check with --run-dir; only the emit arm was
+    # tested. This pins the third arm (#95 item 1).
+    plan = tmp_path / "plan.md"
+    plan.write_text(CANONICAL)
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--check", str(plan),
+         "--run-dir", str(tmp_path / "rd")],
+        capture_output=True, text=True)
+    assert proc.returncode != 0
+    assert "--run-dir" in (proc.stdout + proc.stderr)
+
+
 # Prose Interfaces values are valid plan grammar (#85 redirect): they are
 # documentation, and after the tokenizer hardening they are structurally inert.
 PROSE_INTERFACES = """# P

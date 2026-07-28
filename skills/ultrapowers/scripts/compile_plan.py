@@ -1241,7 +1241,8 @@ def main(argv=None):
                     help="authoring-time grammar validation only (#85): print "
                          "every violation with a did-you-mean fix and exit 2, "
                          "or print 'PLAN OK' and exit 0 — never emits waves. "
-                         "Mutually exclusive with --emit-launch/--emit-args.")
+                         "Mutually exclusive with "
+                         "--emit-launch/--emit-args/--run-dir.")
     ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
