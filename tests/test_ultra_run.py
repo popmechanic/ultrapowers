@@ -494,8 +494,8 @@ def test_destructive_bootstrap_cannot_touch_the_session_checkout(tmp_path):
     # The headline regression: under the old design this command deleted the
     # session repo's file; now the mutation is confined to the probe worktree.
     repo = make_repo(tmp_path)
-    args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"bootstrapCmd": "rm plan.md"}))
+    args_path = tmp_path / "args.json"   # outside the repo: the clean-tree
+    args_path.write_text(json.dumps({"bootstrapCmd": "rm plan.md"}))  # assert below is about the PROBE
     r = run_validate_knobs(repo, args_path)
     assert r.returncode != 0
     verdict = json.loads(r.stdout)
