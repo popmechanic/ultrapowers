@@ -367,6 +367,48 @@ async function scenarioPortability() {
   console.log('scenario portability: OK')
 }
 
+// ── Scenario: integration happens in a dedicated worktree (#84) ───────────────
+// The session checkout is never branched, written, or detached by any engine
+// agent: setup cuts .claude/worktrees/wf_<stamp>-integration, merge/reconcile/
+// critic operate inside it, and the critic's verified detach frees the branch
+// for the frozen Approve checkout.
+async function scenarioIntegrationWorktree() {
+  const prompts = {}
+  const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
+  const args = Object.assign({}, baseArgs, {
+    bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .',
+  })
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  const WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
+  // Setup: worktree add, never a main-checkout branch creation.
+  assert(prompts['setup'].includes('git worktree add ' + WT),
+    'intwt: setup cuts the dedicated integration worktree')
+  assert(!prompts['setup'].includes('git checkout -b'),
+    'intwt: setup never creates the branch on the session checkout')
+  assert(!prompts['setup'].includes('session repo main checkout'),
+    'intwt: setup prompt drops the main-checkout framing')
+  // Setup bootstraps the fresh worktree once (merge agents run tests there).
+  assert(prompts['setup'].includes('pip install -e .'),
+    'intwt: setup runs bootstrapCmd inside the integration worktree')
+  // Merge + reconcile-capable prompts name the worktree, not the main checkout.
+  const mergeLabel = Object.keys(prompts).find((l) => /^merge:wave/.test(l))
+  assert(mergeLabel && prompts[mergeLabel].includes(WT),
+    'intwt: merge agent operates inside the integration worktree')
+  assert(!prompts[mergeLabel].includes('session repo main checkout'),
+    'intwt: merge prompt drops the main-checkout framing')
+  // Critic: detach happens INSIDE the worktree — it doubles as the branch release.
+  assert(prompts['integration'].includes(WT),
+    'intwt: completeness critic operates inside the integration worktree')
+  assert(prompts['integration'].includes('git checkout --detach'),
+    'intwt: critic still performs the sha-verified detach')
+  // Reviewers keep their non-isolated read-only discipline untouched (A2).
+  const reviewLabel = Object.keys(prompts).find((l) => /^review:/.test(l))
+  assert(reviewLabel && !prompts[reviewLabel].includes(WT),
+    'intwt: reviewer prompt is not rerouted into the worktree')
+  assert(r.tasks.every((t) => t.status === 'done'), 'intwt: run completes')
+  console.log('scenario integration-worktree: OK')
+}
+
 // ── Scenario 7: per-task review depth — the authored review slot ─────────────
 // The plan's ultraplan `**Review:**` marker, compiled by compile_plan.py into
 // task.review, marks high-stakes tasks 'adversarial' while routine tasks use
@@ -1035,12 +1077,13 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
 }
 
 // ── Scenario: baseBranch threading — setup prompt carries checkout instruction ─
-// workflow.js threads args.baseBranch into the setup prompt so the setup agent
-// checks out the base branch before creating the integration branch. When
-// baseBranch is absent, the sentence must not appear.
+// workflow.js threads args.baseBranch into the setup prompt as the START-POINT
+// of the dedicated integration worktree (#84) — the engine never checks the
+// session tree out. When baseBranch is absent, no start-point is appended.
 async function scenarioBaseBranchThreaded() {
   let setupPromptWith = ''
   let setupPromptWithout = ''
+  const WT_ADD = 'git worktree add .claude/worktrees/wf_' + baseArgs.stamp + '-integration'
 
   // With baseBranch supplied
   const agentWith = makeAgent((label, prompt) => {
@@ -1052,8 +1095,8 @@ async function scenarioBaseBranchThreaded() {
     args: Object.assign({}, baseArgs, { baseBranch: 'main' }),
     budget: undefined,
   })
-  assert(/Check out the base branch main/.test(setupPromptWith),
-    'baseBranch: setup prompt contains "Check out the base branch main" when baseBranch supplied')
+  assert(setupPromptWith.includes(WT_ADD + ' -b ' + baseArgs.integrationBranch + ' main.'),
+    'baseBranch: setup prompt passes baseBranch as the worktree start-point when supplied')
 
   // Without baseBranch
   const agentWithout = makeAgent((label, prompt) => {
@@ -1065,8 +1108,8 @@ async function scenarioBaseBranchThreaded() {
     args: baseArgs,
     budget: undefined,
   })
-  assert(!/Check out the base branch/.test(setupPromptWithout),
-    'baseBranch: setup prompt does NOT contain "Check out the base branch" when baseBranch is absent')
+  assert(setupPromptWithout.includes(WT_ADD + ' -b ' + baseArgs.integrationBranch + '.'),
+    'baseBranch: setup prompt carries NO start-point when baseBranch is absent')
 
   console.log('scenario baseBranch-threaded: OK')
 }
@@ -1804,6 +1847,7 @@ await scenarioArgsThrow()
 await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
+await scenarioIntegrationWorktree()
 await scenarioPerTaskReview()
 await scenarioNoEngineDerivedDepth()
 await scenarioForceUpReviewProfile()

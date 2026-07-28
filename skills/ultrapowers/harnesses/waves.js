@@ -164,8 +164,9 @@ const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()
 // Engine worktrees are cut clean from the integration HEAD: they have no .venv,
 // no node_modules. A polyglot/monorepo repo (e.g. pytest at root + `bun test` in
 // app/) needs its stacks installed in each worktree before the suite can run.
-// The non-isolated roles (setup/merge/reconcile/completeness) operate on the
-// session main checkout, which already has its deps, so they do not run it.
+// Setup also receives it (#84): it cuts the dedicated integration worktree,
+// which is equally fresh, and the merge/reconcile/completeness agents run the
+// suite there — they do not re-run it, setup bootstrapped their tree once.
 const bootstrapCmd = (ARGS && typeof ARGS.bootstrapCmd === 'string' && ARGS.bootstrapCmd.trim()) || undefined
 // acceptance: disposition carried into the report (spec 2026-06-14-sealed-acceptance-gate-fix).
 //   { mode: 'sealed', sealId, sha256 }  — recorded as PENDING_GATE; the SEALED exam is
@@ -333,36 +334,55 @@ const fillPaths = (s) =>
 // testInstruction: args.testCmd is mandatory (driver-stamped: knob or detection).
 const testInstruction = 'run the project test command `' + testCmd + '`'
 
+// The dedicated integration worktree (#84): the engine never mutates the
+// session checkout. Stamp-named — the script knows args.stamp, not the
+// runtime wf_<runId> — and covered by sweep_worktrees.sh's repo-wide wf_*
+// glob at Approve. The completeness critic's sha-verified detach inside it
+// doubles as the branch release the frozen ultra_gate.py --approve
+// checkout needs (a critic that never detached reports BLOCKED, and a
+// BLOCKED gate is never Approved).
+const INTEGRATION_WT = '.claude/worktrees/wf_' + stamp + '-integration'
+
 const SETUP_PROMPT = resume
-  ? ('You are the setup agent on the session repo main checkout. Check out the EXISTING ' +
-     'integration branch ' + integrationBranch + ' — it must already exist; report BLOCKED ' +
-     'if it does not, and do not create a new branch. Then ' +
-     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+  ? ('You are the setup agent. The EXISTING integration branch ' + integrationBranch +
+     ' must already exist; report BLOCKED if it does not, and do not create a new ' +
+     'branch. Materialize its dedicated worktree: if ' + INTEGRATION_WT + ' already ' +
+     'exists, check out ' + integrationBranch + ' inside it; otherwise run ' +
+     'git worktree add ' + INTEGRATION_WT + ' ' + integrationBranch + ' from the ' +
+     'session repo root. Then establish the test baseline inside ' + INTEGRATION_WT +
+     ': ' + testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
-  : ('You are the setup agent on the session repo main checkout. ' +
-     (baseBranch ? ('Check out the base branch ' + baseBranch + ' first. ') : '') +
-     'Create the integration branch: git checkout -b ' + integrationBranch + '. Then ' +
-     'establish the test baseline: ' + testInstruction + ' and record whether it passes. ' +
+  : ('You are the setup agent. The engine never mutates the session checkout: ' +
+     'create the dedicated integration worktree instead. From the session repo root ' +
+     'run: git worktree add ' + INTEGRATION_WT + ' -b ' + integrationBranch +
+     (baseBranch ? (' ' + baseBranch) : '') + '. ' +
+     (bootstrapCmd ? ('WORKTREE SETUP: after creating it, run `' + bootstrapCmd +
+       '` inside ' + INTEGRATION_WT + ' — fresh worktrees have no installed ' +
+       'dependencies, and merge agents run the test suite there. ') : '') +
+     'Then establish the test baseline inside ' + INTEGRATION_WT + ': ' +
+     testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
 const MERGE_PROMPT =
-  'You are the wave merge agent, operating on the session repo main checkout (no ' +
-  'worktree). Check out ' + integrationBranch + '. Before merging, echo git ' +
-  'rev-parse HEAD and git branch --show-current; if the branch is not the ' +
-  'integration branch you were asked to operate on, report BLOCKED and merge ' +
-  'nothing — do not detach or move any other checkout. Merge each reported branch ' +
-  'in the given task-index order (deterministic, so conflicts are reproducible). ' +
-  'After all merges succeed, ' + testInstruction + '. Report MERGED with the final ' +
-  'HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.'
+  'You are the wave merge agent, operating ONLY inside the dedicated integration ' +
+  'worktree at ' + INTEGRATION_WT + ' — never the session main checkout. cd into ' +
+  'it; echo git rev-parse HEAD and git branch --show-current; if the branch is ' +
+  'not the integration branch you were asked to operate on, report BLOCKED and ' +
+  'merge nothing — do not detach or move any other checkout. Merge each reported ' +
+  'branch in the given task-index order (deterministic, so conflicts are ' +
+  'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
+  'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
+  'diff or failing output.'
 
 const RECONCILE_PROMPT =
-  'You are the reconciliation agent on ' + integrationBranch + '. Before merging, ' +
-  'echo git rev-parse HEAD and git branch --show-current; if the branch is not the ' +
-  'integration branch you were asked to operate on, report BLOCKED and merge ' +
-  'nothing — do not detach or move any other checkout. You are given a ' +
-  'merge conflict diff or failing test output. Resolve it on the integration ' +
-  'branch, then ' + testInstruction + '. Report MERGED on success, or ' +
-  'CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
+  'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
+  'inside the dedicated integration worktree at ' + INTEGRATION_WT + ' — never ' +
+  'the session main checkout. cd into it; echo git rev-parse HEAD and git branch ' +
+  '--show-current; if the branch is not the integration branch you were asked to ' +
+  'operate on, report BLOCKED and merge nothing — do not detach or move any ' +
+  'other checkout. You are given a merge conflict diff or failing test output. ' +
+  'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
+  'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
 
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
 // EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
@@ -385,10 +405,16 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
        'treats a non-empty ancestryMisses as BLOCKED. mergedShas: ' +
        JSON.stringify(mergedShas))
     : ''
+  // The two preamble lines are joined (not '\n'-concatenated) so the baked text
+  // reads contiguously in source — the wave-merge.md drift pin matches across
+  // the line break, and a literal \n between them would break that match.
   return (
-  'You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
-  'modify the tree in any way. Your only output is your findings/verdict. If the ' +
-  'work is wrong, report it — never fix it.\n' +
+  ['You are a REVIEW role. Do not write files, create commits, stage changes, or ' +
+   'modify the tree in any way. Your only output is your findings/verdict. If the ' +
+   'work is wrong, report it — never fix it.',
+   'Operate ONLY inside the dedicated integration worktree at ' + INTEGRATION_WT +
+   ' — never the session main checkout; your verified detach there also frees the ' +
+   'integration branch for the gate.'].join('\n') + '\n' +
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'First, put yourself on the exact tree the run produced: the integration HEAD ' +
   'is ' + (mergeHeadSha || '') + '. If that value is empty, report BLOCKED and ' +

@@ -12,26 +12,26 @@ this machinery; the main agent does not author it.
 
 ## Integration Branch
 
-The workflow script cannot run git (no shell or filesystem access), so all git operations are delegated to agents. Before Wave 1 begins, the controller dispatches a **setup agent** whose sole job is to create the integration branch in the main checkout:
+The workflow script cannot run git (no shell or filesystem access), so all git operations are delegated to agents. Before Wave 1 begins, the controller dispatches a **setup agent** whose sole job is to create the integration branch — **in its own dedicated worktree, never in the session checkout**:
 
 ```
-git checkout -b ultra/integration-<timestamp>
+git worktree add .claude/worktrees/wf_<timestamp>-integration -b ultra/integration-<timestamp> [<baseBranch>]
 ```
 
 The timestamp is passed in via `args` at workflow startup — workflows cannot call `Date.now()`. The setup agent confirms the branch name and HEAD sha back to the controller, which stores both for use in subsequent merge steps.
 
-The setup agent first checks out `args.baseBranch` when supplied (the orchestrator derives the repo's default branch in SKILL.md Step 2 — protects against a stale checkout left by a previous run), runs the project test command once to establish the **baseline**, and reports `baselinePassed` / `baselineOutput`. The workflow validates the setup report and **throws** if the integration branch was not created — no task runs against a missing branch. A red baseline does not abort the run; it is logged, recorded in the report's `baseline` field, and surfaced as a judgment call so the pre-merge gate can weigh every later test result against it.
+`args.baseBranch`, when supplied (the orchestrator derives the repo's default branch in SKILL.md Step 2 — protects against a stale checkout left by a previous run), becomes the worktree's start-point rather than a checkout of the session tree. When `args.bootstrapCmd` is supplied, setup runs it once inside the fresh integration worktree — the tree has no installed dependencies, and the merge/reconcile/completeness agents run the test suite there. Setup then runs the project test command once to establish the **baseline**, inside that worktree, and reports `baselinePassed` / `baselineOutput`. The workflow validates the setup report and **throws** if the integration branch was not created — no task runs against a missing branch. A red baseline does not abort the run; it is logged, recorded in the report's `baseline` field, and surfaced as a judgment call so the pre-merge gate can weigh every later test result against it.
 
-The canonical prompt wording (`{{...}}` tokens mark values `waves.js` interpolates at run time; `{{BASE_STEP}}` is the optional base-branch checkout sentence):
+The canonical prompt wording (`{{...}}` tokens mark values `waves.js` interpolates at run time; `{{INTEGRATION_WT}}` is the dedicated integration worktree path, `{{BASE_BRANCH_ARG}}` the optional base-branch start-point argument, and `{{BOOTSTRAP_LINE}}` the optional worktree-setup sentence — both empty when the corresponding arg is absent):
 
 <!-- BAKE:SETUP_PROMPT_CREATE -->
-You are the setup agent on the session repo main checkout. {{BASE_STEP}}Create the integration branch: git checkout -b {{INTEGRATION_BRANCH}}. Then establish the test baseline: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+You are the setup agent. The engine never mutates the session checkout: create the dedicated integration worktree instead. From the session repo root run: git worktree add {{INTEGRATION_WT}} -b {{INTEGRATION_BRANCH}}{{BASE_BRANCH_ARG}}. {{BOOTSTRAP_LINE}}Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
 <!-- /BAKE -->
 
-Under `args.resume` (the deterministic redirect path), setup reuses the existing branch instead:
+Under `args.resume` (the deterministic redirect path), setup reuses the existing branch instead, materializing (or reusing) its worktree:
 
 <!-- BAKE:SETUP_PROMPT_RESUME -->
-You are the setup agent on the session repo main checkout. Check out the EXISTING integration branch {{INTEGRATION_BRANCH}} — it must already exist; report BLOCKED if it does not, and do not create a new branch. Then establish the test baseline: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+You are the setup agent. The EXISTING integration branch {{INTEGRATION_BRANCH}} must already exist; report BLOCKED if it does not, and do not create a new branch. Materialize its dedicated worktree: if {{INTEGRATION_WT}} already exists, check out {{INTEGRATION_BRANCH}} inside it; otherwise run git worktree add {{INTEGRATION_WT}} {{INTEGRATION_BRANCH}} from the session repo root. Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
 <!-- /BAKE -->
 
 ---
@@ -56,15 +56,23 @@ Branches are locked while their worktree exists (worktrees and branches stay unt
 
 Each implementer agent is responsible for self-reporting its branch name and HEAD sha at the end of its run. This self-report is the only mechanism by which the merge step learns the task-to-branch mapping — the script cannot inspect the filesystem to discover branches.
 
+The **dedicated integration worktree** is the one worktree the engine cuts for itself rather than for a task:
+
+```
+<repo>/.claude/worktrees/wf_<stamp>-integration
+```
+
+It is stamp-named, not `wf_<runId>`-named, because the script knows `args.stamp` (the same value that names the run dir) and never sees the runtime `wf_<runId>`. The name still starts with `wf_`, so the repo-wide `wf_*` glob in `sweep_worktrees.sh` covers it at the Step-5 Approve sweep — it is simply not reachable by that script's `--run <runId>` scoping, and it needs no cleanup machinery of its own. Setup creates it, the merge, reconciliation, and completeness-critic agents work inside it, and the completeness critic's sha-verified `git checkout --detach` there releases the integration branch so the frozen `ultra_gate.py --approve` checkout can take it. The session checkout is never branched, written to, or detached by any engine agent.
+
 ---
 
 ## Per-Wave Merge
 
-After all task agents in a wave complete, the controller dispatches a single **merge agent** (non-isolated, running in the main checkout). The merge agent receives the list of `{ task, branch, sha }` entries reported by the wave's implementers.
+After all task agents in a wave complete, the controller dispatches a single **merge agent** (non-isolated, running in the dedicated integration worktree). The merge agent receives the list of `{ task, branch, sha }` entries reported by the wave's implementers.
 
 The merge agent:
 
-1. Checks out the integration branch (`ultra/integration-<timestamp>`).
+1. `cd`s into the integration worktree, already on the integration branch (`ultra/integration-<timestamp>`).
 2. Merges each reported branch in deterministic task-index order (task 0 first, then 1, 2, …). Fixed order makes conflicts reproducible.
 3. After all merges succeed the merge agent runs the project test command —
    `args.testCmd`, which the pre-launch driver always supplies (operator
@@ -75,7 +83,7 @@ The merge agent:
 The canonical prompt wording:
 
 <!-- BAKE:MERGE_PROMPT -->
-You are the wave merge agent, operating on the session repo main checkout (no worktree). Check out {{INTEGRATION_BRANCH}}. Before merging, echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
+You are the wave merge agent, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
 <!-- /BAKE -->
 
 A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred, or reported done without mergeable coordinates) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run when dependency edges were supplied (they decide what downstream work is blocked) or when nothing in the wave actually ran. When `args.edges` was NOT supplied and tasks did run, the workflow cannot know what depends on the lost work — it records the `SKIPPED` merge plus a `blockedWaves` entry ('no mergeable branches and no dependency edges supplied — cascading conservatively') and cascade-blocks later waves.
@@ -89,7 +97,7 @@ On a merge conflict or a failed post-merge test, the controller dispatches a sin
 The canonical prompt wording:
 
 <!-- BAKE:RECONCILE_PROMPT -->
-You are the reconciliation agent on {{INTEGRATION_BRANCH}}. Before merging, echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
+You are the reconciliation agent for {{INTEGRATION_BRANCH}}, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
 <!-- /BAKE -->
 
 Caps and failure handling:
@@ -104,12 +112,13 @@ Caps and failure handling:
 
 ## Integration and Completeness Review
 
-After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `waves.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch from the main checkout (its result populates the report's `tests` field) and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
+After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `waves.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch inside the integration worktree, whose verified detach also frees the integration branch for the frozen Approve checkout (its result populates the report's `tests` field), and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
 The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence; `{{MERGE_HEAD_SHA}}` is `waveBaseSha` — the last wave's `merge.headSha` — interpolated at dispatch, empty if the run recorded no merge HEAD; `{{CANNOT_VERIFY}}` is the CANNOT-VERIFY checklist the per-task reviewers escalated, empty when none were raised):
 
 <!-- BAKE:COMPLETENESS_PROMPT -->
 You are a REVIEW role. Do not write files, create commits, stage changes, or modify the tree in any way. Your only output is your findings/verdict. If the work is wrong, report it — never fix it.
+Operate ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout; your verified detach there also frees the integration branch for the gate.
 {{PLAN_STEP}}First, put yourself on the exact tree the run produced: the integration HEAD is {{MERGE_HEAD_SHA}}. If that value is empty, report BLOCKED and produce no findings — do not guess a tree. Otherwise run git checkout --detach {{MERGE_HEAD_SHA}}, then git rev-parse HEAD and confirm it equals {{MERGE_HEAD_SHA}}; if it does not, report BLOCKED and produce no findings. Only once you are verified on that tree: what plan requirement is unmet? What claim is unverified? What code path is untested? {{TEST_INSTRUCTION}}, then review the integrated result against the original plan. {{CANNOT_VERIFY}}When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; list any constraint the integrated result violates as a blocking gap. List every gap, unverified claim, and untested path. After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in your result (false if you could not confirm it). Read the plan at the provided planPath; for every task reported failed or blocked, check whether its declared Create: paths exist in the tree — list any that are genuinely absent as missing deliverables. For any deliverable that is present and structurally complete but whose behavior the sandbox could not execute, list it under deferredVerification as an object { deliverable, reason, why }, where reason is one of 'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — process boot, device, deploy target), 'external' (an unreachable service/credential/network), or 'manual' (requires human judgment), so the gate can route runtime/external items to an explicit acknowledgement.
 <!-- /BAKE -->
 
