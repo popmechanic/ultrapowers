@@ -113,3 +113,29 @@ def test_bundle_lookups_reads_cache_and_fails_closed(tmp_path):
     # missing bundle: origin fails closed to foreign, epoch is unknown
     assert origin_lookup("missing") == "foreign"
     assert engine_lookup("missing") is None
+
+
+def test_synthetic_verbatim_rejected_abstracted_allowed():
+    # synthetic is non-home → fail-closed redaction, same as foreign.
+    assert m.redact_finding(_finding(evidenceAbstracted=False), "synthetic") is None
+    out = m.redact_finding(_finding(evidenceAbstracted=True, evidence="shape only"),
+                           "synthetic")
+    assert out is not None and out["origin"] == "synthetic"
+
+
+def test_digest_tags_synthetic_rows(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    rows = [
+        m.redact_finding(_finding(title="synth", evidenceAbstracted=True,
+                                  evidence="shape"), "synthetic"),
+        m.redact_finding(_finding(title="field", evidenceAbstracted=True,
+                                  evidence="shape"), "foreign"),
+    ]
+    ledger.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    digest = tmp_path / "digest.md"
+    m.regenerate_digest(ledger, digest)
+    text = digest.read_text()
+    synth_line = next(line for line in text.splitlines() if "synth" in line)
+    field_line = next(line for line in text.splitlines() if "field" in line)
+    assert "_(synthetic)_" in synth_line and "_(abstracted)_" not in synth_line
+    assert "_(abstracted)_" in field_line

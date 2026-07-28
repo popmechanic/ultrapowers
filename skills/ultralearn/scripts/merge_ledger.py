@@ -19,8 +19,10 @@ def finding_id(finding):
 
 def redact_finding(finding, origin, engine_version=None):
     """Return the finding (with id + origin, and engineVersion when known) if
-    safe to commit, else None. Fails closed: any origin other than 'home'
-    requires evidenceAbstracted. engine_version is a plain version string (the
+    safe to commit, else None. Origin is one of "home" | "foreign" |
+    "synthetic" (eval-cell runs; field statistics exclude synthetic rows by
+    construction). Fails closed: any origin other than 'home' commits
+    abstracted findings only. engine_version is a plain version string (the
     bundle's engineVersion.epoch); a None epoch is omitted, not stored as null."""
     if origin != "home" and not finding.get("evidenceAbstracted"):
         return None
@@ -81,7 +83,12 @@ def regenerate_digest(ledger_path, digest_path):
             continue
         lines.append(f"## {lens} ({len(items)})")
         for f in sorted(items, key=lambda x: -(x.get("severity", 0) * (x.get("novelty", 0) + 1))):
-            tag = "" if f.get("origin") == "home" else " _(abstracted)_"
+            if f.get("origin") == "home":
+                tag = ""
+            elif f.get("origin") == "synthetic":
+                tag = " _(synthetic)_"
+            else:
+                tag = " _(abstracted)_"
             ev = f.get("engineVersion")
             vtag = f" _(v{ev})_" if ev else ""
             lines.append(f"- **{f.get('title','')}** — {f.get('implication','')} "
