@@ -11,6 +11,7 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
 from ultra_run import prune_run_dirs  # noqa: E402
+from ultra_run import detect_test_cmd  # noqa: E402
 
 PLAN = (
     "# P\n\n**Acceptance:** waived — test fixture\n\n"
@@ -33,6 +34,7 @@ def make_repo(tmp_path):
     sh(["git", "config", "user.name", "t"], cwd=repo)
     (repo / ".gitignore").write_text(".claude/\n")
     (repo / "plan.md").write_text(PLAN)
+    (repo / "pytest.ini").write_text("[pytest]\n")
     sh(["git", "add", "."], cwd=repo)
     sh(["git", "commit", "-qm", "base"], cwd=repo)
     return repo
@@ -53,7 +55,7 @@ def test_happy_path_receipt(tmp_path):
     assert all(s["ok"] for s in receipt["stages"])
     stage_names = [s["stage"] for s in receipt["stages"]]
     for expected in ("git-repo", "worktree-probe", "engine-skew",
-                     "superpowers-compat", "compile", "install",
+                     "superpowers-compat", "compile", "test-command", "install",
                      "lock", "snapshot"):
         assert expected in stage_names
     run_dir = repo / ".claude/ultrapowers/run-t1"
@@ -75,6 +77,7 @@ def test_happy_path_receipt(tmp_path):
     # probe contract pre-computed for the orchestrator
     assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
     assert receipt["workflowName"] == "ultrapowers-run"
+    assert receipt["testCmd"] == "python3 -m pytest"
 
 
 def test_not_a_git_repo_fails_first_stage(tmp_path):
@@ -307,3 +310,70 @@ def test_prune_run_dirs_keeps_newest_including_a_live_run(tmp_path):
     assert (state / "scratch").is_dir()
     assert (state / "pending-abc123def456").is_dir()
     assert (state / "run-keepme").is_dir()
+
+
+def test_detect_test_cmd_ladder(tmp_path):
+    # Miss: empty repo detects nothing.
+    assert detect_test_cmd(tmp_path) == (None, None)
+    # Each rule, lowest precedence first, then assert higher rules win.
+    (tmp_path / "Cargo.toml").write_text("[package]\n")
+    assert detect_test_cmd(tmp_path) == ("cargo test", "cargo-toml")
+    (tmp_path / "go.mod").write_text("module x\n")
+    assert detect_test_cmd(tmp_path) == ("go test ./...", "go-mod")
+    (tmp_path / "Makefile").write_text("test:\n\ttrue\n")
+    assert detect_test_cmd(tmp_path) == ("make test", "makefile-test")
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "node --test"}}')
+    assert detect_test_cmd(tmp_path) == ("npm test", "package-json-npm")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    assert detect_test_cmd(tmp_path) == ("pnpm test", "package-json-pnpm")
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pyproject-pytest")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pytest-ini")
+
+
+def test_detect_ignores_package_json_without_test_script(tmp_path):
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "x"}}')
+    assert detect_test_cmd(tmp_path) == (None, None)
+    (tmp_path / "package.json").write_text("not json {")
+    assert detect_test_cmd(tmp_path) == (None, None)
+
+
+def test_preflight_stamps_detected_test_cmd(tmp_path):
+    repo = make_repo(tmp_path)  # make_repo now writes pytest.ini — see the note below
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["testCmd"] == "python3 -m pytest"
+    assert receipt["testCmdSource"] == "detected:pytest-ini"
+    assert "bootstrapCmd" not in receipt
+    args = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
+    assert args["testCmd"] == "python3 -m pytest"
+    assert "bootstrapCmd" not in args
+
+
+def test_preflight_knob_wins_and_bootstrap_stamped(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo, "--test-cmd", "make check", "--bootstrap-cmd", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["testCmd"] == "make check"
+    assert receipt["testCmdSource"] == "knob"
+    assert receipt["bootstrapCmd"] == "true"
+    args = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
+    assert args["testCmd"] == "make check"
+    assert args["bootstrapCmd"] == "true"
+
+
+def test_preflight_fails_closed_when_nothing_detected(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "pytest.ini").unlink()
+    sh(["git", "add", "-A"], cwd=repo)
+    sh(["git", "commit", "-qm", "drop pytest.ini"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    failing = [s for s in receipt["stages"] if not s["ok"]]
+    assert failing and failing[-1]["stage"] == "test-command"
+    assert "--test-cmd" in failing[-1]["detail"]

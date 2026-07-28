@@ -40,8 +40,10 @@ const WAVES = [
   [{ id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' }],
 ]
 // pluginRoot/runDir are absolute-path launch args the harness now refuses to
-// launch without (see tests/sim_workflow.mjs for that contract).
+// launch without, and testCmd is mandatory too (#96 — the driver stamps it and
+// the gate reads it back). See tests/sim_workflow.mjs for that contract.
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [['A', 'C']],
+  testCmd: 'pnpm check',
   pluginRoot: '/opt/plug', runDir: '/repo/.claude/ultrapowers/run-sim' }
 
 // Stub every role to success; let each scenario override the integration critic's

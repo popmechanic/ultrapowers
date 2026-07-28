@@ -147,10 +147,17 @@ def main(argv=None):
                       "reason": acc.get("reason", "")}
         acc_pass = True
     else:  # 'suite' and unmarked both bind acceptance to the committed suite
-        test_cmd = (report.get("tests") or {}).get("command") or ""
-        r = sh(["bash", str(HERE / "run_acceptance.sh"), "--suite-gate",
-                "--branch", str(branch), "--run", test_cmd,
-                "--base", run_receipt.get("baseBranch", "main")], cwd=root)
+        test_cmd = run_receipt.get("testCmd") or ""
+        if not test_cmd:
+            return blocked(receipt, "receipt lacks testCmd — the gate derives its "
+                           "inputs from the receipt (#96); re-run the ultra_run.py "
+                           "preflight so testCmd is stamped before gating")
+        cmd = ["bash", str(HERE / "run_acceptance.sh"), "--suite-gate",
+               "--branch", str(branch), "--run", test_cmd,
+               "--base", run_receipt.get("baseBranch", "main")]
+        if run_receipt.get("bootstrapCmd"):
+            cmd += ["--bootstrap", run_receipt["bootstrapCmd"]]
+        r = sh(cmd, cwd=root)
         acceptance = {"disposition": "suite", "exit": r.returncode,
                       "output": (r.stdout + r.stderr)[-4000:]}
         acc_pass = r.returncode == 0

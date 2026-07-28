@@ -710,3 +710,55 @@ def test_legacy_nonpytest_manifest_refusal_names_the_cause(tmp_path):
     assert code == 1
     assert out["passed"] is False
     assert "framework/ranPattern" in out["output"]
+
+
+# --- suite-gate bootstrap + empty-run refusal (issue #96) ---
+
+def _suite_gate(repo, *extra, branch="main"):
+    """Raw --suite-gate invocation: passes `extra` through verbatim so a test can
+    send an EMPTY --run or a --bootstrap, neither of which the `suite_gate`
+    helper above can express. Returns (CompletedProcess, parsed JSON receipt);
+    the receipt is the LAST stdout line because the disarmed-guard warning and
+    other diagnostics may precede it on stderr."""
+    r = sh(["bash", str(RUN), "--suite-gate", "--branch", branch,
+            "--repo", str(repo), *extra], check=False)
+    return r, json.loads(r.stdout.strip().splitlines()[-1])
+
+
+def test_suite_gate_bootstrap_provisions_worktree(tmp_path):
+    """The #96 fix: the suite gate can prepare the exam worktree's environment
+    before running the suite. The run command asserts a file only the bootstrap
+    creates, so a green here proves the bootstrap ran IN the worktree."""
+    repo = make_repo(tmp_path, feature_built=True)
+    r, payload = _suite_gate(repo, "--run", "test -f .deps-installed",
+                             "--bootstrap", "echo ok > .deps-installed")
+    assert payload["passed"] is True and payload["status"] == "OK", payload
+    assert r.returncode == 0
+
+
+def test_suite_gate_without_bootstrap_still_reds_honestly(tmp_path):
+    # The pre-#96 false-BLOCKED shape — the flag is what fixes it. `test -f`
+    # exits 1 and the suite-gate red path classifies non-zero/non-5 exits as
+    # redKind "assertion": an ABSENT bootstrap reds exactly as it does today.
+    repo = make_repo(tmp_path, feature_built=True)
+    r, payload = _suite_gate(repo, "--run", "test -f .deps-installed")
+    assert payload["passed"] is False
+    assert payload["redKind"] == "assertion"
+    assert r.returncode != 0
+
+
+def test_suite_gate_failed_bootstrap_is_env_not_assertion(tmp_path):
+    repo = make_repo(tmp_path, feature_built=True)
+    r, payload = _suite_gate(repo, "--run", "true", "--bootstrap", "exit 7")
+    assert payload["status"] == "EXAM_BOOTSTRAP_ERROR"
+    assert payload["passed"] is False
+    assert "redKind" not in payload
+    assert r.returncode != 0
+
+
+def test_suite_gate_rejects_empty_run(tmp_path):
+    # An empty command evals to exit 0 — a false green the gate must refuse.
+    repo = make_repo(tmp_path, feature_built=True)
+    r, payload = _suite_gate(repo, "--run", "")
+    assert payload["status"] == "ERROR"
+    assert r.returncode == 1

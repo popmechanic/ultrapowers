@@ -48,3 +48,62 @@ def test_dry_run_writes_nothing(tmp_path, monkeypatch, capsys):
     plan = json.loads(out)          # dry-run prints the run plan JSON and exits
     assert plan["fixture"] == "wide" and plan["engineRef"] == "8a030f4"
     assert "startedAt" not in plan  # a plan, not an executed-run row
+
+
+# --------------------------------------------------------------------------- #
+# #96 — deterministic (no-claude) suite-bootstrap cell                        #
+# --------------------------------------------------------------------------- #
+def _stub_engine(tmp_path, script_body):
+    """A fake pinned-engine dir whose run_acceptance.sh is `script_body`."""
+    eng = tmp_path / "engine"
+    scripts = eng / "skills/ultrapowers/scripts"
+    scripts.mkdir(parents=True)
+    ra = scripts / "run_acceptance.sh"
+    ra.write_text(script_body)
+    ra.chmod(0o755)
+    return eng
+
+
+GREEN_JSON = ('#!/bin/bash\n'
+              'echo \'{"sealId": "(suite)", "status": "OK", "passed": true, '
+              '"exitCode": 0, "output": "ok"}\'\n')
+REJECT_BOOTSTRAP = ('#!/bin/bash\n'
+                    'for a in "$@"; do if [ "$a" = "--bootstrap" ]; then '
+                    'echo "unknown argument: --bootstrap" >&2; exit 2; fi; done\n'
+                    'echo \'{"sealId": "(suite)", "status": "OK", "passed": false, '
+                    '"exitCode": 1, "output": "module not found", "redKind": "assertion"}\'\n')
+
+
+def _cell_root(tmp_path):
+    """A miniature repo root: just enough fixture + results tree for the cell."""
+    root = tmp_path / "root"
+    proj = root / "evals/fixtures/jsdeps/project"
+    proj.mkdir(parents=True)
+    (proj / "package.json").write_text('{"name": "x", "scripts": {"test": "node --test"}}')
+    (root / "evals/results").mkdir(parents=True)
+    return root
+
+
+def test_bootstrap_cell_green_engine_counts_zero(tmp_path, monkeypatch):
+    root = _cell_root(tmp_path)
+    eng = _stub_engine(tmp_path, GREEN_JSON)
+    monkeypatch.setattr(ab_runner, "prepare_engine", lambda ref, r: eng)
+    row = ab_runner.run_bootstrap_cell("stub-ref", root)
+    assert row["cell"] == "suite-bootstrap"
+    assert row["falseBlock"] == 0
+    rows = [json.loads(line) for line in
+            (root / "evals/results/runs.jsonl").read_text().splitlines()]
+    assert rows[-1]["engineRef"] == "stub-ref"
+
+
+def test_bootstrap_cell_probes_then_falls_back_without_bootstrap(tmp_path, monkeypatch):
+    # REJECT_BOOTSTRAP: the first invocation exits 2 with "unknown argument:
+    # --bootstrap" on stderr; the cell must retry WITHOUT the flag (that is how
+    # the baseline engine's own gate would run), parse the red JSON, and count
+    # the block.
+    root = _cell_root(tmp_path)
+    eng = _stub_engine(tmp_path, REJECT_BOOTSTRAP)
+    monkeypatch.setattr(ab_runner, "prepare_engine", lambda ref, r: eng)
+    row = ab_runner.run_bootstrap_cell("old-ref", root)
+    assert row["falseBlock"] == 1
+    assert row["status"] == "OK"

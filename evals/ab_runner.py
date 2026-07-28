@@ -428,14 +428,61 @@ def _append_row(plan, row):
 
 
 # --------------------------------------------------------------------------- #
+# #96 — deterministic (no-claude) suite-bootstrap cell                        #
+# --------------------------------------------------------------------------- #
+def run_bootstrap_cell(engine_ref, root):
+    """Deterministic suite-gate bootstrap cell (#96) — no claude, no LLM.
+
+    Reproduces the false-BLOCKED shape: a green JS branch whose deps need
+    `npm install` in the gate's fresh detached worktree. falseBlock=1 when the
+    engine's suite gate reds a genuinely green branch; 0 when it passes.
+    """
+    root = Path(root)
+    engine = prepare_engine(engine_ref, root)
+    ra = Path(engine) / "skills/ultrapowers/scripts/run_acceptance.sh"
+
+    # Materialize the fixture as a self-contained repo with a green `work` branch.
+    workdir = Path(tempfile.mkdtemp(prefix="jsdeps-cell-")) / "repo"
+    shutil.copytree(root / "evals/fixtures/jsdeps/project", workdir)
+    env = _git_env()
+    for cmd in (["git", "init", "-q", "-b", "main"],
+                ["git", "config", "user.email", "eval@ultrapowers.local"],
+                ["git", "config", "user.name", "eval harness"],
+                ["git", "add", "-A"],
+                ["git", "commit", "-qm", "fixture"],
+                ["git", "branch", "work"]):
+        subprocess.run(cmd, cwd=workdir, env=env, check=True, capture_output=True)
+
+    cmd = ["bash", str(ra), "--suite-gate", "--branch", "work",
+           "--run", "npm test", "--base", "main", "--repo", str(workdir),
+           "--bootstrap", "npm install"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if "unknown argument: --bootstrap" in (r.stderr or ""):
+        # Engine predates the flag (the baseline arm): invoke as ITS gate would.
+        r = subprocess.run(cmd[:-2], capture_output=True, text=True)
+    payload = json.loads(r.stdout.strip().splitlines()[-1])
+    row = {"cell": "suite-bootstrap", "engineRef": engine_ref,
+           "falseBlock": 0 if payload.get("passed") is True else 1,
+           "status": payload.get("status"),
+           "at": datetime.now(timezone.utc).isoformat()}
+    _append_row({"rowsPath": str(root / RESULTS / "runs.jsonl")}, row)
+    return row
+
+
+# --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser(
         description="A/B eval runner — one pinned-engine cell per invocation.")
     ap.add_argument("--engine-ref", required=True, help="sha or branch to pin the engine at")
-    ap.add_argument("--engine-label", required=True, choices=["A", "B"])
-    ap.add_argument("--fixture", required=True)
+    ap.add_argument("--engine-label", choices=["A", "B"], default=None,
+                    help="required for the A/B protocol; unused by --cell")
+    ap.add_argument("--fixture", default=None,
+                    help="required for the A/B protocol; unused by --cell")
+    ap.add_argument("--cell", choices=["suite-bootstrap"], default=None,
+                    help="run a deterministic (no-claude) eval cell instead of "
+                         "the headless A/B protocol")
     ap.add_argument("--dry-run", action="store_true",
                     help="print the run plan JSON and exit; write nothing, invoke no claude")
     ap.add_argument("--rerun-of", default=None,
@@ -443,6 +490,15 @@ def main():
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parents[1]
+
+    if args.cell == "suite-bootstrap":
+        row = run_bootstrap_cell(args.engine_ref, root)
+        print(json.dumps(row, indent=2))
+        return
+
+    if not args.engine_label or not args.fixture:
+        ap.error("--engine-label and --fixture are required unless --cell is given")
+
     plan = build_run_plan(args.engine_ref, args.engine_label, args.fixture, root)
     if args.dry_run:
         print(json.dumps(plan, indent=2))

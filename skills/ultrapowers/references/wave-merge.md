@@ -66,7 +66,10 @@ The merge agent:
 
 1. Checks out the integration branch (`ultra/integration-<timestamp>`).
 2. Merges each reported branch in deterministic task-index order (task 0 first, then 1, 2, …). Fixed order makes conflicts reproducible.
-3. After all merges succeed: when no `testCmd` is provided, the merge agent detects and runs the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...). **When `args.testCmd` is supplied, that exact command is used instead** (set it for monorepos or custom runners; baked into `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
+3. After all merges succeed the merge agent runs the project test command —
+   `args.testCmd`, which the pre-launch driver always supplies (operator
+   `--test-cmd` or its deterministic detection ladder; interpolated into
+   `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
 4. Reports back: success with final integration HEAD sha, or failure with the conflict diff or failing test output.
 
 The canonical prompt wording:
