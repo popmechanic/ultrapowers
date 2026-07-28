@@ -4,7 +4,8 @@
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 git-repo check, worktree-capability probe, self-host engine skew, superpowers
 compatibility, plan compile, committed-workflow install, run lock + checkout
-snapshot, and deterministic knob derivation (baseBranch, probe payload).
+snapshot, and deterministic knob derivation (baseBranch from the launched
+checkout, probe payload).
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
 contract: the orchestrator reads it instead of re-deriving the choreography
@@ -342,14 +343,19 @@ def main(argv=None):
                  failure=r.stderr):
         return bail()
 
-    r = sh(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-           cwd=root)
-    if r.returncode == 0 and r.stdout.strip():
-        base = r.stdout.strip().split("/", 1)[-1]
-    else:  # no remote HEAD (fresh/local repo): the current branch is the base
-        base = sh(["git", "branch", "--show-current"], cwd=root).stdout.strip()
+    # The base is the branch the operator launched from — by construction it
+    # contains the plan and the session's context (#100). Repo default only
+    # on detached HEAD, loudly; neither resolvable stays fail-closed.
+    base = sh(["git", "branch", "--show-current"], cwd=root).stdout.strip()
+    base_note = ""
+    if not base:
+        r = sh(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+               cwd=root)
+        if r.returncode == 0 and r.stdout.strip():
+            base = r.stdout.strip().split("/", 1)[-1]
+            base_note = "detached HEAD → fell back to repo default '%s'" % base
     stage("base-branch", bool(base),
-          success=base, failure="no branch resolvable")
+          success=base_note or base, failure="no branch resolvable")
     if not base:
         return bail()
 

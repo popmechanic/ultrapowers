@@ -73,7 +73,9 @@ same args file. The receipt's `llmDerives` list is the checklist:
 - **`bootstrapCmd`** — pass `--bootstrap-cmd` to `ultra_run.py` (per-worktree
   install for fresh worktrees); it is validated, stamped into the receipt, and
   the pre-merge gate provisions its acceptance worktree from it.
-- **`baseBranch`** — derived in `receipt.baseBranch`; pass through.
+- **`baseBranch`** — derived in `receipt.baseBranch` from the launched
+  checkout (the branch the session is on at preflight; repo default only on
+  detached HEAD, noted in the `base-branch` stage detail); pass through.
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
 `bootstrapCmd` no-ops cleanly on the session checkout and each wave entry's

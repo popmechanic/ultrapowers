@@ -435,3 +435,54 @@ def test_failure_details_survive_not_a_repo(tmp_path):
     s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
     assert s["ok"] is False
     assert ("not inside a git repository" in s["detail"]) or ("fatal" in s["detail"])
+
+
+# --- #100: baseBranch derives from the launched checkout ---
+
+def give_remote_head(repo, default="main"):
+    # Synthesize the repo-default pointer a clone would have, no real remote.
+    sh(["git", "update-ref", "refs/remotes/origin/" + default, "HEAD"], cwd=repo)
+    sh(["git", "symbolic-ref", "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/" + default], cwd=repo)
+
+
+def base_stage(receipt):
+    return next(s for s in receipt["stages"] if s["stage"] == "base-branch")
+
+
+def test_feature_branch_launch_wins_over_repo_default(tmp_path):
+    repo = make_repo(tmp_path)
+    give_remote_head(repo)
+    sh(["git", "checkout", "-q", "-b", "feature"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["baseBranch"] == "feature"
+    s = base_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"] == "feature"          # no fallback note on the happy path
+
+
+def test_detached_head_falls_back_to_repo_default_loudly(tmp_path):
+    repo = make_repo(tmp_path)
+    give_remote_head(repo)
+    sh(["git", "checkout", "-q", "--detach"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["baseBranch"] == "main"
+    s = base_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"] == "detached HEAD → fell back to repo default 'main'"
+
+
+def test_detached_head_without_remote_head_fails_closed(tmp_path):
+    repo = make_repo(tmp_path)                 # no remote refs at all
+    sh(["git", "checkout", "-q", "--detach"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    s = base_stage(receipt)
+    assert s["ok"] is False
+    assert s["detail"] == "no branch resolvable"
