@@ -147,8 +147,9 @@ Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
 
 `args.edges` drives dependency blocking (the workflow ignores task `depends_on`) —
 always pass it, or blocking is silently disabled. The headless workflow creates
-the branch, runs/merges/reconciles each wave (16-agent cap), then reviews
-completeness (`references/wave-merge.md`).
+the branch in a dedicated integration worktree — no engine agent ever mutates
+the session checkout — runs/merges/reconciles each wave (16-agent cap), then
+reviews completeness (`references/wave-merge.md`).
 
 **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
 live?"* — on yes:
@@ -173,8 +174,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
 
 Its first act is to restore the session checkout the run started from — the
 pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
-the gate on the integration branch). It then saves the report, runs
-`gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+the gate on the integration branch). With integration in its dedicated
+worktree the engine never moved the checkout, so this restore is normally a
+no-op — it remains the fail-safe against operator-caused drift. It then
+saves the report, runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
 pre-existing operator files pass with a note), and administers acceptance per the
 compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
 `tests.passed` is triage context; the **exit code is the authority**:
