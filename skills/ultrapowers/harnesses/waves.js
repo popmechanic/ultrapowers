@@ -231,11 +231,18 @@ if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
 const GUARD =
   'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
   "setup, merge, and reconcile roles the run's dedicated integration worktree, " +
-  'which those write-side roles may modify. Review roles (the per-task reviewer ' +
-  'and the completeness critic) are READ-ONLY: they read the diff or a ' +
+  'which those write-side roles may modify. The setup role is additionally ' +
+  'authorized to run git worktree add from the session repo root to CREATE that ' +
+  'integration worktree: it necessarily runs before the worktree exists, and ' +
+  'writes only git metadata plus the new worktree directory; creating it is the ' +
+  "setup role's only permitted session-root action. Review roles (the per-task " +
+  'reviewer and the completeness critic) are READ-ONLY: they read the diff or a ' +
   'detached inspection checkout and never write files, create commits, stage ' +
   'changes, check out or switch a branch, or otherwise mutate a working tree — ' +
-  'their only output is their report payload. You operate in ' +
+  'their only output is their report payload; the single sanctioned exception ' +
+  "is the completeness critic's sha-verified git checkout --detach INSIDE the " +
+  "run's dedicated integration worktree, which releases the integration branch " +
+  'for the gate and never touches the session checkout. You operate in ' +
   "the workflow's launch working directory, the session repository; never " +
   'resolve to, check out, or detach a DIFFERENT primary checkout of the same ' +
   "repository — moving the user's primary checkout off its branch is a " +
@@ -336,11 +343,14 @@ const testInstruction = 'run the project test command `' + testCmd + '`'
 
 // The dedicated integration worktree (#84): the engine never mutates the
 // session checkout. Stamp-named — the script knows args.stamp, not the
-// runtime wf_<runId> — and covered by sweep_worktrees.sh's repo-wide wf_*
-// glob at Approve. The completeness critic's sha-verified detach inside it
-// doubles as the branch release the frozen ultra_gate.py --approve
-// checkout needs (a critic that never detached reports BLOCKED, and a
-// BLOCKED gate is never Approved).
+// runtime wf_<runId> — which puts it OUTSIDE the operator's run-scoped
+// teardown sweep (sweep_worktrees.sh --run <wf_runId> globs wf_<runId>-*,
+// which can never match wf_<stamp>-integration). It is removed instead by
+// the ADDITIONAL sweep_worktrees.sh --run wf_<stamp> call SKILL.md issues at
+// Approve/teardown, whose stem glob wf_<stamp>-* does match it. The
+// completeness critic's sha-verified detach inside it doubles as the branch
+// release the frozen ultra_gate.py --approve checkout needs (a critic that
+// never detached reports BLOCKED, and a BLOCKED gate is never Approved).
 const INTEGRATION_WT = '.claude/worktrees/wf_' + stamp + '-integration'
 
 // {{BOOTSTRAP_LINE}} for the setup role — ONE sentence shared by both the fresh

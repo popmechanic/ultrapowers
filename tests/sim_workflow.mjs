@@ -422,6 +422,21 @@ async function scenarioIntegrationWorktree() {
     'intwt: completeness critic operates inside the integration worktree')
   assert(prompts['integration'].includes('git checkout --detach'),
     'intwt: critic still performs the sha-verified detach')
+  // GUARD coherence: the SAFETY block must POSITIVELY authorize the two actions
+  // the choreography requires, or every agent has to choose between its role
+  // prompt and the guard. (a) setup necessarily runs `git worktree add` from the
+  // session repo root, before the worktree exists; (b) the critic's sha-verified
+  // detach happens inside that worktree and is what releases the branch.
+  assert(prompts['setup'].includes(
+    'git worktree add from the session repo root to CREATE that integration worktree'),
+    'intwt/guard: GUARD authorizes setup to create the integration worktree')
+  assert(prompts['setup'].includes('only permitted session-root action'),
+    'intwt/guard: GUARD bounds setup to that single session-root action')
+  assert(prompts['integration'].includes(
+    'the single sanctioned exception is the completeness critic'),
+    'intwt/guard: GUARD sanctions the critic detach as the one read-only exception')
+  assert(prompts['integration'].includes('git checkout --detach INSIDE the run'),
+    'intwt/guard: the sanctioned detach is scoped INSIDE the integration worktree')
   // Reviewers keep their non-isolated read-only discipline untouched (A2).
   const reviewLabel = Object.keys(prompts).find((l) => /^review:/.test(l))
   assert(reviewLabel && !prompts[reviewLabel].includes(WT),
