@@ -207,10 +207,12 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   **kept branch** + HEAD sha from `tasks[]`, its blocking `notes`, any
   completeness finding naming it, and the instruction to pull correct prior work in
   (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
-  waves, relaunch (`resume: true`, same `integrationBranch`), return here.
+  waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
+  spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
+  — never by rebuilding from the report), return here.
 - **Redirect** — append corrective instructions to **only the affected** task
-  bodies and relaunch `ultrapowers-run` with `resume: true` and the **same**
-  `integrationBranch`. Return here.
+  bodies and relaunch `ultrapowers-run` with `resume: true`, the **same**
+  `integrationBranch`, and args spread from the receipt's argsFile (it carries the mandatory `pluginRoot`/`runDir`). Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
