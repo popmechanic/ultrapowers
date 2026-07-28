@@ -486,3 +486,49 @@ def test_detached_head_without_remote_head_fails_closed(tmp_path):
     s = base_stage(receipt)
     assert s["ok"] is False
     assert s["detail"] == "no branch resolvable"
+
+
+# --- #99: bootstrapCmd probed in a throwaway worktree, never the checkout ---
+
+def test_destructive_bootstrap_cannot_touch_the_session_checkout(tmp_path):
+    # The headline regression: under the old design this command deleted the
+    # session repo's file; now the mutation is confined to the probe worktree.
+    repo = make_repo(tmp_path)
+    args_path = tmp_path / "args.json"   # outside the repo: the clean-tree
+    args_path.write_text(json.dumps({"bootstrapCmd": "rm plan.md"}))  # assert below is about the PROBE
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert verdict["treeClean"] is False
+    assert (repo / "plan.md").is_file()          # the session checkout is intact
+    assert sh(["git", "status", "--porcelain"], cwd=repo).stdout == ""
+
+
+def test_noop_bootstrap_leaves_no_probe_worktree_behind(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not list((repo / ".claude/ultrapowers").glob("wt-knob-*"))
+    worktrees = sh(["git", "worktree", "list"], cwd=repo).stdout.strip()
+    assert len(worktrees.splitlines()) == 1      # only the main checkout
+
+
+def test_unborn_head_fails_probe_worktree_creation_closed(tmp_path):
+    # A repo with no commits cannot cut a worktree from HEAD: fail closed,
+    # never fall back to running the command on the session checkout.
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "touch dirt.txt"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "probe worktree" in verdict["detail"]
+    assert not (repo / "dirt.txt").exists()      # the command never ran here

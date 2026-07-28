@@ -78,8 +78,9 @@ same args file. The receipt's `llmDerives` list is the checklist:
   detached HEAD, noted in the `base-branch` stage detail); pass through.
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
-`bootstrapCmd` no-ops cleanly on the session checkout and each wave entry's
-`tier`/`review` value is one the engine accepts.
+`bootstrapCmd` no-ops cleanly in a throwaway worktree (never the session
+checkout; global package caches are outside the boundary) and each wave
+entry's `tier`/`review` value is one the engine accepts.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
