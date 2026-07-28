@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -120,8 +121,11 @@ def sh(cmd, cwd=None):
 def validate_knobs(args_path, root):
     """Pre-launch knob validation, fail-closed (#89): every wave entry's
     tier/review must be a value the engine accepts, and a bootstrapCmd must
-    be a clean no-op on the session checkout — a bad knob otherwise fails
-    inside every worktree simultaneously. Exit 0 = safe."""
+    be a clean no-op when rehearsed in a throwaway worktree (#99) — never on
+    the session checkout, so a wrong draft cannot mutate the operator's tree.
+    The worktree bounds repo-tree mutations only: shared global package
+    caches (pip/npm/uv), outside-the-repo venvs, and network effects escape
+    it. Exit 0 = safe."""
     try:
         knobs = json.loads(Path(args_path).read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -167,15 +171,30 @@ def validate_knobs(args_path, root):
         print(json.dumps({"ok": True, "stage": "knob-validate",
                           "detail": "no bootstrapCmd — nothing to validate"}))
         return 0
-    before = sh(["git", "status", "--porcelain"], cwd=root).stdout
-    proc = subprocess.run(cmd, shell=True, cwd=root,
-                          capture_output=True, text=True)
-    after = sh(["git", "status", "--porcelain"], cwd=root).stdout
-    ok = proc.returncode == 0 and before == after
+    probe_wt = root / ".claude/ultrapowers" / ("wt-knob-%d" % os.getpid())
+    r = sh(["git", "worktree", "add", "--detach", str(probe_wt), "HEAD"],
+           cwd=root)
+    if r.returncode != 0:
+        print(json.dumps({"ok": False, "stage": "knob-validate",
+                          "detail": "cannot cut probe worktree: %s"
+                                    % (r.stderr or r.stdout).strip()}))
+        return 1
+    try:
+        proc = subprocess.run(cmd, shell=True, cwd=probe_wt,
+                              capture_output=True, text=True)
+        # A fresh detached worktree starts clean: any status output IS the
+        # command's own mutation.
+        dirt = sh(["git", "status", "--porcelain"], cwd=probe_wt).stdout
+    finally:
+        rm = sh(["git", "worktree", "remove", "--force", str(probe_wt)],
+                cwd=root)
+    ok = proc.returncode == 0 and not dirt
+    output = (proc.stdout + proc.stderr)[-2000:]
+    if rm.returncode != 0:
+        output += "\n[probe worktree removal failed: %s]" % rm.stderr.strip()
     print(json.dumps({"ok": ok, "stage": "knob-validate",
-                      "exit": proc.returncode,
-                      "treeClean": before == after,
-                      "output": (proc.stdout + proc.stderr)[-2000:]}))
+                      "exit": proc.returncode, "treeClean": not dirt,
+                      "output": output}))
     return 0 if ok else 1
 
 
