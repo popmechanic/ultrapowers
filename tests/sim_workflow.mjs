@@ -304,7 +304,7 @@ async function scenarioArgsString() {
   console.log('scenario args-string: OK')
 }
 
-// ── Scenario 6: portability — testCmd / reviewProfile / tierOverrides via args ─
+// ── Scenario 6: portability — testCmd / reviewProfile via args; legacy tierOverrides ignored ─
 // Defaults stay unchanged when omitted (covered by the other scenarios); here we
 // supply all three and assert each is honored.
 async function scenarioPortability() {
@@ -339,20 +339,20 @@ async function scenarioPortability() {
   const args = Object.assign({}, baseArgs, {
     testCmd: 'make test',
     reviewProfile: 'adversarial',
-    // cheap -> opus (distinct from the haiku default); mostCapable -> haiku to prove
-    // reviewers DON'T follow the override (they must stay opus, override-proof).
+    // Legacy knob (#101, retired): must be silently ignored — no throw, no
+    // model change — like any other unknown top-level args key.
     tierOverrides: { cheap: 'opus', mostCapable: 'haiku' },
   })
   const r = await runWorkflow({ agent, args, budget: undefined })
-  // tierOverrides: A,B are 'cheap' -> overridden to opus; C is 'standard' -> sonnet (unchanged).
-  eq(seen.implModels['A'], 'opus', 'portability: cheap tier overridden to opus (A)')
-  eq(seen.implModels['B'], 'opus', 'portability: cheap tier overridden to opus (B)')
-  eq(seen.implModels['C'], 'sonnet', 'portability: untouched standard tier still sonnet (C)')
-  // OVERRIDE-PROOF reviewers: mostCapable was overridden to haiku, but review and
-  // completeness roles must still run at opus (a weak reviewer false-PASSes).
-  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer stays opus despite mostCapable override (A)')
-  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer stays opus despite mostCapable override (C)')
-  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer stays opus despite mostCapable override')
+  // Retired knob is IGNORED: tiers map via DEFAULT_TIER (cheap->haiku,
+  // standard->sonnet) even though the legacy arg asked for opus/haiku.
+  eq(seen.implModels['A'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (A)')
+  eq(seen.implModels['B'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (B)')
+  eq(seen.implModels['C'], 'sonnet', 'portability: standard tier still sonnet (C)')
+  // Unconditional reviewers: review and completeness roles run at opus always.
+  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer runs at opus, unconditionally (A)')
+  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer runs at opus, unconditionally (C)')
+  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer runs at opus, unconditionally')
   // adversarial: two independent review passes per iteration (all PASS on iter 1 => 2 each).
   assert(seen.reviewCount['A'] === 2, 'portability: adversarial = 2 review passes (A, got ' + seen.reviewCount['A'] + ')')
   assert(seen.reviewCount['C'] === 2, 'portability: adversarial = 2 review passes (C, got ' + seen.reviewCount['C'] + ')')
@@ -555,32 +555,6 @@ async function scenarioAdversarialDedupe() {
   eq(r.tasks.find((t) => t.task === 'A').status, 'done', 'dedupe: task recovers after the fix')
   planAuthoredTexts = []
   console.log('scenario adversarial-dedupe: OK')
-}
-
-// ── Scenario: invalid tierOverrides model must fail loud at launch ────────────
-async function scenarioTierOverrideInvalid() {
-  let threw = false
-  try {
-    await runWorkflow({
-      agent: makeAgent(),
-      args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'gpt-4' } }),
-      budget: undefined,
-    })
-  } catch (e) {
-    threw = /tierOverrides/.test(e.message) && /gpt-4/.test(e.message)
-  }
-  assert(threw, 'tierOverrideInvalid: invalid model alias must throw at launch, before any agent runs')
-  // Unknown override KEY must also throw at launch (documented alongside values).
-  let keyThrew = false
-  try {
-    await runWorkflow({ agent: makeAgent(),
-      args: Object.assign({}, baseArgs, { tierOverrides: { chepa: 'haiku' } }),
-      budget: undefined })
-  } catch (e) {
-    keyThrew = /not a tier/.test(e.message)
-  }
-  assert(keyThrew, 'tierOverride: unknown override key throws at launch')
-  console.log('scenario tier-override-invalid: OK')
 }
 
 // ── Scenario: missing/relative path args must fail loud at launch ─────────────
@@ -1097,14 +1071,12 @@ async function scenarioBaseBranchThreaded() {
   console.log('scenario baseBranch-threaded: OK')
 }
 
-// ── Scenario: reconcile tracks mostCapable tier override ──────────────────────
+// ── Scenario: reconcile tracks the implementer-side mostCapable ───────────────
 // From reviewer-prompts.md: "reconcile is a fixer, not a reviewer, so it tracks
-// the implementer-side mostCapable". With tierOverrides: { mostCapable: 'sonnet' },
-// the reconcile agent must receive opts.model === 'sonnet', while the reviewer
-// must stay 'opus' (OVERRIDE-PROOF).
-// Also asserts setup and merge:wave* labels follow the overridden cheap tier,
-// pinning the last untested clause of the documented tier routing.
-async function scenarioReconcileTierOverride() {
+// the implementer-side mostCapable" — always DEFAULT_TIER.mostCapable (opus).
+// Also asserts setup and merge:wave* follow the cheap tier (haiku), pinning the
+// documented tier routing with no overrides in play (#101).
+async function scenarioReconcileTier() {
   let reconcileModel = null
   let reviewerModel = null
   const modelsByLabel = {}
@@ -1136,19 +1108,19 @@ async function scenarioReconcileTierOverride() {
 
   await runWorkflow({
     agent,
-    args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'sonnet', mostCapable: 'sonnet' } }),
+    args: baseArgs,
     budget: undefined,
   })
 
   assert(reconcileModel !== null, 'reconcileTier: reconcile agent was actually dispatched')
-  eq(reconcileModel, 'sonnet', 'reconcileTier: reconcile uses overridden mostCapable model (sonnet)')
-  eq(reviewerModel, 'opus', 'reconcileTier: reviewer stays opus despite mostCapable override (OVERRIDE-PROOF)')
-  // setup uses cheap tier; merge:wave* uses cheap tier — both must follow the override
-  eq(modelsByLabel['setup'], 'sonnet', 'reconcileTier: setup uses overridden cheap model (sonnet)')
+  eq(reconcileModel, 'opus', 'reconcileTier: reconcile tracks DEFAULT_TIER.mostCapable (opus)')
+  eq(reviewerModel, 'opus', 'reconcileTier: reviewer runs at opus, unconditionally')
+  // setup and merge:wave* follow the cheap tier (haiku).
+  eq(modelsByLabel['setup'], 'haiku', 'reconcileTier: setup uses the cheap model (haiku)')
   const mergeWaveLabel = Object.keys(modelsByLabel).find((l) => /^merge:wave/.test(l))
   assert(mergeWaveLabel !== undefined, 'reconcileTier: a merge:wave* agent was dispatched')
-  eq(modelsByLabel[mergeWaveLabel], 'sonnet', 'reconcileTier: merge:wave* uses overridden cheap model (sonnet) (label=' + mergeWaveLabel + ')')
-  console.log('scenario reconcile-tier-override: OK')
+  eq(modelsByLabel[mergeWaveLabel], 'haiku', 'reconcileTier: merge:wave* uses the cheap model (haiku) (label=' + mergeWaveLabel + ')')
+  console.log('scenario reconcile-tier: OK')
 }
 
 // ── Scenario: done-without-headSha is not mergeable ───────────────────────────
@@ -1837,7 +1809,6 @@ await scenarioNoEngineDerivedDepth()
 await scenarioForceUpReviewProfile()
 await scenarioDerivedWaveLabels()
 await scenarioAdversarialDissent()
-await scenarioTierOverrideInvalid()
 await scenarioMissingPathArgs()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
@@ -1877,7 +1848,7 @@ await scenarioIntraWaveDepAcrossChunks()
 await scenarioMalformedEdgesThrow()
 await scenarioNoEdgesZeroMergeableCascades()
 await scenarioBaseBranchThreaded()
-await scenarioReconcileTierOverride()
+await scenarioReconcileTier()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
 await scenarioFileScope()
@@ -2586,10 +2557,10 @@ async function runEscalationScenario(firstFailure) {
 }
 console.log('scenario escalation-classifier: OK')
 
-// ── Reviewer model is uniformly most-capable and override-proof (#87) ────────
+// ── Reviewer model is uniformly most-capable, unconditionally (#87, #101) ────
 // The sonnet floor is deleted: every per-task reviewer call — lean or
-// adversarial, any tier — uses DEFAULT_TIER.mostCapable, and tierOverrides
-// remapping mostCapable can never weaken it.
+// adversarial, any tier — uses DEFAULT_TIER.mostCapable. A legacy tierOverrides
+// arg in the launch is ignored like any unknown top-level key.
 {
   const models = {}
   const agent = async (prompt, opts) => {
@@ -2615,7 +2586,7 @@ console.log('scenario escalation-classifier: OK')
   eq(models.b, 'opus', 'adversarial task reviewed at opus')
   eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
   eq(models.integration, 'opus', 'completeness critic stays opus')
-  eq(models.a, 'opus', 'override-proof: tierOverrides.mostCapable cannot downgrade the reviewer')
+  eq(models.a, 'opus', 'legacy tierOverrides arg cannot downgrade the reviewer (ignored, #101)')
 }
 console.log('scenario reviewer-model-uniform-override-proof: OK')
 
