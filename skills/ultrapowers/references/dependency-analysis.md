@@ -164,7 +164,6 @@ derived_knobs:
   testCmd: python3 -m pytest tests/ -q
   baseBranch: main
   review: { T1: adversarial, default: lean }
-  tierOverrides: {}
 
 waves:
   wave_0: [T1, T2]
