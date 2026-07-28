@@ -1,0 +1,7 @@
+{
+  "name": "jsdeps-fixture",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": { "test": "node --test" },
+  "dependencies": { "fixture-dep": "file:./deps/fixture-dep" }
+}

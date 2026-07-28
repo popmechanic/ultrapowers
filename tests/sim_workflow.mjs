@@ -46,22 +46,42 @@ const WAVES = [
 // its scripts from, and the run scratch dir engine exhaust is written under. The
 // harness refuses to launch without both, so every scenario's args carry them.
 const PATH_ARGS = { pluginRoot: '/opt/plug', runDir: '/repo/.claude/ultrapowers/run-sim' }
+// #96: args.testCmd is mandatory too — the pre-launch driver stamps it (operator
+// knob or its deterministic detection ladder) and the gate derives tests.command
+// from that same receipt, so every launchable args object carries it.
+const LAUNCH_ARGS = { ...PATH_ARGS, testCmd: 'pnpm check' }
 const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
-  dependencyEdges: ['A -> C'], ...PATH_ARGS }
+  testCmd: 'pnpm check', dependencyEdges: ['A -> C'], ...PATH_ARGS }
 
-// The engine-authored span of a dispatched prompt: everything before the first
-// plan-authored block (the task body, the plan's Global Constraints, its
-// Interfaces). Only that span is <pluginRoot>/<runDir>-substituted — plan prose
-// that mentions the literal tokens (the plan that built this feature does) must
-// reach the agent verbatim, so placeholder assertions scope to this span.
-const PLAN_AUTHORED_MARKERS = ['\nTASK:', '\nGLOBAL CONSTRAINTS:', '\nINTERFACES:']
+// Plan-authored literals the running scenario dispatched (task bodies, global
+// constraints). The guard subtracts them, so it covers ALL engine-authored
+// text — including segments appended after the plan blocks, where the FIX
+// ROUND preamble lives (#95: first-marker truncation provably missed it).
+let planAuthoredTexts = []
+
+// The engine-authored span of a dispatched prompt: the prompt minus the
+// plan-authored literals the running scenario registered. Only engine text is
+// <pluginRoot>/<runDir>-substituted — plan prose that quotes the literal
+// tokens must reach the agent verbatim, so token-quoting scenarios register
+// those exact literals; every other scenario leaves the registry empty and
+// the ENTIRE prompt is guarded.
 function engineAuthoredSpan(prompt) {
-  let cut = prompt.length
-  for (const marker of PLAN_AUTHORED_MARKERS) {
-    const i = prompt.indexOf(marker)
-    if (i !== -1 && i < cut) cut = i
-  }
-  return prompt.slice(0, cut)
+  let span = prompt
+  for (const t of planAuthoredTexts) if (t) span = span.split(t).join('')
+  return span
+}
+
+// Guard self-test: engine text placed AFTER the first plan block must stay
+// inside the guarded span.
+{
+  planAuthoredTexts = ['plan body quoting <runDir> verbatim']
+  const probe = 'preamble\nTASK:\nplan body quoting <runDir> verbatim' +
+                '\n\nFIX ROUND — engine text leaking <runDir>'
+  assert(engineAuthoredSpan(probe).includes('<runDir>'),
+    'guard self-test: engine text after the plan blocks stays guarded')
+  assert(!engineAuthoredSpan(probe).includes('plan body quoting'),
+    'guard self-test: registered plan-authored literals are subtracted')
+  planAuthoredTexts = []
 }
 
 function taskIdFromLabel(label) {
@@ -254,7 +274,7 @@ async function scenarioDuplicateTaskId() {
   ]
   let threw = null
   try {
-    await runWorkflow({ agent: makeAgent(), args: { ...PATH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+    await runWorkflow({ agent: makeAgent(), args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
   } catch (e) { threw = e }
   assert(threw && /duplicate task id "A"/.test(String(threw.message)),
     'dupId: launch must throw naming the duplicated id (got ' + String(threw && threw.message) + ')')
@@ -284,7 +304,7 @@ async function scenarioArgsString() {
   console.log('scenario args-string: OK')
 }
 
-// ── Scenario 6: portability — testCmd / reviewProfile / tierOverrides via args ─
+// ── Scenario 6: portability — testCmd / reviewProfile via args; legacy tierOverrides ignored ─
 // Defaults stay unchanged when omitted (covered by the other scenarios); here we
 // supply all three and assert each is honored.
 async function scenarioPortability() {
@@ -319,20 +339,20 @@ async function scenarioPortability() {
   const args = Object.assign({}, baseArgs, {
     testCmd: 'make test',
     reviewProfile: 'adversarial',
-    // cheap -> opus (distinct from the haiku default); mostCapable -> haiku to prove
-    // reviewers DON'T follow the override (they must stay opus, override-proof).
+    // Legacy knob (#101, retired): must be silently ignored — no throw, no
+    // model change — like any other unknown top-level args key.
     tierOverrides: { cheap: 'opus', mostCapable: 'haiku' },
   })
   const r = await runWorkflow({ agent, args, budget: undefined })
-  // tierOverrides: A,B are 'cheap' -> overridden to opus; C is 'standard' -> sonnet (unchanged).
-  eq(seen.implModels['A'], 'opus', 'portability: cheap tier overridden to opus (A)')
-  eq(seen.implModels['B'], 'opus', 'portability: cheap tier overridden to opus (B)')
-  eq(seen.implModels['C'], 'sonnet', 'portability: untouched standard tier still sonnet (C)')
-  // OVERRIDE-PROOF reviewers: mostCapable was overridden to haiku, but review and
-  // completeness roles must still run at opus (a weak reviewer false-PASSes).
-  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer stays opus despite mostCapable override (A)')
-  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer stays opus despite mostCapable override (C)')
-  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer stays opus despite mostCapable override')
+  // Retired knob is IGNORED: tiers map via DEFAULT_TIER (cheap->haiku,
+  // standard->sonnet) even though the legacy arg asked for opus/haiku.
+  eq(seen.implModels['A'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (A)')
+  eq(seen.implModels['B'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (B)')
+  eq(seen.implModels['C'], 'sonnet', 'portability: standard tier still sonnet (C)')
+  // Unconditional reviewers: review and completeness roles run at opus always.
+  eq(seen.reviewModels['A'], 'opus', 'portability: reviewer runs at opus, unconditionally (A)')
+  eq(seen.reviewModels['C'], 'opus', 'portability: reviewer runs at opus, unconditionally (C)')
+  eq(seen.integrationModel, 'opus', 'portability: completeness reviewer runs at opus, unconditionally')
   // adversarial: two independent review passes per iteration (all PASS on iter 1 => 2 each).
   assert(seen.reviewCount['A'] === 2, 'portability: adversarial = 2 review passes (A, got ' + seen.reviewCount['A'] + ')')
   assert(seen.reviewCount['C'] === 2, 'portability: adversarial = 2 review passes (C, got ' + seen.reviewCount['C'] + ')')
@@ -345,6 +365,122 @@ async function scenarioPortability() {
   assert(!seen.reviewHadCmd, 'portability: testCmd NOT threaded into reviewer dispatch (read-only role)')
   assert(r.tasks.every((t) => t.status === 'done'), 'portability: all tasks done')
   console.log('scenario portability: OK')
+}
+
+// ── Scenario: integration happens in a dedicated worktree (#84) ───────────────
+// The session checkout is never branched, written, or detached by any engine
+// agent: setup cuts .claude/worktrees/wf_<stamp>-integration, merge/reconcile/
+// critic operate inside it, and the critic's verified detach frees the branch
+// for the frozen Approve checkout.
+async function scenarioIntegrationWorktree() {
+  const BOOTSTRAP = 'python3 -m venv .venv && .venv/bin/pip install -e .'
+  const prompts = {}
+  // A wave-1 CONFLICT so the reconcile role is actually dispatched and its
+  // prompt can be asserted on (it is otherwise unreachable in a clean run).
+  const agent = makeAgent((label, prompt) => {
+    prompts[label] = prompt
+    if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
+    if (label.startsWith('reconcile:')) return { status: 'MERGED', headSha: 'reconciled-sha' }
+    return undefined
+  })
+  const args = Object.assign({}, baseArgs, { bootstrapCmd: BOOTSTRAP })
+  const r = await runWorkflow({ agent, args, budget: undefined })
+  const WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
+  // No write-side role may be pointed at the session main checkout — neither by
+  // its own prompt body NOR by the GUARD's carve-out sentence, which used to
+  // hand setup/merge/reconcile standing permission to modify it. These assert on
+  // the FULL dispatched prompt (GUARD included), so a carve-out that regrows in
+  // either copy fails here.
+  const noMainCheckout = (label) => {
+    assert(!prompts[label].includes('session repo main checkout'),
+      'intwt: ' + label + ' prompt drops the main-checkout framing')
+    assert(!prompts[label].includes('main checkout, which those write-side roles may modify'),
+      'intwt: ' + label + ' prompt (GUARD included) grants no main-checkout write permission')
+  }
+  // Setup: worktree add, never a main-checkout branch creation.
+  assert(prompts['setup'].includes('git worktree add ' + WT),
+    'intwt: setup cuts the dedicated integration worktree')
+  assert(!prompts['setup'].includes('git checkout -b'),
+    'intwt: setup never creates the branch on the session checkout')
+  noMainCheckout('setup')
+  // Setup bootstraps the fresh worktree once (merge agents run tests there).
+  assert(prompts['setup'].includes('pip install -e .'),
+    'intwt: setup runs bootstrapCmd inside the integration worktree')
+  // Merge names the worktree, not the main checkout.
+  const mergeLabel = Object.keys(prompts).find((l) => /^merge:wave/.test(l))
+  assert(mergeLabel && prompts[mergeLabel].includes(WT),
+    'intwt: merge agent operates inside the integration worktree')
+  noMainCheckout(mergeLabel)
+  // Reconcile is write-side too: it resolves conflicts on the integration branch.
+  const reconcileLabel = Object.keys(prompts).find((l) => /^reconcile:/.test(l))
+  assert(reconcileLabel, 'intwt: a reconcile agent was actually dispatched')
+  assert(prompts[reconcileLabel].includes(WT),
+    'intwt: reconcile agent operates inside the integration worktree')
+  noMainCheckout(reconcileLabel)
+  // Critic: detach happens INSIDE the worktree — it doubles as the branch release.
+  assert(prompts['integration'].includes(WT),
+    'intwt: completeness critic operates inside the integration worktree')
+  assert(prompts['integration'].includes('git checkout --detach'),
+    'intwt: critic still performs the sha-verified detach')
+  // Naming the worktree is not standing in it. In the live shakedown the critic
+  // followed this prompt and ran `git checkout --detach` in the SESSION MAIN
+  // CHECKOUT, because nothing told it to cd first. The bare detach imperative
+  // must be unreachable without the cd, so pin both the instruction and its
+  // position ahead of the detach.
+  assert(/cd into it/.test(prompts['integration']),
+    'intwt: critic is told to cd into the integration worktree before any git command')
+  // 'run git checkout --detach' is the ROLE BODY's imperative (the GUARD's own
+  // mention reads '...git checkout --detach INSIDE the run...'), so this pins
+  // ordering inside the completeness prompt rather than against the guard.
+  assert(prompts['integration'].indexOf('run git checkout --detach') > -1 &&
+    prompts['integration'].indexOf('cd into it') <
+      prompts['integration'].indexOf('run git checkout --detach'),
+    'intwt: the cd instruction precedes the detach imperative')
+  // GUARD coherence: the SAFETY block must POSITIVELY authorize the two actions
+  // the choreography requires, or every agent has to choose between its role
+  // prompt and the guard. (a) setup necessarily runs `git worktree add` from the
+  // session repo root, before the worktree exists; (b) the critic's sha-verified
+  // detach happens inside that worktree and is what releases the branch.
+  assert(prompts['setup'].includes(
+    'git worktree add from the session repo root to CREATE that integration worktree'),
+    'intwt/guard: GUARD authorizes setup to create the integration worktree')
+  assert(prompts['setup'].includes('only permitted session-root action'),
+    'intwt/guard: GUARD bounds setup to that single session-root action')
+  assert(prompts['integration'].includes(
+    'the single sanctioned exception is the completeness critic'),
+    'intwt/guard: GUARD sanctions the critic detach as the one read-only exception')
+  assert(prompts['integration'].includes('git checkout --detach INSIDE the run'),
+    'intwt/guard: the sanctioned detach is scoped INSIDE the integration worktree')
+  // (c) The GUARD's LOCATION clause must list the critic among the roles allowed
+  // to operate in that worktree at all — otherwise the role prompt sends it
+  // somewhere the guard's opening sentence never permits it to stand.
+  assert(prompts['integration'].includes(
+    'setup, merge, and reconcile roles and the completeness critic'),
+    'intwt/guard: GUARD location clause permits the critic in the integration worktree')
+  // Reviewers keep their non-isolated read-only discipline untouched (A2).
+  const reviewLabel = Object.keys(prompts).find((l) => /^review:/.test(l))
+  assert(reviewLabel && !prompts[reviewLabel].includes(WT),
+    'intwt: reviewer prompt is not rerouted into the worktree')
+  assert(r.tasks.every((t) => t.status === 'done'), 'intwt: run completes')
+
+  // Resume: the branch survives a redirect, its worktree may not. When resume
+  // setup has to CREATE the worktree it is just as fresh as the initial one, so
+  // it carries the same WORKTREE SETUP sentence.
+  let resumeSetup = ''
+  const rr = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'setup') { resumeSetup = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { resume: true, bootstrapCmd: BOOTSTRAP }),
+    budget: undefined,
+  })
+  assert(resumeSetup.includes('git worktree add ' + WT + ' ' + baseArgs.integrationBranch),
+    'intwt/resume: setup materializes the worktree for the existing branch')
+  assert(resumeSetup.includes('WORKTREE SETUP') && resumeSetup.includes('pip install -e .'),
+    'intwt/resume: a worktree setup had to create carries the bootstrap command')
+  assert(rr.tasks.every((t) => t.status === 'done'), 'intwt/resume: run completes')
+  console.log('scenario integration-worktree: OK')
 }
 
 // ── Scenario 7: per-task review depth — the authored review slot ─────────────
@@ -375,7 +511,7 @@ async function scenarioPerTaskReview() {
     { id: 'B', title: 'routine', body: 'do B', tier: 'cheap' }, // no review field -> run default
   ]]
   // No global reviewProfile -> run default is 'lean'. A opts into adversarial.
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }
   const r = await runWorkflow({ agent, args, budget: undefined })
   assert(reviewCount['A'] === 2, 'per-task: A (review=adversarial) gets 2 passes (got ' + reviewCount['A'] + ')')
   assert(reviewCount['B'] === 1, 'per-task: B (default lean) gets 1 pass (got ' + reviewCount['B'] + ')')
@@ -406,7 +542,7 @@ async function scenarioNoEngineDerivedDepth() {
     // same risk-looking path, but explicitly authored lean — also stays lean.
     { id: 'L', title: 'Auth cleanup', body: 'build it', files: ['src/auth/login.py'], tier: 'cheap', review: 'lean' },
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   const r = await runWorkflow({ agent, args, budget: undefined })
   assert(reviewCount['R'] === 1, 'no-engine-derived: unmarked risk-looking task stays lean/1 (got ' + reviewCount['R'] + ')')
   assert(reviewCount['L'] === 1, 'no-engine-derived: explicit lean on risk-looking path stays lean/1 (got ' + reviewCount['L'] + ')')
@@ -431,7 +567,7 @@ async function scenarioForceUpReviewProfile() {
   const waves = [[
     { id: 'L', title: 'routine', body: 'build it', tier: 'cheap', review: 'lean' },
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [], reviewProfile: 'adversarial' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [], reviewProfile: 'adversarial' }
   const r = await runWorkflow({ agent, args, budget: undefined })
   assert(reviewCount['L'] === 2, 'force-up: reviewProfile adversarial raises an authored-lean task to 2 passes (got ' + reviewCount['L'] + ')')
   assert(r.tasks.every((t) => t.status === 'done'), 'force-up: all done')
@@ -453,7 +589,7 @@ async function scenarioDerivedWaveLabels() {
      { id: '5', title: 'Auth module', body: 'b', tier: 'cheap' }],
     [{ id: '6', title: 'Integration server', body: 'b', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   await runWorkflow({ agent: makeAgent(), args, phase: (t) => phases.push(t),
     budget: { total: null, spent: () => 0, remaining: () => Infinity } })
   assert(phases.includes('Data layer + scaffold'), 'fallback: single-task wave → its title (got ' + JSON.stringify(phases) + ')')
@@ -494,7 +630,7 @@ async function scenarioAdversarialDissent() {
     throw new Error('unexpected agent label: ' + label)
   }
   const waves = [[{ id: 'A', title: 't', body: 'do A', tier: 'standard', review: 'adversarial' }]]
-  const r = await runWorkflow({ agent, args: { ...PATH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
+  const r = await runWorkflow({ agent, args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }, budget: undefined })
   const a = r.tasks.find((t) => t.task === 'A')
   eq(a.status, 'done', 'dissent: A recovers after the fix')
   eq(a.reviewVerdict, 'fixed', "dissent: second reviewer's blocker drove a fix round")
@@ -519,9 +655,10 @@ async function scenarioAdversarialDedupe() {
     return undefined
   })
   const FIX_PLAN_PROSE = 'do A — plan prose names <runDir>/review/ verbatim'
+  planAuthoredTexts = [FIX_PLAN_PROSE]
   const waves = [[{ id: 'A', title: 't', body: FIX_PLAN_PROSE, tier: 'standard', review: 'adversarial' }]]
   const r = await runWorkflow({
-    agent, args: { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's' }, budget: undefined,
+    agent, args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's' }, budget: undefined,
   })
   const count = (fixPrompt.match(/missing null check/g) || []).length
   eq(count, 1, 'dedupe: identical findings from both reviewers appear once in the fix prompt')
@@ -532,33 +669,8 @@ async function scenarioAdversarialDedupe() {
   assert(fixPrompt.includes(FIX_PLAN_PROSE),
     'dedupe: the fix-round dispatch leaves plan-authored prose tokens verbatim')
   eq(r.tasks.find((t) => t.task === 'A').status, 'done', 'dedupe: task recovers after the fix')
+  planAuthoredTexts = []
   console.log('scenario adversarial-dedupe: OK')
-}
-
-// ── Scenario: invalid tierOverrides model must fail loud at launch ────────────
-async function scenarioTierOverrideInvalid() {
-  let threw = false
-  try {
-    await runWorkflow({
-      agent: makeAgent(),
-      args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'gpt-4' } }),
-      budget: undefined,
-    })
-  } catch (e) {
-    threw = /tierOverrides/.test(e.message) && /gpt-4/.test(e.message)
-  }
-  assert(threw, 'tierOverrideInvalid: invalid model alias must throw at launch, before any agent runs')
-  // Unknown override KEY must also throw at launch (documented alongside values).
-  let keyThrew = false
-  try {
-    await runWorkflow({ agent: makeAgent(),
-      args: Object.assign({}, baseArgs, { tierOverrides: { chepa: 'haiku' } }),
-      budget: undefined })
-  } catch (e) {
-    keyThrew = /not a tier/.test(e.message)
-  }
-  assert(keyThrew, 'tierOverride: unknown override key throws at launch')
-  console.log('scenario tier-override-invalid: OK')
 }
 
 // ── Scenario: missing/relative path args must fail loud at launch ─────────────
@@ -797,7 +909,7 @@ async function scenarioResumeRequiresBranch() {
   try {
     await runWorkflow({
       agent: makeAgent(),
-      args: { ...PATH_ARGS, waves: WAVES, stamp: 'sim', resume: true },
+      args: { ...LAUNCH_ARGS, waves: WAVES, stamp: 'sim', resume: true },
       budget: undefined,
     })
   } catch (e) {
@@ -817,7 +929,7 @@ async function scenarioAgentThrowDegrades() {
       { id: 'Y', title: 'sibling task', body: 'task Y', tier: 'cheap' },
     ],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'impl:X') throw new Error('engine fault: schema mismatch')
@@ -843,7 +955,7 @@ async function scenarioMergedWithoutHeadSha() {
   const waves = [
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label.startsWith('merge:')) return { status: 'MERGED' } // no headSha
@@ -895,7 +1007,7 @@ async function scenarioDependentBlockedByFailedTask() {
     ],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves,
     integrationBranch: 'ultra/integration-sim',
     stamp: 'sim',
@@ -934,7 +1046,7 @@ async function scenarioDependentBlockedByFailedTask() {
 async function scenarioChunkCap() {
   const tasks = Array.from({ length: 17 }, (_, i) =>
     ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
-  const args = { ...PATH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const batchSizes = []
   const parallel = (thunks) => { batchSizes.push(thunks.length); return Promise.all(thunks.map((t) => t())) }
   const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined, parallel })
@@ -959,7 +1071,7 @@ async function scenarioTransitiveDepBlock() {
       { id: 'Y', title: 'task Y', body: 'do Y', tier: 'cheap' },
     ],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B'], ['B', 'C']] }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -997,7 +1109,7 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
     [{ id: 'Z', title: 'task Z', body: 'do Z', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => {
@@ -1039,12 +1151,13 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
 }
 
 // ── Scenario: baseBranch threading — setup prompt carries checkout instruction ─
-// workflow.js threads args.baseBranch into the setup prompt so the setup agent
-// checks out the base branch before creating the integration branch. When
-// baseBranch is absent, the sentence must not appear.
+// workflow.js threads args.baseBranch into the setup prompt as the START-POINT
+// of the dedicated integration worktree (#84) — the engine never checks the
+// session tree out. When baseBranch is absent, no start-point is appended.
 async function scenarioBaseBranchThreaded() {
   let setupPromptWith = ''
   let setupPromptWithout = ''
+  const WT_ADD = 'git worktree add .claude/worktrees/wf_' + baseArgs.stamp + '-integration'
 
   // With baseBranch supplied
   const agentWith = makeAgent((label, prompt) => {
@@ -1056,8 +1169,8 @@ async function scenarioBaseBranchThreaded() {
     args: Object.assign({}, baseArgs, { baseBranch: 'main' }),
     budget: undefined,
   })
-  assert(/Check out the base branch main/.test(setupPromptWith),
-    'baseBranch: setup prompt contains "Check out the base branch main" when baseBranch supplied')
+  assert(setupPromptWith.includes(WT_ADD + ' -b ' + baseArgs.integrationBranch + ' main.'),
+    'baseBranch: setup prompt passes baseBranch as the worktree start-point when supplied')
 
   // Without baseBranch
   const agentWithout = makeAgent((label, prompt) => {
@@ -1069,20 +1182,18 @@ async function scenarioBaseBranchThreaded() {
     args: baseArgs,
     budget: undefined,
   })
-  assert(!/Check out the base branch/.test(setupPromptWithout),
-    'baseBranch: setup prompt does NOT contain "Check out the base branch" when baseBranch is absent')
+  assert(setupPromptWithout.includes(WT_ADD + ' -b ' + baseArgs.integrationBranch + '.'),
+    'baseBranch: setup prompt carries NO start-point when baseBranch is absent')
 
   console.log('scenario baseBranch-threaded: OK')
 }
 
-// ── Scenario: reconcile tracks mostCapable tier override ──────────────────────
+// ── Scenario: reconcile tracks the implementer-side mostCapable ───────────────
 // From reviewer-prompts.md: "reconcile is a fixer, not a reviewer, so it tracks
-// the implementer-side mostCapable". With tierOverrides: { mostCapable: 'sonnet' },
-// the reconcile agent must receive opts.model === 'sonnet', while the reviewer
-// must stay 'opus' (OVERRIDE-PROOF).
-// Also asserts setup and merge:wave* labels follow the overridden cheap tier,
-// pinning the last untested clause of the documented tier routing.
-async function scenarioReconcileTierOverride() {
+// the implementer-side mostCapable" — always DEFAULT_TIER.mostCapable (opus).
+// Also asserts setup and merge:wave* follow the cheap tier (haiku), pinning the
+// documented tier routing with no overrides in play (#101).
+async function scenarioReconcileTier() {
   let reconcileModel = null
   let reviewerModel = null
   const modelsByLabel = {}
@@ -1114,19 +1225,19 @@ async function scenarioReconcileTierOverride() {
 
   await runWorkflow({
     agent,
-    args: Object.assign({}, baseArgs, { tierOverrides: { cheap: 'sonnet', mostCapable: 'sonnet' } }),
+    args: baseArgs,
     budget: undefined,
   })
 
   assert(reconcileModel !== null, 'reconcileTier: reconcile agent was actually dispatched')
-  eq(reconcileModel, 'sonnet', 'reconcileTier: reconcile uses overridden mostCapable model (sonnet)')
-  eq(reviewerModel, 'opus', 'reconcileTier: reviewer stays opus despite mostCapable override (OVERRIDE-PROOF)')
-  // setup uses cheap tier; merge:wave* uses cheap tier — both must follow the override
-  eq(modelsByLabel['setup'], 'sonnet', 'reconcileTier: setup uses overridden cheap model (sonnet)')
+  eq(reconcileModel, 'opus', 'reconcileTier: reconcile tracks DEFAULT_TIER.mostCapable (opus)')
+  eq(reviewerModel, 'opus', 'reconcileTier: reviewer runs at opus, unconditionally')
+  // setup and merge:wave* follow the cheap tier (haiku).
+  eq(modelsByLabel['setup'], 'haiku', 'reconcileTier: setup uses the cheap model (haiku)')
   const mergeWaveLabel = Object.keys(modelsByLabel).find((l) => /^merge:wave/.test(l))
   assert(mergeWaveLabel !== undefined, 'reconcileTier: a merge:wave* agent was dispatched')
-  eq(modelsByLabel[mergeWaveLabel], 'sonnet', 'reconcileTier: merge:wave* uses overridden cheap model (sonnet) (label=' + mergeWaveLabel + ')')
-  console.log('scenario reconcile-tier-override: OK')
+  eq(modelsByLabel[mergeWaveLabel], 'haiku', 'reconcileTier: merge:wave* uses the cheap model (haiku) (label=' + mergeWaveLabel + ')')
+  console.log('scenario reconcile-tier: OK')
 }
 
 // ── Scenario: done-without-headSha is not mergeable ───────────────────────────
@@ -1139,7 +1250,7 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
       { id: 'G', title: 'good task', body: 'do G', tier: 'cheap' },
     ],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => {
       if (label.startsWith('review:')) reviewed.add(taskIdFromLabel(label))
@@ -1208,7 +1319,7 @@ async function scenarioNoEdgesZeroMergeableCascades() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   // NO edges supplied
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1237,7 +1348,7 @@ async function scenarioNoEdgesZeroMergeableCascades() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args2 = { ...PATH_ARGS, waves: waves2, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [] }
+  const args2 = { ...LAUNCH_ARGS, waves: waves2, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [] }
   const r2 = await runWorkflow({
     agent: makeAgent((label) => {
       if (label.startsWith('impl:') || label.startsWith('fix:')) {
@@ -1271,7 +1382,7 @@ async function scenarioLostDoneBlocksDependents() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const argsA = { ...PATH_ARGS, waves: wavesA, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const argsA = { ...LAUNCH_ARGS, waves: wavesA, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                   edges: [['A', 'B']] }
   const rA = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1297,7 +1408,7 @@ async function scenarioLostDoneBlocksDependents() {
   // This test FAILS before Fix B (the sweep ran only after all chunks).
   const tasks17 = Array.from({ length: 17 }, (_, i) =>
     ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
-  const argsB = { ...PATH_ARGS, waves: [tasks17], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const argsB = { ...LAUNCH_ARGS, waves: [tasks17], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                   edges: [['T0', 'T16']] }
   const implCalledB = new Set()
   const rB = await runWorkflow({
@@ -1345,7 +1456,7 @@ async function scenarioMidRunBudgetDeferral() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const implDispatched = []
 
   const r = await runWorkflow({
@@ -1386,7 +1497,7 @@ async function scenarioMidRunBudgetDeferral() {
 async function scenarioIntraWaveDepAcrossChunks() {
   const tasks = Array.from({ length: 17 }, (_, i) =>
     ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
-  const args = { ...PATH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['T0', 'T16']] }
   const implCalled = new Set()
   const r = await runWorkflow({
@@ -1414,7 +1525,7 @@ async function scenarioTypoReviewAndUnknownBaseline() {
   const waves = [
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'opus', review: 'agressive' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'setup') {
@@ -1444,7 +1555,7 @@ async function scenarioTypoReviewAndUnknownBaseline() {
       }
       return undefined
     }),
-    args: { ...PATH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
             integrationBranch: 'ultra/integration-sim', stamp: 'sim' },
     budget: undefined,
   })
@@ -1458,7 +1569,7 @@ async function scenarioTypoReviewAndUnknownBaseline() {
 async function scenarioFixRoundLostCoordinates() {
   let reviewCount = 0
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label.startsWith('review:A')) {
@@ -1487,7 +1598,7 @@ async function scenarioUnboundEdgeEndpointsSurface() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['ghost', 'B']] }
   const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
   assert(r.judgmentCalls.some((j) => /ghost/.test(j) && /unbound|not in this run/.test(j)),
@@ -1504,7 +1615,7 @@ async function scenarioSameWaveEdgeSurfaces() {
     { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
     { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
   const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
   assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /share a wave/.test(j) && /chunk/.test(j)),
@@ -1516,7 +1627,7 @@ async function scenarioSameWaveEdgeSurfaces() {
 async function scenarioBudgetDeferralKeepsJudgmentCalls() {
   const r = await runWorkflow({
     agent: makeAgent(),
-    args: { ...PATH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
             integrationBranch: 'ultra/integration-sim', stamp: 'sim',
             edges: [['ghost', 'A']] },
     budget: { total: 100, remaining: 0 },
@@ -1532,7 +1643,7 @@ async function scenarioBudgetDeferralKeepsJudgmentCalls() {
 async function scenarioMergeThrowContained() {
   let reconciled = false
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label.startsWith('merge:')) throw new Error('engine fault in merge')
@@ -1552,7 +1663,7 @@ async function scenarioReconcileThrowContained() {
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
@@ -1569,7 +1680,7 @@ async function scenarioReconcileThrowContained() {
 
 async function scenarioIntegrationThrowContained() {
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'integration') throw new Error('engine fault in integration')
@@ -1590,7 +1701,7 @@ async function scenarioIntegrationThrowContained() {
 async function scenarioVerdictlessReviewSurfaces() {
   let fixDispatched = false
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'review:A:1') return {}            // engine-bypass: no verdict, no issues
@@ -1613,7 +1724,7 @@ async function scenarioPrototypeNamesSafe() {
   const waves = [
     [{ id: 'toString', title: 'proto-named task', body: 'do it', tier: 'constructor' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['toString', 'valueOf']] }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt, opts) => {
@@ -1635,7 +1746,7 @@ async function scenarioInvertedEdgeSurfaces() {
     [{ id: 'B', title: 'dependent first', body: 'do B', tier: 'cheap' }],
     [{ id: 'A', title: 'prerequisite second', body: 'do A', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
   const r = await runWorkflow({ agent: makeAgent(), args, budget: undefined })
   assert(r.judgmentCalls.some((j) => /A -> B/.test(j) && /earlier wave|cannot bind/.test(j)),
@@ -1649,7 +1760,7 @@ async function scenarioInvertedEdgeSurfaces() {
 async function scenarioStatuslessImplFailsFast() {
   let reviewed = false
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'impl:A') return {}        // engine bypass: no status, no coordinates
@@ -1722,7 +1833,7 @@ async function scenarioFileScope() {
   ]]
   const prompts = {}
   const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
-  await runWorkflow({ agent, args: { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: [], edges: [] }, budget: undefined })
+  await runWorkflow({ agent, args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', dependencyEdges: [], edges: [] }, budget: undefined })
   assert(prompts['impl:A'].includes('\nFILES: a.txt, tests/test_a.py'),
     'scope: impl:A prompt carries the FILES line')
   assert(prompts['review:A:1'].includes('\nFILES: a.txt, tests/test_a.py'),
@@ -1810,12 +1921,12 @@ await scenarioArgsThrow()
 await scenarioDuplicateTaskId()
 await scenarioArgsString()
 await scenarioPortability()
+await scenarioIntegrationWorktree()
 await scenarioPerTaskReview()
 await scenarioNoEngineDerivedDepth()
 await scenarioForceUpReviewProfile()
 await scenarioDerivedWaveLabels()
 await scenarioAdversarialDissent()
-await scenarioTierOverrideInvalid()
 await scenarioMissingPathArgs()
 await scenarioSetupFailure()
 await scenarioBaselineRed()
@@ -1855,7 +1966,7 @@ await scenarioIntraWaveDepAcrossChunks()
 await scenarioMalformedEdgesThrow()
 await scenarioNoEdgesZeroMergeableCascades()
 await scenarioBaseBranchThreaded()
-await scenarioReconcileTierOverride()
+await scenarioReconcileTier()
 await scenarioLostDoneBlocksDependents()
 await scenarioMidRunBudgetDeferral()
 await scenarioFileScope()
@@ -1966,7 +2077,7 @@ async function scenarioWavesPathFileBackedBodies() {
     { id: 'A', title: 'alpha', tier: 'cheap', files: ['a.txt'] },      // no body -> from file
     { id: 'B', title: 'beta', tier: 'cheap', body: 'inline body for B' }, // inline body kept
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [] }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => {
@@ -2003,7 +2114,7 @@ async function scenarioRoadmapRegistersBeforePreflight() {
     [{ id: 'A', title: 'alpha', tier: 'cheap' }], // bodyless → preflight runs
     [{ id: 'B', title: 'beta', tier: 'cheap' }, { id: 'C', title: 'gamma', tier: 'cheap' }],
   ]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [],
                  waveLabels: ['Data layer', '2 Modules'] }
   await runWorkflow({
@@ -2032,7 +2143,7 @@ async function scenarioWavesPathRequiredForMissingBody() {
   try {
     await runWorkflow({
       agent: makeAgent(),
-      args: { ...PATH_ARGS, waves: [[{ id: 'A', title: 'a', tier: 'cheap' }]], // no body AND no wavesPath
+      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', tier: 'cheap' }]], // no body AND no wavesPath
               integrationBranch: 'ib', stamp: 's' },
       budget: undefined })
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
@@ -2045,7 +2156,7 @@ async function scenarioWavesPathPreflightMissingFile() {
   let implRan = false
   let threw = false
   const waves = [[{ id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] }]] // bodyless
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/nope/waves.json' }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/nope/waves.json' }
   try {
     await runWorkflow({
       agent: makeAgent((label) => {
@@ -2068,7 +2179,7 @@ async function scenarioWavesPathPreflightMissingId() {
     { id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] },   // bodyless
     { id: 'B', title: 'b', tier: 'cheap', files: ['b.txt'] },   // bodyless
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/x/waves.json', edges: [] }
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/x/waves.json', edges: [] }
   try {
     await runWorkflow({
       agent: makeAgent((label) => {
@@ -2088,7 +2199,7 @@ async function scenarioEmptyBodyNoWavesPathThrows() {
   try {
     await runWorkflow({
       agent: makeAgent(),
-      args: { ...PATH_ARGS, waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'cheap' }]],
+      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'cheap' }]],
               integrationBranch: 'ib', stamp: 's' },
       budget: undefined })
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
@@ -2103,11 +2214,12 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   // tokens — exactly what a plan about this feature writes. They must survive.
   const PLAN_PROSE = 'do A — the plan text names <runDir>/review/ and <pluginRoot> verbatim'
   const PLAN_CONSTRAINT = 'Engine exhaust lives in <runDir>/review/.'
+  planAuthoredTexts = [PLAN_PROSE, PLAN_CONSTRAINT]
   const waves = [[
     { id: 'A', title: 'py task', body: PLAN_PROSE, tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
     { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  testCmd: 'make test', globalConstraints: PLAN_CONSTRAINT,
                  bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)' }
   const r = await runWorkflow({
@@ -2117,8 +2229,9 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   // bootstrap threaded into the FRESH worktree role (only the implementer builds)…
   assert(/WORKTREE SETUP:.*bun install/.test(prompts['impl:A']),
     'bootstrap: impl carries the per-worktree setup command')
-  // …but NOT the non-isolated roles (they run on the main checkout, deps present) —
-  // the read-only reviewer is now one of them (A2): it only reads the diff.
+  // …but NOT the non-isolated roles. Merge and the completeness critic run in the
+  // dedicated integration worktree, which setup already bootstrapped once (#84), so
+  // re-installing there is waste; the read-only reviewer (A2) only reads the diff.
   assert(prompts['review:A:1'] && !/WORKTREE SETUP:/.test(prompts['review:A:1']),
     'bootstrap: the read-only reviewer does NOT get the worktree-setup line')
   assert(prompts['merge:wave1'] && !/WORKTREE SETUP:/.test(prompts['merge:wave1']),
@@ -2154,6 +2267,7 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   assert(prompts['review:A:1'].includes('GLOBAL CONSTRAINTS:\n' + PLAN_CONSTRAINT),
     'plan-authored global constraints keep their literal tokens (review)')
   assert(r.tasks.every((t) => t.status === 'done'), 'bootstrap: all tasks done')
+  planAuthoredTexts = []
   console.log('scenario bootstrap-and-per-task-testcmd: OK')
 }
 
@@ -2167,7 +2281,7 @@ async function scenarioForwardedSignals() {
       interfaces: { consumes: ['schema.User'], produces: ['createUser(name: string): User'] } },
     { id: 'B', title: 'beta', body: 'do B', tier: 'cheap' }, // no interfaces
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  globalConstraints: 'Node >= 20. All copy uses sentence case.' }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
@@ -2288,7 +2402,7 @@ async function scenarioWarmCacheBootstrap() {
     { id: 'A', title: 'py task', body: 'do A', tier: 'cheap' },
     { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
   ]]
-  const args = { ...PATH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .' }
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => { prompts[label] = prompt; return undefined }),
@@ -2531,7 +2645,7 @@ async function runEscalationScenario(firstFailure) {
     if (label === 'integration') return { verdict: 'approve', issues: [] }
     return { status: 'done', branch: 'worktree-1', headSha: 'sha-x' }
   }
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves: [[{ id: '1', title: 'T1', body: 'b', tier: 'cheap', review: 'lean' }]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
   }
@@ -2562,10 +2676,10 @@ async function runEscalationScenario(firstFailure) {
 }
 console.log('scenario escalation-classifier: OK')
 
-// ── Reviewer model is uniformly most-capable and override-proof (#87) ────────
+// ── Reviewer model is uniformly most-capable, unconditionally (#87, #101) ────
 // The sonnet floor is deleted: every per-task reviewer call — lean or
-// adversarial, any tier — uses DEFAULT_TIER.mostCapable, and tierOverrides
-// remapping mostCapable can never weaken it.
+// adversarial, any tier — uses DEFAULT_TIER.mostCapable. A legacy tierOverrides
+// arg in the launch is ignored like any unknown top-level key.
 {
   const models = {}
   const agent = async (prompt, opts) => {
@@ -2577,7 +2691,7 @@ console.log('scenario escalation-classifier: OK')
     if (label === 'integration') { models.integration = opts.model; return { verdict: 'approve', issues: [] } }
     return { status: 'done', branch: 'w', headSha: 'sha' }
   }
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves: [[
       { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },        // → opus (uniform)
       { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },   // → opus
@@ -2591,7 +2705,7 @@ console.log('scenario escalation-classifier: OK')
   eq(models.b, 'opus', 'adversarial task reviewed at opus')
   eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
   eq(models.integration, 'opus', 'completeness critic stays opus')
-  eq(models.a, 'opus', 'override-proof: tierOverrides.mostCapable cannot downgrade the reviewer')
+  eq(models.a, 'opus', 'legacy tierOverrides arg cannot downgrade the reviewer (ignored, #101)')
 }
 console.log('scenario reviewer-model-uniform-override-proof: OK')
 
@@ -2619,7 +2733,7 @@ console.log('scenario reviewer-model-uniform-override-proof: OK')
     if (label === 'integration') return { command: 't', testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true }
     throw new Error('unexpected label ' + label)
   }
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves: [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]],
     integrationBranch: 'ultra/int', stamp: 's', edges: [],
     testCmd: 'make test', bootstrapCmd: 'make deps',
@@ -2649,7 +2763,7 @@ async function runLabelScenario(waveLabels) {
     if (label === 'integration') return { verdict: 'approve', issues: [] }
     return { status: 'done', branch: 'w', headSha: 'sha' }
   }
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves: [[{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
     ...(waveLabels ? { waveLabels } : {}),
@@ -2686,7 +2800,7 @@ console.log('scenario wave-labels: OK')
     if (label === 'integration') return { verdict: 'approve', issues: [] }
     return { status: 'done', branch: 'w', headSha: 'sha' }
   }
-  const args = { ...PATH_ARGS,
+  const args = { ...LAUNCH_ARGS,
     waves: [
       [{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }],
       [{ id: '2', title: 'API', body: 'b', tier: 'cheap', review: 'lean' }],
@@ -2701,5 +2815,76 @@ console.log('scenario wave-labels: OK')
   assert(preamble.includes('Integration Review'), 'roadmap pre-registers Integration Review before work')
 }
 console.log('scenario wave-roadmap-preview: OK')
+
+// ── #96: args.testCmd is a mandatory launch key, and report.tests.command is
+// stamped mechanically from it (never authored by the completeness critic) ────
+
+// #96: launching without args.testCmd must throw naming the key — the gate
+// derives tests.command from the receipt, so the harness copy must exist.
+async function scenarioTestCmdMissing() {
+  for (const bad of [undefined, '', '   ', 42]) {
+    const args = { ...baseArgs }
+    if (bad === undefined) delete args.testCmd
+    else args.testCmd = bad
+    let threw = null
+    try {
+      await runWorkflow({ agent: makeAgent(), args, budget: undefined })
+    } catch (e) { threw = e }
+    assert(threw && /testCmd/.test(String((threw && threw.message) || threw)),
+      'launch without a usable args.testCmd (' + JSON.stringify(bad) +
+      ') must throw an error naming testCmd')
+  }
+  console.log('scenario testcmd-missing: OK')
+}
+
+// #96: report.tests.command is stamped mechanically from args.testCmd even when
+// the completeness critic returns prose and no command field at all.
+async function scenarioMechanicalTestsCommand() {
+  const agent = makeAgent((label) => {
+    if (label === 'integration') {
+      return { testsPassed: true, onIntegrationHead: true,
+               output: 'python3 -m pytest -q (553 passed) ; node tests/sim.mjs (ALL PASSED)',
+               findings: [] }
+    }
+    return undefined
+  })
+  const report = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  eq(report.tests.command, 'pnpm check',
+     'tests.command must equal args.testCmd, never critic output')
+  console.log('scenario mechanical-tests-command: OK')
+}
+
+// #96: a critic that DOES emit a command field cannot override the stamp either —
+// the schema no longer carries `command`, and the report ignores it outright.
+async function scenarioCriticCommandIgnored() {
+  const agent = makeAgent((label) => {
+    if (label === 'integration') {
+      return { command: 'echo pretend-green', testsPassed: true,
+               output: 'ok', findings: [] }
+    }
+    return undefined
+  })
+  const report = await runWorkflow({
+    agent, args: Object.assign({}, baseArgs, { testCmd: 'make test' }), budget: undefined })
+  eq(report.tests.command, 'make test',
+     'tests.command ignores a critic-authored command field')
+  console.log('scenario critic-command-ignored: OK')
+}
+
+// #96: the budget-exhausted-before-setup early report still stamps the command —
+// the gate reads tests.command on every exit path, so it is never undefined.
+async function scenarioEarlyExhaustStampsCommand() {
+  const report = await runWorkflow({
+    agent: makeAgent(), args: baseArgs, budget: { total: 100, remaining: 0 } })
+  eq(report.tests.command, 'pnpm check',
+     'budget-exhausted early report stamps tests.command from args.testCmd')
+  eq(report.tests.passed, false, 'budget-exhausted early report cannot read as passed')
+  console.log('scenario early-exhaust-stamps-command: OK')
+}
+
+await scenarioTestCmdMissing()
+await scenarioMechanicalTestsCommand()
+await scenarioCriticCommandIgnored()
+await scenarioEarlyExhaustStampsCommand()
 
 console.log('ALL SCENARIOS PASSED')

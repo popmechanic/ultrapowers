@@ -1,5 +1,6 @@
 # tests/test_harvest_runs.py
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -355,3 +356,92 @@ def test_harvest_targets_a_single_project(tmp_path):
     bundles = h.harvest(tmp_path / "projects", tmp_path / "cache", "-Users-x-home", project="-Users-x-aaa")
     slugs = {json.loads((b / "bundle.json").read_text())["projectSlug"] for b in bundles}
     assert slugs == {"-Users-x-aaa"}
+
+
+# --- #98: full gate history, terminus, truncation, disk fallback, synthetic ---
+
+def _approve_marker():
+    # Mirror ultra_gate.py --approve's printed JSON shape.
+    return {"mode": "approve", "stamp": "20260703-000000",
+            "branch": "ultra/integration-x", "swept": None, "lockReleased": True}
+
+
+def test_gate_evidence_collects_all_receipts_with_ordinals():
+    first = _real_receipt("BLOCKED", 1)
+    second = _real_receipt("NEEDS_ACK", 2)
+    records = make_records_with_text(
+        json.dumps(first, indent=2) + "\nre-ran\n" + json.dumps(second, indent=2))
+    reports, terminus = h._gate_evidence(records)
+    assert [r["receipt"]["verdict"] for r in reports] == ["BLOCKED", "NEEDS_ACK"]
+    assert [r["ordinal"] for r in reports] == [0, 1]  # same stamp → per-stamp ordinal
+    assert all(r["source"] == "transcript" for r in reports)
+    assert all(r["stamp"] == "20260703-000000" for r in reports)
+    assert terminus == "NEEDS_ACK"
+
+
+def test_terminus_approved_when_approve_follows_blocked():
+    # The recovered-false-red case: BLOCKED receipt, then the approve marker.
+    records = make_records_with_text(
+        json.dumps(_real_receipt("BLOCKED", 1), indent=2)
+        + "\napproved:\n" + json.dumps(_approve_marker(), indent=2))
+    reports, terminus = h._gate_evidence(records)
+    assert [r["receipt"]["verdict"] for r in reports] == ["BLOCKED"]
+    assert terminus == "approved"
+
+
+def test_terminus_blocked_without_approve():
+    records = make_records_with_text(json.dumps(_real_receipt("BLOCKED", 1), indent=2))
+    _, terminus = h._gate_evidence(records)
+    assert terminus == "BLOCKED"
+
+
+def test_gate_evidence_empty_is_unknown():
+    assert h._gate_evidence(make_records_with_text("no receipts here")) == ([], "unknown")
+
+
+def test_disk_fallback_loads_receipts_ordered_by_mtime(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    plan = repo / "docs/superpowers/plans/p.md"
+    plan.parent.mkdir(parents=True)
+    plan.write_text("plan")
+    older = repo / ".claude/ultrapowers/run-a"
+    newer = repo / ".claude/ultrapowers/run-b"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    (older / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    (newer / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    os.utime(older / "gate-receipt.json", (1000, 1000))
+    os.utime(newer / "gate-receipt.json", (2000, 2000))
+    entries = h._disk_gate_reports(str(plan))
+    assert [e["receipt"]["verdict"] for e in entries] == ["BLOCKED", "PASS"]
+    assert all(e["source"] == "disk" for e in entries)
+    assert entries[0]["stamp"] == "20260703-000000"  # from the receipt itself
+
+
+def test_disk_fallback_fails_soft(tmp_path):
+    assert h._disk_gate_reports(str(tmp_path / "gone/plan.md")) == []
+    assert h._disk_gate_reports(None) == []
+
+
+def test_bundle_carries_evidence_fields(tmp_path):
+    # REAL's legacy report yields a single-entry list and unknown terminus.
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in REAL) + "\n")
+    out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
+                         tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["gateReport"]["integrationBranch"] == "ultra/x"  # unchanged meaning
+    assert bundle["gateReports"][0]["receipt"]["integrationBranch"] == "ultra/x"
+    assert bundle["terminus"] == "unknown"
+    assert bundle["truncated"] is True
+
+
+def test_classify_origin_synthetic_temp_roots():
+    home = "-Users-marcusestes-Websites-ultrapowers"
+    for slug in ("-tmp-jsdeps-cell-abc", "-private-tmp-x",
+                 "-var-folders-9k-xyz", "-private-var-folders-9k-xyz"):
+        assert h.classify_origin(slug, home) == "synthetic"
+    assert h.classify_origin(home, home) == "home"
+    assert h.classify_origin(home + "--worktree", home) == "home"
+    assert h.classify_origin("-Users-x-proj", home) == "foreign"

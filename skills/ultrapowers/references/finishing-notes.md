@@ -69,3 +69,17 @@ or `needs-human` (say exactly what the operator must do). The checklist
 authorizes no new autonomous actions — anything beyond already-authorized
 tooling stays `needs-human`. An item nobody closes survives in the summary
 by name; it must never silently evaporate between the gate and the handoff.
+
+## Shipped SHA ≠ gate-verified SHA — re-verify, mandatorily
+
+The gate's verdict attaches to one exact tree. If the SHA being shipped
+differs from the SHA the gate verified — any rebase, squash, or history
+rebuild after the gate — re-run the full committed suite AND the plan's
+acceptance per its disposition (the sealed exam for `sealed` plans, the
+suite gate for `suite`) on the rebuilt tree before opening the PR. This is
+mandatory, not judgment: a rebuild can absorb real base drift, and the old
+verdict says nothing about the new tree ([15f51ca2]).
+
+A rebase-only repo defeats the recommend-squash guidance above — the
+history rebuild is the expected path there, so this re-verification is the
+norm in such repos, not the exception.

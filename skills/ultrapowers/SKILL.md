@@ -66,15 +66,21 @@ reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
-- **`testCmd`** — run-wide and/or per-task when detection guesses wrong (monorepos,
-  custom runners); polyglot → exercise **both** stacks.
-- **`bootstrapCmd`** — per-worktree install (fresh worktrees; no
-  `.venv`/`node_modules`).
-- **`baseBranch`** — derived in `receipt.baseBranch`; pass through.
+- **`testCmd`** — run-wide resolution moved into the driver (pass `--test-cmd`
+  to `ultra_run.py`, else its deterministic detection ladder stamps it;
+  `receipt.testCmd`/`receipt.testCmdSource` record the outcome). Derive only
+  **per-task** `testCmd` on wave entries, for polyglot plans.
+- **`bootstrapCmd`** — pass `--bootstrap-cmd` to `ultra_run.py` (per-worktree
+  install for fresh worktrees); it is validated, stamped into the receipt, and
+  the pre-merge gate provisions its acceptance worktree from it.
+- **`baseBranch`** — derived in `receipt.baseBranch` from the launched
+  checkout (the branch the session is on at preflight; repo default only on
+  detached HEAD, noted in the `base-branch` stage detail); pass through.
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
-`bootstrapCmd` no-ops cleanly on the session checkout and each wave entry's
-`tier`/`review` value is one the engine accepts.
+`bootstrapCmd` no-ops cleanly in a throwaway worktree (never the session
+checkout; global package caches are outside the boundary) and each wave
+entry's `tier`/`review` value is one the engine accepts.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
@@ -134,15 +140,16 @@ it spawns no agents). Branch on how it fails:
 
 ```
 args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
-         baseBranch, testCmd?, bootstrapCmd?, reviewProfile?, tierOverrides? }
+         baseBranch, reviewProfile? }
 ```
 
 Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
 
 `args.edges` drives dependency blocking (the workflow ignores task `depends_on`) —
 always pass it, or blocking is silently disabled. The headless workflow creates
-the branch, runs/merges/reconciles each wave (16-agent cap), then reviews
-completeness (`references/wave-merge.md`).
+the branch in a dedicated integration worktree — no engine agent ever mutates
+the session checkout — runs/merges/reconciles each wave (16-agent cap), then
+reviews completeness (`references/wave-merge.md`).
 
 **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
 live?"* — on yes:
@@ -167,8 +174,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
 
 Its first act is to restore the session checkout the run started from — the
 pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
-the gate on the integration branch). It then saves the report, runs
-`gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+the gate on the integration branch). With integration in its dedicated
+worktree the engine never moved the checkout, so this restore is normally a
+no-op — it remains the fail-safe against operator-caused drift. It then
+saves the report, runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
 pre-existing operator files pass with a note), and administers acceptance per the
 compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
 `tests.passed` is triage context; the **exit code is the authority**:
@@ -182,13 +191,22 @@ Whatever the verdict, delete the run's review exhaust now —
 from the BASE/HEAD shas recorded in the report; the run's records
 (transcripts, receipts, launch/args) stay for the viewer and later harvests.
 
+**Resume gates carry the union.** A Salvage/Redirect relaunch produces a fresh
+report, so at any gate reached via relaunch, present the **union** of
+`deferredVerification` items across every gate report this integration branch
+has produced — carry prior items forward yourself; an item leaves the ack list
+only by explicit operator disposition, never as a relaunch side effect.
+
 Render the report per `references/report-format.md` plus the **post-merge runbook**
 (`release`/`manual` tasks, verbatim), then present:
 
 - **Approve** — only on PASS (or an acknowledged NEEDS_ACK). Run
   `ultra_gate.py --approve --stamp <stamp> --wf-run <wf_runId>` — it does
   `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
-  sweeps the run's worktrees, and releases the lock. When work spanned **multiple
+  sweeps the run's worktrees, and releases the lock; also run
+  `sweep_worktrees.sh --run wf_<stamp>` to sweep the dedicated integration
+  worktree, which the `--wf-run` sweep's `wf_<runId>-*` glob does not match.
+  When work spanned **multiple
   phases or runs**, run one **holistic cross-phase** review of the fully-integrated
   tree against the *combined* plan and gate on it **before the final PR**
   (single-run pipelines already got it at Step 4), then apply the two
@@ -201,15 +219,19 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   **kept branch** + HEAD sha from `tasks[]`, its blocking `notes`, any
   completeness finding naming it, and the instruction to pull correct prior work in
   (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
-  waves, relaunch (`resume: true`, same `integrationBranch`), return here.
+  waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
+  spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
+  — never by rebuilding from the report), return here.
 - **Redirect** — append corrective instructions to **only the affected** task
-  bodies and relaunch `ultrapowers-run` with `resume: true` and the **same**
-  `integrationBranch`. Return here.
+  bodies and relaunch `ultrapowers-run` with `resume: true`, the **same**
+  `integrationBranch`, and args spread from the receipt's argsFile (it carries the mandatory `pluginRoot`/`runDir`). Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
   the worktrees as triage evidence — tell the operator how to remove them:
-  `sweep_worktrees.sh --run <wf_runId>`. (Redirect and Salvage are not terminal.)
+  `sweep_worktrees.sh --run <wf_runId>`, plus `sweep_worktrees.sh --run
+  wf_<stamp>` for the dedicated integration worktree, which that glob misses.
+  (Redirect and Salvage are not terminal.)
 
 ## Step 6 — Fallback
 

@@ -84,6 +84,19 @@ def test_check_is_exclusive_with_emit(tmp_path):
     assert proc.returncode != 0
 
 
+def test_check_is_exclusive_with_run_dir(tmp_path):
+    # The runtime rejects --check with --run-dir; only the emit arm was
+    # tested. This pins the third arm (#95 item 1).
+    plan = tmp_path / "plan.md"
+    plan.write_text(CANONICAL)
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "--check", str(plan),
+         "--run-dir", str(tmp_path / "rd")],
+        capture_output=True, text=True)
+    assert proc.returncode != 0
+    assert "--run-dir" in (proc.stdout + proc.stderr)
+
+
 # Prose Interfaces values are valid plan grammar (#85 redirect): they are
 # documentation, and after the tokenizer hardening they are structurally inert.
 PROSE_INTERFACES = """# P
@@ -147,3 +160,34 @@ def test_cycle_plans_pass_check_self_application():
         proc = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
                               capture_output=True, text=True)
         assert proc.returncode == 0, (name, proc.stdout, proc.stderr)
+
+
+def test_check_ignores_files_grammar_on_gate_tasks(tmp_path):
+    # A gate task's Files block never enters overlap inference; its
+    # placeholder values must not warn (#91 item 3).
+    plan = CANONICAL.replace("**Files:**\n- none",
+                             "**Files:**\n- Verify: `(none)`")
+    proc = run_check(tmp_path, plan)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "PLAN OK" in proc.stdout
+
+
+def test_check_still_flags_files_grammar_on_implementation_tasks(tmp_path):
+    plan = CANONICAL.replace("- Modify: `src/a.py`", "- Tweak: `src/a.py`")
+    proc = run_check(tmp_path, plan)
+    assert proc.returncode == 2
+    assert "unknown files label" in (proc.stdout + proc.stderr).lower()
+
+
+def test_check_still_flags_files_grammar_on_markerless_tasks(tmp_path):
+    # Marker-less task: the unknown label empties `writes`, which alone would
+    # make classify() call it a heuristic gate. The exemption is explicit-marker
+    # only, so --check must still flag it (a broken Files block never exempts
+    # itself).
+    plan = CANONICAL + (
+        "\n### Task 3: C\n\n"
+        "**Files:**\n- Tweak: `src/c.py`\n\n"
+        "- [ ] **Step 1: wire it up, then run pytest**\n")
+    proc = run_check(tmp_path, plan)
+    assert proc.returncode == 2
+    assert "unknown files label" in (proc.stdout + proc.stderr).lower()

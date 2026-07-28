@@ -99,9 +99,18 @@ def test_workflow_supports_file_backed_bodies_and_polyglot_knobs():
     assert "task.testCmd" in wf
 
 
-def test_default_test_detection_ladder_matches_wave_merge_doc():
+def test_harness_owns_no_test_detection_ladder():
+    """#96: detection moved to the pre-launch driver; the harness only obeys args.
+
+    The old pin asserted the harness carried its own "pnpm check, npm test,
+    pytest, cargo test, or go test ./..." fallback and that wave-merge.md
+    echoed it. That fallback is gone: args.testCmd is mandatory, so a harness
+    that re-grows a ladder would be silently guessing the run's test command
+    behind the receipt the gate reads.
+    """
     ladder = "pnpm check, npm test, pytest, cargo test, or go test ./..."
     wf = WORKFLOW.read_text()
     doc = (ROOT / "skills/ultrapowers/references/wave-merge.md").read_text()
-    assert ladder in wf, "workflow.js reworded the detection ladder — update wave-merge.md and this pin"
-    assert ladder in doc, "wave-merge.md reworded the detection ladder — update workflow.js and this pin"
+    assert ladder not in wf, "waves.js re-grew a test-detection ladder — detection belongs to ultra_run.py"
+    assert ladder not in doc, "wave-merge.md re-documented harness-side detection — the driver owns it"
+    assert "args.testCmd missing or empty" in wf, "waves.js must refuse to launch without args.testCmd"

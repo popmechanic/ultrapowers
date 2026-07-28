@@ -11,6 +11,7 @@ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
 from ultra_run import prune_run_dirs  # noqa: E402
+from ultra_run import detect_test_cmd  # noqa: E402
 
 PLAN = (
     "# P\n\n**Acceptance:** waived — test fixture\n\n"
@@ -33,6 +34,7 @@ def make_repo(tmp_path):
     sh(["git", "config", "user.name", "t"], cwd=repo)
     (repo / ".gitignore").write_text(".claude/\n")
     (repo / "plan.md").write_text(PLAN)
+    (repo / "pytest.ini").write_text("[pytest]\n")
     sh(["git", "add", "."], cwd=repo)
     sh(["git", "commit", "-qm", "base"], cwd=repo)
     return repo
@@ -53,7 +55,7 @@ def test_happy_path_receipt(tmp_path):
     assert all(s["ok"] for s in receipt["stages"])
     stage_names = [s["stage"] for s in receipt["stages"]]
     for expected in ("git-repo", "worktree-probe", "engine-skew",
-                     "superpowers-compat", "compile", "install",
+                     "superpowers-compat", "compile", "test-command", "install",
                      "lock", "snapshot"):
         assert expected in stage_names
     run_dir = repo / ".claude/ultrapowers/run-t1"
@@ -75,6 +77,7 @@ def test_happy_path_receipt(tmp_path):
     # probe contract pre-computed for the orchestrator
     assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
     assert receipt["workflowName"] == "ultrapowers-run"
+    assert receipt["testCmd"] == "python3 -m pytest"
 
 
 def test_not_a_git_repo_fails_first_stage(tmp_path):
@@ -307,3 +310,263 @@ def test_prune_run_dirs_keeps_newest_including_a_live_run(tmp_path):
     assert (state / "scratch").is_dir()
     assert (state / "pending-abc123def456").is_dir()
     assert (state / "run-keepme").is_dir()
+
+
+def test_detect_test_cmd_ladder(tmp_path):
+    # Miss: empty repo detects nothing.
+    assert detect_test_cmd(tmp_path) == (None, None)
+    # Each rule, lowest precedence first, then assert higher rules win.
+    (tmp_path / "Cargo.toml").write_text("[package]\n")
+    assert detect_test_cmd(tmp_path) == ("cargo test", "cargo-toml")
+    (tmp_path / "go.mod").write_text("module x\n")
+    assert detect_test_cmd(tmp_path) == ("go test ./...", "go-mod")
+    (tmp_path / "Makefile").write_text("test:\n\ttrue\n")
+    assert detect_test_cmd(tmp_path) == ("make test", "makefile-test")
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "node --test"}}')
+    assert detect_test_cmd(tmp_path) == ("npm test", "package-json-npm")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    assert detect_test_cmd(tmp_path) == ("pnpm test", "package-json-pnpm")
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pyproject-pytest")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pytest-ini")
+
+
+def test_detect_ignores_package_json_without_test_script(tmp_path):
+    (tmp_path / "package.json").write_text('{"scripts": {"build": "x"}}')
+    assert detect_test_cmd(tmp_path) == (None, None)
+    (tmp_path / "package.json").write_text("not json {")
+    assert detect_test_cmd(tmp_path) == (None, None)
+
+
+def test_preflight_stamps_detected_test_cmd(tmp_path):
+    repo = make_repo(tmp_path)  # make_repo now writes pytest.ini — see the note below
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["testCmd"] == "python3 -m pytest"
+    assert receipt["testCmdSource"] == "detected:pytest-ini"
+    assert "bootstrapCmd" not in receipt
+    args = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
+    assert args["testCmd"] == "python3 -m pytest"
+    assert "bootstrapCmd" not in args
+
+
+def test_preflight_knob_wins_and_bootstrap_stamped(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo, "--test-cmd", "make check", "--bootstrap-cmd", "true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["testCmd"] == "make check"
+    assert receipt["testCmdSource"] == "knob"
+    assert receipt["bootstrapCmd"] == "true"
+    args = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
+    assert args["testCmd"] == "make check"
+    assert args["bootstrapCmd"] == "true"
+
+
+def test_preflight_fails_closed_when_nothing_detected(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "pytest.ini").unlink()
+    sh(["git", "add", "-A"], cwd=repo)
+    sh(["git", "commit", "-qm", "drop pytest.ini"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    failing = [s for s in receipt["stages"] if not s["ok"]]
+    assert failing and failing[-1]["stage"] == "test-command"
+    assert "--test-cmd" in failing[-1]["detail"]
+
+
+# --- #97: stage details state the stage's own verdict ---
+
+FAILURE_PHRASINGS = ("not inside a git repository", "Preparing worktree",
+                     "no branch resolvable")
+
+
+def test_green_stages_never_carry_failure_phrasings(tmp_path):
+    # Generic over ALL stages, so stages added by later plans are covered too.
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    for s in receipt["stages"]:
+        if s["ok"]:
+            for phrase in FAILURE_PHRASINGS:
+                assert phrase not in s["detail"], (s["stage"], s["detail"])
+
+
+def test_git_repo_success_detail_is_repo_root(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
+    assert s["detail"] == str(repo.resolve())
+
+
+def test_worktree_probe_success_detail_is_conclusion(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "worktree-probe")
+    assert s["detail"] == "worktree capability verified (probe cut and removed)"
+
+
+def test_compile_success_detail_is_summary_not_json(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "compile")
+    assert not s["detail"].startswith("{")
+    assert "task(s)" in s["detail"] and "wave(s)" in s["detail"]
+    assert (receipt["compile"]["acceptance"] or {}).get("mode", "unmarked") in s["detail"]
+
+
+def test_failure_details_survive_not_a_repo(tmp_path):
+    # The failure path keeps its message — run the driver OUTSIDE any git repo.
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "plan.md").write_text("# nothing")
+    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t9"],
+           cwd=plain, check=False)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
+    assert s["ok"] is False
+    assert ("not inside a git repository" in s["detail"]) or ("fatal" in s["detail"])
+
+
+# --- #100: baseBranch derives from the launched checkout ---
+
+def give_remote_head(repo, default="main"):
+    # Synthesize the repo-default pointer a clone would have, no real remote.
+    sh(["git", "update-ref", "refs/remotes/origin/" + default, "HEAD"], cwd=repo)
+    sh(["git", "symbolic-ref", "refs/remotes/origin/HEAD",
+        "refs/remotes/origin/" + default], cwd=repo)
+
+
+def base_stage(receipt):
+    return next(s for s in receipt["stages"] if s["stage"] == "base-branch")
+
+
+def test_feature_branch_launch_wins_over_repo_default(tmp_path):
+    repo = make_repo(tmp_path)
+    give_remote_head(repo)
+    sh(["git", "checkout", "-q", "-b", "feature"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["baseBranch"] == "feature"
+    s = base_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"] == "feature"          # no fallback note on the happy path
+
+
+def test_detached_head_falls_back_to_repo_default_loudly(tmp_path):
+    repo = make_repo(tmp_path)
+    give_remote_head(repo)
+    sh(["git", "checkout", "-q", "--detach"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["baseBranch"] == "main"
+    s = base_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"] == "detached HEAD → fell back to repo default 'main'"
+
+
+def test_detached_head_without_remote_head_fails_closed(tmp_path):
+    repo = make_repo(tmp_path)                 # no remote refs at all
+    sh(["git", "checkout", "-q", "--detach"], cwd=repo)
+    r = run_driver(repo)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    s = base_stage(receipt)
+    assert s["ok"] is False
+    assert s["detail"] == "no branch resolvable"
+
+
+# --- #99: bootstrapCmd probed in a throwaway worktree, never the checkout ---
+
+def test_destructive_bootstrap_cannot_touch_the_session_checkout(tmp_path):
+    # The headline regression: under the old design this command deleted the
+    # session repo's file; now the mutation is confined to the probe worktree.
+    repo = make_repo(tmp_path)
+    args_path = tmp_path / "args.json"   # outside the repo: the clean-tree
+    args_path.write_text(json.dumps({"bootstrapCmd": "rm plan.md"}))  # assert below is about the PROBE
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert verdict["treeClean"] is False
+    assert (repo / "plan.md").is_file()          # the session checkout is intact
+    assert sh(["git", "status", "--porcelain"], cwd=repo).stdout == ""
+
+
+def test_noop_bootstrap_leaves_no_probe_worktree_behind(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not list((repo / ".claude/ultrapowers").glob("wt-knob-*"))
+    worktrees = sh(["git", "worktree", "list"], cwd=repo).stdout.strip()
+    assert len(worktrees.splitlines()) == 1      # only the main checkout
+
+
+def test_unborn_head_fails_probe_worktree_creation_closed(tmp_path):
+    # A repo with no commits cannot cut a worktree from HEAD: fail closed,
+    # never fall back to running the command on the session checkout.
+    repo = tmp_path / "empty"
+    repo.mkdir()
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "touch dirt.txt"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode != 0
+    verdict = json.loads(r.stdout)
+    assert verdict["ok"] is False
+    assert "probe worktree" in verdict["detail"]
+    assert not (repo / "dirt.txt").exists()      # the command never ran here
+
+
+# --- #95 item 2: the prune failure branch must stay honest ---
+
+def test_prune_reports_only_dirs_actually_removed(tmp_path, monkeypatch):
+    # A regression reverting to "report the doomed list" must fail here:
+    # with rmtree neutered, nothing vanishes, so nothing may be reported.
+    import ultra_run
+    state = tmp_path / "state"
+    for i in (1, 2, 3):
+        (state / ("run-2026010%d-000000" % i)).mkdir(parents=True)
+    monkeypatch.setattr(ultra_run.shutil, "rmtree", lambda *a, **k: None)
+    assert ultra_run.prune_run_dirs(state, keep=1) == []
+
+
+def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
+    repo = make_repo(tmp_path)
+    state = repo / ".claude/ultrapowers"
+    # 11 run dirs with KEEP_RUNS=10: exactly the oldest is doomed. A child
+    # file plus mode 0o500 makes rmtree fail (it cannot unlink the child)
+    # while ignore_errors=True swallows the exception.
+    doomed = state / "run-20260101-000000"
+    doomed.mkdir(parents=True)
+    (doomed / "f.txt").write_text("x")
+    doomed.chmod(0o500)
+    for i in range(2, 12):
+        (state / ("run-202601%02d-000000" % i)).mkdir()
+    try:
+        r = run_driver(repo)
+        assert r.returncode == 0, r.stdout + r.stderr
+        receipt = json.loads(r.stdout)
+        s = next(x for x in receipt["stages"] if x["stage"] == "scratch-hygiene")
+        assert s["ok"] is True                      # hygiene never blocks a run
+        assert "removal failed" in s["detail"]
+        assert "run-20260101-000000" in s["detail"]
+        assert doomed.exists()                       # it really did survive
+    finally:
+        doomed.chmod(0o700)                          # let tmp_path clean up

@@ -8,6 +8,8 @@
 #    or: run_acceptance.sh --baseline --suite DIR --branch BASE
 #                          (--manifest FILE | --run CMD [--bootstrap CMD])
 #                          [--repo DIR]   (seal-time RED proof)
+#    or: run_acceptance.sh --suite-gate --branch BRANCH [--run CMD]
+#                          [--bootstrap CMD] [--base REF] [--repo DIR]
 # Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
 set -uo pipefail
 
@@ -16,7 +18,7 @@ VAULT="${HOME}/.ultrapowers/acceptance"
 REPO="$(pwd)"
 B_SUITE=""; B_RUN=""; B_BOOT=""; B_MANIFEST=""
 SG_RUN="python3 -m pytest"
-SG_BASE=""
+SG_BASE=""; SG_BOOT=""
 MODE="sealed"
 if [ "${1:-}" = "--baseline" ]; then
   MODE="baseline"; shift
@@ -45,10 +47,11 @@ elif [ "${1:-}" = "--suite-gate" ]; then
   MODE="suite-gate"; SEAL_ID="(suite)"; shift
   while [ $# -gt 0 ]; do
     case "$1" in
-      --branch) BRANCH="$2"; shift 2 ;;
-      --run)    SG_RUN="$2"; shift 2 ;;
-      --base)   SG_BASE="$2"; shift 2 ;;
-      --repo)   REPO="$2";   shift 2 ;;
+      --branch)    BRANCH="$2";  shift 2 ;;
+      --run)       SG_RUN="$2";  shift 2 ;;
+      --base)      SG_BASE="$2"; shift 2 ;;
+      --bootstrap) SG_BOOT="$2"; shift 2 ;;
+      --repo)      REPO="$2";    shift 2 ;;
       *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
   done
@@ -102,6 +105,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Prepare an exam worktree's environment (editable install / dep setup) before
+# any suite runs in it. Shared by the sealed exam core and the suite gate so
+# both classify a failed bootstrap identically: an ENV error, never a red — the
+# environment could not be prepared, so nothing was measured about the code.
+# An empty command is a no-op success (no bootstrap was asked for).
+provision_worktree() { # $1=worktree $2=bootstrap_cmd → P_OK/P_CODE/P_OUTPUT
+  P_OK=true; P_CODE=0; P_OUTPUT=""
+  [ -z "$2" ] && return 0
+  P_OUTPUT="$( (cd "$1" && eval "$2") 2>&1 )"; P_CODE=$?
+  [ "$P_CODE" -ne 0 ] && P_OK=false
+  return 0
+}
+
 run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
   local SUITE_DIR="$1" BR="$2" RUN_CMD="$3" BOOT="$4"
   R_REDKIND=""
@@ -126,17 +142,12 @@ def pytest_runtest_call(item):
     pathlib.Path(__file__).with_name(".__ran__").write_text("1")
 CONF
   fi
-  # Bootstrap the worktree's environment (editable install / dep setup) before
-  # the suite so the repo's own libraries import. A failed bootstrap is an ENV
-  # error, never a red: the environment could not be prepared.
-  if [ -n "$BOOT" ]; then
-    local BOUT BCODE
-    BOUT="$( (cd "$EXAM_WT" && eval "$BOOT") 2>&1 )"; BCODE=$?
-    if [ "$BCODE" -ne 0 ]; then
-      R_STATUS=EXAM_BOOTSTRAP_ERROR; R_PASSED=false; R_CODE=$BCODE
-      R_OUTPUT="bootstrap failed (exit $BCODE): $BOOT
-$BOUT"; return 0
-    fi
+  # Bootstrap the worktree's environment so the repo's own libraries import.
+  provision_worktree "$EXAM_WT" "$BOOT"
+  if [ "$P_OK" != true ]; then
+    R_STATUS=EXAM_BOOTSTRAP_ERROR; R_PASSED=false; R_CODE=$P_CODE
+    R_OUTPUT="bootstrap failed (exit $P_CODE): $BOOT
+$P_OUTPUT"; return 0
   fi
   local OUT CODE ran
   OUT="$( (cd "$EXAM_WT" && eval "$RUN_CMD") 2>&1 )"; CODE=$?
@@ -248,9 +259,21 @@ $SOUT"
 # worktree. No held-out suite is mounted. pytest exit codes are the authority:
 # 0 => pass; 5 => no tests collected (false-green guard); anything else => red.
 if [ "$MODE" = "suite-gate" ]; then
+  if [ -z "${SG_RUN:-}" ]; then
+    emit ERROR false 2 "--suite-gate requires a non-empty --run command (an empty command evals to exit 0 — refusing a false green)"
+    exit 1
+  fi
   EXAM_WT="$(mktemp -d)/suite-gate"
   if ! git -C "$REPO" worktree add --detach "$EXAM_WT" "$BRANCH" >/dev/null 2>&1; then
     emit ERROR false 1 "could not create suite-gate worktree for branch $BRANCH in $REPO"
+    exit 1
+  fi
+  # Same environment preparation the sealed exam gets: a suite whose deps are
+  # not installed in the fresh worktree would otherwise red as feature-absence.
+  provision_worktree "$EXAM_WT" "${SG_BOOT:-}"
+  if [ "$P_OK" != true ]; then
+    emit EXAM_BOOTSTRAP_ERROR false "$P_CODE" "bootstrap failed (exit $P_CODE): ${SG_BOOT}
+$P_OUTPUT"
     exit 1
   fi
   OUT="$( (cd "$EXAM_WT" && eval "$SG_RUN") 2>&1 )"; CODE=$?

@@ -59,7 +59,13 @@ def is_real_run(records):
     return saw_workflow and (saw_dir or saw_report)
 
 
+SYNTHETIC_SLUG_PREFIXES = ("-tmp-", "-private-tmp-",
+                           "-var-folders-", "-private-var-folders-")
+
+
 def classify_origin(project_slug, home_slug):
+    if project_slug.startswith(SYNTHETIC_SLUG_PREFIXES):
+        return "synthetic"
     if project_slug == home_slug or project_slug.startswith(home_slug + "--"):
         return "home"
     return "foreign"
@@ -162,12 +168,19 @@ def _records(session_path):
     return out
 
 
-def _gate_report(records):
+def _gate_evidence(records):
+    """All printed gate receipts in transcript order, plus the run terminus.
+
+    Returns (reports, terminus): reports is a list of
+    {"receipt", "stamp", "ordinal", "source"} (ordinal = position among
+    receipts sharing that stamp, transcript order); terminus is "approved"
+    when an approve marker follows the last receipt (or stands alone),
+    else the last receipt's verdict, else "unknown".
+    """
     # Pass 1 (0.0.31+ driver era): ultra_gate.py prints its gate receipt on
     # every administered gate — a JSON object with mode=="gate" and a
-    # "verdict". Prefer it over the legacy scan below; take the LAST one found
-    # (a re-run's receipt supersedes an earlier BLOCKED/NEEDS_ACK one).
-    receipt = None
+    # "verdict" — and --approve/--teardown print a marker with "lockReleased".
+    receipts, approve_after = [], False
     for _r, b in _iter_blocks(records):
         txt = _block_text(b)
         # Anchor on '"mode"' — ultra_gate.py serializes it as the receipt's
@@ -180,10 +193,34 @@ def _gate_report(records):
             if start != -1:
                 obj = _balanced_json(txt, start)
                 if isinstance(obj, dict) and obj.get("mode") == "gate" and "verdict" in obj:
-                    receipt = obj
+                    receipts.append(obj)
+                    approve_after = False
+                elif isinstance(obj, dict) and obj.get("mode") in ("approve", "teardown") \
+                        and "lockReleased" in obj:
+                    if obj["mode"] == "approve":
+                        approve_after = True
             i = txt.find('"mode"', i + 1)
-    if receipt is not None:
-        return receipt
+    if receipts:
+        per_stamp = {}
+        reports = []
+        for r in receipts:
+            stamp = r.get("stamp")
+            ordinal = per_stamp.get(stamp, 0)
+            per_stamp[stamp] = ordinal + 1
+            reports.append({"receipt": r, "stamp": stamp,
+                            "ordinal": ordinal, "source": "transcript"})
+        terminus = "approved" if approve_after else receipts[-1].get("verdict", "unknown")
+        return reports, terminus
+    if approve_after:
+        return [], "approved"
+    legacy = _legacy_gate_report(records)
+    if legacy is not None:
+        return [{"receipt": legacy, "stamp": None,
+                 "ordinal": 0, "source": "transcript"}], "unknown"
+    return [], "unknown"
+
+
+def _legacy_gate_report(records):
     # Pass 2 (legacy, pre-driver sessions): scan every "integrationBranch"
     # mention, parse the enclosing JSON object, and accept only one with a real
     # top-level integrationBranch *value* — this rejects report-format schema
@@ -204,6 +241,48 @@ def _gate_report(records):
                     return obj
             idx = k + 1
     return None
+
+
+def _gate_report(records):
+    reports, _ = _gate_evidence(records)
+    return reports[-1]["receipt"] if reports else None
+
+
+def _disk_gate_reports(plan_path):
+    """Fallback for runs whose transcript shows no receipts (docket drains):
+    read gate-receipt.json files from the run's repo, located via planPath.
+    Fails soft to [] — the repo may be gone."""
+    if not plan_path:
+        return []
+    root = Path(plan_path).parent
+    while root != root.parent:
+        if (root / ".git").exists():
+            break
+        root = root.parent
+    else:
+        return []
+    if not (root / ".git").exists():
+        return []
+    entries = []
+    try:
+        files = sorted((root / ".claude/ultrapowers").glob("run-*/gate-receipt.json"),
+                       key=lambda p: p.stat().st_mtime)
+    except OSError:
+        return []
+    for f in files:
+        try:
+            obj = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(obj, dict) and "verdict" in obj:
+            entries.append({"receipt": obj,
+                            "stamp": obj.get("stamp") or f.parent.name[len("run-"):],
+                            "ordinal": 0, "source": "disk"})
+    per_stamp = {}
+    for e in entries:
+        e["ordinal"] = per_stamp.get(e["stamp"], 0)
+        per_stamp[e["stamp"]] = e["ordinal"] + 1
+    return entries
 
 
 def _transcript_dir(records):
@@ -352,7 +431,12 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     tdir = _transcript_dir(records)
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
-    gate_report = _gate_report(records)
+    gate_reports, terminus = _gate_evidence(records)
+    if not gate_reports:
+        gate_reports = _disk_gate_reports(plan_path)
+        if gate_reports:
+            terminus = gate_reports[-1]["receipt"].get("verdict", "unknown")
+    gate_report = gate_reports[-1]["receipt"] if gate_reports else None
     audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
     planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found)
@@ -368,6 +452,9 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "planPath": plan_path,
         "transcriptDir": tdir,
         "gateReport": gate_report,
+        "gateReports": gate_reports,
+        "terminus": terminus,
+        "truncated": terminus in ("NEEDS_ACK", "BLOCKED", "unknown"),
         "audit": audit,
         "planningFound": planning_found,
     }
