@@ -188,6 +188,12 @@ Whatever the verdict, delete the run's review exhaust now —
 from the BASE/HEAD shas recorded in the report; the run's records
 (transcripts, receipts, launch/args) stay for the viewer and later harvests.
 
+**Resume gates carry the union.** A Salvage/Redirect relaunch produces a fresh
+report, so at any gate reached via relaunch, present the **union** of
+`deferredVerification` items across every gate report this integration branch
+has produced — carry prior items forward yourself; an item leaves the ack list
+only by explicit operator disposition, never as a relaunch side effect.
+
 Render the report per `references/report-format.md` plus the **post-merge runbook**
 (`release`/`manual` tasks, verbatim), then present:
 
