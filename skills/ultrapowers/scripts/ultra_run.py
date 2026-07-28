@@ -99,8 +99,8 @@ PROBE = {"name": "ultrapowers-probe",
 
 LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
-    "the engine reads knobs ONLY from these inline entries — never a top-level "
-    "launch key, never tierOverrides, which remaps tier names to models)",
+    "the engine reads knobs ONLY from these inline entries — never a "
+    "top-level launch key)",
     "waves[][].testCmd per task, only for polyglot plans where one task's stack "
     "differs from the run-wide command (run-wide testCmd is driver-derived — "
     "knob or detection — and already stamped in the args file and receipt)",

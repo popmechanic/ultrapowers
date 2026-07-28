@@ -158,7 +158,6 @@ const EDGES = edgesSupplied
 //                 ultra_run.py preflight from the operator knob or its detection
 //                 ladder. Validated below; the harness never detects on its own.
 // reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
-// tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
 const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
 // bootstrapCmd: a per-worktree setup command (e.g. install deps) the FRESH,
 // worktree-isolated roles (implementer, reviewer, fix) run before testing.
@@ -180,7 +179,6 @@ const ACCEPTANCE = (ARGS && ARGS.acceptance && typeof ARGS.acceptance === 'objec
 // Pushed onto judgmentCalls at every budget-exhaustion checkpoint (one note per site).
 const BUDGET_DEFERRED_NOTE = 'budget exhausted mid-run — remaining work deferred to unfinished'
 const reviewProfile = (ARGS && ARGS.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
-const tierOverrides = (ARGS && ARGS.tierOverrides && typeof ARGS.tierOverrides === 'object') ? ARGS.tierOverrides : {}
 
 // baseBranch: the repo's default branch, derived by the orchestrator (SKILL.md
 // Step 2). Anchors the integration branch against a stale checkout left by a
@@ -202,22 +200,6 @@ const resume = !!(ARGS && ARGS.resume === true)
 if (resume && !(ARGS && typeof ARGS.integrationBranch === 'string' && ARGS.integrationBranch)) {
   throw new Error('ultrapowers: resume requires an explicit args.integrationBranch — ' +
     'pass the integration branch of the run being redirected.')
-}
-
-// Fail loud on a typo'd model alias: an invalid model makes every agent error
-// without doing any work (verified live 2026-06-03), so catch it before launch.
-const VALID_MODELS = ['haiku', 'sonnet', 'opus']
-for (const k of Object.keys(tierOverrides)) {
-  if (k !== 'cheap' && k !== 'standard' && k !== 'mostCapable') {
-    throw new Error('ultrapowers: tierOverrides key "' + k +
-      '" is not a tier (valid: cheap, standard, mostCapable). Refusing to launch.')
-  }
-  if (VALID_MODELS.indexOf(tierOverrides[k]) === -1) {
-    throw new Error(
-      'ultrapowers: tierOverrides.' + k + ' = "' + tierOverrides[k] +
-      '" is not a valid model alias (valid: haiku, sonnet, opus). Refusing to launch.'
-    )
-  }
 }
 
 // Path args are absolute or nothing: agents run from worktrees and detached
@@ -529,7 +511,7 @@ const REVIEW_SCHEMA = {
 // live (2026-06-03): small/medium/large are rejected as invalid models, so the
 // agent returns an error instead of doing the work. Map in ONE place here.
 const DEFAULT_TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
-const TIER = Object.assign({}, DEFAULT_TIER, tierOverrides)
+const TIER = DEFAULT_TIER
 // Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
 // (this map); normalize so both resolve. Unknown tiers fall back to standard.
 const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
@@ -554,10 +536,10 @@ const isSchemaTrip = (msg) =>
 // edge), which no model capability fixes. Diagnose it; do NOT fail-fast.
 const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
-// Review / completeness roles always run at the strongest model, OVERRIDE-PROOF:
-// tierOverrides remap implementer tiers only — a weak reviewer's failure mode is
-// the silent false PASS, so it must never be downgradable. (Reconcile is a fixer,
-// not a reviewer, so it tracks the implementer-side mostCapable.)
+// Review / completeness roles always run at the strongest model, unconditionally —
+// a weak reviewer's failure mode is the silent false PASS, so it must never be
+// downgradable. (Reconcile is a fixer, not a reviewer, so it tracks the
+// implementer-side mostCapable.)
 const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 
 // Returns true for a task result whose worktree branch is ready to merge.
@@ -662,9 +644,9 @@ const taskReviewProfile = (task) =>
   (task.review === 'adversarial' || reviewProfile === 'adversarial')
     ? 'adversarial' : 'lean'
 
-// Per-task reviewer model: uniformly most-capable, built from DEFAULT_TIER so
-// tierOverrides can never weaken the gate. (The lean+cheap sonnet floor is
-// deleted with the heuristics — never economize on the checker.)
+// Per-task reviewer model: uniformly most-capable, unconditionally. (The
+// lean+cheap sonnet floor is deleted with the heuristics — never economize on
+// the checker.)
 const reviewerModelFor = () => DEFAULT_TIER.mostCapable
 
 // ── Per-task pipeline: implement → review → bounded fix-loop ──────────────────

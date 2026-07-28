@@ -6,8 +6,7 @@ printed at Workflow launch), classifies each agent-*.jsonl by role from the
 stable baked-prompt phrases, sums assistant turns and output tokens, and
 prints a markdown effort table plus tier-misrank candidates: implementers
 above 1.5x the median turns of SAME-MODEL peers (transcripts carry resolved
-model strings, not tier names — grouping by model stays correct under
-tierOverrides remapping).
+model strings, not tier names — grouping by model is exact).
 
 ADVISORY BY CONTRACT: a missing directory, no agent files, or a drifted
 layout prints one diagnostic and exits 0 — this script must never block the

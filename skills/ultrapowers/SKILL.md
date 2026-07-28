@@ -140,7 +140,7 @@ it spawns no agents). Branch on how it fails:
 
 ```
 args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
-         baseBranch, reviewProfile?, tierOverrides? }
+         baseBranch, reviewProfile? }
 ```
 
 Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.

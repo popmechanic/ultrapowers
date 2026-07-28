@@ -35,7 +35,7 @@ The skill launches the workflow with:
 ```
 args = { waves, integrationBranch, stamp, dependencyEdges, edges,
          baseBranch, planPath, wavesPath?, waveLabels?, resume?, testCmd?, bootstrapCmd?,
-         reviewProfile?, tierOverrides?, acceptance? }
+         reviewProfile?, acceptance? }
 ```
 
 - `args.waves` — `Task[][]`, each task `{ id, title, body, tier, acceptance, files, review?, testCmd? }`. `body`
@@ -97,10 +97,6 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
   per task) or `'adversarial'` (two independent reviewers over the same diff, findings unioned). A
   task's own `review` field overrides it, so high-stakes tasks can go adversarial without paying for
   the extra pass on every task.
-- `args.tierOverrides` — remap model tiers per project, e.g. `{ cheap: 'sonnet' }`. Merged over the
-  default `TIER` map. The plan's `most-capable` tier name is normalized to the `mostCapable` key.
-  Values are validated at launch against `haiku` / `sonnet` / `opus`; an unknown alias throws
-  before any agent runs.
 - `args.acceptance` — optional sealed acceptance exam descriptor. Shape:
   `{ mode: 'sealed', sealId, sha256, scriptPath }` or `{ mode: 'waived', reason }` or
   `{ mode: 'suite', reason }`. When `sealed`,
@@ -195,15 +191,14 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 `reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
-constant in `waves.js`, and `args.tierOverrides` is merged over it per run (per-task `most-capable` is normalized to the
-`mostCapable` key and unknown *task* tiers fall back to `standard` with a judgment call; unknown
-override *keys or model values* throw at launch). Reviewers and the completeness critic always run at the DEFAULT `most-capable` (`opus`), override-proof; every other role follows the override-merged map (setup/merge at `cheap`, reconcile/fix at `mostCapable`).
+constant in `waves.js` (per-task `most-capable` is normalized to the `mostCapable` key and unknown
+*task* tiers fall back to `standard` with a judgment call). Reviewers and the completeness critic
+always run at `most-capable` (`opus`), unconditionally; every other role follows the map
+(setup/merge at `cheap`, reconcile/fix at `mostCapable`).
 
-The per-task reviewer model is `reviewerModelFor(task)`: `DEFAULT_TIER.standard`
-(sonnet) for a `lean` review of a `cheap`-tier task, `DEFAULT_TIER.mostCapable`
-(opus) otherwise. It is built from `DEFAULT_TIER`, not `TIER`, so `tierOverrides`
-cannot weaken the gate. The completeness critic, reconcile, and fix rounds keep
-opus / `TIER.mostCapable`.
+The per-task reviewer model is `reviewerModelFor()`: uniformly
+`DEFAULT_TIER.mostCapable` (opus), unconditionally. The completeness critic,
+reconcile, and fix rounds keep opus / `TIER.mostCapable`.
 
 **Verified live (2026-06-03):** `small` / `medium` / `large` are **not** valid model identifiers —
 the agent returns "There's an issue with the selected model" and does no work — whereas
