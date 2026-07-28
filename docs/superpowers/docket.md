@@ -17,7 +17,7 @@
 **Notes:** Two measurement-integrity defects: stale gate evidence (23-run family — bundles store the first BLOCKED receipt for runs that actually recovered and merged, miscounting false-reds as terminal) and synthetic contamination (6 of 21 "field" bundles this pass were A/B eval cells flowing into the redirect-canary/clean-pass statistics). Fix: last-receipt-per-stamp with ordinal + truncated flag; origin: synthetic for eval-cell-convention paths. Not the frozen periphery. Ranked above the driver cosmetics because bad sensing corrupts every future triage.
 
 ### #97: Receipt stage details must state the stage's own verdict
-**State:** queued
+**State:** executed
 **Score:** 7.5 — single most frequent ledger finding (14/118 runs, every version 0.0.35→0.1.11); receipt honesty of a fail-closed driver
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py
 **Plan:** docs/superpowers/plans/2026-07-27-receipt-stage-verdicts.md
