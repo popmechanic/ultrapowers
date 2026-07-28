@@ -1,7 +1,7 @@
 # Docket
 
 ### #96: Gate derives its inputs from the receipt: suite-gate bootstrap + mechanical tests.command
-**State:** queued
+**State:** executed
 **Score:** 9.5 — integration-correctness (Q-priority 1) at the merge boundary itself; distill headliner
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/reviewer-prompts.md, skills/ultrapowers/scripts/run_acceptance.sh, skills/ultrapowers/scripts/ultra_gate.py, evals/, docs/superpowers/specs/2026-07-27-gate-derives-inputs.md
 **Plan:** docs/superpowers/plans/2026-07-27-gate-derives-inputs.md
