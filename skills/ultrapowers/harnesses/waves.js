@@ -153,8 +153,10 @@ const EDGES = edgesSupplied
     })
   : []
 
-// ── Per-project knobs (all optional; defaults preserve prior behavior) ────────
-// testCmd:        override the test-command detection ladder (e.g. 'make test').
+// ── Per-project knobs (optional unless noted; defaults preserve prior behavior) ─
+// testCmd:        MANDATORY (#96) — the run-wide test command, stamped by the
+//                 ultra_run.py preflight from the operator knob or its detection
+//                 ladder. Validated below; the harness never detects on its own.
 // reviewProfile:  'lean' (default, one review pass) | 'adversarial' (two independent passes).
 // tierOverrides:  remap model tiers per project, e.g. { cheap: 'sonnet' }.
 const testCmd = (ARGS && typeof ARGS.testCmd === 'string' && ARGS.testCmd.trim()) || undefined
@@ -227,6 +229,13 @@ for (const k of ['pluginRoot', 'runDir']) {
       'ultra_run.py emits both keys via compile_plan.py --run-dir; a hand-authored ' +
       'salvage/redirect launch must carry them too. Refusing to launch.')
   }
+}
+
+// #96: the gate derives tests.command from the receipt; the harness copy in
+// args must therefore always exist — the driver stamps it (knob or detection).
+if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
+  throw new Error('ultrapowers: args.testCmd missing or empty. The ultra_run.py ' +
+    'preflight stamps it into the argsFile — launch by spreading the receipt argsFile.')
 }
 
 // Wave phase titles are NOT injected by mutating the meta literal: the current
@@ -339,10 +348,8 @@ const fillPaths = (s) =>
   s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
-// testInstruction: honor an explicit args.testCmd, else fall back to detection.
-const testInstruction = testCmd
-  ? ('run the project test command `' + testCmd + '`')
-  : ('detect and run the project test command (pnpm check, npm test, pytest, cargo test, or go test ./...)')
+// testInstruction: args.testCmd is mandatory (driver-stamped: knob or detection).
+const testInstruction = 'run the project test command `' + testCmd + '`'
 
 const SETUP_PROMPT = resume
   ? ('You are the setup agent on the session repo main checkout. Check out the EXISTING ' +
@@ -491,7 +498,6 @@ const REVIEW_SCHEMA = {
   type: 'object',
   required: ['testsPassed'],
   properties: {
-    command: { type: 'string' },
     testsPassed: { type: 'boolean' },
     output: { type: 'string' },
     findings: { type: 'array', items: { type: 'string' } },
@@ -975,7 +981,7 @@ if (budgetExhausted()) {
     waves: WAVES.map((w) => w.map((t) => t.id)),
     dependencyEdges,
     tasks: [],
-    tests: { command: undefined, passed: false, output: 'not run — budget exhausted before setup' },
+    tests: { command: testCmd, passed: false, output: 'not run — budget exhausted before setup' },
     baseline: {},
     waveMerges: [],
     coverage: { tasks_merged: 0, tasks_planned: WAVES.flat().length, complete: false },
@@ -1283,7 +1289,7 @@ let review
 if (budgetExhausted()) {
   judgmentCalls.push('integration review deferred: budget exhausted — verify the suite manually before merging')
   log('integration review deferred: budget exhausted')
-  review = { command: undefined, testsPassed: false,
+  review = { testsPassed: false,
              output: 'not run — budget exhausted before integration review',
              findings: ['integration review deferred: budget exhausted — verify the suite manually before merging'] }
 } else {
@@ -1318,7 +1324,7 @@ if (budgetExhausted()) {
 // manually-verifiable result and a judgment call, never a crash.
 if (!review || typeof review !== 'object') {
   judgmentCalls.push('integration review returned no result — the completeness agent died (likely a transient API error after retries); verify the suite manually before merging')
-  review = { command: undefined, testsPassed: false,
+  review = { testsPassed: false,
              output: 'integration review returned null — the completeness agent produced no result',
              findings: ['integration review returned no result — verify the suite manually before merging'] }
 }
@@ -1420,7 +1426,7 @@ return {
   waves: WAVES.map((w) => w.map((t) => t.id)),
   dependencyEdges,
   tasks: taskResults,
-  tests: { command: review.command, passed: review.testsPassed, output: review.output },
+  tests: { command: testCmd, passed: review.testsPassed, output: review.output },
   acceptance,
   baseline,
   waveMerges,
