@@ -373,29 +373,50 @@ async function scenarioPortability() {
 // critic operate inside it, and the critic's verified detach frees the branch
 // for the frozen Approve checkout.
 async function scenarioIntegrationWorktree() {
+  const BOOTSTRAP = 'python3 -m venv .venv && .venv/bin/pip install -e .'
   const prompts = {}
-  const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
-  const args = Object.assign({}, baseArgs, {
-    bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .',
+  // A wave-1 CONFLICT so the reconcile role is actually dispatched and its
+  // prompt can be asserted on (it is otherwise unreachable in a clean run).
+  const agent = makeAgent((label, prompt) => {
+    prompts[label] = prompt
+    if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
+    if (label.startsWith('reconcile:')) return { status: 'MERGED', headSha: 'reconciled-sha' }
+    return undefined
   })
+  const args = Object.assign({}, baseArgs, { bootstrapCmd: BOOTSTRAP })
   const r = await runWorkflow({ agent, args, budget: undefined })
   const WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
+  // No write-side role may be pointed at the session main checkout — neither by
+  // its own prompt body NOR by the GUARD's carve-out sentence, which used to
+  // hand setup/merge/reconcile standing permission to modify it. These assert on
+  // the FULL dispatched prompt (GUARD included), so a carve-out that regrows in
+  // either copy fails here.
+  const noMainCheckout = (label) => {
+    assert(!prompts[label].includes('session repo main checkout'),
+      'intwt: ' + label + ' prompt drops the main-checkout framing')
+    assert(!prompts[label].includes('main checkout, which those write-side roles may modify'),
+      'intwt: ' + label + ' prompt (GUARD included) grants no main-checkout write permission')
+  }
   // Setup: worktree add, never a main-checkout branch creation.
   assert(prompts['setup'].includes('git worktree add ' + WT),
     'intwt: setup cuts the dedicated integration worktree')
   assert(!prompts['setup'].includes('git checkout -b'),
     'intwt: setup never creates the branch on the session checkout')
-  assert(!prompts['setup'].includes('session repo main checkout'),
-    'intwt: setup prompt drops the main-checkout framing')
+  noMainCheckout('setup')
   // Setup bootstraps the fresh worktree once (merge agents run tests there).
   assert(prompts['setup'].includes('pip install -e .'),
     'intwt: setup runs bootstrapCmd inside the integration worktree')
-  // Merge + reconcile-capable prompts name the worktree, not the main checkout.
+  // Merge names the worktree, not the main checkout.
   const mergeLabel = Object.keys(prompts).find((l) => /^merge:wave/.test(l))
   assert(mergeLabel && prompts[mergeLabel].includes(WT),
     'intwt: merge agent operates inside the integration worktree')
-  assert(!prompts[mergeLabel].includes('session repo main checkout'),
-    'intwt: merge prompt drops the main-checkout framing')
+  noMainCheckout(mergeLabel)
+  // Reconcile is write-side too: it resolves conflicts on the integration branch.
+  const reconcileLabel = Object.keys(prompts).find((l) => /^reconcile:/.test(l))
+  assert(reconcileLabel, 'intwt: a reconcile agent was actually dispatched')
+  assert(prompts[reconcileLabel].includes(WT),
+    'intwt: reconcile agent operates inside the integration worktree')
+  noMainCheckout(reconcileLabel)
   // Critic: detach happens INSIDE the worktree — it doubles as the branch release.
   assert(prompts['integration'].includes(WT),
     'intwt: completeness critic operates inside the integration worktree')
@@ -406,6 +427,24 @@ async function scenarioIntegrationWorktree() {
   assert(reviewLabel && !prompts[reviewLabel].includes(WT),
     'intwt: reviewer prompt is not rerouted into the worktree')
   assert(r.tasks.every((t) => t.status === 'done'), 'intwt: run completes')
+
+  // Resume: the branch survives a redirect, its worktree may not. When resume
+  // setup has to CREATE the worktree it is just as fresh as the initial one, so
+  // it carries the same WORKTREE SETUP sentence.
+  let resumeSetup = ''
+  const rr = await runWorkflow({
+    agent: makeAgent((label, prompt) => {
+      if (label === 'setup') { resumeSetup = prompt }
+      return undefined
+    }),
+    args: Object.assign({}, baseArgs, { resume: true, bootstrapCmd: BOOTSTRAP }),
+    budget: undefined,
+  })
+  assert(resumeSetup.includes('git worktree add ' + WT + ' ' + baseArgs.integrationBranch),
+    'intwt/resume: setup materializes the worktree for the existing branch')
+  assert(resumeSetup.includes('WORKTREE SETUP') && resumeSetup.includes('pip install -e .'),
+    'intwt/resume: a worktree setup had to create carries the bootstrap command')
+  assert(rr.tasks.every((t) => t.status === 'done'), 'intwt/resume: run completes')
   console.log('scenario integration-worktree: OK')
 }
 
@@ -2155,8 +2194,9 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   // bootstrap threaded into the FRESH worktree role (only the implementer builds)…
   assert(/WORKTREE SETUP:.*bun install/.test(prompts['impl:A']),
     'bootstrap: impl carries the per-worktree setup command')
-  // …but NOT the non-isolated roles (they run on the main checkout, deps present) —
-  // the read-only reviewer is now one of them (A2): it only reads the diff.
+  // …but NOT the non-isolated roles. Merge and the completeness critic run in the
+  // dedicated integration worktree, which setup already bootstrapped once (#84), so
+  // re-installing there is waste; the read-only reviewer (A2) only reads the diff.
   assert(prompts['review:A:1'] && !/WORKTREE SETUP:/.test(prompts['review:A:1']),
     'bootstrap: the read-only reviewer does NOT get the worktree-setup line')
   assert(prompts['merge:wave1'] && !/WORKTREE SETUP:/.test(prompts['merge:wave1']),
