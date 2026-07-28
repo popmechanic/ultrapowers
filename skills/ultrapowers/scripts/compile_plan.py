@@ -805,7 +805,11 @@ def collect_violations(plan_path):
     violations = []
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
+    # Files grammar is disposition-scoped (#91): only implementation tasks
+    # enter overlap inference, so only their Files blocks are checked.
     for t in tasks:
+        if classify(t)[0] != "implementation":
+            continue
         violations.extend(_files_violations(t))
     return violations
 
@@ -1324,7 +1328,17 @@ def main(argv=None):
     # glob is a loud compile error — never a silent overlap drop. Collected across
     # every task so the author sees all diagnostics at once, and raised BEFORE
     # edge building so a violating line never reaches overlap inference partially.
-    files_violations = [v for t in tasks for v in _files_violations(t)]
+    # Dispositions resolve BEFORE the Files gate (#91): Files grammar feeds
+    # overlap inference, which only implementation tasks enter — a
+    # gate/manual/release task's placeholder Files text is structurally
+    # inert and must neither block compile nor warn.
+    for t in tasks:
+        disp, heuristic = classify(t)
+        t["disposition"], t["heuristic"] = disp, heuristic
+
+    files_violations = [v for t in tasks
+                        if t["disposition"] == "implementation"
+                        for v in _files_violations(t)]
     if files_violations:
         print("compile_plan: Files grammar violation(s) — refusing to compile "
               "(an annotated / unknown-label / glob Files line silently drops "
@@ -1334,10 +1348,9 @@ def main(argv=None):
 
     out_tasks = []
     for t in tasks:
-        disp, heuristic = classify(t)
-        t["disposition"] = disp
-        out_tasks.append({"id": t["id"], "title": t["title"], "disposition": disp,
-                          "heuristic": heuristic, "writes": t["writes"],
+        out_tasks.append({"id": t["id"], "title": t["title"],
+                          "disposition": t["disposition"],
+                          "heuristic": t["heuristic"], "writes": t["writes"],
                           "depends_on": t["depends_on"],
                           "interfaces": t["interfaces"]})
 

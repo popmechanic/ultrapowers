@@ -2577,3 +2577,26 @@ def test_files_violations_allows_single_catch_all_bullet():
     from compile_plan import _files_violations
     v = _files_violations({"id": "2", "catch_all_raw": ["one thing"], "files_raw": []})
     assert v == []
+
+
+def test_gate_task_files_noise_does_not_block_compile(tmp_path):
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# P\n\n**Acceptance:** waived — test\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
+        "### Task 2: Gate\n\n**Type:** gate\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Verify: `(none)`\n\n- [ ] **Step 1: run the suite**\n")
+    out = compile_plan(plan)
+    assert out["waves"] == [["1"]]
+
+
+def test_implementation_files_noise_still_blocks_compile(tmp_path):
+    plan = tmp_path / "p.md"
+    plan.write_text(
+        "# P\n\n**Acceptance:** waived — test\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Tweak: `a.py`\n\n- [ ] **Step 1: do**\n")
+    p = compile_plan_raw(plan)
+    assert p.returncode != 0
+    assert "unknown files label" in (p.stdout + p.stderr).lower()
