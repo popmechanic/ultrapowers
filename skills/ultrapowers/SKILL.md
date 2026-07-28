@@ -203,7 +203,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
 - **Approve** — only on PASS (or an acknowledged NEEDS_ACK). Run
   `ultra_gate.py --approve --stamp <stamp> --wf-run <wf_runId>` — it does
   `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
-  sweeps the run's worktrees, and releases the lock. When work spanned **multiple
+  sweeps the run's worktrees, and releases the lock; also run
+  `sweep_worktrees.sh --run wf_<stamp>` to sweep the dedicated integration
+  worktree, which the `--wf-run` sweep's `wf_<runId>-*` glob does not match.
+  When work spanned **multiple
   phases or runs**, run one **holistic cross-phase** review of the fully-integrated
   tree against the *combined* plan and gate on it **before the final PR**
   (single-run pipelines already got it at Step 4), then apply the two
@@ -226,7 +229,9 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
   the worktrees as triage evidence — tell the operator how to remove them:
-  `sweep_worktrees.sh --run <wf_runId>`. (Redirect and Salvage are not terminal.)
+  `sweep_worktrees.sh --run <wf_runId>`, plus `sweep_worktrees.sh --run
+  wf_<stamp>` for the dedicated integration worktree, which that glob misses.
+  (Redirect and Salvage are not terminal.)
 
 ## Step 6 — Fallback
 
