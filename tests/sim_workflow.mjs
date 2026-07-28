@@ -422,6 +422,20 @@ async function scenarioIntegrationWorktree() {
     'intwt: completeness critic operates inside the integration worktree')
   assert(prompts['integration'].includes('git checkout --detach'),
     'intwt: critic still performs the sha-verified detach')
+  // Naming the worktree is not standing in it. In the live shakedown the critic
+  // followed this prompt and ran `git checkout --detach` in the SESSION MAIN
+  // CHECKOUT, because nothing told it to cd first. The bare detach imperative
+  // must be unreachable without the cd, so pin both the instruction and its
+  // position ahead of the detach.
+  assert(/cd into it/.test(prompts['integration']),
+    'intwt: critic is told to cd into the integration worktree before any git command')
+  // 'run git checkout --detach' is the ROLE BODY's imperative (the GUARD's own
+  // mention reads '...git checkout --detach INSIDE the run...'), so this pins
+  // ordering inside the completeness prompt rather than against the guard.
+  assert(prompts['integration'].indexOf('run git checkout --detach') > -1 &&
+    prompts['integration'].indexOf('cd into it') <
+      prompts['integration'].indexOf('run git checkout --detach'),
+    'intwt: the cd instruction precedes the detach imperative')
   // GUARD coherence: the SAFETY block must POSITIVELY authorize the two actions
   // the choreography requires, or every agent has to choose between its role
   // prompt and the guard. (a) setup necessarily runs `git worktree add` from the
@@ -437,6 +451,12 @@ async function scenarioIntegrationWorktree() {
     'intwt/guard: GUARD sanctions the critic detach as the one read-only exception')
   assert(prompts['integration'].includes('git checkout --detach INSIDE the run'),
     'intwt/guard: the sanctioned detach is scoped INSIDE the integration worktree')
+  // (c) The GUARD's LOCATION clause must list the critic among the roles allowed
+  // to operate in that worktree at all — otherwise the role prompt sends it
+  // somewhere the guard's opening sentence never permits it to stand.
+  assert(prompts['integration'].includes(
+    'setup, merge, and reconcile roles and the completeness critic'),
+    'intwt/guard: GUARD location clause permits the critic in the integration worktree')
   // Reviewers keep their non-isolated read-only discipline untouched (A2).
   const reviewLabel = Object.keys(prompts).find((l) => /^review:/.test(l))
   assert(reviewLabel && !prompts[reviewLabel].includes(WT),

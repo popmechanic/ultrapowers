@@ -230,8 +230,10 @@ if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
   'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
-  "setup, merge, and reconcile roles the run's dedicated integration worktree, " +
-  'which those write-side roles may modify. The setup role is additionally ' +
+  "setup, merge, and reconcile roles and the completeness critic the run's " +
+  'dedicated integration worktree, which those write-side roles may modify and ' +
+  'in which the critic is read-only apart from its sha-verified detach below. ' +
+  'The setup role is additionally ' +
   'authorized to run git worktree add from the session repo root to CREATE that ' +
   'integration worktree: it necessarily runs before the worktree exists, and ' +
   'writes only git metadata plus the new worktree directory; creating it is the ' +
@@ -432,8 +434,8 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
    'modify the tree in any way. Your only output is your findings/verdict. If the ' +
    'work is wrong, report it — never fix it.',
    'Operate ONLY inside the dedicated integration worktree at ' + INTEGRATION_WT +
-   ' — never the session main checkout; your verified detach there also frees the ' +
-   'integration branch for the gate.'].join('\n') + '\n' +
+   ' — cd into it before any git command; never the session main checkout; your ' +
+   'verified detach there also frees the integration branch for the gate.'].join('\n') + '\n' +
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'First, put yourself on the exact tree the run produced: the integration HEAD ' +
   'is ' + (mergeHeadSha || '') + '. If that value is empty, report BLOCKED and ' +
