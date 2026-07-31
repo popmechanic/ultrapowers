@@ -1,8 +1,10 @@
 """End-to-end test for sweep_worktrees.sh — the non-stubbed cleanup check the
 completeness critic demanded: a REAL repo, REAL worktrees, and assertions that
 removal actually happens (merged branch deleted, unmerged branch kept)."""
+import os
 import pathlib
 import subprocess
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SWEEP = ROOT / "skills/ultrapowers/scripts/sweep_worktrees.sh"
@@ -407,3 +409,75 @@ def test_leftover_accounting_survives_unreadable_subdirectory(tmp_path):
         assert "left behind: 1 worktree(s)" in p.stdout
     finally:
         os.chmod(blocked, 0o755)
+
+
+def _age(path, days):
+    old = time.time() - days * 86400
+    os.utime(path, (old, old))
+
+
+def test_audit_flags_old_orphans_and_removes_nothing(tmp_path):
+    """Findings 2+3: kept-for-inspection degrades to kept-forever because
+    nothing re-surfaces it. --audit is the janitor's eyes: report-only."""
+    repo = make_repo(tmp_path)
+    wt_old, br_old = add_engine_worktree(repo, "old-1", "j.txt", merge=False)
+    _age(wt_old, days=2)
+    wt_new, _ = add_engine_worktree(repo, "new-1", "k.txt", merge=False)
+
+    p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert f"orphan worktree: {wt_old}" in p.stdout
+    # age guard: a fresh worktree (default threshold 24h) is not nagged
+    assert f"orphan worktree: {wt_new}" not in p.stdout
+    # report-only: nothing was removed or deleted
+    assert wt_old.exists() and wt_new.exists()
+    assert br_old in branches(repo)
+    assert "audit:" in p.stdout
+
+
+def test_audit_age_hours_zero_flags_stale_branches_too(tmp_path):
+    repo = make_repo(tmp_path)
+    wt, br = add_engine_worktree(repo, "fresh-1", "l.txt", merge=False)
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "0"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert f"orphan worktree: {wt}" in p.stdout
+    assert f"stale branch: {br}" in p.stdout
+    assert "unmerged" in p.stdout
+    assert wt.exists() and br in branches(repo)
+
+
+def test_audit_exempts_the_run_lock_live_run(tmp_path):
+    repo = make_repo(tmp_path)
+    lockdir = repo / ".claude" / "ultrapowers"
+    lockdir.mkdir(parents=True)
+    (lockdir / "RUN_LOCK").write_text("liverun")
+    wt_live, _ = add_engine_worktree(repo, "liverun-1", "m.txt", merge=False)
+    _age(wt_live, days=2)
+    wt_dead, _ = add_engine_worktree(repo, "deadrun-1", "n.txt", merge=False)
+    _age(wt_dead, days=2)
+
+    p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert f"orphan worktree: {wt_dead}" in p.stdout
+    assert f"orphan worktree: {wt_live}" not in p.stdout
+    assert "liverun" in p.stdout          # the exemption is stated, not silent
+
+
+def test_audit_clean_repo_says_clean(tmp_path):
+    repo = make_repo(tmp_path)
+    p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "audit: clean" in p.stdout
+
+
+def test_audit_rejects_sweep_flags(tmp_path):
+    repo = make_repo(tmp_path)
+    for combo in (["--audit", "--force"], ["--audit", "--all"],
+                  ["--audit", "--run", "x"]):
+        p = subprocess.run(["bash", str(SWEEP), *combo], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 2, combo

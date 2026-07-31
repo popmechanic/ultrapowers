@@ -26,6 +26,11 @@
 # Every invocation ends with a leftover accounting: one `left behind: ...`
 # line per remaining .claude/worktrees/wf_* entry this sweep did not remove,
 # plus a summary total — silent only when nothing remains.
+#
+# Pass --audit [--age-hours N] for a report-only janitor pass: it removes and
+# deletes nothing (always exits 0), and flags every engine worktree/branch
+# that does not belong to the RUN_LOCK'd live run and is older than N hours
+# (default 24). Mutually exclusive with --run/--all/--force.
 set -euo pipefail
 
 # The MAIN worktree is the first entry of `git worktree list --porcelain`.
@@ -42,6 +47,8 @@ fi
 FORCE=""
 RUN_SCOPE=""
 ALL_SCOPE=""
+AUDIT=""
+AGE_HOURS="24"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -51,8 +58,13 @@ while [ $# -gt 0 ]; do
       shift
       RUN_SCOPE="${1:?--run requires a runId argument}"
       ;;
+    --audit) AUDIT="yes" ;;
+    --age-hours)
+      shift
+      AGE_HOURS="${1:?--age-hours requires a number}"
+      ;;
     *)
-      echo "usage: sweep_worktrees.sh [--run <runId> | --all] [--force]" >&2
+      echo "usage: sweep_worktrees.sh [--run <runId> | --all] [--force] | --audit [--age-hours <N>]" >&2
       exit 2
       ;;
   esac
@@ -61,6 +73,104 @@ done
 if [ -n "$ALL_SCOPE" ] && [ -n "$RUN_SCOPE" ]; then
   echo "sweep_worktrees.sh: --all and --run are mutually exclusive" >&2
   exit 2
+fi
+if [ -n "$AUDIT" ] && { [ -n "$FORCE" ] || [ -n "$ALL_SCOPE" ] || [ -n "$RUN_SCOPE" ]; }; then
+  echo "sweep_worktrees.sh: --audit is report-only and takes no sweep flags" >&2
+  exit 2
+fi
+
+# Compute the set of locked worktree paths ONCE (a single porcelain pass) instead
+# of re-running `git worktree list` for every worktree — the old per-worktree call
+# was O(N^2) in worktree count, worst exactly when a wide run left the most.
+LOCKED_PATHS="$(git -C "$ROOT" worktree list --porcelain | awk '
+  $1 == "worktree" { cur = substr($0, 10) }
+  $1 == "locked"   { print cur }')"
+is_locked() {
+  # Membership test against the precomputed newline-delimited set — no git call.
+  printf '%s\n' "$LOCKED_PATHS" | grep -Fxq -- "$1"
+}
+
+human_kb() {
+  awk -v kb="$1" 'BEGIN {
+    if (kb >= 1048576)   printf "%.1fG", kb / 1048576
+    else if (kb >= 1024) printf "%.0fM", kb / 1024
+    else                 printf "%dK", kb }'
+}
+# BSD stat wants `-f %m`, GNU coreutils wants `-c %Y`, and each REJECTS the
+# other's flag — but not symmetrically: GNU's -f is --file-system and takes NO
+# format argument, so `stat -f %m DIR` parses as two FILE operands, prints a
+# multi-line filesystem block for DIR on STDOUT, and still exits 1. Streaming
+# the attempts straight into a `||` chain therefore CONCATENATES that block
+# with the fallback's epoch on Linux, and the arithmetic below dies on it under
+# `set -euo pipefail` (`File: unbound variable`) — a sweep that is green on
+# macOS and red in CI. Capture each attempt so a failed one's stdout is
+# discarded, and accept only a plain epoch; this function always prints a number.
+mtime_of() {
+  local m=""
+  m="$(stat -f %m "$1" 2>/dev/null)" || m=""
+  case "$m" in ''|*[!0-9]*) m="$(stat -c %Y "$1" 2>/dev/null)" || m="" ;; esac
+  case "$m" in ''|*[!0-9]*) m="$(date +%s)" ;; esac
+  printf '%s' "$m"
+}
+
+# ── audit mode (report-only janitor) ───────────────────────────────────────
+# "Kept for inspection" degrades to kept-forever unless something re-surfaces
+# it (Findings 2+3, vibes.diy 2026-07-31). Flags engine worktrees and
+# worktree-wf_* branches that belong to no live (RUN_LOCK'd) run and are older
+# than --age-hours (default 24 — freshly-kept triage evidence is not nagged).
+# Removes nothing, deletes nothing, always exits 0. Placed BEFORE the
+# RUNID/RUN_LOCK fallback below so audit never consumes/narrows via that
+# fallback — it reads RUN_LOCK itself, only to compute the live-run exemption.
+if [ -n "$AUDIT" ]; then
+  live=""
+  if [ -f "$ROOT/.claude/ultrapowers/RUN_LOCK" ]; then
+    live="$(cat "$ROOT/.claude/ultrapowers/RUN_LOCK")"
+    live="${live#wf_}"
+  fi
+  now="$(date +%s)"
+  cutoff=$((AGE_HOURS * 3600))
+  orphans=0
+  orphan_kb=0
+  stale=0
+  for wt in "$ROOT"/.claude/worktrees/wf_*; do
+    [ -e "$wt" ] || continue
+    name="$(basename "$wt")"
+    if [ -n "$live" ]; then
+      case "$name" in "wf_${live}-"*) continue ;; esac
+    fi
+    age=$(( now - $(mtime_of "$wt") ))
+    [ "$age" -lt "$cutoff" ] && continue
+    orphans=$((orphans + 1))
+    kb="$(du -sk "$wt" 2>/dev/null | cut -f1 || true)"
+    case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
+    orphan_kb=$((orphan_kb + kb))
+    lock=""
+    if is_locked "$wt"; then lock=", locked"; fi
+    echo "orphan worktree: $wt ($(human_kb "$kb"), $((age / 86400))d old${lock})"
+  done
+  while IFS= read -r br; do
+    [ -n "$br" ] || continue
+    if [ -n "$live" ]; then
+      case "$br" in "worktree-wf_${live}-"*) continue ;; esac
+    fi
+    ct="$(git -C "$ROOT" log -1 --format=%ct "$br" 2>/dev/null)" || ct=""
+    case "$ct" in ''|*[!0-9]*) ct="$now" ;; esac
+    age=$(( now - ct ))
+    [ "$age" -lt "$cutoff" ] && continue
+    stale=$((stale + 1))
+    if git -C "$ROOT" merge-base --is-ancestor "$br" HEAD 2>/dev/null; then
+      state="merged"
+    else
+      state="unmerged — failed/blocked work kept for inspection"
+    fi
+    echo "stale branch: $br ($state, last commit $((age / 86400))d ago)"
+  done < <(git -C "$ROOT" branch --list "worktree-wf_*" --format='%(refname:short)')
+  if [ "$orphans" -eq 0 ] && [ "$stale" -eq 0 ]; then
+    echo "audit: clean (no orphan worktrees or stale branches older than ${AGE_HOURS}h${live:+; live run ${live} exempt})"
+  else
+    echo "audit: $orphans orphan worktree(s) ($(human_kb "$orphan_kb")), $stale stale branch(es) older than ${AGE_HOURS}h${live:+; live run ${live} exempt} — triage, then remove with sweep_worktrees.sh --all [--force]"
+  fi
+  exit 0
 fi
 
 # Fall back to RUNID env or RUN_LOCK file when neither --run nor --all given.
@@ -81,17 +191,6 @@ fi
 # wf_ to avoid a double-prefix glob (wf_wf_<id>-*) that matches nothing and
 # silently sweeps zero (confirmed 2026-06-25 — a wf_-prefixed --run no-op'd a run).
 RUN_SCOPE="${RUN_SCOPE#wf_}"
-
-# Compute the set of locked worktree paths ONCE (a single porcelain pass) instead
-# of re-running `git worktree list` for every worktree — the old per-worktree call
-# was O(N^2) in worktree count, worst exactly when a wide run left the most.
-LOCKED_PATHS="$(git -C "$ROOT" worktree list --porcelain | awk '
-  $1 == "worktree" { cur = substr($0, 10) }
-  $1 == "locked"   { print cur }')"
-is_locked() {
-  # Membership test against the precomputed newline-delimited set — no git call.
-  printf '%s\n' "$LOCKED_PATHS" | grep -Fxq -- "$1"
-}
 
 removed_worktrees=0
 kept_worktrees=0
@@ -158,29 +257,9 @@ echo "swept: $removed_worktrees worktree(s) removed, $deleted branch(es) deleted
 # A scoped sweep says nothing about non-matching wf_* dirs — that silence is
 # how ~23 GB sat invisible for a month (vibes.diy 2026-07-31). Account for
 # every engine worktree this invocation did NOT remove, loudly, with size and
-# age; silent only when the directory is genuinely clean.
-human_kb() {
-  awk -v kb="$1" 'BEGIN {
-    if (kb >= 1048576)   printf "%.1fG", kb / 1048576
-    else if (kb >= 1024) printf "%.0fM", kb / 1024
-    else                 printf "%dK", kb }'
-}
-# BSD stat wants `-f %m`, GNU coreutils wants `-c %Y`, and each REJECTS the
-# other's flag — but not symmetrically: GNU's -f is --file-system and takes NO
-# format argument, so `stat -f %m DIR` parses as two FILE operands, prints a
-# multi-line filesystem block for DIR on STDOUT, and still exits 1. Streaming
-# the attempts straight into a `||` chain therefore CONCATENATES that block
-# with the fallback's epoch on Linux, and the arithmetic below dies on it under
-# `set -euo pipefail` (`File: unbound variable`) — a sweep that is green on
-# macOS and red in CI. Capture each attempt so a failed one's stdout is
-# discarded, and accept only a plain epoch; this function always prints a number.
-mtime_of() {
-  local m=""
-  m="$(stat -f %m "$1" 2>/dev/null)" || m=""
-  case "$m" in ''|*[!0-9]*) m="$(stat -c %Y "$1" 2>/dev/null)" || m="" ;; esac
-  case "$m" in ''|*[!0-9]*) m="$(date +%s)" ;; esac
-  printf '%s' "$m"
-}
+# age; silent only when the directory is genuinely clean. (human_kb/mtime_of
+# are defined earlier, alongside is_locked, so the audit block above can share
+# them too.)
 now="$(date +%s)"
 left_n=0
 left_kb=0
