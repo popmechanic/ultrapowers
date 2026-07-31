@@ -2,9 +2,11 @@
 Every stage is exercised against a throwaway git repo; the receipt and exit
 code are the contract the orchestrator consumes."""
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
@@ -570,3 +572,35 @@ def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
         assert doomed.exists()                       # it really did survive
     finally:
         doomed.chmod(0o700)                          # let tmp_path clean up
+
+
+# --- requirement 3: janitor advisory surfaced at preflight (vibes.diy 2026-07-31) ---
+
+def test_preflight_surfaces_worktree_audit_without_blocking(tmp_path):
+    """Requirement 3: concluded-run leftovers surface at the NEXT run's
+    preflight instead of relying on the operator's memory — advisory only."""
+    repo = make_repo(tmp_path)
+    stale = repo / ".claude" / "worktrees" / "wf_deadrun-1"
+    sh(["git", "worktree", "add", "-b", "worktree-wf_deadrun-1", str(stale)],
+       cwd=repo)
+    old = time.time() - 3 * 86400
+    os.utime(stale, (old, old))
+
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr        # never blocks
+    receipt = json.loads(r.stdout)
+    audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
+    assert len(audit) == 1
+    assert audit[0]["ok"] is True
+    assert "wf_deadrun-1" in audit[0]["detail"]
+    assert stale.exists()                                # advisory: untouched
+
+
+def test_preflight_audit_is_clean_on_a_clean_repo(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
+    assert len(audit) == 1 and audit[0]["ok"] is True
+    assert "audit: clean" in audit[0]["detail"]
