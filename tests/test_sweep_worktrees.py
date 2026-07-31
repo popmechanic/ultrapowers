@@ -241,3 +241,76 @@ def test_sweep_no_scope_is_repo_wide(tmp_path):
     subprocess.run(["bash", str(SWEEP), "--force"], cwd=repo,
                    capture_output=True, text=True)
     assert not wt_a.exists() and not wt_b.exists()  # both removed (back-compat)
+
+
+def test_scoped_sweep_reports_what_it_left_behind(tmp_path):
+    """Finding 1 (vibes.diy 2026-07-31): a scoped sweep silently no-oped on 20
+    non-matching wf_* dirs (~23 GB). The sweep must account for every wf_* entry
+    it did NOT remove."""
+    repo = make_repo(tmp_path)
+    add_engine_worktree(repo, "run1-1", "e.txt", merge=True)
+    wt_other, _ = add_engine_worktree(repo, "run2-1", "f.txt", merge=False)
+
+    p = subprocess.run(["bash", str(SWEEP), "--run", "run1"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert wt_other.exists()                        # out of scope — kept
+    assert f"left behind: {wt_other}" in p.stdout   # ...but accounted for
+    assert "left behind: 1 worktree(s)" in p.stdout
+    assert "d old" in p.stdout                      # age is part of the line
+
+
+def test_clean_sweep_reports_no_leftovers(tmp_path):
+    repo = make_repo(tmp_path)
+    add_engine_worktree(repo, "test-9", "g.txt", merge=True)
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "left behind" not in p.stdout
+
+
+def test_locked_leftover_is_reported_with_lock_marker(tmp_path):
+    """A live run's locked worktree is kept AND shows up in the accounting —
+    reported, never an error (exit stays 0)."""
+    repo = make_repo(tmp_path)
+    wt, _ = add_engine_worktree(repo, "live-1", "i.txt", merge=False)
+    git(repo, "worktree", "lock", str(wt))
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert wt.exists()
+    assert f"left behind: {wt}" in p.stdout
+    assert "locked" in p.stdout
+
+
+def test_stale_run_lock_fallback_is_loud_and_all_overrides_it(tmp_path):
+    """The stale-RUN_LOCK scoping trap: with no --run, a leftover RUN_LOCK
+    silently narrowed even an intended repo-wide sweep to one run. Now the
+    inherited scope is announced, the skipped dirs are accounted for, and
+    --all performs the intended repo-wide sweep."""
+    repo = make_repo(tmp_path)
+    lockdir = repo / ".claude" / "ultrapowers"
+    lockdir.mkdir(parents=True)
+    (lockdir / "RUN_LOCK").write_text("stale-run")
+    wt, _ = add_engine_worktree(repo, "otherrun-1", "h.txt", merge=True)
+
+    p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "scope inherited from RUN_LOCK (stale-run)" in p.stdout
+    assert wt.exists()
+    assert f"left behind: {wt}" in p.stdout
+
+    p = subprocess.run(["bash", str(SWEEP), "--all"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert not wt.exists()
+    assert "left behind" not in p.stdout
+    assert "scope inherited" not in p.stdout
+
+
+def test_all_and_run_are_mutually_exclusive(tmp_path):
+    repo = make_repo(tmp_path)
+    p = subprocess.run(["bash", str(SWEEP), "--all", "--run", "x"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 2

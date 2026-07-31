@@ -19,6 +19,13 @@
 # (.claude/worktrees/wf_<runId>-* and worktree-wf_<runId>-*).  When --run is
 # not given, RUNID env var is consulted, then the RUN_LOCK file; if none is
 # set, the existing repo-wide wf_* behavior is preserved unchanged.
+#
+# Pass --all for an explicit repo-wide sweep that ignores the RUNID/RUN_LOCK
+# fallback entirely (mutually exclusive with --run).
+#
+# Every invocation ends with a leftover accounting: one `left behind: ...`
+# line per remaining .claude/worktrees/wf_* entry this sweep did not remove,
+# plus a summary total — silent only when nothing remains.
 set -euo pipefail
 
 # The MAIN worktree is the first entry of `git worktree list --porcelain`.
@@ -34,28 +41,40 @@ fi
 
 FORCE=""
 RUN_SCOPE=""
+ALL_SCOPE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --force) FORCE="--force" ;;
+    --all) ALL_SCOPE="yes" ;;
     --run)
       shift
       RUN_SCOPE="${1:?--run requires a runId argument}"
       ;;
     *)
-      echo "usage: sweep_worktrees.sh [--run <runId>] [--force]" >&2
+      echo "usage: sweep_worktrees.sh [--run <runId> | --all] [--force]" >&2
       exit 2
       ;;
   esac
   shift
 done
-
-# Fall back to RUNID env or RUN_LOCK file when --run not given
-if [ -z "$RUN_SCOPE" ] && [ -n "${RUNID:-}" ]; then
-  RUN_SCOPE="$RUNID"
+if [ -n "$ALL_SCOPE" ] && [ -n "$RUN_SCOPE" ]; then
+  echo "sweep_worktrees.sh: --all and --run are mutually exclusive" >&2
+  exit 2
 fi
-if [ -z "$RUN_SCOPE" ] && [ -f "$ROOT/.claude/ultrapowers/RUN_LOCK" ]; then
-  RUN_SCOPE="$(cat "$ROOT/.claude/ultrapowers/RUN_LOCK")"
+
+# Fall back to RUNID env or RUN_LOCK file when neither --run nor --all given.
+# The RUN_LOCK fallback is the stale-lock scoping trap (vibes.diy 2026-07-31):
+# a leftover lock silently narrows an intended repo-wide sweep to one run —
+# so inheriting it is announced, and --all bypasses the fallback entirely.
+if [ -z "$ALL_SCOPE" ]; then
+  if [ -z "$RUN_SCOPE" ] && [ -n "${RUNID:-}" ]; then
+    RUN_SCOPE="$RUNID"
+  fi
+  if [ -z "$RUN_SCOPE" ] && [ -f "$ROOT/.claude/ultrapowers/RUN_LOCK" ]; then
+    RUN_SCOPE="$(cat "$ROOT/.claude/ultrapowers/RUN_LOCK")"
+    echo "note: scope inherited from RUN_LOCK (${RUN_SCOPE}) — a stale lock silently narrows the sweep; pass --all for a repo-wide sweep"
+  fi
 fi
 # --run / RUNID / RUN_LOCK may carry the wf_-prefixed transcript stem (wf_<id>)
 # or the bare <id>. The globs below prepend wf_ themselves, so strip a leading
@@ -134,3 +153,35 @@ while IFS= read -r br; do
 done < <(git -C "$ROOT" branch --list "$BR_PATTERN" --format='%(refname:short)')
 
 echo "swept: $removed_worktrees worktree(s) removed, $deleted branch(es) deleted, $kept kept, $kept_worktrees locked worktree(s) kept"
+
+# ── leftover accounting ────────────────────────────────────────────────────
+# A scoped sweep says nothing about non-matching wf_* dirs — that silence is
+# how ~23 GB sat invisible for a month (vibes.diy 2026-07-31). Account for
+# every engine worktree this invocation did NOT remove, loudly, with size and
+# age; silent only when the directory is genuinely clean.
+human_kb() {
+  awk -v kb="$1" 'BEGIN {
+    if (kb >= 1048576)   printf "%.1fG", kb / 1048576
+    else if (kb >= 1024) printf "%.0fM", kb / 1024
+    else                 printf "%dK", kb }'
+}
+mtime_of() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || date +%s
+}
+now="$(date +%s)"
+left_n=0
+left_kb=0
+for wt in "$ROOT"/.claude/worktrees/wf_*; do
+  [ -e "$wt" ] || continue
+  left_n=$((left_n + 1))
+  kb="$(du -sk "$wt" 2>/dev/null | cut -f1)"
+  kb="${kb:-0}"
+  left_kb=$((left_kb + kb))
+  days=$(( (now - $(mtime_of "$wt")) / 86400 ))
+  lock=""
+  if is_locked "$wt"; then lock=", locked — possibly live"; fi
+  echo "left behind: $wt ($(human_kb "$kb"), ${days}d old${lock})"
+done
+if [ "$left_n" -gt 0 ]; then
+  echo "left behind: $left_n worktree(s), $(human_kb "$left_kb") total — outside this sweep's scope (repo-wide sweep: --all)"
+fi
