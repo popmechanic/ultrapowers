@@ -8,19 +8,50 @@ disposition recorded in the ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK /
 1 BLOCKED; a failed acceptance always forces 1. The driver never decides —
 the orchestrator renders the receipt and owns Approve/Salvage/Redirect.
 
---approve: checkout the integration branch, sweep worktrees (when --wf-run
-is given), release the lock. --teardown: release the lock on any terminal
-non-relaunch exit, keeping worktrees as triage evidence.
+--approve: checkout the integration branch, sweep every recorded wf run id
+plus wf_<stamp> (wf-runs.json ∪ --wf-run), release the lock. --teardown:
+release the lock on any terminal non-relaunch exit, keeping worktrees as
+triage evidence.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+# Engine worktree branches are `worktree-wf_<runId>-<n>`; the runtime run id
+# is `wf_<8 hex>-<3 alnum>` (the Workflow tool's transcript stem). Deriving
+# the id set from the report's branches is what makes approve-time sweep
+# coverage total without an orchestrator-threaded id list (requirement 1,
+# vibes.diy 2026-07-31 post-mortem). Non-matching branches are skipped.
+WF_RUN_RE = re.compile(r"^worktree-(wf_[0-9a-f]{8}-[0-9a-z]{3})-")
+
+
+def load_wf_runs(run_dir):
+    path = run_dir / "wf-runs.json"
+    if path.is_file():
+        try:
+            return [str(x) for x in json.loads(path.read_text())]
+        except Exception:
+            return []
+    return []
+
+
+def record_wf_runs(run_dir, report):
+    ids = set(load_wf_runs(run_dir))
+    for task in report.get("tasks") or []:
+        if isinstance(task, dict):
+            m = WF_RUN_RE.match(str(task.get("branch") or ""))
+            if m:
+                ids.add(m.group(1))
+    if ids:
+        (run_dir / "wf-runs.json").write_text(json.dumps(sorted(ids), indent=2))
+    return sorted(ids)
 
 
 def sh(cmd, cwd=None):
@@ -55,7 +86,8 @@ def main(argv=None):
     ap.add_argument("--approve", action="store_true")
     ap.add_argument("--teardown", action="store_true")
     ap.add_argument("--wf-run", default=None,
-                    help="wf_<runId> transcript stem for the worktree sweep")
+                    help="extra wf_<runId> to sweep (belt; the recorded "
+                         "wf-runs.json set is always swept)")
     a = ap.parse_args(argv)
 
     r = sh(["git", "rev-parse", "--show-toplevel"], cwd=a.repo)
@@ -69,8 +101,10 @@ def main(argv=None):
         r = sh(lock + ["release", a.stamp], cwd=root)
         out = {"mode": "teardown", "stamp": a.stamp,
                "lockReleased": r.returncode == 0,
+               "wfRuns": load_wf_runs(run_dir),
                "sweep": "bash " + str(HERE / "sweep_worktrees.sh") +
-                        " --run <wf-runId>  # worktrees kept as triage evidence"}
+                        " --run <id>  # for each of wfRuns plus wf_" + a.stamp +
+                        " — worktrees kept as triage evidence"}
         print(json.dumps(out, indent=2))
         return 0 if r.returncode == 0 else 1
 
@@ -85,10 +119,18 @@ def main(argv=None):
         r = sh(["git", "checkout", branch], cwd=root)
         if r.returncode != 0:
             return blocked({"mode": "approve", "stamp": a.stamp}, r.stderr)
-        swept = None
-        if a.wf_run:
-            swept = sh(["bash", str(HERE / "sweep_worktrees.sh"),
-                        "--run", a.wf_run], cwd=root).stdout.strip()
+        # Sweep every run id the pipeline ever minted (recorded at each gate)
+        # plus the wf_<stamp> integration worktree — one call, total coverage.
+        ids = load_wf_runs(run_dir)
+        if a.wf_run and a.wf_run not in ids:
+            ids.append(a.wf_run)
+        integration_id = "wf_" + a.stamp
+        if integration_id not in ids:
+            ids.append(integration_id)
+        swept = {}
+        for rid in ids:
+            swept[rid] = sh(["bash", str(HERE / "sweep_worktrees.sh"),
+                             "--run", rid], cwd=root).stdout.strip()
         rel = sh(lock + ["release", a.stamp], cwd=root)
         out = {"mode": "approve", "stamp": a.stamp, "branch": branch,
                "swept": swept, "lockReleased": rel.returncode == 0}
@@ -115,6 +157,9 @@ def main(argv=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     report_path = run_dir / "report.json"
     report_path.write_text(json.dumps(report, indent=2))
+    # Record before gate_check runs, so even a BLOCKED verdict leaves this
+    # launch's runtime id on disk for the eventual Approve-time sweep.
+    receipt["wfRuns"] = record_wf_runs(run_dir, report)
     branch = a.branch or report.get("integrationBranch")
     receipt.update({"reportPath": str(report_path), "branch": branch})
 
