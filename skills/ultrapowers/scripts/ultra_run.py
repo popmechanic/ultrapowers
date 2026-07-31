@@ -362,6 +362,15 @@ def main(argv=None):
                  failure=r.stderr):
         return bail()
 
+    # Janitor advisory (requirement 3, vibes.diy 2026-07-31): surface leftover
+    # engine worktrees/branches from CONCLUDED runs at the next launch, so
+    # "kept for inspection" cannot silently become kept-forever. The lock is
+    # already held, so this run is exempt by construction. Advisory only —
+    # a janitor report must never block a launch.
+    r = sh(["bash", str(HERE / "sweep_worktrees.sh"), "--audit"], cwd=root)
+    audit_out = (r.stdout or r.stderr or "").strip()
+    stage("worktree-audit", True, success=audit_out or "audit produced no output")
+
     # The base is the branch the operator launched from — by construction it
     # contains the plan and the session's context (#100). Repo default only
     # on detached HEAD, loudly; neither resolvable stays fail-closed.
