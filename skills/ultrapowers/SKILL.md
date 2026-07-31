@@ -201,11 +201,17 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
 (`release`/`manual` tasks, verbatim), then present:
 
 - **Approve** — only on PASS (or an acknowledged NEEDS_ACK). Run
-  `ultra_gate.py --approve --stamp <stamp> --wf-run <wf_runId>` — it does
+  `ultra_gate.py --approve --stamp <stamp>` — it does
   `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
-  sweeps the run's worktrees, and releases the lock; also run
-  `sweep_worktrees.sh --run wf_<stamp>` to sweep the dedicated integration
-  worktree, which the `--wf-run` sweep's `wf_<runId>-*` glob does not match.
+  sweeps **every wf run ID the gate recorded across launches**
+  (`run-<stamp>/wf-runs.json` — Salvage/Redirect relaunches each mint a fresh
+  runtime ID, and all of them are swept) plus `wf_<stamp>` (the dedicated
+  integration worktree), reports any `wf_*` leftovers it did not remove, and
+  releases the lock. `--wf-run <wf_runId>` is accepted as an extra belt ID;
+  no separate sweep call is needed. A **manual-merge wrap-up that bypasses
+  `ultra_gate.py` still owes the full sweep set** — once no other run is live,
+  `sweep_worktrees.sh --all` — `bootstrapCmd` installs per worktree, so every
+  leaked worktree is a multi-GB leak.
   When work spanned **multiple
   phases or runs**, run one **holistic cross-phase** review of the fully-integrated
   tree against the *combined* plan and gate on it **before the final PR**
@@ -231,6 +237,9 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   the worktrees as triage evidence — tell the operator how to remove them:
   `sweep_worktrees.sh --run <wf_runId>`, plus `sweep_worktrees.sh --run
   wf_<stamp>` for the dedicated integration worktree, which that glob misses.
+  The teardown receipt's `wfRuns` lists the recorded IDs verbatim;
+  `sweep_worktrees.sh --audit` re-lists kept leftovers later (age-guarded),
+  and the next run's preflight surfaces them automatically.
   (Redirect and Salvage are not terminal.)
 
 ## Step 6 — Fallback
@@ -267,4 +276,5 @@ cycle or an inability to create the integration branch.
 - `scripts/gate_check.py`, `scripts/run_acceptance.sh` — the gate checks and
   acceptance runner the gate driver administers.
 - `scripts/compile_plan.py` — the plan compiler (`--emit-launch`/`--emit-args`).
-- `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep and run lock.
+- `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep (`--run` /
+  `--all` / report-only `--audit`) and run lock.
