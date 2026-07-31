@@ -314,3 +314,96 @@ def test_all_and_run_are_mutually_exclusive(tmp_path):
     p = subprocess.run(["bash", str(SWEEP), "--all", "--run", "x"], cwd=repo,
                        capture_output=True, text=True)
     assert p.returncode == 2
+
+
+# GNU coreutils declares -f as --file-system with NO option-argument, so
+# `stat -f %m DIR` is parsed as two FILE operands: %m fails (stderr) while DIR
+# succeeds and prints a multi-line filesystem block on STDOUT, and stat still
+# exits 1. A `stat -f %m … || stat -c %Y …` chain therefore CONCATENATES that
+# block with the real epoch on Linux, and the arithmetic that consumes it
+# aborts the sweep under `set -euo pipefail` — a macOS-only green.
+GNU_STAT_SHIM = r"""#!/bin/sh
+# stat(1) with GNU coreutils semantics: -f is --file-system, takes no format.
+fsmode=0
+fmt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -f) fsmode=1; shift ;;
+    -c) fmt="$2"; shift 2 ;;
+    --) shift; break ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+rc=0
+for op in "$@"; do
+  if [ ! -e "$op" ]; then
+    echo "stat: cannot statx '$op': No such file or directory" >&2
+    rc=1
+    continue
+  fi
+  if [ "$fsmode" -eq 1 ]; then
+    printf '  File: "%s"\n    ID: 9f2c1d0a4b Namelen: 255 Type: ext2/ext3\n' "$op"
+  else
+    case "$fmt" in
+      %Y) echo __MTIME__ ;;
+      *)  echo "$fmt" ;;
+    esac
+  fi
+done
+exit $rc
+"""
+
+
+def test_leftover_accounting_survives_gnu_stat_semantics(tmp_path):
+    """Linux/CI portability: the leftover accounting must still exit 0 and print
+    a well-formed report when stat(1) has GNU semantics (`-f` = --file-system,
+    no format argument, stdout noise + exit 1)."""
+    import os
+    import time
+
+    repo = make_repo(tmp_path)
+    wt_other, _ = add_engine_worktree(repo, "run2-1", "f.txt", merge=False)
+
+    shim_dir = tmp_path / "gnubin"
+    shim_dir.mkdir()
+    mtime = int(time.time()) - 3 * 86400 - 60      # 3 days old, comfortably
+    shim = shim_dir / "stat"
+    shim.write_text(GNU_STAT_SHIM.replace("__MTIME__", str(mtime)))
+    shim.chmod(0o755)
+
+    env = dict(os.environ, PATH=f"{shim_dir}:{os.environ['PATH']}")
+    p = subprocess.run(["bash", str(SWEEP), "--run", "run1"], cwd=repo,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, p.stdout + p.stderr
+    # The GNU fallback's epoch is used verbatim — no filesystem-block pollution.
+    assert f"left behind: {wt_other} " in p.stdout
+    assert "3d old" in p.stdout
+    assert "File:" not in p.stdout
+    assert "left behind: 1 worktree(s)" in p.stdout
+
+
+def test_leftover_accounting_survives_unreadable_subdirectory(tmp_path):
+    """`du -sk` exits 1 on a permission-denied (or racing, still-live) subtree.
+    Under `set -euo pipefail` that must NOT fail the sweep mid-report:
+    reporting leftovers is stdout, never a failure."""
+    import os
+
+    if os.geteuid() == 0:
+        import pytest
+        pytest.skip("root ignores directory permissions, so du never fails")
+
+    repo = make_repo(tmp_path)
+    wt_other, _ = add_engine_worktree(repo, "run2-1", "f.txt", merge=False)
+    blocked = wt_other / "unreadable"
+    blocked.mkdir()
+    (blocked / "big.bin").write_text("x" * 64)
+    os.chmod(blocked, 0o000)
+    try:
+        p = subprocess.run(["bash", str(SWEEP), "--run", "run1"], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert f"left behind: {wt_other} " in p.stdout
+        assert "left behind: 1 worktree(s)" in p.stdout
+    finally:
+        os.chmod(blocked, 0o755)

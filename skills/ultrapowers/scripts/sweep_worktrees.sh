@@ -165,8 +165,21 @@ human_kb() {
     else if (kb >= 1024) printf "%.0fM", kb / 1024
     else                 printf "%dK", kb }'
 }
+# BSD stat wants `-f %m`, GNU coreutils wants `-c %Y`, and each REJECTS the
+# other's flag — but not symmetrically: GNU's -f is --file-system and takes NO
+# format argument, so `stat -f %m DIR` parses as two FILE operands, prints a
+# multi-line filesystem block for DIR on STDOUT, and still exits 1. Streaming
+# the attempts straight into a `||` chain therefore CONCATENATES that block
+# with the fallback's epoch on Linux, and the arithmetic below dies on it under
+# `set -euo pipefail` (`File: unbound variable`) — a sweep that is green on
+# macOS and red in CI. Capture each attempt so a failed one's stdout is
+# discarded, and accept only a plain epoch; this function always prints a number.
 mtime_of() {
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || date +%s
+  local m=""
+  m="$(stat -f %m "$1" 2>/dev/null)" || m=""
+  case "$m" in ''|*[!0-9]*) m="$(stat -c %Y "$1" 2>/dev/null)" || m="" ;; esac
+  case "$m" in ''|*[!0-9]*) m="$(date +%s)" ;; esac
+  printf '%s' "$m"
 }
 now="$(date +%s)"
 left_n=0
@@ -174,8 +187,13 @@ left_kb=0
 for wt in "$ROOT"/.claude/worktrees/wf_*; do
   [ -e "$wt" ] || continue
   left_n=$((left_n + 1))
-  kb="$(du -sk "$wt" 2>/dev/null | cut -f1)"
-  kb="${kb:-0}"
+  # `du` exits nonzero on an unreadable subtree — and on a still-live locked
+  # worktree whose files move under it — which `pipefail` would turn into a
+  # mid-report abort. Reporting leftovers is stdout, never a failure: swallow
+  # the status INSIDE the substitution (keeping any partial total du printed)
+  # and accept only a plain number.
+  kb="$(du -sk "$wt" 2>/dev/null | cut -f1 || true)"
+  case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
   left_kb=$((left_kb + kb))
   days=$(( (now - $(mtime_of "$wt")) / 86400 ))
   lock=""
