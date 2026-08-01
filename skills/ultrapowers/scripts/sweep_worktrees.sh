@@ -30,7 +30,12 @@
 # Pass --audit [--age-hours N] for a report-only janitor pass: it removes and
 # deletes nothing (always exits 0), and flags every engine worktree/branch
 # that does not belong to the RUN_LOCK'd live run and is older than N hours
-# (default 24). Mutually exclusive with --run/--all/--force.
+# (default 24). Mutually exclusive with --run/--all/--force; --age-hours is
+# meaningless without --audit and is rejected (exit 2) rather than ignored.
+# The live-run exemption is only as precise as RUN_LOCK: the lock holds the
+# ultra_run STAMP, while a live run's TASK worktrees are named
+# wf_<workflowRunId>-<n>, which no stamp glob matches. So while a lock is held
+# the audit calls its findings CANDIDATES and never advises a repo-wide sweep.
 set -euo pipefail
 
 # The MAIN worktree is the first entry of `git worktree list --porcelain`.
@@ -49,6 +54,7 @@ RUN_SCOPE=""
 ALL_SCOPE=""
 AUDIT=""
 AGE_HOURS="24"
+AGE_GIVEN=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +68,7 @@ while [ $# -gt 0 ]; do
     --age-hours)
       shift
       AGE_HOURS="${1:?--age-hours requires a number}"
+      AGE_GIVEN="yes"
       ;;
     *)
       echo "usage: sweep_worktrees.sh [--run <runId> | --all] [--force] | --audit [--age-hours <N>]" >&2
@@ -78,6 +85,34 @@ if [ -n "$AUDIT" ] && { [ -n "$FORCE" ] || [ -n "$ALL_SCOPE" ] || [ -n "$RUN_SCO
   echo "sweep_worktrees.sh: --audit is report-only and takes no sweep flags" >&2
   exit 2
 fi
+# --age-hours only means anything to the report-only pass. Silently ignoring it
+# on a sweep let an operator believe they had scoped a DESTRUCTIVE run by age.
+if [ -n "$AGE_GIVEN" ] && [ -z "$AUDIT" ]; then
+  echo "sweep_worktrees.sh: --age-hours applies only to --audit (report-only)" >&2
+  exit 2
+fi
+# Validate the threshold HERE, before any state is touched. Left unvalidated it
+# reached `cutoff=$((AGE_HOURS * 3600))` INSIDE the audit block, where bash
+# raises an arithmetic syntax error that aborts the `if` body BEFORE its
+# `exit 0` — control then fell through into the destructive sweep below, so
+# `--audit --age-hours 24.5` removed worktrees, deleted branches, and still
+# exited 0 (reproduced on bash 3.2.57). A report-only flag must never sweep.
+case "$AGE_HOURS" in
+  ''|*[!0-9]*)
+    echo "sweep_worktrees.sh: --age-hours requires a non-negative integer" >&2
+    exit 2
+    ;;
+esac
+# Digits-only is still not safe to hand to `$(( ))`: bash reads a LEADING-ZERO
+# integer as OCTAL. `--age-hours 09` (invalid octal) therefore raised the same
+# `value too great for base` abort the check above was added to prevent, and
+# fell through into the destructive sweep exactly as 24.5 did — verified on
+# bash 3.2.57: the audited worktree was REMOVED and its branch DELETED, exit 0.
+# Octal-valid values failed silently instead: `010` audited an EIGHT-hour
+# threshold while the summary said "older than 010h". Hours are decimal, so
+# normalize once here and every later use — the arithmetic below and the
+# threshold echoed in the summary lines — agrees on one value.
+AGE_HOURS=$((10#$AGE_HOURS))
 
 # Compute the set of locked worktree paths ONCE (a single porcelain pass) instead
 # of re-running `git worktree list` for every worktree — the old per-worktree call
@@ -145,7 +180,7 @@ if [ -n "$AUDIT" ]; then
     case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
     orphan_kb=$((orphan_kb + kb))
     lock=""
-    if is_locked "$wt"; then lock=", locked"; fi
+    if is_locked "$wt"; then lock=", locked — possibly live; verify before removing"; fi
     echo "orphan worktree: $wt ($(human_kb "$kb"), $((age / 86400))d old${lock})"
   done
   while IFS= read -r br; do
@@ -167,10 +202,28 @@ if [ -n "$AUDIT" ]; then
   done < <(git -C "$ROOT" branch --list "worktree-wf_*" --format='%(refname:short)')
   if [ "$orphans" -eq 0 ] && [ "$stale" -eq 0 ]; then
     echo "audit: clean (no orphan worktrees or stale branches older than ${AGE_HOURS}h${live:+; live run ${live} exempt})"
+  elif [ -n "$live" ]; then
+    # RUN_LOCK holds the ultra_run STAMP; a live run's TASK worktrees are named
+    # wf_<workflowRunId>-<n>, so only wf_<stamp>-integration can match the
+    # exemption glob and the rest of the live run looks exactly like an orphan.
+    # No pre-gate artifact links stamp to workflowRunId, so precise exemption is
+    # impossible — make the ADVICE safe instead: never name the repo-wide sweep
+    # that would corrupt the run these candidates may belong to.
+    echo "audit: $orphans orphan-candidate worktree(s) ($(human_kb "$orphan_kb")), $stale stale branch(es) older than ${AGE_HOURS}h — RUN_LOCK ${live} is held: entries may belong to the live run; do NOT sweep repo-wide until it concludes"
   else
-    echo "audit: $orphans orphan worktree(s) ($(human_kb "$orphan_kb")), $stale stale branch(es) older than ${AGE_HOURS}h${live:+; live run ${live} exempt} — triage, then remove with sweep_worktrees.sh --all [--force]"
+    echo "audit: $orphans orphan worktree(s) ($(human_kb "$orphan_kb")), $stale stale branch(es) older than ${AGE_HOURS}h — triage, then remove with sweep_worktrees.sh --all [--force]"
   fi
   exit 0
+fi
+# Reaching here with AUDIT set means the block above aborted past its `exit 0`.
+# That is not hypothetical: a bash expansion error inside an `if` body does NOT
+# honour `set -e`, so both malformed --age-hours values found so far (24.5, then
+# 08) silently continued into the DESTRUCTIVE sweep below and swept. Both are
+# now rejected at parse time; this stop makes the whole class unreachable rather
+# than one input at a time — a report-only flag must never remove anything.
+if [ -n "$AUDIT" ]; then
+  echo "sweep_worktrees.sh: internal error — the audit pass did not complete; nothing was swept" >&2
+  exit 2
 fi
 
 # Fall back to RUNID env or RUN_LOCK file when neither --run nor --all given.
