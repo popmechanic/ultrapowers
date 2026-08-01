@@ -24,3 +24,16 @@ def test_terminal_teardown_section_exists_and_points_at_sweep():
     # The non-Approve paths must NOT auto-sweep (worktrees are triage evidence) —
     # they point the operator at the deterministic cleanup instead.
     assert "sweep_worktrees.sh --run" in text
+
+
+def test_approve_is_total_sweep_and_manual_merge_still_owes_the_sweep():
+    """2026-07-31 post-mortem, requirement 4: approve performs the full sweep
+    set itself (wf-runs.json + wf_<stamp>), the manual-merge path is told it
+    still owes the sweep, and the janitor (--audit) is named."""
+    text = SKILL.read_text()
+    assert "wf-runs.json" in text
+    assert "sweep_worktrees.sh --all" in text
+    assert "--audit" in text
+    # bootstrapCmd is why every leak is a multi-GB leak — say so where the
+    # operator reads the wrap-up ritual.
+    assert "multi-GB" in text
