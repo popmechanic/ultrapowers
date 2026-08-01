@@ -39,17 +39,22 @@ WF_RUN_RE = re.compile(r"^worktree-(wf_[0-9A-Za-z]+-[0-9A-Za-z]+)-")
 
 
 def load_wf_runs(run_dir):
+    """Returns (ids, unreadable). `unreadable` is True when wf-runs.json
+    exists but cannot be parsed — silently treating that as an empty record
+    would make approve under-sweep with a full-looking receipt, the same
+    invisible-leak shape this file exists to end, so every caller surfaces it."""
     path = run_dir / "wf-runs.json"
-    if path.is_file():
-        try:
-            return [str(x) for x in json.loads(path.read_text())]
-        except Exception:
-            return []
-    return []
+    if not path.is_file():
+        return [], False
+    try:
+        return [str(x) for x in json.loads(path.read_text())], False
+    except Exception:
+        return [], True
 
 
 def record_wf_runs(run_dir, report, stamp):
-    ids = set(load_wf_runs(run_dir))
+    known, unreadable = load_wf_runs(run_dir)
+    ids = set(known)
     for task in report.get("tasks") or []:
         if isinstance(task, dict):
             m = WF_RUN_RE.match(str(task.get("branch") or ""))
@@ -57,7 +62,7 @@ def record_wf_runs(run_dir, report, stamp):
                 ids.add(m.group(1))
     if ids:
         (run_dir / "wf-runs.json").write_text(json.dumps(sorted(ids), indent=2))
-    return sorted(ids)
+    return sorted(ids), unreadable
 
 
 def sh(cmd, cwd=None):
@@ -107,7 +112,8 @@ def main(argv=None):
         r = sh(lock + ["release", a.stamp], cwd=root)
         out = {"mode": "teardown", "stamp": a.stamp,
                "lockReleased": r.returncode == 0,
-               "wfRuns": load_wf_runs(run_dir),
+               "wfRuns": (wf := load_wf_runs(run_dir))[0],
+               **({"wfRunsUnreadable": True} if wf[1] else {}),
                "sweep": "bash " + str(HERE / "sweep_worktrees.sh") +
                         " --run <id>  # for each of wfRuns plus wf_" + a.stamp +
                         " — worktrees kept as triage evidence"}
@@ -127,7 +133,7 @@ def main(argv=None):
             return blocked({"mode": "approve", "stamp": a.stamp}, r.stderr)
         # Sweep every run id the pipeline ever minted (recorded at each gate)
         # plus the wf_<stamp> integration worktree — one call, total coverage.
-        ids = load_wf_runs(run_dir)
+        ids, wf_unreadable = load_wf_runs(run_dir)
         if a.wf_run and a.wf_run not in ids:
             ids.append(a.wf_run)
         integration_id = "wf_" + a.stamp
@@ -150,8 +156,13 @@ def main(argv=None):
                "swept": swept, "lockReleased": rel.returncode == 0}
         if failures:
             out["sweepFailures"] = failures
+        # A corrupt record file means sweep coverage is UNKNOWN — fail loud
+        # rather than let a full-looking receipt stand in for total coverage.
+        if wf_unreadable:
+            out["wfRunsUnreadable"] = True
         print(json.dumps(out, indent=2))
-        return 0 if rel.returncode == 0 and not failures else 1
+        ok = rel.returncode == 0 and not failures and not wf_unreadable
+        return 0 if ok else 1
 
     # ── gate mode ────────────────────────────────────────────────────────
     receipt = {"mode": "gate", "stamp": a.stamp}
@@ -175,7 +186,9 @@ def main(argv=None):
     report_path.write_text(json.dumps(report, indent=2))
     # Record before gate_check runs, so even a BLOCKED verdict leaves this
     # launch's runtime id on disk for the eventual Approve-time sweep.
-    receipt["wfRuns"] = record_wf_runs(run_dir, report, a.stamp)
+    receipt["wfRuns"], wf_unreadable = record_wf_runs(run_dir, report, a.stamp)
+    if wf_unreadable:
+        receipt["wfRunsUnreadable"] = True
     branch = a.branch or report.get("integrationBranch")
     receipt.update({"reportPath": str(report_path), "branch": branch})
 

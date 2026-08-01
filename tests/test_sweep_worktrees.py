@@ -547,9 +547,10 @@ def test_audit_rejects_non_integer_age_hours_and_sweeps_nothing(tmp_path):
 def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
     """Regression: the digits-only guard admitted LEADING-ZERO integers, which
     bash then evaluated in `$((AGE_HOURS * 3600))` as OCTAL. `--age-hours 09`
-    (or 08) is invalid octal, so bash raised `value too great for base` and
-    `set -e` killed the shell mid-run — no audit report and exit 1, which is
-    neither the contract's 0 (well-formed) nor 2 (malformed). Octal-VALID
+    (or 08) is invalid octal: bash raised `value too great for base` inside
+    the audit block, aborted past its `exit 0`, fell through to the
+    DESTRUCTIVE sweep below — the audited worktree was REMOVED and its branch
+    DELETED, exit 0 (reproduced at the pre-fix commit). Octal-VALID
     values were worse: `010` silently audited an EIGHT-hour threshold while
     the summary printed `older than 010h`. Hours are decimal; normalize."""
     repo = make_repo(tmp_path)

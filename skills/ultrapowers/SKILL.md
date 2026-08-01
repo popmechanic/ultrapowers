@@ -208,7 +208,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   runtime ID, and all of them are swept) plus `wf_<stamp>` (the dedicated
   integration worktree), reports any `wf_*` leftovers it did not remove, and
   releases the lock. `--wf-run <wf_runId>` is accepted as an extra belt ID;
-  no separate sweep call is needed. A **manual-merge wrap-up that bypasses
+  no separate sweep call is needed. A non-zero approve exit means the lock
+  release failed, a sweep failed (`sweepFailures` names the run IDs), or the
+  recorded ID file was unreadable (`wfRunsUnreadable`) — inspect before
+  treating the run as closed. A **manual-merge wrap-up that bypasses
   `ultra_gate.py` still owes the full sweep set** — once no other run is live,
   `sweep_worktrees.sh --all` — `bootstrapCmd` installs per worktree, so every
   leaked worktree is a multi-GB leak.

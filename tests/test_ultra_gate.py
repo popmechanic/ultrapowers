@@ -392,8 +392,8 @@ def test_record_wf_runs_accepts_an_odd_shaped_runtime_id(tmp_path):
     run_dir.mkdir()
     report = {"tasks": [{"branch": "worktree-wf_ABCDEF123-longsuffix-1"},
                         {"branch": "worktree-wf_1d170a73-a62-2"}]}
-    assert ultra_gate.record_wf_runs(run_dir, report, "t1") == [
-        "wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"]
+    assert ultra_gate.record_wf_runs(run_dir, report, "t1") == (
+        ["wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"], False)
     assert json.loads((run_dir / "wf-runs.json").read_text()) == [
         "wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"]
 
@@ -407,7 +407,7 @@ def test_record_wf_runs_never_records_the_integration_stamp_id(tmp_path):
     stamp = "20260731-155401"
     report = {"tasks": [{"branch": "worktree-wf_" + stamp + "-integration"},
                         {"branch": "worktree-wf_1d170a73-a62-1"}]}
-    assert ultra_gate.record_wf_runs(run_dir, report, stamp) == [
+    assert ultra_gate.record_wf_runs(run_dir, report, stamp)[0] == [
         "wf_1d170a73-a62"]
     assert json.loads((run_dir / "wf-runs.json").read_text()) == [
         "wf_1d170a73-a62"]
@@ -442,3 +442,37 @@ def test_teardown_names_the_recorded_run_ids(tmp_path):
     assert out["wfRuns"] == ["wf_1d170a73-a62"]
     # worktrees still kept — teardown remains evidence-preserving
     assert "sweep" in out
+
+
+def test_approve_fails_loud_on_unreadable_wf_runs_record(tmp_path):
+    """A corrupt wf-runs.json means sweep coverage is UNKNOWN — approve must
+    say so and exit non-zero, never present a full-looking receipt (the same
+    invisible-leak shape the swept exit-code recording closed)."""
+    repo, scripts, _ = make_repo(tmp_path)
+    run_dir = repo / ".claude/ultrapowers/run-t1"
+    (run_dir / "wf-runs.json").write_text("{corrupt")
+    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
+            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
+           cwd=repo, check=False)
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["wfRunsUnreadable"] is True
+    # the stamp id is still swept — coverage degraded, not abandoned
+    assert "wf_t1" in out["swept"]
+
+
+def test_gate_surfaces_and_rebuilds_unreadable_wf_runs_record(tmp_path):
+    repo, scripts, head = make_repo(tmp_path)
+    run_dir = repo / ".claude/ultrapowers/run-t1"
+    (run_dir / "wf-runs.json").write_text("{corrupt")
+    report = good_report(head)
+    report["tasks"] = [{"task": "1", "status": "done",
+                        "branch": "worktree-wf_1d170a73-a62-1"}]
+    result = tmp_path / "r.json"
+    result.write_text(json.dumps({"result": report}))
+    r = run_gate(repo, scripts, result)
+    out = json.loads(r.stdout)
+    assert out["wfRunsUnreadable"] is True
+    assert out["wfRuns"] == ["wf_1d170a73-a62"]      # rebuilt from this launch
+    saved = json.loads((run_dir / "wf-runs.json").read_text())
+    assert saved == ["wf_1d170a73-a62"]
