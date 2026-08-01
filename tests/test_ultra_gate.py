@@ -351,6 +351,9 @@ def test_approve_sweeps_every_recorded_run_id_plus_stamp(tmp_path):
     out = json.loads(r.stdout)
     assert sorted(out["swept"]) == ["wf_1d170a73-a62", "wf_7cf88e9e-c10",
                                     "wf_t1"]
+    # every entry carries its exit code, and a clean approve reports no failures
+    assert [v["exit"] for v in out["swept"].values()] == [0, 0, 0]
+    assert "sweepFailures" not in out
 
 
 def test_approve_without_records_still_sweeps_the_stamp(tmp_path):
@@ -361,7 +364,9 @@ def test_approve_without_records_still_sweeps_the_stamp(tmp_path):
            cwd=repo, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
     assert not wt_int.exists()
-    assert list(json.loads(r.stdout)["swept"]) == ["wf_t1"]
+    out = json.loads(r.stdout)
+    assert list(out["swept"]) == ["wf_t1"]
+    assert out["swept"]["wf_t1"]["exit"] == 0
 
 
 def test_approve_wf_run_flag_is_still_honored_as_belt(tmp_path):
@@ -373,7 +378,57 @@ def test_approve_wf_run_flag_is_still_honored_as_belt(tmp_path):
            cwd=repo, check=False)
     assert r.returncode == 0, r.stdout + r.stderr
     assert not wt.exists()
-    assert "wf_extra999-zzz" in json.loads(r.stdout)["swept"]
+    out = json.loads(r.stdout)
+    assert "wf_extra999-zzz" in out["swept"]
+    assert out["swept"]["wf_extra999-zzz"]["exit"] == 0
+
+
+def test_record_wf_runs_accepts_an_odd_shaped_runtime_id(tmp_path):
+    """The id shape is minted by the Workflow runtime, not this repo. A strict
+    shape pin would silently skip every branch on drift and approve would sweep
+    nothing — reintroducing the exact leak this closes. The match is structural.
+    """
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    report = {"tasks": [{"branch": "worktree-wf_ABCDEF123-longsuffix-1"},
+                        {"branch": "worktree-wf_1d170a73-a62-2"}]}
+    assert ultra_gate.record_wf_runs(run_dir, report, "t1") == [
+        "wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"]
+    assert json.loads((run_dir / "wf-runs.json").read_text()) == [
+        "wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"]
+
+
+def test_record_wf_runs_never_records_the_integration_stamp_id(tmp_path):
+    """The loose pattern also matches `worktree-wf_<stamp>-integration` when the
+    stamp itself is hyphenated. wf_<stamp> is swept unconditionally at approve,
+    so recording it would only add noise to the derived set."""
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    stamp = "20260731-155401"
+    report = {"tasks": [{"branch": "worktree-wf_" + stamp + "-integration"},
+                        {"branch": "worktree-wf_1d170a73-a62-1"}]}
+    assert ultra_gate.record_wf_runs(run_dir, report, stamp) == [
+        "wf_1d170a73-a62"]
+    assert json.loads((run_dir / "wf-runs.json").read_text()) == [
+        "wf_1d170a73-a62"]
+
+
+def test_approve_reports_a_failed_sweep_and_exits_nonzero(tmp_path):
+    """A sweep that exits non-zero must never read as a clean approve: keeping
+    only stdout would render an empty summary and exit 0 — an invisible leak."""
+    repo, scripts, _ = make_repo(tmp_path)
+    (scripts / "sweep_worktrees.sh").write_text(
+        "#!/usr/bin/env bash\necho 'sweep boom' >&2\nexit 3\n")
+    (scripts / "sweep_worktrees.sh").chmod(0o755)
+    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
+            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
+           cwd=repo, check=False)
+    assert r.returncode == 1, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["sweepFailures"] == ["wf_t1"]
+    assert out["swept"]["wf_t1"]["exit"] == 3
+    assert "sweep boom" in out["swept"]["wf_t1"]["output"]
+    assert out["lockReleased"] is True    # the lock still gets released
 
 
 def test_teardown_names_the_recorded_run_ids(tmp_path):

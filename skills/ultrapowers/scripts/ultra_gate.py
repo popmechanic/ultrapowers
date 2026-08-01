@@ -9,7 +9,8 @@ disposition recorded in the ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK /
 the orchestrator renders the receipt and owns Approve/Salvage/Redirect.
 
 --approve: checkout the integration branch, sweep every recorded wf run id
-plus wf_<stamp> (wf-runs.json ∪ --wf-run), release the lock. --teardown:
+plus wf_<stamp> (wf-runs.json ∪ --wf-run), release the lock; a sweep that
+exits non-zero is reported in sweepFailures and fails approve. --teardown:
 release the lock on any terminal non-relaunch exit, keeping worktrees as
 triage evidence.
 """
@@ -24,12 +25,17 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-# Engine worktree branches are `worktree-wf_<runId>-<n>`; the runtime run id
-# is `wf_<8 hex>-<3 alnum>` (the Workflow tool's transcript stem). Deriving
-# the id set from the report's branches is what makes approve-time sweep
-# coverage total without an orchestrator-threaded id list (requirement 1,
-# vibes.diy 2026-07-31 post-mortem). Non-matching branches are skipped.
-WF_RUN_RE = re.compile(r"^worktree-(wf_[0-9a-f]{8}-[0-9a-z]{3})-")
+# Engine worktree branches are `worktree-wf_<runId>-<n>`. Deriving the id set
+# from the report's branches is what makes approve-time sweep coverage total
+# without an orchestrator-threaded id list (requirement 1, vibes.diy
+# 2026-07-31 post-mortem). The pattern is deliberately STRUCTURAL, not a pin on
+# today's `wf_<8 hex>-<3 alnum>` shape: that shape is minted by the Workflow
+# runtime, and pinning it would mean a runtime drift silently skips every
+# branch and approve sweeps nothing — the exact leak this closes. Non-matching
+# branches are skipped. The integration worktree (`worktree-wf_<stamp>-…`,
+# which a hyphenated stamp also matches) is excluded: approve always sweeps
+# wf_<stamp> anyway, so recording it would only add noise.
+WF_RUN_RE = re.compile(r"^worktree-(wf_[0-9A-Za-z]+-[0-9A-Za-z]+)-")
 
 
 def load_wf_runs(run_dir):
@@ -42,12 +48,12 @@ def load_wf_runs(run_dir):
     return []
 
 
-def record_wf_runs(run_dir, report):
+def record_wf_runs(run_dir, report, stamp):
     ids = set(load_wf_runs(run_dir))
     for task in report.get("tasks") or []:
         if isinstance(task, dict):
             m = WF_RUN_RE.match(str(task.get("branch") or ""))
-            if m:
+            if m and m.group(1) != "wf_" + str(stamp):
                 ids.add(m.group(1))
     if ids:
         (run_dir / "wf-runs.json").write_text(json.dumps(sorted(ids), indent=2))
@@ -127,15 +133,25 @@ def main(argv=None):
         integration_id = "wf_" + a.stamp
         if integration_id not in ids:
             ids.append(integration_id)
+        # Each sweep's EXIT CODE is kept, not just its chatter: a sweep that
+        # failed would otherwise render as an empty summary under a 0 exit —
+        # an invisible leak, which is the failure mode this task exists to end.
         swept = {}
+        failures = []
         for rid in ids:
-            swept[rid] = sh(["bash", str(HERE / "sweep_worktrees.sh"),
-                             "--run", rid], cwd=root).stdout.strip()
+            r = sh(["bash", str(HERE / "sweep_worktrees.sh"), "--run", rid],
+                   cwd=root)
+            swept[rid] = {"exit": r.returncode,
+                          "output": (r.stdout + r.stderr).strip()[-2000:]}
+            if r.returncode != 0:
+                failures.append(rid)
         rel = sh(lock + ["release", a.stamp], cwd=root)
         out = {"mode": "approve", "stamp": a.stamp, "branch": branch,
                "swept": swept, "lockReleased": rel.returncode == 0}
+        if failures:
+            out["sweepFailures"] = failures
         print(json.dumps(out, indent=2))
-        return 0 if rel.returncode == 0 else 1
+        return 0 if rel.returncode == 0 and not failures else 1
 
     # ── gate mode ────────────────────────────────────────────────────────
     receipt = {"mode": "gate", "stamp": a.stamp}
@@ -159,7 +175,7 @@ def main(argv=None):
     report_path.write_text(json.dumps(report, indent=2))
     # Record before gate_check runs, so even a BLOCKED verdict leaves this
     # launch's runtime id on disk for the eventual Approve-time sweep.
-    receipt["wfRuns"] = record_wf_runs(run_dir, report)
+    receipt["wfRuns"] = record_wf_runs(run_dir, report, a.stamp)
     branch = a.branch or report.get("integrationBranch")
     receipt.update({"reportPath": str(report_path), "branch": branch})
 
