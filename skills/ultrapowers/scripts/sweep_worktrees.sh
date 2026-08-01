@@ -103,6 +103,16 @@ case "$AGE_HOURS" in
     exit 2
     ;;
 esac
+# Digits-only is still not safe to hand to `$(( ))`: bash reads a LEADING-ZERO
+# integer as OCTAL. `--age-hours 09` (invalid octal) therefore raised the same
+# `value too great for base` abort the check above was added to prevent, and
+# fell through into the destructive sweep exactly as 24.5 did — verified on
+# bash 3.2.57: the audited worktree was REMOVED and its branch DELETED, exit 0.
+# Octal-valid values failed silently instead: `010` audited an EIGHT-hour
+# threshold while the summary said "older than 010h". Hours are decimal, so
+# normalize once here and every later use — the arithmetic below and the
+# threshold echoed in the summary lines — agrees on one value.
+AGE_HOURS=$((10#$AGE_HOURS))
 
 # Compute the set of locked worktree paths ONCE (a single porcelain pass) instead
 # of re-running `git worktree list` for every worktree — the old per-worktree call
@@ -204,6 +214,16 @@ if [ -n "$AUDIT" ]; then
     echo "audit: $orphans orphan worktree(s) ($(human_kb "$orphan_kb")), $stale stale branch(es) older than ${AGE_HOURS}h — triage, then remove with sweep_worktrees.sh --all [--force]"
   fi
   exit 0
+fi
+# Reaching here with AUDIT set means the block above aborted past its `exit 0`.
+# That is not hypothetical: a bash expansion error inside an `if` body does NOT
+# honour `set -e`, so both malformed --age-hours values found so far (24.5, then
+# 08) silently continued into the DESTRUCTIVE sweep below and swept. Both are
+# now rejected at parse time; this stop makes the whole class unreachable rather
+# than one input at a time — a report-only flag must never remove anything.
+if [ -n "$AUDIT" ]; then
+  echo "sweep_worktrees.sh: internal error — the audit pass did not complete; nothing was swept" >&2
+  exit 2
 fi
 
 # Fall back to RUNID env or RUN_LOCK file when neither --run nor --all given.

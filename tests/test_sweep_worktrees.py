@@ -544,6 +544,55 @@ def test_audit_rejects_non_integer_age_hours_and_sweeps_nothing(tmp_path):
         assert br in branches(repo), bad
 
 
+def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
+    """Regression: the digits-only guard admitted LEADING-ZERO integers, which
+    bash then evaluated in `$((AGE_HOURS * 3600))` as OCTAL. `--age-hours 09`
+    (or 08) is invalid octal, so bash raised `value too great for base` and
+    `set -e` killed the shell mid-run — no audit report and exit 1, which is
+    neither the contract's 0 (well-formed) nor 2 (malformed). Octal-VALID
+    values were worse: `010` silently audited an EIGHT-hour threshold while
+    the summary printed `older than 010h`. Hours are decimal; normalize."""
+    repo = make_repo(tmp_path)
+    wt, br = add_engine_worktree(repo, "octal-1", "u.txt", merge=True)
+    _age(wt, days=9 / 24)          # 9 hours old: inside 10h, outside 8h
+
+    # 08 == 8, not a base error: the 9h-old worktree is past an 8-hour threshold
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "08"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, (p.stdout, p.stderr)
+    assert "value too great for base" not in p.stderr
+    assert f"orphan worktree: {wt}" in p.stdout
+    assert "older than 8h" in p.stdout
+    assert "08h" not in p.stdout   # the threshold is echoed as normalized
+
+    # 010 == 10 (decimal), NOT 8: a 9h-old worktree is still inside the window
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "010"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, (p.stdout, p.stderr)
+    assert "audit: clean" in p.stdout
+    assert "older than 10h" in p.stdout
+    assert "010h" not in p.stdout
+    assert f"orphan worktree: {wt}" not in p.stdout
+
+    # 09 is invalid octal — the value that used to kill the shell outright
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "09"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, (p.stdout, p.stderr)
+    assert "value too great for base" not in p.stderr
+    assert "older than 9h" in p.stdout
+
+    # 00 == 0: the zero threshold still works through normalization
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "00"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, (p.stdout, p.stderr)
+    assert "older than 0h" in p.stdout
+    assert f"orphan worktree: {wt}" in p.stdout
+
+    # report-only throughout: no worktree removed, no branch deleted
+    assert wt.exists()
+    assert br in branches(repo)
+
+
 def test_age_hours_without_audit_is_rejected(tmp_path):
     """--age-hours only means anything to --audit; silently ignoring it let an
     operator believe they had scoped a destructive sweep by age."""
