@@ -3,6 +3,7 @@ completeness critic demanded: a REAL repo, REAL worktrees, and assertions that
 removal actually happens (merged branch deleted, unmerged branch kept)."""
 import os
 import pathlib
+import re
 import subprocess
 import time
 
@@ -258,8 +259,14 @@ def test_scoped_sweep_reports_what_it_left_behind(tmp_path):
     assert p.returncode == 0, p.stderr
     assert wt_other.exists()                        # out of scope — kept
     assert f"left behind: {wt_other}" in p.stdout   # ...but accounted for
-    assert "left behind: 1 worktree(s)" in p.stdout
     assert "d old" in p.stdout                      # age is part of the line
+    # The summary's actionable halves — a real size token AND the remedy clause —
+    # are pinned in full here, so a regression that drops either stays red.
+    assert re.search(
+        r"left behind: 1 worktree\(s\), \d+(?:\.\d+)?[KMG] total — not removed by "
+        r"this sweep \(out-of-scope: --all sweeps repo-wide; locked: --force\)",
+        p.stdout,
+    ), p.stdout
 
 
 def test_clean_sweep_reports_no_leftovers(tmp_path):
@@ -300,6 +307,8 @@ def test_stale_run_lock_fallback_is_loud_and_all_overrides_it(tmp_path):
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert "scope inherited from RUN_LOCK (stale-run)" in p.stdout
+    # the notice must carry its remedy, not just name the inherited scope
+    assert "pass --all for a repo-wide sweep" in p.stdout
     assert wt.exists()
     assert f"left behind: {wt}" in p.stdout
 
@@ -309,6 +318,21 @@ def test_stale_run_lock_fallback_is_loud_and_all_overrides_it(tmp_path):
     assert not wt.exists()
     assert "left behind" not in p.stdout
     assert "scope inherited" not in p.stdout
+
+
+def test_all_overrides_a_stale_runid_env_var(tmp_path):
+    """The other half of the --all override: RUNID in the environment (an engine
+    session's leftover export) must not narrow an explicit repo-wide sweep."""
+    repo = make_repo(tmp_path)
+    wt, _ = add_engine_worktree(repo, "otherrun-2", "p.txt", merge=True)
+
+    env = {**os.environ, "RUNID": "stale-env-run"}
+    p = subprocess.run(["bash", str(SWEEP), "--all"], cwd=repo,
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, p.stderr
+    assert not wt.exists()                    # foreign run swept anyway
+    assert "1 worktree(s) removed" in p.stdout
+    assert "left behind" not in p.stdout
 
 
 def test_all_and_run_are_mutually_exclusive(tmp_path):

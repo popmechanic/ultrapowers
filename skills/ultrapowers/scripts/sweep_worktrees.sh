@@ -280,5 +280,9 @@ for wt in "$ROOT"/.claude/worktrees/wf_*; do
   echo "left behind: $wt ($(human_kb "$kb"), ${days}d old${lock})"
 done
 if [ "$left_n" -gt 0 ]; then
-  echo "left behind: $left_n worktree(s), $(human_kb "$left_kb") total — outside this sweep's scope (repo-wide sweep: --all)"
+  # Two different reasons land here — out-of-scope (a narrower --run/RUNID/
+  # RUN_LOCK glob) and locked (kept even by a repo-wide sweep) — so the summary
+  # names both remedies. Claiming "outside this sweep's scope" was factually
+  # wrong for a locked leftover of an --all sweep, and advised a no-op.
+  echo "left behind: $left_n worktree(s), $(human_kb "$left_kb") total — not removed by this sweep (out-of-scope: --all sweeps repo-wide; locked: --force)"
 fi
