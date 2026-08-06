@@ -2,7 +2,10 @@
 
 _Design for issue #114 (distill 2026-08-06). Approach A approved by the operator:
 sidecar derivation + mechanical report finalization, covering **all** recorded
-SHAs (task heads, wave-merge heads, the completeness critic's detach target)._
+SHAs (task heads, wave-merge heads, the completeness critic's detach target).
+Amended same day after an operator complexity audit: sidecar writes are
+**merge-agent-only** (one compliance point, half the prompt surface), the
+`headsDerived` report field is dropped, and the critic brief stays minimal._
 
 ## Problem
 
@@ -25,25 +28,29 @@ the operator's session touch files deterministically.
 
 ## Design
 
-### 1. The sidecar convention: `<runDir>/heads/`
+### 1. The sidecar convention: `<runDir>/heads/` — written by the merge agent only
 
-Roles that produce a SHA **write it mechanically** instead of reporting it:
+The **merge agent** is the single writer. It already receives every task branch
+it merges, so it holds the branch→SHA mapping at exactly the right moment. After
+each wave merge lands, it writes mechanically:
 
-- Implementers, after their final commit:
-  `git rev-parse HEAD > "<runDir>/heads/task-<taskId>"`
-- The merge agent, after each wave merge lands:
+- one slot per merged task branch:
+  `git rev-parse "<task-branch>" > "<runDir>/heads/task-<taskId>"`
+- the wave's integration head:
   `git rev-parse HEAD > "<runDir>/heads/wave-<n>"`
 
-`<runDir>` reaches each agent through its prompt packet — the same channel that
-already carries the review-packet path — and implementers already write under
-`<runDir>/review/`, so the sidecar write follows an established pattern rather
-than introducing a new privilege.
+Implementer prompts are **unchanged** — concentrating the writes in one role
+gives one compliance point instead of N+1, halves the prompt-surface change,
+and confines the new fail-closed failure mode (a forgotten write blocks at
+finalize) to the most script-following role in the pipeline. `<runDir>` reaches
+the merge agent through its prompt packet, the same channel that already
+carries scratch-dir paths.
 
 The value travels git → shell redirection → file. It never passes through model
 tokens on the authoritative path. Last write wins (matching current semantics,
-where a fix iteration's or retry's final report already supersedes earlier
-ones). Structured-output `headSha` fields are **kept** — waves.js still uses
-them internally (prompt baking, logging, merge-target flow between waves) — but
+where a redirect round's or retry's final merge supersedes earlier ones).
+Structured-output `headSha` fields are **kept** — waves.js still uses them
+internally (prompt baking, logging, merge-target flow between waves) — but
 nothing the gate trusts comes from them after finalization.
 
 ### 2. `finalize_report.py` — mechanical report finalization (new, committed)
@@ -58,7 +65,6 @@ A small deterministic helper, run by the session at Step 5 **immediately before
 - Fails loudly (exit ≠ 0, naming the slot) when a sidecar for a merged wave or
   a done-and-merged task is missing, malformed, or non-resolving. Tasks that
   ended failed/blocked/deferred are tolerated absent.
-- Stamps provenance: `report.headsDerived: true`.
 - **No silent fallback to token values** — a fallback would resurrect the seam.
   A finalize failure is a pre-gate failure: the session surfaces it and does not
   run the gate on an unfinalized report.
@@ -69,24 +75,22 @@ by construction.
 
 ### 3. The completeness critic reads files, not its prompt
 
-The critic's brief changes (source: `references/wave-merge.md`, re-baked into
-waves.js): its detach target and the mergedShas list for the ancestry assertion
-are read from `<runDir>/heads/` directly (`cat` the slots). The prompt-injected
-values remain as advisory cross-checks; a file↔prompt mismatch is reported, and
-a missing/malformed sidecar for a merged task is treated exactly like an
-ancestry miss today — the run goes BLOCKED rather than vouched-for.
+One-sentence brief change (source: `references/wave-merge.md`, re-baked into
+waves.js): the critic reads its detach target and the mergedShas list for the
+ancestry assertion from the `<runDir>/heads/` slots — that list is
+authoritative. A missing or malformed slot for a merged task is treated exactly
+like an ancestry miss today: the run goes BLOCKED rather than vouched-for. No
+advisory cross-check vocabulary is added.
 
 ### 4. Prompt and doc surfaces
 
-- `references/wave-merge.md` — merge-agent sidecar write; critic file-read
-  brief. Re-bake into waves.js per `references/workflow-template.md`;
-  `tests/test_no_prompt_drift.py` stays green.
-- Implementer prompt (waves.js task preamble; its source reference likewise):
-  the "report your worktree coordinates" step gains the mechanical write.
+- `references/wave-merge.md` — merge-agent sidecar writes; critic file-read
+  sentence. Re-bake into waves.js per `references/workflow-template.md`;
+  `tests/test_no_prompt_drift.py` stays green. Implementer prompts unchanged.
 - `SKILL.md` Step 5: finalize runs before gate_check; a finalize failure is
   handled like a gate failure.
-- `references/report-format.md`: document `headsDerived` and the derived
-  provenance of headSha fields.
+- `references/report-format.md`: one line noting headSha fields are
+  file-derived at finalization (no new field).
 
 ## Error handling
 
@@ -94,19 +98,18 @@ ancestry miss today — the run goes BLOCKED rather than vouched-for.
 |---|---|
 | Sidecar missing for a merged task/wave | finalize exits non-zero naming the slot; no gate run |
 | Sidecar malformed / non-resolving | same — loud, named |
-| Critic finds file↔prompt mismatch | reported; ancestry treatment (BLOCKED, not vouched) |
+| Critic finds a merged task's slot missing/malformed | ancestry-miss treatment (BLOCKED, not vouched) |
 | heads/ absent entirely (stale engine mid-transition) | finalize fails loudly; no token fallback |
 
 ## Testing
 
 - **pytest** (`tests/test_finalize_report.py`): overwrite happy path; missing
   sidecar for a merged wave → exit 1 naming the slot; malformed and
-  non-resolving SHA cases; failed/blocked tasks tolerated absent; provenance
-  stamp asserted.
+  non-resolving SHA cases; failed/blocked tasks tolerated absent.
 - **Harness sim (.mjs)**: waves.js prompt changes require a sim referencing
-  `harnesses/` that asserts the dispatched prompts carry the sidecar-write and
-  file-read instructions, printing the `ALL SCENARIOS PASSED` sentinel (the
-  suite-gate runs it whenever harness JS changes).
+  `harnesses/` that asserts the dispatched merge and critic prompts carry the
+  sidecar-write and file-read instructions, printing the `ALL SCENARIOS PASSED`
+  sentinel (the suite-gate runs it whenever harness JS changes).
 - Prompt-drift pins: edit sources, re-bake, pins stay green.
 
 ## Out of scope
@@ -124,6 +127,12 @@ ancestry miss today — the run goes BLOCKED rather than vouched-for.
 - complexityEffect: **structural** — the trust-me seam is removed at every
   consumer; the whole fabricated-SHA class becomes inexpressible on the
   authoritative path.
-- netConceptDelta: **flat** — one helper + one sidecar convention in, one
-  standing trust-me seam out.
+- netConceptDelta: **flat** — one helper, one sidecar convention, and two
+  sentences of prompt prose in one role in; one standing trust-me seam and one
+  recurring diagnosis-round class out; the schema `headSha` fields become a
+  future deletion candidate once derived values have field history.
 - canaryMetric: none (no rigor-for-efficiency trade).
+- Trims taken at the operator's complexity audit: merge-agent-only writes
+  (implementer prompts untouched), no `headsDerived` report field (the helper's
+  exit code is the guarantee), no advisory cross-check vocabulary in the critic
+  brief.
