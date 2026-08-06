@@ -145,9 +145,11 @@
 **Engine:** inline
 
 ### #114: Structural: derive recorded task-head SHAs from git output — never LLM-transcribed
-**State:** accepted
+**State:** queued
 **Score:** 9 — integration correctness (Q-priority 1) at the merge boundary; a fabricated SHA silently defeats the ancestry safety net
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/
+**Plan:** docs/superpowers/plans/2026-08-06-derived-task-heads.md
+**Engine:** ultrapowers
 **Notes:** Distill 2026-08-06: 11 findings/9 runs, two fresh at 0.1.13/0.1.14 — recorded 40-char task heads with a valid 7-char prefix and fabricated tail (merge/report agent hand-transcribes SHAs). Derive-don't-record: harness stamps heads from git rev-parse output mechanically. Harness JS change → .mjs sim + pass sentinel required; prompt source edits per anti-drift rule. Does NOT touch the frozen gate (the optional rev-parse-verify-on-read follow-up is explicitly out of scope).
 
 ### #113: ultralearn: session-scoped receipt attribution — match receipts/terminus/audit to the session that launched them
