@@ -153,9 +153,11 @@
 **Notes:** Distill 2026-08-06: 11 findings/9 runs, two fresh at 0.1.13/0.1.14 — recorded 40-char task heads with a valid 7-char prefix and fabricated tail (merge/report agent hand-transcribes SHAs). Derive-don't-record: harness stamps heads from git rev-parse output mechanically. Harness JS change → .mjs sim + pass sentinel required; prompt source edits per anti-drift rule. Does NOT touch the frozen gate (the optional rev-parse-verify-on-read follow-up is explicitly out of scope).
 
 ### #113: ultralearn: session-scoped receipt attribution — match receipts/terminus/audit to the session that launched them
-**State:** accepted
+**State:** queued
 **Score:** 8.5 — protects the measurement loop every distill and every frozen-periphery unfreeze route trusts; completes #98 at multi-launch/drain scale
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
+**Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
+**Engine:** subagent-driven
 **Notes:** Distill 2026-08-06: largest ledger family (59 findings/50 runs), fresh sev-2s AT 0.1.13 post-#98: approved run bundled as BLOCKED; 9-plan drain bundled as single-plan NEEDS_ACK with a receipt stamped 4 days later; audit covers launch 1 of 5; slice tails contaminated. Fix: match receipts to wf run IDs/stamps the session launched, union audit across launches, terminus from matched receipt + transcript approval evidence, multi-plan bundle shape, slice trimmed to run envelope. PLAN TOGETHER WITH #118 (deletes the disk-fallback sweep this replaces).
 
 ### #112: Structural: plan-defect judgmentCall lane — disclosed fixes of plan-transcribed defects instead of gate redirects
@@ -201,9 +203,11 @@
 **Notes:** Five seams from the #84 reviews (2026-07-27 drain). Note the machinery-earned-by-recurrence bar at planning: prefer structural closures (e.g. make approve sweep the integration worktree mechanically rather than pinning the SKILL.md sentence) over pin-tests of prose — the distill doctrine and #106 both push against new pins. Partial overlap with what the 0.1.14 live shakedown will prove; check each seam against #108's shipped behavior before planning. PLAN TOGETHER WITH #102 (its doc face).
 
 ### #118: Simplification: delete the harvester's disk-fallback receipt sweep once session-scoped attribution lands
-**State:** accepted
+**State:** queued
 **Score:** 6 — mandatory deletion candidate of distill 2026-08-06; the fallback IS the contamination vector behind the misattribution family
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
+**Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
+**Engine:** subagent-driven
 **Notes:** Strictly-down simplification, subsumed by #113's structural change. One-time audit first: how many cached bundles depended on the fallback and whether any of those attributions were correct. PLAN TOGETHER WITH #113 (one plan, fallback deleted in the same change that replaces it).
 
 ### #110: WF_RUN_RE requires ≥2 hyphen-separated id segments — single-segment runtime ids would go unrecorded
