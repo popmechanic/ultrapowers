@@ -145,7 +145,7 @@
 **Engine:** inline
 
 ### #114: Structural: derive recorded task-head SHAs from git output — never LLM-transcribed
-**State:** queued
+**State:** executed
 **Score:** 9 — integration correctness (Q-priority 1) at the merge boundary; a fabricated SHA silently defeats the ancestry safety net
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-derived-task-heads.md
