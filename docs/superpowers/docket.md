@@ -177,7 +177,7 @@
 **Notes:** Distill 2026-08-06. Three parts: (1) document narrow-files+drop-tier resume as the sanctioned micro-redirect (field-proven by hand), (2) deterministic helper: prior receipt + findings list → relaunch args (removes fumble-prone LLM file surgery), (3) operator-authorized inline commits re-baseline head-match with attribution instead of leaving stale BLOCKED receipts. CAUTION: gate_check.py is frozen periphery — scope the re-baseline as recording attribution, never weakening the check; if that can't be done cleanly, split part 3 out at planning. canaryMetric: redirect-round rate + BLOCKED-receipts-on-approved-runs (should hit 0).
 
 ### #107: eval kit: prepare_engine's marketplace registration clobbers the operator's real 'ultrapowers' marketplace
-**State:** queued
+**State:** executed
 **Score:** 7.5 — engine-mutates-operator-environment family (same family as #99, scored 7); sev-3 live incident, predicted verbatim by the run's own deferred ack
 **Est-files:** evals/ab_runner.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-eval-config-isolation.md
