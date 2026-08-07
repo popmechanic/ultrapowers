@@ -185,9 +185,11 @@
 **Notes:** Filed 2026-07-28 from the live /plugin breakage; distill 2026-08-06 appended: the #96 run's deferredVerification named the exact side effect pre-release and nothing acted on it. Fix: eval cells get the same isolation discipline as the engine (namespaced/temp marketplace name or isolated CLAUDE_CONFIG_DIR, never the production manifest name). Consider the general lesson at planning: deferred acks naming operator-environment mutation should trigger pre-release mitigation.
 
 ### #116: Preflight baseline check: smoke-run the stamped testCmd in the validate-knobs worktree before launch
-**State:** accepted
+**State:** queued
 **Score:** 7.5 — the cycle's ONE budgeted additive guard (9 findings/9 runs): moves the red-baseline decision to the operator pre-launch
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py, skills/ultrapowers/SKILL.md
+**Plan:** docs/superpowers/plans/2026-08-06-preflight-baseline-check.md
+**Engine:** inline
 **Notes:** Distill 2026-08-06. Reuses the --validate-knobs throwaway worktree: run the stamped testCmd once pre-launch; red baseline → explicit operator decision (fix drift / accept named off-plan repair / launch anyway with reds recorded inherited); also catches crashing auto-detected testCmds inside preflight (subsumes the segfault-teardown case). Field evidence: reconcile agent committed into a plan-protected path mid-run because baseline was red; gate had to manually exonerate a pre-existing flake. Receipt gains a baseline verdict field.
 
 ### #117: Gate false-red: canonicalize the acceptance worktree path (macOS /var symlink)
