@@ -209,9 +209,11 @@
 **Notes:** Filed by the drain's own critic (executed repro: --suite-gate --run '   ' → passed:true). ultra_run.py side (truthiness knob-drop) is unfrozen; run_acceptance.sh side is FROZEN — ride #117's eval-fixture unfreeze ceremony. Normalize/strip then validate non-empty; empty-after-strip refuses loudly on both sides. PLAN TOGETHER WITH #117.
 
 ### #103: #84 hardening follow-ups: pin the sweep instruction, test the detach↔approve coupling, close GUARD/prompt seams
-**State:** accepted
+**State:** queued
 **Score:** 6 — hardening seams on deletion machinery, all currently held by prose or nothing; named by the #84 build's own reviews
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/scripts/sweep_worktrees.sh, skills/ultrapowers/scripts/ultra_gate.py, skills/ultrapowers/harnesses/waves.js, tests/
+**Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
+**Engine:** ultrapowers
 **Notes:** Five seams from the #84 reviews (2026-07-27 drain). Note the machinery-earned-by-recurrence bar at planning: prefer structural closures (e.g. make approve sweep the integration worktree mechanically rather than pinning the SKILL.md sentence) over pin-tests of prose — the distill doctrine and #106 both push against new pins. Partial overlap with what the 0.1.14 live shakedown will prove; check each seam against #108's shipped behavior before planning. PLAN TOGETHER WITH #102 (its doc face).
 
 ### #118: Simplification: delete the harvester's disk-fallback receipt sweep once session-scoped attribution lands
@@ -229,9 +231,11 @@
 **Notes:** Shape assumption on runtime-minted ids (wf_<hex8>-<n> today). Closure direction the issue names: derive the recorded id from the launch response rather than parsing branch names — prefer that derive-don't-parse form at planning. CLUSTER: plan with #111 + #109 as one small post-#108 sweep-hygiene plan (inline engine).
 
 ### #102: docs: workflow-template.md contradicts shipped #84 behavior in three places
-**State:** accepted
+**State:** queued
 **Score:** 5.5 — the canonical authoring/re-bake reference misleads every future harness edit; cheap, pure docs
 **Est-files:** skills/ultrapowers/references/workflow-template.md
+**Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
+**Engine:** ultrapowers
 **Notes:** Three pre-#84 descriptions of merge/completeness running on the session main checkout — now false (integration in a dedicated worktree). PLAN TOGETHER WITH #103 (same subject, doc face + hardening face).
 
 ### #111: sweep --audit: absurd --age-hours magnitudes overflow the threshold arithmetic (report-only)
