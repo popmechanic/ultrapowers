@@ -625,3 +625,22 @@ def test_audit_rejects_sweep_flags(tmp_path):
         p = subprocess.run(["bash", str(SWEEP), *combo], cwd=repo,
                            capture_output=True, text=True)
         assert p.returncode == 2, combo
+
+
+def test_age_hours_magnitude_bound(tmp_path):
+    """#111: --age-hours values of 7+ digits overflowed $((AGE_HOURS * 3600))
+    (64-bit wrap at ~20 digits inverted the age filter). Bound the magnitude
+    inside the existing validation arm — rejected as a usage error, never a
+    wrapped threshold."""
+    repo = make_repo(tmp_path)
+    # 20 digits: rejected as a usage error, never a wrapped threshold
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "9" * 20],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode != 0
+    assert "older than" not in p.stdout
+    assert "at most 6 digits" in p.stderr
+    # 6 digits: accepted, threshold echoed
+    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "999999"],
+                       cwd=repo, capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "999999" in p.stdout + p.stderr

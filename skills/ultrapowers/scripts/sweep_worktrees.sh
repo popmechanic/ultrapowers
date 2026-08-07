@@ -98,8 +98,8 @@ fi
 # `--audit --age-hours 24.5` removed worktrees, deleted branches, and still
 # exited 0 (reproduced on bash 3.2.57). A report-only flag must never sweep.
 case "$AGE_HOURS" in
-  ''|*[!0-9]*)
-    echo "sweep_worktrees.sh: --age-hours requires a non-negative integer" >&2
+  ''|*[!0-9]*|???????*)
+    echo "sweep_worktrees.sh: --age-hours requires a non-negative integer of at most 6 digits" >&2
     exit 2
     ;;
 esac
