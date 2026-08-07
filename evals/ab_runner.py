@@ -191,20 +191,45 @@ DRIVE_PROMPT = (
 
 
 def prepare_engine(engine_ref, root):
-    """Pin the ultrapowers engine at `engine_ref` in an isolated worktree and
-    expose it as a local marketplace, so `claude` resolves the plugin at exactly
-    that ref (prepare_run.sh installed a pinned engine the same way — via a git
-    worktree, never mutating the operator's checkout). Returns the engine dir."""
+    """Pin the ultrapowers engine at `engine_ref` in an isolated worktree
+    (prepare_run.sh installed a pinned engine the same way — via a git
+    worktree, never mutating the operator's checkout). Returns the engine dir.
+    Registration happens per-cell inside a throwaway CLAUDE_CONFIG_DIR
+    (prepare_session_config, #107) — never against the operator's config."""
     root = Path(root)
     work = Path(tempfile.mkdtemp(prefix="ab-engine-%s-" % engine_ref[:8].replace("/", "_")))
     engine_wt = work / "engine"
     subprocess.run(["git", "worktree", "add", "--detach", str(engine_wt), engine_ref],
                    cwd=str(root), check=True)
-    # A local marketplace is just a checkout carrying .claude-plugin/marketplace.json;
-    # register it so the headless session loads ultrapowers at the pinned ref.
-    subprocess.run(["claude", "plugin", "marketplace", "add", str(engine_wt)],
-                   check=False)
     return engine_wt
+
+
+def prepare_session_config(engine_wt, workspace):
+    """Materialize the pinned engine inside a throwaway CLAUDE_CONFIG_DIR and
+    return the complete env mapping session cells use verbatim (#107: the
+    operator's config is unwritable by construction — every claude invocation
+    the eval kit spawns carries this mapping). Registration + enablement land
+    in the throwaway; partial throwaway state on failure is disposable garbage.
+    Live-proven by the probe before any drive: Keychain auth, enablement, and
+    the superpowers dependency (spec §3)."""
+    cfg = Path(workspace) / "claude-config"
+    cfg.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = str(cfg)
+    # The exact enablement incantation is a named verification unknown (spec
+    # §3): follow the probe — if `claude plugin install` is not the working
+    # form, adjust to the form the probe proves (e.g. seeding settings.json
+    # enabledPlugins), and materialize superpowers into the throwaway the same
+    # way once the working form is known. The unit pin constrains only that
+    # every invocation carries the throwaway CLAUDE_CONFIG_DIR.
+    for cmd in (["claude", "plugin", "marketplace", "add", str(engine_wt)],
+                ["claude", "plugin", "install", "ultrapowers@ultrapowers"]):
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        if r.returncode != 0:
+            sys.exit("prepare_session_config: %r failed inside the throwaway "
+                     "config (%s) — operator config untouched.\n%s"
+                     % (" ".join(cmd), cfg, (r.stderr or r.stdout or "").strip()))
+    return env
 
 
 def install_seals(plan, root):
@@ -267,15 +292,16 @@ def _git_env():
     return env
 
 
-def probe_workflow(workdir):
+def probe_workflow(workdir, env):
     """Verify the Workflow tool is live headlessly BEFORE the first benchmark run
     (night_runner.sh convention; ultra_run.py's ultrapowers-probe assertion). The
     saved workflow echoes {ping} and the wave slots; if `claude` cannot launch it
     the Workflow tool is unavailable in headless mode. Returns True iff the probe
-    round-trips."""
+    round-trips. `env` is the cell's isolated mapping (#107)."""
     try:
         res = subprocess.run(["claude", "-p", PROBE_PROMPT] + CLAUDE_FLAGS,
-                             cwd=str(workdir), capture_output=True, text=True, timeout=300)
+                             cwd=str(workdir), capture_output=True, text=True, timeout=300,
+                             env=env)
     except (OSError, subprocess.TimeoutExpired):
         return False
     if res.returncode != 0:
@@ -283,13 +309,14 @@ def probe_workflow(workdir):
     return "probe-1" in res.stdout and "not found" not in res.stdout.lower()
 
 
-def drive_run(workdir, plan):
+def drive_run(workdir, plan, env):
     """Drive one headless /ultrapowers run to the pre-merge gate and return
     (transcript_path, gate_report, mode). Probes the Workflow tool first and
     aborts with an operator-actionable message if it is unavailable; the operator
     then reruns the cell interactively and the row is tagged interactive-fallback.
+    `env` is the cell's isolated mapping (#107).
     """
-    if not probe_workflow(workdir):
+    if not probe_workflow(workdir, env):
         sys.exit(
             "Workflow tool unavailable headlessly: the 'ultrapowers-probe' saved "
             "workflow did not round-trip. Run this cell INTERACTIVELY instead — open "
@@ -298,14 +325,14 @@ def drive_run(workdir, plan):
                 workdir, DRIVE_PROMPT.format(plan=plan["planPath"]).splitlines()[0]))
     result_path = workdir / ".headless-result.json"
     prompt = DRIVE_PROMPT.format(plan="docs/plans/plan.md")
-    env = dict(os.environ)
+    run_env = dict(env)
     # The print-mode harness kills background waits at 600s by default; a waved
     # run (the Workflow tool is a background task) routinely outlives that.
-    env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] = "0"
+    run_env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"] = "0"
     with open(result_path, "w") as out:
         subprocess.run(["claude", "-p", prompt] + CLAUDE_FLAGS,
                        cwd=str(workdir), stdout=out, stderr=subprocess.STDOUT,
-                       check=False, env=env)
+                       check=False, env=run_env)
     # The session transcript is where token usage lives; the headless result JSON
     # carries the printed pre-merge gate report.
     gate_report = _read_gate_report(result_path)
@@ -506,10 +533,11 @@ def main():
 
     started = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
-    prepare_engine(args.engine_ref, root)
+    engine = prepare_engine(args.engine_ref, root)
     install_seals(plan, root)
     workdir, _baseline = clone_project(plan)
-    transcript, gate_report, mode = drive_run(workdir, plan)
+    env = prepare_session_config(engine, workdir.parent)
+    transcript, gate_report, mode = drive_run(workdir, plan, env)
     try:
         save_diff(workdir, plan)
         row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
