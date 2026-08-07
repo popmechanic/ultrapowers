@@ -8,6 +8,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
@@ -681,3 +683,22 @@ def test_validate_knobs_neither_cmd_keeps_early_return(tmp_path):
     r = run_validate_knobs(repo, args_path)
     assert r.returncode == 0
     assert "nothing to validate" in r.stdout
+
+
+# --- #105: an explicitly-passed empty/whitespace --test-cmd is never silent ---
+
+@pytest.mark.parametrize("cmd", ["   ", "\t", "\n", ""])
+def test_explicit_empty_test_cmd_fails_the_stage(tmp_path, cmd):
+    """#105 differential pin: BASE stamps a whitespace knob verbatim (the gate
+    later evals it to a false green) and silently drops an empty one into
+    detection. HEAD fails the test-command stage naming the empty knob — and
+    stamps nothing, so the fall-through cannot ride on a detected command."""
+    repo = make_repo(tmp_path)          # writes pytest.ini, so detection WOULD succeed
+    r = run_driver(repo, "--test-cmd", cmd)
+    assert r.returncode != 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    assert receipt["stages"][-1]["stage"] == "test-command"
+    assert receipt["stages"][-1]["ok"] is False
+    assert "--test-cmd" in receipt["stages"][-1]["detail"]
+    assert "testCmd" not in receipt

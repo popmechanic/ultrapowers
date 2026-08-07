@@ -1,6 +1,7 @@
 """Sealed acceptance: canonical hashing + deterministic exam runner, e2e
 against a throwaway git repo and a tmp vault (no real ~/.ultrapowers use)."""
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -762,3 +763,125 @@ def test_suite_gate_rejects_empty_run(tmp_path):
     r, payload = _suite_gate(repo, "--run", "")
     assert payload["status"] == "ERROR"
     assert r.returncode == 1
+
+
+# ── #117: canonical exam/suite-gate worktree paths ───────────────────────────
+# Both provisioning sites handed `$(mktemp -d)/...` straight to
+# `git worktree add`. That path traverses a symlink whenever the temp root does
+# — always on macOS (/var -> private/var), and on Linux whenever TMPDIR points
+# at one — so the suite ran with a logical cwd that did not match its physical
+# one, false-redding every path-identity-sensitive toolchain.
+#
+# PWD-vs-getcwd is the cheapest faithful stand-in for that whole class: bash's
+# `cd` sets PWD logically (symlink preserved) while getcwd(3) is always
+# physical, so the two differ exactly when the worktree path traverses a
+# symlink and agree exactly when it does not.
+PATH_IDENTITY_TEST = (
+    "import os\n\n\n"
+    "def test_cwd_is_canonical():\n"
+    "    assert os.environ['PWD'] == os.getcwd()\n"
+)
+
+
+def _mk_path_identity_repo(tmp_path):
+    """A repo whose one-test suite fails iff the worktree path traverses a
+    symlink — the stand-in for every path-identity-sensitive toolchain."""
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "tests" / "test_path_identity.py").write_text(PATH_IDENTITY_TEST)
+    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+    sh(["git", "config", "user.name", "t"], cwd=repo)
+    sh(["git", "add", "-A"], cwd=repo)
+    sh(["git", "commit", "-qm", "fixture"], cwd=repo)
+    sh(["git", "branch", "work"], cwd=repo)
+    return repo
+
+
+def _symlinked_tmpdir_env(tmp_path, name):
+    """An environment whose TMPDIR reaches the real temp dir through a symlink."""
+    real = tmp_path / (name + "-real")
+    real.mkdir()
+    link = tmp_path / (name + "-link")
+    link.symlink_to(real)
+    return dict(os.environ, TMPDIR=str(link))
+
+
+def test_suite_gate_survives_symlinked_tmpdir(tmp_path):
+    # #117 differential pin (GREEN at HEAD; RED at BASE recorded in the commit).
+    repo = _mk_path_identity_repo(tmp_path)
+    env = _symlinked_tmpdir_env(tmp_path, "sg")
+    r = subprocess.run(
+        ["bash", str(RUN), "--suite-gate", "--branch", "work",
+         "--run", sys.executable + " -m pytest -q tests/", "--repo", str(repo)],
+        capture_output=True, text=True, env=env)
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["passed"] is True, r.stdout + r.stderr
+    assert r.returncode == 0
+
+
+def test_sealed_exam_survives_symlinked_tmpdir(tmp_path):
+    # The same pin for the OTHER provisioning site (the sealed exam core), so a
+    # fix applied to only one of the two mktemp sites cannot ride a green.
+    vault, seal_id, digest = make_vault(
+        tmp_path, suite_files={"test_path_identity.py": PATH_IDENTITY_TEST})
+    repo = make_repo(tmp_path, feature_built=True)
+    env = _symlinked_tmpdir_env(tmp_path, "exam")
+    r = subprocess.run(
+        ["bash", str(RUN), seal_id, "main", digest,
+         "--vault", str(vault), "--repo", str(repo)],
+        capture_output=True, text=True, env=env)
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["passed"] is True, r.stdout + r.stderr
+    assert r.returncode == 0
+
+
+def test_uncreatable_temp_parent_errors_instead_of_using_cwd(tmp_path):
+    """The guard half of the canonicalization, pinned against the cleanup trap.
+
+    `cd ""` SUCCEEDS in bash and yields the process cwd, so if `mktemp -d`
+    fails an unguarded canonicalization silently provisions the worktree at
+    `$PWD/suite-gate` — and `cleanup` then runs `rm -rf "$(dirname ...)"` over
+    the caller's own directory. The gate must refuse instead, and the caller's
+    files must still be there afterwards."""
+    repo = _mk_path_identity_repo(tmp_path)
+    fakebin = tmp_path / "fakebin"
+    fakebin.mkdir()
+    fake = fakebin / "mktemp"
+    fake.write_text("#!/bin/sh\nexit 1\n")
+    fake.chmod(0o755)
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    canary = cwd / "canary.txt"
+    canary.write_text("must survive")
+    env = dict(os.environ, PATH=str(fakebin) + os.pathsep + os.environ["PATH"])
+    r = subprocess.run(
+        ["bash", str(RUN), "--suite-gate", "--branch", "work",
+         "--run", sys.executable + " -m pytest -q tests/", "--repo", str(repo)],
+        capture_output=True, text=True, env=env, cwd=str(cwd))
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["status"] == "ERROR"
+    assert out["passed"] is False
+    assert r.returncode != 0
+    assert canary.is_file() and canary.read_text() == "must survive"
+
+
+# ── #105: whitespace-empty command knobs ──────────────────────────────────────
+
+@pytest.mark.parametrize("cmd", ["   ", "\t", "\n", ""])
+def test_suite_gate_refuses_whitespace_only_run(tmp_path, cmd):
+    """#105 differential pin: BASE returns {"passed": true} for a whitespace-only
+    --run (the false green — `eval "   "` exits 0 without running a suite); HEAD
+    refuses loudly. The empty-string case rides the same branch so the stripped
+    emptiness check cannot regress the refusal it replaces."""
+    repo = _mk_path_identity_repo(tmp_path)
+    r = subprocess.run(
+        ["bash", str(RUN), "--suite-gate", "--branch", "work",
+         "--run", cmd, "--repo", str(repo)],
+        capture_output=True, text=True)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert '"passed": true' not in r.stdout
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["status"] == "ERROR"
+    assert out["passed"] is False
+    assert "--run" in out["output"]

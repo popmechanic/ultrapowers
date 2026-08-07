@@ -351,8 +351,19 @@ def main(argv=None):
         return bail()
     receipt["compile"] = compile_obj
 
-    if a.test_cmd:
-        test_cmd, test_src = a.test_cmd, "knob"
+    # An explicitly-passed knob is judged on its stripped value: a whitespace
+    # command would be stamped verbatim and eval to a false green at the gate,
+    # and an empty one would silently fall through to detection (#105). Both
+    # are knob-drops the operator never sees, so both fail the stage loudly.
+    if a.test_cmd is not None:
+        knob = a.test_cmd.strip()
+        if not knob:
+            stage("test-command", False,
+                  failure="--test-cmd was passed but is empty/whitespace — "
+                          "refusing the silent knob-drop; pass a real command "
+                          "or omit the flag for detection")
+            return bail()
+        test_cmd, test_src = knob, "knob"
     else:
         test_cmd, rule = detect_test_cmd(root)
         test_src = ("detected:" + rule) if test_cmd else None
