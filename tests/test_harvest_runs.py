@@ -643,3 +643,19 @@ def test_slice_keeps_planning_head(tmp_path):
     # no artifact after the head → nothing is cut
     out = h.slice_transcript(REAL)
     assert "build the thing" in out
+
+
+# --- fix round 1 (task review): _has_run_artifact must be tool_result-gated,
+# matching the _transcript_dirs / is_real_run convention — a plain prose turn
+# that merely mentions "integrationBranch" is not a run artifact and must not
+# become the slice cutoff. Discriminating shape: no tool_result artifact at
+# all in the transcript, so a correct implementation cuts nothing regardless
+# of where the prose mention sits.
+def test_slice_ignores_prose_mention_outside_tool_result(tmp_path):
+    recs = [
+        _rec("user", [{"type": "text", "text": "build the thing"}]),
+        _rec("assistant", [{"type": "text", "text": "note: integrationBranch naming can get confusing"}]),
+        _rec("user", [{"type": "text", "text": "definitely-real-content-after-prose"}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "definitely-real-content-after-prose" in out

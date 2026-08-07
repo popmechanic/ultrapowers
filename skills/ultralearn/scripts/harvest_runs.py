@@ -87,7 +87,11 @@ def _has_run_artifact(txt):
     """A record "is" a run artifact (Task 3 slice envelope) when its text is a
     balanced-JSON gate/approve/teardown receipt, a Workflow tool_result (the
     "Transcript dir:" / integrationBranch shape `is_real_run` also keys off
-    of), or a `sweep_worktrees` output line."""
+    of), or a `sweep_worktrees` output line. Callers must gate this to
+    `tool_result` blocks (matching the `_transcript_dirs` / `is_real_run`
+    convention) — these are all machine-printed shapes that only ever
+    legitimately appear in tool output, never plain assistant/user prose that
+    merely mentions the words."""
     if "sweep_worktrees" in txt or "Transcript dir:" in txt or "integrationBranch" in txt:
         return True
     i = txt.find('"mode"')
@@ -103,10 +107,12 @@ def _has_run_artifact(txt):
 
 def _last_artifact_record_index(records):
     """Index (into `records`) of the last record holding a run artifact, or
-    None when no record qualifies — the slice envelope's tail bound."""
+    None when no record qualifies — the slice envelope's tail bound. Scoped to
+    `tool_result` blocks only, so a plain text turn that merely mentions
+    "integrationBranch" or similar in prose can't masquerade as the cutoff."""
     last = None
     for idx, _r, b in _iter_blocks_indexed(records):
-        if not isinstance(b, dict):
+        if not isinstance(b, dict) or b.get("type") != "tool_result":
             continue
         txt = _block_text(b)
         if txt and _has_run_artifact(txt):
