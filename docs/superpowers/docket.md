@@ -209,7 +209,7 @@
 **Notes:** Filed by the drain's own critic (executed repro: --suite-gate --run '   ' → passed:true). ultra_run.py side (truthiness knob-drop) is unfrozen; run_acceptance.sh side is FROZEN — ride #117's eval-fixture unfreeze ceremony. Normalize/strip then validate non-empty; empty-after-strip refuses loudly on both sides. PLAN TOGETHER WITH #117.
 
 ### #103: #84 hardening follow-ups: pin the sweep instruction, test the detach↔approve coupling, close GUARD/prompt seams
-**State:** queued
+**State:** executed
 **Score:** 6 — hardening seams on deletion machinery, all currently held by prose or nothing; named by the #84 build's own reviews
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/scripts/sweep_worktrees.sh, skills/ultrapowers/scripts/ultra_gate.py, skills/ultrapowers/harnesses/waves.js, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
@@ -231,7 +231,7 @@
 **Notes:** Shape assumption on runtime-minted ids (wf_<hex8>-<n> today). Closure direction the issue names: derive the recorded id from the launch response rather than parsing branch names — prefer that derive-don't-parse form at planning. CLUSTER: plan with #111 + #109 as one small post-#108 sweep-hygiene plan (inline engine). PARKED 2026-08-06 at sweep iteration 9 (operator-approved): both closure directions land in FROZEN ultra_gate.py for a zero-occurrence hypothetical (runtime mints wf_<hex8>-<n>; single-segment ids never observed), with verified loud mitigation (left-behind accounting at sweep_worktrees.sh:319-341 enumerates on-disk wf_* unconditionally; --audit re-surfaces by age). REOPEN TRIGGER: an observed runtime id the WF_RUN_RE pattern misses — it will show in the approve receipt's left-behind list. Spec: docs/superpowers/specs/2026-08-06-sweep-hygiene-smalls-design.md.
 
 ### #102: docs: workflow-template.md contradicts shipped #84 behavior in three places
-**State:** queued
+**State:** executed
 **Score:** 5.5 — the canonical authoring/re-bake reference misleads every future harness edit; cheap, pure docs
 **Est-files:** skills/ultrapowers/references/workflow-template.md
 **Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
