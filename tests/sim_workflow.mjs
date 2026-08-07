@@ -899,6 +899,8 @@ async function scenarioResume() {
   assert(/EXISTING/.test(setupPrompt) && setupPrompt.includes('ultra/integration-sim'),
     'resume: setup told to check out the EXISTING integration branch')
   assert(!/checkout -b/.test(setupPrompt), 'resume: setup must not create a new branch')
+  assert(setupPrompt.includes('git status --porcelain'),
+    'resume: setup told to verify the reused worktree is clean before checking out')
   assert(r.tasks.every((t) => t.status === 'done'), 'resume: redirect tasks ran')
   console.log('scenario resume: OK')
 }

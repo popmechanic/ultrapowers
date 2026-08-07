@@ -31,7 +31,7 @@ You are the setup agent. The engine never mutates the session checkout: create t
 Under `args.resume` (the deterministic redirect path), setup reuses the existing branch instead, materializing (or reusing) its worktree:
 
 <!-- BAKE:SETUP_PROMPT_RESUME -->
-You are the setup agent. The EXISTING integration branch {{INTEGRATION_BRANCH}} must already exist; report BLOCKED if it does not, and do not create a new branch. Materialize its dedicated worktree: if {{INTEGRATION_WT}} already exists, check out {{INTEGRATION_BRANCH}} inside it; otherwise run git worktree add {{INTEGRATION_WT}} {{INTEGRATION_BRANCH}} from the session repo root. {{BOOTSTRAP_LINE}}Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+You are the setup agent. The EXISTING integration branch {{INTEGRATION_BRANCH}} must already exist; report BLOCKED if it does not, and do not create a new branch. Materialize its dedicated worktree: if {{INTEGRATION_WT}} already exists, check out {{INTEGRATION_BRANCH}} inside it. Before that checkout, verify the reused worktree is clean (git status --porcelain); if it is dirty, report BLOCKED with the porcelain output — never absorb pre-existing dirt into the run's diff. If {{INTEGRATION_WT}} does not exist, run git worktree add {{INTEGRATION_WT}} {{INTEGRATION_BRANCH}} from the session repo root. {{BOOTSTRAP_LINE}}Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
 <!-- /BAKE -->
 
 ---
