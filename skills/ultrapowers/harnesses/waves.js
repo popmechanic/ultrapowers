@@ -365,11 +365,12 @@ const testInstruction = 'run the project test command `' + testCmd + '`'
 
 // The dedicated integration worktree (#84): the engine never mutates the
 // session checkout. Stamp-named — the script knows args.stamp, not the
-// runtime wf_<runId> — which puts it OUTSIDE the operator's run-scoped
-// teardown sweep (sweep_worktrees.sh --run <wf_runId> globs wf_<runId>-*,
-// which can never match wf_<stamp>-integration). It is removed instead by
-// the ADDITIONAL sweep_worktrees.sh --run wf_<stamp> call SKILL.md issues at
-// Approve/teardown, whose stem glob wf_<stamp>-* does match it. The
+// runtime wf_<runId> — which puts it OUTSIDE the run-scoped glob
+// (sweep_worktrees.sh --run <wf_runId> globs wf_<runId>-*, which can never
+// match wf_<stamp>-integration). Since #108, `ultra_gate.py --approve`
+// sweeps mechanically: every wf run id recorded across the stamp's gate
+// calls PLUS wf_<stamp> (this worktree) — no additional SKILL.md-issued
+// sweep call exists; on teardown the worktrees are kept as evidence. The
 // completeness critic's sha-verified detach inside it doubles as the branch
 // release the frozen ultra_gate.py --approve checkout needs (a critic that
 // never detached reports BLOCKED, and a BLOCKED gate is never Approved).
