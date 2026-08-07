@@ -82,7 +82,10 @@ function assertSidecarInstruction(prompt, who) {
 }
 
 // Capture every dispatched prompt by label; drive merge outcomes per label.
-function makeAgent(mergeStatusFor, captured) {
+// cannotVerifyFor(label) optionally returns the cannotVerify entries a per-task
+// reviewer escalates, so a scenario can put reviewer-authored prose into the
+// completeness prompt.
+function makeAgent(mergeStatusFor, captured, cannotVerifyFor) {
   return async (prompt, opts) => {
     const label = opts.label || ''
     captured[label] = prompt
@@ -91,7 +94,10 @@ function makeAgent(mergeStatusFor, captured) {
       const id = label.split(':')[1]
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id }
     }
-    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
+    if (label.startsWith('review:')) {
+      const cv = (cannotVerifyFor && cannotVerifyFor(label)) || []
+      return { verdict: 'PASS', issues: [], cannotVerify: cv }
+    }
     if (label.startsWith('merge:') || label.startsWith('reconcile:')) {
       const status = (mergeStatusFor && mergeStatusFor(label)) || 'MERGED'
       if (status !== 'MERGED') return { status, detail: 'simulated ' + status + ' for ' + label }
@@ -163,7 +169,56 @@ async function scenarioCriticReadsSidecars() {
   console.log('scenario critic-reads-sidecars: OK')
 }
 
+// ── Scenario 4: reviewer-authored prose reaches the critic UNSUBSTITUTED ──────
+// Path substitution is for ENGINE-authored text only. The CANNOT-VERIFY checklist
+// is written by the per-task reviewers, and a reviewer describing this very
+// feature quotes the literal <runDir> token — rewriting that quotation would hand
+// the critic prose the reviewer never wrote. Same rule that keeps the plan's
+// GLOBAL CONSTRAINTS outside fillPaths(), applied to a span that sits mid-prompt.
+async function scenarioCannotVerifyPassesThroughVerbatim() {
+  const captured = {}
+  // Reviewer prose deliberately quoting the literal token, twice, in both fields.
+  const REQUIREMENT = 'the merge agent writes <runDir>/heads/task-<id> by redirection'
+  const WHY = 'spans tasks — <runDir> is not visible in this diff'
+  const cannotVerifyFor = (label) =>
+    (label === 'review:A:1' ? [{ requirement: REQUIREMENT, why: WHY }] : [])
+  await runWorkflow({ agent: makeAgent(null, captured, cannotVerifyFor), args: baseArgs })
+
+  const critic = captured['integration']
+  assert(typeof critic === 'string', 'completeness critic dispatched')
+
+  // The escalated checklist reaches the critic exactly as the reviewer wrote it.
+  const CHECKLIST = 'CANNOT-VERIFY checklist (escalated by the per-task reviewers — ' +
+    'verify each against the integrated tree): [A] ' + REQUIREMENT + ' (' + WHY + '). '
+  has(critic, CHECKLIST, 'critic: reviewer-authored checklist passes through verbatim')
+  has(critic, REQUIREMENT, 'critic: the reviewer\'s literal <runDir> quote survives dispatch')
+  has(critic, WHY, 'critic: the reviewer\'s why field survives dispatch')
+
+  // ...and nothing else in the prompt still carries the token: every remaining
+  // occurrence must be one the reviewer typed, not an unsubstituted engine path.
+  const occurrences = critic.split('<runDir>').length - 1
+  assert(occurrences === 2,
+    'critic: exactly the reviewer\'s two <runDir> quotes survive (engine text stays ' +
+    'substituted) — found ' + occurrences)
+
+  // The seam token itself is engine plumbing and must never reach an agent.
+  assert(critic.indexOf('{{CANNOT_VERIFY}}') === -1,
+    'critic: the CANNOT_VERIFY seam token is filled, never dispatched')
+
+  // The checklist lands in its designed position: after the review instruction,
+  // before the GLOBAL CONSTRAINTS sentence — not appended at the end.
+  const at = critic.indexOf(CHECKLIST)
+  const after = critic.indexOf('When GLOBAL CONSTRAINTS are provided')
+  assert(at !== -1 && after !== -1 && at < after,
+    'critic: the checklist is spliced at its seam, ahead of the constraints sentence')
+
+  // Engine-authored spans in the SAME prompt are still substituted.
+  has(critic, CRITIC_SENTENCE, 'critic: engine text is still path-substituted')
+  console.log('scenario cannot-verify-passes-through-verbatim: OK')
+}
+
 await scenarioMergeWritesSidecars()
 await scenarioReconcileWritesSidecars()
 await scenarioCriticReadsSidecars()
+await scenarioCannotVerifyPassesThroughVerbatim()
 console.log('ALL SCENARIOS PASSED')
