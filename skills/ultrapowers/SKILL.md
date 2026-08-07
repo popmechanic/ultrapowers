@@ -241,9 +241,16 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
   spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
   — never by rebuilding from the report), return here.
-- **Redirect** — append corrective instructions to **only the affected** task
-  bodies and relaunch `ultrapowers-run` with `resume: true`, the **same**
-  `integrationBranch`, and args spread from the receipt's argsFile (it carries the mandatory `pluginRoot`/`runDir`). Return here.
+- **Redirect (micro-redirect)** — author `findings.json` from the gate report
+  (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
+  — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
+  then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
+  --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
+  `ultrapowers-run` with the emitted args file. Untouched tasks replay from
+  journal cache, so a one-task fix costs one task; the fix still flows through
+  its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
+  integration branch are unsanctioned — route every post-gate edit through this
+  lane. Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
