@@ -164,8 +164,18 @@ Hand back the printed URL; tear it down at the gate with
 ## Step 5 — Pre-merge gate (human gate)
 
 Save the Workflow tool's raw result JSON verbatim to a file (the driver unwraps
-the envelope itself; gate fields live under `result.*`), then **run the gate
-driver:**
+the envelope itself; gate fields live under `result.*`). Before running the gate
+driver, finalize the saved result JSON:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/finalize_report.py \
+  --report <saved-result.json> --heads <runDir>/heads --repo .
+```
+
+It rewrites the envelope's `result.*` headSha fields in place from the mechanical
+sidecars. A non-zero exit is a pre-gate failure: surface it and do **NOT** run
+`ultra_gate.py`; never fall back to token-reported values. Then run the gate
+driver with the finalized file:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
@@ -177,7 +187,7 @@ pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
 the gate on the integration branch). With integration in its dedicated
 worktree the engine never moved the checkout, so this restore is normally a
 no-op — it remains the fail-safe against operator-caused drift. It then
-saves the report. Before `gate_check.py`, finalize the report: `python3 <pluginRoot>/skills/ultrapowers/scripts/finalize_report.py --report <saved-report.json> --heads <runDir>/heads --repo .` — it overwrites every recorded headSha from the merge agent's mechanical sidecars. A non-zero exit is a pre-gate failure: surface it and do not run the gate; never fall back to the token-reported values. Then it runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
 pre-existing operator files pass with a note), and administers acceptance per the
 compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
 `tests.passed` is triage context; the **exit code is the authority**:
