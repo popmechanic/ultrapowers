@@ -153,7 +153,7 @@
 **Notes:** Distill 2026-08-06: 11 findings/9 runs, two fresh at 0.1.13/0.1.14 — recorded 40-char task heads with a valid 7-char prefix and fabricated tail (merge/report agent hand-transcribes SHAs). Derive-don't-record: harness stamps heads from git rev-parse output mechanically. Harness JS change → .mjs sim + pass sentinel required; prompt source edits per anti-drift rule. Does NOT touch the frozen gate (the optional rev-parse-verify-on-read follow-up is explicitly out of scope).
 
 ### #113: ultralearn: session-scoped receipt attribution — match receipts/terminus/audit to the session that launched them
-**State:** queued
+**State:** executed
 **Score:** 8.5 — protects the measurement loop every distill and every frozen-periphery unfreeze route trusts; completes #98 at multi-launch/drain scale
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
@@ -217,7 +217,7 @@
 **Notes:** Five seams from the #84 reviews (2026-07-27 drain). Note the machinery-earned-by-recurrence bar at planning: prefer structural closures (e.g. make approve sweep the integration worktree mechanically rather than pinning the SKILL.md sentence) over pin-tests of prose — the distill doctrine and #106 both push against new pins. Partial overlap with what the 0.1.14 live shakedown will prove; check each seam against #108's shipped behavior before planning. PLAN TOGETHER WITH #102 (its doc face).
 
 ### #118: Simplification: delete the harvester's disk-fallback receipt sweep once session-scoped attribution lands
-**State:** queued
+**State:** executed
 **Score:** 6 — mandatory deletion candidate of distill 2026-08-06; the fallback IS the contamination vector behind the misattribution family
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
