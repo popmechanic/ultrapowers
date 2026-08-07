@@ -79,8 +79,15 @@ same args file. The receipt's `llmDerives` list is the checklist:
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
 `bootstrapCmd` no-ops cleanly in a throwaway worktree (never the session
-checkout; global package caches are outside the boundary) and each wave
-entry's `tier`/`review` value is one the engine accepts.
+checkout; global package caches are outside the boundary), each wave
+entry's `tier`/`review` value is one the engine accepts, and smoke-runs the
+stamped `testCmd` in the same worktree. Exit 3 = the baseline is red on the
+base ref before any work (`baseline` in the JSON carries the failing
+output). Present the decision before launching: **fix drift first** (repair
+the base, re-run preflight) or **launch anyway** (the red is inherited;
+optionally add an explicit plan note authorizing any repair the run will
+need, so the reconcile agent never improvises one). The acknowledgment is
+context-only — the in-run setup baseline remains the durable record.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
