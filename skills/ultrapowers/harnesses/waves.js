@@ -333,11 +333,25 @@ const REVIEWER_PROMPT = [
 // prompt-drift pin sees source-identical text) and filled at dispatch time.
 // Apply this ONLY to engine-authored text (GUARD + the baked prompts). Plan-
 // authored spans — the task body, the plan's Global Constraints, its Interfaces
-// — pass through verbatim: a plan is free to quote the literal tokens (the plan
-// that built this feature does), and rewriting that prose would silently hand
-// the implementer a mangled spec.
+// — and reviewer-authored spans — the CANNOT-VERIFY checklist escalated by the
+// per-task reviewers — pass through verbatim: a plan or a reviewer is free to
+// quote the literal tokens (the plan that built this feature does), and
+// rewriting that prose would silently hand the agent a mangled spec.
 const fillPaths = (s) =>
   s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
+
+// The completeness prompt splices reviewer-authored text into its MIDDLE, so it
+// cannot simply be concatenated outside fillPaths the way globalConstraintsBlock
+// is. The baked prompt carries this seam token instead (it is not a path, so
+// fillPaths leaves it alone) and the dispatch site fills it AFTER substitution.
+const CANNOT_VERIFY_SLOT = '{{CANNOT_VERIFY}}'
+// Fill the seam with reviewer prose, verbatim. If the seam is ever missing the
+// checklist is appended rather than silently dropped — losing an escalated
+// CANNOT-VERIFY item would turn an unverified requirement into a false green.
+const spliceCannotVerify = (prompt, checklist) =>
+  prompt.indexOf(CANNOT_VERIFY_SLOT) === -1
+    ? prompt + (checklist || '')
+    : prompt.split(CANNOT_VERIFY_SLOT).join(checklist || '')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
 // testInstruction: args.testCmd is mandatory (driver-stamped: knob or detection).
@@ -384,6 +398,13 @@ const SETUP_PROMPT = resume
      testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
+// #114: every sha the controller consumes used to reach it as model-typed JSON,
+// so a fabricated or truncated tail defeated the ancestry check silently. The
+// merge-side roles DERIVE the values instead: `git rev-parse` redirected into a
+// <runDir>/heads/ slot. Both MERGE_PROMPT and RECONCILE_PROMPT report MERGED
+// heads, so the sentence is baked verbatim into each — the drift pin matches a
+// BAKE block against CONTIGUOUS text in this file, so a shared const would break
+// it. <runDir> is a baked literal token filled by fillPaths() at dispatch.
 const MERGE_PROMPT =
   'You are the wave merge agent, operating ONLY inside the dedicated integration ' +
   'worktree at ' + INTEGRATION_WT + ' — never the session main checkout. cd into ' +
@@ -393,7 +414,11 @@ const MERGE_PROMPT =
   'branch in the given task-index order (deterministic, so conflicts are ' +
   'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
   'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
-  'diff or failing output.'
+  'diff or failing output. Before you report, record heads mechanically: run ' +
+  'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
+  'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+  'by hand.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
@@ -403,14 +428,35 @@ const RECONCILE_PROMPT =
   'operate on, report BLOCKED and merge nothing — do not detach or move any ' +
   'other checkout. You are given a merge conflict diff or failing test output. ' +
   'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
-  'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
+  'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. ' +
+  'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git rev-parse <branch> > ' +
+  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+  'by hand.'
+
+// The prompt constants above cannot know which tasks a given wave merged, so each
+// dispatch appends the concrete slot names built from the ids/wave number in scope
+// there — the agent infers nothing. Oxford-comma list, matching wave-merge.md.
+const headsSlotsLine = (mergedResults, waveNumber) => {
+  const slots = mergedResults.map((r) => 'heads/task-' + r.task)
+  slots.push('heads/wave-' + waveNumber)
+  const last = slots.pop()
+  const list = slots.length > 1 ? (slots.join(', ') + ', and ' + last)
+    : slots.length === 1 ? (slots[0] + ' and ' + last)
+      : last
+  return 'For this wave that means slots: ' + list + '.'
+}
 
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
 // EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => {
+// Note the missing cannotVerifyChecklist parameter: the checklist is reviewer-
+// authored, so it is NOT interpolated here. The baked text carries the
+// CANNOT_VERIFY_SLOT seam and the dispatch site fills it after fillPaths().
+const completenessPrompt = (mergeHeadSha, mergedShas) => {
   // #70: the integration ancestry assertion. The critic is already detached on the
   // integration HEAD, so it is the one role that can cheaply prove nothing the run
   // reported as merged was silently dropped. mergedShas carries every mergeable done
@@ -444,7 +490,7 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
   (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
-  ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  ', then review the integrated result against the original plan. ' + CANNOT_VERIFY_SLOT +
   'When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, ' +
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
@@ -459,7 +505,16 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
   "'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — " +
   "process boot, device, deploy target), 'external' (an unreachable " +
   "service/credential/network), or 'manual' (requires human judgment), so the gate " +
-  'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock
+  'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock +
+  // #114: the shas quoted above (and in ancestryBlock) are model-transcribed —
+  // a fabricated tail would pass an ancestry check against a sha that never
+  // existed. The heads/ sidecars the merge-side roles derived are the authority;
+  // a missing slot for a merged task is itself the failure signal.
+  ' Authoritative shas live in <runDir>/heads/: read task-<id> for each merged ' +
+  'task id in your inputs, and the highest-numbered wave-<n> slot is your detach ' +
+  'target. Treat a missing or malformed slot for a merged task exactly as an ' +
+  'ancestry miss. Sha values quoted elsewhere in this prompt are context, not ' +
+  'authority.'
   )
 }
 
@@ -927,10 +982,14 @@ async function mergeWave(results, waveIdx) {
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
     .join('\n')
+  // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
+  // rides inside fillPaths() with the prompt; the ids come from control flow.
+  const slotsLine = headsSlotsLine(merged, waveIdx + 1)
   let merge
   try {
     merge = await agent(
-      GUARD + '\n\n' + MERGE_PROMPT + '\nMerge in this order:\n' + branchList,
+      fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
+        '\nMerge in this order:\n' + branchList,
       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
     )
   } catch (e) {
@@ -944,7 +1003,8 @@ async function mergeWave(results, waveIdx) {
     log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
     try {
       merge = await agent(
-        GUARD + '\n\n' + RECONCILE_PROMPT + '\nFailure:\n' + (merge.detail || ''),
+        fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
+          '\nFailure:\n' + (merge.detail || ''),
         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
       )
     } catch (e) {
@@ -1327,8 +1387,17 @@ if (budgetExhausted()) {
       ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
+    // #114: the critic prompt carries <runDir> (the heads/ sidecar dir), so the
+    // ENGINE-AUTHORED text flows through fillPaths like every other baked prompt.
+    // The two non-engine spans stay out of that call: globalConstraintsBlock is
+    // plan-authored and concatenated outside it, and the reviewer-authored
+    // CANNOT-VERIFY checklist — which sits mid-prompt — is spliced into its seam
+    // AFTER substitution. Either may legitimately quote a literal <runDir>; a
+    // reviewer whose quoted token got rewritten would be reading mangled prose.
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist, mergedShas) + globalConstraintsBlock +
+      spliceCannotVerify(
+        fillPaths(GUARD + '\n\n' + completenessPrompt(waveBaseSha, mergedShas)),
+        cannotVerifyChecklist) + globalConstraintsBlock +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
