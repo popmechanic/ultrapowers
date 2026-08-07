@@ -77,17 +77,15 @@ args = { waves, integrationBranch, stamp, dependencyEdges, edges,
   built-in detection ladder in the merge and completeness prompts. Use for monorepos / custom runners.
   A per-task `task.testCmd` overrides it for that task's implementer/reviewer only (a polyglot plan may
   have Python tasks running `pytest` and Bun tasks running `bun test`); the merge and completeness roles,
-  which test the integrated tree on the session main checkout, keep using the run-wide `testCmd` (so for
+  which test the integrated tree in the run's dedicated integration worktree, keep using the run-wide `testCmd` (so for
   polyglot repos set it to a command that exercises BOTH stacks, e.g. `pytest -q && (cd app && bun test)`).
 - `args.bootstrapCmd` — a per-worktree setup command threaded into the FRESH, worktree-isolated roles
   (implementer, reviewer, fix) so they install dependencies before testing. Engine worktrees are cut
   clean from the integration HEAD: they have no `.venv`, no `node_modules`. A polyglot/monorepo repo
   (pytest at root + `bun test` in `app/`) needs its stacks installed in each worktree before any suite
   runs, e.g. `python3 -m venv .venv && .venv/bin/pip install -e . && (cd app && bun install)`. The
-  non-isolated roles (setup/merge/reconcile/completeness) operate on the session main checkout, which
-  already has its deps, so they do NOT run it.
-- `args.baseBranch` — the repo's default branch; the setup agent checks it out before creating the
-  integration branch (guards against a stale checkout from a previous run).
+  non-isolated roles (setup/merge/reconcile/completeness) operate in the run's dedicated integration worktree; setup runs `bootstrapCmd` there once after creating it, so the later roles do NOT re-run it.
+- `args.baseBranch` — the base ref from which the setup agent cuts the dedicated integration worktree and its branch (`git worktree add … -b <integrationBranch> <baseBranch>`); the session checkout is never moved.
 - `args.planPath` — path to the plan document; threaded into the completeness prompt so the critic
   reads and reviews against the actual plan.
 - `args.resume` — boolean; the deterministic redirect path. Setup checks out the EXISTING
