@@ -1,6 +1,5 @@
 # tests/test_harvest_runs.py
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -399,29 +398,34 @@ def test_gate_evidence_empty_is_unknown():
     assert h._gate_evidence(make_records_with_text("no receipts here")) == ([], "unknown")
 
 
-def test_disk_fallback_loads_receipts_ordered_by_mtime(tmp_path):
+def test_disk_receipts_for_reads_only_requested_stamps_in_order(tmp_path):
+    # #118: no more repo-wide glob — _disk_receipts_for reads exactly the
+    # requested (registry) stamps, in the order given, and skips any other
+    # run-* dir present in the repo.
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     plan = repo / "docs/superpowers/plans/p.md"
     plan.parent.mkdir(parents=True)
     plan.write_text("plan")
-    older = repo / ".claude/ultrapowers/run-a"
-    newer = repo / ".claude/ultrapowers/run-b"
-    older.mkdir(parents=True)
-    newer.mkdir(parents=True)
-    (older / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
-    (newer / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
-    os.utime(older / "gate-receipt.json", (1000, 1000))
-    os.utime(newer / "gate-receipt.json", (2000, 2000))
-    entries = h._disk_gate_reports(str(plan))
+    a = repo / ".claude/ultrapowers/run-a"
+    b = repo / ".claude/ultrapowers/run-b"
+    foreign = repo / ".claude/ultrapowers/run-foreign"
+    a.mkdir(parents=True)
+    b.mkdir(parents=True)
+    foreign.mkdir(parents=True)
+    (a / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    (b / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    (foreign / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    entries = h._disk_receipts_for(str(plan), ["a", "b"])
     assert [e["receipt"]["verdict"] for e in entries] == ["BLOCKED", "PASS"]
     assert all(e["source"] == "disk" for e in entries)
     assert entries[0]["stamp"] == "20260703-000000"  # from the receipt itself
 
 
-def test_disk_fallback_fails_soft(tmp_path):
-    assert h._disk_gate_reports(str(tmp_path / "gone/plan.md")) == []
-    assert h._disk_gate_reports(None) == []
+def test_disk_receipts_for_fails_soft(tmp_path):
+    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), ["a"]) == []
+    assert h._disk_receipts_for(None, ["a"]) == []
+    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), []) == []
 
 
 def test_bundle_carries_evidence_fields(tmp_path):
@@ -445,3 +449,66 @@ def test_classify_origin_synthetic_temp_roots():
     assert h.classify_origin(home, home) == "home"
     assert h.classify_origin(home + "--worktree", home) == "home"
     assert h.classify_origin("-Users-x-proj", home) == "foreign"
+
+
+# --- #113/#118: session-launch registry + per-stamp disk receipt attribution
+# (deletes the repo-wide glob) ---
+
+def _wf_launch(stamp, plan="docs/superpowers/plans/p.md"):
+    args = json.dumps({"planPath": plan,
+                       "runDir": f"/repo/.claude/ultrapowers/run-{stamp}",
+                       "pluginRoot": "/pr"})
+    return _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                               "input": {"name": "ultrapowers-run", "args": args}}])
+
+
+def test_session_registry_extracts_stamps_and_planpaths():
+    recs = [_wf_launch("20260806-1", "docs/superpowers/plans/a.md"),
+            _wf_launch("20260806-2", "docs/superpowers/plans/b.md"),
+            _wf_launch("20260806-1", "docs/superpowers/plans/a.md")]  # dedup
+    reg = h.session_registry(recs)
+    assert reg["stamps"] == ["20260806-1", "20260806-2"]
+    assert reg["planPathsByStamp"]["20260806-2"] == "docs/superpowers/plans/b.md"
+
+
+def test_session_registry_reads_receipt_stamps():
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": json.dumps({"mode": "gate", "verdict": "PASS", "stamp": "20260806-9"})}]}])]
+    assert "20260806-9" in h.session_registry(recs)["stamps"]
+
+
+def test_disk_receipts_only_for_registry_stamps(tmp_path):
+    # repo with a receipt for an in-registry stamp AND a foreign run dir
+    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
+    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
+    plan = plans / "p.md"; plan.write_text("x")
+    for stamp, verdict in [("20260806-1", "NEEDS_ACK"), ("19990101-9", "BLOCKED")]:
+        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
+        (d / "gate-receipt.json").write_text(json.dumps(
+            {"mode": "gate", "verdict": verdict, "stamp": stamp}))
+    entries = h._disk_receipts_for(str(plan), ["20260806-1"])
+    assert [e["stamp"] for e in entries] == ["20260806-1"]   # foreign 1999 dir NOT attached
+    assert all(e["source"] == "disk" for e in entries)
+
+
+def test_repo_wide_glob_is_gone():
+    assert not hasattr(h, "_disk_gate_reports")
+
+
+def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
+    # session that launched stamp A; repo also holds stamp B's receipt
+    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
+    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
+    (plans / "p.md").write_text("x")
+    for stamp in ("A-1", "B-2"):
+        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
+        (d / "gate-receipt.json").write_text(json.dumps(
+            {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": stamp}))
+    recs = REAL + [_wf_launch("A-1", str(plans / "p.md"))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    stamps = {g.get("stamp") for g in bundle["gateReports"]}
+    assert "B-2" not in stamps and "A-1" in stamps

@@ -7,6 +7,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -143,6 +144,59 @@ def _balanced_json(txt, start):
     return None
 
 
+_RUN_DIR_STAMP = re.compile(r"/run-([^/\s]+)$")
+
+
+def session_registry(records):
+    """Every stamp this session actually launched (#113/#118): the structural
+    source of truth for receipt attribution, so a foreign run's evidence can
+    no longer be attached to a session that never launched it.
+
+    Sources: every Workflow tool_use whose parsed input.args carries a
+    runDir matching '…/run-<stamp>' (planPath from those same args keys
+    planPathsByStamp), and every printed ultra_run/ultra_gate/approve/
+    teardown receipt's "stamp" field. First-appearance transcript order,
+    deduped.
+    """
+    stamps, seen, plan_paths_by_stamp = [], set(), {}
+
+    def _add(stamp):
+        if isinstance(stamp, str) and stamp and stamp not in seen:
+            seen.add(stamp)
+            stamps.append(stamp)
+
+    for _r, b in _iter_blocks(records):
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "tool_use" and b.get("name") == "Workflow":
+            args = (b.get("input") or {}).get("args")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = None
+            if isinstance(args, dict):
+                run_dir = args.get("runDir")
+                if isinstance(run_dir, str):
+                    m = _RUN_DIR_STAMP.search(run_dir)
+                    if m:
+                        stamp = m.group(1)
+                        _add(stamp)
+                        pp = args.get("planPath")
+                        if isinstance(pp, str) and pp.strip() and stamp not in plan_paths_by_stamp:
+                            plan_paths_by_stamp[stamp] = pp.strip()
+        txt = _block_text(b)
+        i = txt.find('"mode"')
+        while i != -1:
+            start = txt.rfind("{", 0, i + 1)
+            if start != -1:
+                obj = _balanced_json(txt, start)
+                if isinstance(obj, dict) and obj.get("mode") in ("gate", "approve", "teardown"):
+                    _add(obj.get("stamp"))
+            i = txt.find('"mode"', i + 1)
+    return {"stamps": stamps, "planPathsByStamp": plan_paths_by_stamp}
+
+
 def stitch_planning(plan_path, session_records):
     """True when this session itself authored the plan (a Write/Edit to plan_path)."""
     if not plan_path:
@@ -248,11 +302,14 @@ def _gate_report(records):
     return reports[-1]["receipt"] if reports else None
 
 
-def _disk_gate_reports(plan_path):
-    """Fallback for runs whose transcript shows no receipts (docket drains):
-    read gate-receipt.json files from the run's repo, located via planPath.
-    Fails soft to [] — the repo may be gone."""
-    if not plan_path:
+def _disk_receipts_for(plan_path, stamps):
+    """Per-stamp disk fallback (#118): read gate-receipt.json ONLY for the
+    given registry stamps — never a repo-wide glob, so a foreign run's
+    receipt can never be attached. Locates the repo root from plan_path the
+    same way the old repo-wide fallback did. Fails soft to [] when the repo
+    can't be resolved, and skips any stamp whose file is missing/unreadable
+    (soft-fail per stamp)."""
+    if not plan_path or not stamps:
         return []
     root = Path(plan_path).parent
     while root != root.parent:
@@ -264,24 +321,18 @@ def _disk_gate_reports(plan_path):
     if not (root / ".git").exists():
         return []
     entries = []
-    try:
-        files = sorted((root / ".claude/ultrapowers").glob("run-*/gate-receipt.json"),
-                       key=lambda p: p.stat().st_mtime)
-    except OSError:
-        return []
-    for f in files:
+    per_stamp = {}
+    for stamp in stamps:
+        f = root / ".claude/ultrapowers" / f"run-{stamp}" / "gate-receipt.json"
         try:
             obj = json.loads(f.read_text())
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(obj, dict) and "verdict" in obj:
-            entries.append({"receipt": obj,
-                            "stamp": obj.get("stamp") or f.parent.name[len("run-"):],
-                            "ordinal": 0, "source": "disk"})
-    per_stamp = {}
-    for e in entries:
-        e["ordinal"] = per_stamp.get(e["stamp"], 0)
-        per_stamp[e["stamp"]] = e["ordinal"] + 1
+            ordinal = per_stamp.get(stamp, 0)
+            per_stamp[stamp] = ordinal + 1
+            entries.append({"receipt": obj, "stamp": obj.get("stamp") or stamp,
+                            "ordinal": ordinal, "source": "disk"})
     return entries
 
 
@@ -431,12 +482,19 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     tdir = _transcript_dir(records)
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
-    gate_reports, terminus = _gate_evidence(records)
-    if not gate_reports:
-        gate_reports = _disk_gate_reports(plan_path)
-        if gate_reports:
-            terminus = gate_reports[-1]["receipt"].get("verdict", "unknown")
-    gate_report = gate_reports[-1]["receipt"] if gate_reports else None
+    registry = session_registry(records)
+    transcript_reports, terminus = _gate_evidence(records)
+    covered = {r["stamp"] for r in transcript_reports}
+    disk = _disk_receipts_for(plan_path, [s for s in registry["stamps"] if s not in covered])
+    gate_reports = transcript_reports + disk
+    if not transcript_reports and disk:
+        terminus = disk[-1]["receipt"].get("verdict", "unknown")
+    # "final receipt" (singular) keeps its pre-#118 single-run meaning: the
+    # transcript is authoritative when it has any receipt at all; disk entries
+    # (now per-stamp scoped, never repo-wide) only stand in when the
+    # transcript printed none for THIS session's launched stamps.
+    last = transcript_reports[-1] if transcript_reports else (disk[-1] if disk else None)
+    gate_report = last["receipt"] if last else None
     audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
     planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found)
