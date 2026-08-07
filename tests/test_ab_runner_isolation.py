@@ -59,3 +59,33 @@ def test_probe_and_drive_carry_the_isolated_env(tmp_path, monkeypatch):
     for cmd, kw in calls:
         got = kw.get("env", {}).get("CLAUDE_CONFIG_DIR", "")
         assert got == env["CLAUDE_CONFIG_DIR"]
+
+
+def test_session_transcript_reads_from_config_dir(tmp_path):
+    cfg = tmp_path / "claude-config"
+    tdir = cfg / "projects" / "-slug"
+    tdir.mkdir(parents=True)
+    (tdir / "sess-1.jsonl").write_text("{}")
+    result = tmp_path / "result.json"
+    result.write_text('{"session_id": "sess-1"}')
+    assert ab._session_transcript(result, cfg) == tdir / "sess-1.jsonl"
+
+
+def test_missing_transcript_is_loud_not_silent(tmp_path):
+    cfg = tmp_path / "claude-config"
+    cfg.mkdir()
+    result = tmp_path / "result.json"
+    result.write_text('{"session_id": "sess-gone"}')
+    import pytest
+    with pytest.raises(SystemExit) as e:
+        ab._session_transcript(result, cfg)
+    assert "sess-gone" in str(e.value)
+
+
+def test_no_session_id_still_falls_back_to_result(tmp_path):
+    # a crashed run with no session_id keeps today's row-still-harvests behavior
+    cfg = tmp_path / "claude-config"
+    cfg.mkdir()
+    result = tmp_path / "result.json"
+    result.write_text("{}")
+    assert ab._session_transcript(result, cfg) == result

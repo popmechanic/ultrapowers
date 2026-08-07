@@ -345,7 +345,7 @@ def drive_run(workdir, plan, env):
                 gate_report = json.loads(receipts[-1].read_text()).get("gateCheck") or {}
             except (OSError, json.JSONDecodeError):
                 pass
-    transcript = _session_transcript(result_path)
+    transcript = _session_transcript(result_path, env["CLAUDE_CONFIG_DIR"])
     return transcript, gate_report, "headless"
 
 
@@ -414,17 +414,23 @@ def _json_objects(text):
                 start = None
 
 
-def _session_transcript(result_path):
-    """Locate the session transcript for the driven run. `claude --output-format
-    json` reports its session_id; the transcript is
-    ~/.claude/projects/<slug>/<session_id>.jsonl."""
+def _session_transcript(result_path, config_dir):
+    """Locate the session transcript for the driven run inside the cell's
+    throwaway config (#107). `claude --output-format json` reports its
+    session_id; the transcript is <config_dir>/projects/<slug>/<session_id>.jsonl.
+    A named session with no transcript fails LOUD (a silently-zeroed
+    outputTokens row is worse than a crash); a result with no session_id at
+    all (crashed run) keeps the raw-result fallback so the row still harvests."""
     session_id = _load_result(result_path).get("session_id")
-    if session_id:
-        matches = glob.glob(str(Path.home() / ".claude/projects/**" / ("%s.jsonl" % session_id)),
-                            recursive=True)
-        if matches:
-            return Path(matches[0])
-    return result_path  # fall back to the raw result so a row still harvests
+    if not session_id:
+        return result_path
+    root = str(Path(config_dir) / "projects" / "**" / ("%s.jsonl" % session_id))
+    matches = glob.glob(root, recursive=True)
+    if not matches:
+        sys.exit("_session_transcript: session %s has no transcript under %s "
+                 "— refusing the silent raw-result fallback (#107)"
+                 % (session_id, Path(config_dir) / "projects"))
+    return Path(matches[0])
 
 
 def save_diff(workdir, plan):
