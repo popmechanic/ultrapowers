@@ -39,11 +39,19 @@ def _block_text(block):
 
 
 def _iter_blocks(records):
-    for r in records:
+    for _idx, r, b in _iter_blocks_indexed(records):
+        yield r, b
+
+
+def _iter_blocks_indexed(records):
+    """Like `_iter_blocks` but also yields each record's position in
+    `records` — needed wherever "later in the transcript" matters (the Task 3
+    merge-evidence lookahead and the slice tail cut)."""
+    for idx, r in enumerate(records):
         content = (r.get("message") or {}).get("content")
         if isinstance(content, list):
             for b in content:
-                yield r, b
+                yield idx, r, b
 
 
 def is_real_run(records):
@@ -72,9 +80,50 @@ def classify_origin(project_slug, home_slug):
     return "foreign"
 
 
+_RUN_ARTIFACT_MODES = ("gate", "approve", "teardown")
+
+
+def _has_run_artifact(txt):
+    """A record "is" a run artifact (Task 3 slice envelope) when its text is a
+    balanced-JSON gate/approve/teardown receipt, a Workflow tool_result (the
+    "Transcript dir:" / integrationBranch shape `is_real_run` also keys off
+    of), or a `sweep_worktrees` output line."""
+    if "sweep_worktrees" in txt or "Transcript dir:" in txt or "integrationBranch" in txt:
+        return True
+    i = txt.find('"mode"')
+    while i != -1:
+        start = txt.rfind("{", 0, i + 1)
+        if start != -1:
+            obj = _balanced_json(txt, start)
+            if isinstance(obj, dict) and obj.get("mode") in _RUN_ARTIFACT_MODES:
+                return True
+        i = txt.find('"mode"', i + 1)
+    return False
+
+
+def _last_artifact_record_index(records):
+    """Index (into `records`) of the last record holding a run artifact, or
+    None when no record qualifies — the slice envelope's tail bound."""
+    last = None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if not isinstance(b, dict):
+            continue
+        txt = _block_text(b)
+        if txt and _has_run_artifact(txt):
+            last = idx
+    return last
+
+
 def slice_transcript(records):
+    # Slice envelope (Task 3): the run ends at its last artifact — anything
+    # after is a post-run tangent, never wave-relevant. No start bound: a
+    # transcript with no artifact at all (e.g. planning-only) keeps its full
+    # head, unchanged from pre-Task-3 behavior.
+    cutoff = _last_artifact_record_index(records)
     lines = []
-    for r, b in _iter_blocks(records):
+    for idx, r, b in _iter_blocks_indexed(records):
+        if cutoff is not None and idx > cutoff:
+            continue
         rtype = r.get("type")
         txt = _block_text(b).strip()
         if not txt:
@@ -360,16 +409,40 @@ def _transcript_dirs(records):
     return qualifying if qualifying else [candidates[-1]]
 
 
+def _merge_evidence_after(records, after_idx, branch):
+    """Conservative merge-evidence matcher (spec §5, Task 3): a `tool_result`
+    at a record index > after_idx whose text names `branch` alongside one of
+    the two real merge-success signatures — `Merged` (gh pr merge output) or
+    `Updating`/`Fast-forward` (git-merge output). Anything fuzzier is not a
+    match, so the BLOCKED verdict stands."""
+    if not branch:
+        return False
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if idx <= after_idx or not isinstance(b, dict) or b.get("type") != "tool_result":
+            continue
+        txt = _block_text(b)
+        if branch not in txt:
+            continue
+        if "Merged" in txt or "Updating" in txt or "Fast-forward" in txt:
+            return True
+    return False
+
+
 def _stamp_terminus(records, stamp, stamp_reports):
-    """Per-run terminus (#113 Task 2) — the existing rules (approve marker /
-    last receipt verdict) applied to ONE stamp's own events, ignoring other
-    stamps' interleaved gate/approve markers. `stamp_reports` is that stamp's
-    own gate_reports entries (transcript ordinal-tagged, or disk fallback) —
-    used for the last-verdict fallback when no approve marker was seen.
-    Task 3 refines this rule; unchanged here from the existing single-stamp
-    semantics in `_gate_evidence`."""
+    """Per-run terminus (#113 Task 2, refined Task 3) — the approve marker /
+    last receipt verdict rule applied to ONE stamp's own events, ignoring
+    other stamps' interleaved gate/approve markers. `stamp_reports` is that
+    stamp's own gate_reports entries (transcript ordinal-tagged, or disk
+    fallback) — used for the last-verdict fallback when no approve marker was
+    seen. An approve-mode receipt counts the instant it's found BY STAMP,
+    wherever it sits in the transcript — not only when it's the last mention.
+
+    Task 3 override: when the base verdict is BLOCKED, a conservative
+    merge-evidence match after that receipt derives `approved` — the BLOCKED
+    receipt itself stays visible in `gateReports`, only the terminus flips."""
     approved = False
-    for _r, b in _iter_blocks(records):
+    last_blocked_branch, last_blocked_idx = None, None
+    for idx, _r, b in _iter_blocks_indexed(records):
         txt = _block_text(b)
         i = txt.find('"mode"')
         while i != -1:
@@ -379,15 +452,23 @@ def _stamp_terminus(records, stamp, stamp_reports):
                 if isinstance(obj, dict) and obj.get("stamp") == stamp:
                     if obj.get("mode") == "gate" and "verdict" in obj:
                         approved = False
+                        if obj.get("verdict") == "BLOCKED":
+                            last_blocked_branch = obj.get("integrationBranch")
+                            last_blocked_idx = idx
+                        else:
+                            last_blocked_branch, last_blocked_idx = None, None
                     elif obj.get("mode") in ("approve", "teardown") and "lockReleased" in obj:
                         if obj.get("mode") == "approve":
                             approved = True
+                            last_blocked_branch, last_blocked_idx = None, None
             i = txt.find('"mode"', i + 1)
     if approved:
         return "approved"
-    if stamp_reports:
-        return stamp_reports[-1]["receipt"].get("verdict", "unknown")
-    return "unknown"
+    verdict = stamp_reports[-1]["receipt"].get("verdict", "unknown") if stamp_reports else "unknown"
+    if verdict == "BLOCKED" and last_blocked_idx is not None \
+            and _merge_evidence_after(records, last_blocked_idx, last_blocked_branch):
+        return "approved"
+    return verdict
 
 
 def _runs_for_bundle(records, registry, gate_reports):

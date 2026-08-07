@@ -593,3 +593,53 @@ def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
     assert [r["stamp"] for r in bundle["runs"]] == ["ONLY-1"]
     assert bundle["runs"][0]["terminus"] == "unknown"
     assert bundle["runs"][0]["gateReports"] == []
+
+
+# --- Task 3 (#113): terminus honesty (override-derivable via merge evidence)
+# + slice envelope (tail cut at the last run-artifact record) ---
+
+def test_blocked_then_merge_evidence_derives_approved(tmp_path):
+    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
+                          "integrationBranch": "ultra/integration-S1"})
+    recs = (REAL
+            + [_wf_launch("S1"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}]),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                    "text": "Merged pull request #7 (ultra/integration-S1)"}]}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    # override stays DERIVABLE: the receipt's BLOCKED verdict is still in the bundle
+    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
+    assert bundle["truncated"] is False
+
+
+def test_blocked_without_merge_evidence_stays_blocked(tmp_path):
+    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
+                          "integrationBranch": "ultra/integration-S1"})
+    recs = REAL + [_wf_launch("S1"),
+                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}])]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert json.loads((out / "bundle.json").read_text())["terminus"] == "BLOCKED"
+
+
+def test_slice_cuts_after_last_run_artifact(tmp_path):
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    recs = (REAL
+            + [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}]),
+               _rec("user", [{"type": "text", "text": "now let's investigate desktop internals"}]),
+               _rec("assistant", [{"type": "text", "text": "wave-unrelated post-run tangent"}])])
+    out = h.slice_transcript(recs)
+    assert "desktop internals" not in out and "tangent" not in out
+
+
+def test_slice_keeps_planning_head(tmp_path):
+    # no artifact after the head → nothing is cut
+    out = h.slice_transcript(REAL)
+    assert "build the thing" in out
