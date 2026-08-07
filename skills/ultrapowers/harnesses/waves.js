@@ -333,11 +333,25 @@ const REVIEWER_PROMPT = [
 // prompt-drift pin sees source-identical text) and filled at dispatch time.
 // Apply this ONLY to engine-authored text (GUARD + the baked prompts). Plan-
 // authored spans — the task body, the plan's Global Constraints, its Interfaces
-// — pass through verbatim: a plan is free to quote the literal tokens (the plan
-// that built this feature does), and rewriting that prose would silently hand
-// the implementer a mangled spec.
+// — and reviewer-authored spans — the CANNOT-VERIFY checklist escalated by the
+// per-task reviewers — pass through verbatim: a plan or a reviewer is free to
+// quote the literal tokens (the plan that built this feature does), and
+// rewriting that prose would silently hand the agent a mangled spec.
 const fillPaths = (s) =>
   s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
+
+// The completeness prompt splices reviewer-authored text into its MIDDLE, so it
+// cannot simply be concatenated outside fillPaths the way globalConstraintsBlock
+// is. The baked prompt carries this seam token instead (it is not a path, so
+// fillPaths leaves it alone) and the dispatch site fills it AFTER substitution.
+const CANNOT_VERIFY_SLOT = '{{CANNOT_VERIFY}}'
+// Fill the seam with reviewer prose, verbatim. If the seam is ever missing the
+// checklist is appended rather than silently dropped — losing an escalated
+// CANNOT-VERIFY item would turn an unverified requirement into a false green.
+const spliceCannotVerify = (prompt, checklist) =>
+  prompt.indexOf(CANNOT_VERIFY_SLOT) === -1
+    ? prompt + (checklist || '')
+    : prompt.split(CANNOT_VERIFY_SLOT).join(checklist || '')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
 // testInstruction: args.testCmd is mandatory (driver-stamped: knob or detection).
@@ -439,7 +453,10 @@ const headsSlotsLine = (mergedResults, waveNumber) => {
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => {
+// Note the missing cannotVerifyChecklist parameter: the checklist is reviewer-
+// authored, so it is NOT interpolated here. The baked text carries the
+// CANNOT_VERIFY_SLOT seam and the dispatch site fills it after fillPaths().
+const completenessPrompt = (mergeHeadSha, mergedShas) => {
   // #70: the integration ancestry assertion. The critic is already detached on the
   // integration HEAD, so it is the one role that can cheaply prove nothing the run
   // reported as merged was silently dropped. mergedShas carries every mergeable done
@@ -473,7 +490,7 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
   (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
-  ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  ', then review the integrated result against the original plan. ' + CANNOT_VERIFY_SLOT +
   'When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, ' +
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
@@ -1370,11 +1387,17 @@ if (budgetExhausted()) {
       ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
-    // #114: the critic prompt carries <runDir> (the heads/ sidecar dir), so it
-    // must flow through fillPaths like every other engine-authored prompt. The
-    // plan-authored span — globalConstraintsBlock — stays OUTSIDE it, verbatim.
+    // #114: the critic prompt carries <runDir> (the heads/ sidecar dir), so the
+    // ENGINE-AUTHORED text flows through fillPaths like every other baked prompt.
+    // The two non-engine spans stay out of that call: globalConstraintsBlock is
+    // plan-authored and concatenated outside it, and the reviewer-authored
+    // CANNOT-VERIFY checklist — which sits mid-prompt — is spliced into its seam
+    // AFTER substitution. Either may legitimately quote a literal <runDir>; a
+    // reviewer whose quoted token got rewritten would be reading mangled prose.
     review = await agent(
-      fillPaths(GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist, mergedShas)) + globalConstraintsBlock +
+      spliceCannotVerify(
+        fillPaths(GUARD + '\n\n' + completenessPrompt(waveBaseSha, mergedShas)),
+        cannotVerifyChecklist) + globalConstraintsBlock +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.
