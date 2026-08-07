@@ -512,3 +512,45 @@ def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     stamps = {g.get("stamp") for g in bundle["gateReports"]}
     assert "B-2" not in stamps and "A-1" in stamps
+
+
+# --- Task 2 (#113): multi-run bundle shape + audit union across launches ---
+
+def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
+    r1 = json.dumps({"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S1"})
+    ok1 = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    r2 = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S2"})
+    recs = (REAL
+            + [_wf_launch("S1", "docs/superpowers/plans/a.md"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r1}]}]),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok1}]}]),
+               _wf_launch("S2", "docs/superpowers/plans/b.md"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r2}]}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    runs = bundle["runs"]
+    assert [r["stamp"] for r in runs] == ["S1", "S2"]
+    assert runs[0]["planPath"].endswith("a.md") and runs[0]["terminus"] == "approved"
+    assert runs[1]["terminus"] == "BLOCKED"
+    assert bundle["terminus"] == "BLOCKED"          # last non-approved run
+    assert bundle["planPath"].endswith("a.md")      # top-level = first plan, unchanged meaning
+
+
+def test_merge_audits_sums_totals_and_concats_agents():
+    a = {"agents": [{"role": "impl"}], "totals": {"turns": 10, "outputTokens": 100}}
+    b = {"agents": [{"role": "review"}], "totals": {"turns": 5, "outputTokens": 50}}
+    m = h._merge_audits([a, b])
+    assert len(m["agents"]) == 2
+    assert m["totals"]["turns"] == 15 and m["totals"]["outputTokens"] == 150
+
+
+def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
+    d1, d2 = tmp_path / "t1", tmp_path / "t2"
+    for d in (d1, d2):
+        d.mkdir(); (d / "agent-1.jsonl").write_text("{}")
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                "text": f"Transcript dir: {d}"}]}]) for d in (d1, d2)]
+    assert h._transcript_dirs(recs) == [str(d1), str(d2)]
