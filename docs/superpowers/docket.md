@@ -269,7 +269,9 @@
 **Notes:** DO NOT ACCEPT THIS CYCLE unless the operator overrides: the closing event is the live shakedown this very docket run provides (its ultrapowers-engine entries run on installed 0.1.14). If the drain's runs show zero checkout mutation and clean sweeps, next cycle's triage promotes this to accepted with field evidence in hand.
 
 ### #119: Complexity-audit loop: adversarial trim review at spec approval + distill cluster-died retrospective
-**State:** accepted
+**State:** queued
 **Score:** 7 — operator-commissioned standing requirement; guards the complexity budget of every future change; prose-only build
 **Est-files:** CLAUDE.md, skills/ultralearn/references/distilling-proposals.md
+**Plan:** docs/superpowers/plans/2026-08-06-complexity-audit-loop.md
+**Engine:** inline
 **Notes:** Spec ALREADY WRITTEN + committed (docs/superpowers/specs/2026-08-06-complexity-audit-loop-design.md) with its own first trim review adjudicated in-spec — planning sweep should go straight from that spec to a plan, no new brainstorm. Practice already adopted in-session for the 2026-08-06 sweep; this entry makes it durable. Two prose surfaces, no scripts, no gate changes. Accepted directly at creation by explicit operator commission (brainstorm 2026-08-06).
