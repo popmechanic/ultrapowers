@@ -864,3 +864,24 @@ def test_uncreatable_temp_parent_errors_instead_of_using_cwd(tmp_path):
     assert out["passed"] is False
     assert r.returncode != 0
     assert canary.is_file() and canary.read_text() == "must survive"
+
+
+# ── #105: whitespace-empty command knobs ──────────────────────────────────────
+
+@pytest.mark.parametrize("cmd", ["   ", "\t", "\n", ""])
+def test_suite_gate_refuses_whitespace_only_run(tmp_path, cmd):
+    """#105 differential pin: BASE returns {"passed": true} for a whitespace-only
+    --run (the false green — `eval "   "` exits 0 without running a suite); HEAD
+    refuses loudly. The empty-string case rides the same branch so the stripped
+    emptiness check cannot regress the refusal it replaces."""
+    repo = _mk_path_identity_repo(tmp_path)
+    r = subprocess.run(
+        ["bash", str(RUN), "--suite-gate", "--branch", "work",
+         "--run", cmd, "--repo", str(repo)],
+        capture_output=True, text=True)
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert '"passed": true' not in r.stdout
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["status"] == "ERROR"
+    assert out["passed"] is False
+    assert "--run" in out["output"]

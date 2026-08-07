@@ -272,8 +272,12 @@ $SOUT"
 # worktree. No held-out suite is mounted. pytest exit codes are the authority:
 # 0 => pass; 5 => no tests collected (false-green guard); anything else => red.
 if [ "$MODE" = "suite-gate" ]; then
-  if [ -z "${SG_RUN:-}" ]; then
-    emit ERROR false 2 "--suite-gate requires a non-empty --run command (an empty command evals to exit 0 — refusing a false green)"
+  # Emptiness is judged on a whitespace-stripped COPY: `eval "   "` also exits 0,
+  # so a blank-looking --run is the same false green as an empty one (#105).
+  # SG_RUN itself stays unmodified — only the check uses the stripped copy.
+  SG_RUN_STRIPPED="$(printf '%s' "${SG_RUN:-}" | tr -d '[:space:]')"
+  if [ -z "$SG_RUN_STRIPPED" ]; then
+    emit ERROR false 2 "--suite-gate requires a non-empty --run command (an empty or whitespace-only command evals to exit 0 — refusing a false green)"
     exit 1
   fi
   # Canonical temp parent, same two-step guard as the sealed exam core above.
