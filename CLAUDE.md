@@ -46,7 +46,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 
 Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans` +
 `ultrapowers:ultraplan` markers → plan in `docs/superpowers/plans/` → execute (subagent-driven,
-or `/ultrapowers` itself) → PR. Plans default to `**Acceptance:** suite` (the committed
+or `/ultrapowers` itself) → PR. Every spec gets an **adversarial trim review** before operator
+review — a fresh-context subagent proposing the trimmed version (dispatch brief in
+`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec carries a
+`## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
+author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite` (the committed
 suite is the verification; no held-out exam unless the operator asks to seal).
 
 ## Conventions & gotchas (non-obvious — read before editing)
