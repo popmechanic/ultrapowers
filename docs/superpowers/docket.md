@@ -225,10 +225,10 @@
 **Notes:** Strictly-down simplification, subsumed by #113's structural change. One-time audit first: how many cached bundles depended on the fallback and whether any of those attributions were correct. PLAN TOGETHER WITH #113 (one plan, fallback deleted in the same change that replaces it).
 
 ### #110: WF_RUN_RE requires ≥2 hyphen-separated id segments — single-segment runtime ids would go unrecorded
-**State:** accepted
+**State:** parked
 **Score:** 5.5 — hardening nit on the #108 leak-closure; mitigated today by left-behind accounting + audit re-surfacing
 **Est-files:** skills/ultrapowers/scripts/ultra_gate.py, tests/
-**Notes:** Shape assumption on runtime-minted ids (wf_<hex8>-<n> today). Closure direction the issue names: derive the recorded id from the launch response rather than parsing branch names — prefer that derive-don't-parse form at planning. CLUSTER: plan with #111 + #109 as one small post-#108 sweep-hygiene plan (inline engine).
+**Notes:** Shape assumption on runtime-minted ids (wf_<hex8>-<n> today). Closure direction the issue names: derive the recorded id from the launch response rather than parsing branch names — prefer that derive-don't-parse form at planning. CLUSTER: plan with #111 + #109 as one small post-#108 sweep-hygiene plan (inline engine). PARKED 2026-08-06 at sweep iteration 9 (operator-approved): both closure directions land in FROZEN ultra_gate.py for a zero-occurrence hypothetical (runtime mints wf_<hex8>-<n>; single-segment ids never observed), with verified loud mitigation (left-behind accounting at sweep_worktrees.sh:319-341 enumerates on-disk wf_* unconditionally; --audit re-surfaces by age). REOPEN TRIGGER: an observed runtime id the WF_RUN_RE pattern misses — it will show in the approve receipt's left-behind list. Spec: docs/superpowers/specs/2026-08-06-sweep-hygiene-smalls-design.md.
 
 ### #102: docs: workflow-template.md contradicts shipped #84 behavior in three places
 **State:** queued
@@ -239,9 +239,11 @@
 **Notes:** Three pre-#84 descriptions of merge/completeness running on the session main checkout — now false (integration in a dedicated worktree). PLAN TOGETHER WITH #103 (same subject, doc face + hardening face).
 
 ### #111: sweep --audit: absurd --age-hours magnitudes overflow the threshold arithmetic (report-only)
-**State:** accepted
+**State:** queued
 **Score:** 5 — report-only blast radius, implausible input; found by the #108 adversarial reviewer
 **Est-files:** skills/ultrapowers/scripts/sweep_worktrees.sh, tests/
+**Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
+**Engine:** inline
 **Notes:** 64-bit wrap inverts the age filter at --age-hours ≥ ~20 digits. Magnitude bound beside the existing digits-only case + one test. CLUSTER: plan with #110 + #109 (one inline sweep-hygiene plan).
 
 ### #106: Test-mass skeptical review: ~1,170 of the drain's 1,667 inserted lines are tests/sims — audit for ballast
@@ -251,9 +253,11 @@
 **Notes:** Analysis-first: classify the drain's added tests (pins-of-pins, known-fragile triggers, meta-assertions) and propose deletions with evidence; deletions land behind the suite gate. Candidates enumerated in the issue by the drain's own reviews. Output may be small — a deletion PR plus keep-verdicts — which is success, not failure.
 
 ### #109: Stale waves.js comment: integration-worktree cleanup still describes the pre-#108 manual sweep call
-**State:** accepted
+**State:** queued
 **Score:** 4.5 — trivial comment fix, but a stale claim inside the engine misleads harness editors
 **Est-files:** skills/ultrapowers/harnesses/waves.js
+**Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
+**Engine:** inline
 **Notes:** One comment. CLUSTER: plan with #110 + #111 (one inline sweep-hygiene plan). Mind the anti-drift rule if the comment lives in a baked span.
 
 ### #104: Subtraction candidate: retire the snapshot/restore family once #84 shakedown proves the checkout is never touched
