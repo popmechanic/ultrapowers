@@ -161,9 +161,11 @@
 **Notes:** Distill 2026-08-06: largest ledger family (59 findings/50 runs), fresh sev-2s AT 0.1.13 post-#98: approved run bundled as BLOCKED; 9-plan drain bundled as single-plan NEEDS_ACK with a receipt stamped 4 days later; audit covers launch 1 of 5; slice tails contaminated. Fix: match receipts to wf run IDs/stamps the session launched, union audit across launches, terminus from matched receipt + transcript approval evidence, multi-plan bundle shape, slice trimmed to run envelope. PLAN TOGETHER WITH #118 (deletes the disk-fallback sweep this replaces).
 
 ### #112: Structural: plan-defect judgmentCall lane — disclosed fixes of plan-transcribed defects instead of gate redirects
-**State:** accepted
+**State:** queued
 **Score:** 8.5 — autonomy + token efficiency: the dominant redirect generator (25 findings/19 runs); redirect rounds are the main post-launch cost
 **Est-files:** skills/ultrapowers/references/reviewer-prompts.md, skills/ultrapowers/harnesses/waves.js, skills/ultraplan/SKILL.md, skills/ultrapowers/references/plan-markers.md, skills/ultrapowers/references/report-format.md
+**Plan:** docs/superpowers/plans/2026-08-06-plan-defect-lane.md
+**Engine:** ultrapowers
 **Notes:** Distill 2026-08-06 headliner. Extends the proven judgmentCalls channel: implementer/reviewer may fix plan-verbatim defects with a mandatory disclosed plan-defect judgmentCall; reviewer verifies; gate report lists plan-divergence calls in one section; plan-defect becomes a first-class note type so the canary can split plan-authored from implementer defects. canaryMetric: redirect-round rate + gate-routed plan-defect count. Carries a prose RIDER: ultraplan authoring line — agent-CLI spikes must isolate CLAUDE_CONFIG_DIR (sev-3 false-memory contamination, first occurrence → prose only). Prompt re-bake + pin tests apply.
 
 ### #115: Sanction the micro-redirect lane: narrow-resume pattern, deterministic relaunch-args helper, head-match re-baseline
