@@ -8,7 +8,7 @@
 
 **Tech Stack:** Markdown prompt sources, waves.js baked constants, existing .mjs sim, pytest drift pins.
 
-**Acceptance:** suite.
+**Acceptance:** suite — the committed suite is the verification.
 
 ## Global Constraints
 

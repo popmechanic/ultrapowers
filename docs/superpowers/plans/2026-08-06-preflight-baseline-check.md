@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3 (stdlib), pytest (existing `make_repo`/`run_validate_knobs` fixtures).
 
-**Acceptance:** suite.
+**Acceptance:** suite — the committed suite is the verification.
 
 ## Global Constraints
 

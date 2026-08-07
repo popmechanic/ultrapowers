@@ -8,7 +8,7 @@
 
 **Tech Stack:** bash, pytest.
 
-**Acceptance:** suite.
+**Acceptance:** suite — the committed suite is the verification.
 
 ## Global Constraints
 
