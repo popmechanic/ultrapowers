@@ -193,7 +193,7 @@
 **Notes:** Distill 2026-08-06. Reuses the --validate-knobs throwaway worktree: run the stamped testCmd once pre-launch; red baseline → explicit operator decision (fix drift / accept named off-plan repair / launch anyway with reds recorded inherited); also catches crashing auto-detected testCmds inside preflight (subsumes the segfault-teardown case). Field evidence: reconcile agent committed into a plan-protected path mid-run because baseline was red; gate had to manually exonerate a pre-existing flake. Receipt gains a baseline verdict field.
 
 ### #117: Gate false-red: canonicalize the acceptance worktree path (macOS /var symlink)
-**State:** queued
+**State:** executed
 **Score:** 7 — gate-manufactured deterministic false-red (sev 3, A/B-proven in field); FROZEN periphery with the unfreeze route named
 **Est-files:** skills/ultrapowers/scripts/run_acceptance.sh, tests/, evals/
 **Plan:** docs/superpowers/plans/2026-08-06-gate-integrity-pair.md
@@ -201,7 +201,7 @@
 **Notes:** Distill 2026-08-06: mktemp on macOS returns /var→/private/var symlinked paths; path-identity-sensitive toolchains (native tsc) see duplicate modules → 3 identical BLOCKEDs on an untouched file; same commit green on canonical path. Fix: pwd -P canonicalization at BOTH mktemp call sites. Unfreeze route per #96 precedent: eval/test fixture reproducing false-BLOCKED on a symlinked path, counter 1→0. PLAN TOGETHER WITH #105 (same file, same unfreeze ceremony — false-red + false-green pair).
 
 ### #105: Empty-command guards are truthiness/-z based: whitespace-only testCmd still buys a false green
-**State:** queued
+**State:** executed
 **Score:** 6.5 — a false GREEN at the gate outranks its size; proven by execution during the 2026-07-27 drain; small, both sides of the frozen boundary
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, skills/ultrapowers/scripts/run_acceptance.sh, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-gate-integrity-pair.md
