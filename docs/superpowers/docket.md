@@ -181,7 +181,7 @@
 **Score:** 7.5 — engine-mutates-operator-environment family (same family as #99, scored 7); sev-3 live incident, predicted verbatim by the run's own deferred ack
 **Est-files:** evals/ab_runner.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-eval-config-isolation.md
-**Engine:** subagent-driven
+**Engine:** inline
 **Notes:** Filed 2026-07-28 from the live /plugin breakage; distill 2026-08-06 appended: the #96 run's deferredVerification named the exact side effect pre-release and nothing acted on it. Fix: eval cells get the same isolation discipline as the engine (namespaced/temp marketplace name or isolated CLAUDE_CONFIG_DIR, never the production manifest name). Consider the general lesson at planning: deferred acks naming operator-environment mutation should trigger pre-release mitigation.
 
 ### #116: Preflight baseline check: smoke-run the stamped testCmd in the validate-knobs worktree before launch
