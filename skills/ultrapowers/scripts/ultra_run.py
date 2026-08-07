@@ -167,7 +167,10 @@ def validate_knobs(args_path, root):
                           "detail": "malformed waves shape: %s" % e}))
         return 1
     cmd = knobs.get("bootstrapCmd")
-    if not (isinstance(cmd, str) and cmd.strip()):
+    test_cmd = knobs.get("testCmd")
+    has_bootstrap = isinstance(cmd, str) and bool(cmd.strip())
+    has_test = isinstance(test_cmd, str) and bool(test_cmd.strip())
+    if not has_bootstrap and not has_test:
         print(json.dumps({"ok": True, "stage": "knob-validate",
                           "detail": "no bootstrapCmd — nothing to validate"}))
         return 0
@@ -180,22 +183,42 @@ def validate_knobs(args_path, root):
                                     % (r.stderr or r.stdout).strip()}))
         return 1
     try:
-        proc = subprocess.run(cmd, shell=True, cwd=probe_wt,
-                              capture_output=True, text=True)
-        # A fresh detached worktree starts clean: any status output IS the
-        # command's own mutation.
-        dirt = sh(["git", "status", "--porcelain"], cwd=probe_wt).stdout
+        result = {"ok": True, "stage": "knob-validate"}
+        if has_bootstrap:
+            proc = subprocess.run(cmd, shell=True, cwd=probe_wt,
+                                  capture_output=True, text=True)
+            # Porcelain captured BEFORE the baseline: a fresh detached
+            # worktree starts clean, so any status output IS the bootstrap's
+            # own mutation — treeClean stays a bootstrap-only verdict.
+            dirt = sh(["git", "status", "--porcelain"], cwd=probe_wt).stdout
+            result.update({"exit": proc.returncode, "treeClean": not dirt,
+                           "output": (proc.stdout + proc.stderr)[-2000:]})
+            if proc.returncode != 0 or dirt:
+                result["ok"] = False
+                print(json.dumps(result))
+                return 1          # bootstrap red short-circuits: no baseline
+        baseline_red = False
+        if has_test:
+            try:
+                bl = subprocess.run(test_cmd, shell=True, cwd=probe_wt,
+                                    capture_output=True, text=True,
+                                    timeout=1800)
+                result["baseline"] = {"ok": bl.returncode == 0,
+                                      "exit": bl.returncode,
+                                      "output": (bl.stdout + bl.stderr)[-2000:]}
+            except subprocess.TimeoutExpired:
+                result["baseline"] = {"ok": False, "exit": -1,
+                                      "output": "[baseline timed out after 1800s]"}
+            baseline_red = not result["baseline"]["ok"]
     finally:
         rm = sh(["git", "worktree", "remove", "--force", str(probe_wt)],
                 cwd=root)
-    ok = proc.returncode == 0 and not dirt
-    output = (proc.stdout + proc.stderr)[-2000:]
-    if rm.returncode != 0:
-        output += "\n[probe worktree removal failed: %s]" % rm.stderr.strip()
-    print(json.dumps({"ok": ok, "stage": "knob-validate",
-                      "exit": proc.returncode, "treeClean": not dirt,
-                      "output": output}))
-    return 0 if ok else 1
+        if rm.returncode != 0:
+            result.setdefault("output", "")
+            result["output"] += ("\n[probe worktree removal failed: %s]"
+                                 % rm.stderr.strip())
+    print(json.dumps(result))
+    return 3 if baseline_red else 0
 
 
 def main(argv=None):

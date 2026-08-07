@@ -142,12 +142,15 @@ def test_validate_knobs_blocks_a_tree_dirtying_bootstrap(tmp_path):
     assert r.returncode != 0
 
 
-def test_validate_knobs_is_a_noop_without_bootstrap(tmp_path):
+def test_validate_knobs_green_testcmd_alone_exits_0(tmp_path):
+    # superseded no-op pin (#116): a lone testCmd now runs as the baseline
+    # in the probe worktree instead of skipping validation entirely.
     repo = make_repo(tmp_path)
     args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"testCmd": "pytest"}))
+    args_path.write_text(json.dumps({"testCmd": "true"}))
     r = run_validate_knobs(repo, args_path)
     assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(r.stdout)["baseline"]["ok"] is True
 
 
 def test_validate_knobs_accepts_filled_knob_slots(tmp_path):
@@ -604,3 +607,77 @@ def test_preflight_audit_is_clean_on_a_clean_repo(tmp_path):
     audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
     assert len(audit) == 1 and audit[0]["ok"] is True
     assert "audit: clean" in audit[0]["detail"]
+
+
+def test_validate_knobs_green_baseline_exits_0(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true", "testCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["baseline"]["ok"] is True
+
+
+def test_validate_knobs_red_baseline_exits_3(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true",
+                                     "testCmd": "echo FAILING-SUITE; false"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 3
+    out = json.loads(r.stdout)
+    assert out["baseline"]["ok"] is False
+    assert "FAILING-SUITE" in out["baseline"]["output"]
+
+
+def test_validate_knobs_no_testcmd_skips_baseline(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)
+    assert "baseline" not in out or out.get("baseline") is None
+
+
+def test_validate_knobs_failed_bootstrap_short_circuits_baseline(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "false",
+                                     "testCmd": "echo NEVER-RAN"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 1                       # not 3: bootstrap red wins
+    assert "NEVER-RAN" not in r.stdout
+
+
+def test_validate_knobs_test_dirt_does_not_pollute_treeclean(tmp_path):
+    # the suite writes a cache file; treeClean is a bootstrap-only verdict
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true",
+                                     "testCmd": "touch .test-cache && true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["treeClean"] is True
+    assert out["baseline"]["ok"] is True
+
+
+def test_validate_knobs_baseline_runs_without_bootstrapcmd(tmp_path):
+    # named behavior change: testCmd alone now cuts the worktree
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"testCmd": "echo RED; false"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 3
+    assert json.loads(r.stdout)["baseline"]["ok"] is False
+
+
+def test_validate_knobs_neither_cmd_keeps_early_return(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0
+    assert "nothing to validate" in r.stdout
