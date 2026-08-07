@@ -239,7 +239,7 @@
 **Notes:** Three pre-#84 descriptions of merge/completeness running on the session main checkout — now false (integration in a dedicated worktree). PLAN TOGETHER WITH #103 (same subject, doc face + hardening face).
 
 ### #111: sweep --audit: absurd --age-hours magnitudes overflow the threshold arithmetic (report-only)
-**State:** queued
+**State:** executed
 **Score:** 5 — report-only blast radius, implausible input; found by the #108 adversarial reviewer
 **Est-files:** skills/ultrapowers/scripts/sweep_worktrees.sh, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
@@ -255,7 +255,7 @@
 **Notes:** Analysis-first: classify the drain's added tests (pins-of-pins, known-fragile triggers, meta-assertions) and propose deletions with evidence; deletions land behind the suite gate. Candidates enumerated in the issue by the drain's own reviews. Output may be small — a deletion PR plus keep-verdicts — which is success, not failure.
 
 ### #109: Stale waves.js comment: integration-worktree cleanup still describes the pre-#108 manual sweep call
-**State:** queued
+**State:** executed
 **Score:** 4.5 — trivial comment fix, but a stale claim inside the engine misleads harness editors
 **Est-files:** skills/ultrapowers/harnesses/waves.js
 **Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
