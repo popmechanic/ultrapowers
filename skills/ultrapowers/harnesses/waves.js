@@ -229,8 +229,8 @@ if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
-  'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
-  "setup, merge, and reconcile roles and the completeness critic the run's " +
+  'SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the ' +
+  "setup, merge, and reconcile roles and the completeness critic — the run's " +
   'dedicated integration worktree, which those write-side roles may modify and ' +
   'in which the critic is read-only apart from its sha-verified detach below. ' +
   'The setup role is additionally ' +
@@ -244,7 +244,11 @@ const GUARD =
   'their only output is their report payload; the single sanctioned exception ' +
   "is the completeness critic's sha-verified git checkout --detach INSIDE the " +
   "run's dedicated integration worktree, which releases the integration branch " +
-  'for the gate and never touches the session checkout. You operate in ' +
+  'for the gate and never touches the session checkout. The per-task ' +
+  "reviewer's sanctioned location is the session launch directory itself, " +
+  'non-isolated and read-only, judging from the pre-baked review packet (or ' +
+  'the read-only object-store diff fallback) — it claims no worktree of its ' +
+  'own. You operate in ' +
   "the workflow's launch working directory, the session repository; never " +
   'resolve to, check out, or detach a DIFFERENT primary checkout of the same ' +
   "repository — moving the user's primary checkout off its branch is a " +
@@ -386,7 +390,10 @@ const SETUP_PROMPT = resume
   ? ('You are the setup agent. The EXISTING integration branch ' + integrationBranch +
      ' must already exist; report BLOCKED if it does not, and do not create a new ' +
      'branch. Materialize its dedicated worktree: if ' + INTEGRATION_WT + ' already ' +
-     'exists, check out ' + integrationBranch + ' inside it; otherwise run ' +
+     'exists, check out ' + integrationBranch + ' inside it. Before that checkout, ' +
+     'verify the reused worktree is clean (git status --porcelain); if it is dirty, ' +
+     'report BLOCKED with the porcelain output — never absorb pre-existing dirt into ' +
+     "the run's diff. If " + INTEGRATION_WT + ' does not exist, run ' +
      'git worktree add ' + INTEGRATION_WT + ' ' + integrationBranch + ' from the ' +
      'session repo root. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT +
