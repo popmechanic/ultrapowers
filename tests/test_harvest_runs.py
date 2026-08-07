@@ -554,3 +554,42 @@ def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
     recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
                 "text": f"Transcript dir: {d}"}]}]) for d in (d1, d2)]
     assert h._transcript_dirs(recs) == [str(d1), str(d2)]
+
+
+# --- fix round 1 (adversarial review): isolate classify_session_kind's new
+# has_registered_launch signal — a session whose ONLY engine evidence is a
+# structurally-verified Workflow launch (real run-<stamp> args). No printed
+# gate receipts, no agent-*.jsonl transcripts, no integrationBranch, and no
+# self-authored plan (planningFound stays False since nothing Writes/Edits
+# the plan path). Previously "meta"/dropped; now "engine"/bundled with
+# terminus "unknown". Pinning this in isolation (it was previously only
+# incidentally covered inside a scenario that ALSO had gate receipts) so the
+# operator's spec-owner sign-off has an exact, tested description to bless
+# or reverse.
+def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
+    # plan path has no .git ancestor under tmp_path -> _disk_receipts_for
+    # deterministically returns [] (no accidental match against the real repo).
+    plan = str(tmp_path / "docs/superpowers/plans/p.md")
+    # mentioned so is_real_run's saw_dir signal fires, but never created on
+    # disk -> _transcript_dirs falls back to it, audit_run.audit finds no
+    # agent-*.jsonl -> merged audit has zero agents (no engine-role signal).
+    tdir = tmp_path / "wf_launch_only"
+    recs = [
+        _wf_launch("ONLY-1", plan),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["sessionKind"] == "engine"
+    assert bundle["terminus"] == "unknown"
+    assert bundle["truncated"] is True
+    assert bundle["gateReports"] == []
+    assert bundle["planningFound"] is False
+    assert [r["stamp"] for r in bundle["runs"]] == ["ONLY-1"]
+    assert bundle["runs"][0]["terminus"] == "unknown"
+    assert bundle["runs"][0]["gateReports"] == []
