@@ -88,3 +88,59 @@ def test_unmerged_waves_and_failed_tasks_tolerated_absent(tmp_path):
     report = write_report(tmp_path, wave_status="SKIPPED")
     r = run(report, heads, repo)
     assert r.returncode == 0, r.stderr
+
+
+def test_envelope_shaped_report_finalized_under_result(tmp_path):
+    repo, sha = make_repo(tmp_path)
+    heads = write_sidecars(tmp_path, {"task-1": sha, "wave-1": sha})
+    token_sha = "f" * 40
+    envelope = {
+        "summary": "ok",
+        "agentCount": 3,
+        "logs": ["a", "b"],
+        "result": {
+            "waveMerges": [{"wave": 1, "status": "MERGED",
+                            "headSha": token_sha, "branches": ["1"]}],
+            "tasks": [{"task": "1", "status": "done", "headSha": token_sha}],
+        },
+    }
+    p = tmp_path / "report.json"
+    p.write_text(json.dumps(envelope))
+    r = run(p, heads, repo)
+    assert r.returncode == 0, r.stderr
+    data = json.loads(p.read_text())
+    assert data["result"]["waveMerges"][0]["headSha"] == sha
+    assert data["result"]["tasks"][0]["headSha"] == sha
+    # envelope fields outside "result" are preserved untouched
+    assert data["summary"] == "ok"
+    assert data["agentCount"] == 3
+    assert data["logs"] == ["a", "b"]
+
+
+def test_wrong_shape_input_exits_1_naming_shape_problem(tmp_path):
+    repo, _sha = make_repo(tmp_path)
+    heads = write_sidecars(tmp_path, {})
+    p = tmp_path / "report.json"
+    before = json.dumps({"foo": "bar"})
+    p.write_text(before)
+    r = run(p, heads, repo)
+    assert r.returncode == 1
+    assert "shape" in r.stderr.lower()
+    assert p.read_text() == before
+
+
+def test_merged_branch_missing_task_entry_fails_naming_task_id(tmp_path):
+    repo, sha = make_repo(tmp_path)
+    heads = write_sidecars(tmp_path, {"task-1": sha, "wave-1": sha})
+    report = {
+        "waveMerges": [{"wave": 1, "status": "MERGED",
+                        "headSha": "f" * 40, "branches": ["1"]}],
+        "tasks": [],  # no entry for task id "1"
+    }
+    p = tmp_path / "report.json"
+    before = json.dumps(report)
+    p.write_text(before)
+    r = run(p, heads, repo)
+    assert r.returncode == 1
+    assert "task-1" in r.stderr
+    assert p.read_text() == before
