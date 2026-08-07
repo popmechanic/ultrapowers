@@ -184,6 +184,7 @@ def validate_knobs(args_path, root):
         return 1
     try:
         result = {"ok": True, "stage": "knob-validate"}
+        bootstrap_red = False
         if has_bootstrap:
             proc = subprocess.run(cmd, shell=True, cwd=probe_wt,
                                   capture_output=True, text=True)
@@ -194,11 +195,13 @@ def validate_knobs(args_path, root):
             result.update({"exit": proc.returncode, "treeClean": not dirt,
                            "output": (proc.stdout + proc.stderr)[-2000:]})
             if proc.returncode != 0 or dirt:
+                # Bootstrap red short-circuits the baseline, but the print
+                # happens AFTER finally so a worktree-removal failure note is
+                # never lost (single-exit funnel).
                 result["ok"] = False
-                print(json.dumps(result))
-                return 1          # bootstrap red short-circuits: no baseline
+                bootstrap_red = True
         baseline_red = False
-        if has_test:
+        if has_test and not bootstrap_red:
             try:
                 bl = subprocess.run(test_cmd, shell=True, cwd=probe_wt,
                                     capture_output=True, text=True,
@@ -218,6 +221,8 @@ def validate_knobs(args_path, root):
             result["output"] += ("\n[probe worktree removal failed: %s]"
                                  % rm.stderr.strip())
     print(json.dumps(result))
+    if bootstrap_red:
+        return 1
     return 3 if baseline_red else 0
 
 

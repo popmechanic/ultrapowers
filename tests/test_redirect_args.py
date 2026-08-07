@@ -84,3 +84,52 @@ def test_explicit_branch_flag_overrides(tmp_path):
                    "--integration-branch", "ultra/other")
     assert r.returncode == 0, r.stderr
     assert json.loads(Path(r.stdout.strip()).read_text())["integrationBranch"] == "ultra/other"
+
+
+def test_list_shaped_launch_tasks_are_accepted(tmp_path):
+    # compile_plan.py --emit-launch emits tasks as a LIST of {id,...} objects;
+    # the dict-keyed shape in make_run is the unit-fixture simplification.
+    # Caught live during the 2026-08-07 drain: the helper must accept both.
+    run = make_run(tmp_path)
+    launch_p = run / "launch.json"
+    launch = json.loads(launch_p.read_text())
+    launch["tasks"] = list(launch["tasks"].values())
+    launch_p.write_text(json.dumps(launch))
+    r = run_helper(run, [{"task": "1", "instruction": "fix the guard",
+                          "files": ["a.py"], "tier": "cheap"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    assert isinstance(new_launch["tasks"], list)          # shape preserved
+    amended = [t for t in new_launch["tasks"] if t["id"] == "1"][0]
+    assert "REDIRECT: fix the guard" in amended["body"]
+    untouched = [t for t in new_launch["tasks"] if t["id"] == "2"][0]
+    assert untouched == launch["tasks"][1]                # sibling byte-identical
+
+
+def test_emitted_waves_contain_only_amended_tasks(tmp_path):
+    # the honest cost contract: a one-task fix relaunches one task, so the
+    # emitted waves carry ONLY the amended entries (empty waves dropped)
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    ids = [e["id"] for w in out_args["waves"] for e in w]
+    assert ids == ["1"]
+    # the launch copy still carries every task body (engine reads by id)
+    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    assert set(new_launch["tasks"]) == {"1", "2"}
+
+
+def test_second_round_chains_on_first_rounds_output(tmp_path):
+    # round 2 must not resurrect pristine bodies: it reads the prior
+    # redirect-args.json/redirect-launch.json when they exist
+    run = make_run(tmp_path)
+    r1 = run_helper(run, [{"task": "1", "instruction": "round1 fix"}])
+    assert r1.returncode == 0, r1.stderr
+    r2 = run_helper(run, [{"task": "2", "instruction": "round2 fix"}])
+    assert r2.returncode == 0, r2.stderr
+    launch2 = json.loads(
+        Path(json.loads(Path(r2.stdout.strip()).read_text())["wavesPath"]).read_text())
+    assert "REDIRECT: round1 fix" in launch2["tasks"]["1"]["body"]   # preserved
+    assert "REDIRECT: round2 fix" in launch2["tasks"]["2"]["body"]

@@ -86,8 +86,11 @@ base ref before any work (`baseline` in the JSON carries the failing
 output). Present the decision before launching: **fix drift first** (repair
 the base, re-run preflight) or **launch anyway** (the red is inherited;
 optionally add an explicit plan note authorizing any repair the run will
-need, so the reconcile agent never improvises one). The acknowledgment is
-context-only — the in-run setup baseline remains the durable record.
+need, so the reconcile agent never improvises one). A red baseline with no
+`bootstrapCmd` in a repo whose suite needs installed deps usually means the
+fresh probe worktree is missing them — supply `--bootstrap-cmd` rather than
+launching anyway. The acknowledgment is context-only — the in-run setup
+baseline remains the durable record.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
@@ -253,9 +256,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
   then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
   --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
-  `ultrapowers-run` with the emitted args file. Untouched tasks replay from
-  journal cache, so a one-task fix costs one task; the fix still flows through
-  its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
+  `ultrapowers-run` with the emitted args file. The emitted args carry only
+  the amended tasks' waves — a one-task fix relaunches one task on the same
+  integration branch (merged prior work is already there); the fix still flows
+  through its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
   integration branch are unsanctioned — route every post-gate edit through this
   lane. Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
