@@ -34,6 +34,20 @@ def resolves(repo, sha):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
+def select_target(report):
+    """Return the dict carrying "waveMerges"/"tasks", or (None, err) if neither
+    the top level nor a "result" object has that shape."""
+    if isinstance(report.get("waveMerges"), list):
+        return report, None
+    result = report.get("result")
+    if isinstance(result, dict) and isinstance(result.get("waveMerges"), list):
+        return result, None
+    return None, (
+        "wrong shape: report has neither a top-level \"waveMerges\" list "
+        "nor a \"result\".\"waveMerges\" list"
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--report", required=True)
@@ -44,17 +58,26 @@ def main():
     with open(a.report) as f:
         report = json.load(f)
 
+    target, shape_err = select_target(report)
+    if shape_err:
+        print("finalize_report: " + shape_err, file=sys.stderr)
+        sys.exit(1)
+
     errors = []
     updated = 0
-    tasks_by_id = {str(t.get("task")): t for t in (report.get("tasks") or [])}
+    tasks_by_id = {str(t.get("task")): t for t in (target.get("tasks") or [])}
 
-    for wm in report.get("waveMerges") or []:
+    for wm in target.get("waveMerges") or []:
         if wm.get("status") != "MERGED":
             continue
         for slot, apply in [("wave-%s" % wm.get("wave"), lambda s, wm=wm: wm.__setitem__("headSha", s))] + [
-            ("task-%s" % tid, lambda s, tid=tid: tasks_by_id.get(str(tid), {}).__setitem__("headSha", s))
+            ("task-%s" % tid, lambda s, tid=tid: tasks_by_id[str(tid)].__setitem__("headSha", s))
             for tid in (wm.get("branches") or [])
         ]:
+            task_id = slot[len("task-"):] if slot.startswith("task-") else None
+            if task_id is not None and str(task_id) not in tasks_by_id:
+                errors.append("no tasks[] entry for %s" % slot)
+                continue
             sha, err = read_slot(a.heads, slot)
             if err:
                 errors.append(err)
