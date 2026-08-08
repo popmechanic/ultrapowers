@@ -145,7 +145,7 @@
 **Engine:** inline
 
 ### #114: Structural: derive recorded task-head SHAs from git output — never LLM-transcribed
-**State:** executed
+**State:** verified
 **Score:** 9 — integration correctness (Q-priority 1) at the merge boundary; a fabricated SHA silently defeats the ancestry safety net
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-derived-task-heads.md
@@ -153,7 +153,7 @@
 **Notes:** Distill 2026-08-06: 11 findings/9 runs, two fresh at 0.1.13/0.1.14 — recorded 40-char task heads with a valid 7-char prefix and fabricated tail (merge/report agent hand-transcribes SHAs). Derive-don't-record: harness stamps heads from git rev-parse output mechanically. Harness JS change → .mjs sim + pass sentinel required; prompt source edits per anti-drift rule. Does NOT touch the frozen gate (the optional rev-parse-verify-on-read follow-up is explicitly out of scope).
 
 ### #113: ultralearn: session-scoped receipt attribution — match receipts/terminus/audit to the session that launched them
-**State:** executed
+**State:** verified
 **Score:** 8.5 — protects the measurement loop every distill and every frozen-periphery unfreeze route trusts; completes #98 at multi-launch/drain scale
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
@@ -161,7 +161,7 @@
 **Notes:** Distill 2026-08-06: largest ledger family (59 findings/50 runs), fresh sev-2s AT 0.1.13 post-#98: approved run bundled as BLOCKED; 9-plan drain bundled as single-plan NEEDS_ACK with a receipt stamped 4 days later; audit covers launch 1 of 5; slice tails contaminated. Fix: match receipts to wf run IDs/stamps the session launched, union audit across launches, terminus from matched receipt + transcript approval evidence, multi-plan bundle shape, slice trimmed to run envelope. PLAN TOGETHER WITH #118 (deletes the disk-fallback sweep this replaces).
 
 ### #112: Structural: plan-defect judgmentCall lane — disclosed fixes of plan-transcribed defects instead of gate redirects
-**State:** executed
+**State:** verified
 **Score:** 8.5 — autonomy + token efficiency: the dominant redirect generator (25 findings/19 runs); redirect rounds are the main post-launch cost
 **Est-files:** skills/ultrapowers/references/reviewer-prompts.md, skills/ultrapowers/harnesses/waves.js, skills/ultraplan/SKILL.md, skills/ultrapowers/references/plan-markers.md, skills/ultrapowers/references/report-format.md
 **Plan:** docs/superpowers/plans/2026-08-06-plan-defect-lane.md
@@ -169,7 +169,7 @@
 **Notes:** Distill 2026-08-06 headliner. Extends the proven judgmentCalls channel: implementer/reviewer may fix plan-verbatim defects with a mandatory disclosed plan-defect judgmentCall; reviewer verifies; gate report lists plan-divergence calls in one section; plan-defect becomes a first-class note type so the canary can split plan-authored from implementer defects. canaryMetric: redirect-round rate + gate-routed plan-defect count. Carries a prose RIDER: ultraplan authoring line — agent-CLI spikes must isolate CLAUDE_CONFIG_DIR (sev-3 false-memory contamination, first occurrence → prose only). Prompt re-bake + pin tests apply.
 
 ### #115: Sanction the micro-redirect lane: narrow-resume pattern, deterministic relaunch-args helper, head-match re-baseline
-**State:** executed
+**State:** verified
 **Score:** 8 — token efficiency + audit-chain honesty: 22 findings/14 runs; head-match validated live but approved runs fossilize as BLOCKED receipts
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/references/wave-merge.md, skills/ultrapowers/scripts/, skills/ultrapowers/scripts/gate_check.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-micro-redirect-lane.md
@@ -177,7 +177,7 @@
 **Notes:** Distill 2026-08-06. Three parts: (1) document narrow-files+drop-tier resume as the sanctioned micro-redirect (field-proven by hand), (2) deterministic helper: prior receipt + findings list → relaunch args (removes fumble-prone LLM file surgery), (3) operator-authorized inline commits re-baseline head-match with attribution instead of leaving stale BLOCKED receipts. CAUTION: gate_check.py is frozen periphery — scope the re-baseline as recording attribution, never weakening the check; if that can't be done cleanly, split part 3 out at planning. canaryMetric: redirect-round rate + BLOCKED-receipts-on-approved-runs (should hit 0).
 
 ### #107: eval kit: prepare_engine's marketplace registration clobbers the operator's real 'ultrapowers' marketplace
-**State:** executed
+**State:** verified
 **Score:** 7.5 — engine-mutates-operator-environment family (same family as #99, scored 7); sev-3 live incident, predicted verbatim by the run's own deferred ack
 **Est-files:** evals/ab_runner.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-eval-config-isolation.md
@@ -185,7 +185,7 @@
 **Notes:** Filed 2026-07-28 from the live /plugin breakage; distill 2026-08-06 appended: the #96 run's deferredVerification named the exact side effect pre-release and nothing acted on it. Fix: eval cells get the same isolation discipline as the engine (namespaced/temp marketplace name or isolated CLAUDE_CONFIG_DIR, never the production manifest name). Consider the general lesson at planning: deferred acks naming operator-environment mutation should trigger pre-release mitigation.
 
 ### #116: Preflight baseline check: smoke-run the stamped testCmd in the validate-knobs worktree before launch
-**State:** executed
+**State:** verified
 **Score:** 7.5 — the cycle's ONE budgeted additive guard (9 findings/9 runs): moves the red-baseline decision to the operator pre-launch
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py, skills/ultrapowers/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-06-preflight-baseline-check.md
@@ -193,7 +193,7 @@
 **Notes:** Distill 2026-08-06. Reuses the --validate-knobs throwaway worktree: run the stamped testCmd once pre-launch; red baseline → explicit operator decision (fix drift / accept named off-plan repair / launch anyway with reds recorded inherited); also catches crashing auto-detected testCmds inside preflight (subsumes the segfault-teardown case). Field evidence: reconcile agent committed into a plan-protected path mid-run because baseline was red; gate had to manually exonerate a pre-existing flake. Receipt gains a baseline verdict field.
 
 ### #117: Gate false-red: canonicalize the acceptance worktree path (macOS /var symlink)
-**State:** executed
+**State:** verified
 **Score:** 7 — gate-manufactured deterministic false-red (sev 3, A/B-proven in field); FROZEN periphery with the unfreeze route named
 **Est-files:** skills/ultrapowers/scripts/run_acceptance.sh, tests/, evals/
 **Plan:** docs/superpowers/plans/2026-08-06-gate-integrity-pair.md
@@ -201,7 +201,7 @@
 **Notes:** Distill 2026-08-06: mktemp on macOS returns /var→/private/var symlinked paths; path-identity-sensitive toolchains (native tsc) see duplicate modules → 3 identical BLOCKEDs on an untouched file; same commit green on canonical path. Fix: pwd -P canonicalization at BOTH mktemp call sites. Unfreeze route per #96 precedent: eval/test fixture reproducing false-BLOCKED on a symlinked path, counter 1→0. PLAN TOGETHER WITH #105 (same file, same unfreeze ceremony — false-red + false-green pair).
 
 ### #105: Empty-command guards are truthiness/-z based: whitespace-only testCmd still buys a false green
-**State:** executed
+**State:** verified
 **Score:** 6.5 — a false GREEN at the gate outranks its size; proven by execution during the 2026-07-27 drain; small, both sides of the frozen boundary
 **Est-files:** skills/ultrapowers/scripts/ultra_run.py, skills/ultrapowers/scripts/run_acceptance.sh, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-gate-integrity-pair.md
@@ -209,7 +209,7 @@
 **Notes:** Filed by the drain's own critic (executed repro: --suite-gate --run '   ' → passed:true). ultra_run.py side (truthiness knob-drop) is unfrozen; run_acceptance.sh side is FROZEN — ride #117's eval-fixture unfreeze ceremony. Normalize/strip then validate non-empty; empty-after-strip refuses loudly on both sides. PLAN TOGETHER WITH #117.
 
 ### #103: #84 hardening follow-ups: pin the sweep instruction, test the detach↔approve coupling, close GUARD/prompt seams
-**State:** executed
+**State:** verified
 **Score:** 6 — hardening seams on deletion machinery, all currently held by prose or nothing; named by the #84 build's own reviews
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/scripts/sweep_worktrees.sh, skills/ultrapowers/scripts/ultra_gate.py, skills/ultrapowers/harnesses/waves.js, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
@@ -217,7 +217,7 @@
 **Notes:** Five seams from the #84 reviews (2026-07-27 drain). Note the machinery-earned-by-recurrence bar at planning: prefer structural closures (e.g. make approve sweep the integration worktree mechanically rather than pinning the SKILL.md sentence) over pin-tests of prose — the distill doctrine and #106 both push against new pins. Partial overlap with what the 0.1.14 live shakedown will prove; check each seam against #108's shipped behavior before planning. PLAN TOGETHER WITH #102 (its doc face).
 
 ### #118: Simplification: delete the harvester's disk-fallback receipt sweep once session-scoped attribution lands
-**State:** executed
+**State:** verified
 **Score:** 6 — mandatory deletion candidate of distill 2026-08-06; the fallback IS the contamination vector behind the misattribution family
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Plan:** docs/superpowers/plans/2026-08-06-harvester-session-attribution.md
@@ -231,7 +231,7 @@
 **Notes:** Shape assumption on runtime-minted ids (wf_<hex8>-<n> today). Closure direction the issue names: derive the recorded id from the launch response rather than parsing branch names — prefer that derive-don't-parse form at planning. CLUSTER: plan with #111 + #109 as one small post-#108 sweep-hygiene plan (inline engine). PARKED 2026-08-06 at sweep iteration 9 (operator-approved): both closure directions land in FROZEN ultra_gate.py for a zero-occurrence hypothetical (runtime mints wf_<hex8>-<n>; single-segment ids never observed), with verified loud mitigation (left-behind accounting at sweep_worktrees.sh:319-341 enumerates on-disk wf_* unconditionally; --audit re-surfaces by age). REOPEN TRIGGER: an observed runtime id the WF_RUN_RE pattern misses — it will show in the approve receipt's left-behind list. Spec: docs/superpowers/specs/2026-08-06-sweep-hygiene-smalls-design.md.
 
 ### #102: docs: workflow-template.md contradicts shipped #84 behavior in three places
-**State:** executed
+**State:** verified
 **Score:** 5.5 — the canonical authoring/re-bake reference misleads every future harness edit; cheap, pure docs
 **Est-files:** skills/ultrapowers/references/workflow-template.md
 **Plan:** docs/superpowers/plans/2026-08-06-84-hardening-remainder.md
@@ -239,7 +239,7 @@
 **Notes:** Three pre-#84 descriptions of merge/completeness running on the session main checkout — now false (integration in a dedicated worktree). PLAN TOGETHER WITH #103 (same subject, doc face + hardening face).
 
 ### #111: sweep --audit: absurd --age-hours magnitudes overflow the threshold arithmetic (report-only)
-**State:** executed
+**State:** verified
 **Score:** 5 — report-only blast radius, implausible input; found by the #108 adversarial reviewer
 **Est-files:** skills/ultrapowers/scripts/sweep_worktrees.sh, tests/
 **Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
@@ -247,7 +247,7 @@
 **Notes:** 64-bit wrap inverts the age filter at --age-hours ≥ ~20 digits. Magnitude bound beside the existing digits-only case + one test. CLUSTER: plan with #110 + #109 (one inline sweep-hygiene plan).
 
 ### #106: Test-mass skeptical review: ~1,170 of the drain's 1,667 inserted lines are tests/sims — audit for ballast
-**State:** executed
+**State:** verified
 **Score:** 5 — simplicity objective; the counterweight pass the complexity doctrine requires after a heavy drain
 **Est-files:** tests/, skills/ultrapowers/harnesses/, docs/
 **Plan:** docs/superpowers/plans/2026-08-06-test-mass-audit.md
@@ -255,7 +255,7 @@
 **Notes:** Analysis-first: classify the drain's added tests (pins-of-pins, known-fragile triggers, meta-assertions) and propose deletions with evidence; deletions land behind the suite gate. Candidates enumerated in the issue by the drain's own reviews. Output may be small — a deletion PR plus keep-verdicts — which is success, not failure.
 
 ### #109: Stale waves.js comment: integration-worktree cleanup still describes the pre-#108 manual sweep call
-**State:** executed
+**State:** verified
 **Score:** 4.5 — trivial comment fix, but a stale claim inside the engine misleads harness editors
 **Est-files:** skills/ultrapowers/harnesses/waves.js
 **Plan:** docs/superpowers/plans/2026-08-06-sweep-hygiene-smalls.md
@@ -269,7 +269,7 @@
 **Notes:** DO NOT ACCEPT THIS CYCLE unless the operator overrides: the closing event is the live shakedown this very docket run provides (its ultrapowers-engine entries run on installed 0.1.14). If the drain's runs show zero checkout mutation and clean sweeps, next cycle's triage promotes this to accepted with field evidence in hand.
 
 ### #119: Complexity-audit loop: adversarial trim review at spec approval + distill cluster-died retrospective
-**State:** executed
+**State:** verified
 **Score:** 7 — operator-commissioned standing requirement; guards the complexity budget of every future change; prose-only build
 **Est-files:** CLAUDE.md, skills/ultralearn/references/distilling-proposals.md
 **Plan:** docs/superpowers/plans/2026-08-06-complexity-audit-loop.md
