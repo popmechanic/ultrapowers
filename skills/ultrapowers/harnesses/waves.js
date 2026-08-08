@@ -229,8 +229,8 @@ if (typeof ARGS.testCmd !== 'string' || !ARGS.testCmd.trim()) {
 
 // ── GUARD — baked from references/reviewer-prompts.md (BAKE:GUARD) ────────────
 const GUARD =
-  'SAFETY: Operate ONLY inside the git worktree assigned to you, or for the ' +
-  "setup, merge, and reconcile roles and the completeness critic the run's " +
+  'SAFETY: Operate ONLY inside the git worktree assigned to you, or — for the ' +
+  "setup, merge, and reconcile roles and the completeness critic — the run's " +
   'dedicated integration worktree, which those write-side roles may modify and ' +
   'in which the critic is read-only apart from its sha-verified detach below. ' +
   'The setup role is additionally ' +
@@ -244,7 +244,11 @@ const GUARD =
   'their only output is their report payload; the single sanctioned exception ' +
   "is the completeness critic's sha-verified git checkout --detach INSIDE the " +
   "run's dedicated integration worktree, which releases the integration branch " +
-  'for the gate and never touches the session checkout. You operate in ' +
+  'for the gate and never touches the session checkout. The per-task ' +
+  "reviewer's sanctioned location is the session launch directory itself, " +
+  'non-isolated and read-only, judging from the pre-baked review packet (or ' +
+  'the read-only object-store diff fallback) — it claims no worktree of its ' +
+  'own. You operate in ' +
   "the workflow's launch working directory, the session repository; never " +
   'resolve to, check out, or detach a DIFFERENT primary checkout of the same ' +
   "repository — moving the user's primary checkout off its branch is a " +
@@ -278,6 +282,8 @@ const IMPLEMENTER_PROMPT = [
   '6. Refactor for clarity without breaking tests.',
   '7. Run the full check suite one final time and confirm it is clean.',
   '8. Commit your work on your branch. The merge step integrates committed work only — git rev-parse HEAD must point at a commit that contains your final state; uncommitted or unstaged changes never reach the integration branch.',
+  '',
+  'Plan-supplied code that is genuinely defective: you MAY fix a defect in plan-verbatim code when the fix is task-local — never in a cross-task interface surface a sibling consumes; when in doubt, implement the plan as written and report the defect instead. Disclose every such divergence as a concerns entry prefixed plan-defect: naming the plan text you diverged from and why, and report status DONE_WITH_CONCERNS. An undisclosed divergence is a review-blocking defect.',
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
@@ -322,7 +328,7 @@ const REVIEWER_PROMPT = [
   '',
   'When SIBLING FILES is provided and a criterion is unsatisfiable in the diff ONLY because a sibling-owned file is absent at BASE, report a blocking issue that names the sibling file and the words "missing dependency edge" — do not instruct the implementer to create, duplicate, or delete the sibling-owned file.',
   '',
-  'Plan-supplied code is not privileged: when the diff faithfully transcribes code from the approved plan and that code carries a genuine defect, report it rather than waiving it as spec-faithful. Prefix the detail plan-defect: — and when fixing it would mean diverging from explicit plan text, report severity minor so the finding routes to the pre-merge gate for a plan-level decision instead of a fix round the implementer cannot resolve.',
+  "Plan-supplied code is not privileged: when the diff faithfully transcribes code from the approved plan and that code carries a genuine defect, report it rather than waiving it as spec-faithful. Prefix the detail plan-defect: — and route by blast radius. Task-local fix: report the finding at its true severity so the normal fix round applies it, and the fix carries the same plan-defect: disclosure. Cross-task interface surface (anything a sibling task Consumes from this task's Produces), or a boundary you cannot establish from this task's own inputs: report severity minor so it routes to the pre-merge gate — when in doubt, gate. When the diff already diverges from plan text under a disclosed plan-defect: concern, verify the disclosed fix against the criterion's intent and block only if the divergence is wrong or undisclosed — a lawful disclosed divergence is not missing evidence.",
   '',
   'Flag only issues worth fixing. Minor style nits that a linter would catch automatically are not worth flagging. Severity blocking means the task must not merge until fixed; minor is advisory.',
   '',
@@ -333,11 +339,25 @@ const REVIEWER_PROMPT = [
 // prompt-drift pin sees source-identical text) and filled at dispatch time.
 // Apply this ONLY to engine-authored text (GUARD + the baked prompts). Plan-
 // authored spans — the task body, the plan's Global Constraints, its Interfaces
-// — pass through verbatim: a plan is free to quote the literal tokens (the plan
-// that built this feature does), and rewriting that prose would silently hand
-// the implementer a mangled spec.
+// — and reviewer-authored spans — the CANNOT-VERIFY checklist escalated by the
+// per-task reviewers — pass through verbatim: a plan or a reviewer is free to
+// quote the literal tokens (the plan that built this feature does), and
+// rewriting that prose would silently hand the agent a mangled spec.
 const fillPaths = (s) =>
   s.split('<pluginRoot>').join(ARGS.pluginRoot).split('<runDir>').join(ARGS.runDir)
+
+// The completeness prompt splices reviewer-authored text into its MIDDLE, so it
+// cannot simply be concatenated outside fillPaths the way globalConstraintsBlock
+// is. The baked prompt carries this seam token instead (it is not a path, so
+// fillPaths leaves it alone) and the dispatch site fills it AFTER substitution.
+const CANNOT_VERIFY_SLOT = '{{CANNOT_VERIFY}}'
+// Fill the seam with reviewer prose, verbatim. If the seam is ever missing the
+// checklist is appended rather than silently dropped — losing an escalated
+// CANNOT-VERIFY item would turn an unverified requirement into a false green.
+const spliceCannotVerify = (prompt, checklist) =>
+  prompt.indexOf(CANNOT_VERIFY_SLOT) === -1
+    ? prompt + (checklist || '')
+    : prompt.split(CANNOT_VERIFY_SLOT).join(checklist || '')
 
 // Setup / merge / reconcile / completeness prompts (source: references/wave-merge.md)
 // testInstruction: args.testCmd is mandatory (driver-stamped: knob or detection).
@@ -345,11 +365,12 @@ const testInstruction = 'run the project test command `' + testCmd + '`'
 
 // The dedicated integration worktree (#84): the engine never mutates the
 // session checkout. Stamp-named — the script knows args.stamp, not the
-// runtime wf_<runId> — which puts it OUTSIDE the operator's run-scoped
-// teardown sweep (sweep_worktrees.sh --run <wf_runId> globs wf_<runId>-*,
-// which can never match wf_<stamp>-integration). It is removed instead by
-// the ADDITIONAL sweep_worktrees.sh --run wf_<stamp> call SKILL.md issues at
-// Approve/teardown, whose stem glob wf_<stamp>-* does match it. The
+// runtime wf_<runId> — which puts it OUTSIDE the run-scoped glob
+// (sweep_worktrees.sh --run <wf_runId> globs wf_<runId>-*, which can never
+// match wf_<stamp>-integration). Since #108, `ultra_gate.py --approve`
+// sweeps mechanically: every wf run id recorded across the stamp's gate
+// calls PLUS wf_<stamp> (this worktree) — no additional SKILL.md-issued
+// sweep call exists; on teardown the worktrees are kept as evidence. The
 // completeness critic's sha-verified detach inside it doubles as the branch
 // release the frozen ultra_gate.py --approve checkout needs (a critic that
 // never detached reports BLOCKED, and a BLOCKED gate is never Approved).
@@ -370,7 +391,10 @@ const SETUP_PROMPT = resume
   ? ('You are the setup agent. The EXISTING integration branch ' + integrationBranch +
      ' must already exist; report BLOCKED if it does not, and do not create a new ' +
      'branch. Materialize its dedicated worktree: if ' + INTEGRATION_WT + ' already ' +
-     'exists, check out ' + integrationBranch + ' inside it; otherwise run ' +
+     'exists, check out ' + integrationBranch + ' inside it. Before that checkout, ' +
+     'verify the reused worktree is clean (git status --porcelain); if it is dirty, ' +
+     'report BLOCKED with the porcelain output — never absorb pre-existing dirt into ' +
+     "the run's diff. If " + INTEGRATION_WT + ' does not exist, run ' +
      'git worktree add ' + INTEGRATION_WT + ' ' + integrationBranch + ' from the ' +
      'session repo root. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT +
@@ -384,6 +408,13 @@ const SETUP_PROMPT = resume
      testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
+// #114: every sha the controller consumes used to reach it as model-typed JSON,
+// so a fabricated or truncated tail defeated the ancestry check silently. The
+// merge-side roles DERIVE the values instead: `git rev-parse` redirected into a
+// <runDir>/heads/ slot. Both MERGE_PROMPT and RECONCILE_PROMPT report MERGED
+// heads, so the sentence is baked verbatim into each — the drift pin matches a
+// BAKE block against CONTIGUOUS text in this file, so a shared const would break
+// it. <runDir> is a baked literal token filled by fillPaths() at dispatch.
 const MERGE_PROMPT =
   'You are the wave merge agent, operating ONLY inside the dedicated integration ' +
   'worktree at ' + INTEGRATION_WT + ' — never the session main checkout. cd into ' +
@@ -393,7 +424,11 @@ const MERGE_PROMPT =
   'branch in the given task-index order (deterministic, so conflicts are ' +
   'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
   'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
-  'diff or failing output.'
+  'diff or failing output. Before you report, record heads mechanically: run ' +
+  'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
+  'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+  'by hand.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
@@ -403,14 +438,35 @@ const RECONCILE_PROMPT =
   'operate on, report BLOCKED and merge nothing — do not detach or move any ' +
   'other checkout. You are given a merge conflict diff or failing test output. ' +
   'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
-  'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.'
+  'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. ' +
+  'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git rev-parse <branch> > ' +
+  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+  'by hand.'
+
+// The prompt constants above cannot know which tasks a given wave merged, so each
+// dispatch appends the concrete slot names built from the ids/wave number in scope
+// there — the agent infers nothing. Oxford-comma list, matching wave-merge.md.
+const headsSlotsLine = (mergedResults, waveNumber) => {
+  const slots = mergedResults.map((r) => 'heads/task-' + r.task)
+  slots.push('heads/wave-' + waveNumber)
+  const last = slots.pop()
+  const list = slots.length > 1 ? (slots.join(', ') + ', and ' + last)
+    : slots.length === 1 ? (slots[0] + ' and ' + last)
+      : last
+  return 'For this wave that means slots: ' + list + '.'
+}
 
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
 // EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an empty sha
 // forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
-const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => {
+// Note the missing cannotVerifyChecklist parameter: the checklist is reviewer-
+// authored, so it is NOT interpolated here. The baked text carries the
+// CANNOT_VERIFY_SLOT seam and the dispatch site fills it after fillPaths().
+const completenessPrompt = (mergeHeadSha, mergedShas) => {
   // #70: the integration ancestry assertion. The critic is already detached on the
   // integration HEAD, so it is the one role that can cheaply prove nothing the run
   // reported as merged was silently dropped. mergedShas carries every mergeable done
@@ -444,7 +500,7 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
   (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
   'findings. Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
-  ', then review the integrated result against the original plan. ' + (cannotVerifyChecklist || '') +
+  ', then review the integrated result against the original plan. ' + CANNOT_VERIFY_SLOT +
   'When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, ' +
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
@@ -459,7 +515,16 @@ const completenessPrompt = (mergeHeadSha, cannotVerifyChecklist, mergedShas) => 
   "'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — " +
   "process boot, device, deploy target), 'external' (an unreachable " +
   "service/credential/network), or 'manual' (requires human judgment), so the gate " +
-  'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock
+  'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock +
+  // #114: the shas quoted above (and in ancestryBlock) are model-transcribed —
+  // a fabricated tail would pass an ancestry check against a sha that never
+  // existed. The heads/ sidecars the merge-side roles derived are the authority;
+  // a missing slot for a merged task is itself the failure signal.
+  ' Authoritative shas live in <runDir>/heads/: read task-<id> for each merged ' +
+  'task id in your inputs, and the highest-numbered wave-<n> slot is your detach ' +
+  'target. Treat a missing or malformed slot for a merged task exactly as an ' +
+  'ancestry miss. Sha values quoted elsewhere in this prompt are context, not ' +
+  'authority.'
   )
 }
 
@@ -927,10 +992,14 @@ async function mergeWave(results, waveIdx) {
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
     .join('\n')
+  // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
+  // rides inside fillPaths() with the prompt; the ids come from control flow.
+  const slotsLine = headsSlotsLine(merged, waveIdx + 1)
   let merge
   try {
     merge = await agent(
-      GUARD + '\n\n' + MERGE_PROMPT + '\nMerge in this order:\n' + branchList,
+      fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
+        '\nMerge in this order:\n' + branchList,
       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
     )
   } catch (e) {
@@ -944,7 +1013,8 @@ async function mergeWave(results, waveIdx) {
     log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
     try {
       merge = await agent(
-        GUARD + '\n\n' + RECONCILE_PROMPT + '\nFailure:\n' + (merge.detail || ''),
+        fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
+          '\nFailure:\n' + (merge.detail || ''),
         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
       )
     } catch (e) {
@@ -1327,8 +1397,17 @@ if (budgetExhausted()) {
       ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
+    // #114: the critic prompt carries <runDir> (the heads/ sidecar dir), so the
+    // ENGINE-AUTHORED text flows through fillPaths like every other baked prompt.
+    // The two non-engine spans stay out of that call: globalConstraintsBlock is
+    // plan-authored and concatenated outside it, and the reviewer-authored
+    // CANNOT-VERIFY checklist — which sits mid-prompt — is spliced into its seam
+    // AFTER substitution. Either may legitimately quote a literal <runDir>; a
+    // reviewer whose quoted token got rewritten would be reading mangled prose.
     review = await agent(
-      GUARD + '\n\n' + completenessPrompt(waveBaseSha, cannotVerifyChecklist, mergedShas) + globalConstraintsBlock +
+      spliceCannotVerify(
+        fillPaths(GUARD + '\n\n' + completenessPrompt(waveBaseSha, mergedShas)),
+        cannotVerifyChecklist) + globalConstraintsBlock +
         '\n\nTasks:\n' + taskList + '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
         // A red baseline reframes the critic's own test run: failures it sees may be
         // inherited, not introduced. Only thread it when it actually failed.

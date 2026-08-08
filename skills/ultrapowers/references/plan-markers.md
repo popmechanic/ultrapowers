@@ -234,5 +234,6 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.
+- Spike tasks that spawn the real agent CLI must isolate `CLAUDE_CONFIG_DIR` (or disable session persistence) — a spawned session can otherwise write false memories or session state into the host project.
 
 (End of plan-markers.md.)

@@ -227,6 +227,7 @@ While writing tasks:
   (one big UI component, one long module rewrite) are the tasks that blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark
   them `most-capable` in the plan rather than letting the launch guess.
+- **Spike tasks that spawn the real agent CLI must isolate `CLAUDE_CONFIG_DIR` (or disable session persistence)** — a spawned session can otherwise write false memories or session state into the host project.
 
 ## The final authoring step — validate
 

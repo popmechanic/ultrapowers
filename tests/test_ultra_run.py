@@ -8,6 +8,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
@@ -142,12 +144,15 @@ def test_validate_knobs_blocks_a_tree_dirtying_bootstrap(tmp_path):
     assert r.returncode != 0
 
 
-def test_validate_knobs_is_a_noop_without_bootstrap(tmp_path):
+def test_validate_knobs_green_testcmd_alone_exits_0(tmp_path):
+    # superseded no-op pin (#116): a lone testCmd now runs as the baseline
+    # in the probe worktree instead of skipping validation entirely.
     repo = make_repo(tmp_path)
     args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"testCmd": "pytest"}))
+    args_path.write_text(json.dumps({"testCmd": "true"}))
     r = run_validate_knobs(repo, args_path)
     assert r.returncode == 0, r.stdout + r.stderr
+    assert json.loads(r.stdout)["baseline"]["ok"] is True
 
 
 def test_validate_knobs_accepts_filled_knob_slots(tmp_path):
@@ -332,6 +337,27 @@ def test_detect_test_cmd_ladder(tmp_path):
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pyproject-pytest")
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pytest-ini")
+
+
+@pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])
+def test_detect_test_cmd_bun_rung(tmp_path, lockfile):
+    # The bun rung had zero coverage: the ladder test above walks
+    # cargo->go->make->npm->pnpm->pytest and never plants a bun lockfile, so a
+    # deleted or renamed bun branch stayed green. Both lockfile spellings the
+    # ladder accepts (text `bun.lock`, binary `bun.lockb`) are pinned.
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "bun test"}}')
+    (tmp_path / lockfile).write_text("")
+    cmd, rule = detect_test_cmd(tmp_path)
+    assert (cmd, rule) == ("bun test", "package-json-bun")
+
+
+def test_detect_test_cmd_bun_vs_pnpm_precedence(tmp_path):
+    # Pin the precedence the ladder implements TODAY so a silent reorder fails
+    # loudly. pnpm is probed before bun, so pnpm wins when both are present.
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "x"}}')
+    (tmp_path / "bun.lockb").write_text("")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    assert detect_test_cmd(tmp_path) == ("pnpm test", "package-json-pnpm")
 
 
 def test_detect_ignores_package_json_without_test_script(tmp_path):
@@ -549,6 +575,8 @@ def test_prune_reports_only_dirs_actually_removed(tmp_path, monkeypatch):
     assert ultra_run.prune_run_dirs(state, keep=1) == []
 
 
+@pytest.mark.skipif(os.geteuid() == 0,
+                    reason="DAC mode bits do not bind root; the undeletable-dir trigger cannot fire")
 def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
     repo = make_repo(tmp_path)
     state = repo / ".claude/ultrapowers"
@@ -604,3 +632,96 @@ def test_preflight_audit_is_clean_on_a_clean_repo(tmp_path):
     audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
     assert len(audit) == 1 and audit[0]["ok"] is True
     assert "audit: clean" in audit[0]["detail"]
+
+
+def test_validate_knobs_green_baseline_exits_0(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true", "testCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["baseline"]["ok"] is True
+
+
+def test_validate_knobs_red_baseline_exits_3(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true",
+                                     "testCmd": "echo FAILING-SUITE; false"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 3
+    out = json.loads(r.stdout)
+    assert out["baseline"]["ok"] is False
+    assert "FAILING-SUITE" in out["baseline"]["output"]
+
+
+def test_validate_knobs_no_testcmd_skips_baseline(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0
+    out = json.loads(r.stdout)
+    assert "baseline" not in out or out.get("baseline") is None
+
+
+def test_validate_knobs_failed_bootstrap_short_circuits_baseline(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "false",
+                                     "testCmd": "echo NEVER-RAN"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 1                       # not 3: bootstrap red wins
+    assert "NEVER-RAN" not in r.stdout
+
+
+def test_validate_knobs_test_dirt_does_not_pollute_treeclean(tmp_path):
+    # the suite writes a cache file; treeClean is a bootstrap-only verdict
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"bootstrapCmd": "true",
+                                     "testCmd": "touch .test-cache && true"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    out = json.loads(r.stdout)
+    assert out["treeClean"] is True
+    assert out["baseline"]["ok"] is True
+
+
+def test_validate_knobs_baseline_runs_without_bootstrapcmd(tmp_path):
+    # named behavior change: testCmd alone now cuts the worktree
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"testCmd": "echo RED; false"}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 3
+    assert json.loads(r.stdout)["baseline"]["ok"] is False
+
+
+def test_validate_knobs_neither_cmd_keeps_early_return(tmp_path):
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({}))
+    r = run_validate_knobs(repo, args_path)
+    assert r.returncode == 0
+    assert "nothing to validate" in r.stdout
+
+
+# --- #105: an explicitly-passed empty/whitespace --test-cmd is never silent ---
+
+@pytest.mark.parametrize("cmd", ["   ", "\t", "\n", ""])
+def test_explicit_empty_test_cmd_fails_the_stage(tmp_path, cmd):
+    """#105 differential pin: BASE stamps a whitespace knob verbatim (the gate
+    later evals it to a false green) and silently drops an empty one into
+    detection. HEAD fails the test-command stage naming the empty knob — and
+    stamps nothing, so the fall-through cannot ride on a detected command."""
+    repo = make_repo(tmp_path)          # writes pytest.ini, so detection WOULD succeed
+    r = run_driver(repo, "--test-cmd", cmd)
+    assert r.returncode != 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    assert receipt["stages"][-1]["stage"] == "test-command"
+    assert receipt["stages"][-1]["ok"] is False
+    assert "--test-cmd" in receipt["stages"][-1]["detail"]
+    assert "testCmd" not in receipt

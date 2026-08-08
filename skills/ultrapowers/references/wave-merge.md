@@ -31,7 +31,7 @@ You are the setup agent. The engine never mutates the session checkout: create t
 Under `args.resume` (the deterministic redirect path), setup reuses the existing branch instead, materializing (or reusing) its worktree:
 
 <!-- BAKE:SETUP_PROMPT_RESUME -->
-You are the setup agent. The EXISTING integration branch {{INTEGRATION_BRANCH}} must already exist; report BLOCKED if it does not, and do not create a new branch. Materialize its dedicated worktree: if {{INTEGRATION_WT}} already exists, check out {{INTEGRATION_BRANCH}} inside it; otherwise run git worktree add {{INTEGRATION_WT}} {{INTEGRATION_BRANCH}} from the session repo root. {{BOOTSTRAP_LINE}}Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
+You are the setup agent. The EXISTING integration branch {{INTEGRATION_BRANCH}} must already exist; report BLOCKED if it does not, and do not create a new branch. Materialize its dedicated worktree: if {{INTEGRATION_WT}} already exists, check out {{INTEGRATION_BRANCH}} inside it. Before that checkout, verify the reused worktree is clean (git status --porcelain); if it is dirty, report BLOCKED with the porcelain output — never absorb pre-existing dirt into the run's diff. If {{INTEGRATION_WT}} does not exist, run git worktree add {{INTEGRATION_WT}} {{INTEGRATION_BRANCH}} from the session repo root. {{BOOTSTRAP_LINE}}Then establish the test baseline inside {{INTEGRATION_WT}}: {{TEST_INSTRUCTION}} and record whether it passes. Report the branch name, its HEAD sha, and the baseline result in your JSON result.
 <!-- /BAKE -->
 
 ---
@@ -79,11 +79,14 @@ The merge agent:
    `--test-cmd` or its deterministic detection ladder; interpolated into
    `MERGE_PROMPT` / `COMPLETENESS_PROMPT` via `testInstruction`).
 4. Reports back: success with final integration HEAD sha, or failure with the conflict diff or failing test output.
+5. Records the same heads it reports into the `<runDir>/heads/` sidecar by shell
+   redirection (see **Derived Task Heads** below), so no consumer depends on a
+   sha the model retyped into its JSON.
 
 The canonical prompt wording:
 
 <!-- BAKE:MERGE_PROMPT -->
-You are the wave merge agent, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output.
+You are the wave merge agent, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand.
 <!-- /BAKE -->
 
 A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred, or reported done without mergeable coordinates) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run when dependency edges were supplied (they decide what downstream work is blocked) or when nothing in the wave actually ran. When `args.edges` was NOT supplied and tasks did run, the workflow cannot know what depends on the lost work — it records the `SKIPPED` merge plus a `blockedWaves` entry ('no mergeable branches and no dependency edges supplied — cascading conservatively') and cascade-blocks later waves.
@@ -97,7 +100,7 @@ On a merge conflict or a failed post-merge test, the controller dispatches a sin
 The canonical prompt wording:
 
 <!-- BAKE:RECONCILE_PROMPT -->
-You are the reconciliation agent for {{INTEGRATION_BRANCH}}, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it.
+You are the reconciliation agent for {{INTEGRATION_BRANCH}}, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand.
 <!-- /BAKE -->
 
 Caps and failure handling:
@@ -114,12 +117,14 @@ Caps and failure handling:
 
 After the final wave's merge agent completes successfully (or is blocked), the controller dispatches a single **completeness-critic agent** whose prompt is adapted from `superpowers:verification-before-completion`'s evidence-before-claims discipline — baked into `waves.js` at build time, not loaded from Superpowers at runtime. The agent both runs the full test suite on the integration branch inside the integration worktree, whose verified detach also frees the integration branch for the frozen Approve checkout (its result populates the report's `tests` field), and reviews the integrated result for gaps. It receives `args.planPath` and reads the plan from disk (agents have fs access; the script does not), plus the full list of tasks and the blocked-wave log (if any); the baseline-failure note is included only when the baseline was red. All findings — gaps, unverified claims, untested paths — are appended to the run report verbatim.
 
-The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence; `{{MERGE_HEAD_SHA}}` is `waveBaseSha` — the last wave's `merge.headSha` — interpolated at dispatch, empty if the run recorded no merge HEAD; `{{CANNOT_VERIFY}}` is the CANNOT-VERIFY checklist the per-task reviewers escalated, empty when none were raised):
+The canonical prompt wording (`{{PLAN_STEP}}` is the optional "Read the original plan document at `args.planPath` first." sentence; `{{MERGE_HEAD_SHA}}` is `waveBaseSha` — the last wave's `merge.headSha` — interpolated at dispatch, empty if the run recorded no merge HEAD; `{{CANNOT_VERIFY}}` is the CANNOT-VERIFY checklist the per-task reviewers escalated, empty when none were raised; `{{ANCESTRY_BLOCK}}` is the ancestry instruction from **Integration Ancestry Assertion** below, empty when nothing merged):
+
+**Substitution order matters here.** The `<runDir>` token in the last sentence is engine-authored and is filled by `fillPaths()` at dispatch, like every other baked prompt. `{{CANNOT_VERIFY}}` is **not**: the checklist is *reviewer*-authored prose, and a reviewer escalating a requirement about this very feature quotes the literal `<runDir>` token. So `waves.js` keeps `{{CANNOT_VERIFY}}` as a seam in the baked constant, runs `fillPaths()` over the engine text, and only then splices the checklist in — verbatim, the same exemption that keeps the plan-authored GLOBAL CONSTRAINTS block outside the call. Path substitution applies to engine-authored text only; rewriting a reviewer's or a plan's quotation would hand the critic prose nobody wrote.
 
 <!-- BAKE:COMPLETENESS_PROMPT -->
 You are a REVIEW role. Do not write files, create commits, stage changes, or modify the tree in any way. Your only output is your findings/verdict. If the work is wrong, report it — never fix it.
 Operate ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — cd into it before any git command; never the session main checkout; your verified detach there also frees the integration branch for the gate.
-{{PLAN_STEP}}First, put yourself on the exact tree the run produced: the integration HEAD is {{MERGE_HEAD_SHA}}. If that value is empty, report BLOCKED and produce no findings — do not guess a tree. Otherwise run git checkout --detach {{MERGE_HEAD_SHA}}, then git rev-parse HEAD and confirm it equals {{MERGE_HEAD_SHA}}; if it does not, report BLOCKED and produce no findings. Only once you are verified on that tree: what plan requirement is unmet? What claim is unverified? What code path is untested? {{TEST_INSTRUCTION}}, then review the integrated result against the original plan. {{CANNOT_VERIFY}}When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; list any constraint the integrated result violates as a blocking gap. List every gap, unverified claim, and untested path. After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in your result (false if you could not confirm it). Read the plan at the provided planPath; for every task reported failed or blocked, check whether its declared Create: paths exist in the tree — list any that are genuinely absent as missing deliverables. For any deliverable that is present and structurally complete but whose behavior the sandbox could not execute, list it under deferredVerification as an object { deliverable, reason, why }, where reason is one of 'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — process boot, device, deploy target), 'external' (an unreachable service/credential/network), or 'manual' (requires human judgment), so the gate can route runtime/external items to an explicit acknowledgement.
+{{PLAN_STEP}}First, put yourself on the exact tree the run produced: the integration HEAD is {{MERGE_HEAD_SHA}}. If that value is empty, report BLOCKED and produce no findings — do not guess a tree. Otherwise run git checkout --detach {{MERGE_HEAD_SHA}}, then git rev-parse HEAD and confirm it equals {{MERGE_HEAD_SHA}}; if it does not, report BLOCKED and produce no findings. Only once you are verified on that tree: what plan requirement is unmet? What claim is unverified? What code path is untested? {{TEST_INSTRUCTION}}, then review the integrated result against the original plan. {{CANNOT_VERIFY}}When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; list any constraint the integrated result violates as a blocking gap. List every gap, unverified claim, and untested path. After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in your result (false if you could not confirm it). Read the plan at the provided planPath; for every task reported failed or blocked, check whether its declared Create: paths exist in the tree — list any that are genuinely absent as missing deliverables. For any deliverable that is present and structurally complete but whose behavior the sandbox could not execute, list it under deferredVerification as an object { deliverable, reason, why }, where reason is one of 'browser' (a live UI), 'runtime' (a target runtime the sandbox cannot run — process boot, device, deploy target), 'external' (an unreachable service/credential/network), or 'manual' (requires human judgment), so the gate can route runtime/external items to an explicit acknowledgement.{{ANCESTRY_BLOCK}} Authoritative shas live in <runDir>/heads/: read task-<id> for each merged task id in your inputs, and the highest-numbered wave-<n> slot is your detach target. Treat a missing or malformed slot for a merged task exactly as an ancestry miss. Sha values quoted elsewhere in this prompt are context, not authority.
 <!-- /BAKE -->
 
 In the structured report this lands in `tests` and `completenessFindings`; blocked waves land in `blockedWaves` (presentation item 6), cascaded work in `unfinished`.
@@ -153,6 +158,43 @@ empty):
 <!-- BAKE:COMPLETENESS_ANCESTRY -->
 You are also given mergedShas, the recorded head sha of every mergeable done task. For each entry, assert that its commit landed in this integration tree by running git merge-base --is-ancestor <headSha> HEAD; return under ancestryMisses every task whose recorded head is not an ancestor of the current HEAD (an empty ancestryMisses when they all are). A recorded head that is not an ancestor is a silently dropped task, and the controller treats a non-empty ancestryMisses as BLOCKED. mergedShas: {{MERGED_SHAS}}
 <!-- /BAKE -->
+
+---
+
+## Derived Task Heads
+
+The ancestry assertion above is only as good as the shas it compares, and every sha in a
+run report reaches the controller the same way: a model typed it into its JSON result. A
+fabricated or truncated tail defeats the check silently — the assertion still runs, against
+a sha that never existed. `#114` closes that by making the merge-side roles **derive** the
+values instead of recording them.
+
+The sidecar layout (a fixed convention — the merge, reconcile, and critic prompts all build
+against it, and none of them may vary it):
+
+```
+<runDir>/heads/task-<taskId>   the merged task branch's tip
+<runDir>/heads/wave-<n>        the integration HEAD after wave n's merge
+```
+
+Each file holds exactly one lowercase 40-hex sha plus an optional trailing newline, produced
+by shell redirection of `git rev-parse` output — the merge and reconcile prompts say
+`Shell redirection only — never type a sha by hand` for that reason.
+
+Because a prompt constant cannot know which tasks a given wave merged, each **dispatch** also
+appends one line naming that wave's concrete slots, built from the mergeable task ids and the
+wave number in scope at the dispatch site:
+
+```
+For this wave that means slots: heads/task-3, heads/task-7, and heads/wave-2.
+```
+
+The completeness critic reads those files rather than trusting the shas quoted in its own
+prompt: `task-<id>` for each merged task id in its inputs, and the highest-numbered `wave-<n>`
+slot as its detach target. A missing or malformed slot for a merged task is treated exactly
+as an ancestry miss, so a merge agent that skipped the write cannot read as a clean run. Task
+**ids** still come from `waves.js` control flow, not from model transcription, so only the sha
+authority moves to files.
 
 ---
 

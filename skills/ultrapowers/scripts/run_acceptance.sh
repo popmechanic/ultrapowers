@@ -119,9 +119,22 @@ provision_worktree() { # $1=worktree $2=bootstrap_cmd → P_OK/P_CODE/P_OUTPUT
 }
 
 run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
-  local SUITE_DIR="$1" BR="$2" RUN_CMD="$3" BOOT="$4"
+  local SUITE_DIR="$1" BR="$2" RUN_CMD="$3" BOOT="$4" TMP=""
   R_REDKIND=""
-  EXAM_WT="$(mktemp -d)/exam"
+  # Canonicalize the temp parent BEFORE it becomes a worktree path: a path that
+  # traverses a symlink (macOS /var, or a symlinked TMPDIR) leaves the exam
+  # running with a logical cwd that differs from its physical one, which
+  # false-reds path-identity-sensitive toolchains. Two steps, never composed:
+  # the composed form would feed a failed `cd` into `dirname` -> "/" and hand
+  # that to the cleanup trap. The `[ -n "$TMP" ] &&` also keeps a failed
+  # `mktemp -d` empty, because `cd ""` succeeds and yields the process cwd.
+  TMP="$(mktemp -d)"
+  [ -n "$TMP" ] && TMP="$(cd "$TMP" && pwd -P)"
+  if [ -z "$TMP" ]; then
+    R_STATUS=ERROR; R_PASSED=false; R_CODE=1
+    R_OUTPUT="could not create a canonical temp parent for the exam worktree (mktemp -d / pwd -P failed)"; return 0
+  fi
+  EXAM_WT="$TMP/exam"
   if ! git -C "$REPO" worktree add --detach "$EXAM_WT" "$BR" >/dev/null 2>&1; then
     R_STATUS=ERROR; R_PASSED=false; R_CODE=1
     R_OUTPUT="could not create exam worktree for branch $BR in $REPO"; return 0
@@ -259,11 +272,19 @@ $SOUT"
 # worktree. No held-out suite is mounted. pytest exit codes are the authority:
 # 0 => pass; 5 => no tests collected (false-green guard); anything else => red.
 if [ "$MODE" = "suite-gate" ]; then
-  if [ -z "${SG_RUN:-}" ]; then
-    emit ERROR false 2 "--suite-gate requires a non-empty --run command (an empty command evals to exit 0 — refusing a false green)"
+  # Emptiness is judged on a whitespace-stripped COPY: `eval "   "` also exits 0,
+  # so a blank-looking --run is the same false green as an empty one (#105).
+  # SG_RUN itself stays unmodified — only the check uses the stripped copy.
+  SG_RUN_STRIPPED="$(printf '%s' "${SG_RUN:-}" | tr -d '[:space:]')"
+  if [ -z "$SG_RUN_STRIPPED" ]; then
+    emit ERROR false 2 "--suite-gate requires a non-empty --run command (an empty or whitespace-only command evals to exit 0 — refusing a false green)"
     exit 1
   fi
-  EXAM_WT="$(mktemp -d)/suite-gate"
+  # Canonical temp parent, same two-step guard as the sealed exam core above.
+  TMP="$(mktemp -d)"
+  [ -n "$TMP" ] && TMP="$(cd "$TMP" && pwd -P)"
+  [ -n "$TMP" ] || { emit ERROR false 1 "could not create a canonical temp parent for the suite-gate worktree (mktemp -d / pwd -P failed)"; exit 1; }
+  EXAM_WT="$TMP/suite-gate"
   if ! git -C "$REPO" worktree add --detach "$EXAM_WT" "$BRANCH" >/dev/null 2>&1; then
     emit ERROR false 1 "could not create suite-gate worktree for branch $BRANCH in $REPO"
     exit 1

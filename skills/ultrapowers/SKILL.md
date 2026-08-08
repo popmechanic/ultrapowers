@@ -79,8 +79,18 @@ same args file. The receipt's `llmDerives` list is the checklist:
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
 `bootstrapCmd` no-ops cleanly in a throwaway worktree (never the session
-checkout; global package caches are outside the boundary) and each wave
-entry's `tier`/`review` value is one the engine accepts.
+checkout; global package caches are outside the boundary), each wave
+entry's `tier`/`review` value is one the engine accepts, and smoke-runs the
+stamped `testCmd` in the same worktree. Exit 3 = the baseline is red on the
+base ref before any work (`baseline` in the JSON carries the failing
+output). Present the decision before launching: **fix drift first** (repair
+the base, re-run preflight) or **launch anyway** (the red is inherited;
+optionally add an explicit plan note authorizing any repair the run will
+need, so the reconcile agent never improvises one). A red baseline with no
+`bootstrapCmd` in a repo whose suite needs installed deps usually means the
+fresh probe worktree is missing them — supply `--bootstrap-cmd` rather than
+launching anyway. The acknowledgment is context-only — the in-run setup
+baseline remains the durable record.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
@@ -164,8 +174,18 @@ Hand back the printed URL; tear it down at the gate with
 ## Step 5 — Pre-merge gate (human gate)
 
 Save the Workflow tool's raw result JSON verbatim to a file (the driver unwraps
-the envelope itself; gate fields live under `result.*`), then **run the gate
-driver:**
+the envelope itself; gate fields live under `result.*`). Before running the gate
+driver, finalize the saved result JSON:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/finalize_report.py \
+  --report <saved-result.json> --heads <runDir>/heads --repo .
+```
+
+It rewrites the envelope's `result.*` headSha fields in place from the mechanical
+sidecars. A non-zero exit is a pre-gate failure: surface it and do **NOT** run
+`ultra_gate.py`; never fall back to token-reported values. Then run the gate
+driver with the finalized file:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
@@ -177,7 +197,7 @@ pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
 the gate on the integration branch). With integration in its dedicated
 worktree the engine never moved the checkout, so this restore is normally a
 no-op — it remains the fail-safe against operator-caused drift. It then
-saves the report, runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
 pre-existing operator files pass with a note), and administers acceptance per the
 compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
 `tests.passed` is triage context; the **exit code is the authority**:
@@ -231,9 +251,17 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
   spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
   — never by rebuilding from the report), return here.
-- **Redirect** — append corrective instructions to **only the affected** task
-  bodies and relaunch `ultrapowers-run` with `resume: true`, the **same**
-  `integrationBranch`, and args spread from the receipt's argsFile (it carries the mandatory `pluginRoot`/`runDir`). Return here.
+- **Redirect (micro-redirect)** — author `findings.json` from the gate report
+  (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
+  — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
+  then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
+  --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
+  `ultrapowers-run` with the emitted args file. The emitted args carry only
+  the amended tasks' waves — a one-task fix relaunches one task on the same
+  integration branch (merged prior work is already there); the fix still flows
+  through its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
+  integration branch are unsanctioned — route every post-gate edit through this
+  lane. Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps

@@ -1,6 +1,5 @@
 # tests/test_harvest_runs.py
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -399,29 +398,34 @@ def test_gate_evidence_empty_is_unknown():
     assert h._gate_evidence(make_records_with_text("no receipts here")) == ([], "unknown")
 
 
-def test_disk_fallback_loads_receipts_ordered_by_mtime(tmp_path):
+def test_disk_receipts_for_reads_only_requested_stamps_in_order(tmp_path):
+    # #118: no more repo-wide glob — _disk_receipts_for reads exactly the
+    # requested (registry) stamps, in the order given, and skips any other
+    # run-* dir present in the repo.
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     plan = repo / "docs/superpowers/plans/p.md"
     plan.parent.mkdir(parents=True)
     plan.write_text("plan")
-    older = repo / ".claude/ultrapowers/run-a"
-    newer = repo / ".claude/ultrapowers/run-b"
-    older.mkdir(parents=True)
-    newer.mkdir(parents=True)
-    (older / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
-    (newer / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
-    os.utime(older / "gate-receipt.json", (1000, 1000))
-    os.utime(newer / "gate-receipt.json", (2000, 2000))
-    entries = h._disk_gate_reports(str(plan))
+    a = repo / ".claude/ultrapowers/run-a"
+    b = repo / ".claude/ultrapowers/run-b"
+    foreign = repo / ".claude/ultrapowers/run-foreign"
+    a.mkdir(parents=True)
+    b.mkdir(parents=True)
+    foreign.mkdir(parents=True)
+    (a / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    (b / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    (foreign / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    entries = h._disk_receipts_for(str(plan), ["a", "b"])
     assert [e["receipt"]["verdict"] for e in entries] == ["BLOCKED", "PASS"]
     assert all(e["source"] == "disk" for e in entries)
     assert entries[0]["stamp"] == "20260703-000000"  # from the receipt itself
 
 
-def test_disk_fallback_fails_soft(tmp_path):
-    assert h._disk_gate_reports(str(tmp_path / "gone/plan.md")) == []
-    assert h._disk_gate_reports(None) == []
+def test_disk_receipts_for_fails_soft(tmp_path):
+    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), ["a"]) == []
+    assert h._disk_receipts_for(None, ["a"]) == []
+    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), []) == []
 
 
 def test_bundle_carries_evidence_fields(tmp_path):
@@ -445,3 +449,213 @@ def test_classify_origin_synthetic_temp_roots():
     assert h.classify_origin(home, home) == "home"
     assert h.classify_origin(home + "--worktree", home) == "home"
     assert h.classify_origin("-Users-x-proj", home) == "foreign"
+
+
+# --- #113/#118: session-launch registry + per-stamp disk receipt attribution
+# (deletes the repo-wide glob) ---
+
+def _wf_launch(stamp, plan="docs/superpowers/plans/p.md"):
+    args = json.dumps({"planPath": plan,
+                       "runDir": f"/repo/.claude/ultrapowers/run-{stamp}",
+                       "pluginRoot": "/pr"})
+    return _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                               "input": {"name": "ultrapowers-run", "args": args}}])
+
+
+def test_session_registry_extracts_stamps_and_planpaths():
+    recs = [_wf_launch("20260806-1", "docs/superpowers/plans/a.md"),
+            _wf_launch("20260806-2", "docs/superpowers/plans/b.md"),
+            _wf_launch("20260806-1", "docs/superpowers/plans/a.md")]  # dedup
+    reg = h.session_registry(recs)
+    assert reg["stamps"] == ["20260806-1", "20260806-2"]
+    assert reg["planPathsByStamp"]["20260806-2"] == "docs/superpowers/plans/b.md"
+
+
+def test_session_registry_reads_receipt_stamps():
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": json.dumps({"mode": "gate", "verdict": "PASS", "stamp": "20260806-9"})}]}])]
+    assert "20260806-9" in h.session_registry(recs)["stamps"]
+
+
+def test_disk_receipts_only_for_registry_stamps(tmp_path):
+    # repo with a receipt for an in-registry stamp AND a foreign run dir
+    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
+    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
+    plan = plans / "p.md"; plan.write_text("x")
+    for stamp, verdict in [("20260806-1", "NEEDS_ACK"), ("19990101-9", "BLOCKED")]:
+        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
+        (d / "gate-receipt.json").write_text(json.dumps(
+            {"mode": "gate", "verdict": verdict, "stamp": stamp}))
+    entries = h._disk_receipts_for(str(plan), ["20260806-1"])
+    assert [e["stamp"] for e in entries] == ["20260806-1"]   # foreign 1999 dir NOT attached
+    assert all(e["source"] == "disk" for e in entries)
+
+
+def test_repo_wide_glob_is_gone():
+    assert not hasattr(h, "_disk_gate_reports")
+
+
+def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
+    # session that launched stamp A; repo also holds stamp B's receipt
+    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
+    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
+    (plans / "p.md").write_text("x")
+    for stamp in ("A-1", "B-2"):
+        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
+        (d / "gate-receipt.json").write_text(json.dumps(
+            {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": stamp}))
+    recs = REAL + [_wf_launch("A-1", str(plans / "p.md"))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    stamps = {g.get("stamp") for g in bundle["gateReports"]}
+    assert "B-2" not in stamps and "A-1" in stamps
+
+
+# --- Task 2 (#113): multi-run bundle shape + audit union across launches ---
+
+def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
+    r1 = json.dumps({"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S1"})
+    ok1 = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    r2 = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S2"})
+    recs = (REAL
+            + [_wf_launch("S1", "docs/superpowers/plans/a.md"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r1}]}]),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok1}]}]),
+               _wf_launch("S2", "docs/superpowers/plans/b.md"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r2}]}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    runs = bundle["runs"]
+    assert [r["stamp"] for r in runs] == ["S1", "S2"]
+    assert runs[0]["planPath"].endswith("a.md") and runs[0]["terminus"] == "approved"
+    assert runs[1]["terminus"] == "BLOCKED"
+    assert bundle["terminus"] == "BLOCKED"          # last non-approved run
+    assert bundle["planPath"].endswith("a.md")      # top-level = first plan, unchanged meaning
+
+
+def test_merge_audits_sums_totals_and_concats_agents():
+    a = {"agents": [{"role": "impl"}], "totals": {"turns": 10, "outputTokens": 100}}
+    b = {"agents": [{"role": "review"}], "totals": {"turns": 5, "outputTokens": 50}}
+    m = h._merge_audits([a, b])
+    assert len(m["agents"]) == 2
+    assert m["totals"]["turns"] == 15 and m["totals"]["outputTokens"] == 150
+
+
+def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
+    d1, d2 = tmp_path / "t1", tmp_path / "t2"
+    for d in (d1, d2):
+        d.mkdir(); (d / "agent-1.jsonl").write_text("{}")
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                "text": f"Transcript dir: {d}"}]}]) for d in (d1, d2)]
+    assert h._transcript_dirs(recs) == [str(d1), str(d2)]
+
+
+# --- fix round 1 (adversarial review): isolate classify_session_kind's new
+# has_registered_launch signal — a session whose ONLY engine evidence is a
+# structurally-verified Workflow launch (real run-<stamp> args). No printed
+# gate receipts, no agent-*.jsonl transcripts, no integrationBranch, and no
+# self-authored plan (planningFound stays False since nothing Writes/Edits
+# the plan path). Previously "meta"/dropped; now "engine"/bundled with
+# terminus "unknown". Pinning this in isolation (it was previously only
+# incidentally covered inside a scenario that ALSO had gate receipts) so the
+# operator's spec-owner sign-off has an exact, tested description to bless
+# or reverse.
+def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
+    # plan path has no .git ancestor under tmp_path -> _disk_receipts_for
+    # deterministically returns [] (no accidental match against the real repo).
+    plan = str(tmp_path / "docs/superpowers/plans/p.md")
+    # mentioned so is_real_run's saw_dir signal fires, but never created on
+    # disk -> _transcript_dirs falls back to it, audit_run.audit finds no
+    # agent-*.jsonl -> merged audit has zero agents (no engine-role signal).
+    tdir = tmp_path / "wf_launch_only"
+    recs = [
+        _wf_launch("ONLY-1", plan),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["sessionKind"] == "engine"
+    assert bundle["terminus"] == "unknown"
+    assert bundle["truncated"] is True
+    assert bundle["gateReports"] == []
+    assert bundle["planningFound"] is False
+    assert [r["stamp"] for r in bundle["runs"]] == ["ONLY-1"]
+    assert bundle["runs"][0]["terminus"] == "unknown"
+    assert bundle["runs"][0]["gateReports"] == []
+
+
+# --- Task 3 (#113): terminus honesty (override-derivable via merge evidence)
+# + slice envelope (tail cut at the last run-artifact record) ---
+
+def test_blocked_then_merge_evidence_derives_approved(tmp_path):
+    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
+                          "integrationBranch": "ultra/integration-S1"})
+    recs = (REAL
+            + [_wf_launch("S1"),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}]),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                    "text": "Merged pull request #7 (ultra/integration-S1)"}]}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    # override stays DERIVABLE: the receipt's BLOCKED verdict is still in the bundle
+    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
+    assert bundle["truncated"] is False
+
+
+def test_blocked_without_merge_evidence_stays_blocked(tmp_path):
+    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
+                          "integrationBranch": "ultra/integration-S1"})
+    recs = REAL + [_wf_launch("S1"),
+                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}])]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert json.loads((out / "bundle.json").read_text())["terminus"] == "BLOCKED"
+
+
+def test_slice_cuts_after_last_run_artifact(tmp_path):
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    recs = (REAL
+            + [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}]),
+               _rec("user", [{"type": "text", "text": "now let's investigate desktop internals"}]),
+               _rec("assistant", [{"type": "text", "text": "wave-unrelated post-run tangent"}])])
+    out = h.slice_transcript(recs)
+    assert "desktop internals" not in out and "tangent" not in out
+
+
+def test_slice_keeps_planning_head(tmp_path):
+    # no artifact after the head → nothing is cut
+    out = h.slice_transcript(REAL)
+    assert "build the thing" in out
+
+
+# --- fix round 1 (task review): _has_run_artifact must be tool_result-gated,
+# matching the _transcript_dirs / is_real_run convention — a plain prose turn
+# that merely mentions "integrationBranch" is not a run artifact and must not
+# become the slice cutoff. Discriminating shape: no tool_result artifact at
+# all in the transcript, so a correct implementation cuts nothing regardless
+# of where the prose mention sits.
+def test_slice_ignores_prose_mention_outside_tool_result(tmp_path):
+    recs = [
+        _rec("user", [{"type": "text", "text": "build the thing"}]),
+        _rec("assistant", [{"type": "text", "text": "note: integrationBranch naming can get confusing"}]),
+        _rec("user", [{"type": "text", "text": "definitely-real-content-after-prose"}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "definitely-real-content-after-prose" in out

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3 (stdlib only), pytest.
 
-**Acceptance:** suite.
+**Acceptance:** suite — the committed suite is the verification.
 
 ## Global Constraints
 

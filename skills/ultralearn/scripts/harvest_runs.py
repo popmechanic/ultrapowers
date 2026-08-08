@@ -7,6 +7,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -38,11 +39,19 @@ def _block_text(block):
 
 
 def _iter_blocks(records):
-    for r in records:
+    for _idx, r, b in _iter_blocks_indexed(records):
+        yield r, b
+
+
+def _iter_blocks_indexed(records):
+    """Like `_iter_blocks` but also yields each record's position in
+    `records` — needed wherever "later in the transcript" matters (the Task 3
+    merge-evidence lookahead and the slice tail cut)."""
+    for idx, r in enumerate(records):
         content = (r.get("message") or {}).get("content")
         if isinstance(content, list):
             for b in content:
-                yield r, b
+                yield idx, r, b
 
 
 def is_real_run(records):
@@ -71,9 +80,56 @@ def classify_origin(project_slug, home_slug):
     return "foreign"
 
 
+_RUN_ARTIFACT_MODES = ("gate", "approve", "teardown")
+
+
+def _has_run_artifact(txt):
+    """A record "is" a run artifact (Task 3 slice envelope) when its text is a
+    balanced-JSON gate/approve/teardown receipt, a Workflow tool_result (the
+    "Transcript dir:" / integrationBranch shape `is_real_run` also keys off
+    of), or a `sweep_worktrees` output line. Callers must gate this to
+    `tool_result` blocks (matching the `_transcript_dirs` / `is_real_run`
+    convention) — these are all machine-printed shapes that only ever
+    legitimately appear in tool output, never plain assistant/user prose that
+    merely mentions the words."""
+    if "sweep_worktrees" in txt or "Transcript dir:" in txt or "integrationBranch" in txt:
+        return True
+    i = txt.find('"mode"')
+    while i != -1:
+        start = txt.rfind("{", 0, i + 1)
+        if start != -1:
+            obj = _balanced_json(txt, start)
+            if isinstance(obj, dict) and obj.get("mode") in _RUN_ARTIFACT_MODES:
+                return True
+        i = txt.find('"mode"', i + 1)
+    return False
+
+
+def _last_artifact_record_index(records):
+    """Index (into `records`) of the last record holding a run artifact, or
+    None when no record qualifies — the slice envelope's tail bound. Scoped to
+    `tool_result` blocks only, so a plain text turn that merely mentions
+    "integrationBranch" or similar in prose can't masquerade as the cutoff."""
+    last = None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if not isinstance(b, dict) or b.get("type") != "tool_result":
+            continue
+        txt = _block_text(b)
+        if txt and _has_run_artifact(txt):
+            last = idx
+    return last
+
+
 def slice_transcript(records):
+    # Slice envelope (Task 3): the run ends at its last artifact — anything
+    # after is a post-run tangent, never wave-relevant. No start bound: a
+    # transcript with no artifact at all (e.g. planning-only) keeps its full
+    # head, unchanged from pre-Task-3 behavior.
+    cutoff = _last_artifact_record_index(records)
     lines = []
-    for r, b in _iter_blocks(records):
+    for idx, r, b in _iter_blocks_indexed(records):
+        if cutoff is not None and idx > cutoff:
+            continue
         rtype = r.get("type")
         txt = _block_text(b).strip()
         if not txt:
@@ -141,6 +197,59 @@ def _balanced_json(txt, start):
                 except json.JSONDecodeError:
                     return None
     return None
+
+
+_RUN_DIR_STAMP = re.compile(r"/run-([^/\s]+)$")
+
+
+def session_registry(records):
+    """Every stamp this session actually launched (#113/#118): the structural
+    source of truth for receipt attribution, so a foreign run's evidence can
+    no longer be attached to a session that never launched it.
+
+    Sources: every Workflow tool_use whose parsed input.args carries a
+    runDir matching '…/run-<stamp>' (planPath from those same args keys
+    planPathsByStamp), and every printed ultra_run/ultra_gate/approve/
+    teardown receipt's "stamp" field. First-appearance transcript order,
+    deduped.
+    """
+    stamps, seen, plan_paths_by_stamp = [], set(), {}
+
+    def _add(stamp):
+        if isinstance(stamp, str) and stamp and stamp not in seen:
+            seen.add(stamp)
+            stamps.append(stamp)
+
+    for _r, b in _iter_blocks(records):
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "tool_use" and b.get("name") == "Workflow":
+            args = (b.get("input") or {}).get("args")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = None
+            if isinstance(args, dict):
+                run_dir = args.get("runDir")
+                if isinstance(run_dir, str):
+                    m = _RUN_DIR_STAMP.search(run_dir)
+                    if m:
+                        stamp = m.group(1)
+                        _add(stamp)
+                        pp = args.get("planPath")
+                        if isinstance(pp, str) and pp.strip() and stamp not in plan_paths_by_stamp:
+                            plan_paths_by_stamp[stamp] = pp.strip()
+        txt = _block_text(b)
+        i = txt.find('"mode"')
+        while i != -1:
+            start = txt.rfind("{", 0, i + 1)
+            if start != -1:
+                obj = _balanced_json(txt, start)
+                if isinstance(obj, dict) and obj.get("mode") in ("gate", "approve", "teardown"):
+                    _add(obj.get("stamp"))
+            i = txt.find('"mode"', i + 1)
+    return {"stamps": stamps, "planPathsByStamp": plan_paths_by_stamp}
 
 
 def stitch_planning(plan_path, session_records):
@@ -248,11 +357,14 @@ def _gate_report(records):
     return reports[-1]["receipt"] if reports else None
 
 
-def _disk_gate_reports(plan_path):
-    """Fallback for runs whose transcript shows no receipts (docket drains):
-    read gate-receipt.json files from the run's repo, located via planPath.
-    Fails soft to [] — the repo may be gone."""
-    if not plan_path:
+def _disk_receipts_for(plan_path, stamps):
+    """Per-stamp disk fallback (#118): read gate-receipt.json ONLY for the
+    given registry stamps — never a repo-wide glob, so a foreign run's
+    receipt can never be attached. Locates the repo root from plan_path the
+    same way the old repo-wide fallback did. Fails soft to [] when the repo
+    can't be resolved, and skips any stamp whose file is missing/unreadable
+    (soft-fail per stamp)."""
+    if not plan_path or not stamps:
         return []
     root = Path(plan_path).parent
     while root != root.parent:
@@ -264,32 +376,29 @@ def _disk_gate_reports(plan_path):
     if not (root / ".git").exists():
         return []
     entries = []
-    try:
-        files = sorted((root / ".claude/ultrapowers").glob("run-*/gate-receipt.json"),
-                       key=lambda p: p.stat().st_mtime)
-    except OSError:
-        return []
-    for f in files:
+    per_stamp = {}
+    for stamp in stamps:
+        f = root / ".claude/ultrapowers" / f"run-{stamp}" / "gate-receipt.json"
         try:
             obj = json.loads(f.read_text())
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(obj, dict) and "verdict" in obj:
-            entries.append({"receipt": obj,
-                            "stamp": obj.get("stamp") or f.parent.name[len("run-"):],
-                            "ordinal": 0, "source": "disk"})
-    per_stamp = {}
-    for e in entries:
-        e["ordinal"] = per_stamp.get(e["stamp"], 0)
-        per_stamp[e["stamp"]] = e["ordinal"] + 1
+            ordinal = per_stamp.get(stamp, 0)
+            per_stamp[stamp] = ordinal + 1
+            entries.append({"receipt": obj, "stamp": obj.get("stamp") or stamp,
+                            "ordinal": ordinal, "source": "disk"})
     return entries
 
 
-def _transcript_dir(records):
-    # Collect every absolute-path "Transcript dir:" from tool_result blocks
-    # (prose mentions are not absolute paths), then prefer a dir that actually
-    # holds agent transcripts — a session may launch several workflows (e.g. the
-    # zero-agent probe before the real run); the probe's dir would zero the audit.
+def _transcript_dirs(records):
+    """Every candidate "Transcript dir:" mention (#113) whose dir actually
+    holds agent transcripts, in transcript order — a session may launch
+    several workflows (multiple /ultrapowers launches, or a zero-agent probe
+    before the real run) and each agent-bearing dir is its own run's evidence.
+    Fallback: [candidates[-1]] when NONE qualify, preserving the old
+    single-dir last-resort behavior (e.g. a dir that no longer exists on
+    disk when the harvester runs later)."""
     candidates = []
     for _r, b in _iter_blocks(records):
         if not (isinstance(b, dict) and b.get("type") == "tool_result"):
@@ -301,12 +410,133 @@ def _transcript_dir(records):
             if tail.startswith("/"):
                 candidates.append(tail)
     if not candidates:
-        return None
-    for c in candidates:
-        p = Path(c)
-        if p.is_dir() and any(p.glob("agent-*.jsonl")):
-            return c
-    return candidates[-1]
+        return []
+    qualifying = [c for c in candidates if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
+    return qualifying if qualifying else [candidates[-1]]
+
+
+def _merge_evidence_after(records, after_idx, branch):
+    """Conservative merge-evidence matcher (spec §5, Task 3): a `tool_result`
+    at a record index > after_idx whose text names `branch` alongside one of
+    the two real merge-success signatures — `Merged` (gh pr merge output) or
+    `Updating`/`Fast-forward` (git-merge output). Anything fuzzier is not a
+    match, so the BLOCKED verdict stands."""
+    if not branch:
+        return False
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if idx <= after_idx or not isinstance(b, dict) or b.get("type") != "tool_result":
+            continue
+        txt = _block_text(b)
+        if branch not in txt:
+            continue
+        if "Merged" in txt or "Updating" in txt or "Fast-forward" in txt:
+            return True
+    return False
+
+
+def _stamp_terminus(records, stamp, stamp_reports):
+    """Per-run terminus (#113 Task 2, refined Task 3) — the approve marker /
+    last receipt verdict rule applied to ONE stamp's own events, ignoring
+    other stamps' interleaved gate/approve markers. `stamp_reports` is that
+    stamp's own gate_reports entries (transcript ordinal-tagged, or disk
+    fallback) — used for the last-verdict fallback when no approve marker was
+    seen. An approve-mode receipt counts the instant it's found BY STAMP,
+    wherever it sits in the transcript — not only when it's the last mention.
+
+    Task 3 override: when the base verdict is BLOCKED, a conservative
+    merge-evidence match after that receipt derives `approved` — the BLOCKED
+    receipt itself stays visible in `gateReports`, only the terminus flips."""
+    approved = False
+    last_blocked_branch, last_blocked_idx = None, None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        txt = _block_text(b)
+        i = txt.find('"mode"')
+        while i != -1:
+            start = txt.rfind("{", 0, i + 1)
+            if start != -1:
+                obj = _balanced_json(txt, start)
+                if isinstance(obj, dict) and obj.get("stamp") == stamp:
+                    if obj.get("mode") == "gate" and "verdict" in obj:
+                        approved = False
+                        if obj.get("verdict") == "BLOCKED":
+                            last_blocked_branch = obj.get("integrationBranch")
+                            last_blocked_idx = idx
+                        else:
+                            last_blocked_branch, last_blocked_idx = None, None
+                    elif obj.get("mode") in ("approve", "teardown") and "lockReleased" in obj:
+                        if obj.get("mode") == "approve":
+                            approved = True
+                            last_blocked_branch, last_blocked_idx = None, None
+            i = txt.find('"mode"', i + 1)
+    if approved:
+        return "approved"
+    verdict = stamp_reports[-1]["receipt"].get("verdict", "unknown") if stamp_reports else "unknown"
+    if verdict == "BLOCKED" and last_blocked_idx is not None \
+            and _merge_evidence_after(records, last_blocked_idx, last_blocked_branch):
+        return "approved"
+    return verdict
+
+
+def _runs_for_bundle(records, registry, gate_reports):
+    """Group merged gate_reports by launched stamp into the `runs` bundle
+    field (#113 Task 2): [{stamp, planPath, gateReports, terminus}], one
+    entry per registry stamp in transcript (launch) order."""
+    by_stamp = {}
+    for g in gate_reports:
+        by_stamp.setdefault(g["stamp"], []).append(g)
+    runs = []
+    for stamp in registry["stamps"]:
+        stamp_reports = by_stamp.get(stamp, [])
+        runs.append({
+            "stamp": stamp,
+            "planPath": registry["planPathsByStamp"].get(stamp),
+            "gateReports": stamp_reports,
+            "terminus": _stamp_terminus(records, stamp, stamp_reports),
+        })
+    return runs
+
+
+def _aggregate_terminus(runs, fallback):
+    """Aggregate terminus rule (spec §3): all runs approved -> approved; else
+    the last non-approved run's terminus in transcript order. No registry
+    runs at all (legacy pre-#113 sessions) -> keep the existing single-report
+    terminus unchanged."""
+    if not runs:
+        return fallback
+    non_approved = [r for r in runs if r["terminus"] != "approved"]
+    return "approved" if not non_approved else non_approved[-1]["terminus"]
+
+
+def _transcript_dir(records):
+    # Thin wrapper (#113): keeps the pre-multi-run singular meaning — the
+    # last preferred candidate — for the bundle's "transcriptDir" field and
+    # any other single-dir caller.
+    dirs = _transcript_dirs(records)
+    return dirs[-1] if dirs else None
+
+
+def _merge_audits(audits):
+    """Union an ultrapowers-run audit across every transcript dir a session
+    launched (#113): concatenate agents, sum numeric totals key-wise, join
+    non-empty notes. Empty input preserves today's no-transcript-dir shape."""
+    audits = [a for a in audits if isinstance(a, dict)]
+    if not audits:
+        return {"agents": [], "note": "no transcript dir"}
+    agents, totals, notes = [], {}, []
+    for a in audits:
+        agents.extend(a.get("agents") or [])
+        for k, v in (a.get("totals") or {}).items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                totals[k] = totals.get(k, 0) + v
+        note = a.get("note")
+        if note:
+            notes.append(note)
+    merged = {"agents": agents}
+    if totals:
+        merged["totals"] = totals
+    if notes:
+        merged["note"] = "; ".join(notes)
+    return merged
 
 
 def _repo_root():
@@ -402,19 +632,26 @@ def _engine_epoch(records, origin, timeline=None):
     return {"epoch": epoch, "asOf": ts, "basis": basis}
 
 
-def classify_session_kind(records, audit, gate_report, planning_found):
+def classify_session_kind(records, audit, gate_report, planning_found, has_registered_launch=False):
     """Distinguish a real /ultrapowers engine run from a non-engine Workflow
     session (research fan-out, issue drafting) that merely used the Workflow
-    tool. Engine signals: a recognized engine role among the audited agents, OR
-    a real integration branch in the gate report, OR a captured plan. A session
-    with none of these is 'meta' (e.g. [c9b028bf4da18d99]: ~200 role:unknown
-    agents, planningFound=false, no integration branch)."""
+    tool. Engine signals: a recognized engine role among the audited agents,
+    OR a real integration branch in the gate report, OR a captured plan, OR
+    (#113 Task 2) a structurally-verified launch in `session_registry` — a
+    Workflow tool_use whose parsed args carried a real `run-<stamp>` dir is
+    unambiguous engine evidence on its own, independent of whether that run's
+    printed gate receipt happens to carry an `integrationBranch` key (the
+    driver-era mode=="gate" receipt shape doesn't always). A session with none
+    of these is 'meta' (e.g. [c9b028bf4da18d99]: ~200 role:unknown agents,
+    planningFound=false, no integration branch, no registered launch)."""
     roles = {a.get("role", "").split(":", 1)[0] for a in (audit or {}).get("agents", [])}
     if roles & ENGINE_ROLES:
         return "engine"
     if gate_report and isinstance(gate_report.get("integrationBranch"), str):
         return "engine"
     if planning_found:
+        return "engine"
+    if has_registered_launch:
         return "engine"
     return "meta"
 
@@ -428,18 +665,33 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         return None
     session_id = Path(session_path).stem
     run_id = hashlib.sha256(f"{project_slug}/{session_id}".encode()).hexdigest()[:16]
-    tdir = _transcript_dir(records)
+    tdirs = _transcript_dirs(records)
+    tdir = tdirs[-1] if tdirs else None
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
-    gate_reports, terminus = _gate_evidence(records)
-    if not gate_reports:
-        gate_reports = _disk_gate_reports(plan_path)
-        if gate_reports:
-            terminus = gate_reports[-1]["receipt"].get("verdict", "unknown")
-    gate_report = gate_reports[-1]["receipt"] if gate_reports else None
-    audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
+    registry = session_registry(records)
+    transcript_reports, terminus = _gate_evidence(records)
+    covered = {r["stamp"] for r in transcript_reports}
+    disk = _disk_receipts_for(plan_path, [s for s in registry["stamps"] if s not in covered])
+    gate_reports = transcript_reports + disk
+    if not transcript_reports and disk:
+        terminus = disk[-1]["receipt"].get("verdict", "unknown")
+    # "final receipt" (singular) keeps its pre-#118 single-run meaning: the
+    # transcript is authoritative when it has any receipt at all; disk entries
+    # (now per-stamp scoped, never repo-wide) only stand in when the
+    # transcript printed none for THIS session's launched stamps.
+    last = transcript_reports[-1] if transcript_reports else (disk[-1] if disk else None)
+    gate_report = last["receipt"] if last else None
+    # runs[] (#113 Task 2): group the merged gate_reports by launched stamp;
+    # the top-level `terminus` becomes the aggregate across runs when the
+    # session actually registered any stamped launches, else it keeps its
+    # pre-#113 single-report meaning computed above.
+    runs = _runs_for_bundle(records, registry, gate_reports)
+    terminus = _aggregate_terminus(runs, terminus)
+    audit = _merge_audits([audit_run.audit(d) for d in tdirs])
     planning_found = stitch_planning(plan_path, records)
-    session_kind = classify_session_kind(records, audit, gate_report, planning_found)
+    session_kind = classify_session_kind(records, audit, gate_report, planning_found,
+                                          has_registered_launch=bool(registry["stamps"]))
     if session_kind != "engine":
         return None
     bundle = {
@@ -453,6 +705,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "transcriptDir": tdir,
         "gateReport": gate_report,
         "gateReports": gate_reports,
+        "runs": runs,
         "terminus": terminus,
         "truncated": terminus in ("NEEDS_ACK", "BLOCKED", "unknown"),
         "audit": audit,

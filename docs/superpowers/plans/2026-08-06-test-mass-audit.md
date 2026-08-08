@@ -8,7 +8,7 @@
 
 **Tech Stack:** pytest, node (sim), git.
 
-**Acceptance:** suite.
+**Acceptance:** suite — the committed suite is the verification.
 
 ## Global Constraints
 
