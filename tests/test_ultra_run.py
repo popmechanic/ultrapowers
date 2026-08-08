@@ -339,6 +339,27 @@ def test_detect_test_cmd_ladder(tmp_path):
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pytest-ini")
 
 
+@pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])
+def test_detect_test_cmd_bun_rung(tmp_path, lockfile):
+    # The bun rung had zero coverage: the ladder test above walks
+    # cargo->go->make->npm->pnpm->pytest and never plants a bun lockfile, so a
+    # deleted or renamed bun branch stayed green. Both lockfile spellings the
+    # ladder accepts (text `bun.lock`, binary `bun.lockb`) are pinned.
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "bun test"}}')
+    (tmp_path / lockfile).write_text("")
+    cmd, rule = detect_test_cmd(tmp_path)
+    assert (cmd, rule) == ("bun test", "package-json-bun")
+
+
+def test_detect_test_cmd_bun_vs_pnpm_precedence(tmp_path):
+    # Pin the precedence the ladder implements TODAY so a silent reorder fails
+    # loudly. pnpm is probed before bun, so pnpm wins when both are present.
+    (tmp_path / "package.json").write_text('{"scripts": {"test": "x"}}')
+    (tmp_path / "bun.lockb").write_text("")
+    (tmp_path / "pnpm-lock.yaml").write_text("")
+    assert detect_test_cmd(tmp_path) == ("pnpm test", "package-json-pnpm")
+
+
 def test_detect_ignores_package_json_without_test_script(tmp_path):
     (tmp_path / "package.json").write_text('{"scripts": {"build": "x"}}')
     assert detect_test_cmd(tmp_path) == (None, None)
@@ -554,6 +575,8 @@ def test_prune_reports_only_dirs_actually_removed(tmp_path, monkeypatch):
     assert ultra_run.prune_run_dirs(state, keep=1) == []
 
 
+@pytest.mark.skipif(os.geteuid() == 0,
+                    reason="DAC mode bits do not bind root; the undeletable-dir trigger cannot fire")
 def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
     repo = make_repo(tmp_path)
     state = repo / ".claude/ultrapowers"

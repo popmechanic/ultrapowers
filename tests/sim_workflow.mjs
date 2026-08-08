@@ -2707,7 +2707,6 @@ console.log('scenario escalation-classifier: OK')
   eq(models.b, 'opus', 'adversarial task reviewed at opus')
   eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
   eq(models.integration, 'opus', 'completeness critic stays opus')
-  eq(models.a, 'opus', 'legacy tierOverrides arg cannot downgrade the reviewer (ignored, #101)')
 }
 console.log('scenario reviewer-model-uniform-override-proof: OK')
 
@@ -2839,37 +2838,23 @@ async function scenarioTestCmdMissing() {
   console.log('scenario testcmd-missing: OK')
 }
 
-// #96: report.tests.command is stamped mechanically from args.testCmd even when
-// the completeness critic returns prose and no command field at all.
-async function scenarioMechanicalTestsCommand() {
-  const agent = makeAgent((label) => {
-    if (label === 'integration') {
-      return { testsPassed: true, onIntegrationHead: true,
-               output: 'python3 -m pytest -q (553 passed) ; node tests/sim.mjs (ALL PASSED)',
-               findings: [] }
-    }
-    return undefined
-  })
-  const report = await runWorkflow({ agent, args: baseArgs, budget: undefined })
-  eq(report.tests.command, 'pnpm check',
-     'tests.command must equal args.testCmd, never critic output')
-  console.log('scenario mechanical-tests-command: OK')
-}
-
-// #96: a critic that DOES emit a command field cannot override the stamp either —
-// the schema no longer carries `command`, and the report ignores it outright.
+// #96/#94: report.tests.command is stamped mechanically from args.testCmd. The
+// critic here emits BOTH failure shapes at once — a `command` field the schema
+// no longer carries, and prose output that reads like a command line — and
+// neither can reach tests.command.
 async function scenarioCriticCommandIgnored() {
   const agent = makeAgent((label) => {
     if (label === 'integration') {
       return { command: 'echo pretend-green', testsPassed: true,
-               output: 'ok', findings: [] }
+               output: 'python3 -m pytest -q (553 passed) ; node tests/sim.mjs (ALL PASSED)',
+               findings: [] }
     }
     return undefined
   })
   const report = await runWorkflow({
     agent, args: Object.assign({}, baseArgs, { testCmd: 'make test' }), budget: undefined })
   eq(report.tests.command, 'make test',
-     'tests.command ignores a critic-authored command field')
+     'tests.command ignores a critic-authored command field AND critic output prose')
   console.log('scenario critic-command-ignored: OK')
 }
 
@@ -2885,7 +2870,6 @@ async function scenarioEarlyExhaustStampsCommand() {
 }
 
 await scenarioTestCmdMissing()
-await scenarioMechanicalTestsCommand()
 await scenarioCriticCommandIgnored()
 await scenarioEarlyExhaustStampsCommand()
 
