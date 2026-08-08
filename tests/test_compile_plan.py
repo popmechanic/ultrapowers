@@ -7,9 +7,12 @@ import subprocess
 import sys
 import tempfile
 
+import pytest
+
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
+from compile_plan import FILES_EXEMPT_MARKERS  # noqa: E402
 
 _WAIVER = "**Acceptance:** waived — inline test plan"
 
@@ -2579,16 +2582,32 @@ def test_files_violations_allows_single_catch_all_bullet():
     assert v == []
 
 
-def test_gate_task_files_noise_does_not_block_compile(tmp_path):
+# Cases are LITERAL, not derived from FILES_EXEMPT_MARKERS: a parametrization
+# that reads the constant shrinks with it and goes vacuously green on exactly
+# the narrowing it exists to catch.
+@pytest.mark.parametrize("marker", ["gate", "manual", "release"])
+def test_exempt_marker_files_noise_does_not_block_compile(tmp_path, marker):
+    # Parametrized over the WHOLE exemption set, not gate alone: dropping
+    # `manual` or `release` from FILES_EXEMPT_MARKERS is a narrowing that a
+    # gate-only test could not see, and it would start blocking compiles on
+    # plans whose non-implementation tasks carry placeholder Files text.
     plan = tmp_path / "p.md"
     plan.write_text(
         "# P\n\n**Acceptance:** waived — test\n\n"
         "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
         "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
-        "### Task 2: Gate\n\n**Type:** gate\n**Depends-on:** 1\n\n"
-        "**Files:**\n- Verify: `(none)`\n\n- [ ] **Step 1: run the suite**\n")
+        "### Task 2: Exempt\n\n**Type:** %s\n**Depends-on:** 1\n\n"
+        "**Files:**\n- Verify: `(none)`\n\n- [ ] **Step 1: run the suite**\n"
+        % marker)
     out = compile_plan(plan)
     assert out["waves"] == [["1"]]
+
+
+def test_files_exempt_markers_is_exactly_the_non_implementation_set():
+    # The parametrization above derives its cases from the constant, so an
+    # ADDITION to the set would silently widen the exemption without any test
+    # noticing. Pin the membership as a literal.
+    assert FILES_EXEMPT_MARKERS == frozenset({"gate", "manual", "release"})
 
 
 def test_implementation_files_noise_still_blocks_compile(tmp_path):
