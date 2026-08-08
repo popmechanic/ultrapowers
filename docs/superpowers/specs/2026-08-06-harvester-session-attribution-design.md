@@ -46,6 +46,15 @@ Stamps carry the whole attribution; wf run IDs are deliberately not extracted
 (no consumer — trim review) and live in the slice for readers who care.
 Everything downstream attributes by this registry.
 
+**Blessed addendum (operator sign-off, 2026-08-08, issue #125):** a registered
+launch is itself engine evidence — `classify_session_kind` treats a
+structurally-verified Workflow launch (real `run-<stamp>` args) as sufficient
+to classify `engine`, so a launch-only session bundles as
+`terminus: unknown` / `truncated: true` instead of dropping as `meta`.
+Surfaced during the build (the plan's own tests required it), verified against
+#98's synthetic tagging (no interaction), pinned by
+`test_launch_only_session_bundles_as_engine_unknown`.
+
 ### 2. Receipt attribution (#118 lands here)
 
 Transcript-printed receipts keep today's handling (already session-scoped).
