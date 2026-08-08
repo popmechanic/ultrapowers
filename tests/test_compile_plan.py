@@ -2604,9 +2604,10 @@ def test_exempt_marker_files_noise_does_not_block_compile(tmp_path, marker):
 
 
 def test_files_exempt_markers_is_exactly_the_non_implementation_set():
-    # The parametrization above derives its cases from the constant, so an
-    # ADDITION to the set would silently widen the exemption without any test
-    # noticing. Pin the membership as a literal.
+    # The parametrization above lists its cases LITERALLY (so it catches a
+    # NARROWING of the set); an ADDITION to the constant would silently widen
+    # the exemption without any test noticing. This literal membership pin
+    # catches the widening.
     assert FILES_EXEMPT_MARKERS == frozenset({"gate", "manual", "release"})
 
 
