@@ -100,15 +100,27 @@ the payload round-trip failure above (Step 6).
 ## § Step 5 — Verdict independence from checkout position (#84)
 
 The workflow's setup agent checks out the integration branch in a **dedicated
-worktree**, never in the session repository. The gate verdict is derived from
-ref-resolved `HEAD` (the report's recorded merge sha and the completeness
-critic's own `git rev-parse HEAD`, both verified mechanically), not from the
-session checkout's position. This makes the verdict checkout-position-independent:
-the engine never moves the operator's checkout, and (as of #84) no longer restores
-it *back* either. That asymmetry is intentional — the safe direction — because a
-failed attempt to restore checkout state can silently strand the operator on the
-wrong branch, a pattern that cost hours in the 0.0.35 field shakedown when a
-restoration crash went unnoticed until a later session queried the wrong tree.
+worktree**, never in the session repository. The verdict is then independent of
+the session checkout's position on both of the legs that could otherwise read
+it. The integrity checks below derive from ref-resolved `HEAD` — the report's
+recorded merge sha and the completeness critic's own `git rev-parse HEAD`, both
+verified mechanically — not from where the session happens to sit. And
+acceptance is administered in a **fresh detached worktree** of the branch
+(`run_acceptance.sh` does this for the sealed exam and the suite gate alike —
+see § Step 5 — Why sealed exams are administered at the gate), so the other
+place the checkout position could bite is closed too. Neither leg alone
+establishes position-independence: head-match without the detached suite-gate
+would still run the tests in whatever tree the operator left behind.
+
+So the engine never moves the operator's checkout, and (as of #84) no longer
+moves it *back* either. That asymmetry is intentional — not restoring is the
+safe direction — because a restore is not a free undo: it acts on whatever
+checkout it finds, including one the operator deliberately moved. The 0.0.35
+field incident is exactly that case, and it is the argument. The restore did not
+fail; it **succeeded**, and in succeeding it wiped an operator's uncommitted
+edit — the only data destruction in the ledger's history caused by the engine
+itself. With the verdict already position-independent, restoring buys the checks
+nothing and risks destroying work the operator meant to keep.
 
 The gate mechanizes three integrity checks (now in `gate_check.py`, whose exit
 code is the authority and which emits each literal):
