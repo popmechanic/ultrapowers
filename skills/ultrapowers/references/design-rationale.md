@@ -97,24 +97,27 @@ the payload round-trip failure above (Step 6).
 
 ---
 
-## § Step 5 — Checkout drift (#29 / #32) and the critic-wrong-tree class
+## § Step 5 — Verdict independence from checkout position (#84)
 
-The workflow's setup agent checks out the integration branch in the session
-repository and nothing switches it back. Skipping the restore (or using a bare
-`git checkout <baseBranch>`) makes every `git log`/`git merge` at this gate
-silently target the integration branch, so the work *looks* prematurely merged
-when it is not. A misbehaving review role cannot police itself and the engine has
-no shell, so the clean-tree / head-match / gitVerified checks live at the gate,
-where the main session does have one (now mechanized in `gate_check.py`, whose
-exit code is the authority and which emits each literal):
+The workflow's setup agent checks out the integration branch in a **dedicated
+worktree**, never in the session repository. The gate verdict is derived from
+ref-resolved `HEAD` (the report's recorded merge sha and the completeness
+critic's own `git rev-parse HEAD`, both verified mechanically), not from the
+session checkout's position. This makes the verdict checkout-position-independent:
+the engine never moves the operator's checkout, and (as of #84) no longer restores
+it *back* either. That asymmetry is intentional — the safe direction — because a
+failed attempt to restore checkout state can silently strand the operator on the
+wrong branch, a pattern that cost hours in the 0.0.35 field shakedown when a
+restoration crash went unnoticed until a later session queried the wrong tree.
+
+The gate mechanizes three integrity checks (now in `gate_check.py`, whose exit
+code is the authority and which emits each literal):
 
 - `git status --porcelain` MUST be empty. A non-empty result means a role wrote
-  outside the worktree discipline (as in #32) — that work is unreviewed by
-  construction. Surface it as BLOCKED; never silently `git reset` it away
-  (silently moving trees is the very behavior #29 punished).
+  outside the worktree discipline — that work is unreviewed by construction.
+  Surface it as BLOCKED; never silently reset it away.
 - The integration branch HEAD MUST equal the report's last merge headSha. A
-  mismatch means the tree on disk is not the one the run produced (checkout
-  drift, #29).
+  mismatch means the tree on disk is not the one the run produced.
 - The report's `gitVerified` MUST be true — the completeness critic confirmed,
   via its own `git rev-parse HEAD`, that it reviewed the recorded merge HEAD. A
   false `gitVerified` means the completeness review is unverified.
