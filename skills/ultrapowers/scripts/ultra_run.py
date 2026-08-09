@@ -3,8 +3,8 @@
 
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 git-repo check, worktree-capability probe, self-host engine skew, superpowers
-compatibility, plan compile, committed-workflow install, run lock + checkout
-snapshot, and deterministic knob derivation (baseBranch from the launched
+compatibility, plan compile, committed-workflow install, run lock + dirty
+baseline, and deterministic knob derivation (baseBranch from the launched
 checkout, probe payload).
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
@@ -116,6 +116,24 @@ VALID_REVIEWS = {"lean", "adversarial"}
 
 def sh(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+
+
+def write_dirty_baseline(root):
+    """Record the launch-time dirty set to `.claude/ultrapowers/DIRTY_SNAPSHOT`
+    — `git status --porcelain` redirected to the file, nothing else.
+
+    This is gate_check.py's new-vs-pre-existing partition key: dirt listed here
+    predates the run and is the operator's, so the gate notes it instead of
+    accusing a role. #104 retired the snapshot/restore family that used to
+    write it, so the driver writes it directly; the checkout-position half
+    (CHECKOUT_SNAPSHOT) died with the family. Returns the CompletedProcess so
+    the caller can stage on its exit code (fail-closed: a git that could not
+    report status leaves an empty baseline, i.e. strict)."""
+    dest = Path(root) / ".claude/ultrapowers/DIRTY_SNAPSHOT"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w") as fh:
+        return subprocess.run(["git", "status", "--porcelain"], cwd=root,
+                              stdout=fh, stderr=subprocess.PIPE, text=True)
 
 
 def validate_knobs(args_path, root):
@@ -395,9 +413,12 @@ def main(argv=None):
                  success="lock acquired: " + stamp,
                  failure=r.stderr or r.stdout):
         return bail()
-    r = sh(["bash", str(HERE / "run_lock.sh"), "snapshot"], cwd=root)
-    if not stage("snapshot", r.returncode == 0,
-                 success="checkout snapshot recorded",
+    r = write_dirty_baseline(root)
+    dirt_lines = len([l for l in (root / ".claude/ultrapowers/DIRTY_SNAPSHOT")
+                      .read_text().splitlines() if l.strip()])
+    if not stage("dirty-baseline", r.returncode == 0,
+                 success="dirty baseline recorded: %d pre-existing line(s)"
+                         % dirt_lines,
                  failure=r.stderr):
         return bail()
 

@@ -60,7 +60,7 @@ def test_happy_path_receipt(tmp_path):
     stage_names = [s["stage"] for s in receipt["stages"]]
     for expected in ("git-repo", "worktree-probe", "engine-skew",
                      "superpowers-compat", "compile", "test-command", "install",
-                     "lock", "snapshot"):
+                     "lock", "dirty-baseline"):
         assert expected in stage_names
     run_dir = repo / ".claude/ultrapowers/run-t1"
     assert (run_dir / "receipt.json").is_file()
@@ -75,13 +75,44 @@ def test_happy_path_receipt(tmp_path):
     assert entries and all(t["tier"] is None for t in entries)
     assert all(t["review"] in ("lean", "adversarial") for t in entries)
     assert any("waves[][].tier" in d for d in receipt["llmDerives"])
-    # lock + snapshot actually happened, with the dirty set recorded
+    # lock + dirty-baseline actually happened, with the dirty set recorded
     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
     assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
+    # the checkout-position half of the retired family records nothing (#104)
+    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
     # probe contract pre-computed for the orchestrator
     assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
     assert receipt["workflowName"] == "ultrapowers-run"
     assert receipt["testCmd"] == "python3 -m pytest"
+
+
+def test_dirty_baseline_stage_records_the_preexisting_dirt(tmp_path):
+    """#104 relocation: the driver writes DIRTY_SNAPSHOT itself. Its content is
+    `git status --porcelain` at launch — the exact partition key gate_check
+    uses to tell operator dirt from dirt a role smuggled in mid-run."""
+    repo = make_repo(tmp_path)
+    (repo / "pytest.ini").write_text("[pytest]\n# operator edit\n")  # tracked
+    (repo / "operator-notes.md").write_text("deliberately uncommitted\n")
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    receipt = json.loads(r.stdout)
+    stage = [s for s in receipt["stages"] if s["stage"] == "dirty-baseline"][0]
+    assert stage["ok"] is True
+    recorded = (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").read_text()
+    porcelain = sh(["git", "status", "--porcelain"], cwd=repo).stdout
+    assert recorded == porcelain
+    assert " M pytest.ini" in recorded
+    assert "?? operator-notes.md" in recorded
+
+
+def test_dirty_baseline_is_empty_on_a_clean_launch(tmp_path):
+    """A clean tree records an empty baseline — not a missing file, which
+    gate_check would read as 'nothing pre-existed' by a different route."""
+    repo = make_repo(tmp_path)
+    assert run_driver(repo).returncode == 0
+    dirty = repo / ".claude/ultrapowers/DIRTY_SNAPSHOT"
+    assert dirty.is_file()
+    assert dirty.read_text() == ""
 
 
 def test_not_a_git_repo_fails_first_stage(tmp_path):
