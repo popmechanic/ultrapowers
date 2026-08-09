@@ -789,6 +789,71 @@ def test_stamp_terminus_unresolvable_sha_keeps_receipt_verdict(tmp_path):
     assert h._stamp_terminus(str(run_dir), stamp_reports) == "PASS"
 
 
+def _set_origin_default_branch(root, branch):
+    """Fake a configured `origin` remote whose HEAD points at `branch`,
+    without needing a real network fetch — writes the ref directly, the same
+    end-state `git clone`/`git remote set-head origin <branch>` produces, so
+    `git symbolic-ref refs/remotes/origin/HEAD` resolves to it."""
+    _git(["update-ref", f"refs/remotes/origin/{branch}", branch], root)
+    _git(["symbolic-ref", "refs/remotes/origin/HEAD", f"refs/remotes/origin/{branch}"], root)
+
+
+# --- adversarial review fix round 1: `_stamp_base_branch`'s level-1
+# (receipt.json baseBranch) and level-2 (symbolic-ref) sources were
+# unexercised — every prior fixture merged into "main" with no receipt.json
+# and no origin remote, so both levels silently fell through to the level-3
+# "main" hardcode and the tests passed by coincidence (mutation-tested:
+# renaming baseBranch -> baseBranchTYPO left all tests green). These two
+# pins merge into a base branch OTHER than "main" so only a correct read of
+# the named level actually produces "approved".
+
+def test_stamp_base_branch_level1_receipt_json_drives_ancestry(tmp_path):
+    # Level 1 (spec F3): <runDir>/receipt.json's baseBranch. The fixture's
+    # integration branch is "develop", never merged into "main" — so this
+    # only passes if _stamp_base_branch actually reads receipt.json; a
+    # baseBranch->anything-else mutation (or a level-3 "main" fallback
+    # substituting for it) must fail this test.
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    _git(["checkout", "-q", "-b", "develop"], root)
+    _git(["checkout", "-q", "-b", "feature"], root)
+    (root / "f.txt").write_text("feature\n")
+    _git(["commit", "-q", "-am", "feature work"], root)
+    head_sha = _rev_parse(root, "HEAD")
+    _git(["checkout", "-q", "develop"], root)
+    _git(["merge", "-q", "--no-ff", "-m", "merge feature", "feature"], root)
+    run_dir = root / ".claude/ultrapowers/run-S6"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "receipt.json").write_text(json.dumps({"baseBranch": "develop"}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    stamp_reports = h._disk_receipts_for({"S6": str(run_dir)}, ["S6"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "approved"
+
+
+def test_stamp_base_branch_level2_symbolic_ref_drives_ancestry(tmp_path):
+    # Level 2 (spec F3): no receipt.json -> `git symbolic-ref
+    # refs/remotes/origin/HEAD`. The fixture's origin HEAD points at
+    # "trunk", never merged into "main" — so this only passes if the
+    # symbolic-ref read actually resolves and drives the ancestry check.
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    _git(["branch", "trunk"], root)
+    _git(["checkout", "-q", "-b", "feature"], root)
+    (root / "f.txt").write_text("feature\n")
+    _git(["commit", "-q", "-am", "feature work"], root)
+    head_sha = _rev_parse(root, "HEAD")
+    _git(["checkout", "-q", "trunk"], root)
+    _git(["merge", "-q", "--no-ff", "-m", "merge feature", "feature"], root)
+    _set_origin_default_branch(root, "trunk")
+    run_dir = root / ".claude/ultrapowers/run-S7"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    stamp_reports = h._disk_receipts_for({"S7": str(run_dir)}, ["S7"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "approved"
+
+
 def test_stamp_terminus_no_git_repo_keeps_receipt_verdict(tmp_path):
     # runDir has no `.git`-bearing ancestor at all -> not resolvable, receipt
     # verdict stands (fail-soft, never a crash).
