@@ -263,9 +263,11 @@
 **Notes:** One comment. CLUSTER: plan with #110 + #111 (one inline sweep-hygiene plan). Mind the anti-drift rule if the comment lives in a baked span.
 
 ### #104: Subtraction candidate: retire the snapshot/restore family once #84 shakedown proves the checkout is never touched
-**State:** accepted
+**State:** queued
 **Score:** 4 — real subtraction, but its precondition (0.1.14 live-shakedown evidence that the checkout is untouched) has not been observed yet
 **Est-files:** skills/ultrapowers/scripts/run_lock.sh, skills/ultrapowers/harnesses/waves.js, tests/
+**Plan:** docs/superpowers/plans/2026-08-09-snapshot-family-retirement.md
+**Engine:** ultrapowers
 **Notes:** DO NOT ACCEPT THIS CYCLE unless the operator overrides: the closing event is the live shakedown this very docket run provides (its ultrapowers-engine entries run on installed 0.1.14). If the drain's runs show zero checkout mutation and clean sweeps, next cycle's triage promotes this to accepted with field evidence in hand. — PROMOTED 2026-08-09 by operator direction (distill deletion-led cycle): precondition met — 0.1.14/0.1.15 live shakedown showed 5 waves runs + resumes with zero checkout mutation, snapshot/restore a no-op throughout, plus a machine-crash recovery with zero loss via git-durable state alone. Sequence WITH #126 (deletion-first).
 
 ### #119: Complexity-audit loop: adversarial trim review at spec approval + distill cluster-died retrospective
