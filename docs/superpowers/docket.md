@@ -277,31 +277,31 @@
 **Notes:** Spec ALREADY WRITTEN + committed (docs/superpowers/specs/2026-08-06-complexity-audit-loop-design.md) with its own first trim review adjudicated in-spec — planning sweep should go straight from that spec to a plan, no new brainstorm. Practice already adopted in-session for the 2026-08-06 sweep; this entry makes it durable. Two prose surfaces, no scripts, no gate changes. Accepted directly at creation by explicit operator commission (brainstorm 2026-08-06).
 
 ### #126: Harvester attribution v2: delete the transcript receipt text-scan
-**State:** triaged
+**State:** accepted
 **Score:** 9.5 — the deletion-led cycle's centerpiece: measurement-loop integrity AND genuine simplification (north-star simplest-codebase clause)
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Notes:** Distill 2026-08-09 headliner; supersedes #121 (closed). Sev-3 field evidence at 0.1.15 (home bundle: fixture stamps registered as runs, gateReport = fixture literal, 5/5 real receipts lost). Fix IS a deletion: stamps from Workflow tool_use args only; receipts/gateReport from per-stamp disk reads only (last-write-wins); multi-launch slice envelope; carries #121's hygiene items. canaryMetric: home-bundle receipt accuracy 0/5 → 5/5. SEQUENCE FIRST with #104 (already accepted) — one deletion pair, per operator directive. Issue body carries the full design — short brainstorm.
 
 ### #127: redirect_args.py derives the integration branch from the argsFile
-**State:** triaged
+**State:** accepted
 **Score:** 7 — operator-attention efficiency on the field-validated micro-redirect lane; 3/3 sessions stumbled on first call
 **Est-files:** skills/ultrapowers/scripts/redirect_args.py, tests/test_redirect_args.py, skills/ultrapowers/SKILL.md
 **Notes:** Tiny structural fix: derivation order argsFile.integrationBranch → --integration-branch → gate-receipt.json → loud error. One new test. SKILL micro-redirect bullet drops the gate-receipt clause. Drain-sized.
 
 ### #120: Worktree creation fails closed on an existing path (narrowed scope)
-**State:** triaged
+**State:** accepted
 **Score:** 7 — integration correctness; 2nd field occurrence (wrong-worktree dispatch blocked a foreign run); the cycle's ONE additive guard
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/
 **Notes:** OPERATOR-NARROWED at distill: ONLY the single fail-closed check at worktree creation for non-resume launches (path exists → loud error naming path + sweep remedy). NOT in scope: HEAD-equals-base assert (ancestry check owns that symptom, proven in field), audit surfaces, new error taxonomy. Harness JS → .mjs sim + sentinel + anti-drift obligations.
 
 ### #122: Docket tooling seams from the drain shakedown
-**State:** triaged
+**State:** accepted
 **Score:** 6.5 — every future drain re-hits all three seams (Acceptance grammar guidance, compile_docket clusters, drain-mode run-ID recording); autonomy robustness
 **Est-files:** skills/ultradocket/SKILL.md, skills/ultradocket/scripts/compile_docket.py, tests/test_compile_docket.py
 **Notes:** Three parts: (1) sweep step-3/5 guidance names the exact compiling Acceptance form (prose; grammar itself is eval-gated compiler vocabulary — do NOT widen ACCEPT_SUITE); (2) compile_docket learns PLAN-TOGETHER cluster semantics (unit = unique plan, entries advance together — the drain's deduped-view logic, promoted); (3) drain-mode launch-ID recording so teardown's sweep set derives instead of being hand-reconstructed. Self-contained dev tooling, suite disposition.
 
 ### #128: Standing pre-authorization at NEEDS_ACK, recorded
-**State:** triaged
+**State:** accepted
 **Score:** 6 — consent-record honesty at the single human gate; 3 field observations; operator-decided direction (sanction-with-recording)
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/references/report-format.md
 **Notes:** CAUTION at planning: the approve receipt is written by FROZEN ultra_gate.py — unless the eval route is taken, scope the recording to the orchestrator layer (gate presentation + report + SKILL prose: print the ack list being consumed under the standing grant with its verbatim instruction + turn), never an ultra_gate.py edit. Also: verify the harvester/slicer preserves short human turns before treating the salvage-no-ack observation as real (check while implementing).
