@@ -11,6 +11,18 @@ def _rec(type_, content):
     return {"type": type_, "message": {"role": type_, "content": content}}
 
 
+def _wf_launch(stamp, plan="docs/superpowers/plans/p.md", run_dir=None):
+    """A Workflow tool_use launch record carrying structurally-real runDir/
+    planPath args — the only source `session_registry` trusts for stamps and
+    receipt locations post-#126. `run_dir` defaults to a fixed, guaranteed-
+    nonexistent path so callers that don't care about actual disk receipts
+    get a stamp registered with nothing readable behind it."""
+    run_dir = run_dir or f"/repo/.claude/ultrapowers/run-{stamp}"
+    args = json.dumps({"planPath": plan, "runDir": run_dir, "pluginRoot": "/pr"})
+    return _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                               "input": {"name": "ultrapowers-run", "args": args}}])
+
+
 REAL = [
     _rec("user", [{"type": "text", "text": "build the thing"}]),
     _rec("assistant", [{"type": "tool_use", "name": "Workflow", "input": {"name": "ultrapowers-run"}}]),
@@ -51,8 +63,13 @@ def test_slice_keeps_user_turns_and_run_turns_drops_noise():
 
 
 def test_build_bundle_writes_json_and_slice(tmp_path):
+    # REAL alone carries only prose evidence (no registered run-<stamp>
+    # launch); #126 deletes the legacy prose scan classify_session_kind used
+    # to lean on, so a registered launch is appended to keep this an "engine"
+    # session — unrelated to what this test actually pins (bundle/slice I/O).
     session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in REAL) + "\n")
+    recs = REAL + [_wf_launch("REAL-1")]
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     cache = tmp_path / "cache"
     home = "-Users-marcusestes-Websites-ultrapowers"
     out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x", cache, home)
@@ -75,7 +92,8 @@ def test_build_bundle_skips_non_run(tmp_path):
 def test_harvest_is_incremental_and_idempotent(tmp_path):
     projects = tmp_path / "projects" / "-Users-marcusestes-Documents-Legal-x"
     projects.mkdir(parents=True)
-    (projects / "s1.jsonl").write_text("\n".join(json.dumps(r) for r in REAL) + "\n")
+    recs = REAL + [_wf_launch("REAL-1")]  # see test_build_bundle_writes_json_and_slice
+    (projects / "s1.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     cache = tmp_path / "cache"
     home = "-Users-marcusestes-Websites-ultrapowers"
     first = h.harvest(tmp_path / "projects", cache, home)
@@ -138,36 +156,16 @@ def test_transcript_dir_prefers_dir_with_agents(tmp_path):
     assert h._transcript_dir(recs) == str(run)
 
 
-def test_gate_report_returns_none_when_only_schema_decoy_present():
-    # the report-format schema has "integrationBranch" in a "required" array but
-    # no real top-level value — must NOT be mistaken for a gate report
-    assert h._gate_report(DOC_DENSE) is None
-
-
-def test_gate_report_extracts_real_report_skipping_decoy():
-    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
-        'schema {"type":"object","required":["integrationBranch"]} '
-        'result {"integrationBranch":"ultra/real","waves":[["1"]],"tasks":[]} '
-        'usage {"tokens":5}'}]}])]
-    gr = h._gate_report(recs)
-    assert gr is not None and gr["integrationBranch"] == "ultra/real"
-
-
-# --- 0.0.31+ driver era: ultra_gate.py prints a gate receipt (mode=="gate",
-# has a "verdict") on every administered gate. _gate_report must prefer that
-# printed receipt over the legacy integrationBranch scan, which stays as the
-# fallback for pre-driver sessions.
-def make_records_with_text(text):
-    """Minimal record shape _gate_report walks: one user record whose sole
-    content block is a tool_result text block carrying the given text (mirrors
-    the file's existing _gate_report fixtures above)."""
-    return [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": text}]}])]
-
+# --- #126: gateReport/gateReports are disk-sourced only (runDir-located
+# reads) — _gate_report/_gate_evidence/_legacy_gate_report (and every
+# transcript-text receipt scan they did) are deleted outright. These tests
+# convert the old scan-shape/decoy/legacy-fallback pins to their disk-read
+# equivalents.
 
 def _real_receipt(verdict, gate_exit):
-    # Mirror ultra_gate.py's exact serialized key order and nested shape: the
-    # "gateCheck" dict lands directly before "gateCheckExit", so a synthetic
-    # fixture cannot reconstruct the old '"gateCheckExit"'-anchor blind spot.
+    # Mirror ultra_gate.py's exact serialized key order and nested shape,
+    # written to a real gate-receipt.json (the only place a receipt is ever
+    # read from post-#126).
     return {"mode": "gate", "stamp": "20260703-000000",
             "reportPath": "/tmp/r.json", "branch": "ultra/integration-x",
             "gateCheck": {"verdict": verdict,
@@ -178,55 +176,59 @@ def _real_receipt(verdict, gate_exit):
             "verdict": verdict}
 
 
-def test_gate_report_prefers_printed_ultra_gate_receipt(tmp_path):
-    receipt = _real_receipt("NEEDS_ACK", 2)
-    records = make_records_with_text(  # use the file's existing record builder
-        "gate administered:\n" + json.dumps(receipt, indent=2) + "\ndone")
-    got = h._gate_report(records)
-    assert got is not None and got["verdict"] == "NEEDS_ACK"
+def test_doc_dense_decoy_never_manufactures_a_bundle(tmp_path):
+    # DOC_DENSE's schema-shaped "integrationBranch" decoy (a "required" array
+    # entry, not a real value) previously needed a careful legacy-scan skip;
+    # now it's moot by construction — no transcript text is ever scanned for
+    # receipts, and DOC_DENSE's Workflow args carry a planPath but no runDir,
+    # so no stamp is ever registered either. No engine signal at all -> meta.
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in DOC_DENSE) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert out is None
 
 
-def test_gate_report_takes_last_receipt_when_rerun(tmp_path):
-    first = _real_receipt("BLOCKED", 1)
-    second = _real_receipt("NEEDS_ACK", 2)
-    records = make_records_with_text(
-        json.dumps(first, indent=2) + "\nre-ran after parking docs\n"
-        + json.dumps(second, indent=2))
-    assert h._gate_report(records)["verdict"] == "NEEDS_ACK"
+def test_gate_report_singular_is_last_disk_receipt_of_last_registered_stamp(tmp_path):
+    run1 = tmp_path / "run-1"; run1.mkdir()
+    run2 = tmp_path / "run-2"; run2.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    (run2 / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    recs = REAL + [_wf_launch("1", run_dir=str(run1)), _wf_launch("2", run_dir=str(run2))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["gateReport"]["verdict"] == "PASS"        # last registered stamp's disk receipt
+    assert [g["stamp"] for g in bundle["gateReports"]] == ["1", "2"]
 
 
-def test_gate_report_parses_real_ultra_gate_serialized_receipt(tmp_path):
-    # Regression: ultra_gate.py serializes the NESTED "gateCheck" dict directly
-    # before "gateCheckExit", so anchoring on '"gateCheckExit"' + rfind('{')
-    # lands on the gateCheck sub-object (verdict but no mode=="gate") and real
-    # printed receipts MISS. Build the receipt in ultra_gate.py's exact key
-    # order and shape, serialize the way it does (indent=2), and require the
-    # OUTER receipt back.
-    receipt = {"mode": "gate", "stamp": "20260703-000000",
-               "reportPath": "/tmp/r.json", "branch": "ultra/integration-x",
-               "gateCheck": {"verdict": "PASS",
-                             "checks": [{"name": "lock", "ok": True, "detail": ""}],
-                             "acks": []},
-               "gateCheckExit": 0,
-               "acceptance": {"disposition": "suite", "exit": 0},
-               "verdict": "PASS"}
-    records = make_records_with_text(
-        "gate administered:\n" + json.dumps(receipt, indent=2) + "\ndone")
-    got = h._gate_report(records)
-    assert got is not None
-    assert got.get("mode") == "gate"
-    assert got["verdict"] == "PASS"
-
-
-def test_gate_report_falls_back_to_legacy_scan(tmp_path):
-    # a transcript with a real report JSON (integrationBranch) but no printed
-    # receipt must keep working exactly as before (pre-driver sessions).
-    legacy = {"integrationBranch": "ultra/integration-20260701-000000",
-              "tasks": [], "gitVerified": True}
-    records = make_records_with_text("final report:\n" + json.dumps(legacy))
-    got = h._gate_report(records)
-    assert got is not None
-    assert got["integrationBranch"].startswith("ultra/integration-")
+def test_pre_driver_session_bundles_with_no_gate_report(tmp_path):
+    # #126: _legacy_gate_report (the pre-driver prose "integrationBranch"
+    # scan) is deleted outright, not gated. Accepted-behavior pin: a
+    # pre-driver-style session — no registered run-<stamp> launch at all —
+    # still bundles via its audited engine-role agents, but with no
+    # gateReport: without a runDir there is nothing to disk-read.
+    tdir = tmp_path / "wf_legacy"
+    _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
+    recs = [
+        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                            "input": {"name": "ultrapowers-run"}}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+            f"Transcript dir: {tdir}\nfinal report: "
+            '{"integrationBranch":"ultra/integration-20260701-000000","tasks":[]}'}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["sessionKind"] == "engine"
+    assert bundle["gateReport"] is None
+    assert bundle["gateReports"] == []
+    assert bundle["runs"] == []
 
 
 # --- engine epoch: map a run's launch time to the version current then. The
@@ -271,7 +273,7 @@ def test_engine_epoch_unknown_without_timestamp():
 
 def test_build_bundle_includes_engine_version(tmp_path):
     session = tmp_path / "sess.jsonl"
-    recs = [dict(REAL[0], timestamp="2026-06-20T10:00:00.000Z")] + REAL[1:]
+    recs = [dict(REAL[0], timestamp="2026-06-20T10:00:00.000Z")] + REAL[1:] + [_wf_launch("REAL-1")]
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
                          tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
@@ -357,7 +359,7 @@ def test_harvest_targets_a_single_project(tmp_path):
     assert slugs == {"-Users-x-aaa"}
 
 
-# --- #98: full gate history, terminus, truncation, disk fallback, synthetic ---
+# --- #98/#126: full gate history, terminus, truncation, disk read, synthetic ---
 
 def _approve_marker():
     # Mirror ultra_gate.py --approve's printed JSON shape.
@@ -365,79 +367,64 @@ def _approve_marker():
             "branch": "ultra/integration-x", "swept": None, "lockReleased": True}
 
 
-def test_gate_evidence_collects_all_receipts_with_ordinals():
-    first = _real_receipt("BLOCKED", 1)
-    second = _real_receipt("NEEDS_ACK", 2)
-    records = make_records_with_text(
-        json.dumps(first, indent=2) + "\nre-ran\n" + json.dumps(second, indent=2))
-    reports, terminus = h._gate_evidence(records)
-    assert [r["receipt"]["verdict"] for r in reports] == ["BLOCKED", "NEEDS_ACK"]
-    assert [r["ordinal"] for r in reports] == [0, 1]  # same stamp → per-stamp ordinal
-    assert all(r["source"] == "transcript" for r in reports)
-    assert all(r["stamp"] == "20260703-000000" for r in reports)
-    assert terminus == "NEEDS_ACK"
-
-
-def test_terminus_approved_when_approve_follows_blocked():
-    # The recovered-false-red case: BLOCKED receipt, then the approve marker.
-    records = make_records_with_text(
-        json.dumps(_real_receipt("BLOCKED", 1), indent=2)
-        + "\napproved:\n" + json.dumps(_approve_marker(), indent=2))
-    reports, terminus = h._gate_evidence(records)
-    assert [r["receipt"]["verdict"] for r in reports] == ["BLOCKED"]
-    assert terminus == "approved"
-
-
-def test_terminus_blocked_without_approve():
-    records = make_records_with_text(json.dumps(_real_receipt("BLOCKED", 1), indent=2))
-    _, terminus = h._gate_evidence(records)
-    assert terminus == "BLOCKED"
-
-
-def test_gate_evidence_empty_is_unknown():
-    assert h._gate_evidence(make_records_with_text("no receipts here")) == ([], "unknown")
+def test_stamp_terminus_approved_when_approve_marker_follows_disk_blocked(tmp_path):
+    # The recovered-false-red case (#98), now disk-sourced: a BLOCKED receipt
+    # on disk, then the approve marker printed in the transcript -> approved,
+    # while the BLOCKED receipt itself stays visible in gateReports.
+    run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    ok = json.dumps(_approve_marker())  # stamp "20260703-000000", matches the launch below
+    recs = REAL + [_wf_launch("20260703-000000", run_dir=str(run1)),
+                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}])]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
 
 
 def test_disk_receipts_for_reads_only_requested_stamps_in_order(tmp_path):
-    # #118: no more repo-wide glob — _disk_receipts_for reads exactly the
-    # requested (registry) stamps, in the order given, and skips any other
-    # run-* dir present in the repo.
-    repo = tmp_path / "repo"
-    (repo / ".git").mkdir(parents=True)
-    plan = repo / "docs/superpowers/plans/p.md"
-    plan.parent.mkdir(parents=True)
-    plan.write_text("plan")
-    a = repo / ".claude/ultrapowers/run-a"
-    b = repo / ".claude/ultrapowers/run-b"
-    foreign = repo / ".claude/ultrapowers/run-foreign"
-    a.mkdir(parents=True)
-    b.mkdir(parents=True)
-    foreign.mkdir(parents=True)
-    (a / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
-    (b / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
-    (foreign / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
-    entries = h._disk_receipts_for(str(plan), ["a", "b"])
+    # #126: run_dirs_by_stamp only — no repo-wide glob, no planPath-relative
+    # walk. Reads exactly the requested (registry) stamps, in the order
+    # given, and skips any run dir present in the mapping but not requested.
+    run_a = tmp_path / "run-a"; run_a.mkdir()
+    run_b = tmp_path / "run-b"; run_b.mkdir()
+    run_foreign = tmp_path / "run-foreign"; run_foreign.mkdir()
+    (run_a / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    (run_b / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    (run_foreign / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    run_dirs = {"a": str(run_a), "b": str(run_b), "foreign": str(run_foreign)}
+    entries = h._disk_receipts_for(run_dirs, ["a", "b"])
     assert [e["receipt"]["verdict"] for e in entries] == ["BLOCKED", "PASS"]
     assert all(e["source"] == "disk" for e in entries)
-    assert entries[0]["stamp"] == "20260703-000000"  # from the receipt itself
+    # labeled by the LOCATING stamp, never the receipt's own recorded field
+    # (every _real_receipt hardcodes "stamp": "20260703-000000")
+    assert [e["stamp"] for e in entries] == ["a", "b"]
 
 
 def test_disk_receipts_for_fails_soft(tmp_path):
-    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), ["a"]) == []
+    assert h._disk_receipts_for({}, ["a"]) == []
     assert h._disk_receipts_for(None, ["a"]) == []
-    assert h._disk_receipts_for(str(tmp_path / "gone/plan.md"), []) == []
+    assert h._disk_receipts_for({"a": str(tmp_path / "gone")}, ["a"]) == []  # no file there
+    assert h._disk_receipts_for({"a": str(tmp_path)}, []) == []
 
 
 def test_bundle_carries_evidence_fields(tmp_path):
-    # REAL's legacy report yields a single-entry list and unknown terminus.
+    run1 = tmp_path / "run-1"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "1",
+         "integrationBranch": "ultra/x"}))
     session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in REAL) + "\n")
+    recs = REAL + [_wf_launch("1", run_dir=str(run1))]
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
                          tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["gateReport"]["integrationBranch"] == "ultra/x"  # unchanged meaning
     assert bundle["gateReports"][0]["receipt"]["integrationBranch"] == "ultra/x"
-    assert bundle["terminus"] == "unknown"
+    assert bundle["terminus"] == "NEEDS_ACK"
     assert bundle["truncated"] is True
 
 
@@ -451,42 +438,65 @@ def test_classify_origin_synthetic_temp_roots():
     assert h.classify_origin("-Users-x-proj", home) == "foreign"
 
 
-# --- #113/#118: session-launch registry + per-stamp disk receipt attribution
-# (deletes the repo-wide glob) ---
+# --- #113/#118/#126: session-launch registry + per-stamp disk receipt
+# attribution (deletes the repo-wide glob AND the receipt text-scan) ---
 
-def _wf_launch(stamp, plan="docs/superpowers/plans/p.md"):
-    args = json.dumps({"planPath": plan,
-                       "runDir": f"/repo/.claude/ultrapowers/run-{stamp}",
-                       "pluginRoot": "/pr"})
-    return _rec("assistant", [{"type": "tool_use", "name": "Workflow",
-                               "input": {"name": "ultrapowers-run", "args": args}}])
-
-
-def test_session_registry_extracts_stamps_and_planpaths():
+def test_session_registry_extracts_stamps_planpaths_and_rundirs():
     recs = [_wf_launch("20260806-1", "docs/superpowers/plans/a.md"),
             _wf_launch("20260806-2", "docs/superpowers/plans/b.md"),
             _wf_launch("20260806-1", "docs/superpowers/plans/a.md")]  # dedup
     reg = h.session_registry(recs)
     assert reg["stamps"] == ["20260806-1", "20260806-2"]
     assert reg["planPathsByStamp"]["20260806-2"] == "docs/superpowers/plans/b.md"
+    assert reg["runDirsByStamp"]["20260806-1"] == "/repo/.claude/ultrapowers/run-20260806-1"
+    assert reg["runDirsByStamp"]["20260806-2"] == "/repo/.claude/ultrapowers/run-20260806-2"
 
 
-def test_session_registry_reads_receipt_stamps():
+def test_session_registry_ignores_pasted_receipt_json_literal():
+    # #126 INVERSION PIN — the exact home-bundle repro (0.1.15 drain session):
+    # a receipt-shaped JSON literal pasted inside a Read/text tool_result
+    # (test-fixture code, plan prose) must register NO stamp. Pre-#126 this
+    # was test_session_registry_reads_receipt_stamps, which asserted the
+    # OPPOSITE (the stamp DID register) — the balanced-JSON "mode" scan that
+    # did that is deleted, not gated.
     recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
         "text": json.dumps({"mode": "gate", "verdict": "PASS", "stamp": "20260806-9"})}]}])]
-    assert "20260806-9" in h.session_registry(recs)["stamps"]
+    reg = h.session_registry(recs)
+    assert reg["stamps"] == []
+    assert "20260806-9" not in reg["stamps"]
+
+
+def test_build_bundle_never_attaches_pasted_fixture_receipt(tmp_path):
+    # Build-bundle-level companion to the inversion pin: a real registered
+    # launch with NO disk receipt sits alongside a pasted fixture-shaped
+    # receipt elsewhere in the transcript — the fixture stamp never appears
+    # anywhere in the bundle, and the real launch correctly has no gateReport.
+    recs = (REAL
+            + [_wf_launch("REAL-1")]
+            + [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+                "plan fixture: " + json.dumps(
+                    {"mode": "gate", "verdict": "PASS", "stamp": "FIXTURE-1"})}]}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert [r["stamp"] for r in bundle["runs"]] == ["REAL-1"]  # FIXTURE-1 never registered
+    assert bundle["gateReports"] == []
+    assert bundle["gateReport"] is None
 
 
 def test_disk_receipts_only_for_registry_stamps(tmp_path):
-    # repo with a receipt for an in-registry stamp AND a foreign run dir
-    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
-    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
-    plan = plans / "p.md"; plan.write_text("x")
-    for stamp, verdict in [("20260806-1", "NEEDS_ACK"), ("19990101-9", "BLOCKED")]:
-        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
-        (d / "gate-receipt.json").write_text(json.dumps(
-            {"mode": "gate", "verdict": verdict, "stamp": stamp}))
-    entries = h._disk_receipts_for(str(plan), ["20260806-1"])
+    # a receipt for an in-registry stamp AND a foreign run dir both exist on
+    # disk; only the requested (registered) stamp is ever read.
+    run1 = tmp_path / "run-20260806-1"; run1.mkdir()
+    run_foreign = tmp_path / "run-19990101-9"; run_foreign.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "20260806-1"}))
+    (run_foreign / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "BLOCKED", "stamp": "19990101-9"}))
+    run_dirs = {"20260806-1": str(run1), "19990101-9": str(run_foreign)}
+    entries = h._disk_receipts_for(run_dirs, ["20260806-1"])
     assert [e["stamp"] for e in entries] == ["20260806-1"]   # foreign 1999 dir NOT attached
     assert all(e["source"] == "disk" for e in entries)
 
@@ -496,15 +506,15 @@ def test_repo_wide_glob_is_gone():
 
 
 def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
-    # session that launched stamp A; repo also holds stamp B's receipt
-    repo = tmp_path / "repo"; (repo / ".git").mkdir(parents=True)
-    plans = repo / "docs/superpowers/plans"; plans.mkdir(parents=True)
-    (plans / "p.md").write_text("x")
-    for stamp in ("A-1", "B-2"):
-        d = repo / f".claude/ultrapowers/run-{stamp}"; d.mkdir(parents=True)
-        (d / "gate-receipt.json").write_text(json.dumps(
-            {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": stamp}))
-    recs = REAL + [_wf_launch("A-1", str(plans / "p.md"))]
+    # session that launched stamp A; a receipt for stamp B sits on disk too,
+    # but B was never registered by THIS session's own launches.
+    run_a = tmp_path / "run-A-1"; run_a.mkdir()
+    run_b = tmp_path / "run-B-2"; run_b.mkdir()
+    (run_a / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "A-1"}))
+    (run_b / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "B-2"}))
+    recs = REAL + [_wf_launch("A-1", run_dir=str(run_a))]
     session = tmp_path / "sess.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
@@ -514,18 +524,51 @@ def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
     assert "B-2" not in stamps and "A-1" in stamps
 
 
+def test_relative_plan_path_never_leaks_home_repo_receipts(tmp_path, monkeypatch):
+    # F4 hazard pin: `_disk_receipts_for` takes run_dirs_by_stamp only — there
+    # is no plan_path parameter to resolve relative-to-CWD at all, so a
+    # foreign run's relative planPath can never cause the harvester to read
+    # receipts from its own CWD/home repo. Prove it structurally: plant a
+    # decoy receipt under the harvester's CWD at the exact location a
+    # plan_path-relative walk would have found, and confirm only the launch's
+    # real (foreign) absolute runDir is ever read.
+    monkeypatch.chdir(tmp_path)
+    decoy_dir = tmp_path / ".claude/ultrapowers/run-F4-1"
+    decoy_dir.mkdir(parents=True)
+    (decoy_dir / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "home-decoy"}))
+    foreign_run = tmp_path / "foreign-repo/.claude/ultrapowers/run-F4-1"
+    foreign_run.mkdir(parents=True)
+    (foreign_run / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "PASS", "stamp": "F4-1"}))
+    recs = REAL + [_wf_launch("F4-1", plan="../relative/plan.md", run_dir=str(foreign_run))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-foreign", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["gateReport"]["verdict"] == "PASS"           # from the foreign runDir
+    assert bundle["gateReport"].get("stamp") != "home-decoy"   # never the CWD-relative decoy
+
+
 # --- Task 2 (#113): multi-run bundle shape + audit union across launches ---
 
 def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
-    r1 = json.dumps({"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S1"})
+    # #126: receipts now come from disk (runDir-located), not transcript
+    # JSON blobs — the approve marker (ok1) is still a real transcript event
+    # (`_stamp_terminus`'s own approve-marker tracking is untouched in this
+    # task; Task 2 replaces it with git ancestry).
+    run1 = tmp_path / "run-S1"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S1"}))
+    run2 = tmp_path / "run-S2"; run2.mkdir()
+    (run2 / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "BLOCKED", "stamp": "S2"}))
     ok1 = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
-    r2 = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S2"})
     recs = (REAL
-            + [_wf_launch("S1", "docs/superpowers/plans/a.md"),
-               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r1}]}]),
+            + [_wf_launch("S1", "docs/superpowers/plans/a.md", run_dir=str(run1)),
                _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok1}]}]),
-               _wf_launch("S2", "docs/superpowers/plans/b.md"),
-               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": r2}]}])])
+               _wf_launch("S2", "docs/superpowers/plans/b.md", run_dir=str(run2))])
     session = tmp_path / "sess.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
@@ -599,10 +642,18 @@ def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
 # + slice envelope (tail cut at the last run-artifact record) ---
 
 def test_blocked_then_merge_evidence_derives_approved(tmp_path):
+    # #126: gateReports is disk-sourced (a real gate-receipt.json backs the
+    # BLOCKED verdict below); `_stamp_terminus`'s own approve/blocked-branch
+    # tracking (untouched this task — Task 2 replaces it with git ancestry)
+    # still walks the transcript for ITS override bookkeeping, so the same
+    # receipt is also printed there — exactly what ultra_gate.py's real
+    # stdout does (prints AND writes gate-receipt.json on every full gate).
     blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
                           "integrationBranch": "ultra/integration-S1"})
+    run1 = tmp_path / "run-S1"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(blocked)
     recs = (REAL
-            + [_wf_launch("S1"),
+            + [_wf_launch("S1", run_dir=str(run1)),
                _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}]),
                _rec("user", [{"type": "tool_result", "content": [{"type": "text",
                     "text": "Merged pull request #7 (ultra/integration-S1)"}]}])])
@@ -620,7 +671,9 @@ def test_blocked_then_merge_evidence_derives_approved(tmp_path):
 def test_blocked_without_merge_evidence_stays_blocked(tmp_path):
     blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
                           "integrationBranch": "ultra/integration-S1"})
-    recs = REAL + [_wf_launch("S1"),
+    run1 = tmp_path / "run-S1"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(blocked)
+    recs = REAL + [_wf_launch("S1", run_dir=str(run1)),
                    _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}])]
     session = tmp_path / "sess.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")

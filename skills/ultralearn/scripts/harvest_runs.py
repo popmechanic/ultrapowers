@@ -203,17 +203,20 @@ _RUN_DIR_STAMP = re.compile(r"/run-([^/\s]+)$")
 
 
 def session_registry(records):
-    """Every stamp this session actually launched (#113/#118): the structural
-    source of truth for receipt attribution, so a foreign run's evidence can
-    no longer be attached to a session that never launched it.
+    """Every stamp this session actually launched (#113/#118, receipt scan
+    deleted #126): the structural source of truth for receipt attribution, so
+    neither a foreign run's evidence NOR a pasted receipt-shaped JSON literal
+    (test fixtures, plan prose) can ever be attached to a session that never
+    launched it.
 
     Sources: every Workflow tool_use whose parsed input.args carries a
-    runDir matching '…/run-<stamp>' (planPath from those same args keys
-    planPathsByStamp), and every printed ultra_run/ultra_gate/approve/
-    teardown receipt's "stamp" field. First-appearance transcript order,
-    deduped.
+    runDir matching '…/run-<stamp>' — structurally verified, inexpressible
+    from pasted text. planPath from those same args keys planPathsByStamp;
+    runDir itself (the absolute launch dir) keys runDirsByStamp, the only
+    location `_disk_receipts_for` is allowed to read from. First-appearance
+    transcript order, deduped. No transcript text is scanned for receipts.
     """
-    stamps, seen, plan_paths_by_stamp = [], set(), {}
+    stamps, seen, plan_paths_by_stamp, run_dirs_by_stamp = [], set(), {}, {}
 
     def _add(stamp):
         if isinstance(stamp, str) and stamp and stamp not in seen:
@@ -237,19 +240,13 @@ def session_registry(records):
                     if m:
                         stamp = m.group(1)
                         _add(stamp)
+                        if stamp not in run_dirs_by_stamp:
+                            run_dirs_by_stamp[stamp] = run_dir
                         pp = args.get("planPath")
                         if isinstance(pp, str) and pp.strip() and stamp not in plan_paths_by_stamp:
                             plan_paths_by_stamp[stamp] = pp.strip()
-        txt = _block_text(b)
-        i = txt.find('"mode"')
-        while i != -1:
-            start = txt.rfind("{", 0, i + 1)
-            if start != -1:
-                obj = _balanced_json(txt, start)
-                if isinstance(obj, dict) and obj.get("mode") in ("gate", "approve", "teardown"):
-                    _add(obj.get("stamp"))
-            i = txt.find('"mode"', i + 1)
-    return {"stamps": stamps, "planPathsByStamp": plan_paths_by_stamp}
+    return {"stamps": stamps, "planPathsByStamp": plan_paths_by_stamp,
+            "runDirsByStamp": run_dirs_by_stamp}
 
 
 def stitch_planning(plan_path, session_records):
@@ -277,117 +274,33 @@ def _records(session_path):
     return out
 
 
-def _gate_evidence(records):
-    """All printed gate receipts in transcript order, plus the run terminus.
-
-    Returns (reports, terminus): reports is a list of
-    {"receipt", "stamp", "ordinal", "source"} (ordinal = position among
-    receipts sharing that stamp, transcript order); terminus is "approved"
-    when an approve marker follows the last receipt (or stands alone),
-    else the last receipt's verdict, else "unknown".
-    """
-    # Pass 1 (0.0.31+ driver era): ultra_gate.py prints its gate receipt on
-    # every administered gate — a JSON object with mode=="gate" and a
-    # "verdict" — and --approve/--teardown print a marker with "lockReleased".
-    receipts, approve_after = [], False
-    for _r, b in _iter_blocks(records):
-        txt = _block_text(b)
-        # Anchor on '"mode"' — ultra_gate.py serializes it as the receipt's
-        # FIRST key, so rfind('{', ...) from the anchor reaches the receipt's
-        # OUTER opening brace. (Anchoring on '"gateCheckExit"' landed instead on
-        # the nested "gateCheck" dict serialized right before it.)
-        i = txt.find('"mode"')
-        while i != -1:
-            start = txt.rfind("{", 0, i + 1)
-            if start != -1:
-                obj = _balanced_json(txt, start)
-                if isinstance(obj, dict) and obj.get("mode") == "gate" and "verdict" in obj:
-                    receipts.append(obj)
-                    approve_after = False
-                elif isinstance(obj, dict) and obj.get("mode") in ("approve", "teardown") \
-                        and "lockReleased" in obj:
-                    if obj["mode"] == "approve":
-                        approve_after = True
-            i = txt.find('"mode"', i + 1)
-    if receipts:
-        per_stamp = {}
-        reports = []
-        for r in receipts:
-            stamp = r.get("stamp")
-            ordinal = per_stamp.get(stamp, 0)
-            per_stamp[stamp] = ordinal + 1
-            reports.append({"receipt": r, "stamp": stamp,
-                            "ordinal": ordinal, "source": "transcript"})
-        terminus = "approved" if approve_after else receipts[-1].get("verdict", "unknown")
-        return reports, terminus
-    if approve_after:
-        return [], "approved"
-    legacy = _legacy_gate_report(records)
-    if legacy is not None:
-        return [{"receipt": legacy, "stamp": None,
-                 "ordinal": 0, "source": "transcript"}], "unknown"
-    return [], "unknown"
-
-
-def _legacy_gate_report(records):
-    # Pass 2 (legacy, pre-driver sessions): scan every "integrationBranch"
-    # mention, parse the enclosing JSON object, and accept only one with a real
-    # top-level integrationBranch *value* — this rejects report-format schema
-    # prose (where "integrationBranch" sits inside a "required" array) and any
-    # other decoy.
-    for _r, b in _iter_blocks(records):
-        txt = _block_text(b)
-        idx = 0
-        while True:
-            k = txt.find('"integrationBranch"', idx)
-            if k == -1:
-                break
-            start = txt.rfind("{", 0, k + 1)
-            if start != -1:
-                obj = _balanced_json(txt, start)
-                if isinstance(obj, dict) and isinstance(obj.get("integrationBranch"), str) \
-                        and obj["integrationBranch"]:
-                    return obj
-            idx = k + 1
-    return None
-
-
-def _gate_report(records):
-    reports, _ = _gate_evidence(records)
-    return reports[-1]["receipt"] if reports else None
-
-
-def _disk_receipts_for(plan_path, stamps):
-    """Per-stamp disk fallback (#118): read gate-receipt.json ONLY for the
-    given registry stamps — never a repo-wide glob, so a foreign run's
-    receipt can never be attached. Locates the repo root from plan_path the
-    same way the old repo-wide fallback did. Fails soft to [] when the repo
-    can't be resolved, and skips any stamp whose file is missing/unreadable
-    (soft-fail per stamp)."""
-    if not plan_path or not stamps:
-        return []
-    root = Path(plan_path).parent
-    while root != root.parent:
-        if (root / ".git").exists():
-            break
-        root = root.parent
-    else:
-        return []
-    if not (root / ".git").exists():
+def _disk_receipts_for(run_dirs_by_stamp, stamps):
+    """Per-stamp disk read (#126): read `<runDir>/gate-receipt.json` for each
+    given registry stamp, located directly from the structurally-verified
+    runDir `session_registry` recorded — never a repo-wide glob and never a
+    planPath-relative walk (a relative planPath resolved against the
+    harvester's CWD could attribute a foreign run's receipts to the wrong
+    repo — trim review F4). Entries are labeled by the LOCATING stamp (the
+    one used to find the file), never the receipt's own recorded "stamp"
+    field. Soft-fails per stamp: no runDir mapping, a missing file, or
+    unreadable/malformed JSON is skipped, never raised. This is the only
+    place `gateReports`/`gateReport` are sourced from — no transcript entry
+    ever enters either."""
+    if not run_dirs_by_stamp or not stamps:
         return []
     entries = []
-    per_stamp = {}
     for stamp in stamps:
-        f = root / ".claude/ultrapowers" / f"run-{stamp}" / "gate-receipt.json"
+        run_dir = run_dirs_by_stamp.get(stamp)
+        if not run_dir:
+            continue
+        f = Path(run_dir) / "gate-receipt.json"
         try:
             obj = json.loads(f.read_text())
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(obj, dict) and "verdict" in obj:
-            ordinal = per_stamp.get(stamp, 0)
-            per_stamp[stamp] = ordinal + 1
-            entries.append({"receipt": obj, "stamp": obj.get("stamp") or stamp,
-                            "ordinal": ordinal, "source": "disk"})
+            entries.append({"receipt": obj, "stamp": stamp,
+                            "ordinal": 0, "source": "disk"})
     return entries
 
 
@@ -670,24 +583,19 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
     registry = session_registry(records)
-    transcript_reports, terminus = _gate_evidence(records)
-    covered = {r["stamp"] for r in transcript_reports}
-    disk = _disk_receipts_for(plan_path, [s for s in registry["stamps"] if s not in covered])
-    gate_reports = transcript_reports + disk
-    if not transcript_reports and disk:
-        terminus = disk[-1]["receipt"].get("verdict", "unknown")
-    # "final receipt" (singular) keeps its pre-#118 single-run meaning: the
-    # transcript is authoritative when it has any receipt at all; disk entries
-    # (now per-stamp scoped, never repo-wide) only stand in when the
-    # transcript printed none for THIS session's launched stamps.
-    last = transcript_reports[-1] if transcript_reports else (disk[-1] if disk else None)
-    gate_report = last["receipt"] if last else None
-    # runs[] (#113 Task 2): group the merged gate_reports by launched stamp;
-    # the top-level `terminus` becomes the aggregate across runs when the
-    # session actually registered any stamped launches, else it keeps its
-    # pre-#113 single-report meaning computed above.
+    # gateReports / gateReport (#126): disk-sourced only, located by the
+    # structurally-verified runDir — no transcript entry ever enters either.
+    # "final receipt" (singular) = the last disk receipt of the last
+    # registered stamp; a session with launches but no disk receipts (or no
+    # registered launches at all) has no gateReport.
+    gate_reports = _disk_receipts_for(registry["runDirsByStamp"], registry["stamps"])
+    gate_report = gate_reports[-1]["receipt"] if gate_reports else None
+    # runs[] (#113 Task 2): group gate_reports by launched stamp; the
+    # top-level `terminus` becomes the aggregate across runs when the session
+    # actually registered any stamped launches, else "unknown" (no registry
+    # stamps means no disk source to read a verdict from at all).
     runs = _runs_for_bundle(records, registry, gate_reports)
-    terminus = _aggregate_terminus(runs, terminus)
+    terminus = _aggregate_terminus(runs, "unknown")
     audit = _merge_audits([audit_run.audit(d) for d in tdirs])
     planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found,
