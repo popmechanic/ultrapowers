@@ -1,5 +1,6 @@
 # tests/test_harvest_runs.py
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -204,6 +205,27 @@ def test_gate_report_singular_is_last_disk_receipt_of_last_registered_stamp(tmp_
     assert [g["stamp"] for g in bundle["gateReports"]] == ["1", "2"]
 
 
+def test_gate_report_singular_is_none_when_last_stamp_has_no_disk_receipt(tmp_path):
+    # Task 1 review carry-forward: the last REGISTERED stamp must have its
+    # OWN disk receipt for gateReport (singular) to be non-None — an earlier
+    # stamp's stale receipt must never stand in for the session's final
+    # outcome just because it's the last one on disk. Per-stamp runs[]
+    # entries still carry their own receipts regardless.
+    run1 = tmp_path / "run-1"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    # stamp "2" is registered (launched) but has nothing readable on disk.
+    recs = REAL + [_wf_launch("1", run_dir=str(run1)), _wf_launch("2")]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["gateReport"] is None                      # never stamp "1"'s stale receipt
+    assert [g["stamp"] for g in bundle["gateReports"]] == ["1"]
+    assert bundle["runs"][0]["gateReports"][0]["receipt"]["verdict"] == "PASS"  # per-run entry unaffected
+    assert bundle["runs"][1]["gateReports"] == []
+
+
 def test_pre_driver_session_bundles_with_no_gate_report(tmp_path):
     # #126: _legacy_gate_report (the pre-driver prose "integrationBranch"
     # scan) is deleted outright, not gated. Accepted-behavior pin: a
@@ -367,10 +389,11 @@ def _approve_marker():
             "branch": "ultra/integration-x", "swept": None, "lockReleased": True}
 
 
-def test_stamp_terminus_approved_when_approve_marker_follows_disk_blocked(tmp_path):
-    # The recovered-false-red case (#98), now disk-sourced: a BLOCKED receipt
-    # on disk, then the approve marker printed in the transcript -> approved,
-    # while the BLOCKED receipt itself stays visible in gateReports.
+def test_printed_approve_marker_alone_does_not_flip_terminus(tmp_path):
+    # #126 Task 2: the approve-marker/stamp-interleave transcript tracking
+    # _stamp_terminus used to do is deleted outright — a printed approve
+    # marker with no git-ancestry evidence behind it no longer flips a
+    # BLOCKED receipt to approved (replaced entirely by the git check).
     run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
     (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
     ok = json.dumps(_approve_marker())  # stamp "20260703-000000", matches the launch below
@@ -381,8 +404,7 @@ def test_stamp_terminus_approved_when_approve_marker_follows_disk_blocked(tmp_pa
     out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
                          "-Users-marcusestes-Websites-ultrapowers")
     bundle = json.loads((out / "bundle.json").read_text())
-    assert bundle["terminus"] == "approved"
-    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
+    assert bundle["terminus"] == "BLOCKED"  # no git-merge evidence -> stays BLOCKED
 
 
 def test_disk_receipts_for_reads_only_requested_stamps_in_order(tmp_path):
@@ -409,6 +431,15 @@ def test_disk_receipts_for_fails_soft(tmp_path):
     assert h._disk_receipts_for(None, ["a"]) == []
     assert h._disk_receipts_for({"a": str(tmp_path / "gone")}, ["a"]) == []  # no file there
     assert h._disk_receipts_for({"a": str(tmp_path)}, []) == []
+
+
+def test_disk_receipts_for_skips_non_utf8_receipt(tmp_path):
+    # Task 1 review carry-forward: a gate-receipt.json that isn't valid text
+    # (corrupted write, wrong encoding) must be skipped like any other
+    # unreadable/malformed receipt, never raise out of build_bundle.
+    run1 = tmp_path / "run-bad"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_bytes(b"\xff\xfe\xfd\xfc not valid utf-8")
+    assert h._disk_receipts_for({"bad": str(run1)}, ["bad"]) == []
 
 
 def test_bundle_carries_evidence_fields(tmp_path):
@@ -554,20 +585,18 @@ def test_relative_plan_path_never_leaks_home_repo_receipts(tmp_path, monkeypatch
 # --- Task 2 (#113): multi-run bundle shape + audit union across launches ---
 
 def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
-    # #126: receipts now come from disk (runDir-located), not transcript
-    # JSON blobs — the approve marker (ok1) is still a real transcript event
-    # (`_stamp_terminus`'s own approve-marker tracking is untouched in this
-    # task; Task 2 replaces it with git ancestry).
+    # #126 Task 2: receipts come from disk (runDir-located); terminus is the
+    # disk verdict (no git repo under tmp_path -> ancestry never resolves,
+    # so each stamp's terminus is exactly its receipt's own verdict here —
+    # the git-ancestry upgrade path has its own dedicated fixtures below).
     run1 = tmp_path / "run-S1"; run1.mkdir()
     (run1 / "gate-receipt.json").write_text(json.dumps(
-        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S1"}))
+        {"mode": "gate", "verdict": "PASS", "stamp": "S1"}))
     run2 = tmp_path / "run-S2"; run2.mkdir()
     (run2 / "gate-receipt.json").write_text(json.dumps(
         {"mode": "gate", "verdict": "BLOCKED", "stamp": "S2"}))
-    ok1 = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
     recs = (REAL
             + [_wf_launch("S1", "docs/superpowers/plans/a.md", run_dir=str(run1)),
-               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok1}]}]),
                _wf_launch("S2", "docs/superpowers/plans/b.md", run_dir=str(run2))])
     session = tmp_path / "sess.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
@@ -576,7 +605,7 @@ def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     runs = bundle["runs"]
     assert [r["stamp"] for r in runs] == ["S1", "S2"]
-    assert runs[0]["planPath"].endswith("a.md") and runs[0]["terminus"] == "approved"
+    assert runs[0]["planPath"].endswith("a.md") and runs[0]["terminus"] == "PASS"
     assert runs[1]["terminus"] == "BLOCKED"
     assert bundle["terminus"] == "BLOCKED"          # last non-approved run
     assert bundle["planPath"].endswith("a.md")      # top-level = first plan, unchanged meaning
@@ -638,48 +667,170 @@ def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
     assert bundle["runs"][0]["gateReports"] == []
 
 
-# --- Task 3 (#113): terminus honesty (override-derivable via merge evidence)
-# + slice envelope (tail cut at the last run-artifact record) ---
+# --- Task 2 (#126): terminus = disk receipt verdict + git ancestry (spec
+# §4, F1/F2/F3-adjudicated). Real tmp-repo git fixtures — these replace the
+# two merge-evidence prose tests above (task-2-brief) now that the harvester
+# never scans transcript text for merge evidence at all.
 
-def test_blocked_then_merge_evidence_derives_approved(tmp_path):
-    # #126: gateReports is disk-sourced (a real gate-receipt.json backs the
-    # BLOCKED verdict below); `_stamp_terminus`'s own approve/blocked-branch
-    # tracking (untouched this task — Task 2 replaces it with git ancestry)
-    # still walks the transcript for ITS override bookkeeping, so the same
-    # receipt is also printed there — exactly what ultra_gate.py's real
-    # stdout does (prints AND writes gate-receipt.json on every full gate).
-    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
-                          "integrationBranch": "ultra/integration-S1"})
-    run1 = tmp_path / "run-S1"; run1.mkdir()
-    (run1 / "gate-receipt.json").write_text(blocked)
-    recs = (REAL
-            + [_wf_launch("S1", run_dir=str(run1)),
-               _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}]),
-               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
-                    "text": "Merged pull request #7 (ultra/integration-S1)"}]}])])
+def _git(args, cwd):
+    subprocess.run(["git", *args], cwd=str(cwd), check=True,
+                    capture_output=True, text=True)
+
+
+def _rev_parse(cwd, rev):
+    return subprocess.run(["git", "rev-parse", rev], cwd=str(cwd),
+                           capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _init_git_repo(root):
+    """A minimal git repo fixture with an initial commit on branch 'main'
+    (matches the harvester's own default-branch fallback when there's no
+    origin remote)."""
+    root.mkdir(parents=True, exist_ok=True)
+    _git(["init", "-q", "-b", "main"], root)
+    _git(["config", "user.email", "t@example.com"], root)
+    _git(["config", "user.name", "T"], root)
+    (root / "f.txt").write_text("base\n")
+    _git(["add", "f.txt"], root)
+    _git(["commit", "-q", "-m", "base"], root)
+    return root
+
+
+def _merged_feature_repo(root):
+    """A repo where 'feature' branch's head commit IS an ancestor of 'main' —
+    a real, non-squash merge (spec §4: "merged IS approved, regardless of
+    how the operator got there"). Returns feature's pre-merge head sha."""
+    _init_git_repo(root)
+    _git(["checkout", "-q", "-b", "feature"], root)
+    (root / "f.txt").write_text("feature\n")
+    _git(["commit", "-q", "-am", "feature work"], root)
+    head_sha = _rev_parse(root, "HEAD")
+    _git(["checkout", "-q", "main"], root)
+    _git(["merge", "-q", "--no-ff", "-m", "merge feature", "feature"], root)
+    return head_sha
+
+
+def _unmerged_feature_repo(root):
+    """A repo where 'feature' branch's head commit is NOT an ancestor of
+    'main' — never merged. Returns feature's head sha."""
+    _init_git_repo(root)
+    _git(["checkout", "-q", "-b", "feature"], root)
+    (root / "f.txt").write_text("feature\n")
+    _git(["commit", "-q", "-am", "feature work"], root)
+    return _rev_parse(root, "HEAD")
+
+
+def _squash_merged_repo(root):
+    """A repo where 'feature' branch's CONTENT landed on main via a squash
+    merge — a new commit disconnected from feature's own commit graph, so
+    feature's head sha is never an ancestor of main (spec F2's documented
+    blind spot). Returns feature's head sha."""
+    _init_git_repo(root)
+    _git(["checkout", "-q", "-b", "feature"], root)
+    (root / "f.txt").write_text("feature\n")
+    _git(["commit", "-q", "-am", "feature work"], root)
+    head_sha = _rev_parse(root, "HEAD")
+    _git(["checkout", "-q", "main"], root)
+    _git(["merge", "-q", "--squash", "feature"], root)
+    _git(["commit", "-q", "-m", "squash merge feature"], root)
+    return head_sha
+
+
+def test_stamp_terminus_git_ancestry_approves_blocked_receipt_when_merged(tmp_path):
+    # BLOCKED receipt + head merged into base (foreign-shaped tmp-repo
+    # fixture) -> approved. Foreign-class coverage lives here (spec F8): the
+    # live canary is home-only, so the real merge-commit flow needs its own
+    # fixture-level pin.
+    root = tmp_path / "repo"
+    head_sha = _merged_feature_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    stamp_reports = h._disk_receipts_for({"S1": str(run_dir)}, ["S1"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "approved"
+
+
+def test_stamp_terminus_git_ancestry_blocked_stays_blocked_when_unmerged(tmp_path):
+    root = tmp_path / "repo"
+    head_sha = _unmerged_feature_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S2"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    stamp_reports = h._disk_receipts_for({"S2": str(run_dir)}, ["S2"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "BLOCKED"
+
+
+def test_stamp_terminus_squash_merge_blind_spot_keeps_receipt_verdict(tmp_path):
+    # Documented blind spot (spec F2), pinned as intended behavior: a squash
+    # merge cherry-picks CONTENT onto base without carrying feature's own
+    # commit graph, so the head sha is never an ancestor -> the receipt
+    # verdict stands (honest-to-receipt, mildly stale, never wrong-direction).
+    root = tmp_path / "repo"
+    head_sha = _squash_merged_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S3"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    stamp_reports = h._disk_receipts_for({"S3": str(run_dir)}, ["S3"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "NEEDS_ACK"
+
+
+def test_stamp_terminus_unresolvable_sha_keeps_receipt_verdict(tmp_path):
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S4"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps(
+        {"waveMerges": [{"headSha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    stamp_reports = h._disk_receipts_for({"S4": str(run_dir)}, ["S4"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "PASS"
+
+
+def test_stamp_terminus_no_git_repo_keeps_receipt_verdict(tmp_path):
+    # runDir has no `.git`-bearing ancestor at all -> not resolvable, receipt
+    # verdict stands (fail-soft, never a crash).
+    run_dir = tmp_path / "no-repo-anywhere" / "run-S5"
+    run_dir.mkdir(parents=True)
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    stamp_reports = h._disk_receipts_for({"S5": str(run_dir)}, ["S5"])
+    assert h._stamp_terminus(str(run_dir), stamp_reports) == "PASS"
+
+
+def test_stamp_terminus_no_receipt_is_unknown():
+    assert h._stamp_terminus("/does/not/matter", []) == "unknown"
+
+
+def test_merge_evidence_matcher_is_deleted():
+    assert not hasattr(h, "_merge_evidence_after")
+
+
+def test_truncated_recomputed_from_git_ancestry_terminus(tmp_path):
+    # End-to-end (spec pin: "truncated recomputed from the final terminus"):
+    # build_bundle's `truncated` flag follows the git-upgraded terminus, not
+    # the raw receipt verdict — the BLOCKED receipt stays visible in
+    # gateReports even once the run counts as approved.
+    root = tmp_path / "repo"
+    head_sha = _merged_feature_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
+    recs = REAL + [_wf_launch("S1", run_dir=str(run_dir))]
     session = tmp_path / "sess.jsonl"
     session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
     out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
                          "-Users-marcusestes-Websites-ultrapowers")
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["terminus"] == "approved"
-    # override stays DERIVABLE: the receipt's BLOCKED verdict is still in the bundle
-    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
     assert bundle["truncated"] is False
+    assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
 
 
-def test_blocked_without_merge_evidence_stays_blocked(tmp_path):
-    blocked = json.dumps({"mode": "gate", "verdict": "BLOCKED", "stamp": "S1",
-                          "integrationBranch": "ultra/integration-S1"})
-    run1 = tmp_path / "run-S1"; run1.mkdir()
-    (run1 / "gate-receipt.json").write_text(blocked)
-    recs = REAL + [_wf_launch("S1", run_dir=str(run1)),
-                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": blocked}]}])]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    assert json.loads((out / "bundle.json").read_text())["terminus"] == "BLOCKED"
+# --- Task 3 (#113): slice envelope (tail cut at the last run-artifact
+# record) — unrelated to terminus, unaffected by the Task 2 rewrite ---
 
 
 def test_slice_cuts_after_last_run_artifact(tmp_path):
