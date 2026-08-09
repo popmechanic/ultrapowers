@@ -45,8 +45,8 @@ def _iter_blocks(records):
 
 def _iter_blocks_indexed(records):
     """Like `_iter_blocks` but also yields each record's position in
-    `records` — needed wherever "later in the transcript" matters (the Task 3
-    merge-evidence lookahead and the slice tail cut)."""
+    `records` — needed wherever "later in the transcript" matters (the slice
+    envelope's launch anchor and tail cut, Task 3)."""
     for idx, r in enumerate(records):
         content = (r.get("message") or {}).get("content")
         if isinstance(content, list):
@@ -80,52 +80,79 @@ def classify_origin(project_slug, home_slug):
     return "foreign"
 
 
-_RUN_ARTIFACT_MODES = ("gate", "approve", "teardown")
+def _is_workflow_tool_result(txt):
+    """A tool_result "is" a Workflow tool_result (spec §5's second qualifying
+    artifact shape) when it carries the printed launch shape `is_real_run` /
+    `_transcript_dirs` also key off of — the only machine-printed marker of a
+    Workflow tool call's own output, as opposed to a receipt/approve/teardown
+    artifact that must instead carry a registered stamp."""
+    return "Transcript dir:" in txt or "integrationBranch" in txt
 
 
-def _has_run_artifact(txt):
-    """A record "is" a run artifact (Task 3 slice envelope) when its text is a
-    balanced-JSON gate/approve/teardown receipt, a Workflow tool_result (the
-    "Transcript dir:" / integrationBranch shape `is_real_run` also keys off
-    of), or a `sweep_worktrees` output line. Callers must gate this to
-    `tool_result` blocks (matching the `_transcript_dirs` / `is_real_run`
-    convention) — these are all machine-printed shapes that only ever
-    legitimately appear in tool output, never plain assistant/user prose that
-    merely mentions the words."""
-    if "sweep_worktrees" in txt or "Transcript dir:" in txt or "integrationBranch" in txt:
-        return True
-    i = txt.find('"mode"')
-    while i != -1:
-        start = txt.rfind("{", 0, i + 1)
-        if start != -1:
-            obj = _balanced_json(txt, start)
-            if isinstance(obj, dict) and obj.get("mode") in _RUN_ARTIFACT_MODES:
-                return True
-        i = txt.find('"mode"', i + 1)
-    return False
-
-
-def _last_artifact_record_index(records):
-    """Index (into `records`) of the last record holding a run artifact, or
-    None when no record qualifies — the slice envelope's tail bound. Scoped to
-    `tool_result` blocks only, so a plain text turn that merely mentions
-    "integrationBranch" or similar in prose can't masquerade as the cutoff."""
-    last = None
+def _last_launch_tool_use_index(records, stamp):
+    """Index of the LAST Workflow tool_use record whose parsed `runDir`
+    resolves to `stamp` (replays `session_registry`'s own structural
+    extraction) — the slice envelope's launch anchor, and its no-artifact
+    fallback value (spec §5)."""
+    idx_found = None
     for idx, _r, b in _iter_blocks_indexed(records):
+        if not (isinstance(b, dict) and b.get("type") == "tool_use" and b.get("name") == "Workflow"):
+            continue
+        args = (b.get("input") or {}).get("args")
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = None
+        if isinstance(args, dict):
+            run_dir = args.get("runDir")
+            if isinstance(run_dir, str):
+                m = _RUN_DIR_STAMP.search(run_dir)
+                if m and m.group(1) == stamp:
+                    idx_found = idx
+    return idx_found
+
+
+def _last_artifact_record_index(records, registry):
+    """Index (into `records`) of the slice envelope's tail bound, registry-
+    keyed (spec §5, F6-adjudicated): an artifact qualifies only if it is a
+    `tool_result` carrying a REGISTERED stamp (string containment of a
+    registry stamp is fine — stamps are launch-verified, so a fixture/prose
+    stamp that was never actually launched can't poison this; the
+    `tool_result`-type gate alone is not enough, F6's poisoning vector) or a
+    Workflow tool_result itself. The cut lands at the last qualifying
+    artifact at-or-after the LAST registered launch's own `tool_use` record
+    (earlier launches' artifacts never extend the tail); when no launch is
+    registered at all (pre-registry-era sessions), the whole transcript is
+    the search window. No qualifying artifact anywhere -> None (keeps the
+    full head, e.g. planning-only sessions)."""
+    stamps = registry["stamps"]
+    window_start = _last_launch_tool_use_index(records, stamps[-1]) if stamps else None
+    stamp_set = set(stamps)
+    cutoff = None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if window_start is not None and idx < window_start:
+            continue
         if not isinstance(b, dict) or b.get("type") != "tool_result":
             continue
         txt = _block_text(b)
-        if txt and _has_run_artifact(txt):
-            last = idx
-    return last
+        if not txt:
+            continue
+        if _is_workflow_tool_result(txt) or any(s in txt for s in stamp_set):
+            cutoff = idx
+    # No-artifact fallback (spec §5): the last registered launch's own
+    # tool_use index — nothing after the last launch is ever cut blindly.
+    return cutoff if cutoff is not None else window_start
 
 
 def slice_transcript(records):
-    # Slice envelope (Task 3): the run ends at its last artifact — anything
-    # after is a post-run tangent, never wave-relevant. No start bound: a
-    # transcript with no artifact at all (e.g. planning-only) keeps its full
-    # head, unchanged from pre-Task-3 behavior.
-    cutoff = _last_artifact_record_index(records)
+    # Slice envelope (Task 3, registry-keyed — spec §5): the run ends at the
+    # last qualifying artifact of the LAST registered launch; anything after
+    # is a post-run tangent, never wave-relevant. No qualifying artifact at
+    # all (e.g. planning-only, or a pre-registry session with no Workflow
+    # tool_result) keeps the full head, unchanged from pre-Task-3 behavior.
+    registry = session_registry(records)
+    cutoff = _last_artifact_record_index(records, registry)
     lines = []
     for idx, r, b in _iter_blocks_indexed(records):
         if cutoff is not None and idx > cutoff:
@@ -168,34 +195,6 @@ def _plan_path(records):
             tail = txt.split("/ultrapowers ", 1)[1].split()[0].strip().strip("`")
             if tail and not tail.startswith("<"):
                 return tail
-    return None
-
-
-def _balanced_json(txt, start):
-    """Parse the JSON object beginning at txt[start] using brace matching, so
-    trailing text or a later unrelated object does not corrupt the slice."""
-    depth, in_str, esc = 0, False, False
-    for i in range(start, len(txt)):
-        c = txt[i]
-        if in_str:
-            if esc:
-                esc = False
-            elif c == "\\":
-                esc = True
-            elif c == '"':
-                in_str = False
-            continue
-        if c == '"':
-            in_str = True
-        elif c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                try:
-                    return json.loads(txt[start:i + 1])
-                except json.JSONDecodeError:
-                    return None
     return None
 
 
@@ -299,8 +298,7 @@ def _disk_receipts_for(run_dirs_by_stamp, stamps):
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             continue
         if isinstance(obj, dict) and "verdict" in obj:
-            entries.append({"receipt": obj, "stamp": stamp,
-                            "ordinal": 0, "source": "disk"})
+            entries.append({"receipt": obj, "stamp": stamp, "source": "disk"})
     return entries
 
 
@@ -466,9 +464,12 @@ def _aggregate_terminus(runs, fallback):
 
 
 def _transcript_dir(records):
-    # Thin wrapper (#113): keeps the pre-multi-run singular meaning — the
-    # last preferred candidate — for the bundle's "transcriptDir" field and
-    # any other single-dir caller.
+    # Thin wrapper (#113): `_transcript_dirs` returns every candidate in
+    # transcript order, agent-qualifying ones preferred over the raw last
+    # resort (see its docstring); this picks the LAST entry of that already-
+    # ordered list — never the first — keeping the pre-multi-run singular
+    # meaning for the bundle's "transcriptDir" field and any other
+    # single-dir caller.
     dirs = _transcript_dirs(records)
     return dirs[-1] if dirs else None
 

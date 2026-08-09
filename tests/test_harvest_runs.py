@@ -894,11 +894,20 @@ def test_truncated_recomputed_from_git_ancestry_terminus(tmp_path):
     assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
 
 
-# --- Task 3 (#113): slice envelope (tail cut at the last run-artifact
-# record) — unrelated to terminus, unaffected by the Task 2 rewrite ---
+# --- Task 3 (#126): slice envelope, registry-keyed (spec §5) — the tail cut
+# lands at the last qualifying artifact of the LAST registered launch, where
+# an artifact = a tool_result carrying a registered stamp, or a Workflow
+# tool_result itself. Unrelated to terminus, unaffected by the Task 2
+# rewrite. ---
 
 
 def test_slice_cuts_after_last_run_artifact(tmp_path):
+    # REAL alone registers no launch (its Workflow tool_use carries no
+    # runDir-bearing args) — the registry-keyed envelope then falls back to
+    # searching the whole transcript, and REAL's own "Transcript dir:" tool
+    # result already qualifies as a Workflow tool_result before this "ok"
+    # entry is ever reached, so everything after it (incl. "ok" itself) is
+    # tangent regardless.
     ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
     recs = (REAL
             + [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}]),
@@ -914,12 +923,13 @@ def test_slice_keeps_planning_head(tmp_path):
     assert "build the thing" in out
 
 
-# --- fix round 1 (task review): _has_run_artifact must be tool_result-gated,
-# matching the _transcript_dirs / is_real_run convention — a plain prose turn
-# that merely mentions "integrationBranch" is not a run artifact and must not
-# become the slice cutoff. Discriminating shape: no tool_result artifact at
-# all in the transcript, so a correct implementation cuts nothing regardless
-# of where the prose mention sits.
+# --- fix round 1 (task review), still true post-#126: the slice envelope's
+# artifact test must be tool_result-gated, matching the _transcript_dirs /
+# is_real_run convention — a plain prose turn that merely mentions
+# "integrationBranch" is not a run artifact and must not become the slice
+# cutoff. Discriminating shape: no tool_result artifact at all in the
+# transcript, so a correct implementation cuts nothing regardless of where
+# the prose mention sits.
 def test_slice_ignores_prose_mention_outside_tool_result(tmp_path):
     recs = [
         _rec("user", [{"type": "text", "text": "build the thing"}]),
@@ -928,3 +938,95 @@ def test_slice_ignores_prose_mention_outside_tool_result(tmp_path):
     ]
     out = h.slice_transcript(recs)
     assert "definitely-real-content-after-prose" in out
+
+
+# --- F6 poisoning-vector pin (spec §5, reviewer-adjudicated): the Read-
+# tool_result sibling of the prose-mention pin above. Being a `tool_result`
+# is NOT enough on its own to qualify as an artifact — a Read of a test
+# fixture is a tool_result too, and the drain-session incident this whole
+# cycle traces back to was exactly a receipt-shaped JSON literal pasted
+# inside one. The fixture receipt here sits AFTER the real (registered-
+# stamp) gate exchange, so the old "tool_result gate alone" scan (any
+# `"mode"` in _RUN_ARTIFACT_MODES, unconditionally) would treat it as the
+# NEWER artifact and wrongly extend the cutoff past it — pulling the
+# marker in between along for the ride even though it's genuine tangent.
+# Verified red against the pre-#126 implementation before this fix landed.
+# Requiring the embedded stamp to be an ACTUAL registered one keeps the
+# cutoff at the real artifact instead.
+def test_slice_ignores_fixture_receipt_inside_read_tool_result():
+    fixture_receipt = json.dumps({"mode": "gate", "verdict": "PASS", "stamp": "FIXTURE-999"})
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "REAL-1"})
+    recs = [
+        _wf_launch("REAL-1"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}]),
+        _rec("user", [{"type": "text", "text": "should-be-cut-marker"}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"file contents:\n{fixture_receipt}"}]}]),
+        _rec("user", [{"type": "text", "text": "definitely-cut-tangent"}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "should-be-cut-marker" not in out
+    assert "definitely-cut-tangent" not in out
+
+
+# --- Multi-launch envelope pin (spec §5 / task-3-brief): a three-launch
+# session whose LAST launch's final gate exchange sits late in the
+# transcript (several turns after the launch itself) must still keep that
+# exchange inside the slice; only content strictly after it is cut. Proves
+# the envelope's window anchors on the last registered launch, not the first
+# artifact found anywhere.
+def test_slice_envelope_three_launch_session_keeps_late_final_gate_exchange():
+    ok1 = json.dumps({"mode": "approve", "stamp": "S1"})
+    ok2 = json.dumps({"mode": "approve", "stamp": "S2"})
+    final_gate = json.dumps({"mode": "gate", "verdict": "PASS", "stamp": "S3"})
+    recs = [
+        _wf_launch("S1"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok1}]}]),
+        _wf_launch("S2"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok2}]}]),
+        _wf_launch("S3"),
+        _rec("user", [{"type": "text", "text": "mid-run discussion about wave scheduling"}]),
+        _rec("assistant", [{"type": "text", "text": "more back and forth before the gate runs"}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": final_gate}]}]),
+        _rec("user", [{"type": "text", "text": "wave-unrelated post-run tangent"}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "mid-run discussion" in out
+    assert "tangent" not in out
+
+
+# --- No-artifact-after-last-launch fallback pin (spec §5): when the LAST
+# registered launch never printed a qualifying artifact at all, the envelope
+# falls back to that launch's own tool_use index — nothing after the last
+# launch is ever kept blindly just because no artifact says otherwise.
+def test_slice_no_artifact_after_last_launch_falls_back_to_launch_tool_use_index():
+    recs = [
+        _wf_launch("S1"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": json.dumps({"mode": "approve", "stamp": "S1"})}]}]),
+        _wf_launch("S2"),
+        _rec("user", [{"type": "text", "text": "content-after-last-launch-with-no-artifact"}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "content-after-last-launch-with-no-artifact" not in out
+
+
+# --- Hygiene (F5/F7): the balanced-JSON "mode"-anchored scan and its helpers
+# are deleted outright, not gated — the registry-keyed check above replaces
+# them entirely.
+def test_has_run_artifact_scan_is_deleted():
+    assert not hasattr(h, "_has_run_artifact")
+    assert not hasattr(h, "_balanced_json")
+    assert not hasattr(h, "_RUN_ARTIFACT_MODES")
+
+
+# --- Hygiene (F7): the degenerate per-stamp ordinal dict (one file per
+# stamp, so the ordinal was always 0) is gone — disk-receipt entries no
+# longer carry the field at all.
+def test_disk_receipt_entries_have_no_ordinal_field(tmp_path):
+    run_dir = tmp_path / "run-S1"
+    run_dir.mkdir()
+    (run_dir / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "PASS", "stamp": "S1"}))
+    entries = h._disk_receipts_for({"S1": str(run_dir)}, ["S1"])
+    assert "ordinal" not in entries[0]
