@@ -204,6 +204,31 @@ def prepare_engine(engine_ref, root):
     return engine_wt
 
 
+def seed_credentials(config_dir):
+    """Seed live auth into a throwaway CLAUDE_CONFIG_DIR (#107 follow-up,
+    2026-08-09 A/B round 2): a virgin config dir is "Not logged in", and a
+    stored copy of ~/.claude/.credentials.json goes stale once the operator's
+    live session rotates the refresh token ("OAuth session expired and could
+    not be refreshed"). Export the LIVE credentials from the macOS Keychain at
+    run time; fall back to copying ~/.claude/.credentials.json — on
+    Linux/Windows that file IS the live store, so the fallback is the correct
+    primary path there (the chain stays OS-agnostic; no platform checks)."""
+    try:
+        kc = subprocess.run(["security", "find-generic-password",
+                             "-s", "Claude Code-credentials", "-w"],
+                            capture_output=True, text=True)
+        cred_text = kc.stdout.strip() if kc.returncode == 0 else ""
+    except OSError:  # no `security` binary — not macOS
+        cred_text = ""
+    if not cred_text:
+        cred = Path.home() / ".claude/.credentials.json"
+        cred_text = cred.read_text() if cred.is_file() else ""
+    if cred_text:
+        dest = Path(config_dir) / ".credentials.json"
+        dest.write_text(cred_text + "\n")
+        dest.chmod(0o600)
+
+
 def prepare_session_config(engine_wt, workspace):
     """Materialize the pinned engine inside a throwaway CLAUDE_CONFIG_DIR and
     return the complete env mapping session cells use verbatim (#107: the
@@ -214,6 +239,7 @@ def prepare_session_config(engine_wt, workspace):
     the superpowers dependency (spec §3)."""
     cfg = Path(workspace) / "claude-config"
     cfg.mkdir(parents=True, exist_ok=True)
+    seed_credentials(cfg)
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(cfg)
     # The exact enablement incantation is a named verification unknown (spec
@@ -290,6 +316,27 @@ def _git_env():
     env = dict(os.environ)
     env.setdefault("GIT_TERMINAL_PROMPT", "0")
     return env
+
+
+def seed_workflows(engine_wt, workdir):
+    """Pre-seed the pinned engine's saved workflows into the run repo BEFORE
+    any claude process starts (2026-08-09 A/B): headless print mode races the
+    SessionStart hook — the Workflow engine's saved-workflow registry snapshots
+    before the hook's harness copy lands, so 'ultrapowers-probe' comes up "not
+    found" even though the file is on disk by end of startup. Interactively the
+    hook wins this race; headlessly it loses. Files already on disk always make
+    the snapshot. Also mirrors the production gitignore contract (`.claude/` in
+    .git/info/exclude) so dirt measurements stay scoped to the repo's own
+    files, not the seeded harnesses."""
+    wf = Path(workdir) / ".claude/workflows"
+    wf.mkdir(parents=True, exist_ok=True)
+    harnesses = Path(engine_wt) / "skills/ultrapowers/harnesses"
+    for manifest in sorted(harnesses.glob("*.harness.json")):
+        fname = json.loads(manifest.read_text()).get("file")
+        if fname and (harnesses / fname).is_file():
+            shutil.copy2(harnesses / fname, wf / fname)
+    with open(Path(workdir) / ".git/info/exclude", "a") as x:
+        x.write(".claude/\n")
 
 
 def probe_workflow(workdir, env):
@@ -542,6 +589,7 @@ def main():
     engine = prepare_engine(args.engine_ref, root)
     install_seals(plan, root)
     workdir, _baseline = clone_project(plan)
+    seed_workflows(engine, workdir)
     env = prepare_session_config(engine, workdir.parent)
     transcript, gate_report, mode = drive_run(workdir, plan, env)
     try:
