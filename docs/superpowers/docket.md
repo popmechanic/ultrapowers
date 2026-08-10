@@ -287,7 +287,7 @@
 **Notes:** Distill 2026-08-09 headliner; supersedes #121 (closed). Sev-3 field evidence at 0.1.15 (home bundle: fixture stamps registered as runs, gateReport = fixture literal, 5/5 real receipts lost). Fix IS a deletion: stamps from Workflow tool_use args only; receipts/gateReport from per-stamp disk reads only (last-write-wins); multi-launch slice envelope; carries #121's hygiene items. canaryMetric: home-bundle receipt accuracy 0/5 → 5/5. SEQUENCE FIRST with #104 (already accepted) — one deletion pair, per operator directive. Issue body carries the full design — short brainstorm.
 
 ### #127: redirect_args.py derives the integration branch from the argsFile
-**State:** queued
+**State:** executed
 **Score:** 7 — operator-attention efficiency on the field-validated micro-redirect lane; 3/3 sessions stumbled on first call
 **Est-files:** skills/ultrapowers/scripts/redirect_args.py, tests/test_redirect_args.py, skills/ultrapowers/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-10-redirect-lane-derivation-pair.md
@@ -331,7 +331,7 @@
 **Notes:** --baseline-under-symlink test, platform-split mktemp mechanism comment, SKILL --test-cmd loud-fail note. All cheap; frozen files untouched (tests + docs only). Could ride any future inline unit as a tail task.
 
 ### #131: Redirect/Salvage relaunch inherits stale heads/ slots from the prior launch
-**State:** queued
+**State:** executed
 **Score:** 8 — integration correctness at the derive-don't-record authority layer; operator-designated priority class this cycle
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/scripts/redirect_args.py, skills/ultrapowers/references/wave-merge.md, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-redirect-lane-derivation-pair.md
