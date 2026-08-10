@@ -198,7 +198,25 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
 `tests.passed` is triage context; the **exit code is the authority**:
 
 - **0 (PASS)** → render the report and offer **Approve**.
-- **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement first.
+- **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement
+  first. Acting on **standing pre-authorization** instead is sanctioned when ALL
+  of the following hold: the operator gave an explicit forward-looking approval
+  instruction earlier in the session (or in the launch directive), quotable
+  verbatim, that addresses the ack disposition or the gate-outcome class
+  ("approve if clean apart from the usual runtime acks" qualifies; "merge when
+  done" does not — it says nothing about acks); every ack being consumed is a
+  `deferredVerification` item with reason `runtime` or `external` — a
+  `coverage.complete: false` ack, or any ack naming an operator-environment
+  mutation or a data-integrity surface, is outside every standing grant and
+  needs a fresh turn; the full ack list plus the verbatim instruction and
+  where/when it was granted is rendered per the report-format.md Approve
+  rendering clause; and `run-<stamp>/standing-approval.json` is written FIRST:
+  `{"grantedAt": "<turn or timestamp>", "instruction": "<verbatim>",
+  "ackList": [...]}`. A grant is consumed per gate presentation — each gate
+  that uses it writes a fresh sidecar, and that consumption counts as the
+  explicit operator disposition for the items it lists, those items only. Any
+  ambiguity about whether an instruction covers this gate resolves to a fresh
+  ack.
 - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
 
 Whatever the verdict, delete the run's review exhaust now —
@@ -215,7 +233,8 @@ only by explicit operator disposition, never as a relaunch side effect.
 Render the report per `references/report-format.md` plus the **post-merge runbook**
 (`release`/`manual` tasks, verbatim), then present:
 
-- **Approve** — only on PASS (or an acknowledged NEEDS_ACK). Run
+- **Approve** — only on PASS (or a NEEDS_ACK acknowledged fresh or via a
+  recorded standing grant). Run
   `ultra_gate.py --approve --stamp <stamp>` — it does
   `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
   sweeps **every wf run ID the gate recorded across launches**
