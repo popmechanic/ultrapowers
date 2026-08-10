@@ -68,6 +68,10 @@ One iteration:
    well-defined issue is half a spec, so the interview is short.
 3. **Plan** through the normal pipeline: brainstorm → `superpowers:writing-plans`
    + `ultrapowers:ultraplan` → operator approval → the ultraplan sealing step.
+   Plans the sweep writes must carry the exact compiling Acceptance form —
+   `**Acceptance:** suite — <one-line rationale>` (or the sealed/waived
+   equivalents) — verified by the pipeline's existing `compile_plan.py --check`
+   step; a bare `suite.` parses as `missing` and reds the drain.
 4. **Choose the engine.** Apply the **shared execution-fit rubric** — the same
    one the routing hook and ultraplan use (pinned by
    `tests/test_recommendation_rubric.py`) — to the finished marked plan, and
@@ -121,6 +125,10 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      `meta.name` `ultrapowers-run`** (not `waves` — that is the harness file, and
      launching by it fails "not found") via the Workflow tool, following
      `/ultrapowers` Steps 2–4 for the engine probe, run lock, and args assembly.
+     Immediately after each Workflow launch, record the runtime run ID:
+     `python3 skills/ultradocket/scripts/record_wf_run.py <stamp> <wf_runId>`
+     (the drain's run-lock stamp, one per drain) — teardown and approve then
+     derive the sweep set exactly as in single-run mode.
      Do **not** invoke `/ultrapowers`' own Step-5 gate — the drain administers the
      correctness gate (step 3) and the docket-line merge (step 4) below instead. Waves
      self-isolates with per-task worktrees and tiers per task.

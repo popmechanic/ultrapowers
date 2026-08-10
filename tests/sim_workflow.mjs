@@ -406,6 +406,12 @@ async function scenarioIntegrationWorktree() {
   // Setup bootstraps the fresh worktree once (merge agents run tests there).
   assert(prompts['setup'].includes('pip install -e .'),
     'intwt: setup runs bootstrapCmd inside the integration worktree')
+  // #120: the dispatched (interpolated) setup prompt carries the fail-closed
+  // clause — distinct from the static drift pin, this catches broken interpolation.
+  assert(prompts['setup'].includes('never adopt, clear, or reuse an existing directory'),
+    'intwt: setup prompt carries the #120 fail-closed clause')
+  assert(prompts['setup'].includes('report headSha as the empty string'),
+    'intwt: setup prompt pins the refusal shape')
   // Merge names the worktree, not the main checkout.
   const mergeLabel = Object.keys(prompts).find((l) => /^merge:wave/.test(l))
   assert(mergeLabel && prompts[mergeLabel].includes(WT),
@@ -716,6 +722,32 @@ async function scenarioSetupFailure() {
   assert(threw, 'setupFailure: mismatched setup branch must throw')
   assert(!implRan, 'setupFailure: no implementer may run after a failed setup')
   console.log('scenario setup-failure: OK')
+}
+
+// ── Scenario: pinned stale-worktree refusal shape must abort (#120) ──────────
+// SETUP_SCHEMA has no status field, so a refusing agent reports the pinned
+// shape (BLOCKED string in branch, empty headSha) — this proves that shape
+// trips the controller's EXISTING abort checks before any task dispatch.
+async function scenarioStaleWorktreeRefusal() {
+  let implRan = false
+  let threw = false
+  try {
+    await runWorkflow({
+      agent: makeAgent((label) => {
+        if (label === 'setup') {
+          return { branch: 'BLOCKED: .claude/worktrees/wf_sim-integration exists — remove it with sweep_worktrees.sh --run wf_sim', headSha: '' }
+        }
+        if (label.startsWith('impl:')) { implRan = true }
+        return undefined
+      }),
+      args: baseArgs, budget: undefined,
+    })
+  } catch (e) {
+    threw = /setup failed/.test(e.message)
+  }
+  assert(threw, 'staleWorktreeRefusal: the pinned refusal shape must throw')
+  assert(!implRan, 'staleWorktreeRefusal: no implementer may run after a refusal')
+  console.log('scenario stale-worktree-refusal: OK')
 }
 
 // ── Scenario: red baseline is recorded and surfaced, run continues (F15) ──────
@@ -1931,6 +1963,7 @@ await scenarioDerivedWaveLabels()
 await scenarioAdversarialDissent()
 await scenarioMissingPathArgs()
 await scenarioSetupFailure()
+await scenarioStaleWorktreeRefusal()
 await scenarioBaselineRed()
 await scenarioTypoReviewAndUnknownBaseline()
 await scenarioFixRoundLostCoordinates()

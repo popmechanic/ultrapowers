@@ -13,7 +13,10 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    good, or did poor marking cause serialization or conflicts.
 3. **operator** — the human's qualitative arc: confusion, surprise,
    trust/distrust, what they said at planning and at the gate, where they spent
-   attention versus where the design intended.
+   attention versus where the design intended. Watch specifically for a
+   NEEDS_ACK approved under a claimed standing instruction with no printed ack
+   list or standing-approval sidecar — that recurrence is what would buy an
+   enforcement guard.
 4. **cost** — tokens, turns, tier choices, parallelism payoff, anything the
    metrics in `bundle.json` reveal about effort versus benefit.
 5. **frontier** — OPEN-ENDED. How large/complex did the work get and still

@@ -268,3 +268,66 @@ def test_cli_main_prints_json(tmp_path, capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["budget_usd"] == 12.5
     assert out["order"] == [str(pa)]
+
+
+def _entry(issue, score, plan, engine="inline", state="queued", seal=None, extra=""):
+    lines = [f"### #{issue}: t{issue}", f"**State:** {state}", f"**Score:** {score} — x",
+             "**Est-files:** a.py", f"**Plan:** {plan}"]
+    if seal:
+        lines.append(f"**Seal:** {seal}")
+    lines.append(f"**Engine:** {engine}")
+    return "\n".join(lines) + "\n" + extra
+
+
+def _resolver(writes_by_plan, mode="suite"):
+    return lambda p: (writes_by_plan.get(p, ["w.py"]), mode)
+
+
+def test_plan_together_cluster_forms_one_unit():
+    m = load()
+    text = "# Docket\n\n" + _entry("1", "9", "p/shared.md") + "\n" + \
+           _entry("2", "7", "p/shared.md") + "\n" + _entry("3", "8", "p/solo.md")
+    out = m.compile_docket(text, facts_resolver=_resolver({}))
+    assert out["order"] == ["p/shared.md", "p/solo.md"]      # deduped, max(9,7)=9 first
+    assert out["units"] == {"p/shared.md": ["1", "2"], "p/solo.md": ["3"]}
+
+
+def test_cluster_collision_reported_once_per_plan_pair():
+    m = load()
+    text = "# Docket\n\n" + _entry("1", "9", "p/shared.md") + "\n" + \
+           _entry("2", "7", "p/shared.md") + "\n" + _entry("3", "8", "p/solo.md")
+    out = m.compile_docket(text, facts_resolver=_resolver(
+        {"p/shared.md": ["x.py"], "p/solo.md": ["x.py"]}))
+    assert len(out["collisions"]) == 1
+    assert set(out["collisions"][0]["plans"]) == {"p/shared.md", "p/solo.md"}
+
+
+def test_sealed_cluster_member_missing_seal_raises_naming_member():
+    # regression coverage of the EXISTING pre-unitization no_seal check
+    m = load()
+    text = "# Docket\n\n" + _entry("1", "9", "p/s.md", seal="abcdef123456") + "\n" + \
+           _entry("2", "7", "p/s.md")   # same plan, no Seal
+    try:
+        m.compile_docket(text, facts_resolver=_resolver({}, mode="sealed"))
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "2" in str(e)
+
+
+def test_cluster_engine_disagreement_raises_naming_members():
+    m = load()
+    text = "# Docket\n\n" + _entry("1", "9", "p/s.md", engine="inline") + "\n" + \
+           _entry("2", "7", "p/s.md", engine="ultrapowers")
+    try:
+        m.compile_docket(text, facts_resolver=_resolver({}))
+        assert False, "expected ValueError"
+    except ValueError as e:
+        assert "1" in str(e) and "2" in str(e)
+
+
+def test_single_entry_result_unchanged():
+    m = load()
+    text = "# Docket\n\n" + _entry("1", "9", "p/a.md") + "\n" + _entry("2", "7", "p/b.md")
+    out = m.compile_docket(text, facts_resolver=_resolver({}))
+    assert out["order"] == ["p/a.md", "p/b.md"]
+    assert out["units"] == {"p/a.md": ["1"], "p/b.md": ["2"]}
