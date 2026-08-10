@@ -35,6 +35,17 @@
 - Consumes: nothing from other tasks.
 - Produces: importable module `manyana` (add `evals/frontier/vendor` to `sys.path`) with `initial_state(lines) -> str`, `current_lines(state: str) -> list[str]`, `update_state(state: str, lines: list[str]) -> str`, `merge_states(s1: str, s2: str) -> tuple[str, list[str]]`; vendored-file constant `PATCHED_SHA256 = "3c8ba319bb286aac0ca8f2d7ac355e2610eafa290d2f1e46c7eb5ff562220004"` asserted in the pin test.
 
+**PRIOR ATTEMPT (2026-08-09, run wf_fe05bc69-a22):** this task was completed
+cleanly once and its merge was blocked by run machinery, not content. Reuse the
+finished work instead of re-fetching: commit `4810195` on branch
+`worktree-wf_fe05bc69-a22-3` carries all three files, review-verdict clean,
+vendored sha matching the pin exactly. `git checkout 4810195 -- evals/frontier/vendor/ tests/test_frontier_kernel.py`
+then apply this plan's one delta — the `assert len(ran) == 18` count-guard in
+`test_upstream_suite_passes` (Step 4 below shows the final form) — and verify
+per Steps 2 and 5. Never use commit `bb969e6` (a contaminated attempt no branch
+contains: it touches `skills/` and deletes plan documents). If the branch is
+gone, fall back to the fetch path in Step 1.
+
 - [ ] **Step 1: Fetch upstream and apply the one-line patch**
 
 ```bash
@@ -135,16 +146,22 @@ def test_provenance_records_pin():
 def test_upstream_suite_passes():
     # manyana's own runner: every module-level callable named test* is a test.
     failures = []
+    ran = []
     for name in sorted(dir(manyana)):
         if name.startswith("test") and callable(getattr(manyana, name)):
             fn = getattr(manyana, name)
             if fn.__code__.co_argcount == 0:
+                ran.append(name)
                 try:
                     with redirect_stdout(io.StringIO()):
                         fn()
                 except Exception as exc:  # noqa: BLE001 - collecting all failures
                     failures.append(f"{name}: {exc!r}")
     assert not failures, failures
+    # 18 zero-arg test* functions at the pinned revision (2 param'd helpers are
+    # invoked by their parents): guards the wrap against a silently-empty sweep
+    # if a future re-vendor changes the naming convention.
+    assert len(ran) == 18, ran
 
 
 def test_kernel_api_roundtrip():
@@ -605,9 +622,19 @@ git commit -m "feat(frontier): repo-level weave layer (RepoState/TaskState/fold)
   - `drop_same_file_edges(edges: list) -> list`
   - `fold_all(fold_fn, base, tasks: list, order: list) -> tuple` — folds `tasks[i]` for `i` in `order`; returns `(frontier, conflicts)`.
   - `sampled_orders(n: int, seed: int = 42) -> list[list[int]]` — all permutations for `n <= 4`, else 20 seeded shuffles (always including identity).
-  - `bisect_single(tasks: list, is_red) -> tuple` — `is_red(subset_indices) -> bool`, monotone single-culprit; returns `(culprit_index, probes)` with `probes <= ceil(log2(len(tasks)))`.
-  - `isolate_min_set(tasks: list, is_red) -> tuple` — greedy ddmin-style reduction for interaction failures; returns `(sorted_indices, probes)`; measured, not gated.
+  - `bisect_single(tasks: list, is_red) -> tuple` — `is_red(subset) -> bool` where `subset` is a sub-list of `tasks` (elements, not indices), monotone single-culprit; returns `(culprit_element, probes)` with `probes <= ceil(log2(len(tasks)))`.
+  - `isolate_min_set(tasks: list, is_red) -> tuple` — greedy ddmin-style reduction for interaction failures; returns `(surviving_elements_in_input_order, probes)`; elements need not be order-comparable (no sorting); measured, not gated.
 - **Parallelization rationale:** pure analytics over plan JSON + an injected fold callable; independent of the weave layer by design (test with fakes), so it builds in the same wave as Task 1/Task 2's chain without file or interface contact.
+
+**PRIOR ATTEMPT (2026-08-09, run wf_fe05bc69-a22):** completed cleanly once;
+the merge was blocked by run machinery, not content. Commit `0488619` on branch
+`worktree-wf_fe05bc69-a22-4` carries both files, review-verdict clean. Reuse it
+(`git checkout 0488619 -- evals/frontier/schedule_model.py tests/test_frontier_schedule.py`)
+and then apply this plan's deltas, which resolve that run's review findings:
+`isolate_min_set` must return surviving elements in input order with no
+`sorted()` call, and the tests below now use non-index, non-order-comparable
+elements plus the `probes == len(probes_seen)` assertion. If the branch is
+gone, implement from scratch per the steps.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -669,29 +696,38 @@ def test_sampled_orders_small_is_exhaustive_large_is_seeded():
 
 
 def test_bisect_single_finds_culprit_within_log_bound():
-    tasks = list(range(16))
-    culprit = 11
+    # Elements are deliberately NOT their own indices, and n=13 is not a power
+    # of two — both guard the contract (elements returned, bound still holds).
+    tasks = ["t%d" % i for i in range(13)]
+    culprit = "t11"
+
+    probes_seen = []
+
+    def is_red(subset):
+        probes_seen.append(list(subset))
+        return culprit in subset
+
+    found, probes = sm.bisect_single(tasks, is_red)
+    assert found == culprit
+    assert probes == len(probes_seen)  # self-reported count matches reality
+    assert probes <= math.ceil(math.log2(len(tasks)))
+
+
+def test_isolate_min_set_pairwise():
+    # dict elements: unhashable-in-sets is fine, but they are NOT order-
+    # comparable, so this also guards the no-sorting contract.
+    tasks = [{"id": i} for i in range(8)]
+    pair = [{"id": 2}, {"id": 5}]
 
     probes_seen = []
 
     def is_red(subset):
         probes_seen.append(1)
-        return culprit in subset
-
-    found, probes = sm.bisect_single(tasks, is_red)
-    assert found == culprit
-    assert probes <= math.ceil(math.log2(len(tasks)))
-
-
-def test_isolate_min_set_pairwise():
-    tasks = list(range(8))
-    pair = {2, 5}
-
-    def is_red(subset):
-        return pair <= set(subset)
+        return all(p in subset for p in pair)
 
     found, probes = sm.isolate_min_set(tasks, is_red)
-    assert set(found) == pair
+    assert found == pair  # input order preserved
+    assert probes == len(probes_seen)
     assert probes > 0
 ```
 
@@ -773,18 +809,20 @@ def bisect_single(tasks, is_red):
 
 
 def isolate_min_set(tasks, is_red):
+    # Returns surviving ELEMENTS in input order — never sorts (elements may not
+    # be order-comparable, e.g. dicts).
     current = list(tasks)
     probes = 0
     changed = True
     while changed:
         changed = False
         for t in list(current):
-            trial = [x for x in current if x != t]
+            trial = [x for x in current if x is not t]
             probes += 1
             if is_red(trial):
                 current = trial
                 changed = True
-    return sorted(current), probes
+    return current, probes
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -956,7 +994,7 @@ def compile_fixture(name):
     return json.loads(out.stdout)
 ```
 
-- `fixture_cases(seed)`: per fixture, compile; implementation tasks only; build base/tasks per the Track (a) synthetic-diff rules; durations `random.Random(seed).uniform(60, 600)` per task.
+- `fixture_cases(seed)`: per fixture, compile; implementation tasks only; build base/tasks per the Track (a) synthetic-diff rules; durations `random.Random(seed).uniform(60, 600)` per task. Makespans read the compiler's `compiled["waves"]` (plain lists of task-id strings) and `compiled["dag_edges"]` — never `launch_waves`, which is a launch-payload variant carrying entry dicts.
 - `synthetic_cases()`: the five Track (b) scenarios verbatim.
 - `run_case(case)`: `orders = sm.sampled_orders(len(tasks))`; fold every order via `sm.fold_all(rw.fold, base, tasks, order)`; `k1_identical` = all `(manifest, conflict-key)` pairs equal; makespans from `sm.waves_makespan` / `sm.frontier_makespan(ids, edges, dur)` / `sm.frontier_makespan(ids, sm.drop_same_file_edges(edges), dur)` for track a; K4 contiguity check for `four-way-fanin`; K2 spot-check = re-fold the first task into the final frontier and assert manifest+conflict-keys unchanged (record as `k2_idempotent`).
 - `run_tracks(tracks, out_dir, repo=None, seed=42)`: run cases, write `<track>-<name>.json`, aggregate `k_gates` (`K1`, `K2`, `K4_no_interleaving`; `K3` = `"not evaluated (track c not run)"` when `"c"` not in tracks — a later task supplies track c), write `rollup.md` with the exact headings from the block above, return the summary dict.
