@@ -369,15 +369,19 @@
 **Notes:** Frontier residual. DORMANT by operator directive — this issue IS half the reopening trigger (adjudication doc: #133 corpus fix + same-file fixture ⇒ re-run probe), so it is worked exactly when the operator invokes the trigger, never on momentum. Preferred option per issue: tolerate reconciliation commits in extraction (pseudo-task diffs or cut at last pre-reconciliation merge) WITH designed comparison semantics, not a patch; foreign corpora (--tracks c elsewhere) is the fallback.
 
 ### #139: eval kit: extract prepare_cell() — ab_runner.main and run_ab_cell.main duplicate the six-step cell setup
-**State:** accepted
+**State:** queued
 **Score:** 7 — measurement-loop integrity + simplicity: dedups a drift seam that has already fired once between the two A/B entry points
 **Est-files:** evals/ab_runner.py, evals/run_ab_cell.py, tests/
+**Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
+**Engine:** ultrapowers
 **Notes:** From PR #138's adversarially-verified review (CONFIRMED, anchored ab_runner.py:589). The drift risk already fired pre-#138: only the run-scoped driver carried the headless fixes, so the two A/B entry points ran different setups — and #138 itself had to insert seed_workflows at the correct slot in both files. Fix is deduplication (deletion-shaped, doctrine-aligned): extract prepare_cell(plan, engine_ref, root) -> (engine, workdir, baseline, env); both mains call it; run_ab_cell's dirt seeding moves after prepare_session_config unchanged (reviewer verified it never touches the run repo). Protects the eval kit that gates every frozen-periphery unfreeze. evals/ only — not frozen periphery. PLAN TOGETHER WITH #140 (same file, one small eval-kit follow-up plan).
 
 ### #140: eval kit: seed_workflows is a second, untested reader of the *.harness.json manifest schema — pin the contract with the session hook
-**State:** accepted
+**State:** queued
 **Score:** 6.5 — measurement-integrity class: manifest-schema drift would make the A/B measure a saved-workflow config real operators never get
 **Est-files:** evals/ab_runner.py, hooks/session_start.sh, skills/ultrapowers/harnesses/, tests/
+**Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
+**Engine:** ultrapowers
 **Notes:** From PR #138's review (PLAUSIBLE, anchored ab_runner.py:333). HALF ALREADY LANDED: the empty-seed hard-fail shipped in #138's fix round (verified in main today, ab_runner.py:368-373 refuses an unprobeable cell). Remaining scope is ONLY part (b): one pin test asserting seed_workflows and hooks/session_start.sh extract the same file list from the committed *.harness.json manifests. This is a two-code-readers contract pin (test_no_prompt_drift precedent), not a prose pin — compatible with the anti-pin doctrine. Consequence if unpinned: infrastructure drift masquerades as an engine regression in A/B numbers. PLAN TOGETHER WITH #139. ACCEPTANCE CONDITIONAL (gate 2026-08-10): planning must examine the one-reader option FIRST — if #139's prepare_cell extraction can cheaply collapse kit+hook to a single manifest reader, the pin is never born; the pin test lands only if cross-language reality (bash hook / python kit) keeps two readers.
 
 ### #141: ultralearn harvester cannot see subagent-driven/inline drains — a growing sensing blind spot
