@@ -54,12 +54,221 @@ def test_extract_finds_clean_run(tmp_path):
     assert sum(len(g["tasks"]) for g in groups) == 2
 
 
-def test_reconciliation_run_excluded_by_name(tmp_path):
+def test_trailing_reconciliation_recovers_with_comparison_cut(tmp_path):
+    """A recon commit after the last merge no longer excludes the run (#133):
+    fidelity comparison cuts at the last merge, and the cut is recorded."""
     repo = build_integration_repo(tmp_path, with_reconciliation=True)
+    result = run_eval.extract_archived_runs(repo)
+    assert result["excluded"] == []
+    assert len(result["runs"]) == 1
+    run = result["runs"][0]
+    assert sum(len(g["tasks"]) for g in run["groups"]) == 2
+    assert all(g["recons"] == [] for g in run["groups"])
+    assert len(run["trailing_recons"]) == 1
+
+    out = tmp_path / "out"
+    summary = run_eval.run_tracks(["c"], out, repo=repo, seed=42)
+    assert summary["track_c"]["recovered_n"] == 1
+    case = json.loads(next(out.glob("c-*.json")).read_text())
+    assert case["fidelity"]["silent_divergence"] == []
+    assert case["reconciliation"]["pseudo_tasks"] == []
+    assert case["reconciliation"]["trailing_cut"] == run["trailing_recons"]
+    rollup = (out / "rollup.md").read_text()
+    assert "comparison cut at last merge" in rollup
+
+
+def test_between_wave_recon_is_absorbed_by_next_wave_base(tmp_path):
+    """A recon between waves whose next wave forks after it needs no
+    pseudo-task: the next group's base snapshot already contains it."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\na2\n")
+    (repo / "b.py").write_text("b1\nb2\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task1", base)
+    (repo / "a.py").write_text("a1-edited\na2\n")
+    git(repo, "commit", "-qam", "task1 work")
+    git(repo, "checkout", "-qb", "ultra/integration-t", base)
+    git(repo, "merge", "-q", "--no-ff", "task1", "-m", "merge task1")
+    (repo / "a.py").write_text("a1-reconciled\na2\n")
+    git(repo, "commit", "-qam", "reconcile wave 1")
+    recon = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task2", recon)
+    (repo / "b.py").write_text("b1\nb2\nb3\n")
+    git(repo, "commit", "-qam", "task2 work")
+    git(repo, "checkout", "-q", "ultra/integration-t")
+    git(repo, "merge", "-q", "--no-ff", "task2", "-m", "merge task2")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
+    result = run_eval.extract_archived_runs(repo)
+    assert result["excluded"] == []
+    run = result["runs"][0]
+    assert len(run["groups"]) == 2
+    assert run["groups"][1]["base_sha"] == recon
+    assert all(g["recons"] == [] for g in run["groups"])
+    assert run["trailing_recons"] == []
+
+    summary = run_eval.run_track_c(repo, tmp_path / "out", seed=42)
+    assert summary["silent_divergence"] == []
+
+
+def test_mid_wave_recon_folds_as_pseudo_task(tmp_path):
+    """A recon between two same-base merges folds into that wave as a
+    pseudo-task, and the wave's fold reproduces the post-recon merge tree."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\na2\n")
+    (repo / "b.py").write_text("b1\nb2\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task1", base)
+    (repo / "a.py").write_text("a1-edited\na2\n")
+    git(repo, "commit", "-qam", "task1 work")
+    git(repo, "checkout", "-qb", "task2", base)
+    (repo / "b.py").write_text("b1\nb2\nb3\n")
+    git(repo, "commit", "-qam", "task2 work")
+    git(repo, "checkout", "-qb", "ultra/integration-t", base)
+    git(repo, "merge", "-q", "--no-ff", "task1", "-m", "merge task1")
+    (repo / "c.py").write_text("c1-from-recon\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "mid-wave reconcile")
+    recon = git(repo, "rev-parse", "HEAD")
+    git(repo, "merge", "-q", "--no-ff", "task2", "-m", "merge task2")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
+    result = run_eval.extract_archived_runs(repo)
+    assert result["excluded"] == []
+    run = result["runs"][0]
+    assert len(run["groups"]) == 1
+    group = run["groups"][0]
+    assert [t["task_id"] for t in group["tasks"]] == [
+        git(repo, "rev-parse", "task1")[:8], git(repo, "rev-parse", "task2")[:8]]
+    assert [r["task_id"] for r in group["recons"]] == ["recon-%s" % recon[:8]]
+    assert run["trailing_recons"] == []
+
+    out = tmp_path / "out"
+    summary = run_eval.run_track_c(repo, out, seed=42)
+    assert summary["silent_divergence"] == []
+    case = json.loads(next(out.glob("c-*.json")).read_text())
+    # 3 fold participants (2 tasks + 1 pseudo-task) -> all 6 permutations.
+    assert case["folds"]["orders_sampled"] == 6
+    assert case["folds"]["k1_identical"] is True
+    assert case["reconciliation"]["pseudo_tasks"] == ["recon-%s" % recon[:8]]
+    # c.py exists only in the recon commit; reaching the merged manifest
+    # proves the pseudo-task actually folded.
+    assert "c.py" not in case["fidelity"]["silent_divergence"]
+
+
+def test_consecutive_recons_coalesce_into_one_pseudo_task(tmp_path):
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task1", base)
+    (repo / "a.py").write_text("a1-edited\n")
+    git(repo, "commit", "-qam", "task1 work")
+    git(repo, "checkout", "-qb", "task2", base)
+    (repo / "b.py").write_text("b1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "task2 work")
+    git(repo, "checkout", "-qb", "ultra/integration-t", base)
+    git(repo, "merge", "-q", "--no-ff", "task1", "-m", "merge task1")
+    (repo / "c.py").write_text("c1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "reconcile one")
+    (repo / "c.py").write_text("c1\nc2\n")
+    git(repo, "commit", "-qam", "reconcile two")
+    last_recon = git(repo, "rev-parse", "HEAD")
+    git(repo, "merge", "-q", "--no-ff", "task2", "-m", "merge task2")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
+    run = run_eval.extract_archived_runs(repo)["runs"][0]
+    assert [r["task_id"] for g in run["groups"] for r in g["recons"]] == [
+        "recon-%s" % last_recon[:8]]
+    summary = run_eval.run_track_c(repo, tmp_path / "out", seed=42)
+    assert summary["silent_divergence"] == []
+
+
+def test_recon_not_in_next_wave_base_folds_into_that_wave(tmp_path):
+    """When the next wave's tasks forked *before* the recon landed, the recon
+    is not in that wave's merge-base and must fold there as a pseudo-task."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\n")
+    (repo / "b.py").write_text("b1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task1", base)
+    (repo / "a.py").write_text("a1-edited\n")
+    git(repo, "commit", "-qam", "task1 work")
+    git(repo, "checkout", "-qb", "ultra/integration-t", base)
+    git(repo, "merge", "-q", "--no-ff", "task1", "-m", "merge task1")
+    wave1 = git(repo, "rev-parse", "HEAD")
+    # task2 forks from the wave-1 merge, BEFORE the recon lands.
+    git(repo, "checkout", "-qb", "task2", wave1)
+    (repo / "b.py").write_text("b1\nb2\n")
+    git(repo, "commit", "-qam", "task2 work")
+    git(repo, "checkout", "-q", "ultra/integration-t")
+    (repo / "c.py").write_text("c1-from-recon\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "reconcile")
+    recon = git(repo, "rev-parse", "HEAD")
+    git(repo, "merge", "-q", "--no-ff", "task2", "-m", "merge task2")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
+    run = run_eval.extract_archived_runs(repo)["runs"][0]
+    assert len(run["groups"]) == 2
+    assert run["groups"][0]["recons"] == []
+    assert [r["task_id"] for r in run["groups"][1]["recons"]] == [
+        "recon-%s" % recon[:8]]
+    summary = run_eval.run_track_c(repo, tmp_path / "out", seed=42)
+    assert summary["silent_divergence"] == []
+
+
+def test_merge_less_chain_is_excluded_by_name(tmp_path):
+    """An integration branch that carries only ordinary commits (no per-task
+    merges) has nothing to replay and is excluded honestly."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    git(repo, "checkout", "-qb", "ultra/integration-t")
+    (repo / "a.py").write_text("a1-direct\n")
+    git(repo, "commit", "-qam", "direct work, no task merges")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
     result = run_eval.extract_archived_runs(repo)
     assert result["runs"] == []
     assert len(result["excluded"]) == 1
-    assert "reconciliation commit" in result["excluded"][0]["reason"]
+    assert "no per-task merges" in result["excluded"][0]["reason"]
 
 
 def test_replay_fidelity_and_floor(tmp_path):
@@ -165,16 +374,31 @@ def test_run_tracks_c_wires_rollup_and_k3(tmp_path):
 
 
 def test_run_tracks_c_reports_exclusions_in_rollup(tmp_path):
-    repo = build_integration_repo(tmp_path, with_reconciliation=True)
+    """A chain with no per-task merges is the shape that still excludes."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    (repo / "a.py").write_text("a1\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    git(repo, "checkout", "-qb", "ultra/integration-t")
+    (repo / "a.py").write_text("a1-direct\n")
+    git(repo, "commit", "-qam", "direct work, no task merges")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-t'")
+
     out = tmp_path / "out"
     summary = run_eval.run_tracks(["c"], out, repo=repo, seed=42)
     ref = git(repo, "rev-parse", "main")
     assert summary["k_gates"]["K3"] == "not evaluated (recovered-n=0 below floor 3)"
     assert list(out.glob("c-*.json")) == []
     reasons = [e["reason"] for e in summary["exclusions"]]
-    assert any("reconciliation commit" in r for r in reasons)
+    assert any("no per-task merges" in r for r in reasons)
     rollup = (out / "rollup.md").read_text()
-    assert "reconciliation commit" in rollup
+    assert "no per-task merges" in rollup
     assert ref[:8] in rollup
 
 

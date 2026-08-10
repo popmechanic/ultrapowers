@@ -1,0 +1,62 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 31,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 14
+  },
+  "groups": [
+    {
+      "after_sha": "960db39ea15c12317bdb062f785f25d8c44ca835",
+      "base_sha": "264007b238fd4b29b8e3b2f52d9f2c2e728f8e28",
+      "recons": [
+        "recon-505f3fd9"
+      ],
+      "tasks": [
+        "5c1b3d5e",
+        "81736d6f"
+      ]
+    },
+    {
+      "after_sha": "67848cac7294da1cf891a983ba181918068f282a",
+      "base_sha": "960db39ea15c12317bdb062f785f25d8c44ca835",
+      "recons": [
+        "recon-3cd89620"
+      ],
+      "tasks": [
+        "04473762",
+        "a7a58994"
+      ]
+    },
+    {
+      "after_sha": "f2e5f43149b9f7ad3a317bbc8f64a54c527b5daf",
+      "base_sha": "67848cac7294da1cf891a983ba181918068f282a",
+      "recons": [
+        "recon-e2d49d60"
+      ],
+      "tasks": [
+        "54bf51ce"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "c64fbdac",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-505f3fd9",
+      "recon-3cd89620",
+      "recon-e2d49d60"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "c64fbdacb9b45772529afd6efe96549a674c725d",
+  "track": "c"
+}

@@ -1,0 +1,48 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 6,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 3
+  },
+  "groups": [
+    {
+      "after_sha": "570278d5a62d7f9b02ed680ea6111ea470dc1a3f",
+      "base_sha": "9fe1e376662a0c0b22eb3c580316f24e9e12be66",
+      "recons": [
+        "recon-ab2286d0"
+      ],
+      "tasks": [
+        "28b96a10"
+      ]
+    },
+    {
+      "after_sha": "0439d943de6720e09b932b077159140c37cca504",
+      "base_sha": "56ec122f5e5007c1ebfc9960bd4df72952da8f9b",
+      "recons": [],
+      "tasks": [
+        "648b3fc9"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "f2b96216",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-ab2286d0"
+    ],
+    "trailing_cut": [
+      "76fdebd8c1317caeb442ad1b7a00f7feca41d120"
+    ]
+  },
+  "ref": "f2b96216cb5380bb49e50ad79286c5dfad995009",
+  "track": "c"
+}

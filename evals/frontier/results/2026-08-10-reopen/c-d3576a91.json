@@ -1,0 +1,36 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 2,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 1
+  },
+  "groups": [
+    {
+      "after_sha": "b270bf43beee07860d29b135ea37dc7bd94c0cc8",
+      "base_sha": "0e4295cd8c7bd0d13f371519150462374a7552d5",
+      "recons": [],
+      "tasks": [
+        "1a9ce8ea"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "d3576a91",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [],
+    "trailing_cut": [
+      "e478a1a7a4a059c2082a8b39b94e04b845cacb43"
+    ]
+  },
+  "ref": "d3576a9127d661c0ff21bcaa053bdf4217735156",
+  "track": "c"
+}

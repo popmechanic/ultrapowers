@@ -1,0 +1,54 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 17,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 26
+  },
+  "groups": [
+    {
+      "after_sha": "f35133b6d14d69045b8d69d73bb15074a4f5d983",
+      "base_sha": "fe3d44038a26c8b020d266baa24880008a8c6062",
+      "recons": [
+        "recon-36979e39"
+      ],
+      "tasks": [
+        "31a00e76",
+        "2e48e5d9",
+        "ec895ee2",
+        "083c02d8",
+        "310ae64d"
+      ]
+    },
+    {
+      "after_sha": "8f3b702b8308096a8000b7a97ceddd86e85e4c06",
+      "base_sha": "f35133b6d14d69045b8d69d73bb15074a4f5d983",
+      "recons": [
+        "recon-b3c322cc"
+      ],
+      "tasks": [
+        "120778db",
+        "d37aa394"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "d9369661",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-36979e39",
+      "recon-b3c322cc"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "d9369661cbdfb686ff664b3a5474c14d1df757c5",
+  "track": "c"
+}
