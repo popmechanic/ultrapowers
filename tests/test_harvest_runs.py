@@ -1030,3 +1030,42 @@ def test_disk_receipt_entries_have_no_ordinal_field(tmp_path):
         {"mode": "gate", "verdict": "PASS", "stamp": "S1"}))
     entries = h._disk_receipts_for({"S1": str(run_dir)}, ["S1"])
     assert "ordinal" not in entries[0]
+
+
+# --- #137: the slicer manufactured a false "salvage without operator ack"
+# observation. Two seams, both proven against the raw metrc-v-estes
+# transcript (run 8569f8be64d39b36).
+def test_slice_keeps_string_content_user_turns():
+    # Seam 1: short CLI prompts are stored as PLAIN STRING message.content;
+    # the block iterator only walked list content, so the operator's
+    # "what do you recommend?" and "yes" at a salvage decision vanished.
+    recs = [
+        _rec("assistant", [{"type": "text",
+                            "text": "Salvage and relaunch now, or tear down? The gate is red."}]),
+        _rec("user", "what do you recommend?"),
+        _rec("assistant", [{"type": "text",
+                            "text": "Salvage: wave 1 is already merged and green."}]),
+        _rec("user", "yes"),
+    ]
+    out = h.slice_transcript(recs)
+    assert "**user:** what do you recommend?" in out
+    assert "**user:** yes" in out
+
+
+def test_slice_string_user_turn_still_truncated():
+    recs = [_rec("user", "x" * (h.SLICE_TURN_MAX + 50))]
+    out = h.slice_transcript(recs)
+    assert "truncated 50 chars" in out
+
+
+def test_slice_labels_tool_results_as_tool_result_never_user():
+    # Seam 2: tool_result blocks ride user-TYPE records; a keyword-matched
+    # Bash inspection dump rendered as "**user:** <class 'dict'> [...]" —
+    # machine output must never be attributed to the human.
+    recs = [
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": "<class 'dict'> ['tasks', 'waves']"}]}]),
+    ]
+    out = h.slice_transcript(recs)
+    assert "**user:**" not in out
+    assert "**tool_result:** <class 'dict'> ['tasks', 'waves']" in out

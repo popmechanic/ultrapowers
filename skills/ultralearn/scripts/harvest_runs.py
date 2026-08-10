@@ -49,7 +49,14 @@ def _iter_blocks_indexed(records):
     envelope's launch anchor and tail cut, Task 3)."""
     for idx, r in enumerate(records):
         content = (r.get("message") or {}).get("content")
-        if isinstance(content, list):
+        if isinstance(content, str):
+            # #137: short CLI prompts arrive as plain string content — the
+            # API-equivalent of a single text block. Without this, the
+            # operator's one-word acks are structurally invisible to every
+            # consumer (the slicer dropped a salvage "yes", manufacturing a
+            # false proceeded-without-ack observation).
+            yield idx, r, {"type": "text", "text": content}
+        elif isinstance(content, list):
             for b in content:
                 yield idx, r, b
 
@@ -166,7 +173,10 @@ def slice_transcript(records):
                 txt = txt[:SLICE_TURN_MAX] + f"\n…[truncated {len(txt) - SLICE_TURN_MAX} chars]"
             lines.append(f"**user:** {txt}")
         elif any(k in txt.lower() for k in SLICE_KEYWORDS):
-            lines.append(f"**{rtype}:** {txt}")
+            # #137: tool_result blocks ride user-TYPE records — label them by
+            # block type so machine output is never attributed to the human.
+            label = "tool_result" if b.get("type") == "tool_result" else rtype
+            lines.append(f"**{label}:** {txt}")
     return "\n\n".join(lines)
 
 
