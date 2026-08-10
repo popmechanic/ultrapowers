@@ -401,8 +401,15 @@ const SETUP_PROMPT = resume
      ': ' + testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
   : ('You are the setup agent. The engine never mutates the session checkout: ' +
-     'create the dedicated integration worktree instead. From the session repo root ' +
-     'run: git worktree add ' + INTEGRATION_WT + ' -b ' + integrationBranch +
+     'create the dedicated integration worktree instead. First check the target ' +
+     'path: if ' + INTEGRATION_WT + ' already exists — a directory of any kind, ' +
+     'even empty — refuse: create nothing, never adopt, clear, or reuse an ' +
+     'existing directory, and never work around a git worktree add refusal. To ' +
+     'refuse, report headSha as the empty string and put BLOCKED: ' +
+     INTEGRATION_WT + ' exists — remove it with sweep_worktrees.sh --run wf_' +
+     stamp + ' in branch; never report a real branch name or sha for a worktree ' +
+     'you did not create. Otherwise, from the session repo root run: ' +
+     'git worktree add ' + INTEGRATION_WT + ' -b ' + integrationBranch +
      (baseBranch ? (' ' + baseBranch) : '') + '. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT + ': ' +
      testInstruction + ' and record whether it passes. ' +
