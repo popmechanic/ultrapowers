@@ -295,7 +295,7 @@
 **Notes:** Tiny structural fix: derivation order argsFile.integrationBranch → --integration-branch → gate-receipt.json → loud error. One new test. SKILL micro-redirect bullet drops the gate-receipt clause. Drain-sized.
 
 ### #120: Worktree creation fails closed on an existing path (narrowed scope)
-**State:** queued
+**State:** executed
 **Score:** 7 — integration correctness; 2nd field occurrence (wrong-worktree dispatch blocked a foreign run); the cycle's ONE additive guard
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-worktree-create-fail-closed.md
