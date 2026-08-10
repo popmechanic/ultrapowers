@@ -27,7 +27,7 @@ def test_every_corpus_file_fails_check_with_its_named_violation():
 
 
 def test_shipping_fixture_plans_are_canonical():
-    for fixture in ("wide", "chained", "mixed", "degrade"):
+    for fixture in ("wide", "chained", "mixed", "degrade", "contend"):
         plan = Path("evals/fixtures") / fixture / "plan.md"
         proc = subprocess.run(
             [sys.executable, str(SCRIPT), "--check", str(plan)],

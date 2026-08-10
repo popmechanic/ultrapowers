@@ -11,7 +11,23 @@ import run_eval
 def test_fixture_cases_cover_all_plan_fixtures():
     cases = run_eval.fixture_cases(seed=42)
     names = {c["name"] for c in cases}
-    assert names == {"wide", "chained", "mixed", "flawed", "degrade", "webapp"}
+    assert names == {"wide", "chained", "mixed", "flawed", "degrade", "webapp",
+                     "contend"}
+
+
+def test_contend_fixture_carries_genuine_same_file_contention():
+    """The contend fixture exists to populate S1's same-file column: three
+    tasks genuinely write one file, serialized only by inferred
+    write-after-write edges (no Depends-on markers), and the plan still
+    compiles parallel. Serializing it with markers would defeat the fixture."""
+    compiled = run_eval.compile_fixture("contend")
+    assert compiled["mode"] == "parallel"
+    waw = [e for e in compiled["dag_edges"] if e["why"] == "write-after-write"]
+    assert len(waw) >= 2
+    case = run_eval.build_fixture_case("contend", compiled, seed=42)
+    assert case["contiguity_paths"] == ["clitool/cli.py"]
+    writers = [t for t in case["tasks"] if "clitool/cli.py" in t.weaves]
+    assert len(writers) == 3
 
 
 def test_synthetic_cases_shape():
