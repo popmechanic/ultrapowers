@@ -57,3 +57,31 @@ def test_disjoint_functions_clean_adjacent_conflicts(tmp_path):
     assert clean["conflicts"] == []
     adj = json.loads((tmp_path / "b-adjacent-lines.json").read_text())
     assert len(adj["conflicts"]) >= 1
+
+
+def test_k4_not_evaluated_when_no_contiguity_checks(tmp_path, monkeypatch):
+    # Every track (b) scenario except four-way-fanin carries an empty
+    # contiguity_paths, so dropping that one case produces zero non-None
+    # no_interleaving records — the exact "no contiguity checks in this run"
+    # condition the K4 false-green guard exists for.
+    real_synthetic_cases = run_eval.synthetic_cases
+
+    def no_fanin_cases():
+        return [c for c in real_synthetic_cases() if c["name"] != "four-way-fanin"]
+
+    monkeypatch.setattr(run_eval, "synthetic_cases", no_fanin_cases)
+    summary = run_eval.run_tracks(["b"], tmp_path, seed=42)
+    assert summary["k_gates"]["K4_no_interleaving"] is None
+    assert summary["k_gates"]["K4_no_interleaving"] is not True
+    rollup = (tmp_path / "rollup.md").read_text()
+    k4_line = next(line for line in rollup.splitlines() if line.startswith("- K4"))
+    assert "not evaluated" in k4_line
+    assert "PASS" not in k4_line
+
+
+def test_k3_line_labels_real_run_fidelity_not_bisection(tmp_path):
+    run_eval.run_tracks(["a", "b"], tmp_path, seed=42)
+    rollup = (tmp_path / "rollup.md").read_text()
+    k3_line = next(line for line in rollup.splitlines() if line.startswith("- K3"))
+    assert "real-run fidelity" in k3_line
+    assert "bisection" not in k3_line

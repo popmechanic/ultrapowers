@@ -611,8 +611,11 @@ def _rollup(records, k_gates, tracks, track_c=None):
     out.append("- K1 (fold order-independence): %s" % _gate_text(k_gates["K1"]))
     out.append("- K2 (fold idempotence): %s" % _gate_text(k_gates["K2"]))
     k3 = k_gates["K3"]
-    out.append("- K3 (bisection): %s" % (k3 if isinstance(k3, str) else _gate_text(k3)))
-    out.append("- K4 (no interleaving): %s" % _gate_text(k_gates["K4_no_interleaving"]))
+    out.append("- K3 (real-run fidelity): %s" % (k3 if isinstance(k3, str) else _gate_text(k3)))
+    k4 = k_gates["K4_no_interleaving"]
+    k4_text = ("not evaluated (no contiguity checks in this run)"
+               if k4 is None else _gate_text(k4))
+    out.append("- K4 (no interleaving): %s" % k4_text)
     out.append("")
 
     out += ["## Track (b) narrations (S3 — operator grades these)", ""]
@@ -713,12 +716,13 @@ def run_tracks(tracks, out_dir, repo=None, seed=42):
             records.append(record)
 
     scored = [r for r in records if not r["excluded"]]
+    interleaving = [r["no_interleaving"] for r in records
+                    if r["no_interleaving"] is not None]
     k_gates = {
         "K1": all(r["folds"]["k1_identical"] for r in scored) if scored else None,
         "K2": all(r["folds"]["k2_idempotent"] for r in scored) if scored else None,
         "K3": track_c["K3"] if track_c else "not evaluated (track c not run)",
-        "K4_no_interleaving": all(r["no_interleaving"] for r in records
-                                  if r["no_interleaving"] is not None),
+        "K4_no_interleaving": all(interleaving) if interleaving else None,
     }
     exclusions = [{"case": "%s-%s" % (r["track"], r["name"]), "reason": r["excluded"]}
                   for r in records if r["excluded"]]
