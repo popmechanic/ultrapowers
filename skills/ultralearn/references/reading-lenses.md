@@ -27,6 +27,23 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    impossible against files that do not yet exist. Flag anything of that
    character.
 
+## Watch-items (standing, until removed by a distill cycle)
+
+- **same-file authoring cost** — tag by prefixing the finding title with
+  `authoring-cost-samefile:` (lens: routing). The question: during PLANNING —
+  brainstorm→spec→ultraplan authoring, wherever the bundle's planning turns
+  show it, not just execution — do tasks get contorted to AVOID same-file
+  edits? Signals: a feature split across modules unnaturally, a chain of
+  dependent tasks where a fan of independent ones was natural, an interface
+  file invented mainly to separate two writers, or a `Depends-on` marker added
+  solely because of file overlap rather than a real logical dependency. Emit a
+  finding only on affirmative evidence (silence is not a finding), keep a
+  verbatim evidence pointer for home runs, and note the strength (explicit
+  authoring reasoning about file overlap > structure that merely looks
+  contorted). Pre-registered consumer: the manyana door-1 recurrence trigger —
+  substantive findings across 2+ independent sense passes reopen a design
+  conversation only.
+
 ## The redirect-round count (required, exactly one per bundle)
 
 Always emit one `friction` finding recording the run's **redirect-round
