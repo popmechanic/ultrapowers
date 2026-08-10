@@ -263,7 +263,7 @@
 **Notes:** One comment. CLUSTER: plan with #110 + #111 (one inline sweep-hygiene plan). Mind the anti-drift rule if the comment lives in a baked span.
 
 ### #104: Subtraction candidate: retire the snapshot/restore family once #84 shakedown proves the checkout is never touched
-**State:** executed
+**State:** verified
 **Score:** 4 — real subtraction, but its precondition (0.1.14 live-shakedown evidence that the checkout is untouched) has not been observed yet
 **Est-files:** skills/ultrapowers/scripts/run_lock.sh, skills/ultrapowers/harnesses/waves.js, tests/
 **Plan:** docs/superpowers/plans/2026-08-09-snapshot-family-retirement.md
@@ -279,7 +279,7 @@
 **Notes:** Spec ALREADY WRITTEN + committed (docs/superpowers/specs/2026-08-06-complexity-audit-loop-design.md) with its own first trim review adjudicated in-spec — planning sweep should go straight from that spec to a plan, no new brainstorm. Practice already adopted in-session for the 2026-08-06 sweep; this entry makes it durable. Two prose surfaces, no scripts, no gate changes. Accepted directly at creation by explicit operator commission (brainstorm 2026-08-06).
 
 ### #126: Harvester attribution v2: delete the transcript receipt text-scan
-**State:** executed
+**State:** verified
 **Score:** 9.5 — the deletion-led cycle's centerpiece: measurement-loop integrity AND genuine simplification (north-star simplest-codebase clause)
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, tests/test_harvest_runs.py
 **Plan:** docs/superpowers/plans/2026-08-09-harvester-attribution-v2.md
