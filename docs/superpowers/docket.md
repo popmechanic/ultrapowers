@@ -321,3 +321,39 @@
 **Score:** 4 — cosmetic/coverage smalls on shipped fixes
 **Est-files:** tests/test_run_acceptance.py, skills/ultrapowers/SKILL.md
 **Notes:** --baseline-under-symlink test, platform-split mktemp mechanism comment, SKILL --test-cmd loud-fail note. All cheap; frozen files untouched (tests + docs only). Could ride any future inline unit as a tail task.
+
+### #131: Redirect/Salvage relaunch inherits stale heads/ slots from the prior launch
+**State:** accepted
+**Score:** 8 — integration correctness at the derive-don't-record authority layer; operator-designated priority class this cycle
+**Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/scripts/redirect_args.py, skills/ultrapowers/references/wave-merge.md, tests/
+**Notes:** Field 2026-08-10 (redirect wf_e5afc7c1-dd4): redirect relaunch left a stale heads/wave-4 slot 10h older than the redirect's real final head; the completeness critic's baked detach-target rule ('highest-numbered wave-<n> slot') would have detached onto the pre-redirect tree — only the critic's mtime judgment saved it, where the sidecar convention was supposed to be authority. STRUCTURAL fix, not a guard (does not consume the cycle's one-additive-guard slot): clear heads/ on relaunch or namespace slots per wf-run so a stale slot is inexpressible. Shares the relaunch surface with #127 — consider PLAN-TOGETHER at sweep (one plan, redirect-lane hardening pair). Harness JS changes ⇒ .mjs sim + pass sentinel + anti-drift re-bake obligations.
+
+### #129: Preflight passes but the run is unexecutable when /ultrapowers launches from a worktree-isolated session
+**State:** triaged
+**Score:** 6.5 — real sev-3 field block (~630K tokens burned) but n=1 and the one-additive-guard slot this cycle is already committed to #120
+**Est-files:** skills/ultrapowers/scripts/ultra_run.py, skills/ultrapowers/SKILL.md, tests/test_ultra_run.py
+**Notes:** Field 2026-08-09 (wf_fe05bc69-a22): EnterWorktree session passed all 12 preflight stages, then every merge/reconcile/critic git command against the integration worktree was hard-refused by the session Bash guard; wave 1 blocked, all waves cascade-blocked, 0/5 merged. GUARD-SLOT CONTEST decided at triage per machinery-earned-by-recurrence: #120 keeps the slot (2 field occurrences vs this n=1). Held at triaged with prose mitigation (worktree-session-selfhost-block memory + issue text name the remedy: run from repo root). PROMOTE TRIGGER: a second field occurrence, at which point choose between fix option 1 (fail-closed preflight stage, cheap guard) and option 2 (cut integration worktree inside the session worktree's own .claude/worktrees/ — structural, larger blast radius: sweep globbing, gate paths).
+
+### #130: Review packet can point at a commit no branch contains — retry trap after a contaminated first attempt
+**State:** triaged
+**Score:** 5.5 — path-hygiene/integrity on run exhaust; agents defended correctly twice, so latent not active
+**Est-files:** skills/ultrapowers/scripts/review-package.sh, skills/ultrapowers/harnesses/waves.js, tests/test_review_package.py
+**Notes:** Field 2026-08-09 (wf_fe05bc69-a22): review-d796ce6..bb969e6.diff (211KB) named a contaminated orphan commit — no branch contained it, its diff deleted the plan/spec under execution; the clean redo was the real branch tip. Merge agent AND completeness critic independently caught it; a packet-trusting retry would have merged the wrong tree. Fix direction is derive-don't-record: name/validate packets by branch tip, not recorded sha pair (issue option b — redo overwrites predecessor — is the simplest inexpressible-shape). Also carries a secondary question: how a first attempt committed unrelated-work files at all (implementer worktree hygiene). Normal backlog per operator.
+
+### #134: Gate approve moves the shared primary checkout while other sessions may be working in it
+**State:** triaged
+**Score:** 4.5 — low severity (git checkout restores), confusing failure; observed from the receiving end this cycle
+**Est-files:** skills/ultrapowers/scripts/ultra_gate.py, skills/ultrapowers/SKILL.md, CLAUDE.md
+**Notes:** Field 2026-08-09/10: session A's ultra_gate.py --approve checked out integration+main in the shared primary checkout while session B (lock-waiting, legitimately on another branch) was mid-preflight — B's branch silently became main, compile failed FileNotFoundError. RUN_LOCK serializes runs, not sessions, so lock-waiting sessions are now a real pattern. Issue's own options: (a) loud advisory + marker file surfaced by later preflights, (c) document the serialize-SESSIONS-during-approve rule — both cheap; (b) refuse-on-detected-activity is over-machinery. CAUTION at planning: ultra_gate.py is FROZEN periphery — scope any recording to the orchestrator/SKILL layer or marker-file sidecar unless the eval route is taken. Normal backlog per operator.
+
+### #132: frontier probe: K1 conflict reporting — multiset and delete/modify-label order-dependence at 3+ writers per path
+**State:** parked
+**Score:** 3 — evals/frontier only, no engine surface; conservative-direction reporting artifact (false-red K1, never false-green)
+**Est-files:** evals/frontier/
+**Notes:** Frontier residual, disclosed+acked at the 2026-08-10 gate. DORMANT by operator directive: the manyana thesis is SHELVED per pre-registered rule; do not work this unless the reopening trigger fires (evals/frontier/results/2026-08-10-adjudication.md = #133 corpus fix + one same-file-contention fixture, then re-run the probe). If reopened, fix wants its own reviewed pass (both run_eval tracks consume the Conflict list), not a drive-by.
+
+### #133: frontier probe: K3 unmeasurable on this repo — 35/36 archived runs excluded for reconciliation commits
+**State:** parked
+**Score:** 3 — evals/frontier corpus only; itself PART of the frontier reopening trigger, so it activates only when the operator invokes that trigger
+**Est-files:** evals/frontier/
+**Notes:** Frontier residual. DORMANT by operator directive — this issue IS half the reopening trigger (adjudication doc: #133 corpus fix + same-file fixture ⇒ re-run probe), so it is worked exactly when the operator invokes the trigger, never on momentum. Preferred option per issue: tolerate reconciliation commits in extraction (pseudo-task diffs or cut at last pre-reconciliation merge) WITH designed comparison semantics, not a patch; foreign corpora (--tracks c elsewhere) is the fallback.
