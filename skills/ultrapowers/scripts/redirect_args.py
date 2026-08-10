@@ -54,7 +54,7 @@ def main():
     if not (isinstance(launch_path, str) and os.path.isfile(launch_path)):
         die("args has no readable wavesPath: %r" % launch_path)
     launch = load_json(launch_path, "launch file")
-    branch = a.integration_branch
+    branch = a.integration_branch or (args.get("integrationBranch") or None)
     if not branch:
         gr_path = os.path.join(run_dir, "gate-receipt.json")
         if os.path.isfile(gr_path):

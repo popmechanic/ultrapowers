@@ -133,3 +133,31 @@ def test_second_round_chains_on_first_rounds_output(tmp_path):
         Path(json.loads(Path(r2.stdout.strip()).read_text())["wavesPath"]).read_text())
     assert "REDIRECT: round1 fix" in launch2["tasks"]["1"]["body"]   # preserved
     assert "REDIRECT: round2 fix" in launch2["tasks"]["2"]["body"]
+
+
+def test_argsfile_branch_derived_without_flag_or_gate_receipt(tmp_path):
+    # #127: the argsFile the helper already reads carries integrationBranch —
+    # the common case needs zero extra inputs.
+    run = make_run(tmp_path)
+    args_p = run / "args.json"
+    args = json.loads(args_p.read_text())
+    args["integrationBranch"] = "ultra/int-args"
+    args_p.write_text(json.dumps(args))
+    (run / "gate-receipt.json").unlink()
+    r = run_helper(run, [{"task": "1", "instruction": "x"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["integrationBranch"] == "ultra/int-args"
+
+
+def test_flag_wins_over_argsfile_value(tmp_path):
+    # bare flag-wins: an explicit operator flag outranks the recorded value.
+    run = make_run(tmp_path)
+    args_p = run / "args.json"
+    args = json.loads(args_p.read_text())
+    args["integrationBranch"] = "ultra/int-args"
+    args_p.write_text(json.dumps(args))
+    r = run_helper(run, [{"task": "1", "instruction": "x"}],
+                   "--integration-branch", "ultra/int-flag")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(Path(r.stdout.strip()).read_text())["integrationBranch"] == "ultra/int-flag"
