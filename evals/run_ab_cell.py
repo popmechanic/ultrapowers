@@ -4,7 +4,11 @@
 Runs ONE A/B cell stepwise via evals/ab_runner.py's own functions so the
 spec-mandated dirt seeding and pre/post measurements happen between clone and
 drive. Prints a JSON summary; leaves the workdir in place (required until the
-results doc is written)."""
+results doc is written).
+
+Run it in place from the main checkout: ROOT and the ab_runner import are
+__file__-relative, so a copied driver fails at import, and invoking the copy
+inside a worktree would measure THAT worktree's fixtures, not main's."""
 import json
 import subprocess
 import sys
@@ -47,7 +51,10 @@ def main():
     # Keychain-first auth seeding (#107 round 2) lives in the kit — done
     # inside ab.prepare_session_config via ab.seed_credentials.
     env = ab.prepare_session_config(engine, workdir.parent)
-    transcript, gate_report, mode = ab.drive_run(workdir, plan, env)
+    try:
+        transcript, gate_report, mode = ab.drive_run(workdir, plan, env)
+    finally:  # the seeded token never outlives the drive (kit contract)
+        ab.scrub_credentials(env)
     post = rev(workdir)
     dirt_after = sh(["git", "status", "--porcelain"], workdir).stdout
 

@@ -10,8 +10,10 @@ fixture seal installs (seal_fixture.py). Protocol lineage: evals/README.md at
 The runner executes ONE cell per invocation. The A/B protocol is six invocations
 run serially by hand — concurrent /ultrapowers runs corrupt each other's
 checkouts (CLAUDE.md: "Self-hosting a /ultrapowers run? Serialize them."). It
-never runs in CI. The pytest coverage exercises assembly (`build_run_plan`) and
-harvest (`harvest_row`) only and never invokes `claude`.
+never runs in CI. The pytest coverage exercises assembly (`build_run_plan`),
+harvest (`harvest_row`), and the #107 isolation pins — the latter reach
+`prepare_session_config` (and through it credential seeding), so any test
+touching it MUST stub `subprocess.run`; nothing ever invokes a real `claude`.
 
 Fixture layout consumed:  evals/fixtures/<name>/plan.md
                           evals/fixtures/<name>/project/
@@ -214,11 +216,13 @@ def seed_credentials(config_dir):
     Linux/Windows that file IS the live store, so the fallback is the correct
     primary path there (the chain stays OS-agnostic; no platform checks)."""
     try:
+        # timeout: a locked keychain / untrusting ACL raises a GUI prompt; over
+        # SSH that blocks forever and the file fallback is never reached.
         kc = subprocess.run(["security", "find-generic-password",
                              "-s", "Claude Code-credentials", "-w"],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, timeout=10)
         cred_text = kc.stdout.strip() if kc.returncode == 0 else ""
-    except OSError:  # no `security` binary — not macOS
+    except (OSError, subprocess.TimeoutExpired):  # no `security` binary / hung prompt
         cred_text = ""
     if not cred_text:
         cred = Path.home() / ".claude/.credentials.json"
@@ -227,6 +231,25 @@ def seed_credentials(config_dir):
         dest = Path(config_dir) / ".credentials.json"
         dest.write_text(cred_text + "\n")
         dest.chmod(0o600)
+    else:
+        # Loud now, or misattributed later: an unauthenticated throwaway
+        # resurfaces minutes on as "Workflow tool unavailable headlessly".
+        print("seed_credentials: NO credentials seeded — Keychain item "
+              "'Claude Code-credentials' and %s both came up empty; every "
+              "claude invocation in this cell will run logged out."
+              % (Path.home() / ".claude/.credentials.json"), file=sys.stderr)
+
+
+def scrub_credentials(env):
+    """Delete the seeded live OAuth token once the cell's claude invocations
+    are done. The workdir deliberately outlives the run (diff capture, results
+    doc), but a plaintext copy of the operator's credentials must not sit in
+    it — agent-authored code in the workdir tree could read it. Only this one
+    file goes; the rest of the throwaway config stays for post-mortems."""
+    try:
+        (Path(env["CLAUDE_CONFIG_DIR"]) / ".credentials.json").unlink()
+    except (KeyError, OSError):
+        pass
 
 
 def prepare_session_config(engine_wt, workspace):
@@ -325,17 +348,32 @@ def seed_workflows(engine_wt, workdir):
     before the hook's harness copy lands, so 'ultrapowers-probe' comes up "not
     found" even though the file is on disk by end of startup. Interactively the
     hook wins this race; headlessly it loses. Files already on disk always make
-    the snapshot. Also mirrors the production gitignore contract (`.claude/` in
-    .git/info/exclude) so dirt measurements stay scoped to the repo's own
-    files, not the seeded harnesses."""
+    the snapshot. Also excludes `.claude/` via git's info/exclude so dirt
+    measurements stay scoped to the repo's own files — a deliberate SUPERSET of
+    the production four-subdir gitignore contract, since fixture repos ship no
+    .gitignore of their own."""
     wf = Path(workdir) / ".claude/workflows"
     wf.mkdir(parents=True, exist_ok=True)
     harnesses = Path(engine_wt) / "skills/ultrapowers/harnesses"
+    seeded = []
     for manifest in sorted(harnesses.glob("*.harness.json")):
         fname = json.loads(manifest.read_text()).get("file")
         if fname and (harnesses / fname).is_file():
             shutil.copy2(harnesses / fname, wf / fname)
-    with open(Path(workdir) / ".git/info/exclude", "a") as x:
+            seeded.append(fname)
+    if not seeded:
+        # A silent zero-seed cascades into probe_workflow failing and the cell
+        # rerunning interactively — the A/B would then compare execution modes,
+        # not engines. Same guard as ultra_run.py's install stage.
+        sys.exit("seed_workflows: no harness manifests found under %s "
+                 "— refusing an unprobeable cell" % harnesses)
+    # Resolve info/exclude through git (worktree-style .git files are not dirs).
+    gp = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"],
+                        cwd=str(workdir), capture_output=True, text=True,
+                        check=True, env=_git_env())
+    exclude = Path(workdir) / gp.stdout.strip()
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    with open(exclude, "a") as x:
         x.write(".claude/\n")
 
 
@@ -591,15 +629,18 @@ def main():
     workdir, _baseline = clone_project(plan)
     seed_workflows(engine, workdir)
     env = prepare_session_config(engine, workdir.parent)
-    transcript, gate_report, mode = drive_run(workdir, plan, env)
     try:
-        save_diff(workdir, plan)
-        row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
-        counters = collect_counters(gate_report)
-    except Exception as exc:  # a crashed run STILL records a row and keeps the transcript
-        row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
-        counters = {"gateVerdict": "crashed", "redirectRounds": 0, "falseBlocks": 0}
-        row["crashDetail"] = str(exc)
+        transcript, gate_report, mode = drive_run(workdir, plan, env)
+        try:
+            save_diff(workdir, plan)
+            row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
+            counters = collect_counters(gate_report)
+        except Exception as exc:  # a crashed run STILL records a row and keeps the transcript
+            row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
+            counters = {"gateVerdict": "crashed", "redirectRounds": 0, "falseBlocks": 0}
+            row["crashDetail"] = str(exc)
+    finally:  # the token never outlives the cell, crash or probe-abort included
+        scrub_credentials(env)
 
     row.update({"fixture": plan["fixture"], "engine": plan["engine"],
                 "engineRef": plan["engineRef"], "rerunOf": args.rerun_of,
