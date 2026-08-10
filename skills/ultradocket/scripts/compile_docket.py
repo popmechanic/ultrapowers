@@ -56,7 +56,8 @@ def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
     no held-out seal. Order is pure score-descending (v1).
 
     Raises ValueError for malformed queued entries: missing Plan, missing Seal
-    on a sealed-disposition plan, or duplicate Plan paths across entries.
+    on a sealed-disposition plan, or a PLAN-TOGETHER cluster whose members
+    disagree on Engine (or, when sealed, on Seal).
     """
     entries = [e for e in docket_lib.parse_docket(docket_text) if e.state == "queued"]
 
@@ -71,22 +72,41 @@ def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
     if no_seal:
         raise ValueError(f"queued sealed-disposition entries missing a Seal: {no_seal}")
 
-    plan_paths = [e.plan for e in entries]
-    dupes = sorted({p for p in plan_paths if plan_paths.count(p) > 1})
-    if dupes:
-        raise ValueError(f"queued docket entries share a Plan path: {dupes}")
+    # PLAN-TOGETHER clusters (#122): unit = unique Plan path; queued entries
+    # sharing a Plan advance together. The old duplicate-Plan raise rejected a
+    # shape the sweep deliberately produces. Accepted loss, recorded: an
+    # accidental copy-paste duplicate is now indistinguishable from a
+    # deliberate cluster and silently clusters — it still advances through the
+    # same gate rather than corrupting anything.
+    units = {}
+    for e in entries:
+        units.setdefault(e.plan, []).append(e)
 
-    by_score = sorted(entries, key=lambda e: -float(e.score.split()[0]))
-    wsets = {e.plan: set(facts[e.plan][0]) for e in entries}
+    for plan, members in units.items():
+        engines = {m.engine for m in members}
+        if len(engines) > 1:
+            names = ", ".join("#" + m.issue for m in members)
+            raise ValueError(
+                f"cluster {plan} members disagree on Engine ({names}): "
+                "PLAN-TOGETHER entries must share one executor")
+        if facts[plan][1] == "sealed" and len({m.seal for m in members}) > 1:
+            names = ", ".join("#" + m.issue for m in members)
+            raise ValueError(
+                f"sealed cluster {plan} members disagree on Seal ({names})")
+
+    unit_score = {plan: max(float(m.score.split()[0]) for m in members)
+                  for plan, members in units.items()}
+    by_score = sorted(units, key=lambda p: -unit_score[p])
+    wsets = {p: set(facts[p][0]) for p in units}
 
     collisions = []
     for i, a in enumerate(by_score):
         for b in by_score[i + 1:]:
-            shared = wsets[a.plan] & wsets[b.plan]
+            shared = wsets[a] & wsets[b]
             if shared:
-                collisions.append({"plans": [a.plan, b.plan], "shared": sorted(shared)})
+                collisions.append({"plans": [a, b], "shared": sorted(shared)})
 
-    order = [e.plan for e in by_score]
+    order = list(by_score)
 
     remaining = list(order)
     groups = []
@@ -105,6 +125,7 @@ def compile_docket(docket_text, facts_resolver=plan_facts, budget_usd=None):
     }
 
     return {"order": order, "collisions": collisions,
+            "units": {p: [m.issue for m in members] for p, members in units.items()},
             "budget_usd": budget_usd, "could_have_parallelized": projection}
 
 
