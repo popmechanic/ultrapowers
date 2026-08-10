@@ -245,7 +245,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
   waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
   spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
-  — never by rebuilding from the report), return here.
+  — never by rebuilding from the report). Before relaunching, delete
+  `<runDir>/heads/`: the prior launch's slots would otherwise masquerade as the
+  relaunch's sidecar authority, and their shas are already durable in the
+  finalized report. Return here.
 - **Redirect (micro-redirect)** — author `findings.json` from the gate report
   (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
   — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
