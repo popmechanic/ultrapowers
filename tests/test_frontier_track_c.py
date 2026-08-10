@@ -202,8 +202,53 @@ def test_unreplayable_run_is_demoted_to_a_named_exclusion(tmp_path, monkeypatch)
     assert list(out.glob("c-*.json")) == []
     assert summary["excluded"] == [
         {"ref": git(repo, "rev-parse", "main"),
-         "reason": "replay exceeded the weave kernel's recursion depth"}]
+         "reason": "recursion depth: maximum recursion depth exceeded"}]
     assert summary["K3"] == "not evaluated (recovered-n=0 below floor 3)"
+
+
+def build_large_file_repo(tmp_path, n_lines=3000):
+    """One ~3000-line file, modified by a task branch, alongside a normal one."""
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@t")
+    git(repo, "config", "user.name", "t")
+    big = "\n".join("line%d" % i for i in range(n_lines)) + "\n"
+    (repo / "big.py").write_text(big)
+    (repo / "b.py").write_text("b1\nb2\n")
+    git(repo, "add", "."); git(repo, "commit", "-qm", "base")
+    base = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-qb", "task1", base)
+    (repo / "big.py").write_text(big.replace("line1500\n", "line1500-edited\n"))
+    git(repo, "commit", "-qam", "task1 work")
+    git(repo, "checkout", "-qb", "task2", base)
+    (repo / "b.py").write_text("b1\nb2\nb3\n")
+    git(repo, "commit", "-qam", "task2 work")
+    git(repo, "checkout", "-qb", "ultra/integration-big", base)
+    git(repo, "merge", "-q", "--no-ff", "task1", "-m", "merge task1")
+    git(repo, "merge", "-q", "--no-ff", "task2", "-m", "merge task2")
+    tip = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    git(repo, "merge", "-q", "--no-ff", tip,
+        "-m", "Merge branch 'ultra/integration-big'")
+    return repo
+
+
+def test_large_file_replay_recovers_via_recursion_headroom(tmp_path):
+    """A ~3000-line file must not push the run into the recursion exclusion.
+
+    Before the fix, replaying this file's ~3000-line weave under the
+    interpreter's default recursion limit raised RecursionError deep inside
+    the vendored kernel, and the run was demoted to a named exclusion instead
+    of being recovered and replayed.
+    """
+    repo = build_large_file_repo(tmp_path)
+    out = tmp_path / "out"
+    summary = run_eval.run_track_c(repo, out, seed=42)
+    assert summary["excluded"] == []
+    assert summary["recovered_n"] == 1
+    case = json.loads(next(out.glob("c-*.json")).read_text())
+    assert case["fidelity"]["silent_divergence"] == []
 
 
 def test_repo_with_no_integration_merges_recovers_nothing(tmp_path):

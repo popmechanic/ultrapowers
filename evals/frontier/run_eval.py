@@ -52,6 +52,11 @@ DURATION_LO, DURATION_HI = 60, 600
 # recovered runs that makes K3 worth believing.
 INTEGRATION_MARKER = "ultra/integration-"
 TRACK_C_FLOOR = 3
+# The vendored kernel recurses once per line; a file near the interpreter's
+# default recursion limit needs real headroom before manyana ever touches it,
+# sized to the corpus actually being replayed (see `_recursion_headroom`).
+RECURSION_LINE_FACTOR = 4
+RECURSION_MARGIN = 1000
 # `%x00` is git's own escape: a literal NUL cannot travel in an argv element.
 NUL = "\x00"
 FMT_SHA_PARENTS = "%H%x00%P"
@@ -449,38 +454,98 @@ def _change_set(task):
     return set(task.weaves) | set(task.raw) | set(task.deleted)
 
 
+def _group_refs(group):
+    """Every ref whose tree the replay of this group actually reads."""
+    return ([group["base_sha"], group["after_sha"]]
+            + [t["tip_sha"] for t in group["tasks"]])
+
+
+def _max_line_count(repo, refs):
+    """Largest line count among the text files at any of `refs`.
+
+    Computed without invoking the weave kernel at all — this has to run
+    *before* we know whether `snapshot`/`publish` would blow the kernel's
+    per-line recursion budget on this content, not after.
+    """
+    max_lines = 0
+    seen = set()
+    for ref in refs:
+        names = _git_text(repo, "ls-tree", "-r", "-z", "--name-only", ref)
+        for p in filter(None, names.split(NUL)):
+            key = (ref, p)
+            if key in seen:
+                continue
+            seen.add(key)
+            blob = subprocess.run(["git", "-C", str(repo), "show", "%s:%s" % (ref, p)],
+                                  capture_output=True, check=True).stdout
+            if rw.is_binary(blob):
+                continue
+            n = len(rw.split_lines(blob.decode("utf-8", errors="replace")))
+            if n > max_lines:
+                max_lines = n
+    return max_lines
+
+
+class _recursion_headroom:
+    """Temporarily widen the recursion limit to fit a corpus, then restore it.
+
+    The vendored kernel recurses once per line; a file near the interpreter's
+    default 1000-frame limit raises RecursionError deep inside manyana before
+    this module ever gets a chance to name it. The bound is sized from the
+    corpus actually being replayed rather than a flat constant, so small runs
+    pay nothing and large ones get real headroom — and the previous limit is
+    always restored on the way out, whether or not RecursionError still
+    escapes despite the widened bound.
+    """
+
+    def __init__(self, max_lines):
+        self._bound = max(sys.getrecursionlimit(),
+                          RECURSION_LINE_FACTOR * max_lines + RECURSION_MARGIN)
+        self._previous = None
+
+    def __enter__(self):
+        self._previous = sys.getrecursionlimit()
+        sys.setrecursionlimit(self._bound)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        sys.setrecursionlimit(self._previous)
+        return False
+
+
 def _replay_group(repo, group, seed):
     """Re-fold one wave and compare it against the tree history recorded."""
-    base = rw.snapshot(repo, group["base_sha"])
-    tasks = [rw.publish(base, repo, group["base_sha"], t["tip_sha"],
-                        task_id=t["task_id"])
-             for t in group["tasks"]]
-    after = rw.manifest(rw.snapshot(repo, group["after_sha"]))
-    touched = set()
-    for task in tasks:
-        touched |= _change_set(task)
+    with _recursion_headroom(_max_line_count(repo, _group_refs(group))):
+        base = rw.snapshot(repo, group["base_sha"])
+        tasks = [rw.publish(base, repo, group["base_sha"], t["tip_sha"],
+                            task_id=t["task_id"])
+                 for t in group["tasks"]]
+        after = rw.manifest(rw.snapshot(repo, group["after_sha"]))
+        touched = set()
+        for task in tasks:
+            touched |= _change_set(task)
 
-    orders = sm.sampled_orders(len(tasks), seed=seed)
-    outcomes, canonical, conflicted, observed = set(), None, set(), []
-    for order in orders:
-        frontier, conflicts = sm.fold_all(rw.fold, base, tasks, order)
-        outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
-                      tuple(conflict_keys(conflicts))))
-        conflicted |= {c.path for c in conflicts}
-        files = rw.manifest(frontier)
-        observed.append({p: files.get(p) for p in touched})
-        if canonical is None:
-            canonical = (frontier, conflicts)
-    frontier, conflicts = canonical
+        orders = sm.sampled_orders(len(tasks), seed=seed)
+        outcomes, canonical, conflicted, observed = set(), None, set(), []
+        for order in orders:
+            frontier, conflicts = sm.fold_all(rw.fold, base, tasks, order)
+            outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
+                          tuple(conflict_keys(conflicts))))
+            conflicted |= {c.path for c in conflicts}
+            files = rw.manifest(frontier)
+            observed.append({p: files.get(p) for p in touched})
+            if canonical is None:
+                canonical = (frontier, conflicts)
+        frontier, conflicts = canonical
 
-    # Conflicted paths are exempt: the historical merge may have hand-resolved
-    # them, and a hand resolution is not the fold layer diverging silently.
-    clean = sorted(touched - conflicted)
-    divergent = {p for seen in observed for p in clean if seen[p] != after.get(p)}
+        # Conflicted paths are exempt: the historical merge may have hand-resolved
+        # them, and a hand resolution is not the fold layer diverging silently.
+        clean = sorted(touched - conflicted)
+        divergent = {p for seen in observed for p in clean if seen[p] != after.get(p)}
 
-    refolded, refold_conflicts = rw.fold(base, frontier, tasks[0])
-    k2 = (rw.manifest(refolded) == rw.manifest(frontier)
-          and set(conflict_keys(refold_conflicts)) <= set(conflict_keys(conflicts)))
+        refolded, refold_conflicts = rw.fold(base, frontier, tasks[0])
+        k2 = (rw.manifest(refolded) == rw.manifest(frontier)
+              and set(conflict_keys(refold_conflicts)) <= set(conflict_keys(conflicts)))
     return {
         "orders_sampled": len(orders),
         "k1_identical": len(outcomes) == 1,
@@ -538,10 +603,11 @@ def run_track_c(repo, out_dir, seed=42):
     silent divergence; below the floor it names the recovered-n instead of
     quietly passing.
 
-    A run the replay itself cannot complete — the vendored kernel's recursion
-    depth on a long file, or an unreadable git object — is demoted to an
-    exclusion carrying that reason. It never becomes a crash (which would take
-    the whole track down) and never becomes a pass (which would be a silent cap).
+    A run the replay itself cannot complete — the recursion limit still
+    exceeded even after `_replay_group` widened it to fit the corpus, or an
+    unreadable git object — is demoted to an exclusion carrying that reason.
+    It never becomes a crash (which would take the whole track down) and
+    never becomes a pass (which would be a silent cap).
     """
     repo, out_dir = Path(repo), Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -552,9 +618,13 @@ def run_track_c(repo, out_dir, seed=42):
     for run in extraction["runs"]:
         try:
             record = _run_c_case(repo, run, seed)
-        except RecursionError:
+        except RecursionError as exc:
             excluded.append({"ref": run["ref"], "reason":
-                             "replay exceeded the weave kernel's recursion depth"})
+                             "recursion depth: %s" % (str(exc) or
+                                                      "kernel recursion limit "
+                                                      "exceeded even after "
+                                                      "widening it to fit the "
+                                                      "corpus")})
             continue
         except subprocess.CalledProcessError as exc:
             excluded.append({"ref": run["ref"], "reason":
