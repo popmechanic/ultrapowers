@@ -1,0 +1,56 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 18,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 26
+  },
+  "groups": [
+    {
+      "after_sha": "32292e2254c0a0764abb4d6473b7cf5395e03955",
+      "base_sha": "52f12ef50d9efb7684e195634ce043e3f8fa11db",
+      "recons": [
+        "recon-60b02846"
+      ],
+      "tasks": [
+        "3695d8d8",
+        "7848cd0c",
+        "094e80fe",
+        "e2ef702c",
+        "0ed465a7",
+        "55986311",
+        "2599a1cc"
+      ]
+    },
+    {
+      "after_sha": "18be81850aa40d2f836c57b4a4cad5a1443edddd",
+      "base_sha": "32292e2254c0a0764abb4d6473b7cf5395e03955",
+      "recons": [
+        "recon-3d0060e5"
+      ],
+      "tasks": [
+        "1b2365e6",
+        "ad22e8d6"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "31339f70",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-60b02846",
+      "recon-3d0060e5"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "31339f705f72cc195f7c679c84cd7aec3c67e84b",
+  "track": "c"
+}

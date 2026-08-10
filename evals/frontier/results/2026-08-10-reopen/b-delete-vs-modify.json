@@ -1,0 +1,27 @@
+{
+  "conflicts": [
+    {
+      "kind": "lines",
+      "narration": "<<<<<<< begin deleted frontier\ndef showcase(x):\n    a = x * 2\n======= begin added task-mod\n    log(a)\n======= begin deleted frontier\n    b = a + 1\n    return b\n\n>>>>>>> end conflict",
+      "path": "showcase.py",
+      "task": "task-mod"
+    },
+    {
+      "kind": "delete/modify",
+      "narration": "path showcase.py deleted concurrently with text that survives the delete; the text wins the manifest",
+      "path": "showcase.py",
+      "task": "task-mod"
+    }
+  ],
+  "excluded": null,
+  "expectations_met": true,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 2
+  },
+  "makespans": null,
+  "name": "delete-vs-modify",
+  "no_interleaving": null,
+  "track": "b"
+}

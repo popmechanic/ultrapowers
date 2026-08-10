@@ -1,0 +1,33 @@
+{
+  "conflicts": [
+    {
+      "kind": "lines",
+      "narration": "# fanin.py shared base for frontier eval\nBASE_0 = 0\nBASE_1 = 1\nBASE_2 = 2\nBASE_3 = 3\nBASE_4 = 4\nBASE_5 = 5\nBASE_6 = 6\nBASE_7 = 7\n# end of shared base\n<<<<<<< begin added both\n\n======= begin added frontier\ndef task_1_fanin():\n    return \"1\"\n======= begin added 2\ndef task_2_fanin():\n    return \"2\"\n>>>>>>> end conflict",
+      "path": "fanin.py",
+      "task": "2"
+    },
+    {
+      "kind": "lines",
+      "narration": "# fanin.py shared base for frontier eval\nBASE_0 = 0\nBASE_1 = 1\nBASE_2 = 2\nBASE_3 = 3\nBASE_4 = 4\nBASE_5 = 5\nBASE_6 = 6\nBASE_7 = 7\n# end of shared base\n<<<<<<< begin added both\n\n======= begin added frontier\ndef task_1_fanin():\n    return \"1\"\ndef task_2_fanin():\n    return \"2\"\n======= begin added 3\ndef task_3_fanin():\n    return \"3\"\n>>>>>>> end conflict",
+      "path": "fanin.py",
+      "task": "3"
+    },
+    {
+      "kind": "lines",
+      "narration": "# fanin.py shared base for frontier eval\nBASE_0 = 0\nBASE_1 = 1\nBASE_2 = 2\nBASE_3 = 3\nBASE_4 = 4\nBASE_5 = 5\nBASE_6 = 6\nBASE_7 = 7\n# end of shared base\n<<<<<<< begin added both\n\n======= begin added frontier\ndef task_1_fanin():\n    return \"1\"\ndef task_2_fanin():\n    return \"2\"\ndef task_3_fanin():\n    return \"3\"\n======= begin added 4\ndef task_4_fanin():\n    return \"4\"\n>>>>>>> end conflict",
+      "path": "fanin.py",
+      "task": "4"
+    }
+  ],
+  "excluded": null,
+  "expectations_met": null,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 24
+  },
+  "makespans": null,
+  "name": "four-way-fanin",
+  "no_interleaving": true,
+  "track": "b"
+}

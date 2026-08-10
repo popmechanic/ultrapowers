@@ -1,0 +1,89 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 48,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 15
+  },
+  "groups": [
+    {
+      "after_sha": "0fcbe0757a244e40abd60d1c5ebd2a9213614ca3",
+      "base_sha": "1e08c13615810772198f22b7f5a60dfc550b676f",
+      "recons": [
+        "recon-ecea9e96"
+      ],
+      "tasks": [
+        "966e1e25"
+      ]
+    },
+    {
+      "after_sha": "8a05bae53e7e1b75ba1c36cfbac4706a2122e2b4",
+      "base_sha": "0fcbe0757a244e40abd60d1c5ebd2a9213614ca3",
+      "recons": [
+        "recon-798f9f35"
+      ],
+      "tasks": [
+        "eb469540"
+      ]
+    },
+    {
+      "after_sha": "c5b6d874b6a8c0110f89051d11e01ee64bb50da3",
+      "base_sha": "9ba88e2f6cde98366a7c8bbe63bd4552a234f32c",
+      "recons": [],
+      "tasks": [
+        "02f38356",
+        "8f5fc778"
+      ]
+    },
+    {
+      "after_sha": "825aef1af7298e591cd3706250a83e003f363167",
+      "base_sha": "c5b6d874b6a8c0110f89051d11e01ee64bb50da3",
+      "recons": [
+        "recon-19b60405"
+      ],
+      "tasks": [
+        "6593ecd4"
+      ]
+    },
+    {
+      "after_sha": "5f6a9594ff36510eaf6bb73fa1c1474ba3f31c29",
+      "base_sha": "825aef1af7298e591cd3706250a83e003f363167",
+      "recons": [
+        "recon-fa6c31dd"
+      ],
+      "tasks": [
+        "91dea719",
+        "fe1eab21"
+      ]
+    },
+    {
+      "after_sha": "60634831e7c4a094246cd19892db98d7e9196b3a",
+      "base_sha": "5f6a9594ff36510eaf6bb73fa1c1474ba3f31c29",
+      "recons": [],
+      "tasks": [
+        "644637b5"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "8d0ee798",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-ecea9e96",
+      "recon-798f9f35",
+      "recon-19b60405",
+      "recon-fa6c31dd"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "8d0ee798785ce1580076fcf4a6b5adf96724c1b2",
+  "track": "c"
+}

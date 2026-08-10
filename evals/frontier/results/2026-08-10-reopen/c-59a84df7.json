@@ -1,0 +1,57 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 14,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 5
+  },
+  "groups": [
+    {
+      "after_sha": "98b96406dce7cd06d6cbf2798121df45d3c8f02c",
+      "base_sha": "6a7ba3beac0473e450c4b86fa0384c5c9340bad0",
+      "recons": [
+        "recon-e69a329b"
+      ],
+      "tasks": [
+        "681dfcf5"
+      ]
+    },
+    {
+      "after_sha": "8eb41f7369fb004255b524b30776252188021876",
+      "base_sha": "98b96406dce7cd06d6cbf2798121df45d3c8f02c",
+      "recons": [
+        "recon-c2d7c544"
+      ],
+      "tasks": [
+        "22e6976b"
+      ]
+    },
+    {
+      "after_sha": "3f3f77aecb160cb882bd8645ce411a21af99efff",
+      "base_sha": "8b37ceb61df495f091e9c8e82cfafbefd90663df",
+      "recons": [],
+      "tasks": [
+        "5dc4d222"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "59a84df7",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-e69a329b",
+      "recon-c2d7c544"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "59a84df76cef3667456e423ff39339d8c88c354b",
+  "track": "c"
+}

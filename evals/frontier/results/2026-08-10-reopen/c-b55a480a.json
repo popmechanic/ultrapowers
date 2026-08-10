@@ -1,0 +1,49 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 14,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 26
+  },
+  "groups": [
+    {
+      "after_sha": "d335de09ec75e3e66167c094213bbf1f5b31faaf",
+      "base_sha": "d9bb7eaa51b2c6e62b8aaccdce5caa4c1150f24f",
+      "recons": [
+        "recon-05076f10"
+      ],
+      "tasks": [
+        "3cacc7c6",
+        "00cdbe9b",
+        "b2e77e8e"
+      ]
+    },
+    {
+      "after_sha": "da944c41325f59c850ade47b1d2849987ff6e5f3",
+      "base_sha": "d335de09ec75e3e66167c094213bbf1f5b31faaf",
+      "recons": [],
+      "tasks": [
+        "a13893a9",
+        "b886f097"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "b55a480a",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-05076f10"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "b55a480a1092199633c3e9767f8630cfb257daae",
+  "track": "c"
+}

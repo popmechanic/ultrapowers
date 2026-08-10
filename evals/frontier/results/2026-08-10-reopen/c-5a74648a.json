@@ -1,0 +1,64 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 30,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 28
+  },
+  "groups": [
+    {
+      "after_sha": "fc6e4aebc94b5d27237570c83fdc5b18651e2113",
+      "base_sha": "39541c78cddc783af0d61437ad3b5314c3abf857",
+      "recons": [
+        "recon-fe4f7d39"
+      ],
+      "tasks": [
+        "5dff07fb",
+        "7ad78255",
+        "79992c82",
+        "7b17ada5"
+      ]
+    },
+    {
+      "after_sha": "f7b8d8a95f06202e89f590a6c667f477f16d994b",
+      "base_sha": "fc6e4aebc94b5d27237570c83fdc5b18651e2113",
+      "recons": [
+        "recon-72a1aef1"
+      ],
+      "tasks": [
+        "36abb4a9",
+        "94a85852"
+      ]
+    },
+    {
+      "after_sha": "0e29c8917547fa50daad451d6e09619b61ca9835",
+      "base_sha": "f7b8d8a95f06202e89f590a6c667f477f16d994b",
+      "recons": [
+        "recon-0a77a706"
+      ],
+      "tasks": [
+        "3ff59c0f"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "5a74648a",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-fe4f7d39",
+      "recon-72a1aef1",
+      "recon-0a77a706"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "5a74648af282b1d12244197fc2bc3c61c5dd2daf",
+  "track": "c"
+}
