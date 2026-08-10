@@ -1,0 +1,21 @@
+{
+  "conflicts": [
+    {
+      "kind": "lines",
+      "narration": "line0\nline1\nline2\nline3\nline4\n<<<<<<< begin added frontier\nline5 edited by task-a\n======= begin deleted frontier\nline5\n======= begin added task-b\nline6 edited by task-b\n======= begin deleted task-b\nline6\n>>>>>>> end conflict\nline7\nline8\nline9\nline10\nline11",
+      "path": "adjacent.py",
+      "task": "task-b"
+    }
+  ],
+  "excluded": null,
+  "expectations_met": true,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 2
+  },
+  "makespans": null,
+  "name": "adjacent-lines",
+  "no_interleaving": null,
+  "track": "b"
+}

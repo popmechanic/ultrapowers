@@ -1,0 +1,21 @@
+{
+  "conflicts": [
+    {
+      "kind": "add/add",
+      "narration": "<<<<<<< begin added frontier\nFRESH = \"a\"\n======= begin added task-b\nFRESH = \"b\"\n>>>>>>> end conflict",
+      "path": "fresh.py",
+      "task": "task-b"
+    }
+  ],
+  "excluded": null,
+  "expectations_met": true,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 2
+  },
+  "makespans": null,
+  "name": "add-add-divergent",
+  "no_interleaving": null,
+  "track": "b"
+}

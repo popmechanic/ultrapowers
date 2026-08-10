@@ -1,0 +1,22 @@
+{
+  "conflicts": [],
+  "degrade_reason": null,
+  "excluded": null,
+  "expectations_met": null,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 20
+  },
+  "makespans": {
+    "durations_modeled": true,
+    "frontier": 1011.2419929759936,
+    "frontier_no_same_file": 1011.2419929759936,
+    "same_file_edges": 0,
+    "waves": 1063.6459774573032
+  },
+  "mode": "parallel",
+  "name": "webapp",
+  "no_interleaving": null,
+  "track": "a"
+}
