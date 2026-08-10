@@ -16,9 +16,16 @@ Two tracks today:
   git history of `--repo`, each wave's task branches are re-published and re-folded
   in sampled orders, and the folded result is compared against the tree the
   historical merge actually recorded. A clean-path mismatch is *silent divergence*
-  — the K3 failure condition. A run whose integration chain carries a
-  reconciliation commit cannot be decomposed into per-task diffs, so it is excluded
-  by name rather than replayed half-truthfully.
+  — the K3 failure condition. Reconciliation commits on the integration chain are
+  tolerated (#133): each one folds into its wave as a *pseudo-task* endpoint diff
+  (`parent..tip`, consecutive commits coalesced), unless a following wave's
+  merge-base already contains it, in which case that wave's base snapshot absorbs
+  it. Reconciliation commits after the last merge have no merge tree to compare
+  against, so fidelity comparison cuts at the last merge — recorded on the run,
+  never silently. The fidelity bar itself is unchanged: every wave's fold must
+  reproduce the tree at that wave's last merge, manifest-identical on paths no
+  fold order reported a conflict for. Only chains with an octopus merge or no
+  per-task merges at all remain unreplayable, and those are excluded by name.
 
 No-silent-caps: a fixture that degrades still runs and records why; a fixture that
 cannot produce tasks at all is recorded as an exclusion with its reason; every
@@ -43,7 +50,7 @@ import schedule_model as sm  # noqa: E402
 sys.path.insert(0, str(HERE / "vendor"))
 import manyana  # noqa: E402
 
-FIXTURES = ["wide", "chained", "mixed", "flawed", "degrade", "webapp"]
+FIXTURES = ["wide", "chained", "mixed", "flawed", "degrade", "webapp", "contend"]
 COMPILER = ROOT / "skills" / "ultrapowers" / "scripts" / "compile_plan.py"
 KNOWN_TRACKS = ("a", "b", "c")
 DURATION_LO, DURATION_HI = 60, 600
@@ -276,7 +283,11 @@ def _makespans(case):
 
 
 def _check_contiguity(frontier, case):
-    """K4: each task's block must appear as one unbroken run in the merged file."""
+    """K4: each writer's block must appear as one unbroken run in the merged file.
+
+    Only tasks that actually contributed to the path are checked — a fixture
+    can mix same-file writers with tasks that never touch the shared path.
+    """
     paths = case.get("contiguity_paths") or []
     if not paths:
         return None
@@ -286,6 +297,8 @@ def _check_contiguity(frontier, case):
         if content is None:
             return False
         for task in case["tasks"]:
+            if path not in task.weaves and path not in task.raw:
+                continue
             block = "\n".join(contiguity_block(task.task_id, path))
             if content.find(block) < 0:
                 return False
@@ -394,35 +407,77 @@ def _integration_chain(repo, merge_sha, first_parent, tip):
 def _chain_defect(chain):
     """Why this chain cannot be decomposed into per-task diffs, or None."""
     for sha, parents in chain:
-        if len(parents) < 2:
-            return "reconciliation commit %s on integration chain" % sha
         if len(parents) > 2:
             return "octopus merge %s on integration chain" % sha
+    if not any(len(parents) == 2 for _, parents in chain):
+        return "no per-task merges on integration chain (nothing to replay)"
     return None
 
 
+def _is_ancestor(repo, ancestor, descendant):
+    """True when `ancestor` is reachable from `descendant`."""
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor",
+         ancestor, descendant], capture_output=True)
+    return probe.returncode == 0
+
+
+def _pseudo_task(event):
+    """A reconciliation event as a foldable pseudo-task endpoint diff."""
+    return {"task_id": "recon-%s" % event["ref"][:8],
+            "base_ref": event["base_ref"], "ref": event["ref"]}
+
+
 def _group_chain(repo, chain):
-    """Consecutive merges sharing a merge-base form one wave."""
-    groups = []
+    """Wave groups, reconciliation pseudo-tasks, and any trailing cut.
+
+    Consecutive two-parent merges sharing a merge-base form one wave, exactly
+    as before. A non-merge chain commit is a *reconciliation event* —
+    consecutive ones coalesce into a single `parent..tip` diff. An event folds
+    into the wave whose merges surround it as a pseudo-task; an event followed
+    by a new wave whose merge-base already contains it is absorbed by that
+    wave's base snapshot instead (nothing left to fold); events after the last
+    merge are returned as `trailing` — they have no merge tree to compare
+    against, so the run's fidelity comparison cuts at its last merge.
+
+    Returns `(groups, trailing_events)`.
+    """
+    groups, pending = [], []
     for sha, parents in chain:
+        if len(parents) < 2:
+            if pending and parents[0] == pending[-1]["ref"]:
+                pending[-1]["ref"] = sha
+            else:
+                pending.append({"base_ref": parents[0], "ref": sha})
+            continue
         base_sha = _rev(repo, "merge-base", parents[0], parents[1])
         task = {"task_id": parents[1][:8], "tip_sha": parents[1]}
         if groups and groups[-1]["base_sha"] == base_sha:
-            groups[-1]["tasks"].append(task)
-            groups[-1]["after_sha"] = sha
+            group = groups[-1]
         else:
-            groups.append({"base_sha": base_sha, "tasks": [task],
-                           "after_sha": sha})
-    return groups
+            # New wave: events already contained in its base need no fold.
+            pending = [e for e in pending
+                       if not _is_ancestor(repo, e["ref"], base_sha)]
+            group = {"base_sha": base_sha, "tasks": [], "after_sha": sha,
+                     "recons": []}
+            groups.append(group)
+        group["recons"] += [_pseudo_task(e) for e in pending]
+        pending = []
+        group["tasks"].append(task)
+        group["after_sha"] = sha
+    return groups, pending
 
 
 def extract_archived_runs(repo):
     """Recover replayable `ultra/integration-*` runs from `repo`'s history.
 
-    `{"runs": [{"ref", "groups"}], "excluded": [{"ref", "reason"}]}`, newest run
-    first. A run reaches `runs` only if every commit on its integration chain is
-    a two-parent merge, because anything else (a reconciliation or fix-up commit)
-    makes the per-task diffs lossy. Everything rejected is named in `excluded`.
+    `{"runs": [{"ref", "groups", "trailing_recons"}], "excluded": [{"ref",
+    "reason"}]}`, newest run first. Reconciliation commits no longer exclude a
+    run (#133): they fold as pseudo-task endpoint diffs, are absorbed by a
+    later wave's base, or cut the fidelity comparison at the last merge when
+    they trail it (see `_group_chain`). A run is excluded only when its chain
+    carries an octopus merge or no per-task merges at all. Everything rejected
+    is named in `excluded`.
     """
     repo = Path(repo)
     runs, excluded = [], []
@@ -445,7 +500,9 @@ def extract_archived_runs(repo):
         if defect:
             excluded.append({"ref": sha, "reason": defect})
             continue
-        runs.append({"ref": sha, "groups": _group_chain(repo, chain)})
+        groups, trailing = _group_chain(repo, chain)
+        runs.append({"ref": sha, "groups": groups,
+                     "trailing_recons": [e["ref"] for e in trailing]})
     return {"runs": runs, "excluded": excluded}
 
 
@@ -457,7 +514,8 @@ def _change_set(task):
 def _group_refs(group):
     """Every ref whose tree the replay of this group actually reads."""
     return ([group["base_sha"], group["after_sha"]]
-            + [t["tip_sha"] for t in group["tasks"]])
+            + [t["tip_sha"] for t in group["tasks"]]
+            + [r["ref"] for r in group.get("recons", ())])
 
 
 def _max_line_count(repo, refs):
@@ -520,6 +578,11 @@ def _replay_group(repo, group, seed):
         tasks = [rw.publish(base, repo, group["base_sha"], t["tip_sha"],
                             task_id=t["task_id"])
                  for t in group["tasks"]]
+        # Reconciliation pseudo-tasks fold exactly like tasks: an endpoint
+        # diff (the commit's own parent..tip) woven against the wave base.
+        tasks += [rw.publish(base, repo, r["base_ref"], r["ref"],
+                             task_id=r["task_id"])
+                  for r in group.get("recons", ())]
         after = rw.manifest(rw.snapshot(repo, group["after_sha"]))
         touched = set()
         for task in tasks:
@@ -575,8 +638,16 @@ def _run_c_case(repo, run, seed):
         "excluded": None,
         "ref": run["ref"],
         "groups": [{"base_sha": g["base_sha"], "after_sha": g["after_sha"],
-                    "tasks": [t["task_id"] for t in g["tasks"]]}
+                    "tasks": [t["task_id"] for t in g["tasks"]],
+                    "recons": [r["task_id"] for r in g.get("recons", ())]}
                    for g in run["groups"]],
+        "reconciliation": {
+            "pseudo_tasks": [r["task_id"] for g in run["groups"]
+                             for r in g.get("recons", ())],
+            # Non-merge commits after the last merge: nothing to compare them
+            # against, so fidelity comparison stops at the last merge tree.
+            "trailing_cut": list(run.get("trailing_recons", ())),
+        },
         "fidelity": {
             "paths_checked": sum(r["paths_checked"] for r in replays),
             "silent_divergence": sorted({p for r in replays
@@ -723,16 +794,29 @@ def _rollup_track_c(track_c):
     """Recovered archived runs and, by name, every run that was not recovered."""
     out = ["## Track (c) recovered runs", "",
            "Recovered %d run(s); K3 needs at least %d."
-           % (track_c["recovered_n"], TRACK_C_FLOOR), ""]
+           % (track_c["recovered_n"], TRACK_C_FLOOR), "",
+           "Extraction is reconciliation-tolerant (#133): a reconciliation "
+           "commit folds into its wave as a pseudo-task endpoint diff, is "
+           "absorbed by a later wave's merge-base, or — after the last merge "
+           "— cuts fidelity comparison at that merge (noted per run below). "
+           "The fidelity bar is unchanged: every wave's fold must reproduce "
+           "the tree at its last merge on all non-conflicted paths.", ""]
     if track_c["records"]:
         for r in track_c["records"]:
-            out.append("- `%s` — %d wave(s), %d task(s), %d clean path(s) checked, "
+            recon = r.get("reconciliation", {})
+            out.append("- `%s` — %d wave(s), %d task(s), %d reconciliation "
+                       "pseudo-task(s), %d clean path(s) checked, "
                        "%d silent divergence(s), %d conflicted path(s)"
                        % (r["name"], len(r["groups"]),
                           sum(len(g["tasks"]) for g in r["groups"]),
+                          len(recon.get("pseudo_tasks", ())),
                           r["fidelity"]["paths_checked"],
                           len(r["fidelity"]["silent_divergence"]),
                           len(r["fidelity"]["conflicted_paths"])))
+            if recon.get("trailing_cut"):
+                out.append("  - comparison cut at last merge; trailing "
+                           "reconciliation commit(s): %s"
+                           % ", ".join(sha[:8] for sha in recon["trailing_cut"]))
             if r["fidelity"]["silent_divergence"]:
                 out.append("  - silent divergence: %s"
                            % ", ".join(r["fidelity"]["silent_divergence"]))
