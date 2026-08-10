@@ -1,0 +1,55 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 19,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 40
+  },
+  "groups": [
+    {
+      "after_sha": "eb7015cc5474c031d447f334a4c3c0c66f706265",
+      "base_sha": "2ecf999166224cfff9da42aec621201e7e3861c3",
+      "recons": [
+        "recon-ebc522a8"
+      ],
+      "tasks": [
+        "a51d2571",
+        "ef2b792a",
+        "bfc029b1",
+        "bf0e5e76"
+      ]
+    },
+    {
+      "after_sha": "606f78b696b4f970a690511310772722e8310f1d",
+      "base_sha": "eb7015cc5474c031d447f334a4c3c0c66f706265",
+      "recons": [
+        "recon-829c0bb1"
+      ],
+      "tasks": [
+        "ce86054d",
+        "92a53547",
+        "7b9465c8",
+        "028a990f"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "1a58ed29",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-ebc522a8",
+      "recon-829c0bb1"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "1a58ed29b2cfc3385587165a78d7ec50b932e03e",
+  "track": "c"
+}

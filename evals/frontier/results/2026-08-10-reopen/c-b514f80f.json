@@ -1,0 +1,62 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 26,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 50
+  },
+  "groups": [
+    {
+      "after_sha": "8fe8687dacd7a898e87aefac23a2b3425f613364",
+      "base_sha": "485400da5dc300f928b4c618bc6877826e5c3717",
+      "recons": [
+        "recon-66d17a73"
+      ],
+      "tasks": [
+        "9005b9f9",
+        "2a05533d",
+        "875027a8"
+      ]
+    },
+    {
+      "after_sha": "ef90b5fb4a7b573f8e1111dc6169cb17437c8d88",
+      "base_sha": "8fe8687dacd7a898e87aefac23a2b3425f613364",
+      "recons": [],
+      "tasks": [
+        "29dbc2b3",
+        "311cd8e3"
+      ]
+    },
+    {
+      "after_sha": "7f60f55d35cde9ba3f8c292abc2cc5fcf69eae7e",
+      "base_sha": "ef90b5fb4a7b573f8e1111dc6169cb17437c8d88",
+      "recons": [
+        "recon-abc3dfd1"
+      ],
+      "tasks": [
+        "c50502e0",
+        "8fc30f6c",
+        "e8bd7c53"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "b514f80f",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-66d17a73",
+      "recon-abc3dfd1"
+    ],
+    "trailing_cut": []
+  },
+  "ref": "b514f80f82ac1fe28405424a44e7c8eb1f19128b",
+  "track": "c"
+}

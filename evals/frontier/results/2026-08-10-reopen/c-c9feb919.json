@@ -1,0 +1,54 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 33,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 27
+  },
+  "groups": [
+    {
+      "after_sha": "f46faf073d5ce1ce7491b4c81c5de0caf70f050e",
+      "base_sha": "beafed3a280454d53eeed57d9b73c1175ef595b1",
+      "recons": [],
+      "tasks": [
+        "2b7899ec",
+        "b0b7e3a3"
+      ]
+    },
+    {
+      "after_sha": "c6d5baff3e917b8150cc0954db2ce59546fa4931",
+      "base_sha": "8a030f49a94ad0055121203edb08d73397fdea25",
+      "recons": [],
+      "tasks": [
+        "5b2d790f"
+      ]
+    },
+    {
+      "after_sha": "ef3dde5443305f667a8e6ec19fd25955515fc1ed",
+      "base_sha": "beafed3a280454d53eeed57d9b73c1175ef595b1",
+      "recons": [],
+      "tasks": [
+        "2e07e0ea",
+        "c81af095",
+        "24ff5f83",
+        "a6cdc271"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "c9feb919",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [],
+    "trailing_cut": []
+  },
+  "ref": "c9feb9193625b9e2617731a7cf08dba1a5e50b08",
+  "track": "c"
+}

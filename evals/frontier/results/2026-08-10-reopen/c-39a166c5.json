@@ -1,0 +1,48 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": null,
+  "fidelity": {
+    "conflicted_paths": [],
+    "paths_checked": 36,
+    "silent_divergence": []
+  },
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 3
+  },
+  "groups": [
+    {
+      "after_sha": "cf3ce077169d831a20c166bf3299e61cc0955ce7",
+      "base_sha": "5a74648af282b1d12244197fc2bc3c61c5dd2daf",
+      "recons": [],
+      "tasks": [
+        "3c575f26"
+      ]
+    },
+    {
+      "after_sha": "b1c05a0ac3a437b5ea7e4eefa69353f801e7d2f9",
+      "base_sha": "cb3a5383a57557e2b85a9f6bae047ce6e8f6ea39",
+      "recons": [
+        "recon-2d05683c"
+      ],
+      "tasks": [
+        "df6f8c97"
+      ]
+    }
+  ],
+  "makespans": null,
+  "name": "39a166c5",
+  "no_interleaving": null,
+  "reconciliation": {
+    "pseudo_tasks": [
+      "recon-2d05683c"
+    ],
+    "trailing_cut": [
+      "e2793933422ab26094eee770d4ab24c9897b3b78"
+    ]
+  },
+  "ref": "39a166c5844609ba9514c96a0382a986a9ce305c",
+  "track": "c"
+}
