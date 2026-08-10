@@ -238,7 +238,11 @@ def test_manifest_presence_rules():
                                         {"calc.py": "def calculate(x):\n    logged = 1\n"
                                                     "    a = x * 2\n    b = a + 1\n    return b\n"})
     survivor, cs2 = rw.fold(BASE, deleted_frontier, t_mod)
-    assert conflict_keys(cs2) == [("calc.py", "delete/modify")]
+    # Two independent conflicts, both true of this fold: the kernel merge
+    # disagrees line-by-line, and content survives a delete. The kernel kind is
+    # never relabelled to delete/modify — that would depend on the delete being
+    # folded first (see test_two_text_writers_and_a_deleter_is_order_independent).
+    assert conflict_keys(cs2) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
     assert rw.manifest(survivor)["calc.py"] == "    logged = 1\n"
 
 
@@ -448,6 +452,82 @@ def test_randomized_binary_mixes_are_order_independent():
         seen_kinds.update(k for _, k in keys)
     # The sweep must actually exercise the rules, not just fold clean.
     assert {"binary", "delete/modify"} <= seen_kinds
+
+
+# --- text conflict kinds are order-independent too (K1) --------------------
+
+
+def test_two_text_writers_and_a_deleter_is_order_independent():
+    """The kind of a kernel conflict may not depend on when the delete arrives.
+
+    Classifying it `delete/modify` whenever a delete has already been folded
+    made this same task set produce [delete/modify, lines] in one order and
+    [delete/modify, delete/modify] in another.
+    """
+    base = make_base({"calc.py": "l1\nl2\nl3\nl4\n"})
+    tasks = [rw.task_state_from_contents(base, "t1", {"calc.py": "l1\nl2-x\nl3\nl4\n"}),
+             rw.task_state_from_contents(base, "t2", {"calc.py": "l1\nl2-y\nl3\nl4\n"}),
+             rw.task_state_from_contents(base, "tdel", {"calc.py": None})]
+    manifest, _ = assert_order_independent(
+        base, tasks,
+        expected_conflicts=[("calc.py", "delete/modify"),
+                            ("calc.py", "lines"), ("calc.py", "lines")])
+    assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
+
+
+def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
+    """Same flip on the tombstone route: add/add must not become delete/modify."""
+    ta = rw.task_state_from_contents(BASE, "ta", {"new.py": "x = 1\n"})
+    tb = rw.task_state_from_contents(BASE, "tb", {"new.py": "x = 2\n"})
+    t_del = rw.task_state_from_contents(BASE, "t-del", {"new.py": None})
+    manifest, _ = assert_order_independent(
+        BASE, [ta, tb, t_del],
+        expected_conflicts=[("new.py", "add/add"), ("new.py", "delete/modify")])
+    assert manifest["new.py"] == "x = 1\nx = 2\n"
+
+
+def test_delete_and_line_removal_only_leave_nothing_and_report_nothing():
+    """A modifier that only removes lines merges cleanly with a whole-file delete.
+
+    Nothing survives, so there is no delete/modify survivor to report — in
+    either order.
+    """
+    base = make_base({"a.py": "l1\nl2\nl3\n"})
+    t_trim = rw.task_state_from_contents(base, "t-trim", {"a.py": "l1\nl3\n"})
+    t_del = rw.task_state_from_contents(base, "t-del", {"a.py": None})
+    assert_order_independent(base, [t_trim, t_del],
+                             expected_manifest={}, expected_conflicts=[])
+
+
+def test_randomized_text_and_delete_mixes_are_order_independent():
+    """Seeded sweep with CONCURRENT text writers plus deleters on one path.
+
+    The narrower binary sweep above allows at most one text writer per path,
+    which is exactly the shape that hid the order-sensitive text kind.
+    """
+    rng = random.Random(42)
+    base = make_base({"a.txt": "l1\nl2\nl3\nl4\n", "b.bin": b"\x00\x01"})
+    seen_kinds = set()
+    for _ in range(120):
+        per_task = []
+        for _i in range(rng.randint(2, 4)):
+            contents = {}
+            for p in ("a.txt", "b.bin", "c.new"):
+                r = rng.random()
+                if r < 0.3:
+                    continue
+                if r < 0.5:
+                    contents[p] = None
+                elif r < 0.7:
+                    contents[p] = bytes([0, rng.randint(1, 4)])
+                else:
+                    contents[p] = "l1\nX%d\nl3\nl4\n" % rng.randint(1, 4)
+            per_task.append(contents)
+        tasks = [rw.task_state_from_contents(base, "t%d" % i, c)
+                 for i, c in enumerate(per_task)]
+        _, keys = assert_order_independent(base, tasks)
+        seen_kinds.update(k for _, k in keys)
+    assert {"lines", "add/add", "binary", "delete/modify"} <= seen_kinds
 
 
 def test_materialize_round_trips_non_ascii_and_binary(tmp_path):

@@ -14,6 +14,25 @@ a conflict is reported on the fold that introduces a new distinct candidate
 beyond the path's first, which makes the conflict count `len(candidates) - 1`
 in every order. The surviving bytes are the lexicographically smallest
 candidate — an arbitrary but deterministic tiebreak.
+
+Conflict *kinds* obey the same discipline. Each conflict comes from one of two
+order-independent sources:
+
+* the kernel merge, whose kind is read off `base` alone (`add/add` for a path
+  no base tree carried, `lines` otherwise) — a per-path constant, so it cannot
+  depend on which fold the kernel happened to report the conflict on;
+* a *presence pairing* — two incompatible records for one path (visible text
+  and raw bytes; visible text and a delete; bytes and a delete). Each record
+  flag is monotone across folds, so "both true for the first time" happens on
+  exactly one fold in every order, and the pairing is reported exactly once.
+
+Deliberately NOT done: relabelling the kernel's conflict `delete/modify` when a
+delete record is present. Whether the delete is already folded is fold history,
+and folding the same tasks in another order moves that relabelling to a
+different conflict (or none). The delete/modify pairing is therefore reported
+alongside the kernel conflict, not instead of it: one path can carry both a
+`lines` conflict (the edits disagree) and a `delete/modify` conflict (content
+survives a delete), which is what actually happened.
 """
 import subprocess
 import sys
@@ -167,7 +186,21 @@ def _relabel(annotated, task_id):
     return "\n".join(out)
 
 
-def _fold_text(base, frontier, task, files, conflicts):
+def _text_kind(base, path):
+    """Kind for a kernel-reported conflict: a per-path constant.
+
+    Read off `base` only. Deriving it from the frontier instead — "delete/modify
+    if some already-folded task deleted the path" — is order-sensitive: the
+    same task set relabels a different conflict depending on when the deleting
+    task arrives. Delete-vs-content is reported by `_fold_presence`, which sees
+    it exactly once whatever the order.
+    """
+    if path not in base.files and path not in base.raw:
+        return "add/add"
+    return "lines"
+
+
+def _fold_text(base, task, files, conflicts):
     """Fold the task's text weaves into `files`, appending any conflicts."""
     for p in sorted(task.weaves):
         w = task.weaves[p]
@@ -175,19 +208,9 @@ def _fold_text(base, frontier, task, files, conflicts):
             merged, annotated = manyana.merge_states(files[p], w)
             files[p] = merged
             if annotated != manyana.current_lines(merged):
-                if p in task.deleted or p in frontier.deleted_marks:
-                    kind = "delete/modify"
-                elif p not in base.files and p not in base.raw:
-                    kind = "add/add"
-                else:
-                    kind = "lines"
-                conflicts.append(Conflict(p, kind, task.task_id,
+                conflicts.append(Conflict(p, _text_kind(base, p), task.task_id,
                                           _relabel(annotated, task.task_id)))
         else:
-            # A delete of a path with no base text weave is recorded as a
-            # tombstone candidate, so text-vs-delete on this path is reported
-            # by _fold_pairings — reporting it here would depend on arrival
-            # order (the delete may not have been folded yet).
             files[p] = w
 
 
@@ -217,46 +240,62 @@ def _fold_binary(task, candidates, conflicts):
         prior.add(item)
 
 
-def _pairing_facts(files, candidates, path):
-    """(has text weave, has task-written bytes, has a delete tombstone)."""
+def _pairing_facts(files, candidates, deleted_marks, path):
+    """(has a text weave, has visible text, has task bytes, is deleted).
+
+    Every flag is monotone across folds:
+
+    * a path never leaves `files`, and `deleted_marks`/the candidate sets only
+      grow;
+    * visible text can only appear. Once a delete is folded, every base line of
+      the path is invisible (the delete weave carries the higher, even count),
+      so any line still visible after that was added by a task — and no other
+      task, all of which branch from `base`, can carry a delete for a line it
+      never saw.
+    """
     marks = candidates.get(path, ())
-    return (path in files, bool(_byte_candidates(marks)), TOMBSTONE in marks)
+    has_text = path in files
+    visible = has_text and bool(manyana.current_lines(files[path]))
+    return (has_text, visible, bool(_byte_candidates(marks)), path in deleted_marks)
 
 
-def _fold_pairings(frontier, task, files, candidates, conflicts):
-    """One conflict per path that first pairs a text weave with a binary record.
+def _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts):
+    """One conflict per path whose incompatible presence records first pair up.
 
-    "Has a text weave", "has task-written bytes" and "has a tombstone" are all
-    monotone across folds, so each not-both -> both transition happens exactly
-    once per path whatever the order: text-vs-bytes reports `binary`,
-    text-vs-delete reports `delete/modify`. (bytes-vs-delete is reported by
-    _fold_binary, where both records live in the same candidate set.)
+    Each flag is monotone (see `_pairing_facts`), so every not-both -> both
+    transition happens on exactly one fold whatever the order: a text weave
+    meeting task-written bytes reports `binary`, and text content surviving a
+    delete reports `delete/modify`. (bytes-vs-delete is reported by
+    `_fold_binary`, where both records live in the same candidate set.)
     """
     touched = set(task.weaves) | set(task.raw) | set(task.deleted)
     for p in sorted(touched):
-        was_text, had_bytes, had_tomb = _pairing_facts(
-            frontier.files, frontier.raw_candidates, p)
-        is_text, has_bytes, has_tomb = _pairing_facts(files, candidates, p)
+        was_text, was_visible, had_bytes, was_deleted = _pairing_facts(
+            frontier.files, frontier.raw_candidates, frontier.deleted_marks, p)
+        is_text, visible, has_bytes, deleted = _pairing_facts(
+            files, candidates, deleted_marks, p)
         if is_text and has_bytes and not (was_text and had_bytes):
             conflicts.append(Conflict(p, "binary", task.task_id,
                                       "path %s written as text and as binary "
                                       "concurrently; text wins the manifest" % p))
-        if is_text and has_tomb and not (was_text and had_tomb):
+        if visible and deleted and not (was_visible and was_deleted):
             conflicts.append(Conflict(p, "delete/modify", task.task_id,
-                                      "path %s deleted and written as text "
-                                      "concurrently; text wins the manifest" % p))
+                                      "path %s deleted concurrently with text that "
+                                      "survives the delete; the text wins the "
+                                      "manifest" % p))
 
 
 def fold(base, frontier, task):
     """Merge `task` into `frontier`; returns (new RepoState, [Conflict])."""
     files = dict(frontier.files)
     candidates = {p: set(c) for p, c in frontier.raw_candidates.items()}
+    deleted_marks = frontier.deleted_marks | task.deleted
     conflicts = []
-    _fold_text(base, frontier, task, files, conflicts)
+    _fold_text(base, task, files, conflicts)
     _fold_binary(task, candidates, conflicts)
-    _fold_pairings(frontier, task, files, candidates, conflicts)
+    _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts)
     return (RepoState(files=files,
-                      deleted_marks=frontier.deleted_marks | task.deleted,
+                      deleted_marks=deleted_marks,
                       raw=dict(frontier.raw),
                       raw_candidates={p: frozenset(c) for p, c in candidates.items()}),
             conflicts)
