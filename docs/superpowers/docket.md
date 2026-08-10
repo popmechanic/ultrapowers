@@ -303,7 +303,7 @@
 **Notes:** OPERATOR-NARROWED at distill: ONLY the single fail-closed check at worktree creation for non-resume launches (path exists → loud error naming path + sweep remedy). NOT in scope: HEAD-equals-base assert (ancestry check owns that symptom, proven in field), audit surfaces, new error taxonomy. Harness JS → .mjs sim + sentinel + anti-drift obligations.
 
 ### #122: Docket tooling seams from the drain shakedown
-**State:** queued
+**State:** executed
 **Score:** 6.5 — every future drain re-hits all three seams (Acceptance grammar guidance, compile_docket clusters, drain-mode run-ID recording); autonomy robustness
 **Est-files:** skills/ultradocket/SKILL.md, skills/ultradocket/scripts/compile_docket.py, tests/test_compile_docket.py
 **Plan:** docs/superpowers/plans/2026-08-10-docket-tooling-seams.md
