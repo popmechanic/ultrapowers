@@ -41,12 +41,16 @@ def scan(harness_dir):  # -> (files, problems)
   at all three sites) and, per manifest, either appends its `file` value to
   `files` or appends a one-line reason to `problems` ("`<manifest>`: unparseable
   JSON" / "missing `file` key" / "backing file absent"). It never raises.
-- Skip-on-problem is today's behavior only at the hook; at the other two sites
-  it is **new** semantics — which is why `problems` exists: strict callers
-  surface it loudly (§2) so partial schema drift can never be absorbed
-  silently. The empty-set hard-fails at those callers already catch total
-  drift; `problems` closes the partial-drift hole (one manifest migrated, the
-  rest healthy — #140's scenario in miniature).
+- Skip-on-problem matches the hook's behavior today. At the kit the delta runs
+  the **opposite** direction, intentionally: today `seed_workflows` silently
+  skips a missing-`file`-key or missing-backing-file manifest (only
+  unparseable JSON crashes), so a partly-drifted manifest set seeds partially
+  and the cell proceeds. After this change one bad manifest fails the whole
+  cell — partial-silent-skip becomes fail-closed, surfaced via `problems`
+  (§2), so partial schema drift can never be absorbed silently. The existing
+  empty-set hard-fail catches total drift; `problems` closes the partial-drift
+  hole (one manifest migrated, the rest healthy — #140's scenario in
+  miniature).
 - `__main__`: `python3 harness_manifest.py <dir>` prints `scan(dir)[0]` one
   name per line and exits 0 — the exact shape the hook consumes today. (No
   separate lax-view function: the CLI is its only consumer.) **`problems`
@@ -87,7 +91,10 @@ same grep that inventoried them for this spec.
 - **`ab_runner.seed_workflows`** (strict): imports via the **existing
   `_SCRIPTS` sys.path block** (ab_runner.py:40-42 — no second insertion), as a
   **hard import** (no `try/except → None` fallback like `seal_hash`'s; a
-  missing module must fail loudly, not corrupt the empty-seed message). Calls
+  missing module must fail loudly, not corrupt the empty-seed message). The
+  import sits at module top beside the `seal_hash` import — a missing module
+  therefore breaks even `--dry-run` and every test importing `ab_runner`;
+  that loudness is the point. Calls
   `scan`; hard-fails (existing `sys.exit` style) **before copying anything**
   when `files` is empty **or `problems` is non-empty**, naming the problems —
   a failing cell must not leave a partial seed behind.
@@ -109,10 +116,13 @@ Frozen-periphery check: neither converted file is frozen.
 ### 3. `prepare_cell` extraction (#139)
 
 ```python
-def prepare_cell(plan, engine_ref, root):  # -> (workdir, baseline, env)
+def prepare_cell(plan, root):  # -> (workdir, baseline, env)
 ```
 
-Wraps the five-call chain; both `main()`s call it. `engine` is not returned:
+Wraps the five-call chain; both `main()`s call it. No `engine_ref` parameter:
+`build_run_plan` already stores it (`plan["engineRef"]`, ab_runner.py:91) and
+both mains pass the identical value — `prepare_cell` derives it from the plan.
+`engine` is not returned:
 after extraction its only consumers (`seed_workflows`,
 `prepare_session_config`) live inside the function; neither `main` uses it
 afterward. One deliberate narrowing against issue #139's "six-step" wording:
@@ -128,9 +138,10 @@ and its `pre = rev(workdir)` capture move to after `prepare_cell`. Two pins:
   throwaway config dir) — so `pre` is the same commit in both orderings.
 - **Scrub window:** `prepare_cell` seeds a live credential, so in *both* mains
   the `try/finally scrub_credentials` block must begin **immediately after
-  `prepare_cell` returns** — `run_ab_cell`'s dirt-seeding happens inside the
-  `try`, never between seeding and the `finally` (dirt-seeding can raise; a
-  gap would leak the token into a workdir that outlives the run).
+  `prepare_cell` returns** — `run_ab_cell`'s dirt-seeding *and* its
+  `pre = rev(workdir)` capture happen inside the `try`, never between seeding
+  and the `finally` (both shell out and can raise; a gap would leak the token
+  into a workdir that outlives the run).
 
 ## Testing
 
@@ -174,18 +185,23 @@ held-out exam.
 Deletes two inline manifest readers (hook, kit) and one duplicated five-call
 setup sequence; adds one ~25-line module and its unit tests; zero new knobs;
 one file deliberately left untouched (`ultra_run.py`, crash-loud inline
-reader) to keep the blast radius inside what #140 actually claims. The kit's
-strict `problems` check and the hook's GC no-op guard are fail-closed
-*preservation* (the hook's mass-delete hazard predates this spec), not new
-guard machinery. `complexityEffect: simplification` for both docket entries.
+reader) to keep the blast radius inside what #140 actually claims. Owned
+honestly: the hook's GC no-op conditional is **one one-line additive guard**
+(the mass-delete hazard predates this spec, but the conditional is new); the
+kit's strict `problems` check is an intentional behavior change from
+partial-silent-skip to fail-closed, argued in §1–2 — neither is spin-labeled
+"preservation". `complexityEffect: simplification` for both docket entries.
 
 ## Trim review
 
-**Author disclosure (Adds/Removes).** Adds: `harness_manifest.py` (`scan` +
-`__main__` CLI shim), `prepare_cell`, their unit tests. Removes: three
-inline manifest readers, the duplicated five-call setup, the planned #140 pin
-test. Surfaces beyond the originating issues: `hooks/session_start.sh`,
-`ultra_run.py` install stage (both required by the one-reader goal).
+**Author disclosure (Adds/Removes — as amended round 4).** Adds:
+`harness_manifest.py` (`scan` + `__main__` CLI shim; a new surface under
+`skills/ultrapowers/scripts/`, inherent to the sanctioned one-reader option),
+`prepare_cell`, their unit tests, one one-line GC guard in the hook.
+Removes: **two** inline manifest readers (hook, kit), the duplicated
+five-call setup, the planned #140 pin test. `ultra_run.py` is **not** a
+surface (round-3 T1 declined its conversion; the pre-round-3 disclosure
+listed it).
 
 **Reviewer:** fresh-context subagent (seal-author independence model), inputs =
 spec + issues #139/#140 + doctrine file + the five touched code files. Verdicts
@@ -225,11 +241,11 @@ spec with no knowledge of round 1's dispatch. Verdicts and adjudication:
 | T3 | Hook belt now redundant with `scan`'s backing-file check; don't specify one invariant as load-bearing in two files | **Adopted as wording** — belt kept (round-1 T2), §2 states the hook does not rely on `scan`'s check; the check's beneficiary is the kit's unvetted pinned worktrees |
 | U1 | **Cross-version seam:** kit reads *pinned old-engine* manifests with the *checkout's* `scan`; strict `problems` would make pre-change refs unevaluable on the first schema migration | **Adopted** — §1 backward-tolerance contract: migrations extend accepted forms, never replace; only unreadable-under-any-form is a problem |
 | U2 | Specified `prepare_cell` test mechanism (subprocess stubs) cannot work — `seed_workflows` would `sys.exit` | **Adopted** — §Testing pins function-level recorder stubs (`test_bootstrap_cell_*` pattern) |
-| U3 | Install-stage strict test has no injection seam in `test_ultra_run.py`'s subprocess pattern | **Adopted** — §Testing states the import-and-monkeypatch-`HARNESSES` departure |
-| U4 | Hook GC no-op test mechanism unnamed (harness dir can never be empty) | **Adopted** — §Testing pins PATH-without-python3 |
+| U3 | Install-stage strict test has no injection seam in `test_ultra_run.py`'s subprocess pattern | **Superseded by R3-T1** (test deleted with the declined conversion) |
+| U4 | Hook GC no-op test mechanism unnamed (harness dir can never be empty) | **Superseded by R3-U1** (the PATH-without-python3 mechanism adopted here proved vacuous; see round 3) |
 | U5 | Six-vs-five narrowing silent (`build_run_plan` stays duplicated) | **Adopted** — §3 states it and why (`--dry-run`) |
 | U6 | Cited isolation pin over-claims; no-repo-writes half rests on code inspection | **Adopted** — §3 citation narrowed |
-| U7 | Fourth (test-side) reader `test_harness_registry.py` falsifies "one module is *the* contract" | **Adopted** — §1 qualifier: `scan` is the single **runtime** reader; the test pin also edits on migration |
+| U7 | Fourth (test-side) reader `test_harness_registry.py` falsifies "one module is *the* contract" | **Adopted; qualifier superseded by R3-T1** ("single runtime reader" no longer claimed — two remain: `scan` and `ultra_run`'s declined inline) |
 
 Rejections: none. Scope verdicts: #139 no expansion (scrub-window pin
 warranted); #140's expansions all warranted, with `ultra_run` noted as the
@@ -262,3 +278,36 @@ surfaces now sit exactly inside #140's est-files + the gate condition.
 clear with T1 adopted)** — reviewer's marginal-value self-assessment: two
 findings change the built artifact (U1, U2), one shrinks it (T1), rest
 wording — "few but load-bearing, concentrated in the test plan."
+
+### Round 4 (fourth independent reviewer — the diminishing-returns check)
+
+Fresh-context subagent, no knowledge of rounds 1–3's dispatches, briefed to
+hunt only what survives three passes. It independently re-derived and
+**concurred with** round 3's two contested calls (the ultra_run decline and
+the vacuous-PATH proof). Verdicts and adjudication:
+
+| # | Finding | Adjudication |
+|---|---|---|
+| T1 | `prepare_cell`'s `engine_ref` parameter derivable from `plan["engineRef"]` | **Adopted** — §3, signature is `prepare_cell(plan, root)` |
+| T2 | Author disclosure contradicted the post-round-3 body ("three readers", ultra_run listed as surface) | **Adopted** — disclosure amended |
+| T3 | Three round-2 rows read as live but are superseded | **Adopted** — rows marked superseded with pointers |
+| F1 | FALSE: "skip is new semantics at the kit" — the kit already skips missing-key/missing-file silently; the *new* thing is fail-closed strictness | **Adopted** — §1 states the delta in its true direction |
+| U1 | Hard-import location unstated (module top ⇒ breaks even `--dry-run`) | **Adopted** — §2 states it and owns the loudness |
+| U2 | `pre = rev(workdir)` placement relative to the `try` unstated | **Adopted** — §3 scrub-window pin covers it |
+| A1 | GC conditional labeled "preservation" is an additive guard by the doctrine's vocabulary | **Adopted** — §Complexity accounting owns it as one one-line additive guard |
+| — | New `harness_manifest.py` is an undisclosed surface | **Adopted** — disclosure amended |
+
+Rejections: none. Reviewer's marginal-value self-assessment: **one** finding
+changes the built artifact (T1, a signature narrowing); the rest are
+record-keeping — "few — consistent with a spec that has genuinely exhausted
+its cheap and medium findings."
+
+**Round-4 reviewer grade: `netConceptDelta = down`** — independent
+concurrence with round 3's conditioned grade, condition verified satisfied.
+
+**Stopping decision (author, applying the pre-declared rule):** diminishing
+returns reached. Rule: stop when a round yields no finding that changes the
+design's mechanism, contract, or test seam. Round 4's sole artifact change is
+a two-token signature cut; its remaining findings corrected the spec's
+*record*, not its design. Four rounds, 31 findings, 29 adopted / 2 superseded,
+0 rejected; grades: down, down, down (marginal→clear), down.
