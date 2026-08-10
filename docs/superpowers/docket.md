@@ -311,7 +311,7 @@
 **Notes:** Three parts: (1) sweep step-3/5 guidance names the exact compiling Acceptance form (prose; grammar itself is eval-gated compiler vocabulary — do NOT widen ACCEPT_SUITE); (2) compile_docket learns PLAN-TOGETHER cluster semantics (unit = unique plan, entries advance together — the drain's deduped-view logic, promoted); (3) drain-mode launch-ID recording so teardown's sweep set derives instead of being hand-reconstructed. Self-contained dev tooling, suite disposition.
 
 ### #128: Standing pre-authorization at NEEDS_ACK, recorded
-**State:** queued
+**State:** executed
 **Score:** 6 — consent-record honesty at the single human gate; 3 field observations; operator-decided direction (sanction-with-recording)
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/references/report-format.md
 **Plan:** docs/superpowers/plans/2026-08-10-standing-preauth-recording.md
