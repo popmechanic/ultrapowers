@@ -48,26 +48,26 @@ def scan(harness_dir):  # -> (files, problems)
   drift; `problems` closes the partial-drift hole (one manifest migrated, the
   rest healthy — #140's scenario in miniature).
 - `__main__`: `python3 harness_manifest.py <dir>` prints `scan(dir)[0]` one
-  name per line and exits 0 — the exact shape the hook consumes today; empty
-  output only when the directory yields no readable manifests. (No separate
-  lax-view function: the CLI is its only consumer.)
-- **Backward-tolerance contract (the cross-version seam):** `seed_workflows`
-  reads manifests inside a *pinned engine worktree* — possibly an older
-  schema — using the *checkout's* `scan`. So `scan` must remain able to read
-  every schema form any evaluable engine ref ships: a schema migration
-  **extends** the accepted forms, never replaces them; only a manifest
-  unreadable under *any* known form is a `problem`. Without this, the first
-  schema change would make every pre-change engine ref hard-fail in the kit —
-  #140's drift-masquerade class, inverted.
+  name per line and exits 0 — the exact shape the hook consumes today. (No
+  separate lax-view function: the CLI is its only consumer.) **`problems`
+  never reach stdout** — dropped or stderr only; the hook word-splits stdout
+  into filenames, so problem prose there would become fake names the `[ -e ]`
+  belt silently absorbs.
+- **Backward-tolerance rule, living in `scan`'s docstring** (not only here):
+  `seed_workflows` reads manifests inside a *pinned engine worktree* —
+  possibly an older schema — with the *checkout's* `scan`, so a schema
+  migration **extends** the accepted forms, never replaces them; only a
+  manifest unreadable under *any* known form is a `problem`. Otherwise the
+  first schema change makes every pre-change engine ref hard-fail in the kit
+  — #140's drift-masquerade class, inverted. (Untestable today — one schema
+  form exists — hence a docstring rule for the next editor, not a test.)
 
 A future schema change (e.g. `file` becomes an array, an `enabled` filter)
-edits `scan` once at runtime. One honest qualifier: the schema is *also*
-pinned by `tests/test_harness_registry.py` (a test-side reader of the full
-key set against the committed manifests), so a migration edits that pin too —
-`scan` is the single **runtime** reader, not the sole file mentioning the
-schema.
+edits `scan`, the `tests/test_harness_registry.py` schema pin, and — see §2 —
+`ultra_run.py`'s deliberately-untouched inline reader, all reachable by the
+same grep that inventoried them for this spec.
 
-### 2. Three call-site conversions
+### 2. Two call-site conversions (the third declined — operator-adjudicable)
 
 - **`hooks/session_start.sh`** (the lax caller — session start must never
   break): the embedded snippet (lines 27–36) becomes
@@ -88,16 +88,23 @@ schema.
   `_SCRIPTS` sys.path block** (ab_runner.py:40-42 — no second insertion), as a
   **hard import** (no `try/except → None` fallback like `seal_hash`'s; a
   missing module must fail loudly, not corrupt the empty-seed message). Calls
-  `scan`; hard-fails (existing `sys.exit` style) when `files` is empty **or
-  `problems` is non-empty**, naming the problems.
-- **`ultra_run.py` install stage** (strict): same-directory import; calls
-  `scan`; the stage fails when `files` is empty **or `problems` is non-empty**,
-  naming the problems in the stage detail. This *preserves* the driver's
-  fail-closed posture (today one malformed manifest crashes it loudly; a bare
-  skip would have turned that into a silent partial install that dies mid-run
-  at "Workflow not found").
+  `scan`; hard-fails (existing `sys.exit` style) **before copying anything**
+  when `files` is empty **or `problems` is non-empty**, naming the problems —
+  a failing cell must not leave a partial seed behind.
+- **`ultra_run.py` install stage: deliberately NOT converted** (round-3 trim,
+  reverses rounds 1–2; flagged for operator adjudication at spec review). The
+  defect class #140 names — *silent* measurement corruption — cannot occur
+  there: a malformed manifest crashes the pre-launch driver loudly before any
+  run exists, and both the issue's est-files and the gate condition (`869795e`,
+  "kit+hook") exclude this file. Converting it bought a receipted stage
+  failure instead of a traceback plus a "single runtime reader" tagline, at
+  the price of touching the plugin's widest-blast-radius file (every launch)
+  and the plan's heaviest new test (an in-process `main()` drive through six
+  real stages just to reach the seam). Its inline reader stays crash-loud and
+  unguarded; schema migrations reach it via the same grep as the
+  `test_harness_registry` pin.
 
-Frozen-periphery check: none of the three files is frozen.
+Frozen-periphery check: neither converted file is frozen.
 
 ### 3. `prepare_cell` extraction (#139)
 
@@ -129,8 +136,10 @@ and its `pre = rev(workdir)` capture move to after `prepare_cell`. Two pins:
 
 - New `tests/test_harness_manifest.py`: skips-unparseable, skips-missing-key,
   skips-missing-backing-file (each also asserting the matching `problems`
-  entry), sorted-by-manifest-filename order, `__main__` prints one name per
-  line and exits 0 on an empty dir.
+  entry), sorted-by-manifest-filename order, and the CLI invariant that
+  matters: on a `problems`-bearing dir, **stdout carries only filenames**
+  (problem prose on stdout would word-split into fake names at the hook). No
+  empty-dir CLI case — it pins a shape nothing consumes.
 - New `prepare_cell` unit test (in `tests/test_ab_runner.py`): **function-level
   recorder stubs** — monkeypatch the five callees the way the
   `test_bootstrap_cell_*` tests already monkeypatch `prepare_engine` — and
@@ -139,34 +148,36 @@ and its `pre = rev(workdir)` capture move to after `prepare_cell`. Two pins:
   `seed_workflows` would `sys.exit` before the chain completes.) Without this
   the extraction ships with no coverage: `--dry-run` returns before the chain,
   and `run_ab_cell.main` is deliberately never-in-CI.
-- Strict-caller coverage: one test each for `seed_workflows` and the install
-  stage asserting a `problems`-bearing manifest set fails loudly, naming the
-  manifest. The install-stage test **imports `ultra_run` and monkeypatches the
-  module-level `HARNESSES` constant** — a stated departure from
-  `test_ultra_run.py`'s subprocess-driven pattern, which cannot inject a
-  manifest set (and an env/flag seam would be a new knob).
+- Strict-caller coverage: one test for `seed_workflows` asserting a
+  `problems`-bearing manifest set fails loudly, naming the manifest, **with
+  nothing copied**. (The install-stage strict test died with the declined
+  `ultra_run` conversion.)
 - Existing `tests/test_session_hook.py` behavior tests keep running the hook
   end-to-end — install, idempotence, GC, routing-context purity stay pinned;
-  one new case: run the hook with a **PATH lacking python3** (the reader's
-  yield-nothing mode; the harness dir itself is BASH_SOURCE-derived and never
-  empty), pre-populate the workflows dir with a `.js`, assert it survives —
-  GC no-op on reader failure.
+  one new case: GC no-op on reader failure, induced by **prepending a failing
+  `python3` shim to an otherwise-full PATH** — NOT a stripped `PATH=/bin`,
+  which also loses `basename` and makes the test pass vacuously (empty
+  `base` matches the empty `installed_set` pattern, so `rm` is unreachable
+  even with the guard deleted). Pre-populate the workflows dir with a `.js`,
+  assert it survives; the test must fail when the guard is removed.
 - **Not built:** the #140 kit↔hook contract pin — with one reader there is no
   contract between readers to pin.
 
 ## Acceptance
 
-**Acceptance:** suite — dev tooling across evals/hook/driver; the committed
-suite plus existing hook behavior tests are the verification; no held-out exam.
+**Acceptance:** suite — dev tooling across evals + the session hook; the
+committed suite plus existing hook behavior tests are the verification; no
+held-out exam.
 
 ## Complexity accounting
 
-Deletes two duplicate manifest readers and one duplicated five-call setup
-sequence; adds one ~25-line module and its unit tests; zero new knobs. The two
-strict `problems` checks and the GC no-op guard are fail-closed *preservation*
-(the driver crashes loudly today; the hook's mass-delete predates this spec),
-not new guard machinery. `complexityEffect: simplification` for both docket
-entries.
+Deletes two inline manifest readers (hook, kit) and one duplicated five-call
+setup sequence; adds one ~25-line module and its unit tests; zero new knobs;
+one file deliberately left untouched (`ultra_run.py`, crash-loud inline
+reader) to keep the blast radius inside what #140 actually claims. The kit's
+strict `problems` check and the hook's GC no-op guard are fail-closed
+*preservation* (the hook's mass-delete hazard predates this spec), not new
+guard machinery. `complexityEffect: simplification` for both docket entries.
 
 ## Trim review
 
@@ -227,3 +238,27 @@ widest-blast-radius file for the narrowest defect.
 **Round-2 reviewer grade: `netConceptDelta = down`** — conditioned on U1 and
 U2, both adopted above; U1 was the one finding threatening the design's stated
 value rather than its write-up.
+
+### Round 3 (third independent reviewer, operator-requested)
+
+Fresh-context subagent, no knowledge of rounds 1–2's dispatches, briefed to
+hunt what survives two passes. Verdicts and adjudication:
+
+| # | Finding | Adjudication |
+|---|---|---|
+| T1 | Drop the `ultra_run.py` conversion + its test: outside the issue's est-files AND the gate condition's "kit+hook"; the silent-corruption class #140 names cannot occur at a crash-loud pre-launch driver; widest-blast-radius file for the narrowest defect | **Adopted as recommendation — OPERATOR-ADJUDICABLE** (reverses rounds 1–2's Option-A breadth); §2 states the decline and its price |
+| T2 | Backward-tolerance "contract" is untestable today (one schema form exists) and had no stated physical home | **Adopted** — demoted to a mandated `scan`-docstring rule (§1) |
+| T3 | CLI empty-dir test pins a shape nothing consumes | **Adopted** — dropped; replaced by the load-bearing CLI invariant (problems never on stdout) |
+| U1 | **GC no-op test as round-2-specified passes vacuously**: `PATH=/bin` loses `basename` too, empty `base` matches the empty `installed_set` pattern, `rm` unreachable even guard-deleted | **Adopted** — mechanism pinned to a failing `python3` shim on a full PATH; test must fail when the guard is removed |
+| U2 | Install-stage test mechanism understated (needs a full in-process `main()` drive through six real stages); "departure" claim false — in-file import precedent exists | **Mooted by T1** (test deleted with the conversion); the false "departure" claim removed with it |
+| U3 | Backward-tolerance rule's home unstated | **Adopted** — with T2 |
+| U4 | CLI `problems` disposal unstated; prose on stdout becomes fake filenames the hook's belt silently absorbs — making the "uncoupled" belt load-bearing | **Adopted** — §1: problems dropped or stderr, never stdout; tested |
+| U5 | Strict caller's fail-before-or-after-copy order unstated | **Adopted** — §2: fail before copying; tested |
+
+Rejections: none. Scope verdict adopted wholesale: with T1, the spec's
+surfaces now sit exactly inside #140's est-files + the gate condition.
+
+**Round-3 reviewer grade: `netConceptDelta = down` (marginal as reviewed;
+clear with T1 adopted)** — reviewer's marginal-value self-assessment: two
+findings change the built artifact (U1, U2), one shrinks it (T1), rest
+wording — "few but load-bearing, concentrated in the test plan."
