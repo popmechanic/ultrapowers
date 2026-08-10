@@ -18,15 +18,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import ultra_gate  # noqa: E402
+from ultra_run import write_dirty_baseline  # noqa: E402
 
 
 def sh(cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
 
 
-def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None):
+def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None,
+              seed_dirty_baseline=True):
     """Throwaway repo + a scripts dir where run_acceptance.sh is a stub that
-    records its argv and exits 0. Returns (repo, scripts_dir, head)."""
+    records its argv and exits 0. Returns (repo, scripts_dir, head).
+
+    `seed_dirty_baseline=False` reproduces a launch whose DIRTY_SNAPSHOT was
+    never written — post-#104 that is an ordinary state the gate must survive,
+    not the BLOCKED path the deleted restore step used to produce."""
     repo = tmp_path / "repo"
     repo.mkdir()
     sh(["git", "init", "-q", "-b", "main"], cwd=repo)
@@ -54,7 +60,8 @@ def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None):
 
     # the pre-launch state ultra_run would have left behind
     sh(["bash", str(scripts / "run_lock.sh"), "acquire", "t1"], cwd=repo)
-    sh(["bash", str(scripts / "run_lock.sh"), "snapshot"], cwd=repo)
+    if seed_dirty_baseline:
+        write_dirty_baseline(repo)
     run_dir = repo / ".claude/ultrapowers/run-t1"
     run_dir.mkdir(parents=True)
     acceptance = {"waived": {"mode": "waived", "reason": "test"},
@@ -108,6 +115,38 @@ def test_bare_report_also_accepted(tmp_path):
     r = run_gate(repo, scripts, result)
     assert r.returncode == 0
     assert json.loads(r.stdout)["verdict"] == "PASS"
+
+
+def test_gate_passes_with_no_snapshot_file_present(tmp_path):
+    """#104: gate mode's first act is the result unwrap. With no snapshot file
+    on disk the gate reaches a real verdict — the old restore-first step turned
+    exactly this state into a BLOCKED with no bearing on the work reviewed."""
+    repo, scripts, head = make_repo(tmp_path, seed_dirty_baseline=False)
+    assert not (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").exists()
+    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps(good_report(head)))
+    r = run_gate(repo, scripts, result)
+    out = json.loads(r.stdout)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert out["verdict"] == "PASS"
+
+
+def test_gate_leaves_the_session_checkout_where_it_found_it(tmp_path):
+    """The property the retired family claimed to protect, now held by the
+    gate being checkout-position-independent (#84): head-match resolves the
+    branch ref, so the gate reads the same tree from wherever the operator
+    parked and never moves them."""
+    repo, scripts, head = make_repo(tmp_path)
+    sh(["git", "checkout", "-qb", "operator-side-quest"], cwd=repo)
+    before = sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps(good_report(head)))
+    r = run_gate(repo, scripts, result)
+    assert json.loads(r.stdout)["verdict"] == "PASS", r.stdout
+    assert sh(["git", "branch", "--show-current"],
+              cwd=repo).stdout.strip() == "operator-side-quest"
+    assert sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip() == before
 
 
 def test_sealed_acceptance_dispatch(tmp_path):
@@ -193,9 +232,10 @@ def test_approve_checks_out_branch_and_releases(tmp_path):
 
 
 # ── #96: suite acceptance derives its inputs from the receipt ────────────
-# These stub at the ultra_gate.sh boundary ONLY (git rev-parse, run_lock
-# restore, gate_check and run_acceptance are all subprocesses through sh()),
-# so the exact argv handed to run_acceptance.sh is observable.
+# These stub at the ultra_gate.sh boundary ONLY (git rev-parse, gate_check
+# and run_acceptance are all subprocesses through sh()), so the exact argv
+# handed to run_acceptance.sh is observable — and so is the full call list,
+# which #104 uses to pin that no run_lock.sh restore is issued at all.
 
 
 class FakeProc:
@@ -203,10 +243,11 @@ class FakeProc:
         self.returncode, self.stdout, self.stderr = code, out, err
 
 
-def _run_gate(root, monkeypatch, receipt_extra):
+def _run_gate(root, monkeypatch, receipt_extra, calls=None):
     """Drive ultra_gate.main in gate mode against a synthesized run_dir whose
     receipt carries acceptance.mode 'suite' plus receipt_extra. Returns
-    (exit_code, gate_receipt_dict_or_None, run_acceptance_argv_or_None)."""
+    (exit_code, gate_receipt_dict_or_None, run_acceptance_argv_or_None); pass
+    `calls` to also collect every subprocess argv the driver issued."""
     root.mkdir(parents=True, exist_ok=True)
     run_dir = root / ".claude/ultrapowers/run-t1"
     run_dir.mkdir(parents=True)
@@ -218,7 +259,7 @@ def _run_gate(root, monkeypatch, receipt_extra):
         "integrationBranch": "ultra/x",
         "tests": {"command": "IGNORED PROSE (553 passed)", "passed": True,
                   "output": "ok"}}}))
-    calls = []
+    calls = [] if calls is None else calls
 
     def fake_sh(cmd, cwd=None):
         calls.append([str(c) for c in cmd])
@@ -244,6 +285,17 @@ def _run_gate(root, monkeypatch, receipt_extra):
                     if gate_receipt_path.is_file() else None)
     ra = [c for c in calls if any("run_acceptance.sh" in x for x in c)]
     return code, gate_receipt, (ra[0] if ra else None)
+
+
+def test_gate_issues_no_run_lock_restore(tmp_path, monkeypatch):
+    """#104: the restore call is deleted, not made conditional. No subprocess
+    the gate issues may name `restore` — the family is gone from this path."""
+    calls = []
+    code, receipt, _ = _run_gate(tmp_path / "a", monkeypatch,
+                                 {"testCmd": "make check"}, calls=calls)
+    assert code == 0 and receipt["verdict"] == "PASS"
+    assert calls, "sanity: the driver issued subprocesses"
+    assert not [c for c in calls if "restore" in " ".join(c)]
 
 
 def test_suite_acceptance_command_comes_from_receipt(tmp_path, monkeypatch):

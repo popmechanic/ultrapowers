@@ -33,8 +33,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
 
 One call runs every deterministic stage fail-closed — git-repo check,
 worktree-capability probe, self-host engine skew, superpowers compatibility,
-compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock +
-checkout snapshot, and `baseBranch` derivation — and writes the receipt to
+compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock,
+dirty-baseline stage, and `baseBranch` derivation — and writes the receipt to
 `.claude/ultrapowers/run-<stamp>/receipt.json`. **Exit 0** → read the receipt and
 continue. **Non-zero** → the last stage names the failure:
 
@@ -192,12 +192,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
   --stamp <stamp> --result <saved-result.json>
 ```
 
-Its first act is to restore the session checkout the run started from — the
-pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
-the gate on the integration branch). With integration in its dedicated
-worktree the engine never moved the checkout, so this restore is normally a
-no-op — it remains the fail-safe against operator-caused drift. It then
-runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+It runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
 pre-existing operator files pass with a note), and administers acceptance per the
 compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
 `tests.passed` is triage context; the **exit code is the authority**:

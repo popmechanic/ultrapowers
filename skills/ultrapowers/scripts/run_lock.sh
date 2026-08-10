@@ -10,20 +10,20 @@
 #                    exit non-zero with a refusal if a DIFFERENT id holds it
 #   check    <id>  — exit 0 iff RUN_LOCK holds <id>; non-zero otherwise
 #   release  <id>  — remove RUN_LOCK iff it holds <id> (no-op if mismatch)
-#   snapshot       — record current branch + HEAD sha to CHECKOUT_SNAPSHOT,
-#                    and the porcelain dirty set to DIRTY_SNAPSHOT (the gate
-#                    blocks only on dirt that appears AFTER this)
-#   restore        — checkout the branch/sha recorded in CHECKOUT_SNAPSHOT
 #
-# Advisory: never force-moves a tree.  All operations are idempotent and silent
-# on success so the caller can chain them with &&.
+# This script never moves a checkout.  The snapshot/restore family it used to
+# carry was retired in #104: since #84 the engine integrates in a dedicated
+# worktree and the gate resolves branch refs, so the session checkout is never
+# moved and needs no restoring.  The launch-time dirty baseline the gate still
+# reads (DIRTY_SNAPSHOT) is written by ultra_run.py's dirty-baseline stage.
+#
+# Advisory: all operations are idempotent and silent on success so the caller
+# can chain them with &&.
 set -eu
 
 ROOT="$(git rev-parse --show-toplevel)"
 DIR="$ROOT/.claude/ultrapowers"
 LOCK="$DIR/RUN_LOCK"
-SNAP="$DIR/CHECKOUT_SNAPSHOT"
-DIRTY="$DIR/DIRTY_SNAPSHOT"
 mkdir -p "$DIR"
 
 cmd="${1:-}"
@@ -48,39 +48,8 @@ case "$cmd" in
     fi
     ;;
 
-  snapshot)
-    branch="$(git -C "$ROOT" branch --show-current)"
-    sha="$(git -C "$ROOT" rev-parse HEAD)"
-    printf '%s\t%s' "$branch" "$sha" > "$SNAP"
-    git -C "$ROOT" status --porcelain > "$DIRTY"
-    ;;
-
-  restore)
-    if [ ! -f "$SNAP" ]; then
-      echo "run_lock.sh restore: no snapshot to restore (run 'snapshot' first)" >&2
-      exit 1
-    fi
-    b="$(cut -f1 "$SNAP")"
-    h="$(cut -f2 "$SNAP")"
-    if [ -n "$b" ]; then
-      git -C "$ROOT" checkout "$b"
-      cur="$(git -C "$ROOT" branch --show-current)"
-      if [ "$cur" != "$b" ]; then
-        echo "run_lock.sh restore: expected to land on branch '$b' but HEAD is '${cur:-<detached>}' — refusing to gate the wrong tree (#68)." >&2
-        exit 1
-      fi
-    else
-      git -C "$ROOT" checkout "$h"
-      cur="$(git -C "$ROOT" rev-parse HEAD)"
-      if [ "$cur" != "$h" ]; then
-        echo "run_lock.sh restore: expected detached HEAD at '$h' but HEAD is '$cur' — refusing to gate the wrong tree (#68)." >&2
-        exit 1
-      fi
-    fi
-    ;;
-
   *)
-    echo "usage: run_lock.sh acquire|check|release <id> | snapshot | restore" >&2
+    echo "usage: run_lock.sh acquire|check|release <id>" >&2
     exit 2
     ;;
 esac

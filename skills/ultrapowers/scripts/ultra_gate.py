@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Deterministic gate driver for /ultrapowers (SKILL.md Step 5 mechanics).
 
-Gate mode (--result): restore the pre-launch checkout, unwrap the Workflow
-tool envelope (gate fields live under result.* — report-format.md), save the
-report verbatim, run gate_check.py, then administer acceptance per the
-disposition recorded in the ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK /
-1 BLOCKED; a failed acceptance always forces 1. The driver never decides —
-the orchestrator renders the receipt and owns Approve/Salvage/Redirect.
+Gate mode (--result): unwrap the Workflow tool envelope (gate fields live
+under result.* — report-format.md), save the report verbatim, run
+gate_check.py, then administer acceptance per the disposition recorded in the
+ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a failed acceptance
+always forces 1. The driver never decides — the orchestrator renders the
+receipt and owns Approve/Salvage/Redirect. Gate mode moves no checkout: the
+verdict is checkout-position-independent (head-match resolves branch refs and
+the suite-gate runs in its own detached worktree), so wherever the operator
+has parked, the gate reads the same tree and leaves them there (#104).
 
 --approve: checkout the integration branch, sweep every recorded wf run id
 plus wf_<stamp> (wf-runs.json ∪ --wf-run), release the lock; a sweep that
@@ -168,10 +171,6 @@ def main(argv=None):
     receipt = {"mode": "gate", "stamp": a.stamp}
     if a.result is None:
         return blocked(receipt, "--result <workflow result JSON> is required")
-
-    r = sh(lock + ["restore"], cwd=root)
-    if r.returncode != 0:
-        return blocked(receipt, "checkout restore failed: " + r.stderr)
 
     try:
         payload = json.loads(a.result.read_text())

@@ -1,6 +1,12 @@
 """gate_check.py: the deterministic pre-merge gate checks (SKILL.md Step 5).
 Every check is exercised against a throwaway git repo; git is ground truth,
-so a corrupted report can only yield BLOCKED, never a false PASS."""
+so a corrupted report can only yield BLOCKED, never a false PASS.
+
+The clean-tree check's new-vs-pre-existing baseline is seeded by the driver's
+own writer (`ultra_run.write_dirty_baseline`) — #104 retired the
+`run_lock.sh snapshot` subcommand that used to write it, but the
+launch-over-operator-dirt workflow it protects is unchanged, so these tests
+are re-plumbed rather than deleted."""
 import json
 import pathlib
 import subprocess
@@ -9,6 +15,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 GATE = SCRIPTS / "gate_check.py"
+sys.path.insert(0, str(SCRIPTS))
+from ultra_run import write_dirty_baseline  # noqa: E402
 
 
 def sh(cmd, cwd=None, check=True):
@@ -155,10 +163,11 @@ def test_malformed_report_blocks(tmp_path):
 
 def test_preexisting_dirt_passes_with_note(tmp_path):
     """Dirt recorded in DIRTY_SNAPSHOT predates the run — the gate must not
-    block on it or accuse a role (2026-07-03 distill: stash-dance class)."""
+    block on it or accuse a role (2026-07-03 distill: stash-dance class).
+    Seeded by the driver's writer, the baseline's only writer since #104."""
     repo, head = make_repo(tmp_path)
     (repo / "operator-notes.md").write_text("deliberately uncommitted\n")
-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
+    write_dirty_baseline(repo)
     report = tmp_path / "report.json"
     report.write_text(json.dumps(good_report(head)))
     r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
@@ -173,8 +182,8 @@ def test_preexisting_dirt_passes_with_note(tmp_path):
 
 def test_new_dirt_still_blocks(tmp_path):
     repo, head = make_repo(tmp_path)
-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
-    (repo / "smuggled.py").write_text("appeared after snapshot\n")
+    write_dirty_baseline(repo)
+    (repo / "smuggled.py").write_text("appeared after the dirty baseline\n")
     report = tmp_path / "report.json"
     report.write_text(json.dumps(good_report(head)))
     r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
@@ -187,9 +196,9 @@ def test_new_dirt_still_blocks(tmp_path):
     assert r.returncode == 1
 
 
-def test_no_snapshot_falls_back_strict(tmp_path):
-    """Runs launched before Task 2 have no DIRTY_SNAPSHOT: every dirt line
-    blocks, exactly the old behavior (fail-closed)."""
+def test_no_baseline_falls_back_strict(tmp_path):
+    """No DIRTY_SNAPSHOT means no recorded pre-launch dirt: every dirt line
+    blocks (fail-closed)."""
     repo, head = make_repo(tmp_path)
     (repo / "any.txt").write_text("dirt\n")
     report = tmp_path / "report.json"
