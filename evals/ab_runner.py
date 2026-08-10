@@ -262,7 +262,6 @@ def prepare_session_config(engine_wt, workspace):
     the superpowers dependency (spec §3)."""
     cfg = Path(workspace) / "claude-config"
     cfg.mkdir(parents=True, exist_ok=True)
-    seed_credentials(cfg)
     env = dict(os.environ)
     env["CLAUDE_CONFIG_DIR"] = str(cfg)
     # The exact enablement incantation is a named verification unknown (spec
@@ -278,6 +277,11 @@ def prepare_session_config(engine_wt, workspace):
             sys.exit("prepare_session_config: %r failed inside the throwaway "
                      "config (%s) — operator config untouched.\n%s"
                      % (" ".join(cmd), cfg, (r.stderr or r.stdout or "").strip()))
+    # Seed credentials LAST: the sys.exit paths above must never leave a live
+    # token behind (scrub_credentials only guards from drive onward). The
+    # plugin subcommands are local config ops needing no auth — the original
+    # 2026-08-09 driver protocol seeded after this function returned.
+    seed_credentials(cfg)
     return env
 
 
