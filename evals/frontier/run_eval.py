@@ -12,12 +12,19 @@ Two tracks today:
   scheduling can disagree. These produce the conflict narrations an operator
   grades (S3).
 
-Track (c) is supplied by a later task; until then it reports itself unavailable in
-the summary rather than crashing, and the K3 gate reads "not evaluated".
+* **(c) archived runs** — real `ultra/integration-*` merges are recovered from the
+  git history of `--repo`, each wave's task branches are re-published and re-folded
+  in sampled orders, and the folded result is compared against the tree the
+  historical merge actually recorded. A clean-path mismatch is *silent divergence*
+  — the K3 failure condition. A run whose integration chain carries a
+  reconciliation commit cannot be decomposed into per-task diffs, so it is excluded
+  by name rather than replayed half-truthfully.
 
 No-silent-caps: a fixture that degrades still runs and records why; a fixture that
-cannot produce tasks at all is recorded as an exclusion with its reason. Every
-exclusion reaches `rollup.md`.
+cannot produce tasks at all is recorded as an exclusion with its reason; every
+archived run that could not be recovered is named with its reason, and K3 states
+the recovered-n whenever that n sits below the floor. Every exclusion reaches
+`rollup.md`.
 """
 import argparse
 import json
@@ -38,8 +45,17 @@ import manyana  # noqa: E402
 
 FIXTURES = ["wide", "chained", "mixed", "flawed", "degrade", "webapp"]
 COMPILER = ROOT / "skills" / "ultrapowers" / "scripts" / "compile_plan.py"
-KNOWN_TRACKS = ("a", "b")
+KNOWN_TRACKS = ("a", "b", "c")
 DURATION_LO, DURATION_HI = 60, 600
+
+# Track (c): the marker an integration merge carries, and the smallest number of
+# recovered runs that makes K3 worth believing.
+INTEGRATION_MARKER = "ultra/integration-"
+TRACK_C_FLOOR = 3
+# `%x00` is git's own escape: a literal NUL cannot travel in an argv element.
+NUL = "\x00"
+FMT_SHA_PARENTS = "%H%x00%P"
+FMT_SHA_PARENTS_SUBJECT = "%H%x00%P%x00%s"
 
 
 # --------------------------------------------------------------------------
@@ -326,10 +342,245 @@ def _expectations_met(case, conflicts):
 
 
 # --------------------------------------------------------------------------
+# archived-run extraction + replay (track c)
+# --------------------------------------------------------------------------
+
+def _git_text(repo, *args):
+    return subprocess.run(["git", "-C", str(repo), *args],
+                          check=True, capture_output=True, text=True).stdout
+
+
+def _rev(repo, *args):
+    return _git_text(repo, *args).strip()
+
+
+def _mainline(repo):
+    """The branch archived runs were merged into; falls back to HEAD."""
+    for name in ("main", "master"):
+        probe = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--verify", "--quiet",
+             name + "^{commit}"], capture_output=True, text=True)
+        if probe.returncode == 0:
+            return name
+    return "HEAD"
+
+
+def _log_rows(repo, *args):
+    """`git log` rows split on NUL; empty lines dropped."""
+    rows = []
+    for line in _git_text(repo, "log", *args).splitlines():
+        if line.strip():
+            rows.append(line.split(NUL))
+    return rows
+
+
+def _integration_chain(repo, merge_sha, first_parent, tip):
+    """The integration branch's own first-parent commits, oldest first.
+
+    Returns `[(sha, parents)]` for the commits between the fork point and the
+    integration tip — the merges the engine made while integrating the run.
+    """
+    fork = _rev(repo, "merge-base", first_parent, tip)
+    rows = _log_rows(repo, "--first-parent", "--format=" + FMT_SHA_PARENTS,
+                     "%s..%s" % (fork, tip))
+    return [(sha, parents.split()) for sha, parents in reversed(rows)]
+
+
+def _chain_defect(chain):
+    """Why this chain cannot be decomposed into per-task diffs, or None."""
+    for sha, parents in chain:
+        if len(parents) < 2:
+            return "reconciliation commit %s on integration chain" % sha
+        if len(parents) > 2:
+            return "octopus merge %s on integration chain" % sha
+    return None
+
+
+def _group_chain(repo, chain):
+    """Consecutive merges sharing a merge-base form one wave."""
+    groups = []
+    for sha, parents in chain:
+        base_sha = _rev(repo, "merge-base", parents[0], parents[1])
+        task = {"task_id": parents[1][:8], "tip_sha": parents[1]}
+        if groups and groups[-1]["base_sha"] == base_sha:
+            groups[-1]["tasks"].append(task)
+            groups[-1]["after_sha"] = sha
+        else:
+            groups.append({"base_sha": base_sha, "tasks": [task],
+                           "after_sha": sha})
+    return groups
+
+
+def extract_archived_runs(repo):
+    """Recover replayable `ultra/integration-*` runs from `repo`'s history.
+
+    `{"runs": [{"ref", "groups"}], "excluded": [{"ref", "reason"}]}`, newest run
+    first. A run reaches `runs` only if every commit on its integration chain is
+    a two-parent merge, because anything else (a reconciliation or fix-up commit)
+    makes the per-task diffs lossy. Everything rejected is named in `excluded`.
+    """
+    repo = Path(repo)
+    runs, excluded = [], []
+    rows = _log_rows(repo, _mainline(repo), "--merges", "--first-parent",
+                     "--format=" + FMT_SHA_PARENTS_SUBJECT)
+    for sha, parents_text, subject in rows:
+        if INTEGRATION_MARKER not in subject:
+            continue
+        parents = parents_text.split()
+        if len(parents) != 2:
+            excluded.append({"ref": sha, "reason":
+                             "octopus integration merge (%d parents)" % len(parents)})
+            continue
+        chain = _integration_chain(repo, sha, parents[0], parents[1])
+        if not chain:
+            excluded.append({"ref": sha,
+                             "reason": "empty integration chain (nothing to replay)"})
+            continue
+        defect = _chain_defect(chain)
+        if defect:
+            excluded.append({"ref": sha, "reason": defect})
+            continue
+        runs.append({"ref": sha, "groups": _group_chain(repo, chain)})
+    return {"runs": runs, "excluded": excluded}
+
+
+def _change_set(task):
+    """Every path a published task touches, deletions included."""
+    return set(task.weaves) | set(task.raw) | set(task.deleted)
+
+
+def _replay_group(repo, group, seed):
+    """Re-fold one wave and compare it against the tree history recorded."""
+    base = rw.snapshot(repo, group["base_sha"])
+    tasks = [rw.publish(base, repo, group["base_sha"], t["tip_sha"],
+                        task_id=t["task_id"])
+             for t in group["tasks"]]
+    after = rw.manifest(rw.snapshot(repo, group["after_sha"]))
+    touched = set()
+    for task in tasks:
+        touched |= _change_set(task)
+
+    orders = sm.sampled_orders(len(tasks), seed=seed)
+    outcomes, canonical, conflicted, observed = set(), None, set(), []
+    for order in orders:
+        frontier, conflicts = sm.fold_all(rw.fold, base, tasks, order)
+        outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
+                      tuple(conflict_keys(conflicts))))
+        conflicted |= {c.path for c in conflicts}
+        files = rw.manifest(frontier)
+        observed.append({p: files.get(p) for p in touched})
+        if canonical is None:
+            canonical = (frontier, conflicts)
+    frontier, conflicts = canonical
+
+    # Conflicted paths are exempt: the historical merge may have hand-resolved
+    # them, and a hand resolution is not the fold layer diverging silently.
+    clean = sorted(touched - conflicted)
+    divergent = {p for seen in observed for p in clean if seen[p] != after.get(p)}
+
+    refolded, refold_conflicts = rw.fold(base, frontier, tasks[0])
+    k2 = (rw.manifest(refolded) == rw.manifest(frontier)
+          and set(conflict_keys(refold_conflicts)) <= set(conflict_keys(conflicts)))
+    return {
+        "orders_sampled": len(orders),
+        "k1_identical": len(outcomes) == 1,
+        "k2_idempotent": k2,
+        "conflicts": conflicts,
+        "paths_checked": len(clean),
+        "silent_divergence": divergent,
+        "conflicted_paths": conflicted,
+    }
+
+
+def _run_c_case(repo, run, seed):
+    """One archived run -> one case record, aggregated over its waves."""
+    replays = [_replay_group(repo, g, seed) for g in run["groups"]]
+    conflicts = [c for r in replays for c in r["conflicts"]]
+    return {
+        "name": run["ref"][:8],
+        "track": "c",
+        "makespans": None,
+        "folds": {"orders_sampled": sum(r["orders_sampled"] for r in replays),
+                  "k1_identical": all(r["k1_identical"] for r in replays),
+                  "k2_idempotent": all(r["k2_idempotent"] for r in replays)},
+        "conflicts": [{"path": c.path, "kind": c.kind, "task": c.task_id,
+                       "narration": c.narration} for c in conflicts],
+        "no_interleaving": None,
+        "expectations_met": None,
+        "excluded": None,
+        "ref": run["ref"],
+        "groups": [{"base_sha": g["base_sha"], "after_sha": g["after_sha"],
+                    "tasks": [t["task_id"] for t in g["tasks"]]}
+                   for g in run["groups"]],
+        "fidelity": {
+            "paths_checked": sum(r["paths_checked"] for r in replays),
+            "silent_divergence": sorted({p for r in replays
+                                         for p in r["silent_divergence"]}),
+            "conflicted_paths": sorted({p for r in replays
+                                        for p in r["conflicted_paths"]}),
+        },
+    }
+
+
+def _k3_verdict(recovered_n, divergence):
+    if recovered_n < TRACK_C_FLOOR:
+        return "not evaluated (recovered-n=%d below floor %d)" % (recovered_n,
+                                                                  TRACK_C_FLOOR)
+    if divergence:
+        return "false (silent divergence: %s)" % ", ".join(divergence)
+    return "true"
+
+
+def run_track_c(repo, out_dir, seed=42):
+    """Replay every recoverable archived run; write `c-<shortsha>.json` cases.
+
+    K3 is `true` only with at least `TRACK_C_FLOOR` recovered runs and zero
+    silent divergence; below the floor it names the recovered-n instead of
+    quietly passing.
+
+    A run the replay itself cannot complete — the vendored kernel's recursion
+    depth on a long file, or an unreadable git object — is demoted to an
+    exclusion carrying that reason. It never becomes a crash (which would take
+    the whole track down) and never becomes a pass (which would be a silent cap).
+    """
+    repo, out_dir = Path(repo), Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    extraction = extract_archived_runs(repo)
+
+    records, excluded = [], list(extraction["excluded"])
+    replayed = []
+    for run in extraction["runs"]:
+        try:
+            record = _run_c_case(repo, run, seed)
+        except RecursionError:
+            excluded.append({"ref": run["ref"], "reason":
+                             "replay exceeded the weave kernel's recursion depth"})
+            continue
+        except subprocess.CalledProcessError as exc:
+            excluded.append({"ref": run["ref"], "reason":
+                             "replay could not read git objects (git exited %d)"
+                             % exc.returncode})
+            continue
+        (out_dir / ("c-%s.json" % record["name"])).write_text(
+            json.dumps(record, indent=2, sort_keys=True) + "\n")
+        records.append(record)
+        replayed.append(run)
+
+    divergence = sorted({p for r in records
+                         for p in r["fidelity"]["silent_divergence"]})
+    return {"K3": _k3_verdict(len(records), divergence),
+            "records": records,
+            "runs": replayed,
+            "excluded": excluded,
+            "recovered_n": len(records),
+            "silent_divergence": divergence}
+
+
+# --------------------------------------------------------------------------
 # driver + report
 # --------------------------------------------------------------------------
 
-def _rollup(records, k_gates, tracks):
+def _rollup(records, k_gates, tracks, track_c=None):
     out = ["# Frontier probe — roll-up", ""]
 
     out += ["## Makespans (track a)", ""]
@@ -375,18 +626,53 @@ def _rollup(records, k_gates, tracks):
     else:
         out += ["none", ""]
 
+    if track_c is not None:
+        out += _rollup_track_c(track_c)
+
     out += ["## Exclusions", ""]
     excluded = [r for r in records if r["excluded"]]
     unavailable = [t for t in tracks if t not in KNOWN_TRACKS]
-    if excluded or unavailable:
+    dropped_runs = (track_c or {}).get("excluded") or []
+    if excluded or unavailable or dropped_runs:
         for r in excluded:
             out.append("- `%s-%s`: %s" % (r["track"], r["name"], r["excluded"]))
+        for run in dropped_runs:
+            out.append("- `c-%s`: %s" % (run["ref"][:8], run["reason"]))
         for t in unavailable:
             out.append("- track (%s): requested but not available in this runner" % t)
     else:
         out.append("none")
     out.append("")
     return "\n".join(out)
+
+
+def _rollup_track_c(track_c):
+    """Recovered archived runs and, by name, every run that was not recovered."""
+    out = ["## Track (c) recovered runs", "",
+           "Recovered %d run(s); K3 needs at least %d."
+           % (track_c["recovered_n"], TRACK_C_FLOOR), ""]
+    if track_c["records"]:
+        for r in track_c["records"]:
+            out.append("- `%s` — %d wave(s), %d task(s), %d clean path(s) checked, "
+                       "%d silent divergence(s), %d conflicted path(s)"
+                       % (r["name"], len(r["groups"]),
+                          sum(len(g["tasks"]) for g in r["groups"]),
+                          r["fidelity"]["paths_checked"],
+                          len(r["fidelity"]["silent_divergence"]),
+                          len(r["fidelity"]["conflicted_paths"])))
+            if r["fidelity"]["silent_divergence"]:
+                out.append("  - silent divergence: %s"
+                           % ", ".join(r["fidelity"]["silent_divergence"]))
+    else:
+        out.append("- none recovered")
+    out += ["", "Runs not recovered:", ""]
+    if track_c["excluded"]:
+        for run in track_c["excluded"]:
+            out.append("- `%s`: %s" % (run["ref"][:8], run["reason"]))
+    else:
+        out.append("- none")
+    out.append("")
+    return out
 
 
 def _gate_text(value):
@@ -398,21 +684,27 @@ def _gate_text(value):
 def run_tracks(tracks, out_dir, repo=None, seed=42):
     """Run the named tracks, write one JSON per case plus `rollup.md`.
 
-    `repo` is reserved for the git-backed track (c), which a later task supplies;
-    tracks (a) and (b) are pure and read no working tree. An unknown track is
-    reported as unavailable in the summary and the roll-up, never crashed on.
+    Tracks (a) and (b) are pure and read no working tree; track (c) is git-backed
+    and therefore *requires* `repo` — asked for without one, it raises rather than
+    silently reporting a track it never ran. An unknown track is reported as
+    unavailable in the summary and the roll-up, never crashed on.
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    records = []
+    records, track_c = [], None
     for track in tracks:
+        if track == "c":
+            if repo is None:
+                raise ValueError("track (c) requires a repo path (--repo)")
+            track_c = run_track_c(repo, out_dir, seed=seed)
+            records.extend(track_c["records"])
+            continue
         if track == "a":
             cases = fixture_cases(seed=seed)
         elif track == "b":
             cases = synthetic_cases()
         else:
-            # Track (c) arrives with a later task; say so, do not crash.
             continue
         for case in cases:
             record = run_case(case, track)
@@ -424,37 +716,49 @@ def run_tracks(tracks, out_dir, repo=None, seed=42):
     k_gates = {
         "K1": all(r["folds"]["k1_identical"] for r in scored) if scored else None,
         "K2": all(r["folds"]["k2_idempotent"] for r in scored) if scored else None,
-        "K3": ("not evaluated (track c not run)" if "c" not in tracks else None),
+        "K3": track_c["K3"] if track_c else "not evaluated (track c not run)",
         "K4_no_interleaving": all(r["no_interleaving"] for r in records
                                   if r["no_interleaving"] is not None),
     }
+    exclusions = [{"case": "%s-%s" % (r["track"], r["name"]), "reason": r["excluded"]}
+                  for r in records if r["excluded"]]
+    exclusions += [{"case": "c-%s" % run["ref"][:8], "reason": run["reason"]}
+                   for run in (track_c["excluded"] if track_c else [])]
     summary = {
         "tracks_requested": list(tracks),
         "tracks_unavailable": [t for t in tracks if t not in KNOWN_TRACKS],
         "seed": seed,
         "cases": records,
         "k_gates": k_gates,
-        "exclusions": [{"case": "%s-%s" % (r["track"], r["name"]), "reason": r["excluded"]}
-                       for r in records if r["excluded"]],
+        "exclusions": exclusions,
         "expectations_met": all(r["expectations_met"] for r in records
                                 if r["expectations_met"] is not None),
     }
-    (out_dir / "rollup.md").write_text(_rollup(records, k_gates, tracks))
+    if track_c:
+        summary["track_c"] = {
+            "recovered_n": track_c["recovered_n"],
+            "runs": [run["ref"] for run in track_c["runs"]],
+            "excluded": track_c["excluded"],
+            "silent_divergence": track_c["silent_divergence"],
+        }
+    (out_dir / "rollup.md").write_text(_rollup(records, k_gates, tracks, track_c))
     return summary
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tracks", default="a,b",
-                        help="comma-separated track names (a,b)")
+                        help="comma-separated track names (a,b,c)")
     parser.add_argument("--out", default=str(HERE / "results"),
                         help="directory receiving per-case JSON and rollup.md")
+    parser.add_argument("--repo", default=str(ROOT),
+                        help="repository whose archived runs track (c) replays")
     parser.add_argument("--seed", type=int, default=42,
                         help="seed for modeled task durations")
     args = parser.parse_args(argv)
 
     tracks = [t.strip() for t in args.tracks.split(",") if t.strip()]
-    summary = run_tracks(tracks, Path(args.out), seed=args.seed)
+    summary = run_tracks(tracks, Path(args.out), repo=Path(args.repo), seed=args.seed)
     print(json.dumps(summary["k_gates"], indent=2, sort_keys=True))
     for missing in summary["tracks_unavailable"]:
         print("track (%s) requested but not available in this runner" % missing,
