@@ -263,7 +263,7 @@
 **Notes:** One comment. CLUSTER: plan with #110 + #111 (one inline sweep-hygiene plan). Mind the anti-drift rule if the comment lives in a baked span.
 
 ### #104: Subtraction candidate: retire the snapshot/restore family once #84 shakedown proves the checkout is never touched
-**State:** queued
+**State:** executed
 **Score:** 4 — real subtraction, but its precondition (0.1.14 live-shakedown evidence that the checkout is untouched) has not been observed yet
 **Est-files:** skills/ultrapowers/scripts/run_lock.sh, skills/ultrapowers/harnesses/waves.js, tests/
 **Plan:** docs/superpowers/plans/2026-08-09-snapshot-family-retirement.md
