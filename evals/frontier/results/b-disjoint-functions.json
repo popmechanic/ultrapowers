@@ -1,0 +1,14 @@
+{
+  "conflicts": [],
+  "excluded": null,
+  "expectations_met": true,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 2
+  },
+  "makespans": null,
+  "name": "disjoint-functions",
+  "no_interleaving": null,
+  "track": "b"
+}

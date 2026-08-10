@@ -1,0 +1,29 @@
+{
+  "conflicts": [
+    {
+      "kind": "lines",
+      "narration": "# confkit/config.py shared base for frontier eval\nBASE_0 = 0\nBASE_1 = 1\nBASE_2 = 2\nBASE_3 = 3\nBASE_4 = 4\nBASE_5 = 5\nBASE_6 = 6\nBASE_7 = 7\n# end of shared base\n<<<<<<< begin added both\n\n======= begin added frontier\ndef task_1_config():\n    return \"1\"\n======= begin added 2\ndef task_2_config():\n    return \"2\"\n>>>>>>> end conflict",
+      "path": "confkit/config.py",
+      "task": "2"
+    }
+  ],
+  "degrade_reason": "Sequential mode: 2 implementation tasks, fully overlapping writes",
+  "excluded": null,
+  "expectations_met": null,
+  "folds": {
+    "k1_identical": true,
+    "k2_idempotent": true,
+    "orders_sampled": 2
+  },
+  "makespans": {
+    "durations_modeled": true,
+    "frontier": 478.7962789874974,
+    "frontier_no_same_file": 478.7962789874974,
+    "same_file_edges": 0,
+    "waves": 478.7962789874974
+  },
+  "mode": "sequential",
+  "name": "degrade",
+  "no_interleaving": true,
+  "track": "a"
+}
