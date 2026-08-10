@@ -161,3 +161,50 @@ def test_flag_wins_over_argsfile_value(tmp_path):
                    "--integration-branch", "ultra/int-flag")
     assert r.returncode == 0, r.stderr
     assert json.loads(Path(r.stdout.strip()).read_text())["integrationBranch"] == "ultra/int-flag"
+
+
+def make_heads(run):
+    heads = run / "heads"
+    heads.mkdir()
+    (heads / "task-1").write_text("a" * 40 + "\n")
+    (heads / "wave-4").write_text("b" * 40 + "\n")
+    return heads
+
+
+def test_heads_cleared_after_successful_emit(tmp_path):
+    # #131: a stale wave-4 slot from the prior launch must not survive into
+    # the relaunch, where the critic's highest-numbered-slot rule reads it.
+    run = make_run(tmp_path)
+    heads = make_heads(run)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    assert not heads.exists()
+    assert (run / "redirect-args.json").is_file()  # emit happened first
+
+
+def test_heads_beside_receipt_cleared_even_with_out_dir(tmp_path):
+    # the deletion target is pinned to dirname(receipt), never --out-dir
+    run = make_run(tmp_path)
+    heads = make_heads(run)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}],
+                   "--out-dir", str(elsewhere))
+    assert r.returncode == 0, r.stderr
+    assert not heads.exists()
+
+
+def test_heads_untouched_on_validation_failure(tmp_path):
+    # a validation death must not strip a healthy run's sidecars
+    run = make_run(tmp_path)
+    heads = make_heads(run)
+    r = run_helper(run, [{"task": "9", "instruction": "x"}])  # unknown task id
+    assert r.returncode == 1
+    assert heads.exists() and (heads / "wave-4").is_file()
+
+
+def test_no_heads_dir_is_a_noop(tmp_path):
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    assert not (run / "heads").exists()  # nothing spuriously created

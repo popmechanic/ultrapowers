@@ -11,6 +11,7 @@ judgment — it never launches anything and never mutates the originals.
 import argparse
 import json
 import os
+import shutil
 import sys
 
 
@@ -56,7 +57,9 @@ def main():
     launch = load_json(launch_path, "launch file")
     branch = a.integration_branch or (args.get("integrationBranch") or None)
     if not branch:
-        gr_path = os.path.join(run_dir, "gate-receipt.json")
+        # "next to the receipt" (per the error below) — never --out-dir
+        gr_path = os.path.join(os.path.dirname(os.path.abspath(a.receipt)),
+                               "gate-receipt.json")
         if os.path.isfile(gr_path):
             branch = (load_json(gr_path, "gate receipt") or {}).get("integrationBranch")
     if not branch:
@@ -111,6 +114,15 @@ def main():
     new_args_path = os.path.join(run_dir, "redirect-args.json")
     with open(new_args_path, "w") as f:
         json.dump(out, f, indent=2)
+    # #131: the relaunch renumbers waves 1..k, so a prior launch's higher
+    # wave-<n> slot would win the critic's highest-numbered-slot detach rule.
+    # The slots' shas are already durable in the finalized report and the task
+    # branches; deleting AFTER a successful emit (never on a validation death)
+    # makes the stale-slot state inexpressible for the relaunch.
+    heads_dir = os.path.join(os.path.dirname(os.path.abspath(a.receipt)), "heads")
+    if os.path.isdir(heads_dir):
+        shutil.rmtree(heads_dir)
+        print("redirect_args: cleared prior launch's heads/ sidecars", file=sys.stderr)
     print(new_args_path)
 
 
