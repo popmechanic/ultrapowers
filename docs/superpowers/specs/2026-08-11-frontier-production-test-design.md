@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–6 adopted; round 7 pending / operator review
+**Status:** trim rounds 1–7 adopted; round 8 (deletion-confirmation) pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -146,37 +146,34 @@ What shadow adds — the only new machinery:
   fragment — never a silent fragment claimed as the run. (No stitching
   machinery; there is nothing durable to stitch from.)
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
-  the integration chain (tip and floor) from the report's shas and hands
-  the bounded `[(sha, parents)]` chain to the reused `_group_chain`, whose
-  merge-base grouping is the sole authority for **both wave base and fold
-  membership** — the same rule every K3 number used, including its
-  reconciliation pseudo-task coalescing/absorption and pre-first-merge
-  handling. Shadow defines no base or membership rule of its own; the
-  report's `branches` field labels tasks, never selects them.
-- **Fast-forwarded waves and the composition rule:** a single-task wave
-  fast-forwards, leaving no two-parent merge for `_group_chain` to see —
-  and real chains are *mixed* (true merge waves beside FF waves in one
-  run). The composition is explicit: shadow **segments the bounded chain
-  at the report's MERGED `headSha`s**. A segment containing two-parent
-  merges goes to `_group_chain` unchanged (sole authority for base and
-  membership there); a segment of single-parent commits ending at a
-  reported wave head takes the FF fallback — fold the wave's single
-  reported task endpoint against the prior wave head and compare to the
-  wave-head tree (a trivial fold, still manifest-to-manifest; the
-  ancestry invariant still applies); any other segment shape parks by
-  name. A **wave-1 FF segment parks by name** — it has no derivable prior
-  head (the run artifacts record only a branch *name* as base, and
-  branches move); the bounded chain's floor is the earliest derivable
-  base — the first merge-bearing segment's merge-base, or in a chain with
-  no merge-bearing segment, the earliest reported MERGED wave head (wave 1
-  itself parks). FF folds are near-tautological by construction, hence
-  G1's two-endpoint floor below.
+  the integration chain — tip = the last MERGED wave head; floor = the
+  first two-parent merge's merge-base — and hands the bounded
+  `[(sha, parents)]` chain to the reused `_group_chain`, whose merge-base
+  grouping is the sole authority for **both wave base and fold
+  membership**: the same rule every K3 number used. Shadow defines no
+  base or membership rule of its own; the report's `branches` field
+  labels tasks, never selects them.
+- **Fast-forwarded waves need no apparatus of their own.** A single-task
+  wave fast-forwards, leaving a single-parent chain commit — exactly the
+  shape the inherited #133 semantics already handle, field-validated
+  across the 16 K3 runs: absorbed by the next merge wave's base when its
+  merge-base contains it (the common case), folded as a named
+  reconciliation pseudo-task otherwise, or trailing-cut by name after the
+  last merge. An all-FF chain has no two-parent merge and hits the
+  existing named exclusion ("no per-task merges — nothing to replay").
+  Every disposition is named — no silent fragments — and nothing gateable
+  is lost: FF folds are near-tautological, and G1's two-endpoint floor
+  below never counted them. (Rounds 3–6 accreted a segmentation rule, an
+  FF fold fallback, a wave-1 park, and a two-branch floor clause here;
+  round 7 deleted the cluster as machinery ahead of need.)
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
-- **Durations:** per-task wall-clock from committer timestamps — the
-  interval from the wave base commit's committer time to the task tip's
-  committer time — reported as approximate; the makespan model re-runs
+- **Durations:** per-task wall-clock from committer timestamps for
+  **every MERGED task in the report** — the duration harvest never needed
+  the fold, so FF-wave tasks are included — as the interval from the
+  prior wave head's (or chain floor's) committer time to the task tip's
+  committer time, reported as approximate; the makespan model re-runs
   with them. Reconciliation pseudo-tasks get no duration and are excluded
   from the re-model (they are merge machinery, not scheduled work),
   noted in the report. Journal parsing is deferred unless the first shadow
@@ -233,6 +230,10 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
   conflict → resolver (component 4). Fold order is completion order.
+  **Resolver dispatches are serial** — at most one in flight — so arm B's
+  peak session width is ≤4 by construction even when a single fold
+  narrates multiple conflicted paths (implementer-footprint drift); the
+  event log still records what happened rather than assuming it.
 - **Live K1 check, resolution-aware:** two legs. (1) Shuffled re-folds of
   the raw task set (via the reused `sampled_orders`/`fold_all` — the same
   sampling policy as every prior K1 number) are outcome-identical **to each
@@ -325,7 +326,8 @@ implementers; the scrub window closes only after the last resolver call):
   reviewer and no redirect loop, so the delta bundles (barriers removed +
   same-file edges dropped) *with* (review removed); the frontier thesis
   claims only the former. The report separates what it can (per-task
-  implementation spans vs arm A's) and names what it cannot. The shadow
+  implementation spans vs arm A's, both measured by the same
+  committer-timestamp technique) and names what it cannot. The shadow
   stage's measured-duration makespan re-model rides alongside as the
   confound-free advisory number.
 - **E2:** every conflict narration and resolution verbatim; the operator's
@@ -362,9 +364,11 @@ All committed tests run in the ordinary suite and CI:
   multi-task wave and one reconciliation commit); the **pre-first-merge
   reconciliation case** (non-merge commit between fork and wave-1's first
   merge — the case a naive chain walk mis-bases); a **mixed chain**
-  (true-merge waves beside FF waves — the segmentation rule), a
-  fast-forward-only chain, and the wave-1-FF named park; MERGED-only
-  scoping; the no-report park and the fabricated-tail abort;
+  (true-merge waves beside FF waves) and a fast-forward-only chain, each
+  asserting the inherited **named dispositions** (absorbed / pseudo-task /
+  trailing-cut / "no per-task merges"); the FF-task duration harvest and
+  pseudo-task exclusion from the re-model (one assertion each);
+  MERGED-only scoping; the no-report park and the fabricated-tail abort;
   final-launch-only shadow of a redirect-bearing run with the named park;
   ancestry-violation abort.
 - `tests/test_frontier_cell.py` — edge-drop pinned to
@@ -372,8 +376,11 @@ All committed tests run in the ordinary suite and CI:
   fold-on-completion ordering; resolver **whole-file application** with a
   fake resolver, including a file carrying two conflicted blocks in one
   narration; the resolution-aware live K1 check (shuffles identical to
-  each other + deterministic event-log replay); no-narration-kind park;
-  contract-violation → retry → park; the oversize-file park.
+  each other + deterministic event-log replay); **the application-validity
+  race** (a fake-resolver case injecting an intervening fold on the
+  narrated path between narration and application — must re-narrate or
+  park, never apply stale); serial resolver dispatch; no-narration-kind
+  park; contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
   replay behavior — **except** the intended #132 comparison change: the
   K1 outcome key and the test helpers' order-*comparison* go set-based.
@@ -387,21 +394,23 @@ All committed tests run in the ordinary suite and CI:
 
 ## Trim review
 
-**Author disclosure (Adds/Removes, refreshed after round 6):** Adds —
+**Author disclosure (Adds/Removes, refreshed after round 7):** Adds —
 shadow front-end over the existing replay internals; frontier driver +
 resolver (directive scope); #132 fix; measured-duration re-model
 (invited-adjacent: the re-adjudication named "or measured durations");
 peak-parallelism bookkeeping (minor, near-free); and from the review rounds:
 the launch-instant concurrency preflight (four implementer-shaped calls in
-concurrently-created worktrees), the 400-line resolver cap, the dedicated
-branch writer, the final-launch-only redirect posture with named parks
-(wave-1-FF, no-report, unshadowable dirs), the FF-wave fallback and
-chain-segmentation rule with its floor clause, the `report.json`-only
-discovery with the sha/ancestry check as authority, MERGED-only scoping,
-the recorded fold/resolution event log (a new durable artifact) with its
-deterministic replay, and the resolution application-validity rule.
-Removes — nothing; quarantined in `evals/`, purchased against the
-structural subtraction the frontier line exists to earn.
+concurrently-created worktrees), serial resolver dispatch, the 400-line
+resolver cap, the dedicated branch writer, the final-launch-only redirect
+posture with named parks (no-report, unshadowable dirs), the
+`report.json`-only discovery with the sha/ancestry check as authority,
+MERGED-only scoping, the recorded fold/resolution event log (a new durable
+artifact) with its deterministic replay, and the resolution
+application-validity rule. Removes — the rounds-3–6 FF apparatus
+(segmentation rule, FF fold fallback, wave-1 park, floor clause), deleted
+in round 7 in favor of the inherited #133 dispositions. Otherwise
+quarantined in `evals/`, purchased against the structural subtraction the
+frontier line exists to earn.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "deliberately-purchased, quarantined in evals/, adopting T1–T4 shaves three to four concepts")
 
@@ -650,3 +659,38 @@ event log.
   outside conflicted blocks would be machinery ahead of need at n=1 with
   verbatim recording); correct-but-token-reported shas passing the
   authority check is the stated authority model, not a gap.
+
+### Round 7 (fresh-context reviewer; grade: `netConceptDelta` **up** — "adopting F1 makes it a materially smaller up: deletes the shadow stage's largest concept cluster")
+
+Verdict: no correctness defect found anywhere — every reuse, artifact,
+and width claim verified against code and the on-disk runs. One
+mechanism-by-deletion finding, one test seam, two one-clause tightenings.
+
+- **F1 (the FF apparatus — segmentation rule, FF fold fallback, wave-1
+  park, two-branch floor clause — is machinery ahead of need: the
+  inherited #133 semantics already absorb/pseudo-task/trailing-cut FF
+  commits, field-validated across the 16 K3 runs, and G1's own floor
+  declares FF folds un-gateable; rounds 3→6 each patched the previous
+  round's FF machinery — the accretion loop the doctrine warns against):**
+  **ADOPTED — the cluster is deleted.** Shadow bounds the chain and hands
+  it to `_group_chain`, full stop; FF commits flow through the inherited
+  named dispositions; durations for FF-wave tasks come from the report's
+  labels (the harvest never needed the fold). The honest trade recorded:
+  per-FF-wave "clean" verdict rows become "absorbed"/"nothing to replay" —
+  rows that could never gate.
+- **F2 (floor-clause ambiguity dropping derivable FF waves silently):**
+  moot by F1 — the clause no longer exists; the defect is inexpressible.
+- **F3 (the application-validity rule — "the one live race" — had no
+  covering test):** **ADOPTED.** Fake-resolver case injecting an
+  intervening fold between narration and application added to
+  `test_frontier_cell.py`'s plan.
+- **F4 (peak-width subsumption assumed ≤1 resolver in flight without
+  legislating it — one fold can narrate multiple paths under footprint
+  drift):** **ADOPTED.** Resolver dispatches are serial; peak width ≤4 by
+  construction; the event log still records rather than assumes.
+- **Minors:** duration re-model + pseudo-task-exclusion assertions added
+  to the shadow test plan; E1's arm-A spans named as the same
+  committer-timestamp technique; results-doc location already covered by
+  the `evals/frontier/results/` convention.
+- **Both standing under-spec seams re-adjudicated no-change** (resolver
+  authority; concurrent cells), concurring with round 6.
