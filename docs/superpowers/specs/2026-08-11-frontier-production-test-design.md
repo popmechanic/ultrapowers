@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–4 adopted; round 5 pending / operator review
+**Status:** trim rounds 1–5 adopted; round 6 pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -76,22 +76,23 @@ comparison treats conflicts as an order-sensitive *multiset*, and because of
 the delete-vs-modify pairing transition at 3+ writers. The fix is the
 issue's own recorded candidates, nothing more:
 
-- Dedupe on the declared `(path, kind)` identity **at the accumulation
-  site** — `fold_all` / recording, where the duplicates actually arise
-  (across successive fold calls; `fold` itself has no memory of prior
-  reports and a per-call dedupe would be a no-op). First occurrence kept —
-  narration is outside the identity, so the keep-policy decides which
-  narration survives in the recorded (S3-graded) list. The arm-B driver
-  deliberately consumes the **pre-dedupe per-fold stream**: a second
-  genuine `lines` conflict on an already-resolved path must still reach
-  the resolver.
-- Fix the delete/modify kind-flip at 3+ writers. The issue names no precise
-  branch, so **the committed seed sets are the contract**: both recorded
-  failing sets (12/400 multiset; 29/500 delete/modify) become regression
-  tests that must pass, and the K1 fuzz re-runs green. Additionally, lift
-  the writers-cap in `test_randomized_binary_mixes_are_order_independent`
-  (capped "pending this fix" per the issue) — the cheapest true regression
-  signal.
+- Make the **K1 comparison set-based** — the issue's own recorded smaller
+  candidate. The defect is the comparison, not the accumulation:
+  manifests and conflict-*sets* were order-independent in every fuzz
+  (0/400); only the *multiset* flipped (12/400). `conflict_keys` (and the
+  test helpers' `assert_order_independent`) compare sorted lists retaining
+  duplicates against `Conflict`'s declared set-shaped `(path, kind)`
+  identity; the fix makes the outcome key a set. `fold`'s per-call return
+  is untouched — every consumer (including the arm-B driver's per-fold
+  stream) keeps the full narration record; nothing is discarded from the
+  S3-graded list.
+- The delete/modify kind-flip (29/500) **appears already fixed on main**:
+  the committed base-derived `_text_kind` is exactly the fix the module
+  docstring documents, pinned by the existing order-independence tests.
+  So: commit the 29/500 seed set as a regression **expected to pass**;
+  code changes only if a seed still fails — never by reintroducing a
+  frontier-derived relabel, the order-sensitive move the code comment
+  warns against. The 12/400 set pins the set-comparison fix the same way.
 - Fold in the issue's two presentation nits, explicitly in scope: the
   lone-type-change asymmetry, and the "text wins the manifest" narration
   being wrong when the text side is a folded whole-file delete.
@@ -122,22 +123,21 @@ What shadow adds — the only new machinery:
   `finalize_report.py` copies the sidecar-derived shas into the report
   fail-loud *before* `redirect_args.py` clears `heads/` on a redirect
   relaunch, and its own comments name the report as the durable record.
-  **Discovery rule:** enumerate every JSON in `<run-dir>` carrying a
-  `waveMerges` list, in either envelope shape (top-level or
-  `result`-wrapped — the two shapes `finalize_report.select_target`
-  accepts); then (a) dedupe candidates with identical `waveMerges`
-  content, (b) select the finalized output — `report.json`, the file
-  `finalize_report.py` rewrote — with `--report` as the explicit override;
-  raw saved results (`workflow-result*.json` and kin) are non-candidates:
-  their shas may resolve and their ancestry may hold, yet they are
-  token-reported, the exact artifact class this sourcing excludes. A
-  non-selected candidate failing sha/ancestry checks is excluded by name;
-  **abort is reserved for the selected candidate** (a finalized report
-  with a fabricated tail aborts loud). **The report's role is exactly four
-  things:** chain bounding, the ancestry invariant, task labeling, and
-  wave-head segmentation for non-merge heads. Only `status == "MERGED"`
-  wave entries are consumed (non-MERGED headShas are token-reported, not
-  file-derived).
+  **Discovery rule (trimmed to what the artifacts show):** the head source
+  is `<run-dir>/report.json`, with `--report` as the explicit override;
+  nothing else in the dir is read (every raw saved result on disk —
+  `workflow-result*.json` and kin — is token-reported, the exact artifact
+  class this sourcing excludes). A run dir with **no** `report.json`
+  parks by name as unshadowable (the SDD/inline-drain blind spot #141
+  already names). Filename is **not** provenance — finalize leaves no
+  stamp, and one on-disk `report.json` was never finalized and carries a
+  fabricated sha tail — so the load-bearing authority is the **fail-loud
+  sha-resolution + ancestry check on the selected file**, which catches
+  exactly that case: any failure aborts/parks by name. **The report's
+  role is exactly four things:** chain bounding, the ancestry invariant,
+  task labeling, and wave-head segmentation for non-merge heads. Only
+  `status == "MERGED"` wave entries are consumed (non-MERGED headShas are
+  token-reported, not file-derived).
 - **Redirect-bearing runs, named posture:** pre-redirect launches are not
   recoverable from finalized reports — `redirect_args.py` deletes their
   sidecars, and the on-disk evidence shows only the final launch
@@ -164,8 +164,11 @@ What shadow adds — the only new machinery:
   reported task endpoint against the prior wave head and compare to the
   wave-head tree (a trivial fold, still manifest-to-manifest; the
   ancestry invariant still applies); any other segment shape parks by
-  name. FF folds are near-tautological by construction, hence G1's
-  two-endpoint floor below.
+  name. A **wave-1 FF segment parks by name** — it has no derivable prior
+  head (the run artifacts record only a branch *name* as base, and
+  branches move); the bounded chain's floor is the earliest derivable
+  base, i.e. the first merge-bearing segment's merge-base. FF folds are
+  near-tautological by construction, hence G1's two-endpoint floor below.
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
@@ -219,10 +222,11 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
   fed the task's plan body; must commit its work. Endpoint diff = branch
   HEAD vs base. Concurrent `claude -p` sessions under the cell's one
   throwaway `CLAUDE_CONFIG_DIR` is an intended-and-probed pattern: a cheap
-  preflight runs before the real cell — two trivial concurrent headless
-  calls, plus concurrent `git worktree add` + commit in the cloned repo
-  (ref/lock races the kit has never exercised either); preflight failure
-  parks the arm with the named reason.
+  preflight runs before the real cell — trivial concurrent headless calls
+  **at arm B's actual peak width** (three implementers + a resolver call),
+  plus concurrent `git worktree add` + commit in the cloned repo (ref/lock
+  races the kit has never exercised either); preflight failure parks the
+  arm with the named reason.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
   conflict → resolver (component 4). Fold order is completion order.
@@ -269,6 +273,13 @@ implementers; the scrub window closes only after the last resolver call):
   (binary, presence-kind one-liners) has no visible-line list for
   `resolvedFileLines` to mean anything, and parks with the reason recorded
   (G3). One rule, no kind-list to keep in sync.
+- **Application validity (the one live race):** a resolution applies only
+  if **no intervening fold touched its path** since the narration was
+  taken; otherwise the driver re-narrates against the current frontier
+  (or parks). Without this, a whole-file resolution computed from an older
+  narration would overwrite a newer fold's contribution — and the event
+  log's deterministic replay would faithfully reproduce the loss, since it
+  checks determinism, not correctness.
 - **Guardrails:** one retry on contract violation; second violation parks
   that path as recorded evidence (hard gate 3). Every narration, resolver
   transcript, and resolution is stored verbatim in the report for operator
@@ -280,9 +291,10 @@ implementers; the scrub window closes only after the last resolver call):
 **Hard gates — any red stops the experiment with a written report:**
 
 - **G1 (shadow fidelity):** ≥1 real run shadowed with zero silent
-  divergence, **including at least one wave that folds ≥2 endpoints** (a
-  true two-parent merge wave — all-FF runs accumulate into results but do
-  not satisfy the floor, since FF folds are near-tautological): all fold
+  divergence, **including at least one wave that folds ≥2 task endpoints**
+  (a true two-parent merge wave; reconciliation pseudo-tasks do not count
+  toward the floor — all-FF runs accumulate into results but do not
+  satisfy it, since FF folds are near-tautological): all fold
   orders outcome-identical to each other, and every clean path (touched −
   conflicted, the K3 discipline) manifest-identical — under the weave
   layer's text normalization, manifest-to-manifest, never
@@ -336,19 +348,20 @@ a failing E2 grade → stop; the report is the record either way.
 
 All committed tests run in the ordinary suite and CI:
 
-- `tests/test_repo_weave_report_determinism.py` — both #132 seed sets
-  (12/400, 29/500) as regressions; accumulation-site dedupe pins; the
-  lifted writers-cap in the randomized binary-mix fuzz; the two
+- `tests/test_repo_weave_report_determinism.py` — both #132 seed sets as
+  regressions (12/400 pinning the set-based comparison; 29/500 expected
+  to pass against the already-committed `_text_kind`); the two
   presentation-nit fixes.
 - `tests/test_shadow_fold.py` — replay against a synthetic `run-<stamp>`
-  directory (fabricated repo + finalized report in both envelope shapes,
-  two waves incl. one multi-task wave and one reconciliation commit); the
-  **pre-first-merge reconciliation case** (non-merge commit between fork
-  and wave-1's first merge — the case a naive chain walk mis-bases); a
-  **mixed chain** (true-merge waves beside FF waves — the segmentation
-  rule) and a fast-forward-only chain; MERGED-only scoping; candidate
-  dedupe + raw-result demotion in discovery; final-launch-only shadow of a
-  redirect-bearing run with the named park; ancestry-violation abort.
+  directory (fabricated repo + `report.json`, two waves incl. one
+  multi-task wave and one reconciliation commit); the **pre-first-merge
+  reconciliation case** (non-merge commit between fork and wave-1's first
+  merge — the case a naive chain walk mis-bases); a **mixed chain**
+  (true-merge waves beside FF waves — the segmentation rule), a
+  fast-forward-only chain, and the wave-1-FF named park; MERGED-only
+  scoping; the no-report park and the fabricated-tail abort;
+  final-launch-only shadow of a redirect-bearing run with the named park;
+  ancestry-violation abort.
 - `tests/test_frontier_cell.py` — edge-drop pinned to
   `schedule_model.SAME_FILE_WHYS` (imported, not re-typed);
   fold-on-completion ordering; resolver **whole-file application** with a
@@ -357,10 +370,10 @@ All committed tests run in the ordinary suite and CI:
   each other + deterministic event-log replay); no-narration-kind park;
   contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
-  replay behavior — **except** the intended #132 reporting change: K1
-  outcome keys and conflict multisets legitimately change under the
-  accumulation-site dedupe, and the affected assertions are updated with
-  the fix, named in its commit.
+  replay behavior — **except** the intended #132 comparison change: the
+  K1 outcome key and the test helpers' `assert_order_independent` go
+  set-based, and the affected assertions are updated with the fix, named
+  in its commit.
 - Live cells and the shadow of a real run are runtime deliverables recorded
   in `evals/frontier/results/`, not CI.
 
@@ -551,3 +564,47 @@ on the on-disk run artifacts.
   duration re-model; G3 explicitly labeled an honesty gate, not a quality
   gate; the concurrency preflight extended to concurrent worktree
   add/commit.
+
+### Round 5 (fresh-context reviewer; grade: `netConceptDelta` **up** — "adopting F2 and F4 makes it a smaller up: deletes three standing concepts")
+
+Verdict: not clean — F1–F5 change mechanisms, contracts, or test seams;
+the reviewer verified every reuse claim against code (F7: all confirmed)
+and every artifact claim against the on-disk run dirs.
+
+- **F1 (a wave-1 FF segment has no derivable prior head — base branch
+  names move, and the only all-FF finalized run on disk hits exactly
+  this):** **ADOPTED.** Wave-1 FF segments park by name; the chain floor
+  is the first merge-bearing segment's merge-base. Costs nothing against
+  G1, whose floor FF waves never satisfy anyway.
+- **F2 (set-based K1 comparison beats accumulation-site dedupe — the
+  issue's own recorded smaller candidate; deletes the keep-policy, the
+  pre-dedupe-stream carve-out, and an S3 narration-loss regression):**
+  **ADOPTED, reversing the round-3 F3/F7 shape.** The comparison
+  (`conflict_keys`, `assert_order_independent`) goes set-based; `fold`'s
+  per-call return untouched; recorded narrations get richer, not poorer.
+- **F3 (the delete/modify kind-flip appears already fixed on main — the
+  issue text is stale against the committed base-derived `_text_kind`;
+  the bullet as written invited re-breaking it with a frontier-derived
+  relabel):** **ADOPTED.** The 29/500 seed set lands as a regression
+  expected to pass; code changes only if a seed still fails. The
+  writers-cap-lift item dropped (the committed cap is scoping, not
+  pending).
+- **F4 (discovery-rule machinery is dead on the real artifacts — the
+  candidate set is always `{report.json}`; and "the file finalize_report
+  rewrote" is an undetectable provenance overclaim, proven by an on-disk
+  never-finalized `report.json` with a fabricated sha tail):**
+  **ADOPTED.** Discovery trimmed to `report.json` + `--report` override;
+  the fail-loud sha/ancestry check named as the load-bearing authority
+  (it catches the fabricated-tail case).
+- **F5 (no-`report.json` run dirs — six exist on disk — had undefined
+  behavior):** **ADOPTED.** They park by name as unshadowable (the #141
+  blind spot).
+- **F6 (do reconciliation pseudo-tasks count toward G1's floor?):**
+  **ADOPTED.** They do not; the floor counts task endpoints.
+- **Under-spec (resolution application race — an intervening fold on the
+  same path between narration and application would be silently
+  overwritten, and the event-log replay would faithfully reproduce the
+  loss):** **ADOPTED.** Application-validity rule added: apply only if no
+  intervening fold touched the path; else re-narrate or park.
+- **Under-spec (preflight width below arm B's real peak):** **ADOPTED.**
+  Preflight matches actual peak width (three implementers + resolver).
