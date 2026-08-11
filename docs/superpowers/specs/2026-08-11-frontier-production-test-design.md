@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–7 adopted; round 8 (deletion-confirmation) pending / operator review
+**Status:** trim rounds 1–8 adopted (round 8 confirmed the round-7 deletion sound); round 9 expected terminal / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -135,7 +135,8 @@ What shadow adds — the only new machinery:
   sha-resolution + ancestry check on the selected file**, which catches
   exactly that case: any failure aborts/parks by name. **The report's
   role is exactly four things:** chain bounding, the ancestry invariant,
-  task labeling, and wave-head segmentation for non-merge heads. Only
+  task labeling, and per-wave head identification for the duration
+  harvest. Only
   `status == "MERGED"` wave entries are consumed (non-MERGED headShas are
   token-reported, not file-derived).
 - **Redirect-bearing runs, named posture:** pre-redirect launches are not
@@ -146,13 +147,17 @@ What shadow adds — the only new machinery:
   fragment — never a silent fragment claimed as the run. (No stitching
   machinery; there is nothing durable to stitch from.)
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
-  the integration chain — tip = the last MERGED wave head; floor = the
-  first two-parent merge's merge-base — and hands the bounded
-  `[(sha, parents)]` chain to the reused `_group_chain`, whose merge-base
-  grouping is the sole authority for **both wave base and fold
-  membership**: the same rule every K3 number used. Shadow defines no
-  base or membership rule of its own; the report's `branches` field
-  labels tasks, never selects them.
+  the integration chain — tip = the last MERGED wave head; the walk is
+  bounded below by the earliest MERGED wave head's parent; the floor,
+  which exists only on merge-bearing chains, is the first two-parent
+  merge's merge-base. If the bounded chain carries no two-parent merge,
+  the run records the inherited "no per-task merges" exclusion (durations
+  still harvested from the report). The bounded `[(sha, parents)]` chain
+  goes to the reused `_group_chain`, whose merge-base grouping is the
+  sole authority for **both wave base and fold membership**: the same
+  rule every K3 number used. Shadow defines no base or membership rule of
+  its own; the report's `branches` field labels tasks, never selects
+  them.
 - **Fast-forwarded waves need no apparatus of their own.** A single-task
   wave fast-forwards, leaving a single-parent chain commit — exactly the
   shape the inherited #133 semantics already handle, field-validated
@@ -162,10 +167,10 @@ What shadow adds — the only new machinery:
   last merge. An all-FF chain has no two-parent merge and hits the
   existing named exclusion ("no per-task merges — nothing to replay").
   Every disposition is named — no silent fragments — and nothing gateable
-  is lost: FF folds are near-tautological, and G1's two-endpoint floor
-  below never counted them. (Rounds 3–6 accreted a segmentation rule, an
-  FF fold fallback, a wave-1 park, and a two-branch floor clause here;
-  round 7 deleted the cluster as machinery ahead of need.)
+  is lost: G1's two-endpoint floor below never counted FF-wave rows.
+  (Rounds 3–6 accreted a segmentation rule, an FF fold fallback, a wave-1
+  park, and a two-branch floor clause here; round 7 deleted the cluster
+  as machinery ahead of need.)
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
@@ -173,15 +178,19 @@ What shadow adds — the only new machinery:
   **every MERGED task in the report** — the duration harvest never needed
   the fold, so FF-wave tasks are included — as the interval from the
   prior wave head's (or chain floor's) committer time to the task tip's
-  committer time, reported as approximate; the makespan model re-runs
-  with them. Reconciliation pseudo-tasks get no duration and are excluded
+  committer time, reported as approximate; a task whose tip sits at or
+  below the chain floor reports duration unavailable rather than a
+  degenerate zero. The makespan model re-runs with them.
+  Reconciliation pseudo-tasks get no duration and are excluded
   from the re-model (they are merge machinery, not scheduled work),
   noted in the report. Journal parsing is deferred unless the first shadow
   report shows timestamps too crude to inform E1 (machinery earned by
   recurrence).
 - **Report:** `evals/frontier/results/<date>-shadow-<stamp>.md` + JSON:
-  per-wave verdict (`clean` / `divergent` / `conflicted`), every narration
-  verbatim, the measured-duration makespan re-model.
+  per-wave disposition (`clean` / `divergent` / `conflicted` /
+  `absorbed` / `trailing-cut` / `excluded` — congruent with the inherited
+  dispositions the tests assert), every narration verbatim, the
+  measured-duration makespan re-model.
 
 **Target run and freshness:** shadow the next real waves-engine run in this
 repo (drain or single-plan). The finalized reports are durable, so there is
@@ -298,9 +307,9 @@ implementers; the scrub window closes only after the last resolver call):
 
 - **G1 (shadow fidelity):** ≥1 real run shadowed with zero silent
   divergence, **including at least one wave that folds ≥2 task endpoints**
-  (a true two-parent merge wave; reconciliation pseudo-tasks do not count
-  toward the floor — all-FF runs accumulate into results but do not
-  satisfy it, since FF folds are near-tautological): all fold
+  (a true two-parent merge wave; reconciliation pseudo-tasks and FF-wave
+  rows do not count toward the floor — all-FF runs accumulate into
+  results but do not satisfy it): all fold
   orders outcome-identical to each other, and every clean path (touched −
   conflicted, the K3 discipline) manifest-identical — under the weave
   layer's text normalization, manifest-to-manifest, never
@@ -694,3 +703,34 @@ mechanism-by-deletion finding, one test seam, two one-clause tightenings.
   the `evals/frontier/results/` convention.
 - **Both standing under-spec seams re-adjudicated no-change** (resolver
   authority; concurrent cells), concurring with round 6.
+
+### Round 8 (deletion-confirmation; grade: `netConceptDelta` **up** — "the smallest up of any round: shadow's concept load is now genuinely inherited")
+
+Verdict: **the round-7 deletion is CONFIRMED SOUND** — the reviewer traced
+both ground-truth chains commit-by-commit through `_group_chain` (mixed
+chain: FF'd task-1 folds as a named pseudo-task, trailing FF wave
+trailing-cuts by name; all-FF chain: lands in the named "no per-task
+merges" exclusion; zero silent fragments) and verified G1's floor is
+realistically satisfiable (23/46 reopen wave groups fold ≥2 endpoints).
+The fabricated-tail sha was re-verified and found sharper than stated:
+only the *task* sha is fabricated, the wave shas resolve — confirming the
+per-task-head authority check is load-bearing. Serial dispatch and the
+application-validity rule were confirmed complementary, not redundant.
+Five one-clause residue findings, all adopted:
+
+- **F1 (stale "wave-head segmentation" in the report-role list — the
+  deleted round-4 authority):** **ADOPTED.** Renamed to per-wave head
+  identification for the duration harvest (what actually remains).
+- **F2 (chain floor undefined on all-FF chains; the named exclusion was
+  unreachable through the stated bounding):** **ADOPTED.** Walk bounded
+  below by the earliest MERGED wave head's parent; merge-free bounded
+  chain → the inherited exclusion, durations still harvested; the floor
+  exists only on merge-bearing chains.
+- **F3 (report verdict enum lagged the dispositions):** **ADOPTED.**
+  Per-wave disposition vocabulary extended to include absorbed /
+  trailing-cut / excluded.
+- **F4 ("FF folds are near-tautological" is false for the pseudo-task
+  shape the mixed run exhibits):** **ADOPTED.** Justification replaced:
+  FF-wave rows never counted toward the floor.
+- **F5 (zero-interval duration degenerate when a task tip sits at the
+  chain floor):** **ADOPTED.** Reports duration unavailable.
