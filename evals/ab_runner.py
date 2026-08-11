@@ -44,6 +44,7 @@ try:
     from seal_hash import suite_hash  # noqa: E402
 except ImportError:  # pragma: no cover - only if the plugin scripts move
     suite_hash = None
+from harness_manifest import scan as scan_harness_manifests  # noqa: E402
 
 
 # --------------------------------------------------------------------------- #
@@ -355,22 +356,24 @@ def seed_workflows(engine_wt, workdir):
     the snapshot. Also excludes `.claude/` via git's info/exclude so dirt
     measurements stay scoped to the repo's own files — a deliberate SUPERSET of
     the production four-subdir gitignore contract, since fixture repos ship no
-    .gitignore of their own."""
+    .gitignore of their own. One bad manifest refuses the cell before anything
+    is copied (fail-closed, spec 2026-08-10)."""
     wf = Path(workdir) / ".claude/workflows"
     wf.mkdir(parents=True, exist_ok=True)
     harnesses = Path(engine_wt) / "skills/ultrapowers/harnesses"
-    seeded = []
-    for manifest in sorted(harnesses.glob("*.harness.json")):
-        fname = json.loads(manifest.read_text()).get("file")
-        if fname and (harnesses / fname).is_file():
-            shutil.copy2(harnesses / fname, wf / fname)
-            seeded.append(fname)
+    seeded, problems = scan_harness_manifests(harnesses)
+    if problems:
+        sys.exit("seed_workflows: manifest problems under %s — refusing the "
+                 "cell before seeding anything: %s"
+                 % (harnesses, "; ".join(problems)))
     if not seeded:
         # A silent zero-seed cascades into probe_workflow failing and the cell
         # rerunning interactively — the A/B would then compare execution modes,
         # not engines. Same guard as ultra_run.py's install stage.
         sys.exit("seed_workflows: no harness manifests found under %s "
                  "— refusing an unprobeable cell" % harnesses)
+    for fname in seeded:
+        shutil.copy2(harnesses / fname, wf / fname)
     # Resolve info/exclude through git (worktree-style .git files are not dirs).
     gp = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"],
                         cwd=str(workdir), capture_output=True, text=True,
@@ -591,6 +594,20 @@ def run_bootstrap_cell(engine_ref, root):
     return row
 
 
+def prepare_cell(plan, root):
+    """The shared cell setup for BOTH A/B entry points (#139): engine
+    worktree, seal installs, project clone, workflow seeding, session
+    config. Pre-#138 the two entry points ran drifting copies of this
+    sequence. Seeds a live credential — the caller's try/finally
+    scrub_credentials must begin immediately after this returns."""
+    engine = prepare_engine(plan["engineRef"], root)
+    install_seals(plan, root)
+    workdir, baseline = clone_project(plan)
+    seed_workflows(engine, workdir)
+    env = prepare_session_config(engine, workdir.parent)
+    return workdir, baseline, env
+
+
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
@@ -628,11 +645,7 @@ def main():
 
     started = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
-    engine = prepare_engine(args.engine_ref, root)
-    install_seals(plan, root)
-    workdir, _baseline = clone_project(plan)
-    seed_workflows(engine, workdir)
-    env = prepare_session_config(engine, workdir.parent)
+    workdir, _baseline, env = prepare_cell(plan, root)
     try:
         transcript, gate_report, mode = drive_run(workdir, plan, env)
         try:

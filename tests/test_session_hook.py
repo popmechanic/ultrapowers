@@ -134,3 +134,26 @@ def test_session_start_install_is_idempotent():
             installed = wf / spec["file"]
             assert installed.exists(), f"hook did not install {spec['file']}"
             assert installed.read_text() == (ROOT / "skills/ultrapowers/harnesses" / spec["file"]).read_text()
+
+
+def test_session_start_gc_noops_on_reader_failure(tmp_path):
+    # A failing python3 SHIM on an otherwise-FULL PATH — not PATH=/bin, which
+    # also loses basename and makes this test pass vacuously (empty base
+    # matches the empty installed_set pattern, so rm is unreachable even
+    # with the guard deleted). This test must fail when the guard is removed.
+    import os
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    (shim / "python3").write_text("#!/bin/sh\nexit 1\n")
+    (shim / "python3").chmod(0o755)
+    wf = tmp_path / "proj" / ".claude" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "waves.js").write_text("// installed harness\n")
+    env = dict(os.environ,
+               PATH="%s:%s" % (shim, os.environ["PATH"]),
+               CLAUDE_PROJECT_DIR=str(tmp_path / "proj"))
+    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
+                       capture_output=True, text=True, env=env)
+    assert p.returncode == 0, p.stderr
+    assert "<ultrapowers-routing>" in p.stdout      # hook contract intact
+    assert (wf / "waves.js").exists()  # reader failure must NOT uninstall

@@ -345,7 +345,7 @@
 **Notes:** Field 2026-08-09 (wf_fe05bc69-a22): EnterWorktree session passed all 12 preflight stages, then every merge/reconcile/critic git command against the integration worktree was hard-refused by the session Bash guard; wave 1 blocked, all waves cascade-blocked, 0/5 merged. GUARD-SLOT CONTEST decided at triage per machinery-earned-by-recurrence: #120 keeps the slot (2 field occurrences vs this n=1). Held at triaged with prose mitigation (worktree-session-selfhost-block memory + issue text name the remedy: run from repo root). PROMOTE TRIGGER: a second field occurrence, at which point choose between fix option 1 (fail-closed preflight stage, cheap guard) and option 2 (cut integration worktree inside the session worktree's own .claude/worktrees/ — structural, larger blast radius: sweep globbing, gate paths). RE-TRIAGED 2026-08-10: #120's fail-closed worktree-creation guard SHIPPED in 0.1.17, so the contested slot is consumed and settled; operator re-affirmed the 2-vs-1 call this pass. Recommend PARK with the promote trigger (2nd field occurrence of an EnterWorktree-session launch block) rather than re-litigating at every triage; prose mitigation stands (run from repo root — worktree-session-selfhost-block memory + issue text). PARKED at gate 2026-08-10 per recommendation — stops per-pass re-litigation; the promote trigger above (2nd field occurrence of an EnterWorktree-session launch block) is the sole reopen condition.
 
 ### #130: Review packet can point at a commit no branch contains — retry trap after a contaminated first attempt
-**State:** queued
+**State:** executed
 **Score:** 5.5 — path-hygiene/integrity on run exhaust; agents defended correctly twice, so latent not active
 **Est-files:** skills/ultrapowers/scripts/review-package.sh, skills/ultrapowers/harnesses/waves.js, tests/test_review_package.py
 **Plan:** docs/superpowers/plans/2026-08-10-review-packet-branch-naming.md
@@ -371,7 +371,7 @@
 **Notes:** Frontier residual. DORMANT by operator directive — this issue IS half the reopening trigger (adjudication doc: #133 corpus fix + same-file fixture ⇒ re-run probe), so it is worked exactly when the operator invokes the trigger, never on momentum. Preferred option per issue: tolerate reconciliation commits in extraction (pseudo-task diffs or cut at last pre-reconciliation merge) WITH designed comparison semantics, not a patch; foreign corpora (--tracks c elsewhere) is the fallback.
 
 ### #139: eval kit: extract prepare_cell() — ab_runner.main and run_ab_cell.main duplicate the six-step cell setup
-**State:** queued
+**State:** executed
 **Score:** 7 — measurement-loop integrity + simplicity: dedups a drift seam that has already fired once between the two A/B entry points
 **Est-files:** evals/ab_runner.py, evals/run_ab_cell.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
@@ -379,7 +379,7 @@
 **Notes:** From PR #138's adversarially-verified review (CONFIRMED, anchored ab_runner.py:589). The drift risk already fired pre-#138: only the run-scoped driver carried the headless fixes, so the two A/B entry points ran different setups — and #138 itself had to insert seed_workflows at the correct slot in both files. Fix is deduplication (deletion-shaped, doctrine-aligned): extract prepare_cell(plan, engine_ref, root) -> (engine, workdir, baseline, env); both mains call it; run_ab_cell's dirt seeding moves after prepare_session_config unchanged (reviewer verified it never touches the run repo). Protects the eval kit that gates every frozen-periphery unfreeze. evals/ only — not frozen periphery. PLAN TOGETHER WITH #140 (same file, one small eval-kit follow-up plan).
 
 ### #140: eval kit: seed_workflows is a second, untested reader of the *.harness.json manifest schema — pin the contract with the session hook
-**State:** queued
+**State:** executed
 **Score:** 6.5 — measurement-integrity class: manifest-schema drift would make the A/B measure a saved-workflow config real operators never get
 **Est-files:** evals/ab_runner.py, hooks/session_start.sh, skills/ultrapowers/harnesses/, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
@@ -387,7 +387,7 @@
 **Notes:** From PR #138's review (PLAUSIBLE, anchored ab_runner.py:333). HALF ALREADY LANDED: the empty-seed hard-fail shipped in #138's fix round (verified in main today, ab_runner.py:368-373 refuses an unprobeable cell). Remaining scope is ONLY part (b): one pin test asserting seed_workflows and hooks/session_start.sh extract the same file list from the committed *.harness.json manifests. This is a two-code-readers contract pin (test_no_prompt_drift precedent), not a prose pin — compatible with the anti-pin doctrine. Consequence if unpinned: infrastructure drift masquerades as an engine regression in A/B numbers. PLAN TOGETHER WITH #139. ACCEPTANCE CONDITIONAL (gate 2026-08-10): planning must examine the one-reader option FIRST — if #139's prepare_cell extraction can cheaply collapse kit+hook to a single manifest reader, the pin is never born; the pin test lands only if cross-language reality (bash hook / python kit) keeps two readers.
 
 ### #141: ultralearn harvester cannot see subagent-driven/inline drains — a growing sensing blind spot
-**State:** queued
+**State:** executed
 **Score:** 6 — sensing honesty for the growing off-waves drain share; occurrence #1 so prose only, no detector build
 **Est-files:** skills/ultralearn/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-10-sense-pass-posture-pair.md
@@ -395,7 +395,7 @@
 **Notes:** First formal occurrence (2026-08-10 sense pass); prose per machinery-earned-by-recurrence, confirmed by operator at triage commission. Take the issue's option 2: the sense verb documents that drains are harvested by commissioned read, not by the detector — the harvester's "0 new" on the 2026-08-10 drain (0 Workflow calls, 4 plans / 9 tasks) was CORRECT behavior. Recurrence is by design (the execution-fit rubric honestly routes small portfolios off waves), so record the PROMOTE TRIGGER explicitly: a sense pass where commissioned reads MISS or misread drain evidence — not merely occur — buys option 1 (sessionKind:drain detection via docket transitions + detached-worktree run_acceptance receipts). CLUSTER with #142: one tiny inline prose pair, both 2026-08-10 sense-pass posture findings.
 
 ### #142: Drain per-task review devolved to orchestrator-inline diff reads — review posture undeclared in the drain flow
-**State:** queued
+**State:** executed
 **Score:** 6 — verification-posture honesty at the drain: silent narrowing recorded nowhere; occurrence #1 so prose only
 **Est-files:** skills/ultradocket/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-10-sense-pass-posture-pair.md

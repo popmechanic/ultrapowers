@@ -5,7 +5,9 @@
 #
 # Usage: review-package BASE HEAD [OUTFILE]
 #
-# Default OUTFILE: <main-repo-root>/.claude/ultrapowers/scratch/review-<base7>..<head7>.diff.
+# Default OUTFILE: <main-repo-root>/.claude/ultrapowers/scratch/review-<branch>.diff
+# (branch sanitized to [A-Za-z0-9._-]; detached HEAD falls back to
+# review-<base7>..<head7>.diff). One packet per branch: a redo overwrites.
 # An OUTFILE ending in a trailing slash (/) is treated as a target directory
 # (created if absent) that receives that same default-named packet.
 #
@@ -52,7 +54,18 @@ default_dir() {
 }
 
 default_name() {
-  echo "review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
+  # Branch-derived: one packet per branch, so a same-branch redo OVERWRITES
+  # its stale predecessor (#130 — a sha-pair name let a packet outlive a
+  # history rewrite and point at a commit no branch contained). Detached
+  # HEAD (--show-current prints nothing, exit 0) falls back to the sha-pair
+  # name — no branch identity exists to key on.
+  local branch
+  branch=$(git branch --show-current)
+  if [ -n "$branch" ]; then
+    echo "review-$(printf '%s' "$branch" | tr -c 'A-Za-z0-9._-' '-').diff"
+  else
+    echo "review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
+  fi
 }
 
 if [ $# -eq 3 ]; then
