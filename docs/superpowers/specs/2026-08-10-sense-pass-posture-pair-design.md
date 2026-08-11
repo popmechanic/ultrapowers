@@ -42,22 +42,28 @@ part of the list item (an unindented paragraph would visually orphan steps
 > calls and are **invisible to this detector by design** — "0 new" on a
 > drain session is correct, not a bug. Drains are sensed by **commissioned
 > transcript reads**: after a drain, dispatch reader subagents at the drain
-> session's transcript with the same five lenses; readers MUST set
-> `evidenceAbstracted: true` on every finding (evidence written as shape —
-> no bundle exists to trigger the foreign rule for them) and use the drain
-> session id as `runId`. Findings then pass the merge guard with origin
-> failing closed to `foreign` and no `engineVersion` — an accepted fidelity
-> cost. Promote trigger for a real drain detector: a sense pass where
-> commissioned reads **miss or misread** drain evidence; record the miss as
-> a ledger finding.
+> session's transcript with the same five lenses, including the mandatory
+> redirect-round count (one per drain). Readers MUST set
+> `evidenceAbstracted: true` on every finding (no bundle exists to trigger
+> the foreign rule), stamp `engineVersion` with the running release, and
+> use the drain session id as `runId`; the merge guard then forces only
+> `origin: foreign` — the accepted cost. Promote trigger for a real drain
+> detector: a sense pass where commissioned reads **miss or misread** drain
+> evidence; record the miss as a ledger finding.
 
-The `evidenceAbstracted` and `runId` clauses are load-bearing (round-2 F2,
-F3): `merge_ledger.py` drops an unflagged non-home finding **whole**, and
-the reading-lenses foreign rule keys off a `bundle.json` that commissioned
-readers don't have — without the clauses, a commissioned read of a home
-drain would silently merge zero findings and falsely trip this paragraph's
-own promote trigger; and without a stated `runId`, two drains' same-titled
-findings would collide into one ledger row.
+Four clauses are load-bearing (rounds 2–3): `merge_ledger.py` drops an
+unflagged non-home finding **whole** (R2-F2), so without `evidenceAbstracted`
+a home-drain read silently merges zero findings and falsely trips this
+paragraph's own promote trigger; without a stated `runId` two drains'
+same-titled findings collide into one ledger row (R2-F3); `engineVersion`
+survives the merge untouched when the lookup misses (R3-F-2), so stamping it
+keeps drain findings visible to distill's staleness weighting and the
+canary's version comparison — only `origin` is genuinely forced; and the
+redirect-round canary is mandated per *bundle* in reading-lenses, which a
+bundle-less commissioned read would silently skip (R3-U-3) — un-monitoring
+exactly the population posture (b) needs watched. Accepted residual (R3-U-6):
+home-drain verbatim evidence pointers degrade to shape under forced
+abstraction — noted for the standing watch-item's consumer.
 
 ### 2. `skills/ultradocket/SKILL.md` — run mode (#142)
 
@@ -67,31 +73,36 @@ auto-approve` heading:
 
 > **Review posture: suite-gate authority, review by exception.** The drain
 > dispatches no per-task reviewer of its own, and its step-2 dispatch
-> instructs the sequential executor to skip its own per-task reviewer
-> passes — the step-3 gate is the verification. One exception: a task its
-> plan marks `**Review:** adversarial` (read from `launch_waves[].review`
-> of a `compile_plan.py` run on the plan — for sequential engines the
-> drain holds no compile output otherwise, so this is one extra compile
-> per escalated check) gets one fresh review via
+> instructs the sequential executor to skip its review passes — per-task
+> and final — the step-3 gate is the verification. One exception: a task
+> its plan marks `**Review:** adversarial` (read from
+> `launch_waves[].review` of the `compile_plan` run step 3 already
+> performs — no extra compile) gets one fresh review via
 > `superpowers:requesting-code-review` against the branch diff from the
 > docket-line HEAD plus the plan text, before the plan's gate; red
-> findings park the entry exactly as a red gate does. The end gate states
-> the posture used.
+> findings park the entry exactly as a red gate does. Posture drift after
+> this declaration is the recurrence that buys enforcement.
 
-Three semantics notes (spec-side, deliberately not in the SKILL prose):
+Four semantics notes (spec-side, deliberately not in the SKILL prose):
 the `**Review:**` marker becomes engine-relative — in waves `adversarial`
 buys a *second* review pass over lean's one, in a drain it buys *one* over
-the default zero. "No reviewer of its own" plus "executor skips its
-reviewer passes" together suppress both sources of per-task review — which
-is exactly the previously-silent narrowing, now declared (the prior draft
-cited the exam-gated auto-approve section here, wrongly: that section
-governs *operator* checkpoints, not the executor's own reviewer
-dispatches). The escalated set is expected to be near-empty (the rubric's
+the default zero. "Per-task **and final**" (R3-U-4): subagent-driven
+development carries two review layers, and posture (b) suppresses both —
+the drain's own portfolio end gate is the human review point; leaving the
+final branch review formally alive would contradict both the gate-authority
+framing and the observed drain. The step-3 compile read costs nothing
+(R3-F-1): the drain already compiles every entry's plan to read
+`acceptance.mode`, and that same stdout carries `launch_waves[].review` —
+round 2's "one extra compile per escalated check" was wrong in both
+directions. The escalated set is expected to be near-empty (the rubric's
 risk override routes risk-marked plans to waves) — the exception is the
 safety valve that makes posture (b) acceptable, not a working lane; naming
-`requesting-code-review` (a fixed, audited skill) as its referent keeps
-the rare escalation from re-creating the improvised-review posture #142
-fixes, one layer down.
+`requesting-code-review` (a fixed, audited skill) as its referent keeps the
+rare escalation from re-creating the improvised-review posture #142 fixes,
+one layer down. Known compliance seam (R3-U-5, accepted at occurrence #1):
+the skip instruction asks the executor to bypass its own review loop and
+compliance is self-reported at the end gate — the closing sentence carries
+the issue's own recurrence trigger for exactly that drift.
 
 **2b.** In "The single end gate", extend the per-entry evidence list —
 "Per entry: exam evidence (raw runner JSON), engine, cost, disposition
@@ -176,7 +187,7 @@ plan. Verdicts and adjudication:
 
 | # | Finding | Adjudication |
 |---|---|---|
-| F1 | **FALSE against code:** round 1's `tasks[].review` field does not exist (real channel: `launch_waves[].review`, compile_plan.py:1466), and the drain holds NO compile output for sequential engines (compile runs only on the ultrapowers branch; compile_docket carries no per-task fields) | **Adopted** — §2a pins `launch_waves[].review` + one extra compile per escalated check |
+| F1 | **FALSE against code:** round 1's `tasks[].review` field does not exist (real channel: `launch_waves[].review`, compile_plan.py:1466), and the drain holds NO compile output for sequential engines (compile runs only on the ultrapowers branch; compile_docket carries no per-task fields) | **Adopted; cost claim superseded by R3-F-1** — the channel was right, but "one extra compile" was wrong: drain step 3 already compiles every entry's plan for `acceptance.mode`, and that stdout carries the marker — zero extra compiles |
 | F2 | **Behavior-zeroing omission:** `merge_ledger.py:27` drops unflagged non-home findings *whole*, and the reading-lenses foreign rule never fires without a bundle — commissioned reads as round-1-specified would merge zero findings and falsely trip the promote trigger | **Adopted** — readers MUST set `evidenceAbstracted: true`; load-bearing note kept in §1 |
 | F3 | `runId` unspecified — same-titled findings from two drains would collide in the ledger | **Adopted** — drain session id as `runId` |
 | F4 | Escalation reviewer still had no inputs (round 1 completed only the output side); the baked reviewer brief is waves-specific | **Adopted** — referent named: `superpowers:requesting-code-review` against the branch diff from docket-line HEAD + plan text |
@@ -197,3 +208,31 @@ concurrence with round 1 ("naming two silent behaviors cannot be flat; not
 **Round-2 marginal value:** three artifact-changing findings (F1, F2, F5;
 F4 conditionally) — notably, two of the three were defects in round 1's
 own adopted fixes.
+
+### Round 3 (third independent reviewer, operator-requested)
+
+Fresh-context subagent; verified by live compile of a Review-marked plan,
+full merge-path read, and the requesting-code-review skill in the plugin
+cache. Verdicts and adjudication:
+
+| # | Finding | Adjudication |
+|---|---|---|
+| F-1 | **Round 2's own fix false in both directions:** drain step 3 already compiles every entry's plan (for `acceptance.mode`), and that stdout carries `launch_waves[].review` — the escalation read costs ZERO extra compiles, not "one per escalated check" | **Adopted** — §2a: "the `compile_plan` run step 3 already performs — no extra compile" |
+| F-2 | "No `engineVersion` — accepted cost" concedes more than the code requires: the field survives the merge untouched when the lookup misses; only `origin` is forced | **Adopted** — readers stamp `engineVersion` with the running release; drain findings stay visible to distill staleness weighting + the canary's version comparison |
+| U-3 | The redirect-round canary is mandated per *bundle*; a bundle-less commissioned read would silently skip it — un-monitoring exactly the population posture (b) needs watched | **Adopted** — §1: "including the mandatory redirect-round count (one per drain)" |
+| U-4 | "Skip per-task reviewer passes" left subagent-driven's *final whole-branch review* formally alive — one review short of unambiguous | **Adopted** — "per-task and final"; the portfolio end gate is the human review point |
+| U-5 | The spec silently dropped issue #142's own recurrence trigger; executor compliance with the skip is self-reported | **Adopted** — closing sentence restored to the SKILL paragraph; compliance seam recorded spec-side as accepted at occurrence #1 |
+| U-6 | Forced abstraction degrades home-drain verbatim evidence pointers for the standing watch-item's consumer | **Adopted** — acknowledged as accepted residual in §1's notes |
+| T1 | Cost-claim parenthetical replaced by the shorter true one | **Adopted** (with F-1) |
+| T2 | "The end gate states the posture used" duplicated §2b | **Adopted** — deleted; word budget funded U-5's sentence |
+| T3 | Both files were ~3–5 words over the spec's own ≤120 bound | **Adopted** — cured by T1/T2 trims |
+
+Rejections: none. Scope: reconciled; the one quiet drop (the issue's
+recurrence trigger) restored per U-5.
+
+**Round-3 reviewer grade: `netConceptDelta = up`** — third independent
+concurrence.
+
+**Round-3 marginal value:** two artifact-changing findings (F-1 — itself
+round 2's adopted fix; F-2) plus two one-clause completions (U-3, U-4);
+the rest wording and accounting.
