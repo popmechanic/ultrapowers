@@ -371,7 +371,7 @@
 **Notes:** Frontier residual. DORMANT by operator directive — this issue IS half the reopening trigger (adjudication doc: #133 corpus fix + same-file fixture ⇒ re-run probe), so it is worked exactly when the operator invokes the trigger, never on momentum. Preferred option per issue: tolerate reconciliation commits in extraction (pseudo-task diffs or cut at last pre-reconciliation merge) WITH designed comparison semantics, not a patch; foreign corpora (--tracks c elsewhere) is the fallback.
 
 ### #139: eval kit: extract prepare_cell() — ab_runner.main and run_ab_cell.main duplicate the six-step cell setup
-**State:** queued
+**State:** executed
 **Score:** 7 — measurement-loop integrity + simplicity: dedups a drift seam that has already fired once between the two A/B entry points
 **Est-files:** evals/ab_runner.py, evals/run_ab_cell.py, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
@@ -379,7 +379,7 @@
 **Notes:** From PR #138's adversarially-verified review (CONFIRMED, anchored ab_runner.py:589). The drift risk already fired pre-#138: only the run-scoped driver carried the headless fixes, so the two A/B entry points ran different setups — and #138 itself had to insert seed_workflows at the correct slot in both files. Fix is deduplication (deletion-shaped, doctrine-aligned): extract prepare_cell(plan, engine_ref, root) -> (engine, workdir, baseline, env); both mains call it; run_ab_cell's dirt seeding moves after prepare_session_config unchanged (reviewer verified it never touches the run repo). Protects the eval kit that gates every frozen-periphery unfreeze. evals/ only — not frozen periphery. PLAN TOGETHER WITH #140 (same file, one small eval-kit follow-up plan).
 
 ### #140: eval kit: seed_workflows is a second, untested reader of the *.harness.json manifest schema — pin the contract with the session hook
-**State:** queued
+**State:** executed
 **Score:** 6.5 — measurement-integrity class: manifest-schema drift would make the A/B measure a saved-workflow config real operators never get
 **Est-files:** evals/ab_runner.py, hooks/session_start.sh, skills/ultrapowers/harnesses/, tests/
 **Plan:** docs/superpowers/plans/2026-08-10-eval-kit-reader-consolidation.md
