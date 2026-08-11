@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–5 adopted; round 6 pending / operator review
+**Status:** trim rounds 1–6 adopted; round 7 pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -167,8 +167,10 @@ What shadow adds — the only new machinery:
   name. A **wave-1 FF segment parks by name** — it has no derivable prior
   head (the run artifacts record only a branch *name* as base, and
   branches move); the bounded chain's floor is the earliest derivable
-  base, i.e. the first merge-bearing segment's merge-base. FF folds are
-  near-tautological by construction, hence G1's two-endpoint floor below.
+  base — the first merge-bearing segment's merge-base, or in a chain with
+  no merge-bearing segment, the earliest reported MERGED wave head (wave 1
+  itself parks). FF folds are near-tautological by construction, hence
+  G1's two-endpoint floor below.
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
@@ -222,11 +224,12 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
   fed the task's plan body; must commit its work. Endpoint diff = branch
   HEAD vs base. Concurrent `claude -p` sessions under the cell's one
   throwaway `CLAUDE_CONFIG_DIR` is an intended-and-probed pattern: a cheap
-  preflight runs before the real cell — trivial concurrent headless calls
-  **at arm B's actual peak width** (three implementers + a resolver call),
-  plus concurrent `git worktree add` + commit in the cloned repo (ref/lock
-  races the kit has never exercised either); preflight failure parks the
-  arm with the named reason.
+  preflight runs before the real cell, probing **the launch-instant shape
+  at its real width — four concurrent trivial implementer-shaped calls,
+  each inside its own concurrently-created worktree, each committing**
+  (dropping contend's edges frees all four tasks at t=0; a resolver only
+  runs after a completion, so it never coexists with all four and is
+  subsumed); preflight failure parks the arm with the named reason.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
   conflict → resolver (component 4). Fold order is completion order.
@@ -275,8 +278,10 @@ implementers; the scrub window closes only after the last resolver call):
   (G3). One rule, no kind-list to keep in sync.
 - **Application validity (the one live race):** a resolution applies only
   if **no intervening fold touched its path** since the narration was
-  taken; otherwise the driver re-narrates against the current frontier
-  (or parks). Without this, a whole-file resolution computed from an older
+  taken; otherwise the driver re-narrates against the current frontier —
+  by re-folding the conflicting endpoint idempotently (the K2 discipline:
+  refold conflicts are a subset) and dispatching the fresh narration — or
+  parks. Without this, a whole-file resolution computed from an older
   narration would overwrite a newer fold's contribution — and the event
   log's deterministic replay would faithfully reproduce the loss, since it
   checks determinism, not correctness.
@@ -371,25 +376,31 @@ All committed tests run in the ordinary suite and CI:
   contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
   replay behavior — **except** the intended #132 comparison change: the
-  K1 outcome key and the test helpers' `assert_order_independent` go
-  set-based, and the affected assertions are updated with the fix, named
-  in its commit.
+  K1 outcome key and the test helpers' order-*comparison* go set-based.
+  Exact-count expectations that are order-independent by construction
+  (the `len(candidates) − 1` conflict-count pins) are **preserved** as
+  single-canonical-order assertions, never dropped — #132 never impugned
+  the counts, only the 3+-writer multiset flip. Affected assertions are
+  updated with the fix, named in its commit.
 - Live cells and the shadow of a real run are runtime deliverables recorded
   in `evals/frontier/results/`, not CI.
 
 ## Trim review
 
-**Author disclosure (Adds/Removes, refreshed after round 2):** Adds —
+**Author disclosure (Adds/Removes, refreshed after round 6):** Adds —
 shadow front-end over the existing replay internals; frontier driver +
 resolver (directive scope); #132 fix; measured-duration re-model
 (invited-adjacent: the re-adjudication named "or measured durations");
 peak-parallelism bookkeeping (minor, near-free); and from the review rounds:
-the concurrency preflight (headless + worktree), the 400-line resolver cap,
-the dedicated branch writer, the final-launch-only redirect posture with
-named parks, the FF-wave fallback and chain-segmentation rule, the report
-discovery/selection rule with MERGED-only scoping, and the recorded
-fold/resolution event log (a new durable artifact) with its deterministic
-replay. Removes — nothing; quarantined in `evals/`, purchased against the
+the launch-instant concurrency preflight (four implementer-shaped calls in
+concurrently-created worktrees), the 400-line resolver cap, the dedicated
+branch writer, the final-launch-only redirect posture with named parks
+(wave-1-FF, no-report, unshadowable dirs), the FF-wave fallback and
+chain-segmentation rule with its floor clause, the `report.json`-only
+discovery with the sha/ancestry check as authority, MERGED-only scoping,
+the recorded fold/resolution event log (a new durable artifact) with its
+deterministic replay, and the resolution application-validity rule.
+Removes — nothing; quarantined in `evals/`, purchased against the
 structural subtraction the frontier line exists to earn.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "deliberately-purchased, quarantined in evals/, adopting T1–T4 shaves three to four concepts")
@@ -608,3 +619,34 @@ and every artifact claim against the on-disk run dirs.
   intervening fold touched the path; else re-narrate or park.
 - **Under-spec (preflight width below arm B's real peak):** **ADOPTED.**
   Preflight matches actual peak width (three implementers + resolver).
+
+### Round 6 (fresh-context reviewer; grade: `netConceptDelta` **up** — "corrections, not shrinkage; deliberately purchased and honestly disclosed")
+
+Verdict: nearly clean — no redesigns; four corrections, two touching a
+mechanism or test seam. The reviewer explicitly verified round 5's
+reversal left no orphaned text, re-confirmed the fabricated-tail sha on
+disk, and validated the application-validity rule's composition with the
+event log.
+
+- **F1 (preflight still one short: contend's compiled DAG frees all
+  *four* tasks at t=0 once same-file edges drop — task 4 has no edges at
+  all; the real launch instant is four concurrent sessions + four
+  concurrent worktree creations, probed together):** **ADOPTED.**
+  Preflight restated as the launch-instant shape at real width; resolver
+  overlap subsumed (it never coexists with all four).
+- **F2 (set-based helper change would silently delete the
+  `len(candidates) − 1` conflict-count pins #132 never impugned):**
+  **ADOPTED.** Order-*comparison* goes set-based; exact-count pins
+  preserved as single-canonical-order assertions.
+- **F3 (chain-floor "i.e." undefined on all-FF chains G1 explicitly
+  admits):** **ADOPTED.** Floor clause extended: no merge-bearing
+  segment → earliest reported MERGED wave head (wave 1 itself parks).
+- **F4 (disclosure stale, third occurrence):** **ADOPTED.** Refreshed
+  through round 6, including the application-validity rule. The
+  re-narration mechanism got its one clause (idempotent re-fold, the K2
+  discipline).
+- **Adjudicated no-change:** resolver authority (whole-file contract
+  structurally bounds authority to the conflicted path; pre/post diff
+  outside conflicted blocks would be machinery ahead of need at n=1 with
+  verbatim recording); correct-but-token-reported shas passing the
+  authority check is the stated authority model, not a gap.
