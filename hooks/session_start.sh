@@ -23,17 +23,11 @@ set -euo pipefail
   dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
   mkdir -p "$dest"
   installed_set=""
-  # One python3 pass lists every manifest's `file` (was one spawn per manifest).
-  files="$(python3 -c "
-import glob, json, os, sys
-for m in sorted(glob.glob(os.path.join(sys.argv[1], '*.harness.json'))):
-    try:
-        f = json.load(open(m)).get('file')
-    except Exception:
-        continue
-    if f:
-        print(f)
-" "$harnesses")"
+  # The shared reader (harness_manifest.py) lists every manifest's `file` —
+  # the same scan() the eval kit uses, so the manifest schema has one
+  # runtime reader. Problems go to its stderr (swallowed here); stdout is
+  # filenames only.
+  files="$(python3 "$plugin_root/skills/ultrapowers/scripts/harness_manifest.py" "$harnesses")"
   for f in $files; do
     [ -e "$harnesses/$f" ] || continue
     # Skip the copy when the installed copy is byte-identical (the common no-change
@@ -41,14 +35,19 @@ for m in sorted(glob.glob(os.path.join(sys.argv[1], '*.harness.json'))):
     cmp -s "$harnesses/$f" "$dest/$f" 2>/dev/null || cp "$harnesses/$f" "$dest/$f"
     installed_set="$installed_set $f"
   done
-  # GC: remove any .js files in the workflows dir that are not in the current
-  # manifest set — stale orphans from older plugin versions (e.g. workflow.js
-  # from 0.0.6) would otherwise accumulate and shadow the current harnesses.
-  for existing in "$dest"/*.js; do
-    [ -e "$existing" ] || continue
-    base="$(basename "$existing")"
-    case " $installed_set " in *" $base "*) : ;; *) rm -f "$existing" ;; esac
-  done
+  # GC only when the reader produced an install set: on reader failure
+  # (python3 or the reader script missing) an empty set must be a no-op,
+  # not a mass uninstall of every installed harness.
+  if [ -n "$installed_set" ]; then
+    # GC: remove any .js files in the workflows dir that are not in the current
+    # manifest set — stale orphans from older plugin versions (e.g. workflow.js
+    # from 0.0.6) would otherwise accumulate and shadow the current harnesses.
+    for existing in "$dest"/*.js; do
+      [ -e "$existing" ] || continue
+      base="$(basename "$existing")"
+      case " $installed_set " in *" $base "*) : ;; *) rm -f "$existing" ;; esac
+    done
+  fi
 ) >/dev/null 2>&1 || true
 
 cat <<'EOF'

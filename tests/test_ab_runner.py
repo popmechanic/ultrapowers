@@ -107,3 +107,45 @@ def test_bootstrap_cell_probes_then_falls_back_without_bootstrap(tmp_path, monke
     row = ab_runner.run_bootstrap_cell("old-ref", root)
     assert row["falseBlock"] == 1
     assert row["status"] == "OK"
+
+
+def test_seed_workflows_refuses_problem_manifests_before_copying(tmp_path):
+    # Fail-closed (spec 2026-08-10): today a bad manifest is silently
+    # skipped and the cell proceeds on a partial seed — after this change
+    # one bad manifest refuses the whole cell, and nothing is copied.
+    engine = tmp_path / "engine"
+    h = engine / "skills/ultrapowers/harnesses"
+    h.mkdir(parents=True)
+    (h / "good.harness.json").write_text(json.dumps({"file": "good.js"}))
+    (h / "good.js").write_text("// harness\n")
+    (h / "bad.harness.json").write_text("{not json")
+    workdir = tmp_path / "run"
+    workdir.mkdir()
+    try:
+        ab_runner.seed_workflows(engine, workdir)
+        assert False, "should refuse a problems-bearing manifest set"
+    except SystemExit as e:
+        assert "bad.harness.json" in str(e)
+    assert not (workdir / ".claude/workflows/good.js").exists()  # fail BEFORE copy
+
+
+def test_prepare_cell_runs_the_five_calls_in_order(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ab_runner, "prepare_engine",
+                        lambda ref, root: calls.append(("prepare_engine", ref)) or "ENGINE_WT")
+    monkeypatch.setattr(ab_runner, "install_seals",
+                        lambda plan, root: calls.append(("install_seals",)))
+    monkeypatch.setattr(ab_runner, "clone_project",
+                        lambda plan: calls.append(("clone_project",)) or (tmp_path / "wd", "BASE"))
+    monkeypatch.setattr(ab_runner, "seed_workflows",
+                        lambda engine, wd: calls.append(("seed_workflows", engine)))
+    monkeypatch.setattr(ab_runner, "prepare_session_config",
+                        lambda engine, parent: calls.append(("prepare_session_config", parent)) or {"E": "1"})
+    workdir, baseline, env = ab_runner.prepare_cell({"engineRef": "abc123"}, tmp_path)
+    assert [c[0] for c in calls] == ["prepare_engine", "install_seals",
+                                    "clone_project", "seed_workflows",
+                                    "prepare_session_config"]
+    assert calls[0][1] == "abc123"          # engineRef derived from the plan
+    assert calls[3][1] == "ENGINE_WT"       # engine threads from prepare_engine
+    assert calls[4][1] == (tmp_path / "wd").parent   # config keyed to workdir parent
+    assert (workdir, baseline, env) == (tmp_path / "wd", "BASE", {"E": "1"})
