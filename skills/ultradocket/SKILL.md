@@ -166,6 +166,18 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    operator-set budget ceiling (a stop condition between plans where cost is
    observable; v1 builds no new cost accounting).
 
+**Review posture: suite-gate authority, review by exception.** The drain
+dispatches no per-task reviewer of its own, and its step-2 dispatch
+instructs the sequential executor to skip its review passes — per-task
+and final — the step-3 gate is the verification. One exception: each task
+its plan marks `**Review:** adversarial` (from `launch_waves[].review`
+of step 3's own `compile_plan` run — no extra compile) gets one fresh
+review via `superpowers:requesting-code-review` against the diff from
+docket-line HEAD plus the plan text, before the plan's gate;
+Critical/Important findings park the entry exactly as a red gate does
+(Minor: noted at the end gate). Posture drift after this declaration is
+the recurrence that buys enforcement.
+
 ### The exam-gated auto-approve
 
 The drain runs unattended over non-deterministic executors, so the keep-going
@@ -196,7 +208,8 @@ exam and the single end gate.
 
 When the queue drains or the budget ceiling hits, present **one** pre-merge
 portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
-disposition (`executed`/merged or `parked` + reason), and branch; plus portfolio
+disposition (`executed`/merged or `parked` + reason), branch, and the review
+posture used (suite-gate authority, or the escalated tasks named); plus portfolio
 totals and the could-have-parallelized projection. Then the operator disposes of
 the portfolio: merge the docket integration line to base, or open per-issue PRs
 (mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
