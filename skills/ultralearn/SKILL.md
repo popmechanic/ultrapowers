@@ -17,6 +17,18 @@ runs inside Claude Code — no API key, no external calls.
    tool_result (not string mentions), and writes bundles to the gitignored
    cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` + `slice.md`).
    Incremental: a watermark means re-runs only process new sessions.
+   Sequential-engine drains (subagent-driven, inline) make no `Workflow`
+   calls and are **invisible to this detector by design** — "0 new" there is
+   correct, not a bug. Drains are sensed by **commissioned transcript
+   reads**: after a drain, dispatch readers at the drain session's
+   transcript with the same five lenses, including the redirect-round count,
+   assigned to exactly one reader. Readers MUST set `evidenceAbstracted:
+   true` (no bundle triggers the foreign rule), stamp `engineVersion` (plain
+   version string — the repo release at drain time), and use the drain
+   session id as `runId`; the merge guard then forces only `origin: foreign`
+   — accepted. Promote trigger for a drain detector: a sense pass where
+   commissioned reads **miss or misread** drain evidence; record the miss as
+   a ledger finding.
 2. **Read.** For each new bundle, dispatch a subagent with
    `references/reading-lenses.md` as its instructions plus the bundle's
    `bundle.json` and `slice.md`. The agent returns a JSON array of findings.
