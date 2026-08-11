@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim round 1 adopted; awaiting further rounds / operator review
+**Status:** trim rounds 1–2 adopted; round 3 pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -76,16 +76,23 @@ comparison treats conflicts as an order-sensitive *multiset*, and because of
 the delete-vs-modify pairing transition at 3+ writers. The fix is the
 issue's own recorded candidates, nothing more:
 
-- Dedupe `fold`'s returned conflicts on the declared `(path, kind)` identity
-  (chosen over changing the comparison side: every consumer then sees the
-  canonical shape).
-- Apply the pairing-transition treatment for text deletes named in the
-  issue.
+- Dedupe on the declared `(path, kind)` identity **at the accumulation
+  site** — `fold_all` / recording, where the duplicates actually arise
+  (across successive fold calls; `fold` itself has no memory of prior
+  reports and a per-call dedupe would be a no-op). The arm-B driver
+  deliberately consumes the **pre-dedupe per-fold stream**: a second
+  genuine `lines` conflict on an already-resolved path must still reach
+  the resolver.
+- Fix the delete/modify kind-flip at 3+ writers. The issue names no precise
+  branch, so **the committed seed sets are the contract**: both recorded
+  failing sets (12/400 multiset; 29/500 delete/modify) become regression
+  tests that must pass, and the K1 fuzz re-runs green. Additionally, lift
+  the writers-cap in `test_randomized_binary_mixes_are_order_independent`
+  (capped "pending this fix" per the issue) — the cheapest true regression
+  signal.
 - Fold in the issue's two presentation nits, explicitly in scope: the
   lone-type-change asymmetry, and the "text wins the manifest" narration
   being wrong when the text side is a folded whole-file delete.
-- Commit both recorded failing seed sets (12/400 multiset; 29/500
-  delete/modify) as regression tests; the K1 fuzz re-runs green.
 
 No new reporting vocabulary: no regions, no anchors, no aggregation pass.
 The resolver (component 4) consumes the existing whole-file narration, which
@@ -108,18 +115,29 @@ re-implemented.
 What shadow adds — the only new machinery:
 
 - **CLI:** `python3 shadow_fold.py <run-dir>` where `<run-dir>` is a
-  `.claude/ultrapowers/run-<stamp>/` directory carrying `heads/` sidecars
-  (`task-N`, `wave-N` shas).
-- **Base derivation (derive-don't-record):** wave k>1 folds against
-  `heads/wave-(k-1)`. For wave 1, walk first-parent from `heads/wave-1`: a
-  commit whose second parent is a recorded wave-1 `task-N` head is one of
-  the wave's merges; once every wave-1 task head has been consumed, the
-  next first-parent is the base (robust even when the base is itself a
-  merge commit). Non-merge commits on any wave's first-parent span fold as
-  reconciliation pseudo-tasks via the reused `_group_chain` semantics.
-- **Ancestry invariant**, checked before any fold: every `task-N` head is
-  an ancestor of its wave head; violation aborts the shadow with a named
-  error (never a silent skip, never a guessed base).
+  `.claude/ultrapowers/run-<stamp>/` directory. The head source is the
+  run's **finalized report(s)** (`report.json` — `waveMerges[].headSha`,
+  `waveMerges[].branches` for wave membership, `tasks[].headSha`), not the
+  raw `heads/` slots: `finalize_report.py` copies the sidecar-derived shas
+  into the report fail-loud *before* `redirect_args.py` clears `heads/` on
+  a redirect relaunch, and its own comments name the report as the durable
+  record. Derive-don't-record holds — the report's shas are themselves
+  mechanically file-derived.
+- **Redirect-bearing runs, named posture:** a run with redirect relaunches
+  has one finalized report per gate; shadow stitches the launches from
+  those reports, and where stitching cannot reconstruct a wave it parks the
+  run as **partially shadowable with the fragment named in the report** —
+  never a silent fragment claimed as the run.
+- **Chain bounding, not base derivation:** shadow's walker only *bounds*
+  the integration chain (tip and floor) from the report's shas and hands
+  the bounded `[(sha, parents)]` chain to the reused `_group_chain`, whose
+  merge-base grouping is the **sole base authority** — the same rule every
+  K3 number used, including its reconciliation pseudo-task
+  coalescing/absorption and pre-first-merge handling. Shadow defines no
+  base rule of its own.
+- **Ancestry invariant**, checked before any fold: every reported task
+  head is an ancestor of its wave head; violation aborts the shadow with a
+  named error (never a silent skip, never a guessed base).
 - **Durations:** per-task wall-clock from committer timestamps on the task
   branches (always present in the data shadow already reads), reported as
   approximate; the makespan model re-runs with them. Journal parsing is
@@ -130,10 +148,11 @@ What shadow adds — the only new machinery:
   verbatim, the measured-duration makespan re-model.
 
 **Target run and freshness:** shadow the next real waves-engine run in this
-repo (drain or single-plan), running `shadow_fold.py` before any subsequent
-launch — `redirect_args.py` clears prior launches' sidecars, so the window
-closes at the next launch. The script is read-only toward the repo
-(worktree-free; contents via `git show`).
+repo (drain or single-plan). The finalized reports are durable, so there is
+no sidecar race; the only freshness requirement is that the run's commits
+remain reachable (shadow before branch pruning, or on the merged history).
+The script is read-only toward the repo (worktree-free; contents via
+`git show`).
 
 **Fidelity floor:** G1's floor is one run, down from K3's three. Defended,
 not just asserted: K3's floor guarded against extraction lossiness in the
@@ -171,10 +190,14 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
   the kit has run them concurrently before.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
-  conflict → resolver (component 4). Fold order is completion order; the
-  final state is additionally re-folded in shuffled orders via the reused
-  `sampled_orders`/`fold_all` — the same sampling policy as every prior K1
-  number, not a re-implementation — as a live K1 check.
+  conflict → resolver (component 4). Fold order is completion order.
+- **Live K1 check, resolution-aware:** shuffled re-folds of the raw task
+  set (via the reused `sampled_orders`/`fold_all` — the same sampling
+  policy as every prior K1 number) assert two things: the shuffles are
+  outcome-identical **to each other** (manifest + conflict set, resolutions
+  excluded — raw folds can never equal a resolver-modified state), and
+  re-applying the recorded `resolvedFileLines` per conflicted path after
+  each shuffled fold **converges to the shipped manifest**.
 - **Materialize and gate:** write the final manifest to a branch via a
   dedicated writer in the driver — a temp worktree plus `git add`/`commit`
   — not `repo_weave.materialize`, whose failure-artifact-only contract is
@@ -203,6 +226,11 @@ implementers; the scrub window closes only after the last resolver call):
   honest evidence).
 - **No tools, no repo access, no shell** — a pure text-to-JSON call
   (headless, structured output).
+- **Text conflicts only:** non-text conflict kinds (`binary`, byte-side
+  `delete/modify`) carry one-line narrations with no visible-line list —
+  `resolvedFileLines` has no meaning there; they park with the reason
+  recorded (G3). The resolver dispatches only on kernel-narrated text
+  conflicts.
 - **Guardrails:** one retry on contract violation; second violation parks
   that path as recorded evidence (hard gate 3). Every narration, resolver
   transcript, and resolution is stored verbatim in the report for operator
@@ -220,8 +248,9 @@ implementers; the scrub window closes only after the last resolver call):
   manifest-to-blob — to the shipped wave tree. Narrated conflicts that git
   merged silently are reported and do not red the gate; divergence does.
 - **G2 (live mechanics):** arm B completes; the folded tree passes the
-  contend sealed suite (exit 0, 9/9); the live K1 shuffle check holds on the
-  final fold.
+  contend sealed suite (exit 0, 9/9); the resolution-aware live K1 check
+  holds (shuffled raw folds outcome-identical to each other; recorded
+  resolutions re-applied converge to the shipped manifest).
 - **G3 (resolver honesty):** every conflict either resolves within contract
   or parks with the violation recorded — no silent fallback, no unreported
   drop (no-silent-caps).
@@ -263,17 +292,22 @@ a failing E2 grade → stop; the report is the record either way.
 All committed tests run in the ordinary suite and CI:
 
 - `tests/test_repo_weave_report_determinism.py` — both #132 seed sets
-  (12/400, 29/500) as regressions; `(path, kind)` dedupe pins; the two
+  (12/400, 29/500) as regressions; accumulation-site dedupe pins; the
+  lifted writers-cap in the randomized binary-mix fuzz; the two
   presentation-nit fixes.
 - `tests/test_shadow_fold.py` — replay against a synthetic `run-<stamp>`
-  directory (fabricated repo with two waves incl. one multi-task wave and
-  one reconciliation commit); the wave-1 base walk incl. a merge-commit
-  base; ancestry-violation abort.
+  directory (fabricated repo + finalized report, two waves incl. one
+  multi-task wave and one reconciliation commit); the **pre-first-merge
+  reconciliation case** (non-merge commit between fork and wave-1's first
+  merge — the case a naive chain walk mis-bases); redirect-stitching and
+  the partially-shadowable park; ancestry-violation abort.
 - `tests/test_frontier_cell.py` — edge-drop pinned to
   `schedule_model.SAME_FILE_WHYS` (imported, not re-typed);
-  fold-on-completion ordering; resolver whole-file splice-back with a fake
-  resolver, including a file carrying two conflicted blocks in one
-  narration; contract-violation → retry → park; the oversize-file park.
+  fold-on-completion ordering; resolver **whole-file application** with a
+  fake resolver, including a file carrying two conflicted blocks in one
+  narration; the resolution-aware live K1 check (shuffles identical to
+  each other + resolutions re-applied converge); non-text-kind park;
+  contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
   replay behavior.
 - Live cells and the shadow of a real run are runtime deliverables recorded
@@ -281,12 +315,16 @@ All committed tests run in the ordinary suite and CI:
 
 ## Trim review
 
-**Author disclosure (Adds/Removes):** Adds — shadow front-end over the
-existing replay internals; frontier driver + resolver (directive scope);
-#132 fix; measured-duration re-model (invited-adjacent: the re-adjudication
-named "or measured durations"); peak-parallelism bookkeeping (minor,
-near-free). Removes — nothing; quarantined in `evals/`, purchased against
-the structural subtraction the frontier line exists to earn.
+**Author disclosure (Adds/Removes, refreshed after round 2):** Adds —
+shadow front-end over the existing replay internals; frontier driver +
+resolver (directive scope); #132 fix; measured-duration re-model
+(invited-adjacent: the re-adjudication named "or measured durations");
+peak-parallelism bookkeeping (minor, near-free); and from the review rounds:
+the concurrency preflight, the 400-line resolver cap, the dedicated branch
+writer, redirect-stitching/partial-shadow posture, and the
+resolution-aware live K1 form. Removes — nothing; quarantined in `evals/`,
+purchased against the structural subtraction the frontier line exists to
+earn.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "deliberately-purchased, quarantined in evals/, adopting T1–T4 shaves three to four concepts")
 
@@ -346,3 +384,41 @@ the structural subtraction the frontier line exists to earn.
   invited-adjacent) and 4 (peak parallelism) disclosed above; expansion 1
   (canonical report format) deleted per T1; drift 5 fixed per T3; shrink 6
   fixed per U2.
+
+### Round 2 (fresh-context reviewer; grade: `netConceptDelta` **up** — "adopting findings 1 and 2 makes it a *smaller* up: each deletes a duplicate rule or a fragile data source")
+
+Verdict: not yet at diminishing returns — two round-1 adoptions (T2's
+literal reuse and the base-derivation text) were mutually inconsistent, and
+the code showed the sidecar walk wrong on real history.
+
+- **F1 (two contradictory base rules; the sidecar walk mis-bases on
+  pre-first-merge reconciliation commits — verified against the
+  `ultra/integration-20260731-155401` chain):** **ADOPTED.** Shadow's
+  walker only bounds the chain; `_group_chain`'s merge-base grouping is the
+  sole base authority; both duplicate base sentences deleted; the
+  pre-first-merge reconciliation case added to `test_shadow_fold.py`.
+- **F2 (`heads/` is redirect-fragile — `redirect_args.py` deletes it on
+  every same-run relaunch; `report.json` is the durable, fail-loud record
+  and also carries wave membership):** **ADOPTED.** Head source is now the
+  finalized report(s); redirect-bearing runs stitch or park as partially
+  shadowable with the fragment named; freshness caveat shrunk; the
+  wave-membership under-specification closes via `waveMerges[].branches`.
+- **F3 (per-call `(path, kind)` dedupe in `fold` is a no-op against the
+  cross-fold multiset flip; delete-kind fix specified only by reference;
+  writers-cap lift missing):** **ADOPTED.** Dedupe moved to the
+  accumulation site; the driver's consumption of the pre-dedupe per-fold
+  stream made explicit; the committed seed sets named as the contract for
+  the delete/modify kind-flip; the writers-cap lift added to the test
+  plan.
+- **F4 (live K1 undefined once a resolver has intervened — raw shuffles
+  can never equal a resolver-modified state):** **ADOPTED**, in the
+  stronger form: shuffles outcome-identical to each other, plus recorded
+  resolutions re-applied per conflicted path converge to the shipped
+  manifest. G2 restated to match.
+- **F5 (whole-file contract silent on non-text conflict kinds):**
+  **ADOPTED.** Non-text kinds park with reason recorded; resolver
+  dispatches only on kernel-narrated text conflicts.
+- **F6 (stale "splice-back" vocabulary from the deleted region design):**
+  **ADOPTED.** Renamed to whole-file application throughout.
+- **Bookkeeping (author disclosure predated round 1's own additions):**
+  **ADOPTED.** Disclosure refreshed.
