@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–8 adopted (round 8 confirmed the round-7 deletion sound); round 9 expected terminal / operator review
+**Status:** trim rounds 1–9 adopted; round 10 expected terminal / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -147,17 +147,19 @@ What shadow adds — the only new machinery:
   fragment — never a silent fragment claimed as the run. (No stitching
   machinery; there is nothing durable to stitch from.)
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
-  the integration chain — tip = the last MERGED wave head; the walk is
-  bounded below by the earliest MERGED wave head's parent; the floor,
-  which exists only on merge-bearing chains, is the first two-parent
-  merge's merge-base. If the bounded chain carries no two-parent merge,
-  the run records the inherited "no per-task merges" exclusion (durations
-  still harvested from the report). The bounded `[(sha, parents)]` chain
-  goes to the reused `_group_chain`, whose merge-base grouping is the
-  sole authority for **both wave base and fold membership**: the same
-  rule every K3 number used. Shadow defines no base or membership rule of
-  its own; the report's `branches` field labels tasks, never selects
-  them.
+  the integration chain — tip = the last MERGED wave head; **the lower
+  bound is one rule with a named fallback:** the first two-parent merge's
+  merge-base when the report-bounded walk finds one (this is the floor,
+  and it keeps pre-first-merge chain commits — the engine fast-forwards
+  the first branch of every wave — in `_group_chain`'s hands), else the
+  earliest MERGED wave head's parent (the merge-free case, which records
+  the inherited "no per-task merges" exclusion; per-task durations are
+  still harvested — head identification from the report, committer times
+  from git). The bounded `[(sha, parents)]` chain goes to the reused
+  `_group_chain`, whose merge-base grouping is the sole authority for
+  **both wave base and fold membership**: the same rule every K3 number
+  used. Shadow defines no base or membership rule of its own; the
+  report's `branches` field labels tasks, never selects them.
 - **Fast-forwarded waves need no apparatus of their own.** A single-task
   wave fast-forwards, leaving a single-parent chain commit — exactly the
   shape the inherited #133 semantics already handle, field-validated
@@ -178,19 +180,21 @@ What shadow adds — the only new machinery:
   **every MERGED task in the report** — the duration harvest never needed
   the fold, so FF-wave tasks are included — as the interval from the
   prior wave head's (or chain floor's) committer time to the task tip's
-  committer time, reported as approximate; a task whose tip sits at or
-  below the chain floor reports duration unavailable rather than a
-  degenerate zero. The makespan model re-runs with them.
+  committer time — the earliest wave's interval starts at the walk's
+  lower bound's committer time — reported as approximate; a task whose
+  tip sits at or below the walk's lower bound reports duration
+  unavailable rather than a degenerate zero. The makespan model re-runs
+  with them.
   Reconciliation pseudo-tasks get no duration and are excluded
   from the re-model (they are merge machinery, not scheduled work),
   noted in the report. Journal parsing is deferred unless the first shadow
   report shows timestamps too crude to inform E1 (machinery earned by
   recurrence).
 - **Report:** `evals/frontier/results/<date>-shadow-<stamp>.md` + JSON:
-  per-wave disposition (`clean` / `divergent` / `conflicted` /
-  `absorbed` / `trailing-cut` / `excluded` — congruent with the inherited
-  dispositions the tests assert), every narration verbatim, the
-  measured-duration makespan re-model.
+  per-item disposition (`clean` / `divergent` / `conflicted` per wave;
+  `absorbed` / `trailing-cut` per reconciliation event; `excluded` per
+  run — congruent with the inherited dispositions the tests assert),
+  every narration verbatim, the measured-duration makespan re-model.
 
 **Target run and freshness:** shadow the next real waves-engine run in this
 repo (drain or single-plan). The finalized reports are durable, so there is
@@ -734,3 +738,30 @@ Five one-clause residue findings, all adopted:
   FF-wave rows never counted toward the floor.
 - **F5 (zero-interval duration degenerate when a task tip sits at the
   chain floor):** **ADOPTED.** Reports duration unavailable.
+
+### Round 9 (fresh-context reviewer; grade: `netConceptDelta` **up** — "adopting F1 is concept-neutral-to-down: walk bound and floor merge into one rule")
+
+Verdict: not clean, but the two findings are the last residue of a single
+round-8 adoption (its walk bound), both demonstrated on on-disk chains,
+both one-sentence fixes. Full-pass verification found everything else
+clean, including a re-verification of the fabricated-tail sha and a third
+consecutive no-change concurrence on both standing under-spec seams.
+
+- **F1 (round-8's walk bound orphans pre-first-merge chain commits on
+  merge-bearing chains — the engine FFs the first branch of every wave,
+  so the first wave's first task would silently drop out of `touched` on
+  the common shape; round 8's own confirmation trace had used the
+  pre-round-8 bound):** **ADOPTED.** The lower bound is one rule with a
+  named fallback: the first two-parent merge's merge-base when one
+  exists (keeping pre-first-merge commits in `_group_chain`'s hands),
+  else the earliest MERGED wave head's parent (the merge-free case).
+  Walk bound and floor collapse into one rule; round-2 F1, round-8 F2,
+  and the test plan become mutually consistent.
+- **F2 (merge-free chains: the earliest wave's duration interval start
+  was undefined, so the merge-free harvest promise was aspirational):**
+  **ADOPTED.** The earliest wave's interval starts at the walk's lower
+  bound's committer time; the unavailable clause re-anchored to the
+  lower bound.
+- **Minors:** disposition granularity labeled per unit (wave /
+  reconciliation event / run); "harvested from the report" tightened to
+  head-identification-from-report, committer-times-from-git.
