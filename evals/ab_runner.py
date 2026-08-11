@@ -594,6 +594,20 @@ def run_bootstrap_cell(engine_ref, root):
     return row
 
 
+def prepare_cell(plan, root):
+    """The shared cell setup for BOTH A/B entry points (#139): engine
+    worktree, seal installs, project clone, workflow seeding, session
+    config. Pre-#138 the two entry points ran drifting copies of this
+    sequence. Seeds a live credential — the caller's try/finally
+    scrub_credentials must begin immediately after this returns."""
+    engine = prepare_engine(plan["engineRef"], root)
+    install_seals(plan, root)
+    workdir, baseline = clone_project(plan)
+    seed_workflows(engine, workdir)
+    env = prepare_session_config(engine, workdir.parent)
+    return workdir, baseline, env
+
+
 # --------------------------------------------------------------------------- #
 # CLI                                                                          #
 # --------------------------------------------------------------------------- #
@@ -631,11 +645,7 @@ def main():
 
     started = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
-    engine = prepare_engine(args.engine_ref, root)
-    install_seals(plan, root)
-    workdir, _baseline = clone_project(plan)
-    seed_workflows(engine, workdir)
-    env = prepare_session_config(engine, workdir.parent)
+    workdir, _baseline, env = prepare_cell(plan, root)
     try:
         transcript, gate_report, mode = drive_run(workdir, plan, env)
         try:

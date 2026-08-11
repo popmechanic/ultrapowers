@@ -33,25 +33,16 @@ def rev(workdir):
 def main():
     engine_ref, label = sys.argv[1], sys.argv[2]
     plan = ab.build_run_plan(engine_ref, label, "chained", ROOT)
-    engine = ab.prepare_engine(engine_ref, ROOT)
-    ab.install_seals(plan, ROOT)
-    workdir, baseline = ab.clone_project(plan)
-
-    # Registry-race fix + .claude/ exclude live in the kit (ab.seed_workflows).
-    ab.seed_workflows(engine, workdir)
-
-    # Spec §The eval gate: seed pre-existing operator dirt BEFORE launch.
-    (workdir / "OPERATOR-WIP.txt").write_text("uncommitted operator scratch\n")
-    tracked = sh(["git", "ls-files"], workdir).stdout.splitlines()[0]
-    with open(workdir / tracked, "a") as f:
-        f.write("\n# operator uncommitted edit (eval dirt seed)\n")
-    dirt_before = sh(["git", "status", "--porcelain"], workdir).stdout
-
-    pre = rev(workdir)
-    # Keychain-first auth seeding (#107 round 2) lives in the kit — done
-    # inside ab.prepare_session_config via ab.seed_credentials.
-    env = ab.prepare_session_config(engine, workdir.parent)
+    workdir, baseline, env = ab.prepare_cell(plan, ROOT)
     try:
+        # Spec §The eval gate: seed pre-existing operator dirt BEFORE launch.
+        # Inside the try — the token is already live (kit scrub-window contract).
+        (workdir / "OPERATOR-WIP.txt").write_text("uncommitted operator scratch\n")
+        tracked = sh(["git", "ls-files"], workdir).stdout.splitlines()[0]
+        with open(workdir / tracked, "a") as f:
+            f.write("\n# operator uncommitted edit (eval dirt seed)\n")
+        dirt_before = sh(["git", "status", "--porcelain"], workdir).stdout
+        pre = rev(workdir)
         transcript, gate_report, mode = ab.drive_run(workdir, plan, env)
     finally:  # the seeded token never outlives the drive (kit contract)
         ab.scrub_credentials(env)
