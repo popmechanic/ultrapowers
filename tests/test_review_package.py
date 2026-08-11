@@ -141,8 +141,49 @@ def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
     out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
     assert out_path.exists()
     assert out_path.resolve().parent == dest.resolve()
+    assert out_path.name == "review-main.diff"   # branch-derived (fixture repo is on main)
+    body = out_path.read_text()
+    assert "# Review package:" in body and "## Commits" in body
+
+
+def test_same_branch_redo_overwrites_predecessor(tmp_path):
+    # The #130 trap: a redo on the SAME branch must overwrite the stale
+    # packet, not accrete beside it — at most one packet per branch.
+    repo, base, head = make_repo(tmp_path)
+    p1 = run_script(repo, base, head)
+    assert p1.returncode == 0, p1.stderr
+    first = pathlib.Path(p1.stdout.strip().splitlines()[-1])
+    (repo / "f.txt").write_text("redone line\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "third commit subject")
+    head2 = git(repo, "rev-parse", "HEAD").stdout.strip()
+    p2 = run_script(repo, base, head2)
+    assert p2.returncode == 0, p2.stderr
+    second = pathlib.Path(p2.stdout.strip().splitlines()[-1])
+    assert second == first                      # same filename: overwrite, not accrete
+    packets = list(first.parent.glob("review-*.diff"))
+    assert packets == [first]                   # exactly one packet on disk
+    body = first.read_text()
+    assert "third commit subject" in body       # content is the redo's
+    assert head2 in body                        # header records the new head
+
+
+def test_branch_name_is_sanitized(tmp_path):
+    repo, base, head = make_repo(tmp_path)
+    git(repo, "checkout", "-b", "ultra/task_3+x")
+    p = run_script(repo, base, head)
+    assert p.returncode == 0, p.stderr
+    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
+    # `/` and `+` map to `-`; `_` and `.` survive.
+    assert out_path.name == "review-ultra-task_3-x.diff"
+
+
+def test_detached_head_falls_back_to_sha_pair_name(tmp_path):
+    repo, base, head = make_repo(tmp_path)
+    git(repo, "checkout", "--detach", head)
+    p = run_script(repo, base, head)
+    assert p.returncode == 0, p.stderr
+    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
     base7 = git(repo, "rev-parse", "--short", base).stdout.strip()
     head7 = git(repo, "rev-parse", "--short", head).stdout.strip()
     assert out_path.name == f"review-{base7}..{head7}.diff"
-    body = out_path.read_text()
-    assert "# Review package:" in body and "## Commits" in body
