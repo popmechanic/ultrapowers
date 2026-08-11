@@ -385,13 +385,17 @@
 **Notes:** From PR #138's review (PLAUSIBLE, anchored ab_runner.py:333). HALF ALREADY LANDED: the empty-seed hard-fail shipped in #138's fix round (verified in main today, ab_runner.py:368-373 refuses an unprobeable cell). Remaining scope is ONLY part (b): one pin test asserting seed_workflows and hooks/session_start.sh extract the same file list from the committed *.harness.json manifests. This is a two-code-readers contract pin (test_no_prompt_drift precedent), not a prose pin — compatible with the anti-pin doctrine. Consequence if unpinned: infrastructure drift masquerades as an engine regression in A/B numbers. PLAN TOGETHER WITH #139. ACCEPTANCE CONDITIONAL (gate 2026-08-10): planning must examine the one-reader option FIRST — if #139's prepare_cell extraction can cheaply collapse kit+hook to a single manifest reader, the pin is never born; the pin test lands only if cross-language reality (bash hook / python kit) keeps two readers.
 
 ### #141: ultralearn harvester cannot see subagent-driven/inline drains — a growing sensing blind spot
-**State:** accepted
+**State:** queued
 **Score:** 6 — sensing honesty for the growing off-waves drain share; occurrence #1 so prose only, no detector build
 **Est-files:** skills/ultralearn/SKILL.md
+**Plan:** docs/superpowers/plans/2026-08-10-sense-pass-posture-pair.md
+**Engine:** inline
 **Notes:** First formal occurrence (2026-08-10 sense pass); prose per machinery-earned-by-recurrence, confirmed by operator at triage commission. Take the issue's option 2: the sense verb documents that drains are harvested by commissioned read, not by the detector — the harvester's "0 new" on the 2026-08-10 drain (0 Workflow calls, 4 plans / 9 tasks) was CORRECT behavior. Recurrence is by design (the execution-fit rubric honestly routes small portfolios off waves), so record the PROMOTE TRIGGER explicitly: a sense pass where commissioned reads MISS or misread drain evidence — not merely occur — buys option 1 (sessionKind:drain detection via docket transitions + detached-worktree run_acceptance receipts). CLUSTER with #142: one tiny inline prose pair, both 2026-08-10 sense-pass posture findings.
 
 ### #142: Drain per-task review devolved to orchestrator-inline diff reads — review posture undeclared in the drain flow
-**State:** accepted
+**State:** queued
 **Score:** 6 — verification-posture honesty at the drain: silent narrowing recorded nowhere; occurrence #1 so prose only
 **Est-files:** skills/ultradocket/SKILL.md
+**Plan:** docs/superpowers/plans/2026-08-10-sense-pass-posture-pair.md
+**Engine:** inline
 **Notes:** First formal occurrence (2026-08-10 sense pass); prose per machinery-earned-by-recurrence. Not an incident — suite gates held (exit-code authority intact, JS-sim guard fired for the waves.js plan) and the redirect canary read 0 — but the 2026-08-10 drain dispatched 9 implementer tasks with ZERO independent reviewers while the authoring session had promised per-task review, and nothing recorded the narrowing. Fix: the run-mode flow declares its review posture — (a) drains inherit full subagent-driven per-task review vs (b) drains run on suite-gate authority with review-by-exception — and the end gate states which posture was used. One paragraph, no guard. The (a)-vs-(b) choice itself is an OPERATOR decision at planning (trades drain tokens against review depth for every future drain). Recurrence after write-down is what buys enforcement. CLUSTER with #141.
