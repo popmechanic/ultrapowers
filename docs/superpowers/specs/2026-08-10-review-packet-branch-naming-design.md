@@ -33,15 +33,16 @@ independently. Sha-pair names make every redo *accrete* a stale packet.
 
 `default_name()` derives from the current branch instead of the sha pair:
 
-- `review-<sanitized-branch>.diff`, sanitization mapping `/` and every
-  character outside `[A-Za-z0-9._-]` to `-`
+- `review-<sanitized-branch>.diff`, sanitization mapping every character
+  outside `[A-Za-z0-9._-]` to `-`
   (`ultra/task-3-fix` → `review-ultra-task-3-fix.diff`).
 - Branch detection MUST be `git branch --show-current` — exit 0 with empty
   output on detached HEAD, and per-worktree correct in linked worktrees.
-  (`git symbolic-ref --short HEAD` exits 1 when detached and would kill the
-  script under its `set -euo pipefail`; the existing
-  `test_packet_dir_shared_across_worktrees` runs the script in a detached
-  worktree, so the wrong idiom fails the current suite immediately.)
+  (`git symbolic-ref --short HEAD` exits 128 when detached and, in the
+  assignment form, would kill the script under its `set -euo pipefail`; the
+  existing `test_packet_dir_shared_across_worktrees` runs the script in a
+  detached worktree, so the wrong idiom fails the current suite
+  immediately.)
 - A redo on the same branch produces the same filename and **overwrites its
   predecessor**. Which redo shape this kills, precisely: the same-branch
   history rewrite (an implementer's in-session amend/reset — exactly the
@@ -50,11 +51,15 @@ independently. Sha-pair names make every redo *accrete* a stale packet.
   engine-assigned branch (waves.js fix loop), so their packets still
   accrete one-per-branch — deliberately untouched, and harmless: each such
   packet is branch-consistent (names a sha its branch still contains).
-- Sanitization collisions (two live branches differing only in characters
-  that both map to `-`, e.g. `a/b` vs `a+b`, sharing one filename in the
-  shared review dir) degrade gracefully, not silently wrong: the later
-  write wins, and the reviewer's recorded-HEAD-mismatch fallback recovers
-  the true diff read-only via `git diff BASE HEAD`.
+- Filename collisions between live branches (characters that both map to
+  `-`, e.g. `a/b` vs `a+b`; a branch literally named `a-b`; or case-folding
+  on default-case-insensitive macOS filesystems, `Foo` vs `foo`) degrade
+  gracefully, not silently wrong: the later write wins, and the reviewer's
+  recorded-HEAD-mismatch fallback recovers the true diff read-only via
+  `git diff BASE HEAD`. (The content header echoes the caller's arguments
+  verbatim — the engine passes shas; the header being shas is a caller
+  property, not a script guarantee, and a non-matching header string routes
+  to the same fallback either way.)
 - Overwrite destroys the predecessor packet — including, in the incident's
   shape, the contaminated first attempt's forensic diff. Accepted: no
   consumer reads old packets (verified across audit, finalize, viewer,
@@ -142,3 +147,29 @@ over the filename).
 **Round-1 marginal value:** one artifact-changing finding (U3 — the
 pipefail-safe idiom, else the first implementation fails the existing
 suite); the rest spec-text accuracy and safety confirmation.
+
+### Round 2 (second independent reviewer — the diminishing-returns check)
+
+Fresh-context subagent; traced every claim to ground, including empirical
+checks of the sanitizer example and both git idioms' exit behavior, the
+waves.js fix-loop fresh-branch claim, and both cleanup mechanisms.
+Verdicts and adjudication:
+
+| # | Finding | Adjudication |
+|---|---|---|
+| F1 | `symbolic-ref` exits 128 (not 1) when detached; kill-the-script consequence holds in the assignment form | **Adopted** — wording corrected |
+| F2 | "Full shas" in the header is a caller property, not a script guarantee (the header echoes arguments verbatim) | **Adopted** — stated with the fallback-either-way consequence |
+| U-a | Collision acknowledgment named only one of three modes (literal `a-b`; macOS case-folding) | **Adopted** — widened, same degradation |
+| T1 | `/`-callout redundant with the char class | **Adopted** — dropped |
+
+Rejections: none. All round-1 absorptions verified to compose with the
+code; all three new tests confirmed implementable in the test file's
+existing fixture style; scope confirmed narrower than the issue.
+
+**Round-2 reviewer grade: `netConceptDelta = flat`** — concurring with
+round 1.
+
+**Stopping decision (author, applying the pre-declared rule):** diminishing
+returns reached — round 2's own assessment: "zero findings change the
+built artifact … the spec is build-ready." Two rounds, 9 findings, all
+adopted, 0 rejected; grades: flat ×2.
