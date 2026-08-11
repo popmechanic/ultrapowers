@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–3 adopted; round 4 pending / operator review
+**Status:** trim rounds 1–4 adopted; round 5 pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -34,9 +34,9 @@ This increment closes all three, without touching the engine.
 
 Answer, with recorded evidence:
 
-1. **Shadow:** does the weave layer reproduce a *freshly finished* real run's
-   shipped tree from its recorded task endpoints — manifest-identical under
-   the layer's normalization, zero silent divergence?
+1. **Shadow:** does the weave layer reproduce a real run's shipped tree
+   from its recorded task endpoints — manifest-identical under the layer's
+   normalization, zero silent divergence?
 2. **Live:** when the contend fixture's three same-file tasks genuinely run in
    parallel — real implementer agents, manyana-authoritative merging, resolver
    on narrated conflicts — does the folded tree pass the fixture's sealed
@@ -122,21 +122,29 @@ What shadow adds — the only new machinery:
   `finalize_report.py` copies the sidecar-derived shas into the report
   fail-loud *before* `redirect_args.py` clears `heads/` on a redirect
   relaunch, and its own comments name the report as the durable record.
-  **Discovery rule:** every JSON in `<run-dir>` carrying a `waveMerges`
-  list, in either envelope shape (top-level or `result`-wrapped — the two
-  shapes `finalize_report.select_target` accepts), plus an explicit
-  `--report` override; the ancestry invariant and sha resolution are what
-  *authenticate* a candidate as finalized — an unfinalized report with a
-  fabricated tail aborts loud. **The report's role is exactly three
-  things:** chain bounding, the ancestry invariant, and task labeling.
-  Only `status == "MERGED"` wave entries are consumed (non-MERGED
-  headShas are token-reported, not file-derived) — this scoping applies to
-  stitching too.
-- **Redirect-bearing runs, named posture:** a run with redirect relaunches
-  has one finalized report per gate; shadow stitches the launches from
-  those reports, and where stitching cannot reconstruct a wave it parks the
-  run as **partially shadowable with the fragment named in the report** —
-  never a silent fragment claimed as the run.
+  **Discovery rule:** enumerate every JSON in `<run-dir>` carrying a
+  `waveMerges` list, in either envelope shape (top-level or
+  `result`-wrapped — the two shapes `finalize_report.select_target`
+  accepts); then (a) dedupe candidates with identical `waveMerges`
+  content, (b) select the finalized output — `report.json`, the file
+  `finalize_report.py` rewrote — with `--report` as the explicit override;
+  raw saved results (`workflow-result*.json` and kin) are non-candidates:
+  their shas may resolve and their ancestry may hold, yet they are
+  token-reported, the exact artifact class this sourcing excludes. A
+  non-selected candidate failing sha/ancestry checks is excluded by name;
+  **abort is reserved for the selected candidate** (a finalized report
+  with a fabricated tail aborts loud). **The report's role is exactly four
+  things:** chain bounding, the ancestry invariant, task labeling, and
+  wave-head segmentation for non-merge heads. Only `status == "MERGED"`
+  wave entries are consumed (non-MERGED headShas are token-reported, not
+  file-derived).
+- **Redirect-bearing runs, named posture:** pre-redirect launches are not
+  recoverable from finalized reports — `redirect_args.py` deletes their
+  sidecars, and the on-disk evidence shows only the final launch
+  finalized. Shadow therefore covers **the final launch's finalized report
+  only**, and parks every earlier launch by name as an unfinalized
+  fragment — never a silent fragment claimed as the run. (No stitching
+  machinery; there is nothing durable to stitch from.)
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
   the integration chain (tip and floor) from the report's shas and hands
   the bounded `[(sha, parents)]` chain to the reused `_group_chain`, whose
@@ -145,22 +153,29 @@ What shadow adds — the only new machinery:
   reconciliation pseudo-task coalescing/absorption and pre-first-merge
   handling. Shadow defines no base or membership rule of its own; the
   report's `branches` field labels tasks, never selects them.
-- **Fast-forwarded waves (the one named fallback):** a single-task wave
+- **Fast-forwarded waves and the composition rule:** a single-task wave
   fast-forwards, leaving no two-parent merge for `_group_chain` to see —
-  the most recent real run's chain is *all* fast-forwards. For a wave whose
-  reported head is a non-merge commit, shadow folds the wave's single
-  reported task endpoint against the prior wave head and compares to the
-  wave-head tree (a trivial fold, still manifest-to-manifest; the ancestry
-  invariant still applies). Multi-task waves remain `_group_chain`'s
-  alone.
+  and real chains are *mixed* (true merge waves beside FF waves in one
+  run). The composition is explicit: shadow **segments the bounded chain
+  at the report's MERGED `headSha`s**. A segment containing two-parent
+  merges goes to `_group_chain` unchanged (sole authority for base and
+  membership there); a segment of single-parent commits ending at a
+  reported wave head takes the FF fallback — fold the wave's single
+  reported task endpoint against the prior wave head and compare to the
+  wave-head tree (a trivial fold, still manifest-to-manifest; the
+  ancestry invariant still applies); any other segment shape parks by
+  name. FF folds are near-tautological by construction, hence G1's
+  two-endpoint floor below.
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
 - **Durations:** per-task wall-clock from committer timestamps — the
   interval from the wave base commit's committer time to the task tip's
   committer time — reported as approximate; the makespan model re-runs
-  with them. Journal parsing is deferred unless the first shadow report
-  shows timestamps too crude to inform E1 (machinery earned by
+  with them. Reconciliation pseudo-tasks get no duration and are excluded
+  from the re-model (they are merge machinery, not scheduled work),
+  noted in the report. Journal parsing is deferred unless the first shadow
+  report shows timestamps too crude to inform E1 (machinery earned by
   recurrence).
 - **Report:** `evals/frontier/results/<date>-shadow-<stamp>.md` + JSON:
   per-wave verdict (`clean` / `divergent` / `conflicted`), every narration
@@ -204,9 +219,10 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
   fed the task's plan body; must commit its work. Endpoint diff = branch
   HEAD vs base. Concurrent `claude -p` sessions under the cell's one
   throwaway `CLAUDE_CONFIG_DIR` is an intended-and-probed pattern: a cheap
-  preflight (two trivial concurrent headless calls) runs before the real
-  cell; preflight failure parks the arm with the named reason — nothing in
-  the kit has run them concurrently before.
+  preflight runs before the real cell — two trivial concurrent headless
+  calls, plus concurrent `git worktree add` + commit in the cloned repo
+  (ref/lock races the kit has never exercised either); preflight failure
+  parks the arm with the named reason.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
   conflict → resolver (component 4). Fold order is completion order.
@@ -263,10 +279,13 @@ implementers; the scrub window closes only after the last resolver call):
 
 **Hard gates — any red stops the experiment with a written report:**
 
-- **G1 (shadow fidelity):** ≥1 real multi-task run shadowed with zero silent
-  divergence: all fold orders outcome-identical to each other, and every
-  clean path (touched − conflicted, the K3 discipline) manifest-identical —
-  under the weave layer's text normalization, manifest-to-manifest, never
+- **G1 (shadow fidelity):** ≥1 real run shadowed with zero silent
+  divergence, **including at least one wave that folds ≥2 endpoints** (a
+  true two-parent merge wave — all-FF runs accumulate into results but do
+  not satisfy the floor, since FF folds are near-tautological): all fold
+  orders outcome-identical to each other, and every clean path (touched −
+  conflicted, the K3 discipline) manifest-identical — under the weave
+  layer's text normalization, manifest-to-manifest, never
   manifest-to-blob — to the shipped wave tree. Narrated conflicts that git
   merged silently are reported and do not red the gate; divergence does.
 - **G2 (live mechanics):** arm B completes; the folded tree passes the
@@ -276,7 +295,10 @@ implementers; the scrub window closes only after the last resolver call):
   manifest).
 - **G3 (resolver honesty):** every conflict either resolves within contract
   or parks with the violation recorded — no silent fallback, no unreported
-  drop (no-silent-caps).
+  drop (no-silent-caps). G3 is an *honesty* gate, not a quality gate:
+  G3-green means nothing was hidden, not that resolutions were correct —
+  correctness is the sealed suite's job (G2) and the grade is the
+  operator's (E2).
 
 **Operator-judged evidence — measured, never gated:**
 
@@ -323,9 +345,10 @@ All committed tests run in the ordinary suite and CI:
   two waves incl. one multi-task wave and one reconciliation commit); the
   **pre-first-merge reconciliation case** (non-merge commit between fork
   and wave-1's first merge — the case a naive chain walk mis-bases); a
-  **fast-forward-only chain** (the single-task fallback); MERGED-only
-  scoping; redirect-stitching and the partially-shadowable park;
-  ancestry-violation abort.
+  **mixed chain** (true-merge waves beside FF waves — the segmentation
+  rule) and a fast-forward-only chain; MERGED-only scoping; candidate
+  dedupe + raw-result demotion in discovery; final-launch-only shadow of a
+  redirect-bearing run with the named park; ancestry-violation abort.
 - `tests/test_frontier_cell.py` — edge-drop pinned to
   `schedule_model.SAME_FILE_WHYS` (imported, not re-typed);
   fold-on-completion ordering; resolver **whole-file application** with a
@@ -334,7 +357,10 @@ All committed tests run in the ordinary suite and CI:
   each other + deterministic event-log replay); no-narration-kind park;
   contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
-  replay behavior.
+  replay behavior — **except** the intended #132 reporting change: K1
+  outcome keys and conflict multisets legitimately change under the
+  accumulation-site dedupe, and the affected assertions are updated with
+  the fix, named in its commit.
 - Live cells and the shadow of a real run are runtime deliverables recorded
   in `evals/frontier/results/`, not CI.
 
@@ -345,11 +371,13 @@ shadow front-end over the existing replay internals; frontier driver +
 resolver (directive scope); #132 fix; measured-duration re-model
 (invited-adjacent: the re-adjudication named "or measured durations");
 peak-parallelism bookkeeping (minor, near-free); and from the review rounds:
-the concurrency preflight, the 400-line resolver cap, the dedicated branch
-writer, redirect-stitching/partial-shadow posture, and the
-resolution-aware live K1 form. Removes — nothing; quarantined in `evals/`,
-purchased against the structural subtraction the frontier line exists to
-earn.
+the concurrency preflight (headless + worktree), the 400-line resolver cap,
+the dedicated branch writer, the final-launch-only redirect posture with
+named parks, the FF-wave fallback and chain-segmentation rule, the report
+discovery/selection rule with MERGED-only scoping, and the recorded
+fold/resolution event log (a new durable artifact) with its deterministic
+replay. Removes — nothing; quarantined in `evals/`, purchased against the
+structural subtraction the frontier line exists to earn.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "deliberately-purchased, quarantined in evals/, adopting T1–T4 shaves three to four concepts")
 
@@ -486,3 +514,40 @@ against real artifacts (the reviewer verified all seven on-disk
   time → task-tip committer time.
 - **Under-specification (resolver dispatch synchrony):** subsumed by F2's
   event log, per the reviewer's own note.
+
+### Round 4 (fresh-context reviewer; grade: `netConceptDelta` **up** — "findings 1–3 delete machinery rather than add it")
+
+Verdict: not yet at diminishing returns — two round-3 adoptions
+contradicted a third and one round-2 adoption; both failures demonstrated
+on the on-disk run artifacts.
+
+- **F1 (FF fallback vs report-role narrowing mutually inconsistent;
+  mixed merge/FF chains are the real shape — `run-20260731-155401` has
+  both, and `_group_chain` would cut the FF wave as trailing):**
+  **ADOPTED.** Explicit composition rule: segment the bounded chain at the
+  report's MERGED headShas; merge-bearing segments → `_group_chain`
+  unchanged; single-parent segments ending at a reported head → FF
+  fallback; other shapes park. Report role restated as four things.
+- **F2 (discovery rule authenticates raw token-reported results — a
+  verified raw file passes sha + ancestry; duplicates double-shadow;
+  abort semantics backwards):** **ADOPTED.** Discovery now enumerates →
+  dedupes identical `waveMerges` → selects the finalized output
+  (`report.json`, `--report` override); raw results are non-candidates;
+  exclusion-by-name for non-selected failures; abort reserved for the
+  selected candidate.
+- **F3 ("one finalized report per gate" factually false on the only
+  redirect-bearing run on disk — pre-redirect waves are never recoverable
+  finalized):** **ADOPTED** as a trim: stitching machinery deleted;
+  final-launch-only shadow + earlier launches parked by name.
+- **F4 (FF fallback hollows G1 — an all-FF 3-task run satisfies the
+  letter while exercising zero multi-writer folds):** **ADOPTED.** G1 now
+  requires ≥1 shadowed wave folding ≥2 endpoints; all-FF runs accumulate
+  but do not satisfy the floor.
+- **F5 (disclosure stale again):** **ADOPTED.** Refreshed with round-3/4
+  additions.
+- **F6 (minors):** **ADOPTED.** "Freshly finished" trimmed; the
+  `run_eval` no-behavior-change pin carves out the intended #132
+  reporting change; reconciliation pseudo-tasks excluded from the
+  duration re-model; G3 explicitly labeled an honesty gate, not a quality
+  gate; the concurrency preflight extended to concurrent worktree
+  add/commit.
