@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–9 adopted; round 10 expected terminal / operator review
+**Status:** trim review COMPLETE — 10 rounds to terminal clean (round 10: no mechanism/contract/test-seam findings); awaiting operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -119,7 +119,8 @@ What shadow adds — the only new machinery:
 
 - **CLI:** `python3 shadow_fold.py <run-dir>` where `<run-dir>` is a
   `.claude/ultrapowers/run-<stamp>/` directory. The head source is the
-  run's **finalized report(s)**, not the raw `heads/` slots:
+  run's **finalized report** (exactly one per shadowed run — the
+  final-launch-only posture), not the raw `heads/` slots:
   `finalize_report.py` copies the sidecar-derived shas into the report
   fail-loud *before* `redirect_args.py` clears `heads/` on a redirect
   relaunch, and its own comments name the report as the durable record.
@@ -149,7 +150,8 @@ What shadow adds — the only new machinery:
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
   the integration chain — tip = the last MERGED wave head; **the lower
   bound is one rule with a named fallback:** the first two-parent merge's
-  merge-base when the report-bounded walk finds one (this is the floor,
+  merge-base when the report-bounded walk — searching no deeper than the
+  earliest MERGED wave head — finds one (this is the floor,
   and it keeps pre-first-merge chain commits — the engine fast-forwards
   the first branch of every wave — in `_group_chain`'s hands), else the
   earliest MERGED wave head's parent (the merge-free case, which records
@@ -193,7 +195,10 @@ What shadow adds — the only new machinery:
 - **Report:** `evals/frontier/results/<date>-shadow-<stamp>.md` + JSON:
   per-item disposition (`clean` / `divergent` / `conflicted` per wave;
   `absorbed` / `trailing-cut` per reconciliation event; `excluded` per
-  run — congruent with the inherited dispositions the tests assert),
+  run — congruent with the inherited dispositions the tests assert; a
+  MERGED wave whose head sits at/below the walk floor reports `absorbed`,
+  since it is the next merge's base; absorbed rows are derived at the
+  shadow layer — `_group_chain` filters rather than returns them),
   every narration verbatim, the measured-duration makespan re-model.
 
 **Target run and freshness:** shadow the next real waves-engine run in this
@@ -407,7 +412,9 @@ All committed tests run in the ordinary suite and CI:
 
 ## Trim review
 
-**Author disclosure (Adds/Removes, refreshed after round 7):** Adds —
+**Author disclosure (Adds/Removes, refreshed after round 10; rounds 8–10
+added no machinery — clause-level refinements of already-disclosed
+items):** Adds —
 shadow front-end over the existing replay internals; frontier driver +
 resolver (directive scope); #132 fix; measured-duration re-model
 (invited-adjacent: the re-adjudication named "or measured durations");
@@ -765,3 +772,28 @@ consecutive no-change concurrence on both standing under-spec seams.
 - **Minors:** disposition granularity labeled per unit (wave /
   reconciliation event / run); "harvested from the report" tightened to
   head-identification-from-report, committer-times-from-git.
+
+### Round 10 (fresh-context reviewer; grade: `netConceptDelta` **up** — "nine rounds have shrunk it to genuinely inherited concept load")
+
+**Verdict: CLEAN / TERMINAL — no finding changes a mechanism, contract,
+or test seam. The review loop ends here.** The reviewer traced both
+ground-truth chains commit-by-commit through the merged walk-bound/floor
+rule (mixed chain: floor keeps the pre-first-merge FF commit in
+`_group_chain`'s hands as a pseudo-task, trailing wave cuts by name;
+all-FF chain: fallback floor fires the inherited exclusion with durations
+anchored correctly), re-verified the fabricated-tail sha a fourth time,
+and confirmed every reuse claim as a code fact. Five clause-level
+findings, all adopted:
+
+1. A MERGED wave whose head sits at/below the walk floor reports
+   `absorbed` (no silent per-wave gap on the wave-1-FF shape).
+2. Absorbed rows are derived at the shadow layer — `_group_chain`
+   filters rather than returns them (reuse stays behavior-unchanged).
+3. Stale plural "report(s)" → singular (final-launch-only).
+4. The floor search span named (no deeper than the earliest MERGED wave
+   head), foreclosing a newest-merge-first misreading.
+5. Disclosure header refreshed (rounds 8–10 added no machinery).
+
+Both standing under-spec seams: fourth consecutive no-change concurrence
+(resolver authority bounded by whole-file contract + verbatim E2 + sealed
+suite at n=1; cell concurrency probed at real width, arms sequential).
