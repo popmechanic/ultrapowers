@@ -1,7 +1,7 @@
 # Frontier production test — shadow fold + live contended A/B — design
 
 **Date:** 2026-08-11
-**Status:** trim rounds 1–2 adopted; round 3 pending / operator review
+**Status:** trim rounds 1–3 adopted; round 4 pending / operator review
 **Acceptance:** suite — dev tooling in `evals/frontier/` and `tests/`; the live
 cells are runtime deliverables, like every eval run.
 **Origin:** operator adjudication of
@@ -79,7 +79,9 @@ issue's own recorded candidates, nothing more:
 - Dedupe on the declared `(path, kind)` identity **at the accumulation
   site** — `fold_all` / recording, where the duplicates actually arise
   (across successive fold calls; `fold` itself has no memory of prior
-  reports and a per-call dedupe would be a no-op). The arm-B driver
+  reports and a per-call dedupe would be a no-op). First occurrence kept —
+  narration is outside the identity, so the keep-policy decides which
+  narration survives in the recorded (S3-graded) list. The arm-B driver
   deliberately consumes the **pre-dedupe per-fold stream**: a second
   genuine `lines` conflict on an already-resolved path must still reach
   the resolver.
@@ -116,13 +118,20 @@ What shadow adds — the only new machinery:
 
 - **CLI:** `python3 shadow_fold.py <run-dir>` where `<run-dir>` is a
   `.claude/ultrapowers/run-<stamp>/` directory. The head source is the
-  run's **finalized report(s)** (`report.json` — `waveMerges[].headSha`,
-  `waveMerges[].branches` for wave membership, `tasks[].headSha`), not the
-  raw `heads/` slots: `finalize_report.py` copies the sidecar-derived shas
-  into the report fail-loud *before* `redirect_args.py` clears `heads/` on
-  a redirect relaunch, and its own comments name the report as the durable
-  record. Derive-don't-record holds — the report's shas are themselves
-  mechanically file-derived.
+  run's **finalized report(s)**, not the raw `heads/` slots:
+  `finalize_report.py` copies the sidecar-derived shas into the report
+  fail-loud *before* `redirect_args.py` clears `heads/` on a redirect
+  relaunch, and its own comments name the report as the durable record.
+  **Discovery rule:** every JSON in `<run-dir>` carrying a `waveMerges`
+  list, in either envelope shape (top-level or `result`-wrapped — the two
+  shapes `finalize_report.select_target` accepts), plus an explicit
+  `--report` override; the ancestry invariant and sha resolution are what
+  *authenticate* a candidate as finalized — an unfinalized report with a
+  fabricated tail aborts loud. **The report's role is exactly three
+  things:** chain bounding, the ancestry invariant, and task labeling.
+  Only `status == "MERGED"` wave entries are consumed (non-MERGED
+  headShas are token-reported, not file-derived) — this scoping applies to
+  stitching too.
 - **Redirect-bearing runs, named posture:** a run with redirect relaunches
   has one finalized report per gate; shadow stitches the launches from
   those reports, and where stitching cannot reconstruct a wave it parks the
@@ -131,18 +140,28 @@ What shadow adds — the only new machinery:
 - **Chain bounding, not base derivation:** shadow's walker only *bounds*
   the integration chain (tip and floor) from the report's shas and hands
   the bounded `[(sha, parents)]` chain to the reused `_group_chain`, whose
-  merge-base grouping is the **sole base authority** — the same rule every
-  K3 number used, including its reconciliation pseudo-task
-  coalescing/absorption and pre-first-merge handling. Shadow defines no
-  base rule of its own.
+  merge-base grouping is the sole authority for **both wave base and fold
+  membership** — the same rule every K3 number used, including its
+  reconciliation pseudo-task coalescing/absorption and pre-first-merge
+  handling. Shadow defines no base or membership rule of its own; the
+  report's `branches` field labels tasks, never selects them.
+- **Fast-forwarded waves (the one named fallback):** a single-task wave
+  fast-forwards, leaving no two-parent merge for `_group_chain` to see —
+  the most recent real run's chain is *all* fast-forwards. For a wave whose
+  reported head is a non-merge commit, shadow folds the wave's single
+  reported task endpoint against the prior wave head and compares to the
+  wave-head tree (a trivial fold, still manifest-to-manifest; the ancestry
+  invariant still applies). Multi-task waves remain `_group_chain`'s
+  alone.
 - **Ancestry invariant**, checked before any fold: every reported task
   head is an ancestor of its wave head; violation aborts the shadow with a
   named error (never a silent skip, never a guessed base).
-- **Durations:** per-task wall-clock from committer timestamps on the task
-  branches (always present in the data shadow already reads), reported as
-  approximate; the makespan model re-runs with them. Journal parsing is
-  deferred unless the first shadow report shows timestamps too crude to
-  inform E1 (machinery earned by recurrence).
+- **Durations:** per-task wall-clock from committer timestamps — the
+  interval from the wave base commit's committer time to the task tip's
+  committer time — reported as approximate; the makespan model re-runs
+  with them. Journal parsing is deferred unless the first shadow report
+  shows timestamps too crude to inform E1 (machinery earned by
+  recurrence).
 - **Report:** `evals/frontier/results/<date>-shadow-<stamp>.md` + JSON:
   per-wave verdict (`clean` / `divergent` / `conflicted`), every narration
   verbatim, the measured-duration makespan re-model.
@@ -191,13 +210,16 @@ its same-file serialization (waves `[[1,4],[2],[3]]`). No new code.
 - **Fold-on-completion:** as each task finishes, `publish` + `fold` into the
   frontier (the increment-one API). Clean fold → continue. Narrated
   conflict → resolver (component 4). Fold order is completion order.
-- **Live K1 check, resolution-aware:** shuffled re-folds of the raw task
-  set (via the reused `sampled_orders`/`fold_all` — the same sampling
-  policy as every prior K1 number) assert two things: the shuffles are
-  outcome-identical **to each other** (manifest + conflict set, resolutions
-  excluded — raw folds can never equal a resolver-modified state), and
-  re-applying the recorded `resolvedFileLines` per conflicted path after
-  each shuffled fold **converges to the shipped manifest**.
+- **Live K1 check, resolution-aware:** two legs. (1) Shuffled re-folds of
+  the raw task set (via the reused `sampled_orders`/`fold_all` — the same
+  sampling policy as every prior K1 number) are outcome-identical **to each
+  other** (manifest + conflict set; resolutions excluded — raw folds can
+  never equal a resolver-modified state). (2) **Deterministic event-log
+  replay:** the driver records the actual completion-order sequence of fold
+  and resolution events as it runs; re-running that exact sequence must
+  reproduce the shipped manifest. The log also records, rather than
+  legislates, whether folds paused during resolver calls — the replay
+  checks what the driver actually did.
 - **Materialize and gate:** write the final manifest to a branch via a
   dedicated writer in the driver — a temp worktree plus `git add`/`commit`
   — not `repo_weave.materialize`, whose failure-artifact-only contract is
@@ -226,11 +248,11 @@ implementers; the scrub window closes only after the last resolver call):
   honest evidence).
 - **No tools, no repo access, no shell** — a pure text-to-JSON call
   (headless, structured output).
-- **Text conflicts only:** non-text conflict kinds (`binary`, byte-side
-  `delete/modify`) carry one-line narrations with no visible-line list —
-  `resolvedFileLines` has no meaning there; they park with the reason
-  recorded (G3). The resolver dispatches only on kernel-narrated text
-  conflicts.
+- **Dispatch predicate:** the resolver dispatches only on conflicts that
+  **carry manyana's annotated block narration**; any conflict without one
+  (binary, presence-kind one-liners) has no visible-line list for
+  `resolvedFileLines` to mean anything, and parks with the reason recorded
+  (G3). One rule, no kind-list to keep in sync.
 - **Guardrails:** one retry on contract violation; second violation parks
   that path as recorded evidence (hard gate 3). Every narration, resolver
   transcript, and resolution is stored verbatim in the report for operator
@@ -249,8 +271,9 @@ implementers; the scrub window closes only after the last resolver call):
   merged silently are reported and do not red the gate; divergence does.
 - **G2 (live mechanics):** arm B completes; the folded tree passes the
   contend sealed suite (exit 0, 9/9); the resolution-aware live K1 check
-  holds (shuffled raw folds outcome-identical to each other; recorded
-  resolutions re-applied converge to the shipped manifest).
+  holds (shuffled raw folds outcome-identical to each other; the recorded
+  fold/resolution event log replays deterministically to the shipped
+  manifest).
 - **G3 (resolver honesty):** every conflict either resolves within contract
   or parks with the violation recorded — no silent fallback, no unreported
   drop (no-silent-caps).
@@ -296,17 +319,19 @@ All committed tests run in the ordinary suite and CI:
   lifted writers-cap in the randomized binary-mix fuzz; the two
   presentation-nit fixes.
 - `tests/test_shadow_fold.py` — replay against a synthetic `run-<stamp>`
-  directory (fabricated repo + finalized report, two waves incl. one
-  multi-task wave and one reconciliation commit); the **pre-first-merge
-  reconciliation case** (non-merge commit between fork and wave-1's first
-  merge — the case a naive chain walk mis-bases); redirect-stitching and
-  the partially-shadowable park; ancestry-violation abort.
+  directory (fabricated repo + finalized report in both envelope shapes,
+  two waves incl. one multi-task wave and one reconciliation commit); the
+  **pre-first-merge reconciliation case** (non-merge commit between fork
+  and wave-1's first merge — the case a naive chain walk mis-bases); a
+  **fast-forward-only chain** (the single-task fallback); MERGED-only
+  scoping; redirect-stitching and the partially-shadowable park;
+  ancestry-violation abort.
 - `tests/test_frontier_cell.py` — edge-drop pinned to
   `schedule_model.SAME_FILE_WHYS` (imported, not re-typed);
   fold-on-completion ordering; resolver **whole-file application** with a
   fake resolver, including a file carrying two conflicted blocks in one
   narration; the resolution-aware live K1 check (shuffles identical to
-  each other + resolutions re-applied converge); non-text-kind park;
+  each other + deterministic event-log replay); no-narration-kind park;
   contract-violation → retry → park; the oversize-file park.
 - Existing `run_eval` tests pin that the refactor-to-importable changes no
   replay behavior.
@@ -422,3 +447,42 @@ the code showed the sidecar walk wrong on real history.
   **ADOPTED.** Renamed to whole-file application throughout.
 - **Bookkeeping (author disclosure predated round 1's own additions):**
   **ADOPTED.** Disclosure refreshed.
+
+### Round 3 (fresh-context reviewer; grade: `netConceptDelta` **up** — "adopting Findings 1–3 and 6 makes it a *sounder* up at roughly flat delta")
+
+Verdict: not yet at diminishing returns — two round-2 adoptions failed
+against real artifacts (the reviewer verified all seven on-disk
+`report.json` files and the most recent run's chain shape).
+
+- **F1 (`_group_chain` blind to fast-forwarded waves — the most recent
+  real run's chain is all single-parent FF commits, so the sole authority
+  recovers zero waves):** **ADOPTED**, option (b): a named single-task FF
+  fallback (fold the wave's one reported endpoint against the prior wave
+  head), keeping `_group_chain` sole authority for multi-task waves; FF
+  chain added to the test plan.
+- **F2 (the convergence leg false-reds on the happy path — a clean fold
+  after a resolution isn't in the recorded resolution's whole-file line
+  list):** **ADOPTED.** Leg 2 replaced with deterministic event-log
+  replay (the actual completion-order fold/resolution sequence re-runs to
+  the shipped manifest); G2 restated; the log records fold/resolve
+  synchrony instead of legislating it.
+- **F3 (report `branches` reintroduced a second membership authority):**
+  **ADOPTED.** Report role narrowed to bounding + ancestry + labeling;
+  membership from `_group_chain` (or the F1 fallback) alone.
+- **F4 (finalized-report discovery unpinned; filenames and envelope
+  shapes drift in real run dirs):** **ADOPTED.** Discovery rule named
+  (any JSON with `waveMerges`, both envelope shapes, `--report`
+  override); ancestry + sha resolution authenticate; both shapes in the
+  test fixture.
+- **F5 (ancestry invariant scoped to MERGED entries — non-MERGED shas
+  are token-reported):** **ADOPTED.** MERGED-only consumption, stitching
+  included.
+- **F6 (non-text kind enumeration wrong in detail — text-side
+  delete/modify also lacks blocks):** **ADOPTED.** Enumeration deleted;
+  dispatch predicate = carries manyana's annotated block narration.
+- **F7 (dedupe keep-policy):** **ADOPTED.** First occurrence kept,
+  reason recorded.
+- **F8 (duration interval unnamed):** **ADOPTED.** Wave-base committer
+  time → task-tip committer time.
+- **Under-specification (resolver dispatch synchrony):** subsumed by F2's
+  event log, per the reviewer's own note.
