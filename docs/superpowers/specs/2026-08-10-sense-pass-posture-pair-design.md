@@ -39,17 +39,17 @@ part of the list item (an unindented paragraph would visually orphan steps
 2–3):
 
 > Sequential-engine drains (subagent-driven, inline) make no `Workflow`
-> calls and are **invisible to this detector by design** — "0 new" on a
-> drain session is correct, not a bug. Drains are sensed by **commissioned
-> transcript reads**: after a drain, dispatch reader subagents at the drain
-> session's transcript with the same five lenses, including the mandatory
-> redirect-round count (one per drain). Readers MUST set
-> `evidenceAbstracted: true` on every finding (no bundle exists to trigger
-> the foreign rule), stamp `engineVersion` with the running release, and
-> use the drain session id as `runId`; the merge guard then forces only
-> `origin: foreign` — the accepted cost. Promote trigger for a real drain
-> detector: a sense pass where commissioned reads **miss or misread** drain
-> evidence; record the miss as a ledger finding.
+> calls and are **invisible to this detector by design** — "0 new" there is
+> correct, not a bug. Drains are sensed by **commissioned transcript
+> reads**: after a drain, dispatch readers at the drain session's
+> transcript with the same five lenses, including the redirect-round count,
+> assigned to exactly one reader. Readers MUST set `evidenceAbstracted:
+> true` (no bundle triggers the foreign rule), stamp `engineVersion` (plain
+> version string — the repo release at drain time), and use the drain
+> session id as `runId`; the merge guard then forces only `origin: foreign`
+> — accepted. Promote trigger for a drain detector: a sense pass where
+> commissioned reads **miss or misread** drain evidence; record the miss as
+> a ledger finding.
 
 Four clauses are load-bearing (rounds 2–3): `merge_ledger.py` drops an
 unflagged non-home finding **whole** (R2-F2), so without `evidenceAbstracted`
@@ -74,14 +74,14 @@ auto-approve` heading:
 > **Review posture: suite-gate authority, review by exception.** The drain
 > dispatches no per-task reviewer of its own, and its step-2 dispatch
 > instructs the sequential executor to skip its review passes — per-task
-> and final — the step-3 gate is the verification. One exception: a task
-> its plan marks `**Review:** adversarial` (read from
-> `launch_waves[].review` of the `compile_plan` run step 3 already
-> performs — no extra compile) gets one fresh review via
-> `superpowers:requesting-code-review` against the branch diff from the
-> docket-line HEAD plus the plan text, before the plan's gate; red
-> findings park the entry exactly as a red gate does. Posture drift after
-> this declaration is the recurrence that buys enforcement.
+> and final — the step-3 gate is the verification. One exception: each task
+> its plan marks `**Review:** adversarial` (from `launch_waves[].review`
+> of step 3's own `compile_plan` run — no extra compile) gets one fresh
+> review via `superpowers:requesting-code-review` against the diff from
+> docket-line HEAD plus the plan text, before the plan's gate;
+> Critical/Important findings park the entry exactly as a red gate does
+> (Minor: noted at the end gate). Posture drift after this declaration is
+> the recurrence that buys enforcement.
 
 Four semantics notes (spec-side, deliberately not in the SKILL prose):
 the `**Review:**` marker becomes engine-relative — in waves `adversarial`
@@ -158,7 +158,7 @@ adjudication (operator adjudicates at spec review):
 | U1 | Escalation clause was review theater — no findings path, no reviewer inputs | **Adopted (completed, not cut)** — red findings park the entry exactly as a red gate; **inputs side superseded by R2-F4** (reviewer referent named in round 2) |
 | U2 | `**Review:** adversarial` semantics silently become engine-relative; drain never told where to read the marker | **Adopted; marker source superseded by R2-F1** — round 1's `tasks[].review` pin was false against the code; the real channel is `launch_waves[].review` |
 | U3 | Insertion point 2a self-contradictory (steps 3–5 sit between the named anchors) | **Adopted** — anchored after step 5, before the heading |
-| U4 | **Commissioned reads break the merge step**: no bundle ⇒ origin fails closed to `foreign` (home evidence force-redacted) + no `engineVersion` — and the paragraph institutionalized the path without saying so | **Adopted; description superseded by R2-F2** — round 1's "verbatim evidence dropped" understated it: unflagged findings are dropped *whole*; the fix is the readers-set-`evidenceAbstracted` clause |
+| U4 | **Commissioned reads break the merge step**: no bundle ⇒ origin fails closed to `foreign` (home evidence force-redacted) + no `engineVersion` *[engineVersion half superseded — see R3-F-2: a stamped value survives the merge]* — and the paragraph institutionalized the path without saying so | **Adopted; description superseded by R2-F2** — round 1's "verbatim evidence dropped" understated it: unflagged findings are dropped *whole*; the fix is the readers-set-`evidenceAbstracted` clause |
 | U5 | Promote-trigger miss has no recorded home | **Adopted** — "record the miss as a ledger finding" |
 | U6 | Executor-skill tension: does posture (b) suppress the sequential executor's built-in review or only add none? | **Adopted** — paragraph says both, explicitly |
 
@@ -187,7 +187,7 @@ plan. Verdicts and adjudication:
 
 | # | Finding | Adjudication |
 |---|---|---|
-| F1 | **FALSE against code:** round 1's `tasks[].review` field does not exist (real channel: `launch_waves[].review`, compile_plan.py:1466), and the drain holds NO compile output for sequential engines (compile runs only on the ultrapowers branch; compile_docket carries no per-task fields) | **Adopted; cost claim superseded by R3-F-1** — the channel was right, but "one extra compile" was wrong: drain step 3 already compiles every entry's plan for `acceptance.mode`, and that stdout carries the marker — zero extra compiles |
+| F1 | **FALSE against code:** round 1's `tasks[].review` field does not exist (real channel: `launch_waves[].review`, compile_plan.py:1466), and the drain holds NO compile output for sequential engines *[this half is itself false — see R3-F-1: step 3 compiles every entry]* | **Adopted; cost claim superseded by R3-F-1** — the channel was right, but "one extra compile" was wrong: drain step 3 already compiles every entry's plan for `acceptance.mode`, and that stdout carries the marker — zero extra compiles |
 | F2 | **Behavior-zeroing omission:** `merge_ledger.py:27` drops unflagged non-home findings *whole*, and the reading-lenses foreign rule never fires without a bundle — commissioned reads as round-1-specified would merge zero findings and falsely trip the promote trigger | **Adopted** — readers MUST set `evidenceAbstracted: true`; load-bearing note kept in §1 |
 | F3 | `runId` unspecified — same-titled findings from two drains would collide in the ledger | **Adopted** — drain session id as `runId` |
 | F4 | Escalation reviewer still had no inputs (round 1 completed only the output side); the baked reviewer brief is waves-specific | **Adopted** — referent named: `superpowers:requesting-code-review` against the branch diff from docket-line HEAD + plan text |
@@ -236,3 +236,33 @@ concurrence.
 **Round-3 marginal value:** two artifact-changing findings (F-1 — itself
 round 2's adopted fix; F-2) plus two one-clause completions (U-3, U-4);
 the rest wording and accounting.
+
+### Round 4 (fourth independent reviewer — the diminishing-returns check)
+
+Fresh-context subagent; re-verified both round-3 corrections against code
+(live compile: `--check` prints only PLAN OK, so drain step 3 necessarily
+runs the plain compile whose stdout carries the marker; full merge-path
+re-run: stamped `engineVersion` survives and renders in the digest). Both
+held. Verdicts and adjudication:
+
+| # | Finding | Adjudication |
+|---|---|---|
+| T4-1 | §1 breached the spec's own ≤120-word bound (126 by wc -w); round 3's "cured by trims" was false for the ultralearn file (its trims were §2-side) | **Adopted** — §1 trimmed to ≤120; counts re-verified |
+| U4-1 | "One per drain" contradicts reading-lenses' per-reader canary mandate — N readers would emit N canary rows, inflating the redirect-round rate posture (b)'s safety case leans on | **Adopted** — "assigned to exactly one reader" |
+| U4-2 | `engineVersion` stamp shape/referent unpinned (an epoch-object mimic would render as a dict; "running release" ambiguous mid-session) | **Adopted** — "plain version string — the repo release at drain time" |
+| U4-3 | "Red findings" is not the referent skill's vocabulary (Critical/Important/Minor); multi-escalation plural unhandled | **Adopted** — Critical/Important park, Minor noted at end gate; "each task" |
+| T4-2 | Two historical table rows still carry false code claims their supersessions never annotated inline | **Adopted** — bracket annotations added |
+
+Rejections: none. Below-the-bar notes (notation, inline-engine vacuity,
+digest run-count cosmetics) recorded by the reviewer, no action.
+
+**Round-4 reviewer grade: `netConceptDelta = up`** — fourth independent
+concurrence.
+
+**Stopping decision (author, applying the pre-declared rule):** diminishing
+returns reached, per the round-4 reviewer's own assessment: "round 4 found
+no false mechanism claims, only arithmetic and coordination seams," and
+both substantive round-3 corrections survived full code verification.
+Four rounds, 35 findings, all adopted or explicitly superseded, 0 rejected;
+grades: up ×4 (unanimous — the accepted trade for making two silent
+behaviors inspectable).
