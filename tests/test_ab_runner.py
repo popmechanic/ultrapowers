@@ -107,3 +107,23 @@ def test_bootstrap_cell_probes_then_falls_back_without_bootstrap(tmp_path, monke
     row = ab_runner.run_bootstrap_cell("old-ref", root)
     assert row["falseBlock"] == 1
     assert row["status"] == "OK"
+
+
+def test_seed_workflows_refuses_problem_manifests_before_copying(tmp_path):
+    # Fail-closed (spec 2026-08-10): today a bad manifest is silently
+    # skipped and the cell proceeds on a partial seed — after this change
+    # one bad manifest refuses the whole cell, and nothing is copied.
+    engine = tmp_path / "engine"
+    h = engine / "skills/ultrapowers/harnesses"
+    h.mkdir(parents=True)
+    (h / "good.harness.json").write_text(json.dumps({"file": "good.js"}))
+    (h / "good.js").write_text("// harness\n")
+    (h / "bad.harness.json").write_text("{not json")
+    workdir = tmp_path / "run"
+    workdir.mkdir()
+    try:
+        ab_runner.seed_workflows(engine, workdir)
+        assert False, "should refuse a problems-bearing manifest set"
+    except SystemExit as e:
+        assert "bad.harness.json" in str(e)
+    assert not (workdir / ".claude/workflows/good.js").exists()  # fail BEFORE copy
