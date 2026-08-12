@@ -121,9 +121,9 @@ def build_fixture_case(name, compiled, seed):
             writers.setdefault(path, []).append(task["id"])
     shared = {p for p, ids in writers.items() if len(ids) > 1}
 
-    base_files = {p: manyana.initial_state(shared_base_lines(p)) for p in sorted(shared)}
-    base = rw.RepoState(files=base_files, deleted_marks=frozenset(), raw={},
-                        text_pristine=frozenset(base_files))
+    base = rw.RepoState(
+        files={p: manyana.initial_state(shared_base_lines(p)) for p in sorted(shared)},
+        deleted_marks=frozenset(), raw={})
 
     tasks = []
     for task in impl:
@@ -167,9 +167,9 @@ def fixture_cases(seed=42):
 # --------------------------------------------------------------------------
 
 def _base_from(files):
-    weaves = {p: manyana.initial_state(rw.split_lines(c)) for p, c in files.items()}
-    return rw.RepoState(files=weaves, deleted_marks=frozenset(), raw={},
-                        text_pristine=frozenset(weaves))
+    return rw.RepoState(
+        files={p: manyana.initial_state(rw.split_lines(c)) for p, c in files.items()},
+        deleted_marks=frozenset(), raw={})
 
 
 def _trio_fn(index, note):

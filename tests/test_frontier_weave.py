@@ -19,8 +19,7 @@ def make_base(contents):
             raw[p] = c
         else:
             files[p] = manyana.initial_state(rw.split_lines(c))
-    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw,
-                        text_pristine=frozenset(files))
+    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw)
 
 
 BASE = make_base({
@@ -325,8 +324,7 @@ def test_binary_conflict_count_is_distinct_candidates_minus_one():
                              expected_manifest={"img.bin": b"\x00\x07"},
                              expected_conflicts=[("img.bin", "binary")])
     # The count invariant (len(candidates) - 1) is order-independent by
-    # construction; pin it on ONE canonical order, since the set-based helper
-    # above can no longer see it (#132 keeps this pin).
+    # construction; pin it on ONE canonical order (#132 keeps this pin).
     _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
     assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
 
@@ -433,7 +431,7 @@ def test_binary_fold_is_idempotent():
 def test_randomized_binary_mixes_are_order_independent():
     """Seeded sweep over delete/bytes/text mixes on base-text, base-binary and
     new paths. Every case is folded in every order; manifest and conflict
-    multiset must agree. At most one text writer per path, so the sweep stays
+    set must agree. At most one text writer per path, so the sweep stays
     inside the binary/presence rules it is guarding (concurrent text writers on
     a deleted path are covered by the hand-written cases above).
     """
@@ -472,7 +470,9 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
 
     Classifying it `delete/modify` whenever a delete has already been folded
     made this same task set produce [delete/modify, lines] in one order and
-    [delete/modify, delete/modify] in another.
+    [delete/modify, delete/modify] in another. The conflict SET is what must
+    agree order to order (#132); the two same-kind `lines` reports from t1 and
+    t2 collapse under set comparison, so the count is pinned separately below.
     """
     base = make_base({"calc.py": "l1\nl2\nl3\nl4\n"})
     tasks = [rw.task_state_from_contents(base, "t1", {"calc.py": "l1\nl2-x\nl3\nl4\n"}),
@@ -482,13 +482,11 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
         base, tasks,
         expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
     assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
-    # Three writers of one path: two kernel conflicts (each arrival after the
-    # first disagrees with the accumulated weave) plus the delete/modify
-    # pairing. That count holds in all six orders; pin it on ONE canonical
-    # order, since the set-based helper above can no longer see it (#132).
+    # The per-writer `lines` count is order-independent by construction; pin it
+    # on ONE canonical order (#132 keeps this pin).
     _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
-    assert sorted((c.path, c.kind) for c in conflicts) == [
-        ("calc.py", "delete/modify"), ("calc.py", "lines"), ("calc.py", "lines")]
+    assert conflict_keys(conflicts) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
+    assert sum(1 for c in conflicts if c.kind == "lines") == 2
 
 
 def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
