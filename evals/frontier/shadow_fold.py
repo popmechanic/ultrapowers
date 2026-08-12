@@ -89,12 +89,31 @@ def _walk_to_bound(repo, tip, bound):
 
 
 def _find_floor(repo, tip, bound):
-    """The first two-parent merge's merge-base within `[bound, tip]`, tip-first.
+    """The EARLIEST two-parent merge's merge-base within `(bound, tip]`.
+
+    The walk is bounded by the earliest MERGED wave head's parent and scanned
+    deepest-first, so the floor comes from the *first* merge of the run, not
+    the last: a tip-first scan would floor the chain at the final wave's
+    merge-base — i.e. the previous wave's head — dropping every earlier merge
+    wave below the floor. Flooring at the first merge's merge-base also keeps
+    the pre-first-merge chain commits (the engine fast-forwards the first
+    branch of every wave) in `_group_chain`'s hands.
+
+    The bound row itself — the earliest MERGED wave head's *parent*, one
+    commit BELOW the run — is excluded from the candidate scan: it is the
+    walk terminator only. When the earliest wave head is a single-parent
+    fast-forward and the bound commit's own first-parent line carries
+    2-parent merges (e.g. a base branch's unrelated drain merges), a scan
+    that included the bound row would prefer that pre-run merge and float
+    the floor dozens of commits below the run, silently inflating every
+    earliest-wave task's measured duration.
 
     Falls back to `bound` itself (the earliest MERGED wave head's parent) when
     no two-parent commit appears in the span — the merge-free case.
     """
-    for sha, parents in _walk_to_bound(repo, tip, bound):
+    for sha, parents in reversed(_walk_to_bound(repo, tip, bound)):
+        if sha == bound:
+            continue
         if len(parents) == 2:
             return _rev(repo, "merge-base", parents[0], parents[1]), "merge-base"
     return bound, "wave-head-parent"
