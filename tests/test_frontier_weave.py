@@ -19,7 +19,8 @@ def make_base(contents):
             raw[p] = c
         else:
             files[p] = manyana.initial_state(rw.split_lines(c))
-    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw)
+    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw,
+                        text_pristine=frozenset(files))
 
 
 BASE = make_base({
@@ -37,11 +38,15 @@ def fold_in_order(base, tasks, order):
 
 
 def conflict_keys(conflicts):
-    return sorted((c.path, c.kind) for c in conflicts)
+    """Order-comparison key: the SET of (path, kind) — Conflict's declared
+    identity (#132). fold's per-call return is untouched; consumers of the
+    per-fold stream (narrations, the arm-B driver) see every conflict.
+    """
+    return sorted(set((c.path, c.kind) for c in conflicts))
 
 
 def assert_order_independent(base, tasks, expected_manifest=None, expected_conflicts=None):
-    """Fold `tasks` in EVERY order; manifest and conflict multiset must agree.
+    """Fold `tasks` in EVERY order; manifest and conflict set must agree.
 
     Returns the single (manifest, conflict-keys) outcome so callers can assert
     further on it. This is the K1 gate the module exists to measure: a rule that
@@ -318,7 +323,12 @@ def test_binary_conflict_count_is_distinct_candidates_minus_one():
              for i, b in enumerate((b"\x00\x09", b"\x00\x08", b"\x00\x07"))]
     assert_order_independent(base, tasks,
                              expected_manifest={"img.bin": b"\x00\x07"},
-                             expected_conflicts=[("img.bin", "binary")] * 2)
+                             expected_conflicts=[("img.bin", "binary")])
+    # The count invariant (len(candidates) - 1) is order-independent by
+    # construction; pin it on ONE canonical order, since the set-based helper
+    # above can no longer see it (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
 
 
 def test_base_binary_bytes_persist_until_a_task_writes_the_path():
@@ -470,9 +480,15 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
              rw.task_state_from_contents(base, "tdel", {"calc.py": None})]
     manifest, _ = assert_order_independent(
         base, tasks,
-        expected_conflicts=[("calc.py", "delete/modify"),
-                            ("calc.py", "lines"), ("calc.py", "lines")])
+        expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
     assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
+    # Three writers of one path: two kernel conflicts (each arrival after the
+    # first disagrees with the accumulated weave) plus the delete/modify
+    # pairing. That count holds in all six orders; pin it on ONE canonical
+    # order, since the set-based helper above can no longer see it (#132).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert sorted((c.path, c.kind) for c in conflicts) == [
+        ("calc.py", "delete/modify"), ("calc.py", "lines"), ("calc.py", "lines")]
 
 
 def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
