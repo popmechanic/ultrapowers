@@ -21,10 +21,26 @@ order-independent sources:
 * the kernel merge, whose kind is read off `base` alone (`add/add` for a path
   no base tree carried, `lines` otherwise) — a per-path constant, so it cannot
   depend on which fold the kernel happened to report the conflict on;
-* a *presence pairing* — two incompatible records for one path (visible text
-  and raw bytes; visible text and a delete; bytes and a delete). Each record
-  flag is monotone across folds, so "both true for the first time" happens on
-  exactly one fold in every order, and the pairing is reported exactly once.
+* a *presence pairing* — two incompatible records for one path (task-touched
+  text and raw bytes; visible text and a delete; bytes and a delete). Each
+  pairing's conjunction is monotone across folds, so "both true for the first
+  time" happens on exactly one fold in every order, and the pairing is reported
+  exactly once.
+
+The text side of the text/bytes pairing must be *task-touched*. A path whose
+text side still records exactly what `base` carried, rewritten as binary, is a
+type change by one writer: git reports no conflict there, so neither do we, and
+the superseded base record leaves `files` (`_drop_superseded_text`, run by
+`fold` between the merge and the reporting pass). "Still what base carried" is
+decided by weave-state *content* plus the delete marks — never by object
+identity, which is not a function of the merge result at all: `update_state`
+returns its input state unchanged when the new lines equal the current ones, so
+a task that did text-write a path can carry the base's own state object, and
+which object `files[p]` ends up holding then depends on fold order. Content
+does not: weave merge is an idempotent, commutative, associative join, so
+`files[p]` is the same string in every order, and `base` is its bottom element
+— once a task moves a path off `base`, no later fold moves it back. That makes
+"still base's own" *anti*-monotone and the pairing conjunction monotone (#132).
 
 Deliberately NOT done: relabelling the kernel's conflict `delete/modify` when a
 delete record is present. Whether the delete is already folded is fold history,
@@ -240,44 +256,105 @@ def _fold_binary(task, candidates, conflicts):
         prior.add(item)
 
 
-def _pairing_facts(files, candidates, deleted_marks, path):
-    """(has a text weave, has visible text, has task bytes, is deleted).
+def _base_text_untouched(base, files, deleted_marks, path):
+    """True iff `path`'s text side still records exactly what `base` carried.
 
-    Every flag is monotone across folds:
+    Decided by weave-state *content* and the delete marks, never by object
+    identity: `manyana.update_state` returns its input state unchanged when the
+    new lines equal the current ones, so `files[path] is base.files[path]`
+    holds for genuine text writers too, and which object survives a merge is
+    fold-order-dependent. Content is not — the weave merge is a join, so the
+    folded state string is the same in every order.
 
-    * a path never leaves `files`, and `deleted_marks`/the candidate sets only
-      grow;
-    * visible text can only appear. Once a delete is folded, every base line of
-      the path is invisible (the delete weave carries the higher, even count),
-      so any line still visible after that was added by a task — and no other
-      task, all of which branch from `base`, can carry a delete for a line it
-      never saw.
+    A delete counts as touching the text side even when the weave is unchanged:
+    an empty base file's delete weave equals the base's own state, but the file
+    was removed, and only `deleted_marks` records that.
+    """
+    return (path in files and files[path] == base.files.get(path)
+            and path not in deleted_marks)
+
+
+def _pairing_facts(base, files, candidates, deleted_marks, path):
+    """(text side task-touched, has visible text, has task bytes, is deleted).
+
+    The flags the pairings key on are monotone across folds:
+
+    * `deleted_marks` and the candidate sets only grow;
+    * `text_touched` only appears. A path leaves `files` only through
+      `_drop_superseded_text`, and only while its text side is still base's
+      own — i.e. only while `text_touched` is already False. Once a task moves
+      the path off base, the join can never move it back, so `text_touched`
+      stays True and the record stays;
+    * visible text can only appear once a delete is folded: every base line of
+      the path is then invisible (the delete weave carries the higher, even
+      count), so any line still visible after that was added by a task — and no
+      other task, all of which branch from `base`, can carry a delete for a
+      line it never saw.
     """
     marks = candidates.get(path, ())
     has_text = path in files
     visible = has_text and bool(manyana.current_lines(files[path]))
-    return (has_text, visible, bool(_byte_candidates(marks)), path in deleted_marks)
+    text_touched = has_text and not _base_text_untouched(
+        base, files, deleted_marks, path)
+    return (text_touched, visible, bool(_byte_candidates(marks)), path in deleted_marks)
 
 
-def _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts):
+def _drop_superseded_text(base, task, files, candidates, deleted_marks):
+    """Type change by a single writer: retire the superseded base record.
+
+    A path whose text side is still exactly base's (`_base_text_untouched`) and
+    which some task has rewritten as bytes has had its *type* changed by one
+    writer. The bytes are the merge result, so the superseded record leaves
+    `files` — exactly as a base-*binary* path that never grew a text weave
+    carries none, and exactly what git does with a lone type change.
+
+    A merge decision, not a report: `fold` runs it after the text and binary
+    folds and before `_fold_presence`, so the reporting pass never mutates the
+    merge result. Its predicate is a function of the folded content alone, so
+    the drop happens on the same paths in every fold order.
+    """
+    for p in sorted(set(task.weaves) | set(task.raw) | set(task.deleted)):
+        if (_base_text_untouched(base, files, deleted_marks, p)
+                and _byte_candidates(candidates.get(p, ()))):
+            del files[p]
+
+
+def _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts):
     """One conflict per path whose incompatible presence records first pair up.
 
-    Each flag is monotone (see `_pairing_facts`), so every not-both -> both
-    transition happens on exactly one fold whatever the order: a text weave
-    meeting task-written bytes reports `binary`, and text content surviving a
-    delete reports `delete/modify`. (bytes-vs-delete is reported by
-    `_fold_binary`, where both records live in the same candidate set.)
+    Each pairing's conjunction is monotone (see `_pairing_facts`), so every
+    not-both -> both transition happens on exactly one fold whatever the order:
+    a task-touched text side meeting task-written bytes reports `binary`, and
+    text content surviving a delete reports `delete/modify`. (bytes-vs-delete
+    is reported by `_fold_binary`, where both records live in the same
+    candidate set.)
+
+    A lone type change is NOT a pairing: when the text side still records
+    base's own content, a byte write is one writer changing the file's type
+    (#132). `_drop_superseded_text` has already retired such a record, so
+    `text_touched` is what remains — the flag states the requirement rather
+    than leaning on the call order.
+
+    Pure with respect to the merge result: reads `files`/`candidates`, writes
+    only `conflicts`.
     """
     touched = set(task.weaves) | set(task.raw) | set(task.deleted)
     for p in sorted(touched):
         was_text, was_visible, had_bytes, was_deleted = _pairing_facts(
-            frontier.files, frontier.raw_candidates, frontier.deleted_marks, p)
+            base, frontier.files, frontier.raw_candidates,
+            frontier.deleted_marks, p)
         is_text, visible, has_bytes, deleted = _pairing_facts(
-            files, candidates, deleted_marks, p)
+            base, files, candidates, deleted_marks, p)
         if is_text and has_bytes and not (was_text and had_bytes):
+            # `manifest` keeps the text record when its lines are visible OR
+            # the path carries no delete mark; naming the other side there
+            # would contradict the very state this fold returns.
+            text_wins = visible or p not in deleted_marks
             conflicts.append(Conflict(p, "binary", task.task_id,
                                       "path %s written as text and as binary "
-                                      "concurrently; text wins the manifest" % p))
+                                      "concurrently; %s the manifest"
+                                      % (p, "text wins" if text_wins
+                                         else "bytes win")))
         if visible and deleted and not (was_visible and was_deleted):
             conflicts.append(Conflict(p, "delete/modify", task.task_id,
                                       "path %s deleted concurrently with text that "
@@ -293,7 +370,8 @@ def fold(base, frontier, task):
     conflicts = []
     _fold_text(base, task, files, conflicts)
     _fold_binary(task, candidates, conflicts)
-    _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts)
+    _drop_superseded_text(base, task, files, candidates, deleted_marks)
+    _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts)
     return (RepoState(files=files,
                       deleted_marks=deleted_marks,
                       raw=dict(frontier.raw),
@@ -304,8 +382,12 @@ def fold(base, frontier, task):
 def manifest(state):
     """path -> normalized text (str) or raw bytes; deleted files omitted.
 
-    Text wins any text/binary collision (the collision itself is reported as a
-    conflict by `fold`), so raw bytes never silently shadow a visible weave.
+    Text wins any text/binary collision that reaches this point, so raw bytes
+    never silently shadow a visible weave — and every such collision was
+    reported as a conflict by `fold`. A *lone type change* never reaches this
+    point: `fold` retires the superseded base record (`_drop_superseded_text`)
+    rather than reporting it, so those paths arrive here carrying bytes only
+    (#132).
     """
     out = {}
     for p, w in state.files.items():

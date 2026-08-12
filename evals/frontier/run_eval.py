@@ -263,7 +263,11 @@ def synthetic_cases():
 # --------------------------------------------------------------------------
 
 def conflict_keys(conflicts):
-    return sorted((c.path, c.kind) for c in conflicts)
+    """Order-comparison key: the SET of (path, kind) — Conflict's declared
+    identity (#132). fold's per-call return is untouched; consumers of the
+    per-fold stream (narrations, the arm-B driver) see every conflict.
+    """
+    return sorted(set((c.path, c.kind) for c in conflicts))
 
 
 def _makespans(case):

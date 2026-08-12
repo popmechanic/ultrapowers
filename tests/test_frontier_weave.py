@@ -37,11 +37,15 @@ def fold_in_order(base, tasks, order):
 
 
 def conflict_keys(conflicts):
-    return sorted((c.path, c.kind) for c in conflicts)
+    """Order-comparison key: the SET of (path, kind) — Conflict's declared
+    identity (#132). fold's per-call return is untouched; consumers of the
+    per-fold stream (narrations, the arm-B driver) see every conflict.
+    """
+    return sorted(set((c.path, c.kind) for c in conflicts))
 
 
 def assert_order_independent(base, tasks, expected_manifest=None, expected_conflicts=None):
-    """Fold `tasks` in EVERY order; manifest and conflict multiset must agree.
+    """Fold `tasks` in EVERY order; manifest and conflict set must agree.
 
     Returns the single (manifest, conflict-keys) outcome so callers can assert
     further on it. This is the K1 gate the module exists to measure: a rule that
@@ -318,7 +322,11 @@ def test_binary_conflict_count_is_distinct_candidates_minus_one():
              for i, b in enumerate((b"\x00\x09", b"\x00\x08", b"\x00\x07"))]
     assert_order_independent(base, tasks,
                              expected_manifest={"img.bin": b"\x00\x07"},
-                             expected_conflicts=[("img.bin", "binary")] * 2)
+                             expected_conflicts=[("img.bin", "binary")])
+    # The count invariant (len(candidates) - 1) is order-independent by
+    # construction; pin it on ONE canonical order (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
 
 
 def test_base_binary_bytes_persist_until_a_task_writes_the_path():
@@ -423,7 +431,7 @@ def test_binary_fold_is_idempotent():
 def test_randomized_binary_mixes_are_order_independent():
     """Seeded sweep over delete/bytes/text mixes on base-text, base-binary and
     new paths. Every case is folded in every order; manifest and conflict
-    multiset must agree. At most one text writer per path, so the sweep stays
+    set must agree. At most one text writer per path, so the sweep stays
     inside the binary/presence rules it is guarding (concurrent text writers on
     a deleted path are covered by the hand-written cases above).
     """
@@ -462,7 +470,9 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
 
     Classifying it `delete/modify` whenever a delete has already been folded
     made this same task set produce [delete/modify, lines] in one order and
-    [delete/modify, delete/modify] in another.
+    [delete/modify, delete/modify] in another. The conflict SET is what must
+    agree order to order (#132); the two same-kind `lines` reports from t1 and
+    t2 collapse under set comparison, so the count is pinned separately below.
     """
     base = make_base({"calc.py": "l1\nl2\nl3\nl4\n"})
     tasks = [rw.task_state_from_contents(base, "t1", {"calc.py": "l1\nl2-x\nl3\nl4\n"}),
@@ -470,9 +480,13 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
              rw.task_state_from_contents(base, "tdel", {"calc.py": None})]
     manifest, _ = assert_order_independent(
         base, tasks,
-        expected_conflicts=[("calc.py", "delete/modify"),
-                            ("calc.py", "lines"), ("calc.py", "lines")])
+        expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
     assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
+    # The per-writer `lines` count is order-independent by construction; pin it
+    # on ONE canonical order (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert conflict_keys(conflicts) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
+    assert sum(1 for c in conflicts if c.kind == "lines") == 2
 
 
 def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
