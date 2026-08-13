@@ -103,31 +103,47 @@ default once the follow-up flips it. `test_frontier_run_eval.py`'s contend
 assertions run under **both** compiles — serialize: ≥2 `write-after-write`
 edges, `mode: parallel`; fold: ≥2 tasks sharing a wave with intersecting
 `files` — so the fixture guarantee covers the compile the engine actually
-runs. **Contended runs and the shadow line — a two-leg probe, new code, placed
-where each leg can actually fire:** a contended wave's adoption commit has
-1+N parents (§2). **Per-wave leg:** a parent-count probe on each merged
-wave head in `shadow_fold._build_waves`, applied **before** the group /
-trailing / absorbed dispatch — placement matters: the floor scan recognises
-only 2-parent merges, so an unprobed octopus wave followed by an ordinary
-merge would be silently mislabeled `"absorbed"`. The probed wave gets the
-**existing per-wave `disposition: "excluded"` row** with an octopus reason;
-non-contended waves in the same run still shadow. **Whole-run leg — in
-`_shadow`, keyed on parent counts, not on `floor_source`:** when *every*
-merged wave head has ≥3 parents, no 2-parent merge exists for the floor
-scan to find, `_build_waves` is never called (a probe living only there
-cannot fire — this is the §5 shakedown's most likely shape), and the run
-would fall through to the wrong whole-run name (`no per-task merges`); the
-leg sets the octopus reason instead. `floor_source` alone cannot
-discriminate: a genuinely merge-free run also yields `"wave-head-parent"`
-and must keep its existing name. (`run_eval._group_chain`'s silent
-`parents[1]`-only decomposition of ≥2-parent commits is the
-false-divergence path the per-wave leg forecloses.) One second-order
-consequence, named so it is not read as a harvest bug: in a mixed run the
-floor floats above the contended wave (the deepest 2-parent merge is the
-next ordinary wave, whose merge-base is the octopus head), so the contended
-wave's task durations drop out of the shadow harvest as at/below-floor. For
-the excluded wave itself, the fold log is the replacement replay record
-(strictly stronger: it replays resolutions too).
+runs. ### Contended runs and the shadow line — a two-leg probe
+
+New code, each leg placed where it can actually fire. A contended wave's
+adoption commit has 1+N parents (§2).
+
+- **Per-wave leg:** a parent-count probe on each merged wave head in
+  `shadow_fold._build_waves`, applied **before** the group / trailing /
+  absorbed dispatch — placement matters: the floor scan recognises only
+  2-parent merges, so an unprobed octopus wave followed by an ordinary
+  merge would be silently mislabeled `"absorbed"`. The probed wave gets the
+  **existing per-wave `disposition: "excluded"` row** with an octopus
+  reason; non-contended waves in the same run still shadow.
+- **Whole-run leg — in `_shadow`'s existing no-floor branch (the arm that
+  already assigns the exclusion name), keyed on ANY merged wave head
+  having ≥3 parents:** when the floor scan finds no 2-parent merge,
+  `_build_waves` is never called and a probe living only there cannot
+  fire. That happens not only for the all-contended run but for the
+  **modal shakedown shape** — one contended wave plus fast-forwarded
+  single-task waves (merge commits are not forced `--no-ff`, so
+  single-task waves routinely fast-forward): there, *no* head has 2
+  parents yet not *every* head is an octopus, so an every-head predicate
+  would miss it and the run would keep the wrong whole-run name
+  (`no per-task merges`). Any-head ≥3 parents → the octopus reason; no
+  head ≥3 parents → the genuinely merge-free run keeps its existing name
+  unchanged.
+
+(`run_eval._group_chain`'s silent `parents[1]`-only decomposition of
+≥2-parent commits is the false-divergence path the per-wave leg
+forecloses.) One second-order consequence, named so it is not read as a
+harvest bug: in a mixed run with an ordinary merge above the contended
+wave, the floor floats above it, so the contended wave's task durations
+drop out of the shadow harvest as at/below-floor. For the excluded wave
+itself, the fold log is the replacement replay record (strictly stronger:
+it replays resolutions too). **A third octopus surface exists and needs no
+code change, only this disclosure:** archived-run recovery
+(`run_eval._chain_defect` / `extract_archived_runs`) already excludes any
+run whose chain carries a >2-parent commit, whole, by name — so after the
+§5 default flip, K3-style archived-run coverage for contended runs shifts
+to the shadow line and the fold log; it fails loudly by name today, never
+silently, and restoring octopus-chain recovery would be a separate
+increment.
 
 New: `skills/ultrapowers/kernel/fold_wave.py` (CLI) and `kernel/FOLD_LOG.md`
 (schema — referenced from `ultrapowers/SKILL.md`'s engine section, which
@@ -175,10 +191,12 @@ One vocabulary note used throughout: the compiler's overlap set for the
 (`writes = Create: ∪ Modify:`; `reads` is populated by `Test:` entries — a
 `Test:` path parses into `reads`, and the compiler serializes on it by design
 because under upstream TDD semantics each task *writes* the failing test).
-Every rule below uses exactly this set; the spec deliberately has no second
-spelling. It is also exactly the set the compiler already emits per task as
-the inline `files` entry (`creates ∪ modifies ∪ reads`) — which is why no
-new compiler field is needed below.
+Every **edge** rule below uses exactly this set; the one deliberate
+exception is §1b's labeling predicate, which keeps today's narrower
+writes-only intersection because byte-identity with today's label is the
+claim. The overlap set is also exactly what the compiler already emits per
+task as the inline `files` entry (`creates ∪ modifies ∪ reads`) — which is
+why no new compiler field is needed below.
 
 **(a) The drop.** Fold-mode compile does not create `write-after-write`
 edges for eligible pairs. The drop happens **at construction** — the tier-3
@@ -459,6 +477,12 @@ loop — a thrown contended dispatch has no fold log to reconcile against.
 1. The merge agent runs `fold_wave.py fold` and replies with counts +
    verdicts + paths — small scalars under a new sibling `FOLD_SCHEMA`
    (`MERGE_SCHEMA` is `status`/`headSha`/`detail` and cannot carry them).
+   The wave base — the `fold` base argument, and `<prevHead>` in the
+   adoption and restore sequences below — is **engine-authored into the
+   dispatch** by interpolating the module-scope `waveBaseSha` (which
+   advances only *after* a merge, so at dispatch time it is exactly the
+   previous integration head), the same way `headsSlotsLine` is authored;
+   the agent derives nothing.
 2. For each dispatchable conflict, `waves.js` first checks
    `budgetExhausted()` — every existing dispatch site is checkpointed, and a
    serial N-conflict loop must be too; exhaustion routes to fallback (still
@@ -708,9 +732,12 @@ fallback, not a warning.
   mislabel it `"absorbed"`; whole-run leg: an all-contended run — where
   `_build_waves` is never called — is excluded whole under the octopus
   reason, not `no per-task merges`, while a genuinely merge-free run keeps
-  its existing name). The routing pin in the sim asserts the contended
-  decision **joins wave task entries by result id** — never reads a
-  `files` field off a result object.
+  its existing name; **mixed shape:** one octopus wave plus a
+  fast-forwarded single-task wave — where no head has exactly 2 parents
+  but not every head is an octopus — yields the octopus reason, the shape
+  an every-head predicate goes green over). The routing pin in the sim
+  asserts the contended decision **joins wave task entries by result id**
+  — never reads a `files` field off a result object.
 - **Harness sim:** `tests/frontier_merge.mjs` drives the contended path in
   `waves.js` with stubbed agents — clean fold, conflict→resolve,
   stale→re-narrate (markerless shape), park→fallback, budget exhaustion
@@ -735,7 +762,7 @@ fallback, not a warning.
 This plan ships the engine capability dark: minor bump (architectural), both
 manifests to the same version, standard release commit, default
 `--overlap serialize`. The verification periphery is untouched; the compiler
-emits no new diagnostic vocabulary (kept-pairs ride the existing
+emits no new diagnostic vocabulary (ineligible paths ride the existing
 `marker_conflicts` `inference` kind). On an A/B pass, the §5 follow-up
 (default flip + relaxation + rubric + shakedown) precedes the release; on a
 miss, the branch releases as-is with the result recorded.
@@ -926,3 +953,30 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
    `dependency-analysis.md` statements, and the absence of stale
    references. One stale docstring named for update with the bijection
    (`_base_text_untouched`) (§2).
+
+### Round 9 (fresh-context reviewer; grade: `netConceptDelta` **up**; round-8 adoptions #2 (files-join) and #3 (`Test:`-only disclosure) VERIFIED airtight and coherent with §5/§6; **buildability verdict: buildable as written except finding 1**; found 1 blocker + 2 minor under-specs + 3 wording nits; no scope growth)
+
+1. **BLOCKER (new defect in round-8 adoption #1) — the whole-run octopus
+   leg keyed on *every* head ≥3 parents misses the modal shakedown
+   shape** (one contended wave + fast-forwarded single-task waves: no
+   head has 2 parents, so `_build_waves` is never called, yet not every
+   head is an octopus — neither leg fires and the run keeps
+   `no per-task merges`; the all-contended §Testing pin passes under both
+   spellings and cannot catch it) — ADOPTED. The leg lives in `_shadow`'s
+   existing no-floor branch and keys on **any** merged head ≥3 parents;
+   no-head-≥3 keeps the merge-free name; the mixed shape added to the pin
+   set (§Where it lives, §Testing).
+2. **A third octopus surface unnamed: `run_eval._chain_defect` whole-run
+   exclusion** — ADOPTED as a one-sentence disclosure: post-flip K3
+   archived-run coverage for contended runs shifts to the shadow line and
+   fold log; fails loudly by name, no code change; restoration is a
+   separate increment (§Where it lives).
+3. **The contended prompt's wave-base / `<prevHead>` input had no named
+   source** — ADOPTED. `waveBaseSha` (module-scope, advanced only after a
+   merge) is engine-authored into the dispatch, `headsSlotsLine`-style;
+   the agent derives nothing (§3).
+4. **Wording nits** — ADOPTED, all three: the "no second spelling" claim
+   scoped to edge rules with §1b's writes-only predicate named as the
+   deliberate exception (§1); the two-leg probe promoted to its own
+   subsection (§Where it lives); §Release's "kept-pairs" corrected to
+   "ineligible paths".
