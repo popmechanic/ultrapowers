@@ -586,8 +586,9 @@ exactly as only mergeable results merge today.
 ### 4. Fold log schema (first-class contract)
 
 One JSONL file per contended wave
-(`<runDir>/frontier/wave-<n>/fold_log.jsonl`), self-sufficient for
-rehydration given the repo (§2), **three** event types:
+(`<runDir>/frontier/wave-<n>/fold_log.jsonl`; `<n>` is **1-based**, the
+`heads/` slot precedent), self-sufficient for rehydration given the repo
+(§2), **three** event types:
 
 - `base {sha}` — first line, the wave base.
 - `fold {task, headSha}` — the touched set is *derived* by re-folding from
@@ -694,11 +695,16 @@ arms (`_usage_output_tokens`); wall clock end-to-end.
   arms' gates green; arm B fold-log self-checks clean (sampled raw orders
   outcome-identical, replay match); **zero fallbacks on contended waves in
   arm B**; **every contended-shaped wave in arm B actually took the fold
-  path — no route-away** (frozen base, lone survivor): a route-away is not
-  a "fallback" in the spec's vocabulary and the compiler-side arm-identity
-  check cannot see it, so without this clause a partly-serialized arm B
-  could read green against arm A; zero silent divergence; every park named
-  in the conflicts index.
+  path — no route-away** (frozen base, lone survivor): contended-shaped is
+  computed from the receipt's compiled wave shape (the same `compile`
+  object the sibling clause reads); took-the-fold-path from the presence
+  of `<runDir>/frontier/wave-<n>/`, written by the fold CLI before any
+  adopt-or-fallback decision, so presence means entry regardless of
+  outcome (a CLI death early enough to write nothing is co-red under the
+  zero-fallbacks clause). A route-away is not a "fallback" in the spec's
+  vocabulary and the compiler-side arm-identity check cannot see it, so
+  without this clause a partly-serialized arm B could read green against
+  arm A; zero silent divergence; every park named in the conflicts index.
 - E1′: arm B end-to-end wall clock ≤ **0.7×** arm A (the numeric bar for
   "material" — the 4-wide fixture's causal expectation is ~2×, leaving
   headroom for review overlap).
@@ -1040,9 +1046,10 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
    integration branch over the prior wave's merge and ends the run
    BLOCKED at the ancestry check — loud, but late and expensive —
    ADOPTED, the recommended guard: a third routing conjunct (wave base
-   live), `headSha` **required** in `FOLD_SCHEMA`, and the frozen-base
-   routing pin in the sim; wave 1 unaffected (setup is hard-gated on
-   `headSha`) (§1, §3, §Testing).
+   live), `headSha` **required** in `FOLD_SCHEMA` *(this clause
+   superseded — refuted and deleted in round 11; the conjunct is the whole
+   guard)*, and the frozen-base routing pin in the sim; wave 1 unaffected
+   (setup is hard-gated on `headSha`) (§1, §3, §Testing).
 2. **"Ambient model, no tier override" named a dispatch shape no code in
    the repo exercises** (every `waves.js` dispatch passes `model`; the
    verified-live note covers strings, not omission; CLI default and
@@ -1079,3 +1086,23 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
    conjuncts (and the Adds disclosure likewise); §1 acknowledges the
    route-away's inherited cost; the fallback-tier wording spells out
    remove-here / add-there across §3 and §6.
+
+### Round 12 (fresh-context verification round) — **LOOP ENDED**
+
+Headline, verbatim: "nothing I found changes a mechanism, a contract, or a
+test seam." Round 11's deletion verified clean (every surviving `headSha`
+mention swept and classified; the §1 negation is affirmative, so the
+requirement cannot be resurrected by omission); the route-away gate
+verified **checkable from named artifacts** — denominator from the
+receipt's compiled wave shape, numerator from the presence of
+`<runDir>/frontier/wave-<n>/` (written before any adopt-or-fallback
+decision; the early-death shape is co-red under zero-fallbacks; the
+lone-survivor red is the clause's stated intent and co-red with the gates
+anyway); the routing rule's three restatements consistent, correct
+conjunct order, no stale spellings. Scope: no growth; the Adds/Removes
+disclosure accurate as written. Grade: `netConceptDelta` **up**, moved
+slightly toward flat by round 11. **Buildability: buildable as written —
+the first round with no excepted finding.** Three prose nits adopted in
+place (supersession marker on round 10's record; the gate clause now
+names its two artifacts; `wave-<n>` stated 1-based per the `heads/`
+precedent).
