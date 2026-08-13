@@ -42,7 +42,55 @@ import schedule_model as sm                                     # noqa: E402
 # is how a driver silently stops measuring the thing the model measured.
 EDGE_DROP = sm.SAME_FILE_WHYS
 
-BRIEF = Path(__file__).resolve().parent / "frontier/references/resolver-prompt.md"
+# Arm B's own resolver dispatch brief: no tools, no repo, no shell — one JSON
+# object in, one JSON object out (see make_resolver_launcher below). This is
+# NOT the engine's baked RESOLVER_PROMPT (skills/ultrapowers/references/
+# wave-merge.md, BAKE:RESOLVER_PROMPT / harnesses/waves.js): that prompt reads
+# a narration file and writes a reply file inside a wave worktree, a contract
+# change made deliberately when the engine's fold path was built (spec
+# 2026-08-12, "Where it lives"). The two prompts serve different contracts on
+# purpose, so this brief is not a copy of that baked text and carries no drift
+# pin of its own — it lives only here, read only by this file.
+RESOLVER_BRIEF = """# Frontier conflict resolver — dispatch brief
+
+You are a merge-conflict resolver for the manyana frontier production test.
+You have **no tools, no repo access, no shell** — you receive one JSON object
+and you return one JSON object. Return **only JSON**: no prose, no fences.
+
+## Input
+
+A single JSON object:
+
+- `"path"` — the conflicted file's repo-relative path.
+- `"kind"` — the conflict kind (always a text-narrated kind; non-text
+  conflicts are never dispatched to you).
+- `"narration"` — the WHOLE annotated file: manyana's merged view with
+  conflict markers naming each side (`frontier` = work already merged;
+  a task id = the incoming change). Non-marker lines are already-merged
+  content.
+- `"planBodies"` — the plan text of each task involved in this conflict,
+  in the same order as the marker labels introduce them. Use these to
+  understand each side's INTENT.
+
+## Output
+
+`{"resolvedFileLines": [...]}` — the **complete visible line list** for the
+file after resolution: every line the merged file should contain, top to
+bottom, no markers, no trailing-newline entries. This is whole-file-out:
+lines outside the conflicted blocks must be preserved exactly as the
+narration shows them; **do not invent** content that appears in neither
+side nor the narration.
+
+## Rules
+
+1. Honor both sides' intent where they are compatible; where they are not,
+   prefer the semantics the plan bodies describe over surface text.
+2. Never drop a side silently — if the two sides are irreconcilable,
+   still return your best whole-file merge; a held-out test suite grades
+   the result and a human reads this transcript verbatim.
+3. Return only the JSON object. A malformed reply is retried once, then
+   the conflict parks as recorded evidence.
+"""
 RESULTS_DIR = ROOT / "evals/frontier/results"
 RESULT_BRANCH = "frontier-result"
 PREFLIGHT_WIDTH = 4          # contend frees exactly four tasks at t=0
@@ -286,7 +334,7 @@ def headless(prompt, cwd, env, timeout):
 def make_resolver_launcher(workdir, env, gauge=None, brief=None):
     """The production resolver launcher: brief + input JSON, no tools, no repo
     work — the reply text is the whole contract."""
-    text = (brief if brief is not None else BRIEF.read_text())
+    text = brief if brief is not None else RESOLVER_BRIEF
 
     def launcher(payload):
         prompt = "%s\n\n## Input\n\n%s\n" % (text, json.dumps(payload, indent=2))
