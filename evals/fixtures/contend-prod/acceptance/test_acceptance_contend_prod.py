@@ -283,7 +283,12 @@ def test_full_flow_create_export_over_quota_and_audit_agree():
     single bootstrap: valid creates succeed and are exported and audited,
     an invalid create is rejected by validation but still consumes quota
     and is still audited (DISPATCH_HOOKS run before the router dispatches,
-    ahead of PRE_CREATE_HOOKS validation)."""
+    ahead of PRE_CREATE_HOOKS validation).
+
+    Asserts only facts that hold under EVERY legal wiring order: the plan
+    leaves the relative append order of the two DISPATCH_HOOKS (rate limit
+    and audit) unpinned, so a call that a dispatch hook *rejects* may or may
+    not have been audited first."""
     from app.registry import bootstrap
     from app.validation import ValidationError
     from app.ratelimit import RateLimitExceededError
@@ -305,6 +310,14 @@ def test_full_flow_create_export_over_quota_and_audit_agree():
     exported = app.call("GET", "/export")
     assert exported == "actor,amount,category,id,name\nada,3,food,1,ada"
 
-    audited_methods_for_ada = [e for e in audit.entries() if e["actor"] == "ada"]
-    assert len(audited_methods_for_ada) == 2  # the valid create and the failed-validation attempt
-    assert all(e["method"] == "POST" and e["path"] == "/records" for e in audited_methods_for_ada)
+    # The first two calls for "ada" are both within quota, so no dispatch hook
+    # can short-circuit them and both are audited whichever hook runs first.
+    # The 3rd (over-quota) call is deliberately not pinned: whether the audit
+    # hook sees it depends on the unpinned hook order.
+    ada_entries = [e for e in audit.entries() if e["actor"] == "ada"]
+    assert ada_entries[:2] == [
+        {"method": "POST", "path": "/records", "actor": "ada"},
+        {"method": "POST", "path": "/records", "actor": "ada"},
+    ]
+    assert 2 <= len(ada_entries) <= 3
+    assert all(e["method"] == "POST" and e["path"] == "/records" for e in ada_entries)

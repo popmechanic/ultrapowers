@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
 
-**Acceptance:** sealed 6752e4ce1b25 (sha256:6752e4ce1b25d9898538af705c6a3daae1030ae8dc8875947295f5c7f33c1714)
+**Acceptance:** sealed 4d131df61152 (sha256:4d131df611521b11c39a23f2cb5eb5d379d7c0f3c3c7896d835397d78f860c6c)
 
 **Goal:** Add four independent features to the `eventboard` service — input validation, an export formatter, a rate-limit/quota guard, and an audit log. Each feature is its own new module with its own test suite, but all four genuinely extend `app/registry.py`: a two-key config block in `DEFAULT_CONFIG`, and a registration line in the "feature wiring" section at the bottom of the file (an import plus one append/update call). No feature edits `bootstrap()`'s body or any other feature's module. That same-file contention on `registry.py` is deliberate and left unserialized: no `Depends-on` marker orders these tasks, so any ordering the executor chooses must merge their concurrent edits to one file.
 

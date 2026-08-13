@@ -27,10 +27,18 @@ def test_base_crud_and_report_routes_are_wired():
     assert app.call("GET", "/records") == []
 
 
-def test_export_route_is_pre_wired_but_has_no_formats_yet():
+def test_export_route_rejects_a_format_it_does_not_know():
+    """`_export` raises ValueError for a format that is neither enabled in
+    config nor present in EXPORT_FORMATS.
+
+    This holds both while EXPORT_FORMATS is empty and after a feature fills
+    it in, so it stays green as the app grows. Do NOT assert that the
+    *default* format fails: EXPORT_FORMATS is a lookup table a feature is
+    expected to populate, and pinning "/export is broken" would turn that
+    feature landing into a smoke-test failure."""
     app = bootstrap()
     with pytest.raises(ValueError):
-        app.call("GET", "/export")
+        app.call("GET", "/export", fmt="xml")
 
 
 def test_two_bootstraps_do_not_share_store_state():
