@@ -33,6 +33,16 @@ from pathlib import Path
 # PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
+# scripts -> ultrapowers -> kernel: a plain Python import (no subprocess),
+# reusing the fold engine's line-counting bijection and resolver cap so the
+# --repo-root pre-filter (below) agrees byte-for-byte with the runtime fold
+# predicate on what counts as an oversized file.
+_KERNEL_DIR = Path(__file__).resolve().parent.parent / "kernel"
+if str(_KERNEL_DIR) not in sys.path:
+    sys.path.insert(0, str(_KERNEL_DIR))
+from frontier_fold import RESOLVER_LINE_CAP  # noqa: E402
+from repo_weave import split_lines  # noqa: E402
+
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
@@ -924,7 +934,53 @@ OVERLAP_MODES = ("serialize", "fold")
 OVERLAP_DEFAULT = "serialize"
 
 
-def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
+class _PathEligibility(dict):
+    """dict[path] -> (eligible: bool, reason: str | None), resolved against
+    `root` and computed lazily on first access, memoised thereafter (one
+    filesystem probe per path, however many pairs share it).
+
+    Order of checks: symlink first (`Path.is_symlink()` — never read a
+    broken link's bytes; gitlinks are left to the runtime guard, keeping this
+    compiler subprocess-free); a path that does not exist under `root` is
+    eligible (nothing to inspect — a soon-to-be-created path never forces
+    serialization); otherwise a null byte marks the file non-text, else the
+    bytes are decoded utf-8 with errors="replace" and counted via the
+    kernel's `split_lines` (never `str.splitlines()` — they differ by one on
+    every trailing-newline file) against `RESOLVER_LINE_CAP`.
+    """
+
+    def __init__(self, root):
+        super().__init__()
+        self._root = root
+
+    def __missing__(self, path):
+        full = self._root / path
+        if full.is_symlink():
+            result = (False, "symlink")
+        elif not full.exists():
+            result = (True, None)
+        else:
+            data = full.read_bytes()
+            if b"\x00" in data:
+                result = (False, "non-text (contains a null byte)")
+            else:
+                text = data.decode("utf-8", errors="replace")
+                n = len(split_lines(text))
+                if n > RESOLVER_LINE_CAP:
+                    result = (False, "over RESOLVER_LINE_CAP (%d > %d lines)"
+                              % (n, RESOLVER_LINE_CAP))
+                else:
+                    result = (True, None)
+        self[path] = result
+        return result
+
+
+def _path_eligibility(root):
+    """Factory: a fresh, per-compile memo of `_PathEligibility` over `root`."""
+    return _PathEligibility(root)
+
+
+def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
     """Returns (edges, conflicts, dropped_pairs).
 
     `dropped_pairs` holds BOTH orderings of every pair whose
@@ -993,17 +1049,36 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
             stack.extend(adj.get(n, []))
         return False
 
+    # Hermetic, memoised per path over the whole compile (spec §1): built once,
+    # consulted by every pair's fold_eligible() call below. `None` when no
+    # `--repo-root` was given — the pre-filter is then INERT and every pair is
+    # eligible (documented property; the runtime materialization guard remains
+    # authoritative for everything a static pre-filter cannot see).
+    path_eligibility = _path_eligibility(repo_root) if repo_root is not None else None
+
     def fold_eligible(a, b):
         """Whether the fold path may take this overlapping pair.
 
-        The eligibility PRE-FILTER — every path in the pair's overlap set,
-        resolved against a repo root, must pass the kernel's dispatch
-        predicate — arrives with the `--repo-root` plumbing (spec §1). Until
-        then the hook is unconditional: with no root to probe, every pair is
-        eligible, and `dispatchable()` plus the runtime materialization guard
-        remain authoritative for everything a static pre-filter cannot see.
+        A pair keeps its serializing edge (returns False) when any path in
+        its overlap set — `writes ∪ reads`, both sides — resolved against
+        `repo_root` and existing there, is non-text, over
+        `RESOLVER_LINE_CAP`, or a symlink. Every ineligible path found is
+        recorded once in `marker_conflicts` (task "", the `type_conflicts`
+        `task:""` precedent), regardless of how many pairs share it —
+        `add_conflict`'s `(task, edge)` dedupe keys on the path alone.
         """
-        return True
+        if path_eligibility is None:
+            return True
+        overlap = ((set(a["writes"]) | set(a["reads"]))
+                   | (set(b["writes"]) | set(b["reads"])))
+        result = True
+        for path in sorted(overlap):
+            elig, reason = path_eligibility[path]
+            if not elig:
+                add_conflict("", path, reason + " — pairs kept serialized",
+                              kind="inference")
+                result = False
+        return result
 
     # Tier 1: Explicit — marker edges
     for t in impl:
@@ -1338,6 +1413,16 @@ def main(argv=None):
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
                          "routes all scratch there")
+    ap.add_argument("--repo-root", type=Path, default=None, dest="repo_root",
+                    metavar="PATH",
+                    help="repo root the `--overlap fold` eligibility "
+                         "pre-filter probes: a pair keeps its serializing "
+                         "edge when a path in its overlap set, resolved "
+                         "against PATH and existing there, is non-text, "
+                         "over RESOLVER_LINE_CAP lines, or a symlink. "
+                         "Without --repo-root the pre-filter is inert and "
+                         "every pair is eligible; ignored under "
+                         "--overlap serialize.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1479,7 +1564,8 @@ def main(argv=None):
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the runbook and gates "
               "still apply.", file=sys.stderr)
-    edges, conflicts, dropped_pairs = build_edges(impl, overlap_mode=args.overlap)
+    edges, conflicts, dropped_pairs = build_edges(
+        impl, overlap_mode=args.overlap, repo_root=args.repo_root)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None
