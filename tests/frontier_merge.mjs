@@ -492,7 +492,7 @@ async function scenarioRoutingFrozenBase() {
   console.log('scenario 8d routing-frozen-base: OK')
 }
 
-// ── Guard scenarios (a)–(n): each pins ONE defensive guard in contendedMerge's
+// ── Guard scenarios (a)–(o): each pins ONE defensive guard in contendedMerge's
 // fold-reply gauntlet or the resolver/adoption null checks. The completeness
 // critic mutation-verified that deleting any one of these guards left
 // ALL SCENARIOS PASSED unchanged — every scenario below must fail if its
@@ -500,7 +500,8 @@ async function scenarioRoutingFrozenBase() {
 // one falls back to the plain git-merge path, never reconcile. (a)–(i) are the
 // first gate round's nine; (j)–(n) are the final gate round's four remaining
 // mutation-found guards plus the Task-9-amend fallout on the missing-counts
-// guard's CONFLICTS half.
+// guard's CONFLICTS half; (o) is the #145 close — the selfChecks-absent
+// adoption hole, the last missing-scalar case at the adoption boundary.
 
 // (a) fold dispatch returns null/undefined reply.
 async function scenarioGuardFoldReplyNull() {
@@ -759,6 +760,32 @@ async function scenarioGuardConflictsCountsOmitted() {
   console.log('scenario 9n guard-conflicts-counts-omitted: OK')
 }
 
+// (o) status: 'FOLDED' with `selfChecks` entirely omitted (#145). The shape is
+// schema-legal — FOLD_SCHEMA requires only `status`, because resolve replies
+// share it — so the guard must be unconditional: the fold STEP orders the
+// agent to copy `selfChecks` from the CLI's stdout, and absence of the
+// attestation falls back exactly like a named failure. Counts are present on
+// purpose: only the attestation is missing, so nothing else can trip first.
+async function scenarioGuardSelfChecksOmitted() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      const reply = cleanFoldReply()
+      delete reply.selfChecks
+      return reply
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'guard-o: a fold reply with no selfChecks attestation is never adopted')
+  assert(!calls.some((c) => c.label.startsWith('resolve:')),
+    'guard-o: a fold reply with no selfChecks attestation dispatches no resolver')
+  assertFellBack(r, calls,
+    /fold self-checks did not pass: \(absent from the reply\)/, 'guard-o')
+  console.log('scenario 9o guard-selfchecks-omitted: OK')
+}
+
 await scenarioCleanFold()
 await scenarioConflictResolved()
 await scenarioStaleRenarration()
@@ -784,5 +811,6 @@ await scenarioGuardResolverStatusNotResolved()
 await scenarioGuardResolveApplyReplyNull()
 await scenarioGuardResolutionNotApplied()
 await scenarioGuardConflictsCountsOmitted()
+await scenarioGuardSelfChecksOmitted()
 
 console.log('ALL SCENARIOS PASSED')

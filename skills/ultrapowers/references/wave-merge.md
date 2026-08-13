@@ -154,7 +154,11 @@ that omits the `conflicts` scalar entirely is checked the same way, unconditiona
 the status enum: the CLI always emits `conflicts` for both fold verdicts, so a missing
 count is a contract violation rather than a legal FOLDED or CONFLICTS shape, and it
 falls the wave back before either count-vs-count guard — which go silent when the
-field is simply absent — ever runs. Nothing downstream catches any of this (materialize
+field is simply absent — ever runs. The `selfChecks` attestation is held to the same
+standard: the STEP orders it copied from the CLI's stdout, so anything but `ok` —
+a named failure or an omitted field alike — falls the wave back (`FOLD_SCHEMA`
+requires only `status` because resolve replies share it; those never reach the fold
+call site). Nothing downstream catches any of this (materialize
 builds from the kernel's own manifest, and the fold advances the frontier either way),
 and it lands past the adoption boundary where fallback is no longer live — so it is
 checked before the loop, not after.
@@ -203,7 +207,8 @@ Honor both sides' intent where they are compatible; where they are not, prefer t
 
 The fold consumes task branches but never destroys them. Kernel error, an ineligible
 conflict, a resolver parked after its one retry, budget exhaustion mid-loop, a
-self-check failure, a materialization park, a thrown contended dispatch, a fold reply
+self-check reply that is anything but `ok` (a named failure or an absent
+attestation), a materialization park, a thrown contended dispatch, a fold reply
 whose counts and named conflicts disagree, and
 **candidate suite failure** all route the wave to the existing git-merge + reconcile
 path with the integration branch and worktree exactly where that path expects them.

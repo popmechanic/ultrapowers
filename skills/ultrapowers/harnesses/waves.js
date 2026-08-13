@@ -1272,8 +1272,13 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     return finish(null, 'fold reported ERROR: ' + (fold.detail || ''))
   if (fold.status === 'PARKED')
     return finish(null, 'fold parked an ineligible conflict: ' + (fold.detail || ''))
-  if (fold.selfChecks && fold.selfChecks !== 'ok')
-    return finish(null, 'fold self-checks did not pass: ' + fold.selfChecks)
+  // Unconditional: the fold STEP orders the agent to copy `selfChecks` from
+  // the CLI's stdout, so an absent value is a contract violation, not a legal
+  // shape — FOLD_SCHEMA requires only `status` because resolve replies share
+  // it, and those never reach this call site (#145).
+  if (fold.selfChecks !== 'ok')
+    return finish(null, 'fold self-checks did not pass: ' +
+      (fold.selfChecks || '(absent from the reply)'))
   // CONTENDED_MERGE_PROMPT's fold STEP orders the agent to copy `conflicts`
   // verbatim from the CLI's stdout for every reply — the CLI always emits it
   // for both fold verdicts, FOLDED and CONFLICTS alike (fold_wave.py:281-285;
