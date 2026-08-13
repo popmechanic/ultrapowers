@@ -465,6 +465,124 @@ const headsSlotsLine = (mergedResults, waveNumber) => {
   return 'For this wave that means slots: ' + list + '.'
 }
 
+// ── Contended (frontier) merge contract — baked from references/wave-merge.md
+// (BAKE:CONTENDED_MERGE_PROMPT). Built per-dispatch because the wave base is
+// ENGINE-AUTHORED: waveBaseSha advances only AFTER a merge, so at dispatch time
+// it is exactly the previous integration head, and the agent derives nothing.
+// The CLI is located through the <pluginRoot> token fillPaths() fills (same
+// precedent as review-package). The heads/ slot sentence is carried verbatim
+// from MERGE_PROMPT — the completeness critic treats a missing slot as an
+// ancestry miss, so a contended prompt without it would block every contended run.
+// waveDir is ENGINE-AUTHORED too: cmd_fold's stdout is scalars only
+// ({clean, conflicts, dispatchable, parked, selfChecks}), so foldLogPath,
+// conflictsIndex and each conflict's narrationFile exist only on disk. The prompt
+// names the directory and the conflict-<i>.txt convention and puts reading its
+// conflicts.json in contract — otherwise the agent must either guess a path
+// (dispatching a resolver at a file that does not exist) or, obeying the
+// no-invention clause literally, omit `open` entirely and fall every conflicted
+// wave back with empty evidence pointers.
+// The four paragraphs are joined (not '\n'-concatenated inside a literal) so the
+// baked text reads contiguously in source — the drift pin matches across the line
+// break, and a literal \n between them would break that match.
+const contendedMergePrompt = (prevHead, waveDir) => [
+  'You are the wave merge agent running the contended contract, operating ONLY ' +
+  'inside the dedicated integration worktree at ' + INTEGRATION_WT + ' — never ' +
+  'the session main checkout. cd into it; echo git rev-parse HEAD and git branch ' +
+  '--show-current; if the branch is not the integration branch you were asked to ' +
+  'operate on, report BLOCKED and merge nothing — do not detach or move any ' +
+  "other checkout. This wave's tasks edit the same files on purpose, so you do " +
+  'not merge their branches: you drive the deterministic fold CLI at ' +
+  '<pluginRoot>/skills/ultrapowers/kernel/fold_wave.py, which moves no ref and ' +
+  'writes nothing into the worktree. Run every invocation from inside ' +
+  INTEGRATION_WT + ' with --repo . so the CLI reads this worktree\'s repository. ' +
+  'The wave base — the fold base, and <prevHead> in the sequences below — is ' +
+  (prevHead || '') + "; never derive it yourself. This wave's fold directory — " +
+  'the one the CLI writes its fold log, its conflicts index and its narrations ' +
+  'into — is ' + (waveDir || '') + '; never derive that either. Exactly one STEP ' +
+  'applies to this dispatch: the STEP line appended below names it and gives the ' +
+  'exact command to run. Run that command and no other, then report its stdout ' +
+  'JSON as your own fields. Reading is otherwise limited to that fold directory: ' +
+  'a STEP may send you to its conflicts index conflicts.json, its fold log ' +
+  'fold_log.jsonl, or a narration file, and those reads are in contract. Report ' +
+  'nothing you did not either read there or read from stdout — never a count, a ' +
+  'sha or a path you invented. A non-zero exit is never ' +
+  'something to work around — report the failure verbatim and stop.',
+  'STEP fold: report FOLDED when the CLI prints conflicts 0, CONFLICTS when it ' +
+  'prints conflicts and every indexed conflict is dispatchable, PARKED when any ' +
+  'conflict is not dispatchable, and ERROR on a non-zero exit or a selfChecks ' +
+  'value other than ok. Copy conflicts, dispatchable, parked and selfChecks from ' +
+  'the JSON. The CLI prints no paths, so take them from the fold directory it ' +
+  'just wrote: report foldLogPath as ' + (waveDir || '') + '/fold_log.jsonl and ' +
+  'conflictsIndex as ' + (waveDir || '') + '/conflicts.json. Time the invocation ' +
+  'and report its wall clock in foldCliWallTimeSec. Then read ' + (waveDir || '') +
+  '/conflicts.json — an array whose entries carry i, path, kind, dispatchable, ' +
+  'reason and epoch — and for each entry whose dispatchable is true add an open ' +
+  "entry carrying that entry's path, that entry's epoch, and as narrationFile " +
+  'the file holding its narration, which is ' + (waveDir || '') +
+  "/conflict-<i>.txt for that same entry's i.",
+  'STEP resolve: report FOLDED when the CLI prints applied true. When it prints ' +
+  'stale true, report CONFLICTS with exactly one open entry carrying the same ' +
+  'path, the epoch the CLI returned, and its renarrationFile as narrationFile — ' +
+  'that re-narration is a markerless whole file, not an annotated one. Report ' +
+  'ERROR on a non-zero exit.',
+  'STEP adopt: run the materialize invocation. If it prints a park or a fallback ' +
+  'verdict, report CONFLICT with that reason and change nothing. Otherwise take ' +
+  'the candidateSha it printed and test that candidate with the branch unmoved: ' +
+  'git read-tree -u --reset <candidate>^{tree} puts the candidate\'s tree in the ' +
+  'worktree while HEAD and the branch ref stay at <prevHead> (a bare read-tree -u ' +
+  'is a fatal git error, and merge --ff-only would refuse over the read-tree ' +
+  'index). Then ' + testInstruction + '. If it passes, adopt the candidate with ' +
+  'git reset --hard <candidate> and report MERGED with that sha as headSha. ' +
+  'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git rev-parse <branch> > ' +
+  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+  'by hand. If instead the suite fails, adopt nothing and restore the worktree — ' +
+  'git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED ' +
+  'with the failing output and write no slots. Do not try to fix a failing ' +
+  'candidate: the engine falls the wave back to an ordinary git merge, and that ' +
+  'path refuses to operate on a dirty or detached worktree.',
+].join('\n')
+
+// Baked from references/wave-merge.md (BAKE:RESOLVER_PROMPT). Rewritten from the
+// production cell's no-tools text-in/text-out brief for the file-read contract:
+// the resolver reads its own narration file and writes a whole-file reply, and
+// must accept BOTH narration shapes (annotated, and the markerless whole-file
+// body a re-narration produces — re-folding an already-folded endpoint narrates
+// nothing).
+const RESOLVER_PROMPT = [
+  'You are a merge-conflict resolver for one file in one wave. You have no repo ' +
+  'to explore and no branch to check out: read exactly the narration file named ' +
+  'below, write exactly the reply file named below, and touch nothing else. ' +
+  'Never run git, never edit the file under conflict, and never create a commit.',
+  'The narration arrives in one of two shapes and you must handle both. An ' +
+  'ANNOTATED narration is the whole file with conflict markers naming each side ' +
+  '— frontier is the work already folded in, a task id is the incoming change — ' +
+  'and every unmarked line is already-merged content. A MARKERLESS narration is ' +
+  'the whole file with no markers at all: it is a re-narration of a path that ' +
+  'folded again after your last reply, so nothing is left to adjudicate except ' +
+  'carrying your intent forward onto the newer content. The NARRATION line ' +
+  'states which shape you were given; if it disagrees with the bytes you read, ' +
+  'trust the bytes.',
+  'Write the complete resolved file to the reply file: every line the merged ' +
+  'file should contain, top to bottom, in order, with no conflict markers, and ' +
+  'nothing invented that appears in neither side nor the narration. Preserve ' +
+  'lines outside the conflicted blocks exactly as the narration shows them. The ' +
+  'reply file is read back byte for byte and split by the kernel\'s own line ' +
+  'convention, so a trailing newline in your reply is a trailing newline in the ' +
+  'merged file — match the narration\'s ending. Write the file whole; never ' +
+  'append to it, and never leave it empty unless the resolved file is genuinely ' +
+  'empty.',
+  "Honor both sides' intent where they are compatible; where they are not, " +
+  'prefer the semantics the contending task bodies describe over surface text. ' +
+  'Never drop a side silently — if the two sides are irreconcilable, still write ' +
+  'your best whole-file merge and say so in notes; a human reads this transcript ' +
+  'verbatim. Report RESOLVED once the reply file is written, or BLOCKED with the ' +
+  'reason if you could not read the narration or could not write the reply. A ' +
+  'BLOCKED resolver falls the whole wave back to an ordinary git merge, which is ' +
+  'a real cost — report it only when you genuinely cannot produce a file.',
+].join('\n')
+
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
 // EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
 // #29: a critic that reviews the wrong tree emits confident false findings — the
@@ -583,6 +701,43 @@ const MERGE_SCHEMA = {
     status: { enum: ['MERGED', 'CONFLICT', 'TEST_FAILED'] },
     headSha: { type: 'string' },
     detail: { type: 'string' },
+  },
+}
+// The contended merge contract's fold/resolve replies. MERGE_SCHEMA is
+// status/headSha/detail and cannot carry the CLI's counts, so this is its
+// sibling — small scalars plus the per-conflict coordinates the engine needs to
+// dispatch resolvers (all CLI payloads stay on disk; agents relay only paths,
+// counts, and enum verdicts, #36). The ADOPTION reply deliberately rides
+// MERGE_SCHEMA instead, so the call site's MERGED + headSha handling is unchanged.
+const FOLD_SCHEMA = {
+  type: 'object',
+  required: ['status'],
+  properties: {
+    status: { enum: ['FOLDED', 'CONFLICTS', 'PARKED', 'ERROR'] },
+    conflicts: { type: 'integer' },
+    dispatchable: { type: 'integer' },
+    parked: { type: 'integer' },
+    selfChecks: { type: 'string' },
+    foldLogPath: { type: 'string' },
+    conflictsIndex: { type: 'string' },
+    foldCliWallTimeSec: { type: 'number' },
+    // One entry per conflict still open: where its narration lives and the epoch
+    // the resolution must be valid against. A stale `resolve` returns exactly one
+    // entry here — the markerless re-narration.
+    open: { type: 'array', items: { type: 'object',
+      required: ['path', 'epoch', 'narrationFile'], properties: {
+      path: { type: 'string' },
+      epoch: { type: 'integer' },
+      narrationFile: { type: 'string' } } } },
+    detail: { type: 'string' },
+  },
+}
+const RESOLVER_SCHEMA = {
+  type: 'object',
+  required: ['status'],
+  properties: {
+    status: { enum: ['RESOLVED', 'BLOCKED'] },
+    notes: { type: 'string' },
   },
 }
 const SETUP_SCHEMA = {
@@ -992,6 +1147,245 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   }
 }
 
+// ── Contended (frontier) merge path ──────────────────────────────────────────
+// The fold CLI, located through the <pluginRoot> token fillPaths() fills — the
+// same precedent as review-package. All CLI I/O is file-based: agents relay only
+// paths, counts, and enum verdicts (#36).
+const KERNEL_CLI = 'python3 <pluginRoot>/skills/ultrapowers/kernel/fold_wave.py'
+const frontierDir = (waveNumber) => '<runDir>/frontier/wave-' + waveNumber
+
+// One report entry per wave that took the contended path — fallbacks included:
+// the fold log and conflicts index exist either way, and the production canary
+// harvests that directory, not the report alone. The key list of this builder is
+// pinned against report-format.md by tests/test_report_runbook.py — every field
+// emitted here must be documented there.
+const frontier = []
+const frontierEntry = (waveNumber, fold, transcripts) => ({
+  wave: waveNumber,
+  foldLogPath: (fold && fold.foldLogPath) || '',
+  conflictsIndex: (fold && fold.conflictsIndex) || '',
+  selfChecks: (fold && fold.selfChecks) || '',
+  foldCliWallTimeSec: (fold && typeof fold.foldCliWallTimeSec === 'number')
+    ? fold.foldCliWallTimeSec : null,
+  resolverTranscripts: transcripts,
+})
+
+// Derived contention (spec §1): the compiler declares nothing. Two mergeable
+// results whose WAVES[waveIdx] entries share a `files` path ARE a dropped
+// eligible pair, by construction — every overlapping pair that was NOT dropped
+// carries an edge, and Kahn layering separates edge-connected tasks into
+// different waves. Under --overlap serialize (the shipped default) no wave can
+// contain intersecting `files`, so this is inert there.
+// The join is by `r.task === t.id`: a task result emits {task,status,branch,
+// headSha,…} and no `files`, so reading `r.files` would find undefined and fail
+// CLOSED — every contended wave silently taking the git-merge path with stubbed
+// tests still green.
+const contendedWave = (merged, waveIdx) => {
+  if (resume) return false        // redirect, salvage, any future resume lane
+  if (!waveBaseLive) return false // a frozen wave base would rewind the branch
+  const wave = Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : []
+  const fileSets = merged.map((r) => {
+    const t = wave.find((x) => x && x.id === r.task)
+    return (t && Array.isArray(t.files)) ? t.files : []
+  })
+  for (let i = 0; i < fileSets.length; i++) {
+    for (let j = i + 1; j < fileSets.length; j++) {
+      if (fileSets[i].some((f) => fileSets[j].indexOf(f) !== -1)) return true
+    }
+  }
+  return false
+}
+
+// The contending tasks' intent, so the resolver can prefer semantics over
+// surface text. PLAN-authored, so it is appended OUTSIDE fillPaths, like every
+// other plan span (a plan is free to quote the literal <runDir> token).
+const contendingTasksBlock = (waveTasks) => {
+  const parts = waveTasks.map((t) => {
+    const head = '\n- task ' + t.id + ': ' + (t.title || '') +
+      ((Array.isArray(t.files) && t.files.length)
+        ? (' [files: ' + t.files.join(', ') + ']') : '')
+    return head + ((typeof t.body === 'string' && t.body.trim() !== '')
+      ? ('\n' + t.body) : '')
+  })
+  return '\nCONTENDING TASKS:' + parts.join('') +
+    (wavesPath
+      ? ('\nTheir full verbatim task text lives in the JSON file at ' + wavesPath +
+         ' — read the "tasks" array entry whose "id" matches.')
+      : '')
+}
+
+// Returns the adoption result (MERGE_SCHEMA shape) when the candidate was
+// adopted, or null to fall the wave back to the git-merge path. Fallback is live
+// strictly before adoption: the fold consumes task branches but never destroys
+// them, and the prompt restores the worktree on a red candidate, so the
+// git-merge path is handed the branch and worktree exactly where it expects them.
+async function contendedMerge(merged, waveIdx, slotsLine) {
+  const waveNumber = waveIdx + 1
+  // ENGINE-AUTHORED wave base: waveBaseSha advances only AFTER a merge, so at
+  // dispatch time it is exactly the previous integration head.
+  const prevHead = waveBaseSha
+  const waveTasks = (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
+    .filter((t) => t && merged.some((r) => r.task === t.id))
+  const transcripts = []
+  let fold = null
+  // Single record point. Every fallback names its reason in judgmentCalls and the
+  // log — the engine's existing failure-routing records; there is no separate
+  // fallback event type in the fold log (one fact, one record).
+  const finish = (outcome, reason) => {
+    frontier.push(frontierEntry(waveNumber, fold, transcripts))
+    if (!outcome) {
+      judgmentCalls.push('wave ' + waveNumber + ': contended merge fell back to the ' +
+        'git-merge path — ' + reason)
+      log('wave ' + waveNumber + ' contended fallback: ' + reason)
+    }
+    return outcome
+  }
+  const dispatchMerge = (step, command, label, schema) => agent(
+    fillPaths(GUARD + '\n\n' + contendedMergePrompt(prevHead, frontierDir(waveNumber)) +
+      ' ' + slotsLine +
+      '\nSTEP: ' + step + '. Run exactly this command, from inside ' +
+      INTEGRATION_WT + ':\n' + command),
+    { label: label, model: TIER.mostCapable, schema: schema })
+
+  // Task-index order, matching the merge contract: completion order is not
+  // observable to the engine, and determinism buys reproducible conflicts.
+  const branchArgs = merged
+    .map((r) => ' --branch ' + r.task + '=' + r.branch + ':' + r.headSha).join('')
+  try {
+    fold = await dispatchMerge('fold',
+      KERNEL_CLI + ' fold --repo . --run-dir <runDir> --wave ' + waveNumber +
+        ' --base ' + prevHead + branchArgs,
+      'merge:wave' + waveNumber + ':fold', FOLD_SCHEMA)
+  } catch (e) {
+    return finish(null, 'fold dispatch threw: ' + String((e && e.message) || e))
+  }
+  // agent() RETURNS null (not throws) on a terminal Overloaded/skipped dispatch.
+  // Unlike runTask, nothing wraps contendedMerge — mergeWave does not try/catch
+  // its call and neither does the wave loop — so a null deref here would abort
+  // the whole run and lose every already-merged wave. Fallback is the contract.
+  if (!fold) return finish(null, 'fold dispatch returned no reply')
+  if (fold.status === 'ERROR')
+    return finish(null, 'fold reported ERROR: ' + (fold.detail || ''))
+  if (fold.status === 'PARKED')
+    return finish(null, 'fold parked an ineligible conflict: ' + (fold.detail || ''))
+  if (fold.selfChecks && fold.selfChecks !== 'ok')
+    return finish(null, 'fold self-checks did not pass: ' + fold.selfChecks)
+  // The counts are authority over the status enum: a parked conflict means the
+  // frontier cannot be completed, whatever verdict the agent typed alongside it.
+  if (typeof fold.parked === 'number' && fold.parked > 0)
+    return finish(null, 'fold parked ' + fold.parked + ' conflict(s) — see the conflicts index')
+
+  const open = (fold.status === 'CONFLICTS' && Array.isArray(fold.open)) ? fold.open : []
+  if (fold.status === 'CONFLICTS' && open.length === 0)
+    return finish(null, 'fold reported CONFLICTS but named no dispatchable conflict')
+  // The counts are authority over the status enum on the OPEN side too, and this
+  // is the load-bearing half: the resolver loop runs over `open`, so a FOLDED
+  // verdict typed over a non-zero conflict count, or a CONFLICTS reply that lists
+  // fewer open entries than it counted dispatchable, would skip resolution
+  // entirely and adopt a candidate that silently drops the other task's edit on a
+  // GREEN run. Nothing downstream catches that — materialize builds from the
+  // engine's own manifest and the fold advances the frontier either way — and it
+  // lands past the adoption boundary, where fallback is no longer live. Parked is
+  // already 0 here, so dispatchable === conflicts; either count is the expectation
+  // (prefer the narrower one, fall back to the total when a reply omits it).
+  const expectOpen = (typeof fold.dispatchable === 'number') ? fold.dispatchable
+    : ((typeof fold.conflicts === 'number') ? fold.conflicts : null)
+  if (expectOpen !== null && open.length !== expectOpen)
+    return finish(null, 'fold named ' + open.length + ' open conflict(s) but counted ' +
+      expectOpen + ' still to resolve')
+
+  // Serial resolver loop — one agent at a time, awaited, so serialization is by
+  // construction. Every existing dispatch site is budget-checkpointed and an
+  // N-conflict loop must be too; exhaustion routes to fallback, still live here.
+  for (let i = 0; i < open.length; i++) {
+    let entry = open[i]
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (budgetExhausted())
+        return finish(null, 'budget exhausted before resolving conflict ' +
+          (i + 1) + ' of ' + open.length)
+      const replyFile = frontierDir(waveNumber) +
+        '/reply-' + (i + 1) + '-' + attempt + '.txt'
+      let res
+      try {
+        // Verified live 2026-08-13, by this task's first build pass (scratch
+        // Dynamic Workflow on this runtime; recorded in commit 887492e, salvaged
+        // here): agent() ACCEPTS an options object with the `model` key omitted —
+        // the probe arm { label, schema } and the control arm { label, model,
+        // schema } both returned their schema-conformant reply, no error. So the
+        // resolver runs at the session-ambient model: like-for-like with the
+        // graded production cell, whose resolver ran on its CLI default. (The
+        // spec's pre-stated fallback — dispatch at TIER.standard and amend the §6
+        // honesty text — is NOT taken; omission was not rejected.) Re-verify with
+        // a probe if a future runtime changes the accepted options shape, exactly
+        // as the model-identifier note in references/workflow-template.md asks.
+        res = await agent(
+          fillPaths(GUARD + '\n\n' + RESOLVER_PROMPT +
+            '\nNARRATION: ' + entry.path + ' — ' +
+            (attempt === 1 ? 'ANNOTATED' : 'MARKERLESS') +
+            ' — read it from ' + entry.narrationFile +
+            '\nREPLY FILE: write your whole resolved file to ' + replyFile) +
+            contendingTasksBlock(waveTasks),
+          { label: 'resolve:wave' + waveNumber + ':' + (i + 1) + ':' + attempt,
+            schema: RESOLVER_SCHEMA })
+      } catch (e) {
+        return finish(null, 'resolver dispatch threw on ' + entry.path + ': ' +
+          String((e && e.message) || e))
+      }
+      // Null (terminal Overloaded/skipped) — same reason as the fold guard above:
+      // no wrapper converts it, so it must route to fallback, not a TypeError.
+      if (!res) return finish(null, 'resolver dispatch returned no reply on ' + entry.path)
+      // Recorded verbatim: the resolver transcripts are the A/B grading surface.
+      transcripts.push({ conflict: i + 1, attempt: attempt, path: entry.path,
+        epoch: entry.epoch, narrationFile: entry.narrationFile,
+        replyFile: replyFile, status: res.status, notes: res.notes || '' })
+      if (res.status !== 'RESOLVED')
+        return finish(null, 'resolver reported ' + res.status + ' on ' + entry.path)
+      let applied
+      try {
+        applied = await dispatchMerge('resolve',
+          KERNEL_CLI + ' resolve --repo . --run-dir <runDir> --wave ' + waveNumber +
+            ' --path ' + entry.path + ' --epoch ' + entry.epoch +
+            ' --reply-file ' + replyFile,
+          'merge:wave' + waveNumber + ':apply' + (i + 1) + ':' + attempt, FOLD_SCHEMA)
+      } catch (e) {
+        return finish(null, 'resolve dispatch threw on ' + entry.path + ': ' +
+          String((e && e.message) || e))
+      }
+      if (!applied)
+        return finish(null, 'resolve dispatch returned no reply on ' + entry.path)
+      if (applied.status === 'FOLDED') break
+      // Stale: an intervening fold touched the path. Re-narrate ONCE — the
+      // re-narration is a markerless whole-file body, not an annotated one.
+      if (applied.status === 'CONFLICTS' && attempt === 1 &&
+          Array.isArray(applied.open) && applied.open.length) {
+        entry = applied.open[0]
+        continue
+      }
+      return finish(null, 'resolution of ' + entry.path + ' not applied (' +
+        applied.status + '): ' + (applied.detail || ''))
+    }
+  }
+
+  const headArgs = merged.map((r) => ' --task-head ' + r.task + '=' + r.headSha).join('')
+  let adopt
+  try {
+    adopt = await dispatchMerge('adopt',
+      KERNEL_CLI + ' materialize --repo . --run-dir <runDir> --wave ' + waveNumber +
+        ' --prev-head ' + prevHead + headArgs,
+      'merge:wave' + waveNumber + ':adopt', MERGE_SCHEMA)
+  } catch (e) {
+    return finish(null, 'adoption dispatch threw: ' + String((e && e.message) || e))
+  }
+  // Null before adoption: the branch has not moved, so fallback is still live.
+  if (!adopt) return finish(null, 'adoption dispatch returned no reply')
+  // MERGED is the adoption boundary: the branch has moved, so falling back here
+  // would hand the reconcile path a tree it was not promised. A MERGED without a
+  // headSha rides the existing call-site branch (which freezes the review base and
+  // clears waveBaseLive) exactly as it does on the git-merge path.
+  if (adopt.status === 'MERGED') return finish(adopt, '')
+  return finish(null, 'candidate not adopted (' + adopt.status + '): ' + (adopt.detail || ''))
+}
+
 // ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
 async function mergeWave(results, waveIdx) {
   // Caller guarantees ≥1 mergeable result (the SKIPPED path filters empty waves).
@@ -1002,6 +1396,12 @@ async function mergeWave(results, waveIdx) {
   // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
   // rides inside fillPaths() with the prompt; the ids come from control flow.
   const slotsLine = headsSlotsLine(merged, waveIdx + 1)
+  if (contendedWave(merged, waveIdx)) {
+    const adopted = await contendedMerge(merged, waveIdx, slotsLine)
+    // Fallback (null) drops through to the git-merge path below with the branch
+    // and worktree where it expects them; contendedMerge already named the reason.
+    if (adopted) return adopted
+  }
   let merge
   try {
     merge = await agent(
@@ -1225,6 +1625,15 @@ const noteFailures = () => {
 // Review diff base: the integration-branch HEAD a wave's worktrees build on.
 // Wave 1 starts at the setup HEAD; each successful merge advances it.
 let waveBaseSha = setup.headSha
+// Is waveBaseSha still the LIVE integration head? A schema-legal MERGED-without-
+// headSha reply freezes it while the branch genuinely advances — a tolerated soft
+// failure on the git-merge path (the next merge reconciles by content), but the
+// contended path builds its candidate FROM waveBaseSha, so a frozen base would
+// rewind the integration branch over the prior wave's merge and end the run
+// BLOCKED at the ancestry check, loud but late and expensive. Sticky across waves
+// by design, so it also covers a contended wave that itself adopts and reports
+// without a headSha. Wave 1 is never affected: setup is already hard-gated on one.
+let waveBaseLive = true
 // #70: accumulate the recorded {task, headSha} of every mergeable done task from
 // each successfully-merged wave. After the final merge the completeness critic
 // asserts each headSha is an ancestor of the integration HEAD (nothing silently
@@ -1365,6 +1774,9 @@ for (let w = 0; w < WAVES.length; w++) {
     break
   }
   if (merge.status === 'MERGED' && !merge.headSha) {
+    // The recorded base is now behind the real integration head: no later wave
+    // may take the contended path, whose candidate is built FROM that base.
+    waveBaseLive = false
     judgmentCalls.push('wave ' + (w + 1) + ': merge reported MERGED without headSha — ' +
       'review base stays at ' + String(waveBaseSha).slice(0, 12) +
       '; later reviewers may see this wave\'s changes as task scope')
@@ -1545,6 +1957,7 @@ return {
   acceptance,
   baseline,
   waveMerges,
+  frontier,
   coverage,
   missingDeliverables,
   gitVerified,

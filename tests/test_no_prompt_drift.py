@@ -57,8 +57,14 @@ def test_block_is_baked_into_workflow(name):
 
 WAVE_SOURCE = ROOT / "skills/ultrapowers/references/wave-merge.md"
 PLACEHOLDER = re.compile(r"\{\{\w+\}\}")
-WAVE_PROMPTS = ["SETUP_PROMPT_CREATE", "SETUP_PROMPT_RESUME", "MERGE_PROMPT",
-                "RECONCILE_PROMPT", "COMPLETENESS_PROMPT", "COMPLETENESS_ANCESTRY"]
+
+# The parametrization is DERIVED from wave-merge.md's BAKE blocks, so a new block
+# is pinned the moment it is authored (a hardcoded list silently shipped new
+# blocks unpinned). KNOWN is the floor that keeps a deleted or renamed block
+# failing red — derivation alone would make the existence check a tautology.
+KNOWN = {"SETUP_PROMPT_CREATE", "SETUP_PROMPT_RESUME", "MERGE_PROMPT",
+         "CONTENDED_MERGE_PROMPT", "RESOLVER_PROMPT",
+         "RECONCILE_PROMPT", "COMPLETENESS_PROMPT", "COMPLETENESS_ANCESTRY"}
 
 
 def wave_blocks():
@@ -67,10 +73,13 @@ def wave_blocks():
     return blocks
 
 
+WAVE_PROMPTS = sorted(wave_blocks())
+
+
 def test_wave_blocks_present():
-    blocks = wave_blocks()
-    for name in WAVE_PROMPTS:
-        assert name in blocks, "missing BAKE marker for " + name
+    missing = KNOWN - set(wave_blocks())
+    assert set(KNOWN) <= set(wave_blocks()), (
+        "wave-merge.md lost BAKE markers that waves.js still bakes: " + repr(sorted(missing)))
 
 
 @pytest.mark.parametrize("name", WAVE_PROMPTS)
