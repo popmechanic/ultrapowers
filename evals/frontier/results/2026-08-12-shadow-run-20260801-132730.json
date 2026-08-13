@@ -1,0 +1,83 @@
+{
+  "durations": [
+    {
+      "seconds": 1144,
+      "task": "1"
+    },
+    {
+      "seconds": 892,
+      "task": "2"
+    },
+    {
+      "seconds": 899,
+      "task": "3"
+    },
+    {
+      "seconds": 947,
+      "task": "4"
+    },
+    {
+      "seconds": 1371,
+      "task": "5"
+    },
+    {
+      "seconds": 115,
+      "task": "7"
+    },
+    {
+      "seconds": 111,
+      "task": "6"
+    },
+    {
+      "seconds": 315,
+      "task": "8"
+    }
+  ],
+  "excluded": null,
+  "floor": "94b1fe07198980f64f763f9eae2e1902fd58f0d6",
+  "floorSource": "merge-base",
+  "remodel": {
+    "durations_modeled": false,
+    "frontier": 2941.0,
+    "frontier_no_same_file": 2941.0,
+    "same_file_edges": 0,
+    "waves": 2941.0
+  },
+  "remodelReason": null,
+  "runDir": "/Users/marcusestes/Websites/Julian/.claude/ultrapowers/run-20260801-132730",
+  "waves": [
+    {
+      "conflictedPaths": [],
+      "disposition": "clean",
+      "endpoints": 3,
+      "k1Identical": true,
+      "k2Idempotent": true,
+      "narrations": [],
+      "silentDivergence": [],
+      "wave": 1
+    },
+    {
+      "conflictedPaths": [],
+      "disposition": "clean",
+      "endpoints": 1,
+      "k1Identical": true,
+      "k2Idempotent": true,
+      "narrations": [],
+      "silentDivergence": [],
+      "wave": 2
+    },
+    {
+      "disposition": "excluded",
+      "endpoints": 1,
+      "narrations": [],
+      "reason": "wave head not reachable in the bounded chain",
+      "wave": 3
+    },
+    {
+      "disposition": "trailing-cut",
+      "endpoints": 1,
+      "narrations": [],
+      "wave": 4
+    }
+  ]
+}

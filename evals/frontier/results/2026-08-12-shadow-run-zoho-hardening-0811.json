@@ -1,0 +1,36 @@
+{
+  "durations": [
+    {
+      "seconds": 741,
+      "task": "1"
+    },
+    {
+      "seconds": 748,
+      "task": "2"
+    }
+  ],
+  "excluded": null,
+  "floor": "4329d5558d8a6f46e1a369cabb455085f64d238f",
+  "floorSource": "merge-base",
+  "remodel": {
+    "durations_modeled": false,
+    "frontier": 748.0,
+    "frontier_no_same_file": 748.0,
+    "same_file_edges": 0,
+    "waves": 748.0
+  },
+  "remodelReason": null,
+  "runDir": "/Users/marcusestes/Websites/skylights project/skylights/.claude/ultrapowers/run-zoho-hardening-0811",
+  "waves": [
+    {
+      "conflictedPaths": [],
+      "disposition": "clean",
+      "endpoints": 1,
+      "k1Identical": true,
+      "k2Idempotent": true,
+      "narrations": [],
+      "silentDivergence": [],
+      "wave": 1
+    }
+  ]
+}

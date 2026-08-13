@@ -1,0 +1,53 @@
+{
+  "durations": [
+    {
+      "reason": "at/below walk floor",
+      "task": "1"
+    },
+    {
+      "reason": "at/below walk floor",
+      "task": "5"
+    },
+    {
+      "seconds": 1367,
+      "task": "6"
+    },
+    {
+      "reason": "at/below walk floor",
+      "task": "7"
+    },
+    {
+      "reason": "at/below walk floor",
+      "task": "8"
+    },
+    {
+      "seconds": 592,
+      "task": "2"
+    },
+    {
+      "seconds": 0,
+      "task": "3"
+    },
+    {
+      "seconds": 0,
+      "task": "9"
+    },
+    {
+      "seconds": 0,
+      "task": "4"
+    }
+  ],
+  "excluded": "no per-task merges (nothing to replay)",
+  "floor": "aa900b9f3624682b6091a6007f28cea90fdb8430",
+  "floorSource": "wave-head-parent",
+  "remodel": {
+    "durations_modeled": false,
+    "frontier": 1367.0,
+    "frontier_no_same_file": 1367.0,
+    "same_file_edges": 0,
+    "waves": 1959.0
+  },
+  "remodelReason": null,
+  "runDir": "/Users/marcusestes/Websites/Julian/.claude/ultrapowers/run-20260731-145213",
+  "waves": []
+}

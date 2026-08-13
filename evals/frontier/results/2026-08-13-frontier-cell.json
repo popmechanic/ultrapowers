@@ -1,0 +1,205 @@
+{
+  "arm": "B",
+  "fixture": "contend",
+  "engineRef": "aaa97b9",
+  "startedAt": "2026-08-13T00:45:02.248723+00:00",
+  "status": "complete",
+  "workdir": "/var/folders/6v/75bd2ncn5gl9w8v30nq1jtjr0000gn/T/ab-run-contend-B-ou9lv047/repo",
+  "baseline": "0d462f8c555e42bed63f9964feaa2c1ae1f706c4",
+  "schedule": {
+    "readySets": [
+      [
+        "1",
+        "2",
+        "3",
+        "4"
+      ]
+    ],
+    "droppedEdges": [
+      [
+        "1",
+        "2"
+      ],
+      [
+        "1",
+        "3"
+      ],
+      [
+        "2",
+        "3"
+      ]
+    ],
+    "keptEdges": []
+  },
+  "resolverTranscript": [
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "taskId": "2",
+      "attempt": 1,
+      "narration": "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"\nimport argparse\n\nROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]\n\n\ndef render(row, fmt):\n    name, count = row\n    if fmt == \"csv\":\n        return \"%s,%d\" % (name, count)\n    return \"%s %d\" % (name, count)\n\n\ndef build_parser():\n    parser = argparse.ArgumentParser(prog=\"report\")\n<<<<<<< begin added 2\n    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")\n======= begin added frontier\n    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)\n>>>>>>> end conflict\n    return parser\n\n\ndef main(argv=None):\n    args = build_parser().parse_args(argv)\n    rows = list(ROWS)\n<<<<<<< begin added 2\n    for row in rows:\n        print(render(row, args.format))\n======= begin added frontier\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n======= begin deleted 2\n    for name, count in rows:\n        print(\"%s %d\" % (name, count))\n>>>>>>> end conflict\n    return 0",
+      "reply": "{\"resolvedFileLines\": [\"\\\"\\\"\\\"Tiny report CLI: parse args, list rows, print them.\\\"\\\"\\\"\", \"import argparse\", \"\", \"ROWS = [(\\\"ada\\\", 3), (\\\"bob\\\", 5), (\\\"eve\\\", 1)]\", \"\", \"\", \"def render(row, fmt):\", \"    name, count = row\", \"    if fmt == \\\"csv\\\":\", \"        return \\\"%s,%d\\\" % (name, count)\", \"    return \\\"%s %d\\\" % (name, count)\", \"\", \"\", \"def build_parser():\", \"    parser = argparse.ArgumentParser(prog=\\\"report\\\")\", \"    parser.add_argument(\\\"--format\\\", choices=[\\\"plain\\\", \\\"csv\\\"], default=\\\"plain\\\")\", \"    parser.add_argument(\\\"--verbose\\\", action=\\\"store_true\\\", default=False)\", \"    return parser\", \"\", \"\", \"def main(argv=None):\", \"    args = build_parser().parse_args(argv)\", \"    rows = list(ROWS)\", \"    if args.verbose:\", \"        print(\\\"rows: %d\\\" % len(rows))\", \"    for row in rows:\", \"        print(render(row, args.format))\", \"    return 0\"]}"
+    },
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "taskId": "3",
+      "attempt": 1,
+      "narration": "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"\nimport argparse\n\nROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]\n<<<<<<< begin added both\n\n\n======= begin added 3\ndef clamp(rows, limit):\n    if limit is None:\n        return list(rows)\n    if limit < 0:\n        raise ValueError(\"limit must be >= 0\")\n    return list(rows)[:limit]\n\n\n======= begin added frontier\ndef render(row, fmt):\n    name, count = row\n    if fmt == \"csv\":\n        return \"%s,%d\" % (name, count)\n    return \"%s %d\" % (name, count)\n\n\n>>>>>>> end conflict\ndef build_parser():\n    parser = argparse.ArgumentParser(prog=\"report\")\n<<<<<<< begin added frontier\n    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")\n======= begin added 3\n    parser.add_argument(\"--limit\", type=int, default=None)\n======= begin added frontier\n    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)\n>>>>>>> end conflict\n    return parser\n\n\ndef main(argv=None):\n    args = build_parser().parse_args(argv)\n<<<<<<< begin added 3\n    rows = clamp(ROWS, args.limit)\n======= begin deleted 3\n    rows = list(ROWS)\n======= begin added frontier\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n    for row in rows:\n        print(render(row, args.format))\n======= begin deleted 3\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n======= begin deleted frontier\n    for name, count in rows:\n        print(\"%s %d\" % (name, count))\n>>>>>>> end conflict\n    return 0",
+      "reply": "{\"resolvedFileLines\":[\"\\\"\\\"\\\"Tiny report CLI: parse args, list rows, print them.\\\"\\\"\\\"\",\"import argparse\",\"\",\"ROWS = [(\\\"ada\\\", 3), (\\\"bob\\\", 5), (\\\"eve\\\", 1)]\",\"\",\"\",\"def clamp(rows, limit):\",\"    if limit is None:\",\"        return list(rows)\",\"    if limit < 0:\",\"        raise ValueError(\\\"limit must be >= 0\\\")\",\"    return list(rows)[:limit]\",\"\",\"\",\"def render(row, fmt):\",\"    name, count = row\",\"    if fmt == \\\"csv\\\":\",\"        return \\\"%s,%d\\\" % (name, count)\",\"    return \\\"%s %d\\\" % (name, count)\",\"\",\"\",\"def build_parser():\",\"    parser = argparse.ArgumentParser(prog=\\\"report\\\")\",\"    parser.add_argument(\\\"--format\\\", choices=[\\\"plain\\\", \\\"csv\\\"], default=\\\"plain\\\")\",\"    parser.add_argument(\\\"--limit\\\", type=int, default=None)\",\"    parser.add_argument(\\\"--verbose\\\", action=\\\"store_true\\\", default=False)\",\"    return parser\",\"\",\"\",\"def main(argv=None):\",\"    args = build_parser().parse_args(argv)\",\"    rows = clamp(ROWS, args.limit)\",\"    if args.verbose:\",\"        print(\\\"rows: %d\\\" % len(rows))\",\"    for row in rows:\",\"        print(render(row, args.format))\",\"    return 0\"]}"
+    }
+  ],
+  "conflicts": [
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "taskId": "2",
+      "narration": "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"\nimport argparse\n\nROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]\n\n\ndef render(row, fmt):\n    name, count = row\n    if fmt == \"csv\":\n        return \"%s,%d\" % (name, count)\n    return \"%s %d\" % (name, count)\n\n\ndef build_parser():\n    parser = argparse.ArgumentParser(prog=\"report\")\n<<<<<<< begin added 2\n    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")\n======= begin added frontier\n    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)\n>>>>>>> end conflict\n    return parser\n\n\ndef main(argv=None):\n    args = build_parser().parse_args(argv)\n    rows = list(ROWS)\n<<<<<<< begin added 2\n    for row in rows:\n        print(render(row, args.format))\n======= begin added frontier\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n======= begin deleted 2\n    for name, count in rows:\n        print(\"%s %d\" % (name, count))\n>>>>>>> end conflict\n    return 0"
+    },
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "taskId": "3",
+      "narration": "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"\nimport argparse\n\nROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]\n<<<<<<< begin added both\n\n\n======= begin added 3\ndef clamp(rows, limit):\n    if limit is None:\n        return list(rows)\n    if limit < 0:\n        raise ValueError(\"limit must be >= 0\")\n    return list(rows)[:limit]\n\n\n======= begin added frontier\ndef render(row, fmt):\n    name, count = row\n    if fmt == \"csv\":\n        return \"%s,%d\" % (name, count)\n    return \"%s %d\" % (name, count)\n\n\n>>>>>>> end conflict\ndef build_parser():\n    parser = argparse.ArgumentParser(prog=\"report\")\n<<<<<<< begin added frontier\n    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")\n======= begin added 3\n    parser.add_argument(\"--limit\", type=int, default=None)\n======= begin added frontier\n    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)\n>>>>>>> end conflict\n    return parser\n\n\ndef main(argv=None):\n    args = build_parser().parse_args(argv)\n<<<<<<< begin added 3\n    rows = clamp(ROWS, args.limit)\n======= begin deleted 3\n    rows = list(ROWS)\n======= begin added frontier\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n    for row in rows:\n        print(render(row, args.format))\n======= begin deleted 3\n    if args.verbose:\n        print(\"rows: %d\" % len(rows))\n======= begin deleted frontier\n    for name, count in rows:\n        print(\"%s %d\" % (name, count))\n>>>>>>> end conflict\n    return 0"
+    }
+  ],
+  "taskWallClockSec": {
+    "4": 38.6,
+    "1": 38.6,
+    "2": 41.1,
+    "3": 41.4
+  },
+  "parkedTasks": {},
+  "resolutions": [
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "outcome": "applied"
+    },
+    {
+      "path": "clitool/cli.py",
+      "kind": "lines",
+      "outcome": "applied"
+    }
+  ],
+  "peakParallelism": 4,
+  "events": [
+    {
+      "type": "fold",
+      "task": "4"
+    },
+    {
+      "type": "fold",
+      "task": "1"
+    },
+    {
+      "type": "fold",
+      "task": "2"
+    },
+    {
+      "type": "resolve",
+      "path": "clitool/cli.py",
+      "epoch": 3,
+      "lines": [
+        "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"",
+        "import argparse",
+        "",
+        "ROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]",
+        "",
+        "",
+        "def render(row, fmt):",
+        "    name, count = row",
+        "    if fmt == \"csv\":",
+        "        return \"%s,%d\" % (name, count)",
+        "    return \"%s %d\" % (name, count)",
+        "",
+        "",
+        "def build_parser():",
+        "    parser = argparse.ArgumentParser(prog=\"report\")",
+        "    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")",
+        "    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)",
+        "    return parser",
+        "",
+        "",
+        "def main(argv=None):",
+        "    args = build_parser().parse_args(argv)",
+        "    rows = list(ROWS)",
+        "    if args.verbose:",
+        "        print(\"rows: %d\" % len(rows))",
+        "    for row in rows:",
+        "        print(render(row, args.format))",
+        "    return 0"
+      ]
+    },
+    {
+      "type": "fold",
+      "task": "3"
+    },
+    {
+      "type": "resolve",
+      "path": "clitool/cli.py",
+      "epoch": 5,
+      "lines": [
+        "\"\"\"Tiny report CLI: parse args, list rows, print them.\"\"\"",
+        "import argparse",
+        "",
+        "ROWS = [(\"ada\", 3), (\"bob\", 5), (\"eve\", 1)]",
+        "",
+        "",
+        "def clamp(rows, limit):",
+        "    if limit is None:",
+        "        return list(rows)",
+        "    if limit < 0:",
+        "        raise ValueError(\"limit must be >= 0\")",
+        "    return list(rows)[:limit]",
+        "",
+        "",
+        "def render(row, fmt):",
+        "    name, count = row",
+        "    if fmt == \"csv\":",
+        "        return \"%s,%d\" % (name, count)",
+        "    return \"%s %d\" % (name, count)",
+        "",
+        "",
+        "def build_parser():",
+        "    parser = argparse.ArgumentParser(prog=\"report\")",
+        "    parser.add_argument(\"--format\", choices=[\"plain\", \"csv\"], default=\"plain\")",
+        "    parser.add_argument(\"--limit\", type=int, default=None)",
+        "    parser.add_argument(\"--verbose\", action=\"store_true\", default=False)",
+        "    return parser",
+        "",
+        "",
+        "def main(argv=None):",
+        "    args = build_parser().parse_args(argv)",
+        "    rows = clamp(ROWS, args.limit)",
+        "    if args.verbose:",
+        "        print(\"rows: %d\" % len(rows))",
+        "    for row in rows:",
+        "        print(render(row, args.format))",
+        "    return 0"
+      ]
+    }
+  ],
+  "foldOrder": [
+    "4",
+    "1",
+    "2",
+    "3"
+  ],
+  "liveK1": {
+    "shuffleOutcomes": 1,
+    "replayMatches": true,
+    "passed": true
+  },
+  "resultHead": "3df4232ceb980e36b3418616a2f2ead9f22a6501",
+  "gate": {
+    "ran": true,
+    "sealId": "cb7073504c66",
+    "branch": "frontier-result",
+    "exitCode": 0,
+    "passed": true,
+    "stdout": "{\"sealId\": \"cb7073504c66\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \".......                                                                  [100%]\\n7 passed in 0.02s\"}",
+    "stderr": ""
+  },
+  "wallClockSec": 82.9
+}
