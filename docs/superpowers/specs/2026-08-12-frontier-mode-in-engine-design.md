@@ -103,21 +103,31 @@ default once the follow-up flips it. `test_frontier_run_eval.py`'s contend
 assertions run under **both** compiles — serialize: ≥2 `write-after-write`
 edges, `mode: parallel`; fold: ≥2 tasks sharing a wave with intersecting
 `files` — so the fixture guarantee covers the compile the engine actually
-runs. **Contended runs and the shadow line — per-wave, new code, placed
-where it wins:** a contended wave's adoption commit has 1+N parents (§2).
-The plan adds a parent-count probe on each merged wave head in
-`shadow_fold._build_waves`, applied **before** the group / trailing /
-absorbed dispatch — placement matters: the floor scan recognises only
-2-parent merges, so an unprobed octopus wave followed by an ordinary merge
-would be silently mislabeled `"absorbed"`, and a run whose *every* merge
-wave is contended would be excluded whole under the wrong name
-(`no per-task merges`). The probed wave gets the **existing per-wave
-`disposition: "excluded"` row** with an octopus reason; an all-contended run
-is excluded whole under that same reason; non-contended waves in the same
-run still shadow. (`run_eval._group_chain`'s silent `parents[1]`-only
-decomposition of ≥2-parent commits is the false-divergence path this
-placement forecloses.) For the excluded wave itself, the fold log is the
-replacement replay record (strictly stronger: it replays resolutions too).
+runs. **Contended runs and the shadow line — a two-leg probe, new code, placed
+where each leg can actually fire:** a contended wave's adoption commit has
+1+N parents (§2). **Per-wave leg:** a parent-count probe on each merged
+wave head in `shadow_fold._build_waves`, applied **before** the group /
+trailing / absorbed dispatch — placement matters: the floor scan recognises
+only 2-parent merges, so an unprobed octopus wave followed by an ordinary
+merge would be silently mislabeled `"absorbed"`. The probed wave gets the
+**existing per-wave `disposition: "excluded"` row** with an octopus reason;
+non-contended waves in the same run still shadow. **Whole-run leg — in
+`_shadow`, keyed on parent counts, not on `floor_source`:** when *every*
+merged wave head has ≥3 parents, no 2-parent merge exists for the floor
+scan to find, `_build_waves` is never called (a probe living only there
+cannot fire — this is the §5 shakedown's most likely shape), and the run
+would fall through to the wrong whole-run name (`no per-task merges`); the
+leg sets the octopus reason instead. `floor_source` alone cannot
+discriminate: a genuinely merge-free run also yields `"wave-head-parent"`
+and must keep its existing name. (`run_eval._group_chain`'s silent
+`parents[1]`-only decomposition of ≥2-parent commits is the
+false-divergence path the per-wave leg forecloses.) One second-order
+consequence, named so it is not read as a harvest bug: in a mixed run the
+floor floats above the contended wave (the deepest 2-parent merge is the
+next ordinary wave, whose merge-base is the octopus head), so the contended
+wave's task durations drop out of the shadow harvest as at/below-floor. For
+the excluded wave itself, the fold log is the replacement replay record
+(strictly stronger: it replays resolutions too).
 
 New: `skills/ultrapowers/kernel/fold_wave.py` (CLI) and `kernel/FOLD_LOG.md`
 (schema — referenced from `ultrapowers/SKILL.md`'s engine section, which
@@ -249,7 +259,10 @@ computed once per path** (memoised `path -> (ok, reason)`) and consulted per
 pair — tier 3 is an O(N²) pair loop, and this file already carries a
 measured fix for per-pair recomputation blowup (Fix E); the
 `marker_conflicts` `inference` record is emitted **per path**, so the
-diagnostic count is deterministic. **The compiler stays subprocess-free**:
+diagnostic count is deterministic — and because `add_conflict` dedupes on
+`(task, edge)` while a path is shared by ≥2 tasks, the per-path record
+carries `task: ""` with the path and reason in the edge/note fields (the
+`type_conflicts` precedent), so the dedupe key stays unique per path. **The compiler stays subprocess-free**:
 gitlink detection needs git and is left to the runtime materialization
 guard, which is authoritative anyway. **Without `--repo-root` the
 pre-filter is inert and every pair is eligible** — a documented property,
@@ -277,13 +290,27 @@ entries and survives every relaunch verbatim):
 > a wave takes the contended path iff `!resume` **and** ≥2 of its
 > **mergeable results** have intersecting `files`.
 
-`!resume` covers redirect, salvage, and any future resume lane in one
-conjunct (no stripping machinery); *mergeable results* — not declared
-tasks — because a contended pair that loses one task to failure or blocking
-review leaves a lone survivor with nothing to contend against, which takes
-the git-merge path, not the fold ceremony. Trade, stated: routing authority
-moves from compiler-declared to engine-derived; the pin above plus the
-routing pins in §Testing hold the derivation to the compiler's semantics.
+**The join is explicit, because results do not carry `files`:** every
+`runTask` return path emits `{task, status, branch, headSha, …}` and
+nothing else, so a literal reading of the rule would find `r.files ===
+undefined` and fail **closed** — every contended wave silently taking the
+git-merge path while stubbed tests stay green. The rule is evaluated over
+the **`WAVES[waveIdx]` task entries of the mergeable results**, joined by
+`r.task === t.id` (`WAVES` is module-scope and the engine already reads
+per-task `files` exactly this way for the review packet); a lone survivor
+drops out by having no partner in the join. `!resume` covers redirect,
+salvage, and any future resume lane in one conjunct (no stripping
+machinery); *mergeable results* — not declared tasks — because a contended
+pair that loses one task to failure or blocking review leaves a lone
+survivor with nothing to contend against. Two disclosed costs of deriving
+rather than declaring: routing authority moves from compiler-declared to
+engine-derived (the pins hold the derivation to the compiler's semantics),
+and `files` carries no writes/reads provenance — **a pair overlapping only
+on a shared `Test:` path routes contended and folds nothing** (their
+`git diff` touched sets are disjoint), paying the fold ceremony for a
+trivially clean result: priced overhead, not a fallback source, and a
+contended wave with zero conflicts in the §5 canary reads as designed, not
+anomalous.
 
 ### 2. Kernel module and fold CLI
 
@@ -330,7 +357,12 @@ and every invocation rehydrates before acting.
   `frontier_fold._visible` is the identity under the bijection everywhere
   except the reserved `[]` point and is **deleted**; the resolver's
   reply-file bytes are split by the kernel's own `split_lines`, so exactly
-  one normalization exists on that path. **Scope, stated for the operator:
+  one normalization exists on that path. One rationale comment goes stale
+  with the change and is updated with it: `_base_text_untouched`'s
+  docstring justifies its `deleted_marks` conjunct partly by "an empty base
+  file's delete weave equals the base's own state" — under the bijection
+  that collision no longer arises; the conjunct stays (it is load-bearing
+  for other reasons), the sentence goes. **Scope, stated for the operator:
   this is a kernel-wide behavior change riding a frontier increment** — it
   alters the line list for every kernel caller, and historical eval
   artifacts (shadow runs, the cell's E2 narrations) were produced under the
@@ -670,12 +702,15 @@ fallback, not a warning.
   folded path → named fallback; **discarded candidate: integration ref
   unchanged and `git status --porcelain` empty afterward**), the eval
   re-point (`test_frontier_run_eval.py` asserts the contend fixture under
-  **both** compiles), and the shadow octopus probe (applied before the
-  group/trailing/absorbed dispatch: a contended wave **followed by an
-  ordinary merge wave** yields a per-wave `disposition: "excluded"` row —
-  the ordering that would otherwise mislabel it `"absorbed"` — and an
-  all-contended run is excluded whole under the octopus reason, not
-  `no per-task merges`).
+  **both** compiles), and the two-leg shadow octopus probe (per-wave leg: a
+  contended wave **followed by an ordinary merge wave** yields a per-wave
+  `disposition: "excluded"` row — the ordering that would otherwise
+  mislabel it `"absorbed"`; whole-run leg: an all-contended run — where
+  `_build_waves` is never called — is excluded whole under the octopus
+  reason, not `no per-task merges`, while a genuinely merge-free run keeps
+  its existing name). The routing pin in the sim asserts the contended
+  decision **joins wave task entries by result id** — never reads a
+  `files` field off a result object.
 - **Harness sim:** `tests/frontier_merge.mjs` drives the contended path in
   `waves.js` with stubbed agents — clean fold, conflict→resolve,
   stale→re-narrate (markerless shape), park→fallback, budget exhaustion
@@ -854,3 +889,40 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
 7. **Nit — "at `WAVES` construction" was a temporal dead zone** — dissolved
    by finding 1 (nothing to strip; one `!resume` conjunct at the merge
    site).
+
+### Round 8 (fresh-context reviewer; grade: `netConceptDelta` **up**; **the Kahn invariant VERIFIED AIRTIGHT** — attacked via reads-only overlaps, double-blocked orderings, resume compaction, and non-`layer()` wave assembly; `[]`-as-absence verified against all four code sites; no stale references found after seven rewrites; found 1 blocker + 1 contract gap + 1 disclosure)
+
+1. **BLOCKER — the shadow octopus probe could not fire for an
+   all-contended run** (`_find_floor` scans for exactly-2-parent merges;
+   with every wave head an octopus, `_build_waves` is never called and the
+   run falls through to `no per-task merges` — the §5 shakedown's most
+   likely shape; a whole-run verdict cannot originate in `_build_waves` at
+   all) — ADOPTED. Two-leg probe: per-wave leg stays in `_build_waves`;
+   whole-run leg in `_shadow`, keyed on merged-head parent counts, never on
+   `floor_source` (a merge-free run also yields `"wave-head-parent"` and
+   keeps its name). The floating-floor harvest consequence (a mixed run's
+   contended-wave durations drop out as at/below-floor) named so it is not
+   read as a bug (§Where it lives, §Testing).
+2. **Contract gap — mergeable results carry no `files`; the routing rule
+   as written fails closed and ships the mode inert** (every `runTask`
+   return path emits `{task, status, branch, headSha, …}` only) — ADOPTED.
+   The join is stated: the rule evaluates the `WAVES[waveIdx]` task
+   entries of the mergeable results, joined by `r.task === t.id`; the sim
+   pin asserts the join, never a `files` read off a result (§1, §Testing).
+   Related one-liner: the per-path `inference` record's field shape named
+   (`task: ""`, the `type_conflicts` precedent) so `add_conflict`'s
+   `(task, edge)` dedupe stays unique per path (§1).
+3. **Disclosure — a pair overlapping only on a shared `Test:` path routes
+   contended and folds nothing** (`files` collapses provenance; the
+   touched sets are disjoint, so the wave pays the fold ceremony for a
+   trivially clean result) — ADOPTED as a stated priced cost, kept in
+   preference to re-introducing a declared field; a zero-conflict
+   contended wave in the canary reads as designed (§1).
+4. **Verified, recorded to prevent re-litigation:** the `[]` sites (all
+   four), the emptied-vs-deleted resolution, `_visible`'s identity, the
+   cap-count flag, `receipt["compile"]` sufficiency, `--repo-root`
+   feasibility, the `schedule_model` promotion split, the `validate_skill`
+   regex shape, the `FIXTURES`/`report_runbook` seams, both
+   `dependency-analysis.md` statements, and the absence of stale
+   references. One stale docstring named for update with the bijection
+   (`_base_text_untouched`) (§2).
