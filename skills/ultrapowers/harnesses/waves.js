@@ -554,7 +554,11 @@ const RESOLVER_PROMPT = [
   'You are a merge-conflict resolver for one file in one wave. You have no repo ' +
   'to explore and no branch to check out: read exactly the narration file named ' +
   'below, write exactly the reply file named below, and touch nothing else. ' +
-  'Never run git, never edit the file under conflict, and never create a commit.',
+  'Never run git, never edit the file under conflict, and never create a commit. ' +
+  'You are assigned no worktree of your own: the narration file and the reply ' +
+  'file named below are your only sanctioned locations, and reading and writing ' +
+  'them is not an exception to any worktree boundary — there is no worktree ' +
+  'here to be an exception to.',
   'The narration arrives in one of two shapes and you must handle both. An ' +
   'ANNOTATED narration is the whole file with conflict markers naming each side ' +
   '— frontier is the work already folded in, a task id is the incoming change — ' +
@@ -1270,6 +1274,16 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     return finish(null, 'fold parked an ineligible conflict: ' + (fold.detail || ''))
   if (fold.selfChecks && fold.selfChecks !== 'ok')
     return finish(null, 'fold self-checks did not pass: ' + fold.selfChecks)
+  // CONTENDED_MERGE_PROMPT's fold STEP orders the agent to copy `conflicts`
+  // verbatim from the CLI's stdout for every reply, FOLDED included (the CLI
+  // always emits it, 0 on a clean fold). A FOLDED reply with no `conflicts`
+  // scalar at all is therefore not a legal shape of a clean fold — it is a
+  // contract violation the later count-vs-count guards below cannot catch,
+  // because both of them go silent when the field is simply absent. Fall
+  // back rather than adopt a candidate whose only claim to being clean is an
+  // enum with nothing behind it.
+  if (fold.status === 'FOLDED' && typeof fold.conflicts !== 'number')
+    return finish(null, 'fold reported FOLDED with no conflicts count to verify against')
   // The counts are authority over the status enum: a parked conflict means the
   // frontier cannot be completed, whatever verdict the agent typed alongside it.
   if (typeof fold.parked === 'number' && fold.parked > 0)
