@@ -161,6 +161,28 @@ def test_live_k1_holds_for_a_folded_run():
     assert detail["shuffleOutcomes"] == 1 and detail["replayMatches"] is True
 
 
+def test_make_resolver_launcher_default_brief_is_the_module_constant(tmp_path, monkeypatch):
+    """No injected `brief` -> the launcher's prompt is built from the module's
+    own RESOLVER_BRIEF, never a deleted references/resolver-prompt.md file
+    (the gate-finding regression: BRIEF used to be a Path to a file `git rm
+    -r evals/frontier/references` removed)."""
+    captured = {}
+
+    def fake_headless(prompt, cwd, env, timeout):
+        captured["prompt"] = prompt
+        captured["cwd"] = cwd
+        return json.dumps({"resolvedFileLines": ["ok"]})
+
+    monkeypatch.setattr(fc, "headless", fake_headless)
+    launcher = fc.make_resolver_launcher(tmp_path, {})
+    reply = launcher({"path": "x.py", "kind": "text", "narration": "n",
+                      "planBodies": []})
+    assert reply == json.dumps({"resolvedFileLines": ["ok"]})
+    assert captured["prompt"].startswith(fc.RESOLVER_BRIEF)
+    assert "## Input" in captured["prompt"]
+    assert captured["cwd"] == tmp_path
+
+
 def test_live_k1_reports_a_replay_mismatch():
     """The event log is the durable record: a doctored log must red the leg
     rather than pass silently."""
