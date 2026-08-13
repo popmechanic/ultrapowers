@@ -13,17 +13,28 @@ reporting.
 reply is appended to the log; a stale one is re-narrated exactly once — the
 frontier's current whole file, markerless, since re-folding narrates nothing.
 
-Every invocation is a fresh process: neither subcommand carries anything in
+`materialize` turns the folded wave into a candidate commit through a
+TEMPORARY INDEX, so the worktree and every branch ref are untouched by
+construction; adoption is the engine's job.
+
+Every invocation is a fresh process: no subcommand carries anything in
 memory from the last one, per the fold log's self-sufficiency contract.
 
 Exit codes: 0 success, 2 precondition refusal, 3 self-check failure (which
 includes a kernel recursion limit the sized bound could not absorb — recorded
-as a named kernel-limit park in the conflicts index, never a crash).
+as a named kernel-limit park in the conflicts index, never a crash). For
+`materialize` the same two non-zero codes carry its two named outcomes: 2 is
+a park (`{"park": reason}` on stdout — a mode change on a folded path, two
+creators disagreeing on a mode, or a missing fold log) and 3 a fallback
+(`{"fallback": reason}` — a folded path that cannot be a regular blob, or a
+kernel recursion limit while rehydrating).
 """
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -44,6 +55,11 @@ import frontier_fold as ff
 # (same shape as `evals/frontier/run_eval.py`, which earned this pattern).
 RECURSION_LINE_FACTOR = 4
 RECURSION_MARGIN = 1000
+
+# The only modes a folded text/bytes path can carry into the candidate tree:
+# `hash-object` writes a blob, and a blob is either executable or not.
+REGULAR_MODES = ("100644", "100755")
+MODE_NAMES = {"120000": "a symlink", "160000": "a gitlink"}
 
 
 class _recursion_headroom:
@@ -125,6 +141,23 @@ def _kernel_limit_entry(i, epoch, task_id, state, bound):
 
 def _wave_dir(run_dir, wave):
     return Path(run_dir) / "frontier" / ("wave-%d" % wave)
+
+
+def _git_env(repo, env, *args, stdin=None):
+    """`repo_weave._git` with an environment (the temporary `GIT_INDEX_FILE`)
+    and optional stdin. Kept here rather than in the kernel: the temporary
+    index is a CLI materialization concern, not a weave one."""
+    return subprocess.run(["git", "-C", str(repo), *args], check=True,
+                          capture_output=True, env=env, input=stdin).stdout
+
+
+def _parse_task_head(spec):
+    """`<taskId>=<headSha>` -> (taskId, headSha)."""
+    task_id, eq, head_sha = spec.partition("=")
+    if not eq or not task_id or not head_sha:
+        raise argparse.ArgumentTypeError(
+            "--task-head must be <taskId>=<headSha>, got %r" % spec)
+    return task_id, head_sha
 
 
 def _parse_branch(spec):
@@ -306,6 +339,161 @@ def cmd_resolve(args):
     return 0
 
 
+def _park(reason):
+    print(json.dumps({"park": reason}))
+    return 2
+
+
+def _fallback(reason):
+    print(json.dumps({"fallback": reason}))
+    return 3
+
+
+def _ls_tree_entry(repo, ref, path):
+    """(mode, object type) for `path` at `ref`, or None when it is absent.
+
+    `--literal-pathspecs` for the same reason `repo_weave._read_tree` uses it:
+    a repo path may legally begin with ":", which git otherwise reads as
+    pathspec magic and drops silently — the path would then look absent.
+    """
+    out = rw._git(repo, "--literal-pathspecs", "ls-tree", ref, "--", path).decode()
+    if not out.strip():
+        return None
+    meta = out.split("\t", 1)[0].split(" ")
+    return meta[0], meta[1]
+
+
+def _observe_modes(repo, prev_head, task_heads, paths):
+    """(modes, park reason, fallback reason) for the folded paths.
+
+    Modes are OBSERVED, never assumed: the text pipeline is mode-blind
+    (`git diff --name-status` reports a chmod as a plain `M` over identical
+    blobs), so `git ls-tree` at the previous integration head and at each
+    task head is the only witness of a mode. A path present at `prev_head`
+    keeps that head's mode, but only after every task head that still carries
+    the path is checked against it; a path the fold ADDS takes its creating
+    task's mode, and creators that disagree park rather than pick one.
+
+    Non-regular objects are scanned across ALL paths before any mode
+    disagreement is reported, so the verdict never depends on which class of
+    trouble the path order happens to reach first: a tree that cannot be
+    represented at all is a fallback whatever else parks.
+    """
+    def carriers(path):
+        """[(taskId, (mode, type))] for the task heads that still carry
+        `path` — a task that deleted it witnesses no mode."""
+        seen = [(task_id, _ls_tree_entry(repo, head, path))
+                for task_id, head in task_heads]
+        return [(task_id, e) for task_id, e in seen if e is not None]
+
+    prev_entry = {p: _ls_tree_entry(repo, prev_head, p) for p in paths}
+    task_entries = {p: carriers(p) for p in paths}
+
+    for p in paths:
+        witnesses = ([("the previous integration head", prev_entry[p])]
+                     if prev_entry[p] else [])
+        witnesses += [("task %s" % t, e) for t, e in task_entries[p]]
+        for where, (mode, obj_type) in witnesses:
+            if mode not in REGULAR_MODES or obj_type != "blob":
+                return None, None, ("%s is %s at %s; the candidate tree can "
+                                    "only carry a regular blob there"
+                                    % (p, MODE_NAMES.get(mode, "mode %s" % mode),
+                                       where))
+        if not witnesses:
+            return None, None, ("%s is in the fold manifest but present at "
+                                "neither the previous integration head nor "
+                                "any merged task head" % p)
+
+    modes = {}
+    for p in paths:
+        if prev_entry[p] is not None:
+            base_mode = prev_entry[p][0]
+            differing = [(t, m) for t, (m, _) in task_entries[p] if m != base_mode]
+            if differing:
+                task_id, mode = differing[0]
+                return None, ("%s changes mode: %s at the previous integration "
+                              "head, %s at task %s" % (p, base_mode, mode, task_id)), None
+            modes[p] = base_mode
+        else:
+            creators = {m for _, (m, _) in task_entries[p]}
+            if len(creators) > 1:
+                by_task = ", ".join("%s by task %s" % (m, t)
+                                    for t, (m, _) in task_entries[p])
+                return None, ("%s is created with differing modes: %s"
+                              % (p, by_task)), None
+            modes[p] = task_entries[p][0][1][0]
+    return modes, None, None
+
+
+def _build_candidate(repo, prev_head, task_heads, wave, touched, manifest, modes):
+    """The temporary-index route: seed from `prev_head`, apply the touched set,
+    write the tree, commit it. Nothing here names a worktree path or a ref, so
+    the checkout cannot move; the blobs land in the object store unreferenced
+    until the engine adopts the candidate.
+    """
+    with tempfile.TemporaryDirectory(prefix="fold-index-") as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        _git_env(repo, env, "read-tree", prev_head)
+        for p in touched:
+            if p in manifest:
+                content = manifest[p]
+                blob = content if isinstance(content, bytes) else content.encode("utf-8")
+                sha = _git_env(repo, env, "hash-object", "-w", "--stdin",
+                               stdin=blob).decode().strip()
+                _git_env(repo, env, "update-index", "--add", "--cacheinfo",
+                         "%s,%s,%s" % (modes[p], sha, p))
+            else:
+                # Absent from the manifest but inside the touched set: a task
+                # deleted it. Keying on the manifest alone would silently
+                # resurrect the path from the seeded index.
+                _git_env(repo, env, "update-index", "--force-remove", "--", p)
+        tree = _git_env(repo, env, "write-tree").decode().strip()
+        parents = []
+        for sha in [prev_head] + [h for _, h in task_heads]:
+            parents += ["-p", sha]
+        return _git_env(repo, env, "commit-tree", tree, *parents,
+                        "-m", "frontier fold wave %d" % wave).decode().strip()
+
+
+def cmd_materialize(args):
+    wave_dir = _wave_dir(args.run_dir, args.wave)
+    log_path = wave_dir / "fold_log.jsonl"
+    if not log_path.exists():
+        return _park("fold log missing for wave %d" % args.wave)
+
+    repo = Path(args.repo)
+    task_heads = args.task_heads          # [(taskId, headSha)], argv order
+    recorded = [json.loads(line)
+                for line in rw.split_lines(log_path.read_text()) if line.strip()]
+    base_sha = recorded[0]["sha"] if recorded and recorded[0].get("type") == "base" else None
+    heads = [e["headSha"] for e in recorded if e.get("type") == "fold"]
+    max_lines = _git_max_lines(repo, base_sha, heads) if base_sha else 0
+
+    with _recursion_headroom(max_lines):
+        try:
+            eng = ff.rehydrate(repo, log_path)
+        except RecursionError:
+            return _fallback("kernel recursion limit rehydrating wave %d" % args.wave)
+        manifest = eng.manifest()
+
+    # The touched set — not the manifest — is what the candidate applies: the
+    # manifest omits deletions. It is derived from the fold events' own heads
+    # against the log's base, exactly as the fold derived it (the routing rule
+    # only folds a wave whose base IS the previous integration head).
+    touched = sorted(ff._union_touched(repo, base_sha, heads))
+    modes, park, fallback = _observe_modes(
+        repo, args.prev_head, task_heads, [p for p in touched if p in manifest])
+    if fallback is not None:
+        return _fallback(fallback)
+    if park is not None:
+        return _park(park)
+
+    candidate = _build_candidate(repo, args.prev_head, task_heads, args.wave,
+                                 touched, manifest, modes)
+    print(json.dumps({"candidateSha": candidate}))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="fold_wave.py")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -327,6 +515,15 @@ def main(argv=None):
     p_resolve.add_argument("--epoch", required=True, type=int)
     p_resolve.add_argument("--reply-file", required=True)
     p_resolve.set_defaults(func=cmd_resolve)
+
+    p_mat = sub.add_parser("materialize")
+    p_mat.add_argument("--repo", required=True)
+    p_mat.add_argument("--run-dir", required=True)
+    p_mat.add_argument("--wave", required=True, type=int)
+    p_mat.add_argument("--prev-head", required=True)
+    p_mat.add_argument("--task-head", dest="task_heads", action="append",
+                       type=_parse_task_head, default=[], required=True)
+    p_mat.set_defaults(func=cmd_materialize)
 
     args = parser.parse_args(argv)
     return args.func(args)
