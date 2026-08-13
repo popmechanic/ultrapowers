@@ -39,7 +39,7 @@ licensed by this spec.
 1. Plans may declare genuinely independent tasks that edit the same files;
    the compiler schedules them concurrently and the engine folds their work,
    with conflicts narrated, resolved serially, and recorded in a replayable
-   fold log — falling back to today's merge path on any guard or pre-commit
+   fold log — falling back to today's merge path on any guard or pre-adoption
    failure.
 2. An engine-vs-engine A/B on a production-scale contended fixture, full
    protocol both arms (review on, gate on), closes token cost and
@@ -72,10 +72,12 @@ Moves (promotion, one copy, evals re-point their imports):
   `fold_all` move **into the kernel** with them (the shipped self-check calls
   both; a shipped module must not import eval-only code) and
   `schedule_model.py` imports them back.
-- `evals/frontier/references/resolver-prompt.md` →
-  `skills/ultrapowers/references/resolver-prompt.md` (rewritten for the
-  file-read contract and the two narration shapes, §3) and baked into
-  `waves.js` under `test_no_prompt_drift.py`.
+- The resolver prompt (`evals/frontier/references/resolver-prompt.md`)
+  becomes a BAKE block **inside
+  `skills/ultrapowers/references/wave-merge.md`** — it is a merge-path
+  prompt, and `test_no_prompt_drift.py`'s `WAVE_PROMPTS` extracts from that
+  single source; a third prompt file would be invisible to the pin. Rewritten
+  for the file-read contract and the two narration shapes (§3).
 
 Stays in `evals/` (modeling and probe apparatus, explicitly modeling-only):
 `schedule_model.py` (its `SAME_FILE_WHYS` is the *modeled* drop rule, labeled
@@ -83,20 +85,32 @@ as such; the engine's narrower rule lives in `compile_plan.py` and is the one
 evals import when measuring the engine), `shadow_fold.py`, `run_eval.py`,
 `run_frontier_cell.py` (imports re-pointed).
 
-New: `skills/ultrapowers/kernel/fold_wave.py` (CLI) and
-`kernel/FOLD_LOG.md` (schema); `evals/fixtures/contend-prod/`;
-`--serialize-overlaps` in `compile_plan.py`; an arm flag in
-`evals/ab_runner.py`. `validate_skill.py`'s link-check regex extends to
-`kernel/` paths (it currently validates only `references|scripts`).
+New: `skills/ultrapowers/kernel/fold_wave.py` (CLI) and `kernel/FOLD_LOG.md`
+(schema — referenced from `ultrapowers/SKILL.md`'s engine section, which
+makes `validate_skill.py`'s link-check live for it once the check's regex
+extends to `kernel/`; without a `SKILL.md` mention the extension would
+validate nothing). `evals/fixtures/contend-prod/`. `--serialize-overlaps` in
+`compile_plan.py`, **plumbed**: a `/ultrapowers` launch argument that
+`ultra_run.py` forwards onto the `compile_plan.py` argv it builds, recorded in
+the run receipt so every A/B row is self-describing; `evals/ab_runner.py`'s
+arm flag sets it for arm A.
 
 ## Components
 
 ### 1. Compiler: the edge-drop rule
 
-Three coupled changes, one switch. `--serialize-overlaps` is the **single**
-named switch: passed (or shipped as the default if the A/B fails), the
-compiler reproduces today's output byte-identically; otherwise the canonical
-rules below apply. There is no separate "guard" concept.
+Two changes plus one deletion, behind one switch. `--serialize-overlaps` is
+the **single** named switch: passed (or shipped as the default if the A/B
+fails), the compiler reproduces today's output byte-identically; otherwise
+the canonical rules below apply.
+
+One vocabulary note used throughout: the compiler's overlap set for the
+`write-after-write` tier is **`writes ∪ reads`** on both sides
+(`writes = Create: ∪ Modify:`; `reads` is populated by `Test:` entries — a
+`Test:` path parses into `reads`, and the compiler serializes on it by design
+because under upstream TDD semantics each task *writes* the failing test).
+Every rule below uses exactly this set; the spec deliberately has no second
+spelling.
 
 **(a) The drop.** Canonical compile does not create `write-after-write` edges
 for eligible pairs. The drop happens **at construction** — the tier-3 loop
@@ -106,33 +120,29 @@ removed after the fact would leave those tasks unordered against peers they
 must still serialize behind. A test pins that an ambiguous/catch-all task
 still serializes in a plan where a `write-after-write` edge was dropped.
 
-**(b) The degrade rule becomes contention-aware.** The sequential-mode
-predicate (`fully_overlapping`) reads task `writes` directly, not the edge
-set, and today flattens any plan where every task pair shares a written path
-into single-task waves — which would silently nullify this increment on
-exactly the plans it exists for (verified by compiling an all-overlapping
-variant of `contend`: `mode: sequential`, one task per wave). Canonically:
-when every overlapping path in such a plan is fold-eligible, the plan
-compiles to contended waves instead of degrading; `--serialize-overlaps`
-restores today's degrade byte-identically. Pinned by a test compiling an
-all-overlapping plan both ways. Dodging the predicate by fixture shape (an
-extra disjoint task, as `contend` happens to have) is explicitly rejected: it
-would green the A/B while every real fully-overlapping plan still degraded.
+**(b) The sequential-degrade flatten is deleted, not conditioned.** The
+`fully_overlapping` flatten is dead code: whenever the predicate fires, the
+tier-3 loop has already created a tournament of `write-after-write` edges, so
+`layer()` returns singleton waves before the flatten runs (verified by
+compiling an all-overlapping plan and inspecting `layer()`'s output; the
+`len(impl) == 1` trigger is equally a no-op). Deleting the line changes no
+compile today — byte-identity under `--serialize-overlaps` is automatic — and
+under the canonical rule, all-overlapping-but-eligible plans then compile to
+a genuine contended wave with no whole-plan eligibility cliff: ineligible
+pairs keep their edges and serialize pairwise while eligible ones share a
+wave. What remains is a labeling decision, made explicit: `mode` and
+`degrade_reason` are recomputed from **kept** `write-after-write` pairs, so
+the label stays truthful in both compiles (canonical: parallel;
+`--serialize-overlaps`: today's `sequential` string, byte-identical). The
+single-task label is unchanged. Pinned by compiling an all-overlapping plan
+both ways. `complexityEffect`: simplification.
 
-**(c) Label semantics**, stated precisely because the label is not the
-physics:
-
-- The drop keys on the `write-after-write` label. Its overlap set is
-  `(writes ∪ Test:)` on both sides. A shared `Test:` path is a **write**
-  under upstream TDD semantics (each task writes the failing test) — the
-  most common real contention in this repo's own plans, and exactly what the
-  fold-and-resolve path must handle, not a benign side effect.
-- Pairs whose overlap edge was **promoted** to `interface` stay serialized
-  and their waves are not tagged contended.
-- All semantic edges survive untouched: `marker`, `text`, `interface`,
-  `prose-reference`, `write-after-create` (the base to edit against must
-  exist), `read-after-write`, `ambiguous-files` (unknown writes cannot be
-  scheduled into contention).
+**(c) Label semantics.** The drop keys on the `write-after-write` label.
+Pairs whose overlap edge was **promoted** to `interface` stay serialized and
+their waves are not tagged contended. All semantic edges survive untouched:
+`marker`, `text`, `interface`, `prose-reference`, `write-after-create` (the
+base to edit against must exist), `read-after-write`, `ambiguous-files`
+(unknown writes cannot be scheduled into contention).
 
 Disclosure: the modeled rule (`schedule_model.SAME_FILE_WHYS`) also dropped
 `write-after-create` and `ambiguous-files`. The engine rule is a strict,
@@ -141,20 +151,28 @@ coincide (all three dropped edges were `write-after-write`), so the measured
 41% transfers; the A/B re-measures under the engine's own rule regardless.
 
 **Eligibility pre-filter.** A pair keeps its serializing edge when any path
-in the **full overlap set** (`(writes ∪ Test:)` on both sides), where it
-exists in the repo, would already fail the kernel's own dispatch predicate —
-non-text content, over `RESOLVER_LINE_CAP` (imported from the kernel, never
-re-typed), or a non-regular git object (symlink, gitlink). This is a
-scheduling heuristic — don't dispatch parallel work certain to park — not a
-safety guard: the runtime predicate (`dispatchable()`, and the
-materialization rules) remains authoritative for files tasks create or grow
-past the cap. Kept-for-eligibility pairs are recorded through the **existing**
+in its overlap set (`writes ∪ reads`, both sides), where it exists in the
+repo, would already fail the kernel's own dispatch predicate — non-text
+content, over `RESOLVER_LINE_CAP` (imported from the kernel, never re-typed),
+or a non-regular git object (symlink, gitlink). This is a scheduling
+heuristic — don't dispatch parallel work certain to park — not a safety
+guard: the runtime predicate (`dispatchable()`, and the materialization
+rules) remains authoritative for files tasks create or grow past the cap
+(e.g. two tasks *creating* the same binary path are freed here and park at
+runtime — an expected production fallback source, named in §5's canary).
+Kept-for-eligibility pairs are recorded through the **existing**
 `marker_conflicts` vocabulary (`kind: "inference"`, naming path and reason) —
 no new diagnostic vocabulary, so the freeze is not touched.
 
-A wave holding ≥2 tasks with overlapping writes is tagged **contended** in
-the launch file with the overlap paths listed. Untagged waves compile
-byte-identically to today.
+**The contended tag rides `--emit-args`, not the launch file.** `waves.js`
+has no filesystem access — knobs never ride the launch file (#89; the
+compiler's own comments state the inline/args channel is the ONLY one). The
+args payload gains a per-wave array parallel to `waveLabels` —
+`contendedWaves: [null, {paths: [...]}, …]` — read as
+`ARGS.contendedWaves[w]` (the `ARGS.waveLabels[w]` lookup is the exact
+precedent); `ultra_run.py` merges the args file wholesale, so the key flows
+through without further plumbing. A copy in the launch file is optional and
+for agents only. Waves without the tag compile byte-identically to today.
 
 ### 2. Kernel module and fold CLI
 
@@ -174,14 +192,34 @@ and every invocation rehydrates before acting.
   events are inert for rehydration. The pin asserts the rehydrated engine's
   `epoch()` **and touched-path map** equal the live engine's across ≥3
   process boundaries — not merely the manifest.
-- **`fold` subcommand:** given wave base sha and the mergeable branches in
-  completion order, folds each, appends `fold` events, and writes per
+- **Line convention becomes a bijection.** Today `split_lines` drops one
+  trailing newline and `join_lines` unconditionally re-adds one, so a folded
+  file with no final newline would be silently rewritten — and both
+  self-checks compare manifests built through the same normalization, so
+  they are structurally blind to it (the cell and every shadow run
+  normalized both sides). The kernel's split/join becomes a bijection
+  (`"a\nb"` ↔ `["a","b"]`, `"a\nb\n"` ↔ `["a","b",""]`), making the missing
+  final newline representable; resolver replies normalize through the same
+  convention. Pinned: a folded text file with no final newline materializes
+  **byte-identical**. The spec states plainly that the divergence
+  self-checks compare normalized manifests, so byte fidelity is this pin's
+  job, not theirs. (Plan-time check: `_visible`'s blank-final-line handling
+  in `frontier_fold.py` conforms to the new convention.)
+- **`fold` subcommand:** given the wave base sha and the mergeable branches
+  **in task-index order** (the existing merge contract's order — completion
+  order is not observable to the engine, and K1 order-independence is
+  exactly what the self-check asserts, so determinism costs nothing and buys
+  reproducible conflicts), folds each, appends `fold` events, and writes per
   conflict: the annotated narration to `frontier/wave-<n>/conflict-<i>.txt`
   and its `dispatchable()` verdict (park reason when ineligible) to the
-  conflicts index. Runs the two live self-checks the cell ran — sampled raw
-  fold orders outcome-identical, and log replay reproduces the manifest —
-  and reports failure as a named fallback, never a silent pass. Kernel
-  limits (recursion on ~1000-line files) are caught here and become parks.
+  conflicts index. **Snapshots are scoped**: the CLI reads only the union of
+  the tasks' touched paths plus their base blobs — never a whole-tree
+  `snapshot()` (one subprocess per file in the tree, per invocation, would
+  charge O(repo) against the very wall-clock bar §6 registers). Runs the two
+  live self-checks the cell ran — sampled raw fold orders outcome-identical,
+  and log replay reproduces the manifest — and reports failure as a named
+  fallback, never a silent pass. Kernel limits (recursion on ~1000-line
+  files) are caught here and become parks.
 - **`resolve` subcommand:** applies a whole-file resolution from a file of
   lines under epoch validity (an intervening fold on the path since the
   narration's epoch → stale, re-narrate once), appending the `resolve` event
@@ -197,10 +235,12 @@ and every invocation rehydrates before acting.
   visited, so their modes, symlinks, and gitlinks survive untouched. Each
   folded path takes its **mode from the previous integration head** (base
   mode preserved; a mode *change* by a task is a park); a folded path that
-  cannot be represented as a regular blob is a named fallback. The commit is
-  a **candidate**: parents = previous integration head + merged task heads.
-  It becomes the integration head — and the `heads/` slot is written — only
-  after the wave test passes (§3).
+  cannot be represented as a regular blob is a named fallback. **The
+  candidate commit is built with `git commit-tree`** — parents = previous
+  integration head + merged task heads — **while `INTEGRATION_WT` stays
+  checked out on the integration branch at the previous head**: the branch
+  ref does not move and no other branch is created. Adoption mechanics are
+  the engine's (§3).
 
 **All CLI I/O is file-based** (#36: relaying structured payloads through
 agent replies corrupts them). The CLI reads and writes under
@@ -209,13 +249,21 @@ agent replies corrupts them). The CLI reads and writes under
 ### 3. Engine: the contended merge path
 
 For a contended wave, `mergeWave()` routes its **existing merge agent** (one
-role, two paths) through the frontier sequence. The contended contract is its
-own contiguous `BAKE:CONTENDED_MERGE_PROMPT` block in
-`references/wave-merge.md` — a separate baked const, because the drift pin
-matches contiguous text and splicing a clause into `MERGE_PROMPT` would break
-it — and `WAVE_PROMPTS` in `test_no_prompt_drift.py` gains the entry. The
+role, two contracts) through the frontier sequence. The contended contract is
+its own contiguous `BAKE:CONTENDED_MERGE_PROMPT` block in
+`references/wave-merge.md` — kept separate because the two contracts are
+cleanly separable and independently pinned, not because the drift pin
+requires it (the wave-prompt pin matches placeholder-split fragments in
+order, not contiguous text) — and `WAVE_PROMPTS` in
+`test_no_prompt_drift.py` gains entries for it and the resolver block. The
 prompt locates the CLI via the existing `<pluginRoot>` token that
-`fillPaths()` fills (precedent: `review-package`).
+`fillPaths()` fills (precedent: `review-package`). **It carries the `heads/`
+slot-recording sentence verbatim from the existing merge contract** (`mkdir
+-p <runDir>/heads`; `git rev-parse` per task and wave slot), and the
+contended dispatch appends `headsSlotsLine(merged, waveIdx + 1)` exactly as
+the merge dispatch does — the completeness critic treats a missing slot as an
+ancestry miss and forces the run BLOCKED, so a contended prompt without this
+sentence would block every contended run.
 
 1. The merge agent runs `fold_wave.py fold` and replies with counts +
    verdicts + paths — small scalars under a new sibling `FOLD_SCHEMA`
@@ -224,42 +272,50 @@ prompt locates the CLI via the existing `<pluginRoot>` token that
    `budgetExhausted()` — every existing dispatch site is checkpointed, and a
    serial N-conflict loop must be too; exhaustion routes to fallback (still
    live at this point) — then dispatches **one resolver agent at a time** at
-   **`TIER.mostCapable`** (the resolver is the E2 quality surface; the cheap
-   merge tier would grade E2 under a different model than the cell
-   measured). The resolver **reads its narration file itself** and writes
-   its whole-file resolution to a reply file (a contract change from the
-   cell's no-tools text-in/text-out resolver; the promoted prompt is
-   rewritten for it and for both narration shapes). A merge-agent call then
-   runs `resolve`; stale → re-narrate once. Serialization is by
-   construction: the loop awaits each resolution. Resolver calls are
-   workflow-visible agents — in the progress tree, charged to the run
-   budget, transcripts recorded verbatim in the report.
-3. **The wave test runs before the candidate commit is adopted.** The merge
-   agent materializes the candidate, runs the project suite against it (the
-   same `testInstruction` duty the merge contract already carries), and only
-   on green adopts it — replying `MERGED` + `headSha` so the existing
-   call-site handling (`waveBaseSha`, review base) is unchanged. A suite
-   failure at this point — the most likely fallback trigger, a resolution
-   that folds clean but is semantically wrong, exactly the path the
-   adjudication's E2 caveat named as unexercised — discards the candidate
-   and falls back.
+   **`TIER.mostCapable`** (the resolver is the E2 quality surface,
+   dispatched serially, so it gets the top tier; note honestly that the cell
+   ran its resolver on the ambient default model with no `--model` flag, so
+   the A/B's E2′ token bar is set against a costlier resolver than E2 was
+   graded on — §6 records the consequence). The resolver **reads its
+   narration file itself** and writes its whole-file resolution to a reply
+   file (a contract change from the cell's no-tools text-in/text-out
+   resolver; the promoted prompt is rewritten for it and for both narration
+   shapes). A merge-agent call then runs `resolve`; stale → re-narrate once.
+   Serialization is by construction: the loop awaits each resolution.
+   Resolver calls are workflow-visible agents — in the progress tree,
+   charged to the run budget, transcripts recorded verbatim in the report.
+3. **The wave test runs against the candidate before adoption, with the
+   branch unmoved.** The merge agent checks the candidate's tree out into
+   `INTEGRATION_WT` **without moving the branch ref**, runs the project
+   suite (the same `testInstruction` duty the merge contract already
+   carries), and on green **fast-forwards the integration branch to the
+   candidate** and writes the `heads/` slots — replying `MERGED` + `headSha`
+   so the existing call-site handling (`waveBaseSha`, review base) is
+   unchanged. On red — the most likely fallback trigger: a resolution that
+   folds clean but is semantically wrong, exactly the path the
+   adjudication's E2 caveat named as unexercised — the agent **restores the
+   worktree** (`git reset --hard <prevHead>` **and** `git clean -fd`, since
+   materialization can create untracked paths) and the wave falls back. The
+   restore matters: both fallback prompts begin by verifying they are on the
+   integration branch and refuse to operate otherwise, so a dirty or
+   detached worktree would turn fallback into BLOCKED.
 
 **Fallback — live strictly before adoption, and honestly priced.** The fold
 consumes task branches but never destroys them, so kernel error, ineligible
 conflict, resolver parked after its retry, budget exhaustion mid-loop,
 self-check failure, materialization park, or **candidate suite failure** all
-route the wave to the existing git-merge + reconcile path. After a candidate
-is adopted, task heads are ancestors of the integration branch and the
-reconcile path can no longer bind — from there the only route is redirect,
-as with any adopted merge today. And the fallback is **not** "today's
-behavior arrived at late": under today's rule these tasks never ran
-concurrently, so the reconcile agent (two attempts, then `blockedWaves`) is
-handed a multi-task same-file collision it was never built for, with the
-parallel work already spent. The fallback's real cost is a wave that can end
-blocked. Accordingly, **fallback rate on contended waves is a pre-registered
-hard gate in the A/B (§6) and the production canary (§5)** — not merely a
-named event. Every fallback appends a `fallback` event and surfaces in
-`judgmentCalls`.
+route the wave to the existing git-merge + reconcile path with the
+integration branch exactly where that path expects it. After adoption, task
+heads are ancestors of the integration branch and the reconcile path can no
+longer bind — from there the only route is redirect, as with any adopted
+merge today. And the fallback is **not** "today's behavior arrived at late":
+under today's rule these tasks never ran concurrently, so the reconcile
+agent (two attempts, then `blockedWaves`) is handed a multi-task same-file
+collision it was never built for, with the parallel work already spent. The
+fallback's real cost is a wave that can end blocked. Accordingly, **fallback
+rate on contended waves is a pre-registered hard gate in the A/B (§6) and
+the production canary (§5)** — not merely a named event. Every fallback
+appends a `fallback` event and surfaces in `judgmentCalls`.
 
 Task failure and review handling are unchanged: only mergeable results fold,
 exactly as only mergeable results merge today.
@@ -281,9 +337,10 @@ rehydration:
 
 `base`, `conflict`, `park`, `fallback` are inert for rehydration (§2).
 `report.json` gains a `frontier` section per contended wave: fold-log path,
-self-check results, resolver transcripts verbatim (the E2 grading surface),
-parks, fallbacks. Schema documented in `kernel/FOLD_LOG.md`. No existing
-report field changes shape.
+self-check results, **fold-CLI wall time** (its own line, so the first
+real-repo reading is not buried inside a passing E1′), resolver transcripts
+verbatim (the E2 grading surface), parks, fallbacks. Schema documented in
+`kernel/FOLD_LOG.md`. No existing report field changes shape.
 
 ### 5. Authoring: ultraplan relaxation, canary, and shakedown
 
@@ -298,16 +355,19 @@ for overlap alone) become explicitly wrong; `Files:` blocks remain required
 This half is the unmeasured rigor trade, so it carries a **canary** per house
 doctrine: at `engineVersion ≥` the adopting release, ultralearn sense passes
 track (a) fallback rate per contended wave and (b) redirect-round rate on
-plans with contended waves vs. the portfolio baseline. First persistence of
-elevated rates flags the relaxation possibly-failed; second persistence makes
-drafting the reversal (restore serialization by default, keep the engine
-capability guarded) mandatory distill output. Adoption of any reversal stays
-operator-gated.
+plans with contended waves vs. the portfolio baseline. **Expected fallback
+sources are named up front** so their first occurrence reads as the priced
+cost, not a regression: concurrently-created binary paths, runtime over-cap
+growth, and semantic suite failures at candidate time. First persistence of
+*elevated* rates flags the relaxation possibly-failed; second persistence
+makes drafting the reversal (restore serialization by default, keep the
+engine capability guarded) mandatory distill output. Adoption of any reversal
+stays operator-gated.
 
 **The canary's first reading is pre-release:** one real backlog plan authored
 under the relaxed rule runs `/ultrapowers` end-to-end (the shakedown), and
-its `frontier` report section is operator-reviewed before the release ships.
-Evidence, not a gate.
+its `frontier` report section — including the fold-CLI wall-time line — is
+operator-reviewed before the release ships. Evidence, not a gate.
 
 ### 6. The gating A/B
 
@@ -327,7 +387,8 @@ does not list).
 
 **Cells:** engine vs engine at the same ref, full protocol both arms —
 review on, gate on — via `ab_runner.py`. Arm A compiles with
-`--serialize-overlaps`; arm B compiles canonically. The only variable is the
+`--serialize-overlaps` (via the plumbed launch argument, recorded in each
+run's receipt); arm B compiles canonically. The only variable is the
 serialization rule. Output tokens harvested identically both arms
 (`_usage_output_tokens`); wall clock end-to-end.
 
@@ -337,16 +398,23 @@ serialization rule. Output tokens harvested identically both arms
   that dies before producing a gate verdict is an invalid interval and is
   superseded via `--rerun-of` (the OAuth precedent); a run that produces a
   verdict is never re-rolled.
-- Hard gates: both arms' gates green; arm B fold-log self-checks clean
-  (sampled raw orders outcome-identical, replay match); **zero fallbacks on
-  contended waves in arm B**; zero silent divergence; every park named.
+- **Hard gates — not overrulable:** both arms' gates green; arm B fold-log
+  self-checks clean (sampled raw orders outcome-identical, replay match);
+  **zero fallbacks on contended waves in arm B**; zero silent divergence;
+  every park named.
 - E1′: arm B end-to-end wall clock ≤ **0.7×** arm A (the numeric bar for
   "material" — the 4-wide fixture's causal expectation is ~2×, leaving
   headroom for review overlap).
 - E2′: arm B output tokens ≤ **1.25×** arm A, and any live resolutions
-  graded acceptable by the operator from the verbatim transcripts.
-- The operator may overrule a bar only with recorded reasoning in the
-  results doc (house precedent: the E1 decomposition of 2026-08-12).
+  graded acceptable by the operator from the verbatim transcripts. Recorded
+  context for the token bar: arm B's resolver runs at the top tier while the
+  cell's ran on the ambient default, so a token miss localized to resolver
+  calls is a pricing finding, not automatically a mechanism failure — the
+  operator's overrule reasoning may say so.
+- **Only E1′/E2′ may be overruled**, and only with recorded reasoning in the
+  results doc (house precedent: the E1 decomposition of 2026-08-12). Hard
+  gates cannot be overruled — that lever is how an unmeasured mode would
+  ship.
 - Any hard-gate red, or E1′/E2′ miss without a recorded overrule → the
   compile switch ships defaulted to `--serialize-overlaps` (mode dark) and
   the result is recorded. Pass → release with the canonical default.
@@ -360,8 +428,9 @@ remains modeled, and the results doc says so rather than extrapolating.
 
 Stated per component above; the invariants: **every failure degrades through
 a named event**, the degradation target before candidate adoption is the
-existing merge/reconcile path — with its real cost stated in §3, not
-euphemized — and after adoption the route is redirect, as today. A
+existing merge/reconcile path — reached with the integration branch and
+worktree exactly where that path expects them, at its real cost stated in §3
+— and after adoption the route is redirect, as today. A
 `--serialize-overlaps` compile is byte-identical to today's. The engine never
 claims a fold succeeded without the live self-checks; replay divergence is a
 fallback, not a warning.
@@ -370,31 +439,38 @@ fallback, not a warning.
 
 - **pytest:** edge-drop at construction (only `write-after-write` label
   dropped; semantic edges survive; ambiguous/catch-all tasks still serialize
-  against peers whose overlap edge was dropped; promoted-interface pairs stay
-  serialized and untagged; the pre-filter keys on the full overlap set —
-  including shared `Test:` paths — and keeps edges for non-text / over-cap /
-  non-regular existing paths via existing `marker_conflicts` vocabulary;
-  `--serialize-overlaps` reproduces today's compile byte-identically), the
-  contention-aware degrade rule (an all-overlapping plan compiles to one
-  contended wave canonically and to N single-task waves under the switch),
-  contended tagging, fold CLI (rehydration across ≥3 process boundaries
+  against peers whose overlap edge was dropped; promoted-interface pairs
+  stay serialized and untagged; the pre-filter keys on the compiler's
+  `writes ∪ reads` overlap set — including shared `Test:` paths — and keeps
+  edges for non-text / over-cap / non-regular existing paths via existing
+  `marker_conflicts` vocabulary; `--serialize-overlaps` reproduces today's
+  compile byte-identically), the flatten deletion (an all-overlapping plan
+  compiles to one contended wave canonically, to today's singleton waves
+  under the switch, and `mode`/`degrade_reason` recompute from kept pairs),
+  contended tagging in the `--emit-args` payload (`contendedWaves` parallel
+  to `waveLabels`), fold CLI (rehydration across ≥3 process boundaries
   asserting epoch and touched-path equality — not manifest equality alone —
-  epoch validity, both narration shapes, self-checks, log replay, park
-  reasons), materialization (touched-set application: a task's deletion
-  reaches the tree while an untouched executable and symlink keep mode and
-  link; a folded 100755 file keeps its bit from the base; a task mode-change
-  parks; non-regular folded path → named fallback; candidate discarded on
-  suite failure without moving the integration head). The promoted kernel
-  modules' tests move with them; the vendor sha256 + parse pins re-point.
+  task-index fold order, epoch validity, both narration shapes, scoped
+  snapshots, self-checks, log replay, park reasons), line-convention
+  bijection (a folded file with no final newline materializes
+  byte-identical), materialization (touched-set application: a task's
+  deletion reaches the tree while an untouched executable and symlink keep
+  mode and link; a folded 100755 file keeps its bit from the base; a task
+  mode-change parks; non-regular folded path → named fallback; **discarded
+  candidate: integration ref unchanged and `git status --porcelain` empty
+  afterward**). The promoted kernel modules' tests move with them; the
+  vendor sha256 + parse pins re-point.
 - **Harness sim:** `tests/frontier_merge.mjs` drives the contended path in
   `waves.js` with stubbed agents — clean fold, conflict→resolve,
   stale→re-narrate (markerless shape), park→fallback, budget exhaustion
-  mid-loop, candidate-suite-failure→fallback — and prints the
-  `ALL SCENARIOS PASSED` sentinel (the suite-gate runs it on any harness JS
-  change; a harness change with no covering sim fails the gate by design).
-- **Prompt pins:** the `CONTENDED_MERGE_PROMPT` block and resolver prompt
-  enter `test_no_prompt_drift.py`'s `WAVE_PROMPTS`; rubric mirror text pinned
-  by `test_recommendation_rubric.py`.
+  mid-loop, candidate-suite-failure→fallback — asserts the contended
+  dispatch text **contains the `heads/` slot names for every merged task
+  id**, and prints the `ALL SCENARIOS PASSED` sentinel (the suite-gate runs
+  it on any harness JS change; a harness change with no covering sim fails
+  the gate by design).
+- **Prompt pins:** the `CONTENDED_MERGE_PROMPT` and resolver blocks in
+  `wave-merge.md` enter `test_no_prompt_drift.py`'s `WAVE_PROMPTS`; rubric
+  mirror text pinned by `test_recommendation_rubric.py`.
 - **Fixture seal:** `contend-prod` sealed and added to `FIXTURES`.
 
 ## Release
@@ -407,16 +483,17 @@ no new diagnostic vocabulary (kept-pairs ride the existing `marker_conflicts`
 ## Trim review
 
 Author's disclosure — **Adds:** kernel module (promoted, not new code), fold
-CLI + fold-log schema (rehydration entry point), contended branch of the
-existing merge agent (`FOLD_SCHEMA`, `CONTENDED_MERGE_PROMPT` bake block),
-resolver-as-agent loop (mostCapable tier, budget-checkpointed), compiler
-construction-time edge-drop + contention-aware degrade rule + pre-filter +
-tag behind one switch, `contend-prod` fixture (sealed, `FIXTURES` entry), one
-`.mjs` sim, rubric/authoring text updates + canary, ab_runner arm flag.
-**Removes:** the `write-after-write` serialization default, the
-fully-overlapping sequential degrade (canonical mode), `evals/frontier/` as
-the kernel's home, and — at authoring time — the three documented same-file
-contortions.
+CLI + fold-log schema (rehydration entry point, line-convention bijection,
+scoped snapshots), contended contract of the existing merge agent
+(`FOLD_SCHEMA`, `CONTENDED_MERGE_PROMPT` + resolver BAKE blocks in
+`wave-merge.md`, `heads/` slot sentence, candidate-commit adoption
+mechanics), resolver-as-agent loop (mostCapable tier, budget-checkpointed),
+compiler construction-time edge-drop + pre-filter + `contendedWaves` args
+key behind one plumbed switch, `contend-prod` fixture (sealed, `FIXTURES`
+entry), one `.mjs` sim, rubric/authoring text updates + canary, ab_runner
+arm flag. **Removes:** the `write-after-write` serialization default, the
+dead `fully_overlapping` flatten line, `evals/frontier/` as the kernel's
+home, and — at authoring time — the three documented same-file contortions.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "nine adds against three removes; nothing makes an existing defect class inexpressible")
 
@@ -443,10 +520,11 @@ Fourteen findings; adopt-or-answer:
 7. **Post-hoc edge filtering breaks later compiler tiers** — ADOPTED. Drop
    at construction; ambiguous/catch-all serialization pinned by test (§1).
 8. **`write-after-write` label ≠ "both write"** — ADOPTED. Label vs. overlap
-   set defined; promoted-interface pairs stay serialized (§1). *(Round 2
-   corrected "readers fold clean" to the TDD-write reading.)*
+   set defined; promoted-interface pairs stay serialized (§1). *(Rounds 2–3
+   corrected the set twice; final: the code's `writes ∪ reads`, stated
+   once.)*
 9. **Fold conductor duplicates the merge agent** — ADOPTED. One role, two
-   paths; contended branch in `wave-merge.md` (§3).
+   contracts; contended contract in `wave-merge.md` (§3).
 10. **Fallback is a new failure mode, not late-arriving old behavior** —
     ADOPTED. Cost stated; contended-wave fallback rate promoted to A/B hard
     gate and production canary (§3, §5, §6).
@@ -463,7 +541,8 @@ Fourteen findings; adopt-or-answer:
 13. **Kernel promotion leaves eval dependencies undefined** — ADOPTED. Full
     move/stay/re-point enumeration; `schedule_model` retired to
     modeling-only with the two-rules relationship stated; `validate_skill`
-    link-check extended to `kernel/` (§Where it lives).
+    link-check extended to `kernel/` (§Where it lives). *(Round 3 made the
+    extension live via a `SKILL.md` reference.)*
 14. **Cut the Founding-architecture section; "ledger" collides with
     ultralearn's ledger** — ADOPTED for the rename (fold log, everywhere)
     and the replay overclaim (fixed via 1–2); PARTIALLY ADOPTED for the cut:
@@ -478,9 +557,8 @@ Twelve findings + four trims; adopt-or-answer:
 1. **BLOCKER — the `fully_overlapping` sequential degrade nullifies the
    increment on all-overlapping plans** (predicate reads `writes`, not
    edges; reviewer verified by compiling a modified `contend`) — ADOPTED.
-   Third compiler change (§1b): degrade becomes contention-aware; switch
-   restores today's degrade; pinned both ways; fixture-shape dodging
-   explicitly rejected. Added to the Adds disclosure.
+   *(Round 3 corrected the fix from an additive conditional to deleting the
+   dead flatten line — §1b.)*
 2. **Folded-paths-only materialization resurrects deletions** (the fold
    manifest omits deleted paths; the cell got away with it by wiping the
    tree) — ADOPTED. Materialize keys on the recorded touched set: manifest
@@ -491,22 +569,26 @@ Twelve findings + four trims; adopt-or-answer:
    resolve events appended; inert events stated; pin asserts epoch +
    touched-map equality (§2, §4).
 4. **Fallback is dead after materialize; the wave test has no stated home**
-   — ADOPTED. Candidate-commit ordering: suite runs before adoption;
-   post-fold suite failure enumerated as the most likely fallback trigger;
-   after adoption the only route is redirect (§2, §3).
+   — ADOPTED. Candidate ordering: suite runs before adoption; post-fold
+   suite failure enumerated as the most likely fallback trigger; after
+   adoption the only route is redirect (§2, §3). *(Round 3 supplied the
+   concrete worktree mechanics.)*
 5. **Shipped kernel would import eval-only `schedule_model`** (the
    self-check calls `sampled_orders`/`fold_all`) — ADOPTED. Both move into
    the kernel; `schedule_model` imports them back (§Where it lives).
 6. **Pre-filter misses shared `Test:` paths; "readers fold clean" is wrong**
    (a shared 2,641-line test file would be freed, then park at runtime —
    against the new hard gate) — ADOPTED. Pre-filter widened to the full
-   overlap set; sentence replaced with the TDD-write reading (§1).
+   overlap set; sentence replaced with the TDD-write reading (§1). *(Round 3
+   corrected the set's spelling to the code's `writes ∪ reads` and noted the
+   shared-test case is a drop case, not a degrade case.)*
 7. **`MERGE_SCHEMA` cannot carry the contended replies** — ADOPTED. Sibling
-   `FOLD_SCHEMA` for fold/resolve; materialize replies `MERGED` + `headSha`
-   so existing call-site handling is unchanged (§3).
+   `FOLD_SCHEMA` for fold/resolve; adoption replies `MERGED` + `headSha` so
+   existing call-site handling is unchanged (§3).
 8. **No budget checkpoint in the resolver loop; resolver tier unnamed** —
-   ADOPTED. Per-conflict `budgetExhausted()` check routing to
-   still-live fallback; resolver pinned at `TIER.mostCapable` (§3).
+   ADOPTED. Per-conflict `budgetExhausted()` check routing to still-live
+   fallback; resolver pinned at `TIER.mostCapable` (§3). *(Round 3 corrected
+   the tier justification.)*
 9. **Modes on folded paths unrepresented** — ADOPTED. Folded paths take the
    base mode from the previous integration head; task mode-changes park; the
    executable moves into the folded set in the test (§2, §Testing).
@@ -518,18 +600,82 @@ Twelve findings + four trims; adopt-or-answer:
     `FIXTURES`; the false claim corrected (§6).
 12. **Prompt-pin mechanics: contiguous BAKE block; CLI location token** —
     ADOPTED. Own `BAKE:CONTENDED_MERGE_PROMPT` block; `WAVE_PROMPTS` entry;
-    `<pluginRoot>` token (§3).
+    `<pluginRoot>` token (§3). *(Round 3 corrected the stated reason for the
+    separate block and moved the resolver prompt into `wave-merge.md`.)*
 
-Trims: **one switch, not two** — ADOPTED (§1, §6: `--serialize-overlaps` is
-the single switch; a failed gate ships it as the default). **Fold shakedown
-into §5** — ADOPTED (the shakedown is the canary's pre-release first
-reading). **Founding orientation still deletable** — ANSWERED-KEPT, same
-operator direction as round 1, on the record. **Diagnostic-vocabulary
-justification is circular** — ADOPTED: kept-pairs reuse the existing
-`marker_conflicts` `inference` kind; no new vocabulary, freeze untouched
-(§1, §Release).
+Trims: **one switch, not two** — ADOPTED (§1, §6). **Fold shakedown into
+§5** — ADOPTED (the shakedown is the canary's pre-release first reading).
+**Founding orientation still deletable** — ANSWERED-KEPT, same operator
+direction as round 1, on the record. **Diagnostic-vocabulary justification
+is circular** — ADOPTED: kept-pairs reuse the existing `marker_conflicts`
+`inference` kind; no new vocabulary, freeze untouched (§1, §Release).
 
-Scope reconciliation, answered: the degrade-rule change (expansion 3) is now
-disclosed in the Adds list; the n=1 honesty bounds and the width-4 scope
-limitation are carried into §6 per the 0.1.0 precedent (expansion 4); the §5
-relaxation remains operator-recorded with its canary (expansion 2).
+### Round 3 (fresh-context reviewer; grade: `netConceptDelta` **up** — "the fold path adds a second way for a wave to end blocked rather than eliminating the first"; found 2 blockers + 1 structural simplification + 10 findings; loop explicitly not ended)
+
+Thirteen findings + one scope narrowing; adopt-or-answer:
+
+1. **BLOCKER — the contended tag rode the launch file, which `waves.js`
+   cannot read** (the #89 knob-slot defect class recurring; the compiler's
+   own comments state args/inline is the only channel) — ADOPTED.
+   `contendedWaves` in the `--emit-args` payload, parallel to `waveLabels`;
+   launch-file copy optional, agents-only (§1).
+2. **STRUCTURAL — the `fully_overlapping` flatten is dead code; delete it
+   instead of conditioning it** (reviewer showed `layer()` already yields
+   singletons whenever the predicate fires — the tier-3 tournament forces a
+   total order; the round-2 conditional also created a whole-plan
+   eligibility cliff) — ADOPTED. §1b is now a deletion plus an explicit
+   `mode`/`degrade_reason` labeling rule recomputed from kept pairs;
+   `complexityEffect` reclassified `simplification`; the cliff is gone
+   (ineligible pairs serialize pairwise).
+3. **BLOCKER — `CONTENDED_MERGE_PROMPT` without the `heads/` slot sentence
+   blocks every contended run** (the completeness critic treats a missing
+   slot as an ancestry miss → run BLOCKED) — ADOPTED. Slot sentence carried
+   verbatim; `headsSlotsLine` appended to the contended dispatch; sim
+   asserts the slot names (§3, §Testing).
+4. **The candidate commit had no stated home; fallback could not bind from
+   where materialize left the worktree** (fallback prompts refuse a
+   detached/foreign branch; a branch commit moves the ref the spec promised
+   not to move) — ADOPTED. `git commit-tree` candidate; branch unmoved;
+   checkout-without-ref-move for the suite; green → fast-forward + slots;
+   red → `reset --hard` + `clean -fd`; pinned (ref unchanged, porcelain
+   empty) (§2, §3, §Testing).
+5. **Final-newline normalization silently rewrites files, and both
+   self-checks are normalization-blind by construction** — ADOPTED, the
+   structural fix: the kernel line convention becomes a bijection;
+   byte-identity pinned; the self-checks' normalized scope stated (§2).
+6. **The resolver prompt cannot enter `WAVE_PROMPTS` from a third file** —
+   ADOPTED. The resolver block lives in `wave-merge.md` (§Where it lives).
+7. **The stated reason for the separate BAKE block was factually wrong**
+   (the wave pin matches fragments in order, not contiguous text) —
+   ADOPTED. Real reason stated: cleanly separable contracts (§3).
+8. **Whole-tree `snapshot()` × permutation self-checks is unpriced O(repo)
+   subprocess cost per invocation** — ADOPTED. Snapshots scoped to touched
+   paths + base blobs; fold-CLI wall time is its own report line, reviewed
+   at shakedown (§2, §4, §5).
+9. **"Completion order" is unobservable and forfeits reproducibility** —
+   ADOPTED. Task-index order, matching the existing merge contract; K1
+   makes order moot (§2).
+10. **Three overlap-set spellings, none the code's** (`Test:` parses into
+    `reads`; `fully_overlapping` reads `writes` alone, so the shared-test
+    example never trips the degrade rule) — ADOPTED. One spelling
+    (`writes ∪ reads`), stated once in §1 and used everywhere.
+11. **`--serialize-overlaps` had no path from `ab_runner` to the compiler**
+    (`ultra_run.py` builds the compile argv itself) — ADOPTED. Plumbed as a
+    `/ultrapowers` launch argument forwarded by `ultra_run.py`, recorded in
+    the run receipt (§Where it lives, §6).
+12. **The `validate_skill.py` extension was inert** (the regex scans only
+    `SKILL.md`'s body, which mentioned no kernel path) — ADOPTED.
+    `SKILL.md`'s engine section references `kernel/FOLD_LOG.md`, making the
+    check live (§Where it lives).
+13. **The resolver-tier justification misstated what the cell measured**
+    (the cell's resolver ran with no `--model` flag — ambient default, not
+    mostCapable) — ADOPTED. Justification corrected; §6 records that an E2′
+    token miss localized to resolver calls is a pricing finding;
+    concurrently-created binary paths named as an expected canary fallback
+    source (§3, §5, §6).
+
+Scope narrowing: **hard gates are not overrulable; only E1′/E2′ are** —
+ADOPTED (§6): the overrule lever is exactly how an unmeasured mode would
+ship, and the reviewer's observation that the 8.3× headline survived to
+adjudication through an overrule-shaped channel is taken as the cautionary
+precedent it is.
