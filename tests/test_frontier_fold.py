@@ -59,13 +59,16 @@ def test_valid_resolution_applies_and_replays():
     eng = ff.FrontierEngine(base)
     eng.fold(t1)
     epoch = eng.epoch()
-    lines = ["def a(x):", "    return x + 1", "", "def b(y):", "    return y", ""]
+    # A resolver reply is whole-file bytes split by the kernel's own
+    # convention, so a final newline is the trailing "" entry and the file
+    # materializes byte-identical.
+    text = "def a(x):\n    return x + 1\n\ndef b(y):\n    return y\n"
+    lines = rw.split_lines(text)
     assert eng.apply_resolution("cli.py", epoch, lines) is True
     assert eng.events[-1]["type"] == "resolve"
     replayed = ff.replay(base, {"t1": t1}, eng.events)
     assert replayed == eng.manifest()
-    assert eng.manifest()["cli.py"] == "\n".join(lines[:-1]) + "\n" or \
-           eng.manifest()["cli.py"] == "\n".join(lines)
+    assert eng.manifest()["cli.py"] == text
 
 
 def test_raw_shuffle_outcomes_is_a_singleton_on_clean_tasks():
@@ -113,10 +116,11 @@ def test_re_narration_after_a_stale_rejection_applies():
     eng.fold(t1)
     stale = eng.epoch()
     eng.fold(t2)
-    lines = ["def a(x):", "    return 0", "", "def b(y):", "    return y * 2"]
+    text = "def a(x):\n    return 0\n\ndef b(y):\n    return y * 2\n"
+    lines = rw.split_lines(text)
     assert eng.apply_resolution("cli.py", stale, lines) is False
     assert eng.apply_resolution("cli.py", eng.epoch(), lines) is True
-    assert eng.manifest()["cli.py"] == "\n".join(lines) + "\n"
+    assert eng.manifest()["cli.py"] == text
 
 
 def test_resolution_on_an_untouched_path_applies():
@@ -124,7 +128,8 @@ def test_resolution_on_an_untouched_path_applies():
     base = make_base({"cli.py": "x = 1\n", "other.py": "y = 1\n"})
     eng = ff.FrontierEngine(base)
     eng.fold(rw.task_state_from_contents(base, "t1", {"cli.py": "x = 2\n"}))
-    assert eng.apply_resolution("other.py", eng.epoch(), ["y = 2"]) is True
+    assert eng.apply_resolution("other.py", eng.epoch(),
+                                rw.split_lines("y = 2\n")) is True
     assert eng.manifest()["other.py"] == "y = 2\n"
 
 

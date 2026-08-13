@@ -73,17 +73,26 @@ TOMBSTONE = _Tombstone()
 
 
 def split_lines(content):
-    """Text content -> lines, dropping exactly one trailing newline."""
-    if content == "":
-        return []
-    if content.endswith("\n"):
-        content = content[:-1]
+    """Bijection between byte strings and line lists for EXISTING files:
+    the empty file is [""], and [] is not in the range — [] denotes absence
+    (deletion mark / never-existed) and stays constructible only at the
+    absence sites (`task_state_from_contents`'s delete mark, the shared empty
+    ancestor for concurrent adds, `_resolved_state`'s default prior state).
+
+    `join_lines(split_lines(c)) == c` for every c, so a folded file with no
+    final newline materializes byte-identical instead of being silently
+    rewritten — and an emptied file ([""] -> "") stops colliding with a
+    deleted one ([] -> omitted from the manifest).
+    """
     return content.split("\n")
 
 
 def join_lines(lines):
-    """Lines -> text, one trailing newline for non-empty files."""
-    return "\n".join(lines) + "\n" if lines else ""
+    """Lines -> text. The inverse of `split_lines` on its range; `[]` is not
+    in that range, and the manifest never joins it (absent paths are
+    omitted), so no caller depends on `join_lines([]) == ""` meaning a file.
+    """
+    return "\n".join(lines)
 
 
 def is_binary(data):
@@ -147,9 +156,15 @@ def _git(repo, *args):
                           check=True, capture_output=True).stdout
 
 
-def snapshot(repo, ref):
-    """Read the tree at `ref` into a RepoState."""
-    names = _git(repo, "ls-tree", "-r", "-z", "--name-only", ref).decode()
+def _read_tree(repo, ref, pathspecs):
+    """The tree at `ref`, whole (`pathspecs is None`) or scoped, as a RepoState."""
+    args = ["ls-tree", "-r", "-z", "--name-only", ref]
+    if pathspecs is not None:
+        # --literal-pathspecs: a repo path may legally begin with ":", which
+        # git otherwise reads as pathspec magic and drops silently (exit 0,
+        # no output) — the path would then be misread as an add/add.
+        args = ["--literal-pathspecs"] + args + ["--", *pathspecs]
+    names = _git(repo, *args).decode()
     files, raw = {}, {}
     for p in filter(None, names.split("\0")):
         blob = _git(repo, "show", f"{ref}:{p}")
@@ -158,6 +173,25 @@ def snapshot(repo, ref):
         else:
             files[p] = manyana.initial_state(split_lines(blob.decode()))
     return RepoState(files=files, deleted_marks=frozenset(), raw=raw)
+
+
+def snapshot(repo, ref):
+    """Read the tree at `ref` into a RepoState."""
+    return _read_tree(repo, ref, None)
+
+
+def snapshot_scoped(repo, ref, paths):
+    """Read only `paths` from the tree at `ref` into a RepoState.
+
+    Paths absent at `ref` (a task's adds) are simply not in the result, which
+    is what makes `task_state_from_contents` classify them as adds. Whole-tree
+    `snapshot` charges one subprocess per file in the repo; a wave only ever
+    needs the union of its tasks' touched paths, derived BEFORE any fold.
+    """
+    paths = sorted(paths)
+    if not paths:
+        return RepoState(files={}, deleted_marks=frozenset(), raw={})
+    return _read_tree(repo, ref, paths)
 
 
 def task_state_from_contents(base, task_id, contents):
@@ -178,12 +212,24 @@ def task_state_from_contents(base, task_id, contents):
     return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted), raw=raw)
 
 
-def publish(base, repo, base_ref, ref, task_id):
-    """Derive a TaskState from the git diff base_ref..ref."""
+def _diff_entries(repo, base_ref, ref):
+    """[(status, path)] for the diff base_ref..ref."""
     out = _git(repo, "diff", "--name-status", "-z", "--no-renames", base_ref, ref).decode()
     parts = [x for x in out.split("\0") if x]
+    return list(zip(parts[0::2], parts[1::2]))
+
+
+def diff_paths(repo, base_ref, ref):
+    """The paths base_ref..ref touches — the task's touched set. Shares one
+    parse with `publish`, so a scoped base can never miss a path a fold
+    then writes."""
+    return [p for _, p in _diff_entries(repo, base_ref, ref)]
+
+
+def publish(base, repo, base_ref, ref, task_id):
+    """Derive a TaskState from the git diff base_ref..ref."""
     contents = {}
-    for status, p in zip(parts[0::2], parts[1::2]):
+    for status, p in _diff_entries(repo, base_ref, ref):
         if status.startswith("D"):
             contents[p] = None
         else:
@@ -267,8 +313,7 @@ def _base_text_untouched(base, files, deleted_marks, path):
     folded state string is the same in every order.
 
     A delete counts as touching the text side even when the weave is unchanged:
-    an empty base file's delete weave equals the base's own state, but the file
-    was removed, and only `deleted_marks` records that.
+    the file was removed, and only `deleted_marks` records that.
     """
     return (path in files and files[path] == base.files.get(path)
             and path not in deleted_marks)
@@ -380,7 +425,13 @@ def fold(base, frontier, task):
 
 
 def manifest(state):
-    """path -> normalized text (str) or raw bytes; deleted files omitted.
+    """path -> text (str) or raw bytes; deleted files omitted.
+
+    Text is `join_lines` of the visible lines — the exact bytes of the folded
+    file, final newline or not (`split_lines`/`join_lines` are inverses). The
+    `lines or ...` predicate is the `[]`-as-absence rule: a path whose visible
+    lines are `[]` AND which carries a delete mark is gone, while an emptied
+    file is `[""]` and materializes as `""`.
 
     Text wins any text/binary collision that reaches this point, so raw bytes
     never silently shadow a visible weave — and every such collision was

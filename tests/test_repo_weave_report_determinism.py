@@ -92,9 +92,10 @@ def test_concurrent_text_edit_and_binary_write_still_conflicts():
 # base's own state object. Authorship inferred from object identity therefore
 # reads these as "task-authored" in one fold order and "still base's" in
 # another — the exact K1 break this module exists to measure. Content decides.
+# Under the line bijection a stripped final newline is a genuine edit (it
+# removes the trailing "" line), so only a byte-identical rewrite is a no-op.
 NOOP_TEXT_WRITES = {
     "byte-identical rewrite": "l1\nl2\n",   # e.g. a mode-only commit
-    "trailing-newline-only": "l1\nl2",      # split_lines drops the newline
 }
 
 
@@ -112,11 +113,23 @@ def test_noop_text_write_beside_binary_write_is_a_lone_type_change():
         assert keys == [], label
 
 
+def test_trailing_newline_only_rewrite_is_a_real_text_write():
+    # The bijection's point, at the reporting layer: dropping a file's final
+    # newline is an edit, so the pair is two writers and keeps its conflict.
+    # The old convention swallowed it into a lone type change.
+    base = make_base({"p.txt": "l1\nl2\n"})
+    t_text = rw.task_state_from_contents(base, "t-text", {"p.txt": "l1\nl2"})
+    t_bin = rw.task_state_from_contents(base, "t-bin", {"p.txt": b"\x00\x01"})
+    manifest, keys = assert_order_independent(base, [t_text, t_bin])
+    assert keys == [("p.txt", "binary")]
+    assert manifest == {"p.txt": "l1\nl2"}
+
+
 def test_noop_text_write_does_not_mask_a_real_concurrent_text_writer():
     # The no-op writer must not suppress a genuine collision: a second task
     # that really edits the text keeps the binary conflict, in every order.
     base = make_base({"p.txt": "l1\nl2\n"})
-    tasks = [rw.task_state_from_contents(base, "t-noop", {"p.txt": "l1\nl2"}),
+    tasks = [rw.task_state_from_contents(base, "t-noop", {"p.txt": "l1\nl2\n"}),
              rw.task_state_from_contents(base, "t-edit", {"p.txt": "l1\nl2-x\n"}),
              rw.task_state_from_contents(base, "t-bin", {"p.txt": b"\x00\x01"})]
     manifest, keys = assert_order_independent(base, tasks)

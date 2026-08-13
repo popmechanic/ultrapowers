@@ -3,14 +3,19 @@
 2026-08-11, component 3). Pure state machine: no subprocesses, no kit
 plumbing. The cell driver owns dispatch; this module owns merge state.
 
-Invariants it enforces (each pinned by tests/test_frontier_fold.py):
+Invariants it enforces (pinned by tests/test_frontier_fold.py and
+tests/test_rehydrate.py):
 * the event log is the durable record: replay(base, tasks, events)
-  reproduces the manifest deterministically;
+  reproduces the manifest deterministically, and rehydrate(repo, log)
+  rebuilds the whole engine — epoch, touched map, events, manifest — from
+  git plus the log alone (schema in kernel/FOLD_LOG.md);
 * application validity: a resolution computed from a narration applies only
-  if no intervening fold touched its path since the narration's epoch;
+  if no intervening fold touched its path since the narration's epoch —
+  live only; recorded resolutions re-apply unconditionally;
 * the dispatch predicate: only annotated-block narrations, <= 400 visible
   lines, are resolver-eligible — everything else parks with a named reason.
 """
+import json
 import random
 import sys
 from itertools import permutations
@@ -51,23 +56,17 @@ def fold_all(fold_fn, base, tasks, order):
     return frontier, conflicts
 
 
-def _visible(lines):
-    """A resolver's `resolvedFileLines` -> the weave's visible-line list.
-
-    The contract says "no trailing-newline entries", but a whole-file reply
-    built by splitting text on "\\n" carries one anyway. Normalizing through
-    `repo_weave`'s own text convention (`split_lines` drops exactly one
-    trailing newline) makes both spellings mean the same file and keeps a
-    genuinely blank final line expressible as two trailing entries.
-    """
-    return rw.split_lines("\n".join(lines))
-
-
 def _resolved_state(frontier, path, lines):
-    """Whole-file-in / whole-file-out: replace `path`'s visible lines."""
+    """Whole-file-in / whole-file-out: replace `path`'s visible lines.
+
+    `lines` are already the kernel's own line list — the resolver's reply
+    bytes are split by `rw.split_lines`, so exactly one normalization exists
+    on that path and none is repeated here (`_visible` was the identity under
+    the bijection and is deleted; spec 2026-08-12 §2).
+    """
     files = dict(frontier.files)
     prior = files.get(path, manyana.initial_state([]))
-    files[path] = manyana.update_state(prior, _visible(lines))
+    files[path] = manyana.update_state(prior, list(lines))
     return rw.RepoState(files=files,
                         deleted_marks=frontier.deleted_marks,
                         raw=dict(frontier.raw),
@@ -116,20 +115,74 @@ class FrontierEngine:
         return rw.manifest(self.frontier)
 
 
-def replay(base, tasks_by_id, events):
-    """Re-run the exact recorded sequence; the return must equal the live
-    manifest (G2's event-log leg).
+def _apply_events(eng, states, events):
+    """Walk a recorded event list into `eng` — the only event walk there is.
+    `rehydrate` (from git) and `replay` (from memory) differ only in how they
+    build `eng` and `states`, so the two cannot drift.
 
-    Validity is not re-checked: the log records what actually applied, and
-    re-deciding it here would let replay diverge from the run it replays.
+    Validity is never re-checked: the log records what actually applied, and
+    re-running `apply_resolution`'s staleness check would silently drop a
+    recorded resolution. Resolve events ARE appended to the engine's event
+    list, so the epoch clock reconstructs exactly. `base` events are inert.
     """
-    eng = FrontierEngine(base)
     for e in events:
-        if e["type"] == "fold":
-            eng.fold(tasks_by_id[e["task"]])
-        else:
+        kind = e["type"]
+        if kind == "base":
+            continue
+        if kind == "fold":
+            eng.fold(states[e["task"]])
+        elif kind == "resolve":
             eng.frontier = _resolved_state(eng.frontier, e["path"], e["lines"])
-    return eng.manifest()
+            eng.events.append({"type": "resolve", "path": e["path"],
+                               "epoch": e["epoch"], "lines": list(e["lines"])})
+        else:
+            raise ValueError("unknown fold-log event type: %r" % (kind,))
+    return eng
+
+
+def _union_touched(repo, base_sha, heads):
+    """The union of every head's touched paths, derived BEFORE any fold.
+
+    The ordering contract (spec 2026-08-12 §2): a per-task streaming scope
+    would misclassify a path another task later touches as an add/add instead
+    of a modify, because `task_state_from_contents` branches on membership in
+    the base.
+    """
+    touched = set()
+    for head in heads:
+        touched.update(rw.diff_paths(repo, base_sha, head))
+    return touched
+
+
+def rehydrate(repo, log_path):
+    """Rebuild a live FrontierEngine from git + the fold log.
+
+    `fold` events re-publish their task from its recorded `headSha` (a pure
+    function of git objects) and re-fold it, which also reconstructs the
+    touched-path map; `resolve` events re-apply their recorded lines
+    unconditionally. The log plus the repo are the whole record — the wave's
+    CLI invocations carry nothing in memory between them.
+    """
+    log_path = Path(log_path)
+    events = [json.loads(line)
+              for line in rw.split_lines(log_path.read_text()) if line.strip()]
+    if not events or events[0].get("type") != "base":
+        raise ValueError("fold log %s does not open with a base event" % log_path)
+    base_sha = events[0]["sha"]
+    task_heads = [(e["task"], e["headSha"]) for e in events if e["type"] == "fold"]
+    base = rw.snapshot_scoped(repo, base_sha,
+                              _union_touched(repo, base_sha,
+                                             [h for _, h in task_heads]))
+    states = {tid: rw.publish(base, repo, base_sha, head, task_id=tid)
+              for tid, head in task_heads}
+    return _apply_events(FrontierEngine(base), states, events)
+
+
+def replay(base, tasks_by_id, events):
+    """Re-run the exact recorded sequence from in-memory inputs; the return
+    must equal the live manifest (G2's event-log leg). A thin wrapper over the
+    same event walk `rehydrate` uses."""
+    return _apply_events(FrontierEngine(base), tasks_by_id, events).manifest()
 
 
 def raw_shuffle_outcomes(base, tasks, sample_seed):
@@ -147,13 +200,13 @@ def dispatchable(conflict, manifest):
     """(ok, park_reason). Resolver-eligible iff the narration carries
     manyana's annotated conflict block AND the file is text under the cap."""
     if not any(line.startswith(rw.MARKERS)
-               for line in conflict.narration.splitlines()):
+               for line in rw.split_lines(conflict.narration)):
         return False, "no annotated narration for %s (%s)" % (conflict.path,
                                                               conflict.kind)
     body = manifest.get(conflict.path)
     if not isinstance(body, str):
         return False, "non-text manifest content for %s" % conflict.path
-    if len(body.splitlines()) > RESOLVER_LINE_CAP:
+    if len(rw.split_lines(body)) > RESOLVER_LINE_CAP:
         return False, "%s exceeds %d visible lines" % (conflict.path,
                                                        RESOLVER_LINE_CAP)
     return True, ""

@@ -248,18 +248,22 @@ def test_manifest_presence_rules():
     # never relabelled to delete/modify — that would depend on the delete being
     # folded first (see test_two_text_writers_and_a_deleter_is_order_independent).
     assert conflict_keys(cs2) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
-    assert rw.manifest(survivor)["calc.py"] == "    logged = 1\n"
+    # The delete removes every base line INCLUDING the file's final-newline
+    # line, so the survivor is exactly the one line the modify added.
+    assert rw.manifest(survivor)["calc.py"] == "    logged = 1"
 
 
 def test_text_normalization_and_binary_detection():
-    assert rw.split_lines("") == []
-    assert rw.split_lines("\n") == [""]
+    # The line convention is a bijection over files that EXIST; `[]` is
+    # reserved for absence. Fully pinned in tests/test_kernel_bijection.py.
+    assert rw.split_lines("") == [""]
+    assert rw.split_lines("\n") == ["", ""]
     assert rw.split_lines("a") == ["a"]
-    assert rw.split_lines("a\n") == ["a"]
-    assert rw.split_lines("a\n\n") == ["a", ""]
-    assert rw.join_lines([]) == ""
-    assert rw.join_lines([""]) == "\n"
-    assert rw.join_lines(["a", "b"]) == "a\nb\n"
+    assert rw.split_lines("a\n") == ["a", ""]
+    assert rw.split_lines("a\n\n") == ["a", "", ""]
+    assert rw.join_lines([""]) == ""
+    assert rw.join_lines(["a", "b"]) == "a\nb"
+    assert rw.join_lines(["a", "b", ""]) == "a\nb\n"
     assert rw.is_binary(b"") is False
     assert rw.is_binary("héllo".encode("utf-8")) is False
     assert rw.is_binary(b"a\x00b") is True
@@ -482,7 +486,8 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
     manifest, _ = assert_order_independent(
         base, tasks,
         expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
-    assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
+    # Both edits survive the delete; the base's final-newline line does not.
+    assert manifest["calc.py"] == "l2-x\nl2-y"
     # The per-writer `lines` count is order-independent by construction; pin it
     # on ONE canonical order (#132 keeps this pin).
     _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
@@ -498,7 +503,8 @@ def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
     manifest, _ = assert_order_independent(
         BASE, [ta, tb, t_del],
         expected_conflicts=[("new.py", "add/add"), ("new.py", "delete/modify")])
-    assert manifest["new.py"] == "x = 1\nx = 2\n"
+    # Each add carries its own final-newline line, and the weave keeps both.
+    assert manifest["new.py"] == "x = 1\n\nx = 2\n"
 
 
 def test_delete_and_line_removal_only_leave_nothing_and_report_nothing():
