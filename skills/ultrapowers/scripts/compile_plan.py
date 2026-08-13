@@ -11,6 +11,11 @@ document-order heuristics yield by reachability to any opposing earlier
 path), runs Kahn layering with cycle detection, and emits the Step-3
 transparency block as JSON on stdout.
 
+One scheduling knob, `--overlap {serialize,fold}` (default `serialize`, the
+byte-identical legacy behavior): under `fold` the write-after-write tier
+declines to create the edge for eligible overlapping pairs, so they share a
+wave and the engine folds their same-file edits at merge time.
+
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
 run knobs (testCmd / baseBranch / tiers / review depth), which stay with
@@ -905,7 +910,31 @@ def derive_wave_label(tasks):
     return str(len(tasks)) + " parallel tasks"
 
 
-def build_edges(impl):
+# Overlap disposition for the write-after-write tier (frontier mode, spec
+# docs/superpowers/specs/2026-08-12-frontier-mode-in-engine-design.md §1):
+#   "serialize" — today's rule: two tasks whose overlap sets intersect are
+#                 ordered in document order. Byte-identical to the pre-knob
+#                 compiler on every plan shape.
+#   "fold"      — an eligible overlapping pair KEEPS NO serializing edge; the
+#                 pair is scheduled into one wave and the engine folds the two
+#                 same-file edits at merge time.
+# The shipped default is `serialize`; it flips to `fold` only in the
+# pass-branch follow-up (spec §5), which is NOT built here.
+OVERLAP_MODES = ("serialize", "fold")
+OVERLAP_DEFAULT = "serialize"
+
+
+def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
+    """Returns (edges, conflicts, dropped_pairs).
+
+    `dropped_pairs` holds BOTH orderings of every pair whose
+    `write-after-write` edge the fold mode declined to create; it is empty
+    under `serialize`, which is what makes that mode byte-identical to the
+    pre-knob compiler (the labeling predicate in main() reduces to today's
+    expression literally when the set is empty).
+    """
+    if overlap_mode not in OVERLAP_MODES:
+        raise ValueError("unknown overlap mode: %r" % (overlap_mode,))
     # Edge precedence:
     # explicit (marker, text) > semantic order-independent (write-after-create,
     # read-after-write) > document-order heuristics (write-after-write,
@@ -915,6 +944,9 @@ def build_edges(impl):
     # and stays a loud error.
     ids = {t["id"] for t in impl}
     edges, conflicts, seen = [], [], set()
+    # Pairs whose write-after-write edge fold mode declined to create, in BOTH
+    # orderings (the labeling predicate below iterates every ordered pair).
+    dropped_pairs = set()
     # Fix E: maintain the adjacency map incrementally instead of rebuilding it
     # on every would_cycle call inside the O(N^2) pair loops (measured
     # superlinear blowup >= 80 tasks). add() appends to adj as it appends edges.
@@ -960,6 +992,18 @@ def build_edges(impl):
             visited.add(n)
             stack.extend(adj.get(n, []))
         return False
+
+    def fold_eligible(a, b):
+        """Whether the fold path may take this overlapping pair.
+
+        The eligibility PRE-FILTER — every path in the pair's overlap set,
+        resolved against a repo root, must pass the kernel's dispatch
+        predicate — arrives with the `--repo-root` plumbing (spec §1). Until
+        then the hook is unconditional: with no root to probe, every pair is
+        eligible, and `dispatchable()` plus the runtime materialization guard
+        remain authoritative for everything a static pre-filter cannot see.
+        """
+        return True
 
     # Tier 1: Explicit — marker edges
     for t in impl:
@@ -1149,12 +1193,28 @@ def build_edges(impl):
             # As accepted conservatism this also serializes two pure readers of one
             # shared fixture. Add only when doc order is forward AND b cannot
             # already reach a (reachability guard, Bug A).
+            #
+            # Frontier mode (spec §1a): when the knob is `fold` and the pair is
+            # eligible, the edge is DROPPED — at construction, never by
+            # post-hoc filtering, because the `ambiguous-files` and catch-all
+            # tiers below consult reachability through the accumulated
+            # adjacency and an edge removed after the fact would leave those
+            # tasks unordered against peers they must still serialize behind.
+            # Only a pair the loop WOULD have given a new edge is droppable:
+            # forward document order, not already in `seen` (so a marker /
+            # text / interface / semantic edge keeps the pair serialized —
+            # neither dropped nor freed), and not cycle-blocked.
             a_touch = set(a["writes"]) | set(a["reads"])
             b_touch = set(b["writes"]) | set(b["reads"])
             if (a_touch & b_touch
                     and a["order"] < b["order"]
+                    and (a["id"], b["id"]) not in seen
                     and not would_cycle(a["id"], b["id"])):
-                add(a["id"], b["id"], "write-after-write")
+                if overlap_mode == "fold" and fold_eligible(a, b):
+                    dropped_pairs.add((a["id"], b["id"]))
+                    dropped_pairs.add((b["id"], a["id"]))
+                else:
+                    add(a["id"], b["id"], "write-after-write")
 
     # ambiguous-files: serialize task T at its document position, yielding to any
     # opposing earlier path (reachability), not just a direct reverse edge.
@@ -1188,7 +1248,7 @@ def build_edges(impl):
                 continue  # t already precedes u — respect the existing order
             add(u["id"], t["id"], "catch-all")
 
-    return edges, conflicts
+    return edges, conflicts, dropped_pairs
 
 
 def find_cycle(members, edges):
@@ -1267,6 +1327,13 @@ def main(argv=None):
                          "or print 'PLAN OK' and exit 0 — never emits waves. "
                          "Mutually exclusive with "
                          "--emit-launch/--emit-args/--run-dir.")
+    ap.add_argument("--overlap", choices=OVERLAP_MODES, default=OVERLAP_DEFAULT,
+                    help="how two tasks whose declared paths overlap are "
+                         "scheduled: 'serialize' (the default) orders them in "
+                         "document order via a write-after-write edge; 'fold' "
+                         "drops that edge for eligible pairs so they share a "
+                         "wave and the engine folds their same-file edits at "
+                         "merge time. Every other edge label is untouched.")
     ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
@@ -1412,12 +1479,20 @@ def main(argv=None):
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the runbook and gates "
               "still apply.", file=sys.stderr)
-    edges, conflicts = build_edges(impl)
+    edges, conflicts, dropped_pairs = build_edges(impl, overlap_mode=args.overlap)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None
+    # Iterates EVERY ordered pair, exactly as before the knob. Iterating only
+    # the kept-edge pairs would delete the `False` terms that disjoint pairs
+    # contribute and flip ordinary plans to `sequential` in both modes;
+    # iterating "all minus dropped" would make the empty set vacuously True.
+    # `dropped_pairs` is empty under `--overlap serialize`, so the conjunct is
+    # constantly True there and the expression reduces to today's literally —
+    # byte-identity by construction (spec §1b).
     fully_overlapping = (len(impl) > 1 and all(
-        set(a["writes"]) & set(b["writes"])
+        (set(a["writes"]) & set(b["writes"])
+         and (a["id"], b["id"]) not in dropped_pairs)
         for a in impl for b in impl if a["id"] != b["id"]))
     # Fix B: a gates/release-only plan has waves: [] — there is nothing to
     # sequence, so skip the degrade entirely (the "no implementation tasks"
@@ -1427,12 +1502,15 @@ def main(argv=None):
     # The single-task trigger is `== 1`, not `<= 2`: a 2-impl-task plan with
     # disjoint writes is genuinely parallelizable into one wave, so degrading it
     # to two single-task waves would be needless serialization.
+    # The label is the only effect: the flatten that used to follow was dead
+    # code (spec §1b). Whenever `fully_overlapping` fires, the tier-3 loop has
+    # already built a tournament of write-after-write edges and layer() has
+    # returned singleton waves; the `len(impl) == 1` trigger is equally a
+    # no-op on a one-wave list. Deleting it changes no compile.
     if impl and (len(impl) == 1 or fully_overlapping):
         mode = "sequential"
         degrade = f"Sequential mode: {len(impl)} implementation tasks" + (
             ", fully overlapping writes" if fully_overlapping else "")
-        # Bug A: flatten already-computed topological layering (not document order)
-        waves = [[tid] for wave in waves for tid in wave]
 
     # Every conflict entry carries a `kind` ("conflict" needs human attention,
     # "inference" is a benign auto-inferred edge). type_conflicts are all genuine
