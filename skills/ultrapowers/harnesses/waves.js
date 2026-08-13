@@ -1285,9 +1285,17 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   // entirely and adopt a candidate that silently drops the other task's edit on a
   // GREEN run. Nothing downstream catches that — materialize builds from the
   // engine's own manifest and the fold advances the frontier either way — and it
-  // lands past the adoption boundary, where fallback is no longer live. Parked is
-  // already 0 here, so dispatchable === conflicts; either count is the expectation
-  // (prefer the narrower one, fall back to the total when a reply omits it).
+  // lands past the adoption boundary, where fallback is no longer live.
+  // Two independent guards, because a mis-copied scalar breaks the very
+  // consistency the other guard would have to assume. First: any non-zero
+  // conflict total with nothing to resolve is unresolvable here, whatever the
+  // status enum or dispatchable says — this catches the FOLDED-over-conflicts
+  // reply, whose empty `open` makes every count-vs-count comparison agree.
+  if (typeof fold.conflicts === 'number' && fold.conflicts > 0 && open.length === 0)
+    return finish(null, 'fold counted ' + fold.conflicts +
+      ' conflict(s) but named none to resolve')
+  // Second: the named conflicts must match the count of resolvable ones. Prefer
+  // the narrower count, fall back to the total when a reply omits it.
   const expectOpen = (typeof fold.dispatchable === 'number') ? fold.dispatchable
     : ((typeof fold.conflicts === 'number') ? fold.conflicts : null)
   if (expectOpen !== null && open.length !== expectOpen)
