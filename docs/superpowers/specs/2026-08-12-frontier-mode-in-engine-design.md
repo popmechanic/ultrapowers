@@ -25,8 +25,13 @@ documented authoring cost (unnatural task splits, chains-for-fans, Depends-on
 declared for overlap alone, engine routing lost to doc-file collisions). The
 engine capability and the authoring relaxation ship **coupled**, an operator
 decision recorded at brainstorm time: without the relaxation no production
-plan can ever exercise the mode, and the shakedown below could not exist. The
-relaxation carries a named canary (§5) because it is the unmeasured half.
+plan can ever exercise the mode, and the shakedown below could not exist.
+**The coupling is symmetric on both branches of the A/B (§6): the relaxation
+and the rubric change ship only on the pass branch** — a dark engine mode
+with relaxed authoring would compile relaxed plans into pairwise-serialized
+chains (worse than the contortions it retired) and widen the routing rubric
+for a capability just measured as not worth shipping. The relaxation carries
+a named canary (§5) because it is the unmeasured half.
 
 **Founding orientation (operator-directed, grants nothing):** the fold engine
 and its fold log are installed as a first-class module with the wave engine as
@@ -51,13 +56,16 @@ licensed by this spec.
 - Any change to worktree isolation, per-task review, integration review,
   redirect machinery, pause/resume, or the frozen verification periphery
   (gates, sealing).
-- Kernel periphery expansion: binaries, symlinks, gitlinks, mode *changes*,
-  files over the resolver cap, renames. Guards route these to the existing
-  path; they are not new capability.
+- Kernel periphery expansion: binaries, symlinks, gitlinks, files over the
+  resolver cap, renames. Guards route these to the existing path; they are
+  not new capability. (Modes are carried, not expanded: base modes preserved,
+  created files take their creator's mode, mode *changes* park — §2.)
 - Frontier folding for non-contended waves (they keep the git-merge path) and
-  for redirect waves (hand-authored, stay serialized — and structurally so:
-  the contended tag is per-task, so a filtered redirect wave loses contention
-  unless ≥2 tagged tasks survive together, §1).
+  for redirect waves — made **inexpressible**, not argued: `redirect_args.py`
+  strips `contended` and its overlap paths from every entry it emits (§1), so
+  no redirect wave can route to the fold path, and the stale-overlap-paths
+  hazard (a redirect narrowing `files` without touching the tag) cannot
+  exist.
 - ultralearn's observation ledger is untouched; "fold log" is deliberately
   not called a ledger to avoid colliding with that standing term.
 
@@ -77,9 +85,9 @@ Moves (promotion, one copy, evals re-point their imports):
 - The resolver prompt (`evals/frontier/references/resolver-prompt.md`)
   becomes a BAKE block **inside
   `skills/ultrapowers/references/wave-merge.md`** — it is a merge-path
-  prompt, and `test_no_prompt_drift.py`'s `WAVE_PROMPTS` extracts from that
-  single source; a third prompt file would be invisible to the pin. Rewritten
-  for the file-read contract and the two narration shapes (§3).
+  prompt, and the wave-prompt drift pin extracts from that single source; a
+  third prompt file would be invisible to it. Rewritten for the file-read
+  contract and the two narration shapes (§3).
 
 Stays in `evals/` (modeling and probe apparatus, explicitly modeling-only):
 `schedule_model.py` (its `SAME_FILE_WHYS` is the *modeled* drop rule, labeled
@@ -90,9 +98,20 @@ no longer emits the dropped edges, the modeling/probe entry points
 (`run_eval.compile_fixture`, `shadow_fold`, `run_frontier_cell`) compile with
 `--serialize-overlaps` to obtain the pre-drop edge set their
 `same_file_edges` recovery metric is defined over — otherwise the eval line's
-own denominator reads 0 circularly — and `test_frontier_run_eval.py`'s
-contend assertions (`mode == "parallel"`, ≥2 `write-after-write` edges)
-re-point to that compile.**
+own denominator reads 0 circularly.** Consequences stated plainly: track
+(a)'s recorded `mode`/`degrade_reason` are the switch's labels, and the eval
+line permanently measures the compile mode that is no longer the engine's
+default. `test_frontier_run_eval.py`'s contend assertions run under **both**
+compiles — switch: ≥2 `write-after-write` edges, `mode: parallel`; canonical:
+≥2 tasks carrying `contended` in one wave — so the fixture guarantee covers
+the compile the engine actually runs. **Contended runs and the shadow line:**
+a contended wave's adoption commit has 1+N parents (§2), and the archived-run
+replay machinery excludes >2-parent chains by name in track (c) while
+`shadow_fold`'s `group_chain` path would silently decompose them via
+`parents[1]` alone — manufacturing false divergence in the very sensor built
+to detect it. Contended waves are therefore **excluded from shadow replay by
+the same named-exclusion rule, with the fold log as their replacement replay
+record** (it is strictly stronger: it replays resolutions too).
 
 New: `skills/ultrapowers/kernel/fold_wave.py` (CLI) and `kernel/FOLD_LOG.md`
 (schema — referenced from `ultrapowers/SKILL.md`'s engine section, which
@@ -100,9 +119,10 @@ makes `validate_skill.py`'s link-check live for it once the check's regex
 extends to `kernel/`; without a `SKILL.md` mention the extension would
 validate nothing). `evals/fixtures/contend-prod/`. `--serialize-overlaps` in
 `compile_plan.py`, **plumbed**: a `/ultrapowers` launch argument that
-`ultra_run.py` forwards onto the `compile_plan.py` argv it builds, recorded
-in the run receipt; `evals/ab_runner.py`'s arm flag sets it for arm A and
-**verifies it from the receipt** (§6).
+`ultra_run.py` forwards onto the `compile_plan.py` argv it builds — arm
+identity in the A/B is verified from the receipt's **existing** `compile`
+object (`ultra_run.py` already embeds the full compile output; no new receipt
+field), §6.
 
 Documentation surfaces that are live seams, updated with the code they
 mirror: `references/dependency-analysis.md` (the degrade behavior and
@@ -110,8 +130,7 @@ mirror: `references/dependency-analysis.md` (the degrade behavior and
 transparency fields), `ultrapowers/SKILL.md` (Step 1's `ultra_run.py`
 invocation — the launch argument's operator-facing home — and Step 3's
 mode/degrade rendering), and `references/report-format.md` (the new
-`frontier` report section; `tests/test_report_runbook.py` cross-checks it
-against what `waves.js` emits).
+`frontier` report section, §4).
 
 ## Components
 
@@ -130,43 +149,55 @@ because under upstream TDD semantics each task *writes* the failing test).
 Every rule below uses exactly this set; the spec deliberately has no second
 spelling.
 
-**(a) The drop.** Canonical compile does not create `write-after-write` edges
-for eligible pairs. The drop happens **at construction** — the tier-3 loop
-skips the edge — never by post-hoc filtering: later tiers (`ambiguous-files`,
-catch-all) consult reachability through the accumulated adjacency, so an edge
-removed after the fact would leave those tasks unordered against peers they
-must still serialize behind. A test pins that an ambiguous/catch-all task
-still serializes in a plan where a `write-after-write` edge was dropped.
+**(a) The drop, and exactly which pairs it tags.** Canonical compile does
+not create `write-after-write` edges for eligible pairs. The drop happens
+**at construction** — the tier-3 loop skips the edge — never by post-hoc
+filtering: later tiers (`ambiguous-files`, catch-all) consult reachability
+through the accumulated adjacency, so an edge removed after the fact would
+leave those tasks unordered against peers they must still serialize behind.
+A pair is **dropped** (recorded in `dropped_pairs`, both orderings) only
+when the tier-3 loop *would have created a new edge for it*: forward
+document order, `(a, b)` not already in `seen` (a marker/text/interface edge
+already serializes the pair — there is no `write-after-write` edge to drop,
+and the pair is **not** tagged), `not would_cycle(a, b)`, **and** the pair
+passes the eligibility pre-filter below. A test pins that an
+ambiguous/catch-all task still serializes in a plan where a
+`write-after-write` edge was dropped. One disclosed behavioral difference:
+dropping edges shrinks the adjacency later `would_cycle` calls read, so an
+*ineligible* pair whose forward edge is blocked today only by reachability
+through now-dropped edges acquires the forward edge canonically — the pair
+serializes in the opposite direction from today (no cycle; the guard still
+holds). Stated, and pinned with a shape that exercises it.
 
-**(b) The sequential-degrade flatten is deleted, not conditioned.** The
-`fully_overlapping` flatten is dead code: whenever the predicate fires, the
-tier-3 loop has already created a tournament of `write-after-write` edges, so
-`layer()` returns singleton waves before the flatten runs (verified by
-compiling an all-overlapping plan and inspecting `layer()`'s output; the
-`len(impl) == 1` trigger is equally a no-op). Deleting the line changes no
-compile today, and under the canonical rule, all-overlapping-but-eligible
-plans then compile to a genuine contended wave with no whole-plan eligibility
-cliff: ineligible pairs keep their edges and serialize pairwise while
-eligible ones share a wave. The labeling rule is **written as code, not
-prose**, because byte-identity is claimed and a looser prose reading breaks
-it on a third compile shape (two tasks sharing only a `Test:` path carry a
-`write-after-write` edge yet compile `mode: parallel` today — `writes` don't
-intersect):
+**(b) The sequential-degrade flatten is deleted; the labeling predicate
+keeps today's full pair iteration.** The `fully_overlapping` flatten is dead
+code: whenever the predicate fires, the tier-3 loop has already created a
+tournament of `write-after-write` edges, so `layer()` returns singleton
+waves before the flatten runs (verified by compiling an all-overlapping plan
+and inspecting `layer()`'s output; the `len(impl) == 1` trigger is equally a
+no-op). Deleting the line changes no compile today. The `mode` /
+`degrade_reason` labeling rule, written as code because byte-identity is
+claimed — and **iterating every ordered pair, exactly as today** (iterating
+only kept-edge pairs deletes the `False` terms disjoint pairs contribute and
+flips ordinary plans to `sequential` in both modes; iterating "all minus
+dropped" makes the empty set vacuously `True`):
 
-```
+```python
 fully_overlapping = len(impl) > 1 and all(
-    set(a["writes"]) & set(b["writes"])          # writes-only, as today
-    for (a, b) in pairs_whose_edge_was_kept)     # restricted to kept pairs
+    (set(a["writes"]) & set(b["writes"])
+     and (a["id"], b["id"]) not in dropped_pairs)
+    for a in impl for b in impl if a["id"] != b["id"])
 ```
 
-Under `--serialize-overlaps` every edge is kept, so the predicate — and
-`mode`/`degrade_reason` — are byte-identical to today's on every plan shape.
-Canonically, dropped pairs leave the predicate, so a fully-overlapping
-eligible plan labels `parallel`. Pinned on **three** shapes: all-overlapping
-(canonical → one contended wave; switch → today's `sequential` singletons),
-shared-`Test:`-only (both compiles → `parallel`, no degrade reason, matching
-today), single-task (unchanged). `references/dependency-analysis.md`'s
-degrade wording updates with it. `complexityEffect`: simplification.
+`dropped_pairs` is empty under `--serialize-overlaps`, so the expression
+reduces to today's **literally** — byte-identity by construction, not by
+argument. Pinned on **four** shapes: all-overlapping-eligible (canonical →
+one contended wave, `parallel`; switch → today's `sequential` singletons);
+all-overlapping-*ineligible* (both → today's `sequential`);
+shared-`Test:`-only (both → `parallel`, matching today); two-overlapping +
+one-disjoint-task (both → `parallel`, matching today — the shape the
+kept-pairs reading breaks). `references/dependency-analysis.md`'s degrade
+wording updates with it. `complexityEffect`: simplification.
 
 **(c) Label semantics.** The drop keys on the `write-after-write` label.
 Pairs whose overlap edge was **promoted** to `interface` stay serialized and
@@ -184,31 +215,36 @@ coincide (all three dropped edges were `write-after-write`), so the measured
 **Eligibility pre-filter.** A pair keeps its serializing edge when any path
 in its overlap set (`writes ∪ reads`, both sides), where it exists in the
 repo, would already fail the kernel's own dispatch predicate — non-text
-content, over `RESOLVER_LINE_CAP` (imported from the kernel, never re-typed),
-or a non-regular git object (symlink, gitlink). This is a scheduling
-heuristic — don't dispatch parallel work certain to park — not a safety
-guard: the runtime predicate (`dispatchable()`, and the materialization
-rules) remains authoritative for files tasks create or grow past the cap
-(e.g. two tasks *creating* the same binary path are freed here and park at
-runtime — an expected production fallback source, named in §5's canary).
-Kept-for-eligibility pairs are recorded through the **existing**
-`marker_conflicts` vocabulary (`kind: "inference"`, naming path and reason) —
-no new diagnostic vocabulary, so the freeze is not touched.
+content, over `RESOLVER_LINE_CAP` **counted via the kernel's `split_lines`**
+(imported, never re-typed; `splitlines()` disagrees with the bijection by
+one on every trailing-newline file, so all three counting sites — the
+pre-filter, `dispatchable()`, and any future one — count through the same
+function, with the exact-cap boundary pinned), or a non-regular git object
+(symlink, gitlink). This is a scheduling heuristic — don't dispatch parallel
+work certain to park — not a safety guard: the runtime predicate
+(`dispatchable()`, and the materialization rules) remains authoritative for
+files tasks create or grow past the cap (e.g. two tasks *creating* the same
+binary path are freed here and park at runtime — an expected production
+fallback source, named in §5's canary). Kept-for-eligibility pairs are
+recorded through the **existing** `marker_conflicts` vocabulary
+(`kind: "inference"`, naming path and reason) — no new diagnostic
+vocabulary, so the freeze is not touched.
 
-**The contended tag is per-task and inline.** `waves.js` has no filesystem
-access — knobs ride the inline task entries, the established #89 channel
-(`tier`, `review`), precisely because top-level keys and wave positions are
-**not stable across relaunches**: `redirect_args.py` filters and compacts
-`waves` while carrying every other args key verbatim, so a positional
-per-wave array (the shape round 3 adopted) would hand a redirect wave the
-*previous* wave's tag — the #131 renumbering defect class, already
-cosmetically visible in stale `waveLabels` on every relaunch today. Instead
-each task in a dropped pair carries `contended: true` plus its overlap
-paths, and **a wave is contended iff ≥2 of its tasks carry the tag** —
-filtering preserves the invariant by construction, and a one-task redirect
-wave is non-contended automatically. Pinned: a `redirect_args.py` round-trip
-over a contended compile yields a wave the engine does not route to the fold
-path. Untagged compiles are byte-identical to today.
+**The contended tag is per-task and inline; contention is decided by
+intersection.** `waves.js` has no filesystem access — knobs ride the inline
+task entries, the established #89 channel (`tier`, `review`), precisely
+because top-level keys and wave positions are **not stable across
+relaunches** (`redirect_args.py` filters and compacts `waves` while carrying
+other keys verbatim — the #131 renumbering class, cosmetically visible today
+in stale `waveLabels`). Each task in a dropped pair carries
+`contended: true` plus its overlap paths, and **a wave is contended iff it
+contains ≥2 tasks whose recorded overlap paths intersect** — tags alone are
+not enough, because two tasks tagged from *different* dropped pairs whose
+partners landed elsewhere share a wave without sharing a file, and such a
+wave must keep the git-merge path (the stated non-goal). `redirect_args.py`
+strips `contended` and overlap paths from every entry it emits (§Non-goals).
+Pinned: a `redirect_args.py` round-trip over a contended compile yields no
+fold-path routing. Untagged compiles are byte-identical to today.
 
 ### 2. Kernel module and fold CLI
 
@@ -217,18 +253,19 @@ invocation is a fresh process, **all state lives in git plus the fold log**,
 and every invocation rehydrates before acting.
 
 - **Rehydration is a named kernel entry point** —
-  `rehydrate(log) -> FrontierEngine`: `fold` events recompute the task's
-  endpoint diff from its recorded `headSha` (a pure function of git objects)
-  and re-fold it — which also reconstructs the touched-path map — and
-  `resolve` events re-apply their recorded `lines` **unconditionally** and
-  are appended to the engine's event list, so the epoch clock reconstructs
-  exactly. **Validity is never re-checked during rehydration**: the log
-  records what actually applied, and re-running `apply_resolution`'s
-  staleness check would silently skip a recorded resolution — the epoch pin
-  cannot catch that, so the no-recheck rule is stated here as contract
-  (today's `replay()` docstring already gives the reason; `replay()` becomes
-  a thin wrapper over `rehydrate`). `base`, `conflict`, and `fallback`
-  events are inert for rehydration. The pin asserts the rehydrated engine's
+  `rehydrate(repo, log) -> FrontierEngine` — the repo is an explicit input:
+  `fold` events reconstruct each task's `TaskState` from git (`publish`
+  against the recorded `headSha`, over the scoped base built per the
+  ordering contract below) and re-fold it — which also reconstructs the
+  touched-path map — and `resolve` events re-apply their recorded `lines`
+  **unconditionally** and are appended to the engine's event list, so the
+  epoch clock reconstructs exactly. **Validity is never re-checked during
+  rehydration**: the log records what actually applied, and re-running
+  `apply_resolution`'s staleness check would silently skip a recorded
+  resolution — the epoch pin cannot catch that, so the no-recheck rule is
+  stated here as contract (today's `replay()` docstring already gives the
+  reason; `replay()` becomes a thin wrapper over `rehydrate`). `base` events
+  are inert for rehydration. The pin asserts the rehydrated engine's
   `epoch()` **and touched-path map** equal the live engine's across ≥3
   process boundaries — not merely the manifest.
 - **Line convention becomes a bijection.** Today `split_lines` drops one
@@ -245,10 +282,15 @@ and every invocation rehydrates before acting.
   yields `"\n"`, under the bijection `""` — pinned explicitly.
   `frontier_fold._visible` becomes the identity under the bijection and is
   **deleted**; the resolver's reply-file bytes are split by the kernel's own
-  `split_lines`, so exactly one normalization exists on that path. Pinned: a
-  folded text file with no final newline materializes **byte-identical**.
-  The divergence self-checks compare normalized manifests; byte fidelity is
-  this pin's job, not theirs.
+  `split_lines`, so exactly one normalization exists on that path (line
+  *counting* also goes through it — §1). **Scope, stated for the operator:
+  this is a kernel-wide behavior change riding a frontier increment** — it
+  alters `join_lines([""])` for every kernel caller, and historical eval
+  artifacts (shadow runs, the cell's E2 narrations) were produced under the
+  old convention; §6 carries the honesty bound. Pinned: a folded text file
+  with no final newline materializes **byte-identical**. The divergence
+  self-checks compare normalized manifests; byte fidelity is this pin's job,
+  not theirs.
 - **`fold` subcommand:** given the wave base sha and the mergeable branches
   **in task-index order** (the existing merge contract's order — completion
   order is not observable to the engine, and K1 order-independence is
@@ -257,12 +299,17 @@ and every invocation rehydrates before acting.
   conflict: the annotated narration to `frontier/wave-<n>/conflict-<i>.txt`
   and its `dispatchable()` verdict — including park reasons for ineligible
   conflicts and kernel-limit parks (recursion on ~1000-line files) — to the
-  **conflicts index**, which is the single record of parks (no separate
-  `park` event; one fact, one record). **Snapshot scoping is a stated
-  ordering contract:** first derive every task's touched set
-  (`git diff --name-status` against the base), union them, build the scoped
-  base `RepoState` from that union, **then** fold — a per-task streaming
-  scope would silently misclassify a path another task later touches as an
+  **conflicts index**, which is the single record of parks. **`fold` refuses
+  a pre-existing fold log for its wave** — redirect relaunches renumber
+  waves into the same run dir (the machinery `rmtree`s `heads/` for exactly
+  this staleness class, and nothing else would guard
+  `frontier/wave-<n>/`); with redirect entries stripped of `contended` this
+  should never fire, and if it does, failing loud beats rehydrating a stale
+  log whose resolutions apply unconditionally. **Snapshot scoping is a
+  stated ordering contract:** first derive every task's touched set
+  (`git diff` against the base), union them, build the scoped base
+  `RepoState` from that union, **then** fold — a per-task streaming scope
+  would silently misclassify a path another task later touches as an
   add/add instead of a modify (`task_state_from_contents` branches on
   membership in the base). Never a whole-tree `snapshot()` (one subprocess
   per file per invocation would charge O(repo) against the very wall-clock
@@ -280,18 +327,23 @@ and every invocation rehydrates before acting.
   untouched by construction:** `GIT_INDEX_FILE=<tmp> git read-tree
   <prevHead>`, then per path in the union of the fold events' touched sets:
   present in the manifest → `git hash-object -w` + `git update-index
-  --cacheinfo <mode>,<sha>,<path>` with the **mode taken from the previous
-  integration head** (base mode preserved; a mode *change* by a task is a
-  park; a folded path that cannot be a regular blob is a named fallback);
-  absent from the manifest → `git update-index --force-remove` (the fold
-  manifest omits deletions; keying on the manifest alone would silently
-  resurrect a task's `git rm`). Then `write-tree` → `git commit-tree` with
-  parents = previous integration head + merged task heads. Paths outside the
-  touched set are never visited — their modes, symlinks, and gitlinks
-  survive because git never sees them — and `INTEGRATION_WT` stays checked
-  out on the integration branch at the previous head with a clean status:
-  nothing is written to the worktree until the engine's deliberate suite
-  checkout (§3). Adoption mechanics are the engine's (§3).
+  --cacheinfo <mode>,<sha>,<path>`; absent from the manifest →
+  `git update-index --force-remove` (the fold manifest omits deletions;
+  keying on the manifest alone would silently resurrect a task's `git rm`).
+  **Modes are observed, not assumed** — the text pipeline is mode-blind
+  (`--name-status` reports a chmod as `M` with identical blobs), so the mode
+  source is `git ls-tree` at the relevant refs: a base-existing path keeps
+  the previous integration head's mode **after verifying no task changed
+  it** (any task whose head shows a different mode for the path → named
+  park); a path the fold *adds* takes **its creating task's mode** (two
+  creators with differing modes → named park). A folded path that cannot be
+  a regular blob is a named fallback. Then `write-tree` → `git commit-tree`
+  with parents = previous integration head + merged task heads. Paths
+  outside the touched set are never visited — their modes, symlinks, and
+  gitlinks survive because git never sees them — and `INTEGRATION_WT` stays
+  checked out on the integration branch at the previous head with a clean
+  status: nothing is written to the worktree until the engine's deliberate
+  suite checkout (§3). Adoption mechanics are the engine's (§3).
 
 **All CLI I/O is file-based** (#36: relaying structured payloads through
 agent replies corrupts them). The CLI reads and writes under
@@ -303,26 +355,24 @@ For a contended wave, `mergeWave()` routes its **existing merge agent role**
 through the contended contract — one role, two contracts, dispatched at
 **`TIER.mostCapable`** for the contended contract (its duties — CLI
 invocation, candidate checkout without ref movement, suite run,
-fast-forward-or-restore — most resemble reconcile's, which already runs at
+adopt-or-restore — most resemble reconcile's, which already runs at
 mostCapable; `TIER.cheap` stays for the plain-merge contract only: a cheap
 model improvising any of those git invocations would convert the priced
 fallback into a blocked wave). The contended contract is its own contiguous
 `BAKE:CONTENDED_MERGE_PROMPT` block in `references/wave-merge.md` — kept
 separate because the two contracts are cleanly separable and independently
 pinned, not because the drift pin requires it (the wave-prompt pin matches
-placeholder-split fragments in order, not contiguous text) — and
-`WAVE_PROMPTS` in `test_no_prompt_drift.py` gains entries for it and the
-resolver block. The prompt locates the CLI via the existing `<pluginRoot>`
-token that `fillPaths()` fills (precedent: `review-package`). **It carries
-the `heads/` slot-recording sentence verbatim from the existing merge
-contract** (`mkdir -p <runDir>/heads`; `git rev-parse` per task and wave
-slot), and the contended dispatch appends `headsSlotsLine(merged, waveIdx +
-1)` exactly as the merge dispatch does — the completeness critic treats a
-missing slot as an ancestry miss and forces the run BLOCKED, so a contended
-prompt without this sentence would block every contended run. **The
-contended branch's `catch` routes to fallback** (the git-merge path), never
-into the reconcile loop — a thrown contended dispatch has no fold log to
-reconcile against.
+placeholder-split fragments in order, not contiguous text). The prompt
+locates the CLI via the existing `<pluginRoot>` token that `fillPaths()`
+fills (precedent: `review-package`). **It carries the `heads/`
+slot-recording sentence verbatim from the existing merge contract** (`mkdir
+-p <runDir>/heads`; `git rev-parse` per task and wave slot), and the
+contended dispatch appends `headsSlotsLine(merged, waveIdx + 1)` exactly as
+the merge dispatch does — the completeness critic treats a missing slot as
+an ancestry miss and forces the run BLOCKED, so a contended prompt without
+this sentence would block every contended run. **The contended branch's
+`catch` routes to fallback** (the git-merge path), never into the reconcile
+loop — a thrown contended dispatch has no fold log to reconcile against.
 
 1. The merge agent runs `fold_wave.py fold` and replies with counts +
    verdicts + paths — small scalars under a new sibling `FOLD_SCHEMA`
@@ -343,21 +393,25 @@ reconcile against.
    tree, charged to the run budget, transcripts recorded verbatim in the
    report.
 3. **The wave test runs against the candidate before adoption, with the
-   branch unmoved.** The merge agent checks the candidate's tree out into
-   `INTEGRATION_WT` **without moving the branch ref** (`git read-tree -u`
-   from the candidate), runs the project suite (the same `testInstruction`
-   duty the merge contract already carries), and on green **fast-forwards
-   the integration branch to the candidate** and writes the `heads/` slots —
-   replying `MERGED` + `headSha` so the existing call-site handling
-   (`waveBaseSha`, review base) is unchanged. On red — the most likely
-   fallback trigger: a resolution that folds clean but is semantically
-   wrong, exactly the path the adjudication's E2 caveat named as unexercised
-   — the agent **restores the worktree** (`git reset --hard <prevHead>`
-   **and** `git clean -fd`, bounded to what the suite checkout wrote) and
-   the wave falls back. The restore matters: both fallback prompts begin by
-   verifying they are on the integration branch and refuse to operate
-   otherwise, so a dirty or detached worktree would turn fallback into
-   BLOCKED.
+   branch unmoved — and the git sequence is spelled out because this text
+   becomes an LLM-executed prompt, where an invalid invocation is a blocked
+   wave.** The merge agent populates the worktree with the candidate's tree
+   via `git read-tree -u --reset <candidate>^{tree}` (bare `read-tree -u`
+   is a fatal git error) — `HEAD` and the branch ref stay at the previous
+   head — runs the project suite (the same `testInstruction` duty the merge
+   contract already carries), and on green adopts via
+   `git reset --hard <candidate>` (a no-op on the already-matching tree;
+   `merge --ff-only` would refuse over the read-tree index) and writes the
+   `heads/` slots — replying `MERGED` + `headSha` so the existing call-site
+   handling (`waveBaseSha`, review base) is unchanged. On red — the most
+   likely fallback trigger: a resolution that folds clean but is
+   semantically wrong, exactly the path the adjudication's E2 caveat named
+   as unexercised — the agent **restores the worktree**
+   (`git reset --hard <prevHead>` **and** `git clean -fd`, bounded to what
+   the suite checkout wrote) and the wave falls back. The restore matters:
+   both fallback prompts begin by verifying they are on the integration
+   branch and refuse to operate otherwise, so a dirty or detached worktree
+   would turn fallback into BLOCKED.
 
 **Fallback — live strictly before adoption, and honestly priced.** The fold
 consumes task branches but never destroys them, so kernel error, ineligible
@@ -374,8 +428,9 @@ then `blockedWaves`) is handed a multi-task same-file collision it was never
 built for, with the parallel work already spent. The fallback's real cost is
 a wave that can end blocked. Accordingly, **fallback rate on contended waves
 is a pre-registered hard gate in the A/B (§6) and the production canary
-(§5)** — not merely a named event. Every fallback appends a `fallback` event
-and surfaces in `judgmentCalls`.
+(§5)**. Every fallback is recorded where the engine already records failure
+routing — `judgmentCalls` and the wave-merge result — there is no separate
+fallback event type in the fold log (§4).
 
 Task failure and review handling are unchanged: only mergeable results fold,
 exactly as only mergeable results merge today.
@@ -384,7 +439,7 @@ exactly as only mergeable results merge today.
 
 One JSONL file per contended wave
 (`<runDir>/frontier/wave-<n>/fold_log.jsonl`), self-sufficient for
-rehydration, four event types:
+rehydration given the repo (§2), **three** event types:
 
 - `base {sha}` — first line, the wave base.
 - `fold {task, headSha}` — the touched set is *derived* by re-folding from
@@ -392,28 +447,37 @@ rehydration, four event types:
   invites undetectable divergence).
 - `resolve {path, epoch, lines}` — the lines themselves; rehydration
   consumes them.
-- `fallback {wave, reason}`.
 
-Conflicts and parks live in the **conflicts index** (§2), not the log —
-narrations, `dispatchable()` verdicts, and park reasons are one fact with
-one record. `base`, `fallback` are inert for rehydration (§2). `report.json`
-gains a `frontier` section per contended wave: fold-log path, conflicts
-index, self-check results, **fold-CLI wall time** (its own line, so the
-first real-repo reading is not buried inside a passing E1′), resolver
-transcripts verbatim (the E2 grading surface), fallbacks. Schema documented
-in `kernel/FOLD_LOG.md`; the section's shape mirrored in
-`references/report-format.md`, whose cross-check against `waves.js`
-(`test_report_runbook.py`) is a live seam.
+Conflicts and parks live in the **conflicts index** (§2); fallbacks live in
+the engine's existing failure records (§3) — one fact, one record, in each
+case. `report.json` gains a `frontier` section per contended wave: fold-log
+path, conflicts index, self-check results, **fold-CLI wall time** (its own
+line, so the first real-repo reading is not buried inside a passing E1′),
+resolver transcripts verbatim (the E2 grading surface). Schema documented in
+`kernel/FOLD_LOG.md` and mirrored in `references/report-format.md` — with a
+**named new pin**, because the existing `test_report_runbook.py` is two
+literal-token checks and has no general section cross-check to inherit: the
+plan adds an assertion that every field the `frontier` section emits in
+`waves.js` appears in `report-format.md`'s section documentation (the same
+shape as the existing `reviewVerdict` literals check).
 
 ### 5. Authoring: ultraplan relaxation, canary, and shakedown
+
+**This entire section ships only on the A/B pass branch (§6).**
 
 `ultraplan/SKILL.md` stops steering authors away from same-file edits: the
 three watch-item contortions (unnatural splits, chains-for-fans, Depends-on
 for overlap alone) become explicitly wrong; `Files:` blocks remain required
 (they are the compiler's detection input). The execution-handoff rubric's
-"treating same-file edits as dependencies" clause is updated in both mirrors
-(`hooks/session_start.sh`, `ultraplan/SKILL.md`);
-`tests/test_recommendation_rubric.py` pins the new text.
+same-file clause changes in both mirrors — whose current spellings
+**differ** (`hooks/session_start.sh`: "after treating same-file edits as
+dependencies"; `ultraplan/SKILL.md`: "after treating same-file `Modify`
+pairs as dependencies") — so the new wording is fixed here, once, for both:
+**"after treating same-file edits between tasks the compiler will not fold
+as dependencies."** `tests/test_recommendation_rubric.py` does not currently
+pin this clause at all; the plan **adds** it to `BRANCH_CLAUSES` (both
+mirrors then carry it verbatim), rather than inheriting a pin that does not
+exist.
 
 This half is the unmeasured rigor trade, so it carries a **canary** per house
 doctrine: at `engineVersion ≥` the adopting release, ultralearn sense passes
@@ -460,15 +524,16 @@ serialization rule. Output tokens harvested identically both arms
   that dies before producing a gate verdict is an invalid interval and is
   superseded via `--rerun-of` (the OAuth precedent); a run that produces a
   verdict is never re-rolled.
-- **Hard gates — not overrulable:** **arm identity verified from the run
-  receipt** — each cell's receipt records its compile disposition and
-  `ab_runner` asserts it matches the assigned arm before counting the cell
-  (the arm assignment rides an LLM-transcribed launch prompt; a dropped flag
-  would silently collapse both arms to canonical and read E1′ ≈ 1.0×; a
-  mismatch is an invalid interval, superseded via `--rerun-of`); both arms'
-  gates green; arm B fold-log self-checks clean (sampled raw orders
-  outcome-identical, replay match); **zero fallbacks on contended waves in
-  arm B**; zero silent divergence; every park named in the conflicts index.
+- **Hard gates — not overrulable:** **arm identity verified from the
+  receipt's existing `compile` object** — arm A shows zero `contended`
+  entries, arm B shows ≥2 on this fixture; `ab_runner` asserts the match
+  before counting the cell (the arm assignment rides an LLM-transcribed
+  launch prompt; a dropped flag would silently collapse both arms to
+  canonical and read E1′ ≈ 1.0×; a mismatch is an invalid interval,
+  superseded via `--rerun-of`); both arms' gates green; arm B fold-log
+  self-checks clean (sampled raw orders outcome-identical, replay match);
+  **zero fallbacks on contended waves in arm B**; zero silent divergence;
+  every park named in the conflicts index.
 - E1′: arm B end-to-end wall clock ≤ **0.7×** arm A (the numeric bar for
   "material" — the 4-wide fixture's causal expectation is ~2×, leaving
   headroom for review overlap).
@@ -480,9 +545,13 @@ serialization rule. Output tokens harvested identically both arms
   results doc (house precedent: the E1 decomposition of 2026-08-12). Hard
   gates cannot be overruled — that lever is how an unmeasured mode would
   ship.
-- Any hard-gate red, or E1′/E2′ miss without a recorded overrule → the
-  compile switch ships defaulted to `--serialize-overlaps` (mode dark) and
-  the result is recorded. Pass → release with the canonical default.
+- Any hard-gate red, or E1′/E2′ miss without a recorded overrule → **the
+  whole coupled increment ships dark**: the compile switch defaults to
+  `--serialize-overlaps` **and §5 does not ship** (no authoring relaxation,
+  no rubric change — shipping the unmeasured half alone would compile
+  relaxed plans into pairwise chains and widen routing for a capability the
+  A/B just declined). The result is recorded. Pass → release with the
+  canonical default and §5.
 
 **Honesty bounds, carried into the results doc:** n = 1 is directional, not
 statistical (the standing 0.1.0 constraint); the A/B answers the
@@ -505,35 +574,40 @@ fallback, not a warning.
 
 ## Testing
 
-- **pytest:** edge-drop at construction (only `write-after-write` label
-  dropped; semantic edges survive; ambiguous/catch-all tasks still serialize
-  against peers whose overlap edge was dropped; promoted-interface pairs
-  stay serialized and untagged; the pre-filter keys on the compiler's
-  `writes ∪ reads` overlap set and keeps edges for non-text / over-cap /
-  non-regular existing paths via existing `marker_conflicts` vocabulary;
-  `--serialize-overlaps` reproduces today's compile byte-identically), the
-  flatten deletion with the kept-pairs labeling predicate pinned on **three
-  shapes** (all-overlapping both ways; shared-`Test:`-only both ways —
-  `parallel` under the switch, matching today; single-task), per-task
-  contended tagging (`contended` inline entries; wave-contended iff ≥2
-  tagged tasks; **a `redirect_args.py` round-trip over a contended compile
-  yields no fold-path routing**), fold CLI (rehydration across ≥3 process
-  boundaries asserting epoch and touched-path equality — including a
-  recorded resolve applied unconditionally, never validity-rechecked —
-  task-index fold order, epoch validity, both narration shapes, the
-  union-then-fold snapshot-scoping contract — a base-existing path touched
-  by only one task folds as a modify, never add/add — self-checks, log
+- **pytest:** edge-drop at construction with the exact tagging rule (only
+  new-edge, pre-filter-passing pairs drop and tag; a pair already
+  serialized by a marker edge is neither dropped nor tagged;
+  ambiguous/catch-all tasks still serialize against drop-affected peers;
+  promoted-interface pairs stay serialized and untagged; the
+  reachability-direction flip for ineligible pairs behind dropped chains is
+  exercised and its direction pinned; the pre-filter keys on
+  `writes ∪ reads`, counts lines via kernel `split_lines` with the
+  exact-cap boundary pinned, and records keeps via `marker_conflicts`
+  `inference`; `--serialize-overlaps` reproduces today's compile
+  byte-identically), the flatten deletion with the full-iteration labeling
+  predicate pinned on **four** shapes (§1b), per-task contended tagging
+  (wave-contended iff ≥2 tasks with *intersecting* overlap paths — two
+  tags from disjoint pairs do not route; `redirect_args.py` strips the tag,
+  round-trip yields no fold routing), fold CLI (rehydration across ≥3
+  process boundaries asserting epoch and touched-path equality — including
+  a recorded resolve applied unconditionally, never validity-rechecked —
+  `rehydrate(repo, log)` signature, task-index fold order, epoch validity,
+  both narration shapes, the union-then-fold snapshot-scoping contract — a
+  base-existing path touched by only one task folds as a modify, never
+  add/add — fresh-log refusal on a pre-existing wave log, self-checks, log
   replay, park reasons in the conflicts index), line-convention bijection
   (no-final-newline file materializes byte-identical; `join_lines([""])`
   yields the empty file; `[]` rejected), materialization (temporary-index
   route: touched-set application, deletions reach the tree, untouched
-  executable/symlink keep mode and link, folded 100755 keeps its bit from
-  the base, task mode-change parks, non-regular folded path → named
+  executable/symlink keep mode and link; **mode observation via
+  `ls-tree`**: a task's chmod on a folded path parks rather than silently
+  reverting, a task-created executable keeps its creator's `100755`, two
+  creators with differing modes park; non-regular folded path → named
   fallback; **discarded candidate: integration ref unchanged and
   `git status --porcelain` empty afterward**), and the eval re-point
-  (`test_frontier_run_eval.py` asserts against the `--serialize-overlaps`
-  compile). The promoted kernel modules' tests move with them; the vendor
-  sha256 + parse pins re-point.
+  (`test_frontier_run_eval.py` asserts the contend fixture under **both**
+  compiles — pre-drop edges under the switch, `contended` tags
+  canonically).
 - **Harness sim:** `tests/frontier_merge.mjs` drives the contended path in
   `waves.js` with stubbed agents — clean fold, conflict→resolve,
   stale→re-narrate (markerless shape), park→fallback, budget exhaustion
@@ -542,10 +616,14 @@ fallback, not a warning.
   every merged task id**, and prints the `ALL SCENARIOS PASSED` sentinel
   (the suite-gate runs it on any harness JS change; a harness change with no
   covering sim fails the gate by design).
-- **Prompt pins:** the `CONTENDED_MERGE_PROMPT` and resolver blocks in
-  `wave-merge.md` enter `test_no_prompt_drift.py`'s `WAVE_PROMPTS`; rubric
-  mirror text pinned by `test_recommendation_rubric.py`;
-  `test_report_runbook.py` covers the `frontier` report section.
+- **Prompt pins:** `test_no_prompt_drift.py`'s hardcoded `WAVE_PROMPTS` list
+  is replaced by **deriving the list from `wave-merge.md`'s BAKE blocks** —
+  today a new block with a forgotten list entry ships silently unpinned,
+  which is exactly how this increment's two new prompts could escape; the
+  derivation deletes that failure mode (`simplification`). The rubric's
+  same-file clause is **added** to `BRANCH_CLAUSES` with the reconciled
+  wording (§5). The `frontier` report section gets its named
+  `test_report_runbook.py` assertion (§4).
 - **Fixture seal:** `contend-prod` sealed and added to `FIXTURES`.
 
 ## Release
@@ -553,26 +631,28 @@ fallback, not a warning.
 Minor bump (architectural): both manifests to the same version, standard
 release commit. The verification periphery is untouched; the compiler emits
 no new diagnostic vocabulary (kept-pairs ride the existing `marker_conflicts`
-`inference` kind).
+`inference` kind). On an A/B miss, the release ships the engine capability
+dark and none of §5 (§6).
 
 ## Trim review
 
 Author's disclosure — **Adds:** kernel module (promoted, not new code), fold
-CLI + four-event fold log (rehydration entry point, bijective line
-convention, scoped snapshots, temporary-index materialization), contended
-contract of the existing merge-agent role at mostCapable (`FOLD_SCHEMA`,
-`CONTENDED_MERGE_PROMPT` + resolver BAKE blocks in `wave-merge.md`,
-`heads/` slot sentence, candidate adoption mechanics), ambient-tier
-resolver-as-agent loop (budget-checkpointed), compiler construction-time
-edge-drop + pre-filter + per-task `contended` tag behind one plumbed switch,
-`contend-prod` fixture (sealed, `FIXTURES` entry), one `.mjs` sim,
-rubric/authoring text updates + canary, ab_runner arm flag with
-receipt-verified arm identity. **Removes:** the `write-after-write`
-serialization default, the dead `fully_overlapping` flatten line,
-`frontier_fold._visible`, the `paths` field and `park`/`conflict` event
-types from the log (conflicts index holds them), `evals/frontier/` as the
-kernel's home, and — at authoring time — the three documented same-file
-contortions.
+CLI + three-event fold log (rehydration entry point, bijective line
+convention, scoped snapshots, temporary-index materialization with observed
+modes), contended contract of the existing merge-agent role at mostCapable
+(`FOLD_SCHEMA`, `CONTENDED_MERGE_PROMPT` + resolver BAKE blocks in
+`wave-merge.md`, `heads/` slot sentence, spelled-out candidate adoption
+sequence), ambient-tier resolver-as-agent loop (budget-checkpointed),
+compiler construction-time edge-drop with exact tagging rule + pre-filter +
+per-task `contended` tag behind one plumbed switch, `contend-prod` fixture
+(sealed, `FIXTURES` entry), one `.mjs` sim, §5 authoring/rubric changes +
+canary (pass-branch only), receipt-derived arm-identity gate. **Removes:**
+the `write-after-write` serialization default, the dead `fully_overlapping`
+flatten line, `frontier_fold._visible`, the `paths` field and
+`park`/`conflict`/`fallback` event types from the log (conflicts index and
+engine records hold them), the hardcoded `WAVE_PROMPTS` list (derived),
+`evals/frontier/` as the kernel's home, and — at authoring time — the three
+documented same-file contortions.
 
 ### Round 1 (fresh-context reviewer; grade: `netConceptDelta` **up** — "nine adds against three removes; nothing makes an existing defect class inexpressible")
 
@@ -581,200 +661,196 @@ Fourteen findings; adopt-or-answer:
 1. **Hash-only `resolve` events cannot replay** — ADOPTED. `resolve` carries
    `lines`; hash deleted; the log is self-sufficient (§4).
 2. **Cross-process kernel state unspecified** — ADOPTED. Rehydration rule
-   defined (git + fold log are the only state); pinned by a
-   process-boundary test (§2). *(Rounds 2 and 4 corrected the mechanism:
-   named `rehydrate` entry point, epoch-clock reconstruction, no validity
-   re-check.)*
+   defined; pinned by a process-boundary test (§2). *(Rounds 2, 4, 5
+   refined: named entry point, epoch-clock reconstruction, no validity
+   re-check, `rehydrate(repo, log)` signature.)*
 3. **Structured payloads through agent replies (#36)** — ADOPTED. All CLI
    I/O file-based; agents relay scalars; resolver reads its narration file
-   itself; prompt-contract change from the cell's resolver stated (§2, §3).
+   itself (§2, §3).
 4. **Whole-tree materialization destroys modes/symlinks/gitlinks** —
-   ADOPTED. Folded-paths-only application (§2). *(Rounds 2–4 corrected the
-   mechanism: touched-set application, then the temporary-index route.)*
-5. **Python < 3.12 guard guards nothing** (vendor patch removed the PEP 701
-   line; standing parse pin under the running interpreter) — ADOPTED,
-   deleted.
+   ADOPTED. *(Refined through rounds 2–5 into the temporary-index route
+   with observed modes.)*
+5. **Python < 3.12 guard guards nothing** — ADOPTED, deleted.
 6. **Guards duplicate `dispatchable()`; 400 re-typed** — ADOPTED. One
-   pre-filter, explicitly a scheduling heuristic, importing
-   `RESOLVER_LINE_CAP`; runtime predicate authoritative (§1).
+   pre-filter importing `RESOLVER_LINE_CAP`; runtime predicate
+   authoritative (§1).
 7. **Post-hoc edge filtering breaks later compiler tiers** — ADOPTED. Drop
-   at construction; ambiguous/catch-all serialization pinned by test (§1).
-8. **`write-after-write` label ≠ "both write"** — ADOPTED. Label vs. overlap
-   set defined; promoted-interface pairs stay serialized (§1). *(Rounds 2–3
-   corrected the set twice; final: the code's `writes ∪ reads`, stated
-   once.)*
+   at construction; pinned (§1).
+8. **`write-after-write` label ≠ "both write"** — ADOPTED. Final spelling:
+   the code's `writes ∪ reads`, stated once (§1).
 9. **Fold conductor duplicates the merge agent** — ADOPTED. One role, two
-   contracts; contended contract in `wave-merge.md` (§3). *(Round 4 pinned
-   the contended contract's tier.)*
-10. **Fallback is a new failure mode, not late-arriving old behavior** —
-    ADOPTED. Cost stated; contended-wave fallback rate promoted to A/B hard
-    gate and production canary (§3, §5, §6).
+   contracts (§3).
+10. **Fallback is a new failure mode** — ADOPTED. Cost stated;
+    contended-wave fallback rate a hard gate and canary (§3, §5, §6).
 11. **Relaxation is an unmeasured rigor trade without a canary** — ADOPTED
-    in mechanism (canary + reversal trigger, §5); the trim to *defer* §5 is
-    ANSWERED-REJECTED: coupling is an operator decision recorded at
-    brainstorm time — without relaxation no production plan exercises the
-    mode and the shakedown cannot exist.
-12. **A/B under-specified on its own two questions** — ADOPTED. Seal named
-    and priced; production-length floors (≥5 min/task, ≥30 min arm A) with
-    calibration-before-counting; n=1 pair with rerun policy; numeric bars
-    (0.7× wall clock, 1.25× tokens) with overrule-by-recorded-reasoning
-    (§6).
+    in mechanism (canary + reversal trigger, §5); deferral
+    ANSWERED-REJECTED (operator coupling decision). *(Round 5 conditioned
+    §5 on the pass branch, which supersedes the standalone-shipping
+    concern.)*
+12. **A/B under-specified** — ADOPTED. Seal, length floors, n=1 + rerun
+    policy, numeric bars (§6).
 13. **Kernel promotion leaves eval dependencies undefined** — ADOPTED. Full
-    move/stay/re-point enumeration; `schedule_model` retired to
-    modeling-only with the two-rules relationship stated; `validate_skill`
-    link-check extended to `kernel/` (§Where it lives). *(Round 3 made the
-    extension live via a `SKILL.md` reference; round 4 added the
-    `--serialize-overlaps` compile for the eval entry points.)*
-14. **Cut the Founding-architecture section; "ledger" collides with
-    ultralearn's ledger** — ADOPTED for the rename (fold log, everywhere)
-    and the replay overclaim (fixed via 1–2); PARTIALLY ADOPTED for the cut:
-    shrunk to a three-line "Founding orientation" note that explicitly
-    grants nothing — kept because the operator directed that an anti-drift
-    statement of the module's founding role appear in the spec.
+    enumeration (§Where it lives). *(Rounds 3–5 refined: live `SKILL.md`
+    reference, `--serialize-overlaps` eval compiles, octopus exclusion.)*
+14. **Founding-architecture cut; "ledger" collision** — ADOPTED (rename);
+    PARTIALLY ADOPTED (three-line note kept on operator direction).
 
-### Round 2 (fresh-context reviewer; grade: `netConceptDelta` **up**; found 1 blocker + 11 findings; loop explicitly not ended)
+### Round 2 (fresh-context reviewer; grade **up**; 1 blocker + 11 findings)
 
-Twelve findings + four trims; adopt-or-answer:
-
-1. **BLOCKER — the `fully_overlapping` sequential degrade nullifies the
-   increment on all-overlapping plans** — ADOPTED. *(Round 3 corrected the
-   fix from an additive conditional to deleting the dead flatten line;
-   round 4 wrote the labeling predicate as code — §1b.)*
-2. **Folded-paths-only materialization resurrects deletions** — ADOPTED.
-   Touched-set keying; deletion test added (§2, §Testing).
-3. **`replay()` cannot rehydrate: the epoch clock desynchronizes** —
-   ADOPTED. Named `rehydrate()`; resolve events appended; pin asserts epoch
-   + touched-map equality (§2, §4). *(Round 4 added the no-validity-recheck
-   contract.)*
-4. **Fallback is dead after materialize; the wave test has no stated home**
-   — ADOPTED. Candidate ordering: suite before adoption; post-fold suite
-   failure a first-class trigger; after adoption, redirect only (§2, §3).
-   *(Rounds 3–4 supplied the worktree and temporary-index mechanics.)*
-5. **Shipped kernel would import eval-only `schedule_model`** — ADOPTED.
-   `sampled_orders`/`fold_all` move into the kernel (§Where it lives).
-6. **Pre-filter misses shared `Test:` paths; "readers fold clean" is wrong**
-   — ADOPTED. Full overlap set; TDD-write reading (§1). *(Round 3 corrected
-   the spelling to `writes ∪ reads`.)*
-7. **`MERGE_SCHEMA` cannot carry the contended replies** — ADOPTED. Sibling
-   `FOLD_SCHEMA`; adoption replies `MERGED` + `headSha` (§3).
-8. **No budget checkpoint in the resolver loop; resolver tier unnamed** —
-   ADOPTED. Per-conflict checkpoint (§3). *(Rounds 3–4 revised the tier
-   decision; final: ambient, like-for-like with the cell — round 4 trim.)*
-9. **Modes on folded paths unrepresented** — ADOPTED. Base mode preserved;
-   mode-changes park; executable in the folded set in the test (§2,
-   §Testing).
-10. **Re-narration is markerless; prompt and dispatch rules must say so** —
-    ADOPTED (§2, §3; sim covers the markerless shape).
+1. **BLOCKER — sequential degrade nullifies the increment** — ADOPTED.
+   *(Rounds 3–5 refined the fix: dead-flatten deletion, labeling predicate
+   as code, then the full-iteration form.)*
+2. **Deletions resurrected by manifest-keyed materialization** — ADOPTED
+   (touched-set keying, §2).
+3. **`replay()` epoch desync** — ADOPTED (`rehydrate`, §2).
+4. **Fallback dead after materialize; wave test homeless** — ADOPTED
+   (candidate ordering, §2–3; rounds 3–5 supplied mechanics).
+5. **Kernel would import eval-only code** — ADOPTED (§Where it lives).
+6. **Pre-filter missed shared `Test:` paths** — ADOPTED (§1).
+7. **`MERGE_SCHEMA` can't carry contended replies** — ADOPTED
+   (`FOLD_SCHEMA`, §3).
+8. **No resolver budget checkpoint; tier unnamed** — ADOPTED (§3; tier
+   final: ambient, round 4 trim).
+9. **Modes unrepresented** — ADOPTED (§2; round 5 made modes observed).
+10. **Re-narration is markerless** — ADOPTED (§2, §3).
 11. **`test_fixture_seals.py` requires nothing of unlisted fixtures** —
-    ADOPTED. Build task adds `contend-prod` to `FIXTURES` (§6).
-12. **Prompt-pin mechanics; CLI location token** — ADOPTED. Own BAKE block;
-    `WAVE_PROMPTS` entries; `<pluginRoot>` (§3). *(Round 3 corrected the
-    stated reason and moved the resolver prompt into `wave-merge.md`.)*
+    ADOPTED (§6).
+12. **BAKE mechanics; CLI location** — ADOPTED (§3). *(Round 3 corrected
+    the stated reason; round 5 replaced the hardcoded pin list with
+    derivation.)*
 
-Trims: **one switch** — ADOPTED. **Shakedown into §5** — ADOPTED.
-**Founding orientation deletable** — ANSWERED-KEPT (operator direction).
-**Diagnostic-vocabulary circularity** — ADOPTED (existing `marker_conflicts`
-`inference` kind; freeze untouched).
+Trims: one switch — ADOPTED; shakedown into §5 — ADOPTED; founding note —
+ANSWERED-KEPT; diagnostic-vocabulary circularity — ADOPTED (existing
+`inference` kind).
 
-### Round 3 (fresh-context reviewer; grade: `netConceptDelta` **up**; found 2 blockers + 1 structural + 10 findings; loop explicitly not ended)
+### Round 3 (fresh-context reviewer; grade **up**; 2 blockers + 1 structural + 10 findings)
 
-Thirteen findings + one scope narrowing; adopt-or-answer:
+1. **BLOCKER — tag rode the launch file (#89)** — ADOPTED (args channel).
+   *(Round 4 corrected the shape to per-task inline.)*
+2. **STRUCTURAL — flatten is dead code; delete it** — ADOPTED (§1b).
+   *(Rounds 4–5 fixed the labeling predicate twice; final form iterates all
+   pairs.)*
+3. **BLOCKER — contended prompt needs the `heads/` slot sentence** —
+   ADOPTED (§3).
+4. **Candidate had no home; fallback couldn't bind** — ADOPTED (§2–3;
+   round 5 fixed the git invocations).
+5. **Final-newline normalization; self-checks blind** — ADOPTED (bijection,
+   §2).
+6. **Resolver prompt invisible to the wave pin from a third file** —
+   ADOPTED (block in `wave-merge.md`).
+7. **False constraint stated for the separate block** — ADOPTED (real
+   reason stated).
+8. **Whole-tree snapshot cost unpriced** — ADOPTED (scoped snapshots;
+   wall-time report line).
+9. **Completion order unobservable** — ADOPTED (task-index order).
+10. **Three overlap-set spellings** — ADOPTED (one spelling).
+11. **Switch had no plumbing** — ADOPTED (launch argument → `ultra_run.py`).
+12. **`validate_skill` extension inert** — ADOPTED (live `SKILL.md`
+    reference).
+13. **Resolver-tier justification misstated the cell** — ADOPTED
+    (superseded by round 4's ambient-tier trim).
 
-1. **BLOCKER — the contended tag rode the launch file, which `waves.js`
-   cannot read** (#89 class) — ADOPTED as an args-payload key. *(Round 4
-   corrected the shape: per-task inline entries, not a positional per-wave
-   array — see round 4 finding 1.)*
-2. **STRUCTURAL — the `fully_overlapping` flatten is dead code; delete it**
-   — ADOPTED. §1b is a deletion plus an explicit labeling rule;
-   `complexityEffect` reclassified `simplification`; the eligibility cliff
-   is gone. *(Round 4 wrote the labeling predicate as code and added the
-   third pin shape.)*
-3. **BLOCKER — `CONTENDED_MERGE_PROMPT` without the `heads/` slot sentence
-   blocks every contended run** — ADOPTED. Slot sentence verbatim;
-   `headsSlotsLine` appended; sim asserts the slot names (§3, §Testing).
-4. **The candidate commit had no stated home; fallback could not bind from
-   where materialize left the worktree** — ADOPTED. Branch unmoved;
-   suite-then-adopt; red-path restore; pinned (§2, §3, §Testing). *(Round 4
-   named the construction route: temporary index.)*
-5. **Final-newline normalization silently rewrites files; self-checks are
-   normalization-blind** — ADOPTED: bijective line convention;
-   byte-identity pinned (§2). *(Round 4 wrote out the function pair, the
-   `[""]` case, deleted `_visible`, and added the §6 honesty bound.)*
-6. **The resolver prompt cannot enter `WAVE_PROMPTS` from a third file** —
-   ADOPTED. Resolver block lives in `wave-merge.md` (§Where it lives).
-7. **The stated reason for the separate BAKE block was factually wrong** —
-   ADOPTED. Real reason stated (§3).
-8. **Whole-tree `snapshot()` cost unpriced** — ADOPTED. Scoped snapshots;
-   fold-CLI wall time its own report line (§2, §4, §5). *(Round 4 stated
-   the union-then-fold ordering contract.)*
-9. **"Completion order" is unobservable and forfeits reproducibility** —
-   ADOPTED. Task-index order (§2).
-10. **Three overlap-set spellings, none the code's** — ADOPTED. One
-    spelling, `writes ∪ reads` (§1).
-11. **`--serialize-overlaps` had no path from `ab_runner` to the compiler**
-    — ADOPTED. Plumbed launch argument, receipt-recorded (§Where it lives).
-    *(Round 4 made receipt verification a hard gate.)*
-12. **The `validate_skill.py` extension was inert** — ADOPTED. `SKILL.md`
-    references `kernel/FOLD_LOG.md` (§Where it lives).
-13. **The resolver-tier justification misstated what the cell measured** —
-    ADOPTED. *(Superseded by round 4's trim: ambient tier, removing the
-    confound entirely; binary-create canary note kept in §5.)*
+Scope narrowing: hard gates non-overrulable — ADOPTED (§6).
 
-Scope narrowing: **hard gates are not overrulable; only E1′/E2′ are** —
-ADOPTED (§6).
+### Round 4 (fresh-context reviewer; grade **up**; 2 blockers + 8 findings + 3 trims)
 
-### Round 4 (fresh-context reviewer; grade: `netConceptDelta` **up** — "the round-3 revision did not move it"; found 2 blockers + 8 findings + 3 trims; loop explicitly not ended)
+1. **BLOCKER — positional `contendedWaves` breaks on redirect relaunch
+   (#131 class)** — ADOPTED (per-task inline tag). *(Round 5 tightened:
+   intersection rule, redirect stripping.)*
+2. **BLOCKER — canonical default breaks `test_frontier_run_eval.py` and
+   zeroes `same_file_edges` circularly** — ADOPTED (eval entry points
+   compile with the switch). *(Round 5 added the both-compiles fixture
+   assertion.)*
+3. **Labeling recomputation broke byte-identity on a third shape** —
+   ADOPTED. *(Round 5 showed the round-4 form still broke it; final form in
+   §1b.)*
+4. **Contended merge tier unspecified; no `catch` behavior** — ADOPTED
+   (mostCapable; catch→fallback, §3).
+5. **§2/§3 contradicted on candidate construction** — ADOPTED
+   (temporary-index route, §2).
+6. **Scoped snapshots need union-then-fold ordering** — ADOPTED (§2).
+7. **Bijection needed function pair, `[""]`, `_visible` deletion, E2
+   bound** — ADOPTED (§2, §6).
+8. **`rehydrate` must not re-check validity** — ADOPTED (§2).
+9. **Arm identity unverified** — ADOPTED as a hard gate (§6). *(Round 5's
+   T1 re-based it on the existing receipt `compile` object.)*
+10. **Surface omissions: `dependency-analysis.md`, `SKILL.md`,
+    `report-format.md`** — ADOPTED (§Where it lives, §1b, §4).
 
-Ten findings + three trims; adopt-or-answer:
+Trims: delete `paths` from `fold` — ADOPTED; merge `park` into the
+conflicts index — ADOPTED; ambient-tier resolver for the A/B — ADOPTED
+(supersedes round 3's mostCapable pin).
 
-1. **BLOCKER — a positional `contendedWaves` array does not survive
-   redirect/salvage relaunch** (`redirect_args.py` filters and compacts
-   `waves` while copying other keys verbatim — the #131 renumbering class;
-   stale `waveLabels` already demonstrates it cosmetically) — ADOPTED. The
-   tag is per-task and inline (the #89 knob channel); a wave is contended
-   iff ≥2 of its tasks carry the tag; redirect round-trip pinned (§1,
-   §Non-goals, §Testing).
-2. **BLOCKER — the canonical default breaks `test_frontier_run_eval.py` and
-   zeroes the eval line's `same_file_edges` denominator circularly** —
-   ADOPTED. Modeling/probe entry points compile with `--serialize-overlaps`;
-   the test re-points (§Where it lives, §Testing).
-3. **The labeling recomputation broke its own byte-identity claim on a
-   third compile shape** (shared-`Test:`-only plans are `parallel` today —
-   `fully_overlapping` reads writes alone) — ADOPTED. Predicate written as
-   code (writes-only intersection over kept pairs); third pin shape added
-   (§1b).
-4. **The contended merge agent's tier was unspecified (plain merge runs at
-   `TIER.cheap`); no stated `catch` behavior** — ADOPTED. Contended
-   contract at mostCapable; cheap stays for plain merge; thrown contended
-   dispatch routes to fallback, never reconcile (§3).
-5. **§2 and §3.3 contradicted on candidate construction; `commit-tree`'s
-   tree source was unnamed** — ADOPTED. The temporary-index route
-   (`GIT_INDEX_FILE` read-tree / update-index / write-tree / commit-tree),
-   which makes the clean-worktree pin true by construction (§2).
-6. **Scoped snapshots are only correct if the base is built from the union
-   of all tasks' touched sets before any fold** (per-task streaming scope
-   silently converts modifies into add/adds) — ADOPTED. Union-then-fold
-   stated as an ordering contract; modify-not-add/add pinned (§2,
-   §Testing).
-7. **The bijection needed its exact function pair, the `[""]` case, the
-   deletion of `_visible`, and an E2-transfer honesty bound** — ADOPTED,
-   all four (§2, §6).
-8. **`rehydrate` must state that validity is never re-checked** (re-running
-   the staleness check silently skips a recorded resolution; the epoch pin
-   cannot catch it) — ADOPTED (§2, §Testing).
-9. **Arm identity rode an LLM-transcribed prompt with nothing verifying
-   it** (a dropped flag collapses both arms to canonical and ships the mode
-   dark on a transcription error) — ADOPTED as a non-overrulable hard gate:
-   receipt-recorded disposition asserted by `ab_runner` before a cell
-   counts (§6).
-10. **Surface omissions: `dependency-analysis.md`, `SKILL.md` Steps 1/3,
-    `report-format.md`/`test_report_runbook.py`** — ADOPTED. All three
-    named as live seams (§Where it lives, §1b, §4).
+### Round 5 (fresh-context reviewer; grade: `netConceptDelta` **up**; found 2 blockers + 11 findings + 4 trims; loop explicitly not ended)
 
-Trims: **delete `paths` from the `fold` event** (derivable by re-fold; a
-stored copy invites undetectable divergence) — ADOPTED (§4). **Merge `park`
-events into the conflicts index** (one fact, one record) — ADOPTED (§2, §4).
-**Run the A/B's resolver at the ambient tier the cell was graded on** (a bar
-that ships with its own overrule is not a bar; tier is a post-A/B knob) —
-ADOPTED, superseding round 3's mostCapable pin; the E2′ pricing caveat is
-deleted (§3, §6).
+Thirteen findings + four trims; adopt-or-answer:
+
+1. **BLOCKER — the round-4 kept-pairs labeling predicate flips ordinary
+   plans to `sequential` in both modes** (restricting the iteration deletes
+   the `False` terms disjoint pairs contribute; the alternative reading is
+   vacuously `True` on the shared-`Test:` shape; both demonstrated on
+   today's compiler) — ADOPTED. Final predicate iterates **all** ordered
+   pairs with dropped pairs contributing `False`; reduces literally to
+   today's under the switch; pin set grown to four shapes (§1b).
+2. **BLOCKER — the dark-mode branch shipped the unmeasured §5 alone**
+   (relaxed plans would compile into pairwise chains; the rubric change
+   reaches every session and widens routing toward a declined capability) —
+   ADOPTED. §5 ships only on the pass branch; stated in §Background, §5,
+   §6, §Release.
+3. **≥2 tags route genuinely non-contended waves** (tags from different
+   dropped pairs need not overlap) — ADOPTED. Wave contended iff ≥2 tasks'
+   overlap paths **intersect** (§1).
+4. **"Dropped pair" was ambiguous at the tier-3 loop** (pairs already
+   serialized by marker edges have no edge to drop and must not be tagged;
+   plus the reachability-direction flip through dropped chains) — ADOPTED.
+   Exact tagging rule stated; direction flip disclosed and pinned (§1a).
+5. **`git read-tree -u` is a fatal error as written; `merge --ff-only`
+   refuses over the read-tree index** — ADOPTED. Spelled-out sequence:
+   `read-tree -u --reset <candidate>^{tree}`, adopt via
+   `reset --hard <candidate>` (§3.3).
+6. **Mode rules had no detector** (`--name-status` reports chmod as `M`
+   with identical blobs; created paths have no base mode) — ADOPTED. Modes
+   observed via `ls-tree` at task heads; chmod parks; created paths take
+   the creator's mode; differing creators park; both pinned (§2, §Testing).
+7. **`rehydrate(log)` is not a function of the log** — ADOPTED.
+   `rehydrate(repo, log)`; git named as input (§2).
+8. **The fold log collides across redirect rounds** (nothing `rmtree`s
+   `frontier/` the way `heads/` is cleared) — ADOPTED. `fold` refuses a
+   pre-existing wave log; defense-in-depth behind the redirect tag
+   stripping (§2).
+9. **Octopus adoption commits break `run_eval` track (c) and make
+   `shadow_fold` manufacture false divergence** (`_group_chain` decomposes
+   via `parents[1]` only) — ADOPTED. Contended runs excluded from shadow
+   replay by the same named-exclusion rule; the fold log is their
+   replacement replay record (§Where it lives).
+10. **`test_report_runbook.py` has no general cross-check to inherit** —
+    ADOPTED. The new assertion is named and shaped like the existing
+    `reviewVerdict` literals check (§4).
+11. **`test_recommendation_rubric.py` does not pin the clause, and the two
+    mirrors spell it differently today** — ADOPTED. Wording reconciled at
+    spec time, one spelling fixed in §5, added to `BRANCH_CLAUSES` as a new
+    entry.
+12. **`splitlines()` vs the bijection leaves a second counting convention
+    at the cap** — ADOPTED. All counting sites go through kernel
+    `split_lines`; exact-cap boundary pinned (§1).
+13. **The eval re-point weakened the fixture guarantee** — ADOPTED. Both
+    compiles asserted (§Where it lives, §Testing); the track-(a) label
+    consequence stated in one sentence.
+
+Trims: **T1 — delete the new receipt field** (the receipt already embeds
+the full compile object; arm identity derives from `contended` entries) —
+ADOPTED (§Where it lives, §6). **T2 — derive `WAVE_PROMPTS` from
+`wave-merge.md`'s blocks** (deletes the silently-unpinned-new-block failure
+mode; `simplification`) — ADOPTED (§Testing). **T3 — delete the `fallback`
+event type** (inert for rehydration; engine records already hold it — the
+same one-fact-one-record argument as `park`) — ADOPTED; the log is three
+event types (§3, §4). **T4 — make redirect-round contention inexpressible**
+(`redirect_args.py` strips the tag; deletes the "unless" clause and the
+stale-overlap hazard) — ADOPTED (§Non-goals, §1).
+
+Scope items put explicitly before the operator, per the reviewer: (2) §5's
+coupling is now symmetric — pass-branch only (finding 2 resolved it); (3)
+the bijective line convention is a **kernel-wide** behavior change riding a
+frontier-gated increment — now stated as scope in §2, with the §6 honesty
+bound; the operator adjudicates it at spec review rather than discovering it
+at plan review.
