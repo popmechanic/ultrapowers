@@ -90,10 +90,12 @@ Moves (promotion, one copy, evals re-point their imports):
 Stays in `evals/` (modeling and probe apparatus, explicitly modeling-only):
 `schedule_model.py` (its `SAME_FILE_WHYS` is the *modeled* drop rule, labeled
 as such; the engine's narrower rule lives in `compile_plan.py` and is the one
-evals import when measuring the engine), `shadow_fold.py`, `run_eval.py`,
-`run_frontier_cell.py` (imports re-pointed). **Because the fold-mode compile
+evals import when measuring the engine), `shadow_fold.py`, `run_eval.py` —
+all three in `evals/frontier/` — and `evals/run_frontier_cell.py` (one
+level up; imports re-pointed). **Because the fold-mode compile
 no longer emits the dropped edges, the modeling/probe entry points
-(`run_eval.compile_fixture`, `shadow_fold`, `run_frontier_cell`) compile with
+(`run_eval.compile_fixture`, `shadow_fold._remodel` — shadow's only
+compiler shell-out — and `run_frontier_cell`) compile with
 `--overlap serialize` to obtain the pre-drop edge set their
 `same_file_edges` recovery metric is defined over — otherwise the eval line's
 own denominator reads 0 circularly.** Consequences stated plainly: track
@@ -117,9 +119,10 @@ adoption commit has 1+N parents (§2).
   reason; non-contended waves in the same run still shadow.
 - **Whole-run leg — in `_shadow`'s existing no-floor branch (the arm that
   already assigns the exclusion name), keyed on ANY merged wave head
-  having ≥3 parents:** when the floor scan finds no 2-parent merge,
-  `_build_waves` is never called and a probe living only there cannot
-  fire. That happens not only for the all-contended run but for the
+  having ≥3 parents:** whenever that branch is reached — the floor scan
+  finding no 2-parent merge, or the root-commit path where no bound
+  exists — `_build_waves` is never called and a probe living only there
+  cannot fire. That happens not only for the all-contended run but for the
   **modal shakedown shape** — one contended wave plus fast-forwarded
   single-task waves (merge commits are not forced `--no-ff`, so
   single-task waves routinely fast-forward): there, *no* head has 2
@@ -305,8 +308,21 @@ tasks' `files` intersect. The engine's routing rule (evaluated in
 `mergeWave`, the #89-safe channel since `files` already rides the inline
 entries and survives every relaunch verbatim):
 
-> a wave takes the contended path iff `!resume` **and** ≥2 of its
-> **mergeable results** have intersecting `files`.
+> a wave takes the contended path iff `!resume` **and** the wave base is
+> live — no prior wave reported `MERGED` without a `headSha` — **and** ≥2
+> of its **mergeable results** have intersecting `files`.
+
+The middle conjunct reuses a detection the engine already performs: a
+schema-legal `MERGED`-without-`headSha` reply freezes `waveBaseSha` while
+the integration branch genuinely advances — a tolerated soft failure on
+the git-merge path (the next merge reconciles by content), but the
+contended path builds its candidate *from* `waveBaseSha`, so a frozen base
+would rewind the integration branch over the prior wave's merge and end
+the run BLOCKED at the ancestry check, loud but late and expensive.
+Routing such a wave to the git-merge path instead costs one boolean.
+(`FOLD_SCHEMA` also makes `headSha` **required**, closing the
+contended-after-contended case at zero cost; wave 1 is never affected —
+setup is already hard-gated on a `headSha`.)
 
 **The join is explicit, because results do not carry `files`:** every
 `runTask` return path emits `{task, status, branch, headSha, …}` and
@@ -486,10 +502,24 @@ loop — a thrown contended dispatch has no fold log to reconcile against.
 2. For each dispatchable conflict, `waves.js` first checks
    `budgetExhausted()` — every existing dispatch site is checkpointed, and a
    serial N-conflict loop must be too; exhaustion routes to fallback (still
-   live at this point) — then dispatches **one resolver agent at a time**,
-   **inheriting the session-ambient model (no tier override), exactly as the
-   cell's resolver did** — like-for-like with the E2 the operator graded;
-   tier escalation is a post-A/B knob, not a launch-time confound. The
+   live at this point) — then dispatches **one resolver agent at a time**
+   at the session-ambient model: concretely, an `agent()` call whose
+   options are `{ label, schema }` with the `model` key **omitted**. That
+   call shape is exercised nowhere in `waves.js` today (every existing
+   dispatch passes an explicit `model`; the file's verified-live note
+   covers accepted model *strings*, not omission), so the build task
+   **live-verifies it** the way that note was earned, and the sim asserts
+   the resolver dispatch's options shape — a wrong guess would throw,
+   route to fallback, and redden §6's non-overrulable zero-fallback gate
+   at the cost of a full production-length cell. **Fallback decision,
+   made now:** if omission is rejected, the resolver dispatches at
+   `TIER.standard` and §6's like-for-like sentence is replaced by a named
+   resolver-model confound in the honesty bounds. Rationale for ambient:
+   like-for-like with the E2 the operator graded (the cell's resolver ran
+   on its CLI default, no `--model` — noting honestly that CLI default
+   and workflow `agent()` default are two runtimes' defaults, which the
+   live verification also pins down); tier escalation is a post-A/B knob,
+   not a launch-time confound. The
    resolver **reads its narration file itself** and writes its whole-file
    resolution to a reply file (a contract change from the cell's no-tools
    text-in/text-out resolver; the promoted prompt is rewritten for it and
@@ -741,9 +771,13 @@ fallback, not a warning.
 - **Harness sim:** `tests/frontier_merge.mjs` drives the contended path in
   `waves.js` with stubbed agents — clean fold, conflict→resolve,
   stale→re-narrate (markerless shape), park→fallback, budget exhaustion
-  mid-loop, thrown-dispatch→fallback, candidate-suite-failure→fallback —
-  asserts the contended dispatch text **contains the `heads/` slot names for
-  every merged task id**, and prints the `ALL SCENARIOS PASSED` sentinel
+  mid-loop, thrown-dispatch→fallback, candidate-suite-failure→fallback,
+  **frozen-base routing** (a prior wave's `MERGED`-without-`headSha`
+  routes the next contended-shaped wave to the git-merge path, never the
+  fold path) — asserts the contended dispatch text **contains the `heads/`
+  slot names for every merged task id**, asserts the **resolver dispatch's
+  options shape** (`model` omitted; `label` + `schema` present), and
+  prints the `ALL SCENARIOS PASSED` sentinel
   (the suite-gate runs it on any harness JS change; a harness change with no
   covering sim fails the gate by design).
 - **Prompt pins:** `test_no_prompt_drift.py`'s wave parametrization is
@@ -980,3 +1014,30 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
    deliberate exception (§1); the two-leg probe promoted to its own
    subsection (§Where it lives); §Release's "kept-pairs" corrected to
    "ineligible paths".
+
+### Round 10 (fresh-context reviewer; grade: `netConceptDelta` **up**; ALL round-9 adoptions VERIFIED — `merged` in scope in the no-floor branch, both routes to it covered, the two legs partition exhaustively, the modal shape resolves, K3 disclosure accurate; the `files`-join, receipt sufficiency, and ab_runner threading points re-confirmed against the code; **buildability: buildable as written except finding 1**; found 2 one-clause findings + 3 nits; no scope growth)
+
+1. **The `waveBaseSha` invariant has one hole: the tolerated
+   `MERGED`-without-`headSha` soft failure freezes the base** — survivable
+   on the git-merge path (content reconciliation), but the contended path
+   builds its candidate *from* the base, so a frozen base rewinds the
+   integration branch over the prior wave's merge and ends the run
+   BLOCKED at the ancestry check — loud, but late and expensive —
+   ADOPTED, the recommended guard: a third routing conjunct (wave base
+   live), `headSha` **required** in `FOLD_SCHEMA`, and the frozen-base
+   routing pin in the sim; wave 1 unaffected (setup is hard-gated on
+   `headSha`) (§1, §3, §Testing).
+2. **"Ambient model, no tier override" named a dispatch shape no code in
+   the repo exercises** (every `waves.js` dispatch passes `model`; the
+   verified-live note covers strings, not omission; CLI default and
+   workflow default are two runtimes' defaults; a wrong guess costs a
+   full production-length cell against a non-overrulable gate) — ADOPTED.
+   Concrete options shape stated (`model` omitted), live-verified by the
+   build task, asserted by the sim; the fallback decision pre-stated
+   (`TIER.standard` + a named resolver-model confound replacing the
+   like-for-like sentence in §6's honesty bounds) (§3, §Testing).
+3. **Nits** — ADOPTED, all three: `evals/run_frontier_cell.py`'s path
+   disambiguated from the `evals/frontier/` trio; `shadow_fold._remodel`
+   named as shadow's only compiler shell-out; the no-floor branch's
+   justification broadened to cover the root-commit route (§Where it
+   lives).
