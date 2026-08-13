@@ -1,7 +1,10 @@
 """Closed-form scheduling model + generic fold replay + structural bisection."""
 import math
-import random
-from itertools import permutations
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "ultrapowers" / "kernel"))
+from frontier_fold import sampled_orders, fold_all  # noqa: E402  (promoted to the kernel; modeling-only module imports back)
 
 SAME_FILE_WHYS = frozenset({"write-after-create", "write-after-write",
                             "ambiguous-files"})
@@ -29,26 +32,6 @@ def frontier_makespan(task_ids, edges, durations):
 
 def drop_same_file_edges(edges):
     return [e for e in edges if e["why"] not in SAME_FILE_WHYS]
-
-
-def fold_all(fold_fn, base, tasks, order):
-    frontier, conflicts = base, []
-    for i in order:
-        frontier, cs = fold_fn(base, frontier, tasks[i])
-        conflicts.extend(cs)
-    return frontier, conflicts
-
-
-def sampled_orders(n, seed=42):
-    if n <= 4:
-        return [list(p) for p in permutations(range(n))]
-    rng = random.Random(seed)
-    orders = [list(range(n))]
-    while len(orders) < 20:
-        o = list(range(n))
-        rng.shuffle(o)
-        orders.append(o)
-    return orders
 
 
 def bisect_single(tasks, is_red):

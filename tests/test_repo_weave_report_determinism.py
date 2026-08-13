@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "evals" / "frontier"))
+sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
 sys.path.insert(0, str(ROOT / "tests"))
 import repo_weave as rw
 from test_frontier_weave import (make_base, fold_in_order, conflict_keys,

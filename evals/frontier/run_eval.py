@@ -43,11 +43,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
+KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(KERNEL))
 import repo_weave as rw  # noqa: E402
 import schedule_model as sm  # noqa: E402
 
-sys.path.insert(0, str(HERE / "vendor"))
+sys.path.insert(0, str(KERNEL / "vendor"))
 import manyana  # noqa: E402
 
 FIXTURES = ["wide", "chained", "mixed", "flawed", "degrade", "webapp", "contend"]

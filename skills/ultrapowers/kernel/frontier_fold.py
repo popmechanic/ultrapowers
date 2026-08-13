@@ -11,7 +11,9 @@ Invariants it enforces (each pinned by tests/test_frontier_fold.py):
 * the dispatch predicate: only annotated-block narrations, <= 400 visible
   lines, are resolver-eligible — everything else parks with a named reason.
 """
+import random
 import sys
+from itertools import permutations
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -19,9 +21,34 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "vendor"))
 import manyana
 import repo_weave as rw
-import schedule_model as sm
 
 RESOLVER_LINE_CAP = 400
+
+
+def sampled_orders(n, seed=42):
+    """All permutations of range(n) up to 4 elements; 20 seeded samples (the
+    identity order plus 19 shuffles) above that. Moved from the eval-only
+    schedule_model module: this is a generic fold-order sampler, not modeling
+    logic, so the kernel owns it and schedule_model imports it back."""
+    if n <= 4:
+        return [list(p) for p in permutations(range(n))]
+    rng = random.Random(seed)
+    orders = [list(range(n))]
+    while len(orders) < 20:
+        o = list(range(n))
+        rng.shuffle(o)
+        orders.append(o)
+    return orders
+
+
+def fold_all(fold_fn, base, tasks, order):
+    """Fold `tasks` (indexed by `order`) into `base` via `fold_fn`, threading
+    the accumulating frontier and collecting every conflict along the way."""
+    frontier, conflicts = base, []
+    for i in order:
+        frontier, cs = fold_fn(base, frontier, tasks[i])
+        conflicts.extend(cs)
+    return frontier, conflicts
 
 
 def _visible(lines):
@@ -109,8 +136,8 @@ def raw_shuffle_outcomes(base, tasks, sample_seed):
     """Live-K1 leg 1: shuffled raw folds (resolutions excluded) must be
     outcome-identical to each other; set-based conflict keys per #132."""
     outcomes = set()
-    for order in sm.sampled_orders(len(tasks), seed=sample_seed):
-        frontier, conflicts = sm.fold_all(rw.fold, base, tasks, order)
+    for order in sampled_orders(len(tasks), seed=sample_seed):
+        frontier, conflicts = fold_all(rw.fold, base, tasks, order)
         outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
                       tuple(sorted({(c.path, c.kind) for c in conflicts}))))
     return outcomes

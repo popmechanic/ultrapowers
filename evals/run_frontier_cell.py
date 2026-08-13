@@ -32,6 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "evals"))
 sys.path.insert(0, str(ROOT / "evals" / "frontier"))
+sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
 import ab_runner as ab                                          # noqa: E402
 import frontier_fold as ff                                      # noqa: E402
 import repo_weave as rw                                         # noqa: E402

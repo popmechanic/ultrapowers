@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VENDOR = ROOT / "evals" / "frontier" / "vendor"
+VENDOR = ROOT / "skills" / "ultrapowers" / "kernel" / "vendor"
 sys.path.insert(0, str(VENDOR))
 import manyana
 
@@ -18,7 +18,7 @@ def test_vendor_pin():
     data = (VENDOR / "manyana.py").read_bytes()
     assert hashlib.sha256(data).hexdigest() == PATCHED_SHA256, (
         "vendored manyana.py changed without updating the pin; "
-        "see evals/frontier/vendor/PROVENANCE.md for the re-vendor procedure"
+        "see skills/ultrapowers/kernel/vendor/PROVENANCE.md for the re-vendor procedure"
     )
 
 

@@ -5,10 +5,11 @@ from itertools import permutations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "evals" / "frontier"))
+KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
+sys.path.insert(0, str(KERNEL))
 import repo_weave as rw
 
-sys.path.insert(0, str(ROOT / "evals" / "frontier" / "vendor"))
+sys.path.insert(0, str(KERNEL / "vendor"))
 import manyana
 
 
