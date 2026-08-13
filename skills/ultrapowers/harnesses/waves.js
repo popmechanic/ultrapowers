@@ -1311,8 +1311,15 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
       if (budgetExhausted())
         return finish(null, 'budget exhausted before resolving conflict ' +
           (i + 1) + ' of ' + open.length)
-      const replyFile = frontierDir(waveNumber) +
-        '/reply-' + (i + 1) + '-' + attempt + '.txt'
+      // Substituted at construction, not only inside the dispatch's fillPaths():
+      // this same string is recorded in the resolver transcript, and that
+      // transcript is the A/B grading surface. A literal <runDir> token there is
+      // a path nobody can open — sitting beside a narrationFile that IS a real
+      // path (it comes back from the fold reply), so the record would be half
+      // resolvable. fillPaths is idempotent over an already-filled string, so the
+      // dispatched prompt is byte-identical either way.
+      const replyFile = fillPaths(frontierDir(waveNumber) +
+        '/reply-' + (i + 1) + '-' + attempt + '.txt')
       let res
       try {
         // Verified live 2026-08-13, by this task's first build pass (scratch
