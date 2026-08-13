@@ -492,6 +492,176 @@ async function scenarioRoutingFrozenBase() {
   console.log('scenario 8d routing-frozen-base: OK')
 }
 
+// ── Guard scenarios (a)–(i): each pins ONE defensive guard in contendedMerge's
+// fold-reply gauntlet or the resolver/adoption null checks. The completeness
+// critic mutation-verified that deleting any one of these nine guards left
+// ALL SCENARIOS PASSED unchanged — every scenario below must fail if its
+// guard is removed (see the mutation check run alongside this file). Every
+// one falls back to the plain git-merge path, never reconcile.
+
+// (a) fold dispatch returns null/undefined reply.
+async function scenarioGuardFoldReplyNull() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return null
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assertFellBack(r, calls, /fold dispatch returned no reply/, 'guard-a')
+  assert(!calls.some((c) => c.label.startsWith('reconcile:')),
+    'guard-a: never escalates to reconciliation')
+  console.log('scenario 9a guard-fold-reply-null: OK')
+}
+
+// (b) resolver dispatch returns null mid-loop.
+async function scenarioGuardResolverReplyNull() {
+  const calls = []
+  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open)
+    if (label === 'resolve:wave1:1:1') return null
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:apply1:1'),
+    'guard-b: no resolve is dispatched after a null resolver reply')
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-b: nothing is adopted')
+  assertFellBack(r, calls, /resolver dispatch returned no reply on src\/shared\.js/, 'guard-b')
+  assert(!calls.some((c) => c.label.startsWith('reconcile:')),
+    'guard-b: never escalates to reconciliation')
+  console.log('scenario 9b guard-resolver-reply-null: OK')
+}
+
+// (c) adoption dispatch returns null.
+async function scenarioGuardAdoptionReplyNull() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return null
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assertFellBack(r, calls, /adoption dispatch returned no reply/, 'guard-c')
+  assert(!calls.some((c) => c.label.startsWith('reconcile:')),
+    'guard-c: never escalates to reconciliation')
+  console.log('scenario 9c guard-adoption-reply-null: OK')
+}
+
+// (d) selfChecks !== 'ok' in the fold reply.
+async function scenarioGuardSelfChecksFailed() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'FOLDED', conflicts: 0, dispatchable: 0, parked: 0,
+               selfChecks: 'failed: rehydrate manifest mismatch',
+               foldLogPath: FDIR + '/fold_log.jsonl', conflictsIndex: FDIR + '/conflicts.json',
+               foldCliWallTimeSec: 2.0 }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-d: nothing is adopted on failed self-checks')
+  assertFellBack(r, calls,
+    /fold self-checks did not pass: failed: rehydrate manifest mismatch/, 'guard-d')
+  console.log('scenario 9d guard-selfchecks-failed: OK')
+}
+
+// (e) parked > 0 is count-authority even when the status enum disagrees.
+async function scenarioGuardParkedCountAuthority() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'FOLDED', conflicts: 0, dispatchable: 0, parked: 1,
+               selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 2.0 }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'guard-e: nothing is adopted when the parked count is non-zero')
+  assertFellBack(r, calls,
+    /fold parked 1 conflict\(s\) — see the conflicts index/, 'guard-e')
+  console.log('scenario 9e guard-parked-count-authority: OK')
+}
+
+// (f) status: 'CONFLICTS' with an empty `open` list.
+async function scenarioGuardConflictsEmptyOpen() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'CONFLICTS', conflicts: 1, dispatchable: 1, parked: 0,
+               selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 2.0, open: [] }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!calls.some((c) => c.label.startsWith('resolve:')),
+    'guard-f: no resolver dispatches with nothing named to resolve')
+  assertFellBack(r, calls,
+    /fold reported CONFLICTS but named no dispatchable conflict/, 'guard-f')
+  console.log('scenario 9f guard-conflicts-empty-open: OK')
+}
+
+// (g) open.length !== expectOpen (named vs counted mismatch).
+async function scenarioGuardOpenCountMismatch() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'CONFLICTS', conflicts: 2, dispatchable: 2, parked: 0,
+               selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 2.0,
+               open: [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }] }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!calls.some((c) => c.label.startsWith('resolve:')),
+    'guard-g: no resolver dispatches when the named/counted conflicts disagree')
+  assertFellBack(r, calls,
+    /fold named 1 open conflict\(s\) but counted 2 still to resolve/, 'guard-g')
+  console.log('scenario 9g guard-open-count-mismatch: OK')
+}
+
+// (h) status: 'FOLDED' with conflicts > 0 (the FOLDED-over-conflicts reply).
+async function scenarioGuardFoldedWithConflicts() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'FOLDED', conflicts: 2, dispatchable: 0, parked: 0,
+               selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 2.0 }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'guard-h: a FOLDED reply over a non-zero conflict count is never adopted')
+  assertFellBack(r, calls,
+    /fold counted 2 conflict\(s\) but named none to resolve/, 'guard-h')
+  console.log('scenario 9h guard-folded-with-conflicts: OK')
+}
+
+// (i) status: 'FOLDED' with the counts entirely omitted (no `conflicts` field
+// at all — the guard added by the concurrent Task 9 amend).
+async function scenarioGuardFoldedCountsOmitted() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'FOLDED', selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 2.0 }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'guard-i: a FOLDED reply with no conflicts count is never adopted')
+  assertFellBack(r, calls,
+    /fold reported FOLDED with no conflicts count to verify against/, 'guard-i')
+  console.log('scenario 9i guard-folded-counts-omitted: OK')
+}
+
 await scenarioCleanFold()
 await scenarioConflictResolved()
 await scenarioStaleRenarration()
@@ -503,5 +673,14 @@ await scenarioRoutingDisjointFiles()
 await scenarioRoutingLoneSurvivor()
 await scenarioRoutingResume()
 await scenarioRoutingFrozenBase()
+await scenarioGuardFoldReplyNull()
+await scenarioGuardResolverReplyNull()
+await scenarioGuardAdoptionReplyNull()
+await scenarioGuardSelfChecksFailed()
+await scenarioGuardParkedCountAuthority()
+await scenarioGuardConflictsEmptyOpen()
+await scenarioGuardOpenCountMismatch()
+await scenarioGuardFoldedWithConflicts()
+await scenarioGuardFoldedCountsOmitted()
 
 console.log('ALL SCENARIOS PASSED')
