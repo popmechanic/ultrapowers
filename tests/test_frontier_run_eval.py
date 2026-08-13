@@ -95,6 +95,27 @@ def test_k4_not_evaluated_when_no_contiguity_checks(tmp_path, monkeypatch):
     assert "PASS" not in k4_line
 
 
+def _some_wave_has_two_tasks_with_intersecting_files(waves):
+    """True if any wave holds two tasks whose declared `files` intersect —
+    the shape `--overlap fold` is supposed to produce: a same-file pair
+    keeps no serializing edge and instead shares a wave."""
+    for wave in waves:
+        for i, t1 in enumerate(wave):
+            for t2 in wave[i + 1:]:
+                if set(t1["files"]) & set(t2["files"]):
+                    return True
+    return False
+
+
+def test_contend_fixture_contention_under_both_compiles():
+    ser = run_eval.compile_fixture("contend")                       # now --overlap serialize
+    waw = [e for e in ser["dag_edges"] if e["why"] == "write-after-write"]
+    assert ser["mode"] == "parallel" and len(waw) >= 2
+    fold = run_eval.compile_fixture("contend", overlap="fold")      # new kwarg
+    assert not [e for e in fold["dag_edges"] if e["why"] == "write-after-write"]
+    assert _some_wave_has_two_tasks_with_intersecting_files(fold["launch_waves"])
+
+
 def test_k3_line_labels_real_run_fidelity_not_bisection(tmp_path):
     run_eval.run_tracks(["a", "b"], tmp_path, seed=42)
     rollup = (tmp_path / "rollup.md").read_text()

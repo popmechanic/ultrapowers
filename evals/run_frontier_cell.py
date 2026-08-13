@@ -467,7 +467,10 @@ def run_gate(engine_wt, workdir, plan, branch=RESULT_BRANCH):
 # The run                                                                      #
 # --------------------------------------------------------------------------- #
 def compile_in(compiler, plan_path, launch_path=None):
-    cmd = [sys.executable, str(compiler), str(plan_path)]
+    # Pre-drop edge set (--overlap serialize): keeps same_file_edges non-circular
+    # for the schedule/model code that drops them itself (schedule_model.py's
+    # SAME_FILE_WHYS), rather than letting the compiler drop them first.
+    cmd = [sys.executable, str(compiler), "--overlap", "serialize", str(plan_path)]
     if launch_path is not None:
         cmd += ["--emit-launch", str(launch_path)]
     res = subprocess.run(cmd, capture_output=True, text=True)

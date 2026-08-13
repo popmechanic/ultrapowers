@@ -76,9 +76,9 @@ FMT_SHA_PARENTS_SUBJECT = "%H%x00%P%x00%s"
 # compilation + synthetic-diff construction (track a)
 # --------------------------------------------------------------------------
 
-def compile_fixture(name):
+def compile_fixture(name, overlap="serialize"):
     plan = ROOT / "evals" / "fixtures" / name / "plan.md"
-    out = subprocess.run([sys.executable, str(COMPILER), str(plan)],
+    out = subprocess.run([sys.executable, str(COMPILER), "--overlap", overlap, str(plan)],
                          capture_output=True, text=True, check=True)
     return json.loads(out.stdout)
 
