@@ -319,10 +319,17 @@ the git-merge path (the next merge reconciles by content), but the
 contended path builds its candidate *from* `waveBaseSha`, so a frozen base
 would rewind the integration branch over the prior wave's merge and end
 the run BLOCKED at the ancestry check, loud but late and expensive.
-Routing such a wave to the git-merge path instead costs one boolean.
-(`FOLD_SCHEMA` also makes `headSha` **required**, closing the
-contended-after-contended case at zero cost; wave 1 is never affected —
-setup is already hard-gated on a `headSha`.)
+Routing such a wave to the git-merge path instead costs one boolean —
+honestly noting that the route-away inherits §3's stated git-merge-path
+cost for colliding branches (a reconcile agent handed work it was not
+built for; a wave that can end blocked), still strictly better than a
+rewound integration branch. The conjunct is the **whole** guard: it is
+sticky across waves, so it also covers a contended wave that itself adopts
+and reports without a `headSha`. No schema-level `headSha` requirement
+rides the fold or resolve replies — those steps have nothing adopted yet,
+and a required field a step cannot supply burns schema retries or invites
+a fabricated sha (the production test's own lesson). Wave 1 is never
+affected — setup is already hard-gated on a `headSha`.
 
 **The join is explicit, because results do not carry `files`:** every
 `runTask` return path emits `{task, status, branch, headSha, …}` and
@@ -466,8 +473,9 @@ agent replies corrupts them). The CLI reads and writes under
 
 ### 3. Engine: the contended merge path
 
-For a contended wave (§1's routing rule: `!resume`, ≥2 mergeable results
-with intersecting `files`), `mergeWave()` routes its **existing merge agent
+For a contended wave (§1's three-conjunct routing rule: `!resume`, live
+wave base, ≥2 mergeable results with intersecting `files`), `mergeWave()`
+routes its **existing merge agent
 role** through the contended contract — one role, two contracts, dispatched
 at **`TIER.mostCapable`** for the contended contract (its duties — CLI
 invocation, candidate checkout without ref movement, suite run,
@@ -513,8 +521,10 @@ loop — a thrown contended dispatch has no fold log to reconcile against.
    route to fallback, and redden §6's non-overrulable zero-fallback gate
    at the cost of a full production-length cell. **Fallback decision,
    made now:** if omission is rejected, the resolver dispatches at
-   `TIER.standard` and §6's like-for-like sentence is replaced by a named
-   resolver-model confound in the honesty bounds. Rationale for ambient:
+   `TIER.standard` and the like-for-like sentence in §6's E2′ bullet is
+   **removed** while a named resolver-model confound is **added** to §6's
+   honesty-bounds paragraph (remove-here / add-there, resolved at build
+   time before any counted cell). Rationale for ambient:
    like-for-like with the E2 the operator graded (the cell's resolver ran
    on its CLI default, no `--model` — noting honestly that CLI default
    and workflow `agent()` default are two runtimes' defaults, which the
@@ -683,7 +693,12 @@ arms (`_usage_output_tokens`); wall clock end-to-end.
   dropped flag would silently collapse the arms and read E1′ ≈ 1.0×); both
   arms' gates green; arm B fold-log self-checks clean (sampled raw orders
   outcome-identical, replay match); **zero fallbacks on contended waves in
-  arm B**; zero silent divergence; every park named in the conflicts index.
+  arm B**; **every contended-shaped wave in arm B actually took the fold
+  path — no route-away** (frozen base, lone survivor): a route-away is not
+  a "fallback" in the spec's vocabulary and the compiler-side arm-identity
+  check cannot see it, so without this clause a partly-serialized arm B
+  could read green against arm A; zero silent divergence; every park named
+  in the conflicts index.
 - E1′: arm B end-to-end wall clock ≤ **0.7×** arm A (the numeric bar for
   "material" — the 4-wide fixture's causal expectation is ~2×, leaving
   headroom for review overlap).
@@ -813,7 +828,8 @@ candidate adoption sequence), ambient-tier resolver-as-agent loop
 (budget-checkpointed), compiler construction-time edge-drop with exact drop
 rule + hermetic rooted memoised pre-filter (first compiler filesystem
 access, disclosed; subprocess-free) behind one `--overlap` knob, `waves.js`
-derived-contention routing rule (`!resume` + intersecting `files` over
+derived-contention routing rule (`!resume` + live wave base +
+intersecting `files` over
 mergeable results — no new compiler field), shadow octopus per-wave probe,
 `contend-prod` fixture (sealed, `FIXTURES` entry), one `.mjs` sim,
 `ab_runner.py` arm flag + receipt-derived identity gate; §5 (relaxation +
@@ -1041,3 +1057,25 @@ into the `seen` clause); 8 five coherence nits (all fixed). All ADOPTED.
    named as shadow's only compiler shell-out; the no-floor branch's
    justification broadened to cover the root-commit route (§Where it
    lives).
+
+### Round 11 (fresh-context verification round; grade: `netConceptDelta` **up**; round-10 adoptions verified — routing-conjunct implementability (no TDZ, sticky for free), sim options-assertion precedent, `TIER.standard` exists (`sonnet`), `agent()` is the unmediated runtime global — EXCEPT the `FOLD_SCHEMA` clause, refuted; **buildability: buildable as written except finding 1 (a deletion)**; found 1 new defect + 1 gate clause + 3 nits; no scope growth)
+
+1. **NEW DEFECT in round-10 adoption #1 — `headSha`-required on
+   `FOLD_SCHEMA` is attached to a reply that cannot carry it** (the fold
+   step has adopted nothing; a required field a step cannot supply burns
+   schema retries or invites a fabricated sha), does not reach the
+   adoption reply that matters (`MERGE_SCHEMA`, `headSha` optional), and
+   correctly relocated would block *after* adoption — the worst moment;
+   meanwhile the third conjunct is sticky and alone closes
+   contended-after-contended — ADOPTED as the reviewer's trim: the clause
+   is **deleted**; the conjunct is the whole guard; the route-away's
+   inherited git-merge-path cost acknowledged in §1 (nit 2).
+2. **§6's gates count fallbacks but not route-aways** (a frozen base or
+   similar routing silently de-measures arm B — not a "fallback", and
+   invisible to the compiler-side arm-identity check) — ADOPTED: a
+   non-overrulable hard-gate clause that every contended-shaped wave in
+   arm B actually took the fold path (§6).
+3. **Nits** — ADOPTED, all three: §3's restatement now carries all three
+   conjuncts (and the Adds disclosure likewise); §1 acknowledges the
+   route-away's inherited cost; the fallback-tier wording spells out
+   remove-here / add-there across §3 and §6.
