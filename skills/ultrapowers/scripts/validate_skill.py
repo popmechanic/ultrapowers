@@ -23,7 +23,7 @@ def validate(skill_dir: pathlib.Path):
         errors.append("frontmatter: missing or trivial 'description'")
     if len(desc) > 1024:
         errors.append("frontmatter: 'description' exceeds 1024 chars")
-    for sub, ref in re.findall(r"\b(references|scripts)/([A-Za-z0-9_\-./]+\.\w+)", body):
+    for sub, ref in re.findall(r"\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):
         if not (skill_dir / sub / ref).exists():
             errors.append(f"missing referenced file: {sub}/{ref}")
     return errors

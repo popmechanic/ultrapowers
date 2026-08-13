@@ -28,8 +28,14 @@ Step 6 — do not analyze dependencies.
 **Run the pre-launch driver:**
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --stamp <stamp>
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --stamp <stamp> [--overlap serialize|fold]
 ```
+
+`--overlap` forwards to the compiler's own `--overlap` knob (default
+`serialize`; `fold` lets eligible overlapping-file tasks share a wave instead
+of serializing — see `references/dependency-analysis.md`); omit it to take
+the compiler's default. `--repo-root` is stamped onto the compile call
+unconditionally — it needs no operator input.
 
 One call runs every deterministic stage fail-closed — git-repo check,
 worktree-capability probe, self-host engine skew, superpowers compatibility,
@@ -104,7 +110,10 @@ classification is auditable at the gate:
 
 1. **Waves** — task IDs per wave, in order.
 2. **Dependency `edges`** — those that shaped the ordering.
-3. **Mode** — `parallel`/`sequential` (with the degrade reason).
+3. **Mode** — `parallel`/`sequential` (with the degrade reason). Under
+   `--overlap fold`, an eligible fully-overlapping wave renders `parallel`
+   instead of degrading — the compiler's full-pair-iteration predicate, not
+   this render step, decides which.
 4. **Derived knobs** — `testCmd`, plan-authored review depth, tier overrides.
 5. **Dispositions** — release/manual → runbook, gates → run config. Render the two
    `marker_conflicts` buckets **separately by `kind`:** `kind: "conflict"` as
@@ -159,7 +168,8 @@ Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
 always pass it, or blocking is silently disabled. The headless workflow creates
 the branch in a dedicated integration worktree — no engine agent ever mutates
 the session checkout — runs/merges/reconciles each wave (16-agent cap), then
-reviews completeness (`references/wave-merge.md`).
+reviews completeness (`references/wave-merge.md`). Contended-wave fold state
+and replay contract: `kernel/FOLD_LOG.md`.
 
 **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
 live?"* — on yes:
