@@ -79,9 +79,15 @@ def discover_seals(acceptance_dir):
     return []
 
 
-def build_run_plan(engine_ref, engine_label, fixture, root):
+def build_run_plan(engine_ref, engine_label, fixture, root, arm_overlap="serialize"):
     """Assemble the run plan for one A/B cell. Pure/deterministic; no I/O beyond
-    reading the fixture tree. Exits non-zero on an unknown fixture."""
+    reading the fixture tree. Exits non-zero on an unknown fixture.
+
+    `arm_overlap` (Task 12) is the frontier-mode arm dimension threaded through
+    to the driven `/ultrapowers` launch line (see DRIVE_PROMPT) and carried on
+    the plan/row so the post-cell identity gate and the harvested row both know
+    which arm this cell claims to be. Defaults to the compiler's own
+    OVERLAP_DEFAULT ("serialize") so existing callers need no change."""
     root = Path(root)
     fdir = root / "evals/fixtures" / fixture
     if not (fdir / "plan.md").is_file():
@@ -90,6 +96,7 @@ def build_run_plan(engine_ref, engine_label, fixture, root):
         "fixture": fixture,
         "engine": engine_label,
         "engineRef": engine_ref,
+        "armOverlap": arm_overlap,
         "planPath": str(fdir / "plan.md"),
         "projectDir": str(fdir / "project"),
         "diffPath": str(root / RESULTS / "diffs" / ("%s-%s.diff" % (fixture, engine_label))),
@@ -155,6 +162,95 @@ def harvest_row(transcript_path, started_at, wall_clock_sec):
             "rerunOf": None}
 
 
+def _wave_is_contended(wave):
+    """True iff >=2 tasks in a `launch_waves` wave have pairwise-intersecting
+    `files` sets — the same "contended-shaped" test the fold arm's route-away
+    check is scoped to (Task 12 Interfaces)."""
+    for i in range(len(wave)):
+        fi = set(wave[i].get("files") or [])
+        for j in range(i + 1, len(wave)):
+            fj = set(wave[j].get("files") or [])
+            if fi & fj:
+                return True
+    return False
+
+
+def assert_arm_identity(receipt, arm_overlap):
+    """Receipt-derived identity gate (Task 12): proves a driven cell actually
+    exercised the arm it claims, rather than trusting the launch flag alone.
+
+    Pure over `receipt` (the ultra_run.py receipt.json dict, carrying the full
+    `compile` object — no new receipt field, spec Task 7) and `arm_overlap`.
+    The fold arm's route-away leg needs the run dir; it is derived from
+    `receipt["launchFile"]` (== "<runDir>/launch.json") rather than passed
+    separately, so the function stays a two-argument pure check over the
+    receipt alone.
+
+    Returns (ok, detail) — ok is False on ANY violation; detail always names
+    what was checked/found so a failure is diagnosable from the row alone."""
+    compile_obj = receipt.get("compile") or {}
+    dag_edges = compile_obj.get("dag_edges") or []
+    waw_edges = [e for e in dag_edges if e.get("why") == "write-after-write"]
+    launch_waves = compile_obj.get("launch_waves") or []
+    contended = [(n, wave) for n, wave in enumerate(launch_waves, start=1)
+                if _wave_is_contended(wave)]
+
+    if arm_overlap == "serialize":
+        if len(waw_edges) >= 2:
+            return True, ("serialize: %d write-after-write dag_edges"
+                          % len(waw_edges))
+        return False, ("serialize: expected >=2 write-after-write dag_edges, "
+                       "found %d" % len(waw_edges))
+
+    if arm_overlap == "fold":
+        if waw_edges:
+            return False, ("fold: %d write-after-write dag_edges present "
+                           "(expected zero)" % len(waw_edges))
+        if not contended:
+            return False, ("fold: no launch_waves wave with >=2 tasks sharing "
+                           "pairwise-intersecting files")
+        launch_file = receipt.get("launchFile")
+        if not launch_file:
+            return False, ("fold: receipt carries no launchFile — cannot "
+                           "locate the run dir for the route-away check")
+        run_dir = Path(launch_file).parent
+        missing = [n for n, _wave in contended
+                  if not (run_dir / "frontier" / ("wave-%d" % n)).is_dir()]
+        if missing:
+            return False, ("fold: frontier/wave-<n>/ missing under %s for "
+                           "contended wave(s) %s"
+                           % (run_dir, ", ".join(str(n) for n in missing)))
+        return True, ("fold: 0 write-after-write dag_edges, %d contended "
+                      "wave(s) route-away confirmed" % len(contended))
+
+    return False, "unknown arm_overlap: %r" % (arm_overlap,)
+
+
+def _read_run_receipt(workdir):
+    """Locate the driven cell's launch receipt (ultra_run.py's receipt.json —
+    the one embedding `compile`), not the gate-receipt `drive_run` reads.
+    Same run-dir glob convention; last (lexically highest run-<stamp>) wins."""
+    receipts = sorted((Path(workdir) / ".claude/ultrapowers").glob("run-*/receipt.json"))
+    if not receipts:
+        return {}
+    try:
+        return json.loads(receipts[-1].read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _tag_identity(row, run_receipt, arm_overlap):
+    """Attach the identity-gate fields to an already-harvested row IN PLACE
+    and return it. A failed identity never drops the row — it appends with
+    an `invalid` marker so `--rerun-of` has a row to supersede (Task 12)."""
+    ok, detail = assert_arm_identity(run_receipt, arm_overlap)
+    row["armOverlap"] = arm_overlap
+    row["identity"] = detail
+    if not ok:
+        row["invalid"] = "arm-identity: %s" % detail
+    return row
+
+
 def collect_counters(gate_report):
     """Reliability counters from the /ultrapowers end-of-run gate report.
     Defensive: the report is operator/engine-produced, so pull each key with a
@@ -183,8 +279,12 @@ PROBE_PROMPT = (
 
 # Standing operator answers for the headless drive (night_runner.sh prompt_for):
 # approve the wave plan as rendered, stop AT the pre-merge gate, merge nothing.
+# `overlap={overlap}` (Task 12) is the frontier-mode arm dimension — the launch
+# line's operator-facing form (SKILL.md Step 1: `overlap=serialize|fold`), read
+# by the driven agent as an instruction to forward `--overlap <mode>` onto its
+# own ultra_run.py preflight call.
 DRIVE_PROMPT = (
-    "/ultrapowers {plan}\n\n"
+    "/ultrapowers {plan} overlap={overlap}\n\n"
     "You are running non-interactively with standing operator answers; do not use "
     "AskUserQuestion. Approve the wave plan exactly as proposed - no knob changes. "
     "When the run reaches the pre-merge gate, print the pre-merge report as JSON and "
@@ -408,15 +508,17 @@ def drive_run(workdir, plan, env):
     then reruns the cell interactively and the row is tagged interactive-fallback.
     `env` is the cell's isolated mapping (#107).
     """
+    arm_overlap = plan.get("armOverlap") or "serialize"
     if not probe_workflow(workdir, env):
         sys.exit(
             "Workflow tool unavailable headlessly: the 'ultrapowers-probe' saved "
             "workflow did not round-trip. Run this cell INTERACTIVELY instead — open "
             "a Claude Code session in %s and run:\n  %s\nThen re-invoke ab_runner with "
             "--rerun-of to record the interactive-fallback row." % (
-                workdir, DRIVE_PROMPT.format(plan=plan["planPath"]).splitlines()[0]))
+                workdir, DRIVE_PROMPT.format(plan=plan["planPath"], overlap=arm_overlap)
+                .splitlines()[0]))
     result_path = workdir / ".headless-result.json"
-    prompt = DRIVE_PROMPT.format(plan="docs/plans/plan.md")
+    prompt = DRIVE_PROMPT.format(plan="docs/plans/plan.md", overlap=arm_overlap)
     run_env = dict(env)
     # The print-mode harness kills background waits at 600s by default; a waved
     # run (the Workflow tool is a background task) routinely outlives that.
@@ -626,6 +728,11 @@ def main():
                     help="print the run plan JSON and exit; write nothing, invoke no claude")
     ap.add_argument("--rerun-of", default=None,
                     help="startedAt of a prior row this run supersedes (e.g. an interactive rerun)")
+    ap.add_argument("--arm-overlap", choices=["serialize", "fold"], default="serialize",
+                    help="frontier-mode arm dimension (Task 12): threaded onto the driven "
+                         "/ultrapowers launch line's overlap=<mode> token and checked "
+                         "post-cell against the receipt's compile object; defaults to the "
+                         "compiler's own OVERLAP_DEFAULT")
     args = ap.parse_args()
 
     root = Path(__file__).resolve().parents[1]
@@ -638,7 +745,8 @@ def main():
     if not args.engine_label or not args.fixture:
         ap.error("--engine-label and --fixture are required unless --cell is given")
 
-    plan = build_run_plan(args.engine_ref, args.engine_label, args.fixture, root)
+    plan = build_run_plan(args.engine_ref, args.engine_label, args.fixture, root,
+                          args.arm_overlap)
     if args.dry_run:
         print(json.dumps(plan, indent=2))
         return
@@ -658,6 +766,12 @@ def main():
             row["crashDetail"] = str(exc)
     finally:  # the token never outlives the cell, crash or probe-abort included
         scrub_credentials(env)
+
+    # Receipt-derived identity gate (Task 12): proves this cell actually
+    # exercised the arm it claims. A failed identity still appends its row
+    # (tagged `invalid`) rather than dropping it, so --rerun-of has a row to
+    # supersede.
+    row = _tag_identity(row, _read_run_receipt(workdir), plan["armOverlap"])
 
     row.update({"fixture": plan["fixture"], "engine": plan["engine"],
                 "engineRef": plan["engineRef"], "rerunOf": args.rerun_of,
