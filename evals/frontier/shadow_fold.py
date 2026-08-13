@@ -32,6 +32,12 @@ FMT_SHA_PARENTS = "%H%x00%P"
 
 NO_REPORT_REASON = "no finalized report (unshadowable)"
 NO_PER_TASK_MERGES_REASON = "no per-task merges (nothing to replay)"
+# An octopus adoption commit (>=3 parents) is not a per-task 2-parent merge:
+# nothing about it can be decomposed into the group/trailing/absorbed dispatch
+# below, so it is excluded by name rather than mis-classified as "absorbed".
+OCTOPUS_PARENTS_FLOOR = 3
+OCTOPUS_REASON_FMT = ("octopus adoption commit (%d parents) — fold log is "
+                     "the replay record")
 
 
 class ShadowAbort(Exception):
@@ -73,6 +79,12 @@ def _commit_parents(repo, sha):
 
 def _committer_time(repo, sha):
     return int(_rev(repo, "show", "-s", "--format=%ct", sha))
+
+
+def _octopus_reason(repo, sha):
+    """`OCTOPUS_REASON_FMT % N` when `sha` has >= 3 parents, else None."""
+    n = len(_commit_parents(repo, sha)[1])
+    return OCTOPUS_REASON_FMT % n if n >= OCTOPUS_PARENTS_FLOOR else None
 
 
 def _walk_to_bound(repo, tip, bound):
@@ -181,6 +193,14 @@ def _build_waves(repo, merged, groups, trailing, floor):
     waves_out = []
     for w in merged:
         head, branches = w["headSha"], w.get("branches") or []
+        octopus = _octopus_reason(repo, head)
+        if octopus is not None:
+            waves_out.append({
+                "wave": w.get("wave"), "disposition": "excluded",
+                "endpoints": len(branches), "narrations": [],
+                "reason": octopus,
+            })
+            continue
         if head in group_by_after:
             group = group_by_after[head]
             replay = run_eval.replay_group(repo, group, seed=42)
@@ -259,7 +279,8 @@ def _remodel(run_dir, durations_out):
     if plan_path is None:
         return None, "no plan available in run dir"
     try:
-        out = subprocess.run([sys.executable, str(COMPILER), str(plan_path)],
+        out = subprocess.run([sys.executable, str(COMPILER), "--overlap", "serialize",
+                              str(plan_path)],
                              capture_output=True, text=True, check=True)
         compiled = json.loads(out.stdout)
     except (subprocess.CalledProcessError, ValueError) as exc:
@@ -308,7 +329,15 @@ def _shadow(repo, report, run_dir):
         groups, trailing = run_eval.group_chain(repo, chain)
         waves_out = _build_waves(repo, merged, groups, trailing, floor)
     else:
+        # No 2-parent merge anywhere in the bounded chain — merge-free by
+        # default, UNLESS any merged wave head is itself an octopus adoption
+        # commit, in which case that (not "no per-task merges") is why.
         excluded = NO_PER_TASK_MERGES_REASON
+        for w in merged:
+            octopus = _octopus_reason(repo, w["headSha"])
+            if octopus is not None:
+                excluded = octopus
+                break
 
     durations_out = _harvest_durations(repo, merged, task_heads, floor)
     remodel, remodel_reason = _remodel(run_dir, durations_out)
