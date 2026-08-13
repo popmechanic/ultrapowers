@@ -113,6 +113,27 @@ LLM_DERIVES = [
 VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
 VALID_REVIEWS = {"lean", "adversarial"}
 
+OVERLAP_CHOICES = ("serialize", "fold")
+
+
+def compile_argv(plan, run_dir, root, overlap=None):
+    """Build the compile_plan.py argv (everything after the script path)
+    for a launch. Pure — no I/O — so this seam is testable without a real
+    repo or a real compile_plan.py subprocess.
+
+    `--repo-root <root>` is ALWAYS stamped from the driver's own repo root
+    (the compiler's eligibility pre-filter is inert without it — never off
+    by omission). `--overlap <mode>` is added only when the caller passed
+    one explicitly; absent, the compiler's own OVERLAP_DEFAULT governs."""
+    argv = [str(plan),
+            "--emit-launch", str(run_dir / "launch.json"),
+            "--emit-args", str(run_dir / "args.json"),
+            "--run-dir", str(run_dir.resolve())]
+    if overlap is not None:
+        argv += ["--overlap", overlap]
+    argv += ["--repo-root", str(root)]
+    return argv
+
 
 def sh(cmd, cwd=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -257,6 +278,10 @@ def main(argv=None):
     ap.add_argument("--bootstrap-cmd", default=None,
                     help="per-worktree dependency install; stamped into the "
                          "receipt so the gate provisions its acceptance worktree")
+    ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
+                    help="scheduling knob forwarded to compile_plan.py's "
+                         "--overlap; omit to use the compiler's own default "
+                         "(serialize)")
     a = ap.parse_args(argv)
 
     if a.validate_knobs is not None:
@@ -353,9 +378,8 @@ def main(argv=None):
 
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
-    r = sh([sys.executable, str(HERE / "compile_plan.py"), str(a.plan),
-            "--emit-launch", str(launch), "--emit-args", str(args_file),
-            "--run-dir", str(run_dir.resolve())],
+    r = sh([sys.executable, str(HERE / "compile_plan.py")]
+           + compile_argv(a.plan, run_dir, root, a.overlap),
            cwd=root)
     compile_obj, summary = None, ""
     if r.returncode == 0:
