@@ -1275,15 +1275,22 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   if (fold.selfChecks && fold.selfChecks !== 'ok')
     return finish(null, 'fold self-checks did not pass: ' + fold.selfChecks)
   // CONTENDED_MERGE_PROMPT's fold STEP orders the agent to copy `conflicts`
-  // verbatim from the CLI's stdout for every reply, FOLDED included (the CLI
-  // always emits it, 0 on a clean fold). A FOLDED reply with no `conflicts`
-  // scalar at all is therefore not a legal shape of a clean fold — it is a
-  // contract violation the later count-vs-count guards below cannot catch,
-  // because both of them go silent when the field is simply absent. Fall
-  // back rather than adopt a candidate whose only claim to being clean is an
-  // enum with nothing behind it.
-  if (fold.status === 'FOLDED' && typeof fold.conflicts !== 'number')
-    return finish(null, 'fold reported FOLDED with no conflicts count to verify against')
+  // verbatim from the CLI's stdout for every reply — the CLI always emits it
+  // for both fold verdicts, FOLDED and CONFLICTS alike (fold_wave.py:281-285;
+  // 0 on a clean fold). ERROR and PARKED have already returned above, so the
+  // only statuses that reach here are FOLDED and CONFLICTS, and resolve
+  // replies share FOLD_SCHEMA but never reach this call site — so the check
+  // below is unconditional, not FOLDED-only. A reply with no `conflicts`
+  // scalar at all is not a legal shape of either verdict: it is a contract
+  // violation the later count-vs-count guards below cannot catch, because
+  // both of them go silent when the field is simply absent — a CONFLICTS
+  // reply naming only a partial `open` list with no `conflicts` count would
+  // otherwise resolve just that subset and adopt, silently dropping the rest.
+  // Fall back rather than adopt a candidate whose only claim to being clean
+  // is an enum with nothing behind it.
+  if (typeof fold.conflicts !== 'number')
+    return finish(null, 'fold reported ' + fold.status +
+      ' with no conflicts count to verify against')
   // The counts are authority over the status enum: a parked conflict means the
   // frontier cannot be completed, whatever verdict the agent typed alongside it.
   if (typeof fold.parked === 'number' && fold.parked > 0)

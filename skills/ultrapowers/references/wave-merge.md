@@ -149,10 +149,15 @@ non-zero `parked` falls the wave back whatever verdict accompanies it, and — t
 load-bearing half — the engine requires the `open` list to account for every
 dispatchable conflict, because the resolver loop runs over `open` alone: a `FOLDED`
 typed over a non-zero conflict count, or a short `open` list, would skip resolution
-and adopt a candidate that drops a contending task's edit on a **green** run. Nothing
-downstream catches that (materialize builds from the kernel's own manifest, and the
-fold advances the frontier either way), and it lands past the adoption boundary where
-fallback is no longer live — so it is checked before the loop, not after.
+and adopt a candidate that drops a contending task's edit on a **green** run. A reply
+that omits the `conflicts` scalar entirely is checked the same way, unconditionally on
+the status enum: the CLI always emits `conflicts` for both fold verdicts, so a missing
+count is a contract violation rather than a legal FOLDED or CONFLICTS shape, and it
+falls the wave back before either count-vs-count guard — which go silent when the
+field is simply absent — ever runs. Nothing downstream catches any of this (materialize
+builds from the kernel's own manifest, and the fold advances the frontier either way),
+and it lands past the adoption boundary where fallback is no longer live — so it is
+checked before the loop, not after.
 
 The canonical prompt wording (`{{INTEGRATION_WT}}` is the dedicated integration
 worktree path, `{{PREV_HEAD}}` the engine-authored wave base, `{{WAVE_DIR}}` the
