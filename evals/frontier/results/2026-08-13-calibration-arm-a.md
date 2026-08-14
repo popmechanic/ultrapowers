@@ -1,6 +1,9 @@
 # Calibration run — arm A (serialize) on contend-prod — 2026-08-13
 
-**Status: floors MISSED — fixture resized before any counted cell. Not a counted cell** (plan Task 14 / spec §6 calibration).
+**Status: CALIBRATED 2026-08-14 — floors MET at attempt 8 (round-6 fixture,
+`486f02a`). T14 complete.** History of all 8 attempts and 6 resize rounds
+below. None of these rows is a counted A/B cell (plan Task 14 / spec §6
+calibration).
 
 ## Reading
 
@@ -302,3 +305,38 @@ equal to both), `format_entry`/`to_lines`; task 1 gains `spec_summary_line`,
 `rules.explain_failures`, and the `is_valid_amount(10**400)` OverflowError
 pin (attempt-6/7 reviewers both flagged it); task 2 unchanged (5.9/7.4 —
 comfortably clear). Projected means: ~5.8 / 6.5 / 6.0 / 5.8, E2E ~55–60 min.
+
+## Attempt 8 (round-6 fixture, `486f02a`) — ALL FLOORS MET. T14 complete.
+
+Row `startedAt 2026-08-14T07:50:52Z`: `wallClockSec 3236.2` (**53.9 min ≥
+30**), 253 528 output tokens, arm identity PASS (6 write-after-write edges),
+**gateVerdict PASS**, sealed exam green (exit 0). One fix round (task 2).
+
+| agent | wall clock | floor |
+|---|---|---|
+| impl task 1 (validation+schema+rules) | 5.9 min | **MET** |
+| impl task 2 (export+tabular) | 6.8 min | **MET** |
+| impl task 3 (quota+ratelimit+throttle) | 5.2 min | **MET** |
+| impl task 4 (audit+audit_query) | 5.1 min | **MET** |
+| reviews | 2.6–4.4 min | — |
+| gate critic | 5.5 min | — |
+
+**Both pre-registered floors hold as written on a single run.** The fixture
+is frozen at `486f02a` for the counted cells (rounds/attempts summary:
+implementer sums 6.5 → 19.2 → 23.0 min across rounds 0/5/6; six additive
+resize rounds; seal `4d131df61152` preserved throughout and re-verified green
+at attempts 5, 7, 8).
+
+## T15 protocol decisions (recorded under the operator's standing delegation)
+
+1. **Attempt 8 is NOT reused as the counted arm A.** The calibration loop
+   accepts the first floors-clear run, and floors-clearing correlates with
+   slower implementers — conditioning arm A on that event would bias E1′
+   (arm B wall ≤ 0.7× arm A) toward PASS. The counted pair is run fresh,
+   arms sequential, same engine ref, per plan Task 15 as written.
+2. **The pair waits for a fresh token window.** ~483k output tokens spent in
+   the current 5-hour account window (attempts 7–8); observed window
+   capacity ≈ 550–600k; each arm costs ~250k. Launching now would starve an
+   arm mid-run (attempt 6's failure mode) and burn a `--rerun-of`
+   supersession for nothing. Both arms launch back-to-back in the window
+   opening ~05:01 PT.
