@@ -35,6 +35,14 @@
   - `check_required({"amount": 1}, ["name", "amount"])` returns `["name"]`; with both missing returns `["name", "amount"]` in **required_fields order** (not dict order — pass a dict whose insertion order disagrees and assert); with none missing returns `[]`.
   - `is_valid_amount`: `True` for `0`, `5`, and `3.5`; `False` for `True`, `False` (bools are not amounts even though `isinstance(True, int)`), `"3"`, `None`, `float("nan")`, `float("inf")`, `float("-inf")` (use `math.isfinite`; NaN must not slip through a `>=` chain).
   - `is_non_empty_str`: `True` for `"a"` and `" a "` (has non-whitespace content); `False` for `""`, `"   "`, `42`, `None`.
+  - `SchemaError` is an `Exception` subclass, distinct from `KeyError`/`ValueError`.
+  - `compile_spec(spec)` compiles a declarative field spec — a dict mapping field name → rules dict whose only legal keys are `"required"` (bool), `"type"` (`"str"` or `"number"`), `"non_empty"` (bool), `"max"` (number) — into a reusable validator callable. Compile-time checks (no fields needed): an unknown rule key raises `ValueError` naming the key; a `"type"` value outside the two legal strings raises `ValueError` naming the value; `compile_spec({})` compiles and its validator accepts any dict unchanged.
+  - the compiled `validator(fields)`:
+    - checks every `required: True` field first, in **spec insertion order**, raising `SchemaError` with the exact `format_error("missing", ...)` message for the first absent one.
+    - then, per present field with rules, in spec order: `"type": "number"` enforces `is_valid_amount` (so bools, numeric strings, NaN and infinities all fail) raising the `"numeric"` catalog message; `"type": "str"` enforces `isinstance(str)`; `"non_empty": True` enforces `is_non_empty_str` raising the `"non_empty"` message; `"max": N` enforces `value <= N` raising the `"max"` message (boundary: equal passes).
+    - on success returns a **new** dict in which every field whose rules include `non_empty: True` is `.strip()`ed, everything else copied through unchanged — the input dict is never mutated (assert), and the validator is reusable and deterministic (two calls on equal inputs return equal results).
+    - fields present in `fields` but absent from the spec pass through untouched (specs constrain, they do not whitelist).
+  - That's 10 more schema functions beyond the catalog/predicate ones — roughly 22 test functions in this file all told; one per bullet or sub-bullet.
 
 - [ ] **Step 1b: Write failing tests** in `tests/test_validation.py` for `app/validation.py`:
   - `ValidationError` is an `Exception` subclass.
@@ -62,7 +70,7 @@
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_schema.py tests/test_validation.py -v` → FAIL (neither module exists).
 
-- [ ] **Step 3: Implement `app/schema.py` then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, per Step 1a exactly; `validation`: `ValidationError`, `validate_fields`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`).
+- [ ] **Step 3: Implement `app/schema.py` then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, `SchemaError`, `compile_spec`, per Step 1a exactly; `validation`: `ValidationError`, `validate_fields`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys (do not reorder or reformat the existing lines): `"validation_required_fields": ["name", "amount"]` and `"validation_max_amount": 100000`.
@@ -100,6 +108,8 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - `cell(None)` returns `""`; `cell(3)` returns `"3"` (no `.0` suffix); `cell(3.5)` returns `"3.5"`; `cell("x")` returns `"x"` — plain `str()` except the `None` case.
   - `escape_csv("plain")` returns `"plain"` unquoted; `escape_csv("a,b")` returns `'"a,b"'`; `escape_csv('say "hi"')` returns `'"say ""hi"""'` (inner quotes doubled, whole cell quoted); `escape_csv("line1\nline2")` wraps in quotes; `escape_csv("")` returns `""` (empty cell stays unquoted).
   - `widths(records, cols)` returns a dict mapping each column name to `max(len(header), max cell width)` — assert against a fixture where one column's widest value is the header itself and another's is a cell.
+  - `pad("ab", 4, "left")` returns `"ab  "`; `pad("ab", 4, "right")` returns `"  ab"`; a value already at or beyond the width is returned unchanged (never truncated — assert with a 5-char value and width 4); any other `align` string raises `ValueError` naming it.
+  - `sanitize_flat(value)` replaces every tab and newline in `cell(value)`'s rendering with a single space (assert on a value containing both, and that a clean value passes through byte-identical) — the helper flat single-line formats build on.
 - [ ] **Step 1b: Write failing tests** in `tests/test_export.py` for `app/export.py`:
   - `to_csv([])` returns `""` (empty list, no header row either — an empty export has no columns to name).
   - `to_csv(records)` emits a header row of every field name that appears across ALL records, **sorted alphabetically**, then one row per record in input order, with a missing field on a given record rendered as an empty cell (records need not share every field).
@@ -109,14 +119,16 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - `to_csv` escapes cells via `tabular.escape_csv`: a record whose `name` contains a comma renders as one quoted cell (assert the exact line), a value containing a double-quote doubles it, and a simple record with no special characters renders **byte-identical to the unescaped join** (escaping must never change the plain case).
   - `to_markdown([])` returns `""`. `to_markdown(records)` renders a pipe table: a header row of the sorted column names, a separator row of dashes, then one row per record — every cell padded with trailing spaces to its `tabular.widths` column width, missing fields as empty (padded) cells. Assert the **exact multi-line string** for a two-record fixture with unequal key sets.
   - `to_ndjson([])` returns `""`. `to_ndjson(records)` renders one JSON object per line (`sort_keys=True`, no trailing newline): assert the exact string for two records, and that each line round-trips through `json.loads`.
-  - `FORMATS` is a dict with exactly the keys `"csv"`, `"json"`, `"md"`, `"ndjson"` mapping to `to_csv`/`to_json`/`to_markdown`/`to_ndjson`.
-  - `render(records, fmt)` delegates to the matching function for all four formats (equality-check each against the direct call).
+  - `to_markdown` takes an `align` keyword, default `"left"`: `"left"` pads cells per `tabular.pad(..., "left")` with a `---` separator row; `"right"` pads with `"right"` and renders each separator cell as dashes ending in a colon (`--:` style, width-matched); assert the **exact multi-line string** for a small fixture under each alignment, and that any other `align` value raises `ValueError` (delegated to `tabular.pad` — do not duplicate the check).
+  - `to_tsv([])` returns `""`. `to_tsv(records)` renders the sorted-column header then one tab-joined row per record, every cell passed through `tabular.sanitize_flat` (a cell containing a tab or newline renders with spaces instead — assert the exact line); missing fields are empty cells.
+  - `FORMATS` is a dict with exactly the keys `"csv"`, `"json"`, `"md"`, `"ndjson"`, `"tsv"` mapping to `to_csv`/`to_json`/`to_markdown`/`to_ndjson`/`to_tsv`.
+  - `render(records, fmt)` delegates to the matching function for all five formats (equality-check each against the direct call).
   - `render(records, "xml")` raises `ValueError` whose message contains `"xml"`.
-  - Add single-record (n=1) coverage for **all four** formats — the degenerate case the header/width logic handles differently from n=0 and n>=2.
+  - Add single-record (n=1) coverage for **all five** formats — the degenerate case the header/width logic handles differently from n=0 and n>=2.
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py tests/test_tabular.py -v` → FAIL.
 
-- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `FORMATS`, `render`, per Step 1's contracts exactly. `to_csv` and `to_markdown` must build their column model and cells through `tabular` (no duplicated key-union or str() logic in `export.py`).
+- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`/`pad`/`sanitize_flat`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `to_tsv`, `FORMATS`, `render`, per Step 1's contracts exactly. `to_csv` and `to_markdown` must build their column model and cells through `tabular` (no duplicated key-union or str() logic in `export.py`).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"export_default_format": "csv"` and `"export_formats_enabled": ["csv", "json"]`.
@@ -126,7 +138,7 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
     EXPORT_FORMATS.update(export.FORMATS)
     ```
   - **Do not** add a route or touch `bootstrap()` — `GET /export` is already registered and already calls `_export`, which reads `EXPORT_FORMATS` and `config["export_default_format"]`/`config["export_formats_enabled"]`; your registration line is the only thing `/export` is waiting on.
-  - **Do not** add `"md"`/`"ndjson"` to `"export_formats_enabled"` — the route serves exactly `csv` and `json`; the two new formats are registered in `EXPORT_FORMATS` but reachable only by direct `render(...)` calls until a future config change enables them.
+  - **Do not** add `"md"`/`"ndjson"`/`"tsv"` to `"export_formats_enabled"` — the route serves exactly `csv` and `json`; the three new formats are registered in `EXPORT_FORMATS` but reachable only by direct `render(...)` calls until a future config change enables them.
 
 - [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records, and `app.call("GET", "/export", fmt="md")` raises `ValueError` (registered but not enabled).
 
@@ -160,6 +172,7 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
   - burst: `take("k", limit=2, window_seconds=60, burst=1)` allows three hits, raises on the fourth; `burst=0` is the default.
   - per-key independence: exhausting `"a"` leaves `"b"`'s quota untouched with the same clock and window (interleave and assert).
   - `reset()` clears the clock AND every key's hits (exhaust a key, `reset()`, take succeeds at `1` and `now()` is `0.0`).
+  - `remaining("k", limit, window_seconds, burst=0)` reports how many takes are left **without recording a hit**: it equals `limit + burst - in-window count`, floors at `0` when exhausted, and calling it twice in a row returns the same value (read-only — assert a subsequent `take` still succeeds where it should); after `advance` past the window it recovers to the full allowance.
 
 - [ ] **Step 1b: Write failing tests** in `tests/test_ratelimit.py` for `app/ratelimit.py`. Call `reset()` at the start of every test (module-global counters — tests must not leak into each other):
   - `RateLimitExceededError` is an `Exception` subclass.
@@ -178,7 +191,7 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py -v` → FAIL.
 
-- [ ] **Step 3: Implement `app/quota.py` then `app/ratelimit.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own).
+- [ ] **Step 3: Implement `app/quota.py` then `app/ratelimit.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`, `remaining`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add three keys to `DEFAULT_CONFIG`, near its existing keys: `"rate_limit_max_per_window": 5`, `"rate_limit_window_seconds": 60` (the hook passes it to `quota.take`; the logical clock only moves under tests, so shipped behavior is pure call-counting), and `"rate_limit_burst": 0`.
@@ -218,6 +231,8 @@ git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records ove
   - `redact(entries, ["actor"])` returns new entry dicts with `"actor"` replaced by `"***"` and the other keys untouched — the originals keep their real actors; `redact(entries, [])` returns equal-but-distinct dicts; a field name outside `{"method", "path", "actor"}` raises `ValueError`.
   - `summary([])` returns `{"total": 0, "by_method": {}, "by_actor": {}, "first": None, "last": None}`; on a non-empty fixture `summary` returns the exact dict with `total`, the two `counts_by` sub-dicts, and `first`/`last` as **copies** of the first and last entries.
   - `recent(entries, config)` returns `last_n(entries, config["audit_query_default_limit"])` — assert with a config of `{"audit_query_default_limit": 2}` and a 3-entry fixture.
+  - `paginate(entries, page, per_page)` returns `{"page": page, "pages": total-page-count, "total": len(entries), "items": [...]}` with 1-based pages: assert the exact dict for pages 1 and 2 of a 5-entry fixture at `per_page=2` (page 3 has the lone remainder); a page past the end returns the correct metadata with `"items": []`; `paginate([], 1, 2)` returns `{"page": 1, "pages": 0, "total": 0, "items": []}`; `page < 1` or `per_page < 1` raises `ValueError`; `"items"` lists are copies (mutating one does not touch `entries`).
+  - `to_report(entries)` renders an exact plain-text report: line `"audit report"`, line `"total: N"`, blank line, line `"by method:"` then one `"  <method>: <count>"` line per method **sorted alphabetically**, blank line, line `"by actor:"` then the same for actors — assert the **exact multi-line string** for a 4-entry fixture; `to_report([])` is exactly `"audit report\ntotal: 0"` (no section headers for empty counts). Build the counts via `counts_by`, not a re-count.
   - integration (the one non-pure test): after two `audit.dispatch_hook` calls with distinct actors, `filter_entries(audit.entries(), actor="bob")` finds exactly bob's entry.
 
 - [ ] **Step 1b: Write failing tests** in `tests/test_audit.py` for `app/audit.py`. Call `clear()` at the start of every test (module-global log — tests must not leak into each other):
@@ -235,7 +250,7 @@ git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records ove
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_audit.py tests/test_audit_query.py -v` → FAIL.
 
-- [ ] **Step 3: Implement `app/audit.py` then `app/audit_query.py`** — `audit`: `_log` (module-global list), `clear`, `entries`, `record`, `dispatch_hook`, per Step 1's contract exactly; `audit_query`: `filter_entries`, `counts_by`, `last_n`, `redact`, `summary`, `recent`, pure over its arguments per Step 1a (no import of `app.audit` inside the module — the integration test composes them from the test file).
+- [ ] **Step 3: Implement `app/audit.py` then `app/audit_query.py`** — `audit`: `_log` (module-global list), `clear`, `entries`, `record`, `dispatch_hook`, per Step 1's contract exactly; `audit_query`: `filter_entries`, `counts_by`, `last_n`, `redact`, `summary`, `recent`, `paginate`, `to_report`, pure over its arguments per Step 1a (no import of `app.audit` inside the module — the integration test composes them from the test file).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add three keys to `DEFAULT_CONFIG`, near its existing keys: `"audit_log_enabled": True` (recorded for a future on/off switch and not read by any code in this plan — `dispatch_hook` always logs, per its module docstring), `"audit_log_max_entries": 500`, and `"audit_query_default_limit": 100` (read by `audit_query.recent`).

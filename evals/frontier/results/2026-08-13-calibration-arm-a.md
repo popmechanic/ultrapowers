@@ -49,3 +49,22 @@ acceptance directory is untouched.
 The T14 row above stays in `runs.jsonl` as a calibration reading; it is not
 an A/B interval and nothing supersedes it (`--rerun-of` is for invalid
 counted cells, which this never was).
+
+## Attempt 2 (post-resize) — infra-killed, floors still short
+
+Re-run at `5405a1a` (row `startedAt 2026-08-14T00:04:20Z`): the driven
+session lost Claude subscription access mid-run ("organization has disabled
+Claude subscription access") during wave 4 — task 4's implementer died at
+~1.2 min with two instant-death retries, no report, no gate verdict
+(`gateVerdict: unknown`, RUN_LOCK left in the cell's throwaway repo). The
+outage is the known OAuth/subscription flake class; the attempt is invalid
+as a calibration end-to-end reading.
+
+The three implementers that completed are still a valid floor sample:
+**1.9 min (validation) / 3.5 min (export) / 4.6 min (ratelimit)** — up from
+1.3/1.3/2.6 pre-resize, still under the 5-min floor. Decision: second
+additive resize round (schema gains a `compile_spec` declarative-validator
+surface; export gains `to_tsv` + markdown alignment + `pad`/`sanitize_flat`;
+quota gains `remaining`; audit_query gains `paginate` + `to_report`), same
+seal-preserving discipline, then re-run calibration once subscription access
+probes healthy.
