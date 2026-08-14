@@ -244,3 +244,28 @@ Round-5 micro-resize, tasks 1 and 4 only: task 1 gains
 and 3 unchanged beyond the two reviewer-tension pins (boundary wording,
 burst-header assertion). Projected: task 1 ~5.5 min, task 4 ~5.3 min, E2E
 ~60 min.
+
+## Attempt 6 (round-5 fixture, `72bb96b`) — infra-killed: account session limit
+
+Row `startedAt 2026-08-14T06:29:48Z`: `wallClockSec 1483.8` (24.7 min),
+gateVerdict BLOCKED — **invalid as an end-to-end reading**. Task 1
+implemented (3.6 min), one fix round (builtin rule-name literals not
+pinned), re-review PASS, merged clean (112 tests). Then task 2's implementer
+died twice on `You've hit your session limit · resets 12am
+(America/Los_Angeles)` (the replacement Max account's 5-hour rolling
+window — attempts 3–6 spent ~650k output tokens on it today), tasks 3/4
+dep-blocked, the completeness critic died the same way, and the sealed exam
+correctly failed 19/24 on the missing modules. The engine handled the
+starvation cleanly: AGENT_NULL recorded, waves SKIPPED not fabricated, gate
+BLOCKED, lock held.
+
+The 3.6 min task-1 reading is a valid floor sample (post-round-5, down from
+4.4 at round 4 — cross-attempt variance on this task is ±0.8 min, worth
+remembering when reading near-floor results). Task-1 reviewer also caught a
+real fixture-spec defect: `is_valid_amount` via bare `math.isfinite` raises
+`OverflowError` on an int too large for float (e.g. `10**400`) — implementer
+fixed task-locally; not yet a plan bullet.
+
+Decision: same fixture, same ref — relaunch as attempt 7 once the session
+window resets (12am PT). Budget note for T15: a full A/B pair costs
+~350–500k output tokens; schedule both arms early in a fresh 5-hour window.
