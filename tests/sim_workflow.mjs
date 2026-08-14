@@ -2871,6 +2871,49 @@ async function scenarioTestCmdMissing() {
   console.log('scenario testcmd-missing: OK')
 }
 
+// #123 item 4d: the no-command-field critic shape, traded away by the #106
+// sim-mass audit on the theory that scenarioCriticCommandIgnored's own bite
+// proof already covered it. It does not: that scenario's critic reply always
+// carries an explicit (if wrong) `command` key, so a report-builder bug that
+// only mishandles a critic reply with NO `command` key at all — falling back
+// to leaking review.output as the reported command — passes it clean. Every
+// REVIEW_SCHEMA-conformant critic reply omits `command` entirely (the schema
+// dropped it in #96), so this is the realistic shape, not an edge case. The
+// field the mechanical-stamp guard sets is report.tests.command; assert that
+// exact field, not a broad pass/fail read of the run.
+async function scenarioMechanicalTestsCommandNoField() {
+  const noCommandCritic = () => makeAgent((label) => {
+    if (label === 'integration') {
+      // No `command` key anywhere on this object — the REVIEW_SCHEMA shape.
+      return { testsPassed: true, onIntegrationHead: true,
+               output: 'python3 -m pytest -q (553 passed)', findings: [] }
+    }
+    return undefined
+  })
+  const report = await runWorkflow({ agent: noCommandCritic(), args: baseArgs, budget: undefined })
+  eq(report.tests.command, 'pnpm check',
+     'tests.command is mechanically stamped from args.testCmd even when the critic reply carries no command field at all')
+
+  // Mutation-check (bite proof): neutralize the mechanical stamp so it falls
+  // back to review.output specifically when the critic reply has no `command`
+  // key — the exact guard this scenario exists to pin. Under that neutralized
+  // guard, this scenario's own assertion above must fail.
+  const guard = "command: testCmd, passed: review.testsPassed, output: review.output"
+  assert(SRC.includes(guard), 'mechanicalTestsCommandNoField: guard line found in SRC to mutate')
+  const mutatedSrc = SRC.replace(guard,
+    "command: ('command' in (review || {})) ? testCmd : review.output, passed: review.testsPassed, output: review.output")
+  assert(mutatedSrc !== SRC, 'mechanicalTestsCommandNoField: mutation actually changed SRC')
+  const factory = new Function(
+    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
+    '"use strict"; return (async () => {\n' + mutatedSrc + '\n})();'
+  )
+  const mutatedReport = await factory(
+    noCommandCritic(), (thunks) => Promise.all(thunks.map((t) => t())), () => {}, () => {}, baseArgs, undefined)
+  assert(mutatedReport.tests.command !== 'pnpm check',
+    'mechanicalTestsCommandNoField: neutralizing the missing-command guard must break this scenario (proves it is load-bearing)')
+  console.log('scenario mechanical-tests-command-no-field: OK')
+}
+
 // #96/#94: report.tests.command is stamped mechanically from args.testCmd. The
 // critic here emits BOTH failure shapes at once — a `command` field the schema
 // no longer carries, and prose output that reads like a command line — and
@@ -2903,6 +2946,7 @@ async function scenarioEarlyExhaustStampsCommand() {
 }
 
 await scenarioTestCmdMissing()
+await scenarioMechanicalTestsCommandNoField()
 await scenarioCriticCommandIgnored()
 await scenarioEarlyExhaustStampsCommand()
 
