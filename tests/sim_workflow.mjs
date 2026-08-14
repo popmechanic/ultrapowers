@@ -161,11 +161,13 @@ async function scenarioHappy() {
 async function scenarioFixLoop() {
   const reviewCalls = {}
   let fixPrompt = ''
+  let implPrompt = ''
   const agent = async (_prompt, opts) => {
     const label = opts.label || ''
     if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
     if (label.startsWith('impl:') || label.startsWith('fix:')) {
       const id = taskIdFromLabel(label)
+      if (label === 'impl:A') { implPrompt = _prompt }
       if (label === 'fix:A:1') { fixPrompt = _prompt }
       return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
     }
@@ -188,9 +190,33 @@ async function scenarioFixLoop() {
   eq(a.fixIterations, 1, 'fixloop: one fix round recorded')
   assert(reviewCalls['A'] === 2, 'fixloop: A reviewed twice — single pass per iter, cap 2 (got ' + reviewCalls['A'] + ')')
   eq(r.tests.passed, true, 'fixloop: tests passed')
+  // The existing anchor line: unchanged, still points at the prior implementation HEAD.
   assert(fixPrompt.indexOf('BASE: sha-A') !== -1, 'fixLoop: fix round anchors BASE to the prior implementation HEAD')
   assert(fixPrompt.indexOf('FIX ROUND') !== -1, 'fixLoop: fix preamble present')
   assert(fixPrompt.indexOf('locked by its own worktree') !== -1, 'fixLoop: branch-lock warning present')
+  // #146 (a): the FULL-task-range packet instruction names the TASK's original
+  // base (the wave base the scenario dispatched to impl:A's own 'BASE: ' line —
+  // 'int0' here, the integration head at wave-1 dispatch time) — never the prior
+  // impl head ('sha-A') the anchor line above points at. Anchor and packet base
+  // are deliberately distinct values in the same captured prompt.
+  // The GUARD preamble text also contains the literal substring "BASE: sha of
+  // the integration-branch HEAD..." (documenting the field) — match only the
+  // actual dispatch line, which sits on its own line immediately before
+  // "TEST COMMAND:".
+  const implBaseMatch = implPrompt.match(/\nBASE: (\S+)\nTEST COMMAND:/)
+  assert(implBaseMatch, 'fixLoop: initial impl:A dispatch carries a BASE: line to derive the task base from')
+  const taskBase = implBaseMatch[1]
+  assert(taskBase !== 'sha-A',
+    'fixLoop: task base derived from the initial dispatch must differ from the prior impl head (sha-A)')
+  assert(fixPrompt.indexOf('run review-package with base ' + taskBase +
+    ' (the task base) and your committed HEAD') !== -1,
+    'fixLoop: FULL-task-range packet instruction present, base=' + taskBase + ' (the task base, not the prior impl head)')
+  // #146 (b): the anchor-derivation instruction — typed BASE sha vs. the branch's
+  // actually-derived tip — carries the exact mismatch string verbatim.
+  assert(fixPrompt.indexOf('PRIOR=$(git rev-parse wt-A)') !== -1,
+    'fixLoop: anchor-derivation instruction derives the prior tip from the locked branch')
+  assert(fixPrompt.indexOf('typed prior sha <typed> != derived branch tip <derived>') !== -1,
+    'fixLoop: anchor-derivation mismatch string present verbatim')
   console.log('scenario fix-loop: OK')
 }
 
