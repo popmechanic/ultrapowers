@@ -273,8 +273,9 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   completeness finding naming it, and the instruction to pull correct prior work in
   (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
   waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
-  spreading the receipt's argsFile — it carries the mandatory `pluginRoot`/`runDir`
-  — never by rebuilding from the report). Before relaunching, delete
+  spreading the receipt's argsFile — it carries the now-mandatory `pluginRoot`/`runDir`
+  keys — never by rebuilding from the report; a relaunch that reconstructs args from
+  the report instead will be refused by the harness). Before relaunching, delete
   `<runDir>/heads/`: the prior launch's slots would otherwise masquerade as the
   relaunch's sidecar authority, and their shas are already durable in the
   finalized report. Return here.
@@ -283,8 +284,12 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
   then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
   --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
-  `ultrapowers-run` with the emitted args file. The emitted args carry only
-  the amended tasks' waves — a one-task fix relaunches one task on the same
+  `ultrapowers-run` with the emitted args file. `redirect_args.py` composes the
+  relaunch args by spreading the receipt's argsFile — it carries the
+  now-mandatory `pluginRoot`/`runDir` keys — never by hand-authoring from the
+  report; a relaunch that reconstructs args from the report will be refused by
+  the harness. The emitted args carry only the amended tasks' waves — a
+  one-task fix relaunches one task on the same
   integration branch (merged prior work is already there); the fix still flows
   through its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
   integration branch are unsanctioned — route every post-gate edit through this
