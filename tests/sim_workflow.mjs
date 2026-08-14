@@ -2438,6 +2438,57 @@ async function scenarioCannotVerifyEscalation() {
   console.log('scenario cannot-verify-escalation: OK')
 }
 
+// ── Scenario: NO wave merged — escalated CANNOT-VERIFY items must survive as
+// judgment calls (#147). The wave-1-blocked shape is the one where the
+// completeness critic has no merge HEAD to review: it reports BLOCKED with no
+// findings, so the reviewers' escalations have nowhere else to land. The
+// preservation branch used to be guarded by `!waveBaseSha`, which is never true
+// (waveBaseSha initializes from the hard-gated setup head), so the branch was
+// dead and every escalation vanished from the report. The live predicate is
+// `mergedShas.length === 0` — pushed only on a MERGED wave.
+async function scenarioCannotVerifySurvivesNoMergedWave() {
+  const cvA = 'end-to-end auth flow across tasks A and C'
+  const cvB = 'the rate limiter actually throttles under real concurrency'
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: baseArgs.integrationBranch, headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      return { status: 'DONE', summary: 's', branch: 'wt-' + id, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      if (id === 'A') return { verdict: 'PASS', issues: [],
+        cannotVerify: [{ requirement: cvA, why: 'token consumer lives in task C, not in this diff' }] }
+      if (id === 'B') return { verdict: 'PASS', issues: [],
+        cannotVerify: [{ requirement: cvB, why: 'needs a running server, not judgeable from a diff' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    // Wave 1 never merges: conflict, then a reconcile that cannot resolve it.
+    if (label.startsWith('merge:')) return { status: 'CONFLICT', detail: 'merge conflict in a.txt' }
+    if (label.startsWith('reconcile:')) return { status: 'CONFLICT', detail: 'still conflicted' }
+    // The critic runs but has no merge HEAD to review — the BLOCKED shape.
+    if (label === 'integration') return { testsPassed: false, onIntegrationHead: false,
+      output: 'no wave-1 slot readable', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const r = await runWorkflow({ agent, args: baseArgs, budget: undefined })
+  // Precondition: this really is the no-wave-merged shape.
+  eq(r.waveMerges.map((m) => m.status), ['CONFLICT'],
+     'cvNoMerge: wave 1 did not merge (precondition for the preservation branch)')
+  eq(r.blockedWaves.map((b) => b.wave), [1], 'cvNoMerge: wave 1 recorded blocked')
+  // Every escalated item survives into judgmentCalls, verbatim requirement text
+  // and all — asserted as the FULL expected value, in dispatch order.
+  const preserved = r.judgmentCalls.filter((j) => j.startsWith('cannot-verify (task '))
+  eq(preserved, [
+    'cannot-verify (task A): ' + cvA +
+      ' — no completeness critic ran (no merge HEAD); verify manually before the gate',
+    'cannot-verify (task B): ' + cvB +
+      ' — no completeness critic ran (no merge HEAD); verify manually before the gate',
+  ], 'cvNoMerge: every escalated CANNOT-VERIFY item survives as a judgment call')
+  console.log('scenario cannot-verify-survives-no-merged-wave: OK')
+}
+
 await scenarioAcceptanceSealedPending()
 await scenarioAcceptanceWaived()
 await scenarioAcceptanceSuiteGreen()
@@ -2453,6 +2504,7 @@ await scenarioBootstrapAndPerTaskTestCmd()
 await scenarioForwardedSignals()
 await scenarioReviewPackets()
 await scenarioCannotVerifyEscalation()
+await scenarioCannotVerifySurvivesNoMergedWave()
 
 // ── Scenario: warm-cache bootstrap — the fresh-worktree bootstrap tries the warm
 // cache (restore) first and warms it (populate) after a real install; a miss

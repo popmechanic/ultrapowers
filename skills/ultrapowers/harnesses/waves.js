@@ -644,8 +644,9 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
   'List every gap, unverified claim, and untested path. ' +
-  'After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in ' +
-  'your result (false if you could not confirm it). Read the plan at the provided ' +
+  'After confirming HEAD equals <derived> (the heads/-derived detach target), ' +
+  'set onIntegrationHead true in your result (false if you could not confirm it). ' +
+  'Read the plan at the provided ' +
   'planPath; for every task reported failed or blocked, check whether its declared ' +
   'Create: paths exist in the tree — list any that are genuinely absent as missing ' +
   'deliverables. For any deliverable that is present and structurally complete but ' +
@@ -1950,9 +1951,14 @@ if (review && review.onIntegrationHead === false)
   judgmentCalls.push('completeness critic could NOT confirm it reviewed the recorded merge HEAD — possible checkout drift (#29); verify the integration tree before merging')
 
 // cannot-verify items with no usable completeness critic must not be dropped:
-// when the run recorded no merge HEAD, the critic reports BLOCKED, so the items
-// surface at the gate as judgment calls instead (#2.2 error handling).
-if (cannotVerifyItems.length && !waveBaseSha) {
+// when no wave merged, the critic has no merge HEAD to review and reports
+// BLOCKED with no findings, so the items surface at the gate as judgment calls
+// instead (#2.2 error handling). The predicate is `mergedShas.length === 0`, not
+// `!waveBaseSha` (#147): waveBaseSha initializes from the hard-gated setup head
+// and only ever advances to a merge head, so it is never falsy and the branch
+// was dead. mergedShas is pushed only on a MERGED wave, making it the correct
+// in-memory no-wave-merged predicate.
+if (cannotVerifyItems.length && mergedShas.length === 0) {
   for (const c of cannotVerifyItems) {
     judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
       ' — no completeness critic ran (no merge HEAD); verify manually before the gate')
