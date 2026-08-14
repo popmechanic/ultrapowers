@@ -61,7 +61,10 @@ def main():
         gr_path = os.path.join(os.path.dirname(os.path.abspath(a.receipt)),
                                "gate-receipt.json")
         if os.path.isfile(gr_path):
-            branch = (load_json(gr_path, "gate receipt") or {}).get("integrationBranch")
+            gr = load_json(gr_path, "gate receipt") or {}
+            # #153: real receipts (ultra_gate.py) store the branch under
+            # "branch"; hand-built/legacy fixtures use "integrationBranch".
+            branch = gr.get("integrationBranch") or gr.get("branch")
     if not branch:
         die("no integration branch: pass --integration-branch or provide "
             "gate-receipt.json next to the receipt")
