@@ -166,6 +166,26 @@ async function scenarioCriticReadsSidecars() {
   has(critic, CRITIC_SENTENCE, 'critic: carries the file-read-authority sentence verbatim')
   assert(critic.indexOf('<runDir>') === -1,
     'critic: the <runDir> token must be substituted before dispatch')
+
+  // #123: the sidecar is the SINGLE authority, and it must be stated FIRST.
+  // The prompt used to open with a hard gate on the model-typed recorded sha
+  // ("run git checkout --detach <recorded> … if it does not, report BLOCKED")
+  // and only mention the sidecar in its closing sentence — so a fabricated
+  // recorded sha detached the agent at a value nobody derived, then surfaced
+  // as an unexplained BLOCKED. Pin the derived-first ordering, the derived
+  // detach target, and the specific recorded-vs-derived mismatch signal.
+  // Wave 2 is the last wave, so its merge reply is the recorded merge sha.
+  const RECORDED_SHA = 'head-merge:wave2'
+  has(critic, 'the recorded merge sha is ' + RECORDED_SHA,
+      'critic: the recorded value is interpolated, labelled as recorded')
+  const headsAt = critic.indexOf(RUN_DIR + '/heads/')
+  const recordedAt = critic.indexOf(RECORDED_SHA)
+  assert(headsAt !== -1 && recordedAt !== -1 && headsAt < recordedAt,
+    'critic: the heads/ derivation precedes the first mention of the recorded sha')
+  has(critic, 'run git checkout --detach <derived>',
+      'critic: detaches at the derived slot value, never at the recorded sha')
+  has(critic, 'recorded merge sha <recorded> != derived heads/ slot <derived>',
+      'critic: a mismatch reports the specific recorded-vs-derived signal')
   console.log('scenario critic-reads-sidecars: OK')
 }
 

@@ -590,8 +590,12 @@ const RESOLVER_PROMPT = [
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
 // EXACT tree the run produced (waveBaseSha = the last wave's merge.headSha).
 // #29: a critic that reviews the wrong tree emits confident false findings — the
-// detached checkout is immune to the integration-branch lock, and an empty sha
-// forces BLOCKED rather than a guessed tree. Read-only review-role language: #32.
+// detached checkout is immune to the integration-branch lock, and an unreadable
+// detach target forces BLOCKED rather than a guessed tree. Review-role: #32.
+// #123: the detach target is DERIVED from the heads/ sidecar, stated first and
+// as the single authority; waveBaseSha is model-transcribed and is demoted to a
+// recorded cross-check, so a fabricated sha reads as an explicit
+// recorded-vs-derived mismatch instead of an unexplained BLOCKED.
 // Note the missing cannotVerifyChecklist parameter: the checklist is reviewer-
 // authored, so it is NOT interpolated here. The baked text carries the
 // CANNOT_VERIFY_SLOT seam and the dispatch site fills it after fillPaths().
@@ -622,12 +626,18 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
    ' — cd into it before any git command; never the session main checkout; your ' +
    'verified detach there also frees the integration branch for the gate.'].join('\n') + '\n' +
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
-  'First, put yourself on the exact tree the run produced: the integration HEAD ' +
-  'is ' + (mergeHeadSha || '') + '. If that value is empty, report BLOCKED and ' +
+  'First, put yourself on the exact tree the run produced, and derive that tree — ' +
+  'never detach at a sha typed into this prompt. Read <runDir>/heads/ and take ' +
+  'the highest-numbered wave-<n> slot: the sha in that slot is <derived>, your ' +
+  'detach target. If no wave-<n> slot there is readable, report BLOCKED and ' +
   'produce no findings — do not guess a tree. Otherwise run git checkout --detach ' +
-  (mergeHeadSha || '') + ', then git rev-parse HEAD and confirm it equals ' +
-  (mergeHeadSha || '') + '; if it does not, report BLOCKED and produce no ' +
-  'findings. Only once you are verified on that tree: what plan requirement is ' +
+  '<derived>, then git rev-parse HEAD and confirm it equals <derived>; if it does ' +
+  'not, report BLOCKED and produce no findings. Only then cross-check the value ' +
+  'the run recorded, which is context and not authority: the recorded merge sha ' +
+  'is ' + (mergeHeadSha || '') + '. If that recorded value is non-empty and ' +
+  'differs from <derived>, report BLOCKED with a finding that names both, written ' +
+  'exactly as: recorded merge sha <recorded> != derived heads/ slot <derived>. ' +
+  'Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
   ', then review the integrated result against the original plan. ' + CANNOT_VERIFY_SLOT +
   'When GLOBAL CONSTRAINTS are provided, verify each one holds across the whole integrated tree, ' +
