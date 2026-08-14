@@ -77,3 +77,67 @@ surface; export gains `to_tsv` + markdown alignment + `pad`/`sanitize_flat`;
 quota gains `remaining`; audit_query gains `paginate` + `to_report`), same
 seal-preserving discipline, then re-run calibration once subscription access
 probes healthy.
+
+## Attempt 3 (round-2 fixture) — gate BLOCKED, floors still short
+
+Re-run at `e378c1a` (row `startedAt 2026-08-14T00:58:36Z`, CLI on the
+replacement Max account): `wallClockSec 1301.2` (21.7 min), 88 343 output
+tokens, arm identity PASS (`serialize: 6 write-after-write dag_edges`),
+**gateVerdict BLOCKED**. Task 2 exhausted its fix loop — the reviewer blocked
+twice, first on a real defect (`tabular.pad` validated `align` only after the
+width short-circuit, so `to_markdown(..., align="center")` on no-padding-needed
+fixtures silently passed), then on a test-contract miss (the "exact multi-line
+string" markdown test derived its expected value from the same `tabular`
+helpers the implementation calls — a tautology; the implementation itself was
+correct). Tasks 3/4 were cascade-blocked behind the write-after-write chain and
+never ran, so end-to-end is not a valid floor reading.
+
+Per-implementer wall clocks (wf `wf_2cf3788b-be3`, first→last event
+timestamp per agent):
+
+| agent | wall clock |
+|---|---|
+| impl task 1 (validation+schema) | 2.9 min |
+| impl task 2 (export+tabular) | 2.5 min |
+| task 2 fix round | 1.8 min |
+| impl tasks 3/4 | never ran (cascade-blocked) |
+| reviews | 2.4–2.8 min each |
+
+- Every implementer ≥ 5 min: **MISS** (max observed 2.9 min).
+- Arm A end-to-end ≥ 30 min: **MISS** (21.7 min, and invalid anyway — BLOCKED
+  with half the plan unexecuted).
+
+Engine observations from the cell (not calibration findings): the fix-round
+worktree was cut from the stale integration base `493705e` (implementer
+detected it and `git reset --hard`ed to the task BASE — the stale-heads class
+of #131), and the fix-round review packet recorded the range
+`f45c990..df4fd31` (the 32-line fix commit only) instead of task-BASE→head,
+omitting the whole implementation commit; the reviewer noticed and fell back
+to reading the tree. The gate critic labeled the unmerged-but-reviewed task 2
+branch "silently dropped", but the second review verdict was FIX_REQUIRED —
+the engine correctly refused the merge; that critic wording is noise.
+
+## Decision after attempt 3
+
+Round-3 additive resize, two levers:
+
+1. **Size.** Task 1 fattens hardest (a third module, `app/rules.py`
+   rule-combinator layer, plus `merge_specs`/`describe_spec`/
+   `spec_from_config`/`validate_collect` on schema and
+   `validate_many`/`error_code`/`explain_config` on validation); task 2 gains
+   `parse_csv` (a real state-machine parser), `to_html` + `escape_html`,
+   `truncate`/`wrap`/`fit`/`render_row`, `EXTRA_FORMATS`/`render_any`,
+   `summary_line`; task 3 gains `quota.snapshot`/`time_to_next_slot` and
+   `ratelimit.retry_after`/`limit_headers`; task 4 gains
+   `top_actors`/`merge_entries`/`to_csv_report`/`diff_summaries` and
+   `audit.record_many`/`dropped`. All pure additions — no new registry
+   wiring beyond config keys, seal `4d131df61152` untouched.
+2. **Review-churn control.** Every "exact multi-line string" criterion now
+   says explicitly: pin the expected value as a literal in the test; deriving
+   it from the module's own helpers is a tautology and a review-blocking
+   defect. This is what killed attempt 3's task 2 — the demand was implicit
+   and the implementer satisfied its letter, not its point.
+
+Sizing model: round-2 readings say implementer minutes scale roughly linearly
+in prescribed modules+tests; targets are ~6 min (task 1) and ~5–5.5 min
+(tasks 2–4), projecting ~38–42 min end-to-end.
