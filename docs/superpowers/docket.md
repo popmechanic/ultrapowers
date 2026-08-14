@@ -405,7 +405,7 @@
 **Notes:** First formal occurrence (2026-08-10 sense pass); prose per machinery-earned-by-recurrence. Not an incident — suite gates held (exit-code authority intact, JS-sim guard fired for the waves.js plan) and the redirect canary read 0 — but the 2026-08-10 drain dispatched 9 implementer tasks with ZERO independent reviewers while the authoring session had promised per-task review, and nothing recorded the narrowing. Fix: the run-mode flow declares its review posture — (a) drains inherit full subagent-driven per-task review vs (b) drains run on suite-gate authority with review-by-exception — and the end gate states which posture was used. One paragraph, no guard. The (a)-vs-(b) choice itself is an OPERATOR decision at planning (trades drain tokens against review depth for every future drain). Recurrence after write-down is what buys enforcement. CLUSTER with #141.
 
 ### #146: Fix-round dispatch seams: packet records fix-commit-only range; fix worktrees cut from stale base; implementer-reported sha tails
-**State:** queued
+**State:** executed
 **Score:** 8 — integration correctness (quarterly #1); derive-don't-record structural class, recurrence-backed across campaign + 3 foreign field runs
 **Est-files:** skills/ultrapowers/harnesses/waves.js, tests/sim_workflow.mjs, tests/
 **Plan:** docs/superpowers/plans/2026-08-14-fix-round-dispatch-derivation.md
