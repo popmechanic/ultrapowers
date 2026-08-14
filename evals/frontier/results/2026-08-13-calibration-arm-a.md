@@ -269,3 +269,36 @@ fixed task-locally; not yet a plan bullet.
 Decision: same fixture, same ref — relaunch as attempt 7 once the session
 window resets (12am PT). Budget note for T15: a full A/B pair costs
 ~350–500k output tokens; schedule both arms early in a fresh 5-hour window.
+
+## Attempt 7 (round-5 fixture, `2f73c27`) — gate PASS, exam green, floors split on variance
+
+Row `startedAt 2026-08-14T07:01:31Z`: `wallClockSec 2759.5` (**46.0 min ≥
+30**), 229 975 output tokens, arm identity PASS, **gateVerdict PASS**, sealed
+exam green (exit 0). All four tasks merged; one fix round (task 4).
+
+| agent | wall clock | floor |
+|---|---|---|
+| impl task 1 | 5.0 min | MET |
+| impl task 2 | 5.9 min | MET |
+| impl task 3 | 3.4 min | MISS |
+| impl task 4 | 4.9 min | MISS (−6 s) |
+
+The headline lesson is **variance**: task 3 read 5.3 min at round 4 and 3.4
+min at round 5 on essentially identical task text (−36%); task 1 has read
+2.9/4.0/4.4/3.6/5.0 across attempts. Single-run implementer readings carry
+±1–2 min of noise, so satisfying "every implementer ≥5 min in a single run"
+requires sizing the per-task *mean* to ~6–7 min, not 5.2. The floor itself
+stays as pre-registered (it is spec §6 text; not overrulable by the
+delegation) — the fixture grows until a run clears it as written.
+
+## Decision after attempt 7
+
+Round-6 resize, means-to-6+: task 3 gains a third module (`app/throttle.py`
+policy layer over quota — `POLICIES`/`match_policy` longest-prefix,
+`key_for`, `enforce` with pinned delegation, `remaining_for`,
+`describe_policies`, `PolicyError` chaining; NOT registry-wired, exam-safe);
+task 4 gains `rollup` (generalizing `counts_by`/`counts_matrix`, asserted
+equal to both), `format_entry`/`to_lines`; task 1 gains `spec_summary_line`,
+`rules.explain_failures`, and the `is_valid_amount(10**400)` OverflowError
+pin (attempt-6/7 reviewers both flagged it); task 2 unchanged (5.9/7.4 —
+comfortably clear). Projected means: ~5.8 / 6.5 / 6.0 / 5.8, E2E ~55–60 min.

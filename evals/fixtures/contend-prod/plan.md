@@ -36,7 +36,7 @@
   - `format_error("type_str", field="name")` returns **exactly** `"field name must be a string"`.
   - `format_error("nope")` raises `KeyError` (unknown code — never a silent fallback message).
   - `check_required({"amount": 1}, ["name", "amount"])` returns `["name"]`; with both missing returns `["name", "amount"]` in **required_fields order** (not dict order — pass a dict whose insertion order disagrees and assert); with none missing returns `[]`.
-  - `is_valid_amount`: `True` for `0`, `5`, and `3.5`; `False` for `True`, `False` (bools are not amounts even though `isinstance(True, int)`), `"3"`, `None`, `float("nan")`, `float("inf")`, `float("-inf")` (use `math.isfinite`; NaN must not slip through a `>=` chain).
+  - `is_valid_amount`: `True` for `0`, `5`, and `3.5`; `False` for `True`, `False` (bools are not amounts even though `isinstance(True, int)`), `"3"`, `None`, `float("nan")`, `float("inf")`, `float("-inf")` (use `math.isfinite`; NaN must not slip through a `>=` chain). Overflow edge: `is_valid_amount(10**400)` returns `True` without raising — an int is always finite, so only `float` values go through `math.isfinite`; a naive implementation that passes every value to `math.isfinite` raises `OverflowError` on an int too large to convert to float (assert the call returns `True`, which also proves it did not raise).
   - `is_non_empty_str`: `True` for `"a"` and `" a "` (has non-whitespace content); `False` for `""`, `"   "`, `42`, `None`.
   - `SchemaError` is an `Exception` subclass, distinct from `KeyError`/`ValueError`.
   - `compile_spec(spec)` compiles a declarative field spec — a dict mapping field name → rules dict whose only legal keys are `"required"` (bool), `"type"` (`"str"` or `"number"`), `"non_empty"` (bool), `"max"` (number) — into a reusable validator callable. Compile-time checks (no fields needed): an unknown rule key raises `ValueError` naming the key; a `"type"` value outside the two legal strings raises `ValueError` naming the value; `compile_spec({})` compiles and its validator accepts any dict unchanged.
@@ -50,6 +50,7 @@
   - `diff_specs(a, b)` returns exactly `{"added": [...], "removed": [...], "changed": [...]}` — field names only in `b` (sorted), only in `a` (sorted), and in both with unequal rules dicts (sorted); identical specs yield three empty lists. Assert the exact dict for a pair exercising all three buckets at once; neither input is mutated.
   - `spec_from_config(config, prefix)` collects every config key starting with `prefix`, strips the prefix to get the field name, and uses the value (a rules dict) as that field's rules; keys without the prefix are ignored; the result compiles via `compile_spec` (assert end-to-end: build a config, derive the spec, compile, validate a passing and a failing `fields` dict).
   - `spec_to_config(spec, prefix)` is the inverse: returns exactly `{prefix + field: <rules dict copy>}` for every field (assert the exact dict, and that mutating a returned rules dict leaves the spec untouched); round-trip both ways — `spec_from_config(spec_to_config(spec, "s_"), "s_") == spec` for a two-field spec, and the config→spec→config direction restores every prefixed key.
+  - `spec_summary_line(spec)` returns exactly `"<N> fields, <M> rules"` where `N` is the field count and `M` the total rule count across all fields; `spec_summary_line({})` returns exactly `"0 fields, 0 rules"` — pin both literals.
   - `validate_collect(spec, fields)` returns a **list of all** error message strings (unlike the compiled validator, which raises on the first): required-miss messages first in spec order, then **at most one message per present field** — the first failing rule in the same fixed `type` → `non_empty` → `max` order (never two messages for one field — assert the combined `type: "str"` + `non_empty: True` shape with value `42` yields exactly `["field n must be a string"]`), in spec order, `[]` when clean. Assert the exact three-element list for a fixture missing one required field and two other fields each violating one rule.
   - That's 14 more schema functions beyond the catalog/predicate ones — roughly 30 test functions in this file all told; one per bullet or sub-bullet.
 
@@ -64,12 +65,13 @@
   - `explain(value, r)` returns exactly `"<name>: pass"` or `"<name>: fail"`.
   - `apply_rules(fields, rules_by_field)` — `rules_by_field` maps field name → one rule — returns the list of `"field <f> failed <rule name>"` strings in `rules_by_field` **insertion order** (skipping fields absent from `fields`), `[]` when everything passes; `fields` is never mutated (assert).
   - `first_failure(fields, rules_by_field)` returns the `(field, rule name)` tuple of the first failure in insertion order, or `None`.
+  - `explain_failures(fields, rules_by_field)` returns the list of `explain(value, rule)` strings for **failing fields only**, in `rules_by_field` insertion order (fields absent from `fields` are skipped, passing fields contribute nothing); `[]` when everything passes. Assert the exact list for a mapping with one passing and two failing fields.
   - `BUILTINS` is a dict with exactly the keys `"number"`, `"str"`, `"non_empty"` whose rules wrap `schema.is_valid_amount`, `isinstance(str)`, and `schema.is_non_empty_str` respectively (check names and behavior).
   - `parse_rule(text)` parses a `&`-joined builtin list: `parse_rule("number")` returns the `"number"` builtin rule; `parse_rule("number&non_empty")` returns an `all_of` composite over the two, in text order; an unknown token raises `ValueError` naming the token; `parse_rule("")` raises `ValueError`.
   - `parse_rules(text_by_field)` maps a dict of field name → `&`-joined rule text through `parse_rule`: returns `{field: parse_rule(text)}` in insertion order; an unknown token raises `ValueError` naming **both** the field and the token; `parse_rules({})` returns `{}`. Compose end-to-end: `apply_rules(fields, parse_rules({...}))` — assert the exact failure-message list for a two-field mapping with one failing field.
   - `describe_rules(rules_by_field)` renders an exact multi-line string: one line per field in **insertion order**, each exactly `"<field>: <rule name>"`; `describe_rules({})` returns exactly `"(no rules)"`. Pin the expected value as a **literal** for a two-field mapping using one builtin and one composite rule.
   - delegation is real: monkeypatch `schema.is_valid_amount` to always return `False` and assert `check(5, BUILTINS["number"])` — via a fresh `parse_rule("number")` — now fails (pins that `rules` calls through to `app.schema`, not a private copy).
-  - That's 15 test functions in this file; one per bullet — and every `name` assertion (builtins and composites alike) pins the exact string, not just dict membership.
+  - That's 16 test functions in this file; one per bullet — and every `name` assertion (builtins and composites alike) pins the exact string, not just dict membership.
 
 - [ ] **Step 1b: Write failing tests** in `tests/test_validation.py` for `app/validation.py`:
   - `ValidationError` is an `Exception` subclass.
@@ -100,7 +102,7 @@
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_schema.py tests/test_rules.py tests/test_validation.py -v` → FAIL (none of the modules exist).
 
-- [ ] **Step 3: Implement `app/schema.py`, then `app/rules.py`, then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, `SchemaError`, `compile_spec`, `merge_specs`, `describe_spec`, `diff_specs`, `spec_from_config`, `spec_to_config`, `validate_collect`, per Step 1a exactly; `rules`: `RuleError`, `rule`, `check`, `all_of`, `any_of`, `negate`, `when`, `explain`, `apply_rules`, `first_failure`, `describe_rules`, `BUILTINS`, `parse_rule`, `parse_rules`, per Step 1a-bis exactly (every predicate that exists in `schema` is called through `app.schema` — no reimplementation); `validation`: `ValidationError`, `validate_fields`, `validate_many`, `error_code`, `explain_config`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`).
+- [ ] **Step 3: Implement `app/schema.py`, then `app/rules.py`, then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, `SchemaError`, `compile_spec`, `merge_specs`, `describe_spec`, `diff_specs`, `spec_from_config`, `spec_to_config`, `spec_summary_line`, `validate_collect`, per Step 1a exactly; `rules`: `RuleError`, `rule`, `check`, `all_of`, `any_of`, `negate`, `when`, `explain`, `apply_rules`, `first_failure`, `explain_failures`, `describe_rules`, `BUILTINS`, `parse_rule`, `parse_rules`, per Step 1a-bis exactly (every predicate that exists in `schema` is called through `app.schema` — no reimplementation); `validation`: `ValidationError`, `validate_fields`, `validate_many`, `error_code`, `explain_config`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys (do not reorder or reformat the existing lines): `"validation_required_fields": ["name", "amount"]` and `"validation_max_amount": 100000`.
@@ -199,9 +201,11 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
 **Files:**
 - Create: `app/ratelimit.py`
 - Create: `app/quota.py`
+- Create: `app/throttle.py`
 - Modify: `app/registry.py`
 - Test: `tests/test_ratelimit.py`
 - Test: `tests/test_quota.py`
+- Test: `tests/test_throttle.py`
 
 - [ ] **Step 1a: Write failing tests** in `tests/test_quota.py` for `app/quota.py` — the windowed counter `app/ratelimit.py` delegates to. It keeps a module-global **logical clock** (a float, seconds; no wall time anywhere — tests must be deterministic) plus a module-global hits store. Call `reset()` at the start of every test. One test function per bullet:
   - `QuotaExceededError` is an `Exception` subclass.
@@ -238,9 +242,21 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
   - `check_many(keys, config)` returns a dict mapping each key in `keys` to the bool "would a `POST` for this key succeed right now" via `quota.remaining` — assert the exact dict for a three-key fixture with one exhausted key, and that **no** hit was recorded for any of them (each key's subsequent `take` behaves as before the call).
   - That's 18 cases across the calls above (some bullets are 2 assertions) — write enough test functions to cover each named behavior separately; do not collapse them into one mega-test, since a fold conflict resolution needs to see which individual case broke.
 
-- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py -v` → FAIL.
+- [ ] **Step 1c: Write failing tests** in `tests/test_throttle.py` for `app/throttle.py` — a pure policy layer over `app/quota.py` (it imports `app.quota` only — never `app.ratelimit`; no module state of its own beyond the `POLICIES` constant). Call `quota.reset()` at the start of every test. One test function per bullet:
+  - `PolicyError` is an `Exception` subclass.
+  - `POLICIES` is exactly `{"POST /records": {"limit": 5, "window": 60, "burst": 0}, "GET /export": {"limit": 10, "window": 60, "burst": 2}}` (a module constant — pin the whole dict).
+  - `match_policy(method, path, policies)` — policy keys are `"<METHOD> <path-prefix>"` strings — returns the policy dict whose method equals `method` and whose path-prefix is a prefix of `path`, choosing the **longest** matching prefix; no match returns `None`. Assert: `"GET /export/full"` matches the `"GET /export"` policy; with an added `"GET /export/full"` policy the longer key wins; a method mismatch (`"POST /export"`) returns `None`.
+  - `key_for(method, path, actor)` returns exactly `"<method> <path>:<actor>"`.
+  - `enforce(method, path, actor, policies)`: no matching policy → returns `None` and records nothing (assert quota untouched via a subsequent `take`); a match delegates to `quota.take(key_for(...), limit, window, burst=...)` — pin the delegation with a monkeypatched recorder asserting the exact argument tuple — and returns the in-window count.
+  - an exhausted policy raises `PolicyError` (chained from `quota.QuotaExceededError` — assert with `pytest.raises(PolicyError)` and that the message contains both the key and the limit).
+  - `remaining_for(method, path, actor, policies)` returns `None` when no policy matches, else `quota.remaining` under the policy's params — read-only (a subsequent `take` still succeeds where it should).
+  - `describe_policies(policies)` renders an exact multi-line string: one line per key **sorted**, each exactly `"<key>: limit=<limit>, window=<window>, burst=<burst>"`; `describe_policies({})` returns exactly `"(no policies)"`. Pin the expected value as a **literal**.
+  - end-to-end: two `enforce("POST", "/records", "mallory", {"POST /records": {"limit": 1, "window": 60, "burst": 0}})` calls — second raises `PolicyError`; `quota.advance(61)` frees it (third call passes).
+  - That's 9 test functions; one per bullet.
 
-- [ ] **Step 3: Implement `app/quota.py` then `app/ratelimit.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`, `remaining`, `snapshot`, `time_to_next_slot`, `usage`, `purge`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, `retry_after`, `limit_headers`, `status_line`, `check_many`, per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own; only `rate_limit_max_per_window` is a required config key — window and burst always default via `.get`).
+- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py -v` → FAIL.
+
+- [ ] **Step 3: Implement `app/quota.py`, then `app/ratelimit.py`, then `app/throttle.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`, `remaining`, `snapshot`, `time_to_next_slot`, `usage`, `purge`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, `retry_after`, `limit_headers`, `status_line`, `check_many`; `throttle`: `PolicyError`, `POLICIES`, `match_policy`, `key_for`, `enforce`, `remaining_for`, `describe_policies` (NOT wired into the registry — a library layer for future routes; the registry wiring below is unchanged), per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own; only `rate_limit_max_per_window` is a required config key — window and burst always default via `.get`).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add three keys to `DEFAULT_CONFIG`, near its existing keys: `"rate_limit_max_per_window": 5`, `"rate_limit_window_seconds": 60` (the hook passes it to `quota.take`; the logical clock only moves under tests, so shipped behavior is pure call-counting), and `"rate_limit_burst": 0`.
@@ -250,12 +266,12 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
     DISPATCH_HOOKS.append(ratelimit.dispatch_hook)
     ```
 
-- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/ -v` → PASS.
+- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py tests/ -v` → PASS.
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app/ratelimit.py app/quota.py app/registry.py tests/test_ratelimit.py tests/test_quota.py
+git add app/ratelimit.py app/quota.py app/throttle.py app/registry.py tests/test_ratelimit.py tests/test_quota.py tests/test_throttle.py
 git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records over a windowed quota counter"
 ```
 
@@ -287,6 +303,8 @@ git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records ove
   - `merge_entries(*entry_lists)` returns one new list concatenating the inputs in argument order — entries are **copies** (mutating a merged entry leaves the sources untouched — assert), inputs unmutated; `merge_entries()` returns `[]`.
   - `diff_summaries(a, b)` takes two `summary(...)` dicts and returns exactly `{"total": b_total - a_total, "by_method": {...}, "by_actor": {...}}` where each sub-dict maps only the values whose counts **changed** to `b_count - a_count` (a value absent from one side counts as 0; unchanged values are omitted). Assert the exact dict for two summaries with an added actor, a removed method, and an unchanged pair.
   - `counts_matrix(entries)` returns exactly the nested dict method → actor → count over the entries (only combinations that occur appear — no zero-filled cells); `counts_matrix([])` returns `{}`. Assert the exact nested dict on a 4-entry fixture where one method is used by two actors and one actor uses two methods.
+  - `rollup(entries, fields)` generalizes both: `fields` is a non-empty ordered list drawn from the three legal names with no duplicates (empty, unknown-name, or duplicated fields raise `ValueError`); it returns counts nested by each field in order — assert `rollup(entries, ["method"]) == counts_by(entries, "method")` and `rollup(entries, ["method", "actor"]) == counts_matrix(entries)` (equality against BOTH helpers), plus one exact literal three-level dict for `["actor", "method", "path"]`; `rollup([], ["method"])` returns `{}`.
+  - `format_entry(entry)` returns exactly `"<METHOD> <path> (<actor>)"`; an entry missing any of the three keys raises `ValueError` naming the missing key. `to_lines(entries)` returns the list of `format_entry` strings in order (`[]` for empty) — assert the exact list on a 3-entry fixture.
   - `group_by(entries, field)` returns a dict mapping each distinct value of `field` (one of `"method"`/`"path"`/`"actor"` — anything else raises `ValueError` naming the field) to the list of matching entry **copies** in original order; `group_by([], "method")` returns `{}`. Assert the exact dict on a 4-entry fixture and that mutating a grouped entry leaves the source untouched.
   - `search(entries, needle)` returns the entry copies where `needle` is a substring of **any** of the three field values, in original order; an empty `needle` raises `ValueError`; no match returns `[]`. Assert with a needle matching one entry's path and another entry's actor.
   - `to_markdown_report(entries)` renders exactly the pipe table `"| field | value | count |"`, separator `"| --- | --- | --- |"`, then one `"| method | <value> | <count> |"` row per method sorted alphabetically followed by one `"| actor | <value> | <count> |"` row per actor sorted alphabetically (same row order as `to_csv_report`, no cell padding). Assert the **exact multi-line literal** for the 4-entry fixture; `to_markdown_report([])` is exactly the header and separator lines. Counts via `counts_by`.
@@ -311,7 +329,7 @@ git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records ove
 
 - [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_audit.py tests/test_audit_query.py -v` → FAIL.
 
-- [ ] **Step 3: Implement `app/audit.py` then `app/audit_query.py`** — `audit`: `_log` (module-global list), `clear`, `entries`, `record`, `record_many`, `dropped`, `export_state`, `import_state`, `dispatch_hook`, per Step 1's contract exactly; `audit_query`: `filter_entries`, `counts_by`, `counts_matrix`, `last_n`, `redact`, `summary`, `recent`, `paginate`, `to_report`, `to_csv_report`, `to_markdown_report`, `top_actors`, `merge_entries`, `diff_summaries`, `group_by`, `search`, pure over its arguments per Step 1a (no import of `app.audit` inside the module — the integration test composes them from the test file).
+- [ ] **Step 3: Implement `app/audit.py` then `app/audit_query.py`** — `audit`: `_log` (module-global list), `clear`, `entries`, `record`, `record_many`, `dropped`, `export_state`, `import_state`, `dispatch_hook`, per Step 1's contract exactly; `audit_query`: `filter_entries`, `counts_by`, `counts_matrix`, `rollup`, `last_n`, `redact`, `summary`, `recent`, `paginate`, `to_report`, `to_csv_report`, `to_markdown_report`, `top_actors`, `merge_entries`, `diff_summaries`, `group_by`, `search`, `format_entry`, `to_lines`, pure over its arguments per Step 1a (no import of `app.audit` inside the module — the integration test composes them from the test file).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add three keys to `DEFAULT_CONFIG`, near its existing keys: `"audit_log_enabled": True` (recorded for a future on/off switch and not read by any code in this plan — `dispatch_hook` always logs, per its module docstring), `"audit_log_max_entries": 500`, and `"audit_query_default_limit": 100` (read by `audit_query.recent`).
