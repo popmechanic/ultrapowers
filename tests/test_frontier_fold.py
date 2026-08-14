@@ -139,3 +139,48 @@ def test_dispatchable_parks_a_non_text_manifest_body_by_name():
         rw.Conflict("img.bin", "lines", "t1", "<<<<<<< frontier\nmarked\n>>>>>>>"),
         {"img.bin": b"\x00\x01"})
     assert ok is False and "img.bin" in reason
+
+
+def test_stacked_resolution_narrated_before_first_apply_is_stale():
+    """#143: with 3+ contenders, two narrations for one path can be in flight
+    against the same frontier state. The second reply must be refused (its
+    narration cannot contain the first resolution), not silently overwrite."""
+    base = _base()
+    t1 = _task(base, "t1", "def a(x):\n    return x + 1\n\ndef b(y):\n    return y\n")
+    t2 = _task(base, "t2", "def a(x):\n    return x + 2\n\ndef b(y):\n    return y\n")
+    eng = ff.FrontierEngine(base)
+    eng.fold(t1)
+    eng.fold(t2)
+    e1 = eng.epoch()
+    e2 = eng.epoch()  # second narration captured before the first applies
+    first = rw.split_lines("def a(x):\n    return x + 3\n\ndef b(y):\n    return y\n")
+    second = rw.split_lines("def a(x):\n    return x + 9\n\ndef b(y):\n    return y\n")
+    assert eng.apply_resolution("cli.py", e1, first) is True
+    assert eng.apply_resolution("cli.py", e2, second) is False
+    assert "return x + 3" in eng.manifest()["cli.py"]
+    assert "return x + 9" not in eng.manifest()["cli.py"]
+    # The refusal routes to the same re-narrate leg an intervening fold does:
+    # a narration captured NOW (after the resolution) applies fine.
+    e3 = eng.epoch()
+    assert eng.apply_resolution("cli.py", e3, second) is True
+
+
+def test_replayed_engine_refuses_stale_stacked_resolution():
+    """#143 via the CLI path: cmd_resolve rehydrates per dispatch, so the
+    replay walk must reconstruct resolution touches too — a rebuilt engine
+    refuses the stale second reply exactly like the live one."""
+    base = _base()
+    t1 = _task(base, "t1", "def a(x):\n    return x + 1\n\ndef b(y):\n    return y\n")
+    t2 = _task(base, "t2", "def a(x):\n    return x + 2\n\ndef b(y):\n    return y\n")
+    eng = ff.FrontierEngine(base)
+    eng.fold(t1)
+    eng.fold(t2)
+    e1 = eng.epoch()
+    e2 = eng.epoch()
+    first = rw.split_lines("def a(x):\n    return x + 3\n\ndef b(y):\n    return y\n")
+    second = rw.split_lines("def a(x):\n    return x + 9\n\ndef b(y):\n    return y\n")
+    assert eng.apply_resolution("cli.py", e1, first) is True
+    rebuilt = ff._apply_events(ff.FrontierEngine(base),
+                               {"t1": t1, "t2": t2}, eng.events)
+    assert rebuilt.apply_resolution("cli.py", e2, second) is False
+    assert rebuilt.manifest() == eng.manifest()

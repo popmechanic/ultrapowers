@@ -455,6 +455,35 @@ def _build_candidate(repo, prev_head, task_heads, wave, touched, manifest, modes
                         "-m", "frontier fold wave %d" % wave).decode().strip()
 
 
+def _unresolved_paths(wave_dir, recorded):
+    """Paths whose LAST narrated conflict has no resolution at-or-after it.
+
+    conflicts.json is the narration record; the fold log's resolve events are
+    the resolution record. A path counts as resolved iff some resolve event's
+    epoch >= the path's highest narrated epoch — a resolution only ever
+    applies when nothing touched the path after its narration, so an
+    at-or-after epoch proves the resolver saw that conflict's state (or a
+    later one). Kernel-limit parks fall out of the same rule: no resolve
+    event ever reaches their epoch, so their wave cannot materialize (#144 —
+    the frontier is marker-free, so without this check an unresolved
+    conflicted file would weave into a plausible-looking candidate and the
+    engine-side guard chain would be the only refusal).
+    """
+    entries = _read_index(wave_dir / "conflicts.json")
+    if not entries:
+        return []
+    last_narrated = {}
+    for e in entries:
+        path = e.get("path") or "<kernel-limit>"
+        last_narrated[path] = max(last_narrated.get(path, -1), e["epoch"])
+    resolved_at = {}
+    for e in recorded:
+        if e.get("type") == "resolve":
+            resolved_at[e["path"]] = max(resolved_at.get(e["path"], -1), e["epoch"])
+    return sorted(p for p, epoch in last_narrated.items()
+                  if resolved_at.get(p, -1) < epoch)
+
+
 def cmd_materialize(args):
     wave_dir = _wave_dir(args.run_dir, args.wave)
     log_path = wave_dir / "fold_log.jsonl"
@@ -468,6 +497,11 @@ def cmd_materialize(args):
     base_sha = recorded[0]["sha"] if recorded and recorded[0].get("type") == "base" else None
     heads = [e["headSha"] for e in recorded if e.get("type") == "fold"]
     max_lines = _git_max_lines(repo, base_sha, heads) if base_sha else 0
+
+    unresolved = _unresolved_paths(wave_dir, recorded)
+    if unresolved and not args.allow_unresolved:
+        return _fallback("unresolved conflict(s) on %s — resolve them or pass "
+                         "--allow-unresolved" % ", ".join(unresolved))
 
     with _recursion_headroom(max_lines):
         try:
@@ -523,6 +557,10 @@ def main(argv=None):
     p_mat.add_argument("--prev-head", required=True)
     p_mat.add_argument("--task-head", dest="task_heads", action="append",
                        type=_parse_task_head, default=[], required=True)
+    p_mat.add_argument("--allow-unresolved", action="store_true",
+                       help="build the candidate even though conflicts.json "
+                            "carries unresolved entries (forensics only — the "
+                            "engine never passes this)")
     p_mat.set_defaults(func=cmd_materialize)
 
     args = parser.parse_args(argv)

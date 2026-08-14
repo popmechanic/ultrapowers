@@ -82,7 +82,7 @@ class FrontierEngine:
         self.events = []            # [{"type": "fold", "task": id} |
                                     #  {"type": "resolve", "path": p,
                                     #   "epoch": n, "lines": [...]}]
-        self._touched_at = {}       # path -> last event index that folded it
+        self._touched_at = {}       # path -> last event index that folded or resolved it
 
     def epoch(self):
         """The event count. Capture it BEFORE reading a narration."""
@@ -100,15 +100,20 @@ class FrontierEngine:
     def apply_resolution(self, path, epoch, lines):
         """Apply a resolution narrated at `epoch`; False = stale, re-narrate.
 
-        Only folds invalidate: a resolution is dispatched serially (at most
-        one in flight), so no other resolution can have landed on the path
-        between this narration and its application.
+        Folds AND applied resolutions invalidate: a resolution records itself
+        in `_touched_at`, so a second same-path resolution whose narration was
+        captured before this one applied is refused rather than silently
+        overwriting it (#143 — reachable from 3+ contenders on one path, where
+        two narrations can be in flight against the same frontier state). The
+        refusal routes through the same re-narrate leg an intervening fold
+        does.
         """
         if self._touched_at.get(path, -1) >= epoch:
-            return False            # an intervening fold touched the path
+            return False            # an intervening fold or resolution touched the path
         self.frontier = _resolved_state(self.frontier, path, lines)
         self.events.append({"type": "resolve", "path": path,
                             "epoch": epoch, "lines": list(lines)})
+        self._touched_at[path] = len(self.events) - 1
         return True
 
     def manifest(self):
@@ -123,7 +128,11 @@ def _apply_events(eng, states, events):
     Validity is never re-checked: the log records what actually applied, and
     re-running `apply_resolution`'s staleness check would silently drop a
     recorded resolution. Resolve events ARE appended to the engine's event
-    list, so the epoch clock reconstructs exactly. `base` events are inert.
+    list, so the epoch clock reconstructs exactly — and they update
+    `_touched_at` exactly as a live `apply_resolution` does, so a rebuilt
+    engine refuses a stale stacked resolution the same way a live one would
+    (#143: `cmd_resolve` rehydrates per dispatch; without this, the replayed
+    map held fold indexes only). `base` events are inert.
     """
     for e in events:
         kind = e["type"]
@@ -135,6 +144,7 @@ def _apply_events(eng, states, events):
             eng.frontier = _resolved_state(eng.frontier, e["path"], e["lines"])
             eng.events.append({"type": "resolve", "path": e["path"],
                                "epoch": e["epoch"], "lines": list(e["lines"])})
+            eng._touched_at[e["path"]] = len(eng.events) - 1
         else:
             raise ValueError("unknown fold-log event type: %r" % (kind,))
     return eng

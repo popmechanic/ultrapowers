@@ -364,3 +364,75 @@ def test_materialize_no_final_newline_byte_identity(tmp_path):
     blob = _git_bytes(repo, "cat-file", "blob", "%s:app.py" % candidate)
     assert blob == reply_text.encode()
     assert rw.join_lines(rw.split_lines(reply_text)) == reply_text
+
+
+# --- the unresolved-conflict guard (#144) ---------------------------------
+
+
+def make_conflicted_repo(tmp_path):
+    """One base commit, two branches editing the SAME line of app.py — the
+    fold narrates a conflict the resolver has not yet resolved."""
+    repo = tmp_path / "repo"
+    _init(repo)
+    (repo / "app.py").write_text("a = 1\nb = 1\nc = 1\n")
+    base_sha = commit_and_capture(repo, "base")
+
+    _git(repo, "checkout", "-q", "-b", "t1", base_sha)
+    (repo / "app.py").write_text("a = 2\nb = 1\nc = 1\n")
+    t1_sha = commit_and_capture(repo, "t1")
+
+    _git(repo, "checkout", "-q", "-b", "t2", base_sha)
+    (repo / "app.py").write_text("a = 3\nb = 1\nc = 1\n")
+    t2_sha = commit_and_capture(repo, "t2")
+
+    _git(repo, "checkout", "-q", "integration")
+    return repo, base_sha, [("t1", t1_sha), ("t2", t2_sha)]
+
+
+def conflicted_fold(tmp_path):
+    repo, base_sha, heads = make_conflicted_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    fold = do_fold(repo, run_dir, 1, base_sha, heads)
+    assert fold.returncode == 0, fold.stdout + fold.stderr
+    assert last_json(fold)["conflicts"] >= 1
+    return repo, base_sha, heads, run_dir
+
+
+def test_materialize_refuses_unresolved_conflicts(tmp_path):
+    repo, base_sha, heads, run_dir = conflicted_fold(tmp_path)
+    result = do_materialize(repo, run_dir, 1, base_sha, heads)
+    assert result.returncode == 3, result.stdout + result.stderr
+    out = last_json(result)
+    assert "fallback" in out
+    assert "app.py" in out["fallback"]
+    assert "unresolved" in out["fallback"]
+
+
+def test_materialize_allow_unresolved_flag_builds_anyway(tmp_path):
+    repo, base_sha, heads, run_dir = conflicted_fold(tmp_path)
+    result = run_cli("materialize", "--repo", str(repo), "--run-dir",
+                     str(run_dir), "--wave", "1", "--prev-head", base_sha,
+                     "--task-head", "t1=%s" % heads[0][1],
+                     "--task-head", "t2=%s" % heads[1][1],
+                     "--allow-unresolved")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "candidateSha" in last_json(result)
+
+
+def test_materialize_builds_after_the_conflict_is_resolved(tmp_path):
+    repo, base_sha, heads, run_dir = conflicted_fold(tmp_path)
+    index = json.loads(
+        (run_dir / "frontier" / "wave-1" / "conflicts.json").read_text())
+    entry = index[-1]
+    reply = tmp_path / "reply.txt"
+    reply.write_text("a = 5\nb = 1\nc = 1\n")
+    res = run_cli("resolve", "--repo", str(repo), "--run-dir", str(run_dir),
+                  "--wave", "1", "--path", entry["path"],
+                  "--epoch", str(entry["epoch"]), "--reply-file", str(reply))
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert last_json(res)["applied"] is True
+
+    result = do_materialize(repo, run_dir, 1, base_sha, heads)
+    assert result.returncode == 0, result.stdout + result.stderr
+    candidate = last_json(result)["candidateSha"]
+    assert _git_bytes(repo, "show", "%s:app.py" % candidate) == b"a = 5\nb = 1\nc = 1\n"
