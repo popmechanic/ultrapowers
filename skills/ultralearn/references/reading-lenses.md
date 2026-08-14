@@ -66,7 +66,12 @@ Always emit one `friction` finding recording the run's **redirect-round
 count**: the number of times completed work was sent back for another round —
 per-task review fix cycles plus gate/operator redirects (resume relaunches).
 Emit it even when the count is 0, at severity 0 — the zero is the data; a
-bundle with no count finding reads as unmeasured, not clean. Across runs this
+bundle with no count finding reads as unmeasured, not clean. Break the count
+down by cause — `infra` (provider overload, disk, environment), `finding`
+(review/critic-confirmed code defects), `plan` (plan-authored defects),
+`elective` (operator-chosen polish) — and record the run's implementation-task
+count alongside, so rates compare like with like across run scales and
+platform weather never masquerades as rigor signal. Across runs this
 count becomes the redirect-round *rate*, the canary metric distill watches to
 judge whether an adopted rigor-for-efficiency trade is paying.
 

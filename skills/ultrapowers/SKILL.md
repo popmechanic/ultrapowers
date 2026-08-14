@@ -73,6 +73,9 @@ reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
+  Review agents are pinned to the most-capable tier **by design**, decoupled from
+  plan-authored review *depth* (depth sets prompt rigor only) — a quality>tokens
+  invariant, not a leak; re-tiering reviews takes eval evidence, never argument.
 - **`testCmd`** — run-wide resolution moved into the driver (pass `--test-cmd`
   to `ultra_run.py`, else its deterministic detection ladder stamps it;
   `receipt.testCmd`/`receipt.testCmdSource` record the outcome). An
