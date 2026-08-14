@@ -1,0 +1,657 @@
+diff --git a/app/audit.py b/app/audit.py
+new file mode 100644
+index 0000000..f082de5
+--- /dev/null
++++ b/app/audit.py
+@@ -0,0 +1,47 @@
++"""Audit log of every dispatched call.
++
++This module keeps an in-memory, append-only-with-a-cap log of every call
++that passes through `App.call`. `dispatch_hook` fires for EVERY method
++(unlike rate limiting, which only guards POST) and records only the
++method/path/actor triple — never the call's other kwargs (e.g. record
++fields), which must not leak into the audit trail.
++
++`audit_log_enabled` in DEFAULT_CONFIG is recorded for a future on/off
++switch and is not read by any code in this plan: `dispatch_hook` always
++logs.
++"""
++
++_log = []
++
++
++def clear():
++    """Clear the entire log."""
++    _log.clear()
++
++
++def entries():
++    """Return a copy of the log, oldest first."""
++    return list(_log)
++
++
++def record(method, path, actor, max_entries):
++    """Append one entry and enforce the cap immediately.
++
++    Drops the oldest entry/entries first if appending would exceed
++    `max_entries`.
++    """
++    _log.append({"method": method, "path": path, "actor": actor})
++    while len(_log) > max_entries:
++        _log.pop(0)
++
++
++def dispatch_hook(store, config, method, path, kwargs):
++    """DISPATCH_HOOKS-shaped hook: logs every dispatched call.
++
++    Fires for every method (no method special-casing). The actor is
++    kwargs.get("actor", "anonymous"); the cap is
++    config["audit_log_max_entries"].
++    """
++    actor = kwargs.get("actor", "anonymous")
++    max_entries = config["audit_log_max_entries"]
++    record(method, path, actor, max_entries)
+diff --git a/app/export.py b/app/export.py
+new file mode 100644
+index 0000000..f35d590
+--- /dev/null
++++ b/app/export.py
+@@ -0,0 +1,48 @@
++"""CSV/JSON export formatter.
++
++Feature Task 2: registers `to_csv`/`to_json` into `EXPORT_FORMATS` (see
++app/registry.py) so the pre-wired `GET /export` route can serve either
++format. This module owns the rendering logic only; it does not touch the
++router or add any route.
++"""
++import json
++
++
++def to_csv(records):
++    """Render `records` (a list of dicts) as CSV text.
++
++    The header row is every field name that appears across ALL records,
++    sorted alphabetically. One row follows per record, in input order,
++    with a missing field on a given record rendered as an empty cell.
++    Non-string values are rendered via plain str(). An empty `records`
++    list renders as "" (no header row -- nothing to name)."""
++    if not records:
++        return ""
++    fields = set()
++    for record in records:
++        fields.update(record.keys())
++    header = sorted(fields)
++    lines = [",".join(header)]
++    for record in records:
++        row = [str(record[field]) if field in record else "" for field in header]
++        lines.append(",".join(row))
++    return "\n".join(lines)
++
++
++def to_json(records):
++    """Render `records` as a JSON array string, keys sorted."""
++    return json.dumps(records, sort_keys=True)
++
++
++FORMATS = {
++    "csv": to_csv,
++    "json": to_json,
++}
++
++
++def render(records, fmt):
++    """Render `records` using the named format. Raises ValueError naming
++    the unknown format if `fmt` is not in FORMATS."""
++    if fmt not in FORMATS:
++        raise ValueError("unknown export format: %s" % fmt)
++    return FORMATS[fmt](records)
+diff --git a/app/ratelimit.py b/app/ratelimit.py
+new file mode 100644
+index 0000000..9bffb0e
+--- /dev/null
++++ b/app/ratelimit.py
+@@ -0,0 +1,48 @@
++"""Per-actor rate-limit/quota guard.
++
++This module counts calls per key (not wall-clock time) and raises once a
++key's count exceeds a configured limit within the current "window" — where
++a window is simply "since the last reset()", since no time-based rollover
++is wired up in this plan. `dispatch_hook` only guards writes (POST); reads
++(GET, and any other method) pass through untouched.
++"""
++
++_counts = {}
++
++
++class RateLimitExceededError(Exception):
++    """Raised when a key's call count exceeds its configured limit."""
++
++
++def reset():
++    """Clear ALL keys' counters."""
++    _counts.clear()
++
++
++def check_and_increment(key, limit):
++    """Increment the counter for `key` and return the new count.
++
++    Raises RateLimitExceededError if incrementing would push the count
++    past `limit`.
++    """
++    count = _counts.get(key, 0) + 1
++    if count > limit:
++        raise RateLimitExceededError(
++            "rate limit exceeded for key %r: limit is %s" % (key, limit)
++        )
++    _counts[key] = count
++    return count
++
++
++def dispatch_hook(store, config, method, path, kwargs):
++    """DISPATCH_HOOKS-shaped hook: rate-limits POST calls per actor.
++
++    No-op for any method other than "POST". The key is
++    kwargs.get("actor", "anonymous"); the limit is
++    config["rate_limit_max_per_window"].
++    """
++    if method != "POST":
++        return
++    key = kwargs.get("actor", "anonymous")
++    limit = config["rate_limit_max_per_window"]
++    check_and_increment(key, limit)
+diff --git a/app/registry.py b/app/registry.py
+index 31f7077..18891d4 100644
+--- a/app/registry.py
++++ b/app/registry.py
+@@ -46,6 +46,14 @@ DEFAULT_CONFIG = {
+     "max_records": 10000,
+     "default_category": "uncategorized",
+     # --- feature config blocks land below, one per feature task ---
++    "validation_required_fields": ["name", "amount"],
++    "validation_max_amount": 100000,
++    "export_default_format": "csv",
++    "export_formats_enabled": ["csv", "json"],
++    "rate_limit_max_per_window": 5,
++    "rate_limit_window_seconds": 60,
++    "audit_log_enabled": True,
++    "audit_log_max_entries": 500,
+ }
+ 
+ 
+@@ -145,3 +153,11 @@ def bootstrap(config=None):
+ # one of the hook lists / EXPORT_FORMATS above. This section only ever
+ # grows by appending a new import + a new registration line; no existing
+ # line is edited by a later feature.
++from app import validation  # noqa: E402
++PRE_CREATE_HOOKS.append(validation.pre_create_hook)
++from app import export  # noqa: E402
++EXPORT_FORMATS.update(export.FORMATS)
++from app import ratelimit  # noqa: E402
++DISPATCH_HOOKS.append(ratelimit.dispatch_hook)
++from app import audit  # noqa: E402
++DISPATCH_HOOKS.append(audit.dispatch_hook)
+diff --git a/app/validation.py b/app/validation.py
+new file mode 100644
+index 0000000..d416dc4
+--- /dev/null
++++ b/app/validation.py
+@@ -0,0 +1,49 @@
++"""Input-validation layer for record creation.
++
++`validate_fields` checks a fields dict against a list of required field
++names and a max amount, then returns a new dict (never mutating the input)
++with `name` stripped of surrounding whitespace. `pre_create_hook` adapts
++`validate_fields` to the registry's PRE_CREATE_HOOKS signature, reading its
++required-fields list and max amount from `config`.
++"""
++
++
++class ValidationError(Exception):
++    """Raised when a fields dict fails validation."""
++
++
++def validate_fields(fields, required_fields, max_amount):
++    for field in required_fields:
++        if field not in fields:
++            raise ValidationError("missing field: %s" % field)
++
++    if "amount" in fields:
++        amount = fields["amount"]
++        # bool is an int subclass in Python, but True/False are not valid
++        # amounts, so this must be checked before the int check.
++        if isinstance(amount, bool) or not isinstance(amount, (int, float)):
++            raise ValidationError("amount must be numeric")
++        if amount < 0:
++            raise ValidationError("amount must be non-negative")
++        if amount > max_amount:
++            raise ValidationError(
++                "amount exceeds max_amount (%s)" % max_amount
++            )
++
++    if "name" in fields:
++        name = fields["name"]
++        if not isinstance(name, str) or not name.strip():
++            raise ValidationError("name must be a non-empty string")
++
++    result = dict(fields)
++    if "name" in result:
++        result["name"] = result["name"].strip()
++    return result
++
++
++def pre_create_hook(store, config, fields):
++    return validate_fields(
++        fields,
++        config["validation_required_fields"],
++        config["validation_max_amount"],
++    )
+diff --git a/tests/test_audit.py b/tests/test_audit.py
+new file mode 100644
+index 0000000..2528f1b
+--- /dev/null
++++ b/tests/test_audit.py
+@@ -0,0 +1,94 @@
++from app import audit
++
++
++def setup_function(_fn):
++    audit.clear()
++
++
++def test_entries_on_fresh_log_returns_empty_list():
++    assert audit.entries() == []
++
++
++def test_record_appends_exactly_one_entry():
++    audit.record("GET", "/records", "alice", 500)
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"}
++    ]
++
++
++def test_entries_returns_in_call_order():
++    audit.record("GET", "/records", "alice", 500)
++    audit.record("POST", "/records", "bob", 500)
++    audit.record("DELETE", "/records/1", "carol", 500)
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "DELETE", "path": "/records/1", "actor": "carol"},
++    ]
++
++
++def test_entries_returns_a_copy():
++    audit.record("GET", "/records", "alice", 500)
++    result = audit.entries()
++    result.append({"method": "X", "path": "Y", "actor": "Z"})
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"}
++    ]
++
++
++def test_cap_drops_oldest_first():
++    audit.record("GET", "/records", "a", 3)
++    audit.record("GET", "/records", "b", 3)
++    audit.record("GET", "/records", "c", 3)
++    audit.record("GET", "/records", "d", 3)
++    result = audit.entries()
++    assert len(result) == 3
++    assert result == [
++        {"method": "GET", "path": "/records", "actor": "b"},
++        {"method": "GET", "path": "/records", "actor": "c"},
++        {"method": "GET", "path": "/records", "actor": "d"},
++    ]
++
++
++def test_cap_enforced_on_every_call():
++    for i in range(5):
++        audit.record("GET", "/records", "actor%s" % i, 2)
++        assert len(audit.entries()) <= 2
++
++
++def test_dispatch_hook_defaults_actor_to_anonymous():
++    audit.dispatch_hook(None, {"audit_log_max_entries": 500}, "GET",
++                         "/records", {})
++    entries = audit.entries()
++    assert len(entries) == 1
++    assert entries[0]["actor"] == "anonymous"
++    assert entries[0]["method"] == "GET"
++    assert entries[0]["path"] == "/records"
++
++
++def test_dispatch_hook_uses_actor_kwarg_and_excludes_record_fields():
++    audit.dispatch_hook(
++        None, {"audit_log_max_entries": 500}, "POST", "/records",
++        {"actor": "bob", "name": "x"},
++    )
++    entries = audit.entries()
++    assert len(entries) == 1
++    assert entries[0]["actor"] == "bob"
++    assert set(entries[0].keys()) == {"method", "path", "actor"}
++
++
++def test_dispatch_hook_reads_cap_from_config():
++    config = {"audit_log_max_entries": 1}
++    audit.dispatch_hook(None, config, "GET", "/records", {})
++    audit.dispatch_hook(None, config, "GET", "/records", {})
++    assert len(audit.entries()) == 1
++
++
++def test_dispatch_hook_fires_for_every_method():
++    config = {"audit_log_max_entries": 500}
++    audit.dispatch_hook(None, config, "DELETE", "/records/1", {"actor": "x"})
++    audit.dispatch_hook(None, config, "PUT", "/records/1", {"actor": "y"})
++    entries = audit.entries()
++    assert len(entries) == 2
++    assert entries[0]["method"] == "DELETE"
++    assert entries[1]["method"] == "PUT"
+diff --git a/tests/test_export.py b/tests/test_export.py
+new file mode 100644
+index 0000000..e262e81
+--- /dev/null
++++ b/tests/test_export.py
+@@ -0,0 +1,96 @@
++"""Tests for app/export.py: CSV/JSON export formatter."""
++import json
++
++import pytest
++
++from app import export
++
++
++def test_to_csv_empty_list_returns_empty_string():
++    assert export.to_csv([]) == ""
++
++
++def test_to_csv_header_sorted_and_rows_in_order_missing_field_empty_cell():
++    records = [
++        {"name": "b", "amount": 2},
++        {"name": "a", "category": "x"},
++    ]
++    result = export.to_csv(records)
++    lines = result.split("\r\n") if "\r\n" in result else result.split("\n")
++    # strip trailing blank line if present
++    lines = [l for l in lines if l != ""] if lines and lines[-1] == "" else lines
++    header = lines[0].split(",")
++    assert header == sorted(["name", "amount", "category"])
++    # row for first record: amount present, category missing -> empty cell
++    idx_name = header.index("name")
++    idx_amount = header.index("amount")
++    idx_category = header.index("category")
++    row1 = lines[1].split(",")
++    row2 = lines[2].split(",")
++    assert row1[idx_name] == "b"
++    assert row1[idx_amount] == "2"
++    assert row1[idx_category] == ""
++    assert row2[idx_name] == "a"
++    assert row2[idx_amount] == ""
++    assert row2[idx_category] == "x"
++
++
++def test_to_csv_renders_int_without_decimal_suffix():
++    records = [{"amount": 5}]
++    result = export.to_csv(records)
++    lines = [l for l in result.splitlines() if l != ""]
++    header = lines[0].split(",")
++    idx_amount = header.index("amount")
++    row1 = lines[1].split(",")
++    assert row1[idx_amount] == "5"
++    assert "5.0" not in result
++
++
++def test_to_json_empty_list_returns_empty_array_string():
++    assert export.to_json([]) == "[]"
++
++
++def test_to_json_round_trips_and_keys_sorted():
++    records = [
++        {"b": 1, "a": 2},
++        {"z": 3, "y": 4},
++    ]
++    result = export.to_json(records)
++    assert json.loads(result) == records
++    # keys sorted: raw string check
++    assert result.index('"a"') < result.index('"b"')
++    assert result.index('"y"') < result.index('"z"')
++
++
++def test_formats_dict_has_exactly_csv_and_json():
++    assert set(export.FORMATS.keys()) == {"csv", "json"}
++    assert export.FORMATS["csv"] is export.to_csv
++    assert export.FORMATS["json"] is export.to_json
++
++
++def test_render_delegates_to_csv_and_json():
++    records = [{"name": "a", "amount": 1}]
++    assert export.render(records, "csv") == export.to_csv(records)
++    assert export.render(records, "json") == export.to_json(records)
++
++
++def test_render_unknown_format_raises_value_error_naming_format():
++    with pytest.raises(ValueError) as exc_info:
++        export.render([], "xml")
++    assert "xml" in str(exc_info.value)
++
++
++def test_to_csv_single_record_list():
++    records = [{"name": "solo", "amount": 7}]
++    result = export.to_csv(records)
++    lines = [l for l in result.splitlines() if l != ""]
++    assert lines[0].split(",") == ["amount", "name"]
++    assert lines[1].split(",") == ["7", "solo"]
++    assert len(lines) == 2
++
++
++def test_to_json_single_record_list():
++    records = [{"name": "solo", "amount": 7}]
++    result = export.to_json(records)
++    assert json.loads(result) == records
++    assert result.index('"amount"') < result.index('"name"')
+diff --git a/tests/test_ratelimit.py b/tests/test_ratelimit.py
+new file mode 100644
+index 0000000..ccd868d
+--- /dev/null
++++ b/tests/test_ratelimit.py
+@@ -0,0 +1,87 @@
++"""Tests for the per-actor rate-limit/quota guard (app/ratelimit.py)."""
++import pytest
++
++from app import ratelimit
++from app.ratelimit import RateLimitExceededError, check_and_increment, dispatch_hook, reset
++
++
++def setup_function(_fn):
++    reset()
++
++
++def test_rate_limit_exceeded_error_is_an_exception_subclass():
++    assert issubclass(RateLimitExceededError, Exception)
++
++
++def test_check_and_increment_counts_up_then_raises_on_fourth_call():
++    assert check_and_increment("k", 3) == 1
++    assert check_and_increment("k", 3) == 2
++    assert check_and_increment("k", 3) == 3
++    with pytest.raises(RateLimitExceededError) as exc_info:
++        check_and_increment("k", 3)
++    message = str(exc_info.value)
++    assert "k" in message
++    assert "3" in message
++
++
++def test_counter_is_per_key_interleaved():
++    assert check_and_increment("a", 2) == 1
++    assert check_and_increment("b", 2) == 1
++    assert check_and_increment("a", 2) == 2
++    assert check_and_increment("b", 2) == 2
++    # both "a" and "b" are now at their limit of 2; neither raised early
++    with pytest.raises(RateLimitExceededError):
++        check_and_increment("a", 2)
++    with pytest.raises(RateLimitExceededError):
++        check_and_increment("b", 2)
++
++
++def test_reset_clears_all_keys_counters():
++    check_and_increment("a", 5)
++    check_and_increment("b", 5)
++    reset()
++    assert check_and_increment("a", 5) == 1
++    assert check_and_increment("b", 5) == 1
++
++
++def test_dispatch_hook_never_raises_and_never_increments_for_get():
++    store = object()
++    config = {"rate_limit_max_per_window": 5}
++    for _ in range(5 + 5):
++        dispatch_hook(store, config, "GET", "/records", {})
++    # GET calls never touched the counter for the anonymous actor key
++    assert check_and_increment("anonymous", 5) == 1
++
++
++def test_dispatch_hook_post_keys_on_actor_default_anonymous_shared():
++    store = object()
++    config = {"rate_limit_max_per_window": 5}
++    dispatch_hook(store, config, "POST", "/records", {})
++    dispatch_hook(store, config, "POST", "/records", {})
++    # both calls (no "actor" kwarg) share the "anonymous" counter, so the
++    # next check_and_increment for "anonymous" starts at 3
++    assert check_and_increment("anonymous", 5) == 3
++
++
++def test_dispatch_hook_post_keys_on_actor_separate_from_anonymous():
++    store = object()
++    config = {"rate_limit_max_per_window": 5}
++    dispatch_hook(store, config, "POST", "/records", {"actor": "x"})
++    # "x" is a separate counter from "anonymous"
++    assert check_and_increment("anonymous", 5) == 1
++    assert check_and_increment("x", 5) == 2
++
++
++def test_dispatch_hook_reads_limit_from_config_limit_one_raises_second_call():
++    store = object()
++    config = {"rate_limit_max_per_window": 1}
++    dispatch_hook(store, config, "POST", "/records", {"actor": "y"})
++    with pytest.raises(RateLimitExceededError):
++        dispatch_hook(store, config, "POST", "/records", {"actor": "y"})
++
++
++def test_dispatch_hook_reads_limit_from_config_limit_two_does_not_raise_second_call():
++    store = object()
++    config = {"rate_limit_max_per_window": 2}
++    dispatch_hook(store, config, "POST", "/records", {"actor": "z"})
++    dispatch_hook(store, config, "POST", "/records", {"actor": "z"})
+diff --git a/tests/test_validation.py b/tests/test_validation.py
+new file mode 100644
+index 0000000..f13446d
+--- /dev/null
++++ b/tests/test_validation.py
+@@ -0,0 +1,109 @@
++"""Failing-first tests for app/validation.py's input-validation layer."""
++import pytest
++
++from app.validation import ValidationError, validate_fields, pre_create_hook
++
++
++REQUIRED = ["name", "amount"]
++MAX_AMOUNT = 100000
++
++
++def test_validation_error_is_an_exception_subclass():
++    assert issubclass(ValidationError, Exception)
++
++
++def test_missing_name_field_raises_with_field_named():
++    with pytest.raises(ValidationError, match=r"missing field: name"):
++        validate_fields({"amount": 3}, REQUIRED, MAX_AMOUNT)
++
++
++def test_missing_amount_field_raises_with_field_named():
++    with pytest.raises(ValidationError, match=r"missing field: amount"):
++        validate_fields({"name": "coffee"}, REQUIRED, MAX_AMOUNT)
++
++
++def test_both_missing_names_name_first_per_required_fields_order():
++    with pytest.raises(ValidationError, match=r"missing field: name"):
++        validate_fields({}, REQUIRED, MAX_AMOUNT)
++
++
++def test_amount_as_string_raises_numeric_error():
++    with pytest.raises(ValidationError, match=r"numeric"):
++        validate_fields({"name": "coffee", "amount": "3"}, REQUIRED, MAX_AMOUNT)
++
++
++def test_amount_as_bool_raises_numeric_error():
++    # bool is technically an int subclass in Python, but True/False are not
++    # valid amounts.
++    with pytest.raises(ValidationError, match=r"numeric"):
++        validate_fields({"name": "coffee", "amount": True}, REQUIRED, MAX_AMOUNT)
++    with pytest.raises(ValidationError, match=r"numeric"):
++        validate_fields({"name": "coffee", "amount": False}, REQUIRED, MAX_AMOUNT)
++
++
++def test_negative_amount_raises_non_negative_error():
++    with pytest.raises(ValidationError, match=r"non-negative"):
++        validate_fields({"name": "coffee", "amount": -1}, REQUIRED, MAX_AMOUNT)
++
++
++def test_zero_amount_is_accepted_boundary():
++    result = validate_fields({"name": "coffee", "amount": 0}, REQUIRED, MAX_AMOUNT)
++    assert result["amount"] == 0
++
++
++def test_amount_over_max_raises_and_exact_max_is_accepted():
++    with pytest.raises(ValidationError, match=r"max_amount"):
++        validate_fields(
++            {"name": "coffee", "amount": MAX_AMOUNT + 1}, REQUIRED, MAX_AMOUNT
++        )
++    result = validate_fields(
++        {"name": "coffee", "amount": MAX_AMOUNT}, REQUIRED, MAX_AMOUNT
++    )
++    assert result["amount"] == MAX_AMOUNT
++
++
++def test_name_empty_whitespace_or_non_string_raises_non_empty_string_error():
++    with pytest.raises(ValidationError, match=r"non-empty string"):
++        validate_fields({"name": "", "amount": 1}, REQUIRED, MAX_AMOUNT)
++    with pytest.raises(ValidationError, match=r"non-empty string"):
++        validate_fields({"name": "   ", "amount": 1}, REQUIRED, MAX_AMOUNT)
++    with pytest.raises(ValidationError, match=r"non-empty string"):
++        validate_fields({"name": 42, "amount": 1}, REQUIRED, MAX_AMOUNT)
++
++
++def test_success_returns_new_dict_with_name_stripped_and_other_keys_preserved():
++    fields = {"name": "  coffee  ", "amount": 3, "category": "drinks"}
++    result = validate_fields(fields, REQUIRED, MAX_AMOUNT)
++    assert result is not fields
++    assert result["name"] == "coffee"
++    assert result["amount"] == 3
++    assert result["category"] == "drinks"
++    # original untouched
++    assert fields["name"] == "  coffee  "
++
++
++def test_extra_keys_beyond_required_fields_pass_untouched():
++    fields = {"name": "coffee", "amount": 3, "extra": "value", "another": 42}
++    result = validate_fields(fields, REQUIRED, MAX_AMOUNT)
++    assert result["extra"] == "value"
++    assert result["another"] == 42
++
++
++def test_pre_create_hook_matches_direct_validate_fields_calls():
++    config = {
++        "validation_required_fields": REQUIRED,
++        "validation_max_amount": MAX_AMOUNT,
++    }
++
++    # success case
++    fields = {"name": "coffee", "amount": 3}
++    assert pre_create_hook(None, config, fields) == validate_fields(
++        fields, REQUIRED, MAX_AMOUNT
++    )
++
++    # failure case
++    bad_fields = {"name": "coffee", "amount": -1}
++    with pytest.raises(ValidationError):
++        pre_create_hook(None, config, bad_fields)
++    with pytest.raises(ValidationError):
++        validate_fields(bad_fields, REQUIRED, MAX_AMOUNT)
