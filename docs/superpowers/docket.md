@@ -325,7 +325,7 @@
 **Notes:** Item 1 (critic dual detach authorities) = plan-level prompt-design decision, fails safe today; item 2 (CONFLICT-path token sha) touches FROZEN gate_check — eval route or park; item 3 (unpinned SKILL finalize wiring) conflicts with the anti-pin doctrine — prefer a structural closure or drop; item 4 smalls. Suggest scoping a plan to items 1+3-structural only, or parking until a field incident. || RE-TRIAGED 2026-08-14: after 31c43ad the remaining scope = item 2 (frozen gate_check.py CONFLICT-path sha - EVAL ROUTE ONLY per operator directive 2026-08-14, never a narrative fix; safe-direction residual, no field regression to reproduce => no eval cell this cycle) + item 4 porcelain/mode smalls (no field occurrence). Item 4d's closure corrected by entry #147. Stays triaged.
 
 ### #124: Gate residuals from #117/#105
-**State:** executed
+**State:** verified
 **Score:** 4 — cosmetic/coverage smalls on shipped fixes
 **Est-files:** tests/test_run_acceptance.py, skills/ultrapowers/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-14-gate-residual-smalls.md
@@ -405,7 +405,7 @@
 **Notes:** First formal occurrence (2026-08-10 sense pass); prose per machinery-earned-by-recurrence. Not an incident — suite gates held (exit-code authority intact, JS-sim guard fired for the waves.js plan) and the redirect canary read 0 — but the 2026-08-10 drain dispatched 9 implementer tasks with ZERO independent reviewers while the authoring session had promised per-task review, and nothing recorded the narrowing. Fix: the run-mode flow declares its review posture — (a) drains inherit full subagent-driven per-task review vs (b) drains run on suite-gate authority with review-by-exception — and the end gate states which posture was used. One paragraph, no guard. The (a)-vs-(b) choice itself is an OPERATOR decision at planning (trades drain tokens against review depth for every future drain). Recurrence after write-down is what buys enforcement. CLUSTER with #141.
 
 ### #146: Fix-round dispatch seams: packet records fix-commit-only range; fix worktrees cut from stale base; implementer-reported sha tails
-**State:** executed
+**State:** verified
 **Score:** 8 — integration correctness (quarterly #1); derive-don't-record structural class, recurrence-backed across campaign + 3 foreign field runs
 **Est-files:** skills/ultrapowers/harnesses/waves.js, tests/sim_workflow.mjs, tests/
 **Plan:** docs/superpowers/plans/2026-08-14-fix-round-dispatch-derivation.md
@@ -413,7 +413,7 @@
 **Notes:** Triage 2026-08-14 (post-0.2.0 cycle). Campaign evidence (evals/frontier/results/2026-08-13-calibration-arm-a.md, attempts 3-8): (1) fix-round review packet diffs <impl-head>..<fix-head> instead of task-BASE->head x2 (one packet exposed ~6% of changed lines); (2) fix-round worktrees cut from stale base x3, implementers self-recovered via reset to BASE; (3) implementer-reported headSha with correct 7-char prefix + fabricated tail x1. CROSS-VALIDATED by the 2026-08-14 sense pass: the packet-range class independently hit 3 foreign field runs at 0.1.17-0.1.18 (multi-commit task packets cut first-commit..head or starting past BASE; reviewers recovered from the git object store each time; a packet-trusting reviewer certifies a fraction of the task). Class fix = derive fix-round dispatch inputs (BASE, packet range) from the run's sidecars once, never per-agent-reported values; cover BOTH the fix-round leg and the multi-commit first-review packet. Harness JS => .mjs sim + pass sentinel + anti-drift obligations. GATE: accepted under the operator's kickoff delegation for this cycle (triage->sweep->drain instructed 2026-08-14; no live gate). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-fix-round-dispatch-derivation.md, adversarial trim review adopted (orig graded up; trimmed to fix-round-only override + 10-word reviewer-fallback belt = the cycle's one additive guard). Engine=ultrapowers via risk override (engine dispatch/review integrity). Compile: waves [[1],[2,3]], WaW 1->2 line-cap-serialized (waves.js 2022>400).
 
 ### #147: Shakedown-run critic residuals: trusted-green stamp unguarded (waves.js:2007), critic BLOCKED fail-safe widened, prompt inconsistency, weak finalize-wiring self-check
-**State:** executed
+**State:** verified
 **Score:** 7.5 — verification-boundary gaps recorded by the run's own completeness critic and never dispositioned before release; integration correctness (quarterly #1)
 **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, tests/sim_workflow.mjs, tests/test_finalize_wiring.py
 **Plan:** docs/superpowers/plans/2026-08-14-shakedown-critic-residuals.md
