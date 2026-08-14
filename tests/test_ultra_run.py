@@ -606,6 +606,49 @@ def test_prune_reports_only_dirs_actually_removed(tmp_path, monkeypatch):
     assert ultra_run.prune_run_dirs(state, keep=1) == []
 
 
+def test_prune_failure_absent_from_removed_list_and_named_in_stage_detail(
+        tmp_path, monkeypatch, capsys):
+    # Task 4 / #95 item 2: a single doomed dir whose rmtree is selectively
+    # neutered (monkeypatched to a no-op for that path only — every other
+    # candidate is genuinely removed) must be honestly reported on BOTH
+    # surfaces: (a) prune_run_dirs's own return value never lists it as
+    # removed, and (b) the driver's scratch-hygiene stage detail names it
+    # in the "; N removal failed:" wording rather than silently counting it
+    # as pruned (the old report-the-doomed-list behavior would do neither).
+    import ultra_run
+    repo = make_repo(tmp_path)
+    state = repo / ".claude/ultrapowers"
+    state.mkdir(parents=True)
+    doomed_name = "run-20260101-000000"
+    doomed = state / doomed_name
+    doomed.mkdir()
+    for i in range(2, 12):          # 10 more -> 11 total; KEEP_RUNS=10 -> 1 doomed
+        (state / ("run-202601%02d-000000" % i)).mkdir()
+
+    real_rmtree = ultra_run.shutil.rmtree
+
+    def selective_noop(path, *a, **k):
+        if pathlib.Path(path) == doomed:
+            return None      # this one refuses to go — no-op just for it
+        return real_rmtree(path, *a, **k)
+
+    monkeypatch.setattr(ultra_run.shutil, "rmtree", selective_noop)
+
+    # (a) direct check on prune_run_dirs's own return value.
+    removed = ultra_run.prune_run_dirs(state, keep=10)
+    assert doomed_name not in removed
+    assert doomed.exists()                    # it really did survive
+
+    # (b) the driver-level scratch-hygiene stage detail must name it.
+    rc = ultra_run.main(["plan.md", "--stamp", "t1", "--repo", str(repo)])
+    receipt = json.loads(capsys.readouterr().out)
+    assert rc == 0
+    s = next(x for x in receipt["stages"] if x["stage"] == "scratch-hygiene")
+    assert s["ok"] is True                    # hygiene never blocks a run
+    assert "; 1 removal failed: %s" % doomed_name in s["detail"]
+    assert doomed.exists()                    # still there after the driver run too
+
+
 @pytest.mark.skipif(os.geteuid() == 0,
                     reason="DAC mode bits do not bind root; the undeletable-dir trigger cannot fire")
 def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
