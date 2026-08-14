@@ -141,3 +141,65 @@ Round-3 additive resize, two levers:
 Sizing model: round-2 readings say implementer minutes scale roughly linearly
 in prescribed modules+tests; targets are ~6 min (task 1) and ~5–5.5 min
 (tasks 2–4), projecting ~38–42 min end-to-end.
+
+## Attempt 4 (round-3 fixture, `fa693c4`) — E2E floor MET, implementer floor still short; seal defect found
+
+Row `startedAt 2026-08-14T01:30:17Z`: `wallClockSec 2874.8` (**47.9 min ≥ 30
+— the end-to-end floor clears for the first time**), 212 578 output tokens,
+arm identity PASS (6 write-after-write edges). All four tasks implemented,
+reviewed, and merged (two 1-iteration fix rounds, tasks 1 and 2); engine
+`gateCheck` verdict **PASS** on every check.
+
+Per-implementer wall clocks (wf `wf_4575c29d-b36`):
+
+| agent | wall clock | floor |
+|---|---|---|
+| impl task 1 (validation+schema+rules) | 4.0 min | MISS |
+| impl task 2 (export+tabular) | 5.9 min | **MET** |
+| impl task 3 (quota+ratelimit) | 3.0 min | MISS |
+| impl task 4 (audit+audit_query) | 3.5 min | MISS |
+| reviews | 2.0–3.5 min | — |
+| gate critic | 5.3 min | — |
+
+**Why the row still says BLOCKED: the sealed acceptance failed 2/24** —
+`test_ratelimit_dispatch_hook_ignores_reads` and `..._keys_on_actor` call
+`dispatch_hook` with a minimal config `{"rate_limit_max_per_window": 1}`, and
+the resize-round-1 windowed-hook contract ("reads its window from
+`config["rate_limit_window_seconds"]`") makes a literal implementation
+`KeyError` on it. **Resize round 1 was therefore NOT seal-preserving for this
+one contract** — the defect stayed latent through attempts 1–3 because no
+earlier post-resize run both merged task 3 and reached the acceptance stage.
+Round-4 fix: the hook (and `limit_headers`/`retry_after`) must read window
+and burst via `.get(...)` defaults (60 / 0), with an explicit minimal-config
+test bullet; only `rate_limit_max_per_window` may be required. The
+acceptance directory is untouched, as always — the plan text moves back to
+the exam, never the reverse.
+
+Genuine fixture-spec gaps the run's reviewers/critic surfaced, pinned as
+round-4 contract bullets (they add work and remove ambiguity at once):
+`quota.time_to_next_slot` crashed (`min()` on empty) at zero allowance — now
+specified `float("inf")`; `parse_csv` dropped a single-column trailing empty
+row — now pinned (`"a\n"` → `[{"a": ""}]`); `validate_collect` emitted a
+duplicate message under combined `type:"str"`+`non_empty` rules — catalog
+gains `"type_str"`, per-field checks get a fixed first-failure order (exam
+untouched: `validate_fields`' name messages are unchanged); `to_tsv` header
+sanitization made explicit; a `max` rule on a non-numeric value must raise
+`"numeric"`, not silently pass.
+
+Recurring engine observation (2nd occurrence, tasks 1 and 2 across attempts
+3–4): the fix-round review packet records fix-commit-only ranges instead of
+task-BASE→head. New this run: task 1's implementer reported a **fabricated
+head sha tail** (`9fe754d4b0eba...` does not exist; the real commit is
+`9fe754d21d8b...`) — the fix-round agent detected it via prefix resolution
+and re-anchored; same class as the shadow-probe report.json sha-tail finding
+(sha/ancestry checks are the authority, not reported strings).
+
+## Decision after attempt 4
+
+Round-4 resize: mandatory seal-compat fix (minimal-config hook) + fatten
+task 3 hardest (`quota.usage`/`purge`, `ratelimit.status_line`/`check_many`),
+task 4 next (`group_by`/`search`/`to_markdown_report`,
+`audit.export_state`/`import_state`), task 1 lightly
+(`diff_specs`, `describe_rules`), task 2 unchanged in size (5.9 met; only
+the two ambiguity pins). Projected implementers ~5–6.5 min each,
+E2E ~55 min.
