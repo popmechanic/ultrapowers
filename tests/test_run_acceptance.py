@@ -799,7 +799,14 @@ def _mk_path_identity_repo(tmp_path):
 
 
 def _symlinked_tmpdir_env(tmp_path, name):
-    """An environment whose TMPDIR reaches the real temp dir through a symlink."""
+    """An environment whose TMPDIR reaches the real temp dir through a symlink.
+
+    The differential's mechanism differs by platform (#124): macOS `mktemp -d`
+    ignores TMPDIR entirely, so there the symlink under test is the system's
+    own /var -> /private/var link; Linux honors TMPDIR, so this fixture's
+    explicit symlink carries the differential. Either way the provisioning
+    sites see a symlinked temp parent and the `pwd -P` canonicalization is
+    what keeps worktree paths identity-stable."""
     real = tmp_path / (name + "-real")
     real.mkdir()
     link = tmp_path / (name + "-link")
@@ -834,6 +841,31 @@ def test_sealed_exam_survives_symlinked_tmpdir(tmp_path):
     out = json.loads(r.stdout.strip().splitlines()[-1])
     assert out["passed"] is True, r.stdout + r.stderr
     assert r.returncode == 0
+
+
+def test_baseline_survives_symlinked_tmpdir(tmp_path):
+    # #124 item 1: --baseline inherits the canonicalization structurally via
+    # the shared run_exam core, but neither committed symlink pin exercised
+    # this entry point. Same differential as the two sibling pins: the
+    # path-identity suite passes in the provisioned worktree only when the
+    # temp parent was canonicalized, so the baseline verdict for a
+    # feature-present fixture is GREEN_AT_BASELINE (exit 1), never a spurious
+    # PROVEN_RED manufactured by a symlinked worktree path.
+    repo = _mk_path_identity_repo(tmp_path)
+    suite = tmp_path / "baseline-suite"
+    suite.mkdir()
+    (suite / "test_path_identity.py").write_text(PATH_IDENTITY_TEST)
+    env = _symlinked_tmpdir_env(tmp_path, "bl")
+    r = subprocess.run(
+        ["bash", str(RUN), "--baseline", "--suite", str(suite),
+         "--branch", "main",
+         "--run", sys.executable + " -m pytest -q .ultra-acceptance",
+         "--repo", str(repo)],
+        capture_output=True, text=True, env=env)
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["status"] == "GREEN_AT_BASELINE", r.stdout + r.stderr
+    assert out["passed"] is True
+    assert r.returncode == 1
 
 
 def test_uncreatable_temp_parent_errors_instead_of_using_cwd(tmp_path):

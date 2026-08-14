@@ -75,7 +75,10 @@ same args file. The receipt's `llmDerives` list is the checklist:
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
 - **`testCmd`** — run-wide resolution moved into the driver (pass `--test-cmd`
   to `ultra_run.py`, else its deterministic detection ladder stamps it;
-  `receipt.testCmd`/`receipt.testCmdSource` record the outcome). Derive only
+  `receipt.testCmd`/`receipt.testCmdSource` record the outcome). An
+  explicitly-passed empty or whitespace-only `--test-cmd` fails the
+  test-command stage loudly rather than falling through to detection —
+  pass the knob only with a real command. Derive only
   **per-task** `testCmd` on wave entries, for polyglot plans.
 - **`bootstrapCmd`** — pass `--bootstrap-cmd` to `ultra_run.py` (per-worktree
   install for fresh worktrees); it is validated, stamped into the receipt, and
