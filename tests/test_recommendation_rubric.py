@@ -44,6 +44,10 @@ def test_neither_leg_reflex_recommends():
 # tree fails red. (Intentionally changing the rubric means updating this list too,
 # in lockstep with both legs — that is the point.)
 BRANCH_CLAUSES = [
+    # The §5 relaxation's width definition (spec 2026-08-12 §5): fixed as plain
+    # unstyled text, byte-identical in both legs, and it precedes the decision
+    # tree in each — so it participates in the canonical-order pin too.
+    "after treating same-file edits between tasks the compiler will not fold as dependencies",
     "risk → Ultrapowers",
     "parallel width and T≥4 → Ultrapowers",
     "T≤2 → Inline",

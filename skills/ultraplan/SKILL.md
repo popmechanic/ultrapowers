@@ -32,9 +32,15 @@ independence the sequential pen glides over. Five moves:
    `Produces:` the signatures; consumers `Consume:` + `Depends-on:` it and build
    against the contract in parallel. This is the highest-leverage move, and it
    uses only the existing marker machinery.
-3. **Cut along file seams.** Draw boundaries so same-wave tasks do not `Modify`
-   the same file. Where genuinely-independent work collides on one file, consider
-   splitting the file along its real responsibility seam.
+3. **Let same-file edits stand.** The compiler folds concurrent same-file text
+   edits (`--overlap fold`, the default), so a shared hot file is no longer a
+   reason to reshape a plan. Three old workarounds are now authoring
+   **defects**, not caution: splitting a feature unnaturally (or splitting a
+   file) to dodge a collision; turning a fan of independent tasks into a chain
+   to serialize writers; adding `Depends-on` for file overlap alone with no
+   real data/interface dependency. Draw boundaries where the *work* is
+   independent and let colliding `Modify` lines collide. `**Files:**` blocks
+   remain required — they are the compiler's contention-detection input.
 4. **Interrogate every dependency.** For each `Depends-on` you are about to write:
    true data/interface dependency, or just the order you happened to think of it?
    Keep the real ones; drop the authoring-order ones.
@@ -42,10 +48,10 @@ independence the sequential pen glides over. Five moves:
    inflate width — worktree overhead and the execution-fit recommender reward only
    genuine independent mass.
 
-**The justification gate.** Moves 2 and 3 reshape the architecture, so each one
+**The justification gate.** Move 2 reshapes the architecture, so it
 must (a) name a concrete independence win it produces, and (b) pass *"would a good engineer make this move even without parallelism in mind?"*. A contract introduced
-only to fan out, or a file split only to dodge a collision, fails the gate — drop
-it. For every architectural move that survives the gate, add a
+only to fan out fails the gate — drop it. (A file split only to dodge a
+collision is already a defect under move 3, gate or no gate.) For every architectural move that survives the gate, add a
 `**Parallelization rationale:** <named independence win>` line in that task's body,
 **after the `**Interfaces:**` block** (never in the `**Type:**`/`**Depends-on:**`
 header block), so the operator can audit it when reviewing the plan.
@@ -134,10 +140,11 @@ Read three signals off the marked plan you just authored:
 - **T** — the number of `implementation` tasks (`gate` / `release` / `manual`
   tasks do not run in waves and are not counted).
 - **parallel width** — yes/no: is there at least one wave with ≥2 independent
-  tasks, *after* treating same-file `Modify` pairs as dependencies (this is how
-  the compiler nets out file contention, so two tasks colliding on a shared file
-  are not width)? Compute it by hand from the `**Depends-on:**` graph plus the
-  `**Files:**` blocks.
+  tasks, after treating same-file edits between tasks the compiler will not fold as dependencies
+  (fold mode merges concurrent same-file text edits, so an ordinary shared-file
+  collision now counts as width; only edits the compiler will not fold — e.g.
+  binary paths — still serialize)? Compute it by hand from the
+  `**Depends-on:**` graph plus the `**Files:**` blocks.
 - **risk** — true if Acceptance is `sealed` (the operator cannot read the diff),
   or the work touches a high-stakes surface (auth, payments, migrations, data
   integrity, public API), or behavior is hard to verify by reading.
@@ -420,11 +427,12 @@ silently on the operator's behalf.
 
 After writing-plans' own self-review checklist, verify:
 
-- Decomposition was shaped before annotation: every contract-first task and
-  seam-split names its independence win and passes the good-engineer test, and
-  each surviving architectural move carries a `**Parallelization rationale:**`
-  line — or the plan is intentionally narrow because the work has no latent
-  parallelism.
+- Decomposition was shaped before annotation: every contract-first task names
+  its independence win and passes the good-engineer test, each surviving
+  architectural move carries a `**Parallelization rationale:**` line — or the
+  plan is intentionally narrow because the work has no latent parallelism —
+  and no task shape exists only to dodge a same-file collision (no unnatural
+  split, no chain-for-a-fan, no overlap-only `Depends-on`).
 - Every task carries an explicit `**Type:**` (or is intentionally default
   `implementation`).
 - Every cross-task constraint appears as `**Depends-on:**` on the downstream task.

@@ -1,0 +1,3852 @@
+diff --git a/app/audit.py b/app/audit.py
+new file mode 100644
+index 0000000..669856b
+--- /dev/null
++++ b/app/audit.py
+@@ -0,0 +1,96 @@
++"""Audit log of every dispatched call.
++
++`dispatch_hook` is registered into `registry.DISPATCH_HOOKS`, so it runs
++before EVERY dispatch — unlike rate limiting, the audit log does not
++special-case the method. It never raises: it only appends. The
++`audit_log_enabled` config key is recorded for a future on/off switch and
++is deliberately not read here; this hook always logs.
++
++The log lives in a module-global list, so callers that need isolation
++(tests, in particular) must call `clear()` first. An entry is exactly
++three keys — `method`, `path` and `actor` — and never the dispatched
++record's own fields.
++
++The cap is passed in on every write (`max_entries`) and is enforced after
++every single append, oldest first; `dropped()` counts the entries the cap
++evicted since the last `clear()`.
++
++The read side lives in `app/audit_query.py`, which is pure over the entry
++lists this module hands out and imports nothing from here.
++"""
++
++#: The three keys of an audit entry, in render order.
++FIELDS = ("method", "path", "actor")
++
++#: Cap used when a config does not carry `audit_log_max_entries`.
++DEFAULT_MAX_ENTRIES = 500
++
++#: Actor recorded when a dispatch carries no `actor` kwarg.
++ANONYMOUS = "anonymous"
++
++_log = []
++_dropped = 0
++
++
++def clear():
++    """Empty the log and reset the dropped counter."""
++    global _dropped
++    del _log[:]
++    _dropped = 0
++
++
++def entries():
++    """The logged entries, oldest first, as a copy the caller may mutate."""
++    return [dict(entry) for entry in _log]
++
++
++def _enforce_cap(max_entries):
++    global _dropped
++    if max_entries is None:
++        return
++    while len(_log) > max(max_entries, 0):
++        _log.pop(0)
++        _dropped += 1
++
++
++def record(method, path, actor, max_entries):
++    """Append one entry, then evict oldest entries down to `max_entries`."""
++    _log.append({"method": method, "path": path, "actor": actor})
++    _enforce_cap(max_entries)
++
++
++def record_many(triples, max_entries):
++    """Append each `(method, path, actor)` triple in order, enforcing the
++    cap after every append. Returns the number appended — which is always
++    `len(triples)`, even for appends that immediately age out."""
++    appended = 0
++    for method, path, actor in triples:
++        record(method, path, actor, max_entries)
++        appended += 1
++    return appended
++
++
++def dropped():
++    """How many entries the cap has evicted since the last `clear()`."""
++    return _dropped
++
++
++def export_state():
++    """A snapshot of the whole log: `{"entries": [...], "dropped": n}`.
++    The entries are copies, so mutating them cannot touch the live log."""
++    return {"entries": entries(), "dropped": _dropped}
++
++
++def import_state(state):
++    """Replace the log and the dropped counter from an `export_state()`
++    shaped dict, copying it so later mutations of `state` do not leak."""
++    global _dropped
++    _log[:] = [dict(entry) for entry in state["entries"]]
++    _dropped = state["dropped"]
++
++
++def dispatch_hook(store, config, method, path, kwargs):
++    """DISPATCH_HOOKS entry point: log the call and return None."""
++    actor = kwargs.get("actor", ANONYMOUS)
++    record(method, path, actor,
++           config.get("audit_log_max_entries", DEFAULT_MAX_ENTRIES))
+diff --git a/app/audit_query.py b/app/audit_query.py
+new file mode 100644
+index 0000000..566027b
+--- /dev/null
++++ b/app/audit_query.py
+@@ -0,0 +1,247 @@
++"""Pure read-side queries over audit entry lists.
++
++Every function here takes the entry list as a plain argument, imports
++nothing from `app.audit`, never touches module state, and never mutates
++its input: entries handed back are always fresh dicts in fresh lists, so
++a caller may mutate a result without disturbing the source log.
++
++An entry is a dict with the three keys `method`, `path` and `actor`;
++`FIELDS` is the legal field-name set every field argument is validated
++against, and it also fixes the section order of the rendered reports
++(method rows before actor rows).
++"""
++
++#: The legal field names, in report order.
++FIELDS = ("method", "path", "actor")
++
++#: Replacement value written by `redact`.
++REDACTED = "***"
++
++
++def _check_field(field):
++    if field not in FIELDS:
++        raise ValueError("unknown audit field: %s" % (field,))
++    return field
++
++
++def _copy(entry):
++    return dict(entry)
++
++
++def filter_entries(entries, actor=None, method=None, path=None):
++    """The entries matching every criterion given, in order. Criteria left
++    as None are ignored; no criteria at all keeps everything."""
++    criteria = [(name, value) for name, value in
++                (("actor", actor), ("method", method), ("path", path))
++                if value is not None]
++    return [_copy(entry) for entry in entries
++            if all(entry.get(name) == value for name, value in criteria)]
++
++
++def counts_by(entries, field):
++    """`{value: count}` over one field. Raises ValueError on any other."""
++    _check_field(field)
++    counts = {}
++    for entry in entries:
++        if field in entry:
++            value = entry[field]
++            counts[value] = counts.get(value, 0) + 1
++    return counts
++
++
++def counts_matrix(entries):
++    """Nested `{method: {actor: count}}`; only combinations that actually
++    occur appear — there are no zero-filled cells."""
++    matrix = {}
++    for entry in entries:
++        if "method" in entry and "actor" in entry:
++            row = matrix.setdefault(entry["method"], {})
++            actor = entry["actor"]
++            row[actor] = row.get(actor, 0) + 1
++    return matrix
++
++
++def rollup(entries, fields):
++    """Counts nested by each of `fields` in order — the generalisation of
++    `counts_by` (one field) and `counts_matrix` (method then actor).
++    `fields` must be a non-empty list of distinct legal field names."""
++    if not fields:
++        raise ValueError("rollup needs at least one field")
++    seen = set()
++    for field in fields:
++        _check_field(field)
++        if field in seen:
++            raise ValueError("duplicate audit field: %s" % (field,))
++        seen.add(field)
++
++    counts = {}
++    for entry in entries:
++        if any(field not in entry for field in fields):
++            continue
++        node = counts
++        for field in fields[:-1]:
++            node = node.setdefault(entry[field], {})
++        leaf = entry[fields[-1]]
++        node[leaf] = node.get(leaf, 0) + 1
++    return counts
++
++
++def last_n(entries, n):
++    """The final `n` entries in order; `n` past the end returns them all."""
++    if n < 0:
++        raise ValueError("n must not be negative: %s" % (n,))
++    if n == 0:
++        return []
++    return [_copy(entry) for entry in entries[-n:]]
++
++
++def redact(entries, fields):
++    """New entries with each of `fields` replaced by `***`; the originals
++    keep their real values."""
++    for field in fields:
++        _check_field(field)
++    redacted = []
++    for entry in entries:
++        copy = _copy(entry)
++        for field in fields:
++            if field in copy:
++                copy[field] = REDACTED
++        redacted.append(copy)
++    return redacted
++
++
++def summary(entries):
++    """Totals plus the first and last entries (copies, or None if empty)."""
++    return {
++        "total": len(entries),
++        "by_method": counts_by(entries, "method"),
++        "by_actor": counts_by(entries, "actor"),
++        "first": _copy(entries[0]) if entries else None,
++        "last": _copy(entries[-1]) if entries else None,
++    }
++
++
++def recent(entries, config):
++    """The most recent entries, capped by `audit_query_default_limit`."""
++    return last_n(entries, config["audit_query_default_limit"])
++
++
++def paginate(entries, page, per_page):
++    """One 1-based page of entries plus its metadata."""
++    if page < 1:
++        raise ValueError("page must be 1 or greater: %s" % (page,))
++    if per_page < 1:
++        raise ValueError("per_page must be 1 or greater: %s" % (per_page,))
++    total = len(entries)
++    pages = (total + per_page - 1) // per_page
++    start = (page - 1) * per_page
++    return {
++        "page": page,
++        "pages": pages,
++        "total": total,
++        "items": [_copy(entry) for entry in entries[start:start + per_page]],
++    }
++
++
++def _sorted_counts(entries, field):
++    counts = counts_by(entries, field)
++    return [(value, counts[value]) for value in sorted(counts)]
++
++
++def to_report(entries):
++    """The plain-text audit report: a total, then a method section and an
++    actor section, each sorted alphabetically. Empty counts get no
++    section header at all."""
++    lines = ["audit report", "total: %d" % len(entries)]
++    for field, heading in (("method", "by method:"), ("actor", "by actor:")):
++        rows = _sorted_counts(entries, field)
++        if rows:
++            lines.append("")
++            lines.append(heading)
++            lines.extend("  %s: %d" % row for row in rows)
++    return "\n".join(lines)
++
++
++def to_csv_report(entries):
++    """The same counts as `to_report`, as `field,value,count` rows."""
++    lines = ["field,value,count"]
++    for field in ("method", "actor"):
++        lines.extend("%s,%s,%d" % (field, value, count)
++                     for value, count in _sorted_counts(entries, field))
++    return "\n".join(lines)
++
++
++def to_markdown_report(entries):
++    """The same rows as `to_csv_report`, as an unpadded pipe table."""
++    lines = ["| field | value | count |", "| --- | --- | --- |"]
++    for field in ("method", "actor"):
++        lines.extend("| %s | %s | %d |" % (field, value, count)
++                     for value, count in _sorted_counts(entries, field))
++    return "\n".join(lines)
++
++
++def top_actors(entries, n):
++    """The `n` busiest actors as `(actor, count)`, most calls first, ties
++    broken by actor name ascending."""
++    if n < 0:
++        raise ValueError("n must not be negative: %s" % (n,))
++    counts = counts_by(entries, "actor")
++    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
++    return ranked[:n]
++
++
++def merge_entries(*entry_lists):
++    """One new list of entry copies, concatenated in argument order."""
++    return [_copy(entry) for entries in entry_lists for entry in entries]
++
++
++def _diff_counts(a_counts, b_counts):
++    diff = {}
++    for value in set(a_counts) | set(b_counts):
++        delta = b_counts.get(value, 0) - a_counts.get(value, 0)
++        if delta:
++            diff[value] = delta
++    return diff
++
++
++def diff_summaries(a, b):
++    """What changed from summary `a` to summary `b`: the total delta plus,
++    per section, only the values whose counts moved."""
++    return {
++        "total": b["total"] - a["total"],
++        "by_method": _diff_counts(a["by_method"], b["by_method"]),
++        "by_actor": _diff_counts(a["by_actor"], b["by_actor"]),
++    }
++
++
++def group_by(entries, field):
++    """`{value: [entries]}` for one field, each group in original order."""
++    _check_field(field)
++    groups = {}
++    for entry in entries:
++        if field in entry:
++            groups.setdefault(entry[field], []).append(_copy(entry))
++    return groups
++
++
++def search(entries, needle):
++    """The entries where `needle` is a substring of any field value."""
++    if not needle:
++        raise ValueError("needle must not be empty")
++    return [_copy(entry) for entry in entries
++            if any(needle in str(entry[field])
++                   for field in FIELDS if field in entry)]
++
++
++def format_entry(entry):
++    """One entry as `"<METHOD> <path> (<actor>)"`."""
++    for field in FIELDS:
++        if field not in entry:
++            raise ValueError("entry is missing %s" % (field,))
++    return "%s %s (%s)" % (str(entry["method"]).upper(),
++                           entry["path"], entry["actor"])
++
++
++def to_lines(entries):
++    """`format_entry` for every entry, in order."""
++    return [format_entry(entry) for entry in entries]
+diff --git a/app/export.py b/app/export.py
+new file mode 100644
+index 0000000..1284931
+--- /dev/null
++++ b/app/export.py
+@@ -0,0 +1,205 @@
++"""Machine-readable export formatters.
++
++`app.report` renders the human-facing plain-text summary; this module adds
++the machine-readable formats alongside it: CSV, JSON, Markdown, NDJSON, TSV
++and HTML. Every format builds its column model through `app.tabular` — the
++key union, cell rendering, escaping and widths all live there, so no format
++re-implements them.
++
++`FORMATS` is the table `app.registry` publishes to the pre-wired /export
++route. `EXTRA_FORMATS` holds formats that exist but are deliberately not
++route-reachable (`html`); `render` serves `FORMATS` only, `render_any`
++serves both.
++"""
++import json
++
++from app import tabular
++
++
++def to_csv(records):
++    """Comma-separated values: a sorted-union header row, then one row per
++    record in input order. Missing fields render as empty cells; every cell
++    is escaped by `tabular.escape_csv`. An empty export has no columns, so
++    it has no header row either."""
++    cols = tabular.columns(records)
++    if not cols:
++        return ""
++    lines = [",".join(tabular.escape_csv(col) for col in cols)]
++    for record in records:
++        lines.append(",".join(tabular.escape_csv(record.get(col))
++                              for col in cols))
++    return "\n".join(lines)
++
++
++def to_json(records):
++    """The records as one JSON array, keys sorted."""
++    return json.dumps(records, sort_keys=True)
++
++
++def to_markdown(records, align="left"):
++    """A Markdown pipe table: header row, dash separator row, then one row
++    per record, every cell padded to its `tabular.widths` column width.
++
++    `align` is passed straight through to `tabular.pad` (via
++    `tabular.render_row`), which rejects anything but "left"/"right"; a
++    right-aligned table marks its separator cells with a trailing colon.
++    """
++    cols = tabular.columns(records)
++    if not cols:
++        return ""
++    col_widths = tabular.widths(records, cols)
++    widths_list = [col_widths[col] for col in cols]
++    lines = [tabular.render_row(cols, widths_list, align)]
++    lines.append(tabular.render_row(
++        [_separator_cell(width, align) for width in widths_list],
++        widths_list, align))
++    for record in records:
++        lines.append(tabular.render_row(
++            [record.get(col) for col in cols], widths_list, align))
++    return "\n".join(lines)
++
++
++def _separator_cell(width, align):
++    """One Markdown separator cell, width-matched: plain dashes for a
++    left-aligned column, dashes ending in a colon for a right-aligned one."""
++    if align == "right":
++        return "-" * (width - 1) + ":"
++    return "-" * width
++
++
++def to_ndjson(records):
++    """Newline-delimited JSON: one sorted-key JSON object per line, no
++    trailing newline."""
++    return "\n".join(json.dumps(record, sort_keys=True) for record in records)
++
++
++def to_tsv(records):
++    """Tab-separated values. Column names as well as cells go through
++    `tabular.sanitize_flat`: a tab or newline anywhere — including in a
++    column name — would otherwise break the grid."""
++    cols = tabular.columns(records)
++    if not cols:
++        return ""
++    lines = ["\t".join(tabular.sanitize_flat(col) for col in cols)]
++    for record in records:
++        lines.append("\t".join(tabular.sanitize_flat(record.get(col))
++                               for col in cols))
++    return "\n".join(lines)
++
++
++def to_html(records):
++    """An HTML `<table>`: a `<th>` header row of the sorted column names,
++    then one `<tr>` of `<td>` cells per record, all HTML-escaped."""
++    cols = tabular.columns(records)
++    if not cols:
++        return ""
++    lines = ["<table>"]
++    lines.append("<tr>%s</tr>" % "".join(
++        "<th>%s</th>" % tabular.escape_html(col) for col in cols))
++    for record in records:
++        lines.append("<tr>%s</tr>" % "".join(
++            "<td>%s</td>" % tabular.escape_html(record.get(col))
++            for col in cols))
++    lines.append("</table>")
++    return "\n".join(lines)
++
++
++def parse_csv(text):
++    """The inverse of `to_csv`: the first line is the header, each further
++    line becomes a dict of header name -> cell string.
++
++    Parsing never re-types values — an exported `3` comes back as "3".
++    Quoted cells are understood: they may contain commas, newlines, and
++    doubled double-quotes. An unterminated quote raises ValueError.
++    """
++    if text == "":
++        return []
++    rows = _parse_rows(text)
++    header = rows[0]
++    records = []
++    for row in rows[1:]:
++        record = {}
++        for index, name in enumerate(header):
++            record[name] = row[index] if index < len(row) else ""
++        records.append(record)
++    return records
++
++
++def _parse_rows(text):
++    """Split CSV text into rows of cells, honouring quoted cells. The final
++    row is always emitted, so a trailing newline yields a last row of empty
++    cells (that row is a real, if empty, record)."""
++    rows = []
++    row = []
++    field = []
++    quoted = False
++    index = 0
++    while index < len(text):
++        char = text[index]
++        if quoted:
++            if char == '"':
++                if text[index + 1:index + 2] == '"':
++                    field.append('"')
++                    index += 1
++                else:
++                    quoted = False
++            else:
++                field.append(char)
++        elif char == '"':
++            quoted = True
++        elif char == ",":
++            row.append("".join(field))
++            field = []
++        elif char == "\n":
++            row.append("".join(field))
++            field = []
++            rows.append(row)
++            row = []
++        elif char == "\r" and text[index + 1:index + 2] == "\n":
++            pass
++        else:
++            field.append(char)
++        index += 1
++    if quoted:
++        raise ValueError("unterminated quoted cell")
++    row.append("".join(field))
++    rows.append(row)
++    return rows
++
++
++FORMATS = {
++    "csv": to_csv,
++    "json": to_json,
++    "md": to_markdown,
++    "ndjson": to_ndjson,
++    "tsv": to_tsv,
++}
++
++# Formats that exist but are deliberately kept out of FORMATS — and so out
++# of the registry and off the /export route. Reachable via render_any only.
++EXTRA_FORMATS = {
++    "html": to_html,
++}
++
++
++def render(records, fmt):
++    """Render `records` in one of the `FORMATS`. Anything else — including
++    an `EXTRA_FORMATS` name — raises ValueError."""
++    if fmt not in FORMATS:
++        raise ValueError("unknown export format: %s" % fmt)
++    return FORMATS[fmt](records)
++
++
++def render_any(records, fmt):
++    """Like `render`, but falls through to `EXTRA_FORMATS` as well."""
++    if fmt in FORMATS:
++        return FORMATS[fmt](records)
++    if fmt in EXTRA_FORMATS:
++        return EXTRA_FORMATS[fmt](records)
++    raise ValueError("unknown export format: %s" % fmt)
++
++
++def summary_line(records):
++    """A one-line description of what an export would contain."""
++    return "%s records, %s columns" % (len(records),
++                                       len(tabular.columns(records)))
+diff --git a/app/quota.py b/app/quota.py
+new file mode 100644
+index 0000000..9fb9d50
+--- /dev/null
++++ b/app/quota.py
+@@ -0,0 +1,134 @@
++"""Windowed quota counter with a logical clock.
++
++This module is the single place where rate-limit counting happens; every
++consumer (`app.ratelimit`, `app.throttle`) delegates here and keeps no
++counters of its own.
++
++Time is *logical*: no wall clock is ever read. `now()` starts at 0.0 and
++only moves when `advance()` is called, which keeps every consumer fully
++deterministic and testable. In a shipped process the clock never moves, so
++a window becomes plain call-counting for the life of the process.
++
++Both the clock and the hit store are module globals cleared by `reset()`.
++
++A hit is kept in the window while its timestamp is `>= now() - window`:
++pruning drops hits *strictly older* than that boundary, so a hit sitting
++exactly on it still counts. `window_seconds=float("inf")` never prunes.
++
++Read-only helpers (`remaining`, `snapshot`, `time_to_next_slot`, `usage`)
++never record a hit and never mutate the store; `take` and `purge` are the
++only mutators.
++"""
++
++_clock = 0.0
++_hits = {}
++
++
++class QuotaExceededError(Exception):
++    """Raised by `take` when a key has no allowance left in its window."""
++
++
++def reset():
++    """Clear the logical clock and every key's recorded hits."""
++    global _clock, _hits
++    _clock = 0.0
++    _hits = {}
++
++
++def now():
++    """The current logical time, in seconds since the last `reset()`."""
++    return _clock
++
++
++def advance(seconds):
++    """Move the logical clock forward by `seconds` and return the new time.
++
++    Raises ValueError for a negative step: the clock is monotonic. The
++    clock is left unchanged when the step is rejected.
++    """
++    global _clock
++    if seconds < 0:
++        raise ValueError("cannot advance the clock backwards: %r" % (seconds,))
++    _clock = float(_clock + seconds)
++    return _clock
++
++
++def _in_window(key, window_seconds):
++    """The key's hit timestamps that are still inside `window_seconds`."""
++    cutoff = _clock - window_seconds
++    return [hit for hit in _hits.get(key, []) if hit >= cutoff]
++
++
++def take(key, limit, window_seconds, burst=0):
++    """Record a hit for `key` and return its in-window hit count.
++
++    Raises QuotaExceededError — without recording — when the key already
++    holds `limit + burst` in-window hits.
++    """
++    kept = _in_window(key, window_seconds)
++    _hits[key] = kept
++    if len(kept) >= limit + burst:
++        raise QuotaExceededError(
++            "quota exceeded for %s: limit %s" % (key, limit))
++    kept.append(_clock)
++    return len(kept)
++
++
++def remaining(key, limit, window_seconds, burst=0):
++    """How many takes `key` has left in the window; floors at 0."""
++    used = len(_in_window(key, window_seconds))
++    return max(0, limit + burst - used)
++
++
++def snapshot(window_seconds):
++    """Map every key with in-window hits to its sorted hit timestamps.
++
++    Keys whose hits have all aged out are omitted. The returned lists are
++    copies: mutating them cannot corrupt the store.
++    """
++    result = {}
++    for key in _hits:
++        kept = sorted(_in_window(key, window_seconds))
++        if kept:
++            result[key] = kept
++    return result
++
++
++def time_to_next_slot(key, limit, window_seconds, burst=0):
++    """Seconds until `key` regains a slot: 0.0 while it still has one.
++
++    Returns `inf` when no hit can ever free a slot — an infinite window, or
++    an allowance of zero (which can never record a hit in the first place).
++    """
++    if remaining(key, limit, window_seconds, burst) > 0:
++        return 0.0
++    kept = _in_window(key, window_seconds)
++    if not kept or window_seconds == float("inf"):
++        return float("inf")
++    return min(kept) + window_seconds - _clock
++
++
++def usage(key, limit, window_seconds, burst=0):
++    """A read-only report of the key's window: used/allowed/remaining/reset_in."""
++    return {
++        "used": len(_in_window(key, window_seconds)),
++        "allowed": limit + burst,
++        "remaining": remaining(key, limit, window_seconds, burst),
++        "reset_in": time_to_next_slot(key, limit, window_seconds, burst),
++    }
++
++
++def purge(window_seconds):
++    """Drop every key's aged-out hits; return how many hits were dropped.
++
++    Keys left with no hits are removed from the store entirely.
++    """
++    dropped = 0
++    for key in list(_hits):
++        kept = _in_window(key, window_seconds)
++        dropped += len(_hits[key]) - len(kept)
++        if kept:
++            _hits[key] = kept
++        else:
++            del _hits[key]
++    return dropped
+diff --git a/app/ratelimit.py b/app/ratelimit.py
+new file mode 100644
+index 0000000..7950e62
+--- /dev/null
++++ b/app/ratelimit.py
+@@ -0,0 +1,97 @@
++"""Per-actor rate-limit guard for writes.
++
++`dispatch_hook` is registered into the registry's DISPATCH_HOOKS and guards
++POST dispatches only — reads are never counted. The actor is read from the
++dispatch kwargs (`actor`, defaulting to `"anonymous"`), and all counting is
++delegated to `app.quota`: this module holds no counter state of its own.
++
++Config is read with `rate_limit_max_per_window` as the only required key;
++the window and burst always fall back to their defaults, so a caller may
++pass a limit-only config.
++"""
++from app import quota
++
++DEFAULT_WINDOW_SECONDS = 60
++DEFAULT_BURST = 0
++
++
++class RateLimitExceededError(quota.QuotaExceededError):
++    """Raised when an actor exceeds its write allowance for the window."""
++
++
++def reset():
++    """Clear every key's counter and the shared logical clock."""
++    quota.reset()
++
++
++def check_and_increment(key, limit, window_seconds=float("inf"), burst=0):
++    """Record one hit for `key`; return its in-window count.
++
++    Raises RateLimitExceededError once the key has used `limit + burst`
++    hits inside the window.
++    """
++    try:
++        return quota.take(key, limit, window_seconds, burst=burst)
++    except quota.QuotaExceededError as exc:
++        raise RateLimitExceededError(
++            "rate limit exceeded for %s: limit %s" % (key, limit)) from exc
++
++
++def _limit(config):
++    return config["rate_limit_max_per_window"]
++
++
++def _window(config):
++    return config.get("rate_limit_window_seconds", DEFAULT_WINDOW_SECONDS)
++
++
++def _burst(config):
++    return config.get("rate_limit_burst", DEFAULT_BURST)
++
++
++def dispatch_hook(store, config, method, path, kwargs):
++    """DISPATCH_HOOKS entry: count POSTs per actor, ignore everything else."""
++    if method != "POST":
++        return None
++    key = kwargs.get("actor", "anonymous")
++    check_and_increment(key, _limit(config), _window(config),
++                        burst=_burst(config))
++    return None
++
++
++def retry_after(key, config):
++    """Seconds until `key` regains a slot under `config`'s window."""
++    return quota.time_to_next_slot(key, _limit(config), _window(config),
++                                   burst=_burst(config))
++
++
++def limit_headers(key, config):
++    """The three `X-RateLimit-*` response headers for `key`, as strings.
++
++    `X-RateLimit-Limit` is the configured limit alone; any burst shows up
++    only in the full allowance reported by `X-RateLimit-Remaining`.
++    """
++    return {
++        "X-RateLimit-Limit": str(_limit(config)),
++        "X-RateLimit-Remaining": str(
++            quota.remaining(key, _limit(config), _window(config),
++                            burst=_burst(config))),
++        "X-RateLimit-Reset": str(retry_after(key, config)),
++    }
++
++
++def status_line(key, config):
++    """A one-line human-readable summary of `key`'s current window."""
++    state = quota.usage(key, _limit(config), _window(config),
++                        burst=_burst(config))
++    return "%s: %s/%s, reset in %ss" % (
++        key, state["used"], state["allowed"], state["reset_in"])
++
++
++def check_many(keys, config):
++    """Map each key to whether a POST for it would pass right now."""
++    return {
++        key: quota.remaining(key, _limit(config), _window(config),
++                             burst=_burst(config)) > 0
++        for key in keys
++    }
+diff --git a/app/registry.py b/app/registry.py
+index 31f7077..b55b64d 100644
+--- a/app/registry.py
++++ b/app/registry.py
+@@ -46,6 +46,16 @@ DEFAULT_CONFIG = {
+     "max_records": 10000,
+     "default_category": "uncategorized",
+     # --- feature config blocks land below, one per feature task ---
++    "audit_log_enabled": True,
++    "audit_log_max_entries": 500,
++    "audit_query_default_limit": 100,
++    "export_default_format": "csv",
++    "export_formats_enabled": ["csv", "json"],
++    "rate_limit_max_per_window": 5,
++    "rate_limit_window_seconds": 60,
++    "rate_limit_burst": 0,
++    "validation_required_fields": ["name", "amount"],
++    "validation_max_amount": 100000,
+ }
+ 
+ 
+@@ -145,3 +155,15 @@ def bootstrap(config=None):
+ # one of the hook lists / EXPORT_FORMATS above. This section only ever
+ # grows by appending a new import + a new registration line; no existing
+ # line is edited by a later feature.
++
++from app import audit  # noqa: E402
++DISPATCH_HOOKS.append(audit.dispatch_hook)
++
++from app import export  # noqa: E402
++EXPORT_FORMATS.update(export.FORMATS)
++
++from app import ratelimit  # noqa: E402
++DISPATCH_HOOKS.append(ratelimit.dispatch_hook)
++
++from app import validation  # noqa: E402
++PRE_CREATE_HOOKS.append(validation.pre_create_hook)
+diff --git a/app/rules.py b/app/rules.py
+new file mode 100644
+index 0000000..6e7fa56
+--- /dev/null
++++ b/app/rules.py
+@@ -0,0 +1,127 @@
++"""Rule combinators: a pure, composable layer over app.schema's predicates.
++
++A *rule* is a plain dict `{"name": str, "test": callable}`. Rules compose
++into named composites (`all_of`, `any_of`, `negate`, `when`) whose names
++render the tree they were built from, so a failure report can name the
++exact rule that rejected a value.
++
++The builtin rules delegate to `app.schema` at call time — this module never
++reimplements a predicate that already exists there.
++"""
++from app import schema
++
++
++class RuleError(Exception):
++    """Raised when a rule is applied in a way its definition forbids."""
++
++
++def rule(name, predicate):
++    """A named rule. `name` must be a non-empty string."""
++    if not isinstance(name, str) or not name:
++        raise ValueError("rule name must be a non-empty string: %r" % (name,))
++    return {"name": name, "test": predicate}
++
++
++def check(value, r):
++    """Run rule `r` against `value`, coerced to a bool."""
++    return bool(r["test"](value))
++
++
++def _joined(children):
++    return ",".join(child["name"] for child in children)
++
++
++def all_of(*children):
++    """A rule passing iff every child passes. `all_of()` passes everything."""
++    return rule("all(%s)" % _joined(children),
++                lambda value: all(check(value, c) for c in children))
++
++
++def any_of(*children):
++    """A rule passing iff at least one child passes. No children is a bug,
++    not a policy: a vacuous `any` would reject every value."""
++    if not children:
++        raise ValueError("any_of requires at least one rule")
++    return rule("any(%s)" % _joined(children),
++                lambda value: any(check(value, c) for c in children))
++
++
++def negate(r):
++    """A rule passing exactly when `r` fails."""
++    return rule("not(%s)" % r["name"], lambda value: not check(value, r))
++
++
++def when(cond, then):
++    """Material implication: passes when `cond` fails or `then` passes."""
++    return rule("when(%s,%s)" % (cond["name"], then["name"]),
++                lambda value: (not check(value, cond)) or check(value, then))
++
++
++def explain(value, r):
++    """"<rule name>: pass" or "<rule name>: fail"."""
++    return "%s: %s" % (r["name"], "pass" if check(value, r) else "fail")
++
++
++def apply_rules(fields, rules_by_field):
++    """Failure messages for `fields`, in `rules_by_field` insertion order.
++    Fields absent from `fields` are skipped; `fields` is never mutated."""
++    return ["field %s failed %s" % (field, r["name"])
++            for field, r in rules_by_field.items()
++            if field in fields and not check(fields[field], r)]
++
++
++def first_failure(fields, rules_by_field):
++    """The (field, rule name) of the first failure in insertion order."""
++    for field, r in rules_by_field.items():
++        if field in fields and not check(fields[field], r):
++            return (field, r["name"])
++    return None
++
++
++def explain_failures(fields, rules_by_field):
++    """`explain` lines for the failing fields only, in insertion order."""
++    return [explain(fields[field], r)
++            for field, r in rules_by_field.items()
++            if field in fields and not check(fields[field], r)]
++
++
++BUILTINS = {
++    "number": rule("number", lambda value: schema.is_valid_amount(value)),
++    "str": rule("str", lambda value: isinstance(value, str)),
++    "non_empty": rule("non_empty", lambda value: schema.is_non_empty_str(value)),
++}
++
++
++def parse_rule(text):
++    """Parse a `&`-joined list of builtin names into a single rule. One
++    token yields that builtin; several yield an `all_of` in text order."""
++    tokens = [token.strip() for token in text.split("&")]
++    if text.strip() == "":
++        raise ValueError("empty rule text")
++    for token in tokens:
++        if token not in BUILTINS:
++            raise ValueError("unknown rule token: %s" % token)
++    if len(tokens) == 1:
++        return BUILTINS[tokens[0]]
++    return all_of(*[BUILTINS[token] for token in tokens])
++
++
++def parse_rules(text_by_field):
++    """`parse_rule` every value, keeping insertion order. An unknown token
++    is reported with both the field and the token."""
++    parsed = {}
++    for field, text in text_by_field.items():
++        try:
++            parsed[field] = parse_rule(text)
++        except ValueError as err:
++            raise ValueError("field %s: %s" % (field, err))
++    return parsed
++
++
++def describe_rules(rules_by_field):
++    """One "<field>: <rule name>" line per field, in insertion order.
++    An empty mapping renders as "(no rules)"."""
++    if not rules_by_field:
++        return "(no rules)"
++    return "\n".join("%s: %s" % (field, r["name"])
++                     for field, r in rules_by_field.items())
+diff --git a/app/schema.py b/app/schema.py
+new file mode 100644
+index 0000000..68d783a
+--- /dev/null
++++ b/app/schema.py
+@@ -0,0 +1,228 @@
++"""Declarative validation toolkit: the error catalog, the shared value
++predicates, and a small spec algebra the feature layers build on.
++
++A *spec* is a plain dict mapping a field name to a rules dict. The only
++legal rule keys are:
++
++    "required"   bool    the field must be present in the input
++    "type"       str     "str" or "number"
++    "non_empty"  bool    the value must be a string with non-whitespace text
++    "max"        number  the value must be <= this limit
++
++`compile_spec` turns a spec into a reusable validator that raises on the
++first problem; `validate_collect` runs the same rules but returns every
++message. Both check required fields first (in spec insertion order), then
++each present field's rules in the fixed order type -> non_empty -> max,
++reporting at most one message per field.
++
++Every user-facing message in the app is built here, via `format_error`, so
++there is exactly one place where wording lives.
++"""
++import math
++
++
++ERROR_CATALOG = {
++    "missing": "missing field: {field}",
++    "numeric": "field {field} must be numeric (got {got})",
++    "non_negative": "field {field} must be non-negative",
++    "max": "field {field} exceeds max_amount {limit}",
++    "non_empty": "field {field} must be a non-empty string",
++    "type_str": "field {field} must be a string",
++}
++
++LEGAL_RULE_KEYS = ("required", "type", "non_empty", "max")
++LEGAL_TYPES = ("str", "number")
++
++# The order rules are evaluated in for a present field. Fixed, so the
++# message a caller sees for a multi-rule field is predictable.
++RULE_ORDER = ("type", "non_empty", "max")
++
++
++class SchemaError(Exception):
++    """A spec violation found while validating a fields dict."""
++
++
++def format_error(code, **kwargs):
++    """Render the catalog message for `code`. Raises KeyError for an
++    unknown code — a typo must never degrade into a silent fallback."""
++    return ERROR_CATALOG[code].format(**kwargs)
++
++
++def check_required(fields, required_fields):
++    """Names in `required_fields` absent from `fields`, in required order."""
++    return [name for name in required_fields if name not in fields]
++
++
++def is_valid_amount(value):
++    """True for finite ints/floats. Bools are not amounts even though
++    `isinstance(True, int)` is True; NaN and the infinities are not either.
++
++    Only floats go through `math.isfinite`: an int is always finite, and
++    converting a huge int to float to test it would raise OverflowError.
++    """
++    if isinstance(value, bool):
++        return False
++    if isinstance(value, int):
++        return True
++    if isinstance(value, float):
++        return math.isfinite(value)
++    return False
++
++
++def is_non_empty_str(value):
++    """True for a string with at least one non-whitespace character."""
++    return isinstance(value, str) and value.strip() != ""
++
++
++def _check_rules(field, value, rules):
++    """The first (code, kwargs) failure among `rules` for `value`, or None."""
++    for key in RULE_ORDER:
++        if key not in rules:
++            continue
++        if key == "type":
++            if rules["type"] == "number":
++                if not is_valid_amount(value):
++                    return ("numeric", {"field": field,
++                                        "got": type(value).__name__})
++            elif not isinstance(value, str):
++                return ("type_str", {"field": field})
++        elif key == "non_empty":
++            if rules["non_empty"] and not is_non_empty_str(value):
++                return ("non_empty", {"field": field})
++        elif key == "max":
++            # A value that is not a number cannot be compared to the limit;
++            # report it as non-numeric rather than raising TypeError.
++            if not is_valid_amount(value):
++                return ("numeric", {"field": field,
++                                    "got": type(value).__name__})
++            if value > rules["max"]:
++                return ("max", {"field": field, "limit": rules["max"]})
++    return None
++
++
++def _validate_spec(spec):
++    """Compile-time check of a spec's shape."""
++    for field, rules in spec.items():
++        for key in rules:
++            if key not in LEGAL_RULE_KEYS:
++                raise ValueError(
++                    "unknown rule key %r for field %r" % (key, field))
++        if "type" in rules and rules["type"] not in LEGAL_TYPES:
++            raise ValueError(
++                "unknown type %r for field %r" % (rules["type"], field))
++
++
++def _apply(spec, fields):
++    """The stripped result dict, or raise SchemaError on the first failure."""
++    for field in spec:
++        if spec[field].get("required") and field not in fields:
++            raise SchemaError(format_error("missing", field=field))
++    for field, rules in spec.items():
++        if field not in fields:
++            continue
++        failure = _check_rules(field, fields[field], rules)
++        if failure is not None:
++            code, kwargs = failure
++            raise SchemaError(format_error(code, **kwargs))
++    result = dict(fields)
++    for field, rules in spec.items():
++        if rules.get("non_empty") and field in result:
++            result[field] = result[field].strip()
++    return result
++
++
++def compile_spec(spec):
++    """Compile `spec` into a reusable `validator(fields) -> fields` callable.
++
++    The validator raises SchemaError on the first problem and otherwise
++    returns a new dict: `non_empty` fields stripped, everything else copied
++    through. The input dict is never mutated, and fields absent from the
++    spec pass through untouched (a spec constrains, it does not whitelist).
++    """
++    _validate_spec(spec)
++    compiled = {field: dict(rules) for field, rules in spec.items()}
++
++    def validator(fields):
++        return _apply(compiled, fields)
++
++    return validator
++
++
++def validate_collect(spec, fields):
++    """Every error message for `fields`: required-misses first in spec
++    order, then at most one message per present field, also in spec order.
++    Returns [] when `fields` is clean."""
++    _validate_spec(spec)
++    errors = [format_error("missing", field=field)
++              for field in spec
++              if spec[field].get("required") and field not in fields]
++    for field, rules in spec.items():
++        if field not in fields:
++            continue
++        failure = _check_rules(field, fields[field], rules)
++        if failure is not None:
++            code, kwargs = failure
++            errors.append(format_error(code, **kwargs))
++    return errors
++
++
++def merge_specs(a, b):
++    """A new spec unioning `a` and `b`. Fields unique to either side copy
++    through; a field in both merges its rules. The same rule key on the
++    same field with unequal values is a conflict: ValueError."""
++    merged = {field: dict(rules) for field, rules in a.items()}
++    for field, rules in b.items():
++        if field not in merged:
++            merged[field] = dict(rules)
++            continue
++        target = merged[field]
++        for key, value in rules.items():
++            if key in target and target[key] != value:
++                raise ValueError(
++                    "conflicting rule %r for field %r: %r != %r"
++                    % (key, field, target[key], value))
++            target[key] = value
++    return merged
++
++
++def describe_spec(spec):
++    """One line per field in sorted order: "<field>: <key>=<value>, ...",
++    rule keys sorted. Empty specs render as "(empty spec)"."""
++    if not spec:
++        return "(empty spec)"
++    lines = []
++    for field in sorted(spec):
++        rules = spec[field]
++        rendered = ", ".join("%s=%s" % (key, rules[key])
++                             for key in sorted(rules))
++        lines.append("%s: %s" % (field, rendered))
++    return "\n".join(lines)
++
++
++def diff_specs(a, b):
++    """{"added": [...], "removed": [...], "changed": [...]} — field names
++    only in `b`, only in `a`, and in both with unequal rules. All sorted."""
++    return {
++        "added": sorted(field for field in b if field not in a),
++        "removed": sorted(field for field in a if field not in b),
++        "changed": sorted(field for field in a
++                          if field in b and a[field] != b[field]),
++    }
++
++
++def spec_from_config(config, prefix):
++    """Every `prefix`-prefixed config key as a spec field (prefix stripped,
++    value used as that field's rules). Unprefixed keys are ignored."""
++    return {key[len(prefix):]: dict(value)
++            for key, value in config.items() if key.startswith(prefix)}
++
++
++def spec_to_config(spec, prefix):
++    """The inverse of `spec_from_config`: {prefix + field: rules copy}."""
++    return {prefix + field: dict(rules) for field, rules in spec.items()}
++
++
++def spec_summary_line(spec):
++    """"<N> fields, <M> rules" — M totalled across every field."""
++    return "%d fields, %d rules" % (
++        len(spec), sum(len(rules) for rules in spec.values()))
+diff --git a/app/tabular.py b/app/tabular.py
+new file mode 100644
+index 0000000..95dcb6c
+--- /dev/null
++++ b/app/tabular.py
+@@ -0,0 +1,150 @@
++"""Column-model toolkit: the shared cell/column primitives every export
++format is built from.
++
++`app.export` owns the per-format assembly (which rows, which separators);
++this module owns the column model itself — the key union, cell rendering,
++per-format escaping, column widths, and padding/fitting. Keeping it here
++means no format duplicates key-union, escaping, or `str()` logic.
++"""
++
++_ALIGNMENTS = ("left", "right")
++
++_HTML_ESCAPES = (
++    ("&", "&amp;"),   # ampersand first: later replacements emit "&" too
++    ("<", "&lt;"),
++    (">", "&gt;"),
++    ('"', "&quot;"),
++)
++
++
++def columns(records):
++    """Sorted union of every key across `records`. Records need not share
++    keys; `columns([])` is `[]`."""
++    names = set()
++    for record in records:
++        names.update(record)
++    return sorted(names)
++
++
++def cell(value):
++    """Render one value as a string: `None` becomes the empty cell, every
++    other value goes through plain `str()` (so `3` is "3", not "3.0")."""
++    if value is None:
++        return ""
++    return str(value)
++
++
++def escape_csv(value):
++    """Quote a cell for CSV only when it needs it — i.e. when it contains a
++    comma, a double quote, or a newline. Inner double quotes are doubled.
++    An empty cell stays unquoted."""
++    text = cell(value)
++    if any(ch in text for ch in (",", '"', "\n", "\r")):
++        return '"%s"' % text.replace('"', '""')
++    return text
++
++
++def widths(records, cols):
++    """Map each column name in `cols` to `max(len(header), widest cell)`.
++    Missing keys count as empty cells."""
++    result = {}
++    for col in cols:
++        widest = len(col)
++        for record in records:
++            widest = max(widest, len(cell(record.get(col))))
++        result[col] = widest
++    return result
++
++
++def pad(value, width, align="left"):
++    """Pad a value out to `width`, left- or right-aligned. A value already
++    at or beyond `width` is returned unchanged — padding never truncates.
++
++    `align` is validated before the width short-circuit, so an unknown
++    alignment always raises, even for a value that needs no padding.
++    """
++    if align not in _ALIGNMENTS:
++        raise ValueError("unknown align: %s" % align)
++    text = cell(value)
++    if len(text) >= width:
++        return text
++    if align == "right":
++        return text.rjust(width)
++    return text.ljust(width)
++
++
++def sanitize_flat(value):
++    """Render a value for a single-line (flat) format: every tab and
++    newline becomes a single space so it cannot break the row grid."""
++    text = cell(value)
++    for ch in ("\t", "\r\n", "\n", "\r"):
++        text = text.replace(ch, " ")
++    return text
++
++
++def escape_html(value):
++    """Render a value as HTML text: `&`, `<`, `>` and `"` escaped, with the
++    ampersand replaced first so the other escapes are not re-escaped."""
++    text = cell(value)
++    for raw, escaped in _HTML_ESCAPES:
++        text = text.replace(raw, escaped)
++    return text
++
++
++def truncate(value, width, marker="..."):
++    """Shorten a value to `width` characters, ending in `marker` when it
++    had to be cut. A value that already fits is returned unchanged.
++    `width` shorter than `marker` leaves no room to mark the cut and
++    raises ValueError."""
++    if width < len(marker):
++        raise ValueError("width %s is narrower than marker %r" % (width, marker))
++    text = cell(value)
++    if len(text) <= width:
++        return text
++    return text[:width - len(marker)] + marker
++
++
++def wrap(value, width):
++    """Greedily wrap a value on spaces into lines of at most `width`
++    characters. A single word wider than `width` is hard-split. An empty
++    value wraps to `[""]` — one empty line, not zero lines."""
++    if width < 1:
++        raise ValueError("width must be at least 1, got %s" % width)
++    text = cell(value)
++    if text == "":
++        return [""]
++    lines = []
++    current = ""
++    for word in text.split(" "):
++        while len(word) > width:
++            if current:
++                lines.append(current)
++                current = ""
++            lines.append(word[:width])
++            word = word[width:]
++        if not current:
++            current = word
++        elif len(current) + 1 + len(word) <= width:
++            current = current + " " + word
++        else:
++            lines.append(current)
++            current = word
++    lines.append(current)
++    return lines
++
++
++def fit(value, width, align="left"):
++    """Force a value to exactly `width` columns: truncated when too long,
++    padded per `align` when too short."""
++    return pad(truncate(value, width), width, align)
++
++
++def render_row(cells, widths_list, align="left"):
++    """Render one pipe-table row: each cell padded to its column width,
++    joined by " | " and fenced with "| " / " |"."""
++    if len(cells) != len(widths_list):
++        raise ValueError("got %s cells for %s columns"
++                         % (len(cells), len(widths_list)))
++    padded = [pad(value, width, align)
++              for value, width in zip(cells, widths_list)]
++    return "| " + " | ".join(padded) + " |"
+diff --git a/app/throttle.py b/app/throttle.py
+new file mode 100644
+index 0000000..873e985
+--- /dev/null
++++ b/app/throttle.py
+@@ -0,0 +1,83 @@
++"""Route-policy layer over the quota counter.
++
++A policy table maps `"<METHOD> <path-prefix>"` to a dict of quota params
++(`limit`, `window`, `burst`). `enforce` looks up the most specific matching
++policy and spends one slot against `app.quota`.
++
++This is a library layer for future routes: it is deliberately not wired
++into the registry, holds no state beyond the `POLICIES` constant, and
++imports `app.quota` only — never `app.ratelimit`.
++"""
++from app import quota
++
++POLICIES = {
++    "POST /records": {"limit": 5, "window": 60, "burst": 0},
++    "GET /export": {"limit": 10, "window": 60, "burst": 2},
++}
++
++
++class PolicyError(Exception):
++    """Raised when a request exceeds the policy governing its route."""
++
++
++def match_policy(method, path, policies):
++    """The policy for `method`/`path`, or None.
++
++    A policy key matches when its method is `method` and its path-prefix is
++    a prefix of `path`; the longest matching prefix wins.
++    """
++    best_prefix = None
++    best_policy = None
++    for key, policy in policies.items():
++        key_method, _, prefix = key.partition(" ")
++        if key_method != method or not path.startswith(prefix):
++            continue
++        if best_prefix is None or len(prefix) > len(best_prefix):
++            best_prefix = prefix
++            best_policy = policy
++    return best_policy
++
++
++def key_for(method, path, actor):
++    """The quota key a request is counted under."""
++    return "%s %s:%s" % (method, path, actor)
++
++
++def enforce(method, path, actor, policies):
++    """Spend one slot for this request; return its in-window count.
++
++    Returns None when no policy matches (nothing is recorded); raises
++    PolicyError when the matching policy is exhausted.
++    """
++    policy = match_policy(method, path, policies)
++    if policy is None:
++        return None
++    key = key_for(method, path, actor)
++    try:
++        return quota.take(key, policy["limit"], policy["window"],
++                          burst=policy.get("burst", 0))
++    except quota.QuotaExceededError as exc:
++        raise PolicyError(
++            "policy limit exceeded for %s: limit %s"
++            % (key, policy["limit"])) from exc
++
++
++def remaining_for(method, path, actor, policies):
++    """Slots left for this request's policy, or None when none matches."""
++    policy = match_policy(method, path, policies)
++    if policy is None:
++        return None
++    return quota.remaining(key_for(method, path, actor), policy["limit"],
++                           policy["window"], burst=policy.get("burst", 0))
++
++
++def describe_policies(policies):
++    """Render the policy table as one sorted line per key."""
++    if not policies:
++        return "(no policies)"
++    return "\n".join(
++        "%s: limit=%s, window=%s, burst=%s"
++        % (key, policies[key]["limit"], policies[key]["window"],
++           policies[key].get("burst", 0))
++        for key in sorted(policies)
++    )
+diff --git a/app/validation.py b/app/validation.py
+new file mode 100644
+index 0000000..942c652
+--- /dev/null
++++ b/app/validation.py
+@@ -0,0 +1,121 @@
++"""Input validation for record creation.
++
++`validate_fields` is the single entry point: it checks required-field
++presence first (in `required_fields` order), then the `amount` and `name`
++fields *only when they are present* — a differently-configured caller may
++not require either — and returns a normalized copy of the input.
++
++Every message this module produces comes from `schema.format_error`; there
++are no message string literals here, so wording stays in one place and
++`error_code` can map a message back to its catalog code.
++"""
++import re
++from string import Formatter
++
++from app import schema
++
++
++class ValidationError(Exception):
++    """A field failed validation. The message is a catalog message."""
++
++
++def _error(code, **kwargs):
++    return ValidationError(schema.format_error(code, **kwargs))
++
++
++def validate_fields(fields, required_fields, max_amount):
++    """Validate `fields`, returning a new normalized dict.
++
++    Raises ValidationError on the first problem: a missing required field
++    (in `required_fields` order), then `name` (must be a non-empty string),
++    then `amount` (must be a finite non-bool number, non-negative and at
++    most `max_amount`). Keys beyond `required_fields` pass through
++    untouched — validation is additive, not a schema whitelist. The result
++    is a shallow copy, so mutable values are shared with the input.
++    """
++    missing = schema.check_required(fields, required_fields)
++    if missing:
++        raise _error("missing", field=missing[0])
++
++    if "name" in fields:
++        if not schema.is_non_empty_str(fields["name"]):
++            raise _error("non_empty", field="name")
++
++    if "amount" in fields:
++        amount = fields["amount"]
++        if not schema.is_valid_amount(amount):
++            raise _error("numeric", field="amount",
++                         got=type(amount).__name__)
++        if amount < 0:
++            raise _error("non_negative", field="amount")
++        if amount > max_amount:
++            raise _error("max", field="amount", limit=max_amount)
++
++    validated = dict(fields)
++    if "name" in validated:
++        validated["name"] = validated["name"].strip()
++    return validated
++
++
++def validate_many(entries, required_fields, max_amount):
++    """Validate a list of fields dicts. Returns (validated, errors): the
++    successfully validated new dicts in input order, and (index, message)
++    pairs for the failures, also in input order. Nothing is mutated."""
++    validated = []
++    errors = []
++    for index, fields in enumerate(entries):
++        try:
++            validated.append(validate_fields(fields, required_fields,
++                                             max_amount))
++        except ValidationError as err:
++            errors.append((index, str(err)))
++    return validated, errors
++
++
++def _template_pattern(template):
++    """A regex matching exactly the messages `template` can render."""
++    parts = ["^"]
++    for literal, field, _spec, _conv in Formatter().parse(template):
++        parts.append(re.escape(literal))
++        if field is not None:
++            parts.append("(.+?)")
++    parts.append("$")
++    return re.compile("".join(parts), re.DOTALL)
++
++
++def error_code(message):
++    """The ERROR_CATALOG code whose template renders `message`.
++
++    The matcher is built from `schema.ERROR_CATALOG` on every call, so it
++    always reflects the live catalog. Raises ValueError if no template
++    matches.
++    """
++    best = None
++    best_weight = -1
++    for code, template in schema.ERROR_CATALOG.items():
++        if _template_pattern(template).match(message) is None:
++            continue
++        # Prefer the most specific template (most literal text) when more
++        # than one catalog entry can render the same message.
++        weight = sum(len(literal) for literal, _f, _s, _c
++                     in Formatter().parse(template))
++        if weight > best_weight:
++            best, best_weight = code, weight
++    if best is None:
++        raise ValueError("unrecognized error message: %s" % message)
++    return best
++
++
++def explain_config(config):
++    """Render the validation block of a config as a three-line string."""
++    return "validation config:\n  required: %s\n  max_amount: %s" % (
++        ", ".join(config["validation_required_fields"]),
++        config["validation_max_amount"])
++
++
++def pre_create_hook(store, config, fields):
++    """PRE_CREATE_HOOKS entry: validate a create's fields against config.
++    `store` is unused; the hook returns the normalized fields dict."""
++    return validate_fields(fields,
++                           config["validation_required_fields"],
++                           config["validation_max_amount"])
+diff --git a/tests/test_audit.py b/tests/test_audit.py
+new file mode 100644
+index 0000000..f380c08
+--- /dev/null
++++ b/tests/test_audit.py
+@@ -0,0 +1,191 @@
++"""Tests for the module-global audit log (`app.audit`).
++
++Every test calls `audit.clear()` first: the log is module state and must
++not leak between tests.
++"""
++from app import audit
++
++
++def test_entries_on_fresh_log_is_empty():
++    audit.clear()
++    assert audit.entries() == []
++
++
++def test_record_appends_one_entry():
++    audit.clear()
++    audit.record("GET", "/records", "alice", 500)
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++    ]
++
++
++def test_entries_are_returned_in_call_order():
++    audit.clear()
++    audit.record("GET", "/records", "alice", 500)
++    audit.record("POST", "/records", "bob", 500)
++    audit.record("DELETE", "/records/1", "carol", 500)
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "DELETE", "path": "/records/1", "actor": "carol"},
++    ]
++
++
++def test_entries_returns_a_copy():
++    audit.clear()
++    audit.record("GET", "/records", "alice", 500)
++    got = audit.entries()
++    got.append({"method": "POST", "path": "/records", "actor": "mallory"})
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++    ]
++
++
++def test_cap_keeps_the_last_entries_and_drops_the_oldest():
++    audit.clear()
++    audit.record("GET", "/1", "a", 3)
++    audit.record("GET", "/2", "b", 3)
++    audit.record("GET", "/3", "c", 3)
++    audit.record("GET", "/4", "d", 3)
++    got = audit.entries()
++    assert len(got) == 3
++    assert got == [
++        {"method": "GET", "path": "/2", "actor": "b"},
++        {"method": "GET", "path": "/3", "actor": "c"},
++        {"method": "GET", "path": "/4", "actor": "d"},
++    ]
++
++
++def test_cap_is_enforced_after_every_single_call():
++    audit.clear()
++    lengths = []
++    for i in range(5):
++        audit.record("GET", "/%d" % i, "a", 2)
++        lengths.append(len(audit.entries()))
++    assert lengths == [1, 2, 2, 2, 2]
++    assert audit.entries() == [
++        {"method": "GET", "path": "/3", "actor": "a"},
++        {"method": "GET", "path": "/4", "actor": "a"},
++    ]
++
++
++def test_dispatch_hook_defaults_actor_to_anonymous():
++    audit.clear()
++    config = {"audit_log_max_entries": 500}
++    audit.dispatch_hook(object(), config, "GET", "/records", {})
++    assert audit.entries() == [
++        {"method": "GET", "path": "/records", "actor": "anonymous"},
++    ]
++
++
++def test_dispatch_hook_uses_actor_kwarg_and_logs_only_three_keys():
++    audit.clear()
++    config = {"audit_log_max_entries": 500}
++    audit.dispatch_hook(object(), config, "POST", "/records",
++                        {"actor": "bob", "name": "x"})
++    assert audit.entries() == [
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++    assert sorted(audit.entries()[0]) == ["actor", "method", "path"]
++
++
++def test_dispatch_hook_reads_its_cap_from_config():
++    audit.clear()
++    config = {"audit_log_max_entries": 1}
++    audit.dispatch_hook(object(), config, "GET", "/records", {"actor": "a"})
++    audit.dispatch_hook(object(), config, "GET", "/report", {"actor": "b"})
++    assert audit.entries() == [
++        {"method": "GET", "path": "/report", "actor": "b"},
++    ]
++
++
++def test_dispatch_hook_fires_for_every_method():
++    audit.clear()
++    config = {"audit_log_max_entries": 500}
++    audit.dispatch_hook(object(), config, "DELETE", "/records/1", {})
++    audit.dispatch_hook(object(), config, "PUT", "/records/1", {})
++    assert audit.entries() == [
++        {"method": "DELETE", "path": "/records/1", "actor": "anonymous"},
++        {"method": "PUT", "path": "/records/1", "actor": "anonymous"},
++    ]
++
++
++def test_record_many_appends_in_order_capping_after_every_append(monkeypatch):
++    audit.clear()
++    real_record = audit.record
++    lengths = []
++
++    def spy(method, path, actor, max_entries):
++        real_record(method, path, actor, max_entries)
++        lengths.append(len(audit.entries()))
++
++    monkeypatch.setattr(audit, "record", spy)
++    triples = [
++        ("GET", "/1", "a"),
++        ("GET", "/2", "b"),
++        ("GET", "/3", "c"),
++        ("GET", "/4", "d"),
++    ]
++    appended = audit.record_many(triples, 2)
++    assert appended == 4
++    assert lengths == [1, 2, 2, 2]
++    assert audit.entries() == [
++        {"method": "GET", "path": "/3", "actor": "c"},
++        {"method": "GET", "path": "/4", "actor": "d"},
++    ]
++
++
++def test_dropped_counts_evictions_since_the_last_clear():
++    audit.clear()
++    assert audit.dropped() == 0
++    for i in range(5):
++        audit.record("GET", "/%d" % i, "a", 3)
++    assert audit.dropped() == 2
++    audit.clear()
++    assert audit.dropped() == 0
++
++
++def test_export_state_returns_entries_and_dropped_as_copies():
++    audit.clear()
++    for i in range(4):
++        audit.record("GET", "/%d" % i, "a", 3)
++    state = audit.export_state()
++    assert state == {
++        "entries": [
++            {"method": "GET", "path": "/1", "actor": "a"},
++            {"method": "GET", "path": "/2", "actor": "a"},
++            {"method": "GET", "path": "/3", "actor": "a"},
++        ],
++        "dropped": 1,
++    }
++    state["entries"].append({"method": "POST", "path": "/x", "actor": "z"})
++    state["entries"][0]["actor"] = "mutated"
++    assert audit.entries() == [
++        {"method": "GET", "path": "/1", "actor": "a"},
++        {"method": "GET", "path": "/2", "actor": "a"},
++        {"method": "GET", "path": "/3", "actor": "a"},
++    ]
++
++
++def test_import_state_round_trips_and_copies_the_input():
++    audit.clear()
++    for i in range(4):
++        audit.record("GET", "/%d" % i, "a", 3)
++    state = audit.export_state()
++    audit.clear()
++    assert audit.entries() == []
++    assert audit.dropped() == 0
++
++    audit.import_state(state)
++    assert audit.entries() == state["entries"]
++    assert audit.dropped() == 1
++
++    state["entries"][0]["actor"] = "mutated"
++    state["entries"].append({"method": "POST", "path": "/x", "actor": "z"})
++    state["dropped"] = 99
++    assert audit.entries() == [
++        {"method": "GET", "path": "/1", "actor": "a"},
++        {"method": "GET", "path": "/2", "actor": "a"},
++        {"method": "GET", "path": "/3", "actor": "a"},
++    ]
++    assert audit.dropped() == 1
+diff --git a/tests/test_audit_query.py b/tests/test_audit_query.py
+new file mode 100644
+index 0000000..8068e78
+--- /dev/null
++++ b/tests/test_audit_query.py
+@@ -0,0 +1,446 @@
++"""Tests for the pure read-side audit query module (`app.audit_query`).
++
++Every function under test takes an entry list as a plain argument, never
++touches `app.audit`, and never mutates its input; each test snapshots the
++fixture and asserts it is unchanged afterwards.
++"""
++import pytest
++
++from app import audit_query as q
++
++
++_RAW = [
++    {"method": "GET", "path": "/records", "actor": "alice"},
++    {"method": "POST", "path": "/records", "actor": "bob"},
++    {"method": "GET", "path": "/report", "actor": "alice"},
++    {"method": "POST", "path": "/records", "actor": "alice"},
++]
++
++
++def fixture():
++    """A fresh 4-entry log: GET x2 / POST x2, alice x3 / bob x1."""
++    return [dict(e) for e in _RAW]
++
++
++def snapshot(entries):
++    return [dict(e) for e in entries]
++
++
++def test_module_does_not_import_the_audit_log():
++    assert not hasattr(q, "audit")
++    assert not hasattr(q, "entries")
++
++
++def test_filter_entries():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.filter_entries(entries, actor="alice") == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "GET", "path": "/report", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "alice"},
++    ]
++    assert q.filter_entries(entries, method="POST") == [
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "POST", "path": "/records", "actor": "alice"},
++    ]
++    assert q.filter_entries(entries, path="/records") == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "POST", "path": "/records", "actor": "alice"},
++    ]
++    assert q.filter_entries(entries, method="POST", actor="alice") == [
++        {"method": "POST", "path": "/records", "actor": "alice"},
++    ]
++    assert q.filter_entries(entries) == before
++    assert q.filter_entries(entries, actor="nobody") == []
++
++    got = q.filter_entries(entries, actor="bob")
++    got.append({"method": "GET", "path": "/x", "actor": "x"})
++    assert q.filter_entries(entries, actor="bob") == [
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++    assert entries == before
++
++
++def test_counts_by():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.counts_by(entries, "method") == {"GET": 2, "POST": 2}
++    assert q.counts_by(entries, "actor") == {"alice": 3, "bob": 1}
++    assert q.counts_by(entries, "path") == {"/records": 3, "/report": 1}
++    assert q.counts_by([], "method") == {}
++
++    with pytest.raises(ValueError) as exc:
++        q.counts_by(entries, "amount")
++    assert "amount" in str(exc.value)
++    assert entries == before
++
++
++def test_last_n():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.last_n(entries, 2) == [
++        {"method": "GET", "path": "/report", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "alice"},
++    ]
++    assert q.last_n(entries, 0) == []
++    assert q.last_n(entries, 99) == before
++
++    got = q.last_n(entries, 99)
++    got.append({"method": "GET", "path": "/x", "actor": "x"})
++    assert len(q.last_n(entries, 99)) == 4
++
++    with pytest.raises(ValueError):
++        q.last_n(entries, -1)
++    assert entries == before
++
++
++def test_redact():
++    entries = fixture()
++    before = snapshot(entries)
++
++    got = q.redact(entries, ["actor"])
++    assert got == [
++        {"method": "GET", "path": "/records", "actor": "***"},
++        {"method": "POST", "path": "/records", "actor": "***"},
++        {"method": "GET", "path": "/report", "actor": "***"},
++        {"method": "POST", "path": "/records", "actor": "***"},
++    ]
++
++    plain = q.redact(entries, [])
++    assert plain == before
++    assert all(a is not b for a, b in zip(plain, entries))
++
++    with pytest.raises(ValueError) as exc:
++        q.redact(entries, ["amount"])
++    assert "amount" in str(exc.value)
++    assert entries == before
++
++
++def test_summary():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.summary([]) == {
++        "total": 0,
++        "by_method": {},
++        "by_actor": {},
++        "first": None,
++        "last": None,
++    }
++    got = q.summary(entries)
++    assert got == {
++        "total": 4,
++        "by_method": {"GET": 2, "POST": 2},
++        "by_actor": {"alice": 3, "bob": 1},
++        "first": {"method": "GET", "path": "/records", "actor": "alice"},
++        "last": {"method": "POST", "path": "/records", "actor": "alice"},
++    }
++    assert got["first"] is not entries[0]
++    assert got["last"] is not entries[-1]
++    got["first"]["actor"] = "mutated"
++    assert entries == before
++
++
++def test_recent():
++    entries = fixture()[:3]
++    before = snapshot(entries)
++    config = {"audit_query_default_limit": 2}
++
++    assert q.recent(entries, config) == q.last_n(entries, 2)
++    assert q.recent(entries, config) == [
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "GET", "path": "/report", "actor": "alice"},
++    ]
++    assert entries == before
++
++
++def test_paginate():
++    entries = fixture() + [
++        {"method": "DELETE", "path": "/records/1", "actor": "carol"},
++    ]
++    before = snapshot(entries)
++
++    assert q.paginate(entries, 1, 2) == {
++        "page": 1,
++        "pages": 3,
++        "total": 5,
++        "items": [
++            {"method": "GET", "path": "/records", "actor": "alice"},
++            {"method": "POST", "path": "/records", "actor": "bob"},
++        ],
++    }
++    assert q.paginate(entries, 2, 2) == {
++        "page": 2,
++        "pages": 3,
++        "total": 5,
++        "items": [
++            {"method": "GET", "path": "/report", "actor": "alice"},
++            {"method": "POST", "path": "/records", "actor": "alice"},
++        ],
++    }
++    assert q.paginate(entries, 3, 2) == {
++        "page": 3,
++        "pages": 3,
++        "total": 5,
++        "items": [
++            {"method": "DELETE", "path": "/records/1", "actor": "carol"},
++        ],
++    }
++    assert q.paginate(entries, 4, 2) == {
++        "page": 4,
++        "pages": 3,
++        "total": 5,
++        "items": [],
++    }
++    assert q.paginate([], 1, 2) == {
++        "page": 1,
++        "pages": 0,
++        "total": 0,
++        "items": [],
++    }
++
++    page = q.paginate(entries, 1, 2)
++    page["items"][0]["actor"] = "mutated"
++    page["items"].append({"method": "GET", "path": "/x", "actor": "x"})
++    assert entries == before
++
++    with pytest.raises(ValueError):
++        q.paginate(entries, 0, 2)
++    with pytest.raises(ValueError):
++        q.paginate(entries, 1, 0)
++    assert entries == before
++
++
++def test_to_report():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.to_report(entries) == (
++        "audit report\n"
++        "total: 4\n"
++        "\n"
++        "by method:\n"
++        "  GET: 2\n"
++        "  POST: 2\n"
++        "\n"
++        "by actor:\n"
++        "  alice: 3\n"
++        "  bob: 1"
++    )
++    assert q.to_report([]) == "audit report\ntotal: 0"
++    assert entries == before
++
++
++def test_to_csv_report():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.to_csv_report(entries) == (
++        "field,value,count\n"
++        "method,GET,2\n"
++        "method,POST,2\n"
++        "actor,alice,3\n"
++        "actor,bob,1"
++    )
++    assert q.to_csv_report([]) == "field,value,count"
++    assert entries == before
++
++
++def test_to_markdown_report():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.to_markdown_report(entries) == (
++        "| field | value | count |\n"
++        "| --- | --- | --- |\n"
++        "| method | GET | 2 |\n"
++        "| method | POST | 2 |\n"
++        "| actor | alice | 3 |\n"
++        "| actor | bob | 1 |"
++    )
++    assert q.to_markdown_report([]) == (
++        "| field | value | count |\n"
++        "| --- | --- | --- |"
++    )
++    assert entries == before
++
++
++def test_top_actors():
++    entries = fixture() + [
++        {"method": "GET", "path": "/report", "actor": "carol"},
++    ]
++    before = snapshot(entries)
++
++    assert q.top_actors(entries, 5) == [("alice", 3), ("bob", 1), ("carol", 1)]
++    assert q.top_actors(entries, 2) == [("alice", 3), ("bob", 1)]
++    assert q.top_actors(entries, 0) == []
++
++    with pytest.raises(ValueError):
++        q.top_actors(entries, -1)
++    assert entries == before
++
++
++def test_merge_entries():
++    left = fixture()[:2]
++    right = fixture()[2:]
++    before_left, before_right = snapshot(left), snapshot(right)
++
++    merged = q.merge_entries(left, right)
++    assert merged == before_left + before_right
++    merged[0]["actor"] = "mutated"
++    merged.append({"method": "GET", "path": "/x", "actor": "x"})
++    assert left == before_left
++    assert right == before_right
++    assert q.merge_entries() == []
++
++
++def test_diff_summaries():
++    a_entries = [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++    b_entries = [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "DELETE", "path": "/records/1", "actor": "carol"},
++    ]
++    assert q.diff_summaries(q.summary(a_entries), q.summary(b_entries)) == {
++        "total": 0,
++        "by_method": {"DELETE": 1, "POST": -1},
++        "by_actor": {"bob": -1, "carol": 1},
++    }
++    assert q.diff_summaries(q.summary([]), q.summary(a_entries)) == {
++        "total": 2,
++        "by_method": {"GET": 1, "POST": 1},
++        "by_actor": {"alice": 1, "bob": 1},
++    }
++
++
++def test_counts_matrix():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.counts_matrix(entries) == {
++        "GET": {"alice": 2},
++        "POST": {"bob": 1, "alice": 1},
++    }
++    assert q.counts_matrix([]) == {}
++    assert entries == before
++
++
++def test_rollup():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.rollup(entries, ["method"]) == q.counts_by(entries, "method")
++    assert q.rollup(entries, ["method", "actor"]) == q.counts_matrix(entries)
++    assert q.rollup(entries, ["actor", "method", "path"]) == {
++        "alice": {
++            "GET": {"/records": 1, "/report": 1},
++            "POST": {"/records": 1},
++        },
++        "bob": {"POST": {"/records": 1}},
++    }
++    assert q.rollup([], ["method"]) == {}
++
++    with pytest.raises(ValueError):
++        q.rollup(entries, [])
++    with pytest.raises(ValueError) as exc:
++        q.rollup(entries, ["amount"])
++    assert "amount" in str(exc.value)
++    with pytest.raises(ValueError):
++        q.rollup(entries, ["method", "method"])
++    assert entries == before
++
++
++def test_format_entry_and_to_lines():
++    entries = [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++        {"method": "delete", "path": "/records/1", "actor": "carol"},
++    ]
++    before = snapshot(entries)
++
++    assert q.format_entry(entries[0]) == "GET /records (alice)"
++    assert q.format_entry(entries[2]) == "DELETE /records/1 (carol)"
++    assert q.to_lines(entries) == [
++        "GET /records (alice)",
++        "POST /records (bob)",
++        "DELETE /records/1 (carol)",
++    ]
++    assert q.to_lines([]) == []
++
++    with pytest.raises(ValueError) as exc:
++        q.format_entry({"path": "/records", "actor": "alice"})
++    assert "method" in str(exc.value)
++    with pytest.raises(ValueError) as exc:
++        q.format_entry({"method": "GET", "actor": "alice"})
++    assert "path" in str(exc.value)
++    with pytest.raises(ValueError) as exc:
++        q.format_entry({"method": "GET", "path": "/records"})
++    assert "actor" in str(exc.value)
++    assert entries == before
++
++
++def test_group_by():
++    entries = fixture()
++    before = snapshot(entries)
++
++    assert q.group_by(entries, "method") == {
++        "GET": [
++            {"method": "GET", "path": "/records", "actor": "alice"},
++            {"method": "GET", "path": "/report", "actor": "alice"},
++        ],
++        "POST": [
++            {"method": "POST", "path": "/records", "actor": "bob"},
++            {"method": "POST", "path": "/records", "actor": "alice"},
++        ],
++    }
++    assert q.group_by([], "method") == {}
++
++    grouped = q.group_by(entries, "actor")
++    grouped["alice"][0]["actor"] = "mutated"
++    assert entries == before
++
++    with pytest.raises(ValueError) as exc:
++        q.group_by(entries, "amount")
++    assert "amount" in str(exc.value)
++    assert entries == before
++
++
++def test_search():
++    entries = [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/alice-list", "actor": "bob"},
++        {"method": "GET", "path": "/report", "actor": "carol"},
++    ]
++    before = snapshot(entries)
++
++    found = q.search(entries, "alice")
++    assert found == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/alice-list", "actor": "bob"},
++    ]
++    found[0]["actor"] = "mutated"
++    assert entries == before
++
++    assert q.search(entries, "nothing") == []
++    with pytest.raises(ValueError):
++        q.search(entries, "")
++    assert entries == before
++
++
++def test_filter_entries_over_a_live_audit_log():
++    from app import audit
++
++    audit.clear()
++    config = {"audit_log_max_entries": 500}
++    audit.dispatch_hook(object(), config, "GET", "/records", {"actor": "amy"})
++    audit.dispatch_hook(object(), config, "POST", "/records", {"actor": "bob"})
++    assert q.filter_entries(audit.entries(), actor="bob") == [
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++    audit.clear()
+diff --git a/tests/test_export.py b/tests/test_export.py
+new file mode 100644
+index 0000000..66d0b19
+--- /dev/null
++++ b/tests/test_export.py
+@@ -0,0 +1,206 @@
++"""Tests for the export/report formatter `app.export`."""
++import json
++
++import pytest
++
++from app import export
++
++
++# Two records with deliberately unequal key sets.
++RECORDS = [{"name": "coffee", "amount": 3}, {"name": "tea", "note": "x"}]
++
++
++def test_to_csv_of_an_empty_list_is_the_empty_string():
++    assert export.to_csv([]) == ""
++
++
++def test_to_csv_emits_sorted_union_header_then_rows_in_input_order():
++    assert export.to_csv(RECORDS) == "amount,name,note\n3,coffee,\n,tea,x"
++
++
++def test_to_csv_renders_numbers_with_plain_str():
++    assert export.to_csv([{"amount": 3}]) == "amount\n3"
++    assert export.to_csv([{"amount": 3.5}]) == "amount\n3.5"
++
++
++def test_to_json_of_an_empty_list():
++    assert export.to_json([]) == "[]"
++
++
++def test_to_json_round_trips_and_sorts_keys():
++    raw = export.to_json(RECORDS)
++    assert json.loads(raw) == RECORDS
++    assert raw == ('[{"amount": 3, "name": "coffee"}, '
++                   '{"name": "tea", "note": "x"}]')
++
++
++def test_to_csv_escapes_cells_and_leaves_plain_ones_untouched():
++    assert export.to_csv([{"amount": 3, "name": "a,b"}]) == \
++        'amount,name\n3,"a,b"'
++    assert export.to_csv([{"amount": 3, "name": 'say "hi"'}]) == \
++        'amount,name\n3,"say ""hi"""'
++    # No special characters: byte-identical to the unescaped join.
++    assert export.to_csv([{"amount": 3, "name": "tea"}]) == "amount,name\n3,tea"
++
++
++def test_to_markdown_of_an_empty_list_is_the_empty_string():
++    assert export.to_markdown([]) == ""
++
++
++def test_to_markdown_renders_a_padded_pipe_table():
++    expected = (
++        "| amount | name   | note |\n"
++        "| ------ | ------ | ---- |\n"
++        "| 3      | coffee |      |\n"
++        "|        | tea    | x    |"
++    )
++    assert export.to_markdown(RECORDS) == expected
++
++
++def test_to_markdown_honours_the_align_keyword():
++    records = [{"name": "tea", "amount": 3}]
++    left = (
++        "| amount | name |\n"
++        "| ------ | ---- |\n"
++        "| 3      | tea  |"
++    )
++    right = (
++        "| amount | name |\n"
++        "| -----: | ---: |\n"
++        "|      3 |  tea |"
++    )
++    assert export.to_markdown(records) == left
++    assert export.to_markdown(records, align="left") == left
++    assert export.to_markdown(records, align="right") == right
++    with pytest.raises(ValueError):
++        export.to_markdown(records, align="center")
++    # Every cell already meets its column width: the delegation to
++    # tabular.pad must not be skippable by pad's width short-circuit.
++    with pytest.raises(ValueError):
++        export.to_markdown([{"ab": "cd"}], align="center")
++
++
++def test_to_ndjson_renders_one_sorted_json_object_per_line():
++    assert export.to_ndjson([]) == ""
++    raw = export.to_ndjson(RECORDS)
++    assert raw == ('{"amount": 3, "name": "coffee"}\n'
++                   '{"name": "tea", "note": "x"}')
++    assert [json.loads(line) for line in raw.split("\n")] == RECORDS
++
++
++def test_to_tsv_sanitizes_every_cell_and_header_name():
++    assert export.to_tsv([]) == ""
++    assert export.to_tsv(RECORDS) == "amount\tname\tnote\n3\tcoffee\t\n\ttea\tx"
++    assert export.to_tsv([{"name": "a\tb\nc"}]) == "name\na b c"
++    assert export.to_tsv([{"a\tb": 1}]) == "a b\n1"
++
++
++def test_to_html_renders_an_escaped_table():
++    records = [{"name": "a & b", "amount": 3}, {"name": "<tag>"}]
++    expected = (
++        "<table>\n"
++        "<tr><th>amount</th><th>name</th></tr>\n"
++        "<tr><td>3</td><td>a &amp; b</td></tr>\n"
++        "<tr><td></td><td>&lt;tag&gt;</td></tr>\n"
++        "</table>"
++    )
++    assert export.to_html([]) == ""
++    assert export.to_html(records) == expected
++
++
++def test_parse_csv_is_the_inverse_of_to_csv():
++    assert export.parse_csv("") == []
++    assert export.parse_csv("amount,name\n3,tea") == [
++        {"amount": "3", "name": "tea"}]
++
++
++def test_parse_csv_handles_quoted_cells():
++    assert export.parse_csv('name\n"a,b"') == [{"name": "a,b"}]
++    assert export.parse_csv('name\n"say ""hi"""') == [{"name": 'say "hi"'}]
++    assert export.parse_csv('name\n"line1\nline2"') == [
++        {"name": "line1\nline2"}]
++    record = {"amount": 3, "name": 'a,b "c"\nd'}
++    assert export.parse_csv(export.to_csv([record])) == [
++        {"amount": "3", "name": 'a,b "c"\nd'}]
++    with pytest.raises(ValueError):
++        export.parse_csv('name\n"unterminated')
++
++
++def test_parse_csv_single_column_trailing_newline_corner():
++    assert export.parse_csv("a\n") == [{"a": ""}]
++    assert export.parse_csv("a") == []
++
++
++def test_formats_table_exposes_exactly_the_five_route_formats():
++    assert export.FORMATS == {
++        "csv": export.to_csv,
++        "json": export.to_json,
++        "md": export.to_markdown,
++        "ndjson": export.to_ndjson,
++        "tsv": export.to_tsv,
++    }
++
++
++def test_extra_formats_holds_html_only():
++    assert export.EXTRA_FORMATS == {"html": export.to_html}
++
++
++def test_render_delegates_to_each_registered_format():
++    assert export.render(RECORDS, "csv") == export.to_csv(RECORDS)
++    assert export.render(RECORDS, "json") == export.to_json(RECORDS)
++    assert export.render(RECORDS, "md") == export.to_markdown(RECORDS)
++    assert export.render(RECORDS, "ndjson") == export.to_ndjson(RECORDS)
++    assert export.render(RECORDS, "tsv") == export.to_tsv(RECORDS)
++
++
++def test_render_rejects_unknown_and_extra_formats():
++    with pytest.raises(ValueError) as exc:
++        export.render(RECORDS, "xml")
++    assert "xml" in str(exc.value)
++    with pytest.raises(ValueError):
++        export.render(RECORDS, "html")
++
++
++def test_render_any_serves_formats_then_extra_formats():
++    assert export.render_any(RECORDS, "csv") == export.to_csv(RECORDS)
++    assert export.render_any(RECORDS, "html") == export.to_html(RECORDS)
++    with pytest.raises(ValueError) as exc:
++        export.render_any(RECORDS, "xml")
++    assert "xml" in str(exc.value)
++
++
++def test_summary_line_counts_records_and_columns():
++    assert export.summary_line(RECORDS) == "2 records, 3 columns"
++    assert export.summary_line([]) == "0 records, 0 columns"
++
++
++def test_single_record_renders_in_every_format():
++    records = [{"name": "tea", "amount": 3}]
++    assert export.to_csv(records) == "amount,name\n3,tea"
++    assert export.to_json(records) == '[{"amount": 3, "name": "tea"}]'
++    assert export.to_markdown(records) == (
++        "| amount | name |\n"
++        "| ------ | ---- |\n"
++        "| 3      | tea  |"
++    )
++    assert export.to_ndjson(records) == '{"amount": 3, "name": "tea"}'
++    assert export.to_tsv(records) == "amount\tname\n3\ttea"
++    assert export.to_html(records) == (
++        "<table>\n"
++        "<tr><th>amount</th><th>name</th></tr>\n"
++        "<tr><td>3</td><td>tea</td></tr>\n"
++        "</table>"
++    )
++
++
++def test_export_route_serves_csv_by_default_and_rejects_unenabled_formats():
++    from app.registry import bootstrap
++
++    app = bootstrap()
++    app.call("POST", "/records", name="coffee", amount=3)
++    app.call("POST", "/records", name="tea", amount=4)
++    records = app.call("GET", "/records")
++    assert app.call("GET", "/export") == export.to_csv(records)
++    assert app.call("GET", "/export", fmt="json") == export.to_json(records)
++    with pytest.raises(ValueError):
++        app.call("GET", "/export", fmt="md")
+diff --git a/tests/test_quota.py b/tests/test_quota.py
+new file mode 100644
+index 0000000..8877d72
+--- /dev/null
++++ b/tests/test_quota.py
+@@ -0,0 +1,210 @@
++"""Tests for the deterministic windowed quota counter (`app.quota`).
++
++Every test starts with `quota.reset()` because the module keeps its clock
++and hit store as module globals; no test may leak into another.
++"""
++import pytest
++
++from app import quota
++
++
++def test_quota_exceeded_error_is_an_exception_subclass():
++    assert issubclass(quota.QuotaExceededError, Exception)
++
++
++def test_logical_clock_starts_at_zero_and_only_moves_forward():
++    quota.reset()
++    assert quota.now() == 0.0
++    assert quota.advance(30) == 30.0
++    assert quota.now() == 30.0
++    with pytest.raises(ValueError):
++        quota.advance(-1)
++    assert quota.now() == 30.0
++
++
++def test_take_counts_in_window_hits_then_raises_at_the_limit():
++    quota.reset()
++    assert quota.take("k", limit=2, window_seconds=60) == 1
++    assert quota.take("k", limit=2, window_seconds=60) == 2
++    with pytest.raises(quota.QuotaExceededError) as excinfo:
++        quota.take("k", limit=2, window_seconds=60)
++    message = str(excinfo.value)
++    assert "k" in message
++    assert "2" in message
++
++
++def test_take_prunes_hits_older_than_the_window():
++    quota.reset()
++    assert quota.take("k", 2, 60) == 1
++    assert quota.take("k", 2, 60) == 2
++    quota.advance(61)
++    assert quota.take("k", 2, 60) == 1
++
++    # A hit recorded at t=30 still counts at t=61 but not at t=91: pruning
++    # drops hits strictly older than `now - window_seconds`.
++    quota.reset()
++    quota.advance(30)
++    assert quota.take("h", 2, 60) == 1
++    quota.advance(31)
++    assert quota.remaining("h", 2, 60) == 1
++    quota.advance(30)
++    assert quota.remaining("h", 2, 60) == 2
++
++
++def test_infinite_window_never_prunes():
++    quota.reset()
++    assert quota.take("k", 1, float("inf")) == 1
++    quota.advance(10 ** 6)
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("k", 1, float("inf"))
++
++
++def test_burst_extends_the_allowance_and_defaults_to_zero():
++    quota.reset()
++    assert quota.take("k", limit=2, window_seconds=60, burst=1) == 1
++    assert quota.take("k", limit=2, window_seconds=60, burst=1) == 2
++    assert quota.take("k", limit=2, window_seconds=60, burst=1) == 3
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("k", limit=2, window_seconds=60, burst=1)
++
++    quota.reset()
++    assert quota.take("d", 2, 60) == 1
++    assert quota.take("d", 2, 60) == 2
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("d", 2, 60)
++
++
++def test_quotas_are_independent_per_key():
++    quota.reset()
++    assert quota.take("a", 2, 60) == 1
++    assert quota.take("b", 2, 60) == 1
++    assert quota.take("a", 2, 60) == 2
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("a", 2, 60)
++    assert quota.take("b", 2, 60) == 2
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("b", 2, 60)
++
++
++def test_reset_clears_the_clock_and_every_key():
++    quota.reset()
++    quota.take("a", 1, 60)
++    quota.take("b", 1, 60)
++    quota.advance(5)
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("a", 1, 60)
++
++    quota.reset()
++    assert quota.now() == 0.0
++    assert quota.take("a", 1, 60) == 1
++    assert quota.take("b", 1, 60) == 1
++
++
++def test_remaining_reports_the_left_allowance_without_recording():
++    quota.reset()
++    assert quota.remaining("k", 2, 60) == 2
++    assert quota.remaining("k", 2, 60) == 2
++    assert quota.remaining("k", 2, 60, burst=1) == 3
++
++    assert quota.take("k", 2, 60) == 1
++    assert quota.remaining("k", 2, 60) == 1
++    assert quota.remaining("k", 2, 60) == 1
++    assert quota.take("k", 2, 60) == 2
++
++    assert quota.remaining("k", 2, 60) == 0
++    assert quota.remaining("k", 2, 60) == 0
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("k", 2, 60)
++
++    quota.advance(61)
++    assert quota.remaining("k", 2, 60) == 2
++    assert quota.take("k", 2, 60) == 1
++
++
++def test_snapshot_lists_in_window_hits_and_is_a_deep_copy():
++    quota.reset()
++    quota.take("a", 5, 60)
++    quota.advance(30)
++    quota.take("a", 5, 60)
++    quota.take("b", 5, 60)
++    quota.advance(31)
++    assert quota.snapshot(60) == {"a": [30.0], "b": [30.0]}
++
++    snap = quota.snapshot(60)
++    snap["a"].append(999.0)
++    snap["a"][0] = -1.0
++    assert quota.snapshot(60) == {"a": [30.0], "b": [30.0]}
++    assert quota.remaining("a", 5, 60) == 4
++
++
++def test_time_to_next_slot_reports_seconds_until_a_slot_frees():
++    quota.reset()
++    assert quota.time_to_next_slot("k", 2, 60) == 0.0
++    assert quota.take("k", 2, 60) == 1
++    assert quota.time_to_next_slot("k", 2, 60) == 0.0
++    assert quota.time_to_next_slot("k", 2, 60) == 0.0
++    # read-only: the two readings above recorded nothing
++    assert quota.take("k", 2, 60) == 2
++    quota.advance(10)
++    assert quota.time_to_next_slot("k", 2, 60) == 50.0
++    assert quota.time_to_next_slot("k", 2, 60) == 50.0
++
++    # An exhausted key under an infinite window never frees a slot.
++    quota.reset()
++    quota.take("i", 1, float("inf"))
++    assert quota.time_to_next_slot("i", 1, float("inf")) == float("inf")
++
++    # A zero allowance can never record a hit, so no slot ever frees.
++    quota.reset()
++    assert quota.time_to_next_slot("k", 0, 60) == float("inf")
++
++    # Boundary: a hit sitting exactly at `now - window_seconds` is still in
++    # window, so the reset instant reads 0.0 while `take` still raises.
++    quota.reset()
++    quota.take("b", 2, 60)
++    quota.take("b", 2, 60)
++    quota.advance(60)
++    assert quota.time_to_next_slot("b", 2, 60) == 0.0
++    with pytest.raises(quota.QuotaExceededError):
++        quota.take("b", 2, 60)
++
++
++def test_usage_reports_the_exact_state_dict():
++    quota.reset()
++    assert quota.usage("k", 2, 60) == {
++        "used": 0,
++        "allowed": 2,
++        "remaining": 2,
++        "reset_in": 0.0,
++    }
++
++    assert quota.take("k", 2, 60) == 1
++    assert quota.usage("k", 2, 60) == {
++        "used": 1,
++        "allowed": 2,
++        "remaining": 1,
++        "reset_in": 0.0,
++    }
++    # read-only: the reading above recorded nothing
++    assert quota.take("k", 2, 60) == 2
++
++    quota.advance(10)
++    assert quota.usage("k", 2, 60) == {
++        "used": 2,
++        "allowed": 2,
++        "remaining": 0,
++        "reset_in": 50.0,
++    }
++
++
++def test_purge_drops_aged_out_hits_and_reports_how_many():
++    quota.reset()
++    quota.take("a", 5, 60)
++    quota.take("a", 5, 60)
++    quota.advance(30)
++    quota.take("b", 5, 60)
++    quota.advance(31)
++
++    assert quota.purge(60) == 2
++    assert quota.snapshot(60) == {"b": [30.0]}
++    assert quota.purge(60) == 0
+diff --git a/tests/test_ratelimit.py b/tests/test_ratelimit.py
+new file mode 100644
+index 0000000..e2d3218
+--- /dev/null
++++ b/tests/test_ratelimit.py
+@@ -0,0 +1,261 @@
++"""Tests for the per-actor rate-limit guard (`app.ratelimit`).
++
++`ratelimit` keeps no counters of its own: every count lives in `app.quota`,
++which is module-global state, so every test starts with `ratelimit.reset()`.
++"""
++import pytest
++
++from app import quota, ratelimit
++
++
++def test_rate_limit_exceeded_error_is_an_exception_subclass():
++    assert issubclass(ratelimit.RateLimitExceededError, Exception)
++
++
++def test_check_and_increment_counts_then_raises_at_the_limit():
++    ratelimit.reset()
++    assert ratelimit.check_and_increment("k", 3) == 1
++    assert ratelimit.check_and_increment("k", 3) == 2
++    assert ratelimit.check_and_increment("k", 3) == 3
++    with pytest.raises(ratelimit.RateLimitExceededError) as excinfo:
++        ratelimit.check_and_increment("k", 3)
++    message = str(excinfo.value)
++    assert "k" in message
++    assert "3" in message
++
++
++def test_check_and_increment_counts_per_key():
++    ratelimit.reset()
++    assert ratelimit.check_and_increment("a", 2) == 1
++    assert ratelimit.check_and_increment("b", 2) == 1
++    assert ratelimit.check_and_increment("a", 2) == 2
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.check_and_increment("a", 2)
++    assert ratelimit.check_and_increment("b", 2) == 2
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.check_and_increment("b", 2)
++
++
++def test_reset_clears_every_key_not_just_one():
++    ratelimit.reset()
++    ratelimit.check_and_increment("a", 1)
++    ratelimit.check_and_increment("b", 1)
++
++    ratelimit.reset()
++    assert ratelimit.check_and_increment("a", 1) == 1
++    assert ratelimit.check_and_increment("b", 1) == 1
++
++
++def test_reset_also_resets_the_quota_clock():
++    ratelimit.reset()
++    ratelimit.check_and_increment("k", 1, 60)
++    quota.advance(120)
++    assert quota.now() == 120.0
++
++    ratelimit.reset()
++    assert quota.now() == 0.0
++    assert ratelimit.check_and_increment("k", 1, 60) == 1
++
++
++def test_rate_limit_error_subclasses_the_quota_error():
++    ratelimit.reset()
++    assert issubclass(ratelimit.RateLimitExceededError, quota.QuotaExceededError)
++
++    ratelimit.check_and_increment("k", 1)
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.check_and_increment("k", 1)
++
++    ratelimit.reset()
++    ratelimit.check_and_increment("k", 1)
++    with pytest.raises(quota.QuotaExceededError):
++        ratelimit.check_and_increment("k", 1)
++
++
++def test_check_and_increment_delegates_to_quota_take(monkeypatch):
++    ratelimit.reset()
++    calls = []
++
++    def recorder(*args, **kwargs):
++        calls.append((args, kwargs))
++        return 1
++
++    monkeypatch.setattr(quota, "take", recorder)
++    assert ratelimit.check_and_increment("k", 3) == 1
++    assert calls == [(("k", 3, float("inf")), {"burst": 0})]
++
++
++def test_dispatch_hook_never_counts_reads():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 3, "rate_limit_window_seconds": 60}
++    for _ in range(config["rate_limit_max_per_window"] + 5):
++        assert ratelimit.dispatch_hook(None, config, "GET", "/records", {}) is None
++    assert ratelimit.check_and_increment("anonymous", 3, 60) == 1
++
++
++def test_dispatch_hook_keys_off_the_actor_kwarg():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, config, "POST", "/records", {})
++
++    # A named actor counts against its own key, untouched by "anonymous".
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "x"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "x"})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "x"})
++
++
++def test_dispatch_hook_reads_the_limit_from_config():
++    ratelimit.reset()
++    strict = {"rate_limit_max_per_window": 1, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, strict, "POST", "/records", {"actor": "a"})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, strict, "POST", "/records", {"actor": "a"})
++
++    ratelimit.reset()
++    lenient = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, lenient, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, lenient, "POST", "/records", {"actor": "a"})
++
++
++def test_dispatch_hook_window_frees_the_actor_after_it_elapses():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 1, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++
++    quota.advance(61)
++    assert ratelimit.dispatch_hook(None, config, "POST", "/records",
++                                   {"actor": "a"}) is None
++
++
++def test_dispatch_hook_works_with_a_limit_only_config():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 1}
++    assert ratelimit.dispatch_hook(None, config, "POST", "/records", {}) is None
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, config, "POST", "/records", {})
++
++    # The default window is 60 seconds and the default burst is 0.
++    quota.advance(61)
++    assert ratelimit.dispatch_hook(None, config, "POST", "/records", {}) is None
++
++
++def test_dispatch_hook_reads_the_burst_from_config():
++    ratelimit.reset()
++    config = {
++        "rate_limit_max_per_window": 1,
++        "rate_limit_burst": 1,
++        "rate_limit_window_seconds": 60,
++    }
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++
++    ratelimit.reset()
++    no_burst = {"rate_limit_max_per_window": 1, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, no_burst, "POST", "/records", {"actor": "a"})
++    with pytest.raises(ratelimit.RateLimitExceededError):
++        ratelimit.dispatch_hook(None, no_burst, "POST", "/records", {"actor": "a"})
++
++
++def test_retry_after_delegates_to_time_to_next_slot(monkeypatch):
++    ratelimit.reset()
++    calls = []
++
++    def recorder(*args, **kwargs):
++        calls.append((args, kwargs))
++        return 12.5
++
++    monkeypatch.setattr(quota, "time_to_next_slot", recorder)
++    config = {
++        "rate_limit_max_per_window": 2,
++        "rate_limit_window_seconds": 60,
++        "rate_limit_burst": 1,
++    }
++    assert ratelimit.retry_after("k", config) == 12.5
++    assert calls == [(("k", 2, 60), {"burst": 1})]
++
++
++def test_retry_after_reports_the_seconds_until_the_window_frees():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    quota.advance(10)
++    assert ratelimit.retry_after("a", config) == 50.0
++
++
++def test_limit_headers_returns_exact_string_valued_headers():
++    ratelimit.reset()
++    config = {
++        "rate_limit_max_per_window": 2,
++        "rate_limit_window_seconds": 60,
++        "rate_limit_burst": 1,
++    }
++    assert ratelimit.limit_headers("a", config) == {
++        "X-RateLimit-Limit": "2",
++        "X-RateLimit-Remaining": "3",
++        "X-RateLimit-Reset": "0.0",
++    }
++    # read-only: the reading above recorded nothing
++    assert ratelimit.dispatch_hook(None, config, "POST", "/records",
++                                   {"actor": "a"}) is None
++
++    ratelimit.reset()
++    exhausted = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, exhausted, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, exhausted, "POST", "/records", {"actor": "a"})
++    quota.advance(10)
++    assert ratelimit.limit_headers("a", exhausted) == {
++        "X-RateLimit-Limit": "2",
++        "X-RateLimit-Remaining": "0",
++        "X-RateLimit-Reset": "50.0",
++    }
++
++    # A limit-only config reads the same defaults as the hook.
++    ratelimit.reset()
++    assert ratelimit.limit_headers("a", {"rate_limit_max_per_window": 2}) == {
++        "X-RateLimit-Limit": "2",
++        "X-RateLimit-Remaining": "2",
++        "X-RateLimit-Reset": "0.0",
++    }
++
++
++def test_status_line_renders_the_exact_usage_string():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    assert ratelimit.status_line("mallory", config) == \
++        "mallory: 0/2, reset in 0.0s"
++
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "mallory"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "mallory"})
++    quota.advance(10)
++    assert ratelimit.status_line("mallory", config) == \
++        "mallory: 2/2, reset in 50.0s"
++
++
++def test_check_many_reports_which_keys_would_pass_without_recording():
++    ratelimit.reset()
++    config = {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60}
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "a"})
++    ratelimit.dispatch_hook(None, config, "POST", "/records", {"actor": "b"})
++
++    assert ratelimit.check_many(["a", "b", "c"], config) == {
++        "a": False,
++        "b": True,
++        "c": True,
++    }
++    # read-only: no key's counter moved
++    assert ratelimit.check_many(["a", "b", "c"], config) == {
++        "a": False,
++        "b": True,
++        "c": True,
++    }
++    assert ratelimit.check_and_increment("b", 2, 60) == 2
++    assert ratelimit.check_and_increment("c", 2, 60) == 1
+diff --git a/tests/test_rules.py b/tests/test_rules.py
+new file mode 100644
+index 0000000..980e392
+--- /dev/null
++++ b/tests/test_rules.py
+@@ -0,0 +1,149 @@
++"""Tests for app/rules.py — the pure rule-combinator layer over app/schema."""
++import pytest
++
++from app import rules, schema
++
++
++POSITIVE = rules.rule("positive", lambda v: isinstance(v, int) and v > 0)
++EVEN = rules.rule("even", lambda v: isinstance(v, int) and v % 2 == 0)
++
++
++def test_rule_error_is_a_distinct_exception_subclass():
++    assert issubclass(rules.RuleError, Exception)
++    assert not issubclass(rules.RuleError, schema.SchemaError)
++
++
++def test_rule_builds_a_named_predicate_and_rejects_a_bad_name():
++    predicate = lambda v: True  # noqa: E731
++    assert rules.rule("truthy", predicate) == {
++        "name": "truthy", "test": predicate}
++    with pytest.raises(ValueError):
++        rules.rule("", predicate)
++    with pytest.raises(ValueError):
++        rules.rule(42, predicate)
++
++
++def test_check_coerces_the_predicate_result_to_bool():
++    truthy = rules.rule("truthy", lambda v: v)
++    assert rules.check("non-empty", truthy) is True
++    assert rules.check("", truthy) is False
++
++
++def test_all_of_passes_only_when_every_child_passes():
++    both = rules.all_of(POSITIVE, EVEN)
++    assert both["name"] == "all(positive,even)"
++    assert rules.check(2, both) is True
++    assert rules.check(3, both) is False
++    assert rules.check(-2, both) is False
++    empty = rules.all_of()
++    assert empty["name"] == "all()"
++    assert rules.check(object(), empty) is True
++
++
++def test_any_of_passes_when_at_least_one_child_passes_and_rejects_no_children():
++    either = rules.any_of(POSITIVE, EVEN)
++    assert either["name"] == "any(positive,even)"
++    assert rules.check(3, either) is True
++    assert rules.check(-2, either) is True
++    assert rules.check(-3, either) is False
++    with pytest.raises(ValueError):
++        rules.any_of()
++
++
++def test_negate_inverts_and_names_the_child():
++    not_positive = rules.negate(POSITIVE)
++    assert not_positive["name"] == "not(positive)"
++    assert rules.check(1, not_positive) is False
++    assert rules.check(-1, not_positive) is True
++
++
++def test_when_is_material_implication_over_all_four_truth_table_cells():
++    implication = rules.when(POSITIVE, EVEN)
++    assert implication["name"] == "when(positive,even)"
++    assert rules.check(2, implication) is True    # cond pass, then pass
++    assert rules.check(3, implication) is False   # cond pass, then fail
++    assert rules.check(-2, implication) is True   # cond fail, then pass
++    assert rules.check(-3, implication) is True   # cond fail, then fail
++
++
++def test_explain_renders_pass_and_fail():
++    assert rules.explain(1, POSITIVE) == "positive: pass"
++    assert rules.explain(-1, POSITIVE) == "positive: fail"
++
++
++def test_apply_rules_lists_failures_in_insertion_order_without_mutating():
++    fields = {"a": 1, "b": -1, "c": -2}
++    by_field = {"c": POSITIVE, "b": POSITIVE, "a": POSITIVE, "absent": POSITIVE}
++    assert rules.apply_rules(fields, by_field) == [
++        "field c failed positive", "field b failed positive"]
++    assert fields == {"a": 1, "b": -1, "c": -2}
++    assert rules.apply_rules({"a": 1}, {"a": POSITIVE}) == []
++
++
++def test_first_failure_returns_the_first_failing_pair_or_none():
++    by_field = {"a": POSITIVE, "b": POSITIVE, "c": POSITIVE}
++    assert rules.first_failure({"a": 1, "b": -1, "c": -2}, by_field) == (
++        "b", "positive")
++    assert rules.first_failure({"a": 1, "b": 2, "c": 3}, by_field) is None
++
++
++def test_explain_failures_lists_only_failing_fields_in_insertion_order():
++    by_field = {"a": POSITIVE, "b": EVEN, "c": POSITIVE, "absent": POSITIVE}
++    assert rules.explain_failures({"a": 1, "b": 3, "c": -5}, by_field) == [
++        "even: fail", "positive: fail"]
++    assert rules.explain_failures({"a": 1, "b": 2, "c": 3}, by_field) == []
++
++
++def test_builtins_wrap_the_schema_predicates():
++    assert set(rules.BUILTINS) == {"number", "str", "non_empty"}
++    assert rules.BUILTINS["number"]["name"] == "number"
++    assert rules.BUILTINS["str"]["name"] == "str"
++    assert rules.BUILTINS["non_empty"]["name"] == "non_empty"
++    assert rules.check(3.5, rules.BUILTINS["number"]) is True
++    assert rules.check(True, rules.BUILTINS["number"]) is False
++    assert rules.check("3", rules.BUILTINS["str"]) is True
++    assert rules.check(3, rules.BUILTINS["str"]) is False
++    assert rules.check(" a ", rules.BUILTINS["non_empty"]) is True
++    assert rules.check("  ", rules.BUILTINS["non_empty"]) is False
++
++
++def test_parse_rule_reads_a_single_builtin_and_an_ampersand_list():
++    assert rules.parse_rule("number") == rules.BUILTINS["number"]
++    composite = rules.parse_rule("number&non_empty")
++    assert composite["name"] == "all(number,non_empty)"
++    with pytest.raises(ValueError) as exc:
++        rules.parse_rule("number&bogus")
++    assert "bogus" in str(exc.value)
++    with pytest.raises(ValueError):
++        rules.parse_rule("")
++
++
++def test_parse_rules_maps_a_dict_and_names_field_and_token_on_error():
++    parsed = rules.parse_rules({"amount": "number", "name": "str&non_empty"})
++    assert list(parsed) == ["amount", "name"]
++    assert parsed["amount"]["name"] == "number"
++    assert parsed["name"]["name"] == "all(str,non_empty)"
++    with pytest.raises(ValueError) as exc:
++        rules.parse_rules({"amount": "bogus"})
++    assert "amount" in str(exc.value)
++    assert "bogus" in str(exc.value)
++    assert rules.parse_rules({}) == {}
++    assert rules.apply_rules(
++        {"amount": "3", "name": "ada"},
++        rules.parse_rules({"amount": "number", "name": "str&non_empty"}),
++    ) == ["field amount failed number"]
++
++
++def test_describe_rules_renders_one_line_per_field_in_insertion_order():
++    by_field = {"amount": rules.BUILTINS["number"],
++                "name": rules.all_of(rules.BUILTINS["str"],
++                                     rules.BUILTINS["non_empty"])}
++    assert rules.describe_rules(by_field) == (
++        "amount: number\nname: all(str,non_empty)")
++    assert rules.describe_rules({}) == "(no rules)"
++
++
++def test_builtins_delegate_to_app_schema_at_call_time(monkeypatch):
++    assert rules.check(5, rules.parse_rule("number")) is True
++    monkeypatch.setattr(schema, "is_valid_amount", lambda value: False)
++    assert rules.check(5, rules.parse_rule("number")) is False
+diff --git a/tests/test_schema.py b/tests/test_schema.py
+new file mode 100644
+index 0000000..7096e10
+--- /dev/null
++++ b/tests/test_schema.py
+@@ -0,0 +1,321 @@
++"""Tests for app/schema.py — the declarative validation toolkit."""
++import pytest
++
++from app import schema
++
++
++# --- error catalog --------------------------------------------------------
++
++def test_error_catalog_has_exactly_the_six_codes():
++    assert isinstance(schema.ERROR_CATALOG, dict)
++    assert set(schema.ERROR_CATALOG) == {
++        "missing", "numeric", "non_negative", "max", "non_empty", "type_str",
++    }
++    for template in schema.ERROR_CATALOG.values():
++        assert isinstance(template, str)
++
++
++def test_format_error_missing():
++    assert schema.format_error("missing", field="name") == "missing field: name"
++
++
++def test_format_error_numeric():
++    assert schema.format_error("numeric", field="amount", got="str") == (
++        "field amount must be numeric (got str)")
++
++
++def test_format_error_non_negative():
++    assert schema.format_error("non_negative", field="amount") == (
++        "field amount must be non-negative")
++
++
++def test_format_error_max():
++    assert schema.format_error("max", field="amount", limit=100) == (
++        "field amount exceeds max_amount 100")
++
++
++def test_format_error_non_empty():
++    assert schema.format_error("non_empty", field="name") == (
++        "field name must be a non-empty string")
++
++
++def test_format_error_type_str():
++    assert schema.format_error("type_str", field="name") == (
++        "field name must be a string")
++
++
++def test_format_error_unknown_code_raises_key_error():
++    with pytest.raises(KeyError):
++        schema.format_error("nope")
++
++
++# --- primitives -----------------------------------------------------------
++
++def test_check_required_reports_the_single_missing_field():
++    assert schema.check_required({"amount": 1}, ["name", "amount"]) == ["name"]
++
++
++def test_check_required_uses_required_fields_order_not_dict_order():
++    assert schema.check_required({"note": "n"}, ["name", "amount", "note"]) == [
++        "name", "amount"]
++    # not sorted order either
++    assert schema.check_required({}, ["z", "a"]) == ["z", "a"]
++    # a fields dict whose insertion order disagrees with required order
++    assert schema.check_required({"amount": 1, "name": "x"},
++                                 ["name", "amount"]) == []
++
++
++def test_check_required_returns_empty_list_when_nothing_is_missing():
++    assert schema.check_required({"name": "n", "amount": 1},
++                                 ["name", "amount"]) == []
++
++
++def test_is_valid_amount_accepts_finite_numbers():
++    assert schema.is_valid_amount(0) is True
++    assert schema.is_valid_amount(5) is True
++    assert schema.is_valid_amount(3.5) is True
++
++
++def test_is_valid_amount_rejects_bools_strings_none_and_non_finite_floats():
++    assert schema.is_valid_amount(True) is False
++    assert schema.is_valid_amount(False) is False
++    assert schema.is_valid_amount("3") is False
++    assert schema.is_valid_amount(None) is False
++    assert schema.is_valid_amount(float("nan")) is False
++    assert schema.is_valid_amount(float("inf")) is False
++    assert schema.is_valid_amount(float("-inf")) is False
++
++
++def test_is_valid_amount_handles_huge_ints_without_overflow():
++    # An int is always finite; only floats go through math.isfinite. A naive
++    # math.isfinite(value) on this int raises OverflowError.
++    assert schema.is_valid_amount(10 ** 400) is True
++
++
++def test_is_non_empty_str():
++    assert schema.is_non_empty_str("a") is True
++    assert schema.is_non_empty_str(" a ") is True
++    assert schema.is_non_empty_str("") is False
++    assert schema.is_non_empty_str("   ") is False
++    assert schema.is_non_empty_str(42) is False
++    assert schema.is_non_empty_str(None) is False
++
++
++def test_schema_error_is_a_distinct_exception_subclass():
++    assert issubclass(schema.SchemaError, Exception)
++    assert not issubclass(schema.SchemaError, KeyError)
++    assert not issubclass(schema.SchemaError, ValueError)
++
++
++# --- compile_spec ---------------------------------------------------------
++
++def test_compile_spec_rejects_an_unknown_rule_key():
++    with pytest.raises(ValueError) as exc:
++        schema.compile_spec({"amount": {"minimum": 3}})
++    assert "minimum" in str(exc.value)
++
++
++def test_compile_spec_rejects_an_unknown_type_value():
++    with pytest.raises(ValueError) as exc:
++        schema.compile_spec({"amount": {"type": "integer"}})
++    assert "integer" in str(exc.value)
++
++
++def test_compile_spec_of_an_empty_spec_accepts_any_dict_unchanged():
++    validator = schema.compile_spec({})
++    fields = {"anything": 1, "else": "two"}
++    result = validator(fields)
++    assert result == {"anything": 1, "else": "two"}
++    assert result is not fields
++
++
++def test_validator_checks_required_fields_first_in_spec_order():
++    validator = schema.compile_spec({
++        "name": {"required": True},
++        "amount": {"required": True, "type": "number"},
++    })
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"amount": "not a number"})
++    assert str(exc.value) == "missing field: name"
++
++
++def test_validator_number_type_rejects_bools_strings_and_non_finite():
++    validator = schema.compile_spec({"amount": {"type": "number"}})
++    for bad in (True, "3", float("nan"), float("inf")):
++        with pytest.raises(schema.SchemaError) as exc:
++            validator({"amount": bad})
++        assert str(exc.value) == (
++            "field amount must be numeric (got %s)" % type(bad).__name__)
++
++
++def test_validator_type_str_fires_before_non_empty():
++    validator = schema.compile_spec({"n": {"type": "str", "non_empty": True}})
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"n": 42})
++    assert str(exc.value) == "field n must be a string"
++
++
++def test_validator_non_empty_rule_message():
++    validator = schema.compile_spec({"n": {"non_empty": True}})
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"n": "   "})
++    assert str(exc.value) == "field n must be a non-empty string"
++
++
++def test_validator_max_rule_boundary_and_message():
++    validator = schema.compile_spec({"amount": {"max": 100}})
++    assert validator({"amount": 100}) == {"amount": 100}
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"amount": 101})
++    assert str(exc.value) == "field amount exceeds max_amount 100"
++
++
++def test_max_rule_on_a_non_numeric_value_reports_numeric_not_type_error():
++    spec = {"amount": {"max": 100}}
++    validator = schema.compile_spec(spec)
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"amount": "abc"})
++    assert str(exc.value) == "field amount must be numeric (got str)"
++    assert schema.validate_collect(spec, {"amount": "abc"}) == [
++        "field amount must be numeric (got str)"]
++
++
++def test_validator_strips_non_empty_fields_without_mutating_the_input():
++    validator = schema.compile_spec({
++        "name": {"non_empty": True},
++        "amount": {"type": "number"},
++    })
++    fields = {"name": "  ada  ", "amount": 3}
++    result = validator(fields)
++    assert result == {"name": "ada", "amount": 3}
++    assert fields == {"name": "  ada  ", "amount": 3}
++    assert result is not fields
++
++
++def test_compiled_validator_is_reusable_and_deterministic():
++    validator = schema.compile_spec({"name": {"non_empty": True}})
++    assert validator({"name": " a "}) == validator({"name": " a "})
++    assert validator({"name": " a "}) == {"name": "a"}
++
++
++def test_fields_absent_from_the_spec_pass_through_untouched():
++    validator = schema.compile_spec({"name": {"non_empty": True}})
++    assert validator({"name": "a", "extra": "  kept  "}) == {
++        "name": "a", "extra": "  kept  "}
++
++
++# --- spec algebra ---------------------------------------------------------
++
++def test_merge_specs_unions_fields_and_rules():
++    a = {"name": {"required": True}}
++    b = {"name": {"non_empty": True}, "amount": {"type": "number"}}
++    assert schema.merge_specs(a, b) == {
++        "name": {"required": True, "non_empty": True},
++        "amount": {"type": "number"},
++    }
++    assert a == {"name": {"required": True}}
++    assert b == {"name": {"non_empty": True}, "amount": {"type": "number"}}
++
++
++def test_merge_specs_conflicting_rule_values_raise_naming_field_and_key():
++    with pytest.raises(ValueError) as exc:
++        schema.merge_specs({"amount": {"max": 10}}, {"amount": {"max": 20}})
++    assert "amount" in str(exc.value)
++    assert "max" in str(exc.value)
++    # equal values merge silently
++    assert schema.merge_specs({"amount": {"max": 10}},
++                              {"amount": {"max": 10}}) == {"amount": {"max": 10}}
++
++
++def test_describe_spec_renders_sorted_fields_and_sorted_rule_keys():
++    spec = {"name": {"required": True}, "amount": {"type": "number", "max": 100}}
++    assert schema.describe_spec(spec) == (
++        "amount: max=100, type=number\nname: required=True")
++
++
++def test_describe_spec_of_empty_spec():
++    assert schema.describe_spec({}) == "(empty spec)"
++
++
++def test_diff_specs_reports_added_removed_and_changed():
++    a = {"gone": {"required": True}, "same": {"max": 1}, "moved": {"max": 1}}
++    b = {"same": {"max": 1}, "moved": {"max": 2}, "new": {"type": "str"}}
++    assert schema.diff_specs(a, b) == {
++        "added": ["new"], "removed": ["gone"], "changed": ["moved"]}
++    assert a == {"gone": {"required": True}, "same": {"max": 1},
++                 "moved": {"max": 1}}
++    assert b == {"same": {"max": 1}, "moved": {"max": 2},
++                 "new": {"type": "str"}}
++
++
++def test_diff_specs_of_identical_specs_is_three_empty_lists():
++    spec = {"a": {"max": 1}, "b": {"type": "str"}}
++    assert schema.diff_specs(spec, dict(spec)) == {
++        "added": [], "removed": [], "changed": []}
++
++
++def test_spec_from_config_collects_prefixed_keys_and_compiles():
++    config = {
++        "s_name": {"required": True, "non_empty": True},
++        "s_amount": {"type": "number", "max": 10},
++        "unrelated": "ignored",
++    }
++    spec = schema.spec_from_config(config, "s_")
++    assert spec == {
++        "name": {"required": True, "non_empty": True},
++        "amount": {"type": "number", "max": 10},
++    }
++    validator = schema.compile_spec(spec)
++    assert validator({"name": " ok ", "amount": 10}) == {
++        "name": "ok", "amount": 10}
++    with pytest.raises(schema.SchemaError) as exc:
++        validator({"name": "ok", "amount": 11})
++    assert str(exc.value) == "field amount exceeds max_amount 10"
++
++
++def test_spec_to_config_copies_rules_and_round_trips():
++    spec = {"name": {"required": True}, "amount": {"type": "number"}}
++    config = schema.spec_to_config(spec, "s_")
++    assert config == {
++        "s_name": {"required": True}, "s_amount": {"type": "number"}}
++    config["s_name"]["required"] = False
++    assert spec == {"name": {"required": True}, "amount": {"type": "number"}}
++    assert schema.spec_from_config(
++        schema.spec_to_config(spec, "s_"), "s_") == spec
++    source = {"s_name": {"required": True}, "s_amount": {"type": "number"}}
++    assert schema.spec_to_config(
++        schema.spec_from_config(source, "s_"), "s_") == source
++
++
++def test_spec_summary_line():
++    spec = {"name": {"required": True, "non_empty": True},
++            "amount": {"type": "number"}}
++    assert schema.spec_summary_line(spec) == "2 fields, 3 rules"
++    assert schema.spec_summary_line({}) == "0 fields, 0 rules"
++
++
++# --- validate_collect -----------------------------------------------------
++
++def test_validate_collect_returns_all_errors_required_first_then_spec_order():
++    spec = {
++        "name": {"required": True, "non_empty": True},
++        "amount": {"type": "number"},
++        "note": {"non_empty": True},
++    }
++    assert schema.validate_collect(spec, {"amount": "3", "note": "  "}) == [
++        "missing field: name",
++        "field amount must be numeric (got str)",
++        "field note must be a non-empty string",
++    ]
++
++
++def test_validate_collect_reports_at_most_one_message_per_field():
++    spec = {"n": {"type": "str", "non_empty": True}}
++    assert schema.validate_collect(spec, {"n": 42}) == [
++        "field n must be a string"]
++
++
++def test_validate_collect_returns_empty_list_when_clean():
++    spec = {"name": {"required": True, "non_empty": True},
++            "amount": {"type": "number", "max": 10}}
++    assert schema.validate_collect(spec, {"name": "a", "amount": 10}) == []
+diff --git a/tests/test_tabular.py b/tests/test_tabular.py
+new file mode 100644
+index 0000000..8e34445
+--- /dev/null
++++ b/tests/test_tabular.py
+@@ -0,0 +1,93 @@
++"""Tests for the column-model toolkit `app.tabular`."""
++import pytest
++
++from app import tabular
++
++
++def test_columns_returns_sorted_union_of_all_record_keys():
++    assert tabular.columns([]) == []
++    records = [{"name": "coffee", "amount": 3}, {"note": "x", "name": "tea"}]
++    assert tabular.columns(records) == ["amount", "name", "note"]
++
++
++def test_cell_renders_none_as_empty_and_everything_else_via_str():
++    assert tabular.cell(None) == ""
++    assert tabular.cell(3) == "3"
++    assert tabular.cell(3.5) == "3.5"
++    assert tabular.cell("x") == "x"
++
++
++def test_escape_csv_quotes_only_cells_that_need_it():
++    assert tabular.escape_csv("plain") == "plain"
++    assert tabular.escape_csv("a,b") == '"a,b"'
++    assert tabular.escape_csv('say "hi"') == '"say ""hi"""'
++    assert tabular.escape_csv("line1\nline2") == '"line1\nline2"'
++    assert tabular.escape_csv("") == ""
++
++
++def test_widths_takes_the_max_of_header_and_cell_widths():
++    records = [{"name": "espresso", "amount": 100},
++               {"name": "tea", "amount": 250}]
++    cols = ["amount", "name"]
++    # "amount": header (6) is strictly wider than every cell (3).
++    # "name": the widest cell ("espresso", 8) beats the header (4).
++    assert tabular.widths(records, cols) == {"amount": 6, "name": 8}
++
++
++def test_pad_aligns_never_truncates_and_validates_align_first():
++    assert tabular.pad("ab", 4, "left") == "ab  "
++    assert tabular.pad("ab", 4, "right") == "  ab"
++    assert tabular.pad("abcd", 4, "left") == "abcd"
++    assert tabular.pad("abcde", 4, "left") == "abcde"
++    assert tabular.pad("abcde", 4, "right") == "abcde"
++    with pytest.raises(ValueError) as exc:
++        tabular.pad("abcde", 4, "center")
++    assert "center" in str(exc.value)
++    with pytest.raises(ValueError):
++        tabular.pad("ab", 4, "center")
++
++
++def test_sanitize_flat_replaces_tabs_and_newlines_with_single_spaces():
++    assert tabular.sanitize_flat("a\tb\nc") == "a b c"
++    assert tabular.sanitize_flat("clean value") == "clean value"
++    assert tabular.sanitize_flat(None) == ""
++    assert tabular.sanitize_flat(3) == "3"
++
++
++def test_escape_html_escapes_ampersand_first():
++    assert tabular.escape_html('<a & "b">') == "&lt;a &amp; &quot;b&quot;&gt;"
++    assert tabular.escape_html("clean") == "clean"
++    assert tabular.escape_html(None) == ""
++
++
++def test_truncate_shortens_with_a_marker_and_rejects_tiny_widths():
++    assert tabular.truncate("abc", 5) == "abc"
++    assert tabular.truncate("abcde", 5) == "abcde"
++    assert tabular.truncate("abcdefgh", 5) == "ab..."
++    assert tabular.truncate("abcdefgh", 4, marker="*") == "abc*"
++    with pytest.raises(ValueError):
++        tabular.truncate("abcdefgh", 2)
++
++
++def test_wrap_greedily_wraps_on_spaces_and_hard_splits_long_words():
++    assert tabular.wrap("alpha beta gamma", 11) == ["alpha beta", "gamma"]
++    assert tabular.wrap("alpha beta gamma", 5) == ["alpha", "beta", "gamma"]
++    assert tabular.wrap("abcdefg", 3) == ["abc", "def", "g"]
++    assert tabular.wrap("", 4) == [""]
++    with pytest.raises(ValueError):
++        tabular.wrap("abc", 0)
++
++
++def test_fit_composes_truncate_then_pad():
++    assert tabular.fit("abcdefgh", 5, "left") == "ab..."
++    assert tabular.fit("ab", 5, "left") == "ab   "
++    assert tabular.fit("ab", 5, "right") == "   ab"
++    with pytest.raises(ValueError):
++        tabular.fit("ab", 5, "center")
++
++
++def test_render_row_renders_one_padded_pipe_table_row():
++    assert tabular.render_row(["a", "bb"], [3, 2], "left") == "| a   | bb |"
++    assert tabular.render_row(["a", "bb"], [3, 2], "right") == "|   a | bb |"
++    with pytest.raises(ValueError):
++        tabular.render_row(["a", "bb"], [3], "left")
+diff --git a/tests/test_throttle.py b/tests/test_throttle.py
+new file mode 100644
+index 0000000..655f586
+--- /dev/null
++++ b/tests/test_throttle.py
+@@ -0,0 +1,105 @@
++"""Tests for the route-policy layer over the quota counter (`app.throttle`).
++
++`throttle` is pure policy: it holds no counters, so every test starts with
++`quota.reset()` to clear the shared clock and hit store.
++"""
++import pytest
++
++from app import quota, throttle
++
++
++def test_policy_error_is_an_exception_subclass():
++    assert issubclass(throttle.PolicyError, Exception)
++
++
++def test_policies_constant_holds_the_shipped_route_policies():
++    assert throttle.POLICIES == {
++        "POST /records": {"limit": 5, "window": 60, "burst": 0},
++        "GET /export": {"limit": 10, "window": 60, "burst": 2},
++    }
++
++
++def test_match_policy_picks_the_longest_matching_prefix():
++    quota.reset()
++    policies = {
++        "POST /records": {"limit": 5, "window": 60, "burst": 0},
++        "GET /export": {"limit": 10, "window": 60, "burst": 2},
++    }
++    assert throttle.match_policy("GET", "/export/full", policies) == \
++        policies["GET /export"]
++
++    longer = dict(policies)
++    longer["GET /export/full"] = {"limit": 1, "window": 30, "burst": 0}
++    assert throttle.match_policy("GET", "/export/full", longer) == \
++        longer["GET /export/full"]
++
++    assert throttle.match_policy("POST", "/export", policies) is None
++
++
++def test_key_for_renders_method_path_and_actor():
++    assert throttle.key_for("POST", "/records", "mallory") == \
++        "POST /records:mallory"
++
++
++def test_enforce_delegates_to_quota_take_and_ignores_unmatched_routes(monkeypatch):
++    quota.reset()
++    policies = {"POST /records": {"limit": 5, "window": 60, "burst": 0}}
++
++    assert throttle.enforce("DELETE", "/records/1", "mallory", policies) is None
++    # nothing was recorded for the unmatched route
++    assert quota.snapshot(60) == {}
++
++    calls = []
++
++    def recorder(*args, **kwargs):
++        calls.append((args, kwargs))
++        return 1
++
++    monkeypatch.setattr(quota, "take", recorder)
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 1
++    assert calls == [(("POST /records:mallory", 5, 60), {"burst": 0})]
++
++
++def test_enforce_raises_policy_error_when_the_policy_is_exhausted():
++    quota.reset()
++    policies = {"POST /records": {"limit": 1, "window": 60, "burst": 0}}
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 1
++
++    with pytest.raises(throttle.PolicyError) as excinfo:
++        throttle.enforce("POST", "/records", "mallory", policies)
++    message = str(excinfo.value)
++    assert "POST /records:mallory" in message
++    assert "1" in message
++    assert isinstance(excinfo.value.__cause__, quota.QuotaExceededError)
++
++
++def test_remaining_for_reads_the_policy_allowance_without_recording():
++    quota.reset()
++    policies = {"POST /records": {"limit": 2, "window": 60, "burst": 0}}
++    assert throttle.remaining_for("GET", "/records", "mallory", policies) is None
++
++    assert throttle.remaining_for("POST", "/records", "mallory", policies) == 2
++    assert throttle.remaining_for("POST", "/records", "mallory", policies) == 2
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 1
++    assert throttle.remaining_for("POST", "/records", "mallory", policies) == 1
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 2
++    assert throttle.remaining_for("POST", "/records", "mallory", policies) == 0
++
++
++def test_describe_policies_renders_sorted_lines():
++    assert throttle.describe_policies(throttle.POLICIES) == (
++        "GET /export: limit=10, window=60, burst=2\n"
++        "POST /records: limit=5, window=60, burst=0"
++    )
++    assert throttle.describe_policies({}) == "(no policies)"
++
++
++def test_enforce_frees_the_key_once_the_window_elapses():
++    quota.reset()
++    policies = {"POST /records": {"limit": 1, "window": 60, "burst": 0}}
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 1
++    with pytest.raises(throttle.PolicyError):
++        throttle.enforce("POST", "/records", "mallory", policies)
++
++    quota.advance(61)
++    assert throttle.enforce("POST", "/records", "mallory", policies) == 1
+diff --git a/tests/test_validation.py b/tests/test_validation.py
+new file mode 100644
+index 0000000..86422fa
+--- /dev/null
++++ b/tests/test_validation.py
+@@ -0,0 +1,225 @@
++"""Tests for app/validation.py — the input-validation layer."""
++import pytest
++
++from app import schema, validation
++
++
++REQUIRED = ["name", "amount"]
++MAX = 100
++
++
++def test_validation_error_is_an_exception_subclass():
++    assert issubclass(validation.ValidationError, Exception)
++
++
++def test_missing_name_names_the_field():
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"amount": 1}, REQUIRED, MAX)
++    assert "name" in str(exc.value)
++
++
++def test_missing_amount_and_both_missing_reports_required_order():
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"name": "ada"}, REQUIRED, MAX)
++    assert str(exc.value) == "missing field: amount"
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({}, REQUIRED, MAX)
++    assert str(exc.value) == "missing field: name"
++
++
++def test_string_amount_is_not_numeric():
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"name": "ada", "amount": "3"}, REQUIRED, MAX)
++    assert "numeric" in str(exc.value)
++
++
++def test_bool_amount_is_not_numeric():
++    for value in (True, False):
++        with pytest.raises(validation.ValidationError) as exc:
++            validation.validate_fields(
++                {"name": "ada", "amount": value}, REQUIRED, MAX)
++        assert "numeric" in str(exc.value)
++
++
++def test_negative_amount_is_rejected_and_zero_is_accepted():
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"name": "ada", "amount": -1}, REQUIRED, MAX)
++    assert "non-negative" in str(exc.value)
++    assert validation.validate_fields(
++        {"name": "ada", "amount": 0}, REQUIRED, MAX) == {
++            "name": "ada", "amount": 0}
++
++
++def test_amount_above_max_is_rejected_and_the_boundary_is_accepted():
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields(
++            {"name": "ada", "amount": MAX + 1}, REQUIRED, MAX)
++    assert "max_amount" in str(exc.value)
++    assert validation.validate_fields(
++        {"name": "ada", "amount": MAX}, REQUIRED, MAX) == {
++            "name": "ada", "amount": MAX}
++
++
++def test_empty_whitespace_and_non_string_names_are_rejected():
++    for bad in ("", "   ", 42):
++        with pytest.raises(validation.ValidationError) as exc:
++            validation.validate_fields(
++                {"name": bad, "amount": 1}, REQUIRED, MAX)
++        assert "non-empty string" in str(exc.value)
++
++
++def test_success_returns_a_new_dict_with_a_stripped_name():
++    fields = {"name": "  ada  ", "amount": 3, "category": "books"}
++    result = validation.validate_fields(fields, REQUIRED, MAX)
++    assert result == {"name": "ada", "amount": 3, "category": "books"}
++    assert fields == {"name": "  ada  ", "amount": 3, "category": "books"}
++    assert result is not fields
++
++
++def test_extra_keys_pass_through_untouched():
++    fields = {"name": "ada", "amount": 1, "extra": "  kept  ", "n": None}
++    assert validation.validate_fields(fields, REQUIRED, MAX) == {
++        "name": "ada", "amount": 1, "extra": "  kept  ", "n": None}
++
++
++def test_pre_create_hook_reads_the_config_keys():
++    config = {"validation_required_fields": REQUIRED,
++              "validation_max_amount": MAX}
++    assert validation.pre_create_hook(
++        None, config, {"name": " ada ", "amount": 5}) == {
++            "name": "ada", "amount": 5}
++    with pytest.raises(validation.ValidationError) as hook_exc:
++        validation.pre_create_hook(None, config, {"name": "ada", "amount": 101})
++    with pytest.raises(validation.ValidationError) as direct_exc:
++        validation.validate_fields({"name": "ada", "amount": 101}, REQUIRED, MAX)
++    assert str(hook_exc.value) == str(direct_exc.value)
++
++
++def test_exact_messages_come_from_the_catalog():
++    def message(fields):
++        with pytest.raises(validation.ValidationError) as exc:
++            validation.validate_fields(fields, REQUIRED, MAX)
++        return str(exc.value)
++
++    assert message({"amount": 1}) == "missing field: name"
++    assert message({"name": "ada", "amount": True}) == (
++        "field amount must be numeric (got bool)")
++    assert message({"name": "ada", "amount": -1}) == (
++        "field amount must be non-negative")
++    assert message({"name": "ada", "amount": 101}) == (
++        "field amount exceeds max_amount 100")
++    assert message({"name": "", "amount": 1}) == (
++        "field name must be a non-empty string")
++
++
++def test_float_amounts_are_legal_including_the_max_boundary():
++    assert validation.validate_fields(
++        {"name": "ada", "amount": 3.5}, REQUIRED, MAX) == {
++            "name": "ada", "amount": 3.5}
++    assert validation.validate_fields(
++        {"name": "ada", "amount": 2.5}, REQUIRED, 2.5) == {
++            "name": "ada", "amount": 2.5}
++
++
++def test_none_nan_and_infinities_are_not_numeric():
++    for bad in (None, float("nan"), float("inf"), float("-inf")):
++        with pytest.raises(validation.ValidationError) as exc:
++            validation.validate_fields(
++                {"name": "ada", "amount": bad}, REQUIRED, MAX)
++        assert "numeric" in str(exc.value)
++
++
++def test_internal_whitespace_and_non_ascii_names_survive():
++    assert validation.validate_fields(
++        {"name": "  ada lovelace  ", "amount": 1}, REQUIRED, MAX)["name"] == (
++            "ada lovelace")
++    assert validation.validate_fields(
++        {"name": "Δ", "amount": 1}, REQUIRED, MAX)["name"] == "Δ"
++
++
++def test_no_required_fields_and_no_fields_passes():
++    assert validation.validate_fields({}, [], MAX) == {}
++
++
++def test_max_amount_of_zero():
++    assert validation.validate_fields({"name": "ada", "amount": 0},
++                                      REQUIRED, 0) == {"name": "ada",
++                                                       "amount": 0}
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"name": "ada", "amount": 1}, REQUIRED, 0)
++    assert "max_amount" in str(exc.value)
++
++
++def test_the_returned_dict_is_a_shallow_copy():
++    fields = {"name": "ada", "amount": 1, "tags": [1, 2]}
++    result = validation.validate_fields(fields, REQUIRED, MAX)
++    assert result["tags"] is fields["tags"]
++
++
++def test_validate_fields_delegates_to_schema_is_valid_amount(monkeypatch):
++    assert validation.validate_fields(
++        {"name": "ada", "amount": 1}, REQUIRED, MAX)["amount"] == 1
++    monkeypatch.setattr(schema, "is_valid_amount", lambda value: False)
++    with pytest.raises(validation.ValidationError) as exc:
++        validation.validate_fields({"name": "ada", "amount": 1}, REQUIRED, MAX)
++    assert "numeric" in str(exc.value)
++
++
++def test_validate_many_splits_successes_and_indexed_errors():
++    entries = [
++        {"name": " a ", "amount": 1},
++        {"name": "b", "amount": "3"},
++        {"name": "c", "amount": 2},
++        {"amount": 4},
++    ]
++    validated, errors = validation.validate_many(entries, REQUIRED, MAX)
++    assert validated == [{"name": "a", "amount": 1}, {"name": "c", "amount": 2}]
++    assert errors == [
++        (1, "field amount must be numeric (got str)"),
++        (3, "missing field: name"),
++    ]
++    assert entries == [
++        {"name": " a ", "amount": 1},
++        {"name": "b", "amount": "3"},
++        {"name": "c", "amount": 2},
++        {"amount": 4},
++    ]
++
++
++def test_error_code_maps_every_catalog_message_back_to_its_code():
++    assert validation.error_code("missing field: name") == "missing"
++    assert validation.error_code(
++        "field amount must be numeric (got str)") == "numeric"
++    assert validation.error_code(
++        "field amount must be non-negative") == "non_negative"
++    assert validation.error_code(
++        "field amount exceeds max_amount 100") == "max"
++    assert validation.error_code(
++        "field name must be a non-empty string") == "non_empty"
++    assert validation.error_code("field name must be a string") == "type_str"
++    with pytest.raises(ValueError):
++        validation.error_code("something else entirely")
++
++
++def test_error_code_reads_the_catalog_at_call_time(monkeypatch):
++    monkeypatch.setitem(schema.ERROR_CATALOG, "missing", "no such field: {field}")
++    assert validation.error_code("no such field: name") == "missing"
++    with pytest.raises(ValueError):
++        validation.error_code("missing field: name")
++
++
++def test_explain_config_renders_the_exact_block():
++    assert validation.explain_config({
++        "validation_required_fields": ["name", "amount"],
++        "validation_max_amount": 100000,
++    }) == (
++        "validation config:\n"
++        "  required: name, amount\n"
++        "  max_amount: 100000")
++    assert validation.explain_config({
++        "validation_required_fields": ["title"],
++        "validation_max_amount": 2.5,
++    }) == (
++        "validation config:\n"
++        "  required: title\n"
++        "  max_amount: 2.5")

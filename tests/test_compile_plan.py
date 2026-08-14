@@ -48,6 +48,22 @@ def compile_plan(path):
             pathlib.Path(tmp).unlink(missing_ok=True)
 
 
+def compile_plan_serialize(path):
+    """Explicit-serialize compile: for tests pinning serialize-mode contention
+    semantics (same-file writers serialize), which remain fully supported after
+    the spec-§5 default flip to fold."""
+    effective, tmp = _with_waiver(path)
+    try:
+        p = subprocess.run([sys.executable, str(COMPILER),
+                            "--overlap", "serialize", str(effective)],
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        return json.loads(p.stdout)
+    finally:
+        if tmp:
+            pathlib.Path(tmp).unlink(missing_ok=True)
+
+
 def compile_plan_raw(path):
     effective, tmp = _with_waiver(path)
     try:
@@ -84,7 +100,7 @@ def test_marked_fixture_compiles_to_documented_waves():
 
 
 def test_unmarked_fixture_heuristics_and_conflict():
-    out = compile_plan(ROOT / "tests/fixtures/unmarked-plan.md")
+    out = compile_plan_serialize(ROOT / "tests/fixtures/unmarked-plan.md")
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["3"]["disposition"] == "release"   # git push step, no marker
     assert by_id["3"]["heuristic"] is True
@@ -461,7 +477,7 @@ def test_fully_overlapping_writes_degrade_and_reason(tmp_path):
         "**Files:**\n- Modify: `same.txt`\n\n- [ ] **Step 1:** edit\n\n".replace("{i}", i)
         for i in ("A", "B", "C"))
     plan.write_text("# Plan: Overlap\n\n" + body)
-    out = compile_plan(plan)
+    out = compile_plan_serialize(plan)
     assert out["mode"] == "sequential"
     assert out["degrade_reason"] == "Sequential mode: 3 implementation tasks, fully overlapping writes"
     assert out["waves"] == [["A"], ["B"], ["C"]]
@@ -537,7 +553,7 @@ def test_shared_test_path_serializes(tmp_path):
         "**Files:**\n- Create: `feat_b.py`\n- Test: `tests/test_shared.py`\n\n"
         "- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
+    out = compile_plan_serialize(plan)
     assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
     assert out["waves"] == [["A"], ["B"]]
 
@@ -634,7 +650,7 @@ def test_line_ranged_paths_strip_to_overlap(tmp_path):
         "### Task B: edit bottom\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `src/existing.py:200-260`\n\n- [ ] **Step 1:** bottom\n"
     )
-    out = compile_plan(plan)
+    out = compile_plan_serialize(plan)
     assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
     assert out["waves"] == [["A"], ["B"]]
 
@@ -1451,7 +1467,7 @@ def test_extensionless_real_files_are_kept_identifiers_dropped(tmp_path):
         "### Task 2: also edits Makefile\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `Makefile`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
+    out = compile_plan_serialize(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == ["Dockerfile", "LICENSE", "Makefile"]  # real files kept
     assert "helper_func" not in by_id["1"]["writes"]   # snake_case identifier dropped
@@ -2228,7 +2244,7 @@ def test_uppercase_extension_paths_serialize_same_file_writers(tmp_path):
         "### Task B: writer two\n\n**Type:** implementation\n\n"
         "**Files:**\n- Modify: `Config.YAML`\n- Modify: `b_only.py`\n\n"
         "- [ ] **Step 1:** edit config again\n")
-    out = compile_plan(plan)
+    out = compile_plan_serialize(plan)
     a = next(t for t in out["tasks"] if t["id"] == "A")
     b = next(t for t in out["tasks"] if t["id"] == "B")
     assert "Config.YAML" in a["writes"] and "Config.YAML" in b["writes"]

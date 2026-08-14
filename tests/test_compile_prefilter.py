@@ -190,10 +190,9 @@ def test_serialize_mode_untouched_by_prefilter_flags(tmp_path):
     plan = _big_py_plan(tmp_path, root)
 
     # The pre-filter only ever runs in fold mode: --overlap serialize with a
-    # --repo-root supplied is byte-identical to plain serialize (no --overlap
-    # at all), and to serialize with no root.
-    default = _run(plan)
+    # --repo-root supplied is byte-identical to serialize with no root.
+    # (The flagless invocation is fold since the spec-§5 default flip, so it
+    # no longer participates in this serialize-side identity.)
     explicit = _run(plan, "--overlap", "serialize")
     with_root = _run(plan, "--overlap", "serialize", "--repo-root", str(root))
-    assert explicit.stdout == default.stdout
-    assert with_root.stdout == default.stdout
+    assert with_root.stdout == explicit.stdout

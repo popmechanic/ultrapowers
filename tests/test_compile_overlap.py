@@ -95,13 +95,15 @@ SHAPE_D = _HEADER + (
 
 
 # ------------------------------------------------------------ byte-identity --
-def test_overlap_default_constant_ships_serialize():
-    assert OVERLAP_DEFAULT == "serialize"
+def test_overlap_default_constant_ships_fold():
+    # Flipped by the spec-§5 pass-branch follow-up after the 2026-08-14
+    # counted A/B PASS (evals/frontier/results/2026-08-14-t15-ab.md).
+    assert OVERLAP_DEFAULT == "fold"
 
 
-def test_serialize_mode_is_byte_identical_to_default_invocation(tmp_path):
-    """`--overlap serialize` == today's flagless invocation, byte for byte, on
-    every shape: the four inline shapes plus every committed eval fixture."""
+def test_fold_mode_is_byte_identical_to_default_invocation(tmp_path):
+    """`--overlap fold` == the flagless invocation, byte for byte, on every
+    shape: the four inline shapes plus every committed eval fixture."""
     plans = [_write(tmp_path, "shape_%s.md" % n, t)
              for n, t in (("a", SHAPE_A), ("b", SHAPE_B),
                           ("c", SHAPE_C), ("d", SHAPE_D))]
@@ -109,7 +111,7 @@ def test_serialize_mode_is_byte_identical_to_default_invocation(tmp_path):
     assert len(plans) > 4, "eval fixture plans must be part of the pin"
     for plan in plans:
         default = _run(plan)
-        explicit = _run(plan, "--overlap", "serialize")
+        explicit = _run(plan, "--overlap", "fold")
         assert explicit.stdout == default.stdout, plan
 
 

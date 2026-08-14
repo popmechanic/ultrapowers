@@ -928,10 +928,12 @@ def derive_wave_label(tasks):
 #   "fold"      — an eligible overlapping pair KEEPS NO serializing edge; the
 #                 pair is scheduled into one wave and the engine folds the two
 #                 same-file edits at merge time.
-# The shipped default is `serialize`; it flips to `fold` only in the
-# pass-branch follow-up (spec §5), which is NOT built here.
+# The shipped default is `fold` (the spec-§5 pass-branch follow-up, adopted
+# after the 2026-08-14 counted A/B: 0.640x wall, 1.111x tokens, all hard gates
+# green — evals/frontier/results/2026-08-14-t15-ab.md). `serialize` remains
+# fully supported and reproduces the pre-flip behavior byte-for-byte.
 OVERLAP_MODES = ("serialize", "fold")
-OVERLAP_DEFAULT = "serialize"
+OVERLAP_DEFAULT = "fold"
 
 
 class _PathEligibility(dict):

@@ -29,6 +29,22 @@ the five lenses below and return findings as a JSON array. Return raw data only.
 
 ## Watch-items (standing, until removed by a distill cycle)
 
+- **fold-relaxation canary** — tag by prefixing the finding title with
+  `fold-canary:` (lens: frontier). Active for runs at engineVersion ≥ 0.2.0
+  (the release adopting `--overlap fold` as the default + the §5 authoring
+  relaxation — the unmeasured rigor trade, so it carries this canary per house
+  doctrine). From each run dir's `frontier/` records, read: (a) the fallback
+  rate per contended wave, and (b) the redirect-round rate on plans with
+  contended waves vs. the portfolio baseline (the standing redirect-round
+  count below supplies the baseline). **Expected fallback sources are named up
+  front** so their first occurrence reads as the priced cost, not a
+  regression: concurrently-created binary paths, runtime over-cap growth, and
+  semantic suite failures at candidate time. First persistence of *elevated*
+  rates flags the relaxation possibly-failed; second persistence makes
+  drafting the reversal (restore `serialize` as the default, keep the engine
+  capability guarded) mandatory distill output. Adoption of any reversal stays
+  operator-gated.
+
 - **same-file authoring cost** — tag by prefixing the finding title with
   `authoring-cost-samefile:` (lens: routing). The question: during PLANNING —
   brainstorm→spec→ultraplan authoring, wherever the bundle's planning turns
