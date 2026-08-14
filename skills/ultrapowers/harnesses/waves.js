@@ -435,7 +435,19 @@ const MERGE_PROMPT =
   'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
   'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand.'
+  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
+  'dispatch names the just-merged worktree paths, derived by the engine from ' +
+  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
+  'nothing. For each listed path, run git worktree list --porcelain and ' +
+  'confirm the path appears there with its checked-out branch being one you ' +
+  'merged in this wave; only after that per-path check passes, remove it ' +
+  'with git worktree remove --force <path>, using the absolute worktree ' +
+  'path the porcelain output printed. A listed path absent from the ' +
+  'porcelain output was already swept — skip it silently. A path that is ' +
+  'present but fails the branch check must not be removed: skip it and name ' +
+  'it in your reply detail. Never delete any branch — branches carry the ' +
+  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
@@ -450,7 +462,19 @@ const RECONCILE_PROMPT =
   'then for each task branch you merged run git rev-parse <branch> > ' +
   '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand.'
+  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
+  'dispatch names the just-merged worktree paths, derived by the engine from ' +
+  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
+  'nothing. For each listed path, run git worktree list --porcelain and ' +
+  'confirm the path appears there with its checked-out branch being one you ' +
+  'merged in this wave; only after that per-path check passes, remove it ' +
+  'with git worktree remove --force <path>, using the absolute worktree ' +
+  'path the porcelain output printed. A listed path absent from the ' +
+  'porcelain output was already swept — skip it silently. A path that is ' +
+  'present but fails the branch check must not be removed: skip it and name ' +
+  'it in your reply detail. Never delete any branch — branches carry the ' +
+  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
 
 // The prompt constants above cannot know which tasks a given wave merged, so each
 // dispatch appends the concrete slot names built from the ids/wave number in scope
@@ -463,6 +487,24 @@ const headsSlotsLine = (mergedResults, waveNumber) => {
     : slots.length === 1 ? (slots[0] + ' and ' + last)
       : last
   return 'For this wave that means slots: ' + list + '.'
+}
+
+// #151: the wave-barrier sweep line. The engine never sees the runtime
+// wf_<runId>, so worktree paths can only derive from the implementers'
+// SELF-REPORTED branch names — model-typed input feeding
+// `git worktree remove --force`. Derivation is therefore narrowed by shape:
+// a branch matching worktree-wf_<x>-<n> maps to .claude/worktrees/wf_<x>-<n>
+// (the same prefix-strip mapping sweep_worktrees.sh owns); a malformed name
+// contributes nothing, silently. Only THIS wave's merged results are listed:
+// blocked/parked/failed worktrees stay for evidence, and the frozen Step-5
+// sweep stays idempotent over paths already removed here. The prompt-side
+// `git worktree list --porcelain` identity check is the second defense.
+const SWEEP_BRANCH_RE = /^worktree-wf_.+-[0-9]+$/
+const sweepPathsLine = (mergedResults) => {
+  const paths = mergedResults
+    .filter((r) => SWEEP_BRANCH_RE.test(r.branch || ''))
+    .map((r) => '.claude/worktrees/' + r.branch.slice('worktree-'.length))
+  return paths.length ? ('SWEEP PATHS for this wave: ' + paths.join(', ') + '.') : ''
 }
 
 // ── Contended (frontier) merge contract — baked from references/wave-merge.md
@@ -1497,6 +1539,7 @@ async function mergeWave(results, waveIdx) {
   // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
   // rides inside fillPaths() with the prompt; the ids come from control flow.
   const slotsLine = headsSlotsLine(merged, waveIdx + 1)
+  const sweepLine = sweepPathsLine(merged)
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
     // Fallback (null) drops through to the git-merge path below with the branch
@@ -1507,6 +1550,7 @@ async function mergeWave(results, waveIdx) {
   try {
     merge = await agent(
       fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
+        (sweepLine ? '\n' + sweepLine : '') +
         '\nMerge in this order:\n' + branchList,
       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
     )
@@ -1529,6 +1573,7 @@ async function mergeWave(results, waveIdx) {
     try {
       merge = await agent(
         fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
+          (sweepLine ? '\n' + sweepLine : '') +
           '\nFailure:\n' + (merge.detail || ''),
         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
       )

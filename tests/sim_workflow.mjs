@@ -150,11 +150,90 @@ async function scenarioHappy() {
   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
-  assert(!/git worktree remove/.test(mergePrompt), 'happy: merge prompt no longer instructs cleanup (deterministic Step-5 sweep handles it)')
+  // #151 (reverses bea1875): the merge prompt now CARRIES the wave-barrier
+  // cleanup step; the deterministic Step-5 sweep stays the idempotent
+  // backstop. The stub branches (wt-A…) are malformed under the sweep
+  // regex, so no appended SWEEP PATHS line may appear — malformed names
+  // contribute nothing, silently. (The baked step itself REFERS to "a SWEEP
+  // PATHS line", so the pin matches the appended line's exact prefix, not the
+  // bare phrase.)
+  assert(/git worktree remove --force/.test(mergePrompt), 'happy: merge prompt carries the wave-barrier cleanup step (#151)')
+  assert(!/SWEEP PATHS for this wave:/.test(mergePrompt), 'happy: malformed stub branches derive no sweep paths')
   assert(/git branch --show-current/.test(mergePrompt), 'happy: merge prompt asserts the integration HEAD before merging')
   // acceptance-absent: no acceptance arg supplied → report.acceptance must be null
   eq(r.acceptance, null, 'happy: acceptance is null when not supplied (acceptance-absent)')
   console.log('scenario happy: OK')
+}
+
+// ── Scenario: wave-barrier sweep (#151, reverses bea1875) ────────────────────
+// The merge AND reconcile dispatches carry the baked cleanup step plus a
+// SWEEP PATHS line listing exactly the just-merged tasks' worktree paths,
+// derived by regex from self-reported branch names: a malformed branch
+// contributes nothing, a non-merged task's path is never listed, a later
+// wave never re-lists an earlier wave's paths, and the step itself carries
+// the missing-path skip clause (resume tolerance).
+async function scenarioWaveBarrierSweep() {
+  const prompts = {}
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      // A and C: well-formed runtime branch names; M: malformed (regex miss);
+      // B: well-formed, but its review fails it out of the merge set.
+      const branch = id === 'M' ? 'wt-M' : 'worktree-wf_run9-' + { A: 1, B: 2, C: 4 }[id]
+      return { status: 'DONE', summary: 's', branch, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      if (id === 'B') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'never green' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label === 'merge:wave1') {
+      prompts['merge:wave1'] = prompt
+      return { status: 'CONFLICT', detail: 'conflict in a.txt' } // force a reconcile dispatch
+    }
+    if (label.startsWith('reconcile:wave1')) {
+      prompts['reconcile'] = prompt
+      return { status: 'MERGED', headSha: 'm1' }
+    }
+    if (label.startsWith('merge:')) { prompts['merge:wave2'] = prompt; return { status: 'MERGED', headSha: 'm2' } }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [
+    [{ id: 'A', title: 'a', body: 'do a', tier: 'cheap' },
+     { id: 'B', title: 'b', body: 'do b', tier: 'cheap' },
+     { id: 'M', title: 'm', body: 'do m', tier: 'cheap' }],
+    [{ id: 'C', title: 'c', body: 'do c', tier: 'cheap' }],
+  ]
+  const r = await runWorkflow({ agent,
+    args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] },
+    budget: undefined })
+  const w1 = prompts['merge:wave1']
+  // Exactly the just-merged, well-formed path: B failed out (never merged),
+  // M is malformed (contributes nothing, silently). The trailing period pins
+  // the list as exactly one entry.
+  assert(w1.includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
+    'sweep: wave-1 SWEEP PATHS lists exactly the merged well-formed path')
+  assert(!w1.includes('wf_run9-2'), 'sweep: failed task B is never listed')
+  assert(!w1.includes('.claude/worktrees/wt-M'), 'sweep: malformed branch contributes no path')
+  // The baked step rides BOTH prompts: identity check, forced removal, resume
+  // tolerance (missing path = silent skip), branch preservation.
+  for (const [name, p] of [['merge', w1], ['reconcile', prompts['reconcile']]]) {
+    assert(/git worktree list --porcelain/.test(p), 'sweep: ' + name + ' prompt carries the per-path identity check')
+    assert(/git worktree remove --force/.test(p), 'sweep: ' + name + ' prompt carries the removal command')
+    assert(/skip it silently/.test(p), 'sweep: ' + name + ' prompt tolerates an already-swept path (resume)')
+    assert(/Never delete any branch/.test(p), 'sweep: ' + name + ' prompt forbids branch deletion')
+  }
+  assert(prompts['reconcile'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
+    'sweep: reconcile dispatch carries the same SWEEP PATHS line')
+  // Wave 2 lists only ITS OWN merged path — never a prior wave's.
+  assert(prompts['merge:wave2'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-4.'),
+    'sweep: wave-2 lists exactly its own merged path')
+  assert(!prompts['merge:wave2'].includes('wf_run9-1'), 'sweep: wave-2 never re-lists wave-1 paths')
+  assert(r.tasks.find((t) => t.task === 'A').status === 'done', 'sweep: run completes')
+  console.log('scenario wave-barrier-sweep: OK')
 }
 
 // ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
@@ -1974,6 +2053,7 @@ async function scenarioAcceptanceWaived() {
 }
 
 await scenarioHappy()
+await scenarioWaveBarrierSweep()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()

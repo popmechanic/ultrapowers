@@ -114,13 +114,20 @@ def test_schema_block_is_baked(name):
         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected)
 
 
-# ── merge/reconcile HEAD-assert + cleanup-out-of-prompt ───────────────────────
-def test_merge_prompt_does_not_instruct_cleanup():
+# ── merge/reconcile HEAD-assert + wave-barrier sweep (#151, reverses bea1875) ─
+def test_merge_prompt_sweeps_worktrees_but_never_branches():
     wf = normalize(WORKFLOW.read_text())
-    # the merge agent must NOT be told to remove worktrees or delete branches —
-    # cleanup is the deterministic sweep at the Step-5 gate, not a merge-prompt step
-    for forbidden in ("worktree remove", "git branch d", "delete the branch", "clean up the merged branches"):
-        assert normalize(forbidden) not in wf, f"merge prompt still instructs cleanup: {forbidden!r}"
+    # #151 reverses bea1875's subtraction: the wave-barrier sweep step is IN
+    # the merge/reconcile prompts again, identity-checked and worktree-only.
+    # Branch deletion stays forbidden — branches carry the merged commits
+    # until the deterministic Step-5 sweep.
+    for required in ("git worktree list --porcelain",
+                     "git worktree remove --force",
+                     "never delete any branch"):
+        assert normalize(required) in wf, f"merge prompt lost the sweep step: {required!r}"
+    for forbidden in ("git branch d", "delete the branch",
+                      "clean up the merged branches"):
+        assert normalize(forbidden) not in wf, f"merge prompt instructs branch deletion: {forbidden!r}"
 
 
 def test_merge_prompt_asserts_head():
