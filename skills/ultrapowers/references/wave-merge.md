@@ -216,7 +216,7 @@ After adoption, task heads are ancestors of the integration branch and the recon
 path can no longer bind — from there the only route is redirect, as with any adopted
 merge today.
 
-The fallback is **not** "today's behavior arrived at late": under the serialize default
+The fallback is **not** "today's behavior arrived at late": under `--overlap serialize`
 these tasks never ran concurrently, so the reconcile agent (two attempts, then
 `blockedWaves`) is handed a multi-task same-file collision it was never built for, with
 the parallel work already spent. Its real cost is a wave that can end blocked. Every

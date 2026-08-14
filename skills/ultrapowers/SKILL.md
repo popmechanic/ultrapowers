@@ -32,8 +32,9 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
 ```
 
 `--overlap` forwards to the compiler's own `--overlap` knob (default
-`serialize`; `fold` lets eligible overlapping-file tasks share a wave instead
-of serializing — see `references/dependency-analysis.md`); omit it to take
+`fold` — eligible overlapping-file tasks share a wave and the engine folds
+their edits at merge time; `serialize` reproduces the pre-0.2.0 behavior —
+see `references/dependency-analysis.md`); omit it to take
 the compiler's default. `--repo-root` is stamped onto the compile call
 unconditionally — it needs no operator input.
 
