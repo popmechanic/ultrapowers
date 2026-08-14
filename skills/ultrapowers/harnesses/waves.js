@@ -644,8 +644,9 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
   'List every gap, unverified claim, and untested path. ' +
-  'After confirming HEAD equals the recorded merge sha, set onIntegrationHead true in ' +
-  'your result (false if you could not confirm it). Read the plan at the provided ' +
+  'After confirming HEAD equals <derived> (the heads/-derived detach target), ' +
+  'set onIntegrationHead true in your result (false if you could not confirm it). ' +
+  'Read the plan at the provided ' +
   'planPath; for every task reported failed or blocked, check whether its declared ' +
   'Create: paths exist in the tree — list any that are genuinely absent as missing ' +
   'deliverables. For any deliverable that is present and structurally complete but ' +
