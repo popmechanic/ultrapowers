@@ -3023,9 +3023,189 @@ async function scenarioEarlyExhaustStampsCommand() {
   console.log('scenario early-exhaust-stamps-command: OK')
 }
 
+// ── Scenario: null MERGE reply → synthesized CONFLICT → reconcile engages ─────
+// agent() returns null (not throws) on terminal Overloaded; the merge dispatch
+// must normalize it like its catch branch instead of TypeError-ing at
+// merge.status and aborting the whole run (#148 §1).
+async function scenarioMergeNullContained() {
+  let reconciled = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) return null // terminal Overloaded: null reply, no throw
+      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(reconciled, 'mergeNull: a null merge reply degrades to CONFLICT and reconcile dispatches')
+  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeNull: reconcile recovered the wave')
+  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeNull: run completed normally — no TypeError abort')
+  console.log('scenario merge-null-contained: OK')
+}
+
+// ── Scenario: null RECONCILE reply → synthesized CONFLICT → attempt cap ends it ─
+// Both reconcile attempts die; the existing attempt cap (2) must terminate the
+// loop with the wave blocked and the run alive — never a TypeError (#148 §1).
+async function scenarioReconcileNullContained() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
+      if (label.startsWith('reconcile:')) return null // dead reconcile agent, both attempts
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(r.blockedWaves.length, 1, 'reconcileNull: wave 1 blocked after both null reconciles (attempt cap 2)')
+  assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
+    'reconcileNull: block detail names the null reply, not a TypeError')
+  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
+    'reconcileNull: wave 2 cascade-blocked, run still returned a report')
+  console.log('scenario reconcile-null-contained: OK')
+}
+
+// ── Scenario: dead reviewer → park → barrier retry succeeds (#148 §2–§3) ──────
+// review:A:1 returns null once (terminal Overloaded). The task must PARK — not
+// burn its retry immediately into the storm — then recover at the wave barrier.
+// Zero failed tasks; the transient 'parked-infra' marker never reaches the report.
+async function scenarioInfraDeathParkRecovers() {
+  let reviewACalls = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        reviewACalls++
+        if (reviewACalls === 1) return null // dead reviewer: null reply, no throw
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'done', 'infraPark: A recovered at the barrier retry and is done')
+  assert(r.tasks.every((t) => t.status !== 'failed'), 'infraPark: zero failed tasks recorded')
+  assert(r.waveMerges[0] && r.waveMerges[0].status === 'MERGED', 'infraPark: wave 1 merged after recovery')
+  assert(r.judgmentCalls.some((j) => /task A: infra-death/.test(j)),
+    'infraPark: park recorded as a judgment call')
+  assert(r.judgmentCalls.some((j) => /recovered at the barrier retry/.test(j)),
+    'infraPark: recovery recorded as a judgment call')
+  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
+    'infraPark: the immediate same-tier retry lane must NOT fire for an infra-death')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'infraPark: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-death-park-recovers: OK')
+}
+
+// ── Scenario: park retry dies again → failed, dependents blocked (#148 §3) ────
+// review:A:1 returns null EVERY time: the initial pipeline parks, the barrier
+// retry dies the same way → today's terminal semantics: status failed with
+// reviewVerdict agent-error, and the dependent is blocked before dispatch.
+async function scenarioInfraDeathRetryDies() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+    edges: [['A', 'B']] }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') return null // dead reviewer, every attempt
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a !== undefined, 'infraRetryDies: A appears in tasks')
+  eq(a.status, 'failed', 'infraRetryDies: A failed after the barrier retry died')
+  eq(a.reviewVerdict, 'agent-error', 'infraRetryDies: terminal verdict is agent-error, exactly as today')
+  assert(r.judgmentCalls.some((j) => /barrier retry after infra-death failed/.test(j)),
+    'infraRetryDies: the dead retry recorded as a judgment call')
+  assert(r.unfinished.some((u) => /^B: blocked — depends on a failed task/.test(u)),
+    'infraRetryDies: dependent B blocked before dispatch')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'infraRetryDies: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-death-retry-dies: OK')
+}
+
+// ── Scenario: null fix-round reply → AGENT_NULL → park lane (#148 §2, sim 5) ──
+// Without the fix-round AGENT_NULL throw, a null fix reply TypeErrors at
+// impl.status with a message no classifier matches, silently keeping the
+// storm-retry behavior. It must mint the marker and park instead.
+async function scenarioFixRoundNullParks() {
+  let reviewACalls = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        reviewACalls++
+        // First review demands a fix; the post-park retry's review passes.
+        if (reviewACalls === 1) {
+          return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'needs work' }] }
+        }
+        return undefined
+      }
+      if (label === 'fix:A:1') return null // dead fix-round implementer
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'done', 'fixNull: A parked on the dead fix round, then recovered at the barrier')
+  assert(r.judgmentCalls.some((j) => /AGENT_NULL: fix-round implementer agent returned null/.test(j)),
+    'fixNull: classified by the engine-minted AGENT_NULL marker, not a raw TypeError')
+  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
+    'fixNull: routed to the park lane, never the immediate storm retry')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'fixNull: the transient marker never appears anywhere in the report')
+  console.log('scenario fix-round-null-parks: OK')
+}
+
+// ── Scenario: budget exhausted before the barrier retry → deferred lane (#148 §3) ─
+// The retry pass is budget-checkpointed like every dispatch site. Exhaustion
+// routes the parked task to deferred/unfinished — never 'failed' — so a budget
+// event does not cascade-block dependents as a failure would.
+async function scenarioInfraParkBudgetDefers() {
+  let reviewDied = false
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+    edges: [['A', 'B']] }
+  const budget = { total: 100, remaining: () => (reviewDied ? 0 : 50) }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') { reviewDied = true; return null } // park A, then budget hits 0
+      return undefined
+    }),
+    args, budget,
+  })
+  assert(r.unfinished.some((u) => /^A: deferred \(budget exhausted before infra-death barrier retry\)/.test(u)),
+    'parkBudget: parked task routed to the deferred/unfinished lane')
+  assert(!r.tasks.some((t) => t.task === 'A'), 'parkBudget: no task record for A — deferred, not failed')
+  assert(!r.unfinished.some((u) => /blocked — depends on a failed task/.test(u)),
+    'parkBudget: budget deferral never cascade-blocks dependents as a failure')
+  assert(r.unfinished.some((u) => /^B: deferred \(budget exhausted\)/.test(u)),
+    'parkBudget: dependent B lands in the budget lane too, not the blocked lane')
+  assert(r.judgmentCalls.some((j) => /budget exhausted/.test(j)), 'parkBudget: cause in judgmentCalls')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'parkBudget: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-park-budget-defers: OK')
+}
+
 await scenarioTestCmdMissing()
 await scenarioMechanicalTestsCommandNoField()
 await scenarioCriticCommandIgnored()
 await scenarioEarlyExhaustStampsCommand()
+await scenarioMergeNullContained()
+await scenarioReconcileNullContained()
+await scenarioInfraDeathParkRecovers()
+await scenarioInfraDeathRetryDies()
+await scenarioFixRoundNullParks()
+await scenarioInfraParkBudgetDefers()
 
 console.log('ALL SCENARIOS PASSED')

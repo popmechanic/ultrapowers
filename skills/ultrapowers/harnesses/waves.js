@@ -825,6 +825,14 @@ const isSchemaTrip = (msg) =>
 // edge), which no model capability fixes. Diagnose it; do NOT fail-fast.
 const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
+// Infra-death: the agent PROCESS died (terminal Overloaded), not a judgment
+// about the work. The ONLY trustworthy signal is the engine-minted AGENT_NULL
+// marker — one prefix test, the same unforgeable-marker discipline as
+// isSchemaTrip's engine-shape regex. Never free-text match Overloaded/529:
+// agent() returns null rather than throwing overload-worded errors, so a text
+// matcher could only ever match agent-authored or incidental error text and
+// misclassify a genuine failure into the park lane.
+const isInfraFault = (msg) => msg.startsWith('AGENT_NULL')
 // Review / completeness roles always run at the strongest model, unconditionally —
 // a weak reviewer's failure mode is the silent false PASS, so it must never be
 // downgradable. (Reconcile is a fixer, not a reviewer, so it tracks the
@@ -951,6 +959,23 @@ async function runTask(task, baseSha, siblings) {
     return await runTaskInner(task, baseSha, siblings)
   } catch (e) {
     const msg = String((e && e.message) || e)
+    // Infra-death (engine-minted AGENT_NULL: the agent PROCESS died — terminal
+    // Overloaded), not a judgment about the work: an immediate retry would
+    // dispatch straight back into the same overload storm. Park a transient
+    // marker instead; the wave barrier retries it exactly once after the storm
+    // has had the remainder of the wave's own runtime to clear (this runtime
+    // has no wall clock or timers — barrier position IS the backoff). The
+    // marker is replaced in place before the merge set is computed, so its
+    // status can never reach report.json. All other fault classes keep the
+    // immediate retry below, byte-for-byte.
+    if (isInfraFault(msg)) {
+      judgmentCalls.push('task ' + task.id + ': infra-death (' + msg +
+        ') — parked for one barrier retry (no immediate retry into the live storm)')
+      log('task ' + task.id + ' infra-death — parked for barrier retry')
+      return { task: task.id, status: 'parked-infra', reviewVerdict: 'agent-error',
+               notes: msg, tier: resolvedModel(task.tier || 'standard'),
+               review: taskReviewProfile(task), fixIterations: 0 }
+    }
     // Default the one retry to the SAME tier; escalate one rung ONLY for a
     // capability-fixable schema trip. Never escalate an Overloaded/null fault.
     const capabilityFixable = isSchemaTrip(msg)
@@ -1070,7 +1095,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     let issues, verdicts
     if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
+      // agent() RETURNS null (not throws) on terminal Overloaded — mint the
+      // engine AGENT_NULL marker BEFORE any property access, so a dead reviewer
+      // routes to the infra-death park lane instead of a TypeError at r1.issues.
+      if (r1 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       const r2 = await agent(reviewPrompt, reviewOpts(2))
+      if (r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       issues = (r1.issues || []).concat(r2.issues || [])
       verdicts = [r1.verdict, r2.verdict]
       for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
@@ -1078,6 +1108,8 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
       }
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
+      // Same marker as the adversarial branch: null means the process died.
+      if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       issues = review.issues || []
       verdicts = [review.verdict]
       for (const cv of (review.cannotVerify || [])) {
@@ -1150,6 +1182,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
+    // agent() RETURNS null (not throws) on terminal Overloaded — same class as
+    // the initial implementer dispatch above. Without this, a null fix reply
+    // passes noteConcerns harmlessly and TypeErrors at impl.status with a
+    // message no classifier matches — a mid-storm fix-round death would
+    // silently keep the storm-retry behavior instead of parking.
+    if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
     noteConcerns(impl)
     // Same fail-fast as the initial dispatch: a fix result claiming DONE
     // without mergeable coordinates must not reach the iter-2 reviewer
@@ -1475,6 +1513,13 @@ async function mergeWave(results, waveIdx) {
   } catch (e) {
     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
   }
+  // agent() RETURNS null (not throws) on terminal Overloaded/skip. The contended
+  // path already null-guards its fold/resolve/adopt dispatches — the asymmetry
+  // here was the defect (#148 §1): a null reply reached merge.status, and the
+  // TypeError aborted the whole run (mergeWave is unwrapped at its call site).
+  // Normalize exactly like the catch branch so a dead merge agent routes into
+  // the existing reconcile/DEFERRED machinery.
+  if (!merge) merge = { status: 'CONFLICT', detail: 'merge agent died (null reply — terminal overload); task branches intact' }
   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
     if (budgetExhausted()) {
       return { status: 'DEFERRED', detail: 'budget exhausted before reconciliation attempt ' +
@@ -1490,6 +1535,10 @@ async function mergeWave(results, waveIdx) {
     } catch (e) {
       merge = { status: 'CONFLICT', detail: 'reconcile agent error: ' + String((e && e.message) || e) }
     }
+    // Same normalization as the merge dispatch above: a dead reconcile agent
+    // becomes CONFLICT, and the loop's attempt cap (2) terminates — the run
+    // survives with the wave blocked and every task branch intact.
+    if (!merge) merge = { status: 'CONFLICT', detail: 'reconcile agent died (null reply — terminal overload); task branches intact' }
   }
   return merge
 }
@@ -1757,6 +1806,68 @@ for (let w = 0; w < WAVES.length; w++) {
       r.status = 'failed'
       r.reviewVerdict = 'lost-coordinates'
       r.notes = (r.notes ? r.notes + '; ' : '') + 'reported done without mergeable coordinates — downgraded to failed'
+    }
+    noteFailures()
+  }
+
+  // ── Infra-death barrier retry pass (#148 §3) ────────────────────────────────
+  // Tasks parked on an AGENT_NULL infra-death get exactly ONE retry here, at
+  // the wave barrier (runTaskInner, same tier, fresh worktree — the proven
+  // self-heal semantics). Chunked through parallel() at the same CONCURRENCY
+  // cap as task dispatch, so the wave's tail is one task-duration, not N.
+  // Marker replacement is IN-PLACE in BOTH results and taskResults (the
+  // chunkLost precedent below) so the transient status never reaches
+  // report.json. Budget-checkpointed like every dispatch site: exhaustion
+  // routes parked tasks to the deferred/unfinished lane — never 'failed' — so
+  // a budget event cannot cascade-block dependents the way a failure would.
+  const parkedInfra = results.filter((r) => r && r.status === 'parked-infra')
+  for (let off = 0; off < parkedInfra.length; off += CONCURRENCY) {
+    if (budgetExhausted()) {
+      for (const p of parkedInfra.slice(off)) {
+        unfinished.push(p.task + ': deferred (budget exhausted before infra-death barrier retry)')
+        const ri = results.indexOf(p); if (ri !== -1) results.splice(ri, 1)
+        const ti = taskResults.indexOf(p); if (ti !== -1) taskResults.splice(ti, 1)
+        log('task ' + p.task + ' infra-death retry deferred: budget exhausted')
+      }
+      if (!budgetDeferred) {
+        budgetDeferred = true
+        judgmentCalls.push(BUDGET_DEFERRED_NOTE)
+      }
+      break
+    }
+    const pchunk = parkedInfra.slice(off, off + CONCURRENCY)
+    log('wave ' + (w + 1) + ' barrier: retrying ' + pchunk.length + ' infra-parked task(s)')
+    const retried = await parallel(pchunk.map((p) => () => (async () => {
+      const task = WAVES[w].find((t) => t.id === p.task)
+      try {
+        const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
+        judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
+        return res
+      } catch (e2) {
+        const msg2 = String((e2 && e2.message) || e2)
+        judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
+        log('task ' + task.id + ' FAILED after infra-death barrier retry: ' + msg2)
+        return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
+                 notes: msg2, tier: p.tier, review: p.review, fixIterations: 0 }
+      }
+    })()))
+    for (let k = 0; k < pchunk.length; k++) {
+      const p = pchunk[k], res = retried[k]
+      const ri = results.indexOf(p); if (ri !== -1) results[ri] = res
+      const ti = taskResults.indexOf(p); if (ti !== -1) taskResults[ti] = res
+      if (res.status === 'failed') {
+        // Documented WaW weakening (accepted trade, #148 §3): a same-wave
+        // dependent may have dispatched while its parent was parked (parked is
+        // neither failed nor done at chunk time). Disclose it when the retry
+        // then failed — the drain-administered suite gate is the backstop for
+        // any resulting integration gap.
+        for (const [a, b] of EDGES) {
+          if (a === p.task && results.some((r2) => r2 && r2.task === b)) {
+            judgmentCalls.push('task ' + b + ': ran while same-wave dependency ' + a +
+              ' was parked and the barrier retry then failed — WaW ordering weakened; the suite gate is the backstop')
+          }
+        }
+      }
     }
     noteFailures()
   }
