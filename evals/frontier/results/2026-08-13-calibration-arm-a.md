@@ -60,6 +60,15 @@ Claude subscription access") during wave 4 — task 4's implementer died at
 outage is the known OAuth/subscription flake class; the attempt is invalid
 as a calibration end-to-end reading.
 
+Outage diagnosis (post-hunt): the CLI authed as `marcus@vibes.diy`, whose
+auto-created **personal** Max org (`0cc89f85-c644-4ff7-b4db-7d1c14aca05e`)
+tripped a server-side "subscription access disabled" entitlement flag — no
+admin UI exists for a personal org, so nothing operator-side could clear it
+(cf. claude-code GitHub issues #63685/#82700). Resolution: CLI re-authed to
+the operator's other personal Max account; same Max tier, so floor readings
+remain comparable across the account switch (provenance note: attempts 1–2
+ran under `marcus@vibes.diy`, later attempts under the replacement account).
+
 The three implementers that completed are still a valid floor sample:
 **1.9 min (validation) / 3.5 min (export) / 4.6 min (ratelimit)** — up from
 1.3/1.3/2.6 pre-resize, still under the 5-min floor. Decision: second
