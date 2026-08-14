@@ -208,8 +208,13 @@ exam and the single end gate.
 
 When the queue drains or the budget ceiling hits, present **one** pre-merge
 portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
-disposition (`executed`/merged or `parked` + reason), branch, and the review
-posture used (suite-gate authority, or the escalated tasks named); plus portfolio
+disposition (`executed`/merged or `parked` + reason), branch, the review
+posture used (suite-gate authority, or the escalated tasks named), and the
+entry's residual manifest (`<runDir>/residual-manifest.md`, derived per the
+ultrapowers `references/finishing-notes.md` §Residual manifest; drain close
+runs `residual_manifest.py --check` per entry — exit 2 surfaces its
+undispositioned rows in this evidence block; an entry with no gate report
+derives a zero-row manifest, which passes vacuously); plus portfolio
 totals and the could-have-parallelized projection. Then the operator disposes of
 the portfolio: merge the docket integration line to base, or open per-issue PRs
 (mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
