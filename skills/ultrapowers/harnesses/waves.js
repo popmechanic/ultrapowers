@@ -1475,6 +1475,13 @@ async function mergeWave(results, waveIdx) {
   } catch (e) {
     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
   }
+  // agent() RETURNS null (not throws) on terminal Overloaded/skip. The contended
+  // path already null-guards its fold/resolve/adopt dispatches — the asymmetry
+  // here was the defect (#148 §1): a null reply reached merge.status, and the
+  // TypeError aborted the whole run (mergeWave is unwrapped at its call site).
+  // Normalize exactly like the catch branch so a dead merge agent routes into
+  // the existing reconcile/DEFERRED machinery.
+  if (!merge) merge = { status: 'CONFLICT', detail: 'merge agent died (null reply — terminal overload); task branches intact' }
   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
     if (budgetExhausted()) {
       return { status: 'DEFERRED', detail: 'budget exhausted before reconciliation attempt ' +
@@ -1490,6 +1497,10 @@ async function mergeWave(results, waveIdx) {
     } catch (e) {
       merge = { status: 'CONFLICT', detail: 'reconcile agent error: ' + String((e && e.message) || e) }
     }
+    // Same normalization as the merge dispatch above: a dead reconcile agent
+    // becomes CONFLICT, and the loop's attempt cap (2) terminates — the run
+    // survives with the wave blocked and every task branch intact.
+    if (!merge) merge = { status: 'CONFLICT', detail: 'reconcile agent died (null reply — terminal overload); task branches intact' }
   }
   return merge
 }

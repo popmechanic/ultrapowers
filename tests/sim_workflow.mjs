@@ -3023,9 +3023,58 @@ async function scenarioEarlyExhaustStampsCommand() {
   console.log('scenario early-exhaust-stamps-command: OK')
 }
 
+// ── Scenario: null MERGE reply → synthesized CONFLICT → reconcile engages ─────
+// agent() returns null (not throws) on terminal Overloaded; the merge dispatch
+// must normalize it like its catch branch instead of TypeError-ing at
+// merge.status and aborting the whole run (#148 §1).
+async function scenarioMergeNullContained() {
+  let reconciled = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) return null // terminal Overloaded: null reply, no throw
+      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(reconciled, 'mergeNull: a null merge reply degrades to CONFLICT and reconcile dispatches')
+  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeNull: reconcile recovered the wave')
+  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeNull: run completed normally — no TypeError abort')
+  console.log('scenario merge-null-contained: OK')
+}
+
+// ── Scenario: null RECONCILE reply → synthesized CONFLICT → attempt cap ends it ─
+// Both reconcile attempts die; the existing attempt cap (2) must terminate the
+// loop with the wave blocked and the run alive — never a TypeError (#148 §1).
+async function scenarioReconcileNullContained() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
+      if (label.startsWith('reconcile:')) return null // dead reconcile agent, both attempts
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(r.blockedWaves.length, 1, 'reconcileNull: wave 1 blocked after both null reconciles (attempt cap 2)')
+  assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
+    'reconcileNull: block detail names the null reply, not a TypeError')
+  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
+    'reconcileNull: wave 2 cascade-blocked, run still returned a report')
+  console.log('scenario reconcile-null-contained: OK')
+}
+
 await scenarioTestCmdMissing()
 await scenarioMechanicalTestsCommandNoField()
 await scenarioCriticCommandIgnored()
 await scenarioEarlyExhaustStampsCommand()
+await scenarioMergeNullContained()
+await scenarioReconcileNullContained()
 
 console.log('ALL SCENARIOS PASSED')
