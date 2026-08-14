@@ -203,3 +203,44 @@ task 4 next (`group_by`/`search`/`to_markdown_report`,
 (`diff_specs`, `describe_rules`), task 2 unchanged in size (5.9 met; only
 the two ambiguity pins). Projected implementers ~5–6.5 min each,
 E2E ~55 min.
+
+## Attempt 5 (round-4 fixture, `e3f03e6`) — sealed exam GREEN, E2E floor MET, two implementers 12–36 s short
+
+Note: an earlier attempt-5 launch was externally stopped seconds after
+worktree prep (no cell, no row, nothing to supersede); this is the same
+fixture relaunched on operator instruction.
+
+Row `startedAt 2026-08-14T05:29:16Z`: `wallClockSec 3453.7` (**57.6 min ≥
+30**), 253 603 output tokens, arm identity PASS (6 write-after-write edges),
+**gateVerdict NEEDS_ACK** (the structural ceiling — every mechanical check
+green), **sealed acceptance 24/24 PASSED** (`4d131df61152`, exit 0) — the
+round-4 minimal-config fix held on first exercise.
+
+Per-implementer wall clocks (wf `wf_a583dcf1-963`):
+
+| agent | wall clock | floor |
+|---|---|---|
+| impl task 1 (validation+schema+rules) | 4.4 min | MISS (−36 s) |
+| impl task 2 (export+tabular) | 7.4 min | MET |
+| impl task 3 (quota+ratelimit) | 5.3 min | MET |
+| impl task 4 (audit+audit_query) | 4.8 min | MISS (−12 s) |
+| fix rounds (tasks 1, 4) | 1.3 / 1.6 min | — |
+| reviews | 2.2–4.4 min | — |
+
+Reviewer minors worth keeping: task-3 reviewer flagged two genuine
+fixture-spec tensions — the prune-vs-reset boundary (a hit exactly at
+`now - window` still counts while `time_to_next_slot` reads `0.0`) and
+`X-RateLimit-Limit` ambiguity under burst (limit alone vs allowance) — both
+now pinned as round-5 contract wording. Stale-worktree-base recurred on both
+fix rounds (3rd run in a row; implementers self-recover via
+`git reset --hard` to BASE).
+
+## Decision after attempt 5
+
+Round-5 micro-resize, tasks 1 and 4 only: task 1 gains
+`schema.spec_to_config` (round-trip inverse) and `rules.parse_rules`
+(field-mapped parser, composed end-to-end with `apply_rules`); task 4 gains
+`audit_query.counts_matrix` (exact nested method→actor→count dict). Tasks 2
+and 3 unchanged beyond the two reviewer-tension pins (boundary wording,
+burst-header assertion). Projected: task 1 ~5.5 min, task 4 ~5.3 min, E2E
+~60 min.
