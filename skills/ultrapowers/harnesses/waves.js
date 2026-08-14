@@ -1134,6 +1134,17 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
         ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
+        // The fix agent's own BASE..HEAD is only the delta on top of the prior round; a packet cut
+        // from it hides the task's original implementation from the iter-2 reviewer. Anchor and
+        // packet range are deliberately different refs here (#146).
+        ' Generate your review packet for the FULL task range, not your BASE..HEAD: run review-package with base ' +
+        baseSha + ' (the task base) and your committed HEAD. Your BASE above remains your anchor — the prior' +
+        ' implementation to amend; only the packet range starts at the task base.' +
+        // Typed sha vs. derived branch tip: if the engine's recorded headSha and the prior branch
+        // have drifted apart, neither is a safe parent — surface it instead of guessing (#146).
+        ' Before anchoring, derive the prior tip: run PRIOR=$(git rev-parse ' + impl.branch +
+        '); if PRIOR differs from the BASE sha above, report BLOCKED naming both, written exactly as:' +
+        ' typed prior sha <typed> != derived branch tip <derived> — never build on either.' +
         ' Resolve these blocking issues on top of it, commit on YOUR assigned branch, and report YOUR branch and HEAD:\n' +
         blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
