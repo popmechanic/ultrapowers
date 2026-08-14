@@ -325,7 +325,7 @@
 **Notes:** Item 1 (critic dual detach authorities) = plan-level prompt-design decision, fails safe today; item 2 (CONFLICT-path token sha) touches FROZEN gate_check — eval route or park; item 3 (unpinned SKILL finalize wiring) conflicts with the anti-pin doctrine — prefer a structural closure or drop; item 4 smalls. Suggest scoping a plan to items 1+3-structural only, or parking until a field incident. || RE-TRIAGED 2026-08-14: after 31c43ad the remaining scope = item 2 (frozen gate_check.py CONFLICT-path sha - EVAL ROUTE ONLY per operator directive 2026-08-14, never a narrative fix; safe-direction residual, no field regression to reproduce => no eval cell this cycle) + item 4 porcelain/mode smalls (no field occurrence). Item 4d's closure corrected by entry #147. Stays triaged.
 
 ### #124: Gate residuals from #117/#105
-**State:** queued
+**State:** executed
 **Score:** 4 — cosmetic/coverage smalls on shipped fixes
 **Est-files:** tests/test_run_acceptance.py, skills/ultrapowers/SKILL.md
 **Plan:** docs/superpowers/plans/2026-08-14-gate-residual-smalls.md
