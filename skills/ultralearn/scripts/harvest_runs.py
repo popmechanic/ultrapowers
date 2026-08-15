@@ -152,14 +152,23 @@ def _last_artifact_record_index(records, registry):
     return cutoff if cutoff is not None else window_start
 
 
-def slice_transcript(records):
+def slice_transcript(records, terminus=None):
     # Slice envelope (Task 3, registry-keyed — spec §5): the run ends at the
     # last qualifying artifact of the LAST registered launch; anything after
     # is a post-run tangent, never wave-relevant. No qualifying artifact at
     # all (e.g. planning-only, or a pre-registry session with no Workflow
     # tool_result) keeps the full head, unchanged from pre-Task-3 behavior.
+    # #150 mode (b): when the caller's derived terminus is "approved", the
+    # approval exchange — plain operator text AFTER the final artifact — is
+    # exactly what the NEEDS_ACK lens needs, so the slice extends past the
+    # artifact cut to the transcript end. The tail rides the same per-record
+    # filter below (user text kept, keyword-less noise dropped), and since
+    # approval is terminal it is naturally a handful of records: no cap, no
+    # sentinel. Any other terminus (or the default None) keeps the cut.
     registry = session_registry(records)
     cutoff = _last_artifact_record_index(records, registry)
+    if terminus == "approved":
+        cutoff = None
     lines = []
     for idx, r, b in _iter_blocks_indexed(records):
         if cutoff is not None and idx > cutoff:
@@ -317,7 +326,12 @@ def _transcript_dirs(records):
     holds agent transcripts, in transcript order — a session may launch
     several workflows (multiple /ultrapowers launches, or a zero-agent probe
     before the real run) and each agent-bearing dir is its own run's evidence.
-    Fallback: [candidates[-1]] when NONE qualify, preserving the old
+    Candidates are deduped on their RESOLVED REAL paths (#150 mode a): a
+    crash-resume session prints the same dir twice (sometimes via a symlink
+    alias), and pre-dedupe each mention was audited separately — the verbatim
+    agent-block duplication that overstated audit totals by a full salvage
+    run's weight. First occurrence wins; transcript order is preserved.
+    Fallback: the LAST unique candidate when NONE qualify, preserving the old
     single-dir last-resort behavior (e.g. a dir that no longer exists on
     disk when the harvester runs later)."""
     candidates = []
@@ -332,8 +346,18 @@ def _transcript_dirs(records):
                 candidates.append(tail)
     if not candidates:
         return []
-    qualifying = [c for c in candidates if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
-    return qualifying if qualifying else [candidates[-1]]
+    seen_real, unique = set(), []
+    for c in candidates:
+        try:
+            key = str(Path(c).resolve())
+        except OSError:
+            key = c  # unresolvable path: dedupe on the literal string, soft
+        if key in seen_real:
+            continue
+        seen_real.add(key)
+        unique.append(c)
+    qualifying = [c for c in unique if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
+    return qualifying if qualifying else [unique[-1]]
 
 
 _GIT_TIMEOUT = 5  # seconds; an ancestry check must never hang a harvest sweep
@@ -424,22 +448,110 @@ def _git_ancestry_approved(run_dir, receipt):
         return False
 
 
-def _stamp_terminus(run_dir, stamp_reports):
-    """Per-stamp terminus (#126 Task 2): the disk receipt's own verdict,
-    upgraded to `approved` when git ancestry proves the run's head landed on
-    its base branch. Structured only, no transcript scanning: the
-    merge-evidence prose matcher (`_merge_evidence_after`) and the
-    approve-marker/stamp-interleave tracking it replaced are deleted
-    outright — the git check subsumes both. `stamp_reports` is this stamp's
-    own disk-sourced gate_reports entries; no disk receipt at all means
-    nothing to read a verdict OR a head sha from -> `unknown`."""
-    if not stamp_reports:
-        return "unknown"
-    receipt = stamp_reports[-1]["receipt"]
-    verdict = receipt.get("verdict", "unknown")
-    if run_dir and _git_ancestry_approved(run_dir, receipt):
-        return "approved"
-    return verdict
+_RUN_DIR_SUFFIX = re.compile(r"/\.claude/ultrapowers/run-[^/]+$")
+
+
+def _repo_root_from_run_dir(run_dir):
+    """Repo root derived from the registry-recorded runDir PATH STRING (#150
+    mode c): strip the `.claude/ultrapowers/run-<stamp>` suffix. Pure string
+    work — a drain-gated run's runDir is typically torn down by the time the
+    harvester runs, so the runDir is never touched on disk. None when the
+    string does not carry the engine suffix."""
+    if not isinstance(run_dir, str):
+        return None
+    m = _RUN_DIR_SUFFIX.search(run_dir)
+    return run_dir[:m.start()] if m else None
+
+
+def _drain_stamp_receipts(run_dir, stamp):
+    """Mode (c) mirror lookup (#150): the `<stamp>-*.json` glob under
+    `<repo-root>/.claude/ultrapowers/receipts/`, repo root from
+    `_repo_root_from_run_dir` — one record per drain-gated docket entry,
+    written by the drain's record helper's `stamp` subcommand (the schema
+    authority). Entries are labeled by the LOCATING stamp, filename-sorted
+    for determinism. Soft-fails: no derivable root, a missing receipts dir,
+    or unreadable/malformed JSON is skipped, never raised; only dicts
+    carrying a `verdict` qualify."""
+    root = _repo_root_from_run_dir(run_dir)
+    if root is None:
+        return []
+    entries = []
+    try:
+        files = sorted((Path(root) / ".claude/ultrapowers/receipts").glob(stamp + "-*.json"))
+    except OSError:
+        return []
+    for f in files:
+        try:
+            obj = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(obj, dict) and "verdict" in obj:
+            entries.append({"receipt": obj, "stamp": stamp, "source": "stamp"})
+    return entries
+
+
+def _drain_ancestry_approved(run_dir, receipt):
+    """Approved-upgrade for a drain-stamp record (#150 mode c): merged IS
+    approved, same rule as the receipt path. head = the record's own
+    `branch`, base = its `base` — both carried in the record, so no runDir
+    file read is ever needed; repo root comes from the runDir PATH STRING.
+    Fails soft to False on any unresolvable repo, ref, or git invocation."""
+    repo_root = _repo_root_from_run_dir(run_dir)
+    if not repo_root:
+        return False
+    head = receipt.get("branch")
+    base = receipt.get("base")
+    if not (isinstance(head, str) and head.strip()
+            and isinstance(base, str) and base.strip()):
+        return False
+    try:
+        res = subprocess.run(
+            ["git", "-C", repo_root, "merge-base", "--is-ancestor",
+             head.strip(), base.strip()],
+            capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _drain_stamp_terminus(run_dir, drain_receipts):
+    """Terminus from mode-(c) drain-stamp records (#150): each entry's
+    verdict upgrades to `approved` when its recorded branch landed on its
+    recorded base. All entries approved -> approved; else the last
+    (filename-sorted) non-approved entry's verdict — the aggregate-terminus
+    rule applied at the entry level."""
+    resolved = []
+    for e in drain_receipts:
+        receipt = e["receipt"]
+        verdict = receipt.get("verdict", "unknown")
+        if _drain_ancestry_approved(run_dir, receipt):
+            verdict = "approved"
+        resolved.append(verdict)
+    non_approved = [v for v in resolved if v != "approved"]
+    return "approved" if not non_approved else non_approved[-1]
+
+
+def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
+    """Per-stamp terminus (#126 Task 2, generalized receipt-or-stamp by #150
+    mode c): the disk receipt's own verdict, upgraded to `approved` when git
+    ancestry proves the run's head landed on its base branch. Structured
+    only, no transcript scanning: the merge-evidence prose matcher
+    (`_merge_evidence_after`) and the approve-marker/stamp-interleave
+    tracking it replaced are deleted outright — the git check subsumes both.
+    `stamp_reports` is this stamp's own disk-sourced gate_reports entries and
+    always takes precedence; `drain_receipts` (the #150 stamp mirror) is
+    consulted only when no disk receipt exists — the drain skips Step-5 and
+    tears the runDir down, so for those runs the mirror is the only gate
+    evidence left. Neither present -> `unknown`."""
+    if stamp_reports:
+        receipt = stamp_reports[-1]["receipt"]
+        verdict = receipt.get("verdict", "unknown")
+        if run_dir and _git_ancestry_approved(run_dir, receipt):
+            return "approved"
+        return verdict
+    if drain_receipts:
+        return _drain_stamp_terminus(run_dir, drain_receipts)
+    return "unknown"
 
 
 def _runs_for_bundle(registry, gate_reports):
@@ -453,11 +565,15 @@ def _runs_for_bundle(registry, gate_reports):
     for stamp in registry["stamps"]:
         stamp_reports = by_stamp.get(stamp, [])
         run_dir = registry["runDirsByStamp"].get(stamp)
+        # #150 mode (c): the stamp mirror is consulted only when no disk
+        # gate receipt exists for this stamp — it never enters gateReports
+        # (which stay disk-sourced only), it only informs terminus.
+        drain_receipts = [] if stamp_reports else _drain_stamp_receipts(run_dir, stamp)
         runs.append({
             "stamp": stamp,
             "planPath": registry["planPathsByStamp"].get(stamp),
             "gateReports": stamp_reports,
-            "terminus": _stamp_terminus(run_dir, stamp_reports),
+            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts),
         })
     return runs
 
@@ -683,7 +799,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     out = Path(cache_dir) / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
-    (out / "slice.md").write_text(slice_transcript(records))
+    (out / "slice.md").write_text(slice_transcript(records, terminus))
     return out
 
 

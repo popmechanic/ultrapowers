@@ -150,6 +150,18 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      no held-out exam.
    - `waived` → no gate exists; **park for the operator** at the end gate. Never
      auto-merge unverified work.
+
+   Immediately after each drain-administered gate for a **waves-engine
+   (`ultrapowers`) entry**, mirror the outcome to a teardown-surviving stamp
+   record: `python3 skills/ultradocket/scripts/record_wf_run.py stamp <stamp>
+   <entry> --verdict <verdict> --exit-code <exit> --branch <branch> --base
+   <docket-integration-line-HEAD>` (same `<stamp>` as the step-2 run-ID
+   record; `<verdict>`/`<exit>` are the gate runner's own JSON verdict and
+   exit code — the stamp is evidence for the ultralearn sensor, never
+   authority). A re-gate after a fix round re-records the same
+   `<stamp>`/`<entry>` and overwrites — last write wins; the final verdict is
+   the record. Subagent/inline entries record no stamp: they have no engine
+   runDir or registry stamp for the harvester to key on.
 4. **Merge or park** — the deterministic step:
    - **Green gate** → merge the plan branch into the docket integration line;
      advance the entry `queued → executed` via `docket_lib.transition`; the next
