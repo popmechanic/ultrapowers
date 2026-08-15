@@ -47,3 +47,69 @@ def test_record_refuses_unreadable_existing_file(tmp_path):
     r = record(repo, "d3", "wf_ddd-4")
     assert r.returncode == 1 and "unreadable" in r.stderr.lower()
     assert (run_dir / "wf-runs.json").read_text() == "{corrupt"  # never clobbered
+
+
+# --- #150 mode (c), writer side: the `stamp` subcommand mirrors a drain-
+# administered gate outcome to a teardown-surviving record. THIS WRITER IS
+# THE SCHEMA AUTHORITY — the harvester's tests invoke it to generate their
+# fixtures, so the assertions here pin the exact record shape.
+
+def stamp_record(repo, stamp, entry, verdict="PASS", exit_code=0,
+                 branch="ultra/entry-x", base="ultra/docket-x"):
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "stamp", stamp, entry,
+         "--verdict", verdict, "--exit-code", str(exit_code),
+         "--branch", branch, "--base", base],
+        cwd=repo, capture_output=True, text=True)
+
+
+def test_stamp_mode_writes_mirror_record(tmp_path):
+    repo = make_repo(tmp_path)
+    r = stamp_record(repo, "20260814-120000", "146", verdict="PASS", exit_code=0)
+    assert r.returncode == 0, r.stderr
+    path = repo / ".claude/ultrapowers/receipts/20260814-120000-146.json"
+    obj = json.loads(path.read_text())
+    assert obj["mode"] == "drain-stamp"
+    assert obj["stamp"] == "20260814-120000" and obj["entry"] == "146"
+    assert obj["verdict"] == "PASS" and obj["gateExit"] == 0
+    assert obj["branch"] == "ultra/entry-x" and obj["base"] == "ultra/docket-x"
+    assert isinstance(obj["recordedAt"], str) and obj["recordedAt"]
+    assert set(obj) == {"mode", "stamp", "entry", "verdict", "gateExit",
+                        "branch", "base", "recordedAt"}
+
+
+def test_stamp_mode_re_record_overwrites_last_write_wins(tmp_path):
+    # A re-gate after a fix round replaces the file — the final verdict is
+    # the record.
+    repo = make_repo(tmp_path)
+    assert stamp_record(repo, "20260814-120000", "146",
+                        verdict="BLOCKED", exit_code=1).returncode == 0
+    assert stamp_record(repo, "20260814-120000", "146",
+                        verdict="PASS", exit_code=0).returncode == 0
+    path = repo / ".claude/ultrapowers/receipts/20260814-120000-146.json"
+    obj = json.loads(path.read_text())
+    assert obj["verdict"] == "PASS" and obj["gateExit"] == 0
+
+
+def test_stamp_mode_leaves_run_id_mode_untouched(tmp_path):
+    # Both modes on one stamp: the stamp record never touches wf-runs.json,
+    # and the legacy run-id mode round-trips through the frozen reader
+    # exactly as before.
+    repo = make_repo(tmp_path)
+    assert record(repo, "d9", "wf_zzz-9").returncode == 0
+    assert stamp_record(repo, "d9", "146").returncode == 0
+    ids, unreadable = load_wf_runs(repo / ".claude/ultrapowers/run-d9")
+    assert ids == ["wf_zzz-9"] and not unreadable
+
+
+def test_stamp_mode_rejects_path_separator_in_names(tmp_path):
+    repo = make_repo(tmp_path)
+    assert stamp_record(repo, "20260814-120000", "a/b").returncode == 2
+    assert stamp_record(repo, "a/b", "146").returncode == 2
+
+
+def test_stamp_mode_missing_required_flag_exits_2(tmp_path):
+    repo = make_repo(tmp_path)
+    r = subprocess.run([sys.executable, str(SCRIPT), "stamp", "s", "e"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 2
