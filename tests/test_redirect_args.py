@@ -208,3 +208,29 @@ def test_no_heads_dir_is_a_noop(tmp_path):
     r = run_helper(run, [{"task": "1", "instruction": "fix"}])
     assert r.returncode == 0, r.stderr
     assert not (run / "heads").exists()  # nothing spuriously created
+
+
+def test_real_shaped_gate_receipt_branch_key_derived(tmp_path):
+    # #153: real receipts (written by ultra_gate.py) store the integration
+    # branch under "branch"; the fallback must accept it. The default
+    # make_run fixture's "integrationBranch" key is the legacy/hand-built
+    # shape and stays covered by the tests above.
+    run = make_run(tmp_path)
+    (run / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "BLOCKED", "branch": "ultra/int-real"}))
+    r = run_helper(run, [{"task": "1", "instruction": "x"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["integrationBranch"] == "ultra/int-real"
+
+
+def test_legacy_integrationbranch_key_wins_over_branch(tmp_path):
+    # Precedence inside the receipt fallback: legacy integrationBranch first,
+    # then branch — hand-built fixtures keep working unchanged.
+    run = make_run(tmp_path)
+    (run / "gate-receipt.json").write_text(json.dumps(
+        {"branch": "ultra/int-real", "integrationBranch": "ultra/int-legacy"}))
+    r = run_helper(run, [{"task": "1", "instruction": "x"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["integrationBranch"] == "ultra/int-legacy"

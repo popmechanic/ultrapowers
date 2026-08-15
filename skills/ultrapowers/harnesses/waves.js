@@ -435,7 +435,19 @@ const MERGE_PROMPT =
   'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
   'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand.'
+  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
+  'dispatch names the just-merged worktree paths, derived by the engine from ' +
+  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
+  'nothing. For each listed path, run git worktree list --porcelain and ' +
+  'confirm the path appears there with its checked-out branch being one you ' +
+  'merged in this wave; only after that per-path check passes, remove it ' +
+  'with git worktree remove --force <path>, using the absolute worktree ' +
+  'path the porcelain output printed. A listed path absent from the ' +
+  'porcelain output was already swept — skip it silently. A path that is ' +
+  'present but fails the branch check must not be removed: skip it and name ' +
+  'it in your reply detail. Never delete any branch — branches carry the ' +
+  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
 
 const RECONCILE_PROMPT =
   'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
@@ -450,7 +462,19 @@ const RECONCILE_PROMPT =
   'then for each task branch you merged run git rev-parse <branch> > ' +
   '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand.'
+  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
+  'dispatch names the just-merged worktree paths, derived by the engine from ' +
+  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
+  'nothing. For each listed path, run git worktree list --porcelain and ' +
+  'confirm the path appears there with its checked-out branch being one you ' +
+  'merged in this wave; only after that per-path check passes, remove it ' +
+  'with git worktree remove --force <path>, using the absolute worktree ' +
+  'path the porcelain output printed. A listed path absent from the ' +
+  'porcelain output was already swept — skip it silently. A path that is ' +
+  'present but fails the branch check must not be removed: skip it and name ' +
+  'it in your reply detail. Never delete any branch — branches carry the ' +
+  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
 
 // The prompt constants above cannot know which tasks a given wave merged, so each
 // dispatch appends the concrete slot names built from the ids/wave number in scope
@@ -463,6 +487,24 @@ const headsSlotsLine = (mergedResults, waveNumber) => {
     : slots.length === 1 ? (slots[0] + ' and ' + last)
       : last
   return 'For this wave that means slots: ' + list + '.'
+}
+
+// #151: the wave-barrier sweep line. The engine never sees the runtime
+// wf_<runId>, so worktree paths can only derive from the implementers'
+// SELF-REPORTED branch names — model-typed input feeding
+// `git worktree remove --force`. Derivation is therefore narrowed by shape:
+// a branch matching worktree-wf_<x>-<n> maps to .claude/worktrees/wf_<x>-<n>
+// (the same prefix-strip mapping sweep_worktrees.sh owns); a malformed name
+// contributes nothing, silently. Only THIS wave's merged results are listed:
+// blocked/parked/failed worktrees stay for evidence, and the frozen Step-5
+// sweep stays idempotent over paths already removed here. The prompt-side
+// `git worktree list --porcelain` identity check is the second defense.
+const SWEEP_BRANCH_RE = /^worktree-wf_.+-[0-9]+$/
+const sweepPathsLine = (mergedResults) => {
+  const paths = mergedResults
+    .filter((r) => SWEEP_BRANCH_RE.test(r.branch || ''))
+    .map((r) => '.claude/worktrees/' + r.branch.slice('worktree-'.length))
+  return paths.length ? ('SWEEP PATHS for this wave: ' + paths.join(', ') + '.') : ''
 }
 
 // ── Contended (frontier) merge contract — baked from references/wave-merge.md
@@ -825,6 +867,14 @@ const isSchemaTrip = (msg) =>
 // edge), which no model capability fixes. Diagnose it; do NOT fail-fast.
 const looksStructural = (msg) =>
   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
+// Infra-death: the agent PROCESS died (terminal Overloaded), not a judgment
+// about the work. The ONLY trustworthy signal is the engine-minted AGENT_NULL
+// marker — one prefix test, the same unforgeable-marker discipline as
+// isSchemaTrip's engine-shape regex. Never free-text match Overloaded/529:
+// agent() returns null rather than throwing overload-worded errors, so a text
+// matcher could only ever match agent-authored or incidental error text and
+// misclassify a genuine failure into the park lane.
+const isInfraFault = (msg) => msg.startsWith('AGENT_NULL')
 // Review / completeness roles always run at the strongest model, unconditionally —
 // a weak reviewer's failure mode is the silent false PASS, so it must never be
 // downgradable. (Reconcile is a fixer, not a reviewer, so it tracks the
@@ -951,6 +1001,23 @@ async function runTask(task, baseSha, siblings) {
     return await runTaskInner(task, baseSha, siblings)
   } catch (e) {
     const msg = String((e && e.message) || e)
+    // Infra-death (engine-minted AGENT_NULL: the agent PROCESS died — terminal
+    // Overloaded), not a judgment about the work: an immediate retry would
+    // dispatch straight back into the same overload storm. Park a transient
+    // marker instead; the wave barrier retries it exactly once after the storm
+    // has had the remainder of the wave's own runtime to clear (this runtime
+    // has no wall clock or timers — barrier position IS the backoff). The
+    // marker is replaced in place before the merge set is computed, so its
+    // status can never reach report.json. All other fault classes keep the
+    // immediate retry below, byte-for-byte.
+    if (isInfraFault(msg)) {
+      judgmentCalls.push('task ' + task.id + ': infra-death (' + msg +
+        ') — parked for one barrier retry (no immediate retry into the live storm)')
+      log('task ' + task.id + ' infra-death — parked for barrier retry')
+      return { task: task.id, status: 'parked-infra', reviewVerdict: 'agent-error',
+               notes: msg, tier: resolvedModel(task.tier || 'standard'),
+               review: taskReviewProfile(task), fixIterations: 0 }
+    }
     // Default the one retry to the SAME tier; escalate one rung ONLY for a
     // capability-fixable schema trip. Never escalate an Overloaded/null fault.
     const capabilityFixable = isSchemaTrip(msg)
@@ -1070,7 +1137,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     let issues, verdicts
     if (taskReviewProfile(task) === 'adversarial') {
       const r1 = await agent(reviewPrompt, reviewOpts(1))
+      // agent() RETURNS null (not throws) on terminal Overloaded — mint the
+      // engine AGENT_NULL marker BEFORE any property access, so a dead reviewer
+      // routes to the infra-death park lane instead of a TypeError at r1.issues.
+      if (r1 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       const r2 = await agent(reviewPrompt, reviewOpts(2))
+      if (r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       issues = (r1.issues || []).concat(r2.issues || [])
       verdicts = [r1.verdict, r2.verdict]
       for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
@@ -1078,6 +1150,8 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
       }
     } else {
       const review = await agent(reviewPrompt, reviewOpts())
+      // Same marker as the adversarial branch: null means the process died.
+      if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
       issues = review.issues || []
       verdicts = [review.verdict]
       for (const cv of (review.cannotVerify || [])) {
@@ -1150,6 +1224,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
+    // agent() RETURNS null (not throws) on terminal Overloaded — same class as
+    // the initial implementer dispatch above. Without this, a null fix reply
+    // passes noteConcerns harmlessly and TypeErrors at impl.status with a
+    // message no classifier matches — a mid-storm fix-round death would
+    // silently keep the storm-retry behavior instead of parking.
+    if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
     noteConcerns(impl)
     // Same fail-fast as the initial dispatch: a fix result claiming DONE
     // without mergeable coordinates must not reach the iter-2 reviewer
@@ -1459,6 +1539,7 @@ async function mergeWave(results, waveIdx) {
   // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
   // rides inside fillPaths() with the prompt; the ids come from control flow.
   const slotsLine = headsSlotsLine(merged, waveIdx + 1)
+  const sweepLine = sweepPathsLine(merged)
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
     // Fallback (null) drops through to the git-merge path below with the branch
@@ -1469,12 +1550,20 @@ async function mergeWave(results, waveIdx) {
   try {
     merge = await agent(
       fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
+        (sweepLine ? '\n' + sweepLine : '') +
         '\nMerge in this order:\n' + branchList,
       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
     )
   } catch (e) {
     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
   }
+  // agent() RETURNS null (not throws) on terminal Overloaded/skip. The contended
+  // path already null-guards its fold/resolve/adopt dispatches — the asymmetry
+  // here was the defect (#148 §1): a null reply reached merge.status, and the
+  // TypeError aborted the whole run (mergeWave is unwrapped at its call site).
+  // Normalize exactly like the catch branch so a dead merge agent routes into
+  // the existing reconcile/DEFERRED machinery.
+  if (!merge) merge = { status: 'CONFLICT', detail: 'merge agent died (null reply — terminal overload); task branches intact' }
   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
     if (budgetExhausted()) {
       return { status: 'DEFERRED', detail: 'budget exhausted before reconciliation attempt ' +
@@ -1484,12 +1573,17 @@ async function mergeWave(results, waveIdx) {
     try {
       merge = await agent(
         fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
+          (sweepLine ? '\n' + sweepLine : '') +
           '\nFailure:\n' + (merge.detail || ''),
         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
       )
     } catch (e) {
       merge = { status: 'CONFLICT', detail: 'reconcile agent error: ' + String((e && e.message) || e) }
     }
+    // Same normalization as the merge dispatch above: a dead reconcile agent
+    // becomes CONFLICT, and the loop's attempt cap (2) terminates — the run
+    // survives with the wave blocked and every task branch intact.
+    if (!merge) merge = { status: 'CONFLICT', detail: 'reconcile agent died (null reply — terminal overload); task branches intact' }
   }
   return merge
 }
@@ -1757,6 +1851,68 @@ for (let w = 0; w < WAVES.length; w++) {
       r.status = 'failed'
       r.reviewVerdict = 'lost-coordinates'
       r.notes = (r.notes ? r.notes + '; ' : '') + 'reported done without mergeable coordinates — downgraded to failed'
+    }
+    noteFailures()
+  }
+
+  // ── Infra-death barrier retry pass (#148 §3) ────────────────────────────────
+  // Tasks parked on an AGENT_NULL infra-death get exactly ONE retry here, at
+  // the wave barrier (runTaskInner, same tier, fresh worktree — the proven
+  // self-heal semantics). Chunked through parallel() at the same CONCURRENCY
+  // cap as task dispatch, so the wave's tail is one task-duration, not N.
+  // Marker replacement is IN-PLACE in BOTH results and taskResults (the
+  // chunkLost precedent below) so the transient status never reaches
+  // report.json. Budget-checkpointed like every dispatch site: exhaustion
+  // routes parked tasks to the deferred/unfinished lane — never 'failed' — so
+  // a budget event cannot cascade-block dependents the way a failure would.
+  const parkedInfra = results.filter((r) => r && r.status === 'parked-infra')
+  for (let off = 0; off < parkedInfra.length; off += CONCURRENCY) {
+    if (budgetExhausted()) {
+      for (const p of parkedInfra.slice(off)) {
+        unfinished.push(p.task + ': deferred (budget exhausted before infra-death barrier retry)')
+        const ri = results.indexOf(p); if (ri !== -1) results.splice(ri, 1)
+        const ti = taskResults.indexOf(p); if (ti !== -1) taskResults.splice(ti, 1)
+        log('task ' + p.task + ' infra-death retry deferred: budget exhausted')
+      }
+      if (!budgetDeferred) {
+        budgetDeferred = true
+        judgmentCalls.push(BUDGET_DEFERRED_NOTE)
+      }
+      break
+    }
+    const pchunk = parkedInfra.slice(off, off + CONCURRENCY)
+    log('wave ' + (w + 1) + ' barrier: retrying ' + pchunk.length + ' infra-parked task(s)')
+    const retried = await parallel(pchunk.map((p) => () => (async () => {
+      const task = WAVES[w].find((t) => t.id === p.task)
+      try {
+        const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
+        judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
+        return res
+      } catch (e2) {
+        const msg2 = String((e2 && e2.message) || e2)
+        judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
+        log('task ' + task.id + ' FAILED after infra-death barrier retry: ' + msg2)
+        return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
+                 notes: msg2, tier: p.tier, review: p.review, fixIterations: 0 }
+      }
+    })()))
+    for (let k = 0; k < pchunk.length; k++) {
+      const p = pchunk[k], res = retried[k]
+      const ri = results.indexOf(p); if (ri !== -1) results[ri] = res
+      const ti = taskResults.indexOf(p); if (ti !== -1) taskResults[ti] = res
+      if (res.status === 'failed') {
+        // Documented WaW weakening (accepted trade, #148 §3): a same-wave
+        // dependent may have dispatched while its parent was parked (parked is
+        // neither failed nor done at chunk time). Disclose it when the retry
+        // then failed — the drain-administered suite gate is the backstop for
+        // any resulting integration gap.
+        for (const [a, b] of EDGES) {
+          if (a === p.task && results.some((r2) => r2 && r2.task === b)) {
+            judgmentCalls.push('task ' + b + ': ran while same-wave dependency ' + a +
+              ' was parked and the barrier retry then failed — WaW ordering weakened; the suite gate is the backstop')
+          }
+        }
+      }
     }
     noteFailures()
   }

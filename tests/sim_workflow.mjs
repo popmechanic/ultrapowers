@@ -150,11 +150,90 @@ async function scenarioHappy() {
   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
     'happy: per-wave merge outcomes recorded (status + headSha)')
   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
-  assert(!/git worktree remove/.test(mergePrompt), 'happy: merge prompt no longer instructs cleanup (deterministic Step-5 sweep handles it)')
+  // #151 (reverses bea1875): the merge prompt now CARRIES the wave-barrier
+  // cleanup step; the deterministic Step-5 sweep stays the idempotent
+  // backstop. The stub branches (wt-A…) are malformed under the sweep
+  // regex, so no appended SWEEP PATHS line may appear — malformed names
+  // contribute nothing, silently. (The baked step itself REFERS to "a SWEEP
+  // PATHS line", so the pin matches the appended line's exact prefix, not the
+  // bare phrase.)
+  assert(/git worktree remove --force/.test(mergePrompt), 'happy: merge prompt carries the wave-barrier cleanup step (#151)')
+  assert(!/SWEEP PATHS for this wave:/.test(mergePrompt), 'happy: malformed stub branches derive no sweep paths')
   assert(/git branch --show-current/.test(mergePrompt), 'happy: merge prompt asserts the integration HEAD before merging')
   // acceptance-absent: no acceptance arg supplied → report.acceptance must be null
   eq(r.acceptance, null, 'happy: acceptance is null when not supplied (acceptance-absent)')
   console.log('scenario happy: OK')
+}
+
+// ── Scenario: wave-barrier sweep (#151, reverses bea1875) ────────────────────
+// The merge AND reconcile dispatches carry the baked cleanup step plus a
+// SWEEP PATHS line listing exactly the just-merged tasks' worktree paths,
+// derived by regex from self-reported branch names: a malformed branch
+// contributes nothing, a non-merged task's path is never listed, a later
+// wave never re-lists an earlier wave's paths, and the step itself carries
+// the missing-path skip clause (resume tolerance).
+async function scenarioWaveBarrierSweep() {
+  const prompts = {}
+  const agent = async (prompt, opts) => {
+    const label = opts.label || ''
+    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = taskIdFromLabel(label)
+      // A and C: well-formed runtime branch names; M: malformed (regex miss);
+      // B: well-formed, but its review fails it out of the merge set.
+      const branch = id === 'M' ? 'wt-M' : 'worktree-wf_run9-' + { A: 1, B: 2, C: 4 }[id]
+      return { status: 'DONE', summary: 's', branch, headSha: 'sha-' + id, commit: 'c-' + id }
+    }
+    if (label.startsWith('review:')) {
+      const id = taskIdFromLabel(label)
+      if (id === 'B') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'never green' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label === 'merge:wave1') {
+      prompts['merge:wave1'] = prompt
+      return { status: 'CONFLICT', detail: 'conflict in a.txt' } // force a reconcile dispatch
+    }
+    if (label.startsWith('reconcile:wave1')) {
+      prompts['reconcile'] = prompt
+      return { status: 'MERGED', headSha: 'm1' }
+    }
+    if (label.startsWith('merge:')) { prompts['merge:wave2'] = prompt; return { status: 'MERGED', headSha: 'm2' } }
+    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+  const waves = [
+    [{ id: 'A', title: 'a', body: 'do a', tier: 'cheap' },
+     { id: 'B', title: 'b', body: 'do b', tier: 'cheap' },
+     { id: 'M', title: 'm', body: 'do m', tier: 'cheap' }],
+    [{ id: 'C', title: 'c', body: 'do c', tier: 'cheap' }],
+  ]
+  const r = await runWorkflow({ agent,
+    args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] },
+    budget: undefined })
+  const w1 = prompts['merge:wave1']
+  // Exactly the just-merged, well-formed path: B failed out (never merged),
+  // M is malformed (contributes nothing, silently). The trailing period pins
+  // the list as exactly one entry.
+  assert(w1.includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
+    'sweep: wave-1 SWEEP PATHS lists exactly the merged well-formed path')
+  assert(!w1.includes('wf_run9-2'), 'sweep: failed task B is never listed')
+  assert(!w1.includes('.claude/worktrees/wt-M'), 'sweep: malformed branch contributes no path')
+  // The baked step rides BOTH prompts: identity check, forced removal, resume
+  // tolerance (missing path = silent skip), branch preservation.
+  for (const [name, p] of [['merge', w1], ['reconcile', prompts['reconcile']]]) {
+    assert(/git worktree list --porcelain/.test(p), 'sweep: ' + name + ' prompt carries the per-path identity check')
+    assert(/git worktree remove --force/.test(p), 'sweep: ' + name + ' prompt carries the removal command')
+    assert(/skip it silently/.test(p), 'sweep: ' + name + ' prompt tolerates an already-swept path (resume)')
+    assert(/Never delete any branch/.test(p), 'sweep: ' + name + ' prompt forbids branch deletion')
+  }
+  assert(prompts['reconcile'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
+    'sweep: reconcile dispatch carries the same SWEEP PATHS line')
+  // Wave 2 lists only ITS OWN merged path — never a prior wave's.
+  assert(prompts['merge:wave2'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-4.'),
+    'sweep: wave-2 lists exactly its own merged path')
+  assert(!prompts['merge:wave2'].includes('wf_run9-1'), 'sweep: wave-2 never re-lists wave-1 paths')
+  assert(r.tasks.find((t) => t.task === 'A').status === 'done', 'sweep: run completes')
+  console.log('scenario wave-barrier-sweep: OK')
 }
 
 // ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
@@ -1974,6 +2053,7 @@ async function scenarioAcceptanceWaived() {
 }
 
 await scenarioHappy()
+await scenarioWaveBarrierSweep()
 await scenarioFixLoop()
 await scenarioFixLoopExhausted()
 await scenarioBlockedCascade()
@@ -3023,9 +3103,189 @@ async function scenarioEarlyExhaustStampsCommand() {
   console.log('scenario early-exhaust-stamps-command: OK')
 }
 
+// ── Scenario: null MERGE reply → synthesized CONFLICT → reconcile engages ─────
+// agent() returns null (not throws) on terminal Overloaded; the merge dispatch
+// must normalize it like its catch branch instead of TypeError-ing at
+// merge.status and aborting the whole run (#148 §1).
+async function scenarioMergeNullContained() {
+  let reconciled = false
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label.startsWith('merge:')) return null // terminal Overloaded: null reply, no throw
+      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  assert(reconciled, 'mergeNull: a null merge reply degrades to CONFLICT and reconcile dispatches')
+  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeNull: reconcile recovered the wave')
+  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeNull: run completed normally — no TypeError abort')
+  console.log('scenario merge-null-contained: OK')
+}
+
+// ── Scenario: null RECONCILE reply → synthesized CONFLICT → attempt cap ends it ─
+// Both reconcile attempts die; the existing attempt cap (2) must terminate the
+// loop with the wave blocked and the run alive — never a TypeError (#148 §1).
+async function scenarioReconcileNullContained() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
+      if (label.startsWith('reconcile:')) return null // dead reconcile agent, both attempts
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  eq(r.blockedWaves.length, 1, 'reconcileNull: wave 1 blocked after both null reconciles (attempt cap 2)')
+  assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
+    'reconcileNull: block detail names the null reply, not a TypeError')
+  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
+    'reconcileNull: wave 2 cascade-blocked, run still returned a report')
+  console.log('scenario reconcile-null-contained: OK')
+}
+
+// ── Scenario: dead reviewer → park → barrier retry succeeds (#148 §2–§3) ──────
+// review:A:1 returns null once (terminal Overloaded). The task must PARK — not
+// burn its retry immediately into the storm — then recover at the wave barrier.
+// Zero failed tasks; the transient 'parked-infra' marker never reaches the report.
+async function scenarioInfraDeathParkRecovers() {
+  let reviewACalls = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        reviewACalls++
+        if (reviewACalls === 1) return null // dead reviewer: null reply, no throw
+      }
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'done', 'infraPark: A recovered at the barrier retry and is done')
+  assert(r.tasks.every((t) => t.status !== 'failed'), 'infraPark: zero failed tasks recorded')
+  assert(r.waveMerges[0] && r.waveMerges[0].status === 'MERGED', 'infraPark: wave 1 merged after recovery')
+  assert(r.judgmentCalls.some((j) => /task A: infra-death/.test(j)),
+    'infraPark: park recorded as a judgment call')
+  assert(r.judgmentCalls.some((j) => /recovered at the barrier retry/.test(j)),
+    'infraPark: recovery recorded as a judgment call')
+  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
+    'infraPark: the immediate same-tier retry lane must NOT fire for an infra-death')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'infraPark: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-death-park-recovers: OK')
+}
+
+// ── Scenario: park retry dies again → failed, dependents blocked (#148 §3) ────
+// review:A:1 returns null EVERY time: the initial pipeline parks, the barrier
+// retry dies the same way → today's terminal semantics: status failed with
+// reviewVerdict agent-error, and the dependent is blocked before dispatch.
+async function scenarioInfraDeathRetryDies() {
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+    edges: [['A', 'B']] }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') return null // dead reviewer, every attempt
+      return undefined
+    }),
+    args, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a !== undefined, 'infraRetryDies: A appears in tasks')
+  eq(a.status, 'failed', 'infraRetryDies: A failed after the barrier retry died')
+  eq(a.reviewVerdict, 'agent-error', 'infraRetryDies: terminal verdict is agent-error, exactly as today')
+  assert(r.judgmentCalls.some((j) => /barrier retry after infra-death failed/.test(j)),
+    'infraRetryDies: the dead retry recorded as a judgment call')
+  assert(r.unfinished.some((u) => /^B: blocked — depends on a failed task/.test(u)),
+    'infraRetryDies: dependent B blocked before dispatch')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'infraRetryDies: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-death-retry-dies: OK')
+}
+
+// ── Scenario: null fix-round reply → AGENT_NULL → park lane (#148 §2, sim 5) ──
+// Without the fix-round AGENT_NULL throw, a null fix reply TypeErrors at
+// impl.status with a message no classifier matches, silently keeping the
+// storm-retry behavior. It must mint the marker and park instead.
+async function scenarioFixRoundNullParks() {
+  let reviewACalls = 0
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') {
+        reviewACalls++
+        // First review demands a fix; the post-park retry's review passes.
+        if (reviewACalls === 1) {
+          return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'needs work' }] }
+        }
+        return undefined
+      }
+      if (label === 'fix:A:1') return null // dead fix-round implementer
+      return undefined
+    }),
+    args: baseArgs, budget: undefined,
+  })
+  const a = r.tasks.find((t) => t.task === 'A')
+  assert(a && a.status === 'done', 'fixNull: A parked on the dead fix round, then recovered at the barrier')
+  assert(r.judgmentCalls.some((j) => /AGENT_NULL: fix-round implementer agent returned null/.test(j)),
+    'fixNull: classified by the engine-minted AGENT_NULL marker, not a raw TypeError')
+  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
+    'fixNull: routed to the park lane, never the immediate storm retry')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'fixNull: the transient marker never appears anywhere in the report')
+  console.log('scenario fix-round-null-parks: OK')
+}
+
+// ── Scenario: budget exhausted before the barrier retry → deferred lane (#148 §3) ─
+// The retry pass is budget-checkpointed like every dispatch site. Exhaustion
+// routes the parked task to deferred/unfinished — never 'failed' — so a budget
+// event does not cascade-block dependents as a failure would.
+async function scenarioInfraParkBudgetDefers() {
+  let reviewDied = false
+  const waves = [
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+  ]
+  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+    edges: [['A', 'B']] }
+  const budget = { total: 100, remaining: () => (reviewDied ? 0 : 50) }
+  const r = await runWorkflow({
+    agent: makeAgent((label) => {
+      if (label === 'review:A:1') { reviewDied = true; return null } // park A, then budget hits 0
+      return undefined
+    }),
+    args, budget,
+  })
+  assert(r.unfinished.some((u) => /^A: deferred \(budget exhausted before infra-death barrier retry\)/.test(u)),
+    'parkBudget: parked task routed to the deferred/unfinished lane')
+  assert(!r.tasks.some((t) => t.task === 'A'), 'parkBudget: no task record for A — deferred, not failed')
+  assert(!r.unfinished.some((u) => /blocked — depends on a failed task/.test(u)),
+    'parkBudget: budget deferral never cascade-blocks dependents as a failure')
+  assert(r.unfinished.some((u) => /^B: deferred \(budget exhausted\)/.test(u)),
+    'parkBudget: dependent B lands in the budget lane too, not the blocked lane')
+  assert(r.judgmentCalls.some((j) => /budget exhausted/.test(j)), 'parkBudget: cause in judgmentCalls')
+  assert(!JSON.stringify(r).includes('parked-infra'),
+    'parkBudget: the transient marker never appears anywhere in the report')
+  console.log('scenario infra-park-budget-defers: OK')
+}
+
 await scenarioTestCmdMissing()
 await scenarioMechanicalTestsCommandNoField()
 await scenarioCriticCommandIgnored()
 await scenarioEarlyExhaustStampsCommand()
+await scenarioMergeNullContained()
+await scenarioReconcileNullContained()
+await scenarioInfraDeathParkRecovers()
+await scenarioInfraDeathRetryDies()
+await scenarioFixRoundNullParks()
+await scenarioInfraParkBudgetDefers()
 
 console.log('ALL SCENARIOS PASSED')
