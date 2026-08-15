@@ -152,14 +152,23 @@ def _last_artifact_record_index(records, registry):
     return cutoff if cutoff is not None else window_start
 
 
-def slice_transcript(records):
+def slice_transcript(records, terminus=None):
     # Slice envelope (Task 3, registry-keyed — spec §5): the run ends at the
     # last qualifying artifact of the LAST registered launch; anything after
     # is a post-run tangent, never wave-relevant. No qualifying artifact at
     # all (e.g. planning-only, or a pre-registry session with no Workflow
     # tool_result) keeps the full head, unchanged from pre-Task-3 behavior.
+    # #150 mode (b): when the caller's derived terminus is "approved", the
+    # approval exchange — plain operator text AFTER the final artifact — is
+    # exactly what the NEEDS_ACK lens needs, so the slice extends past the
+    # artifact cut to the transcript end. The tail rides the same per-record
+    # filter below (user text kept, keyword-less noise dropped), and since
+    # approval is terminal it is naturally a handful of records: no cap, no
+    # sentinel. Any other terminus (or the default None) keeps the cut.
     registry = session_registry(records)
     cutoff = _last_artifact_record_index(records, registry)
+    if terminus == "approved":
+        cutoff = None
     lines = []
     for idx, r, b in _iter_blocks_indexed(records):
         if cutoff is not None and idx > cutoff:
@@ -698,7 +707,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     out = Path(cache_dir) / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
-    (out / "slice.md").write_text(slice_transcript(records))
+    (out / "slice.md").write_text(slice_transcript(records, terminus))
     return out
 
 

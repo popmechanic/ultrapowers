@@ -1124,3 +1124,64 @@ def test_build_bundle_audits_repeated_transcript_dir_once(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     assert len(bundle["audit"]["agents"]) == 1
     assert bundle["audit"]["totals"] == {"turns": 1, "outputTokens": 7}
+
+
+# --- #150 mode (b): an `approved` terminus extends the slice past the
+# artifact cut to the transcript end — the approval exchange (plain user
+# text after the final artifact) is exactly what the NEEDS_ACK lens needs.
+# The tail still rides the same per-record filter (user text kept, keyword-
+# less tool noise dropped). Non-approved termini keep today's cut.
+
+def _approval_tail_recs():
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    return [
+        _wf_launch("S1"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": ok}]}]),                                   # last artifact: the cut
+        _rec("assistant", [{"type": "text",
+            "text": "Gate is green. Merge to main and close out?"}]),
+        _rec("user", [{"type": "text", "text": "yes - approved, merge it"}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": "irrelevant tool noise about lunch"}]}]),
+    ]
+
+
+def test_slice_approved_terminus_extends_past_artifact_cut():
+    out = h.slice_transcript(_approval_tail_recs(), terminus="approved")
+    assert "yes - approved, merge it" in out       # operator text in the tail survives
+    assert "Gate is green" in out                  # keyword ("gate") line survives
+    assert "lunch" not in out                      # keyword-less tool noise still dropped
+
+
+def test_slice_non_approved_terminus_keeps_artifact_cut():
+    recs = _approval_tail_recs()
+    for terminus in ("NEEDS_ACK", "BLOCKED", "unknown", None):
+        out = h.slice_transcript(recs, terminus=terminus)
+        assert "yes - approved, merge it" not in out
+    # and the one-argument call (default) is unchanged behavior
+    assert "yes - approved, merge it" not in h.slice_transcript(recs)
+
+
+def test_build_bundle_approved_slice_keeps_post_artifact_approval_exchange(tmp_path):
+    # End-to-end: a merged (git-ancestry-approved) run's slice.md includes
+    # the post-artifact operator turn.
+    root = tmp_path / "repo"
+    head_sha = _merged_feature_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(
+        json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    recs = (REAL
+            + [_wf_launch("S1", run_dir=str(run_dir)),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                   "text": ok}]}]),
+               _rec("user", [{"type": "text", "text": "ship it - thanks"}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    assert "ship it - thanks" in (out / "slice.md").read_text()
