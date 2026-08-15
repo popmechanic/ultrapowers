@@ -5,6 +5,7 @@ with exit 3, and populate is atomic + idempotent."""
 import os
 import pathlib
 import subprocess
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 WARM = ROOT / "skills/ultrapowers/scripts/warm_cache.sh"
@@ -110,6 +111,80 @@ def test_no_args_prints_usage(tmp_path):
     p = run(tmp_path)
     assert p.returncode == 2
     assert "usage" in p.stderr.lower()
+
+
+def deps_dir(tmp_path):
+    return tmp_path / "plugindata" / "deps"
+
+
+def backdate(path, days):
+    t = time.time() - days * 86400
+    os.utime(path, (t, t))
+
+
+def test_populate_prunes_entries_idle_beyond_max_age(tmp_path):
+    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
+    (entry_a,) = deps_dir(tmp_path).iterdir()
+    backdate(entry_a, 40)
+    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
+    p = run(tmp_path, "populate", str(lock_b), str(src))
+    assert p.returncode == 0, p.stderr
+    assert not entry_a.exists()
+    t = tmp_path / "w" / "node_modules"; t.parent.mkdir(parents=True)
+    assert run(tmp_path, "restore", str(lock_a), str(t)).returncode == 3
+    assert run(tmp_path, "restore", str(lock_b), str(t)).returncode == 0
+
+
+def test_populate_keeps_entries_within_max_age(tmp_path):
+    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
+    (entry_a,) = deps_dir(tmp_path).iterdir()
+    backdate(entry_a, 10)
+    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
+    assert run(tmp_path, "populate", str(lock_b), str(src)).returncode == 0
+    t = tmp_path / "w" / "node_modules"; t.parent.mkdir(parents=True)
+    assert run(tmp_path, "restore", str(lock_a), str(t)).returncode == 0
+
+
+def test_restore_hit_refreshes_entry_age(tmp_path):
+    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
+    (entry_a,) = deps_dir(tmp_path).iterdir()
+    backdate(entry_a, 40)
+    t1 = tmp_path / "w1" / "node_modules"; t1.parent.mkdir(parents=True)
+    assert run(tmp_path, "restore", str(lock_a), str(t1)).returncode == 0
+    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
+    assert run(tmp_path, "populate", str(lock_b), str(src)).returncode == 0
+    assert entry_a.exists()
+    t2 = tmp_path / "w2" / "node_modules"; t2.parent.mkdir(parents=True)
+    assert run(tmp_path, "restore", str(lock_a), str(t2)).returncode == 0
+
+
+def test_max_age_zero_disables_pruning(tmp_path):
+    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
+    (entry_a,) = deps_dir(tmp_path).iterdir()
+    backdate(entry_a, 40)
+    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
+    p = run(tmp_path, "populate", str(lock_b), str(src),
+            env_extra={"ULTRAPOWERS_CACHE_MAX_AGE_DAYS": "0"})
+    assert p.returncode == 0, p.stderr
+    assert entry_a.exists()
+
+
+def test_populate_sweeps_orphaned_tmp_dirs(tmp_path):
+    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
+    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
+    orphan = deps_dir(tmp_path) / ".tmp.abc123"
+    orphan.mkdir(parents=True)
+    backdate(orphan, 40)
+    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
+    assert not orphan.exists()
 
 
 def test_restore_falls_back_when_hardlink_fails_cross_device(tmp_path):

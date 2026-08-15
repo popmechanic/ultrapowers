@@ -16,6 +16,19 @@
 set -euo pipefail
 
 CACHE="${CLAUDE_PLUGIN_DATA:-$HOME/.ultrapowers/cache}/deps"
+MAX_AGE_DAYS="${ULTRAPOWERS_CACHE_MAX_AGE_DAYS:-30}"
+
+prune_stale_entries() {
+  # Evict entries idle longer than MAX_AGE_DAYS. Entry mtime tracks last use
+  # (restore HITs touch the entry), so hot entries never age out; entries whose
+  # lockfile changed go permanently unreachable and are what this reclaims.
+  # Also sweeps .tmp.* orphans from crashed populates. 0 (or a non-numeric
+  # override) disables. Best-effort: a prune failure never fails the command.
+  [ "$MAX_AGE_DAYS" -gt 0 ] 2>/dev/null || return 0
+  [ -d "$CACHE" ] || return 0
+  find "$CACHE" -mindepth 1 -maxdepth 1 -type d -mtime "+$MAX_AGE_DAYS" \
+    -exec rm -rf {} + 2>/dev/null || true
+}
 
 usage() {
   echo "usage: warm_cache.sh restore  <lockfile> <target_dir>   (exit 0=HIT, 3=MISS)" >&2
@@ -58,6 +71,8 @@ cmd_restore() {
     echo "warm_cache: MISS $hash (no entry) — caller should run a real install" >&2
     exit 3
   fi
+  # Mark the entry as live so idle-age pruning never evicts a hot entry.
+  touch "$entry" 2>/dev/null || true
   clone_tree "$entry" "$target_dir"
   echo "warm_cache: HIT $hash -> $target_dir"
   exit 0
@@ -71,6 +86,10 @@ cmd_populate() {
   hash="$(hash_lockfile "$lockfile")"
   entry="$CACHE/$hash"
   mkdir -p "$CACHE"
+  # Refresh a same-key entry's mtime BEFORE pruning so an old-but-live entry is
+  # kept, not deleted and re-cloned.
+  [ ! -d "$entry" ] || touch "$entry" 2>/dev/null || true
+  prune_stale_entries
   if [ -d "$entry" ]; then
     echo "warm_cache: already cached $hash (no-op)"
     exit 0
