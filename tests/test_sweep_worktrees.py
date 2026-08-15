@@ -644,3 +644,102 @@ def test_age_hours_magnitude_bound(tmp_path):
                        cwd=repo, capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     assert "999999" in p.stdout + p.stderr
+
+
+# ── process reaping ────────────────────────────────────────────────────────
+# Removing a worktree directory does not stop processes still running out of
+# it (Julian 2026-08-14: 221 orphaned workerd dev servers pinned several GB of
+# deleted-but-open files for days, across 3 runs). The sweep must reap them.
+
+def spawn_sleeper(dirpath):
+    """Start a long-lived process whose COMMAND LINE carries dirpath — the
+    signature the sweep matches on (a dev server running a script from
+    node_modules inside a worktree looks exactly like this). A copied system
+    binary would be cleaner still, but macOS kills copies of signed platform
+    binaries on exec, so the path rides in the interpreter's argv instead."""
+    import sys
+    dirpath.mkdir(parents=True, exist_ok=True)
+    script = dirpath / "sleeper.py"
+    ready = dirpath / "ready"
+    # The ready-file handshake lets callers delete dirpath afterwards without
+    # racing the interpreter's read of its own script.
+    script.write_text("import pathlib, time\n"
+                      "pathlib.Path(__file__).with_name('ready').touch()\n"
+                      "time.sleep(300)\n")
+    proc = subprocess.Popen([sys.executable, str(script)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+    for _ in range(200):
+        if ready.exists():
+            break
+        time.sleep(0.05)
+    else:
+        raise RuntimeError("sleeper never came up")
+    return proc
+
+
+def test_sweep_reaps_processes_still_running_out_of_a_worktree(tmp_path):
+    repo = make_repo(tmp_path)
+    wt, _ = add_engine_worktree(repo, "proc-1", "p.txt", merge=True)
+    proc = spawn_sleeper(wt)
+    try:
+        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert not wt.exists()
+        assert "reaped:" in p.stdout
+        proc.wait(timeout=10)            # raises TimeoutExpired if it survived
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_sweep_reaps_orphans_of_already_deleted_worktrees(tmp_path):
+    """The engine's wave-merge removes consumed worktrees mid-run without
+    killing their processes; the deleted path survives in the command line,
+    so the end-of-run sweep can still reap them — regardless of scope."""
+    import shutil
+    repo = make_repo(tmp_path)
+    gone = repo / ".claude" / "worktrees" / "wf_gone-1"
+    proc = spawn_sleeper(gone)
+    shutil.rmtree(gone)                  # simulate the engine's earlier removal
+    try:
+        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert "orphan process" in p.stdout
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_sweep_leaves_processes_of_kept_locked_worktrees_alone(tmp_path):
+    repo = make_repo(tmp_path)
+    wt, _ = add_engine_worktree(repo, "live-1", "l.txt", merge=True)
+    git(repo, "worktree", "lock", str(wt))
+    proc = spawn_sleeper(wt)
+    try:
+        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert wt.exists()               # locked => kept
+        assert proc.poll() is None       # possibly-live state: NOT killed
+    finally:
+        proc.kill()
+
+
+def test_audit_reports_orphan_process_without_reaping(tmp_path):
+    import shutil
+    repo = make_repo(tmp_path)
+    gone = repo / ".claude" / "worktrees" / "wf_gone-2"
+    proc = spawn_sleeper(gone)
+    shutil.rmtree(gone)
+    try:
+        p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert "orphan process" in p.stdout
+        assert proc.poll() is None       # report-only: audit reaps nothing
+    finally:
+        proc.kill()
