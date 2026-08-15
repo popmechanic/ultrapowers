@@ -54,22 +54,6 @@ def test_classifies_roles_and_sums_effort(tmp_path):
     assert "| merge | test-model | 1 | 10 |" in p.stdout
 
 
-def test_flags_misrank_candidate_above_1_5x_same_model_median(tmp_path):
-    agent_file(tmp_path, "a1", IMPL_1, "model-x", turns=10)
-    agent_file(tmp_path, "a2", IMPL_9, "model-x", turns=10)
-    agent_file(tmp_path, "a3", IMPL_7, "model-x", turns=40)   # 4x the median
-    p = run_audit(tmp_path)
-    assert "Tier-misrank candidates" in p.stdout
-    assert "impl:7" in p.stdout.split("Tier-misrank candidates")[1]
-
-
-def test_no_flagging_under_two_same_model_samples(tmp_path):
-    agent_file(tmp_path, "a1", IMPL_7, "model-x", turns=40)
-    agent_file(tmp_path, "a2", IMPL_9, "model-y", turns=10)
-    p = run_audit(tmp_path)
-    assert "No tier-misrank candidates" in p.stdout
-
-
 def test_missing_dir_is_advisory_exit_zero(tmp_path):
     p = run_audit(tmp_path / "does-not-exist")
     assert p.returncode == 0

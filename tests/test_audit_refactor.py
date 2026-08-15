@@ -10,7 +10,8 @@ FIX = Path(__file__).resolve().parents[1] / "tests/fixtures/ultralearn/audit"
 def test_audit_returns_structured_dict():
     out = audit_run.audit(FIX)
     assert isinstance(out, dict)
-    assert set(out) >= {"agents", "totals", "misrankCandidates"}
+    assert set(out) >= {"agents", "totals", "escalatedTasks", "thrashCandidates"}
+    assert "misrankCandidates" not in out   # retired by #152 — deletion pin
     assert isinstance(out["agents"], list) and len(out["agents"]) == 1
     a = out["agents"][0]
     assert set(a) >= {"role", "model", "turns", "outputTokens"}
