@@ -15,6 +15,12 @@
 # reported; pass --force to remove them too (and force-delete unmerged branches,
 # as before).
 #
+# Before removing a worktree the sweep TERM/KILLs processes still running out
+# of it, and afterwards reaps orphaned processes whose command line references
+# an engine worktree path that no longer exists (dev servers the engine's
+# mid-run wave-merge sweep left behind). Kept worktrees' processes are never
+# touched. See "process reaping" below.
+#
 # Pass --run <runId> to scope removal to a single run's worktrees and branches
 # (.claude/worktrees/wf_<runId>-* and worktree-wf_<runId>-*).  When --run is
 # not given, RUNID env var is consulted, then the RUN_LOCK file; if none is
@@ -148,6 +154,103 @@ mtime_of() {
   printf '%s' "$m"
 }
 
+# ── process reaping ────────────────────────────────────────────────────────
+# Removing a worktree directory does not stop processes still running out of
+# it: dev servers spawned by task test suites (wrangler/miniflare workerd and
+# kin) reparent to PID 1 when their task's agent exits and pin the deleted
+# files and RAM for days (Julian 2026-08-14: 221 orphaned workerd processes
+# across 3 runs, several GB held via deleted-but-open files). Recurred, so the
+# sweep reaps: TERM, a short grace, then KILL.
+#
+# Matching is by COMMAND LINE (`ps -A -o pid=,command=` — POSIX, identical on
+# macOS and Linux): it catches executables and script args under the worktree
+# path, including processes whose directory is ALREADY deleted, since the dead
+# path survives in the command string. It cannot see a process whose cwd alone
+# is inside the worktree (the command shows no path); lsof could, but is far
+# too slow to run per sweep. The needle rides in the awk ENVIRONMENT, not its
+# argv, so the scan's own transient processes never match themselves.
+
+# The sweep may legally run from INSIDE a worktree being removed — the copy of
+# this script in that worktree has the worktree path on its own command line.
+# Exclude this process and its whole ancestor chain so the sweep never reaps
+# itself or the harness shell that launched it.
+self_and_ancestors() {
+  local pid=$$ out="" i=0
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null && [ "$i" -lt 20 ]; do
+    out="$out $pid"
+    i=$((i + 1))
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" || break
+  done
+  printf '%s ' "$out"
+}
+SELF_TREE="$(self_and_ancestors)"
+
+# PIDs whose command line contains $1 at a path boundary (next char is /,
+# space, or end — so sweeping wf_1 can never match a live wf_12).
+pids_matching() {
+  ps -A -o pid=,command= | NEEDLE="$1" awk '
+    {
+      needle = ENVIRON["NEEDLE"]
+      i = index($0, needle)
+      if (i == 0) next
+      c = substr($0, i + length(needle), 1)
+      if (c != "" && c != "/" && c != " ") next
+      print $1
+    }'
+}
+
+# Emit "pid<TAB>worktree-path" for every process referencing an engine
+# worktree path under this repo (the wf_ dir name contains no / or space,
+# so it ends at the first of either).
+scan_engine_procs() {
+  ps -A -o pid=,command= | NEEDLE="$ROOT/.claude/worktrees/" awk '
+    {
+      needle = ENVIRON["NEEDLE"]
+      i = index($0, needle)
+      if (i == 0) next
+      rest = substr($0, i + length(needle))
+      if (substr(rest, 1, 3) != "wf_") next
+      split(rest, parts, /[\/ ]/)
+      print $1 "\t" needle parts[1]
+    }'
+}
+
+# TERM the given pids, poll up to ~5s for them to exit, KILL survivors.
+# Reaping never fails the sweep — a pid may vanish between scan and signal.
+kill_with_grace() {
+  [ $# -gt 0 ] || return 0
+  kill -TERM "$@" 2>/dev/null || true
+  local i pid alive=""
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    alive=""
+    for pid in "$@"; do
+      if kill -0 "$pid" 2>/dev/null; then alive="$alive $pid"; fi
+    done
+    [ -z "$alive" ] && return 0
+    sleep 0.5
+  done
+  # alive is a space-separated pid list
+  # shellcheck disable=SC2086
+  kill -KILL $alive 2>/dev/null || true
+}
+
+# Reap every process still running out of worktree path $1 (called only for
+# worktrees this sweep is actually about to remove — kept/locked ones are
+# possibly-live state and their processes are left alone).
+reap_under() {
+  local wt="$1" pid pids="" n
+  for pid in $(pids_matching "$wt"); do
+    case "$SELF_TREE" in *" $pid "*) continue ;; esac
+    pids="$pids $pid"
+  done
+  [ -n "$pids" ] || return 0
+  # shellcheck disable=SC2086
+  n="$(echo $pids | wc -w | tr -d ' ')"
+  echo "reaped: $n process(es) still running out of $wt"
+  # shellcheck disable=SC2086
+  kill_with_grace $pids
+}
+
 # ── audit mode (report-only janitor) ───────────────────────────────────────
 # "Kept for inspection" degrades to kept-forever unless something re-surfaces
 # it (Findings 2+3, vibes.diy 2026-07-31). Flags engine worktrees and
@@ -200,6 +303,15 @@ if [ -n "$AUDIT" ]; then
     fi
     echo "stale branch: $br ($state, last commit $((age / 86400))d ago)"
   done < <(git -C "$ROOT" branch --list "worktree-wf_*" --format='%(refname:short)')
+  # Report-only: a process referencing a DELETED engine worktree path is a
+  # leak by definition (its files are gone; no live run can be using it).
+  # The audit names it; only a sweep reaps it.
+  while IFS=$(printf '\t') read -r pid wtpath; do
+    [ -n "$pid" ] || continue
+    case "$SELF_TREE" in *" $pid "*) continue ;; esac
+    [ -e "$wtpath" ] && continue
+    echo "orphan process: pid $pid still running out of deleted $wtpath — a sweep will reap it"
+  done < <(scan_engine_procs)
   if [ "$orphans" -eq 0 ] && [ "$stale" -eq 0 ]; then
     echo "audit: clean (no orphan worktrees or stale branches older than ${AGE_HOURS}h${live:+; live run ${live} exempt})"
   elif [ -n "$live" ]; then
@@ -271,6 +383,10 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
   case "$(pwd -P)/" in
     "$wt"/*) echo "note: removing your current directory ($wt) — cd \"$ROOT\" afterwards" >&2 ;;
   esac
+  # Kill what still runs out of this worktree BEFORE removing it — otherwise
+  # the processes outlive the directory and pin its deleted files (the leak
+  # the orphan pass below exists to mop up after the fact).
+  reap_under "$wt"
   # --force --force also removes locked worktrees; a stale directory git no
   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
   # Increment only on a successful removal so the summary is accurate.
@@ -283,6 +399,27 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
   fi
 done
 git -C "$ROOT" worktree prune
+
+# ── orphan-process pass ────────────────────────────────────────────────────
+# The engine's wave-merge removes consumed worktrees MID-RUN without killing
+# what they spawned; the deleted path survives in each process's command line.
+# A process referencing an engine worktree path that no longer exists on disk
+# is garbage regardless of --run scope (its files are deleted; no live run can
+# be using it) — reap repo-wide. Worktrees that still exist (kept, locked,
+# out-of-scope) may be live state: their processes are left alone.
+orphan_pids=""
+while IFS=$(printf '\t') read -r pid wtpath; do
+  [ -n "$pid" ] || continue
+  case "$SELF_TREE" in *" $pid "*) continue ;; esac
+  case " $orphan_pids " in *" $pid "*) continue ;; esac
+  [ -e "$wtpath" ] && continue
+  orphan_pids="$orphan_pids $pid"
+  echo "orphan process: pid $pid still running out of deleted $wtpath — reaping"
+done < <(scan_engine_procs)
+if [ -n "$orphan_pids" ]; then
+  # shellcheck disable=SC2086
+  kill_with_grace $orphan_pids
+fi
 
 deleted=0
 kept=0

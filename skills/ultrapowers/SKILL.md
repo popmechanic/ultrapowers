@@ -349,4 +349,5 @@ cycle or an inability to create the integration branch.
   acceptance runner the gate driver administers.
 - `scripts/compile_plan.py` — the plan compiler (`--emit-launch`/`--emit-args`).
 - `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep (`--run` /
-  `--all` / report-only `--audit`) and run lock.
+  `--all` / report-only `--audit`; also reaps processes still running out of
+  removed or already-deleted engine worktrees) and run lock.
