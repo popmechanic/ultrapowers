@@ -1069,3 +1069,232 @@ def test_slice_labels_tool_results_as_tool_result_never_user():
     out = h.slice_transcript(recs)
     assert "**user:**" not in out
     assert "**tool_result:** <class 'dict'> ['tasks', 'waves']" in out
+
+
+# --- #150 mode (a): dir-level audit dedupe on resolved real paths — a
+# crash-resume session prints the same "Transcript dir:" twice (sometimes
+# via a symlink alias); pre-#150 each mention was audited separately and
+# _merge_audits bare-extended the duplicate agent blocks.
+
+def test_transcript_dirs_dedupes_repeated_and_symlinked_dir(tmp_path):
+    real = tmp_path / "wf_real"
+    real.mkdir()
+    (real / "agent-1.jsonl").write_text("{}\n")
+    alias = tmp_path / "wf_alias"
+    alias.symlink_to(real)
+    recs = [
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {real}"}]}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {real}"}]}]),   # verbatim repeat
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {alias}"}]}]),  # symlink alias, same real path
+    ]
+    assert h._transcript_dirs(recs) == [str(real)]
+
+
+def test_build_bundle_audits_repeated_transcript_dir_once(tmp_path):
+    # End-to-end: the crash-resume shape. One agent file (1 assistant turn,
+    # 7 output tokens); the dir is printed twice. Pre-#150 the bundle audit
+    # carried 2 agents and totals {"turns": 2, "outputTokens": 14}.
+    tdir = tmp_path / "wf_resume"
+    tdir.mkdir()
+    agent_user = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "text",
+         "text": "You are the setup agent on the session repo main checkout."}]}}
+    agent_turn = {"type": "assistant", "message": {
+        "role": "assistant", "model": "m1",
+        "usage": {"output_tokens": 7}, "content": []}}
+    (tdir / "agent-1.jsonl").write_text(
+        json.dumps(agent_user) + "\n" + json.dumps(agent_turn) + "\n")
+    recs = [
+        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                            "input": {"name": "ultrapowers-run"}}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+        # crash-resume: the SAME dir printed again by the resumed session
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-x-home")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert len(bundle["audit"]["agents"]) == 1
+    assert bundle["audit"]["totals"] == {"turns": 1, "outputTokens": 7}
+
+
+# --- #150 mode (b): an `approved` terminus extends the slice past the
+# artifact cut to the transcript end — the approval exchange (plain user
+# text after the final artifact) is exactly what the NEEDS_ACK lens needs.
+# The tail still rides the same per-record filter (user text kept, keyword-
+# less tool noise dropped). Non-approved termini keep today's cut.
+
+def _approval_tail_recs():
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    return [
+        _wf_launch("S1"),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": ok}]}]),                                   # last artifact: the cut
+        _rec("assistant", [{"type": "text",
+            "text": "Gate is green. Merge to main and close out?"}]),
+        _rec("user", [{"type": "text", "text": "yes - approved, merge it"}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": "irrelevant tool noise about lunch"}]}]),
+    ]
+
+
+def test_slice_approved_terminus_extends_past_artifact_cut():
+    out = h.slice_transcript(_approval_tail_recs(), terminus="approved")
+    assert "yes - approved, merge it" in out       # operator text in the tail survives
+    assert "Gate is green" in out                  # keyword ("gate") line survives
+    assert "lunch" not in out                      # keyword-less tool noise still dropped
+
+
+def test_slice_non_approved_terminus_keeps_artifact_cut():
+    recs = _approval_tail_recs()
+    for terminus in ("NEEDS_ACK", "BLOCKED", "unknown", None):
+        out = h.slice_transcript(recs, terminus=terminus)
+        assert "yes - approved, merge it" not in out
+    # and the one-argument call (default) is unchanged behavior
+    assert "yes - approved, merge it" not in h.slice_transcript(recs)
+
+
+def test_build_bundle_approved_slice_keeps_post_artifact_approval_exchange(tmp_path):
+    # End-to-end: a merged (git-ancestry-approved) run's slice.md includes
+    # the post-artifact operator turn.
+    root = tmp_path / "repo"
+    head_sha = _merged_feature_repo(root)
+    run_dir = root / ".claude/ultrapowers/run-S1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "report.json").write_text(
+        json.dumps({"waveMerges": [{"headSha": head_sha}]}))
+    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
+    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
+    recs = (REAL
+            + [_wf_launch("S1", run_dir=str(run_dir)),
+               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                   "text": ok}]}]),
+               _rec("user", [{"type": "text", "text": "ship it - thanks"}])])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    assert "ship it - thanks" in (out / "slice.md").read_text()
+
+
+# --- #150 mode (c), reader side: drain-administered gate terminus via the
+# stamp mirror. Fixtures are GENERATED BY INVOKING THE WRITER (the drain's
+# record helper's `stamp` subcommand) — the writer is the schema authority,
+# so these fixtures cannot drift from what the drain actually writes.
+
+RECORD_WF_RUN = Path(__file__).resolve().parents[1] / \
+    "skills/ultradocket/scripts/record_wf_run.py"
+
+
+def _write_stamp_record(repo, stamp, entry, verdict, exit_code, branch, base):
+    r = subprocess.run(
+        [sys.executable, str(RECORD_WF_RUN), "stamp", stamp, entry,
+         "--verdict", verdict, "--exit-code", str(exit_code),
+         "--branch", branch, "--base", base],
+        cwd=str(repo), capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+
+
+def test_repo_root_from_run_dir_is_pure_string_derivation():
+    assert h._repo_root_from_run_dir(
+        "/x/repo/.claude/ultrapowers/run-20260814-120000") == "/x/repo"
+    assert h._repo_root_from_run_dir("/x/repo/elsewhere/run-1") is None
+    assert h._repo_root_from_run_dir("/x/repo") is None
+    assert h._repo_root_from_run_dir(None) is None
+
+
+def test_drain_stamp_gives_terminus_when_run_dir_deleted(tmp_path):
+    # The 0.1.15 mode: the drain gated the entry (PASS via the frozen
+    # runner's exit code) and the runDir was torn down; only the stamp
+    # mirror survives. Pre-#150 this run read terminus "unknown".
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    _write_stamp_record(repo, "20260814-120000", "146", "PASS", 0,
+                        "ultra/entry-146", "ultra/docket-20260814-120000")
+    run_dir = repo / ".claude/ultrapowers/run-20260814-120000"  # never exists on disk
+    recs = REAL + [_wf_launch("20260814-120000", run_dir=str(run_dir))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["gateReports"] == []            # no disk gate receipt existed
+    assert bundle["runs"][0]["terminus"] == "PASS"
+    assert bundle["terminus"] == "PASS"
+
+
+def test_drain_stamp_ancestry_upgrades_to_approved(tmp_path):
+    # Same upgrade rule as the receipt path — merged IS approved. The stamp
+    # record carries head (branch) and base itself, so no runDir file read
+    # is ever needed.
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    _git(["checkout", "-q", "-b", "ultra/docket-D"], repo)
+    _git(["checkout", "-q", "-b", "ultra/entry-146"], repo)
+    (repo / "f.txt").write_text("entry\n")
+    _git(["commit", "-q", "-am", "entry work"], repo)
+    _git(["checkout", "-q", "ultra/docket-D"], repo)
+    _git(["merge", "-q", "--no-ff", "-m", "merge entry", "ultra/entry-146"], repo)
+    _write_stamp_record(repo, "20260814-130000", "146", "PASS", 0,
+                        "ultra/entry-146", "ultra/docket-D")
+    run_dir = repo / ".claude/ultrapowers/run-20260814-130000"  # deleted
+    recs = REAL + [_wf_launch("20260814-130000", run_dir=str(run_dir))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["runs"][0]["terminus"] == "approved"
+    assert bundle["terminus"] == "approved"
+    assert bundle["truncated"] is False
+
+
+def test_drain_stamp_multi_entry_last_non_approved_wins(tmp_path):
+    # One drain stamp covers several docket entries (one record each). All
+    # approved -> approved; else the last (filename-sorted) non-approved
+    # entry's verdict — mirroring the aggregate-terminus rule.
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    _write_stamp_record(repo, "S", "124", "PASS", 0, "b1", "base")
+    _write_stamp_record(repo, "S", "147", "BLOCKED", 1, "b2", "base")
+    run_dir = str(repo / ".claude/ultrapowers/run-S")
+    drain = h._drain_stamp_receipts(run_dir, "S")
+    assert [e["receipt"]["entry"] for e in drain] == ["124", "147"]
+    assert all(e["source"] == "stamp" and e["stamp"] == "S" for e in drain)
+    assert h._stamp_terminus(run_dir, [], drain) == "BLOCKED"
+
+
+def test_disk_gate_receipt_takes_precedence_over_drain_stamp(tmp_path):
+    # A live disk gate receipt always outranks the mirror.
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    run_dir = repo / ".claude/ultrapowers/run-S9"
+    run_dir.mkdir(parents=True)
+    (run_dir / "gate-receipt.json").write_text(json.dumps(
+        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S9"}))
+    _write_stamp_record(repo, "S9", "146", "PASS", 0, "b", "base")
+    stamp_reports = h._disk_receipts_for({"S9": str(run_dir)}, ["S9"])
+    drain = h._drain_stamp_receipts(str(run_dir), "S9")
+    assert h._stamp_terminus(str(run_dir), stamp_reports, drain) == "NEEDS_ACK"
+
+
+def test_drain_stamp_receipts_fail_soft(tmp_path):
+    assert h._drain_stamp_receipts(None, "S") == []
+    assert h._drain_stamp_receipts("/no/engine/suffix", "S") == []
+    repo = tmp_path / "repo"                      # no git needed: pure paths
+    receipts = repo / ".claude/ultrapowers/receipts"
+    receipts.mkdir(parents=True)
+    (receipts / "S-bad.json").write_text("{corrupt")
+    (receipts / "S-noverdict.json").write_text(json.dumps({"mode": "drain-stamp"}))
+    run_dir = str(repo / ".claude/ultrapowers/run-S")
+    assert h._drain_stamp_receipts(run_dir, "S") == []
