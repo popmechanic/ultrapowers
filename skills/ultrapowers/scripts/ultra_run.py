@@ -34,6 +34,14 @@ PLUGIN_ROOT = HERE.parents[2]
 RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
 KEEP_RUNS = 10
 
+# #151 disk-headroom guard: per-concurrent-worktree footprint envelope and
+# the absolute block floor. Hardcoded by design — the env knob was deleted
+# at trim review (a tuning surface on an advisory warn is machinery not yet
+# earned by field data).
+GIB = 1024 ** 3
+HEADROOM_PER_TASK = int(1.5 * GIB)
+HEADROOM_FLOOR = 2 * GIB
+
 
 def _run_dirs(state_dir):
     """All state_dir entries matching the strict run-<stamp> pattern, sorted
@@ -392,6 +400,37 @@ def main(argv=None):
                  success=summary, failure=r.stderr or r.stdout):
         return bail()
     receipt["compile"] = compile_obj
+
+    # Disk headroom (#151): the cycle's one budgeted additive guard, placed
+    # after compile (it needs compile_obj["waves"] for the widest-wave width)
+    # and before anything expensive. The widest wave bounds peak concurrent
+    # worktree footprint. Advisory by default — warn stays ok:true with a
+    # verdict-stating detail (#97; warn shape per the worktree-audit stage) —
+    # because a tight-but-sufficient host must not false-block. Block only
+    # when free < min(2 GiB, estimate): the floor never exceeds what the run
+    # actually needs, so a narrow run on a small host is never refused by a
+    # floor larger than its own estimate.
+    widest = max((len(w) for w in (compile_obj.get("waves") or [])), default=0)
+    estimate = widest * HEADROOM_PER_TASK
+    free = shutil.disk_usage(root).free
+    floor = min(HEADROOM_FLOOR, estimate)
+
+    def _gib(n):
+        return "%.1f GiB" % (n / GIB)
+
+    headroom = ("free %s vs estimate %s (widest wave %d x 1.5 GiB)"
+                % (_gib(free), _gib(estimate), widest))
+    if free < floor:
+        stage("disk-headroom", False,
+              failure="BLOCKED: " + headroom + " — free is below the "
+                      "min(2 GiB, estimate) floor; free disk space and relaunch")
+        return bail()
+    if free < estimate:
+        stage("disk-headroom", True,
+              success="WARN: " + headroom + " — the run may exhaust disk "
+                      "mid-merge; consider freeing space (advisory)")
+    else:
+        stage("disk-headroom", True, success="ok: " + headroom)
 
     # An explicitly-passed knob is judged on its stripped value: a whitespace
     # command would be stamped verbatim and eval to a false green at the gate,

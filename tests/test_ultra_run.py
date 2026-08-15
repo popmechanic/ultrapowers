@@ -59,7 +59,8 @@ def test_happy_path_receipt(tmp_path):
     assert all(s["ok"] for s in receipt["stages"])
     stage_names = [s["stage"] for s in receipt["stages"]]
     for expected in ("git-repo", "worktree-probe", "engine-skew",
-                     "superpowers-compat", "compile", "test-command", "install",
+                     "superpowers-compat", "compile", "disk-headroom",
+                     "test-command", "install",
                      "lock", "dirty-baseline"):
         assert expected in stage_names
     run_dir = repo / ".claude/ultrapowers/run-t1"
@@ -799,3 +800,128 @@ def test_explicit_empty_test_cmd_fails_the_stage(tmp_path, cmd):
     assert receipt["stages"][-1]["ok"] is False
     assert "--test-cmd" in receipt["stages"][-1]["detail"]
     assert "testCmd" not in receipt
+
+
+# --- #151: disk-headroom preflight stage (the cycle's one budgeted guard) ---
+# free vs estimate = widest_wave_width x 1.5 GiB (hardcoded, no env knob).
+# warn stays ok:true (advisory; a tight-but-sufficient host must not
+# false-block); block only when free < min(2 GiB, estimate), so a narrow
+# run on a small host is never refused by a floor larger than its own need.
+
+GIB = 1024 ** 3
+
+# Two INDEPENDENT tasks -> one wave of width 2 -> estimate 3.0 GiB, floor 2 GiB.
+WIDE_PLAN = (
+    "# P\n\n**Acceptance:** waived — test fixture\n\n"
+    "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+    "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
+    "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+    "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
+)
+
+
+def make_wide_repo(tmp_path):
+    repo = make_repo(tmp_path)
+    (repo / "plan.md").write_text(WIDE_PLAN)
+    sh(["git", "add", "plan.md"], cwd=repo)
+    sh(["git", "commit", "-qm", "wide plan"], cwd=repo)
+    return repo
+
+
+def run_main_with_free(repo, monkeypatch, capsys, free_bytes):
+    """Drive ultra_run.main in-process with shutil.disk_usage faked."""
+    import ultra_run
+
+    class Usage:
+        def __init__(self, free):
+            self.free = free
+
+    monkeypatch.setattr(ultra_run.shutil, "disk_usage",
+                        lambda path: Usage(free_bytes))
+    rc = ultra_run.main(["plan.md", "--stamp", "t1", "--repo", str(repo)])
+    return rc, json.loads(capsys.readouterr().out)
+
+
+def headroom_stage(receipt):
+    return next(s for s in receipt["stages"] if s["stage"] == "disk-headroom")
+
+
+def test_disk_headroom_ok_at_estimate_boundary(tmp_path, monkeypatch, capsys):
+    # free == estimate -> ok (Free >= estimate is the ok branch).
+    repo = make_wide_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 3 * GIB)
+    assert rc == 0
+    s = headroom_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"].startswith("ok: ")
+    assert "free 3.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
+
+
+def test_disk_headroom_warns_below_estimate_above_floor(tmp_path, monkeypatch, capsys):
+    repo = make_wide_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(2.5 * GIB))
+    assert rc == 0                                   # advisory: never blocks here
+    s = headroom_stage(receipt)
+    assert s["ok"] is True                           # warn-as-ok:true (worktree-audit shape)
+    assert s["detail"].startswith("WARN: ")
+    assert "free 2.5 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
+
+
+def test_disk_headroom_warn_not_block_at_floor_boundary(tmp_path, monkeypatch, capsys):
+    # free == floor (2 GiB) -> still WARN; block is strictly free < floor.
+    repo = make_wide_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 2 * GIB)
+    assert rc == 0
+    s = headroom_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"].startswith("WARN: ")
+
+
+def test_disk_headroom_blocks_below_floor(tmp_path, monkeypatch, capsys):
+    repo = make_wide_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 1 * GIB)
+    assert rc != 0
+    assert receipt["ok"] is False
+    s = headroom_stage(receipt)
+    assert s["ok"] is False
+    assert s["detail"].startswith("BLOCKED: ")
+    assert "free 1.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
+    assert "min(2 GiB, estimate)" in s["detail"]
+    # Blocked BEFORE anything expensive: no later stage ran.
+    names = [x["stage"] for x in receipt["stages"]]
+    assert "test-command" not in names and "lock" not in names
+
+
+def test_disk_headroom_min_floor_narrow_run_not_blocked_by_flat_floor(
+        tmp_path, monkeypatch, capsys):
+    # The default PLAN chains 1 -> 2: widest wave 1 -> estimate 1.5 GiB,
+    # floor min(2 GiB, 1.5 GiB) = 1.5 GiB. free 1.7 GiB >= estimate -> ok.
+    # A flat 2 GiB floor would have false-blocked this narrow run.
+    repo = make_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.7 * GIB))
+    assert rc == 0
+    s = headroom_stage(receipt)
+    assert s["ok"] is True
+    assert s["detail"].startswith("ok: ")
+    assert "widest wave 1" in s["detail"]
+
+
+def test_disk_headroom_min_floor_narrow_run_blocks_below_own_estimate(
+        tmp_path, monkeypatch, capsys):
+    # Same narrow plan, free 1.4 GiB < floor (= estimate 1.5 GiB) -> block.
+    repo = make_repo(tmp_path)
+    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.4 * GIB))
+    assert rc != 0
+    s = headroom_stage(receipt)
+    assert s["ok"] is False
+    assert s["detail"].startswith("BLOCKED: ")
+
+
+def test_disk_headroom_stage_runs_right_after_compile(tmp_path):
+    # Real disk_usage (dev/CI hosts have headroom); ordering is the contract.
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    assert r.returncode == 0, r.stdout + r.stderr
+    names = [s["stage"] for s in json.loads(r.stdout)["stages"]]
+    assert names.index("disk-headroom") == names.index("compile") + 1
+    assert names.index("disk-headroom") < names.index("test-command")
