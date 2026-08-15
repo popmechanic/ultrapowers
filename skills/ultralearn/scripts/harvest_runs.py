@@ -317,7 +317,12 @@ def _transcript_dirs(records):
     holds agent transcripts, in transcript order — a session may launch
     several workflows (multiple /ultrapowers launches, or a zero-agent probe
     before the real run) and each agent-bearing dir is its own run's evidence.
-    Fallback: [candidates[-1]] when NONE qualify, preserving the old
+    Candidates are deduped on their RESOLVED REAL paths (#150 mode a): a
+    crash-resume session prints the same dir twice (sometimes via a symlink
+    alias), and pre-dedupe each mention was audited separately — the verbatim
+    agent-block duplication that overstated audit totals by a full salvage
+    run's weight. First occurrence wins; transcript order is preserved.
+    Fallback: the LAST unique candidate when NONE qualify, preserving the old
     single-dir last-resort behavior (e.g. a dir that no longer exists on
     disk when the harvester runs later)."""
     candidates = []
@@ -332,8 +337,18 @@ def _transcript_dirs(records):
                 candidates.append(tail)
     if not candidates:
         return []
-    qualifying = [c for c in candidates if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
-    return qualifying if qualifying else [candidates[-1]]
+    seen_real, unique = set(), []
+    for c in candidates:
+        try:
+            key = str(Path(c).resolve())
+        except OSError:
+            key = c  # unresolvable path: dedupe on the literal string, soft
+        if key in seen_real:
+            continue
+        seen_real.add(key)
+        unique.append(c)
+    qualifying = [c for c in unique if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
+    return qualifying if qualifying else [unique[-1]]
 
 
 _GIT_TIMEOUT = 5  # seconds; an ancestry check must never hang a harvest sweep

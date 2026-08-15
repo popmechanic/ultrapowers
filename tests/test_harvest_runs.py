@@ -1069,3 +1069,58 @@ def test_slice_labels_tool_results_as_tool_result_never_user():
     out = h.slice_transcript(recs)
     assert "**user:**" not in out
     assert "**tool_result:** <class 'dict'> ['tasks', 'waves']" in out
+
+
+# --- #150 mode (a): dir-level audit dedupe on resolved real paths — a
+# crash-resume session prints the same "Transcript dir:" twice (sometimes
+# via a symlink alias); pre-#150 each mention was audited separately and
+# _merge_audits bare-extended the duplicate agent blocks.
+
+def test_transcript_dirs_dedupes_repeated_and_symlinked_dir(tmp_path):
+    real = tmp_path / "wf_real"
+    real.mkdir()
+    (real / "agent-1.jsonl").write_text("{}\n")
+    alias = tmp_path / "wf_alias"
+    alias.symlink_to(real)
+    recs = [
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {real}"}]}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {real}"}]}]),   # verbatim repeat
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {alias}"}]}]),  # symlink alias, same real path
+    ]
+    assert h._transcript_dirs(recs) == [str(real)]
+
+
+def test_build_bundle_audits_repeated_transcript_dir_once(tmp_path):
+    # End-to-end: the crash-resume shape. One agent file (1 assistant turn,
+    # 7 output tokens); the dir is printed twice. Pre-#150 the bundle audit
+    # carried 2 agents and totals {"turns": 2, "outputTokens": 14}.
+    tdir = tmp_path / "wf_resume"
+    tdir.mkdir()
+    agent_user = {"type": "user", "message": {"role": "user", "content": [
+        {"type": "text",
+         "text": "You are the setup agent on the session repo main checkout."}]}}
+    agent_turn = {"type": "assistant", "message": {
+        "role": "assistant", "model": "m1",
+        "usage": {"output_tokens": 7}, "content": []}}
+    (tdir / "agent-1.jsonl").write_text(
+        json.dumps(agent_user) + "\n" + json.dumps(agent_turn) + "\n")
+    recs = [
+        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
+                            "input": {"name": "ultrapowers-run"}}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+        # crash-resume: the SAME dir printed again by the resumed session
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+            "text": f"Transcript dir: {tdir}"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-x-home")
+    assert out is not None
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert len(bundle["audit"]["agents"]) == 1
+    assert bundle["audit"]["totals"] == {"turns": 1, "outputTokens": 7}
