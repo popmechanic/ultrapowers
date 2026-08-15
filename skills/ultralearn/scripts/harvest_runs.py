@@ -448,22 +448,110 @@ def _git_ancestry_approved(run_dir, receipt):
         return False
 
 
-def _stamp_terminus(run_dir, stamp_reports):
-    """Per-stamp terminus (#126 Task 2): the disk receipt's own verdict,
-    upgraded to `approved` when git ancestry proves the run's head landed on
-    its base branch. Structured only, no transcript scanning: the
-    merge-evidence prose matcher (`_merge_evidence_after`) and the
-    approve-marker/stamp-interleave tracking it replaced are deleted
-    outright — the git check subsumes both. `stamp_reports` is this stamp's
-    own disk-sourced gate_reports entries; no disk receipt at all means
-    nothing to read a verdict OR a head sha from -> `unknown`."""
-    if not stamp_reports:
-        return "unknown"
-    receipt = stamp_reports[-1]["receipt"]
-    verdict = receipt.get("verdict", "unknown")
-    if run_dir and _git_ancestry_approved(run_dir, receipt):
-        return "approved"
-    return verdict
+_RUN_DIR_SUFFIX = re.compile(r"/\.claude/ultrapowers/run-[^/]+$")
+
+
+def _repo_root_from_run_dir(run_dir):
+    """Repo root derived from the registry-recorded runDir PATH STRING (#150
+    mode c): strip the `.claude/ultrapowers/run-<stamp>` suffix. Pure string
+    work — a drain-gated run's runDir is typically torn down by the time the
+    harvester runs, so the runDir is never touched on disk. None when the
+    string does not carry the engine suffix."""
+    if not isinstance(run_dir, str):
+        return None
+    m = _RUN_DIR_SUFFIX.search(run_dir)
+    return run_dir[:m.start()] if m else None
+
+
+def _drain_stamp_receipts(run_dir, stamp):
+    """Mode (c) mirror lookup (#150): the `<stamp>-*.json` glob under
+    `<repo-root>/.claude/ultrapowers/receipts/`, repo root from
+    `_repo_root_from_run_dir` — one record per drain-gated docket entry,
+    written by the drain's record helper's `stamp` subcommand (the schema
+    authority). Entries are labeled by the LOCATING stamp, filename-sorted
+    for determinism. Soft-fails: no derivable root, a missing receipts dir,
+    or unreadable/malformed JSON is skipped, never raised; only dicts
+    carrying a `verdict` qualify."""
+    root = _repo_root_from_run_dir(run_dir)
+    if root is None:
+        return []
+    entries = []
+    try:
+        files = sorted((Path(root) / ".claude/ultrapowers/receipts").glob(stamp + "-*.json"))
+    except OSError:
+        return []
+    for f in files:
+        try:
+            obj = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(obj, dict) and "verdict" in obj:
+            entries.append({"receipt": obj, "stamp": stamp, "source": "stamp"})
+    return entries
+
+
+def _drain_ancestry_approved(run_dir, receipt):
+    """Approved-upgrade for a drain-stamp record (#150 mode c): merged IS
+    approved, same rule as the receipt path. head = the record's own
+    `branch`, base = its `base` — both carried in the record, so no runDir
+    file read is ever needed; repo root comes from the runDir PATH STRING.
+    Fails soft to False on any unresolvable repo, ref, or git invocation."""
+    repo_root = _repo_root_from_run_dir(run_dir)
+    if not repo_root:
+        return False
+    head = receipt.get("branch")
+    base = receipt.get("base")
+    if not (isinstance(head, str) and head.strip()
+            and isinstance(base, str) and base.strip()):
+        return False
+    try:
+        res = subprocess.run(
+            ["git", "-C", repo_root, "merge-base", "--is-ancestor",
+             head.strip(), base.strip()],
+            capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+        return res.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def _drain_stamp_terminus(run_dir, drain_receipts):
+    """Terminus from mode-(c) drain-stamp records (#150): each entry's
+    verdict upgrades to `approved` when its recorded branch landed on its
+    recorded base. All entries approved -> approved; else the last
+    (filename-sorted) non-approved entry's verdict — the aggregate-terminus
+    rule applied at the entry level."""
+    resolved = []
+    for e in drain_receipts:
+        receipt = e["receipt"]
+        verdict = receipt.get("verdict", "unknown")
+        if _drain_ancestry_approved(run_dir, receipt):
+            verdict = "approved"
+        resolved.append(verdict)
+    non_approved = [v for v in resolved if v != "approved"]
+    return "approved" if not non_approved else non_approved[-1]
+
+
+def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
+    """Per-stamp terminus (#126 Task 2, generalized receipt-or-stamp by #150
+    mode c): the disk receipt's own verdict, upgraded to `approved` when git
+    ancestry proves the run's head landed on its base branch. Structured
+    only, no transcript scanning: the merge-evidence prose matcher
+    (`_merge_evidence_after`) and the approve-marker/stamp-interleave
+    tracking it replaced are deleted outright — the git check subsumes both.
+    `stamp_reports` is this stamp's own disk-sourced gate_reports entries and
+    always takes precedence; `drain_receipts` (the #150 stamp mirror) is
+    consulted only when no disk receipt exists — the drain skips Step-5 and
+    tears the runDir down, so for those runs the mirror is the only gate
+    evidence left. Neither present -> `unknown`."""
+    if stamp_reports:
+        receipt = stamp_reports[-1]["receipt"]
+        verdict = receipt.get("verdict", "unknown")
+        if run_dir and _git_ancestry_approved(run_dir, receipt):
+            return "approved"
+        return verdict
+    if drain_receipts:
+        return _drain_stamp_terminus(run_dir, drain_receipts)
+    return "unknown"
 
 
 def _runs_for_bundle(registry, gate_reports):
@@ -477,11 +565,15 @@ def _runs_for_bundle(registry, gate_reports):
     for stamp in registry["stamps"]:
         stamp_reports = by_stamp.get(stamp, [])
         run_dir = registry["runDirsByStamp"].get(stamp)
+        # #150 mode (c): the stamp mirror is consulted only when no disk
+        # gate receipt exists for this stamp — it never enters gateReports
+        # (which stay disk-sourced only), it only informs terminus.
+        drain_receipts = [] if stamp_reports else _drain_stamp_receipts(run_dir, stamp)
         runs.append({
             "stamp": stamp,
             "planPath": registry["planPathsByStamp"].get(stamp),
             "gateReports": stamp_reports,
-            "terminus": _stamp_terminus(run_dir, stamp_reports),
+            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts),
         })
     return runs
 
