@@ -4,9 +4,7 @@
 Reads the engine's per-run transcript directory (the "Transcript dir:" path
 printed at Workflow launch), classifies each agent-*.jsonl by role from the
 stable baked-prompt phrases, sums assistant turns and output tokens, and
-prints a markdown effort table plus tier-misrank candidates: implementers
-above 1.5x the median turns of SAME-MODEL peers (transcripts carry resolved
-model strings, not tier names — grouping by model is exact).
+prints a markdown effort table plus escalated-task and thrash signals.
 
 ADVISORY BY CONTRACT: a missing directory, no agent files, or a drifted
 layout prints one diagnostic and exits 0 — this script must never block the
@@ -16,7 +14,6 @@ from __future__ import annotations
 
 import json
 import re
-import statistics
 import sys
 from pathlib import Path
 
@@ -47,8 +44,7 @@ ROLE_MARKERS = [
     ("You are a read-only preflight agent", "waves-file-check"),
 ]
 
-# Absolute thrash heuristic (no same-model-peer requirement, unlike the relative
-# misrank detector): an implementer doing many turns for little output. Tuned so
+# Absolute thrash heuristic: an implementer doing many turns for little output. Tuned so
 # healthy implementers (~90 tokens/turn) are not flagged; a genuine thrasher
 # (<40 tokens/turn over >=30 turns) is.
 THRASH_MIN_TURNS = 30
@@ -108,7 +104,7 @@ def audit(transcript_dir):
     files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
     if not files:
         return {"agents": [], "totals": {"turns": 0, "outputTokens": 0},
-                "misrankCandidates": [], "escalatedTasks": [], "thrashCandidates": [],
+                "escalatedTasks": [], "thrashCandidates": [],
                 "note": f"no agent-*.jsonl under {transcript_dir}"}
     agents = []
     for f in files:
@@ -117,16 +113,6 @@ def audit(transcript_dir):
         agents.append({"role": role, "model": model, "turns": turns,
                        "outputTokens": out_tokens})
     agents.sort(key=lambda a: -a["turns"])
-    impls = [a for a in agents if a["role"].startswith("impl")]
-    by_model = {}
-    for a in impls:
-        by_model.setdefault(a["model"], []).append(a)
-    misrank = []
-    for group in by_model.values():
-        if len(group) < 2:
-            continue
-        med = statistics.median(a["turns"] for a in group)
-        misrank.extend(a for a in group if med and a["turns"] > 1.5 * med)
     totals = {"turns": sum(a["turns"] for a in agents),
               "outputTokens": sum(a["outputTokens"] for a in agents)}
     # escalatedTasks: a task with more than one implementer transcript — the
@@ -141,7 +127,7 @@ def audit(transcript_dir):
               if a["role"].startswith("impl")
               and a["turns"] >= THRASH_MIN_TURNS
               and (a["outputTokens"] / a["turns"] if a["turns"] else 0) < THRASH_MAX_PER_TURN]
-    return {"agents": agents, "totals": totals, "misrankCandidates": misrank,
+    return {"agents": agents, "totals": totals,
             "escalatedTasks": escalated, "thrashCandidates": thrash}
 
 
@@ -172,23 +158,6 @@ def main(argv=None):
     unknown = sum(1 for r in rows if r[0] == "unknown")
     if unknown:
         print(f"\n{unknown} agent file(s) unclassified — baked-prompt phrases may have drifted.")
-
-    impls = [r for r in rows if r[0].startswith("impl:")]
-    by_model = {}
-    for r in impls:
-        by_model.setdefault(r[1], []).append(r)
-    flagged = []
-    for group in by_model.values():
-        if len(group) < 2:
-            continue  # single-sample noise: never flag a lone task
-        med = statistics.median(r[2] for r in group)
-        flagged.extend(r for r in group if med and r[2] > 1.5 * med)
-    if flagged:
-        print("\n**Tier-misrank candidates** (turns > 1.5x median of same-model implementers):")
-        for role, model, turns, _ in sorted(flagged, key=lambda r: -r[2]):
-            print(f"- {role} on {model}: {turns} turns — consider a higher tier for tasks like this")
-    else:
-        print("\nNo tier-misrank candidates (no implementer exceeded 1.5x its same-model median).")
 
     # Peer-free signals (reuse audit(); the duplicate read is advisory and cheap).
     data = audit(root)
