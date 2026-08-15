@@ -58,17 +58,62 @@ work that actually spanned multiple phases or runs. Do not hand off to
 `finishing-a-development-branch` until the holistic review is clean or its
 findings are explicitly dispositioned.
 
-## Deferred-verification checklist
+## Residual manifest
 
-The gate report's `deferredVerification` array is a post-merge obligation
-list, not a footnote. After the merge lands, walk it item by item: attempt
-closure where tooling exists (run the runtime path, drive the browser flow,
-hit the deployed service), and report per-item status in the finishing
-summary — `closed` (verified, say how), `still-open` (say what blocks it),
-or `needs-human` (say exactly what the operator must do). The checklist
-authorizes no new autonomous actions — anything beyond already-authorized
-tooling stays `needs-human`. An item nobody closes survives in the summary
-by name; it must never silently evaporate between the gate and the handoff.
+The gate report's three finding families — `completenessFindings`,
+`judgmentCalls`, `deferredVerification` — feed one derived obligation list
+at finishing: the residual manifest. Derivation and disposition are
+required at run close and at drain-entry close; the finishing summary
+attaches the manifest. Derive it from **all** of this run's gate reports
+(resume/redirect rounds each pass theirs — the union is computed, never
+remembered):
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/residual_manifest.py \
+  <report.json> [more-reports...] [--gate-acks <runDir>/standing-approval.json] \
+  > <runDir>/residual-manifest.md
+```
+
+Canonical location: `<runDir>/residual-manifest.md`, beside report.json.
+One row per distinct finding, content-addressed — id
+`<family>-<12-hex sha256 of the normalized text>`, so the same finding gets
+the same id in every round and the union dedupes on id; byte-identical
+duplicates within one report tiebreak `-2`, `-3`, … Each row is exactly:
+
+```
+- <id> [<family>] <text> — disposition: <value>
+```
+
+Anything else in the file is commentary. With `--gate-acks`,
+`deferredVerification` rows carrying a recorded gate ack are emitted
+pre-dispositioned `acked` — derivation from a durable record, never
+auto-judgment. Every other row derives with an empty disposition slot for
+the orchestrator or operator to fill with one of:
+
+- `fixed` — verified closed (say how in the row text).
+- `acked` — operator acknowledged; the required action is named in the row
+  text. Anything beyond already-authorized tooling lands here — the
+  manifest authorizes no new autonomous actions.
+- `filed:<ref>` — stays open under a tracking reference.
+- `waived:<reason>` — stays open with the reason stated.
+
+(Supersedes the old per-item `closed | still-open | needs-human` triple:
+`closed → fixed`; `still-open → filed:<ref>` or `waived:<reason>` — staying
+open with neither a ref nor a reason is exactly the evaporation this
+manifest exists to kill; `needs-human → acked`.)
+
+The close check — exit-code authority for the close ceremony, touching no
+frozen gate script:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/residual_manifest.py \
+  --check <runDir>/residual-manifest.md
+```
+
+Exit 0 iff every row is dispositioned (a zero-row manifest passes,
+vacuously); exit 2 names the undispositioned rows. Resume gates derive and
+render the union only — `--check` runs solely at run close and drain-entry
+close.
 
 ## Shipped SHA ≠ gate-verified SHA — re-verify, mandatorily
 
