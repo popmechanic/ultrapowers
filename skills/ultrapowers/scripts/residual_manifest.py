@@ -36,6 +36,11 @@ FAMILIES = ("completenessFindings", "judgmentCalls", "deferredVerification")
 # are absent (a genuine report may legally emit zero findings).
 REPORT_MARKERS = ("tasks", "waveMerges", "coverage", "tests")
 
+# The constant suffix gate_check.py (FROZEN) appends to the recorded ack
+# detail for runtime/external deferredVerification items -- copied exactly.
+STRUCTURAL_SUFFIX = (" [structural false-green: sandbox could not "
+                     "execute it against the target]")
+
 ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
                  r"\[(?P<family>[A-Za-z]+)\] "
                  r"(?P<text>.*) — disposition:(?P<value>.*)$")
@@ -93,19 +98,23 @@ def finding_text(family, item):
 def acked_by_record(item, ack_list):
     """Pre-fill from durable records only: a standing-approval.json ackList
     entry (gate_check.py ack shape: type "deferred:<reason>", detail
-    "<deliverable> — <why>" plus an optional bracketed suffix) matching this
-    deferredVerification item. The why is part of the match -- an ack for
-    one item must not pre-fill a different item on the same deliverable."""
+    "<deliverable> — <why>" plus, for runtime/external, STRUCTURAL_SUFFIX)
+    matching this deferredVerification item. Exact match only -- a prefix
+    match would let an ack for one item cross-ack another whose why is a
+    string-prefix of it."""
     if not (isinstance(item, dict) and ack_list):
         return False
     deliverable = str(item.get("deliverable", "?"))
     reason = str(item.get("reason", "unknown"))
-    why = str(item.get("why", "") or "")
-    prefix = deliverable + " — " + why
+    # gate_check.py records str(d.get("why", "")): absent -> "", None ->
+    # "None" -- replicate its coercion exactly.
+    prefix = deliverable + " — " + str(item.get("why", ""))
     for ack in ack_list:
-        if (isinstance(ack, dict)
-                and str(ack.get("type", "")) == "deferred:" + reason
-                and str(ack.get("detail", "")).startswith(prefix)):
+        if not (isinstance(ack, dict)
+                and str(ack.get("type", "")) == "deferred:" + reason):
+            continue
+        detail = str(ack.get("detail", ""))
+        if detail == prefix or detail == prefix + STRUCTURAL_SUFFIX:
             return True
     return False
 

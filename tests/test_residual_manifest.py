@@ -119,6 +119,42 @@ def test_gate_acks_prefill_is_item_specific_on_why(tmp_path):
     assert other and other[0].endswith("— disposition:")
 
 
+def test_gate_acks_prefill_exact_no_prefix_nested_why_cross_ack(tmp_path):
+    # one deliverable+reason, two whys where one is a string-prefix of the
+    # other; only the superset recorded -> exactly one row acked
+    dv_super = {"deliverable": "deploy hook", "reason": "runtime",
+                "why": "needs prod boot plus secrets rotation"}
+    rp = write(tmp_path, "r.json",
+               report(deferredVerification=[DV_RUNTIME, dv_super]))
+    sa = write(tmp_path, "standing-approval.json", {
+        "ackList": [{"type": "deferred:runtime",
+                     "detail": "deploy hook — needs prod boot plus secrets "
+                               "rotation [structural false-green: sandbox "
+                               "could not execute it against the target]"}]})
+    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
+    acked = [x for x in rows if x.endswith("— disposition: acked")]
+    assert len(acked) == 1, rows
+    assert "needs prod boot plus secrets rotation" in acked[0]
+    boot = [x for x in rows if "(runtime) — needs prod boot —" in x]
+    assert boot and boot[0].endswith("— disposition:")
+
+
+def test_gate_acks_prefill_matches_none_why_via_str_coercion(tmp_path):
+    # gate_check.py records detail via str(): why=None -> "None"; the
+    # pre-fill must replicate that coercion and still match
+    dv_none = {"deliverable": "deploy hook", "reason": "runtime",
+               "why": None}
+    rp = write(tmp_path, "r.json", report(deferredVerification=[dv_none]))
+    sa = write(tmp_path, "standing-approval.json", {
+        "ackList": [{"type": "deferred:runtime",
+                     "detail": "deploy hook — None [structural false-green: "
+                               "sandbox could not execute it against the "
+                               "target]"}]})
+    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
+    hook = [x for x in rows if "deploy hook (runtime)" in x]
+    assert hook and hook[0].endswith("— disposition: acked")
+
+
 def test_derive_dies_on_standing_approval_shaped_json(tmp_path):
     # a readable JSON dict that is NOT a report (no family keys, no report
     # markers) must die exit 1 naming the path, never emit a vacuous-green
