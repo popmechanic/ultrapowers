@@ -100,6 +100,65 @@ def test_gate_acks_prefills_only_recorded_items(tmp_path):
     assert browser and browser[0].endswith("— disposition:")
 
 
+def test_gate_acks_prefill_is_item_specific_on_why(tmp_path):
+    # same deliverable+reason, different why: a recorded ack for one must
+    # not pre-fill the other
+    dv_other = {"deliverable": "deploy hook", "reason": "runtime",
+                "why": "needs secrets rotation"}
+    rp = write(tmp_path, "r.json",
+               report(deferredVerification=[DV_RUNTIME, dv_other]))
+    sa = write(tmp_path, "standing-approval.json", {
+        "ackList": [{"type": "deferred:runtime",
+                     "detail": "deploy hook — needs prod boot "
+                               "[structural false-green: sandbox could not "
+                               "execute it against the target]"}]})
+    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
+    boot = [x for x in rows if "needs prod boot" in x]
+    other = [x for x in rows if "needs secrets rotation" in x]
+    assert boot and boot[0].endswith("— disposition: acked")
+    assert other and other[0].endswith("— disposition:")
+
+
+def test_derive_dies_on_standing_approval_shaped_json(tmp_path):
+    # a readable JSON dict that is NOT a report (no family keys, no report
+    # markers) must die exit 1 naming the path, never emit a vacuous-green
+    # empty manifest
+    sa = write(tmp_path, "standing-approval.json", {
+        "grantedAt": "turn-3",
+        "instruction": "approve if clean apart from the usual runtime acks",
+        "ackList": [{"type": "deferred:runtime",
+                     "detail": "deploy hook — needs prod boot"}]})
+    r = run(sa)
+    assert r.returncode == 1
+    assert str(sa) in r.stderr
+
+
+def test_derive_dies_on_json_list(tmp_path):
+    p = write(tmp_path, "list.json", [{"tasks": []}])
+    r = run(p)
+    assert r.returncode == 1
+    assert str(p) in r.stderr
+
+
+def test_derive_dies_on_non_dict_envelope_result(tmp_path):
+    p = write(tmp_path, "env.json", {"summary": "s", "result": "oops"})
+    r = run(p)
+    assert r.returncode == 1
+    assert str(p) in r.stderr
+
+
+def test_derive_accepts_marker_report_with_zero_family_keys(tmp_path):
+    # a genuine report that omits all three families still derives (zero rows)
+    result = {"integrationBranch": "ultra/int-1", "waves": [["1"]],
+              "tasks": [{"task": "1", "status": "done"}],
+              "tests": {"passed": True}, "unfinished": []}
+    rp = write(tmp_path, "r.json", {"summary": "workflow envelope",
+                                    "result": result})
+    r = run(rp)
+    assert r.returncode == 0, r.stderr
+    assert manifest_rows(r.stdout) == []
+
+
 def test_bare_result_object_accepted(tmp_path):
     rp = write(tmp_path, "r.json", report()["result"])
     r = run(rp)
@@ -139,6 +198,20 @@ def test_check_red_names_undispositioned_and_invalid_rows(tmp_path):
     assert empty.split()[1] in r.stderr
     assert invalid.split()[1] in r.stderr
     assert fixed.split()[1] not in r.stderr
+
+
+def test_check_red_pins_malformed_disposition_values(tmp_path):
+    # each of these must stay red (exit 2): bare filed:, bare waived:,
+    # waived: with trailing space only, wrong-case Fixed, freeform prose
+    rp = write(tmp_path, "r.json", report())
+    row = manifest_rows(run(rp).stdout)[0]
+    for value in ("filed:", "waived:", "waived: ", "Fixed",
+                  "acked because reasons"):
+        m = tmp_path / "residual-manifest.md"
+        m.write_text(row + " " + value + "\n")
+        r = run("--check", m)
+        assert r.returncode == 2, (value, r.stdout, r.stderr)
+        assert row.split()[1] in r.stderr, value
 
 
 def test_derive_without_reports_exits_1():

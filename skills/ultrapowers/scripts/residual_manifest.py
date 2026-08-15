@@ -32,6 +32,10 @@ import sys
 
 FAMILIES = ("completenessFindings", "judgmentCalls", "deferredVerification")
 
+# Keys that identify a report result even when all three finding families
+# are absent (a genuine report may legally emit zero findings).
+REPORT_MARKERS = ("tasks", "waveMerges", "coverage", "tests")
+
 ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
                  r"\[(?P<family>[A-Za-z]+)\] "
                  r"(?P<text>.*) — disposition:(?P<value>.*)$")
@@ -53,11 +57,24 @@ def load_json(path, what):
 
 def load_result(path):
     """Accept the saved Workflow envelope (gate fields live under result.*)
-    or a bare result object."""
+    or a bare result object. Die (exit 1) on anything that is not
+    recognizably a report -- a silent {} fallback would emit a vacuous-green
+    empty manifest for the wrong file."""
     data = load_json(path, "report")
-    if isinstance(data, dict) and isinstance(data.get("result"), dict):
-        return data["result"]
-    return data if isinstance(data, dict) else {}
+    if isinstance(data, dict) and "result" in data:
+        if not isinstance(data["result"], dict):
+            die("not a report: %r has a non-dict result envelope" % path)
+        result = data["result"]
+    elif isinstance(data, dict):
+        result = data
+    else:
+        die("not a report: %r is not a JSON object" % path)
+    if (not any(k in result for k in FAMILIES)
+            and not any(k in result for k in REPORT_MARKERS)):
+        die("not a report: %r has none of the finding families (%s) "
+            "and no report markers (%s)"
+            % (path, ", ".join(FAMILIES), ", ".join(REPORT_MARKERS)))
+    return result
 
 
 def normalize(text):
@@ -75,16 +92,20 @@ def finding_text(family, item):
 
 def acked_by_record(item, ack_list):
     """Pre-fill from durable records only: a standing-approval.json ackList
-    entry (gate_check.py ack shape: type "deferred:<reason>", detail starting
-    "<deliverable> — ") matching this deferredVerification item."""
+    entry (gate_check.py ack shape: type "deferred:<reason>", detail
+    "<deliverable> — <why>" plus an optional bracketed suffix) matching this
+    deferredVerification item. The why is part of the match -- an ack for
+    one item must not pre-fill a different item on the same deliverable."""
     if not (isinstance(item, dict) and ack_list):
         return False
     deliverable = str(item.get("deliverable", "?"))
     reason = str(item.get("reason", "unknown"))
+    why = str(item.get("why", "") or "")
+    prefix = deliverable + " — " + why
     for ack in ack_list:
         if (isinstance(ack, dict)
                 and str(ack.get("type", "")) == "deferred:" + reason
-                and str(ack.get("detail", "")).startswith(deliverable + " — ")):
+                and str(ack.get("detail", "")).startswith(prefix)):
             return True
     return False
 
