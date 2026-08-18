@@ -58,7 +58,9 @@ suite is the verification; no held-out exam unless the operator asks to seal).
 - **Versioning:** 0.x.y — minor bumps for architectural releases (0.1.0 = the subtraction
   release), patch bumps otherwise. A release bumps **both** `plugin.json` **and** `marketplace.json`
   to the same value — `plugin.json` wins silently if they drift, and they have. Release commit
-  `chore(release): 0.0.x — …`, committed to `main`.
+  `chore(release): 0.0.x — …`, committed to `main`. **After pushing a release, confirm CI on
+  `main` is green (`gh run list --branch main --limit 1`)** — main sat red across two releases
+  (0.2.12→0.2.13) and nothing surfaced it until PR #161.
 - **The verification periphery is FROZEN (0.1.0).** The sealing subsystem
   (`collect_seal.py`, `seal_hash.py`, `run_acceptance.sh`, the seal-author
   agent + brief), the gate scripts (`gate_check.py`, `ultra_gate.py`,
