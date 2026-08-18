@@ -1342,3 +1342,33 @@ def test_build_bundle_stamps_cache_path_version_for_foreign(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["engineVersion"]["epoch"] == "0.2.0"
     assert bundle["engineVersion"]["basis"] == "plugin-cache-path"
+
+
+# --- #160(ii): plural transcriptDirs on the bundle + audit token-unit note.
+
+def test_merge_audits_names_the_token_unit_once_when_totals_exist():
+    merged = h._merge_audits([{"agents": [{"role": "impl:1", "model": "m", "turns": 2, "outputTokens": 10}],
+                               "totals": {"turns": 2, "outputTokens": 10}}])
+    assert merged["totals"] == {"turns": 2, "outputTokens": 10}
+    assert h.AUDIT_UNIT_NOTE in merged["note"]
+    assert merged["note"].count("output_tokens") == 1
+    # empty shape untouched
+    assert h._merge_audits([]) == {"agents": [], "note": "no transcript dir"}
+
+
+def _tdir_result(d):
+    return _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": f"Transcript dir: {d}\n{{\"integrationBranch\":\"ultra/x\"}}"}]}])
+
+
+def test_bundle_carries_plural_transcript_dirs(tmp_path):
+    d1 = tmp_path / "wf_a"; d1.mkdir(); (d1 / "agent-1.jsonl").write_text("")
+    d2 = tmp_path / "wf_b"; d2.mkdir(); (d2 / "agent-2.jsonl").write_text("")
+    recs = REAL[:1] + [_wf_launch("S1"), _tdir_result(d1), _tdir_result(d2)]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["transcriptDirs"] == [str(d1), str(d2)]
+    assert bundle["transcriptDir"] == str(d2)          # singular keeps "last dir"

@@ -22,6 +22,11 @@ SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
 
 ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
 
+# #160(ii): the audit's token unit, named once so cost-lens readers stop
+# comparing it to the Workflow tool's reported total.
+AUDIT_UNIT_NOTE = ("outputTokens = assistant output_tokens summed over agent "
+                   "transcripts (not the Workflow tool's reported total)")
+
 
 def _block_text(block):
     """Flatten a content block's text (handles nested tool_result content)."""
@@ -619,6 +624,7 @@ def _merge_audits(audits):
     merged = {"agents": agents}
     if totals:
         merged["totals"] = totals
+        notes.append(AUDIT_UNIT_NOTE)
     if notes:
         merged["note"] = "; ".join(notes)
     return merged
@@ -830,6 +836,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "engineVersion": _engine_epoch(records, origin, cache_version=cache_version),
         "planPath": plan_path,
         "transcriptDir": tdir,
+        "transcriptDirs": tdirs,
         "gateReport": gate_report,
         "gateReports": gate_reports,
         "runs": runs,
