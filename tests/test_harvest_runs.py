@@ -1298,3 +1298,136 @@ def test_drain_stamp_receipts_fail_soft(tmp_path):
     (receipts / "S-noverdict.json").write_text(json.dumps({"mode": "drain-stamp"}))
     run_dir = str(repo / ".claude/ultrapowers/run-S")
     assert h._drain_stamp_receipts(run_dir, "S") == []
+
+
+# --- #160(i): exact foreign engineVersion from the plugin-cache path.
+
+def _cache_turn(ver, mkt="ultrapowers"):
+    return _rec("user", [{"type": "text", "text":
+        f"Base directory for this skill: /Users/x/.claude/plugins/cache/{mkt}/ultrapowers/{ver}/skills/ultrapowers\n\n# Ultrapowers"}])
+
+
+def test_plugin_cache_version_last_before_launch():
+    recs = [_cache_turn("0.2.0"), _wf_launch("S1"), _cache_turn("0.2.1")]
+    launch_idx = h._last_launch_tool_use_index(recs, "S1")
+    assert h._plugin_cache_version(recs, launch_idx) == "0.2.0"
+    # no launch anchor -> last anywhere
+    assert h._plugin_cache_version(recs, None) == "0.2.1"
+    assert h._plugin_cache_version([_rec("user", [{"type": "text", "text": "no path"}])], None) is None
+
+
+def test_plugin_cache_version_matches_only_ultrapowers_cache_path():
+    recs = [_rec("user", [{"type": "text", "text":
+        "plugins/cache/superpowers-marketplace/superpowers/6.3.0/skills/x"}])]
+    assert h._plugin_cache_version(recs, None) is None
+
+
+def test_engine_epoch_prefers_cache_path_for_foreign_only():
+    recs = [_ts("2026-06-20T10:00:00.000Z")]
+    foreign = h._engine_epoch(recs, "foreign", TIMELINE, cache_version="0.0.9")
+    assert foreign["epoch"] == "0.0.9" and foreign["basis"] == "plugin-cache-path"
+    assert foreign["asOf"] == "2026-06-20T10:00:00.000Z"
+    home = h._engine_epoch(recs, "home", TIMELINE, cache_version="0.0.9")
+    assert home == h._engine_epoch(recs, "home", TIMELINE)          # home unchanged
+    assert h._engine_epoch(recs, "foreign", TIMELINE, cache_version=None) == \
+        h._engine_epoch(recs, "foreign", TIMELINE)                  # None -> unchanged
+
+
+def test_build_bundle_stamps_cache_path_version_for_foreign(tmp_path):
+    recs = [_cache_turn("0.2.0")] + REAL + [_wf_launch("S1")]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["engineVersion"]["epoch"] == "0.2.0"
+    assert bundle["engineVersion"]["basis"] == "plugin-cache-path"
+
+
+# --- #160(ii): plural transcriptDirs on the bundle + audit token-unit note.
+
+def test_merge_audits_names_the_token_unit_once_when_totals_exist():
+    merged = h._merge_audits([{"agents": [{"role": "impl:1", "model": "m", "turns": 2, "outputTokens": 10}],
+                               "totals": {"turns": 2, "outputTokens": 10}}])
+    assert merged["totals"] == {"turns": 2, "outputTokens": 10}
+    assert h.AUDIT_UNIT_NOTE in merged["note"]
+    assert merged["note"].count("output_tokens") == 1
+    # empty shape untouched
+    assert h._merge_audits([]) == {"agents": [], "note": "no transcript dir"}
+
+
+def _tdir_result(d):
+    return _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": f"Transcript dir: {d}\n{{\"integrationBranch\":\"ultra/x\"}}"}]}])
+
+
+def test_bundle_carries_plural_transcript_dirs(tmp_path):
+    d1 = tmp_path / "wf_a"; d1.mkdir(); (d1 / "agent-1.jsonl").write_text("")
+    d2 = tmp_path / "wf_b"; d2.mkdir(); (d2 / "agent-2.jsonl").write_text("")
+    recs = REAL[:1] + [_wf_launch("S1"), _tdir_result(d1), _tdir_result(d2)]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["transcriptDirs"] == [str(d1), str(d2)]
+    assert bundle["transcriptDir"] == str(d2)          # singular keeps "last dir"
+
+
+# --- #160(iii): the approved-terminus tail is bounded (mode-(b) successor).
+
+def _approve_ok():
+    return _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})}]}])
+
+
+def test_approved_tail_stops_at_first_operator_turn_inclusive():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "text", "text": "Merged; gate green, lock released."}]),
+            _rec("user", [{"type": "text", "text": "what should we do next about the wave?"}]),
+            _rec("assistant", [{"type": "text", "text": "Next wave: regenerate the gate brief."}]),
+            _rec("user", [{"type": "text", "text": "begin the wave work now"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "what should we do next" in out          # first operator turn kept
+    assert "regenerate the gate brief" not in out    # everything after it dropped
+    assert "begin the wave work" not in out
+
+
+def test_approved_tail_ignores_meta_and_notification_user_records():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            dict(_rec("user", [{"type": "text", "text": "Base directory for this skill: /x/gate"}]), isMeta=True),
+            _rec("user", "<task-notification>agent finished the wave</task-notification>"),
+            _rec("user", [{"type": "text", "text": "<local-command-stdout>gate</local-command-stdout>"}]),
+            _rec("user", [{"type": "text", "text": "[Request interrupted by user] gate"}]),
+            _rec("user", [{"type": "text", "text": "yes - approved, merge the wave"}]),
+            _rec("user", [{"type": "text", "text": "now something unrelated about the gate"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "yes - approved, merge the wave" in out
+    assert "something unrelated" not in out
+    # (the per-record filter's labeling of meta user records is unchanged
+    # here — only the tail BOUND ignores them; #137 lineage, out of scope)
+
+
+def test_approved_tail_stops_before_finishing_handoff():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "tool_use", "name": "Skill",
+                                "input": {"skill": "superpowers:finishing-a-development-branch"}}]),
+            _rec("user", [{"type": "text", "text": "merge locally, the wave is done"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "merge locally" not in out
+
+
+def test_approved_tail_without_bound_runs_to_end():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "text", "text": "gate summary line one"}]),
+            _rec("assistant", [{"type": "text", "text": "gate summary line two"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "line one" in out and "line two" in out
+    # no artifact cut at all (launch-less head) -> no bound, full head kept
+    assert h._approved_tail_cutoff(recs, None) is None
+
+
+def test_non_approved_terminus_unaffected_by_tail_bound():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("user", [{"type": "text", "text": "yes - approved, merge the wave"}])]
+    assert "approved, merge" not in h.slice_transcript(recs, terminus="NEEDS_ACK")

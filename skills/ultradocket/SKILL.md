@@ -223,7 +223,7 @@ portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
 disposition (`executed`/merged or `parked` + reason), branch, the review
 posture used (suite-gate authority, or the escalated tasks named), and the
 entry's residual manifest (`<runDir>/residual-manifest.md`, derived per the
-ultrapowers `references/finishing-notes.md` §Residual manifest; drain close
+`skills/ultrapowers/references/finishing-notes.md` §Residual manifest; drain close
 runs `residual_manifest.py --check` per entry — exit 2 surfaces its
 undispositioned rows in this evidence block; an entry with no gate report
 derives a zero-row manifest, which passes vacuously); plus portfolio

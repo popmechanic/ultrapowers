@@ -49,3 +49,21 @@ def test_missing_reference_fails(tmp_path):
         "see references/missing.md\n")
     code, out = run(tmp_path)
     assert code != 0 and "missing.md" in out
+
+
+def test_sibling_skill_reference_resolves_against_that_skill(tmp_path):
+    # #159: `skills/<name>/scripts/x` resolves against the sibling skill dir
+    # (present -> green, absent -> red), never against this skill's dir.
+    skills = tmp_path / "skills"
+    (skills / "y/scripts").mkdir(parents=True)
+    (skills / "y/scripts/there.py").write_text("")
+    (skills / "x").mkdir()
+    fm = "---\nname: x\ndescription: Use when testing sibling skill references.\n---\n"
+    (skills / "x/SKILL.md").write_text(
+        fm + "run `${CLAUDE_PLUGIN_ROOT}/skills/y/scripts/there.py` first\n")
+    code, out = run(skills / "x")
+    assert code == 0, out
+    (skills / "x/SKILL.md").write_text(
+        fm + "run `${CLAUDE_PLUGIN_ROOT}/skills/y/scripts/nope.py` first\n")
+    code, out = run(skills / "x")
+    assert code != 0 and "nope.py" in out and "skill y" in out

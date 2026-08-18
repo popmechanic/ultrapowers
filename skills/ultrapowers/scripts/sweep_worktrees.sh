@@ -162,8 +162,9 @@ mtime_of() {
 # across 3 runs, several GB held via deleted-but-open files). Recurred, so the
 # sweep reaps: TERM, a short grace, then KILL.
 #
-# Matching is by COMMAND LINE (`ps -A -o pid=,command=` — POSIX, identical on
-# macOS and Linux): it catches executables and script args under the worktree
+# Matching is by COMMAND LINE (`ps -A -ww -o pid=,command=`, `-ww` = unlimited
+# width — procps truncates at 80 columns off a tty and would hide the path;
+# identical on macOS and Linux): it catches executables and script args under the worktree
 # path, including processes whose directory is ALREADY deleted, since the dead
 # path survives in the command string. It cannot see a process whose cwd alone
 # is inside the worktree (the command shows no path); lsof could, but is far
@@ -188,7 +189,7 @@ SELF_TREE="$(self_and_ancestors)"
 # PIDs whose command line contains $1 at a path boundary (next char is /,
 # space, or end — so sweeping wf_1 can never match a live wf_12).
 pids_matching() {
-  ps -A -o pid=,command= | NEEDLE="$1" awk '
+  ps -A -ww -o pid=,command= | NEEDLE="$1" awk '
     {
       needle = ENVIRON["NEEDLE"]
       i = index($0, needle)
@@ -203,7 +204,7 @@ pids_matching() {
 # worktree path under this repo (the wf_ dir name contains no / or space,
 # so it ends at the first of either).
 scan_engine_procs() {
-  ps -A -o pid=,command= | NEEDLE="$ROOT/.claude/worktrees/" awk '
+  ps -A -ww -o pid=,command= | NEEDLE="$ROOT/.claude/worktrees/" awk '
     {
       needle = ENVIRON["NEEDLE"]
       i = index($0, needle)

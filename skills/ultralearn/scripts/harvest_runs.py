@@ -22,6 +22,11 @@ SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
 
 ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
 
+# #160(ii): the audit's token unit, named once so cost-lens readers stop
+# comparing it to the Workflow tool's reported total.
+AUDIT_UNIT_NOTE = ("outputTokens = assistant output_tokens summed over agent "
+                   "transcripts (not the Workflow tool's reported total)")
+
 
 def _block_text(block):
     """Flatten a content block's text (handles nested tool_result content)."""
@@ -152,6 +157,44 @@ def _last_artifact_record_index(records, registry):
     return cutoff if cutoff is not None else window_start
 
 
+_NON_OPERATOR_PREFIXES = ("<task-notification>", "<local-command-",
+                          "<system-reminder>", "[Request interrupted")
+FINISHING_HANDOFF_SKILL = "superpowers:finishing-a-development-branch"
+
+
+def _is_operator_turn(record, block):
+    """#160(iii): a `user`-type record that is actually the human — not a
+    skill load (`isMeta`), a background/subagent completion, a local-command
+    echo, or an interrupt marker, all of which ride `user` records."""
+    if record.get("type") != "user" or record.get("isMeta"):
+        return False
+    if not (isinstance(block, dict) and block.get("type") == "text"):
+        return False
+    txt = (block.get("text") or "").lstrip()
+    return bool(txt) and not txt.startswith(_NON_OPERATOR_PREFIXES)
+
+
+def _approved_tail_cutoff(records, cut):
+    """#160(iii): bound for the approved-terminus tail (#150 mode b). After
+    the artifact cut, the earliest of: the first operator turn (INCLUSIVE —
+    the approval reply is kept; what follows is the tangent) or the
+    finishing handoff Skill call (exclusive). Returns the last record index
+    to keep, or None when no bound is found (tail runs to transcript end,
+    today's behavior)."""
+    if cut is None:
+        return None  # no artifact cut at all: keep the full head, unchanged
+    for idx, r, b in _iter_blocks_indexed(records):
+        if idx <= cut:
+            continue
+        if _is_operator_turn(r, b):
+            return idx
+        if (isinstance(b, dict) and b.get("type") == "tool_use"
+                and b.get("name") == "Skill"
+                and (b.get("input") or {}).get("skill") == FINISHING_HANDOFF_SKILL):
+            return idx - 1
+    return None
+
+
 def slice_transcript(records, terminus=None):
     # Slice envelope (Task 3, registry-keyed — spec §5): the run ends at the
     # last qualifying artifact of the LAST registered launch; anything after
@@ -161,14 +204,16 @@ def slice_transcript(records, terminus=None):
     # #150 mode (b): when the caller's derived terminus is "approved", the
     # approval exchange — plain operator text AFTER the final artifact — is
     # exactly what the NEEDS_ACK lens needs, so the slice extends past the
-    # artifact cut to the transcript end. The tail rides the same per-record
-    # filter below (user text kept, keyword-less noise dropped), and since
-    # approval is terminal it is naturally a handful of records: no cap, no
-    # sentinel. Any other terminus (or the default None) keeps the cut.
+    # artifact cut to `_approved_tail_cutoff` — the first operator turn
+    # (inclusive) or the finishing handoff, else transcript end (#160(iii):
+    # an unbounded tail carried ~250 records of unrelated post-run work).
+    # The tail rides the same per-record filter below (user text kept,
+    # keyword-less noise dropped). Any other terminus (or the default None)
+    # keeps the cut.
     registry = session_registry(records)
     cutoff = _last_artifact_record_index(records, registry)
     if terminus == "approved":
-        cutoff = None
+        cutoff = _approved_tail_cutoff(records, cutoff)
     lines = []
     for idx, r, b in _iter_blocks_indexed(records):
         if cutoff is not None and idx > cutoff:
@@ -619,6 +664,7 @@ def _merge_audits(audits):
     merged = {"agents": agents}
     if totals:
         merged["totals"] = totals
+        notes.append(AUDIT_UNIT_NOTE)
     if notes:
         merged["note"] = "; ".join(notes)
     return merged
@@ -690,17 +736,53 @@ def _run_timestamp(records):
     return None
 
 
-def _engine_epoch(records, origin, timeline=None):
+_PLUGIN_CACHE_VER = re.compile(
+    r"plugins/cache/[^/\s]+/ultrapowers/([0-9]+(?:\.[0-9]+)+)/")
+
+
+def _plugin_cache_version(records, launch_index):
+    """#160(i): the exact installed ultrapowers version, read from the
+    plugin-cache path the transcript names verbatim (skill-load "Base
+    directory for this skill:" turns and tool output carry
+    `plugins/cache/<marketplace>/ultrapowers/<ver>/`). Scans `_block_text`
+    only — text and tool_result blocks; tool_use inputs are not read (Bash
+    commands mostly carry the literal `${CLAUDE_PLUGIN_ROOT}`). Returns the
+    last match at-or-before `launch_index` (the last registered launch's
+    tool_use record), else the last match anywhere (launch-less sessions:
+    poisonable by pasted fixtures, accepted — no launch means no run to
+    mis-attribute), else None."""
+    before, anywhere = None, None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        txt = _block_text(b)
+        if not txt or "plugins/cache/" not in txt:
+            continue
+        found = _PLUGIN_CACHE_VER.findall(txt)
+        if not found:
+            continue
+        anywhere = found[-1]
+        if launch_index is not None and idx <= launch_index:
+            before = found[-1]
+    return before if before is not None else anywhere
+
+
+def _engine_epoch(records, origin, timeline=None, cache_version=None):
     """Resolve which ultrapowers version was current when the run launched.
 
     home   → the repo epoch at that date (a self-dev run may be AT or slightly
              AHEAD of it, since dev runs often install the repo-HEAD engine).
     foreign→ an UPPER BOUND: the latest release by that date; the project's
              installed plugin cache may lag behind it ("installed plugin lags
-             the repo"). Returns {epoch, asOf, basis}; epoch None if unknown."""
+             the repo") — unless `cache_version` (#160(i), the exact version
+             parsed from the transcript's plugin-cache path) is given, in
+             which case foreign returns it with basis "plugin-cache-path".
+             Home ignores `cache_version` so the home ledger baseline keeps
+             its date semantics. Returns {epoch, asOf, basis}; epoch None if
+             unknown."""
     if timeline is None:
         timeline = _release_timeline()
     ts = _run_timestamp(records)
+    if cache_version and origin == "foreign":
+        return {"epoch": cache_version, "asOf": ts, "basis": "plugin-cache-path"}
     basis = "home-repo-date" if origin == "home" else "foreign-date-upper-bound"
     run_dt = _to_dt(ts)
     if run_dt is None or not timeline:
@@ -755,6 +837,12 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
     registry = session_registry(records)
+    # #160(i): the exact installed version, anchored at the last registered
+    # launch (foreign origin only — see _engine_epoch).
+    last_stamp_for_anchor = registry["stamps"][-1] if registry["stamps"] else None
+    launch_idx = (_last_launch_tool_use_index(records, last_stamp_for_anchor)
+                  if last_stamp_for_anchor else None)
+    cache_version = _plugin_cache_version(records, launch_idx)
     # gateReports / gateReport (#126): disk-sourced only, located by the
     # structurally-verified runDir — no transcript entry ever enters either.
     # "final receipt" (singular) = the last DISK receipt of the last
@@ -785,9 +873,10 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "projectSlug": project_slug,
         "origin": origin,
         "sessionKind": session_kind,
-        "engineVersion": _engine_epoch(records, origin),
+        "engineVersion": _engine_epoch(records, origin, cache_version=cache_version),
         "planPath": plan_path,
         "transcriptDir": tdir,
+        "transcriptDirs": tdirs,
         "gateReport": gate_report,
         "gateReports": gate_reports,
         "runs": runs,

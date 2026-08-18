@@ -178,6 +178,12 @@ the session checkout — runs/merges/reconciles each wave (16-agent cap), then
 reviews completeness (`references/wave-merge.md`). Contended-wave fold state
 and replay contract: `kernel/FOLD_LOG.md`.
 
+**Record the Run ID first.** The Workflow tool's immediate result prints
+`Run ID: <wf_runId>` (the run continues in the background). Before anything
+else, record it — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultradocket/scripts/record_wf_run.py <stamp> <wf_runId>`
+— so approve/teardown sweep it even if this launch never reaches a gate. Exit 1
+(an unreadable existing `wf-runs.json`) is surfaced, never skipped.
+
 **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
 live?"* — on yes:
 
@@ -253,7 +259,7 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   recorded standing grant). Run
   `ultra_gate.py --approve --stamp <stamp>` — it does
   `git checkout <integrationBranch>` (re-verifies tests on the integration tree),
-  sweeps **every wf run ID the gate recorded across launches**
+  sweeps **every wf run ID recorded for this stamp — at launch and by the gate —**
   (`run-<stamp>/wf-runs.json` — Salvage/Redirect relaunches each mint a fresh
   runtime ID, and all of them are swept) plus `wf_<stamp>` (the dedicated
   integration worktree), reports any `wf_*` leftovers it did not remove, and
@@ -287,7 +293,8 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   the report instead will be refused by the harness). Before relaunching, delete
   `<runDir>/heads/`: the prior launch's slots would otherwise masquerade as the
   relaunch's sidecar authority, and their shas are already durable in the
-  finalized report. Return here.
+  finalized report. Record the new launch's printed Run ID
+  (`record_wf_run.py <stamp> <wf_runId>`, as in Step 4). Return here.
 - **Redirect (micro-redirect)** — author `findings.json` from the gate report
   (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
   — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
@@ -302,7 +309,8 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   integration branch (merged prior work is already there); the fix still flows
   through its implementer, reviewer, wave merge, and a fresh gate. Inline commits on the
   integration branch are unsanctioned — route every post-gate edit through this
-  lane. Return here.
+  lane. Record the relaunch's printed Run ID (`record_wf_run.py <stamp>
+  <wf_runId>`, as in Step 4). Return here.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
