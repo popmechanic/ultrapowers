@@ -190,7 +190,7 @@ No harness JS touched → the `.mjs` sims are not in play.
 ## Adds / Removes (author disclosure for trim review)
 
 Adds (rev 2): one regex alternation each on `acked`/`filed` (#158);
-three prose lines + one containment test (#159); `_plugin_cache_version`,
+three prose lines + one containment test (#159), plus `validate_skill.py` resolving a `skills/<name>/scripts|references|kernel/…` reference against that sibling skill (found at build: the old rule resolved every `scripts/x` against the current skill and went red on the cross-skill call; pinned in `tests/test_validate_skill.py`); `_plugin_cache_version`,
 a `cache_version` argument on `_engine_epoch` (foreign only), one bundle
 field (`transcriptDirs`), one audit-note clause, a two-rule tail bound in
 `slice_transcript` (#160).

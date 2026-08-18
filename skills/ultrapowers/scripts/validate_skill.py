@@ -29,7 +29,7 @@ def validate(skill_dir: pathlib.Path):
     # against this skill. Either way the file must exist.
     for sibling, sub, ref in re.findall(
             r"(?:\bskills/([A-Za-z0-9_-]+)/)?\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):
-        base = skill_dir.parent / sibling if sibling else skill_dir
+        base = skill_dir.resolve().parent / sibling if sibling else skill_dir
         if not (base / sub / ref).exists():
             errors.append(f"missing referenced file: {sub}/{ref}"
                           + (f" (in skill {sibling})" if sibling else ""))

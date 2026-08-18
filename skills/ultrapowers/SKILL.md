@@ -171,18 +171,18 @@ args = { ...argsFile, integrationBranch: 'ultra/integration-<stamp>', stamp,
 
 Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
 
-**Record the Run ID first.** The Workflow tool's immediate result prints
-`Run ID: <wf_runId>` (the run continues in the background). Before anything
-else, record it — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultradocket/scripts/record_wf_run.py <stamp> <wf_runId>`
-— so approve/teardown sweep it even if this launch never reaches a gate. Exit 1
-(an unreadable existing `wf-runs.json`) is surfaced, never skipped.
-
 `args.edges` drives dependency blocking (the workflow ignores task `depends_on`) —
 always pass it, or blocking is silently disabled. The headless workflow creates
 the branch in a dedicated integration worktree — no engine agent ever mutates
 the session checkout — runs/merges/reconciles each wave (16-agent cap), then
 reviews completeness (`references/wave-merge.md`). Contended-wave fold state
 and replay contract: `kernel/FOLD_LOG.md`.
+
+**Record the Run ID first.** The Workflow tool's immediate result prints
+`Run ID: <wf_runId>` (the run continues in the background). Before anything
+else, record it — `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultradocket/scripts/record_wf_run.py <stamp> <wf_runId>`
+— so approve/teardown sweep it even if this launch never reaches a gate. Exit 1
+(an unreadable existing `wf-runs.json`) is surfaced, never skipped.
 
 **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
 live?"* — on yes:

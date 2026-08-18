@@ -1423,6 +1423,8 @@ def test_approved_tail_without_bound_runs_to_end():
             _rec("assistant", [{"type": "text", "text": "gate summary line two"}])]
     out = h.slice_transcript(recs, terminus="approved")
     assert "line one" in out and "line two" in out
+    # no artifact cut at all (launch-less head) -> no bound, full head kept
+    assert h._approved_tail_cutoff(recs, None) is None
 
 
 def test_non_approved_terminus_unaffected_by_tail_bound():

@@ -181,9 +181,10 @@ def _approved_tail_cutoff(records, cut):
     finishing handoff Skill call (exclusive). Returns the last record index
     to keep, or None when no bound is found (tail runs to transcript end,
     today's behavior)."""
-    start = -1 if cut is None else cut
+    if cut is None:
+        return None  # no artifact cut at all: keep the full head, unchanged
     for idx, r, b in _iter_blocks_indexed(records):
-        if idx <= start:
+        if idx <= cut:
             continue
         if _is_operator_turn(r, b):
             return idx
@@ -780,7 +781,7 @@ def _engine_epoch(records, origin, timeline=None, cache_version=None):
     if timeline is None:
         timeline = _release_timeline()
     ts = _run_timestamp(records)
-    if cache_version and origin != "home":
+    if cache_version and origin == "foreign":
         return {"epoch": cache_version, "asOf": ts, "basis": "plugin-cache-path"}
     basis = "home-repo-date" if origin == "home" else "foreign-date-upper-bound"
     run_dt = _to_dt(ts)
