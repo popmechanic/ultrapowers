@@ -69,3 +69,36 @@ through its own brainstorm → spec → trim review when the rewrite lands._
 - Manyana verdict as given: mechanism validated, production value ~inert as
   shipped under the 400-line cap; one cheap experiment (§1) away from a
   verdict.
+
+## 5. Brainstorm synthesis (2026-08-18, later session) — value-ranked ordering
+
+Operator direction: nothing must be kept (waves included); target specific
+outcomes in **quality > tokens > clock**. Ranking every candidate change
+against the three values, from measured evidence:
+
+| change | quality | tokens | clock | evidence |
+|---|---|---|---|---|
+| hunk-scoped resolver briefs / retire the 400 cap | neutral | ↓ (smaller briefs) | ↑↑ width on the hot files carrying 12/13 real contention | 08-18 sample; T15 transcripts |
+| merge contracts / composition exams | ↑↑ (only demonstrated fold defect class) | ~neutral | neutral | T15 `DISPATCH_HOOKS`; fold-native §2 |
+| compiler subtraction (DAG = Depends-on ∪ Consumes→Produces; contention derived) | ↑ (phantom edges gone; ~1k lines of self-defense) | neutral | ↑ width; plans stop routing off the engine | complexity review 07-10; corpus 08-10 |
+| scoped plan-body relaxation | neutral if scoped (07-04 verdict) | ↓ modest | ↑↑ human clock | 07-04 note; canary shipped |
+| continuous frontier / no waves | risk (review semantics, resume lanes, ancestry) | ↑ risk (more dispatches) | bounded: ~5% mean / ~22% max modeled | corpus barrier column |
+
+**Ordering adopted:** (1) resolver/cap, gated on the T15 rig → (2) composition
+contracts + compiler/ultraplan subtraction + scoped body relaxation, gated on
+the live fold-canary + redirect-round canary → (3) re-measure the barrier tail
+on the wider plans → frontier engine only if that number earns its risk.
+
+**Pre-registered targets (operator-approved 2026-08-18):** quality — engine/
+finding-caused redirect-round rate flat vs the 0.2.x baseline; every
+multi-writer fold onto a registration surface covered by a declared contract
+or exam. tokens — fold ≤1.1× serialize on contended shapes (T15: 1.11 with
+whole-file briefs). clock — width-4 contended ≤0.6× (T15: 0.64); natural fold
+rate on real plans from 1/13 to a majority; planning wall time down by a
+stated fraction on the next N plans.
+
+Prior notes this rests on: `2026-08-12-frontier-mode-in-engine-design.md` §5/§6
++ Non-goals; `2026-08-14-fold-native-methodologies.md` (§2 + counterweight);
+`evals/frontier/results/2026-08-10-plan-corpus-binding.md`,
+`2026-08-14-t15-ab.md`; memory `plan-body-relaxation-idea`,
+`complexity-review-2026-07`.
