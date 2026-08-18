@@ -57,7 +57,7 @@ Move the parallel engine's value in all three areas, measured:
 - **Quality** — engine/finding-caused redirect-round rate stays flat vs the
   0.2.x baseline (1/6, 4/18, 0/8); every multi-writer fold onto a
   registration surface is covered by a declared composition contract or an
-  exam (mechanically: `composition-unpinned` acks trend to zero).
+  exam (mechanically: `composition-unpinned` residual-manifest rows trend to zero).
 - **Tokens** — fold path ≤ 1.1× serialize on contended shapes (T15: 1.11 with
   whole-file briefs; hunk briefs are expected to bring it under).
 - **Clock** — width-4 contended ≤ 0.6× (T15: 0.64); natural fold rate on
