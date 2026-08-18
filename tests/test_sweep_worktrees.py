@@ -683,11 +683,13 @@ def test_sweep_reaps_processes_still_running_out_of_a_worktree(tmp_path):
     wt, _ = add_engine_worktree(repo, "proc-1", "p.txt", merge=True)
     proc = spawn_sleeper(wt)
     try:
+        dbg = subprocess.run("ps -A -o pid=,command= | grep -i sleeper; echo ---; ps --version; echo WT=" + str(wt) + "; echo TOP=$(git -C " + str(repo) + " rev-parse --show-toplevel)", shell=True, capture_output=True, text=True)
+        print("DEBUG-PS:\n" + dbg.stdout + dbg.stderr)
         p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
                            capture_output=True, text=True)
         assert p.returncode == 0, p.stderr
         assert not wt.exists()
-        assert "reaped:" in p.stdout
+        assert "reaped:" in p.stdout, "DEBUG-PS:\n" + dbg.stdout + dbg.stderr
         proc.wait(timeout=10)            # raises TimeoutExpired if it survived
     finally:
         if proc.poll() is None:
