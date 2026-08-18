@@ -1298,3 +1298,47 @@ def test_drain_stamp_receipts_fail_soft(tmp_path):
     (receipts / "S-noverdict.json").write_text(json.dumps({"mode": "drain-stamp"}))
     run_dir = str(repo / ".claude/ultrapowers/run-S")
     assert h._drain_stamp_receipts(run_dir, "S") == []
+
+
+# --- #160(i): exact foreign engineVersion from the plugin-cache path.
+
+def _cache_turn(ver, mkt="ultrapowers"):
+    return _rec("user", [{"type": "text", "text":
+        f"Base directory for this skill: /Users/x/.claude/plugins/cache/{mkt}/ultrapowers/{ver}/skills/ultrapowers\n\n# Ultrapowers"}])
+
+
+def test_plugin_cache_version_last_before_launch():
+    recs = [_cache_turn("0.2.0"), _wf_launch("S1"), _cache_turn("0.2.1")]
+    launch_idx = h._last_launch_tool_use_index(recs, "S1")
+    assert h._plugin_cache_version(recs, launch_idx) == "0.2.0"
+    # no launch anchor -> last anywhere
+    assert h._plugin_cache_version(recs, None) == "0.2.1"
+    assert h._plugin_cache_version([_rec("user", [{"type": "text", "text": "no path"}])], None) is None
+
+
+def test_plugin_cache_version_matches_only_ultrapowers_cache_path():
+    recs = [_rec("user", [{"type": "text", "text":
+        "plugins/cache/superpowers-marketplace/superpowers/6.3.0/skills/x"}])]
+    assert h._plugin_cache_version(recs, None) is None
+
+
+def test_engine_epoch_prefers_cache_path_for_foreign_only():
+    recs = [_ts("2026-06-20T10:00:00.000Z")]
+    foreign = h._engine_epoch(recs, "foreign", TIMELINE, cache_version="0.0.9")
+    assert foreign["epoch"] == "0.0.9" and foreign["basis"] == "plugin-cache-path"
+    assert foreign["asOf"] == "2026-06-20T10:00:00.000Z"
+    home = h._engine_epoch(recs, "home", TIMELINE, cache_version="0.0.9")
+    assert home == h._engine_epoch(recs, "home", TIMELINE)          # home unchanged
+    assert h._engine_epoch(recs, "foreign", TIMELINE, cache_version=None) == \
+        h._engine_epoch(recs, "foreign", TIMELINE)                  # None -> unchanged
+
+
+def test_build_bundle_stamps_cache_path_version_for_foreign(tmp_path):
+    recs = [_cache_turn("0.2.0")] + REAL + [_wf_launch("S1")]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["engineVersion"]["epoch"] == "0.2.0"
+    assert bundle["engineVersion"]["basis"] == "plugin-cache-path"

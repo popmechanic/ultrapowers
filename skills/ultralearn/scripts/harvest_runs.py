@@ -690,17 +690,53 @@ def _run_timestamp(records):
     return None
 
 
-def _engine_epoch(records, origin, timeline=None):
+_PLUGIN_CACHE_VER = re.compile(
+    r"plugins/cache/[^/\s]+/ultrapowers/([0-9]+(?:\.[0-9]+)+)/")
+
+
+def _plugin_cache_version(records, launch_index):
+    """#160(i): the exact installed ultrapowers version, read from the
+    plugin-cache path the transcript names verbatim (skill-load "Base
+    directory for this skill:" turns and tool output carry
+    `plugins/cache/<marketplace>/ultrapowers/<ver>/`). Scans `_block_text`
+    only — text and tool_result blocks; tool_use inputs are not read (Bash
+    commands mostly carry the literal `${CLAUDE_PLUGIN_ROOT}`). Returns the
+    last match at-or-before `launch_index` (the last registered launch's
+    tool_use record), else the last match anywhere (launch-less sessions:
+    poisonable by pasted fixtures, accepted — no launch means no run to
+    mis-attribute), else None."""
+    before, anywhere = None, None
+    for idx, _r, b in _iter_blocks_indexed(records):
+        txt = _block_text(b)
+        if not txt or "plugins/cache/" not in txt:
+            continue
+        found = _PLUGIN_CACHE_VER.findall(txt)
+        if not found:
+            continue
+        anywhere = found[-1]
+        if launch_index is not None and idx <= launch_index:
+            before = found[-1]
+    return before if before is not None else anywhere
+
+
+def _engine_epoch(records, origin, timeline=None, cache_version=None):
     """Resolve which ultrapowers version was current when the run launched.
 
     home   → the repo epoch at that date (a self-dev run may be AT or slightly
              AHEAD of it, since dev runs often install the repo-HEAD engine).
     foreign→ an UPPER BOUND: the latest release by that date; the project's
              installed plugin cache may lag behind it ("installed plugin lags
-             the repo"). Returns {epoch, asOf, basis}; epoch None if unknown."""
+             the repo") — unless `cache_version` (#160(i), the exact version
+             parsed from the transcript's plugin-cache path) is given, in
+             which case foreign returns it with basis "plugin-cache-path".
+             Home ignores `cache_version` so the home ledger baseline keeps
+             its date semantics. Returns {epoch, asOf, basis}; epoch None if
+             unknown."""
     if timeline is None:
         timeline = _release_timeline()
     ts = _run_timestamp(records)
+    if cache_version and origin != "home":
+        return {"epoch": cache_version, "asOf": ts, "basis": "plugin-cache-path"}
     basis = "home-repo-date" if origin == "home" else "foreign-date-upper-bound"
     run_dt = _to_dt(ts)
     if run_dt is None or not timeline:
@@ -755,6 +791,12 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     origin = classify_origin(project_slug, home_slug)
     plan_path = _plan_path(records)
     registry = session_registry(records)
+    # #160(i): the exact installed version, anchored at the last registered
+    # launch (foreign origin only — see _engine_epoch).
+    last_stamp_for_anchor = registry["stamps"][-1] if registry["stamps"] else None
+    launch_idx = (_last_launch_tool_use_index(records, last_stamp_for_anchor)
+                  if last_stamp_for_anchor else None)
+    cache_version = _plugin_cache_version(records, launch_idx)
     # gateReports / gateReport (#126): disk-sourced only, located by the
     # structurally-verified runDir — no transcript entry ever enters either.
     # "final receipt" (singular) = the last DISK receipt of the last
@@ -785,7 +827,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "projectSlug": project_slug,
         "origin": origin,
         "sessionKind": session_kind,
-        "engineVersion": _engine_epoch(records, origin),
+        "engineVersion": _engine_epoch(records, origin, cache_version=cache_version),
         "planPath": plan_path,
         "transcriptDir": tdir,
         "gateReport": gate_report,
