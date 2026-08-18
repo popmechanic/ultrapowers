@@ -1,13 +1,19 @@
 # Fold-native authoring program — Phase 1 (resolver reach), Phase 2 (authoring/compiler subtraction + composition contracts), Phase 3 (engine decision rule)
 
-_Program spec 2026-08-18, rev 3 (trim rounds 1–2: B1 → incremental fold; B5–B8 + round-2 trims 1–9 adopted — see §Trim review). Brainstormed 2026-08-18
+_Program spec 2026-08-18, rev 4 (trim rounds 1–3: B1 → incremental fold; B5–B11 + trims 1–23 adopted; round 3 supplied the CLI protocol contract — see §Trim review). Brainstormed 2026-08-18
 against `2026-08-18-rewrite-design-inputs.md` §5 (the value-ranked synthesis)
 with the operator; three phases, each its own plan and release, each gated by
 a pre-registered measurement. Nothing architectural is kept on principle —
 including waves; every retained mechanism earns its place against the three
 values (quality > tokens > clock) at each phase gate. Phase 1 and Phase 2 are
-specified plan-ready; Phase 3 is a decision rule only. Frozen periphery
-untouched throughout; no direct API calls; markers stay additive and
+specified plan-ready; Phase 3 is a decision rule only. The frozen
+verification periphery (gate/seal/lock scripts) is untouched throughout;
+**the compiler's diagnostic vocabulary — also frozen by CLAUDE.md, "change
+only for an eval-measured regression" — does change in Phase 2, and this
+spec names the licensing measurement**: the corpus reading (§2a) plus the
+T15-rig mechanics re-run and the live fold-canary, per the subtraction-eval
+doctrine (delete behind a measurement gate, never argue). No direct API
+calls; markers stay additive and
 sequential-executor compatible; harness JS changes carry the sim-sentinel
 obligation._
 
@@ -126,11 +132,25 @@ HUNK h2 lines 402-409
 ...
 ```
 
-Line spans index the annotated file. `CONTEXT_LINES = 40` (module constant,
+Line spans index the annotated file and cover the **block only** (context
+excluded). `CONTEXT_LINES = 40` (module constant,
 `fold_wave.py`); context is truncated at a neighbouring block's markers when
 blocks lie closer than 2·CONTEXT_LINES, so no marker line ever appears as
 context. Marker side labels are `frontier`, `<task>`, or `both` (the kernel's
-`added both` form). Hunk ids are positional and stable for the life of the
+`added both` form). **`added both` segments are reply-owned** (they are
+lines inside the block; the reply must carry them or the resolver is
+dropping shared content — the prompt says so), **except the EOF case (trim
+round 3, B9, verified on the T15 shape):** when the block is the file's last
+block and its final `added both` segment is the single `""` that is the
+file's final-newline element, `derive` moves that `""` out of the block into
+trailing context, so a resolver writing `x\ny\n` keeps the file's final
+newline; the fuzz set includes this shape. Only `Conflict.kind == "lines"`
+and `add/add` narrations carry markers and get hunks; presence/binary kinds
+have no markers and stay parked as today. If the merged content itself
+contains a line byte-equal to an exact marker form (a repo whose sources
+quote kernel markers), `derive` cannot delimit blocks and **parks that
+conflict with a named reason** (`marker-shaped content`) rather than guess.
+Hunk ids are positional and stable for the life of the
 narration file; narration indices `<i>` are monotonic across the incremental
 CLI calls (`resolve` appends at `next_i`, the existing re-narration
 precedent). `conflicts.json`
@@ -158,7 +178,8 @@ below the splice changes: log schema (three event types), `rehydrate`,
 Rejections (each a named reason on the CLI's stdout, reported by the merge
 agent as the new `REJECTED` FOLD_SCHEMA status; the engine's existing
 `attempt ≤ 2` structure is **re-purposed** as the reply-rejection retry —
-one resolver retry with the reason appended, then park → fallback): a
+one resolver retry against the *same* hunks file with the rejection reason
+appended to the brief, reply dir `reply-<i>-2/`, then park → fallback): a
 missing `h<k>.txt` (omitted hunk); an extra `h<k>.txt` (unknown hunk); a
 final line without `\n`; any reply line byte-equal to a kernel marker form
 (`<<<<<<< begin `, `======= begin `, `>>>>>>> end conflict` — the exact
@@ -186,19 +207,31 @@ so for n writers on one path conflicts 1..n−2 are stale by construction
 before the first resolver runs — replies discarded, then re-narrated (as
 whole files). On the program's target shape that is most dispatches wasted.
 
-Change — **fold incrementally**: `cmd_fold` folds tasks in argv order and
-**stops at the first fold that produces conflicts**; it writes the fold
-events so far, the conflict narration(s) + hunks file(s), and prints the
-open entries plus `"remaining": [<task ids not yet folded>]`. The engine
-dispatches the resolver(s) for the open entries; `cmd_resolve` applies each
-reply (splice → `apply_resolution`), then **continues folding** the remaining
-tasks until the next conflicting fold (printing new open entries) or until
-every task is folded (`"complete": true`). Every narration is therefore
-fresh against the resolved frontier: exactly one dispatch per conflicting
-fold event, no stale replies, no re-narration. The wave's task list is
-re-supplied on every CLI call (it is in the launch args), and the fold log
-is the authority for what has folded — `resolve` refuses (exit 2) if the log
-and the supplied list disagree.
+Change — **fold incrementally.** The wave's task list is re-supplied on
+every CLI call as the same `<taskId>=<branch>:<headSha>` triples `fold`
+takes today (the launch args carry them); the fold log is the authority for
+what has folded: its `fold` events must be an `(id, headSha)` **prefix** of
+the supplied list over the same `base` sha, else the CLI refuses (exit 2,
+`log/list disagreement`). `remaining` = supplied list minus that prefix.
+`complete` = **derived, never recorded**: all tasks folded ∧
+`_unresolved_paths` empty.
+
+**Park pre-scan (trim round 3):** parks (binary/presence/non-text/
+marker-shaped) are order- and resolution-independent by `repo_weave`'s own
+discipline, so `fold`'s first call runs today's whole-wave fold once
+in-memory (0.8s, existing code, no log written) and reports `parked` up
+front — no resolver is ever spent on a wave that will park, and the parked
+guard stays on the fold reply only. Then the incremental pass:
+
+| call | does | stdout (JSON, one line) | exit |
+|---|---|---|---|
+| `fold` (first call; refuses if a log exists) | pre-scan; fold in order until the first fold that opens ≥1 `lines`/`add-add` conflict, or all fold | `{clean, conflicts, dispatchable, parked, open: [{i, path, kind, epoch, hunksFile, hunkCount}], remaining: [...], complete: bool, selfChecks?}` — `selfChecks` present **only** when `complete` (run then); a stop reply carries no `selfChecks` key | 0; 3 if `selfChecks` present and not `ok` |
+| `resolve --path P --epoch E --reply-dir D <triples>` | grammar-check the reply (rejections above), splice, `apply_resolution`; if all open entries of this stop are now applied, **continue folding** to the next stop or completion | applied + waiting: `{applied: true, waiting: [i,...]}` (other entries of the stop still open — not complete); applied + new stop: `{applied: true, open: [...], remaining: [...], complete: false}`; applied + complete: `{applied: true, open: [], remaining: [], complete: true, selfChecks}`; stale: `{applied: false, stale: true}`; rejected: `{applied: false, rejected: true, reason}` | 0; 2 stale / log-list disagreement; 3 self-check failure; **4 rejected** (distinct from stale so the STEP maps REJECTED vs ERROR) |
+| `materialize <task-heads>` | **completeness refusal (trim round 3, B10):** refuse unless every supplied `(id, headSha)` has a matching `fold` event **and** `_unresolved_paths` is empty — a materialize issued before `complete` would otherwise build a candidate omitting every unfolded task and adopt it on a green suite | park record + `{park: "incomplete fold: <n> task(s) unfolded / <m> path(s) unresolved"}` | 3 → fallback |
+
+Every narration is therefore fresh against the resolved frontier: exactly
+one dispatch per conflicting fold event, no stale replies, no re-narration.
+Task 1 can never conflict; the first possible stop is fold 2.
 
 Retires: markerless whole-file re-narration, `_renarration_dispatchable`,
 and re-narration as the *response* to staleness. **Kept (trim round 2, B5):
@@ -206,28 +239,31 @@ the 4-line `_touched_at`/epoch refusal in `apply_resolution`** — it is the
 idempotency guard: the STEP is agent-driven, and a re-issued `resolve`
 (command retried after the log append) would otherwise re-apply old
 whole-file lines *after* the continued fold and silently clobber the next
-task's contribution. Its response changes: stale → `{"applied": false,
-"stale": true}` exit 2, a named refusal → fallback; no re-narration.
-`epoch` therefore keeps an honest meaning (the position the resolution
-applies at; `_unresolved_paths`' #144 guard reads it; replay does not).
-Order-independence self-checks (raw shuffle over the *raw* folds;
-rehydrate-manifest replay) run when the last task folds — which now happens
-inside `cmd_resolve`, so `resolve` gains the exit-3 self-check lane and the
-STEP-resolve mapping carries it. `kernel/FOLD_LOG.md`'s resolve prose is
-rewritten to match (it is a "Where it lives" file).
+task's contribution. Its response changes: stale → exit 2, a named refusal
+→ fallback; no re-narration. `epoch` therefore keeps an honest meaning (the
+position the resolution applies at; `_unresolved_paths`' #144 guard reads
+it; replay does not). Order-independence self-checks (raw shuffle over the
+*raw* folds; rehydrate-manifest replay) run at completion — inside whichever
+call completes (`fold` when the wave is clean, else the last `resolve`).
+`kernel/FOLD_LOG.md`'s resolve prose is rewritten to match (it is a "Where
+it lives" file). Report/`frontierEntry`: `selfChecks` is sourced from the
+completing reply; `foldCliWallTimeSec` becomes the **sum** over the wave's
+CLI invocations (`foldCliCalls` records the count).
 
 Engine loop (`waves.js`, baked STEP-resolve prompt): the
 resolve→CONFLICTS→open loop becomes a **work-list until `complete`**:
 (i) when one stop opens more than one entry (distinct paths), folding
-continues only after *all* open entries of that stop are applied; (ii) the
-count-authority guards (open-list vs counts, `selfChecks`) apply to **every**
-CONFLICTS- or `complete`-bearing reply, not only the first fold reply;
-(iii) `FOLD_SCHEMA` gains status `REJECTED` (reply grammar rejection →
-retry, distinguishable from ERROR → fallback) and fields `hunksFile`,
-`remaining`, `complete`; (iv) the existing budget checkpoint per dispatch and
-routes stay: BLOCKED after one retry, REJECTED after one retry, stale
-refusal, budget exhaustion, or a self-check failure → fallback (still live
-before adoption). `cmd_fold` keeps its existing-log refusal.
+continues only after *all* open entries of that stop are applied (the
+`waiting` reply); (ii) the count-authority guards (open-list vs counts)
+apply to **every** open-bearing reply; the `selfChecks` guard applies to the
+**completing** reply only (re-scoped from "unconditional on the fold reply"
+— a stop reply carries no `selfChecks`); (iii) `FOLD_SCHEMA` gains status
+`REJECTED` (reply grammar rejection → retry, distinguishable from ERROR →
+fallback) and fields `hunksFile`, `remaining`, `complete`, `waiting`;
+(iv) the existing budget checkpoint per dispatch and routes stay: BLOCKED
+after one retry, REJECTED after one retry, stale refusal, log/list
+disagreement, incomplete materialize, budget exhaustion, or a self-check
+failure → fallback (still live before adoption).
 
 ### 1c. Resolver prompt (baked) and dispatch
 
@@ -254,9 +290,11 @@ unchanged.
   before creation (a `ValueError` from `stack_size` or a `RuntimeError` from
   `Thread.start()` — Linux under strict overcommit fails the mmap at start —
   → run in the main thread and say so on stderr), marshalling result and exception back to the main
-  thread so exit codes are unchanged; `_recursion_headroom` stays inside the
-  thread and is sized from **weave entry counts (hidden lines included)**,
-  not visible lines. The existing `RecursionError` → kernel-limit park (exit
+  thread so exit codes are unchanged; inside the thread the recursion limit is set
+  once to a large fixed value (`THREAD_RECURSION_LIMIT = 1_000_000`; trim
+  round 3 — with a 1 GiB stack the frame count is not the constraint, and
+  entry-count sizing needs states in hand before rehydrate, which folds);
+  `_recursion_headroom`'s sizing retires with it. The existing `RecursionError` → kernel-limit park (exit
   3, `conflicts.json` record) remains the only ceiling. Pinned by a
   subprocess test that folds a 100k-line synthetic pair and asserts success
   (on every interpreter; on ≤3.10 the thread is what makes it true — CI is
@@ -274,9 +312,12 @@ wiring section unchanged and in the same relative positions). The sealed
 exam dir is a byte-identical copy (same seal id `4d131df61152`, added to
 `tests/test_fixture_seals.py::FIXTURES`); the project suite is green on the
 fixture's base, the sealed exam red on base (by construction) and green on
-both integrated trees. Implementer floors carry over by construction (same edits,
-same work); one arm-A run re-verifies them and is **not** the counted arm A
-(T14/T15 selection-bias rule).
+both integrated trees. Implementer floors are a **counted condition, not assumed** (trim round 3:
+a 147→6,000-line module changes read cost even though the plan text is
+position-relative): the arm-A re-verification run must show each
+implementer ≥ its T14 floor, else the fixture is re-shaped before any
+counted cell; that run is **not** the counted arm A (T14/T15 selection-bias
+rule).
 
 **Gate (T15 rig, `evals/ab_runner.py`, one fixture per cell):**
 arm A = **`--arm-overlap serialize` at 0.2.14** on `contend-big` (trim
@@ -298,14 +339,20 @@ operator-read before release.
 
 ### 1f. Sensor baseline (starts here, read in Phase 2)
 
-- `harvest_runs.py` reads each run's `frontier/wave-*/conflicts.json` and
-  records per fold: `maxLines` (largest text file), `hunkCount`,
-  `dispatchable`/`parked` counts — the fold-canary lens gains these fields.
+- The fold CLI writes `frontier/wave-<n>/fold_stats.json` (one fact-set,
+  outside the log per FOLD_LOG's one-fact rule): per fold `maxLines` (largest
+  text file), total `hunkCount`, `dispatchable`/`parked` counts, `foldCliCalls`;
+  `harvest_runs.py` carries it into the bundle and the fold-canary lens reads
+  it (a clean wave still writes it — `conflicts.json` is empty then).
+- Phase 3's DAG source: the harvester carries `launch.json`'s `waves` and
+  `edges` (the compiled DAG the run actually executed) into the bundle.
 - Per-task wall (Phase 3's measured leg needs a source — the harness has
   no timers and report.json carries no durations): `audit_run.py` gains
   `wallSec` per agent = last − first record timestamp of that agent's
-  `agent-*.jsonl` (the transcript dir the harvester already audits), keyed by
-  the existing `impl:<id>` role; the harvester carries it into the bundle.
+  `agent-*.jsonl` (the transcript dir the harvester already audits; records
+  carry per-record ISO timestamps), keyed by the existing `impl:<id>` role
+  and **summed** across an id's transcripts (an auto-escalate retry leaves
+  two); the harvester carries it into the bundle.
 - Planning cost, recorded as an observation (trim round 1: wall is not
   attributable — planning and launch often live in different sessions and
   the interval is dominated by human review turns): plan word count and
@@ -332,18 +379,20 @@ document-order tier `write-after-write` (dropped only when fold-eligible),
 `ambiguous-files`, `catch-all`.
 
 Keep (existence dependencies): `marker`, `text`, `interface`,
-`write-after-create` (no base to fold a modify onto until the creator lands),
-and `read-after-write` **narrowed to `creates ∩ reads`** (trim round 1:
-today's tier fires on `writes ∩ reads` including modifies of a shared test
-file — that is the same class as write-after-write and belongs to the fold
-path). **Delete** (write ordering and guesses): `write-after-write` and its
+`write-after-create` (no base to fold a modify onto until the creator lands;
+2 real edges in the corpus). **Delete** — including `read-after-write`
+(trim round 3: 0 edges under either mode across 97 plans; its honest
+residue, a `Test:` naming a file a sibling creates, is covered by
+`Depends-on` and ultraplan's retained test-import rule) — (write ordering and guesses): `write-after-write` and its
 `fold_eligible` pre-filter (the fold path owns same-file writes;
 non-text/symlink route to fallback at merge), `ambiguous-files` fan-in,
 `prose-reference` / `description-inferred`, `catch-all` (the `- catch-all:`
 Files label becomes a grammar violation with a did-you-mean), and the
-overlap→`interface` label promotion. **An `implementation` task with no
+overlap→`interface` label promotion. **A marked `**Type:** implementation` task with no
 parseable `Files:` paths becomes a `--check`/compile refusal** (grammar,
-alongside the glob refusal) — the deleted `ambiguous-files` tier was the only
+alongside the glob refusal; heuristic-classified tasks in unmarked
+pre-ultraplan plans are exempt — trim round 3, B11 — so the corpus pin's
+OK/fail set is unchanged) — the deleted `ambiguous-files` tier was the only
 thing serializing such a task, and a Files-less task is invisible to
 merge-time contention detection. `Files:` blocks otherwise stay required —
 reviewer-packet scope and the transparency render's *expected contention*
@@ -358,21 +407,23 @@ candidate. The `fully_overlapping` degrade (`mode: sequential` when every
 pair overlaps) goes with `dropped_pairs`; the single-task degrade trigger
 stays. `- none` under `Files:` on an `implementation` task is the same
 refusal as no paths.
-`assert_arm_identity` gains a `dag-only` predicate ("0 heuristic edges in
-the compile object") for Phase-2 cells.
+`assert_arm_identity`'s existing fold branch gains the check "every edge's
+`why` ∈ the kept set" for Phase-2 cells (a compiler-version check, not an
+arm check; no new named predicate).
 
 Pins: **corpus regression** — every archived plan under `docs/superpowers/plans/`
 (100 files at 0.2.14; `tests/test_all_plans_compile.py` is the existing
-seat) compiles with the same PLAN OK / fail set as at 0.2.14, and a recorded
-per-plan **edge multiset diff by why-label** is checked in with its
-**pre-registered answer** (measured at rev 3 over the 97 marked plans, all
-compiling in both modes: marker 180, interface 17, write-after-create 2,
-prose-reference 3 in 2 plans, read-after-write 0, ambiguous-files 0,
-catch-all 0; write-after-write 35 under `serialize`, 0 under `fold`; 20
-plans `mode: sequential` under fold) — so the expected diff is exactly
-"−3 prose-reference, plus any `sequential`-mode flips from the degrade
-deletion"; the makespan clause is dropped; the seven fixture repos'
-compiled shapes recorded and diffed.
+seat) compiles with the same PLAN OK / fail set as at 0.2.14 (the standing pin);
+the per-plan **edge multiset diff by why-label** is a **one-time migration
+reading** recorded under `evals/frontier/results/` (a 97-plan snapshot is
+not a permanent test) against its **pre-registered answer** (measured at
+rev 3 and re-verified at round 3 over the 97 marked plans, all compiling in
+both modes: marker 180, interface 17, write-after-create 2, prose-reference
+3 in 2 plans, read-after-write 0, ambiguous-files 0, catch-all 0;
+write-after-write 35 under `serialize`, 0 under `fold`; 20 plans `mode:
+sequential` under fold) — expected diff exactly "−3 prose-reference, plus
+any `sequential`-mode flips from the degrade deletion"; the seven fixture
+repos' compiled shapes recorded and diffed.
 
 ### 2b. Composition contracts — one additive marker, two consumers
 
@@ -391,13 +442,21 @@ Consumers:
    `contendedMerge` computes it from the wave's declared `files` overlap
    (the `fileSets` `contendedWave` already builds — declared overlap is what
    `Commutes:` is declared against) × each task's `commutes`, and appends
-   one **`judgmentCalls` string** per uncontracted multi-writer path (kind
-   *disagreement*; report-format's "new cases slot into an existing kind");
-   the residual manifest derives its row from `judgmentCalls` unchanged (zero
-   change to `residual_manifest.py`; no critic change). The kernel CLI
-   receives contracts as `cmd_fold --commutes <task>=<path,...>` authored
-   from the launch task object; the launch args and `redirect_args.py` carry
-   `commutes` per task. Trim round 1: **not** a `deferredVerification` ack — that would
+   one **`judgmentCalls` string** per uncontracted multi-writer path, in the
+   pinned shape `composition-unpinned: wave <n> <path> — writers <A,B,...>;
+   undeclared: <B,...>` (kind *disagreement*; report-format's "new cases
+   slot into an existing kind"; the render, the manifest row, and the
+   harvester's "rows → 0" read all key on that prefix). To tell writers from
+   readers the light launch task object gains one field, `writes`
+   (creates ∪ modifies; `catchAll` precedent) — `files` today includes
+   `Test:` reads. The residual manifest derives its row from `judgmentCalls`
+   unchanged (zero change to `residual_manifest.py`; no critic change). The
+   kernel CLI receives contracts as `fold`/`resolve --commutes
+   <task>=<path,...>` authored from the launch task object (launch args carry
+   `commutes` per task; redirect relaunches never fold — `resume` — so
+   `redirect_args.py` is untouched). "Both sides declared" for the hunk
+   header: the incoming task, and **every already-folded task whose
+   `diff_paths(base, head)` touches the path** (derivable from the log + git). Trim round 1: **not** a `deferredVerification` ack — that would
    force a fresh operator turn on every uncontracted fold (the standing
    grant covers `runtime`/`external` only) and non-registration multi-writer
    folds can never honestly declare `Commutes:`, so the ack would be
@@ -427,10 +486,15 @@ the sealed-plan route (existing), not new machinery.
   already the criterion for marking adversarial; one observable rule). Stated
   as an explicit ultraplan override of writing-plans' "complete code in
   every step" (the same mechanism as the header override).
-- **Word budget (the ratchet), pinned by a test** (`tests/test_skill_word_budget.py`,
-  `wc -w`-equivalent): ultraplan `SKILL.md` ≤ 3,400 words after the rewrite
-  (3,805 at 0.2.14 — a net cut, not a swap); ultrapowers `SKILL.md` ≤ 2,920
-  (2,888 today + the P6 line).
+- **Word budget as a plan acceptance number, not a committed test** (trim
+  round 3: a word-count test is a ratchet — the class the 0.1.0 subtraction
+  release deleted; no ledger evidence ties SKILL growth to a defect):
+  ultraplan `SKILL.md` ≤ 3,400 words after the rewrite (3,805 at 0.2.14 — a
+  net cut, checked in the PR); ultrapowers `SKILL.md` ≤ 2,920 (2,888 + the P6
+  line).
+- One sentence the rewrite must keep: with the compile-time pre-filter gone,
+  non-text (binary/symlink) same-file pairs run in parallel and always fall
+  back — **chain non-text same-file pairs with `Depends-on`**.
 - **Carried prose (held items from the 08-18 distill):** ultrapowers
   SKILL.md Step 1 — if the fresh-worktree baseline is red for reasons
   unrelated to the plan, repair base first and re-baseline rather than
@@ -489,10 +553,12 @@ running interpreter — never 139); hunk derive/splice **round-trip property**
 `strip_markers` drops marker lines and `deleted`-segment lines (the kernel's
 own merged content) + fuzzed replies (missing/extra hunk file, exact marker
 forms, empty hunk without `delete`) → named rejections; incremental fold
-pins: n writers on one path → exactly n−1 dispatches, `remaining`/`complete`
-protocol, multi-open-entry continuation rule, log-vs-list disagreement
-refusal, re-issued `resolve` → stale refusal (idempotency), self-checks at
-completion via `resolve` exit 3; `dispatchable` has no size term;
+pins: n writers on one path → exactly n−1 dispatches, the §1b protocol
+table (every stdout shape and exit), park pre-scan, `waiting` on a
+multi-open stop, log-vs-list disagreement refusal, re-issued `resolve` →
+stale refusal (idempotency), `materialize` incomplete refusal, self-checks
+in the completing call (exit 3), EOF `added both` newline case,
+marker-shaped-content park; `dispatchable` has no size term;
 `_renarration_dispatchable` deleted (its tests removed, not skipped); sim scenarios in `tests/frontier_merge.mjs` (sentinel): work-list
 loop to `complete`, REJECTED → retry → park, BLOCKED → fallback, stale →
 fallback, budget exhaustion mid-list, count-authority + selfChecks guards on
@@ -502,12 +568,13 @@ mechanics cell recorded under `evals/frontier/results/`; harvester fields
 pinned by fixture; T15-transcript token-share reading recorded before the
 build (plan task 1).
 Phase 2: corpus regression pin; compiler tests rewritten to the kept tiers
-(deleted-tier tests removed, not skipped; `serialize` legacy set pinned
-byte-identical); Files-less refusal + `catch-all` label refusal pinned;
-`Commutes:` grammar + two consumers pinned; `judgmentCalls` composition
+(deleted-tier tests removed, not skipped; `serialize` = write-after-write
+pinned); marked-implementation Files-less refusal + `catch-all` label
+refusal pinned; `Commutes:` grammar + two consumers + `writes` launch field
++ the `composition-unpinned:` string shape pinned; `judgmentCalls` composition
 string + manifest-row derivation pin; `--commutes` CLI + args plumbing;
-`fully_overlapping` degrade deletion; `dag-only` compiler-version check (not
-an arm check); word-budget test;
+`fully_overlapping` degrade deletion; kept-set edge check in the fold
+identity branch; migration reading recorded;
 rubric two-leg pin; ultraplan validator; T15 rig mechanics re-run.
 Cross-phase: the Phase-2 T15 rig run is the integration acceptance.
 
@@ -526,8 +593,9 @@ Phase 1 → 0.3.0 (architectural: cap retired, brief shape changed). Phase 2 →
 ## Adds / Removes (author disclosure for trim review)
 
 Adds (Phase 1): hunks derivation + splice in `fold_wave.py`, `CONTEXT_LINES`,
-per-hunk reply files, incremental fold protocol (`remaining`/`complete`),
-big-stack fold thread, `hunksFile`/`hunkCount` fields, rewritten
+per-hunk reply files, incremental fold protocol (`remaining`/`complete`/
+`waiting`, park pre-scan, materialize completeness refusal), big-stack fold
+thread with a fixed recursion limit, `fold_stats.json`, `hunksFile`/`hunkCount` fields, rewritten
 `RESOLVER_PROMPT` + STEP + `FOLD_SCHEMA` fields, work-list resolver loop,
 `contend-big` fixture, two harvester fields.
 Removes (Phase 1): `RESOLVER_LINE_CAP` and every size term (`dispatchable`,
@@ -536,13 +604,15 @@ re-narration shape and its `attempt ≤ 2` budget, the `_touched_at`/epoch
 re-narrate *response* to staleness (the 4-line epoch refusal itself is
 kept as the idempotency guard), the "fold everything then narrate" shape. (Rev 1's `KERNEL_LINE_CEILING` deleted at trim review.)
 Adds (Phase 2): `Commutes:` marker + two consumers (hunk-header contract
-line via `--commutes`; engine-authored `judgmentCalls` string),  Files-less/`catch-all` grammar refusals, `dag-only`
+line via `--commutes`; engine-authored `judgmentCalls` string) + the
+`writes` launch field,  Files-less/`catch-all` grammar refusals, `dag-only`
 arm identity, corpus edge-diff pin, ultraplan body-relaxation rule (one
 exception), P6 prose line.
 Removes (Phase 2): compiler tiers `write-after-write` (+ pre-filter),
 `ambiguous-files`, `prose-reference`/`description-inferred`, `catch-all`,
 overlap→interface promotion, `read-after-write`'s modify half, the
-`fully_overlapping` degrade; ultraplan
+`fully_overlapping` degrade, `read-after-write`, `_recursion_headroom`
+sizing; ultraplan
 phantom-edge rules; the agent-based waves-file preflight (+ 4 sim
 scenarios); ~1k lines of compiler self-defense expected to go with them;
 ultraplan SKILL.md −400 words net.
@@ -611,6 +681,35 @@ label); 4 ADOPTED (exam red on base); 5 ADOPTED (budgets pinned by a test;
 count-authority guards on every reply, multi-open continuation rule,
 monotonic `<i>`, `replyDir`, `- none` refusal, `dag-only` = compiler check,
 FOLD_LOG.md in scope.
+
+### Round 3 (fresh-context reviewer, buildability focus; grade rev 3: Phase 1 **flat**, Phase 2 **down**, Phase 3 **flat**; overall **down, conditional**; "not plan-ready for §1a/§1b" — LOOP VERDICT continue)
+
+Round-2 adoption check: B5–B8 and trims 1–9 landed coherently; four stale
+spots fixed in rev 4 — the "frozen periphery untouched" claim now names the
+compiler-vocabulary change and its licensing measurement; `selfChecks`
+guard re-scoped to the completing reply; `frontierEntry.selfChecks` /
+`foldCliWallTimeSec` sourcing stated; `redirect_args.py` struck (redirects
+never fold).
+
+Blockers — all resolved: **B9** EOF `added both` `""` moves to trailing
+context; `added both` segments are otherwise reply-owned (ADOPTED); **B10**
+`materialize` completeness refusal (ADOPTED); **B11** Files-less refusal
+scoped to marked implementation tasks (ADOPTED).
+
+Trims: T16 ADOPTED (`read-after-write` deleted — 0 edges); T17 ADOPTED
+(park pre-scan); T18 ADOPTED (fixed thread recursion limit, sizing retired);
+T19 ADOPTED (budgets = plan acceptance numbers, no committed test); T20
+ADOPTED (edge diff = one-time migration reading); T21 ADOPTED (kept-set
+check in the existing fold identity branch); T22 ADOPTED; T23 ADOPTED
+(floors = counted condition).
+
+Under-specification (buildability) fixes: U1/U2 → the §1b protocol table
+(every call, stdout shape, exit; `complete` derived, never recorded); U3 →
+marker-shaped-content park + kinds; U4 → frontier side = already-folded
+tasks touching the path; U5 → `fold_stats.json`, `wallSec` summed per id,
+DAG carried into the bundle; U6 → pinned `composition-unpinned:` string +
+`writes` launch field; U7 → "chain non-text same-file pairs" sentence; U8 →
+block-only spans; U9 → retry against the same hunks file, `reply-<i>-2/`.
 
 Under-specification fixes (round 1): per-hunk reply files replace the delimited
 grammar (bijective via `split_lines`, no escaping); STEP + `FOLD_SCHEMA`
