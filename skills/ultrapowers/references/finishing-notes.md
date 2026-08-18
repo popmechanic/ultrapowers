@@ -91,10 +91,12 @@ auto-judgment. Every other row derives with an empty disposition slot for
 the orchestrator or operator to fill with one of:
 
 - `fixed` — verified closed (say how in the row text).
-- `acked` — operator acknowledged; the required action is named in the row
-  text. Anything beyond already-authorized tooling lands here — the
-  manifest authorizes no new autonomous actions.
-- `filed:<ref>` — stays open under a tracking reference.
+- `acked` or `acked:<annotation>` — operator acknowledged; the required
+  action is named in the row text or the annotation. Anything beyond
+  already-authorized tooling lands here — the manifest authorizes no new
+  autonomous actions.
+- `filed:<ref>` or `filed:<ref> <note>` — stays open under a tracking
+  reference (a free-text note may follow the ref).
 - `waived:<reason>` — stays open with the reason stated.
 
 (Supersedes the old per-item `closed | still-open | needs-human` triple:

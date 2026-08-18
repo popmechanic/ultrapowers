@@ -18,7 +18,8 @@ Row grammar (one line per row, exactly; anything else is commentary):
   - <id> [<family>] <text> — disposition: <value>
 with <id> = <family>-<12-hex sha256 of the normalized text> (byte-identical
 duplicates within one report tiebreak -2, -3, ...) and <value> one of
-fixed | acked | filed:<ref> | waived:<reason>.
+fixed | acked[:<annotation>] | filed:<ref>[ <note>] | waived:<reason>
+(an opened annotation slot must be non-empty; #158).
 
 Canonical manifest location: <runDir>/residual-manifest.md, beside
 report.json. NON-FROZEN and advisory-by-construction: a layer above the
@@ -44,7 +45,8 @@ STRUCTURAL_SUFFIX = (" [structural false-green: sandbox could not "
 ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
                  r"\[(?P<family>[A-Za-z]+)\] "
                  r"(?P<text>.*) — disposition:(?P<value>.*)$")
-DISPOSITION = re.compile(r"^(?:fixed|acked|filed:\S+|waived:\S.*)$")
+DISPOSITION = re.compile(
+    r"^(?:fixed|acked(?::\S.*)?|filed:\S+(?:\s.*)?|waived:\S.*)$")
 
 
 def die(msg):
@@ -149,8 +151,8 @@ def derive(report_paths, ack_list):
 def emit(rows, sources):
     lines = ["# Residual manifest", "",
              "<!-- derived from: " + ", ".join(sources) + " -->",
-             "<!-- disposition one of: fixed | acked | filed:<ref> | "
-             "waived:<reason> -->", ""]
+             "<!-- disposition one of: fixed | acked[:<annotation>] | "
+             "filed:<ref>[ <note>] | waived:<reason> -->", ""]
     if not rows:
         lines.append("No residual findings.")
     for rid, (family, text, disp) in rows.items():
