@@ -1372,3 +1372,60 @@ def test_bundle_carries_plural_transcript_dirs(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["transcriptDirs"] == [str(d1), str(d2)]
     assert bundle["transcriptDir"] == str(d2)          # singular keeps "last dir"
+
+
+# --- #160(iii): the approved-terminus tail is bounded (mode-(b) successor).
+
+def _approve_ok():
+    return _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+        "text": json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})}]}])
+
+
+def test_approved_tail_stops_at_first_operator_turn_inclusive():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "text", "text": "Merged; gate green, lock released."}]),
+            _rec("user", [{"type": "text", "text": "what should we do next about the wave?"}]),
+            _rec("assistant", [{"type": "text", "text": "Next wave: regenerate the gate brief."}]),
+            _rec("user", [{"type": "text", "text": "begin the wave work now"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "what should we do next" in out          # first operator turn kept
+    assert "regenerate the gate brief" not in out    # everything after it dropped
+    assert "begin the wave work" not in out
+
+
+def test_approved_tail_ignores_meta_and_notification_user_records():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            dict(_rec("user", [{"type": "text", "text": "Base directory for this skill: /x/gate"}]), isMeta=True),
+            _rec("user", "<task-notification>agent finished the wave</task-notification>"),
+            _rec("user", [{"type": "text", "text": "<local-command-stdout>gate</local-command-stdout>"}]),
+            _rec("user", [{"type": "text", "text": "[Request interrupted by user] gate"}]),
+            _rec("user", [{"type": "text", "text": "yes - approved, merge the wave"}]),
+            _rec("user", [{"type": "text", "text": "now something unrelated about the gate"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "yes - approved, merge the wave" in out
+    assert "something unrelated" not in out
+    # (the per-record filter's labeling of meta user records is unchanged
+    # here — only the tail BOUND ignores them; #137 lineage, out of scope)
+
+
+def test_approved_tail_stops_before_finishing_handoff():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "tool_use", "name": "Skill",
+                                "input": {"skill": "superpowers:finishing-a-development-branch"}}]),
+            _rec("user", [{"type": "text", "text": "merge locally, the wave is done"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "merge locally" not in out
+
+
+def test_approved_tail_without_bound_runs_to_end():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("assistant", [{"type": "text", "text": "gate summary line one"}]),
+            _rec("assistant", [{"type": "text", "text": "gate summary line two"}])]
+    out = h.slice_transcript(recs, terminus="approved")
+    assert "line one" in out and "line two" in out
+
+
+def test_non_approved_terminus_unaffected_by_tail_bound():
+    recs = [_wf_launch("S1"), _approve_ok(),
+            _rec("user", [{"type": "text", "text": "yes - approved, merge the wave"}])]
+    assert "approved, merge" not in h.slice_transcript(recs, terminus="NEEDS_ACK")
