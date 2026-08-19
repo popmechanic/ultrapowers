@@ -149,3 +149,48 @@ def test_prepare_cell_runs_the_five_calls_in_order(tmp_path, monkeypatch):
     assert calls[3][1] == "ENGINE_WT"       # engine threads from prepare_engine
     assert calls[4][1] == (tmp_path / "wd").parent   # config keyed to workdir parent
     assert (workdir, baseline, env) == (tmp_path / "wd", "BASE", {"E": "1"})
+
+
+def test_persist_cell_copies_run_dir_transcript_and_sidecar(tmp_path):
+    """#165: the cell's evidence leaves the OS temp dir. The run dir (with a
+    frontier/ reply dir), the session transcript, its agent-*.jsonl sidecar and
+    the headless result all land under <results>/cells/<cell-id>/, and the
+    returned path is what main() records on the row as cellDir."""
+    workdir = tmp_path / "repo"
+    run = workdir / ".claude/ultrapowers/run-20260819-010101"
+    (run / "frontier/reply-1-1").mkdir(parents=True)
+    (run / "frontier/reply-1-1/h1.txt").write_text("line\n")
+    (run / "receipt.json").write_text("{}")
+    (workdir / ".headless-result.json").write_text('{"session_id": "s1"}')
+    cfg = tmp_path / "claude-config/projects/slug"
+    (cfg / "s1").mkdir(parents=True)
+    transcript = cfg / "s1.jsonl"
+    transcript.write_text("{}\n")
+    (cfg / "s1/agent-abc.jsonl").write_text("{}\n")
+    plan = {"fixture": "contend-big", "engine": "B", "engineRef": "deadbeef",
+            "armOverlap": "fold", "rowsPath": str(tmp_path / "results/runs.jsonl")}
+    dest = Path(ab_runner.persist_cell(workdir, transcript, plan,
+                                       "2026-08-19T10:11:12.000000+00:00"))
+    assert dest == tmp_path / "results/cells/20260819101112-contend-big-B-fold"
+    assert (dest / "ultrapowers/run-20260819-010101/frontier/reply-1-1/h1.txt").read_text() == "line\n"
+    assert (dest / "ultrapowers/run-20260819-010101/receipt.json").exists()
+    assert (dest / "transcript/s1.jsonl").exists()
+    assert (dest / "transcript/s1/agent-abc.jsonl").exists()
+    assert (dest / "headless-result.json").exists()
+    meta = json.loads((dest / "cell.json").read_text())
+    assert meta["cellId"] == "20260819101112-contend-big-B-fold"
+    assert meta["copyErrors"] == []
+    assert meta["engineRef"] == "deadbeef"
+
+
+def test_persist_cell_survives_missing_evidence(tmp_path):
+    """A crashed cell with no run dir and a raw-result 'transcript' still
+    persists what exists and records no copy errors (missing is not an error)."""
+    workdir = tmp_path / "repo"
+    workdir.mkdir()
+    plan = {"fixture": "wide", "engine": "A", "engineRef": "x",
+            "armOverlap": "serialize", "rowsPath": str(tmp_path / "results/runs.jsonl")}
+    dest = Path(ab_runner.persist_cell(workdir, workdir / ".headless-result.json", plan,
+                                       "2026-08-19T00:00:00Z"))
+    assert (dest / "cell.json").exists()
+    assert json.loads((dest / "cell.json").read_text())["copyErrors"] == []

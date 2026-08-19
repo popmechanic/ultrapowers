@@ -20,6 +20,10 @@ Fixture layout consumed:  evals/fixtures/<name>/plan.md
                           evals/fixtures/<name>/acceptance/[<seal-id>/ | test_*.py]
 Results layout produced:  evals/results/runs.jsonl   (one row per run)
                           evals/results/diffs/<fixture>-<engine>.diff
+                          evals/results/cells/<cell-id>/   (#165: the cell's
+                            run dir, transcripts and headless result, copied
+                            out of the OS temp dir so the resolver transcripts
+                            survive for later grading/token reads; gitignored)
 """
 import argparse
 import glob
@@ -647,6 +651,52 @@ def save_diff(workdir, plan):
     return head
 
 
+def persist_cell(workdir, transcript, plan, started_at, result_path=None):
+    """#165: copy the cell's durable evidence out of the OS temp dir into
+    evals/results/cells/<cell-id>/ and return that path (a str, recorded on
+    the row as `cellDir`). What is copied: `<workdir>/.claude/ultrapowers/`
+    (every run-*/ — receipts, frontier/ with its hunks + reply-<i>-<m>/ dirs,
+    fold_stats.json), the session transcript `<session>.jsonl` plus its
+    sidecar dir `<session>/` (the workflow engine's agent-*.jsonl), and the
+    headless result JSON. Nothing from the throwaway CLAUDE_CONFIG_DIR other
+    than the transcript is copied (credentials live elsewhere in it and are
+    scrubbed by the caller). Copy failures are recorded, never fatal: a cell
+    whose evidence failed to persist still harvests its row."""
+    workdir = Path(workdir)
+    transcript = Path(transcript)
+    stamp = "".join(ch for ch in started_at[:19] if ch.isdigit())
+    cell_id = "%s-%s-%s-%s" % (stamp, plan["fixture"], plan["engine"],
+                               plan.get("armOverlap") or "serialize")
+    dest = Path(plan["rowsPath"]).parent / "cells" / cell_id
+    dest.mkdir(parents=True, exist_ok=True)
+    errors = []
+    copies = [(workdir / ".claude/ultrapowers", dest / "ultrapowers")]
+    if transcript.exists():
+        copies.append((transcript, dest / "transcript" / transcript.name))
+    sidecar = transcript.with_suffix("")
+    if sidecar.is_dir():
+        copies.append((sidecar, dest / "transcript" / sidecar.name))
+    if result_path is None:
+        result_path = workdir / ".headless-result.json"
+    if Path(result_path).exists():
+        copies.append((Path(result_path), dest / "headless-result.json"))
+    for src, dst in copies:
+        try:
+            if src.is_dir():
+                shutil.copytree(src, dst, dirs_exist_ok=True, symlinks=True)
+            elif src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+        except (OSError, shutil.Error) as exc:
+            errors.append("%s: %s" % (src, exc))
+    (dest / "cell.json").write_text(json.dumps({
+        "cellId": cell_id, "startedAt": started_at, "fixture": plan["fixture"],
+        "engine": plan["engine"], "engineRef": plan["engineRef"],
+        "armOverlap": plan.get("armOverlap"), "workdir": str(workdir),
+        "transcript": str(transcript), "copyErrors": errors}, indent=2) + "\n")
+    return str(dest)
+
+
 def _append_row(plan, row):
     dest = Path(plan["rowsPath"])
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -764,6 +814,9 @@ def main():
             row = harvest_row(transcript, started, round(time.monotonic() - t0, 1))
             counters = {"gateVerdict": "crashed", "redirectRounds": 0, "falseBlocks": 0}
             row["crashDetail"] = str(exc)
+        # #165: the OS temp dir is not durable — persist the run dir, the
+        # transcripts and the headless result before anything else happens.
+        row["cellDir"] = persist_cell(workdir, transcript, plan, started)
     finally:  # the token never outlives the cell, crash or probe-abort included
         scrub_credentials(env)
 
