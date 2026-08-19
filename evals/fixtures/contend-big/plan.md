@@ -21,10 +21,14 @@
 - Create: `app/validation.py`
 - Create: `app/schema.py`
 - Create: `app/rules.py`
+- Create: `app/profiles.py`
+- Create: `app/coerce.py`
 - Modify: `app/registry.py`
 - Test: `tests/test_validation.py`
 - Test: `tests/test_schema.py`
 - Test: `tests/test_rules.py`
+- Test: `tests/test_profiles.py`
+- Test: `tests/test_coerce.py`
 
 - [ ] **Step 1a: Write failing tests** in `tests/test_schema.py` for `app/schema.py` — the declarative toolkit `app/validation.py` builds on. One test function per bullet:
   - `ERROR_CATALOG` is a dict with **exactly** the keys `"missing"`, `"numeric"`, `"non_negative"`, `"max"`, `"non_empty"`, `"type_str"`, each mapping to a `str.format` template.
@@ -100,9 +104,36 @@
   - `explain_config(config)` renders exactly `"validation config:\n  required: <comma-joined required_fields>\n  max_amount: <value>"` from `config["validation_required_fields"]` / `config["validation_max_amount"]` — pin the **literal** expected string for two different configs (never rebuild it with a format expression mirroring the implementation).
   - That's 21 cases across the cases above; write one test function per bullet (or group tightly related boundary pairs into one function) rather than one giant test.
 
-- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_schema.py tests/test_rules.py tests/test_validation.py -v` → FAIL (none of the modules exist).
+- [ ] **Step 1c: Write failing tests** in `tests/test_profiles.py` for `app/profiles.py` — a named-profile layer over `app/schema.py` specs (it imports `app.schema` only; pure, no module state beyond the `PROFILES` constant). One test function per bullet:
+  - `ProfileError` is an `Exception` subclass, distinct from `schema.SchemaError`.
+  - `PROFILES` is exactly `{"record": {"name": {"required": True, "type": "str", "non_empty": True}, "amount": {"required": True, "type": "number", "max": 100000}}, "draft": {"name": {"type": "str"}}, "import": {"name": {"required": True, "type": "str", "non_empty": True}, "amount": {"type": "number"}}}` — pin the whole dict.
+  - `get_profile(name)` returns a **deep copy** of the named spec (mutating a returned rules dict leaves `PROFILES` untouched — assert); an unknown name raises `ProfileError` naming it.
+  - `validate_profile(fields, name)` compiles via `schema.compile_spec(get_profile(name))` and returns the validator's result — pin the delegation with a monkeypatched recorder on `schema.compile_spec` (assert the exact spec argument), then end-to-end: a passing `fields` dict for `"record"` comes back stripped-and-copied per the compiled-validator contract, and `validate_profile({}, "record")` raises `schema.SchemaError` with exactly `"missing field: name"`.
+  - `merge_profiles(a, b)` returns `schema.merge_specs` of the two named specs (recorder pin on the argument pair) — assert `merge_profiles("draft", "import")` equals exactly the `"import"` spec (the shared `type: "str"` merges silently), and that `PROFILES` is unmutated.
+  - `describe_profile(name)` returns exactly `schema.describe_spec(get_profile(name))` — pin the literal for `"draft"`: `"name: type=str"`.
+  - `compare_profiles(a, b)` returns `schema.diff_specs` of the two named specs — assert `compare_profiles("draft", "import")` is exactly `{"added": ["amount"], "removed": [], "changed": ["name"]}`.
+  - `profile_from_config(config, name)` derives a spec from every config key prefixed `"profile_" + name + "_"` via `schema.spec_from_config` (recorder pin on the prefix argument) — end-to-end: `{"profile_x_name": {"required": True}, "other": 1}` yields a spec whose compiled validator raises exactly `"missing field: name"` on `{}`.
+  - `profile_summary(name)` returns exactly `"<name>: " + schema.spec_summary_line(get_profile(name))` — pin the literal `"draft: 1 fields, 1 rules"`.
+  - `validate_all_profiles(fields)` returns a dict mapping **every** profile name to `schema.validate_collect(spec, fields)` — assert the exact dict for `fields={}`: `{"draft": [], "import": ["missing field: name"], "record": ["missing field: name", "missing field: amount"]}`.
+  - `strictest(names)` returns the name whose spec carries the most rules (total rule-dict entries across fields); ties break alphabetically; an empty `names` raises `ProfileError`. Assert `strictest(["draft", "import"]) == "import"` and `strictest(["record", "import", "draft"]) == "record"`.
+  - That's 11 test functions; one per bullet.
 
-- [ ] **Step 3: Implement `app/schema.py`, then `app/rules.py`, then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, `SchemaError`, `compile_spec`, `merge_specs`, `describe_spec`, `diff_specs`, `spec_from_config`, `spec_to_config`, `spec_summary_line`, `validate_collect`, per Step 1a exactly; `rules`: `RuleError`, `rule`, `check`, `all_of`, `any_of`, `negate`, `when`, `explain`, `apply_rules`, `first_failure`, `explain_failures`, `describe_rules`, `BUILTINS`, `parse_rule`, `parse_rules`, per Step 1a-bis exactly (every predicate that exists in `schema` is called through `app.schema` — no reimplementation); `validation`: `ValidationError`, `validate_fields`, `validate_many`, `error_code`, `explain_config`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`).
+- [ ] **Step 1d: Write failing tests** in `tests/test_coerce.py` for `app/coerce.py` — a pre-validation coercion layer (imports `app.schema` only). One test function per bullet:
+  - `CoerceError` is an `Exception` subclass, distinct from `schema.SchemaError`.
+  - `COERCE_CATALOG` is exactly `{"amount": "cannot coerce {field} to a number (got {value!r})", "flag": "cannot coerce {field} to a flag (got {value!r})"}` — pin the whole dict; every `CoerceError` message is built from it (no other message literals in the module).
+  - `parse_amount("3", field="amount")` returns `3` and `type(...) is int`; `"3.5"` returns `3.5`; `"  7 "` returns `7` (stripped); a non-str number (`4`, `3.5`) passes through unchanged; `True`/`False` raise `CoerceError` (bools are not amounts); `"abc"`, `""`, `None`, `"nan"`, `"inf"` all raise.
+  - every successful `parse_amount` result satisfies `schema.is_valid_amount` — pin the delegation: monkeypatch `schema.is_valid_amount` to always return `False` and assert `parse_amount("3", field="a")` now raises `CoerceError`.
+  - exact message: `str(err)` for `parse_amount("abc", field="amount")` is exactly `"cannot coerce amount to a number (got 'abc')"`.
+  - `parse_flag(value, field)`: `True` for `"true"`, `"yes"`, `"1"`, `"on"` (case-insensitive, stripped — assert `"  YES "`); `False` for `"false"`, `"no"`, `"0"`, `"off"`; a real `bool` passes through unchanged; anything else raises `CoerceError` — `str(err)` for `parse_flag("maybe", field="active")` is exactly `"cannot coerce active to a flag (got 'maybe')"`.
+  - `coerce_fields(fields, spec)`: for every spec field whose rules include `"type": "number"` and whose value in `fields` is a `str`, the value is replaced with `parse_amount(value, field=field)`; str-typed and un-specced fields pass through untouched; non-str numbers untouched; returns a **new** dict — the input is never mutated (assert).
+  - `coerce_report(fields, spec)` returns a `(coerced, errors)` pair: `errors` is a list of `(field, str(err))` tuples for the failed coercions in **spec insertion order**, each failed field copied through unchanged in `coerced` — assert the exact pair for a fixture with two failing and one succeeding coercion.
+  - end-to-end with `schema`: under `spec = {"amount": {"required": True, "type": "number"}}`, `compile_spec(spec)`'s validator accepts `coerce_fields({"amount": "42"}, spec)` but raises exactly `"field amount must be numeric (got str)"` on the uncoerced dict — pin both.
+  - `describe_coercions(spec)` renders one line per number-typed field in **sorted** order, each exactly `"<field>: number"`; a spec with none returns exactly `"(no coercions)"` — pin the literal for `{"amount": {"type": "number"}, "name": {"type": "str"}}`: `"amount: number"`.
+  - That's 10 test functions; one per bullet.
+
+- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_schema.py tests/test_rules.py tests/test_validation.py tests/test_profiles.py tests/test_coerce.py -v` → FAIL (none of the modules exist).
+
+- [ ] **Step 3: Implement `app/schema.py`, then `app/rules.py`, then `app/validation.py`** — `schema`: `ERROR_CATALOG`, `format_error`, `check_required`, `is_valid_amount`, `is_non_empty_str`, `SchemaError`, `compile_spec`, `merge_specs`, `describe_spec`, `diff_specs`, `spec_from_config`, `spec_to_config`, `spec_summary_line`, `validate_collect`, per Step 1a exactly; `rules`: `RuleError`, `rule`, `check`, `all_of`, `any_of`, `negate`, `when`, `explain`, `apply_rules`, `first_failure`, `explain_failures`, `describe_rules`, `BUILTINS`, `parse_rule`, `parse_rules`, per Step 1a-bis exactly (every predicate that exists in `schema` is called through `app.schema` — no reimplementation); `validation`: `ValidationError`, `validate_fields`, `validate_many`, `error_code`, `explain_config`, `pre_create_hook`, per Step 1b exactly (check `required_fields` presence first, in order, via `schema.check_required`; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller; **no error-message string literals in `validation.py`** — every message is built by `schema.format_error`). Then implement `app/profiles.py` — `ProfileError`, `PROFILES`, `get_profile`, `validate_profile`, `merge_profiles`, `describe_profile`, `compare_profiles`, `profile_from_config`, `profile_summary`, `validate_all_profiles`, `strictest`, per Step 1c exactly (every spec operation goes through `app.schema` — no reimplementation) — and `app/coerce.py` — `CoerceError`, `COERCE_CATALOG`, `parse_amount`, `parse_flag`, `coerce_fields`, `coerce_report`, `describe_coercions`, per Step 1d exactly. Neither module touches `app/registry.py` (library layers only).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys (do not reorder or reformat the existing lines): `"validation_required_fields": ["name", "amount"]` and `"validation_max_amount": 100000`.
@@ -112,12 +143,12 @@
     PRE_CREATE_HOOKS.append(validation.pre_create_hook)
     ```
 
-- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_schema.py tests/test_rules.py tests/test_validation.py tests/ -v` → PASS, including the pre-existing `tests/test_registry.py`.
+- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_schema.py tests/test_rules.py tests/test_validation.py tests/test_profiles.py tests/test_coerce.py tests/ -v` → PASS, including the pre-existing `tests/test_registry.py`.
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app/validation.py app/schema.py app/rules.py app/registry.py tests/test_validation.py tests/test_schema.py tests/test_rules.py
+git add app/validation.py app/schema.py app/rules.py app/profiles.py app/coerce.py app/registry.py tests/test_validation.py tests/test_schema.py tests/test_rules.py tests/test_profiles.py tests/test_coerce.py
 git commit -m "feat(eventboard): input-validation layer + schema toolkit on record creation"
 ```
 
@@ -131,9 +162,13 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
 **Files:**
 - Create: `app/export.py`
 - Create: `app/tabular.py`
+- Create: `app/colspec.py`
+- Create: `app/report.py`
 - Modify: `app/registry.py`
 - Test: `tests/test_export.py`
 - Test: `tests/test_tabular.py`
+- Test: `tests/test_colspec.py`
+- Test: `tests/test_report.py`
 
 - [ ] **Step 1a: Write failing tests** in `tests/test_tabular.py` for `app/tabular.py` — the column-model toolkit `app/export.py` builds on. One test function per bullet:
   - `columns([])` returns `[]`; `columns(records)` returns the **sorted union** of every key across all records (records need not share keys — assert with two records whose key sets differ).
@@ -168,9 +203,34 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - `summary_line(records)` returns exactly `"<N> records, <M> columns"` with `M` from `tabular.columns` (assert the literal for a two-record unequal-keys fixture, and `"0 records, 0 columns"` for `[]`).
   - Add single-record (n=1) coverage for all five `FORMATS` **plus `to_html`** — the degenerate case the header/width logic handles differently from n=0 and n>=2.
 
-- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py tests/test_tabular.py -v` → FAIL.
+- [ ] **Step 1c: Write failing tests** in `tests/test_colspec.py` for `app/colspec.py` — a column-projection layer (imports `app.tabular` only; pure). One test function per bullet:
+  - `ColspecError` is an `Exception` subclass.
+  - `parse_colspec("a,b:B,c")` returns exactly `[("a", "a"), ("b", "B"), ("c", "c")]` — `(source, header)` pairs, a bare token using its own name as header; whitespace around tokens and around the `:` is stripped (assert `"a , b : B"`); an empty string raises `ColspecError`; an empty token (`"a,,b"`) raises; a token with more than one `:` raises.
+  - a duplicate **source** (`"a,a:A"`) raises `ColspecError` naming `"a"`; a duplicate **header** (`"a:X,b:X"`) raises naming `"X"`.
+  - `project(records, pairs)` returns a **new** list of dicts, one per record in input order, whose keys are the headers in pair order and whose values come from the source fields — a source absent from a record yields `None`. Assert exactly `[{"a": 1, "B": None, "c": None}, {"a": None, "B": 2, "c": None}]` for `[{"a": 1, "x": 9}, {"b": 2}]` under `parse_colspec("a,b:B,c")`; the input records are never mutated.
+  - `available(records, pairs)` returns a `(present, missing)` pair of **sorted** source-name lists split against `tabular.columns(records)` — pin the delegation with a monkeypatched recorder on `tabular.columns`, and assert exactly `(["a", "b"], ["c"])` for the fixture above.
+  - `auto_colspec(records)` returns exactly `[(c, c) for c in tabular.columns(records)]` — assert `[("a", "a"), ("b", "b"), ("x", "x")]` for the fixture above.
+  - `header_row(pairs)` returns exactly the headers in order: `["a", "B", "c"]`; `rename_map(pairs)` returns exactly the `{source: header}` entries **only** for pairs that rename: `{"b": "B"}`.
+  - `select(records, sources)` keeps only the named source fields (present ones; order-preserving new dicts) and `drop(records, sources)` removes them — assert the exact lists for the fixture above and that inputs are unmutated; both raise `ColspecError` on an empty `sources` list.
+  - `sanitize_headers(pairs)` returns a new pairs list with every header passed through `tabular.sanitize_flat` (recorder pin; a header containing a tab renders with a space; clean pairs come back equal).
+  - `describe_colspec(pairs)` renders one line per pair in order, each exactly `"<header> <- <source>"`; `describe_colspec([])` returns exactly `"(no columns)"` — pin the three-line literal for `parse_colspec("a,b:B,c")`.
+  - That's 10 test functions; one per bullet.
 
-- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`/`pad`/`sanitize_flat`/`escape_html`/`truncate`/`wrap`/`fit`/`render_row`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `to_tsv`, `to_html`, `parse_csv`, `FORMATS`, `EXTRA_FORMATS`, `render`, `render_any`, `summary_line`, per Step 1's contracts exactly. `to_csv`, `to_markdown`, and `to_html` must build their column model and cells through `tabular` (no duplicated key-union, escaping, or str() logic in `export.py`).
+- [ ] **Step 1d: Write failing tests** in `tests/test_report.py` for `app/report.py` — a multi-section report composer (imports `app.export` and `app.colspec` only). One test function per bullet:
+  - `ReportError` is an `Exception` subclass.
+  - `section(title, records, fmt="md")` returns exactly `{"title": title, "records": records, "fmt": fmt}`; an empty or whitespace-only title raises `ReportError`; a fmt in neither `export.FORMATS` nor `export.EXTRA_FORMATS` raises `ReportError` naming it (`"html"` is accepted, `"xml"` raises).
+  - `render_section(sec)` returns exactly `"## " + title + "\n\n" + export.render_any(records, fmt)` — pin the delegation with a monkeypatched recorder on `export.render_any`; a section with **empty** records returns exactly `"## <title>\n\n(no records)"` and `render_any` is **not** called (assert via the recorder).
+  - `render_report(title, sections)` returns exactly `"# " + title + "\n\n"` + the rendered sections joined by `"\n\n"`; with an empty sections list it returns exactly `"# <title>\n\n(empty report)"`. Assert the full multi-line value for a two-section fixture — pinned as a **literal string** in the test, never rebuilt by calling `render_section` in the test (a derived expected value is a tautology).
+  - duplicate section titles raise `ReportError` naming the title — from **both** `render_report` and `toc` (a shared check; assert both raise).
+  - `toc(sections)` returns exactly the title list in order; `record_counts(sections)` returns exactly `{title: len(records)}`.
+  - `summary(sections)` returns exactly `"<S> sections, <R> records"` (R = total across sections) — pin the literal `"2 sections, 3 records"` for the fixture; `summary([])` returns exactly `"0 sections, 0 records"`.
+  - `render_index(sections)` renders one line per section in order, 1-based, each exactly `"<i>. <title> (<n> records)"`; `render_index([])` returns exactly `"(empty report)"` — pin the two-line literal.
+  - `projected_section(title, records, pairs, fmt="md")` builds `section(title, colspec.project(records, pairs), fmt)` — recorder pin on `colspec.project`; end-to-end: `render_section(projected_section("T", [{"a": 1, "b": 2}], colspec.parse_colspec("a:A"), "csv"))` is exactly `"## T\n\nA\n1"`.
+  - That's 9 test functions; one per bullet.
+
+- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py -v` → FAIL.
+
+- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`/`pad`/`sanitize_flat`/`escape_html`/`truncate`/`wrap`/`fit`/`render_row`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `to_tsv`, `to_html`, `parse_csv`, `FORMATS`, `EXTRA_FORMATS`, `render`, `render_any`, `summary_line`, per Step 1's contracts exactly. `to_csv`, `to_markdown`, and `to_html` must build their column model and cells through `tabular` (no duplicated key-union, escaping, or str() logic in `export.py`). Then implement `app/colspec.py` — `ColspecError`, `parse_colspec`, `project`, `available`, `auto_colspec`, `header_row`, `rename_map`, `select`, `drop`, `sanitize_headers`, `describe_colspec`, per Step 1c exactly — and `app/report.py` — `ReportError`, `section`, `render_section`, `render_report`, `toc`, `record_counts`, `summary`, `render_index`, `projected_section`, per Step 1d exactly. Neither module touches `app/registry.py` (library layers only; the registry wiring below is unchanged).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"export_default_format": "csv"` and `"export_formats_enabled": ["csv", "json"]`.
@@ -182,12 +242,12 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - **Do not** add a route or touch `bootstrap()` — `GET /export` is already registered and already calls `_export`, which reads `EXPORT_FORMATS` and `config["export_default_format"]`/`config["export_formats_enabled"]`; your registration line is the only thing `/export` is waiting on.
   - **Do not** add `"md"`/`"ndjson"`/`"tsv"` to `"export_formats_enabled"` — the route serves exactly `csv` and `json`; the three new formats are registered in `EXPORT_FORMATS` but reachable only by direct `render(...)` calls until a future config change enables them.
 
-- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records, and `app.call("GET", "/export", fmt="md")` raises `ValueError` (registered but not enabled).
+- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records, and `app.call("GET", "/export", fmt="md")` raises `ValueError` (registered but not enabled).
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app/export.py app/tabular.py app/registry.py tests/test_export.py tests/test_tabular.py
+git add app/export.py app/tabular.py app/colspec.py app/report.py app/registry.py tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py
 git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular toolkit, wired to the pre-existing /export route"
 ```
 
@@ -202,10 +262,14 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
 - Create: `app/ratelimit.py`
 - Create: `app/quota.py`
 - Create: `app/throttle.py`
+- Create: `app/backoff.py`
+- Create: `app/tiers.py`
 - Modify: `app/registry.py`
 - Test: `tests/test_ratelimit.py`
 - Test: `tests/test_quota.py`
 - Test: `tests/test_throttle.py`
+- Test: `tests/test_backoff.py`
+- Test: `tests/test_tiers.py`
 
 - [ ] **Step 1a: Write failing tests** in `tests/test_quota.py` for `app/quota.py` — the windowed counter `app/ratelimit.py` delegates to. It keeps a module-global **logical clock** (a float, seconds; no wall time anywhere — tests must be deterministic) plus a module-global hits store. Call `reset()` at the start of every test. One test function per bullet:
   - `QuotaExceededError` is an `Exception` subclass.
@@ -254,9 +318,31 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
   - end-to-end: two `enforce("POST", "/records", "mallory", {"POST /records": {"limit": 1, "window": 60, "burst": 0}})` calls — second raises `PolicyError`; `quota.advance(61)` frees it (third call passes).
   - That's 9 test functions; one per bullet.
 
-- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py -v` → FAIL.
+- [ ] **Step 1d: Write failing tests** in `tests/test_backoff.py` for `app/backoff.py` — a deterministic retry-schedule calculator (imports `app.quota` only — never `app.ratelimit`; pure, no module state). Call `quota.reset()` at the start of every test. One test function per bullet:
+  - `BackoffError` is an `Exception` subclass, distinct from `quota.QuotaExceededError`.
+  - `schedule(base, factor, retries)` returns exactly `[base * factor**i for i in range(retries)]` as **floats** — assert `schedule(1.0, 2.0, 3) == [1.0, 2.0, 4.0]` and every element `is`-a `float`; `retries=0` returns `[]`; `base <= 0`, `factor < 1.0`, or `retries < 0` raises `BackoffError` naming the offending parameter.
+  - `capped(seq, cap)` returns the element-wise `min` against `cap` — assert `capped([1.0, 2.0, 4.0], 3.0) == [1.0, 2.0, 3.0]` (a new list; input unmutated); `cap <= 0` raises `BackoffError`.
+  - `total_wait(seq)` returns the float sum — `6.0` for `[1.0, 2.0, 3.0]`, `0.0` for `[]`.
+  - `next_delay(attempt, base, factor, cap)` returns exactly `min(base * factor**attempt, cap)` — assert `next_delay(0, 1.0, 2.0, 60.0) == 1.0` and `next_delay(6, 1.0, 2.0, 60.0) == 60.0`; `attempt < 0` raises `BackoffError`.
+  - `delay_until_free(key, config)` delegates to `quota.time_to_next_slot(key, config["rate_limit_max_per_window"], config.get("rate_limit_window_seconds", 60), burst=config.get("rate_limit_burst", 0))` — pin the delegation with a monkeypatched recorder asserting the exact argument tuple, then end-to-end: two `quota.take("k", 2, 60)` calls at t=0, `quota.advance(10)`, and `delay_until_free("k", {"rate_limit_max_per_window": 2, "rate_limit_window_seconds": 60})` reads exactly `50.0`. A minimal limit-only config works (window and burst default via `.get`).
+  - `retry_plan(key, config, retries)` returns exactly `{"immediate": <quota.remaining(...) > 0>, "wait": <delay_until_free(key, config)>, "backoff": capped(schedule(config.get("backoff_base", 1.0), config.get("backoff_factor", 2.0), retries), config.get("backoff_cap", 60.0))}` — assert the exact dict twice: a fresh key under a limit-2 config with `retries=3` reads `{"immediate": True, "wait": 0.0, "backoff": [1.0, 2.0, 4.0]}`, and the exhausted mid-window state above reads `{"immediate": False, "wait": 50.0, "backoff": [1.0, 2.0, 4.0]}`. Read-only — no hit is ever recorded (a subsequent `take` still succeeds where it should).
+  - `describe_schedule(seq)` returns exactly the comma-joined delays each suffixed `"s"` — `"1.0s, 2.0s, 4.0s"`; `describe_schedule([])` returns exactly `"(no retries)"` — pin both literals.
+  - That's 8 test functions; one per bullet.
 
-- [ ] **Step 3: Implement `app/quota.py`, then `app/ratelimit.py`, then `app/throttle.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`, `remaining`, `snapshot`, `time_to_next_slot`, `usage`, `purge`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, `retry_after`, `limit_headers`, `status_line`, `check_many`; `throttle`: `PolicyError`, `POLICIES`, `match_policy`, `key_for`, `enforce`, `remaining_for`, `describe_policies` (NOT wired into the registry — a library layer for future routes; the registry wiring below is unchanged), per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own; only `rate_limit_max_per_window` is a required config key — window and burst always default via `.get`).
+- [ ] **Step 1e: Write failing tests** in `tests/test_tiers.py` for `app/tiers.py` — an actor-tier policy layer over `app/throttle.py` (imports `app.throttle` and `app.quota` only; no module state beyond the `TIERS` constant). Call `quota.reset()` at the start of every test. One test function per bullet:
+  - `TierError` is an `Exception` subclass, distinct from `throttle.PolicyError`.
+  - `TIERS` is exactly `{"free": {"limit": 2, "window": 60, "burst": 0}, "pro": {"limit": 10, "window": 60, "burst": 2}, "internal": {"limit": 100, "window": 60, "burst": 10}}` — pin the whole dict.
+  - `tier_of(actor, assignments)` reads the actor's tier from the `assignments` dict, defaulting to `"free"` for an unassigned actor; an assignment naming a tier absent from `TIERS` raises `TierError` naming **both** the actor and the bogus tier.
+  - `policy_for(actor, assignments)` returns a **deep copy** of the tier's policy dict (mutating the result leaves `TIERS` untouched — assert).
+  - `enforce_tier(method, path, actor, assignments)` builds the one-key policies dict `{"<method> <path>": policy_for(actor, assignments)}` and delegates to `throttle.enforce(method, path, actor, <that dict>)` — pin the delegation with a monkeypatched recorder asserting the exact argument tuple, then end-to-end: a `"free"` actor's third `enforce_tier("POST", "/records", "a", {})` raises `throttle.PolicyError` (limit 2), while a `"pro"`-assigned actor's counter is independent (interleave and assert).
+  - `remaining_tier(method, path, actor, assignments)` delegates to `throttle.remaining_for` under the same one-key policies dict — read-only (a subsequent `enforce_tier` still succeeds where it should); assert the exact reading for a fresh free actor (`2`) and after one take (`1`).
+  - `describe_tiers()` returns exactly `throttle.describe_policies(TIERS)` (recorder pin) — pin the literal: `"free: limit=2, window=60, burst=0\ninternal: limit=100, window=60, burst=10\npro: limit=10, window=60, burst=2"`.
+  - `upgrade_path(tier)` returns the next tier by allowance — exactly `"pro"` for `"free"`, `"internal"` for `"pro"`, `None` for `"internal"`; an unknown tier raises `TierError` naming it.
+  - That's 8 test functions; one per bullet.
+
+- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py tests/test_backoff.py tests/test_tiers.py -v` → FAIL.
+
+- [ ] **Step 3: Implement `app/quota.py`, then `app/ratelimit.py`, then `app/throttle.py`** — `quota`: `QuotaExceededError`, `_clock`/`_hits` (module globals), `reset`, `now`, `advance`, `take`, `remaining`, `snapshot`, `time_to_next_slot`, `usage`, `purge`; `ratelimit`: `RateLimitExceededError(quota.QuotaExceededError)`, `reset`, `check_and_increment`, `dispatch_hook`, `retry_after`, `limit_headers`, `status_line`, `check_many`; `throttle`: `PolicyError`, `POLICIES`, `match_policy`, `key_for`, `enforce`, `remaining_for`, `describe_policies` (NOT wired into the registry — a library layer for future routes; the registry wiring below is unchanged), per Step 1's contracts exactly (`dispatch_hook` is a no-op for any method other than `"POST"`; all counting lives in `quota.take` — `ratelimit` keeps no counter state of its own; only `rate_limit_max_per_window` is a required config key — window and burst always default via `.get`). Then implement `app/backoff.py` — `BackoffError`, `schedule`, `capped`, `total_wait`, `next_delay`, `delay_until_free`, `retry_plan`, `describe_schedule`, per Step 1d exactly — and `app/tiers.py` — `TierError`, `TIERS`, `tier_of`, `policy_for`, `enforce_tier`, `remaining_tier`, `describe_tiers`, `upgrade_path`, per Step 1e exactly. Neither module touches `app/registry.py` (library layers only; the registry wiring below is unchanged).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add three keys to `DEFAULT_CONFIG`, near its existing keys: `"rate_limit_max_per_window": 5`, `"rate_limit_window_seconds": 60` (the hook passes it to `quota.take`; the logical clock only moves under tests, so shipped behavior is pure call-counting), and `"rate_limit_burst": 0`.
@@ -266,12 +352,12 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
     DISPATCH_HOOKS.append(ratelimit.dispatch_hook)
     ```
 
-- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py tests/ -v` → PASS.
+- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_quota.py tests/test_ratelimit.py tests/test_throttle.py tests/test_backoff.py tests/test_tiers.py tests/ -v` → PASS.
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app/ratelimit.py app/quota.py app/throttle.py app/registry.py tests/test_ratelimit.py tests/test_quota.py tests/test_throttle.py
+git add app/ratelimit.py app/quota.py app/throttle.py app/backoff.py app/tiers.py app/registry.py tests/test_ratelimit.py tests/test_quota.py tests/test_throttle.py tests/test_backoff.py tests/test_tiers.py
 git commit -m "feat(eventboard): per-actor rate-limit guard on POST /records over a windowed quota counter"
 ```
 
