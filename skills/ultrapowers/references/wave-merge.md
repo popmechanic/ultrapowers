@@ -122,10 +122,14 @@ The contended path routes the **same merge-agent role** through a second contrac
 `TIER.mostCapable` (its duties most resemble reconcile's; a cheap model improvising
 these git invocations would convert a priced fallback into a blocked wave). It drives
 the deterministic fold CLI at `<pluginRoot>/skills/ultrapowers/kernel/fold_wave.py`
-across three dispatches — `fold`, then one `resolve` per applied resolution, then
+across three dispatch kinds — `fold`, then one `resolve` per applied resolution, then
 `materialize` and adoption — replying under `FOLD_SCHEMA` for the first two and under
 `MERGE_SCHEMA`'s ordinary `MERGED` + `headSha` shape for adoption, so the call site's
-`waveBaseSha` and review-base handling is unchanged.
+`waveBaseSha` and review-base handling is unchanged. The **number** of `resolve`
+dispatches is not bounded by the fold's conflict count: the incremental protocol
+stops the fold at its first conflicted task and folds on inside a later `resolve`
+call, so new conflicts arrive as `resolve` replies. `frontierEntry.foldCliCalls`
+records how many invocations the wave actually drove.
 
 The wave base is **engine-authored into every dispatch** by interpolating the
 module-scope `waveBaseSha` (which advances only *after* a merge, so at dispatch time
@@ -134,15 +138,15 @@ it is exactly the previous integration head). It is the `fold` base argument and
 contended dispatch appends `headsSlotsLine(merged, waveIdx + 1)` exactly as the merge
 dispatch does — the completeness critic treats a missing slot as an ancestry miss.
 
-The `fold` CLI prints only scalars — `{clean, conflicts, dispatchable, parked,
-selfChecks}` — so every **path** the report section needs is engine-authored, not
-guessed: `{{WAVE_DIR}}` is `frontierDir(waveNumber)` (`<runDir>/frontier/wave-<n>`,
-1-based, the `heads/` slot precedent), interpolated into the prompt so the agent
-reads the fold log, the conflicts index and the per-conflict narrations from a
-directory it was **told**. The narration filename convention (`conflict-<i>.txt`,
-keyed on the `i` field of the conflicts-index entry) is stated in the prompt for the
-same reason: a guessed narration path dispatches a resolver against a file that does
-not exist, which costs a wasted top-tier dispatch and still falls the wave back.
+The `fold` CLI prints scalars and the conflicts-index coordinates of its stop, but no
+report **paths**, so those are engine-authored, not guessed: `{{WAVE_DIR}}` is
+`frontierDir(waveNumber)` (`<runDir>/frontier/wave-<n>`, 1-based, the `heads/` slot
+precedent), interpolated into the prompt so the agent reads the fold log and the
+conflicts index from a directory it was **told**. Each open conflict is keyed by its
+conflicts-index `i` — not by `(path, epoch)`, which is not unique once a presence park
+shares the pair with a kernel conflict — and carries the `hunksFile` the index entry
+records (`conflict-<i>.hunks.txt`). The resolver is briefed off that hunks file; no
+narration path reaches the engine at all.
 
 Those scalars are **authority over the status enum** the agent types beside them. A
 non-zero `parked` falls the wave back whatever verdict accompanies it, and — the
@@ -155,13 +159,23 @@ the status enum: the CLI always emits `conflicts` for both fold verdicts, so a m
 count is a contract violation rather than a legal FOLDED or CONFLICTS shape, and it
 falls the wave back before either count-vs-count guard — which go silent when the
 field is simply absent — ever runs. The `selfChecks` attestation is held to the same
-standard: the STEP orders it copied from the CLI's stdout, so anything but `ok` —
-a named failure or an omitted field alike — falls the wave back (`FOLD_SCHEMA`
-requires only `status` because resolve replies share it; those never reach the fold
-call site). Nothing downstream catches any of this (materialize
-builds from the kernel's own manifest, and the fold advances the frontier either way),
-and it lands past the adoption boundary where fallback is no longer live — so it is
-checked before the loop, not after.
+standard, **scoped to the completing reply**: the CLI runs its two live self-checks
+inside whichever call completes the wave, so a stop reply carries none and requiring
+one there would fall every conflicted wave back before a resolver was dispatched. On
+a reply that says `complete` (or types `FOLDED`), anything but `ok` — a named failure
+or an omitted field alike — falls the wave back (`FOLD_SCHEMA` requires only `status`,
+so the schema cannot catch the absence). Nothing downstream catches any of this
+(materialize builds from the kernel's own manifest, and the fold advances the frontier
+either way), and it lands past the adoption boundary where fallback is no longer live
+— so it is checked before the work list, not after.
+
+The same standards ride the `resolve` replies, because the work list is re-seeded from
+them: a continued fold that names an `open` list with no `conflicts` count, or whose
+`dispatchable` disagrees with the list's length, falls the wave back exactly as the
+fold reply would. An `applied` reply that instead names a `waiting` set — the entries
+of the current stop this resolution did not drain — is checked against the engine's own
+outstanding list minus the entry just applied; the CLI never prints an empty `waiting`,
+so an empty or disagreeing one is a contract violation, not a legal continuation.
 
 The canonical prompt wording (`{{INTEGRATION_WT}}` is the dedicated integration
 worktree path, `{{PREV_HEAD}}` the engine-authored wave base, `{{WAVE_DIR}}` the
@@ -171,45 +185,53 @@ other baked prompt):
 
 <!-- BAKE:CONTENDED_MERGE_PROMPT -->
 You are the wave merge agent running the contended contract, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. This wave's tasks edit the same files on purpose, so you do not merge their branches: you drive the deterministic fold CLI at <pluginRoot>/skills/ultrapowers/kernel/fold_wave.py, which moves no ref and writes nothing into the worktree. Run every invocation from inside {{INTEGRATION_WT}} with --repo . so the CLI reads this worktree's repository. The wave base — the fold base, and <prevHead> in the sequences below — is {{PREV_HEAD}}; never derive it yourself. This wave's fold directory — the one the CLI writes its fold log, its conflicts index and its narrations into — is {{WAVE_DIR}}; never derive that either. Exactly one STEP applies to this dispatch: the STEP line appended below names it and gives the exact command to run. Run that command and no other, then report its stdout JSON as your own fields. Reading is otherwise limited to that fold directory: a STEP may send you to its conflicts index conflicts.json, its fold log fold_log.jsonl, or a narration file, and those reads are in contract. Report nothing you did not either read there or read from stdout — never a count, a sha or a path you invented. A non-zero exit is never something to work around — report the failure verbatim and stop.
-STEP fold: report FOLDED when the CLI prints conflicts 0, CONFLICTS when it prints conflicts and every indexed conflict is dispatchable, PARKED when any conflict is not dispatchable, and ERROR on a non-zero exit or a selfChecks value other than ok. Copy conflicts, dispatchable, parked and selfChecks from the JSON. The CLI prints no paths, so take them from the fold directory it just wrote: report foldLogPath as {{WAVE_DIR}}/fold_log.jsonl and conflictsIndex as {{WAVE_DIR}}/conflicts.json. Time the invocation and report its wall clock in foldCliWallTimeSec. Then read {{WAVE_DIR}}/conflicts.json — an array whose entries carry i, path, kind, dispatchable, reason and epoch — and for each entry whose dispatchable is true add an open entry carrying that entry's path, that entry's epoch, and as narrationFile the file holding its narration, which is {{WAVE_DIR}}/conflict-<i>.txt for that same entry's i.
-STEP resolve: report FOLDED when the CLI prints applied true. When it prints stale true, report CONFLICTS with exactly one open entry carrying the same path, the epoch the CLI returned, and its renarrationFile as narrationFile — that re-narration is a markerless whole file, not an annotated one. Report ERROR on a non-zero exit.
-STEP adopt: run the materialize invocation. If it prints a park or a fallback verdict, report CONFLICT with that reason and change nothing. Otherwise take the candidateSha it printed and test that candidate with the branch unmoved: git read-tree -u --reset <candidate>^{tree} puts the candidate's tree in the worktree while HEAD and the branch ref stay at <prevHead> (a bare read-tree -u is a fatal git error, and merge --ff-only would refuse over the read-tree index). Then {{TEST_INSTRUCTION}}. If it passes, adopt the candidate with git reset --hard <candidate> and report MERGED with that sha as headSha. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand. If instead the suite fails, adopt nothing and restore the worktree — git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED with the failing output and write no slots. Do not try to fix a failing candidate: the engine falls the wave back to an ordinary git merge, and that path refuses to operate on a dirty or detached worktree.
+STEP fold: report FOLDED when the CLI prints conflicts 0, CONFLICTS when it prints conflicts and every indexed conflict is dispatchable, PARKED when any conflict is not dispatchable, and ERROR on a non-zero exit or a selfChecks value other than ok. Copy conflicts, dispatchable, parked and selfChecks from the JSON. The CLI prints no paths, so take them from the fold directory it just wrote: report foldLogPath as {{WAVE_DIR}}/fold_log.jsonl and conflictsIndex as {{WAVE_DIR}}/conflicts.json. Time the invocation and report its wall clock in foldCliWallTimeSec. Then read {{WAVE_DIR}}/conflicts.json — an array whose entries carry i, path, kind, dispatchable, reason and epoch — and for each entry whose dispatchable is true add an open entry carrying that entry's i, path, epoch, its hunksFile (the conflict-<i>.hunks.txt path from the entry) and hunkCount. Copy remaining and complete from the JSON; copy selfChecks only when the JSON carries it (a stop reply does not).
+STEP resolve: Run the resolve invocation. Report FOLDED when it prints complete true — copy selfChecks. Report CONFLICTS when it prints applied true with an open list — copy conflicts, dispatchable, remaining and complete and add one open entry per listed entry exactly as in STEP fold — or with a waiting list — report open as empty and copy waiting. Report REJECTED when the exit code is 4 — copy reason into detail. Report ERROR on any other non-zero exit, including stale true. Time the invocation and report its wall clock in foldCliWallTimeSec.
+STEP adopt: run the materialize invocation. If it prints a park or a fallback verdict, report CONFLICT with that reason and change nothing. Otherwise take the candidateSha it printed and test that candidate with the branch unmoved: git read-tree -u --reset <candidate>^{tree} puts the candidate's tree in the worktree while HEAD and the branch ref stay at <prevHead> (a bare read-tree -u is a fatal git error, and merge --ff-only would refuse over the read-tree index). Then {{TEST_INSTRUCTION}}. If it passes, adopt the candidate with git reset --hard <candidate> and report MERGED with that sha as headSha. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand. If instead the suite fails, adopt nothing and restore the worktree — git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED with the failing output and write no slots. Do not try to fix a failing candidate: the engine falls the wave back to an ordinary git merge, and that path refuses to operate on a dirty or detached worktree. Time the invocation and report its wall clock in foldCliWallTimeSec.
 <!-- /BAKE -->
 
 ### The resolver
 
-For each dispatchable conflict the engine dispatches **one resolver agent at a time**,
-awaiting each resolution — serialization is by construction. Every conflict is preceded
-by a `budgetExhausted()` checkpoint, like every other dispatch site in the engine;
-exhaustion routes the wave to fallback, which is still live at that point.
+The engine holds a **work list** of open conflicts and dispatches **one resolver agent
+at a time**, awaiting each resolution — serialization is by construction. The list is
+seeded from the fold's stop and **replaced** by each continued fold's stop, because the
+CLI folds on past a drained stop inside the same `resolve` call: a later stop's
+conflicts arrive as an apply reply, never as a second fold dispatch. Every conflict is
+preceded by a `budgetExhausted()` checkpoint, like every other dispatch site in the
+engine; exhaustion routes the wave to fallback, which is still live at that point.
 
 Resolver dispatches carry `{ label, schema }` with the `model` key **omitted**, so they
 run at the session-ambient model. That is like-for-like with the graded production cell,
 whose resolver ran on its CLI default; tier escalation is a post-A/B knob, not a
 launch-time confound.
 
-The resolver **reads its own narration file** and writes its whole-file resolution to a
-reply file the engine names — a contract change from the production cell's no-tools
-text-in/text-out resolver, and the reason this prompt was rewritten rather than promoted
-verbatim. It must accept **both** narration shapes: the annotated whole file the `fold`
-subcommand writes, and the **markerless** whole-file body a re-narration produces (a
-re-fold of an already-folded endpoint narrates nothing). A stale resolution re-narrates
-**once**; a second staleness falls the wave back.
+The resolver **reads its own hunks file** — the hunk-scoped brief the `fold` subcommand
+writes beside each narration — and writes one reply file per hunk into a reply
+**directory** the engine names. It never sees the whole file, so it can never silently
+rewrite the parts nobody asked about, and the reply-directory grammar is checkable:
+a missing, unknown, marker-bearing or unterminated hunk reply is **rejected** by the
+CLI (exit 4) before any kernel work runs.
+
+Rejection is the one retryable apply status: the frontier is untouched, so the engine
+re-briefs the **same** conflict once, carrying the kernel's reason on a
+`PREVIOUS REPLY REJECTED` line, and a second rejection falls the wave back. A **stale**
+resolution is not retried at all — the epoch check is the idempotency guard against a
+re-issued command, so it arrives as `ERROR` and falls the wave back.
 
 <!-- BAKE:RESOLVER_PROMPT -->
-You are a merge-conflict resolver for one file in one wave. You have no repo to explore and no branch to check out: read exactly the narration file named below, write exactly the reply file named below, and touch nothing else. Never run git, never edit the file under conflict, and never create a commit. You are assigned no worktree of your own: the narration file and the reply file named below are your only sanctioned locations, and reading and writing them is not an exception to any worktree boundary — there is no worktree here to be an exception to.
-The narration arrives in one of two shapes and you must handle both. An ANNOTATED narration is the whole file with conflict markers naming each side — frontier is the work already folded in, a task id is the incoming change — and every unmarked line is already-merged content. A MARKERLESS narration is the whole file with no markers at all: it is a re-narration of a path that folded again after your last reply, so nothing is left to adjudicate except carrying your intent forward onto the newer content. The NARRATION line states which shape you were given; if it disagrees with the bytes you read, trust the bytes.
-Write the complete resolved file to the reply file: every line the merged file should contain, top to bottom, in order, with no conflict markers, and nothing invented that appears in neither side nor the narration. Preserve lines outside the conflicted blocks exactly as the narration shows them. The reply file is read back byte for byte and split by the kernel's own line convention, so a trailing newline in your reply is a trailing newline in the merged file — match the narration's ending. Write the file whole; never append to it, and never leave it empty unless the resolved file is genuinely empty.
-Honor both sides' intent where they are compatible; where they are not, prefer the semantics the contending task bodies describe over surface text. Never drop a side silently — if the two sides are irreconcilable, still write your best whole-file merge and say so in notes; a human reads this transcript verbatim. Report RESOLVED once the reply file is written, or BLOCKED with the reason if you could not read the narration or could not write the reply. A BLOCKED resolver falls the whole wave back to an ordinary git merge, which is a real cost — report it only when you genuinely cannot produce a file.
+You are a merge-conflict resolver for one file in one wave. You have no repo to explore: read exactly the hunks file named below and write exactly the reply directory named below — one file per HUNK (h1.txt, h2.txt, …) plus notes.txt — and touch nothing else. Never run git, never edit the file under conflict, never create a commit; the hunks file and the reply directory are your only sanctioned locations.
+Each HUNK shows a conflict block with read-only context above and below it: frontier is the work already folded in, a task id is the incoming change, both is content shared by both sides — carry every both line. For each HUNK write the lines that should replace the whole conflict block, top to bottom, with no conflict markers: a file of newline-terminated lines, an empty file meaning the block resolves to nothing. Never write context lines.
+Honor both sides' intent where they are compatible; where they are not, prefer the semantics the contending task bodies describe over surface text; never drop a side silently — if the two sides are irreconcilable, still write your best merge for that hunk and say so in notes.txt; nothing invented that appears in neither side nor the narration. When a HUNK header carries a contract line, obey it. Report RESOLVED once every hunk file is written, or BLOCKED with the reason if you could not read the hunks file or could not write the reply directory. A BLOCKED resolver falls the whole wave back to an ordinary git merge, which is a real cost — report it only when you genuinely cannot produce a reply.
 <!-- /BAKE -->
 
 ### Fallback — live strictly before adoption
 
 The fold consumes task branches but never destroys them. Kernel error, an ineligible
-conflict, a resolver parked after its one retry, budget exhaustion mid-loop, a
-self-check reply that is anything but `ok` (a named failure or an absent
-attestation), a materialization park, a thrown contended dispatch, a fold reply
-whose counts and named conflicts disagree, and
+conflict, a resolver reply rejected twice, a stale resolution, budget exhaustion
+mid-work-list, a completing reply whose self-checks are anything but `ok` (a named
+failure or an absent attestation), a materialization park, a thrown contended
+dispatch, a fold or continued-fold reply whose counts and named conflicts disagree,
+a `waiting` set that disagrees with the engine's outstanding list, and
 **candidate suite failure** all route the wave to the existing git-merge + reconcile
 path with the integration branch and worktree exactly where that path expects them.
 After adoption, task heads are ancestors of the integration branch and the reconcile

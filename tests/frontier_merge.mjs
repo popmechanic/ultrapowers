@@ -9,9 +9,11 @@
 //
 // What this covers that sim_workflow.mjs does not: the derived-contention
 // routing rule, the fold → resolve → adopt dispatch sequence, the serial
-// resolver loop (including the one stale re-narration retry), every route that
-// must fall the wave back to the ordinary git-merge path, and the `frontier`
-// report section.
+// resolver WORK LIST (one hunk-briefed resolver per open conflict, a single
+// re-brief after a REJECTED reply, and the continued folds that arrive as
+// `resolve` replies rather than a second fold dispatch), every route that must
+// fall the wave back to the ordinary git-merge path, and the `frontier` report
+// section.
 //
 // Self-asserting: throws (exit 1) on any failed expectation. Prints the
 // suite-gate sentinel `ALL SCENARIOS PASSED` on success only.
@@ -115,20 +117,32 @@ const optsFor = (calls, label) => {
 }
 const has = (calls, label) => calls.some((c) => c.label === label)
 
+// A COMPLETING fold reply: every task folded, nothing left narrated. Only a
+// completing reply carries `selfChecks` — the CLI runs the two live self-checks
+// inside whichever call completes the wave.
 const cleanFoldReply = () => ({
   status: 'FOLDED', conflicts: 0, dispatchable: 0, parked: 0, selfChecks: 'ok',
   foldLogPath: FDIR + '/fold_log.jsonl', conflictsIndex: FDIR + '/conflicts.json',
-  foldCliWallTimeSec: 2.5,
+  foldCliWallTimeSec: 2.5, open: [], remaining: [], complete: true,
 })
-const conflictFoldReply = (open) => ({
+// One open conflict as the engine sees it: keyed by the conflicts-index `i`
+// (`(path, epoch)` is not unique), briefed off its hunks file. No narration
+// file reaches the engine any more.
+const openEntry = (i, path, epoch) => ({
+  i, path, epoch, hunksFile: FDIR + '/conflict-' + i + '.hunks.txt', hunkCount: 2,
+})
+// A STOP reply: the fold halted at its first conflicted fold, so tasks are
+// still `remaining`, the wave is not `complete`, and there is no `selfChecks`.
+const conflictFoldReply = (open, remaining) => ({
   status: 'CONFLICTS', conflicts: open.length, dispatchable: open.length, parked: 0,
-  selfChecks: 'ok', foldLogPath: FDIR + '/fold_log.jsonl',
+  foldLogPath: FDIR + '/fold_log.jsonl',
   conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 4.25, open,
+  remaining: remaining || ['C'], complete: false,
 })
 
 // The documented `frontier[]` key list (references/report-format.md).
-const FRONTIER_KEYS = ['conflictsIndex', 'foldCliWallTimeSec', 'foldLogPath',
-  'resolverTranscripts', 'selfChecks', 'wave']
+const FRONTIER_KEYS = ['conflictsIndex', 'foldCliCalls', 'foldCliWallTimeSec',
+  'foldLogPath', 'resolverTranscripts', 'selfChecks', 'wave']
 function assertFrontierShape(r, tag) {
   assert(Array.isArray(r.frontier), tag + ': report carries a frontier array')
   eq(r.frontier.length, 1, tag + ': exactly one frontier entry for the contended wave')
@@ -212,11 +226,13 @@ async function scenarioCleanFold() {
 // ── Scenario 2: conflict → resolver → resolve → adopt ────────────────────────
 async function scenarioConflictResolved() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
-    if (label === 'merge:wave1:fold') return conflictFoldReply(open)
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open, [])
     if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'kept both edits' }
-    if (label === 'merge:wave1:apply1:1') return { status: 'FOLDED', selfChecks: 'ok' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', open: [], remaining: [] }
+    }
     if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-2' }
     return undefined
   })
@@ -227,12 +243,16 @@ async function scenarioConflictResolved() {
      'conflict: fold → resolver → resolve → adopt, in that order, with no git-merge fallback')
 
   const rp = promptFor(calls, 'resolve:wave1:1:1')
-  assert(rp.indexOf('NARRATION: src/shared.js — ANNOTATED — read it from ' +
-    FDIR + '/conflict-0.txt') !== -1,
-    'conflict: the first resolver is pointed at its ANNOTATED narration file')
-  assert(rp.indexOf('REPLY FILE: write your whole resolved file to ' +
-    FDIR + '/reply-1-1.txt') !== -1,
-    'conflict: the resolver is given its engine-authored reply-file path')
+  assert(rp.indexOf('HUNKS: src/shared.js — read ' +
+    FDIR + '/conflict-1.hunks.txt') !== -1,
+    'conflict: the resolver is pointed at its hunks brief, never the narration')
+  assert(rp.indexOf('NARRATION') === -1,
+    'conflict: no narration file is named to the resolver any more')
+  assert(rp.indexOf('REPLY DIR: write one file per hunk (h1.txt, h2.txt, …) plus ' +
+    'notes.txt into ' + FDIR + '/reply-1-1') !== -1,
+    'conflict: the resolver is given its engine-authored reply DIRECTORY')
+  assert(rp.indexOf('PREVIOUS REPLY REJECTED') === -1,
+    'conflict: a first attempt carries no rejection notice')
   assert(rp.indexOf('CONTENDING TASKS:') !== -1 &&
     rp.indexOf('- task A: alpha [files: src/shared.js]') !== -1 &&
     rp.indexOf('- task B: beta [files: src/shared.js, src/b.js]') !== -1,
@@ -253,66 +273,53 @@ async function scenarioConflictResolved() {
     'conflict: resolver dispatch omits `model` (shipped: session-ambient model)')
 
   const ap = promptFor(calls, 'merge:wave1:apply1:1')
-  assert(ap.indexOf(CLI + ' resolve --repo . --run-dir ' + RUN_DIR + ' --wave 1 --path ' +
-    'src/shared.js --epoch 3 --reply-file ' + FDIR + '/reply-1-1.txt') !== -1,
-    'conflict: the resolve command carries the path, the fold epoch and the reply file')
+  assert(ap.indexOf(CLI + ' resolve --repo . --run-dir ' + RUN_DIR + ' --wave 1' +
+    ' --conflict 1 --reply-dir ' + FDIR + '/reply-1-1' +
+    ' --branch A=wt-A:sha-A --branch B=wt-B:sha-B') !== -1,
+    'conflict: the resolve command carries the conflict index, the reply dir and ' +
+    'the wave\'s full task list (re-supplied on every call)')
 
   eq(r.waveMerges[0].headSha, 'cand-2', 'conflict: the adopted candidate is the wave head')
   assertFrontierShape(r, 'conflict')
   eq(r.frontier[0].resolverTranscripts,
      [{ conflict: 1, attempt: 1, path: 'src/shared.js', epoch: 3,
-        narrationFile: FDIR + '/conflict-0.txt', replyFile: FDIR + '/reply-1-1.txt',
+        hunksFile: FDIR + '/conflict-1.hunks.txt', replyDir: FDIR + '/reply-1-1',
         status: 'RESOLVED', notes: 'kept both edits' }],
      'conflict: the resolver transcript is recorded verbatim')
+  eq(r.frontier[0].foldCliCalls, 3, 'conflict: fold + resolve + materialize = 3 CLI calls')
+  eq(r.frontier[0].selfChecks, 'ok',
+     'conflict: selfChecks is sourced from the COMPLETING reply — the stop reply carries none')
   console.log('scenario 2 conflict-resolved: OK')
 }
 
-// ── Scenario 3: stale → markerless re-narration → resolve ────────────────────
-async function scenarioStaleRenarration() {
+// ── Scenario 3: a stale resolution is a REFUSAL, not a re-narration ─────────
+// The kernel's epoch check is the idempotency guard against a re-issued
+// command (spec §1b): staleness exits 2, the agent reports it as ERROR, and the
+// wave falls back. The old markerless re-narration retry is gone — nothing
+// re-briefs a resolver on a stale epoch, so no second resolver may be spent.
+async function scenarioStaleFallback() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
-  const renarration = { path: 'src/shared.js', epoch: 7,
-    narrationFile: FDIR + '/conflict-0-renarrated.txt' }
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
-    if (label === 'merge:wave1:fold') return conflictFoldReply(open)
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open, [])
     if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'first pass' }
-    // Stale: an intervening fold touched the path. The CLI answers with exactly
-    // one open entry — the markerless whole-file re-narration.
-    if (label === 'merge:wave1:apply1:1') {
-      return { status: 'CONFLICTS', conflicts: 1, dispatchable: 1, parked: 0,
-               selfChecks: 'ok', open: [renarration] }
-    }
-    if (label === 'resolve:wave1:1:2') return { status: 'RESOLVED', notes: 'carried forward' }
-    if (label === 'merge:wave1:apply1:2') return { status: 'FOLDED', selfChecks: 'ok' }
-    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-3' }
+    if (label === 'merge:wave1:apply1:1') return { status: 'ERROR', detail: 'stale' }
     return undefined
   })
   const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
 
   eq(labels(calls).filter((l) => l.startsWith('merge:') || l.startsWith('resolve:')),
-     ['merge:wave1:fold', 'resolve:wave1:1:1', 'merge:wave1:apply1:1',
-      'resolve:wave1:1:2', 'merge:wave1:apply1:2', 'merge:wave1:adopt'],
-     'stale: exactly one re-narration retry, then adoption')
-
-  const rp2 = promptFor(calls, 'resolve:wave1:1:2')
-  assert(rp2.indexOf('NARRATION: src/shared.js — MARKERLESS — read it from ' +
-    renarration.narrationFile) !== -1,
-    'stale: the retry resolver is told the narration is MARKERLESS and given the new file')
-  assert(rp2.indexOf('REPLY FILE: write your whole resolved file to ' +
-    FDIR + '/reply-1-2.txt') !== -1,
-    'stale: the retry writes a fresh reply file (attempt 2), never appending to attempt 1')
-
-  const ap2 = promptFor(calls, 'merge:wave1:apply1:2')
-  assert(ap2.indexOf('--epoch 7') !== -1 &&
-    ap2.indexOf('--reply-file ' + FDIR + '/reply-1-2.txt') !== -1,
-    'stale: the retry resolve is applied against the epoch the CLI returned')
-
-  eq(r.waveMerges[0].headSha, 'cand-3', 'stale: the candidate adopted after the retry')
+     ['merge:wave1:fold', 'resolve:wave1:1:1', 'merge:wave1:apply1:1', 'merge:wave1'],
+     'stale: one resolver, one apply, then the git-merge fallback — no re-narration retry')
+  assert(!has(calls, 'resolve:wave1:1:2'),
+    'stale: a stale apply never re-briefs a second resolver')
+  assert(!has(calls, 'merge:wave1:adopt'), 'stale: nothing is adopted on a stale resolution')
+  assertFellBack(r, calls,
+    /resolution of src\/shared\.js not applied \(ERROR\): stale/, 'stale')
   assertFrontierShape(r, 'stale')
-  eq(r.frontier[0].resolverTranscripts.map((t) => [t.conflict, t.attempt, t.epoch, t.status]),
-     [[1, 1, 3, 'RESOLVED'], [1, 2, 7, 'RESOLVED']],
-     'stale: both resolver attempts are transcribed with their epochs')
-  console.log('scenario 3 stale-renarration: OK')
+  eq(r.frontier[0].resolverTranscripts.length, 1,
+     'stale: only the single resolver attempt is transcribed')
+  console.log('scenario 3 stale-fallback: OK')
 }
 
 // ── Scenario 4: park → fallback to the plain git merge ───────────────────────
@@ -343,17 +350,16 @@ async function scenarioParkFallback() {
 // ── Scenario 5: budget exhaustion mid-resolver-loop → fallback ───────────────
 async function scenarioBudgetExhaustedMidLoop() {
   const calls = []
-  const openTwo = [
-    { path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' },
-    { path: 'src/b.js', epoch: 3, narrationFile: FDIR + '/conflict-1.txt' },
-  ]
+  const openTwo = [openEntry(1, 'src/shared.js', 3), openEntry(2, 'src/b.js', 3)]
   let remaining = 100
   const agent = makeAgent(calls, (label) => {
-    if (label === 'merge:wave1:fold') return conflictFoldReply(openTwo)
+    if (label === 'merge:wave1:fold') return conflictFoldReply(openTwo, [])
     if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'ok' }
     if (label === 'merge:wave1:apply1:1') {
       remaining = 0   // exhausted AFTER conflict 1 landed, BEFORE conflict 2 dispatches
-      return { status: 'FOLDED', selfChecks: 'ok' }
+      // Conflict 2 is still waiting on the same stop: the CLI applied this
+      // resolution and cannot fold on until the stop drains.
+      return { status: 'CONFLICTS', open: [], waiting: [2] }
     }
     return undefined
   })
@@ -364,7 +370,8 @@ async function scenarioBudgetExhaustedMidLoop() {
     'budget: the second conflict\'s resolver is never dispatched')
   assert(!has(calls, 'merge:wave1:adopt'),
     'budget: nothing is adopted with conflicts still open')
-  assertFellBack(r, calls, /budget exhausted before resolving conflict 2 of 2/, 'budget')
+  assertFellBack(r, calls,
+    /budget exhausted before resolving conflict 2 \(1 outstanding\)/, 'budget')
   assertFrontierShape(r, 'budget')
   eq(r.frontier[0].resolverTranscripts.length, 1,
      'budget: only the completed resolver dispatch is transcribed')
@@ -520,7 +527,7 @@ async function scenarioGuardFoldReplyNull() {
 // (b) resolver dispatch returns null mid-loop.
 async function scenarioGuardResolverReplyNull() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') return conflictFoldReply(open)
     if (label === 'resolve:wave1:1:1') return null
@@ -603,7 +610,7 @@ async function scenarioGuardConflictsEmptyOpen() {
 // (g) open.length !== expectOpen (named vs counted mismatch).
 async function scenarioGuardOpenCountMismatch() {
   const calls = []
-  const one = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const one = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') {
       return Object.assign(conflictFoldReply(one), { conflicts: 2, dispatchable: 2 })
@@ -684,7 +691,7 @@ async function scenarioGuardFoldStatusError() {
 // (k) waves.js:1370-1371 — resolver reply status !== 'RESOLVED' → fallback.
 async function scenarioGuardResolverStatusNotResolved() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') return conflictFoldReply(open)
     if (label === 'resolve:wave1:1:1') return { status: 'BLOCKED', notes: 'cannot reconcile' }
@@ -701,7 +708,7 @@ async function scenarioGuardResolverStatusNotResolved() {
 // (l) waves.js:1383-1384 — resolve-apply dispatch returned no reply → fallback.
 async function scenarioGuardResolveApplyReplyNull() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') return conflictFoldReply(open)
     if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'ok' }
@@ -715,11 +722,52 @@ async function scenarioGuardResolveApplyReplyNull() {
   console.log('scenario 9l guard-resolve-apply-reply-null: OK')
 }
 
-// (m) waves.js:1393-1394 — resolution of <path> not applied (<status>) → fallback.
-// applied.status is neither FOLDED nor a first-attempt CONFLICTS retry.
-async function scenarioGuardResolutionNotApplied() {
+// (m) The apply-reply retry rule, inverted from the old stale re-narration.
+// REJECTED (exit 4 — the reply-dir grammar refused before any kernel work) is
+// the ONE retryable apply status: the engine re-briefs the same resolver once,
+// carrying the reason, and a second REJECTED falls the wave back. Every other
+// non-advancing status — ERROR included — falls back immediately, because a
+// kernel that refused the work will refuse it again.
+async function scenarioGuardRejectedRetriedOnce() {
   const calls = []
-  const open = [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }]
+  const open = [openEntry(1, 'src/shared.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open)
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'first try' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'REJECTED', detail: 'missing reply for h2' }
+    }
+    if (label === 'resolve:wave1:1:2') return { status: 'RESOLVED', notes: 'second try' }
+    if (label === 'merge:wave1:apply1:2') {
+      return { status: 'REJECTED', detail: 'h1: final line without newline' }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+
+  eq(labels(calls).filter((l) => l.startsWith('merge:wave1:a') || l.startsWith('resolve:')),
+     ['resolve:wave1:1:1', 'merge:wave1:apply1:1', 'resolve:wave1:1:2',
+      'merge:wave1:apply1:2'],
+     'guard-m: exactly ONE re-brief after a rejected reply, then no more')
+  const rp2 = promptFor(calls, 'resolve:wave1:1:2')
+  assert(rp2.indexOf('PREVIOUS REPLY REJECTED: missing reply for h2') !== -1,
+    'guard-m: the re-brief carries the kernel\'s rejection reason')
+  assert(rp2.indexOf('REPLY DIR: write one file per hunk (h1.txt, h2.txt, …) plus ' +
+    'notes.txt into ' + FDIR + '/reply-1-2') !== -1,
+    'guard-m: the re-brief writes a FRESH reply directory (attempt 2)')
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-m: nothing is adopted')
+  assertFellBack(r, calls,
+    /resolver reply rejected twice on src\/shared\.js: h1: final line without newline/,
+    'guard-m')
+  eq(r.frontier[0].resolverTranscripts.map((t) => [t.conflict, t.attempt, t.status]),
+     [[1, 1, 'RESOLVED'], [1, 2, 'RESOLVED']],
+     'guard-m: both briefed attempts are transcribed against the same conflict index')
+  console.log('scenario 9m guard-rejected-retried-once: OK')
+}
+
+async function scenarioGuardApplyErrorFallsBackAtOnce() {
+  const calls = []
+  const open = [openEntry(1, 'src/shared.js', 3)]
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') return conflictFoldReply(open)
     if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'ok' }
@@ -729,11 +777,13 @@ async function scenarioGuardResolutionNotApplied() {
     return undefined
   })
   const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
-  assert(!has(calls, 'merge:wave1:adopt'), 'guard-m: nothing is adopted')
-  assert(!has(calls, 'resolve:wave1:1:2'), 'guard-m: no second resolver attempt for a non-CONFLICTS non-FOLDED apply status')
+  assert(!has(calls, 'resolve:wave1:1:2'),
+    'guard-m2: an ERROR apply is never retried — only REJECTED is')
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-m2: nothing is adopted')
   assertFellBack(r, calls,
-    /resolution of src\/shared\.js not applied \(ERROR\): kernel-limit park exceeded/, 'guard-m')
-  console.log('scenario 9m guard-resolution-not-applied: OK')
+    /resolution of src\/shared\.js not applied \(ERROR\): kernel-limit park exceeded/,
+    'guard-m2')
+  console.log('scenario 9m2 guard-apply-error-falls-back-at-once: OK')
 }
 
 // (n) status: 'CONFLICTS' with the counts entirely omitted — the missing-counts
@@ -743,8 +793,7 @@ async function scenarioGuardConflictsCountsOmitted() {
   const calls = []
   const agent = makeAgent(calls, (label) => {
     if (label === 'merge:wave1:fold') {
-      const reply = conflictFoldReply(
-        [{ path: 'src/shared.js', epoch: 3, narrationFile: FDIR + '/conflict-0.txt' }])
+      const reply = conflictFoldReply([openEntry(1, 'src/shared.js', 3)])
       delete reply.conflicts
       delete reply.dispatchable
       return reply
@@ -786,9 +835,284 @@ async function scenarioGuardSelfChecksOmitted() {
   console.log('scenario 9o guard-selfchecks-omitted: OK')
 }
 
+// (p) The `waiting` shape: the CLI applied the resolution but the current stop
+// has not drained, so it folds no further and names the entries still waiting.
+// That is a LEGAL continuation, not a fallback — but the waiting set is held to
+// the engine's own outstanding list, minus the entry just applied. A `waiting`
+// that disagrees (or an empty one, which the CLI never prints) is a contract
+// violation: believing it would drop a conflict nobody ever resolves.
+async function scenarioWaitingShapeLegal() {
+  const calls = []
+  const openTwo = [openEntry(1, 'src/shared.js', 3), openEntry(2, 'src/b.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(openTwo, [])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'CONFLICTS', open: [], waiting: [2] }
+    }
+    if (label === 'resolve:wave1:2:1') return { status: 'RESOLVED', notes: 'b' }
+    if (label === 'merge:wave1:apply2:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', open: [], remaining: [] }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-p' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+
+  eq(labels(calls).filter((l) => l.startsWith('merge:') || l.startsWith('resolve:')),
+     ['merge:wave1:fold', 'resolve:wave1:1:1', 'merge:wave1:apply1:1',
+      'resolve:wave1:2:1', 'merge:wave1:apply2:1', 'merge:wave1:adopt'],
+     'waiting-legal: a matching waiting list continues the work list, never falls back')
+  eq(r.waveMerges[0].headSha, 'cand-p', 'waiting-legal: the candidate was adopted')
+  eq(r.frontier[0].foldCliCalls, 4,
+     'waiting-legal: fold + two resolves + materialize = 4 CLI calls')
+  console.log('scenario 9p waiting-shape-legal: OK')
+}
+
+async function scenarioWaitingShapeMismatch() {
+  for (const [tag, waiting, re] of [
+    ['empty', [], /reported waiting \[\] but the engine was holding \[2\] outstanding/],
+    ['mismatch', [3], /reported waiting \[3\] but the engine was holding \[2\] outstanding/],
+  ]) {
+    const calls = []
+    const openTwo = [openEntry(1, 'src/shared.js', 3), openEntry(2, 'src/b.js', 3)]
+    const agent = makeAgent(calls, (label) => {
+      if (label === 'merge:wave1:fold') return conflictFoldReply(openTwo, [])
+      if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+      if (label === 'merge:wave1:apply1:1') return { status: 'CONFLICTS', open: [], waiting }
+      return undefined
+    })
+    const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+    assert(!has(calls, 'resolve:wave1:2:1'),
+      'waiting-' + tag + ': the work list never advances on a disagreeing waiting set')
+    assert(!has(calls, 'merge:wave1:adopt'), 'waiting-' + tag + ': nothing is adopted')
+    assertFellBack(r, calls, re, 'waiting-' + tag)
+  }
+  console.log('scenario 9p2 waiting-shape-mismatch: OK')
+}
+
+// (q) The selfChecks guard is scoped to the COMPLETING reply. A stop reply
+// legitimately carries no attestation — the CLI runs its two live self-checks
+// inside whichever call completes the wave — so requiring one here would fall
+// every conflicted wave back before a single resolver was dispatched.
+async function scenarioStopReplyNeedsNoSelfChecks() {
+  const calls = []
+  const open = [openEntry(1, 'src/shared.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      // Exactly the CLI's stop shape: no selfChecks key at all.
+      return { status: 'CONFLICTS', conflicts: 1, dispatchable: 1, parked: 0,
+               foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json',
+               open, remaining: ['t3'], complete: false }
+    }
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'ok' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', open: [], remaining: [] }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-q' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(has(calls, 'resolve:wave1:1:1'),
+    'guard-q: a stop reply without selfChecks still dispatches its resolver')
+  eq(r.waveMerges[0].headSha, 'cand-q', 'guard-q: the wave adopted its candidate')
+  assert(!r.judgmentCalls.some((j) => /contended merge fell back/.test(j)),
+    'guard-q: no fallback (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  eq(r.frontier[0].selfChecks, 'ok',
+     'guard-q: the attestation is taken from the completing reply')
+  console.log('scenario 9q stop-reply-no-selfchecks-not-checked: OK')
+}
+
+// ── Scenario 10: the work list across CONTINUED folds ───────────────────────
+// The incremental protocol folds on inside the same `resolve` call once a stop
+// drains, so a later stop's conflicts arrive as an apply REPLY — never as a
+// second fold dispatch. The engine's work list must be REPLACED by that reply's
+// `open`, not appended to and not ignored.
+async function scenarioWorkListToComplete() {
+  const calls = []
+  const first = [openEntry(1, 'src/shared.js', 3)]
+  const second = [openEntry(2, 'src/b.js', 5)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(first, ['t3'])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+    if (label === 'merge:wave1:apply1:1') {
+      // Stop 1 drained, the CLI folded on, and t3 opened a NEW conflict.
+      return { status: 'CONFLICTS', conflicts: 1, dispatchable: 1, open: second,
+               remaining: [], complete: false, foldCliWallTimeSec: 1.5 }
+    }
+    if (label === 'resolve:wave1:2:1') return { status: 'RESOLVED', notes: 'b' }
+    if (label === 'merge:wave1:apply2:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', open: [],
+               remaining: [], foldCliWallTimeSec: 2.25 }
+    }
+    if (label === 'merge:wave1:adopt') {
+      return { status: 'MERGED', headSha: 'cand-10a', foldCliWallTimeSec: 1 }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+
+  eq(labels(calls).filter((l) => l.startsWith('merge:') || l.startsWith('resolve:')),
+     ['merge:wave1:fold', 'resolve:wave1:1:1', 'merge:wave1:apply1:1',
+      'resolve:wave1:2:1', 'merge:wave1:apply2:1', 'merge:wave1:adopt'],
+     'work-list: the continued fold conflict is resolved without a second fold dispatch')
+  eq(calls.filter((c) => c.label.startsWith('resolve:')).length, 2,
+     'work-list: exactly two resolver dispatches')
+  const rp2 = promptFor(calls, 'resolve:wave1:2:1')
+  assert(rp2.indexOf('HUNKS: src/b.js — read ' + FDIR + '/conflict-2.hunks.txt') !== -1,
+    'work-list: the second resolver is briefed off the NEW conflict index')
+  const ap2 = promptFor(calls, 'merge:wave1:apply2:1')
+  assert(ap2.indexOf('--conflict 2 --reply-dir ' + FDIR + '/reply-2-1') !== -1,
+    'work-list: the second apply names conflict 2 and its own reply directory')
+
+  eq(r.waveMerges[0].headSha, 'cand-10a', 'work-list: the completed fold adopted')
+  assertFrontierShape(r, 'work-list')
+  eq(r.frontier[0].foldCliCalls, 4,
+     'work-list: fold + resolve + resolve + materialize = 4 CLI calls')
+  eq(r.frontier[0].foldCliWallTimeSec, 4.25 + 1.5 + 2.25 + 1,
+     'work-list: the wall clock sums every STEP reply that timed its invocation')
+  eq(r.frontier[0].selfChecks, 'ok', 'work-list: selfChecks comes from the completing reply')
+  eq(r.frontier[0].resolverTranscripts.map((t) => [t.conflict, t.path, t.epoch]),
+     [[1, 'src/shared.js', 3], [2, 'src/b.js', 5]],
+     'work-list: each transcript is keyed by its conflicts-index i')
+  console.log('scenario 10a work-list-to-complete: OK')
+}
+
+// The park PRE-SCAN: the whole wave is folded once in memory before the log is
+// written, so a wave that is going to park is reported before a single resolver
+// is dispatched. It reports parked > 0 with an EMPTY open list.
+async function scenarioParkedPreScan() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'PARKED', conflicts: 1, dispatchable: 0, parked: 1, open: [],
+               remaining: ['A', 'B'], complete: false,
+               foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 0.9,
+               detail: 'marker-shaped content in src/shared.js' }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!calls.some((c) => c.label.startsWith('resolve:')),
+    'pre-scan park: no resolver is dispatched — the pre-scan runs before the log exists')
+  assert(!has(calls, 'merge:wave1:adopt'), 'pre-scan park: nothing is adopted')
+  assertFellBack(r, calls,
+    /fold parked an ineligible conflict: marker-shaped content in src\/shared\.js/,
+    'pre-scan park')
+  assertFrontierShape(r, 'pre-scan park')
+  eq(r.frontier[0].foldCliCalls, 1, 'pre-scan park: exactly one CLI call was driven')
+  console.log('scenario 10b parked-pre-scan: OK')
+}
+
+// Scenario 5's budget checkpoint, mirrored across the CONTINUED-fold leg: the
+// work list is re-seeded from an apply reply, and the checkpoint must guard that
+// entry too. Exhaustion routes to fallback, which is still live before adoption.
+async function scenarioBudgetExhaustedMidWorkList() {
+  const calls = []
+  const first = [openEntry(1, 'src/shared.js', 3)]
+  const second = [openEntry(2, 'src/b.js', 5)]
+  let remaining = 100
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(first, ['t3'])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+    if (label === 'merge:wave1:apply1:1') {
+      remaining = 0   // exhausted AFTER the continued fold, BEFORE conflict 2 dispatches
+      return { status: 'CONFLICTS', conflicts: 1, dispatchable: 1, open: second,
+               remaining: [], complete: false }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()),
+    budget: { total: 100, remaining: () => remaining } })
+
+  assert(!has(calls, 'resolve:wave1:2:1'),
+    'budget/work-list: the continued fold resolver is never dispatched')
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'budget/work-list: nothing is adopted with a conflict still open')
+  assertFellBack(r, calls,
+    /budget exhausted before resolving conflict 2 \(1 outstanding\)/, 'budget/work-list')
+  eq(r.frontier[0].resolverTranscripts.length, 1,
+     'budget/work-list: only the completed resolver dispatch is transcribed')
+  console.log('scenario 10c budget-exhausted-mid-work-list: OK')
+}
+
+// (n2) The missing-counts guard on the CONTINUED-fold leg: an apply reply that
+// names an `open` list with no `conflicts` scalar is the same contract violation
+// as the fold-leg 9n — and the same silent-drop risk, since the work list is
+// re-seeded from exactly that list.
+async function scenarioGuardContinuedFoldCountsOmitted() {
+  const calls = []
+  const first = [openEntry(1, 'src/shared.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(first, ['t3'])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'CONFLICTS', open: [openEntry(2, 'src/b.js', 5)] }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'resolve:wave1:2:1'),
+    'guard-n2: no resolver is dispatched off an uncounted continued-fold stop')
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-n2: nothing is adopted')
+  assertFellBack(r, calls,
+    /continued fold reported CONFLICTS with no conflicts count to verify against/,
+    'guard-n2')
+  console.log('scenario 9n2 guard-continued-fold-counts-omitted: OK')
+}
+
+// (g2) The named-vs-counted guard on the CONTINUED-fold leg — 9g's sibling. A
+// short `open` list here is the same silent drop: the work list is re-seeded
+// from exactly that list, so an unnamed conflict is one nobody ever resolves.
+async function scenarioGuardContinuedFoldOpenCountMismatch() {
+  const calls = []
+  const first = [openEntry(1, 'src/shared.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(first, ['t3'])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'a' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'CONFLICTS', conflicts: 2, dispatchable: 2,
+               open: [openEntry(2, 'src/b.js', 5)], remaining: [], complete: false }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'resolve:wave1:2:1'),
+    'guard-g2: no resolver is dispatched off a short continued-fold stop')
+  assert(!has(calls, 'merge:wave1:adopt'), 'guard-g2: nothing is adopted')
+  assertFellBack(r, calls,
+    /continued fold named 1 open conflict\(s\) but counted 2 still to resolve/, 'guard-g2')
+  console.log('scenario 9g2 guard-continued-fold-open-count-mismatch: OK')
+}
+
+// (o2) The selfChecks attestation on a COMPLETING apply reply — 9o's sibling
+// across the incremental protocol. The wave usually completes inside a `resolve`
+// call now, so this is where the #145 hole actually lives: a `complete` reply
+// with no attestation is schema-legal and lands at the adoption boundary.
+async function scenarioGuardApplySelfChecksOmitted() {
+  const calls = []
+  const open = [openEntry(1, 'src/shared.js', 3)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open, [])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'ok' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, open: [], remaining: [] }
+    }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  assert(!has(calls, 'merge:wave1:adopt'),
+    'guard-o2: a completing apply reply with no attestation is never adopted')
+  assertFellBack(r, calls,
+    /fold self-checks did not pass: \(absent from the reply\)/, 'guard-o2')
+  console.log('scenario 9o2 guard-apply-selfchecks-omitted: OK')
+}
+
 await scenarioCleanFold()
 await scenarioConflictResolved()
-await scenarioStaleRenarration()
+await scenarioStaleFallback()
 await scenarioParkFallback()
 await scenarioBudgetExhaustedMidLoop()
 await scenarioFoldDispatchThrows()
@@ -809,8 +1133,18 @@ await scenarioGuardFoldedCountsOmitted()
 await scenarioGuardFoldStatusError()
 await scenarioGuardResolverStatusNotResolved()
 await scenarioGuardResolveApplyReplyNull()
-await scenarioGuardResolutionNotApplied()
+await scenarioGuardRejectedRetriedOnce()
+await scenarioGuardApplyErrorFallsBackAtOnce()
 await scenarioGuardConflictsCountsOmitted()
 await scenarioGuardSelfChecksOmitted()
+await scenarioGuardContinuedFoldCountsOmitted()
+await scenarioGuardContinuedFoldOpenCountMismatch()
+await scenarioGuardApplySelfChecksOmitted()
+await scenarioWaitingShapeLegal()
+await scenarioWaitingShapeMismatch()
+await scenarioStopReplyNeedsNoSelfChecks()
+await scenarioWorkListToComplete()
+await scenarioParkedPreScan()
+await scenarioBudgetExhaustedMidWorkList()
 
 console.log('ALL SCENARIOS PASSED')
