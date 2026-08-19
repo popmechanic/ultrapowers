@@ -163,12 +163,12 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
 - Create: `app/export.py`
 - Create: `app/tabular.py`
 - Create: `app/colspec.py`
-- Create: `app/report.py`
+- Create: `app/reportdoc.py`
 - Modify: `app/registry.py`
 - Test: `tests/test_export.py`
 - Test: `tests/test_tabular.py`
 - Test: `tests/test_colspec.py`
-- Test: `tests/test_report.py`
+- Test: `tests/test_reportdoc.py`
 
 - [ ] **Step 1a: Write failing tests** in `tests/test_tabular.py` for `app/tabular.py` — the column-model toolkit `app/export.py` builds on. One test function per bullet:
   - `columns([])` returns `[]`; `columns(records)` returns the **sorted union** of every key across all records (records need not share keys — assert with two records whose key sets differ).
@@ -216,7 +216,7 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - `describe_colspec(pairs)` renders one line per pair in order, each exactly `"<header> <- <source>"`; `describe_colspec([])` returns exactly `"(no columns)"` — pin the three-line literal for `parse_colspec("a,b:B,c")`.
   - That's 10 test functions; one per bullet.
 
-- [ ] **Step 1d: Write failing tests** in `tests/test_report.py` for `app/report.py` — a multi-section report composer (imports `app.export` and `app.colspec` only). One test function per bullet:
+- [ ] **Step 1d: Write failing tests** in `tests/test_reportdoc.py` for `app/reportdoc.py` — a multi-section report composer (imports `app.export` and `app.colspec` only; a NEW module — the pre-existing `app/report.py` totals renderer and its route are untouched, and nothing here reuses its names from outside this module). One test function per bullet:
   - `ReportError` is an `Exception` subclass.
   - `section(title, records, fmt="md")` returns exactly `{"title": title, "records": records, "fmt": fmt}`; an empty or whitespace-only title raises `ReportError`; a fmt in neither `export.FORMATS` nor `export.EXTRA_FORMATS` raises `ReportError` naming it (`"html"` is accepted, `"xml"` raises).
   - `render_section(sec)` returns exactly `"## " + title + "\n\n" + export.render_any(records, fmt)` — pin the delegation with a monkeypatched recorder on `export.render_any`; a section with **empty** records returns exactly `"## <title>\n\n(no records)"` and `render_any` is **not** called (assert via the recorder).
@@ -226,11 +226,13 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - `summary(sections)` returns exactly `"<S> sections, <R> records"` (R = total across sections) — pin the literal `"2 sections, 3 records"` for the fixture; `summary([])` returns exactly `"0 sections, 0 records"`.
   - `render_index(sections)` renders one line per section in order, 1-based, each exactly `"<i>. <title> (<n> records)"`; `render_index([])` returns exactly `"(empty report)"` — pin the two-line literal.
   - `projected_section(title, records, pairs, fmt="md")` builds `section(title, colspec.project(records, pairs), fmt)` — recorder pin on `colspec.project`; end-to-end: `render_section(projected_section("T", [{"a": 1, "b": 2}], colspec.parse_colspec("a:A"), "csv"))` is exactly `"## T\n\nA\n1"`.
-  - That's 9 test functions; one per bullet.
+  - `find_section(sections, title)` returns the matching section dict (the same object, not a copy — assert with `is`); no match raises `ReportError` naming the title.
+  - `merge_reports(a, b)` returns a **new** concatenated sections list (inputs unmutated) and runs the same shared duplicate-title check across the combined list — a title appearing in both inputs raises `ReportError` naming it; assert the exact merged list for disjoint inputs.
+  - That's 11 test functions; one per bullet.
 
-- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py -v` → FAIL.
+- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_reportdoc.py -v` → FAIL.
 
-- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`/`pad`/`sanitize_flat`/`escape_html`/`truncate`/`wrap`/`fit`/`render_row`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `to_tsv`, `to_html`, `parse_csv`, `FORMATS`, `EXTRA_FORMATS`, `render`, `render_any`, `summary_line`, per Step 1's contracts exactly. `to_csv`, `to_markdown`, and `to_html` must build their column model and cells through `tabular` (no duplicated key-union, escaping, or str() logic in `export.py`). Then implement `app/colspec.py` — `ColspecError`, `parse_colspec`, `project`, `available`, `auto_colspec`, `header_row`, `rename_map`, `select`, `drop`, `sanitize_headers`, `describe_colspec`, per Step 1c exactly — and `app/report.py` — `ReportError`, `section`, `render_section`, `render_report`, `toc`, `record_counts`, `summary`, `render_index`, `projected_section`, per Step 1d exactly. Neither module touches `app/registry.py` (library layers only; the registry wiring below is unchanged).
+- [ ] **Step 3: Implement `app/tabular.py` then `app/export.py`** — `columns`/`cell`/`escape_csv`/`widths`/`pad`/`sanitize_flat`/`escape_html`/`truncate`/`wrap`/`fit`/`render_row`, then `to_csv`, `to_json`, `to_markdown`, `to_ndjson`, `to_tsv`, `to_html`, `parse_csv`, `FORMATS`, `EXTRA_FORMATS`, `render`, `render_any`, `summary_line`, per Step 1's contracts exactly. `to_csv`, `to_markdown`, and `to_html` must build their column model and cells through `tabular` (no duplicated key-union, escaping, or str() logic in `export.py`). Then implement `app/colspec.py` — `ColspecError`, `parse_colspec`, `project`, `available`, `auto_colspec`, `header_row`, `rename_map`, `select`, `drop`, `sanitize_headers`, `describe_colspec`, per Step 1c exactly — and `app/reportdoc.py` — `ReportError`, `section`, `render_section`, `render_report`, `toc`, `record_counts`, `summary`, `render_index`, `projected_section`, `find_section`, `merge_reports`, per Step 1d exactly (the pre-existing `app/report.py` and every one of its callers stay byte-identical). Neither module touches `app/registry.py` (library layers only; the registry wiring below is unchanged).
 
 - [ ] **Step 4: Wire the registry** — in `app/registry.py`:
   - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"export_default_format": "csv"` and `"export_formats_enabled": ["csv", "json"]`.
@@ -242,12 +244,12 @@ git commit -m "feat(eventboard): input-validation layer + schema toolkit on reco
   - **Do not** add a route or touch `bootstrap()` — `GET /export` is already registered and already calls `_export`, which reads `EXPORT_FORMATS` and `config["export_default_format"]`/`config["export_formats_enabled"]`; your registration line is the only thing `/export` is waiting on.
   - **Do not** add `"md"`/`"ndjson"`/`"tsv"` to `"export_formats_enabled"` — the route serves exactly `csv` and `json`; the three new formats are registered in `EXPORT_FORMATS` but reachable only by direct `render(...)` calls until a future config change enables them.
 
-- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records, and `app.call("GET", "/export", fmt="md")` raises `ValueError` (registered but not enabled).
+- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_reportdoc.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records, and `app.call("GET", "/export", fmt="md")` raises `ValueError` (registered but not enabled).
 
 - [ ] **Step 6: Commit.**
 
 ```bash
-git add app/export.py app/tabular.py app/colspec.py app/report.py app/registry.py tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_report.py
+git add app/export.py app/tabular.py app/colspec.py app/reportdoc.py app/registry.py tests/test_export.py tests/test_tabular.py tests/test_colspec.py tests/test_reportdoc.py
 git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular toolkit, wired to the pre-existing /export route"
 ```
 
@@ -332,7 +334,7 @@ git commit -m "feat(eventboard): CSV/JSON/MD/NDJSON export formatter + tabular t
 - [ ] **Step 1e: Write failing tests** in `tests/test_tiers.py` for `app/tiers.py` — an actor-tier policy layer over `app/throttle.py` (imports `app.throttle` and `app.quota` only; no module state beyond the `TIERS` constant). Call `quota.reset()` at the start of every test. One test function per bullet:
   - `TierError` is an `Exception` subclass, distinct from `throttle.PolicyError`.
   - `TIERS` is exactly `{"free": {"limit": 2, "window": 60, "burst": 0}, "pro": {"limit": 10, "window": 60, "burst": 2}, "internal": {"limit": 100, "window": 60, "burst": 10}}` — pin the whole dict.
-  - `tier_of(actor, assignments)` reads the actor's tier from the `assignments` dict, defaulting to `"free"` for an unassigned actor; an assignment naming a tier absent from `TIERS` raises `TierError` naming **both** the actor and the bogus tier.
+  - `tier_of(actor, assignments)` reads the actor's tier from the `assignments` dict, defaulting to `"free"` for an unassigned actor; an assignment naming a tier absent from `TIERS` raises `TierError` naming **both** the actor and the bogus tier — use a multi-character actor name the fixed message text cannot contain (e.g. `"mallory"`), so the actor half of the assertion is load-bearing.
   - `policy_for(actor, assignments)` returns a **deep copy** of the tier's policy dict (mutating the result leaves `TIERS` untouched — assert).
   - `enforce_tier(method, path, actor, assignments)` builds the one-key policies dict `{"<method> <path>": policy_for(actor, assignments)}` and delegates to `throttle.enforce(method, path, actor, <that dict>)` — pin the delegation with a monkeypatched recorder asserting the exact argument tuple, then end-to-end: a `"free"` actor's third `enforce_tier("POST", "/records", "a", {})` raises `throttle.PolicyError` (limit 2), while a `"pro"`-assigned actor's counter is independent (interleave and assert).
   - `remaining_tier(method, path, actor, assignments)` delegates to `throttle.remaining_for` under the same one-key policies dict — read-only (a subsequent `enforce_tier` still succeeds where it should); assert the exact reading for a fresh free actor (`2`) and after one take (`1`).
