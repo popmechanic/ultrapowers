@@ -18,3 +18,7 @@ __pycache__/
 # (merge_ledger.py / regenerate_digest); ~600KB and growing, so untracked.
 docs/superpowers/observations/ledger.jsonl
 docs/superpowers/observations/ledger.md
+
+# ab_runner eval-cell evidence (#165): run dirs + transcripts copied out of the
+# OS temp dir per cell; multi-MB, operator-read locally, never committed.
+evals/results/cells/
