@@ -10,6 +10,13 @@ One JSONL file per wave, written by the frontier CLI and read back by
 `<n>` is **1-based**, matching the `heads/` slot convention. Everything else
 the wave records lives beside it in the same directory.
 
+The log is also **the authority for what has folded**. The wave's task list
+is re-supplied to every CLI call as `<taskId>=<branch>:<headSha>` triples; the
+recorded `fold` events must be an `(id, headSha)` prefix of that list over the
+same `base`, or the call refuses (`log/list disagreement`). `remaining` is the
+supplied list minus that prefix, and **`complete` is derived, never recorded**:
+every task folded and no narrated path left unresolved.
+
 ## Self-sufficiency contract
 
 **The log plus the repository are the whole record.** Each CLI invocation in a
@@ -56,6 +63,11 @@ Task-index order (not completion order) is what the CLI writes — completion
 order is not observable to the engine, and K1 order-independence is exactly
 what the self-checks assert, so determinism costs nothing.
 
+Folding is **incremental**: the CLI stops at the first fold that opens a
+conflict, so a partial log is the normal mid-wave state, not damage. A
+`resolve` that completes the current stop continues folding and may append
+further `fold` events in the same call.
+
 ### `resolve` — one per applied resolution
 
 ```json
@@ -67,20 +79,34 @@ with a final newline carries a trailing `""` entry, and the file materializes
 byte-identical. `epoch` is the event count at which the narration was read.
 
 **Validity is never re-checked on rehydration.** Live, `apply_resolution`
-refuses a resolution whose path was touched by a fold at or after its epoch,
-and the caller re-narrates. Recorded, that same resolution re-applies
-**unconditionally**: the log records what actually applied, and re-deciding it
-would silently drop a resolution the run really made. Rehydration appends
-resolve events to the engine's event list, so the epoch clock reconstructs
-exactly — a manifest-only comparison cannot see a desynced clock.
+refuses a resolution whose path was touched by a fold or an earlier
+resolution at or after its epoch — **the CLI then exits 2 and the engine
+falls the wave back; there is no re-narration.** That refusal is the
+idempotency guard: the resolve STEP is agent-driven, and a command re-issued
+after its log append would otherwise re-apply stale whole-file lines *after*
+the continued fold and silently clobber the next task's contribution. Every
+narration is fresh against the frontier it was read off, because folding
+stops at the conflict that opened it.
+
+Recorded, that same resolution re-applies **unconditionally**: the log
+records what actually applied, and re-deciding it would silently drop a
+resolution the run really made. Rehydration appends resolve events to the
+engine's event list, so the epoch clock reconstructs exactly — a
+manifest-only comparison cannot see a desynced clock.
 
 ## One fact, one record
 
 The fold log records what the merge state *did*. It is not the wave's
 scratchpad:
 
-- **conflicts and parks** — the narration files and every `dispatchable()`
+- **conflicts and parks** — the narration files (`conflict-<i>.txt`), their
+  hunk-scoped briefs (`conflict-<i>.hunks.txt`) and every `dispatchable()`
   verdict, including park reasons — live in the conflicts index beside the log;
-- **fallbacks** live in the engine's own run records.
+- **fold sizing** — `fold_stats.json` beside the log, `{"maxLines": [...]}`,
+  one entry per CLI call that folded: the largest text file that call merged.
+  It is the one fact nothing else records, which is why it is a file of its
+  own rather than a field in the log;
+- **fallbacks** live in the engine's own run records; so do the CLI call
+  count and wall time, which the CLI cannot see across processes.
 
 Nothing is written to two places.
