@@ -45,6 +45,20 @@ the five lenses below and return findings as a JSON array. Return raw data only.
   capability guarded) mandatory distill output. Adoption of any reversal stays
   operator-gated.
 
+  Sensor baseline for this canary (Phase-1 fold-native authoring program §1f):
+  - **What to read** — `bundle.json`'s `frontier.maxLinesByWave` (per-wave list
+    of the largest file the resolver's brief was built against, one entry per
+    fold call) and `audit.totals.wallSecByTask` (summed implementer wall-clock
+    seconds per task id, from each transcript's first-to-last record
+    `timestamp`).
+  - **What a rising `maxLines` means** — a wave whose contended files are
+    growing is exactly the shape hunk-scoped resolver briefs (spec §1a) were
+    built to survive; a rising trend with no matching rise in fallback/
+    redirect rate is the relaxation still paying, not yet failing.
+  - **What `wallSecByTask` feeds** — Phase 3's MEASURED leg: the wall-clock
+    half of the eventual before/after comparison, read alongside the resolver
+    token-share reading in `evals/frontier/results/2026-08-19-t15-resolver-token-share.md`.
+
 - **same-file authoring cost** — tag by prefixing the finding title with
   `authoring-cost-samefile:` (lens: routing). The question: during PLANNING —
   brainstorm→spec→ultraplan authoring, wherever the bundle's planning turns

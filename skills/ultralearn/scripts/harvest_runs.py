@@ -670,6 +670,95 @@ def _merge_audits(audits):
     return merged
 
 
+_WAVE_DIR_NUM = re.compile(r"wave-(\d+)$")
+
+
+def _frontier_max_lines(run_dir):
+    """{"1": [maxLines...], ...} from <run_dir>/frontier/wave-<n>/fold_stats.json
+    (spec §1f: `fold_stats.json` = `{"maxLines": [int, ...]}`). Soft: no
+    run_dir, no `frontier/` dir, or a missing/malformed fold_stats.json for a
+    given wave is simply skipped for that wave — never raised."""
+    out = {}
+    if not run_dir:
+        return out
+    frontier_dir = Path(run_dir) / "frontier"
+    if not frontier_dir.is_dir():
+        return out
+    for wave_dir in sorted(frontier_dir.glob("wave-*")):
+        m = _WAVE_DIR_NUM.search(wave_dir.name)
+        if not m:
+            continue
+        try:
+            obj = json.loads((wave_dir / "fold_stats.json").read_text())
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            continue
+        max_lines = obj.get("maxLines") if isinstance(obj, dict) else None
+        if isinstance(max_lines, list):
+            out[m.group(1)] = max_lines
+    return out
+
+
+def _read_launch(run_dir):
+    """{"waves": [...], "edges": [...]} from `<run_dir>/launch.json` (spec
+    §1f), disk-sourced exactly like the gate receipt (`_disk_receipts_for`).
+    None when there's no run_dir, the file is missing/unreadable/malformed,
+    or `waves`/`edges` aren't both lists."""
+    if not run_dir:
+        return None
+    try:
+        obj = json.loads((Path(run_dir) / "launch.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    waves, edges = obj.get("waves"), obj.get("edges")
+    if not isinstance(waves, list) or not isinstance(edges, list):
+        return None
+    return {"waves": waves, "edges": edges}
+
+
+def _plan_word_count(plan_path, run_dir):
+    """Word count of the plan file, read from disk relative to the nearest
+    git root of `run_dir` (soft: no plan_path/run_dir, no git ancestor, or an
+    unreadable file -> None; never raised)."""
+    if not plan_path or not run_dir:
+        return None
+    repo_root = _nearest_git_root(run_dir)
+    if repo_root is None:
+        return None
+    try:
+        text = (repo_root / plan_path).read_text()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return len(text.split())
+
+
+def _planning_turns(records, launch_index):
+    """Count of `user`-type records carrying non-empty text content, strictly
+    before `launch_index` (the last registered launch's own tool_use record —
+    the same anchor `_last_launch_tool_use_index` computes). `launch_index is
+    None` counts the whole transcript (no registered launch to bound
+    against)."""
+    bound = launch_index if launch_index is not None else len(records)
+    count = 0
+    for idx, r in enumerate(records):
+        if idx >= bound:
+            break
+        if not isinstance(r, dict) or r.get("type") != "user":
+            continue
+        content = (r.get("message") or {}).get("content")
+        texts = []
+        if isinstance(content, str):
+            texts = [content]
+        elif isinstance(content, list):
+            texts = [b.get("text") for b in content
+                     if isinstance(b, dict) and b.get("type") == "text"
+                     and isinstance(b.get("text"), str)]
+        if any(t.strip() for t in texts):
+            count += 1
+    return count
+
+
 def _repo_root():
     return Path(__file__).resolve().parents[3]
 
@@ -867,6 +956,13 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
                                           has_registered_launch=bool(registry["stamps"]))
     if session_kind != "engine":
         return None
+    # Sensor baseline (spec §1f): frontier fold_stats + the launch DAG, both
+    # disk-sourced from the LAST registered stamp's runDir (same singular
+    # choice as `gateReport`); planning word/turn counts only when the
+    # session actually authored the plan (planningFound).
+    last_run_dir = registry["runDirsByStamp"].get(last_stamp) if last_stamp else None
+    frontier = {"maxLinesByWave": _frontier_max_lines(last_run_dir)}
+    launch = _read_launch(last_run_dir)
     bundle = {
         "runId": run_id,
         "sessionId": session_id,
@@ -884,7 +980,12 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
         "truncated": terminus in ("NEEDS_ACK", "BLOCKED", "unknown"),
         "audit": audit,
         "planningFound": planning_found,
+        "frontier": frontier,
+        "launch": launch,
     }
+    if planning_found:
+        bundle["planning"] = {"planWords": _plan_word_count(plan_path, last_run_dir),
+                              "planningTurns": _planning_turns(records, launch_idx)}
     out = Path(cache_dir) / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))

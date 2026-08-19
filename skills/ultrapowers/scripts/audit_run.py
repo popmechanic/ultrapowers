@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 TASK_HEAD = re.compile(r"### Task ([A-Za-z0-9]+):")
@@ -79,20 +80,41 @@ def classify(text):
     return "unknown"
 
 
+def _parse_ts(ts):
+    """ISO 8601 timestamp ('Z' or numeric offset) -> aware datetime, or None."""
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+
+
 def collect(path):
+    """(model, turns, out_tokens, wall_sec). wall_sec = last record `timestamp`
+    minus first record `timestamp` across the whole transcript (any record
+    type), 0.0 when fewer than two parseable timestamps are present — a
+    transcript with no `timestamp` field at all never raises."""
     model, turns, out_tokens = "?", 0, 0
+    first_ts, last_ts = None, None
     for line in path.read_text().splitlines():
         try:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
+        ts = d.get("timestamp")
+        if isinstance(ts, str) and ts:
+            dt = _parse_ts(ts)
+            if dt is not None:
+                if first_ts is None:
+                    first_ts = dt
+                last_ts = dt
         if d.get("type") != "assistant":
             continue
         turns += 1
         msg = d.get("message", {})
         model = msg.get("model", model)
         out_tokens += (msg.get("usage") or {}).get("output_tokens", 0) or 0
-    return model, turns, out_tokens
+    wall_sec = (last_ts - first_ts).total_seconds() if first_ts is not None and last_ts is not None else 0.0
+    return model, turns, out_tokens, wall_sec
 
 
 def audit(transcript_dir):
@@ -103,15 +125,15 @@ def audit(transcript_dir):
     d = Path(transcript_dir)
     files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
     if not files:
-        return {"agents": [], "totals": {"turns": 0, "outputTokens": 0},
+        return {"agents": [], "totals": {"turns": 0, "outputTokens": 0, "wallSecByTask": {}},
                 "escalatedTasks": [], "thrashCandidates": [],
                 "note": f"no agent-*.jsonl under {transcript_dir}"}
     agents = []
     for f in files:
         role = classify(first_user_text(f))
-        model, turns, out_tokens = collect(f)
+        model, turns, out_tokens, wall_sec = collect(f)
         agents.append({"role": role, "model": model, "turns": turns,
-                       "outputTokens": out_tokens})
+                       "outputTokens": out_tokens, "wallSec": wall_sec})
     agents.sort(key=lambda a: -a["turns"])
     totals = {"turns": sum(a["turns"] for a in agents),
               "outputTokens": sum(a["outputTokens"] for a in agents)}
@@ -122,6 +144,10 @@ def audit(transcript_dir):
         if a["role"].startswith("impl:"):
             impl_by_task.setdefault(a["role"].split(":", 1)[1], []).append(a)
     escalated = sorted(tid for tid, lst in impl_by_task.items() if len(lst) > 1)
+    # wallSecByTask: summed wallSec across every impl:<id> transcript (a task
+    # that escalated has more than one transcript feeding the same id).
+    totals["wallSecByTask"] = {tid: sum(a["wallSec"] for a in lst)
+                               for tid, lst in impl_by_task.items()}
     # thrashCandidates: absolute high-turns/low-output, no same-model peer needed.
     thrash = [a for a in agents
               if a["role"].startswith("impl")
@@ -146,7 +172,7 @@ def main(argv=None):
     rows = []
     for f in files:
         role = classify(first_user_text(f))
-        model, turns, out_tokens = collect(f)
+        model, turns, out_tokens, _wall_sec = collect(f)
         rows.append((role, model, turns, out_tokens))
     rows.sort(key=lambda r: -r[2])
 
