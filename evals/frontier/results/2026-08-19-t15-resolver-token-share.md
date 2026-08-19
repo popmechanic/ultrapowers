@@ -176,3 +176,15 @@ for path in resolver_files:
 
 print(resolver_tokens, "/", 231245, "=", resolver_tokens / 231245)
 ```
+
+## Addendum 2026-08-19 (Task 10): the real number is 4.73%
+
+#165 fixed (PR #168): ab_runner cells now persist under
+`evals/results/cells/`. The first persisted fold cell
+(`20260819230047-contend-big-B-fold`, contend-big, 3 resolver dispatches on a
+6,282-line file with hunk-scoped briefs) reads the resolver share directly
+from the resolver agent transcripts: **11,548 / 244,369 output tokens =
+4.73%** (2,936–4,396 tokens per dispatch). This doc's 10.0% remains what it
+always was — an upper bound on resolver-and-friends from row deltas — and is
+superseded for planning purposes by the measured value. Full reading:
+`2026-08-19-phase1-gate.md`.
