@@ -1,6 +1,6 @@
 # Fold-native authoring program — Phase 1 (resolver reach), Phase 2 (authoring/compiler subtraction + composition contracts), Phase 3 (engine decision rule)
 
-_Program spec 2026-08-18, rev 5 (trim rounds 1–4: B1 → incremental fold; B5–B13 + trims 1–26 adopted; rounds 3–4 supplied the CLI protocol + STEP status contract — see §Trim review). Brainstormed 2026-08-18
+_Program spec 2026-08-18, rev 6 — FINAL after trim review (5 rounds to terminal clean; round 5 verdict `ended`: B14 + T27 + nine wording items applied; reviewer's grade Phase 1 flat / Phase 2 down / Phase 3 flat / overall **down** — see §Trim review). Brainstormed 2026-08-18
 against `2026-08-18-rewrite-design-inputs.md` §5 (the value-ranked synthesis)
 with the operator; three phases, each its own plan and release, each gated by
 a pre-registered measurement. Nothing architectural is kept on principle —
@@ -97,7 +97,11 @@ Move the parallel engine's value in all three areas, measured:
 - Compiler: `skills/ultrapowers/scripts/compile_plan.py`.
 - Authoring: `skills/ultraplan/SKILL.md`, `skills/ultrapowers/references/plan-markers.md`,
   the two rubric legs (`hooks/session_start.sh`, ultraplan SKILL.md).
-- Sensor: `skills/ultralearn/scripts/harvest_runs.py`, `references/reading-lenses.md`.
+- Sensor: `skills/ultralearn/scripts/harvest_runs.py`, `skills/ultrapowers/scripts/audit_run.py`,
+  `references/reading-lenses.md`.
+- Docs that change with the code: `skills/ultrapowers/kernel/FOLD_LOG.md`,
+  `skills/ultrapowers/references/report-format.md`, and `CLAUDE.md` (the
+  frozen-vocabulary paragraph gains the measured-inert-deletion clause).
 - Evals: `evals/ab_runner.py`, `evals/fixtures/contend-prod/`, new
   `evals/fixtures/contend-big/`, `evals/frontier/results/`.
 
@@ -238,16 +242,24 @@ park entry, a log with `base` only, and exits 3. Then the incremental pass:
 | call | does | stdout (JSON, one line) | exit |
 |---|---|---|---|
 | `fold` (first call) | pre-scan; fold in order until the first fold that opens ≥1 `lines`/`add-add` conflict, or all fold | `{clean, conflicts, dispatchable, parked, open: [{i, path, kind, epoch, hunksFile, hunkCount}], remaining: [...], complete: bool, selfChecks?}` — `conflicts`/`dispatchable` count **this stop's** `open` (never cumulative); `parked` rides the fold reply only; `selfChecks` present **only** when `complete` (run then) | 0; 2 log already exists (today's refusal, kept); 3 if `selfChecks` present and not `ok` |
-| `resolve --path P --epoch E --reply-dir D <triples>` | locate the narration by `(path, epoch)` in `conflicts.json`; grammar-check the reply (rejections above), splice, `apply_resolution`; if all open entries of this stop are now applied, **continue folding** to the next stop or completion | applied + waiting: `{applied: true, waiting: [i,...]}` (other entries of the stop still open — not complete); applied + new stop: `{applied: true, open: [...], remaining: [...], complete: false}`; applied + complete: `{applied: true, open: [], remaining: [], complete: true, selfChecks}`; stale: `{applied: false, stale: true}`; rejected: `{applied: false, rejected: true, reason}` | 0; 2 stale / log-list disagreement; 3 self-check failure; **4 rejected** (distinct from stale so the STEP maps REJECTED vs ERROR) |
+| `resolve --conflict <i> --reply-dir D <triples>` | locate the narration by its `conflicts.json` index `i` (the key `open`/`waiting` already carry; `(path, epoch)` is not unique when a presence park shares the pair); grammar-check the reply (rejections above), splice, `apply_resolution` at the entry's `epoch`; if all open entries of this stop are now applied, **continue folding** to the next stop or completion. The current stop = the `conflicts.json` entries at the max narrated epoch; `waiting` = those entries whose path has no resolve event at-or-after that epoch, listed by `i` | applied + waiting: `{applied: true, waiting: [i,...]}` (count-free; other entries of the stop still open — not complete); applied + new stop: `{applied: true, conflicts, dispatchable, open: [...], remaining: [...], complete: false}` (`conflicts == dispatchable == open.length`, the fold-row rule); applied + complete: `{applied: true, open: [], remaining: [], complete: true, selfChecks}`; stale: `{applied: false, stale: true}`; rejected: `{applied: false, rejected: true, reason}` | 0; 2 stale / log-list disagreement; 3 self-check failure or a mid-pass `RecursionError` (kernel-limit park entry written — the existing precedent, not a new lane); **4 rejected** (distinct from stale so the STEP maps REJECTED vs ERROR) |
 | `materialize <task-heads>` | **completeness refusal (trim round 3, B10):** refuse unless every supplied `(id, headSha)` has a matching `fold` event **and** `_unresolved_paths` is empty — a materialize issued before `complete` would otherwise build a candidate omitting every unfolded task and adopt it on a green suite | `{fallback: "incomplete fold: <n> task(s) unfolded / <m> path(s) unresolved"}` (the CLI's fallback convention; no park record) | 3 → fallback |
 
 **STEP status mapping (baked contended-merge prompt, the engine's work-list
-contract):** the engine keeps the outstanding set itself; `open` non-empty ⇒
-`CONFLICTS` with `conflicts == dispatchable == open.length` (count
-authority); `applied + waiting` ⇒ `CONFLICTS` with `open: []` and `waiting`
+contract):** `parked > 0` on the fold reply ⇒ `PARKED` (order-first, as
+today; the pre-scan's parks are `conflicts.json` entries with
+`dispatchable: false` + a `conflict-<i>.txt` reason — the T15 "every park
+named" gate reads them; a parked pre-scan writes no log and runs no
+incremental pass); the engine keeps the outstanding set itself; `open`
+non-empty ⇒ `CONFLICTS` with `conflicts == dispatchable == open.length`
+(count authority; the missing-count guard is scoped to open-bearing
+replies); `applied + waiting` ⇒ `CONFLICTS` with `open: []` and `waiting`
 equal to the engine's outstanding set (count authority — the empty-`open`
 guard is re-scoped to require `waiting`); `complete` ⇒ `FOLDED` with
-`selfChecks`; exit 4 ⇒ `REJECTED`; any other non-zero ⇒ `ERROR`. STEP fold,
+`selfChecks`; exit 4 ⇒ `REJECTED`; any other non-zero ⇒ `ERROR`. Open
+entries are `{i, path, kind, epoch, hunksFile, hunkCount}` (`narrationFile`
+drops); `resolverTranscripts` gains `hunksFile` and `replyDir` (report-format
+line to match), keyed on the CLI `i`, not the loop index. STEP fold,
 resolve, and adopt each time their invocation; `foldCliWallTimeSec` = the
 sum, `foldCliCalls` = the count of fold + resolve + materialize invocations
 — both engine-side (the CLI keeps no cross-process counter).
@@ -411,7 +423,9 @@ Keep (existence dependencies): `marker`, `text`, `interface`,
 2 real edges in the corpus). **Delete** — including `read-after-write`
 (trim round 3: 0 edges under either mode across 97 plans; its honest
 residue, a `Test:` naming a file a sibling creates, is covered by
-`Depends-on` and ultraplan's retained test-import rule) — (write ordering and guesses): `write-after-write` and its
+`Depends-on` and ultraplan's retained test-import rule; a same-wave
+Test-reader/creator pair therefore routes to the fold path via `files`,
+which still includes reads, and folds clean) — (write ordering and guesses): `write-after-write` and its
 `fold_eligible` pre-filter (the fold path owns same-file writes;
 non-text/symlink route to fallback at merge), `ambiguous-files` fan-in,
 `prose-reference` / `description-inferred`, and `catch-all` (the
@@ -420,10 +434,13 @@ non-text/symlink route to fallback at merge), `ambiguous-files` fan-in,
 15 of the corpus's 17 `interface` edges are promotions of a declared marker
 edge; deleting the clause would fail the pre-registered migration answer);
 only the undeclared-dependency finding's overlap-suppression term shrinks to
-`write-after-create` (its other labels no longer exist). Brace globs
+{`write-after-create`, `write-after-write`} — the latter survives under the
+`serialize` rollback knob, so serialize-mode plans gain no new finding. Brace globs
 (`src/{a,b}.py`) join the glob refusal (`{` added to the refused
 characters) — today they are left to the deleted `ambiguous-files` tier. **A marked `**Type:** implementation` task with no
-parseable `Files:` paths becomes a `--check`/compile refusal** (grammar,
+parseable path under any `Files:` label (Create/Modify/Test) becomes a
+`--check`/compile refusal** (two archived marked plans carry a Test-only
+implementation task and stay OK under this reading) (grammar,
 alongside the glob refusal; heuristic-classified tasks in unmarked
 pre-ultraplan plans are exempt — trim round 3, B11 — so the corpus pin's
 OK/fail set is unchanged) — the deleted `ambiguous-files` tier was the only
@@ -596,11 +613,16 @@ multi-open stop, log-vs-list disagreement refusal, re-issued `resolve` →
 stale refusal (idempotency), `materialize` incomplete refusal, self-checks
 in the completing call (exit 3), EOF `added both` newline case,
 marker-shaped-content park; `dispatchable` has no size term;
-`_renarration_dispatchable` deleted (its tests removed, not skipped); sim scenarios in `tests/frontier_merge.mjs` (sentinel): work-list
-loop to `complete`, REJECTED → retry → park, BLOCKED → fallback, stale →
-fallback, budget exhaustion mid-list, count-authority + selfChecks guards on
-a continued-fold reply; baked-prompt pins green after re-bake (RESOLVER_PROMPT
-+ contended-merge STEP + FOLD_SCHEMA); ab_runner `contend-big` cell +
+`_renarration_dispatchable` deleted (its tests removed, not skipped); sim scenarios in `tests/frontier_merge.mjs` (sentinel; named
+inventory): scenario 3 (stale → markerless re-narration) rewritten as stale
+→ fallback; 9m inverted (REJECTED → one retry; ERROR → immediate fallback);
+9f stays fold-only plus the new legal shape (`CONFLICTS`, `open: []`,
+`waiting == outstanding`); 9d/9o keep the FOLDED/completing scope plus a new
+"CONFLICTS stop reply carries no `selfChecks` and is not checked" scenario;
+9e/9g/9h/9i/9n keep; new: work-list loop to `complete`, PARKED pre-scan,
+budget exhaustion mid-list, count-authority on a continued-fold reply —
+mutation-verified like every existing guard; baked-prompt pins green after re-bake (RESOLVER_PROMPT
++ contended-merge STEP; `FOLD_SCHEMA` is JS-only and pinned by the sim); ab_runner `contend-big` cell +
 mechanics cell recorded under `evals/frontier/results/`; harvester fields
 pinned by fixture; T15-transcript token-share reading recorded before the
 build (plan task 1).
@@ -634,10 +656,11 @@ per-hunk reply files, incremental fold protocol (`remaining`/`complete`/
 `waiting`, park pre-scan, materialize completeness refusal), big-stack fold
 thread with a fixed recursion limit, `fold_stats.json`, `hunksFile`/`hunkCount` fields, rewritten
 `RESOLVER_PROMPT` + STEP + `FOLD_SCHEMA` fields, work-list resolver loop,
-`contend-big` fixture, two harvester fields.
+`contend-big` fixture, four sensor fields (`maxLines`, launch DAG,
+`wallSec`, planning word/turn counts).
 Removes (Phase 1): `RESOLVER_LINE_CAP` and every size term (`dispatchable`,
 `fold_eligible`, `_renarration_dispatchable`), markerless whole-file
-re-narration shape and its `attempt ≤ 2` budget, the `_touched_at`/epoch
+re-narration shape, the `_touched_at`/epoch
 re-narrate *response* to staleness (the 4-line epoch refusal itself is
 kept as the idempotency guard; the `attempt ≤ 2` structure is re-purposed,
 not removed), the "fold everything then narrate" shape, `_recursion_headroom`
@@ -775,6 +798,24 @@ locates by `(path, epoch)`; prompt names `added both`; cap-era docstrings
 owned; `MARKER_ISH`; brace globs refused; `writes`/`commutes` on the launch
 object with the absent-`writes` policy; frozen-vocabulary licensing named as
 a measured-inert deletion with an `ab_runner` no-regression number.
+
+### Round 5 (fresh-context reviewer; grade rev 5: Phase 1 **flat**, Phase 2 **down**, Phase 3 **flat**; overall **down** — LOOP VERDICT **ended**: "nothing this round changes a mechanism, a contract's semantics, or a test seam beyond reconciling the spec with itself")
+
+Round-4 adoption check: all items present. **B14** (protocol table vs STEP
+mapping disagreed on the continued-fold reply's counts) — ADOPTED: the
+new-stop `resolve` reply carries `conflicts`/`dispatchable`; the `waiting`
+reply is count-free; the missing-count guard is scoped to open-bearing
+replies. **T27** (locate by `--conflict <i>`) — ADOPTED (smaller;
+`(path, epoch)` is not unique against a presence park). Wording items 1–9
+applied: PARKED row + pre-scan park recording; mid-pass `RecursionError`
+follows the kernel-limit precedent; stop/`waiting` derivation; open-entry
+shape + `resolverTranscripts`; named sim inventory; B13 suppression term =
+{write-after-create, write-after-write}; Files-less = no path under any
+label; CLAUDE.md/FOLD_LOG.md/audit_run.py/report-format.md in scope;
+Adds/Removes staleness. Reviewer's grounding this round strengthened two
+claims: the pre-scan ⊇ property holds by kernel structure (group boundaries
+ignore visibility), and every `added both` segment is whitespace-only by
+construction.
 
 Under-specification fixes (round 1): per-hunk reply files replace the delimited
 grammar (bijective via `split_lines`, no escaping); STEP + `FOLD_SCHEMA`
