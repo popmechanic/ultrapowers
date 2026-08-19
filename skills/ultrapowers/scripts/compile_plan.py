@@ -33,16 +33,6 @@ from pathlib import Path
 # PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
-# scripts -> ultrapowers -> kernel: a plain Python import (no subprocess),
-# reusing the fold engine's line-counting bijection and resolver cap so the
-# --repo-root pre-filter (below) agrees byte-for-byte with the runtime fold
-# predicate on what counts as an oversized file.
-_KERNEL_DIR = Path(__file__).resolve().parent.parent / "kernel"
-if str(_KERNEL_DIR) not in sys.path:
-    sys.path.insert(0, str(_KERNEL_DIR))
-from frontier_fold import RESOLVER_LINE_CAP  # noqa: E402
-from repo_weave import split_lines  # noqa: E402
-
 TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
 FENCE = re.compile(r"^(`{3,}|~{3,})")
 MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
@@ -941,14 +931,16 @@ class _PathEligibility(dict):
     `root` and computed lazily on first access, memoised thereafter (one
     filesystem probe per path, however many pairs share it).
 
+    Two checks, no size term (the resolver line cap retired with spec
+    2026-08-18 §1d — the kernel folds on a 1 GiB-stack thread, so a big file
+    is no longer a reason to keep a pair serialized).
+
     Order of checks: symlink first (`Path.is_symlink()` — never read a
     broken link's bytes; gitlinks are left to the runtime guard, keeping this
     compiler subprocess-free); a path that does not exist under `root` is
     eligible (nothing to inspect — a soon-to-be-created path never forces
-    serialization); otherwise a null byte marks the file non-text, else the
-    bytes are decoded utf-8 with errors="replace" and counted via the
-    kernel's `split_lines` (never `str.splitlines()` — they differ by one on
-    every trailing-newline file) against `RESOLVER_LINE_CAP`.
+    serialization); otherwise a null byte marks the file non-text, and
+    anything else is eligible.
     """
 
     def __init__(self, root):
@@ -966,13 +958,7 @@ class _PathEligibility(dict):
             if b"\x00" in data:
                 result = (False, "non-text (contains a null byte)")
             else:
-                text = data.decode("utf-8", errors="replace")
-                n = len(split_lines(text))
-                if n > RESOLVER_LINE_CAP:
-                    result = (False, "over RESOLVER_LINE_CAP (%d > %d lines)"
-                              % (n, RESOLVER_LINE_CAP))
-                else:
-                    result = (True, None)
+                result = (True, None)
         self[path] = result
         return result
 
@@ -1063,8 +1049,8 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
 
         A pair keeps its serializing edge (returns False) when any path in
         its overlap set — `writes ∪ reads`, both sides — resolved against
-        `repo_root` and existing there, is non-text, over
-        `RESOLVER_LINE_CAP`, or a symlink. Every ineligible path found is
+        `repo_root` and existing there, is non-text or a symlink. Size is not
+        a term: the fold thread reaches big files. Every ineligible path is
         recorded once in `marker_conflicts` (task "", the `type_conflicts`
         `task:""` precedent), regardless of how many pairs share it —
         `add_conflict`'s `(task, edge)` dedupe keys on the path alone.
@@ -1420,8 +1406,8 @@ def main(argv=None):
                     help="repo root the `--overlap fold` eligibility "
                          "pre-filter probes: a pair keeps its serializing "
                          "edge when a path in its overlap set, resolved "
-                         "against PATH and existing there, is non-text, "
-                         "over RESOLVER_LINE_CAP lines, or a symlink. "
+                         "against PATH and existing there, is non-text or a "
+                         "symlink (size is not a term). "
                          "Without --repo-root the pre-filter is inert and "
                          "every pair is eligible; ignored under "
                          "--overlap serialize.")

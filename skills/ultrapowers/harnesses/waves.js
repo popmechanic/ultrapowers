@@ -515,14 +515,14 @@ const sweepPathsLine = (mergedResults) => {
 // precedent as review-package). The heads/ slot sentence is carried verbatim
 // from MERGE_PROMPT — the completeness critic treats a missing slot as an
 // ancestry miss, so a contended prompt without it would block every contended run.
-// waveDir is ENGINE-AUTHORED too: cmd_fold's stdout is scalars only
-// ({clean, conflicts, dispatchable, parked, selfChecks}), so foldLogPath,
-// conflictsIndex and each conflict's narrationFile exist only on disk. The prompt
-// names the directory and the conflict-<i>.txt convention and puts reading its
-// conflicts.json in contract — otherwise the agent must either guess a path
-// (dispatching a resolver at a file that does not exist) or, obeying the
-// no-invention clause literally, omit `open` entirely and fall every conflicted
-// wave back with empty evidence pointers.
+// waveDir is ENGINE-AUTHORED too: cmd_fold's stdout carries no report paths, so
+// foldLogPath and conflictsIndex exist only on disk. The prompt names the
+// directory and puts reading its conflicts.json in contract — otherwise the
+// agent must either guess a path (dispatching a resolver at a file that does not
+// exist) or, obeying the no-invention clause literally, omit `open` entirely and
+// fall every conflicted wave back with empty evidence pointers. Each open
+// conflict's hunksFile comes off the index entry itself, never from a filename
+// the agent derives.
 // The four paragraphs are joined (not '\n'-concatenated inside a literal) so the
 // baked text reads contiguously in source — the drift pin matches across the line
 // break, and a literal \n between them would break that match.
@@ -559,14 +559,18 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'and report its wall clock in foldCliWallTimeSec. Then read ' + (waveDir || '') +
   '/conflicts.json — an array whose entries carry i, path, kind, dispatchable, ' +
   'reason and epoch — and for each entry whose dispatchable is true add an open ' +
-  "entry carrying that entry's path, that entry's epoch, and as narrationFile " +
-  'the file holding its narration, which is ' + (waveDir || '') +
-  "/conflict-<i>.txt for that same entry's i.",
-  'STEP resolve: report FOLDED when the CLI prints applied true. When it prints ' +
-  'stale true, report CONFLICTS with exactly one open entry carrying the same ' +
-  'path, the epoch the CLI returned, and its renarrationFile as narrationFile — ' +
-  'that re-narration is a markerless whole file, not an annotated one. Report ' +
-  'ERROR on a non-zero exit.',
+  "entry carrying that entry's i, path, epoch, its hunksFile (the " +
+  'conflict-<i>.hunks.txt path from the entry) and hunkCount. Copy remaining and ' +
+  'complete from the JSON; copy selfChecks only when the JSON carries it (a stop ' +
+  'reply does not).',
+  'STEP resolve: Run the resolve invocation. Report FOLDED when it prints ' +
+  'complete true — copy selfChecks. Report CONFLICTS when it prints applied true ' +
+  'with an open list — copy conflicts, dispatchable, remaining and complete and ' +
+  'add one open entry per listed entry exactly as in STEP fold — or with a ' +
+  'waiting list — report open as empty and copy waiting. Report REJECTED when ' +
+  'the exit code is 4 — copy reason into detail. Report ERROR on any other ' +
+  'non-zero exit, including stale true. Time the invocation and report its wall ' +
+  'clock in foldCliWallTimeSec.',
   'STEP adopt: run the materialize invocation. If it prints a park or a fallback ' +
   'verdict, report CONFLICT with that reason and change nothing. Otherwise take ' +
   'the candidateSha it printed and test that candidate with the branch unmoved: ' +
@@ -583,50 +587,38 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED ' +
   'with the failing output and write no slots. Do not try to fix a failing ' +
   'candidate: the engine falls the wave back to an ordinary git merge, and that ' +
-  'path refuses to operate on a dirty or detached worktree.',
+  'path refuses to operate on a dirty or detached worktree. Time the invocation ' +
+  'and report its wall clock in foldCliWallTimeSec.',
 ].join('\n')
 
-// Baked from references/wave-merge.md (BAKE:RESOLVER_PROMPT). Rewritten from the
-// production cell's no-tools text-in/text-out brief for the file-read contract:
-// the resolver reads its own narration file and writes a whole-file reply, and
-// must accept BOTH narration shapes (annotated, and the markerless whole-file
-// body a re-narration produces — re-folding an already-folded endpoint narrates
-// nothing).
+// Baked from references/wave-merge.md (BAKE:RESOLVER_PROMPT). The brief is
+// HUNK-SCOPED: the resolver never sees the whole file, so it cannot silently
+// rewrite the parts nobody asked about, and its reply — one newline-terminated
+// file per hunk in a reply DIRECTORY — is grammar-checkable, which is what makes
+// REJECTED (exit 4, before any kernel work) a cheap, retryable status.
 const RESOLVER_PROMPT = [
   'You are a merge-conflict resolver for one file in one wave. You have no repo ' +
-  'to explore and no branch to check out: read exactly the narration file named ' +
-  'below, write exactly the reply file named below, and touch nothing else. ' +
-  'Never run git, never edit the file under conflict, and never create a commit. ' +
-  'You are assigned no worktree of your own: the narration file and the reply ' +
-  'file named below are your only sanctioned locations, and reading and writing ' +
-  'them is not an exception to any worktree boundary — there is no worktree ' +
-  'here to be an exception to.',
-  'The narration arrives in one of two shapes and you must handle both. An ' +
-  'ANNOTATED narration is the whole file with conflict markers naming each side ' +
-  '— frontier is the work already folded in, a task id is the incoming change — ' +
-  'and every unmarked line is already-merged content. A MARKERLESS narration is ' +
-  'the whole file with no markers at all: it is a re-narration of a path that ' +
-  'folded again after your last reply, so nothing is left to adjudicate except ' +
-  'carrying your intent forward onto the newer content. The NARRATION line ' +
-  'states which shape you were given; if it disagrees with the bytes you read, ' +
-  'trust the bytes.',
-  'Write the complete resolved file to the reply file: every line the merged ' +
-  'file should contain, top to bottom, in order, with no conflict markers, and ' +
-  'nothing invented that appears in neither side nor the narration. Preserve ' +
-  'lines outside the conflicted blocks exactly as the narration shows them. The ' +
-  'reply file is read back byte for byte and split by the kernel\'s own line ' +
-  'convention, so a trailing newline in your reply is a trailing newline in the ' +
-  'merged file — match the narration\'s ending. Write the file whole; never ' +
-  'append to it, and never leave it empty unless the resolved file is genuinely ' +
-  'empty.',
+  'to explore: read exactly the hunks file named below and write exactly the ' +
+  'reply directory named below — one file per HUNK (h1.txt, h2.txt, …) plus ' +
+  'notes.txt — and touch nothing else. Never run git, never edit the file under ' +
+  'conflict, never create a commit; the hunks file and the reply directory are ' +
+  'your only sanctioned locations.',
+  'Each HUNK shows a conflict block with read-only context above and below it: ' +
+  'frontier is the work already folded in, a task id is the incoming change, ' +
+  'both is content shared by both sides — carry every both line. For each HUNK ' +
+  'write the lines that should replace the whole conflict block, top to bottom, ' +
+  'with no conflict markers: a file of newline-terminated lines, an empty file ' +
+  'meaning the block resolves to nothing. Never write context lines.',
   "Honor both sides' intent where they are compatible; where they are not, " +
-  'prefer the semantics the contending task bodies describe over surface text. ' +
-  'Never drop a side silently — if the two sides are irreconcilable, still write ' +
-  'your best whole-file merge and say so in notes; a human reads this transcript ' +
-  'verbatim. Report RESOLVED once the reply file is written, or BLOCKED with the ' +
-  'reason if you could not read the narration or could not write the reply. A ' +
-  'BLOCKED resolver falls the whole wave back to an ordinary git merge, which is ' +
-  'a real cost — report it only when you genuinely cannot produce a file.',
+  'prefer the semantics the contending task bodies describe over surface text; ' +
+  'never drop a side silently — if the two sides are irreconcilable, still write ' +
+  'your best merge for that hunk and say so in notes.txt; nothing invented that ' +
+  'appears in neither side nor the narration. When a HUNK header carries a ' +
+  'contract line, obey it. Report RESOLVED once every hunk file is written, or ' +
+  'BLOCKED with the reason if you could not read the hunks file or could not ' +
+  'write the reply directory. A BLOCKED resolver falls the whole wave back to an ' +
+  'ordinary git merge, which is a real cost — report it only when you genuinely ' +
+  'cannot produce a reply.',
 ].join('\n')
 
 // Completeness critic prompt, built per-dispatch so it pins the critic to the
@@ -757,6 +749,10 @@ const MERGE_SCHEMA = {
   properties: {
     status: { enum: ['MERGED', 'CONFLICT', 'TEST_FAILED'] },
     headSha: { type: 'string' },
+    // Only the contended STEP adopt fills this: it drives a fold-CLI invocation
+    // (materialize) and the frontier report sums every leg's wall clock. The
+    // ordinary merge prompt never asks for it, so it is simply absent there.
+    foldCliWallTimeSec: { type: 'number' },
     detail: { type: 'string' },
   },
 }
@@ -770,7 +766,9 @@ const FOLD_SCHEMA = {
   type: 'object',
   required: ['status'],
   properties: {
-    status: { enum: ['FOLDED', 'CONFLICTS', 'PARKED', 'ERROR'] },
+    // REJECTED is exit 4: the reply-directory grammar refused the resolver's
+    // files before any kernel work ran, so it is the one retryable apply status.
+    status: { enum: ['FOLDED', 'CONFLICTS', 'PARKED', 'ERROR', 'REJECTED'] },
     conflicts: { type: 'integer' },
     dispatchable: { type: 'integer' },
     parked: { type: 'integer' },
@@ -778,14 +776,26 @@ const FOLD_SCHEMA = {
     foldLogPath: { type: 'string' },
     conflictsIndex: { type: 'string' },
     foldCliWallTimeSec: { type: 'number' },
-    // One entry per conflict still open: where its narration lives and the epoch
-    // the resolution must be valid against. A stale `resolve` returns exactly one
-    // entry here — the markerless re-narration.
+    // The incremental protocol's progress scalars: the task ids not yet folded,
+    // and whether this reply completed the wave. `complete` is what scopes the
+    // selfChecks attestation — the CLI runs its two live self-checks inside
+    // whichever call completes the wave, so a stop reply carries none.
+    remaining: { type: 'array', items: { type: 'string' } },
+    complete: { type: 'boolean' },
+    // The conflicts-index entries of the current stop that this resolution did
+    // NOT drain: the CLI applied the reply but cannot fold on until they land.
+    waiting: { type: 'array', items: { type: 'integer' } },
+    // One entry per conflict still open, keyed by the conflicts-index `i`
+    // (`(path, epoch)` is not unique when a presence park shares the pair with
+    // a kernel conflict). The resolver is briefed off `hunksFile`; no narration
+    // path reaches the engine.
     open: { type: 'array', items: { type: 'object',
-      required: ['path', 'epoch', 'narrationFile'], properties: {
+      required: ['i', 'path', 'epoch', 'hunksFile'], properties: {
+      i: { type: 'integer' },
       path: { type: 'string' },
       epoch: { type: 'integer' },
-      narrationFile: { type: 'string' } } } },
+      hunksFile: { type: 'string' },
+      hunkCount: { type: 'integer' } } } },
     detail: { type: 'string' },
   },
 }
@@ -1260,19 +1270,32 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
 const KERNEL_CLI = 'python3 <pluginRoot>/skills/ultrapowers/kernel/fold_wave.py'
 const frontierDir = (waveNumber) => '<runDir>/frontier/wave-' + waveNumber
 
+// Set equality over conflicts-index ids. Order is not the contract — the CLI
+// derives `waiting` from its own index, the engine from its work list — so both
+// sides are sorted numerically before comparison.
+const sameIds = (a, b) => a.length === b.length &&
+  a.slice().sort((x, y) => x - y).join(',') === b.slice().sort((x, y) => x - y).join(',')
+
 // One report entry per wave that took the contended path — fallbacks included:
 // the fold log and conflicts index exist either way, and the production canary
 // harvests that directory, not the report alone. The key list of this builder is
 // pinned against report-format.md by tests/test_report_runbook.py — every field
 // emitted here must be documented there.
+// `calls` counts the fold-CLI invocations this wave DROVE — one per contended
+// STEP dispatch — because the incremental protocol makes that count variable
+// (a wave now costs 1 fold + N resolves + 1 materialize, N unbounded by the
+// conflict total), and it is the cost signal the A/B and the canary read.
+// `wallSec` is the sum of the wall clocks the STEP replies reported, and
+// `selfChecks` comes from whichever reply COMPLETED the wave — a stop reply
+// carries no attestation.
 const frontier = []
-const frontierEntry = (waveNumber, fold, transcripts) => ({
+const frontierEntry = (waveNumber, fold, transcripts, calls, wallSec, selfChecks) => ({
   wave: waveNumber,
   foldLogPath: (fold && fold.foldLogPath) || '',
   conflictsIndex: (fold && fold.conflictsIndex) || '',
-  selfChecks: (fold && fold.selfChecks) || '',
-  foldCliWallTimeSec: (fold && typeof fold.foldCliWallTimeSec === 'number')
-    ? fold.foldCliWallTimeSec : null,
+  selfChecks: selfChecks || '',
+  foldCliCalls: calls,
+  foldCliWallTimeSec: (typeof wallSec === 'number') ? wallSec : null,
   resolverTranscripts: transcripts,
 })
 
@@ -1334,11 +1357,20 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     .filter((t) => t && merged.some((r) => r.task === t.id))
   const transcripts = []
   let fold = null
+  // The fold-CLI invocations this wave drove, the wall clock they reported, and
+  // the self-check attestation of whichever reply completed the wave.
+  let calls = 0
+  let wallSec = null
+  let selfChecks = ''
+  const addWall = (reply) => {
+    if (reply && typeof reply.foldCliWallTimeSec === 'number')
+      wallSec = (wallSec === null ? 0 : wallSec) + reply.foldCliWallTimeSec
+  }
   // Single record point. Every fallback names its reason in judgmentCalls and the
   // log — the engine's existing failure-routing records; there is no separate
   // fallback event type in the fold log (one fact, one record).
   const finish = (outcome, reason) => {
-    frontier.push(frontierEntry(waveNumber, fold, transcripts))
+    frontier.push(frontierEntry(waveNumber, fold, transcripts, calls, wallSec, selfChecks))
     if (!outcome) {
       judgmentCalls.push('wave ' + waveNumber + ': contended merge fell back to the ' +
         'git-merge path — ' + reason)
@@ -1346,12 +1378,15 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     }
     return outcome
   }
-  const dispatchMerge = (step, command, label, schema) => agent(
-    fillPaths(GUARD + '\n\n' + contendedMergePrompt(prevHead, frontierDir(waveNumber)) +
-      ' ' + slotsLine +
-      '\nSTEP: ' + step + '. Run exactly this command, from inside ' +
-      INTEGRATION_WT + ':\n' + command),
-    { label: label, model: TIER.mostCapable, schema: schema })
+  const dispatchMerge = (step, command, label, schema) => {
+    calls++
+    return agent(
+      fillPaths(GUARD + '\n\n' + contendedMergePrompt(prevHead, frontierDir(waveNumber)) +
+        ' ' + slotsLine +
+        '\nSTEP: ' + step + '. Run exactly this command, from inside ' +
+        INTEGRATION_WT + ':\n' + command),
+      { label: label, model: TIER.mostCapable, schema: schema })
+  }
 
   // Task-index order, matching the merge contract: completion order is not
   // observable to the engine, and determinism buys reproducible conflicts.
@@ -1370,17 +1405,25 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   // its call and neither does the wave loop — so a null deref here would abort
   // the whole run and lose every already-merged wave. Fallback is the contract.
   if (!fold) return finish(null, 'fold dispatch returned no reply')
+  addWall(fold)
+  if (typeof fold.selfChecks === 'string') selfChecks = fold.selfChecks
   if (fold.status === 'ERROR')
     return finish(null, 'fold reported ERROR: ' + (fold.detail || ''))
   if (fold.status === 'PARKED')
     return finish(null, 'fold parked an ineligible conflict: ' + (fold.detail || ''))
-  // Unconditional: the fold STEP orders the agent to copy `selfChecks` from
-  // the CLI's stdout, so an absent value is a contract violation, not a legal
-  // shape — FOLD_SCHEMA requires only `status` because resolve replies share
-  // it, and those never reach this call site (#145).
-  if (fold.selfChecks !== 'ok')
-    return finish(null, 'fold self-checks did not pass: ' +
-      (fold.selfChecks || '(absent from the reply)'))
+  // Scoped to the COMPLETING reply (#145 kept, re-scoped for the incremental
+  // protocol). The CLI runs its two live self-checks inside whichever call
+  // completes the wave, so a STOP reply carries no attestation and requiring
+  // one here would fall every conflicted wave back before a single resolver was
+  // dispatched. On a completing reply the standard is unchanged: the STEP
+  // orders the value copied from the CLI's stdout, so a named failure and an
+  // absent field alike are contract violations, not legal shapes — FOLD_SCHEMA
+  // requires only `status`, so the schema cannot catch the absence.
+  if (fold.complete === true || fold.status === 'FOLDED') {
+    if (fold.selfChecks !== 'ok')
+      return finish(null, 'fold self-checks did not pass: ' +
+        (fold.selfChecks || '(absent from the reply)'))
+  }
   // CONTENDED_MERGE_PROMPT's fold STEP orders the agent to copy `conflicts`
   // verbatim from the CLI's stdout for every reply — the CLI always emits it
   // for both fold verdicts, FOLDED and CONFLICTS alike (fold_wave.py:281-285;
@@ -1404,7 +1447,11 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     return finish(null, 'fold parked ' + fold.parked + ' conflict(s) — see the conflicts index')
 
   const open = (fold.status === 'CONFLICTS' && Array.isArray(fold.open)) ? fold.open : []
-  if (fold.status === 'CONFLICTS' && open.length === 0)
+  // Re-scoped for the incremental protocol: a CONFLICTS reply may legally name
+  // nothing to dispatch when it names a `waiting` set instead (the stop has not
+  // drained). Without a waiting set an empty `open` is still nothing to resolve.
+  if (fold.status === 'CONFLICTS' && open.length === 0 &&
+      !(Array.isArray(fold.waiting) && fold.waiting.length))
     return finish(null, 'fold reported CONFLICTS but named no dispatchable conflict')
   // The counts are authority over the status enum on the OPEN side too, and this
   // is the load-bearing half: the resolver loop runs over `open`, so a FOLDED
@@ -1430,24 +1477,34 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     return finish(null, 'fold named ' + open.length + ' open conflict(s) but counted ' +
       expectOpen + ' still to resolve')
 
-  // Serial resolver loop — one agent at a time, awaited, so serialization is by
-  // construction. Every existing dispatch site is budget-checkpointed and an
-  // N-conflict loop must be too; exhaustion routes to fallback, still live here.
-  for (let i = 0; i < open.length; i++) {
-    let entry = open[i]
+  // Serial resolver WORK LIST — one agent at a time, awaited, so serialization
+  // is by construction. It is a work list rather than a `for` over `open`
+  // because the incremental protocol folds ON past a drained stop inside the
+  // same `resolve` call: a later stop's conflicts arrive as an apply REPLY, and
+  // the list must be REPLACED by that reply's `open`. Iterating `open` alone
+  // would resolve the first stop and then adopt a candidate the CLI never
+  // called complete. Every existing dispatch site is budget-checkpointed and an
+  // unbounded loop must be too; exhaustion routes to fallback, still live here.
+  let outstanding = open.slice()
+  worklist:
+  while (outstanding.length) {
+    const entry = outstanding[0]
+    // Carried onto attempt 2 only: the kernel's reason for refusing attempt 1's
+    // reply directory, so the re-brief is not a blind retry.
+    let rejection = ''
     for (let attempt = 1; attempt <= 2; attempt++) {
       if (budgetExhausted())
         return finish(null, 'budget exhausted before resolving conflict ' +
-          (i + 1) + ' of ' + open.length)
+          entry.i + ' (' + outstanding.length + ' outstanding)')
       // Substituted at construction, not only inside the dispatch's fillPaths():
       // this same string is recorded in the resolver transcript, and that
       // transcript is the A/B grading surface. A literal <runDir> token there is
-      // a path nobody can open — sitting beside a narrationFile that IS a real
+      // a path nobody can open — sitting beside a hunksFile that IS a real
       // path (it comes back from the fold reply), so the record would be half
       // resolvable. fillPaths is idempotent over an already-filled string, so the
       // dispatched prompt is byte-identical either way.
-      const replyFile = fillPaths(frontierDir(waveNumber) +
-        '/reply-' + (i + 1) + '-' + attempt + '.txt')
+      const replyDir = fillPaths(frontierDir(waveNumber) +
+        '/reply-' + entry.i + '-' + attempt)
       let res
       try {
         // Verified live 2026-08-13, by this task's first build pass (scratch
@@ -1463,12 +1520,12 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
         // as the model-identifier note in references/workflow-template.md asks.
         res = await agent(
           fillPaths(GUARD + '\n\n' + RESOLVER_PROMPT +
-            '\nNARRATION: ' + entry.path + ' — ' +
-            (attempt === 1 ? 'ANNOTATED' : 'MARKERLESS') +
-            ' — read it from ' + entry.narrationFile +
-            '\nREPLY FILE: write your whole resolved file to ' + replyFile) +
+            '\nHUNKS: ' + entry.path + ' — read ' + entry.hunksFile +
+            '\nREPLY DIR: write one file per hunk (h1.txt, h2.txt, …) plus ' +
+            'notes.txt into ' + replyDir +
+            (rejection ? ('\nPREVIOUS REPLY REJECTED: ' + rejection) : '')) +
             contendingTasksBlock(waveTasks),
-          { label: 'resolve:wave' + waveNumber + ':' + (i + 1) + ':' + attempt,
+          { label: 'resolve:wave' + waveNumber + ':' + entry.i + ':' + attempt,
             schema: RESOLVER_SCHEMA })
       } catch (e) {
         return finish(null, 'resolver dispatch threw on ' + entry.path + ': ' +
@@ -1478,35 +1535,85 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
       // no wrapper converts it, so it must route to fallback, not a TypeError.
       if (!res) return finish(null, 'resolver dispatch returned no reply on ' + entry.path)
       // Recorded verbatim: the resolver transcripts are the A/B grading surface.
-      transcripts.push({ conflict: i + 1, attempt: attempt, path: entry.path,
-        epoch: entry.epoch, narrationFile: entry.narrationFile,
-        replyFile: replyFile, status: res.status, notes: res.notes || '' })
+      transcripts.push({ conflict: entry.i, attempt: attempt, path: entry.path,
+        epoch: entry.epoch, hunksFile: entry.hunksFile,
+        replyDir: replyDir, status: res.status, notes: res.notes || '' })
       if (res.status !== 'RESOLVED')
         return finish(null, 'resolver reported ' + res.status + ' on ' + entry.path)
       let applied
       try {
         applied = await dispatchMerge('resolve',
           KERNEL_CLI + ' resolve --repo . --run-dir <runDir> --wave ' + waveNumber +
-            ' --path ' + entry.path + ' --epoch ' + entry.epoch +
-            ' --reply-file ' + replyFile,
-          'merge:wave' + waveNumber + ':apply' + (i + 1) + ':' + attempt, FOLD_SCHEMA)
+            ' --conflict ' + entry.i + ' --reply-dir ' + replyDir + branchArgs,
+          'merge:wave' + waveNumber + ':apply' + entry.i + ':' + attempt, FOLD_SCHEMA)
       } catch (e) {
         return finish(null, 'resolve dispatch threw on ' + entry.path + ': ' +
           String((e && e.message) || e))
       }
       if (!applied)
         return finish(null, 'resolve dispatch returned no reply on ' + entry.path)
-      if (applied.status === 'FOLDED') break
-      // Stale: an intervening fold touched the path. Re-narrate ONCE — the
-      // re-narration is a markerless whole-file body, not an annotated one.
-      if (applied.status === 'CONFLICTS' && attempt === 1 &&
-          Array.isArray(applied.open) && applied.open.length) {
-        entry = applied.open[0]
-        continue
+      addWall(applied)
+      // REJECTED (exit 4) is the ONE retryable apply status: the reply-directory
+      // grammar refused the resolver's files before any kernel work ran, so the
+      // frontier is untouched and re-briefing the same conflict is free of side
+      // effects. One re-brief, carrying the reason; a second rejection falls the
+      // wave back. Staleness is NOT retried — the kernel's epoch check is an
+      // idempotency guard against a re-issued command, and it arrives as ERROR.
+      if (applied.status === 'REJECTED') {
+        if (attempt === 1) {
+          rejection = applied.detail || '(no reason given)'
+          continue
+        }
+        return finish(null, 'resolver reply rejected twice on ' + entry.path + ': ' +
+          (applied.detail || ''))
+      }
+      // Applied, but this stop has not drained: the CLI names the entries still
+      // waiting and folds no further. The waiting set is held to the engine's own
+      // outstanding list minus the entry just applied — believing a disagreeing
+      // set would drop a conflict nobody ever resolves, and the CLI never prints
+      // an empty one.
+      if (applied.status === 'CONFLICTS' && Array.isArray(applied.waiting)) {
+        const expectWaiting = outstanding.slice(1).map((e) => e.i)
+        if (!applied.waiting.length || !sameIds(applied.waiting, expectWaiting))
+          return finish(null, 'resolve on ' + entry.path + ' reported waiting [' +
+            applied.waiting.join(', ') + '] but the engine was holding [' +
+            expectWaiting.join(', ') + '] outstanding')
+        outstanding.shift()
+        continue worklist
+      }
+      // The stop drained and the CLI folded ON to the next one: the work list is
+      // REPLACED by the new stop. Held to the same count-vs-count standard as the
+      // fold reply, and for the same reason — a short or uncounted `open` list
+      // here silently drops a contending task's edit on a green run.
+      if (applied.status === 'CONFLICTS' && Array.isArray(applied.open) &&
+          applied.open.length) {
+        if (typeof applied.conflicts !== 'number')
+          return finish(null, 'continued fold reported CONFLICTS with no conflicts ' +
+            'count to verify against')
+        if (applied.dispatchable !== applied.open.length)
+          return finish(null, 'continued fold named ' + applied.open.length +
+            ' open conflict(s) but counted ' + applied.dispatchable +
+            ' still to resolve')
+        outstanding = applied.open.slice()
+        continue worklist
+      }
+      // The wave completed inside this call. `complete` is the CLI's own derived
+      // verdict; the attestation standard is the fold reply's, unchanged.
+      if (applied.status === 'FOLDED' && applied.complete === true) {
+        if (applied.selfChecks !== 'ok')
+          return finish(null, 'fold self-checks did not pass: ' +
+            (applied.selfChecks || '(absent from the reply)'))
+        selfChecks = applied.selfChecks
+        outstanding = []
+        continue worklist
       }
       return finish(null, 'resolution of ' + entry.path + ' not applied (' +
         applied.status + '): ' + (applied.detail || ''))
     }
+    // Unreachable: every branch above either returns, continues the work list,
+    // or (attempt 1 REJECTED) runs attempt 2, whose REJECTED branch returns.
+    // Kept so a future edit that adds a `break` cannot spin this loop forever.
+    return finish(null, 'resolver attempts exhausted on ' + entry.path)
   }
 
   const headArgs = merged.map((r) => ' --task-head ' + r.task + '=' + r.headSha).join('')
@@ -1521,6 +1628,7 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   }
   // Null before adoption: the branch has not moved, so fallback is still live.
   if (!adopt) return finish(null, 'adoption dispatch returned no reply')
+  addWall(adopt)
   // MERGED is the adoption boundary: the branch has moved, so falling back here
   // would hand the reconcile path a tree it was not promised. A MERGED without a
   // headSha rides the existing call-site branch (which freezes the review base and

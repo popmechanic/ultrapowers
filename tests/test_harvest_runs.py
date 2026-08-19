@@ -1431,3 +1431,123 @@ def test_non_approved_terminus_unaffected_by_tail_bound():
     recs = [_wf_launch("S1"), _approve_ok(),
             _rec("user", [{"type": "text", "text": "yes - approved, merge the wave"}])]
     assert "approved, merge" not in h.slice_transcript(recs, terminus="NEEDS_ACK")
+
+
+# --- Task 7 (spec §1f): sensor baseline — fold_stats maxLines, launch DAG,
+# planning word/turn counts, all disk-sourced from the LAST registered
+# stamp's runDir (same singular choice as `gateReport`).
+
+def test_frontier_max_lines_soft_fails(tmp_path):
+    assert h._frontier_max_lines(None) == {}
+    assert h._frontier_max_lines(str(tmp_path / "no-such-run-dir")) == {}
+    run_dir = tmp_path / "run"
+    (run_dir / "frontier/wave-2").mkdir(parents=True)
+    (run_dir / "frontier/wave-2/fold_stats.json").write_text("not json")
+    assert h._frontier_max_lines(str(run_dir)) == {}   # malformed json skipped
+
+
+def test_frontier_max_lines_reads_every_wave(tmp_path):
+    run_dir = tmp_path / "run"
+    for wave, lines in ((1, [10, 20]), (3, [999])):
+        d = run_dir / f"frontier/wave-{wave}"
+        d.mkdir(parents=True)
+        (d / "fold_stats.json").write_text(json.dumps({"maxLines": lines}))
+    assert h._frontier_max_lines(str(run_dir)) == {"1": [10, 20], "3": [999]}
+
+
+def test_read_launch_soft_fails(tmp_path):
+    assert h._read_launch(None) is None
+    assert h._read_launch(str(tmp_path / "nope")) is None
+    run_dir = tmp_path / "run"; run_dir.mkdir()
+    (run_dir / "launch.json").write_text("{corrupt")
+    assert h._read_launch(str(run_dir)) is None
+    (run_dir / "launch.json").write_text(json.dumps({"waves": "not-a-list", "edges": []}))
+    assert h._read_launch(str(run_dir)) is None
+
+
+def test_read_launch_reads_waves_and_edges(tmp_path):
+    run_dir = tmp_path / "run"; run_dir.mkdir()
+    (run_dir / "launch.json").write_text(json.dumps(
+        {"waves": [["1", "2"], ["3"]], "edges": [["2", "3"]], "tasks": []}))
+    assert h._read_launch(str(run_dir)) == {"waves": [["1", "2"], ["3"]], "edges": [["2", "3"]]}
+
+
+def test_plan_word_count_soft_fails(tmp_path):
+    assert h._plan_word_count(None, str(tmp_path)) is None
+    assert h._plan_word_count("p.md", None) is None
+    assert h._plan_word_count("p.md", str(tmp_path / "no-repo-anywhere")) is None
+
+
+def test_planning_turns_counts_user_text_before_launch_index():
+    recs = [
+        _rec("user", [{"type": "text", "text": "one"}]),
+        _rec("assistant", [{"type": "text", "text": "reply"}]),
+        _rec("user", [{"type": "text", "text": "two"}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": "noise"}]}]),
+        _rec("user", [{"type": "text", "text": "after launch, not counted"}]),
+    ]
+    assert h._planning_turns(recs, 4) == 2       # bounded: idx 4 excluded, tool_result never counted
+    assert h._planning_turns(recs, None) == 3    # no bound: counts the trailing one too
+
+
+def test_bundle_carries_frontier_max_lines_and_launch_dag(tmp_path):
+    run1 = tmp_path / "run-1"
+    (run1 / "frontier/wave-1").mkdir(parents=True)
+    (run1 / "frontier/wave-1/fold_stats.json").write_text(json.dumps({"maxLines": [147, 6012]}))
+    (run1 / "launch.json").write_text(json.dumps({"waves": [["1", "2"]], "edges": []}))
+    recs = REAL + [_wf_launch("1", run_dir=str(run1))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["frontier"] == {"maxLinesByWave": {"1": [147, 6012]}}
+    assert bundle["launch"] == {"waves": [["1", "2"]], "edges": []}
+
+
+def test_bundle_frontier_and_launch_are_empty_soft_when_absent(tmp_path):
+    recs = REAL + [_wf_launch("1")]   # default run_dir never exists on disk
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["frontier"] == {"maxLinesByWave": {}}
+    assert bundle["launch"] is None
+
+
+def test_bundle_planning_word_and_turn_counts_when_planning_found(tmp_path):
+    root = tmp_path / "repo"
+    _init_git_repo(root)
+    plan_rel = "docs/superpowers/plans/p.md"
+    plan_file = root / plan_rel
+    plan_file.parent.mkdir(parents=True, exist_ok=True)
+    plan_file.write_text("one two three four five\n")   # 5 words
+    run_dir = root / ".claude/ultrapowers/run-1"
+    run_dir.mkdir(parents=True)
+    write_record = _rec("assistant", [{"type": "tool_use", "name": "Write",
+        "input": {"file_path": str(plan_file), "content": "one two three four five\n"}}])
+    recs = ([
+        _rec("user", [{"type": "text", "text": "let's plan this"}]),          # planning turn
+        write_record,
+        _rec("user", [{"type": "text", "text": "looks good, proceed"}]),      # planning turn
+    ] + REAL      # REAL[0] is a third user-text turn; REAL[1]/[2] never count
+    + [_wf_launch("1", plan_rel, run_dir=str(run_dir))])
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["planningFound"] is True
+    assert bundle["planning"] == {"planWords": 5, "planningTurns": 3}
+
+
+def test_bundle_omits_planning_key_when_not_found(tmp_path):
+    recs = REAL + [_wf_launch("1")]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["planningFound"] is False
+    assert "planning" not in bundle

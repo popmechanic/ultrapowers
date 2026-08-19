@@ -53,6 +53,22 @@ def do_fold(repo, run_dir, wave, base_sha, branch_specs):
     return run_cli(*args)
 
 
+def do_resolve(repo, run_dir, wave, i, reply_dir, task_heads):
+    args = ["resolve", "--repo", str(repo), "--run-dir", str(run_dir),
+            "--wave", str(wave), "--conflict", str(i), "--reply-dir", str(reply_dir)]
+    for tid, sha in task_heads:
+        args += ["--branch", "%s=%s:%s" % (tid, tid, sha)]
+    return run_cli(*args)
+
+
+def reply_dir(tmp_path, name, **hunk_files):
+    d = tmp_path / name
+    d.mkdir()
+    for hid, text in hunk_files.items():
+        (d / (hid + ".txt")).write_text(text)
+    return d
+
+
 def do_materialize(repo, run_dir, wave, prev_head, task_heads):
     args = ["materialize", "--repo", str(repo), "--run-dir", str(run_dir),
             "--wave", str(wave), "--prev-head", prev_head]
@@ -321,20 +337,22 @@ def test_materialize_parks_when_the_wave_has_no_fold_log(tmp_path):
 def test_materialize_no_final_newline_byte_identity(tmp_path):
     """A resolved file with no final newline reaches the tree byte-identical.
 
-    `split_lines`/`join_lines` are inverses, so the manifest carries the
-    resolver's exact bytes; `hash-object --stdin` must not re-normalize them.
+    The whole file's final-newline status is inherited from the narration,
+    never from a hunk reply, so a base that ends without one stays that way;
+    `split_lines`/`join_lines` are inverses, so the manifest carries the exact
+    bytes and `hash-object --stdin` must not re-normalize them.
     """
     repo = tmp_path / "nonewline"
     _init(repo)
-    (repo / "app.py").write_text("a = 1\nb = 1\nc = 1\n")
+    (repo / "app.py").write_text("a = 1\nb = 1\nc = 1")     # no final newline
     base_sha = commit_and_capture(repo, "base")
 
     _git(repo, "checkout", "-q", "-b", "t1", base_sha)
-    (repo / "app.py").write_text("a = 1\nb = 2\nc = 1\n")
+    (repo / "app.py").write_text("a = 1\nb = 2\nc = 1")
     t1_sha = commit_and_capture(repo, "t1")
 
     _git(repo, "checkout", "-q", "-b", "t2", base_sha)
-    (repo / "app.py").write_text("a = 1\nb = 3\nc = 1\n")
+    (repo / "app.py").write_text("a = 1\nb = 3\nc = 1")
     t2_sha = commit_and_capture(repo, "t2")
 
     _git(repo, "checkout", "-q", "integration")
@@ -343,30 +361,25 @@ def test_materialize_no_final_newline_byte_identity(tmp_path):
     fold = do_fold(repo, run_dir, 1, base_sha, heads)
     assert fold.returncode == 0, fold.stdout + fold.stderr
 
-    wave_dir = run_dir / "frontier" / "wave-1"
-    entry = json.loads((wave_dir / "conflicts.json").read_text())[0]
-    assert entry["path"] == "app.py" and entry["dispatchable"] is True
+    entry = last_json(fold)["open"][0]
+    assert entry["path"] == "app.py" and entry["hunkCount"] == 1
 
-    reply_text = "a = 1\nb = 4\nc = 1"          # no final newline
-    reply_file = tmp_path / "reply.txt"
-    reply_file.write_text(reply_text)
-    resolved = run_cli("resolve", "--repo", str(repo), "--run-dir", str(run_dir),
-                       "--wave", "1", "--path", "app.py",
-                       "--epoch", str(entry["epoch"]),
-                       "--reply-file", str(reply_file))
+    resolved = do_resolve(repo, run_dir, 1, entry["i"],
+                          reply_dir(tmp_path, "reply-1-1", h1="b = 4\n"), heads)
     assert resolved.returncode == 0, resolved.stdout + resolved.stderr
-    assert last_json(resolved) == {"applied": True}
+    assert last_json(resolved)["complete"] is True
 
     result = do_materialize(repo, run_dir, 1, base_sha, heads)
     assert result.returncode == 0, result.stdout + result.stderr
     candidate = last_json(result)["candidateSha"]
 
+    expected = "a = 1\nb = 4\nc = 1"
     blob = _git_bytes(repo, "cat-file", "blob", "%s:app.py" % candidate)
-    assert blob == reply_text.encode()
-    assert rw.join_lines(rw.split_lines(reply_text)) == reply_text
+    assert blob == expected.encode()
+    assert rw.join_lines(rw.split_lines(expected)) == expected
 
 
-# --- the unresolved-conflict guard (#144) ---------------------------------
+# --- the completeness refusal (#144 + spec §1b) ---------------------------
 
 
 def make_conflicted_repo(tmp_path):
@@ -402,10 +415,8 @@ def test_materialize_refuses_unresolved_conflicts(tmp_path):
     repo, base_sha, heads, run_dir = conflicted_fold(tmp_path)
     result = do_materialize(repo, run_dir, 1, base_sha, heads)
     assert result.returncode == 3, result.stdout + result.stderr
-    out = last_json(result)
-    assert "fallback" in out
-    assert "app.py" in out["fallback"]
-    assert "unresolved" in out["fallback"]
+    assert last_json(result) == {
+        "fallback": "incomplete fold: 0 task(s) unfolded / 1 path(s) unresolved"}
 
 
 def test_materialize_allow_unresolved_flag_builds_anyway(tmp_path):
@@ -424,11 +435,8 @@ def test_materialize_builds_after_the_conflict_is_resolved(tmp_path):
     index = json.loads(
         (run_dir / "frontier" / "wave-1" / "conflicts.json").read_text())
     entry = index[-1]
-    reply = tmp_path / "reply.txt"
-    reply.write_text("a = 5\nb = 1\nc = 1\n")
-    res = run_cli("resolve", "--repo", str(repo), "--run-dir", str(run_dir),
-                  "--wave", "1", "--path", entry["path"],
-                  "--epoch", str(entry["epoch"]), "--reply-file", str(reply))
+    res = do_resolve(repo, run_dir, 1, entry["i"],
+                     reply_dir(tmp_path, "reply-1-1", h1="a = 5\n"), heads)
     assert res.returncode == 0, res.stdout + res.stderr
     assert last_json(res)["applied"] is True
 
@@ -436,3 +444,47 @@ def test_materialize_builds_after_the_conflict_is_resolved(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     candidate = last_json(result)["candidateSha"]
     assert _git_bytes(repo, "show", "%s:app.py" % candidate) == b"a = 5\nb = 1\nc = 1\n"
+
+
+def test_materialize_refuses_incomplete_fold(tmp_path):
+    """The fold stops at the first conflict; materialize before the resolve
+    must not build a candidate that silently omits every unfolded task."""
+    repo, base_sha, heads = make_conflicted_repo(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "t3", base_sha)
+    (repo / "app.py").write_text("a = 1\nb = 1\nc = 9\n")
+    t3_sha = commit_and_capture(repo, "t3")
+    _git(repo, "checkout", "-q", "integration")
+
+    run_dir = tmp_path / "run"
+    all_heads = heads + [("t3", t3_sha)]
+    fold = do_fold(repo, run_dir, 1, base_sha, all_heads)
+    assert fold.returncode == 0, fold.stdout + fold.stderr
+    assert last_json(fold)["remaining"] == ["t3"]
+
+    r = do_materialize(repo, run_dir, 1, base_sha, all_heads)
+    assert r.returncode == 3
+    assert last_json(r) == {
+        "fallback": "incomplete fold: 1 task(s) unfolded / 1 path(s) unresolved"}
+
+
+def test_materialize_allow_unresolved_still_refuses_an_unfolded_task(tmp_path):
+    """`--allow-unresolved` is a forensics escape from the unresolved-path
+    term only: a candidate omitting a whole task is never buildable."""
+    repo, base_sha, heads = make_conflicted_repo(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "t3", base_sha)
+    (repo / "app.py").write_text("a = 1\nb = 1\nc = 9\n")
+    t3_sha = commit_and_capture(repo, "t3")
+    _git(repo, "checkout", "-q", "integration")
+
+    run_dir = tmp_path / "run"
+    all_heads = heads + [("t3", t3_sha)]
+    assert do_fold(repo, run_dir, 1, base_sha, all_heads).returncode == 0
+
+    args = ["materialize", "--repo", str(repo), "--run-dir", str(run_dir),
+            "--wave", "1", "--prev-head", base_sha, "--allow-unresolved"]
+    for tid, sha in all_heads:
+        args += ["--task-head", "%s=%s" % (tid, sha)]
+    r = run_cli(*args)
+    assert r.returncode == 3
+    assert last_json(r) == {
+        "fallback": "incomplete fold: 1 task(s) unfolded / 0 path(s) unresolved"}

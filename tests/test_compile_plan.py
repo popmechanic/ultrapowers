@@ -2655,3 +2655,50 @@ def test_markerless_files_noise_still_blocks_compile(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode != 0
     assert "unknown files label" in (p.stdout + p.stderr).lower()
+
+
+def test_a_5000_line_text_file_no_longer_keeps_the_write_after_write_edge(tmp_path):
+    """The `--repo-root` pre-filter's line-count term retired (spec 2026-08-18
+    §1d): only symlinks and non-text files still keep a pair serialized.
+
+    5,000 lines is 12.5x the retired 400-line resolver cap, so under
+    the old pre-filter this pair kept its `write-after-write` edge and landed
+    in separate waves with a `pairs kept serialized` inference record. The
+    fold thread makes the size irrelevant, so the pair now shares a wave and
+    nothing is recorded — while the symlink and null-byte terms still bite.
+    """
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "big.py").write_text("\n".join("line %d" % i for i in range(5000)))
+    (root / "bin.dat").write_bytes(b"\x00\x01\x02binary")
+    (root / "target.py").write_text("hello\n")
+    (root / "link.py").symlink_to(root / "target.py")
+
+    def _task(tid, path):
+        return ("### Task %s: writer %s\n\n**Type:** implementation\n\n"
+                "**Files:**\n- Modify: `%s`\n\n"
+                "- [ ] **Step 1:** do the work\n\n" % (tid, tid, path))
+
+    plan = tmp_path / "plan.md"
+    plan.write_text(
+        "# Plan: cap retirement\n\n**Acceptance:** waived — inline test plan\n\n"
+        + _task("A", "big.py") + _task("B", "big.py")
+        + _task("C", "bin.dat") + _task("D", "bin.dat")
+        + _task("E", "link.py") + _task("F", "link.py"))
+
+    p = subprocess.run(
+        [sys.executable, str(COMPILER), "--overlap", "fold",
+         "--repo-root", str(root), str(plan)],
+        capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    out = json.loads(p.stdout)
+
+    waw = sorted((e["from"], e["to"]) for e in out["dag_edges"]
+                 if e["why"] == "write-after-write")
+    assert waw == [("C", "D"), ("E", "F")]      # the big pair is NOT here
+    wave_of = {tid: i for i, w in enumerate(out["waves"]) for tid in w}
+    assert wave_of["A"] == wave_of["B"]
+
+    inference = {c["edge"] for c in out["marker_conflicts"]
+                 if c["kind"] == "inference"}
+    assert inference == {"bin.dat", "link.py"}

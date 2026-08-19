@@ -458,13 +458,16 @@ def build_large_file_repo(tmp_path, n_lines=3000):
     return repo
 
 
-def test_large_file_replay_recovers_via_recursion_headroom(tmp_path):
+def test_large_file_replay_recovers_on_the_kernel_thread(tmp_path):
     """A ~3000-line file must not push the run into the recursion exclusion.
 
     Before the fix, replaying this file's ~3000-line weave under the
     interpreter's default recursion limit raised RecursionError deep inside
     the vendored kernel, and the run was demoted to a named exclusion instead
-    of being recovered and replayed.
+    of being recovered and replayed. The sized bound that first fixed it
+    retired with the resolver line cap; `_replay_group` now runs on
+    `fold_wave.run_on_kernel_thread`'s 1 GiB stack, which is what has to keep
+    this green.
     """
     repo = build_large_file_repo(tmp_path)
     out = tmp_path / "out"
