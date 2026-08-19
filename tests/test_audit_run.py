@@ -102,3 +102,78 @@ def test_no_engine_prompt_classifies_unknown():
     from audit_run import classify, ROLE_MARKERS
     for marker, role in ROLE_MARKERS:
         assert classify("xxx " + marker + " yyy") != "unknown"
+
+
+# --- Task 7 (sensor baseline): wallSec per transcript, wallSecByTask totals.
+
+def agent_file_ts(d, name, first_user, model, timestamps, tokens_each=10):
+    """Like `agent_file` but each assistant turn carries an explicit ISO 8601
+    `timestamp` (one per entry of `timestamps`), so `collect`'s wall_sec (last
+    minus first record timestamp) is exercised deterministically."""
+    lines = [json.dumps({"type": "user",
+                         "message": {"content": [{"type": "text", "text": first_user}]}})]
+    for ts in timestamps:
+        lines.append(json.dumps({"type": "assistant", "timestamp": ts,
+                                 "message": {"model": model,
+                                             "usage": {"output_tokens": tokens_each}}}))
+    (d / f"agent-{name}.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def test_collect_computes_wall_sec_from_first_and_last_timestamp(tmp_path):
+    from audit_run import collect
+    agent_file_ts(tmp_path, "a1", IMPL_7, "test-model",
+                 ["2026-08-18T00:00:00.000Z", "2026-08-18T00:01:30.000Z"])
+    model, turns, out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    assert model == "test-model" and turns == 2 and out_tokens == 20
+    assert wall_sec == 90.0
+
+
+def test_collect_wall_sec_zero_when_timestamps_absent(tmp_path):
+    from audit_run import collect
+    agent_file(tmp_path, "a1", IMPL_7, "test-model", turns=2)  # no `timestamp` field at all
+    _model, _turns, _out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    assert wall_sec == 0.0
+
+
+def test_collect_wall_sec_zero_with_single_timestamp(tmp_path):
+    from audit_run import collect
+    agent_file_ts(tmp_path, "a1", IMPL_7, "test-model", ["2026-08-18T00:00:00.000Z"])
+    _model, _turns, _out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    assert wall_sec == 0.0
+
+
+def test_audit_agents_carry_wall_sec(tmp_path):
+    from audit_run import audit
+    agent_file_ts(tmp_path, "a1", IMPL_7, "test-model",
+                 ["2026-08-18T00:00:00.000Z", "2026-08-18T00:01:30.000Z"])
+    out = audit(tmp_path)
+    assert out["agents"][0]["role"] == "impl:7"
+    assert out["agents"][0]["wallSec"] == 90.0
+
+
+def test_audit_totals_wall_sec_by_task_sums_across_transcripts_for_one_id(tmp_path):
+    # Two implementer transcripts for the SAME task id (the auto-escalate
+    # retry shape): their wallSec values must sum under that id, not overwrite.
+    from audit_run import audit
+    agent_file_ts(tmp_path, "a1", IMPL_7, "haiku",
+                 ["2026-08-18T00:00:00.000Z", "2026-08-18T00:01:00.000Z"])       # 60s
+    agent_file_ts(tmp_path, "a2", IMPL_7, "sonnet",
+                 ["2026-08-18T01:00:00.000Z", "2026-08-18T01:00:30.000Z"])       # 30s
+    out = audit(tmp_path)
+    assert out["totals"]["wallSecByTask"] == {"7": 90.0}
+
+
+def test_audit_totals_wall_sec_by_task_keyed_per_task_id(tmp_path):
+    from audit_run import audit
+    agent_file_ts(tmp_path, "a1", IMPL_7, "m",
+                 ["2026-08-18T00:00:00.000Z", "2026-08-18T00:01:00.000Z"])  # task 7: 60s
+    agent_file_ts(tmp_path, "a2", IMPL_9, "m",
+                 ["2026-08-18T00:00:00.000Z", "2026-08-18T00:00:10.000Z"])  # task 9: 10s
+    out = audit(tmp_path)
+    assert out["totals"]["wallSecByTask"] == {"7": 60.0, "9": 10.0}
+
+
+def test_audit_missing_dir_totals_carry_empty_wall_sec_by_task(tmp_path):
+    from audit_run import audit
+    out = audit(tmp_path / "does-not-exist")
+    assert out["totals"]["wallSecByTask"] == {}
