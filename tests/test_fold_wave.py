@@ -457,14 +457,16 @@ def test_a_1200_line_conflict_dispatches_now_that_the_cap_is_retired(tmp_path):
 
 
 def test_fold_of_a_10k_line_single_writer_file_stays_inside_the_exit_contract(tmp_path):
-    """A file far past any flat recursion ceiling must never crash the CLI.
+    """A file far past ordinary recursion depth must never crash the CLI.
 
-    10,500 lines needs ~21,004 kernel frames — more than a flat 20,000 limit
-    covers — and `_fold_text` merges it even though only one branch wrote it.
-    Whatever the platform's stack allows, the invocation must stay inside the
-    documented {0, 2, 3} exit contract, print its one-line JSON, and leave the
-    wave's artifacts on disk; if the bound could not absorb it, the outcome is
-    a NAMED kernel-limit park in the conflicts index, never an uncaught raise.
+    10,500 lines needs ~21,004 kernel frames, and `_fold_text` merges it even
+    though only one branch wrote it. The fold runs on the 1 GiB-stack kernel
+    thread with `THREAD_RECURSION_LIMIT` fixed at 1,000,000, so this size is
+    ordinarily absorbed — but whatever the platform's stack allows, the
+    invocation must stay inside the documented {0, 2, 3} exit contract, print
+    its one-line JSON, and leave the wave's artifacts on disk; if the thread
+    could not absorb it, the outcome is a NAMED kernel-limit park in the
+    conflicts index, never an uncaught raise.
     """
     n = 10500
     repo, base_sha, t1_sha, t1_text = make_single_writer_repo(tmp_path, n)
@@ -496,6 +498,63 @@ def test_fold_of_a_10k_line_single_writer_file_stays_inside_the_exit_contract(tm
         manifest = fw.run_on_kernel_thread(
             lambda: ff.rehydrate(repo, wave_dir / "fold_log.jsonl").manifest())
         assert manifest["huge.py"] == t1_text
+
+
+def test_fold_parks_a_named_kernel_limit_when_the_thread_limit_is_insufficient(
+        tmp_path, monkeypatch, capsys):
+    """The kernel-limit park lane — now the ONLY ceiling left once the sized
+    cap retired — forced deterministically by patching `THREAD_RECURSION_LIMIT`
+    low, rather than relying on a corpus big enough to overrun the real 1M
+    limit. A 3,000-line single-writer fold comfortably clears the fixed
+    limit, so this is the mutation: with the patch, the same fold must park
+    with a NAMED kernel-limit entry and exit 3; without it, it must not.
+
+    Driven in-process (`fw.main`, not the subprocess `run_cli`/`do_fold`
+    helpers) because the monkeypatch only reaches the CLI's own process.
+    """
+    n = 3000
+    repo, base_sha, t1_sha, _ = make_single_writer_repo(tmp_path, n)
+    run_dir = tmp_path / "run"
+    argv = ["fold", "--repo", str(repo), "--run-dir", str(run_dir),
+            "--wave", "1", "--base", base_sha,
+            "--branch", "t1=t1:%s" % t1_sha]
+
+    prior_limit = sys.getrecursionlimit()
+    monkeypatch.setattr(fw, "THREAD_RECURSION_LIMIT", 200)
+    code = fw.main(argv)
+    out = capsys.readouterr().out
+    # The caller's process-global recursion limit is restored even on the
+    # park path — `run_on_kernel_thread`'s `finally` runs whether `fn` raised
+    # or returned.
+    assert sys.getrecursionlimit() == prior_limit
+
+    assert code == 3
+    payload = json.loads(out.strip().splitlines()[-1])
+    assert payload["clean"] is False
+    assert payload["parked"] >= 1
+    assert payload["selfChecks"].startswith("failed: kernel recursion limit")
+
+    wave_dir = run_dir / "frontier" / "wave-1"
+    index = json.loads((wave_dir / "conflicts.json").read_text())
+    parks = [e for e in index if e["kind"] == "kernel-limit"]
+    assert len(parks) == 1
+    entry = parks[0]
+    assert entry["dispatchable"] is False
+    for token in ("kernel recursion limit", "task t1", "huge.py"):
+        assert token in entry["reason"]
+    assert (wave_dir / ("conflict-%d.txt" % entry["i"])).exists()
+    assert (wave_dir / "fold_log.jsonl").exists()
+
+    # Mutation check: remove the low patch and the same fold must NOT park —
+    # it is well inside the real 1,000,000 limit, so the clean path runs.
+    monkeypatch.setattr(fw, "THREAD_RECURSION_LIMIT", 1_000_000)
+    run_dir2 = tmp_path / "run2"
+    argv2 = ["fold", "--repo", str(repo), "--run-dir", str(run_dir2),
+             "--wave", "1", "--base", base_sha,
+             "--branch", "t1=t1:%s" % t1_sha]
+    code2 = fw.main(argv2)
+    payload2 = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert code2 == 0 and payload2["parked"] == 0
 
 
 def test_fold_of_a_100k_line_pair_never_segfaults(tmp_path):
