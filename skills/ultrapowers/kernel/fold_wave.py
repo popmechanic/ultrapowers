@@ -40,7 +40,7 @@ memory from the last one, per the fold log's self-sufficiency contract.
 
 Exit codes: 0 success, 2 precondition refusal (a pre-existing log, a missing
 log, a log/list disagreement, a stale resolution), 3 self-check failure
-(which includes a kernel recursion limit the sized bound could not absorb —
+(which includes a kernel recursion limit the fold thread could not absorb —
 recorded as a named kernel-limit park in the conflicts index, never a crash),
 4 a rejected resolver reply. For `materialize` the non-zero codes carry its
 named outcomes: 2 is a park (`{"park": reason}` on stdout — a mode change on
@@ -54,6 +54,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -66,15 +67,16 @@ import hunks
 
 # The vendored kernel's merge walk (`merge_states` -> `state_to_tree` ->
 # `pull_out_tree`/`merge_trees`/`insert_tree`) recurses once per weave-state
-# entry, ~2*lines+4 frames, so Python's default 1000-frame limit is blown by
-# any file over ~500 lines. A FLAT ceiling is not a fix: it just moves the
-# cliff, and past it the kernel raises RecursionError from inside `fold` —
-# an exit outside the documented {0,2,3} contract, with no stdout JSON for
-# the engine and no artifacts at all. The bound is therefore sized from the
-# corpus actually being folded and the residual is caught into a named park
-# (same shape as `evals/frontier/run_eval.py`, which earned this pattern).
-RECURSION_LINE_FACTOR = 4
-RECURSION_MARGIN = 1000
+# entry, ~2*lines+4 frames. Raising `sys.setrecursionlimit` alone does not buy
+# those frames: the C stack runs out first and the interpreter dies on a
+# SIGSEGV — an exit outside the documented {0,2,3} contract with no stdout
+# JSON and no artifacts at all. So the recursion limit is raised on a thread
+# given a 1 GiB stack, which is what makes a 100k-line fold land (spec
+# 2026-08-18 §1d). The sized bound this replaced is gone: the limit is fixed,
+# and the only ceiling left is the residual `RecursionError` caught into a
+# named kernel-limit park.
+STACK_BYTES = 1 << 30
+THREAD_RECURSION_LIMIT = 1_000_000
 
 # The only modes a folded text/bytes path can carry into the candidate tree:
 # `hash-object` writes a blob, and a blob is either executable or not.
@@ -82,28 +84,47 @@ REGULAR_MODES = ("100644", "100755")
 MODE_NAMES = {"120000": "a symlink", "160000": "a gitlink"}
 
 
-class _recursion_headroom:
-    """Widen the recursion limit to fit this wave's corpus, then restore it.
+def run_on_kernel_thread(fn, *args, **kwargs):
+    """Run `fn` on a thread with a 1 GiB stack and the fixed recursion limit.
 
-    The bound is sized from the files actually being folded, so a small wave
-    pays nothing and a large one gets real headroom; the previous limit is
-    always restored on the way out, whether or not a RecursionError still
-    escapes despite the widened bound.
+    The result and any exception are marshalled back to the caller — including
+    `SystemExit`, so the CLI's exit codes are unchanged by the hop. A platform
+    that refuses the big stack (`ValueError` from `threading.stack_size`) or
+    the thread itself (`RuntimeError` from `Thread.start()`) falls through to
+    a main-thread call plus one stderr line: the work still runs, just without
+    the headroom.
+
+    `sys.setrecursionlimit` is interpreter-global, not per-thread, so raising
+    it inside the thread raises it for the whole process. The limit is
+    therefore restored before the thread ends — the caller (and, in-process,
+    every later caller) keeps the limit it had. Restoring is safe because the
+    thread's own stack is shallow again by then: `fn` has already returned or
+    unwound.
     """
+    box = {}
 
-    def __init__(self, max_lines):
-        self.bound = max(sys.getrecursionlimit(),
-                         RECURSION_LINE_FACTOR * max_lines + RECURSION_MARGIN)
-        self._previous = None
+    def target():
+        prior = sys.getrecursionlimit()
+        sys.setrecursionlimit(THREAD_RECURSION_LIMIT)
+        try:
+            box["result"] = fn(*args, **kwargs)
+        except BaseException as e:      # marshal everything back, incl. SystemExit
+            box["exc"] = e
+        finally:
+            sys.setrecursionlimit(prior)
 
-    def __enter__(self):
-        self._previous = sys.getrecursionlimit()
-        sys.setrecursionlimit(self.bound)
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        sys.setrecursionlimit(self._previous)
-        return False
+    try:
+        threading.stack_size(STACK_BYTES)
+        t = threading.Thread(target=target, name="fold-kernel")
+        t.start()
+        t.join()
+    except (ValueError, RuntimeError) as e:
+        print("fold_wave: big-stack thread unavailable (%s); running in main thread" % e,
+              file=sys.stderr)
+        return fn(*args, **kwargs)
+    if "exc" in box:
+        raise box["exc"]
+    return box["result"]
 
 
 def _state_max_lines(base, states):
@@ -111,8 +132,8 @@ def _state_max_lines(base, states):
 
     Free of git: `base.files` and every task's weaves are already in hand,
     built by the kernel's `split_lines`, and `current_lines` is iterative —
-    only `merge_states` recurses, which is why publishing every task BEFORE
-    the fold loop is what lets the bound be sized at all.
+    only `merge_states` recurses. Nothing routes on this number since the cap
+    retired; it is the sensor reading `fold_stats.json` records as `maxLines`.
     """
     counts = [0]
     counts += [len(manyana.current_lines(w)) for w in base.files.values()]
@@ -121,41 +142,20 @@ def _state_max_lines(base, states):
     return max(counts)
 
 
-def _git_max_lines(repo, base_sha, heads):
-    """Largest touched text blob, read from git — `resolve` holds no state in
-    memory before `rehydrate` (which folds, and therefore recurses)."""
-    per_ref = {base_sha: set()}
-    for head in heads:
-        touched = set(rw.diff_paths(repo, base_sha, head))
-        per_ref.setdefault(head, set()).update(touched)
-        per_ref[base_sha].update(touched)
-    biggest = 0
-    for ref, paths in per_ref.items():
-        for p in sorted(paths):
-            try:
-                blob = rw._git(repo, "show", "%s:%s" % (ref, p))
-            except subprocess.CalledProcessError:
-                continue                    # absent at this ref (an add/delete)
-            if rw.is_binary(blob):
-                continue
-            biggest = max(biggest, len(rw.split_lines(blob.decode())))
-    return biggest
-
-
-def _kernel_limit_entry(i, epoch, task_id, state, bound):
-    """The named kernel-limit park for a fold the sized bound could not absorb.
+def _kernel_limit_entry(i, epoch, task_id, state):
+    """The named kernel-limit park for a fold the kernel thread could not absorb.
 
     Parks are the index entries with `dispatchable: false`, and the spec names
-    kernel-limit parks (recursion) as belonging here alongside the cap parks
-    `dispatchable()` reports. The named path is the task's largest text file —
-    the weave whose depth the bound was too small for.
+    kernel-limit parks (recursion) as belonging here. Now that the size cap is
+    retired this is the ONLY ceiling left, so the entry names the task's
+    largest text file — the weave whose depth outran the fixed limit.
     """
     sizes = {p: len(manyana.current_lines(w)) for p, w in state.weaves.items()}
     path = max(sorted(sizes), key=sizes.get) if sizes else ""
     return {"i": i, "path": path, "kind": "kernel-limit", "dispatchable": False,
-            "reason": ("kernel recursion limit exceeded folding task %s at bound "
-                       "%d; largest text path %s (%d lines)"
-                       % (task_id, bound, path or "-", sizes.get(path, 0))),
+            "reason": ("kernel recursion limit exceeded folding task %s; "
+                       "largest text path %s (%d lines)"
+                       % (task_id, path or "-", sizes.get(path, 0))),
             "epoch": epoch}
 
 
@@ -372,7 +372,7 @@ def _write_kernel_park(wave_dir, index, epoch, park):
 
     The wave is dead either way — the frontier omits the unfolded tasks — but
     the entry keeps the exit inside the documented contract and names the
-    file whose depth the bound was too small for.
+    file whose depth outran the kernel thread's fixed limit.
     """
     entry = _kernel_limit_entry(max((e["i"] for e in index), default=0) + 1,
                                 epoch, *park)
@@ -388,11 +388,10 @@ def _write_kernel_park(wave_dir, index, epoch, park):
 def _prepare(repo, base_sha, branches):
     """(base state, published task states, largest folded text file).
 
-    Publishing every task BEFORE folding any of them is what lets the
-    recursion bound be sized at all (`publish` is iterative, so it costs no
-    stack), and the base is scoped to the union of ALL supplied heads — the
-    ordering contract: a narrower scope would misclassify a path a later task
-    also touches as an `add/add` instead of a `modify`.
+    The third element is the sensor reading alone — nothing routes on it. The
+    base is scoped to the union of ALL supplied heads: the ordering contract,
+    since a narrower scope would misclassify a path a later task also touches
+    as an `add/add` instead of a `modify`.
     """
     touched = ff._union_touched(repo, base_sha, [h for _, _, h in branches])
     base = rw.snapshot_scoped(repo, base_sha, touched)
@@ -445,67 +444,64 @@ def cmd_fold(args):
     _record_max_lines(wave_dir, max_lines)
     index = []
 
-    with _recursion_headroom(max_lines) as headroom:
-        parks, kernel_park = _pre_scan(base, states, branches)
+    parks, kernel_park = _pre_scan(base, states, branches)
 
-        if kernel_park is not None:
-            epoch, task_id, state = kernel_park
-            _write_kernel_park(wave_dir, index, epoch,
-                               (task_id, state, headroom.bound))
-            _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
-            print(json.dumps({"clean": False, "conflicts": 1, "dispatchable": 0,
-                              "parked": 1, "open": [], "remaining": all_ids,
-                              "complete": False,
-                              "selfChecks": "failed: kernel recursion limit "
-                                            "folding task %s" % task_id}))
-            return 3
-
-        if parks:
-            for i, (conflict, epoch, reason) in enumerate(parks, start=1):
-                (wave_dir / ("conflict-%d.txt" % i)).write_text(conflict.narration)
-                index.append({"i": i, "path": conflict.path, "kind": conflict.kind,
-                              "dispatchable": False, "reason": reason,
-                              "epoch": epoch, "hunksFile": "", "hunkCount": 0})
-            _write_index(wave_dir / "conflicts.json", index)
-            print(json.dumps({"clean": False, "conflicts": len(parks),
-                              "dispatchable": 0, "parked": len(parks),
-                              "open": [], "remaining": all_ids,
-                              "complete": False}))
-            return 0
-
-        eng = ff.FrontierEngine(base)
+    if kernel_park is not None:
+        epoch, task_id, state = kernel_park
+        _write_kernel_park(wave_dir, index, epoch, (task_id, state))
         _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
-        stop, remaining, kernel_park = _fold_until_stop(
-            eng, states, branches, log_path, wave_dir, index)
+        print(json.dumps({"clean": False, "conflicts": 1, "dispatchable": 0,
+                          "parked": 1, "open": [], "remaining": all_ids,
+                          "complete": False,
+                          "selfChecks": "failed: kernel recursion limit "
+                                        "folding task %s" % task_id}))
+        return 3
+
+    if parks:
+        for i, (conflict, epoch, reason) in enumerate(parks, start=1):
+            (wave_dir / ("conflict-%d.txt" % i)).write_text(conflict.narration)
+            index.append({"i": i, "path": conflict.path, "kind": conflict.kind,
+                          "dispatchable": False, "reason": reason,
+                          "epoch": epoch, "hunksFile": "", "hunkCount": 0})
         _write_index(wave_dir / "conflicts.json", index)
+        print(json.dumps({"clean": False, "conflicts": len(parks),
+                          "dispatchable": 0, "parked": len(parks),
+                          "open": [], "remaining": all_ids,
+                          "complete": False}))
+        return 0
 
-        if kernel_park is not None:
-            _write_kernel_park(wave_dir, index, eng.epoch(),
-                               kernel_park + (headroom.bound,))
-            print(json.dumps({"clean": False, "conflicts": len(index),
-                              "dispatchable": 0, "parked": len(index),
-                              "open": [], "remaining": [t for t, _n, _h in remaining],
-                              "complete": False,
-                              "selfChecks": "failed: kernel recursion limit "
-                                            "folding task %s" % kernel_park[0]}))
-            return 3
+    eng = ff.FrontierEngine(base)
+    _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
+    stop, remaining, kernel_park = _fold_until_stop(
+        eng, states, branches, log_path, wave_dir, index)
+    _write_index(wave_dir / "conflicts.json", index)
 
-        if stop:
-            # A mid-pass park the pre-scan could not see (the frontier is
-            # larger mid-fold than at the end) rides `parked`, which the
-            # engine reads order-first: the wave parks rather than dispatching
-            # against a stop it can never drain.
-            open_entries = [e for e in stop if e["dispatchable"]]
-            print(json.dumps({"clean": False, "conflicts": len(open_entries),
-                              "dispatchable": len(open_entries),
-                              "parked": len(stop) - len(open_entries),
-                              "open": [_open_view(e) for e in open_entries],
-                              "remaining": [t for t, _n, _h in remaining],
-                              "complete": False}))
-            return 0
+    if kernel_park is not None:
+        _write_kernel_park(wave_dir, index, eng.epoch(), kernel_park)
+        print(json.dumps({"clean": False, "conflicts": len(index),
+                          "dispatchable": 0, "parked": len(index),
+                          "open": [], "remaining": [t for t, _n, _h in remaining],
+                          "complete": False,
+                          "selfChecks": "failed: kernel recursion limit "
+                                        "folding task %s" % kernel_park[0]}))
+        return 3
 
-        folded = [states[task_id] for task_id, _n, _h in branches]
-        self_checks = _self_checks(repo, base, eng, folded, log_path)
+    if stop:
+        # A mid-pass park the pre-scan could not see (the frontier is
+        # larger mid-fold than at the end) rides `parked`, which the
+        # engine reads order-first: the wave parks rather than dispatching
+        # against a stop it can never drain.
+        open_entries = [e for e in stop if e["dispatchable"]]
+        print(json.dumps({"clean": False, "conflicts": len(open_entries),
+                          "dispatchable": len(open_entries),
+                          "parked": len(stop) - len(open_entries),
+                          "open": [_open_view(e) for e in open_entries],
+                          "remaining": [t for t, _n, _h in remaining],
+                          "complete": False}))
+        return 0
+
+    folded = [states[task_id] for task_id, _n, _h in branches]
+    self_checks = _self_checks(repo, base, eng, folded, log_path)
 
     # `complete` is derived, never recorded: every task folded (nothing
     # narrated stopped the pass) and no narrated path left unresolved.
@@ -557,67 +553,65 @@ def cmd_resolve(args):
 
     base, states, max_lines = _prepare(repo, base_sha, branches)
 
-    with _recursion_headroom(max_lines) as headroom:
-        try:
-            # Not `ff.rehydrate`: it scopes the base to the RECORDED fold
-            # heads, which at a stop is only a prefix of the wave. The
-            # continued folds need the same union scope the first call used.
-            eng = ff._apply_events(ff.FrontierEngine(base), states, recorded)
-        except RecursionError:
-            print("kernel recursion limit rehydrating wave %d" % args.wave,
-                  file=sys.stderr)
+    try:
+        # Not `ff.rehydrate`: it scopes the base to the RECORDED fold
+        # heads, which at a stop is only a prefix of the wave. The
+        # continued folds need the same union scope the first call used.
+        eng = ff._apply_events(ff.FrontierEngine(base), states, recorded)
+    except RecursionError:
+        print("kernel recursion limit rehydrating wave %d" % args.wave,
+              file=sys.stderr)
+        return 3
+
+    if not eng.apply_resolution(entry["path"], entry["epoch"], lines):
+        # The idempotency guard: a re-issued `resolve` would otherwise
+        # re-apply old whole-file lines after the continued fold and
+        # silently clobber the next task's contribution.
+        print(json.dumps({"applied": False, "stale": True}))
+        return 2
+    _append_event(log_path, eng.events[-1])
+
+    recorded = _read_log(log_path)
+    _stop, waiting = _current_stop(index, recorded)
+    if waiting:
+        print(json.dumps({"applied": True,
+                          "waiting": [e["i"] for e in waiting]}))
+        return 0
+
+    if remaining:
+        _record_max_lines(wave_dir, max_lines)
+        stop, remaining, kernel_park = _fold_until_stop(
+            eng, states, remaining, log_path, wave_dir, index)
+        _write_index(wave_dir / "conflicts.json", index)
+
+        if kernel_park is not None:
+            _write_kernel_park(wave_dir, index, eng.epoch(), kernel_park)
+            print("kernel recursion limit folding task %s in wave %d"
+                  % (kernel_park[0], args.wave), file=sys.stderr)
             return 3
 
-        if not eng.apply_resolution(entry["path"], entry["epoch"], lines):
-            # The idempotency guard: a re-issued `resolve` would otherwise
-            # re-apply old whole-file lines after the continued fold and
-            # silently clobber the next task's contribution.
-            print(json.dumps({"applied": False, "stale": True}))
-            return 2
-        _append_event(log_path, eng.events[-1])
-
-        recorded = _read_log(log_path)
-        _stop, waiting = _current_stop(index, recorded)
-        if waiting:
+        if stop:
+            open_entries = [e for e in stop if e["dispatchable"]]
+            if len(open_entries) != len(stop):
+                # The resolve reply carries no `parked` field, and a stop
+                # holding an undispatchable entry can never be drained —
+                # folding would wait on it forever. Name the park and let
+                # the engine fall the wave back instead.
+                park = next(e for e in stop if not e["dispatchable"])
+                print("wave %d parked mid-fold on %s (%s)"
+                      % (args.wave, park["path"], park["reason"]),
+                      file=sys.stderr)
+                return 3
             print(json.dumps({"applied": True,
-                              "waiting": [e["i"] for e in waiting]}))
+                              "conflicts": len(open_entries),
+                              "dispatchable": len(open_entries),
+                              "open": [_open_view(e) for e in open_entries],
+                              "remaining": [t for t, _n, _h in remaining],
+                              "complete": False}))
             return 0
 
-        if remaining:
-            _record_max_lines(wave_dir, max_lines)
-            stop, remaining, kernel_park = _fold_until_stop(
-                eng, states, remaining, log_path, wave_dir, index)
-            _write_index(wave_dir / "conflicts.json", index)
-
-            if kernel_park is not None:
-                _write_kernel_park(wave_dir, index, eng.epoch(),
-                                   kernel_park + (headroom.bound,))
-                print("kernel recursion limit folding task %s in wave %d"
-                      % (kernel_park[0], args.wave), file=sys.stderr)
-                return 3
-
-            if stop:
-                open_entries = [e for e in stop if e["dispatchable"]]
-                if len(open_entries) != len(stop):
-                    # The resolve reply carries no `parked` field, and a stop
-                    # holding an undispatchable entry can never be drained —
-                    # folding would wait on it forever. Name the park and let
-                    # the engine fall the wave back instead.
-                    park = next(e for e in stop if not e["dispatchable"])
-                    print("wave %d parked mid-fold on %s (%s)"
-                          % (args.wave, park["path"], park["reason"]),
-                          file=sys.stderr)
-                    return 3
-                print(json.dumps({"applied": True,
-                                  "conflicts": len(open_entries),
-                                  "dispatchable": len(open_entries),
-                                  "open": [_open_view(e) for e in open_entries],
-                                  "remaining": [t for t, _n, _h in remaining],
-                                  "complete": False}))
-                return 0
-
-        folded = [states[task_id] for task_id, _n, _h in branches]
-        self_checks = _self_checks(repo, base, eng, folded, log_path)
+    folded = [states[task_id] for task_id, _n, _h in branches]
+    self_checks = _self_checks(repo, base, eng, folded, log_path)
 
     # `complete` is derived, never recorded: every task folded and no
     # narrated path left unresolved.
@@ -788,7 +782,6 @@ def cmd_materialize(args):
                 for line in rw.split_lines(log_path.read_text()) if line.strip()]
     base_sha = recorded[0]["sha"] if recorded and recorded[0].get("type") == "base" else None
     heads = [e["headSha"] for e in recorded if e.get("type") == "fold"]
-    max_lines = _git_max_lines(repo, base_sha, heads) if base_sha else 0
 
     # The completeness refusal, before anything is built: a materialize
     # issued short of `complete` would otherwise construct a candidate that
@@ -802,12 +795,11 @@ def cmd_materialize(args):
         return _fallback("incomplete fold: %d task(s) unfolded / %d path(s) "
                          "unresolved" % (len(unfolded), len(unresolved)))
 
-    with _recursion_headroom(max_lines):
-        try:
-            eng = ff.rehydrate(repo, log_path)
-        except RecursionError:
-            return _fallback("kernel recursion limit rehydrating wave %d" % args.wave)
-        manifest = eng.manifest()
+    try:
+        eng = ff.rehydrate(repo, log_path)
+    except RecursionError:
+        return _fallback("kernel recursion limit rehydrating wave %d" % args.wave)
+    manifest = eng.manifest()
 
     # The touched set — not the manifest — is what the candidate applies: the
     # manifest omits deletions. It is derived from the fold events' own heads
@@ -870,7 +862,10 @@ def main(argv=None):
     p_mat.set_defaults(func=cmd_materialize)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    # Every subcommand drives the kernel's recursive merge walk, so the whole
+    # body runs on the big-stack thread; the result (and any exception) comes
+    # straight back, leaving the exit contract untouched.
+    return run_on_kernel_thread(args.func, args)
 
 
 if __name__ == "__main__":

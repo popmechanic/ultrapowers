@@ -64,21 +64,20 @@ def test_a_folded_file_with_no_final_newline_materializes_byte_identical():
     assert rw.manifest(frontier)["cli.py"] == "a = 9\nb = 2"
 
 
-def test_dispatchable_counts_via_split_lines_exact_cap_boundary():
-    # a body of exactly RESOLVER_LINE_CAP visible lines (per split_lines) is
-    # dispatchable; one more is not. splitlines() would disagree by one on
-    # the trailing-newline spelling — the kernel's own convention decides.
-    cap = ff.RESOLVER_LINE_CAP
-    body_at_cap = "\n".join("l%d" % i for i in range(cap - 1)) + "\n"
-    assert len(rw.split_lines(body_at_cap)) == cap
-    body_over = body_at_cap + "x\n"
-    assert len(rw.split_lines(body_over)) == cap + 1
-    assert len(body_at_cap.splitlines()) == cap - 1      # the disagreement
+def test_dispatchable_no_longer_counts_lines_at_all():
+    # The resolver line cap retired (spec 2026-08-18 §1d): the line convention
+    # still decides every COUNT the kernel takes, but no count decides
+    # dispatch any more. Both spellings of the same body — the trailing-
+    # newline one `split_lines` reports one longer than `splitlines()` would,
+    # which is the off-by-one the old cap boundary turned on — dispatch.
+    body = "\n".join("l%d" % i for i in range(999)) + "\n"
+    assert len(rw.split_lines(body)) == 1000
+    assert len(body.splitlines()) == 999                 # the disagreement
+    bigger = body + "x\n"
+    assert len(rw.split_lines(bigger)) == 1001
 
     narration = rw.MARKERS[0] + " frontier\nadded x\n" + rw.MARKERS[2] + " t1\n"
-    ok, _ = ff.dispatchable(rw.Conflict("f.py", "lines", "t1", narration),
-                            {"f.py": body_at_cap})
-    assert ok
-    ok, reason = ff.dispatchable(rw.Conflict("f.py", "lines", "t1", narration),
-                                 {"f.py": body_over})
-    assert not ok and "visible lines" in reason
+    for text in (body, bigger):
+        ok, reason = ff.dispatchable(
+            rw.Conflict("f.py", "lines", "t1", narration), {"f.py": text})
+        assert (ok, reason) == (True, "")

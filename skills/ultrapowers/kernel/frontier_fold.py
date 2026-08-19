@@ -12,8 +12,8 @@ tests/test_rehydrate.py):
 * application validity: a resolution computed from a narration applies only
   if no intervening fold touched its path since the narration's epoch —
   live only; recorded resolutions re-apply unconditionally;
-* the dispatch predicate: only annotated-block narrations, <= 400 visible
-  lines, are resolver-eligible — everything else parks with a named reason.
+* the dispatch predicate: resolver-eligibility is annotated narration present
+  and text manifest content — everything else parks with a named reason.
 """
 import json
 import random
@@ -26,8 +26,6 @@ sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "vendor"))
 import manyana
 import repo_weave as rw
-
-RESOLVER_LINE_CAP = 400
 
 
 def sampled_orders(n, seed=42):
@@ -208,7 +206,15 @@ def raw_shuffle_outcomes(base, tasks, sample_seed):
 
 def dispatchable(conflict, manifest):
     """(ok, park_reason). Resolver-eligible iff the narration carries
-    manyana's annotated conflict block AND the file is text under the cap."""
+    manyana's annotated conflict block AND the file is text.
+
+    Two terms, no size term: the resolver line cap retired with spec 2026-08-18
+    §1d. The cap existed because the kernel's merge walk blew the main
+    thread's stack on a large file; `fold_wave.run_on_kernel_thread` gives
+    that walk a 1 GiB stack instead, so size no longer decides what a
+    resolver may be briefed on. A residual `RecursionError` is still caught
+    into a named kernel-limit park — the only ceiling left.
+    """
     if not any(line.startswith(rw.MARKERS)
                for line in rw.split_lines(conflict.narration)):
         return False, "no annotated narration for %s (%s)" % (conflict.path,
@@ -216,7 +222,4 @@ def dispatchable(conflict, manifest):
     body = manifest.get(conflict.path)
     if not isinstance(body, str):
         return False, "non-text manifest content for %s" % conflict.path
-    if len(rw.split_lines(body)) > RESOLVER_LINE_CAP:
-        return False, "%s exceeds %d visible lines" % (conflict.path,
-                                                       RESOLVER_LINE_CAP)
     return True, ""

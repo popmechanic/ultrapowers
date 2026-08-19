@@ -13,7 +13,10 @@ Every scenario is its own tmp_path git repo — no shared fixtures.
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
@@ -217,7 +220,7 @@ def make_marker_shaped_repo(tmp_path):
 
 def make_big_conflict_repo(tmp_path):
     """A ~1200-line file both branches edit at the same line, differently: a
-    genuine conflict whose narration exceeds RESOLVER_LINE_CAP."""
+    genuine conflict far past the retired 400-line resolver cap."""
     lines = ["line %d" % i for i in range(1200)]
     base_text = "\n".join(lines) + "\n"
     t1_lines = list(lines)
@@ -424,12 +427,13 @@ def test_fold_scoped_snapshot_folds_single_writer_modify_as_modify(tmp_path):
     assert manifest["app.py"] == "x = 2\n"
 
 
-def test_fold_kernel_limit_parks_with_named_reason(tmp_path):
-    """A size park, found by the pre-scan and reported before any narration.
+def test_a_1200_line_conflict_dispatches_now_that_the_cap_is_retired(tmp_path):
+    """The size term is gone: a big genuine conflict is briefed, not parked.
 
-    The pre-scan folds the whole wave in memory precisely so no resolver is
-    spent on a wave that will park: it writes the park entries and their
-    reasons, no fold log, and exits 0 with `parked > 0`.
+    This shape used to be the cap's park (1,200 lines > the retired 400-line
+    resolver cap). With the size term retired the wave stops on it and
+    dispatches a hunk-scoped brief exactly as a small conflict does — which is
+    the whole point of Phase 1: fold reaches the files that carry contention.
     """
     repo, base_sha, heads = make_big_conflict_repo(tmp_path)
     run_dir = tmp_path / "run"
@@ -439,16 +443,17 @@ def test_fold_kernel_limit_parks_with_named_reason(tmp_path):
 
     wave_dir = run_dir / "frontier" / "wave-1"
     index = json.loads((wave_dir / "conflicts.json").read_text())
-    parked = [e for e in index if e["dispatchable"] is False]
-    assert parked
-    assert any("visible lines" in e["reason"] for e in parked)
+    assert [(e["path"], e["kind"], e["dispatchable"]) for e in index] == [
+        ("big.py", "lines", True)]
+    assert index[0]["reason"] == "" and index[0]["hunkCount"] >= 1
+    assert Path(index[0]["hunksFile"]).exists()
 
     payload = last_json(result)
-    assert payload["parked"] == len(parked) == payload["conflicts"]
-    assert payload["dispatchable"] == 0 and payload["open"] == []
-    assert payload["complete"] is False and payload["remaining"] == ["t1", "t2"]
-    assert "selfChecks" not in payload
-    assert not (wave_dir / "fold_log.jsonl").exists()
+    assert payload["parked"] == 0
+    assert payload["dispatchable"] == 1 and payload["conflicts"] == 1
+    assert [o["path"] for o in payload["open"]] == ["big.py"]
+    assert payload["complete"] is False and payload["remaining"] == []
+    assert (wave_dir / "fold_log.jsonl").exists()
 
 
 def test_fold_of_a_10k_line_single_writer_file_stays_inside_the_exit_contract(tmp_path):
@@ -480,96 +485,159 @@ def test_fold_of_a_10k_line_single_writer_file_stays_inside_the_exit_contract(tm
         assert payload["parked"] >= 1
         assert payload["selfChecks"].startswith("failed:")
     else:
-        # The sized bound absorbed it: an ordinary clean single-task fold,
+        # The kernel thread absorbed it: an ordinary clean single-task fold,
         # which folds everything and therefore completes in the one call.
         assert result.returncode == 0
         assert payload == {"clean": True, "conflicts": 0, "dispatchable": 0,
                            "parked": 0, "open": [], "remaining": [],
                            "complete": True, "selfChecks": "ok"}
-        # In-process too: the kernel needs the sized bound wherever it is
+        # In-process too: the kernel needs the big-stack thread wherever it is
         # driven, which is why the helper is the CLI's, not a local hack.
-        with fw._recursion_headroom(n + 1):
-            manifest = ff.rehydrate(repo, wave_dir / "fold_log.jsonl").manifest()
+        manifest = fw.run_on_kernel_thread(
+            lambda: ff.rehydrate(repo, wave_dir / "fold_log.jsonl").manifest())
         assert manifest["huge.py"] == t1_text
 
 
-def test_recursion_bound_is_sized_from_the_corpus_not_a_flat_ceiling(tmp_path):
-    """The bound must scale with the files being folded.
+def test_fold_of_a_100k_line_pair_never_segfaults(tmp_path):
+    """Spec §1d pin: 100k-line two-writer fold succeeds on the running
+    interpreter (on 3.9 the big-stack thread is what makes it true) — never
+    exit 139.
 
-    The kernel's merge walk needs ~2*entries+4 frames, so ANY flat ceiling has
-    a cliff: at 10,500 lines the previous flat 20,000 is already short, and the
-    park it would produce routes a perfectly foldable wave to fallback. This
-    pins the sizing itself — platform stack behaviour never enters into it.
+    Both writers touch `huge.py` at different ends, so the kernel merges
+    ~100,001 entries per fold — ~200k frames, far past any stack the main
+    thread has. Before the fold thread this invocation died on a segfault,
+    an exit outside the documented {0, 2, 3} contract with no stdout JSON at
+    all; the first assert is the one that catches that regression.
     """
-    n = 10500
+    n = 100_000
     repo, base_sha, t1_sha, _ = make_single_writer_repo(tmp_path, n)
-    touched = ff._union_touched(repo, base_sha, [t1_sha])
-    base = rw.snapshot_scoped(repo, base_sha, touched)
-    states = {"t1": rw.publish(base, repo, base_sha, t1_sha, task_id="t1")}
+    # `make_single_writer_repo` builds one branch; add a second writer editing
+    # the other end of the same file.
+    _git(repo, "checkout", "-q", "-b", "t2", base_sha)
+    p = repo / "huge.py"
+    lines = p.read_text().split("\n")
+    lines[5] = "# t2 edit"
+    p.write_text("\n".join(lines))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "t2")
+    t2_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", base_sha)
 
-    max_lines = fw._state_max_lines(base, states)
-    assert max_lines == n + 1                 # split_lines' trailing "" entry
-    bound = fw._recursion_headroom(max_lines).bound
-    assert bound >= 2 * max_lines + 4         # what the kernel's walk needs
-    assert bound > 20000                      # the flat ceiling this replaces
-
-    # And it costs nothing on a small wave: the ambient limit is kept.
-    small = fw._recursion_headroom(0)
-    assert small.bound == max(sys.getrecursionlimit(), fw.RECURSION_MARGIN)
+    r = do_fold(repo, tmp_path / "run", 1, base_sha,
+                [("t1", "t1", t1_sha), ("t2", "t2", t2_sha)])
+    assert r.returncode in (0, 3), (r.returncode, r.stderr[-500:])  # never 139/-11
+    assert r.returncode == 0, r.stderr[-500:]
+    payload = last_json(r)
+    assert payload["clean"] is True and payload["complete"] is True
+    assert payload["selfChecks"] == "ok"
 
 
-def test_fold_parks_a_named_kernel_limit_when_the_bound_is_insufficient(tmp_path,
-                                                                        monkeypatch,
-                                                                        capsys):
-    """The residual-RecursionError path, forced deterministically.
+# --- the big-stack kernel thread ------------------------------------------
 
-    Zeroing the sizing constants makes `_recursion_headroom` fall back to the
-    ambient limit, which a 3,000-line merge (~6,004 frames) cannot fit. The
-    fold must then record a named kernel-limit park, write its artifacts,
-    report a self-check failure, exit 3, and restore the recursion limit.
+
+def _distinct_limit(current):
+    """A recursion limit that is neither the current one nor the thread's.
+
+    Deep enough for pytest's own frames, and different from `current` so an
+    assertion against it cannot pass by accident.
     """
-    n_lines = 3000
-    assert sys.getrecursionlimit() < 2 * n_lines + 4, (
-        "ambient recursion limit is too high to force the kernel limit")
+    candidate = 4321 if current != 4321 else 4322
+    assert candidate not in (current, fw.THREAD_RECURSION_LIMIT)
+    return candidate
 
-    repo, base_sha, t1_sha, _ = make_single_writer_repo(tmp_path, n_lines)
-    run_dir = tmp_path / "run"
-    monkeypatch.setattr(fw, "RECURSION_LINE_FACTOR", 0)
-    monkeypatch.setattr(fw, "RECURSION_MARGIN", 0)
 
-    before = sys.getrecursionlimit()
-    code = fw.main(["fold", "--repo", str(repo), "--run-dir", str(run_dir),
-                    "--wave", "1", "--base", base_sha,
-                    "--branch", "t1=t1:%s" % t1_sha])
-    assert sys.getrecursionlimit() == before      # restored on the way out
-    assert code == 3
+def test_run_on_kernel_thread_marshals_result_and_sets_the_fixed_limit():
+    """The wrapper returns the callee's value and the callee sees the fixed
+    limit — the thread's limit is what replaced the sized bound.
 
-    payload = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert payload == {"clean": False, "conflicts": 1, "dispatchable": 0,
-                       "parked": 1, "open": [], "remaining": ["t1"],
-                       "complete": False,
-                       "selfChecks": "failed: kernel recursion limit folding task t1"}
+    The caller's limit is asserted against a SENTINEL this test installs, not
+    against whatever the interpreter happened to be carrying: because
+    `sys.setrecursionlimit` is interpreter-global rather than per-thread, an
+    earlier in-process `run_on_kernel_thread` call would otherwise leave
+    1_000_000 behind and make a broken restore look green.
+    """
+    seen = {}
 
-    wave_dir = run_dir / "frontier" / "wave-1"
-    index = json.loads((wave_dir / "conflicts.json").read_text())
-    assert len(index) == 1
-    park = index[0]
-    assert park["i"] == 1
-    assert park["kind"] == "kernel-limit"
-    assert park["dispatchable"] is False
-    assert park["path"] == "huge.py"
-    assert "kernel recursion limit exceeded folding task t1" in park["reason"]
-    # n_lines + 1: the file ends in a newline, so `split_lines` — the one
-    # normalization on this path — yields a trailing "" entry.
-    assert "huge.py (%d lines)" % (n_lines + 1) in park["reason"]
-    assert park["epoch"] == 0                     # nothing folded
+    def probe(a, b=0):
+        seen["limit"] = sys.getrecursionlimit()
+        seen["thread"] = threading.current_thread().name
+        return a + b
 
-    # Every index entry keeps its conflict-<i>.txt, and the log truncates to
-    # the folds that actually happened — here, none.
-    assert (wave_dir / "conflict-1.txt").read_text() == park["reason"] + "\n"
-    events = [json.loads(l) for l in
-              (wave_dir / "fold_log.jsonl").read_text().splitlines()]
-    assert events == [{"type": "base", "sha": base_sha}]
+    outer = sys.getrecursionlimit()
+    sentinel = _distinct_limit(outer)
+    sys.setrecursionlimit(sentinel)
+    try:
+        assert fw.run_on_kernel_thread(probe, 2, b=40) == 42
+        assert seen["limit"] == fw.THREAD_RECURSION_LIMIT == 1_000_000
+        assert seen["thread"] == "fold-kernel"
+        assert fw.STACK_BYTES == 1 << 30
+        assert sys.getrecursionlimit() == sentinel   # restored, not leaked
+    finally:
+        sys.setrecursionlimit(outer)
+
+
+def test_run_on_kernel_thread_restores_the_caller_limit_after_a_raise():
+    """The restore is in a `finally`, so a raising callee leaks nothing either.
+
+    Without it, one failed fold would leave the whole interpreter at
+    1_000_000 — and a later runaway recursion would exhaust the C stack and
+    segfault instead of raising the `RecursionError` the kernel-limit park
+    lane is built on.
+    """
+    def boom():
+        raise ValueError("kaboom")
+
+    outer = sys.getrecursionlimit()
+    sentinel = _distinct_limit(outer)
+    sys.setrecursionlimit(sentinel)
+    try:
+        with pytest.raises(ValueError, match="kaboom"):
+            fw.run_on_kernel_thread(boom)
+        assert sys.getrecursionlimit() == sentinel
+    finally:
+        sys.setrecursionlimit(outer)
+
+
+def test_run_on_kernel_thread_reraises_including_systemexit():
+    """Exceptions are marshalled back so exit codes are unchanged: a
+    `SystemExit` raised inside the kernel must still terminate the CLI with
+    its own code, not be swallowed into a silent success."""
+    def boom():
+        raise ValueError("kaboom")
+
+    with pytest.raises(ValueError, match="kaboom"):
+        fw.run_on_kernel_thread(boom)
+
+    def bail():
+        raise SystemExit(3)
+
+    with pytest.raises(SystemExit) as excinfo:
+        fw.run_on_kernel_thread(bail)
+    assert excinfo.value.code == 3
+
+
+def test_run_on_kernel_thread_falls_back_to_the_main_thread(monkeypatch, capsys):
+    """A platform that refuses the 1 GiB stack must still run the work.
+
+    Both refusal shapes — `ValueError` from `threading.stack_size` and
+    `RuntimeError` from `Thread.start()` — fall through to a main-thread call
+    plus exactly one stderr line, so the CLI's exit codes never change.
+    """
+    for exc, label in ((ValueError("size not valid"), "stack_size"),
+                       (RuntimeError("can't start new thread"), "start")):
+        def refuse(*_a, **_k):
+            raise exc
+        if label == "stack_size":
+            monkeypatch.setattr(fw.threading, "stack_size", refuse)
+        else:
+            monkeypatch.setattr(fw.threading, "stack_size", lambda _n: None)
+            monkeypatch.setattr(fw.threading.Thread, "start", refuse)
+
+        assert fw.run_on_kernel_thread(lambda x: x * 3, 5) == 15
+        err = capsys.readouterr().err.strip().splitlines()
+        assert len(err) == 1
+        assert err[0].startswith("fold_wave: big-stack thread unavailable")
+        monkeypatch.undo()
 
 
 def test_pre_scan_reports_parks_before_any_narration(tmp_path):

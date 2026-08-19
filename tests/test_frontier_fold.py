@@ -78,19 +78,34 @@ def test_raw_shuffle_outcomes_is_a_singleton_on_clean_tasks():
     assert len(ff.raw_shuffle_outcomes(base, [t1, t2], sample_seed=7)) == 1
 
 
-def test_dispatchable_requires_annotated_narration_and_size_cap():
-    ok, _ = ff.dispatchable(
+def test_dispatchable_requires_annotated_narration_over_text_content():
+    """Two terms only, since the size term retired (spec 2026-08-18 §1d):
+    an annotated narration, and text manifest content."""
+    ok, reason = ff.dispatchable(
         rw.Conflict("p.py", "lines", "t1", "<<<<<<< frontier\nmarked\n>>>>>>>"),
         {"p.py": "\n".join(["x = %d" % i for i in range(10)])})
-    assert ok is True
+    assert (ok, reason) == (True, "")
     no_block, reason = ff.dispatchable(
         rw.Conflict("img.bin", "binary", "t1", "path img.bin written as text and as binary"),
         {"img.bin": b"\x00"})
     assert no_block is False and "narration" in reason
-    big, reason = ff.dispatchable(
+    non_text, reason = ff.dispatchable(
+        rw.Conflict("p.bin", "lines", "t1", "<<<<<<< frontier\nmarked\n>>>>>>>"),
+        {"p.bin": b"\x00\x01"})
+    assert non_text is False and reason == "non-text manifest content for p.bin"
+
+
+def test_a_5000_line_text_conflict_is_dispatchable():
+    """The cap is gone: size alone never parks a conflict any more. 5,000
+    visible lines is 12.5x the retired 400-line resolver cap."""
+    body = "\n".join("x = %d" % i for i in range(5000))
+    assert len(rw.split_lines(body)) == 5000
+    ok, reason = ff.dispatchable(
         rw.Conflict("p.py", "lines", "t1", "<<<<<<< frontier\nmarked\n>>>>>>>"),
-        {"p.py": "\n".join(["x = %d" % i for i in range(401)])})
-    assert big is False and "400" in reason
+        {"p.py": body})
+    assert (ok, reason) == (True, "")
+    # The retired constant stays retired: no line-cap knob of any spelling.
+    assert [n for n in vars(ff) if "LINE_CAP" in n] == []
 
 
 # --- contract legs the Produces list states but the plan sketch leaves untested
