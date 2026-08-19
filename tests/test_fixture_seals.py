@@ -7,7 +7,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HASH = ROOT / "skills/ultrapowers/scripts/seal_hash.py"
-FIXTURES = ["wide", "chained", "mixed", "degrade", "contend", "contend-prod"]
+FIXTURES = ["wide", "chained", "mixed", "degrade", "contend", "contend-prod", "contend-big"]
 LINE = re.compile(r"\*\*Acceptance:\*\* sealed ([0-9a-f]{12}) \(sha256:([0-9a-f]{64})\)")
 
 
