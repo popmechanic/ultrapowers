@@ -432,10 +432,18 @@ const MERGE_PROMPT =
   'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
   'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
   'diff or failing output. Before you report, record heads mechanically: run ' +
-  'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
-  'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+  'mkdir -p <runDir>/heads, then for each task branch you merged run git -C ' +
+  INTEGRATION_WT + ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then ' +
+  'git -C ' + INTEGRATION_WT + ' rev-parse HEAD > ' +
   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  'by hand, and never a bare rev-parse for a slot: -C pins every read to the ' +
+  'integration worktree, so no recorded sha can depend on your current ' +
+  'directory. Before reporting, self-check the wave slot: cat ' +
+  '<runDir>/heads/wave-<waveNumber> must print exactly the headSha you are ' +
+  'about to report; on mismatch, re-record with the -C forms — a slot that ' +
+  'disagrees with your report means a rev-parse ran in the wrong ' +
+  'directory. After the heads are recorded and only if you are ' +
+  'reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
   'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
@@ -459,10 +467,17 @@ const RECONCILE_PROMPT =
   'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
   'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. ' +
   'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git rev-parse <branch> > ' +
-  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
-  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
+  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
+  'Shell redirection only — never type a sha by hand, and never a bare ' +
+  'rev-parse for a slot: -C pins every read to the integration worktree, so no ' +
+  'recorded sha can depend on your current directory. Before reporting, ' +
+  'self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> must print ' +
+  'exactly the headSha you are about to report; on mismatch, re-record with ' +
+  'the -C forms — a slot that disagrees with your report means a rev-parse ran ' +
+  'in the wrong directory. After the heads are recorded and only if you ' +
+  'are reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
   'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
@@ -580,10 +595,17 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'index). Then ' + testInstruction + '. If it passes, adopt the candidate with ' +
   'git reset --hard <candidate> and report MERGED with that sha as headSha. ' +
   'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git rev-parse <branch> > ' +
-  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
-  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. If instead the suite fails, adopt nothing and restore the worktree — ' +
+  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
+  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
+  'Shell redirection only — never type a sha by hand, and never a bare ' +
+  'rev-parse for a slot: -C pins every read to the integration worktree, so no ' +
+  'recorded sha can depend on your current directory. Before reporting, ' +
+  'self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> must print ' +
+  'exactly the headSha you are about to report; on mismatch, re-record with ' +
+  'the -C forms — a slot that disagrees with your report means a rev-parse ran ' +
+  'in the wrong directory. If instead the suite fails, adopt nothing and ' +
+  'restore the worktree — ' +
   'git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED ' +
   'with the failing output and write no slots. Do not try to fix a failing ' +
   'candidate: the engine falls the wave back to an ordinary git merge, and that ' +
