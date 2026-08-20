@@ -144,3 +144,13 @@ def test_stamp_mode_missing_required_flag_exits_2(tmp_path):
     r = subprocess.run([sys.executable, str(SCRIPT), "stamp", "s", "e"],
                        cwd=repo, capture_output=True, text=True)
     assert r.returncode == 2
+
+
+def test_stamp_mode_outside_git_repo_exits_1(tmp_path):
+    # #156 item 7 pin: a non-git cwd is a loud exit 1, never a silent write.
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "stamp", "s", "e",
+         "--verdict", "PASS", "--exit-code", "0", "--branch", "b", "--base", "m"],
+        cwd=tmp_path, capture_output=True, text=True)
+    assert r.returncode == 1
+    assert "not inside a git repository" in r.stderr

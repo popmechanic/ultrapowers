@@ -376,9 +376,9 @@ def _transcript_dirs(records):
     alias), and pre-dedupe each mention was audited separately — the verbatim
     agent-block duplication that overstated audit totals by a full salvage
     run's weight. First occurrence wins; transcript order is preserved.
-    Fallback: the LAST unique candidate when NONE qualify, preserving the old
-    single-dir last-resort behavior (e.g. a dir that no longer exists on
-    disk when the harvester runs later)."""
+    Fallback: the LAST-MENTIONED candidate when NONE qualify (#156 item 5),
+    honoring transcript recency for the single-dir last-resort case (e.g. a
+    dir that no longer exists on disk when the harvester runs later)."""
     candidates = []
     for _r, b in _iter_blocks(records):
         if not (isinstance(b, dict) and b.get("type") == "tool_result"):
@@ -395,14 +395,30 @@ def _transcript_dirs(records):
     for c in candidates:
         try:
             key = str(Path(c).resolve())
-        except OSError:
+        except (OSError, ValueError):  # ValueError: embedded NUL (#156 item 4)
             key = c  # unresolvable path: dedupe on the literal string, soft
         if key in seen_real:
             continue
         seen_real.add(key)
         unique.append(c)
     qualifying = [c for c in unique if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
-    return qualifying if qualifying else [unique[-1]]
+    if qualifying:
+        return qualifying
+    # Fallback: the LAST-MENTIONED candidate (#156 item 5) — [A, B, A] -> A;
+    # dedupe keeps first-occurrence order for the qualifying path only.
+    last_key = None
+    try:
+        last_key = str(Path(candidates[-1]).resolve())
+    except (OSError, ValueError):
+        last_key = candidates[-1]
+    for c in unique:
+        try:
+            key = str(Path(c).resolve())
+        except (OSError, ValueError):
+            key = c
+        if key == last_key:
+            return [c]
+    return [unique[-1]]
 
 
 _GIT_TIMEOUT = 5  # seconds; an ancestry check must never hang a harvest sweep
@@ -518,7 +534,7 @@ def _drain_stamp_receipts(run_dir, stamp):
     or unreadable/malformed JSON is skipped, never raised; only dicts
     carrying a `verdict` qualify."""
     root = _repo_root_from_run_dir(run_dir)
-    if root is None:
+    if not root:  # '' root would glob a RELATIVE receipts path (#156 item 2)
         return []
     entries = []
     try:
@@ -571,6 +587,8 @@ def _drain_stamp_terminus(run_dir, drain_receipts):
     recorded base. All entries approved -> approved; else the last
     (filename-sorted) non-approved entry's verdict — the aggregate-terminus
     rule applied at the entry level."""
+    if not drain_receipts:
+        return "unknown"   # vacuous all-approved must not read as approved (#156 item 3)
     resolved = []
     for e in drain_receipts:
         receipt = e["receipt"]
