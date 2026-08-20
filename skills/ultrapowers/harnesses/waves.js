@@ -319,7 +319,7 @@ const REVIEWER_PROMPT = [
   '4. Separation of concerns: each module or function has one clear responsibility; UI, logic, and data layers are not entangled.',
   '5. Error handling: all async paths have explicit error paths; no silent catch blocks; user-visible errors are meaningful.',
   '6. DRY: no copy-pasted logic that could be extracted; shared utilities are used rather than reimplemented.',
-  '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified.',
+  '7. Test quality: tests assert observable behavior, not implementation details; no tests that trivially pass without exercising real logic. Where the task defines exact outputs or ordering, a loose containment assertion in place of full-value equality is a finding — minor, or blocking when it leaves an acceptance criterion unverified. Test strength: for each new or changed test, ask whether it would still pass with the behavior it names deleted — flag assertions satisfiable by accident: a substring assertion already matched by fixed message text, a fixture insensitive to the config or parameter the criterion names, an expected value derived by calling the code under test. Same severity ladder: minor, or blocking when the accidental pass leaves an acceptance criterion unverified.',
   '8. When the diff commits a generated artifact (a baked copy, a regenerated baseline, a build output), regenerate it with its generator and byte-compare against the committed copy — never eyeball equivalence. A hand-edited artifact that reads plausibly is exactly the false green this catches.',
   '',
   'You review by reading the diff and its evidence; the implementer red green refactor cycle already ran the suite, and the suite runs again at the wave merge and on the integrated tree, so you do not re-run it here.',
@@ -431,11 +431,22 @@ const MERGE_PROMPT =
   'branch in the given task-index order (deterministic, so conflicts are ' +
   'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
   'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
-  'diff or failing output. Before you report, record heads mechanically: run ' +
-  'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
-  'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
-  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  'diff or failing output. Before you report, record heads mechanically FROM ' +
+  'THE LAUNCH DIRECTORY — the session repo root this dispatch started you in, ' +
+  'the one place the relative worktree path ' + INTEGRATION_WT + ' resolves; ' +
+  'cd back to it first if you have moved. Then run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
+  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
+  'Shell redirection only — never type a sha by hand, and never a bare ' +
+  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
+  "A 'cannot change to' failure means you are not in the launch directory — " +
+  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
+  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
+  'must print exactly the headSha you are about to report; if it is empty or ' +
+  'different, cd to the launch directory and re-record. After the heads are ' +
+  'recorded and only if you are ' +
+  'reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
   'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
@@ -458,11 +469,21 @@ const RECONCILE_PROMPT =
   'other checkout. You are given a merge conflict diff or failing test output. ' +
   'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
   'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. ' +
-  'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git rev-parse <branch> > ' +
-  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
-  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
+  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — ' +
+  'the session repo root this dispatch started you in, the one place the ' +
+  'relative worktree path ' + INTEGRATION_WT + ' resolves; cd back to it ' +
+  'first if you have moved. Then run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
+  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
+  'Shell redirection only — never type a sha by hand, and never a bare ' +
+  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
+  "A 'cannot change to' failure means you are not in the launch directory — " +
+  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
+  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
+  'must print exactly the headSha you are about to report; if it is empty or ' +
+  'different, cd to the launch directory and re-record. After the heads are recorded and only if you ' +
+  'are reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
   'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
@@ -579,11 +600,21 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'is a fatal git error, and merge --ff-only would refuse over the read-tree ' +
   'index). Then ' + testInstruction + '. If it passes, adopt the candidate with ' +
   'git reset --hard <candidate> and report MERGED with that sha as headSha. ' +
-  'Before you report, record heads mechanically: run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git rev-parse <branch> > ' +
-  '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
-  '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
-  'by hand. If instead the suite fails, adopt nothing and restore the worktree — ' +
+  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — ' +
+  'the session repo root this dispatch started you in, the one place the ' +
+  'relative worktree path ' + INTEGRATION_WT + ' resolves; cd back to it ' +
+  'first if you have moved. Then run mkdir -p <runDir>/heads, ' +
+  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
+  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
+  'Shell redirection only — never type a sha by hand, and never a bare ' +
+  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
+  "A 'cannot change to' failure means you are not in the launch directory — " +
+  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
+  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
+  'must print exactly the headSha you are about to report; if it is empty or ' +
+  'different, cd to the launch directory and re-record. If instead the suite fails, adopt nothing and ' +
+  'restore the worktree — ' +
   'git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED ' +
   'with the failing output and write no slots. Do not try to fix a failing ' +
   'candidate: the engine falls the wave back to an ordinary git merge, and that ' +
