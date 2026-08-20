@@ -619,6 +619,16 @@ def test_merge_audits_sums_totals_and_concats_agents():
     assert m["totals"]["turns"] == 15 and m["totals"]["outputTokens"] == 150
 
 
+def test_merge_audits_merges_dict_valued_totals_keywise():
+    # Two transcript dirs' audits with overlapping wallSecByTask ids (#166):
+    # numeric leaves sum per task id; bools and non-numeric leaves are dropped.
+    a = {"agents": [], "totals": {"turns": 1, "wallSecByTask": {"1": 10.0, "2": 5}}}
+    b = {"agents": [], "totals": {"turns": 2, "wallSecByTask": {"2": 7, "3": True, "4": "x"}}}
+    m = h._merge_audits([a, b])
+    assert m["totals"]["turns"] == 3
+    assert m["totals"]["wallSecByTask"] == {"1": 10.0, "2": 12}
+
+
 def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
     d1, d2 = tmp_path / "t1", tmp_path / "t2"
     for d in (d1, d2):
@@ -626,6 +636,30 @@ def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
     recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
                 "text": f"Transcript dir: {d}"}]}]) for d in (d1, d2)]
     assert h._transcript_dirs(recs) == [str(d1), str(d2)]
+
+
+def test_transcript_dirs_nul_byte_candidate_does_not_raise(tmp_path):
+    # #156 item 4: CPython raises ValueError (not OSError) on an embedded
+    # NUL in Path.resolve(); a garbled candidate must not crash the sweep.
+    good = tmp_path / "t1"
+    good.mkdir()
+    (good / "agent-1.jsonl").write_text("{}")
+    bad = "/tmp/x\x00y"
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                "text": f"Transcript dir: {c}"}]}]) for c in (bad, str(good))]
+    assert h._transcript_dirs(recs) == [str(good)]
+
+
+def test_transcript_dirs_fallback_is_last_mention_not_last_first_mention(tmp_path):
+    # #156 item 5: candidates A, B, A with NONE qualifying must fall back to
+    # A (the last MENTION); first-occurrence dedupe made unique[-1] the last
+    # FIRST-mention (B), losing transcript recency.
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()                       # both exist but hold no agent-*.jsonl
+    recs = [_rec("user", [{"type": "tool_result", "content": [{"type": "text",
+                "text": f"Transcript dir: {d}"}]}]) for d in (a, b, a)]
+    assert h._transcript_dirs(recs) == [str(a)]
 
 
 # --- fix round 1 (adversarial review): isolate classify_session_kind's new
@@ -1259,6 +1293,27 @@ def test_drain_stamp_ancestry_upgrades_to_approved(tmp_path):
     assert bundle["truncated"] is False
 
 
+def test_drain_ancestry_approved_survives_swept_branch_via_headsha(tmp_path):
+    # #156 item 1: pre-merge stamp + swept branch. The record's headSha —
+    # derived by the writer at record time — is what lets the join fire
+    # after `ultra/entry-146` no longer exists as a ref.
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    _git(["checkout", "-q", "-b", "ultra/docket-D"], repo)
+    _git(["checkout", "-q", "-b", "ultra/entry-146"], repo)
+    (repo / "f.txt").write_text("entry\n")
+    _git(["commit", "-q", "-am", "entry work"], repo)
+    _write_stamp_record(repo, "20260820-100000", "146", "PASS", 0,
+                        "ultra/entry-146", "ultra/docket-D")   # recorded pre-merge
+    _git(["checkout", "-q", "ultra/docket-D"], repo)
+    _git(["merge", "-q", "--no-ff", "-m", "merge entry", "ultra/entry-146"], repo)
+    _git(["branch", "-q", "-D", "ultra/entry-146"], repo)      # the sweep
+    run_dir = str(repo / ".claude/ultrapowers/run-20260820-100000")
+    [rec] = h._drain_stamp_receipts(run_dir, "20260820-100000")
+    assert rec["receipt"]["headSha"]                           # writer derived it
+    assert h._drain_ancestry_approved(run_dir, rec["receipt"]) is True
+
+
 def test_drain_stamp_multi_entry_last_non_approved_wins(tmp_path):
     # One drain stamp covers several docket entries (one record each). All
     # approved -> approved; else the last (filename-sorted) non-approved
@@ -1298,6 +1353,26 @@ def test_drain_stamp_receipts_fail_soft(tmp_path):
     (receipts / "S-noverdict.json").write_text(json.dumps({"mode": "drain-stamp"}))
     run_dir = str(repo / ".claude/ultrapowers/run-S")
     assert h._drain_stamp_receipts(run_dir, "S") == []
+
+
+def test_drain_stamp_receipts_empty_root_never_globs_relative(tmp_path, monkeypatch):
+    # #156 item 2: a runDir that IS the bare engine suffix derives root ""
+    # — a '' root would glob a RELATIVE receipts path against whatever cwd
+    # the harvester happens to run in. Plant a matching record relative to
+    # cwd to prove the glob never fires.
+    receipts = tmp_path / ".claude/ultrapowers/receipts"
+    receipts.mkdir(parents=True)
+    (receipts / "s-1.json").write_text(json.dumps({"verdict": "PASS"}))
+    monkeypatch.chdir(tmp_path)
+    bare = "/.claude/ultrapowers/run-20260820-abc"
+    assert h._repo_root_from_run_dir(bare) == ""
+    assert h._drain_stamp_receipts(bare, "s") == []
+
+
+def test_drain_stamp_terminus_vacuous_is_unknown(tmp_path):
+    # #156 item 3: zero drain records must not read as all-approved.
+    run_dir = str(tmp_path / "repo/.claude/ultrapowers/run-S")
+    assert h._drain_stamp_terminus(run_dir, []) == "unknown"
 
 
 # --- #160(i): exact foreign engineVersion from the plugin-cache path.

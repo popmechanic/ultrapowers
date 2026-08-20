@@ -376,9 +376,9 @@ def _transcript_dirs(records):
     alias), and pre-dedupe each mention was audited separately — the verbatim
     agent-block duplication that overstated audit totals by a full salvage
     run's weight. First occurrence wins; transcript order is preserved.
-    Fallback: the LAST unique candidate when NONE qualify, preserving the old
-    single-dir last-resort behavior (e.g. a dir that no longer exists on
-    disk when the harvester runs later)."""
+    Fallback: the LAST-MENTIONED candidate when NONE qualify (#156 item 5),
+    honoring transcript recency for the single-dir last-resort case (e.g. a
+    dir that no longer exists on disk when the harvester runs later)."""
     candidates = []
     for _r, b in _iter_blocks(records):
         if not (isinstance(b, dict) and b.get("type") == "tool_result"):
@@ -395,14 +395,30 @@ def _transcript_dirs(records):
     for c in candidates:
         try:
             key = str(Path(c).resolve())
-        except OSError:
+        except (OSError, ValueError):  # ValueError: embedded NUL (#156 item 4)
             key = c  # unresolvable path: dedupe on the literal string, soft
         if key in seen_real:
             continue
         seen_real.add(key)
         unique.append(c)
     qualifying = [c for c in unique if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
-    return qualifying if qualifying else [unique[-1]]
+    if qualifying:
+        return qualifying
+    # Fallback: the LAST-MENTIONED candidate (#156 item 5) — [A, B, A] -> A;
+    # dedupe keeps first-occurrence order for the qualifying path only.
+    last_key = None
+    try:
+        last_key = str(Path(candidates[-1]).resolve())
+    except (OSError, ValueError):
+        last_key = candidates[-1]
+    for c in unique:
+        try:
+            key = str(Path(c).resolve())
+        except (OSError, ValueError):
+            key = c
+        if key == last_key:
+            return [c]
+    return [unique[-1]]
 
 
 _GIT_TIMEOUT = 5  # seconds; an ancestry check must never hang a harvest sweep
@@ -518,7 +534,7 @@ def _drain_stamp_receipts(run_dir, stamp):
     or unreadable/malformed JSON is skipped, never raised; only dicts
     carrying a `verdict` qualify."""
     root = _repo_root_from_run_dir(run_dir)
-    if root is None:
+    if not root:  # '' root would glob a RELATIVE receipts path (#156 item 2)
         return []
     entries = []
     try:
@@ -537,26 +553,32 @@ def _drain_stamp_receipts(run_dir, stamp):
 
 def _drain_ancestry_approved(run_dir, receipt):
     """Approved-upgrade for a drain-stamp record (#150 mode c): merged IS
-    approved, same rule as the receipt path. head = the record's own
-    `branch`, base = its `base` — both carried in the record, so no runDir
-    file read is ever needed; repo root comes from the runDir PATH STRING.
-    Fails soft to False on any unresolvable repo, ref, or git invocation."""
+    approved, same rule as the receipt path. head = the record's `headSha`
+    when present (derived by the writer at record time, so it survives swept
+    branches), falling back to `branch` for legacy records; base = its
+    `base` — all carried in the record, so no runDir file read is ever
+    needed; repo root comes from the runDir PATH STRING. Fails soft to
+    False on any unresolvable repo, ref, or git invocation."""
     repo_root = _repo_root_from_run_dir(run_dir)
     if not repo_root:
         return False
-    head = receipt.get("branch")
     base = receipt.get("base")
-    if not (isinstance(head, str) and head.strip()
-            and isinstance(base, str) and base.strip()):
+    if not (isinstance(base, str) and base.strip()):
         return False
-    try:
-        res = subprocess.run(
-            ["git", "-C", repo_root, "merge-base", "--is-ancestor",
-             head.strip(), base.strip()],
-            capture_output=True, text=True, timeout=_GIT_TIMEOUT)
-        return res.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    heads = [receipt.get("headSha"), receipt.get("branch")]
+    for head in heads:
+        if not (isinstance(head, str) and head.strip()):
+            continue
+        try:
+            res = subprocess.run(
+                ["git", "-C", repo_root, "merge-base", "--is-ancestor",
+                 head.strip(), base.strip()],
+                capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if res.returncode == 0:
+            return True
+    return False
 
 
 def _drain_stamp_terminus(run_dir, drain_receipts):
@@ -565,6 +587,8 @@ def _drain_stamp_terminus(run_dir, drain_receipts):
     recorded base. All entries approved -> approved; else the last
     (filename-sorted) non-approved entry's verdict — the aggregate-terminus
     rule applied at the entry level."""
+    if not drain_receipts:
+        return "unknown"   # vacuous all-approved must not read as approved (#156 item 3)
     resolved = []
     for e in drain_receipts:
         receipt = e["receipt"]
@@ -658,9 +682,21 @@ def _merge_audits(audits):
         for k, v in (a.get("totals") or {}).items():
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 totals[k] = totals.get(k, 0) + v
+            elif isinstance(v, dict):
+                # #166: dict-valued totals (wallSecByTask) merge key-wise —
+                # numeric leaves sum per task id; bools/non-numerics dropped.
+                sub = totals.setdefault(k, {})
+                if isinstance(sub, dict):
+                    for sk, sv in v.items():
+                        if isinstance(sv, (int, float)) and not isinstance(sv, bool):
+                            sub[sk] = sub.get(sk, 0) + sv
         note = a.get("note")
         if note:
             notes.append(note)
+    # An all-empty dict total (no numeric leaves anywhere) adds no signal;
+    # dropping it keeps the pre-#166 shape for sessions without the field.
+    totals = {k: v for k, v in totals.items()
+              if not (isinstance(v, dict) and not v)}
     merged = {"agents": agents}
     if totals:
         merged["totals"] = totals
