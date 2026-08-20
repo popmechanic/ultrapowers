@@ -1060,7 +1060,8 @@ async function runTask(task, baseSha, siblings) {
                review: taskReviewProfile(task), fixIterations: 0 }
     }
     // Default the one retry to the SAME tier; escalate one rung ONLY for a
-    // capability-fixable schema trip. Never escalate an Overloaded/null fault.
+    // capability-fixable schema trip. (Overloaded/null faults never reach
+    // here — isInfraFault parks them for a barrier retry above.)
     const capabilityFixable = isSchemaTrip(msg)
     const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
     if (looksStructural(msg)) {
@@ -1131,10 +1132,10 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT) + '\n\nBASE: ' + baseSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task),
     { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA }
   )
-  // agent() RETURNS null (not throws) on terminal Overloaded/skip. Surface it as
-  // a tagged throw so the single retry routes it to the SAME tier (it is not a
-  // schema trip) instead of letting a null-deref blind-escalate a contention
-  // failure to a more-contended top model.
+  // agent() RETURNS null (not throws) on terminal Overloaded/skip. Surface it
+  // as a tagged AGENT_NULL throw so runTask's isInfraFault branch parks the
+  // task for one barrier retry — never an immediate retry or a null-deref
+  // blind-escalation into the same overload storm.
   if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
   noteConcerns(impl)
   // Fail fast on a DONE without mergeable coordinates (schema requires

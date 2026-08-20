@@ -20,7 +20,12 @@ code; the stamp is evidence for the sensor, never authority. Re-recording
 the same <stamp>/<entry> overwrites: last write wins, the final verdict is
 the record. THIS SCRIPT IS THE SCHEMA AUTHORITY for the stamp record — the
 harvester's tests generate fixtures by invoking this writer, so writer and
-reader cannot drift apart silently.
+reader cannot drift apart silently. Derive-don't-record: `headSha` is
+resolved from git at record time, present only when `--branch` resolves to
+a commit, so the ancestry join survives the branch being swept. Receipt
+filenames `<stamp>-<entry>.json` are NOT hyphen-splittable (both parts may
+themselves contain hyphens); readers must key on the record's own
+`stamp`/`entry` fields.
 """
 import argparse
 import json
@@ -87,6 +92,14 @@ def _stamp_mode(argv):
     if root is None:
         print("record_wf_run: not inside a git repository", file=sys.stderr)
         return 1
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", args.branch + "^{commit}"],
+        capture_output=True, text=True)
+    head_sha = head.stdout.strip() if head.returncode == 0 else None
+    if head_sha is None:
+        print("record_wf_run: branch %r did not resolve — recording without "
+              "headSha (ancestry join will depend on the branch surviving)"
+              % args.branch, file=sys.stderr)
     receipts = root / ".claude/ultrapowers/receipts"
     receipts.mkdir(parents=True, exist_ok=True)
     record = {
@@ -97,6 +110,7 @@ def _stamp_mode(argv):
         "gateExit": args.exit_code,
         "branch": args.branch,
         "base": args.base,
+        **({"headSha": head_sha} if head_sha else {}),
         "recordedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     path = receipts / ("%s-%s.json" % (args.stamp, args.entry))
