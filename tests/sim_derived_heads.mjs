@@ -11,8 +11,11 @@
 // task head and the post-merge integration HEAD into <runDir>/heads/ by shell
 // redirection (never by typing a sha) with every rev-parse pinned to the
 // integration worktree via git -C (#173 — a bare rev-parse resolves against the
-// agent's cwd), and to self-check the wave slot against the headSha they are
-// about to report; each dispatch names its concrete slots,
+// agent's cwd), from the LAUNCH DIRECTORY (the integration worktree path is
+// repo-root-relative, so git -C only resolves there — the same prompts send the
+// agent INTO the worktree, where a -C read would die 'cannot change to' and
+// leave an empty slot), and to self-check the wave slot against the headSha they
+// are about to report; each dispatch names its concrete slots,
 // and the completeness critic is told those files — not the shas quoted in its
 // own prompt — are the authority. Assertions quote the DISPATCHED string, never
 // a paraphrase.
@@ -60,22 +63,27 @@ const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', sta
 // The integration worktree path the engine derives from the launch stamp
 // (waves.js: '.claude/worktrees/wf_' + stamp + '-integration'). Every slot read
 // in the sidecar sentence is pinned to it with git -C, so no recorded sha can
-// depend on the merge agent's ambient cwd (#173).
+// depend on the merge agent's ambient cwd (#173). It is RELATIVE to the repo
+// root, which is why the sentence names the launch directory as the place the
+// -C reads must run from.
 const INTEGRATION_WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
 
 // The sidecar-write instruction, exactly as it must reach a merge-side agent
 // once <runDir> has been substituted. Both the merge and the reconcile agent
 // report MERGED heads, so both carry it verbatim.
 const SIDECAR_SENTENCE =
-  'Before you report, record heads mechanically: run mkdir -p ' + RUN_DIR + '/heads, then for ' +
-  'each task branch you merged run git -C ' + INTEGRATION_WT + ' rev-parse <branch> > ' +
-  RUN_DIR + '/heads/task-<taskId>, then git -C ' + INTEGRATION_WT + ' rev-parse HEAD > ' +
-  RUN_DIR + '/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand, and ' +
-  'never a bare rev-parse for a slot: -C pins every read to the integration worktree, so no ' +
-  'recorded sha can depend on your current directory. Before reporting, self-check the wave ' +
-  'slot: cat ' + RUN_DIR + '/heads/wave-<waveNumber> must print exactly the headSha you are ' +
-  'about to report; on mismatch, re-record with the -C forms — a slot that disagrees with your ' +
-  'report means a rev-parse ran in the wrong directory.'
+  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — the session repo ' +
+  'root this dispatch started you in, the one place the relative worktree path ' +
+  INTEGRATION_WT + ' resolves; cd back to it first if you have moved. Then run mkdir -p ' +
+  RUN_DIR + '/heads, then for each task branch you merged run git -C ' + INTEGRATION_WT +
+  ' rev-parse <branch> > ' + RUN_DIR + '/heads/task-<taskId>, then git -C ' + INTEGRATION_WT +
+  ' rev-parse HEAD > ' + RUN_DIR + '/heads/wave-<waveNumber>. Shell redirection only — never ' +
+  'type a sha by hand, and never a bare rev-parse for a slot: -C pins every read to the ' +
+  "integration worktree. A 'cannot change to' failure means you are not in the launch " +
+  'directory — cd back there and rerun; never fall back to a bare rev-parse. Before reporting, ' +
+  'self-check the wave slot: cat ' + RUN_DIR + '/heads/wave-<waveNumber> must print exactly ' +
+  'the headSha you are about to report; if it is empty or different, cd to the launch ' +
+  'directory and re-record.'
 
 // The critic's file-read authority instruction, post-substitution.
 const CRITIC_SENTENCE =
@@ -90,11 +98,19 @@ function assertSidecarInstruction(prompt, who) {
   has(prompt, 'git -C ' + INTEGRATION_WT + ' rev-parse',
       who + ': records heads with a git -C rev-parse pinned to the integration worktree')
   has(prompt, '> ', who + ': records heads by shell redirection')
+  // #173 round 2: INTEGRATION_WT is repo-root-relative, and the same prompt orders
+  // the agent to cd INTO the worktree — so the sentence must say WHERE the -C reads
+  // run, or they die 'cannot change to' and leave the slot empty.
+  has(prompt, 'FROM THE LAUNCH DIRECTORY',
+      who + ': anchors the -C reads to the launch directory, where the relative path resolves')
   has(prompt, SIDECAR_SENTENCE, who + ': carries the sidecar-write sentence verbatim')
   // #173: a bare rev-parse resolves against the agent's cwd, which is how an
-  // eval-baseline sha reached heads/wave-4. No slot write may be cwd-relative.
+  // eval-baseline sha reached heads/wave-4. No slot write may be cwd-relative,
+  // and no failure path may fall back to one.
   assert(prompt.indexOf('then git rev-parse HEAD > ') === -1,
     who + ': records no slot with a bare, cwd-relative rev-parse')
+  has(prompt, 'never fall back to a bare rev-parse',
+      who + ': forbids a bare rev-parse as the recovery from a failed -C read')
   assert(prompt.indexOf('<runDir>') === -1,
     who + ': the <runDir> token must be substituted before dispatch')
   has(prompt, RUN_DIR + '/heads', who + ': the sidecar dir is the run dir this launch was given')
