@@ -242,6 +242,8 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
   ack.
 - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
 
+**Receipts, not narration.** Whatever the verdict, the operator-facing summary quotes machine-written bytes: copy `verdict`, every failing check's `name` and `detail`, and the acceptance `exit` plus its pass/fail line verbatim from `run-<stamp>/gate-receipt.json`, and name that file's path in the summary. Never paraphrase a receipt value the operator could read directly.
+
 Whatever the verdict, delete the run's review exhaust now —
 `rm -rf .claude/ultrapowers/run-<stamp>/review` — the packets are regenerable
 from the BASE/HEAD shas recorded in the report; the run's records
