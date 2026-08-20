@@ -9,7 +9,10 @@
 //
 // What it pins: the merge and reconcile agents are told to record every merged
 // task head and the post-merge integration HEAD into <runDir>/heads/ by shell
-// redirection (never by typing a sha), each dispatch names its concrete slots,
+// redirection (never by typing a sha) with every rev-parse pinned to the
+// integration worktree via git -C (#173 — a bare rev-parse resolves against the
+// agent's cwd), and to self-check the wave slot against the headSha they are
+// about to report; each dispatch names its concrete slots,
 // and the completeness critic is told those files — not the shas quoted in its
 // own prompt — are the authority. Assertions quote the DISPATCHED string, never
 // a paraphrase.
@@ -54,14 +57,25 @@ const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', sta
   edges: [['A', 'C']], testCmd: 'pnpm check',
   pluginRoot: '/opt/plug', runDir: RUN_DIR }
 
+// The integration worktree path the engine derives from the launch stamp
+// (waves.js: '.claude/worktrees/wf_' + stamp + '-integration'). Every slot read
+// in the sidecar sentence is pinned to it with git -C, so no recorded sha can
+// depend on the merge agent's ambient cwd (#173).
+const INTEGRATION_WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
+
 // The sidecar-write instruction, exactly as it must reach a merge-side agent
 // once <runDir> has been substituted. Both the merge and the reconcile agent
 // report MERGED heads, so both carry it verbatim.
 const SIDECAR_SENTENCE =
   'Before you report, record heads mechanically: run mkdir -p ' + RUN_DIR + '/heads, then for ' +
-  'each task branch you merged run git rev-parse <branch> > ' + RUN_DIR + '/heads/task-<taskId>, ' +
-  'then git rev-parse HEAD > ' + RUN_DIR + '/heads/wave-<waveNumber>. Shell redirection only — ' +
-  'never type a sha by hand.'
+  'each task branch you merged run git -C ' + INTEGRATION_WT + ' rev-parse <branch> > ' +
+  RUN_DIR + '/heads/task-<taskId>, then git -C ' + INTEGRATION_WT + ' rev-parse HEAD > ' +
+  RUN_DIR + '/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand, and ' +
+  'never a bare rev-parse for a slot: -C pins every read to the integration worktree, so no ' +
+  'recorded sha can depend on your current directory. Before reporting, self-check the wave ' +
+  'slot: cat ' + RUN_DIR + '/heads/wave-<waveNumber> must print exactly the headSha you are ' +
+  'about to report; on mismatch, re-record with the -C forms — a slot that disagrees with your ' +
+  'report means a rev-parse ran in the wrong directory.'
 
 // The critic's file-read authority instruction, post-substitution.
 const CRITIC_SENTENCE =
@@ -73,9 +87,14 @@ const CRITIC_SENTENCE =
 // Assert the coarse mechanism the task text names, then the verbatim sentence.
 function assertSidecarInstruction(prompt, who) {
   has(prompt, 'heads/task-', who + ': names the per-task sidecar slot')
-  has(prompt, 'git rev-parse', who + ': records heads with git rev-parse')
+  has(prompt, 'git -C ' + INTEGRATION_WT + ' rev-parse',
+      who + ': records heads with a git -C rev-parse pinned to the integration worktree')
   has(prompt, '> ', who + ': records heads by shell redirection')
   has(prompt, SIDECAR_SENTENCE, who + ': carries the sidecar-write sentence verbatim')
+  // #173: a bare rev-parse resolves against the agent's cwd, which is how an
+  // eval-baseline sha reached heads/wave-4. No slot write may be cwd-relative.
+  assert(prompt.indexOf('then git rev-parse HEAD > ') === -1,
+    who + ': records no slot with a bare, cwd-relative rev-parse')
   assert(prompt.indexOf('<runDir>') === -1,
     who + ': the <runDir> token must be substituted before dispatch')
   has(prompt, RUN_DIR + '/heads', who + ': the sidecar dir is the run dir this launch was given')
