@@ -1269,6 +1269,27 @@ def test_drain_stamp_ancestry_upgrades_to_approved(tmp_path):
     assert bundle["truncated"] is False
 
 
+def test_drain_ancestry_approved_survives_swept_branch_via_headsha(tmp_path):
+    # #156 item 1: pre-merge stamp + swept branch. The record's headSha —
+    # derived by the writer at record time — is what lets the join fire
+    # after `ultra/entry-146` no longer exists as a ref.
+    repo = tmp_path / "repo"
+    _init_git_repo(repo)
+    _git(["checkout", "-q", "-b", "ultra/docket-D"], repo)
+    _git(["checkout", "-q", "-b", "ultra/entry-146"], repo)
+    (repo / "f.txt").write_text("entry\n")
+    _git(["commit", "-q", "-am", "entry work"], repo)
+    _write_stamp_record(repo, "20260820-100000", "146", "PASS", 0,
+                        "ultra/entry-146", "ultra/docket-D")   # recorded pre-merge
+    _git(["checkout", "-q", "ultra/docket-D"], repo)
+    _git(["merge", "-q", "--no-ff", "-m", "merge entry", "ultra/entry-146"], repo)
+    _git(["branch", "-q", "-D", "ultra/entry-146"], repo)      # the sweep
+    run_dir = str(repo / ".claude/ultrapowers/run-20260820-100000")
+    [rec] = h._drain_stamp_receipts(run_dir, "20260820-100000")
+    assert rec["receipt"]["headSha"]                           # writer derived it
+    assert h._drain_ancestry_approved(run_dir, rec["receipt"]) is True
+
+
 def test_drain_stamp_multi_entry_last_non_approved_wins(tmp_path):
     # One drain stamp covers several docket entries (one record each). All
     # approved -> approved; else the last (filename-sorted) non-approved

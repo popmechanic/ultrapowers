@@ -537,26 +537,32 @@ def _drain_stamp_receipts(run_dir, stamp):
 
 def _drain_ancestry_approved(run_dir, receipt):
     """Approved-upgrade for a drain-stamp record (#150 mode c): merged IS
-    approved, same rule as the receipt path. head = the record's own
-    `branch`, base = its `base` — both carried in the record, so no runDir
-    file read is ever needed; repo root comes from the runDir PATH STRING.
-    Fails soft to False on any unresolvable repo, ref, or git invocation."""
+    approved, same rule as the receipt path. head = the record's `headSha`
+    when present (derived by the writer at record time, so it survives swept
+    branches), falling back to `branch` for legacy records; base = its
+    `base` — all carried in the record, so no runDir file read is ever
+    needed; repo root comes from the runDir PATH STRING. Fails soft to
+    False on any unresolvable repo, ref, or git invocation."""
     repo_root = _repo_root_from_run_dir(run_dir)
     if not repo_root:
         return False
-    head = receipt.get("branch")
     base = receipt.get("base")
-    if not (isinstance(head, str) and head.strip()
-            and isinstance(base, str) and base.strip()):
+    if not (isinstance(base, str) and base.strip()):
         return False
-    try:
-        res = subprocess.run(
-            ["git", "-C", repo_root, "merge-base", "--is-ancestor",
-             head.strip(), base.strip()],
-            capture_output=True, text=True, timeout=_GIT_TIMEOUT)
-        return res.returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
+    heads = [receipt.get("headSha"), receipt.get("branch")]
+    for head in heads:
+        if not (isinstance(head, str) and head.strip()):
+            continue
+        try:
+            res = subprocess.run(
+                ["git", "-C", repo_root, "merge-base", "--is-ancestor",
+                 head.strip(), base.strip()],
+                capture_output=True, text=True, timeout=_GIT_TIMEOUT)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if res.returncode == 0:
+            return True
+    return False
 
 
 def _drain_stamp_terminus(run_dir, drain_receipts):

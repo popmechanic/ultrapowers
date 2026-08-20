@@ -78,6 +78,37 @@ def test_stamp_mode_writes_mirror_record(tmp_path):
                         "branch", "base", "recordedAt"}
 
 
+def _commit_on_branch(repo, branch):
+    subprocess.run(["git", "-C", str(repo), "checkout", "-q", "-b", branch], check=True)
+    (repo / "f.txt").write_text("x\n")
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "add", "f.txt"], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t",
+                    "-c", "user.email=t@t", "commit", "-q", "-m", "w"], check=True)
+    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def test_stamp_mode_derives_headsha_when_branch_resolvable(tmp_path):
+    repo = make_repo(tmp_path)
+    sha = _commit_on_branch(repo, "ultra/entry-x")     # matches stamp_record's default --branch
+    r = stamp_record(repo, "s1", "e1")
+    assert r.returncode == 0, r.stderr
+    rec = json.loads((repo / ".claude/ultrapowers/receipts/s1-e1.json").read_text())
+    assert rec["headSha"] == sha
+    assert set(rec) == {"mode", "stamp", "entry", "verdict", "gateExit",
+                        "branch", "base", "recordedAt", "headSha"}
+
+
+def test_stamp_mode_omits_headsha_and_warns_on_unresolvable_branch(tmp_path):
+    repo = make_repo(tmp_path)                          # no commits: branch cannot resolve
+    r = stamp_record(repo, "s1", "e1")
+    assert r.returncode == 0, r.stderr                  # recording still succeeds
+    rec = json.loads((repo / ".claude/ultrapowers/receipts/s1-e1.json").read_text())
+    assert "headSha" not in rec
+    assert "headSha" in r.stderr                        # loud, named, non-fatal
+
+
 def test_stamp_mode_re_record_overwrites_last_write_wins(tmp_path):
     # A re-gate after a fix round replaces the file — the final verdict is
     # the record.

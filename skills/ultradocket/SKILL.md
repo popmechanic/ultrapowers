@@ -155,10 +155,11 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    (`ultrapowers`) entry**, mirror the outcome to a teardown-surviving stamp
    record: `python3 skills/ultradocket/scripts/record_wf_run.py stamp <stamp>
    <entry> --verdict <verdict> --exit-code <exit> --branch <branch> --base
-   <docket-integration-line-HEAD>` (same `<stamp>` as the step-2 run-ID
+   <docket-integration-branch>` (same `<stamp>` as the step-2 run-ID
    record; `<verdict>`/`<exit>` are the gate runner's own JSON verdict and
    exit code — the stamp is evidence for the ultralearn sensor, never
-   authority). A re-gate after a fix round re-records the same
+   authority; pass the MOVING branch ref for `--base`, never a pinned SHA —
+   the ancestry join re-evaluates against the branch's current tip). A re-gate after a fix round re-records the same
    `<stamp>`/`<entry>` and overwrites — last write wins; the final verdict is
    the record. Subagent/inline entries record no stamp: they have no engine
    runDir or registry stamp for the harvester to key on.
