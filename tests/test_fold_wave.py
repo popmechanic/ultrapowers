@@ -941,3 +941,132 @@ def test_resolve_refuses_when_the_wave_has_no_fold_log(tmp_path):
     assert "fold log missing for wave 1" in r.stderr
 
 
+
+# --- the silent RecursionError park lanes (#162) --------------------------
+
+
+def test_midfold_kernel_park_stays_inside_the_exit_contract(
+        tmp_path, monkeypatch, capsys):
+    """The continued-fold lane: `_fold_until_stop` catches a mid-work-list
+    RecursionError and `cmd_fold` writes the named park. Reached by
+    bypassing `_pre_scan` (a deliberate seam: the pre-scan park set is a
+    superset, so end-to-end it always fires first and this lane stays
+    silent — exactly how the mutation sweep found it)."""
+    n = 3000
+    repo, base_sha, t1_sha, _ = make_single_writer_repo(tmp_path, n)
+    run_dir = tmp_path / "run"
+    monkeypatch.setattr(fw, "_pre_scan", lambda *_a, **_k: ([], None))
+    monkeypatch.setattr(fw, "THREAD_RECURSION_LIMIT", 200)
+    prior_limit = sys.getrecursionlimit()
+
+    code = fw.main(["fold", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--base", base_sha,
+                    "--branch", "t1=t1:%s" % t1_sha])
+    out = capsys.readouterr().out
+
+    assert sys.getrecursionlimit() == prior_limit
+    assert code == 3
+    payload = json.loads(out.strip().splitlines()[-1])
+    assert payload["selfChecks"].startswith(
+        "failed: kernel recursion limit folding task t1")
+    assert payload["parked"] >= 1 and payload["complete"] is False
+    index = json.loads(
+        (run_dir / "frontier" / "wave-1" / "conflicts.json").read_text())
+    parks = [e for e in index if e["kind"] == "kernel-limit"]
+    assert parks and parks[0]["dispatchable"] is False
+
+
+def test_selfchecks_recursion_overrun_reports_failed_not_crash(
+        tmp_path, monkeypatch, capsys):
+    """`_self_checks`' own RecursionError lane: the wave folded, but the
+    shuffle/rehydrate verification overran the limit -> a named `failed:`
+    verdict and exit 3, never an unhandled crash."""
+    repo, base_sha, t1_sha, _ = make_single_writer_repo(tmp_path, 50)
+    run_dir = tmp_path / "run"
+
+    def overrun(*_a, **_k):
+        raise RecursionError("verification overran")
+    monkeypatch.setattr(ff, "raw_shuffle_outcomes", overrun)
+
+    code = fw.main(["fold", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--base", base_sha,
+                    "--branch", "t1=t1:%s" % t1_sha])
+    out = capsys.readouterr().out
+
+    assert code == 3
+    payload = json.loads(out.strip().splitlines()[-1])
+    assert payload["selfChecks"] == "failed: kernel recursion limit in self-checks"
+
+
+def test_resolve_rehydrate_recursion_overrun_exits_3_with_stderr(
+        tmp_path, monkeypatch, capsys):
+    """`cmd_resolve`'s rehydrate lane: the reply grammar has already
+    passed when `_apply_events` overruns -> stderr names the wave, exit 3,
+    and no resolve event is appended to the log."""
+    repo, base_sha, heads = make_repo(tmp_path)   # heads = {"t1": sha, "t2": sha}
+    run_dir = tmp_path / "run"
+    branch_args = []
+    for task_id, head_sha in heads.items():       # insertion order = argv order
+        branch_args += ["--branch", "%s=%s:%s" % (task_id, task_id, head_sha)]
+    assert fw.main(["fold", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--base", base_sha] + branch_args) == 0
+    capsys.readouterr()
+    wave_dir = run_dir / "frontier" / "wave-1"
+    index = json.loads((wave_dir / "conflicts.json").read_text())
+    entry = next(e for e in index if e["dispatchable"])
+    log_before = (wave_dir / "fold_log.jsonl").read_text()
+    replies = _reply_dir(tmp_path, "r1",
+                         **{("h%d" % k): "resolved\n"
+                            for k in range(1, entry["hunkCount"] + 1)})
+
+    def overrun(*_a, **_k):
+        raise RecursionError("rehydrate overran")
+    monkeypatch.setattr(ff, "_apply_events", overrun)
+
+    code = fw.main(["resolve", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--conflict", str(entry["i"]),
+                    "--reply-dir", str(replies)] + branch_args)
+    captured = capsys.readouterr()
+
+    assert code == 3
+    assert "kernel recursion limit rehydrating wave 1" in captured.err
+    assert (wave_dir / "fold_log.jsonl").read_text() == log_before
+
+
+def test_resolve_continued_fold_kernel_park_exits_3_and_records(
+        tmp_path, monkeypatch, capsys):
+    """`cmd_resolve`'s handling of a kernel park returned by the continued
+    fold: named stderr line, exit 3, park entry in the index. The
+    `_fold_until_stop` return seam is monkeypatched directly — its except
+    lane itself is pinned by the mid-fold test above."""
+    repo, base_sha, heads = make_repo(tmp_path)   # heads = {"t1": sha, "t2": sha}
+    t3_name, t3_sha = add_third_branch(repo, base_sha)
+    heads[t3_name] = t3_sha
+    run_dir = tmp_path / "run"
+    branch_args = []
+    for task_id, head_sha in heads.items():       # t1, t2, t3 in argv order
+        branch_args += ["--branch", "%s=%s:%s" % (task_id, task_id, head_sha)]
+    assert fw.main(["fold", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--base", base_sha] + branch_args) == 0
+    capsys.readouterr()
+    wave_dir = run_dir / "frontier" / "wave-1"
+    index = json.loads((wave_dir / "conflicts.json").read_text())
+    entry = next(e for e in index if e["dispatchable"])
+    replies = _reply_dir(tmp_path, "r1",
+                         **{("h%d" % k): "resolved\n"
+                            for k in range(1, entry["hunkCount"] + 1)})
+
+    def parked_continue(_eng, states, remaining, *_a, **_k):
+        return [], list(remaining), (t3_name, states[t3_name])
+    monkeypatch.setattr(fw, "_fold_until_stop", parked_continue)
+
+    code = fw.main(["resolve", "--repo", str(repo), "--run-dir", str(run_dir),
+                    "--wave", "1", "--conflict", str(entry["i"]),
+                    "--reply-dir", str(replies)] + branch_args)
+    captured = capsys.readouterr()
+
+    assert code == 3
+    assert ("kernel recursion limit folding task %s in wave 1" % t3_name) \
+        in captured.err
+    index = json.loads((wave_dir / "conflicts.json").read_text())
+    assert any(e["kind"] == "kernel-limit" for e in index)
