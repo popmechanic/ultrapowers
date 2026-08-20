@@ -619,6 +619,16 @@ def test_merge_audits_sums_totals_and_concats_agents():
     assert m["totals"]["turns"] == 15 and m["totals"]["outputTokens"] == 150
 
 
+def test_merge_audits_merges_dict_valued_totals_keywise():
+    # Two transcript dirs' audits with overlapping wallSecByTask ids (#166):
+    # numeric leaves sum per task id; bools and non-numeric leaves are dropped.
+    a = {"agents": [], "totals": {"turns": 1, "wallSecByTask": {"1": 10.0, "2": 5}}}
+    b = {"agents": [], "totals": {"turns": 2, "wallSecByTask": {"2": 7, "3": True, "4": "x"}}}
+    m = h._merge_audits([a, b])
+    assert m["totals"]["turns"] == 3
+    assert m["totals"]["wallSecByTask"] == {"1": 10.0, "2": 12}
+
+
 def test_transcript_dirs_returns_all_agent_bearing_candidates(tmp_path):
     d1, d2 = tmp_path / "t1", tmp_path / "t2"
     for d in (d1, d2):
