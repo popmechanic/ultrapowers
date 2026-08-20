@@ -658,9 +658,21 @@ def _merge_audits(audits):
         for k, v in (a.get("totals") or {}).items():
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 totals[k] = totals.get(k, 0) + v
+            elif isinstance(v, dict):
+                # #166: dict-valued totals (wallSecByTask) merge key-wise —
+                # numeric leaves sum per task id; bools/non-numerics dropped.
+                sub = totals.setdefault(k, {})
+                if isinstance(sub, dict):
+                    for sk, sv in v.items():
+                        if isinstance(sv, (int, float)) and not isinstance(sv, bool):
+                            sub[sk] = sub.get(sk, 0) + sv
         note = a.get("note")
         if note:
             notes.append(note)
+    # An all-empty dict total (no numeric leaves anywhere) adds no signal;
+    # dropping it keeps the pre-#166 shape for sessions without the field.
+    totals = {k: v for k, v in totals.items()
+              if not (isinstance(v, dict) and not v)}
     merged = {"agents": agents}
     if totals:
         merged["totals"] = totals
