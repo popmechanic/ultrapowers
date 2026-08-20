@@ -249,6 +249,32 @@ fix; apply it and re-run. The runtime parser accepts exactly this grammar and
 rejects the rest loudly, so a plan that skips the check fails at compile time
 instead — at launch, when a fix costs a session instead of seconds.
 
+## Operator smoke — aim the one human check
+
+After validating, append a `## Operator smoke` section to the plan document
+itself (never a separate file). It is the operator's post-merge hands-on
+check: 3–5 behavioral probes, each two lines —
+
+- `do:` one concrete action in the running software (a command to type, a
+  page to open, a button to press)
+- `see:` the observable result that proves the seam works
+
+Choose probes adversarially: aim precisely where the suite and any sealed
+exam are structurally blind — integration seams between tasks, visual/UI
+states, CLI output feel, error-path wording, anything a green gate cannot
+see. Never restate what a committed test already asserts; a probe that
+merely mirrors the suite is dead weight. Write probes a non-technical
+operator can run verbatim, no repo knowledge assumed.
+
+If the plan's work has no operator-observable surface (pure refactor,
+internal tooling), write `## Operator smoke` with the single line
+"No observable surface — suite is the whole story." rather than inventing
+probes.
+
+The manifest is ADVISORY ONLY. It is never a gate input, never parsed by
+the compiler or engine, and never blocks a merge — it aims human
+attention, nothing more.
+
 ## Populate the v6 blocks — they are load-bearing here
 
 superpowers v6 adds two plan blocks. In ultrapowers they are **not just
