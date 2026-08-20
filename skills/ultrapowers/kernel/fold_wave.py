@@ -92,7 +92,9 @@ def run_on_kernel_thread(fn, *args, **kwargs):
     that refuses the big stack (`ValueError` from `threading.stack_size`) or
     the thread itself (`RuntimeError` from `Thread.start()`) falls through to
     a main-thread call plus one stderr line: the work still runs, just without
-    the headroom.
+    the headroom. `threading.stack_size` is process-global like the recursion
+    limit, so the prior stack size is restored in every path — a thread's
+    stack is fixed at `start()`, so threads created later are unaffected.
 
     `sys.setrecursionlimit` is interpreter-global, not per-thread, so raising
     it inside the thread raises it for the whole process. The limit is
@@ -114,14 +116,24 @@ def run_on_kernel_thread(fn, *args, **kwargs):
             sys.setrecursionlimit(prior)
 
     try:
-        threading.stack_size(STACK_BYTES)
+        prior_stack = threading.stack_size(STACK_BYTES)
+    except ValueError as e:
+        # Nothing was changed: stack_size raises before mutating.
+        print("fold_wave: big-stack thread unavailable (%s); running in main "
+              "thread" % e, file=sys.stderr)
+        return fn(*args, **kwargs)
+    try:
         t = threading.Thread(target=target, name="fold-kernel")
         t.start()
-        t.join()
-    except (ValueError, RuntimeError) as e:
-        print("fold_wave: big-stack thread unavailable (%s); running in main thread" % e,
-              file=sys.stderr)
+    except RuntimeError as e:
+        print("fold_wave: big-stack thread unavailable (%s); running in main "
+              "thread" % e, file=sys.stderr)
         return fn(*args, **kwargs)
+    finally:
+        # Process-global, like the recursion limit: a thread's stack is fixed
+        # at start(), so restoring here affects only threads created later.
+        threading.stack_size(prior_stack)
+    t.join()
     if "exc" in box:
         raise box["exc"]
     return box["result"]

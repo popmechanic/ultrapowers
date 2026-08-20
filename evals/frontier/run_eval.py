@@ -645,9 +645,9 @@ def run_track_c(repo, out_dir, seed=42):
             excluded.append({"ref": run["ref"], "reason":
                              "recursion depth: %s" % (str(exc) or
                                                       "kernel recursion limit "
-                                                      "exceeded even after "
-                                                      "widening it to fit the "
-                                                      "corpus")})
+                                                      "exceeded on the "
+                                                      "big-stack kernel "
+                                                      "thread")})
             continue
         except subprocess.CalledProcessError as exc:
             excluded.append({"ref": run["ref"], "reason":

@@ -699,6 +699,22 @@ def test_run_on_kernel_thread_falls_back_to_the_main_thread(monkeypatch, capsys)
         monkeypatch.undo()
 
 
+def test_run_on_kernel_thread_restores_process_global_stack_size(monkeypatch):
+    """stack_size is process-global; the 1 GiB request must not leak to
+    threads created after the call — on the happy path or on the
+    Thread.start() fallback path (where the size was already changed
+    before the failure)."""
+    prior = threading.stack_size()
+    assert fw.run_on_kernel_thread(lambda x: x * 3, 5) == 15
+    assert threading.stack_size() == prior
+
+    def refuse_start(*_a, **_k):
+        raise RuntimeError("can't start new thread")
+    monkeypatch.setattr(fw.threading.Thread, "start", refuse_start)
+    assert fw.run_on_kernel_thread(lambda x: x + 1, 41) == 42
+    assert threading.stack_size() == prior
+
+
 def test_pre_scan_reports_parks_before_any_narration(tmp_path):
     """No resolver is ever spent on a wave that will park.
 
