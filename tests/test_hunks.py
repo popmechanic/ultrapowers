@@ -58,7 +58,7 @@ def test_round_trip_property_on_kernel_shapes():
         ("x\n", "x\na\n", "x\nb\n"),                                # EOF, ends \n
         ("x\n\n", "x\na\n\n", "x\nb\n\n"),                          # EOF, ends \n\n
         ("x", "x\na", "x\nb"),                                      # no final newline
-        ("a\nb\nc\nd\n", "a\nB\nc\nd\n", "a\nb\nc\nD\n"),           # two blocks
+        ("a\nb\nc\nd\n", "a\nB\nc\nd\n", "a\nb\nc\nD\n"),           # merges clean: zero blocks
     ]
     for base, left, right in cases:
         ann = _annotate(base, left, right)
@@ -140,3 +140,85 @@ def test_strip_markers_drops_deleted_segments():
         "",
     ])
     assert hunks.strip_markers(annotated) == ["keep0", "new-right", "keep1", ""]
+
+
+def test_reply_with_invalid_utf8_is_rejected_not_replaced(tmp_path):
+    annotated = "\n".join([
+        "ctx",
+        "<<<<<<< begin added left",
+        "L",
+        "======= begin added right",
+        "R",
+        ">>>>>>> end conflict",
+        "tail",
+    ])
+    _text, blocks = hunks.derive(annotated)
+    (tmp_path / "h1.txt").write_bytes(b"caf\xe9\n")
+    with pytest.raises(hunks.HunkError) as exc:
+        hunks.read_reply_dir(tmp_path, blocks)
+    assert "not valid UTF-8" in exc.value.reason
+    assert "h1" in exc.value.reason
+
+
+def test_in_block_marker_with_unknown_head_parks_as_marker_shaped():
+    annotated = "\n".join([
+        "<<<<<<< begin added left",
+        "L",
+        "======= begin frobnicate zone",
+        "R",
+        ">>>>>>> end conflict",
+    ])
+    with pytest.raises(hunks.HunkError) as exc:
+        hunks.derive(annotated)
+    assert exc.value.reason == hunks.MARKER_SHAPED
+
+
+def test_begin_marker_with_unknown_head_parks_as_marker_shaped():
+    annotated = "\n".join([
+        "<<<<<<< begin exploded sideways",
+        "L",
+        ">>>>>>> end conflict",
+    ])
+    with pytest.raises(hunks.HunkError) as exc:
+        hunks.derive(annotated)
+    assert exc.value.reason == hunks.MARKER_SHAPED
+
+
+def test_content_line_equal_to_end_marker_inside_a_block_still_parks():
+    # The in-block END-equal line terminates the block early; the real END
+    # then sits at top level, where the existing defense parks it. Pinned
+    # here so the indirect defense cannot be lost in a refactor.
+    annotated = "\n".join([
+        "<<<<<<< begin added left",
+        ">>>>>>> end conflict",   # content byte-equal to the END marker
+        "more",
+        ">>>>>>> end conflict",
+    ])
+    with pytest.raises(hunks.HunkError) as exc:
+        hunks.derive(annotated)
+    assert exc.value.reason == hunks.MARKER_SHAPED
+
+
+def test_two_block_narration_round_trips_through_splice():
+    # Genuine two-block coverage for splice's pos-advance loop: l0..l9 with
+    # l3 and l6 diverging. (#162's rider: the existing "# two blocks"
+    # comment sat on a case the kernel annotates as ZERO blocks.)
+    annotated = "\n".join([
+        "l0", "l1", "l2",
+        "<<<<<<< begin added left",
+        "L3",
+        "======= begin added right",
+        "R3",
+        ">>>>>>> end conflict",
+        "l4", "l5",
+        "<<<<<<< begin added left",
+        "L6",
+        "======= begin added right",
+        "R6",
+        ">>>>>>> end conflict",
+        "l7", "l8", "l9",
+    ])
+    _text, blocks = hunks.derive(annotated)
+    assert [b["id"] for b in blocks] == ["h1", "h2"]
+    out = hunks.splice(annotated, {"h1": ["L3"], "h2": ["R6"]}, blocks)
+    assert out == ["l0", "l1", "l2", "L3", "l4", "l5", "R6", "l7", "l8", "l9"]

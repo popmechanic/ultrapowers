@@ -16,6 +16,15 @@ import repo_weave as rw
 CONTEXT_LINES = 40
 MARKER_SHAPED = "marker-shaped content"
 _BEGIN, _SEP, _END = "<<<<<<< begin ", "======= begin ", ">>>>>>> end conflict"
+_KINDS = {"added", "deleted"}
+
+
+def _valid_head(ln):
+    # Kind is a closed annotator vocabulary; the side is `left`/`right`/`both`
+    # only pre-relabel — repo_weave._relabel rewrites it to `frontier` or the
+    # task id — so it can only be required non-empty, never enumerated.
+    kind, side = _seg_head(ln)
+    return kind in _KINDS and side != ""
 
 
 class HunkError(Exception):
@@ -37,14 +46,20 @@ def _seg_head(ln):
 
 def _blocks(lines):
     """[(start, end)] inclusive indices of every marker block; raises on a
-    content line byte-equal to a marker form (undelimitable)."""
+    content line byte-equal to a marker form (undelimitable) and on any
+    marker head outside the annotator vocabulary (silently restructures
+    segments otherwise)."""
     out, i, n = [], 0, len(lines)
     while i < n:
         ln = lines[i]
         if ln.startswith(_BEGIN):
+            if not _valid_head(ln):
+                raise HunkError(MARKER_SHAPED)
             j = i + 1
             while j < n and lines[j] != _END:
                 if lines[j].startswith(_BEGIN):
+                    raise HunkError(MARKER_SHAPED)
+                if lines[j].startswith(_SEP) and not _valid_head(lines[j]):
                     raise HunkError(MARKER_SHAPED)
                 j += 1
             if j >= n:
@@ -138,7 +153,10 @@ def read_reply_dir(reply_dir, blocks):
         f = reply_dir / (hid + ".txt")
         if not f.is_file():
             raise HunkError("missing reply for %s" % hid)
-        data = f.read_bytes().decode("utf-8", errors="replace")
+        try:
+            data = f.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            raise HunkError("%s: reply not valid UTF-8" % hid)
         if data == "":
             replies[hid] = []
             continue
