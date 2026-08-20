@@ -92,3 +92,7 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).
 - **Self-hosting a `/ultrapowers` run? Serialize them.** Concurrent runs in one repo corrupt each
   other's checkout; clean up worktrees with `skills/ultrapowers/scripts/sweep_worktrees.sh`.
+  This extends to *sessions* during an approve window (#134): `ultra_gate.py --approve` checks out
+  the integration/main branch in the shared primary checkout, so only one session may do git work
+  in a checkout while another session's gate approve can run — the RUN_LOCK serializes runs, not
+  sessions, and a second session's branch silently becomes `main` mid-command otherwise.

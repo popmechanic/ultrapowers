@@ -323,6 +323,24 @@ def main(argv=None):
                  failure=r.stderr or "not inside a git repository"):
         return bail()
     root = Path(r.stdout.strip())
+
+    # #129: a worktree-isolated session (EnterWorktree) resolves its toplevel
+    # to <main-repo>/.claude/worktrees/<name>. Every later stage passes there,
+    # but the session's Bash isolation guard refuses git commands aimed at the
+    # engine's integration worktree (cut at the PRIMARY root), so the run is
+    # unexecutable and fails only mid-merge, stranding tasks on branches.
+    parts = root.resolve().parts
+    isolated = any(parts[i:i + 2] == (".claude", "worktrees")
+                   for i in range(len(parts) - 1))
+    if not stage("launch-checkout", not isolated,
+                 success="primary checkout (not worktree-isolated)",
+                 failure="launch checkout %s is inside .claude/worktrees/ — a "
+                         "worktree-isolated session cannot execute the run "
+                         "(the session Bash guard refuses the engine's "
+                         "integration worktree); exit the worktree and launch "
+                         "/ultrapowers from the repo root checkout" % root):
+        return bail()
+
     state_dir = root / ".claude/ultrapowers"
     run_dir = state_dir / ("run-" + stamp)
 

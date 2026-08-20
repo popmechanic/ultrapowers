@@ -128,6 +128,33 @@ def test_not_a_git_repo_fails_first_stage(tmp_path):
     assert receipt["stages"][-1]["stage"] == "git-repo"
 
 
+def test_worktree_isolated_launch_fails_closed(tmp_path):
+    """#129: a session launched from inside .claude/worktrees/ (EnterWorktree
+    isolation) passes every later stage but cannot execute the run — the
+    session Bash guard refuses the engine's integration worktree. Preflight
+    must fail closed with the remedy, before any cost is spent."""
+    repo = make_repo(tmp_path)
+    wt = repo / ".claude/worktrees/session-wt"
+    sh(["git", "worktree", "add", "-q", str(wt), "HEAD"], cwd=repo)
+    (wt / "plan.md").write_text(PLAN)
+    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
+           cwd=wt, check=False)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    assert receipt["stages"][-1]["stage"] == "launch-checkout"
+    assert receipt["stages"][-1]["ok"] is False
+    assert "repo root" in receipt["stages"][-1]["detail"]
+
+
+def test_primary_checkout_launch_passes_launch_checkout_stage(tmp_path):
+    repo = make_repo(tmp_path)
+    r = run_driver(repo)
+    receipt = json.loads(r.stdout)
+    stage = [s for s in receipt["stages"] if s["stage"] == "launch-checkout"][0]
+    assert stage["ok"] is True
+
+
 def test_held_lock_fails_lock_stage(tmp_path):
     repo = make_repo(tmp_path)
     sh(["bash", str(SCRIPTS / "run_lock.sh"), "acquire", "other-run"], cwd=repo)
