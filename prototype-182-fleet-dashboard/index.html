@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ULTRAPOWERS — fleet pane PROTOTYPE (#182)</title>
+<!--
+  PROTOTYPE (#182) — THROWAWAY, wipe me. Three structurally different variants
+  of a fleet dashboard over the #178 coordination-store schema, switchable via
+  ?variant=A|B|C (floating pill, ←/→ keys). Simulated store data only; strictly
+  read-only. Question: what does the operator actually need to see, and what is
+  noise?
+    A — Drain board: columns by run status; the docket frontier as a flow.
+    B — Ops table:  one dense receipts-verbatim row per run; aggregates strip.
+    C — Attention triage: only what needs the operator, full width; healthy
+        runs collapse to a tickertape. Noise hidden by default.
+  Inherits the swarm viewer's phosphor design language and honesty contract
+  (SIMULATED badge always on; verdict fields marked display-only).
+-->
+<style>
+  :root{
+    --bg:#07080a; --ink:#f5f6f0; --bright:#fff; --dim:#5a5d58; --faint:#22241f;
+    --accent:#ffb347; --ok:#7dd97b; --warn:#ffd166; --bad:#ff6b6b; --info:#7fb4ff;
+    --font:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);
+       font-family:var(--font);font-size:13px;line-height:1.45;padding:18px 20px 90px}
+  h1{font-size:14px;letter-spacing:.18em;margin:0 0 2px;color:var(--bright)}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--dim);margin-bottom:16px;font-size:11px}
+  .sim{display:inline-block;border:1px solid var(--warn);color:var(--warn);
+       padding:0 6px;border-radius:3px;font-size:10px;letter-spacing:.12em;margin-left:8px}
+  .muted{color:var(--dim)} .b{color:var(--bright)} .ok{color:var(--ok)}
+  .warn{color:var(--warn)} .bad{color:var(--bad)} .info{color:var(--info)}
+  a{color:var(--info);text-decoration:none}
+  /* status tints */
+  .st-pending{color:var(--dim)} .st-claimed{color:var(--info)}
+  .st-running{color:var(--bright)} .st-gate-green{color:var(--ok)}
+  .st-folded{color:var(--ok)} .st-parked{color:var(--warn)} .st-revoked{color:var(--bad)}
+  .bar{height:5px;background:var(--faint);border-radius:2px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--info)}
+  .bar i.hot{background:var(--bad)}
+  /* ============ Variant A — drain board ============ */
+  .vA .cols{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:start}
+  .vA .col{background:#0b0d0f;border:1px solid var(--faint);border-radius:6px;padding:8px;min-height:120px}
+  .vA .col h3{margin:0 0 8px;font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase}
+  .vA .card{border:1px solid var(--faint);border-radius:5px;padding:7px 8px;margin-bottom:8px;background:#0e1013}
+  .vA .card .id{color:var(--bright)}
+  .vA .card .why{color:var(--warn);font-size:11px}
+  .vA .lane{margin-top:14px;border-top:1px dashed var(--faint);padding-top:10px}
+  .vA .alert{border:1px solid var(--bad);color:var(--bad);padding:8px 10px;border-radius:5px;margin-bottom:14px}
+  /* ============ Variant B — ops table ============ */
+  .vB .agg{display:flex;gap:26px;border:1px solid var(--faint);border-radius:6px;
+           padding:10px 14px;margin-bottom:14px;background:#0b0d0f;flex-wrap:wrap}
+  .vB .agg b{display:block;font-size:20px;color:var(--bright);font-weight:400}
+  .vB .agg span{font-size:10px;letter-spacing:.12em;color:var(--dim);text-transform:uppercase}
+  .vB table{width:100%;border-collapse:collapse}
+  .vB th{font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);
+         text-align:left;padding:4px 10px;border-bottom:1px solid var(--faint)}
+  .vB td{padding:6px 10px;border-bottom:1px solid #101310;vertical-align:top}
+  .vB tr.parked{background:rgba(255,209,102,.05)}
+  .vB .mono{font-size:11px;color:var(--dim)}
+  /* ============ Variant C — attention triage ============ */
+  .vC .need{border:1px solid var(--faint);border-radius:8px;padding:14px 16px;margin-bottom:12px;background:#0b0d0f}
+  .vC .need.page{border-color:var(--bad)}
+  .vC .need h3{margin:0 0 4px;font-size:13px;font-weight:400}
+  .vC .need .act{margin-top:6px;font-size:11px;color:var(--info)}
+  .vC .quiet{margin-top:22px;border-top:1px dashed var(--faint);padding-top:10px}
+  .vC .tape{white-space:nowrap;overflow:hidden;color:var(--dim);font-size:11px}
+  .vC .tape .ok{color:var(--ok)}
+  .vC .sums{display:flex;gap:24px;color:var(--dim);font-size:11px;margin-top:8px}
+  .vC .allclear{color:var(--ok);border:1px solid var(--faint);border-radius:8px;padding:20px;text-align:center}
+  /* switcher pill */
+  .pill{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:12px;
+        align-items:center;background:#1a1d21;border:1px solid #3a3e44;border-radius:999px;
+        padding:7px 16px;box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:9;user-select:none}
+  .pill button{background:none;border:0;color:var(--accent);font:inherit;cursor:pointer;font-size:15px}
+  .pill .lab{min-width:200px;text-align:center;color:var(--bright);font-size:12px}
+</style>
+</head>
+<body>
+<h1>ULTRAPOWERS <span>fleet</span><span class="sim">SIMULATED DATA</span></h1>
+<div class="sub">one pane over N runs · store tables: runs / claims / budgets / spend / receipts · read-only</div>
+<div id="root"></div>
+<div class="pill">
+  <button id="prev">◀</button><div class="lab" id="lab"></div><button id="next">▶</button>
+</div>
+<script>
+// ---- simulated store snapshot (mirrors the #178 validated schema) ----------
+const now = Date.now();
+const store = {
+  runs: {
+    'run-11': {planPath:'plans/relabel-vocab.md',   status:'folded',    sandboxId:'sb1'},
+    'run-12': {planPath:'plans/doc-align-185.md',   status:'gate-green',sandboxId:'sb2'},
+    'run-13': {planPath:'plans/test-strength-186.md',status:'running',  sandboxId:'sb3'},
+    'run-14': {planPath:'plans/contend-recal-187.md',status:'parked',   sandboxId:'sb4', parkedWhy:'semantic contention on skills/ultrapowers/scripts/audit_run.py — cross-run fold uncontracted (2 writers)'},
+    'run-15': {planPath:'plans/sensor-188.md',      status:'running',   sandboxId:'sb5'},
+    'run-16': {planPath:'plans/viewer-labels.md',   status:'claimed',   sandboxId:'sb6'},
+    'run-17': {planPath:'plans/store-guard.md',     status:'pending',   sandboxId:null},
+    'run-18': {planPath:'plans/manifest-render.md', status:'parked',    sandboxId:'sb8', parkedWhy:'post-fold exam RED on frontier tree — fold unwound (exit 1, 2/24 failed)'},
+  },
+  claims: {
+    'claim:run-12': {holder:'sb2', leaseExpiresAt: now+ 95e3, epoch:1, revoked:false},
+    'claim:run-13': {holder:'sb3', leaseExpiresAt: now+ 41e3, epoch:2, revoked:false},
+    'claim:run-14': {holder:'sb4', leaseExpiresAt: now-120e3, epoch:1, revoked:false},
+    'claim:run-15': {holder:'sb5', leaseExpiresAt: now+170e3, epoch:1, revoked:false},
+    'claim:run-16': {holder:'sb6', leaseExpiresAt: now+ 12e3, epoch:1, revoked:false},
+    'claim:run-18': {holder:'sb8', leaseExpiresAt: now- 60e3, epoch:1, revoked:false},
+  },
+  budgets: { docket:{capTokens:2_000_000},
+    'run-11':{capTokens:260_000},'run-12':{capTokens:260_000},'run-13':{capTokens:300_000},
+    'run-14':{capTokens:260_000},'run-15':{capTokens:220_000},'run-16':{capTokens:220_000},
+    'run-17':{capTokens:200_000},'run-18':{capTokens:280_000} },
+  spentByRun: {'run-11':241_000,'run-12':205_500,'run-13':262_400,'run-14':118_000,
+               'run-15': 61_200,'run-16': 8_400,'run-17':0,'run-18':254_300},
+  receipts: {
+    'run-11:gate':{sha:'9e4f21a',path:'gate-receipt.json',verdict:'PASS'},
+    'run-11:exam':{sha:'9e4f21a',path:'exam/receipt.json',verdict:'24/24'},
+    'run-11:fold':{sha:'c07b3d2',path:'frontier/fold_log.jsonl',verdict:'clean'},
+    'run-12:gate':{sha:'1ab8890',path:'gate-receipt.json',verdict:'PASS'},
+    'run-12:exam':{sha:'1ab8890',path:'exam/receipt.json',verdict:'18/18'},
+    'run-18:fold':{sha:'77d10ce',path:'frontier/fold_log.jsonl',verdict:'UNWOUND'},
+  },
+  foldQueue:[
+    {run:'run-11', at:'-18m', result:'folded @ c07b3d2 · suite 412/412 · exam 24/24'},
+    {run:'run-12', at:'queued', result:'arrival order #1 (gate-green, awaiting fold slot)'},
+  ],
+  pages:[ // #181's three page-classes; empty array = nothing paging
+    {cls:'spend-anomaly', text:'docket burn 41k tokens/min — 3.2× the 5-run median; at this rate the docket cap is exhausted in 22 min', act:'inspect run-13 (fix-round loop suspected) · pause claims'},
+  ],
+  frontier:{sha:'c07b3d2', suite:'412/412', drained:1, parked:2, queued:1},
+};
+const spent = id => store.spentByRun[id]||0;
+const cap   = id => (store.budgets[id]||{}).capTokens||0;
+const claimOf = id => store.claims['claim:'+id];
+const leaseStr = c => { if(!c) return '—';
+  const d = Math.round((c.leaseExpiresAt-now)/1000);
+  return d>=0 ? `holds ${c.holder} · lease ${d}s · e${c.epoch}` : `EXPIRED ${-d}s ago · was ${c.holder} · e${c.epoch}`; };
+const pct = id => cap(id)? Math.min(100, Math.round(100*spent(id)/cap(id))) : 0;
+const k = n => (n/1000).toFixed(n<10_000?1:0)+'k';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const receiptsFor = id => ['gate','exam','fold'].map(kind=>{
+  const r = store.receipts[`${id}:${kind}`];
+  return r? `${kind} <span class="b">${esc(r.verdict)}</span> <span class="mono">@${r.sha}</span>` : null;
+}).filter(Boolean).join(' · ') || '<span class="muted">no receipts yet</span>';
+
+// ---------------- Variant A — drain board ----------------
+function VariantA(){
+  const order=['pending','claimed','running','gate-green','folded','parked'];
+  const cols = order.map(st=>{
+    const cards = Object.entries(store.runs).filter(([,r])=>r.status===st).map(([id,r])=>`
+      <div class="card">
+        <div class="id">${id} <span class="muted">${esc(r.planPath.replace('plans/',''))}</span></div>
+        <div class="muted">${esc(leaseStr(claimOf(id)))}</div>
+        <div class="bar" title="spend"><i class="${pct(id)>=95?'hot':''}" style="width:${pct(id)}%"></i></div>
+        <div class="muted">${k(spent(id))} / ${k(cap(id))}</div>
+        ${r.parkedWhy?`<div class="why">⏸ ${esc(r.parkedWhy)}</div>`:''}
+      </div>`).join('') || '<div class="muted">—</div>';
+    return `<div class="col"><h3 class="st-${st}">${st} (${Object.values(store.runs).filter(r=>r.status===st).length})</h3>${cards}</div>`;
+  }).join('');
+  const pages = store.pages.map(p=>`<div class="alert">▲ PAGE [${p.cls}] — ${esc(p.text)}<div class="info">→ ${esc(p.act)}</div></div>`).join('');
+  const lane = store.foldQueue.map(f=>`<div>${f.run} <span class="muted">${esc(f.at)}</span> — ${esc(f.result)}</div>`).join('');
+  return `<div class="vA">${pages}
+    <div class="cols">${cols}</div>
+    <div class="lane"><span class="muted">DOCKET FRONTIER</span> <span class="b">@${store.frontier.sha}</span>
+      <span class="ok">suite ${store.frontier.suite}</span> · arrival-order fold lane:<br>${lane}</div></div>`;
+}
+
+// ---------------- Variant B — ops table ----------------
+function VariantB(){
+  const f=store.frontier;
+  const agg = `<div class="agg">
+    <div><b>${Object.keys(store.runs).length}</b><span>runs</span></div>
+    <div><b class="ok">${f.drained}</b><span>folded</span></div>
+    <div><b class="warn">${f.parked}</b><span>parked</span></div>
+    <div><b>${f.queued}</b><span>fold queue</span></div>
+    <div><b>@${f.sha}</b><span>frontier</span></div>
+    <div><b class="ok">${f.suite}</b><span>frontier suite</span></div>
+    <div><b class="${store.pages.length?'bad':'ok'}">${store.pages.length}</b><span>pages</span></div>
+    <div><b>${k(Object.values(store.spentByRun).reduce((a,b)=>a+b,0))} / ${k(store.budgets.docket.capTokens)}</b><span>docket spend</span></div>
+  </div>`;
+  const rows = Object.entries(store.runs).map(([id,r])=>`
+    <tr class="${r.status==='parked'?'parked':''}">
+      <td class="b">${id}</td>
+      <td class="st-${r.status}">${r.status}${r.parkedWhy?`<div class="warn" style="font-size:11px">${esc(r.parkedWhy)}</div>`:''}</td>
+      <td class="mono">${esc(r.planPath)}</td>
+      <td>${esc(leaseStr(claimOf(id)))}</td>
+      <td style="min-width:130px"><div class="bar"><i class="${pct(id)>=95?'hot':''}" style="width:${pct(id)}%"></i></div>
+          <span class="mono">${k(spent(id))} / ${k(cap(id))}</span></td>
+      <td class="mono">${receiptsFor(id)}<div class="muted" style="font-size:10px">verdicts display-only — authority is the git artifact</div></td>
+    </tr>`).join('');
+  const pages = store.pages.map(p=>`<div class="vA"><div class="alert">▲ PAGE [${p.cls}] — ${esc(p.text)} <span class="info">→ ${esc(p.act)}</span></div></div>`).join('');
+  return `<div class="vB">${pages}${agg}
+    <table><tr><th>run</th><th>status</th><th>plan</th><th>claim (derived from store+clock)</th><th>spend</th><th>receipts (pointers)</th></tr>${rows}</table></div>`;
+}
+
+// ---------------- Variant C — attention triage ----------------
+function VariantC(){
+  const needs=[];
+  for(const p of store.pages) needs.push(`
+    <div class="need page"><h3 class="bad">▲ PAGE — ${p.cls}</h3>${esc(p.text)}<div class="act">→ ${esc(p.act)}</div></div>`);
+  for(const [id,r] of Object.entries(store.runs)) if(r.status==='parked') needs.push(`
+    <div class="need"><h3 class="warn">⏸ ${id} parked</h3>${esc(r.parkedWhy)}
+      <div class="muted">${esc(r.planPath)} · ${esc(leaseStr(claimOf(id)))} · spend ${k(spent(id))}/${k(cap(id))} · ${receiptsFor(id)}</div>
+      <div class="act">→ drain: inspect · redirect · release claim (revoke is explicit)</div></div>`);
+  const healthy = Object.entries(store.runs).filter(([,r])=>r.status!=='parked');
+  const tape = healthy.map(([id,r])=>`<span class="st-${r.status}">${id}·${r.status}</span>`).join('  <span class="muted">|</span>  ');
+  const f=store.frontier;
+  return `<div class="vC">
+    ${needs.length? needs.join('') : '<div class="allclear">nothing needs you — drain in progress</div>'}
+    <div class="quiet">
+      <div class="muted" style="font-size:10px;letter-spacing:.13em">QUIET (${healthy.length} healthy — expand nothing unless curious)</div>
+      <div class="tape">${tape}</div>
+      <div class="sums">frontier <span class="b">@${f.sha}</span> · suite <span class="ok">${f.suite}</span> ·
+        docket spend ${k(Object.values(store.spentByRun).reduce((a,b)=>a+b,0))}/${k(store.budgets.docket.capTokens)} ·
+        folded ${f.drained} · queue ${f.queued}</div>
+    </div></div>`;
+}
+
+// ---------------- switcher ----------------
+const variants={A:['Drain board',VariantA],B:['Ops table',VariantB],C:['Attention triage',VariantC]};
+const keys=Object.keys(variants);
+const cur=()=> new URLSearchParams(location.search).get('variant')||'A';
+function show(v){
+  if(!variants[v]) v='A';
+  const [name,fn]=variants[v];
+  document.getElementById('root').innerHTML=fn();
+  document.getElementById('lab').textContent=`${v} — ${name}`;
+  const u=new URL(location); u.searchParams.set('variant',v); history.replaceState(null,'',u);
+}
+const step=d=>show(keys[(keys.indexOf(cur())+d+keys.length)%keys.length]);
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName)||document.activeElement.isContentEditable) return;
+  if(e.key==='ArrowLeft')step(-1); if(e.key==='ArrowRight')step(1);
+});
+show(cur());
+</script>
+</body>
+</html>
