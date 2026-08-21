@@ -34,6 +34,13 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 - `**Review:**` — optional; one of `adversarial` or `lean`. Names the tasks that
   earn a second independent review pass. Unmarked tasks are `lean`. An invalid
   or duplicate value is a compile error.
+- `**Commutes:**` — optional; comma-separated backticked paths, each of which
+  must also appear in this task's own `**Files:**` block. It asserts that this
+  task's edits to those files are order-insensitive additive registrations, so
+  the engine may union them instead of resolving them. Declare it only when
+  true — review audits the claim the way it audits a test contract. A path
+  outside the task's own `**Files:**` block is surfaced as a marker conflict
+  and dropped, never a compile error.
 <!-- /BAKE -->
 
 Example:
@@ -48,18 +55,23 @@ Example:
 - Modify: `app/server/server.ts`
 ````
 
-`Depends-on` is **additive**: file-overlap edges are still inferred, and the union of
-marker edges and inferred edges orders the waves. `**Depends-on:** none` asserts the
-author expects no incoming edges; if another rule still finds one, the conflicting edge wins — explicit text edges included (the conflict entry's `edge` field carries the literal `why` label: `write-after-create`, `write-after-write`, `read-after-write`, `prose-reference`, `text`, or `ambiguous-files`)
-and the disagreement is surfaced in the transparency block
-under `marker_conflicts` — never silently dropped.
+`Depends-on` is **additive**: existence and interface edges are still inferred, and the
+union of marker edges and inferred edges orders the waves. The kept `why` vocabulary is
+`marker`, `text`, `interface`, and `write-after-create` — plus `write-after-write` only
+under the `--overlap serialize` rollback knob. Concurrent same-file **text** writes are
+not an ordering signal at all: the fold path resolves them at merge, so the compiler
+emits no edge for them. `**Depends-on:** none` asserts the author expects no incoming
+edges; if another rule still finds one, the conflicting edge wins — explicit text edges
+included (the conflict entry's `edge` field carries the literal `why` label) — and the
+disagreement is surfaced in the transparency block under `marker_conflicts`, never
+silently dropped.
 
 A dependency that lives **only** inside a test's `import` of a sibling task's symbol is
-invisible to the compiler by design — it infers edges from markers, `Test:` path overlap,
-and prose references, never from source or test *file contents*. When a task's **test**
-imports a symbol a sibling task owns, declare it as an explicit `**Depends-on:**` on the
-importing task; otherwise the two run in parallel off a base where the imported sibling does
-not yet exist and the wave cascade-blocks.
+invisible to the compiler by design — it infers edges from markers, `Files:` paths, and
+`Interfaces:` symbols, never from source or test *file contents*. An explicit
+`**Depends-on:**` on the importing task is now the **only** thing that orders a `Test:`
+against a file a sibling creates; declare it, or the two run in parallel off a base where
+the imported sibling does not yet exist and the wave cascade-blocks.
 
 Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; a Files entry with an unknown or wrong-case label (`Delete:`, `modify:`) is a loud, named compile-time violation carrying a did-you-mean canonical-label fix (see Files grammar below) — never silently dropped; a canonical-label line with a wrong colon spacing, bullet character, or unbackticked multi-path value is a formatting-only near-miss, still tolerated and surfaced-but-dropped from overlap inference so one stray bullet never fails the whole compile; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
 
@@ -125,7 +137,7 @@ the branch merges" — it does not recognize provider CLIs or other deploy idiom
 name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
 write paths plus any test-runner/lint/git-status mention in the prose" (an existence
 check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
-the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — otherwise the empty Files block would draw an ambiguous-files fan-in from every upstream task and force a serial tail. All such classifications arrive flagged for
+the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — an empty-Files task has no contention surface to schedule against, so calling it implementation would only obscure the plan. All such classifications arrive flagged for
 re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
 precisely so the orchestrating agent re-judges them against the full contract above.
 
@@ -156,6 +168,18 @@ recorded in the transparency block):
   examples never drive classification or edges) (plans embed whole markdown documents
   in their steps).
 
+The compiler orders only what the plan states. It no longer guesses an ordering from a
+backticked filename in prose, from a glob-shaped path, or from an undeclarable write
+set; each of those is now a **refusal** rather than a soft serializing edge:
+
+- a `**Files:**` path containing a glob character — `*`, `?`, `[`, or a `{a,b}` brace
+  expansion — is a violation naming the offending path;
+- `catch-all` is not a Files label: it is refused as an unknown label with a
+  did-you-mean pointing at the canonical labels;
+- a **marked** `implementation` task whose `**Files:**` block declares no path at all is
+  refused ("declares no file paths under Files:") — a `Test:`-only block satisfies it,
+  and heuristically classified (unmarked) tasks are exempt.
+
 ## Files grammar
 
 A `**Files:**` bullet is a canonical label, a colon, and one backticked path —
@@ -163,28 +187,26 @@ nothing else:
 
 - **Canonical labels:** `Create`, `Modify`, `Test` (`Test fixture(s)` /
   `Fixture(s)` remain accepted aliases). Any other label — an unknown verb
-  (`Delete:`, `Read:`, `Remove:`) or a wrong-case spelling of a known one
-  (`modify:`) — is a compile-time violation naming a canonical replacement
-  (a `Delete:`/`Remove:` line suggests `Modify`, a `Read:` line suggests
-  `Test`, an `add:` line suggests `Create`).
+  (`Delete:`, `Read:`, `Remove:`, `catch-all:`) or a wrong-case spelling of a
+  known one (`modify:`) — is a compile-time violation naming a canonical
+  replacement (a `Delete:`/`Remove:` line suggests `Modify`, a `Read:` line
+  suggests `Test`, an `add:` line suggests `Create`).
 - **One backticked path per bullet, nothing trailing it.** A parenthetical note
   after the path (`` `src/lib/db.js` (only the pool init, lines 12-40) ``)
   is a violation: the note belongs in the task's prose, never on the Files
   line, because an annotated line would otherwise contribute nothing to
   write-overlap inference and a same-wave collision could hide behind it.
-- **No globs.** `*`, `?`, or `[` in a path is a violation naming the
-  offending path — enumerate the concrete files the task touches instead.
-  (A `{` brace, e.g. `src/{a,b}.py`, is deliberately left to the softer
-  ambiguous-files serialization — a warning, not a compile-time bail.)
-- **At most one `- catch-all: <prose>` bullet per task.** It declares an open
-  write set that cannot be scoped to concrete paths (a broad reconciliation
-  sweep, "fix whatever the suite shows red"). A catch-all task conflicts with
-  every other implementation task for scheduling and never shares a wave with
-  anything — the compiler orders every other task before it (edges labeled
-  `catch-all`). A second catch-all bullet in the same task is a violation.
+- **No globs.** `*`, `?`, `[`, or a `{a,b}` brace expansion in a path is a
+  violation naming the offending path — enumerate the concrete files the task
+  touches instead. Brace globs are refused outright; there is no softer
+  serializing fallback for an unenumerated write set.
+- **No open write sets.** `catch-all` is not a label (see above). A task whose
+  writes genuinely cannot be scoped to concrete paths is not schedulable —
+  split it until it is, or mark it `gate`/`manual`.
 - **The canonical empty form** is `**Files:** none` (header-inline) or a lone
   `- none` bullet under the header — legal for `gate`/`release`/`manual`
-  tasks or a truly-empty `implementation` task, and never a violation.
+  tasks, and the one shape a **marked** `implementation` task may not use: it
+  is refused with "declares no file paths under Files:".
 
 `scripts/compile_plan.py --check <plan.md>` runs this grammar — plus the
 Interfaces grammar below — over an entire plan in one pass, printing every
@@ -224,13 +246,10 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   task's body, never only in a preamble.
 - Encode ordering as `**Depends-on:**` on the downstream task; never write global
   ordering prose.
-- Describe a sibling task **by role, not by filename**. In a `Produces:`/`Consumes:`
-  interface field — and in any description prose before the first `- [ ]` step — name
-  what the sibling *does*, never its output path. Backticking a sibling's filename in a
-  description field injects a *phantom* serializing edge: the compiler cannot tell a real
-  dependency from a passing mention, so it infers the edge and warns `description-inferred`.
-  The write-time fix is not to add a `**Depends-on:**` — it is to not write the filename.
-  Reserve backticked paths for this task's own `**Files:**` entries.
+- Let same-file edits stand. Concurrent same-file text writes fold at merge, so never
+  split a feature, chain a fan, or add a `**Depends-on:**` to dodge a collision. Declare
+  `**Commutes:**` on shared registration surfaces; chain only non-text (binary/symlink)
+  same-file pairs, which always fall back.
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.

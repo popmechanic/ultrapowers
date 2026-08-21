@@ -44,10 +44,12 @@ def test_neither_leg_reflex_recommends():
 # tree fails red. (Intentionally changing the rubric means updating this list too,
 # in lockstep with both legs — that is the point.)
 BRANCH_CLAUSES = [
-    # The §5 relaxation's width definition (spec 2026-08-12 §5): fixed as plain
+    # The width definition after the fold-native registration pass: text overlap
+    # is no longer an ordering signal at all (the fold path owns it), so only
+    # non-text same-file edits still count as dependencies. Fixed as plain
     # unstyled text, byte-identical in both legs, and it precedes the decision
     # tree in each — so it participates in the canonical-order pin too.
-    "after treating same-file edits between tasks the compiler will not fold as dependencies",
+    "after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge)",
     "risk → Ultrapowers",
     "parallel width and T≥4 → Ultrapowers",
     "T≤2 → Inline",
