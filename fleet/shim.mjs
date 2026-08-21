@@ -60,19 +60,33 @@ export const runShim = async ({
   const writeStatus = makeWriteStatus(store, runId)
   writeStatus('claimed')
 
-  // --- spend tracking — idempotent per boundary -------------------------
-  // Sampled at every renew boundary and once more at run resolution. A
-  // reading identical to the last one recorded is a no-op: spend rows are
-  // append-only, so re-observing the same cumulative total must never
-  // produce a duplicate row.
-  let lastSpentTokens = null
+  // --- spend tracking — DELTAS, sampled per boundary --------------------
+  // `readReportTokens()` is the run report's output-token TOTAL: it is
+  // CUMULATIVE and rises over the life of the run. The ledger is the opposite
+  // shape — `spend` is append-only and readers derive a run's spend by SUMMING
+  // its rows (store.mjs `totalSpent`, feeding `remaining`/`mayEnqueueSpend`).
+  //
+  // So a row must carry the DELTA since the last sample, never the raw
+  // reading. Appending raw cumulative readings of 1000, 3000, 7000 would sum
+  // to 11000 for a run that actually spent 7000, and the orchestrator would
+  // park live runs long before they reached their cap.
+  //
+  // Sampling at every renew boundary (rather than once at resolution) is what
+  // makes an over-spending run visible to the budget check WHILE it runs; the
+  // delta keeps that sampling arithmetically sound. A delta of zero — the same
+  // total observed twice — appends nothing, so re-observation is idempotent. A
+  // negative delta (a report that reset or rolled back) is likewise skipped:
+  // the ledger only ever moves forward.
+  let lastReportedTokens = 0
   let spendSeq = 0
   const maybeAppendSpend = () => {
     const t = typeof readReportTokens === 'function' ? readReportTokens() : null
-    if (t === null || t === undefined || t === lastSpentTokens) return
+    if (typeof t !== 'number' || !Number.isFinite(t)) return
+    const delta = t - lastReportedTokens
+    if (delta <= 0) return
     spendSeq += 1
-    store.setRow('spend', spendRowId(sandboxId, spendSeq), { runId, tokens: t, at: clock() })
-    lastSpentTokens = t
+    store.setRow('spend', spendRowId(sandboxId, spendSeq), { runId, tokens: delta, at: clock() })
+    lastReportedTokens = t
   }
 
   // --- renew loop ---------------------------------------------------------
