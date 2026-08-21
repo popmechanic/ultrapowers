@@ -2702,3 +2702,90 @@ def test_a_5000_line_text_file_no_longer_keeps_the_write_after_write_edge(tmp_pa
     inference = {c["edge"] for c in out["marker_conflicts"]
                  if c["kind"] == "inference"}
     assert inference == {"bin.dat", "link.py"}
+
+
+# ---------------------------------------------------------------------------
+# Commutes: marker (spec §2b) — parse, own-Files validation, writes/commutes
+# ---------------------------------------------------------------------------
+
+def test_commutes_marker_parses_and_emits(tmp_path):
+    plan = tmp_path / "commutes.md"
+    plan.write_text(
+        "# Plan: Commutes\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Commutes:** `app/registry.py`\n\n"
+        "**Files:**\n- Modify: `app/registry.py`\n- Test: `tests/test_a.py`\n\n"
+        "- [ ] **Step 1:** do\n"
+    )
+    out = compile_plan(plan)
+    task = out["launch_waves"][0][0]
+    assert task["commutes"] == ["app/registry.py"]
+    assert task["writes"] == ["app/registry.py"]  # creates ∪ modifies; Test excluded
+
+
+def test_commutes_path_outside_own_files_is_a_rendered_conflict(tmp_path):
+    # spec §2b: a marker conflict, not a compile error.
+    plan = tmp_path / "commutes_conflict.md"
+    plan.write_text(
+        "# Plan: Commutes conflict\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Commutes:** `other/file.py`\n\n"
+        "**Files:**\n- Modify: `app/registry.py`\n\n"
+        "- [ ] **Step 1:** do\n"
+    )
+    out = compile_plan(plan)
+    assert out["marker_conflicts"], "expected a rendered conflict"
+    assert any("Commutes" in c.get("note", "") for c in out["marker_conflicts"])
+    # The offending path is dropped, not silently kept.
+    assert out["launch_waves"][0][0]["commutes"] == []
+
+
+def test_commutes_marker_accumulates_across_repeated_lines(tmp_path):
+    plan = tmp_path / "commutes_repeat.md"
+    plan.write_text(
+        "# Plan: Commutes repeat\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Commutes:** `a.py`\n**Commutes:** `b.py`\n\n"
+        "**Files:**\n- Modify: `a.py`\n- Modify: `b.py`\n\n"
+        "- [ ] **Step 1:** do\n"
+    )
+    out = compile_plan(plan)
+    assert out["launch_waves"][0][0]["commutes"] == ["a.py", "b.py"]
+
+
+def test_undeclared_task_emits_empty_commutes(tmp_path):
+    plan = tmp_path / "no_commutes.md"
+    plan.write_text(
+        "# Plan: No commutes\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
+        "**Files:**\n- Create: `a.txt`\n\n"
+        "- [ ] **Step 1:** write a\n"
+    )
+    out = compile_plan(plan)
+    assert out["launch_waves"][0][0]["commutes"] == []
+
+
+def test_commutes_is_marker_ish():
+    # A near-miss `**Commutes**:` must not silently end the header block and
+    # demote Depends-on to a late marker.
+    from compile_plan import MARKER_ISH
+    assert MARKER_ISH.match("**Commutes**: `a.py`")
+
+
+def test_emit_launch_task_dicts_carry_writes_and_commutes(tmp_path):
+    plan = tmp_path / "commutes_emit.md"
+    plan.write_text(
+        "# Plan: Commutes emit\n\n**Acceptance:** waived — inline test plan\n\n"
+        "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n"
+        "**Commutes:** `a.py`\n\n"
+        "**Files:**\n- Modify: `a.py`\n\n"
+        "- [ ] **Step 1:** do\n"
+    )
+    launch = tmp_path / "waves.json"
+    p = subprocess.run([sys.executable, str(COMPILER), str(plan),
+                        "--emit-launch", str(launch)], capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    payload = json.loads(launch.read_text())
+    t1 = payload["tasks"][0]
+    assert t1["writes"] == ["a.py"]
+    assert t1["commutes"] == ["a.py"]

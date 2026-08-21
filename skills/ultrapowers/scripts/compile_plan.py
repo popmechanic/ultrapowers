@@ -39,12 +39,18 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # Marker-shaped: bold-prefixed type/depends-on/review label in ANY colon
 # position — `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside
 # form `**Type**:` all count, so a near-miss never silently degrades to prose.
-MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review)\s*(?:\*\*)?\s*:", re.I)
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review|commutes)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 # Authored review-depth marker (ultraplan #87): `**Review:** adversarial|lean`.
 # Valid values are enforced where it is consumed in parse_task — an invalid
 # or duplicate value is a compile-time SystemExit, never a silent default.
 MARKER_REVIEW = re.compile(r"^\*\*Review:\*\*\s*([a-z-]+)\s*$")
+# Declared order-insensitive additive registrations (spec §2b): comma-separated
+# backticked paths the task asserts are safe to auto-union with another
+# declaring task's edits to the same path. Validated against the task's own
+# Files: block after it closes (see parse_task) — a path outside Files: is a
+# rendered marker conflict, never a SystemExit.
+MARKER_COMMUTES = re.compile(r"^\*\*Commutes:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
@@ -228,6 +234,7 @@ def parse_task(t, raise_on_marker_error=True):
     every task's violations in one pass rather than aborting at the first."""
     ttype = None
     deps, deps_none = [], False
+    commutes = []
     late_markers = []
     marker_violations = []
     creates, modifies, reads = [], [], []
@@ -315,6 +322,23 @@ def parse_task(t, raise_on_marker_error=True):
                     marker_violations.append(msg)
                 else:
                     t["review"] = val
+        elif (m := MARKER_COMMUTES.match(s)):
+            if not in_header:
+                late_markers.append(s)
+            else:
+                # Accumulate across repeated **Commutes:** lines, same as
+                # **Depends-on:**. Prefer backticked paths; a bare comma-split
+                # token is kept only when it is path-like on its own — a stray
+                # prose fragment must not fabricate a phantom commutes path.
+                for tok in m.group(1).split(","):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    backticked = [p for p in PATH_RE.findall(tok) if _is_pathlike(p)]
+                    if backticked:
+                        commutes.extend(backticked)
+                    elif _is_pathlike(tok):
+                        commutes.append(tok)
         elif is_markerish and s.rstrip() == "**Depends-on:**":
             # Exact marker, missing value. Inside the header it silently
             # degrades to the heuristics; outside it is a placement violation
@@ -461,6 +485,26 @@ def parse_task(t, raise_on_marker_error=True):
         bool([p for p in all_paths if GLOB_CHARS.search(p)])
     )
 
+    # Commutes: validation (spec §2b) — now that the Files: block has closed,
+    # every declared commutes path must be one this task itself creates,
+    # modifies, or reads. A path outside that set is a rendered marker
+    # conflict (surfaced by the caller via commutes_conflicts, folded into
+    # marker_conflicts), never a SystemExit — and the offending path is
+    # dropped from the task's own commutes list so it never participates in
+    # auto-union eligibility downstream.
+    commutes_conflicts = []
+    own_paths = set(creates) | set(modifies) | set(reads)
+    kept_commutes = []
+    for p in commutes:
+        if p in own_paths:
+            kept_commutes.append(p)
+        else:
+            commutes_conflicts.append(
+                "Task {}: Commutes path `{}` is not in this task's own "
+                "Files: block — declaration ignored for that path".format(
+                    t["id"], p))
+    commutes = kept_commutes
+
     # Fence-stripped prose: classification evidence and text-dependency scanning
     # run over this, not the raw body, so a fenced example (e.g. a bash snippet
     # with `git push origin main`, or prose that says "runs after Task A") does
@@ -492,6 +536,11 @@ def parse_task(t, raise_on_marker_error=True):
              # ids win over a contradictory `none` (the none assertion is void
              # once concrete prerequisites are declared).
              depends_on=deps, depends_none=deps_none and not deps,
+             # Declared order-insensitive additive registrations (spec §2b),
+             # filtered to paths that survived the own-Files validation above;
+             # [] when the task declares no **Commutes:** marker at all.
+             commutes=sorted(set(commutes)),
+             commutes_conflicts=commutes_conflicts,
              late_markers=late_markers,
              # Marker-VALUE validation failures collected instead of raised
              # (only populated when raise_on_marker_error=False — the --check
@@ -1525,6 +1574,13 @@ def main(argv=None):
                  + ") — markers go immediately after the task heading"}
         for t in tasks if t.get("late_markers")]
 
+    # A **Commutes:** path outside the task's own Files: block (spec §2b) is a
+    # rendered marker conflict, never a compile error — one entry per
+    # offending path, since a task may declare several.
+    type_conflicts.extend(
+        {"task": t["id"], "edge": "", "note": note}
+        for t in tasks for note in t.get("commutes_conflicts", []))
+
     acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
@@ -1618,7 +1674,13 @@ def main(argv=None):
           "review": by_id[tid].get("review") or "lean",
           # Declared open write set (#85, additive — None when the task has
           # no `- catch-all:` bullet).
-          "catchAll": by_id[tid].get("catch_all")} for tid in wave]
+          "catchAll": by_id[tid].get("catch_all"),
+          # Contention-detection inputs (spec §2b): writes is sorted
+          # creates ∪ modifies (Test: paths excluded — a task never "writes"
+          # what it only reads/runs); commutes is the task's own validated
+          # **Commutes:** declaration, [] when undeclared.
+          "writes": by_id[tid].get("writes", []),
+          "commutes": by_id[tid].get("commutes", [])} for tid in wave]
         for wave in waves]
 
     # One deterministic label per wave (same order as waves/launch_waves). The
@@ -1658,7 +1720,12 @@ def main(argv=None):
                        # Declared open write set (#85) — shown to the
                        # implementer prompt so a catch-all task's scope is
                        # never silently invisible. None when absent.
-                       "catchAll": by_id[tid].get("catch_all")}
+                       "catchAll": by_id[tid].get("catch_all"),
+                       # Same contention-detection fields as launch_waves
+                       # (spec §2b) — kept in sync so a consumer reading
+                       # either file sees the same writes/commutes per task.
+                       "writes": by_id[tid].get("writes", []),
+                       "commutes": by_id[tid].get("commutes", [])}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,
