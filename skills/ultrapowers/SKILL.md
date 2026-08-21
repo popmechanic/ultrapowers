@@ -32,11 +32,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
 ```
 
 `--overlap` forwards to the compiler's own `--overlap` knob (default
-`fold` — eligible overlapping-file tasks share a wave and the engine folds
-their edits at merge time; `serialize` reproduces the pre-0.2.0 behavior —
-see `references/dependency-analysis.md`); omit it to take
-the compiler's default. `--repo-root` is stamped onto the compile call
-unconditionally — it needs no operator input.
+`fold` — eligible overlapping-file tasks share a wave and fold at merge
+time; `serialize` reproduces the pre-0.2.0 behavior — see
+`references/dependency-analysis.md`). Omit it for the compiler's default.
+`--repo-root` is always stamped onto the compile call — no operator input
+needed.
 
 One call runs every deterministic stage fail-closed — git-repo check,
 worktree-capability probe, self-host engine skew, superpowers compatibility,
@@ -53,6 +53,9 @@ continue. **Non-zero** → the last stage names the failure:
 - `worktree-probe` / `git-repo` → fix the environment (a repo that cannot cut
   worktrees cannot run waves).
 - `compile` → fix the plan.
+
+If the fresh-worktree baseline is red for reasons unrelated to the plan,
+repair base first and re-baseline rather than launching red.
 
 The stamp is the lock id for the whole run; `wf_<runId>` is only for sweeps.
 *Rationale: § Step 1.*
@@ -73,9 +76,9 @@ reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
 - **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
-  Review agents are pinned to the most-capable tier **by design**, decoupled from
-  plan-authored review *depth* (depth sets prompt rigor only) — a quality>tokens
-  invariant, not a leak; re-tiering reviews takes eval evidence, never argument.
+  Review agents stay pinned to `most-capable` **by design**, independent of
+  plan-authored review *depth* (which sets prompt rigor only); re-tiering
+  reviews needs eval evidence, not argument.
 - **`testCmd`** — run-wide resolution moved into the driver (pass `--test-cmd`
   to `ultra_run.py`, else its deterministic detection ladder stamps it;
   `receipt.testCmd`/`receipt.testCmdSource` record the outcome). An
@@ -92,18 +95,15 @@ same args file. The receipt's `llmDerives` list is the checklist:
 
 Before launch, `ultra_run.py --validate-knobs <argsFile>` verifies any
 `bootstrapCmd` no-ops cleanly in a throwaway worktree (never the session
-checkout; global package caches are outside the boundary), each wave
-entry's `tier`/`review` value is one the engine accepts, and smoke-runs the
-stamped `testCmd` in the same worktree. Exit 3 = the baseline is red on the
-base ref before any work (`baseline` in the JSON carries the failing
-output). Present the decision before launching: **fix drift first** (repair
-the base, re-run preflight) or **launch anyway** (the red is inherited;
-optionally add an explicit plan note authorizing any repair the run will
-need, so the reconcile agent never improvises one). A red baseline with no
-`bootstrapCmd` in a repo whose suite needs installed deps usually means the
-fresh probe worktree is missing them — supply `--bootstrap-cmd` rather than
-launching anyway. The acknowledgment is context-only — the in-run setup
-baseline remains the durable record.
+checkout), each wave entry's `tier`/`review` value is one the engine
+accepts, and smoke-runs the stamped `testCmd` there. Exit 3 = the baseline
+is red on the base ref before any work (`baseline` in the JSON carries the
+failing output). Present the decision: **fix drift first** (repair the
+base, re-run preflight — Step 1's red-baseline guidance above) or **launch
+anyway** (the red is inherited; an explicit plan note can pre-authorize any
+repair the run will need). No `bootstrapCmd` plus a red baseline usually
+means the probe worktree lacks deps — supply `--bootstrap-cmd` instead. This
+ack is context-only; the in-run baseline is the durable record.
 
 Review depth is **plan-authored**: ultraplan's `**Review:**` marker pre-fills each
 wave entry's `review` slot (`lean` when unmarked; rendered); never set
@@ -117,16 +117,20 @@ classification is auditable at the gate:
 
 1. **Waves** — task IDs per wave, in order.
 2. **Dependency `edges`** — those that shaped the ordering.
-3. **Mode** — `parallel`/`sequential` (with the degrade reason). Under
-   `--overlap fold`, an eligible fully-overlapping wave renders `parallel`
-   instead of degrading — the compiler's full-pair-iteration predicate, not
-   this render step, decides which.
+3. **Mode** — `parallel`/`sequential`; `sequential` renders only for
+   single-task plans now (the fully-overlapping degrade is gone — same-file
+   contention is a fold-time concern, not a compile-time mode switch).
 4. **Derived knobs** — `testCmd`, plan-authored review depth, tier overrides.
-5. **Dispositions** — release/manual → runbook, gates → run config. Render the two
+5. **Expected contention** — from same-wave `writes` intersections × each
+   task's `commutes`: render `declared-commutative` when every intersecting
+   writer declared the shared path (expected to auto-union at fold time), or
+   `composition-unpinned` when at least one writer left it undeclared. When
+   tasks carry no `writes` field, say so once instead of classifying.
+6. **Dispositions** — release/manual → runbook, gates → run config. Render the two
    `marker_conflicts` buckets **separately by `kind`:** `kind: "conflict"` as
    *needs attention*, `kind: "inference"` as *informational*. When it reports
    `allHeuristic: true`, show **`0 markers — all dispositions inferred`**.
-6. **Acceptance disposition** — `sealed <seal-id>` or the verbatim waiver. When
+7. **Acceptance disposition** — `sealed <seal-id>` or the verbatim waiver. When
    `sealed`, present the exam's coverage summary and this vouching rubric
    (**no code-reading**):
    > 1. **Everything covered?** Each spec requirement maps to a row; an unmatched
@@ -222,24 +226,22 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
 
 - **0 (PASS)** → render the report and offer **Approve**.
 - **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement
-  first. Acting on **standing pre-authorization** instead is sanctioned when ALL
-  of the following hold: the operator gave an explicit forward-looking approval
-  instruction earlier in the session (or in the launch directive), quotable
-  verbatim, that addresses the ack disposition or the gate-outcome class
-  ("approve if clean apart from the usual runtime acks" qualifies; "merge when
-  done" does not — it says nothing about acks); every ack being consumed is a
+  first. Acting on **standing pre-authorization** instead is sanctioned only
+  when ALL hold: the operator gave an explicit forward-looking approval
+  earlier in the session (or the launch directive), quotable verbatim,
+  addressing this ack disposition or the gate-outcome class ("approve if
+  clean apart from the usual runtime acks" qualifies; "merge when done" does
+  not — it says nothing about acks); every ack consumed is a
   `deferredVerification` item with reason `runtime` or `external` — a
   `coverage.complete: false` ack, or any ack naming an operator-environment
   mutation or a data-integrity surface, is outside every standing grant and
-  needs a fresh turn; the full ack list plus the verbatim instruction and
-  where/when it was granted is rendered per the report-format.md Approve
-  rendering clause; and `run-<stamp>/standing-approval.json` is written FIRST:
+  needs a fresh turn; the ack list plus the verbatim instruction and
+  where/when it was granted is rendered per report-format.md's Approve
+  clause; and `run-<stamp>/standing-approval.json` is written FIRST:
   `{"grantedAt": "<turn or timestamp>", "instruction": "<verbatim>",
   "ackList": [...]}`. A grant is consumed per gate presentation — each gate
-  that uses it writes a fresh sidecar, and that consumption counts as the
-  explicit operator disposition for the items it lists, those items only. Any
-  ambiguity about whether an instruction covers this gate resolves to a fresh
-  ack.
+  using it writes a fresh sidecar, counting as the explicit disposition for
+  the items it lists, those only. Any ambiguity resolves to a fresh ack.
 - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
 
 **Receipts, not narration.** Whatever the verdict, the operator-facing summary quotes machine-written bytes: copy `verdict`, every failing check's `name` and `detail`, and the acceptance `exit` plus its pass/fail line verbatim from `run-<stamp>/gate-receipt.json`, and name that file's path in the summary. Never paraphrase a receipt value the operator could read directly.
@@ -269,7 +271,7 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   no separate sweep call is needed. A non-zero approve exit means the lock
   release failed, a sweep failed (`sweepFailures` names the run IDs), or the
   recorded ID file was unreadable (`wfRunsUnreadable`) — inspect before
-  treating the run as closed. A **manual-merge wrap-up that bypasses
+  treating it closed. A **manual-merge wrap-up that bypasses
   `ultra_gate.py` still owes the full sweep set** — once no other run is live,
   `sweep_worktrees.sh --all` — `bootstrapCmd` installs per worktree, so every
   leaked worktree is a multi-GB leak.
@@ -289,10 +291,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   **kept branch** + HEAD sha from `tasks[]`, its blocking `notes`, any
   completeness finding naming it, and the instruction to pull correct prior work in
   (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
-  waves, relaunch (`resume: true`, same `integrationBranch`; compose the args by
-  spreading the receipt's argsFile — it carries the now-mandatory `pluginRoot`/`runDir`
-  keys — never by rebuilding from the report; a relaunch that reconstructs args from
-  the report instead will be refused by the harness). Before relaunching, delete
+  waves, relaunch (`resume: true`, same `integrationBranch`; compose args by
+  spreading the receipt's argsFile — carries the now-mandatory `pluginRoot`/`runDir`
+  keys — never by rebuilding from the report; a relaunch reconstructing args from
+  the report is refused by the harness). Before relaunching, delete
   `<runDir>/heads/`: the prior launch's slots would otherwise masquerade as the
   relaunch's sidecar authority, and their shas are already durable in the
   finalized report. Record the new launch's printed Run ID
@@ -303,9 +305,9 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
   --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
   `ultrapowers-run` with the emitted args file. `redirect_args.py` composes the
-  relaunch args by spreading the receipt's argsFile — it carries the
-  now-mandatory `pluginRoot`/`runDir` keys — never by hand-authoring from the
-  report; a relaunch that reconstructs args from the report will be refused by
+  relaunch args by spreading the receipt's argsFile — carries the
+  now-mandatory `pluginRoot`/`runDir` keys — never hand-authored from the
+  report; a relaunch reconstructing args from the report is refused by
   the harness. The emitted args carry only the amended tasks' waves — a
   one-task fix relaunches one task on the same
   integration branch (merged prior work is already there); the fix still flows
@@ -339,7 +341,7 @@ it a clean checkout for using-git-worktrees isolation.
 Escalate only on catastrophe until the gate; mid-run questions are impossible
 (headless). Handle ambiguity with a conservative, logged judgment call under
 `judgmentCalls`; never silently drop a blocked task — it surfaces as a failed
-task, blocked wave, or unfinished entry. The only pre-gate aborts are a dependency
+task, blocked wave, or unfinished entry. Pre-gate aborts are only a dependency
 cycle or an inability to create the integration branch.
 
 ## Resources
@@ -353,11 +355,11 @@ cycle or an inability to create the integration branch.
 - `references/report-format.md` — report schema and presentation order.
 - `references/finishing-notes.md` — merge-method and deploy-scope checks.
 - `references/workflow-template.md` — maintainer doc + re-bake procedure.
-- `scripts/ultra_run.py`, `scripts/ultra_gate.py` — the deterministic Step-1
-  pre-launch driver and the Step-5 gate driver (one receipt each).
-- `scripts/gate_check.py`, `scripts/run_acceptance.sh` — the gate checks and
+- `scripts/ultra_run.py`, `scripts/ultra_gate.py` — Step-1 pre-launch driver
+  and Step-5 gate driver (one receipt each).
+- `scripts/gate_check.py`, `scripts/run_acceptance.sh` — gate checks and
   acceptance runner the gate driver administers.
 - `scripts/compile_plan.py` — the plan compiler (`--emit-launch`/`--emit-args`).
 - `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep (`--run` /
-  `--all` / report-only `--audit`; also reaps processes still running out of
-  removed or already-deleted engine worktrees) and run lock.
+  `--all` / report-only `--audit`; also reaps processes from removed or
+  already-deleted engine worktrees) and run lock.
