@@ -42,6 +42,24 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
   test data by `tests/test_compile_plan.py` and `tests/test_fixture_seals.py`.
 
+## Wayfinding (program-scale routing) — decided on #180
+
+- **Brainstorm vs wayfind:** multi-session + foggy + many open decisions → chart a
+  wayfinder map (decision tickets labeled `wayfinder:*`); a single effort you can spec
+  in one sitting → `superpowers:brainstorming` as usual. Layering: wayfinder charts
+  programs; superpowers owns every effort underneath — a map's destination is a spec
+  that feeds writing-plans + ultraplan + /ultrapowers unchanged.
+- **Ticket ownership = label:** `wayfinder:grilling|research|prototype` tickets run their
+  named mattpocock method — no superpowers ceremony fires (they produce decisions, not
+  code); `wayfinder:task` and any code-producing work drops into the normal superpowers
+  flow. Docket triage skips `wayfinder:*` issues.
+- **Superpowers is HITL-only:** fleet sandboxes provision ultrapowers + engine only —
+  superpowers never enters a sandbox. Revisit migrating off it only on a third
+  version-skew incident, with a measured case.
+- **"Frontier" is always qualified:** *merge frontier* (fold kernel) / *map frontier*
+  (takeable wayfinder tickets) / *docket frontier* (run-integration tree). Bare
+  "frontier" is banned in specs, docs, and issues.
+
 ## How features are built here
 
 Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans` +
