@@ -124,22 +124,22 @@ VALID_REVIEWS = {"lean", "adversarial"}
 OVERLAP_CHOICES = ("serialize", "fold")
 
 
-def compile_argv(plan, run_dir, root, overlap=None):
+def compile_argv(plan, run_dir, overlap=None):
     """Build the compile_plan.py argv (everything after the script path)
     for a launch. Pure — no I/O — so this seam is testable without a real
     repo or a real compile_plan.py subprocess.
 
-    `--repo-root <root>` is ALWAYS stamped from the driver's own repo root
-    (the compiler's eligibility pre-filter is inert without it — never off
-    by omission). `--overlap <mode>` is added only when the caller passed
-    one explicitly; absent, the compiler's own OVERLAP_DEFAULT governs."""
+    `--overlap <mode>` is added only when the caller passed one explicitly;
+    absent, the compiler's own OVERLAP_DEFAULT governs. Nothing else is
+    stamped: the compiler reads the plan and only the plan — the filesystem
+    eligibility pre-filter (and with it `--repo-root`) retired alongside the
+    ordering-guess tiers."""
     argv = [str(plan),
             "--emit-launch", str(run_dir / "launch.json"),
             "--emit-args", str(run_dir / "args.json"),
             "--run-dir", str(run_dir.resolve())]
     if overlap is not None:
         argv += ["--overlap", overlap]
-    argv += ["--repo-root", str(root)]
     return argv
 
 
@@ -405,7 +405,7 @@ def main(argv=None):
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
     r = sh([sys.executable, str(HERE / "compile_plan.py")]
-           + compile_argv(a.plan, run_dir, root, a.overlap),
+           + compile_argv(a.plan, run_dir, a.overlap),
            cwd=root)
     compile_obj, summary = None, ""
     if r.returncode == 0:

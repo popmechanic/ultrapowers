@@ -109,6 +109,29 @@ def test_fold_route_away_checks_every_contended_wave(tmp_path):
     assert "wave(s) 2" in detail
 
 
+def test_fold_fail_non_kept_edge_label_present(tmp_path):
+    # zero write-after-write edges, a genuinely contended-shaped wave, the
+    # route-away dir present — but a dag_edges entry carries a `why` outside
+    # the kept vocabulary (marker/text/interface/write-after-create).
+    run_dir = tmp_path / "run-11"
+    (run_dir / "frontier" / "wave-1").mkdir(parents=True)
+    dag_edges = [{"from": "t1", "to": "t2", "why": "prose-reference"}]
+    receipt = _receipt(run_dir, dag_edges, [CONTENDED_WAVE])
+    ok, detail = ab_runner.assert_arm_identity(receipt, "fold")
+    assert ok is False
+    assert "non-kept" in detail
+
+
+def test_fold_pass_kept_labels_only(tmp_path):
+    run_dir = tmp_path / "run-12"
+    (run_dir / "frontier" / "wave-1").mkdir(parents=True)
+    dag_edges = [{"from": "t1", "to": "t2", "why": "marker"},
+                 {"from": "t1", "to": "t3", "why": "interface"}]
+    receipt = _receipt(run_dir, dag_edges, [CONTENDED_WAVE])
+    ok, detail = ab_runner.assert_arm_identity(receipt, "fold")
+    assert ok is True
+
+
 def test_unknown_arm_overlap_fails_closed(tmp_path):
     receipt = _receipt(tmp_path / "run-8", [], [])
     ok, detail = ab_runner.assert_arm_identity(receipt, "bogus")

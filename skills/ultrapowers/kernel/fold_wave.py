@@ -31,6 +31,15 @@ CONTINUES folding to the next stop or to completion; the two live self-checks
 (K1 raw-shuffle order-independence and log-replay-reproduces-manifest) run
 inside whichever call completes the wave.
 
+`fold`/`resolve --commutes <taskId>=<path,...>` (repeatable) carries the
+plan's `Commutes:` declarations (spec 2026-08-18 §2b). A conflict on a path
+EVERY writer declared gets the one-line `contract:` header in its hunks brief,
+and — when every segment of every hunk is `added` — is resolved in process to
+the kernel's own merged body with no resolver dispatch, so the fold does not
+stop on it. `conflicts.json` marks that entry `"autoResolved": true` (it stays
+`dispatchable`), and every reply carrying `conflicts` carries the call's
+`autoResolved` count.
+
 `materialize` refuses anything short of a complete fold, then turns the wave
 into a candidate commit through a TEMPORARY INDEX, so the worktree and every
 branch ref are untouched by construction; adoption is the engine's job.
@@ -77,6 +86,11 @@ import hunks
 # named kernel-limit park.
 STACK_BYTES = 1 << 30
 THREAD_RECURSION_LIMIT = 1_000_000
+
+# The one-line composition contract written under every hunk header of a path
+# every writer declared commutative (spec §1a wording; §2b consumer 2).
+CONTRACT_LINE = ("contract: both sides declared these edits commutative — union, "
+                 "preserve each side's internal order, do not reorder existing lines")
 
 # The only modes a folded text/bytes path can carry into the candidate tree:
 # `hash-object` writes a blob, and a blob is either executable or not.
@@ -202,6 +216,65 @@ def _parse_branch(spec):
     return task_id, branch_name, head_sha
 
 
+def _parse_commutes(spec):
+    """`<taskId>=<path1,path2,...>` -> (taskId, [paths])."""
+    task_id, eq, rest = spec.partition("=")
+    paths = [p for p in rest.split(",") if p]
+    if not eq or not task_id or not paths:
+        raise argparse.ArgumentTypeError(
+            "--commutes must be <taskId>=<path1,path2,...>, got %r" % spec)
+    return task_id, paths
+
+
+class Contracts:
+    """One CLI call's `--commutes` declarations, and what they license.
+
+    Two consumers hang off `eligible()` (spec §2b): the `contract:` hunk
+    header on the resolver brief, and the assume rung's in-process union.
+    Both need the same both-sides condition, so it exists once.
+
+    `touched` is derived from git LAZILY — a call with no declarations never
+    pays for it, which is why the empty-map short circuit comes first.
+    """
+
+    def __init__(self, repo, base_sha, branches, commutes_map, folded_ids):
+        self.repo = repo
+        self.base_sha = base_sha
+        self.branches = branches
+        self.map = commutes_map
+        self.folded = list(folded_ids)   # tasks folded before the next fold
+        self.auto = 0                    # conflicts auto-resolved in this call
+        self._touched = None
+
+    def _touched_map(self):
+        if self._touched is None:
+            self._touched = {
+                tid: set(rw.diff_paths(self.repo, self.base_sha, head_sha))
+                for tid, _branch_name, head_sha in self.branches}
+        return self._touched
+
+    def eligible(self, path, incoming):
+        """True iff EVERY writer of `path` declared it commutative.
+
+        Rev 7's unit is every writer, not a pair: the incoming task, plus
+        every already-folded task whose `base..head` diff touches the path.
+        For three writers of whom two declare, the path is undeclared.
+        """
+        if not self.map or path not in self.map.get(incoming, ()):
+            return False
+        touched = self._touched_map()
+        return all(path in self.map.get(tid, ())
+                   for tid in self.folded if path in touched.get(tid, ()))
+
+
+def _commutes_map(pairs):
+    """[(taskId, [paths])] -> {taskId: {paths}}; a repeated task unions."""
+    out = {}
+    for task_id, paths in pairs:
+        out.setdefault(task_id, set()).update(paths)
+    return out
+
+
 def _write_jsonl(path, events):
     path.write_text("".join(json.dumps(e) + "\n" for e in events))
 
@@ -269,17 +342,18 @@ def _record_max_lines(wave_dir, max_lines):
     path.write_text(json.dumps(stats, indent=2) + "\n")
 
 
-def _verdict(conflict, manifest):
+def _verdict(conflict, manifest, contract=None):
     """(dispatchable, reason, hunks text, hunk count) for one conflict.
 
     `dispatchable` owns the routing predicate; derivation is what turns an
     eligible narration into the resolver's brief, so a narration the hunk
     grammar cannot delimit (a repo whose sources quote kernel marker forms)
-    parks with a named reason rather than being guessed at.
+    parks with a named reason rather than being guessed at. `contract` only
+    adds a line to the brief — it can neither park nor unpark.
     """
     ok, reason = ff.dispatchable(conflict, manifest)
     try:
-        text, blocks = hunks.derive(conflict.narration)
+        text, blocks = hunks.derive(conflict.narration, contract=contract)
     except hunks.HunkError as exc:
         return False, "%s in %s" % (exc.reason, conflict.path), "", 0
     if ok and not blocks:
@@ -287,7 +361,7 @@ def _verdict(conflict, manifest):
     return ok, reason, text, len(blocks)
 
 
-def _narrate(wave_dir, index, conflict, epoch, manifest):
+def _narrate(wave_dir, index, conflict, epoch, manifest, contract=None):
     """Write one conflict's narration + hunks brief; append its index entry.
 
     `<i>` is monotonic across every CLI call of the wave — the index is the
@@ -296,7 +370,7 @@ def _narrate(wave_dir, index, conflict, epoch, manifest):
     """
     i = max((e["i"] for e in index), default=0) + 1
     (wave_dir / ("conflict-%d.txt" % i)).write_text(conflict.narration)
-    ok, reason, text, count = _verdict(conflict, manifest)
+    ok, reason, text, count = _verdict(conflict, manifest, contract=contract)
     hunks_file = ""
     if ok:
         path = wave_dir / ("conflict-%d.hunks.txt" % i)
@@ -318,15 +392,59 @@ def _open_view(entry):
             ("i", "path", "kind", "epoch", "hunksFile", "hunkCount")}
 
 
-def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index):
+def _auto_union(eng, wave_dir, entry, log_path):
+    """The assume rung (spec §2b consumer 3): resolve one declared-commutative
+    all-`added` conflict in process, with no resolver dispatch.
+
+    The resolution is the KERNEL's own merged block body, applied through the
+    same splice + `apply_resolution` path a resolver reply takes — so the log
+    records an ordinary `resolve` event and rehydrate, replay, the K-gates and
+    the epoch idempotency guard are all untouched.
+
+    The safety ground is weave-inertness, not the self-checks: the union reply
+    byte-equals the frontier's current visible lines for the path, and
+    `update_state` is the identity on visible-equal lines, so the live fold
+    sequence stays equal to the raw one the completion self-checks gate. That
+    ground is only held while the body is `union_replies`' output — a caller
+    that reshaped it (reordering, say) would lose it silently.
+
+    False on every non-eligible shape — a `deleted` segment, a park, a
+    presence/binary kind, a stale epoch — and the caller falls through to an
+    ordinary open entry. No new refusal path.
+    """
+    if not entry["dispatchable"] or entry["kind"] not in ("lines", "add/add"):
+        return False
+    annotated = (wave_dir / ("conflict-%d.txt" % entry["i"])).read_text()
+    # `dispatchable` is what `_verdict` sets after deriving this same text, so
+    # the grammar has already passed here.
+    _text, blocks = hunks.derive(annotated)
+    replies = hunks.union_replies(annotated, blocks)
+    if replies is None:
+        return False
+    lines = hunks.splice(annotated, replies, blocks)
+    if not eng.apply_resolution(entry["path"], entry["epoch"], lines):
+        return False
+    _append_event(log_path, eng.events[-1])
+    entry["autoResolved"] = True        # `dispatchable` stays True (rev 7, B2)
+    return True
+
+
+def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
+                     contracts=None):
     """Fold `remaining` in order, stopping at the first fold that opens a
-    conflict. Returns `(stop entries, remaining after, kernel park)`.
+    conflict no contract auto-resolved. Returns `(stop entries, remaining
+    after, kernel park)`.
 
     The stop is signalled by NARRATION, not by dispatchability: a stop whose
     entries all parked is still a stop, and reporting it as "nothing opened"
     would claim a wave complete while tasks are still unfolded. Every fold
     that returns is recorded before the stop is narrated, so the log always
     describes exactly the frontier the narration was read off.
+
+    The assume rung is the one exception to "narration stops the fold": a
+    conflict every writer declared commutative is resolved here and never
+    appears in `open`, so a fold whose conflicts ALL auto-resolve keeps going
+    (spec §2b consumer 3). Dispatch stops and parks are unchanged.
     """
     for k, (task_id, _branch_name, head_sha) in enumerate(remaining):
         try:
@@ -341,9 +459,20 @@ def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index):
         if conflicts:
             epoch = eng.epoch()
             manifest = eng.manifest()
-            entries = [_narrate(wave_dir, index, c, epoch, manifest)
-                       for c in conflicts]
-            return entries, list(remaining[k + 1:]), None
+            open_entries = []
+            for conflict in conflicts:
+                eligible = (contracts is not None
+                            and contracts.eligible(conflict.path, task_id))
+                entry = _narrate(wave_dir, index, conflict, epoch, manifest,
+                                 contract=CONTRACT_LINE if eligible else None)
+                if eligible and _auto_union(eng, wave_dir, entry, log_path):
+                    contracts.auto += 1
+                    continue
+                open_entries.append(entry)
+            if open_entries:
+                return open_entries, list(remaining[k + 1:]), None
+        if contracts is not None:
+            contracts.folded.append(task_id)
     return [], [], None
 
 
@@ -455,6 +584,8 @@ def cmd_fold(args):
     wave_dir.mkdir(parents=True, exist_ok=True)
     _record_max_lines(wave_dir, max_lines)
     index = []
+    contracts = Contracts(repo, base_sha, branches,
+                          _commutes_map(args.commutes), [])
 
     parks, kernel_park = _pre_scan(base, states, branches)
 
@@ -464,6 +595,7 @@ def cmd_fold(args):
         _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
         print(json.dumps({"clean": False, "conflicts": 1, "dispatchable": 0,
                           "parked": 1, "open": [], "remaining": all_ids,
+                          "autoResolved": contracts.auto,
                           "complete": False,
                           "selfChecks": "failed: kernel recursion limit "
                                         "folding task %s" % task_id}))
@@ -479,13 +611,14 @@ def cmd_fold(args):
         print(json.dumps({"clean": False, "conflicts": len(parks),
                           "dispatchable": 0, "parked": len(parks),
                           "open": [], "remaining": all_ids,
+                          "autoResolved": contracts.auto,
                           "complete": False}))
         return 0
 
     eng = ff.FrontierEngine(base)
     _write_jsonl(log_path, [{"type": "base", "sha": base_sha}])
     stop, remaining, kernel_park = _fold_until_stop(
-        eng, states, branches, log_path, wave_dir, index)
+        eng, states, branches, log_path, wave_dir, index, contracts)
     _write_index(wave_dir / "conflicts.json", index)
 
     if kernel_park is not None:
@@ -493,6 +626,7 @@ def cmd_fold(args):
         print(json.dumps({"clean": False, "conflicts": len(index),
                           "dispatchable": 0, "parked": len(index),
                           "open": [], "remaining": [t for t, _n, _h in remaining],
+                          "autoResolved": contracts.auto,
                           "complete": False,
                           "selfChecks": "failed: kernel recursion limit "
                                         "folding task %s" % kernel_park[0]}))
@@ -509,6 +643,7 @@ def cmd_fold(args):
                           "parked": len(stop) - len(open_entries),
                           "open": [_open_view(e) for e in open_entries],
                           "remaining": [t for t, _n, _h in remaining],
+                          "autoResolved": contracts.auto,
                           "complete": False}))
         return 0
 
@@ -520,8 +655,11 @@ def cmd_fold(args):
     unresolved = _unresolved_paths(wave_dir, _read_log(log_path))
     if unresolved:
         self_checks = "failed: %d narrated path(s) unresolved" % len(unresolved)
+    # `clean` stays a raw-fold fact: an auto-unioned wave narrated a conflict,
+    # so its index is non-empty and it is not clean.
     print(json.dumps({"clean": not index, "conflicts": 0, "dispatchable": 0,
                       "parked": 0, "open": [], "remaining": [],
+                      "autoResolved": contracts.auto,
                       "complete": not unresolved, "selfChecks": self_checks}))
     return 0 if self_checks == "ok" else 3
 
@@ -542,6 +680,12 @@ def cmd_resolve(args):
         print("log/list disagreement for wave %d: the recorded folds are not a "
               "prefix of the supplied task list" % args.wave, file=sys.stderr)
         return 2
+
+    # The already-folded prefix is the log's own fold events, in order — the
+    # both-sides condition counts every writer that has landed so far.
+    contracts = Contracts(repo, base_sha, branches,
+                          _commutes_map(args.commutes),
+                          [e["task"] for e in recorded if e.get("type") == "fold"])
 
     index = _read_index(wave_dir / "conflicts.json")
     entry = next((e for e in index if e["i"] == args.conflict), None)
@@ -593,7 +737,7 @@ def cmd_resolve(args):
     if remaining:
         _record_max_lines(wave_dir, max_lines)
         stop, remaining, kernel_park = _fold_until_stop(
-            eng, states, remaining, log_path, wave_dir, index)
+            eng, states, remaining, log_path, wave_dir, index, contracts)
         _write_index(wave_dir / "conflicts.json", index)
 
         if kernel_park is not None:
@@ -619,6 +763,7 @@ def cmd_resolve(args):
                               "dispatchable": len(open_entries),
                               "open": [_open_view(e) for e in open_entries],
                               "remaining": [t for t, _n, _h in remaining],
+                              "autoResolved": contracts.auto,
                               "complete": False}))
             return 0
 
@@ -633,6 +778,7 @@ def cmd_resolve(args):
               "unresolved" % (args.wave, len(unresolved)), file=sys.stderr)
         return 3
     print(json.dumps({"applied": True, "open": [], "remaining": [],
+                      "autoResolved": contracts.auto,
                       "complete": True, "selfChecks": self_checks}))
     return 0 if self_checks == "ok" else 3
 
@@ -842,6 +988,10 @@ def main(argv=None):
     p_fold.add_argument("--base", required=True)
     p_fold.add_argument("--branch", dest="branches", action="append",
                         type=_parse_branch, default=[], required=True)
+    p_fold.add_argument("--commutes", dest="commutes", action="append",
+                        type=_parse_commutes, default=[],
+                        help="a task's declared-commutative paths, "
+                             "<taskId>=<path1,path2,...>; repeatable")
     p_fold.set_defaults(func=cmd_fold)
 
     p_resolve = sub.add_parser("resolve")
@@ -857,6 +1007,10 @@ def main(argv=None):
                            type=_parse_branch, default=[], required=True,
                            help="the wave's full task list, re-supplied on "
                                 "every call in task-index order")
+    p_resolve.add_argument("--commutes", dest="commutes", action="append",
+                           type=_parse_commutes, default=[],
+                           help="a task's declared-commutative paths, "
+                                "<taskId>=<path1,path2,...>; repeatable")
     p_resolve.set_defaults(func=cmd_resolve)
 
     p_mat = sub.add_parser("materialize")

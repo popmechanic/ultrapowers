@@ -179,6 +179,13 @@ def _wave_is_contended(wave):
     return False
 
 
+# Compiler-version check for the fold arm (spec Task 8 / Global Constraints
+# "kept edge vocabulary"): a `dag_edges` entry whose `why` falls outside this
+# set means the compile ran on a pre-Phase-2 compiler and the fold identity
+# can't be trusted.
+KEPT_EDGE_WHYS = ("marker", "text", "interface", "write-after-create")
+
+
 def assert_arm_identity(receipt, arm_overlap):
     """Receipt-derived identity gate (Task 12): proves a driven cell actually
     exercised the arm it claims, rather than trusting the launch flag alone.
@@ -210,6 +217,12 @@ def assert_arm_identity(receipt, arm_overlap):
         if waw_edges:
             return False, ("fold: %d write-after-write dag_edges present "
                            "(expected zero)" % len(waw_edges))
+        stray = [e for e in dag_edges if e.get("why") not in KEPT_EDGE_WHYS]
+        if stray:
+            return False, ("fold: %d non-kept edge label(s) present (%s) — "
+                           "compiler predates Phase 2?"
+                           % (len(stray),
+                              ",".join(sorted({e.get("why") or "?" for e in stray}))))
         if not contended:
             return False, ("fold: no launch_waves wave with >=2 tasks sharing "
                            "pairwise-intersecting files")

@@ -579,11 +579,13 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'conflictsIndex as ' + (waveDir || '') + '/conflicts.json. Time the invocation ' +
   'and report its wall clock in foldCliWallTimeSec. Then read ' + (waveDir || '') +
   '/conflicts.json — an array whose entries carry i, path, kind, dispatchable, ' +
-  'reason and epoch — and for each entry whose dispatchable is true add an open ' +
+  'reason and epoch — and for each entry whose dispatchable is true and whose ' +
+  'autoResolved is not true add an open ' +
   "entry carrying that entry's i, path, epoch, its hunksFile (the " +
   'conflict-<i>.hunks.txt path from the entry) and hunkCount. Copy remaining and ' +
   'complete from the JSON; copy selfChecks only when the JSON carries it (a stop ' +
-  'reply does not).',
+  "reply does not). Copy the reply's autoResolved count into your reply (0 when " +
+  'absent).',
   'STEP resolve: Run the resolve invocation. Report FOLDED when it prints ' +
   'complete true — copy selfChecks. Report CONFLICTS when it prints applied true ' +
   'with an open list — copy conflicts, dispatchable, remaining and complete and ' +
@@ -591,7 +593,8 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'waiting list — report open as empty and copy waiting. Report REJECTED when ' +
   'the exit code is 4 — copy reason into detail. Report ERROR on any other ' +
   'non-zero exit, including stale true. Time the invocation and report its wall ' +
-  'clock in foldCliWallTimeSec.',
+  "clock in foldCliWallTimeSec. Copy the reply's autoResolved count into your " +
+  'reply (0 when absent), on every verdict.',
   'STEP adopt: run the materialize invocation. If it prints a park or a fallback ' +
   'verdict, report CONFLICT with that reason and change nothing. Otherwise take ' +
   'the candidateSha it printed and test that candidate with the branch unmoved: ' +
@@ -803,6 +806,12 @@ const FOLD_SCHEMA = {
     conflicts: { type: 'integer' },
     dispatchable: { type: 'integer' },
     parked: { type: 'integer' },
+    // Conflicts the kernel resolved IN PROCESS against the wave's `Commutes:`
+    // contract (spec §2b rev 7): every writer declared the path and every hunk
+    // segment was an addition, so the fold did not stop on it and no resolver
+    // was dispatched. Reported per call, summed by the engine across the fold
+    // and resolve legs — it is the cost signal the contract is bought with.
+    autoResolved: { type: 'integer' },
     selfChecks: { type: 'string' },
     foldLogPath: { type: 'string' },
     conflictsIndex: { type: 'string' },
@@ -1320,14 +1329,19 @@ const sameIds = (a, b) => a.length === b.length &&
 // `wallSec` is the sum of the wall clocks the STEP replies reported, and
 // `selfChecks` comes from whichever reply COMPLETED the wave — a stop reply
 // carries no attestation.
+// `autoResolved` is the SUM across every reply that carried one (fold + each
+// resolve): the kernel folds on past a contract-resolved conflict inside any
+// call, so no single reply holds the wave's total.
 const frontier = []
-const frontierEntry = (waveNumber, fold, transcripts, calls, wallSec, selfChecks) => ({
+const frontierEntry = (waveNumber, fold, transcripts, calls, wallSec, selfChecks,
+                       autoResolved) => ({
   wave: waveNumber,
   foldLogPath: (fold && fold.foldLogPath) || '',
   conflictsIndex: (fold && fold.conflictsIndex) || '',
   selfChecks: selfChecks || '',
   foldCliCalls: calls,
   foldCliWallTimeSec: (typeof wallSec === 'number') ? wallSec : null,
+  autoResolved: autoResolved || 0,
   resolverTranscripts: transcripts,
 })
 
@@ -1394,15 +1408,24 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   let calls = 0
   let wallSec = null
   let selfChecks = ''
+  // Contract-resolved conflicts, summed across every leg that reported one.
+  let autoResolved = 0
+  // Both per-reply scalars ride ONE accumulator on purpose: they are read at the
+  // same call sites, and a second helper is a second thing to forget at one of
+  // them. The adoption reply rides MERGE_SCHEMA and carries neither — both
+  // guards simply do not fire.
   const addWall = (reply) => {
     if (reply && typeof reply.foldCliWallTimeSec === 'number')
       wallSec = (wallSec === null ? 0 : wallSec) + reply.foldCliWallTimeSec
+    if (reply && typeof reply.autoResolved === 'number')
+      autoResolved += reply.autoResolved
   }
   // Single record point. Every fallback names its reason in judgmentCalls and the
   // log — the engine's existing failure-routing records; there is no separate
   // fallback event type in the fold log (one fact, one record).
   const finish = (outcome, reason) => {
-    frontier.push(frontierEntry(waveNumber, fold, transcripts, calls, wallSec, selfChecks))
+    frontier.push(frontierEntry(waveNumber, fold, transcripts, calls, wallSec, selfChecks,
+      autoResolved))
     if (!outcome) {
       judgmentCalls.push('wave ' + waveNumber + ': contended merge fell back to the ' +
         'git-merge path — ' + reason)
@@ -1424,10 +1447,22 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   // observable to the engine, and determinism buys reproducible conflicts.
   const branchArgs = merged
     .map((r) => ' --branch ' + r.task + '=' + r.branch + ':' + r.headSha).join('')
+  // The plan's `Commutes:` declarations, carried to the kernel so a conflict on a
+  // path EVERY writer declared can be contract-resolved in process (spec §2b).
+  // Read from the wave's LAUNCH tasks, not from the merge results — a result
+  // carries no `commutes`, so joining the wrong side would silently declare
+  // nothing and quietly retire the contract. A task that declares nothing
+  // contributes no argument at all: an empty `--commutes t=` is not the same
+  // statement as silence, and the kernel would have to guess which was meant.
+  // Every invocation re-supplies them, exactly like --branch: each call is a
+  // fresh process that carries nothing in memory from the last one.
+  const commutesArgs = waveTasks
+    .filter((t) => Array.isArray(t.commutes) && t.commutes.length)
+    .map((t) => ' --commutes ' + t.id + '=' + t.commutes.join(',')).join('')
   try {
     fold = await dispatchMerge('fold',
       KERNEL_CLI + ' fold --repo . --run-dir <runDir> --wave ' + waveNumber +
-        ' --base ' + prevHead + branchArgs,
+        ' --base ' + prevHead + branchArgs + commutesArgs,
       'merge:wave' + waveNumber + ':fold', FOLD_SCHEMA)
   } catch (e) {
     return finish(null, 'fold dispatch threw: ' + String((e && e.message) || e))
@@ -1576,7 +1611,8 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
       try {
         applied = await dispatchMerge('resolve',
           KERNEL_CLI + ' resolve --repo . --run-dir <runDir> --wave ' + waveNumber +
-            ' --conflict ' + entry.i + ' --reply-dir ' + replyDir + branchArgs,
+            ' --conflict ' + entry.i + ' --reply-dir ' + replyDir + branchArgs +
+            commutesArgs,
           'merge:wave' + waveNumber + ':apply' + entry.i + ':' + attempt, FOLD_SCHEMA)
       } catch (e) {
         return finish(null, 'resolve dispatch threw on ' + entry.path + ': ' +
@@ -1669,6 +1705,42 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   return finish(null, 'candidate not adopted (' + adopt.status + '): ' + (adopt.detail || ''))
 }
 
+// Composition rows (spec §2b rev 7). A path two or more tasks in one wave WRITE
+// is composed by the merge, whichever path the wave took; a `Commutes:`
+// declaration is the author pinning that composition as intended. So every
+// multi-writer path some writer did NOT declare is an unpinned composition —
+// recorded as a judgment call so the gate sees it, never as a refusal: the wave
+// merged, and whether the composition is right is a human read.
+// The rows are derived from the LAUNCH tasks' `writes`, which is the compiler's
+// own creates ∪ modifies — never from the merge results (they carry no `writes`)
+// and never from `files` (which includes Test: paths a task only reads).
+// A launch file compiled before the Commutes compiler landed carries no `writes`
+// at all; guessing rows from its absence would fabricate them, so such a wave is
+// skipped ONCE, by name, rather than reported as clean. The residual manifest
+// derives its row from any judgmentCalls string unchanged.
+const compositionRows = (waveNumber, tasks) => {
+  const withWrites = tasks.filter((t) => Array.isArray(t.writes))
+  if (withWrites.length !== tasks.length) {
+    judgmentCalls.push('wave ' + waveNumber +
+      ': tasks carry no writes field — composition rows skipped')
+    return
+  }
+  const writers = new Map()      // path -> [taskId], in task-index order
+  for (const t of tasks) {
+    for (const p of t.writes) writers.set(p, (writers.get(p) || []).concat(t.id))
+  }
+  for (const [p, ids] of writers) {
+    if (ids.length < 2) continue
+    const undeclared = ids.filter((id) => {
+      const t = tasks.find((x) => x.id === id)
+      return !((t && t.commutes) || []).includes(p)
+    })
+    if (undeclared.length)
+      judgmentCalls.push('composition-unpinned: wave ' + waveNumber + ' ' + p +
+        ' — writers ' + ids.join(',') + '; undeclared: ' + undeclared.join(','))
+  }
+}
+
 // ── Wave merge (NON-isolated; reconciliation cap 2) ──────────────────────────
 async function mergeWave(results, waveIdx) {
   // Caller guarantees ≥1 mergeable result (the SKIPPED path filters empty waves).
@@ -1680,6 +1752,13 @@ async function mergeWave(results, waveIdx) {
   // rides inside fillPaths() with the prompt; the ids come from control flow.
   const slotsLine = headsSlotsLine(merged, waveIdx + 1)
   const sweepLine = sweepPathsLine(merged)
+  // ONE call site, before the routing branch, so the rows land on the contended
+  // and git-merge paths alike — the composition is real either way, and two call
+  // sites is where one of them drifts. Scoped to the tasks that actually merged:
+  // a task that never landed wrote nothing and cannot contend.
+  compositionRows(waveIdx + 1,
+    (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
+      .filter((t) => t && merged.some((r) => r.task === t.id)))
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
     // Fallback (null) drops through to the git-merge path below with the branch
@@ -1798,60 +1877,6 @@ if (budgetExhausted()) {
   }
 }
 
-// ── wavesPath preflight (FAIL LOUD, before spending task agents) ──────────────
-// When bodies are delivered via the file, one cheap read-only agent confirms the
-// file exists, parses, and covers every bodyless task id — so a wrong/stale path
-// or a dropped id fails the run up front instead of failing N expensive worktree
-// agents that each cannot find their body. Skipped when every body is inline.
-// Defined here, RUN below — after the W2 roadmap pre-registration. An agent
-// dispatched before any phase() call creates an implicit unnamed group
-// ("Phase 0") that permanently sorts ABOVE Setup (#setup-at-bottom); running
-// after the roadmap groups the preflight under the active Setup phase.
-const bodylessIds = WAVES.flat()
-  .filter((t) => !(typeof t.body === 'string' && t.body.trim() !== ''))
-  .map((t) => String(t.id))
-async function preflightWavesFile() {
-  if (!(wavesPath && bodylessIds.length > 0)) return
-  const WAVES_FILE_PREFLIGHT =
-    'You are a read-only preflight agent. Read the JSON file at WAVES_FILE in the ' +
-    'session repository with your file-read tool. Do NOT write, create, stage, or ' +
-    'modify anything — your only output is the JSON result. Parse the file and return ' +
-    '{ "ok": true, "ids": [...] } where ids lists every string value of "id" in its ' +
-    'top-level "tasks" array. If the file is missing, unreadable, or not valid JSON, ' +
-    'return { "ok": false, "error": "<short reason>" }. Return only the JSON object.'
-  const WAVES_FILE_SCHEMA = {
-    type: 'object',
-    required: ['ok'],
-    properties: {
-      ok: { type: 'boolean' },
-      ids: { type: 'array', items: { type: 'string' } },
-      error: { type: 'string' },
-    },
-  }
-  let probe
-  try {
-    probe = await agent(
-      GUARD + '\n\n' + WAVES_FILE_PREFLIGHT + '\nWAVES_FILE: ' + wavesPath,
-      { label: 'waves-file-check', model: TIER.cheap, schema: WAVES_FILE_SCHEMA })
-  } catch (e) {
-    throw new Error('ultrapowers: could not preflight args.wavesPath (' + wavesPath +
-      '): ' + String((e && e.message) || e) + '. Refusing to run before any task.')
-  }
-  if (!probe || probe.ok !== true) {
-    throw new Error('ultrapowers: args.wavesPath file unusable (' + wavesPath + '): ' +
-      ((probe && probe.error) || 'preflight did not confirm ok') +
-      '. Write it with compile_plan.py --emit-launch before launch.')
-  }
-  const have = new Set(Array.isArray(probe.ids) ? probe.ids.map(String) : [])
-  const missing = bodylessIds.filter((id) => !have.has(id))
-  if (missing.length) {
-    throw new Error('ultrapowers: args.wavesPath (' + wavesPath +
-      ') has no body for task id(s): ' + missing.join(', ') +
-      '. Re-run compile_plan.py --emit-launch so every bodyless task is covered.')
-  }
-}
-
-
 // W2: pre-register every phase up front so the live roadmap shows all phases as
 // pending, not one-at-a-time — and in EXECUTION ORDER. phase() is keyed by title
 // — re-calling a title re-activates its existing group box (engine: same phase
@@ -1870,9 +1895,6 @@ phase('Setup')
 for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
 phase('Integration Review')
 phase('Setup')
-// The wavesPath preflight runs here — after the roadmap, under the active Setup
-// phase — so its agent never mints a pre-Setup "Phase 0" group (#setup-at-bottom).
-await preflightWavesFile()
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
 if (!setup || setup.branch !== integrationBranch || !setup.headSha) {

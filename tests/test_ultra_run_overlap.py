@@ -1,4 +1,4 @@
-"""ultra_run.py: --overlap forwarding + --repo-root stamping (Task 7).
+"""ultra_run.py: --overlap forwarding.
 
 The compile-argv seam is a pure helper (no I/O, no subprocess) so it can be
 tested without a real repo or a real compile_plan.py invocation. The other
@@ -14,32 +14,30 @@ from ultra_run import compile_argv  # noqa: E402
 import validate_skill  # noqa: E402
 
 
-def test_ultra_run_builds_compile_argv_with_overlap_and_repo_root(tmp_path):
+def test_ultra_run_builds_compile_argv_with_overlap(tmp_path):
     plan = tmp_path / "plan.md"
     run_dir = tmp_path / "run-t1"
-    root = tmp_path / "repo"
 
     # No overlap passed -> the flag is absent entirely; the compiler's own
     # OVERLAP_DEFAULT governs, never re-stated here.
-    argv_default = compile_argv(plan, run_dir, root, None)
+    argv_default = compile_argv(plan, run_dir, None)
     assert "--overlap" not in argv_default
-    assert "--repo-root" in argv_default
-    i = argv_default.index("--repo-root")
-    assert argv_default[i + 1] == str(root)
 
-    # overlap="fold" -> both --overlap fold and --repo-root <root> present.
-    argv_fold = compile_argv(plan, run_dir, root, "fold")
-    assert "--overlap" in argv_fold
-    j = argv_fold.index("--overlap")
-    assert argv_fold[j + 1] == "fold"
-    assert "--repo-root" in argv_fold
-    k = argv_fold.index("--repo-root")
-    assert argv_fold[k + 1] == str(root)
+    # An explicit mode is forwarded verbatim, on both arms.
+    for mode in ("fold", "serialize"):
+        argv = compile_argv(plan, run_dir, mode)
+        assert "--overlap" in argv, mode
+        assert argv[argv.index("--overlap") + 1] == mode, mode
 
-    # --repo-root is ALWAYS present, even for the explicit "serialize" arm.
-    argv_serialize = compile_argv(plan, run_dir, root, "serialize")
-    assert "--overlap" in argv_serialize
-    assert "--repo-root" in argv_serialize
+
+def test_compile_argv_stamps_no_repo_root(tmp_path):
+    # The filesystem eligibility pre-filter retired with the ordering-guess
+    # tiers, and `--repo-root` with it: the compiler reads the plan and only
+    # the plan. Stamping a flag the compiler no longer accepts would make
+    # every launch fail at argument parsing.
+    for overlap in (None, "fold", "serialize"):
+        argv = compile_argv(tmp_path / "plan.md", tmp_path / "run-t1", overlap)
+        assert "--repo-root" not in argv, overlap
 
 
 def test_validate_skill_checks_kernel_links(tmp_path):

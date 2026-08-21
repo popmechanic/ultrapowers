@@ -42,6 +42,41 @@ def _block_bodies(annotated, blocks):
 
 BASE = "a\nwire()\nz\n"
 
+# Genuine two-block narration: l0..l9 with l3 and l6 diverging, every segment
+# `added`. Module-scope because the contract-header and union-reply tests read
+# the same shape the splice round-trip does.
+ANNOTATED_TWO_BLOCK = "\n".join([
+    "l0", "l1", "l2",
+    "<<<<<<< begin added left",
+    "L3",
+    "======= begin added right",
+    "R3",
+    ">>>>>>> end conflict",
+    "l4", "l5",
+    "<<<<<<< begin added left",
+    "L6",
+    "======= begin added right",
+    "R6",
+    ">>>>>>> end conflict",
+    "l7", "l8", "l9",
+])
+
+# One block carrying a `deleted` segment: a deletion is not an additive
+# registration, so the assume rung must refuse to union it.
+ANNOTATED_WITH_DELETED_SEGMENT = "\n".join([
+    "keep0",
+    "<<<<<<< begin deleted frontier",
+    "gone-left",
+    "======= begin added task-2",
+    "new-right",
+    ">>>>>>> end conflict",
+    "keep1",
+    "",
+])
+
+CONTRACT = ("contract: both sides declared these edits commutative — union, "
+            "preserve each side's internal order, do not reorder existing lines")
+
 
 def test_derive_one_block_and_context():
     ann = _annotate(BASE, "a\nwire()\nx\nz\n", "a\nwire()\ny\nz\n")
@@ -129,17 +164,8 @@ def test_context_truncates_at_neighbouring_markers():
 def test_strip_markers_drops_deleted_segments():
     """The round-trip oracle's other half: `deleted` segment lines are not part
     of the kernel's merged content, whichever side they belong to."""
-    annotated = "\n".join([
-        "keep0",
-        "<<<<<<< begin deleted frontier",
-        "gone-left",
-        "======= begin added task-2",
-        "new-right",
-        ">>>>>>> end conflict",
-        "keep1",
-        "",
-    ])
-    assert hunks.strip_markers(annotated) == ["keep0", "new-right", "keep1", ""]
+    assert hunks.strip_markers(ANNOTATED_WITH_DELETED_SEGMENT) == [
+        "keep0", "new-right", "keep1", ""]
 
 
 def test_reply_with_invalid_utf8_is_rejected_not_replaced(tmp_path):
@@ -203,22 +229,78 @@ def test_two_block_narration_round_trips_through_splice():
     # Genuine two-block coverage for splice's pos-advance loop: l0..l9 with
     # l3 and l6 diverging. (#162's rider: the existing "# two blocks"
     # comment sat on a case the kernel annotates as ZERO blocks.)
-    annotated = "\n".join([
-        "l0", "l1", "l2",
-        "<<<<<<< begin added left",
-        "L3",
-        "======= begin added right",
-        "R3",
-        ">>>>>>> end conflict",
-        "l4", "l5",
-        "<<<<<<< begin added left",
-        "L6",
-        "======= begin added right",
-        "R6",
-        ">>>>>>> end conflict",
-        "l7", "l8", "l9",
-    ])
+    annotated = ANNOTATED_TWO_BLOCK
     _text, blocks = hunks.derive(annotated)
     assert [b["id"] for b in blocks] == ["h1", "h2"]
     out = hunks.splice(annotated, {"h1": ["L3"], "h2": ["R6"]}, blocks)
     assert out == ["l0", "l1", "l2", "L3", "l4", "l5", "R6", "l7", "l8", "l9"]
+
+
+# --- the composition contract: `contract:` header + assume-rung union -------
+
+
+def test_derive_contract_line_sits_under_each_hunk_header():
+    text, _blocks = hunks.derive(ANNOTATED_TWO_BLOCK, contract=CONTRACT)
+    lines = text.splitlines()
+    heads = [i for i, l in enumerate(lines) if l.startswith("HUNK ")]
+    assert len(heads) == 2
+    for i in heads:
+        assert lines[i + 1].startswith("contract: both sides declared")
+
+
+def test_derive_without_a_contract_carries_no_contract_line():
+    text, _blocks = hunks.derive(ANNOTATED_TWO_BLOCK)
+    assert "contract:" not in text
+
+
+def test_contract_line_does_not_move_the_block_index():
+    """The header is brief text only: the blocks `splice` and `cmd_resolve`
+    re-derive must be byte-identical with and without it, or a reply written
+    against a contracted brief would splice at the wrong offsets."""
+    _plain, plain_blocks = hunks.derive(ANNOTATED_TWO_BLOCK)
+    _briefed, briefed_blocks = hunks.derive(ANNOTATED_TWO_BLOCK, contract=CONTRACT)
+    assert briefed_blocks == plain_blocks
+
+
+def test_union_replies_is_strip_markers_per_block():
+    _text, blocks = hunks.derive(ANNOTATED_TWO_BLOCK)
+    replies = hunks.union_replies(ANNOTATED_TWO_BLOCK, blocks)
+    assert replies == {"h1": ["L3", "R3"], "h2": ["L6", "R6"]}
+    spliced = hunks.splice(ANNOTATED_TWO_BLOCK, replies, blocks)
+    assert spliced == hunks.strip_markers(ANNOTATED_TWO_BLOCK)
+
+
+def test_union_replies_refuses_deleted_segments():
+    _text, blocks = hunks.derive(ANNOTATED_WITH_DELETED_SEGMENT)
+    assert hunks.union_replies(ANNOTATED_WITH_DELETED_SEGMENT, blocks) is None
+
+
+def test_union_replies_round_trips_an_eof_tail_block():
+    """The `added both` EOF segment left the block in `derive` and `splice`
+    re-appends it, so the union body must stop at `bodyEnd`. Scoping it to
+    `end` instead duplicates the tail — the round trip is the falsifier."""
+    ann = _annotate("x\n\n", "x\na\n\n", "x\nb\n\n")
+    _text, blocks = hunks.derive(ann)
+    assert blocks[0]["eofTail"] == ["", ""]
+    replies = hunks.union_replies(ann, blocks)
+    assert replies == {"h1": ["a", "b"]}
+    assert hunks.splice(ann, replies, blocks) == hunks.strip_markers(ann)
+
+
+def test_union_replies_round_trips_every_kernel_shape():
+    """The same corpus the splice round-trip property uses: on every shape the
+    kernel really emits, the union reply is a legal splice whose result is the
+    kernel's own merged content."""
+    cases = [
+        (BASE, "a\nwire()\nx\nz\n", "a\nwire()\ny\nz\n"),
+        ("x\n", "x\na\n", "x\nb\n"),
+        ("x\n\n", "x\na\n\n", "x\nb\n\n"),
+        ("x", "x\na", "x\nb"),
+    ]
+    for base, left, right in cases:
+        ann = _annotate(base, left, right)
+        _text, blocks = hunks.derive(ann)
+        replies = hunks.union_replies(ann, blocks)
+        assert replies is not None, (base, left, right)
+        assert hunks.splice(ann, replies, blocks) == hunks.strip_markers(ann), (
+            base, left, right)
