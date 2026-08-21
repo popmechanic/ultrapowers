@@ -119,6 +119,41 @@ try {
   await settle()
   assert.equal(c2.store.getRow('claims', 'claim:r1').holder, 'sb1', 'the thief must observe its steal converged away')
 
+  // -- 2b. a write racing a heartbeat ---------------------------------------
+  // heartbeat() is a periodic liveness beacon, so writes land between sweeps
+  // continuously and a heartbeat firing between an unauthorized write and the
+  // next sweep is the common case, not the exotic one. If heartbeat re-baselined
+  // the store, this steal would be blessed unjudged and survive untouched.
+  c2.store.setRow('claims', 'claim:r1', {
+    runId: 'r1',
+    holder: 'sb2',
+    leaseExpiresAt: T + 60_000,
+    epoch: 3,
+    revoked: false,
+  })
+  await settle()
+  pageLog.length = 0
+  orch.heartbeat(T + 1)
+
+  const racedSweep = orch.sweep(T)
+  assert.deepEqual(
+    convergeAways(racedSweep),
+    ['converge-away claims claim:r1 (claim held by sb1, writer is sb2)'],
+    'a heartbeat between the steal and the sweep must not launder it — the sweep still converges it away',
+  )
+  assert.equal(
+    orch.store.getRow('claims', 'claim:r1').holder,
+    'sb1',
+    'the claim must re-converge to its rightful holder across a heartbeat',
+  )
+  assert.equal(orch.store.getRow('claims', 'claim:r1').epoch, claimed.row.epoch, 'the rightful epoch must be restored')
+  assert.equal(orch.store.getRow('meta', 'heartbeat').at, T + 1, 'the heartbeat itself must still have been written')
+  assert.deepEqual(
+    pageLog,
+    [['security', 'guard sweep converged away 1: converge-away claims claim:r1 (claim held by sb1, writer is sb2)']],
+    'the laundered-write sweep must raise exactly one security page — the heartbeat row itself is never a violation',
+  )
+
   // -- 3. spend hard action -------------------------------------------------
   // Overshoot is detected, never prevented: sb1 spends 120 against a cap of
   // 100, and the orchestrator pulls the run out from under it.

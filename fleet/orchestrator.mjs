@@ -244,9 +244,19 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
     return descriptions
   }
 
+  // A liveness beacon and nothing more. It must NEVER touch `lastKnownGood`:
+  // heartbeats fire on a timer, so a sandbox's unauthorized write frequently
+  // lands between one sweep and the next heartbeat. Re-baselining here would
+  // promote that unjudged row into the authorized snapshot, and the following
+  // sweep would skip it at the `sameRow` short-circuit without ever putting it
+  // to `guardViolation` — permanently laundering it. Only `sweep` may advance
+  // the baseline, because only `sweep` has judged what it is blessing.
+  //
+  // Leaving the baseline stale costs nothing: the heartbeat row is judged like
+  // any other on the next sweep, and `guardViolation` has no `meta` branch, so
+  // it falls through to `null` and is never converged away.
   const heartbeat = (now) => {
     store.setRow('meta', 'heartbeat', { at: now })
-    lastKnownGood = clone(store.getTables())
   }
 
   const stop = async () => {
