@@ -1,0 +1,311 @@
+# The Width Program — fleet-scale operation: wide plans, distributed sealed drains, run-level fold, coordinated by a TinyBase store
+
+**Status: SPEC (rev 2, post-trim-review) — the destination of wayfinder map
+#174, whose 9 tickets were resolved 2026-08-21 and whose Decisions list this
+document compiles into phases. Sibling to
+`2026-08-18-fold-native-authoring-program.md` (the enabler program, shipped
+through 0.2.17); same house rules: phases are measurement-gated, nothing
+architectural is kept on principle, the verification periphery stays FROZEN.**
+
+Every mechanism below carries the ticket that decided it (#175–#183) or the
+document that grounds it. Nothing here re-litigates a map decision; changes
+to those decisions go back through the map issue, not this spec.
+
+## Background — what is decided and what is measured
+
+- **Authoring (#175):** plans stay a steerable session practice —
+  contract-first: a serial architect authors the skeleton (tasks,
+  Type/Depends-on, Interfaces, Commutes, test contracts); parallel
+  subagents fill bodies. Judge-panel decomposition is deferred behind
+  measurement. No engine plan-authoring workflow.
+- **Integration (#176):** N run branches fold into a **docket frontier**
+  with the wave-fold machinery one level up; incremental, arrival order;
+  cross-run folds are uncontracted, so semantic contention **parks the
+  run** while others keep folding; post-fold verification = full committed
+  suite + that run's sealed exam against the post-fold frontier tree; red ⇒
+  unwind that fold, park the run.
+- **Human surface (#181):** park by default; page only on fleet stall,
+  API-spend anomaly, or the standing security list. Per drained docket: one
+  machine-written **drain manifest** (receipt fields verbatim + paths,
+  #171 one level up) with a consolidated **batch SMOKE** section re-aimed
+  at seams *between* plans (advisory, never a gate input). Sealing is an
+  **AFK fleet lane** on API billing.
+- **Doctrine (#180, shipped `6a3fb8c`):** superpowers is contained to HITL
+  sessions — **fleet sandboxes never install it**; ticket ownership by
+  `wayfinder:*` label; bare "frontier" is banned (merge/map/docket).
+- **Defense (#177, `2026-08-21-width-semantic-defense-measurements.md`):**
+  three pre-registered measurements (semantic-miss strata, resolver wall
+  share, straggler cost) with baselines and thresholds; the escalation bar
+  is existence-form. The record holds zero confirmed semantic misses.
+- **Parallel resolvers (#183, `2026-08-21-parallel-resolver-dispatch.md`):**
+  feasible, premature — every live conflict ever recorded is single-path;
+  build only on its named preconditions.
+- **Store (#178, prototype branch `claw/proto-178-store-schema`):** schema
+  validated live against MergeableStore CRDTs — runs / claims / budgets /
+  spend (append-only, writer-namespaced) / receipts (git pointers). Claim
+  state is a pure function of (row, clock). The plain ws-server is a
+  guard-less relay: the merge guard is a **post-hoc converge-away sweep in
+  the orchestrator process** (a predicate over its own synced store, the
+  prototype's shape — not a separate service), defends bugs not
+  adversaries.
+- **Provisioning (#179, `2026-08-21-fleet-provisioning-facts.md`):** `cp`
+  clones a VM in ~0.7s with full disk; Claude Code preinstalled; **API
+  auth is zero-secrets via the exe.dev LLM integration (proven live)**;
+  store tokens are SSH-written at claim time, never baked into images.
+  Plan upgraded to XLarge: 16-vCPU pool; an 8-vCPU runner gives 6
+  concurrent agents (`nproc` presents 1:1); practical shape ≈ 2-vCPU
+  orchestrator + 6–8-vCPU runners, ~2 pool-saturating concurrent runs —
+  matching the subscription token window's ~2–3.
+- **Dashboard (#182, prototype branch `claw/proto-182-fleet-dashboard`):**
+  variant C, **Attention triage** — pages and parks render full-width with
+  why + next act; healthy runs collapse to a tickertape. Noise =
+  everything green.
+
+## Goal and pre-registered outcomes
+
+Ship the ability to drain a sealed docket across exe.dev sandboxes with the
+operator AFK between plan approval and drain review, without weakening any
+verification the single-run engine already performs.
+
+Pre-registered outcomes (read at each phase gate, §W1d/§W2d):
+
+- **O1 (works at all):** a full remote run — provision → claim → run →
+  gate-green → receipts — completes with every receipt binding to a git
+  sha reachable from the fetched run branch, zero store-caused failures.
+- **O2 (width pays):** a 2-run concurrent drain's wall clock beats the
+  **measured serial comparator** — the same docket drained serially in one
+  sandbox, run once at the W2 gate as a paid measurement arm (same
+  hardware class, same billing). The token ratio is **record-and-read**
+  at the same gate (reported beside the T15 fold precedent of 1.111×;
+  the operator adjudicates) — no pass/fail token constant is
+  pre-registered, because none is grounded.
+- **O3 (defense holds):** the #177 reads accrue with **S3 = 0** (no
+  escaped semantic miss). One confirmed S3 fires that doc's escalation
+  bar and pauses width scaling until adjudicated.
+- **O4 (attention economics):** across the first 3 real drains, every
+  operator intervention traces to a park card or page — nothing the
+  operator needed was discovered outside the manifest/dashboard surface.
+
+## Non-goals (this program)
+
+- Live CRDT sync of working trees (breaks frozen verification contexts).
+- OIDC/MCP auth for fleet machines; vendoring Julian code; adopting celld
+  now (watch at ~0.3+ — two recorded drivers: standing frontier
+  persistence, adversarial store guarding).
+- Any change to the frozen verification periphery (gate scripts, seal
+  subsystem, compiler diagnostics vocabulary).
+- Moving plan authoring inside the engine (#175 decided session practice).
+- Building Phase-W3 machinery ahead of its pre-registered trigger.
+- Token-supply scaling beyond one account.
+
+## Where it lives
+
+- New top-level `fleet/` (repo code, plain node, no build step — the
+  author's delegated choice, matching the viewer/kernel no-build
+  convention): the orchestrator process (ws-server wiring + in-process
+  guard sweep + provisioner + drain driver + manifest writer) and the
+  lifted store module. **No `anthropic` SDK and no API key anywhere in
+  `fleet/`** — sandbox model access rides the exe.dev LLM integration
+  (session auth, not repo code).
+- The run engine (`skills/ultrapowers/harnesses/waves.js`) is **unchanged
+  in W1** and untouched by the docket-fold driver in W2 (which drives the
+  existing fold kernel CLI from outside the run, one level up).
+- Prototype primary sources stay on their throwaway branches; lifted code
+  is rewritten under tests, per prototype doctrine.
+
+## Phase W1 — one remote run, end to end (the minimal O1 slice)
+
+**W1a. Golden sandbox and execution posture.** One hand-maintained golden
+VM: exeuntu + node + the ultrapowers plugin + a warmed repo clone + **no
+superpowers** (#180) + **no credentials of any kind**. Per run: `cp` the
+golden VM, SSH-deliver the run assignment and a fresh store token
+(short-TTL, orchestrator-minted — never in the image; the
+snapshot-shared-lease trap), start the run headless under
+`ANTHROPIC_BASE_URL=https://llm.int.exe.xyz` with a dummy
+`ANTHROPIC_API_KEY` (#179, proven). The run executes with full permissions
+**inside** the sandbox — the disposable VM is the permission boundary;
+it holds nothing but the clone and the short-TTL store token. Runner tier
+6–8 vCPU (width w needs w+2). **Sandboxes are deleted after fold/park —
+never recycled** (a reused sandbox carries prior-run residue; clone-per-run
+costs 0.7s). The run stamps its plugin version + engine sha into its run
+report (the join key every #177/W2d read needs).
+
+**W1b. Orchestrator, store, and branch transport.** A 2-vCPU orchestrator
+sandbox runs the plain TinyBase ws-server with the #178 schema, **backed
+by its per-path SQLite persister** (the substrate research's supported
+mode) so the store survives orchestrator restarts; the converge-away guard
+runs as a sweep in the same process. Claim/lease logic lifts from
+`schema.mjs` (rewritten under tests). Store rows carry pointers and small
+scalars only — receipts are `{sha, path, verdict-as-display-hint}`;
+content authority is git. **Branch transport: the orchestrator PULLS run
+branches from sandboxes over SSH** (`git fetch ssh://<sandbox>`); sandboxes
+hold no origin credential and cannot reach the origin repo at all. The
+orchestrator alone holds a push credential, and only it writes
+`fleet/<runId>` branches and the frontier ref to origin. Main's existing
+branch protection is untouched.
+
+**W1c. Spend authority.** `capTokens` is set per run by the docket sweep
+(from the plan's size class) and a docket cap over all runs; both live in
+`budgets`. Sandboxes append spend rows (writer-namespaced, #178) from the
+run report's token counters at task boundaries. Two enforcement layers,
+per the #178 advisory/post-hoc split: (1) **page** (class 2) when a run's
+burn rate exceeds an anomaly multiple of the trailing per-run median, or
+when docket spend crosses its cap projection; (2) **hard action** when a
+run's ledger sum exceeds its `capTokens`: the orchestrator revokes the
+claim (explicit `revoked`, #178 semantics), deletes the sandbox, and parks
+the run with the overshoot as its why. The anomaly multiple and cap
+defaults are **set at the W1 gate from the first run's measured burn** —
+pre-registering the mechanism now, the constants when data exists.
+
+**W1d. Gate read.** **O1**, plus: lease-renewal continuity across the run
+(no false expiry), every receipt the run produced resolvable at its sha
+on the fetched branch, the version stamp present, and spend rows summing
+to within the run report's own token totals. The W1 plan's sealed exam is
+authored **the existing in-session way** — the AFK sealing lane debuts in
+W2 where n>1 makes it earn (trim T1). Rollback: W1 failure modes are
+provisioning/auth/store bugs — fix or abandon costs nothing; the run
+engine was never touched.
+
+## Phase W2 — width: concurrent drains, docket frontier, attention surface
+
+**W2a. Concurrent drains + the sealing lane.** The docket sweep
+(unchanged, HITL) produces plans; sealed exams are authored by the **AFK
+sealing lane** — sandboxes on API billing, same seal-author brief, pinned
+effort, RED-proof through the exact gate runner; only *where* the author
+runs moves (#181). The drain driver claims runs into ~2 concurrent
+sandboxes (pool arithmetic, #179). Plan dependencies serialize at
+dispatch (#176).
+
+**W2b. Docket-frontier fold.** As each run goes gate-green (in arrival
+order): fold its branch into the docket frontier with the existing fold
+kernel CLI driven from the orchestrator's integration checkout. Text
+conflicts get resolver dispatches under the same kernel contract as
+in-wave (hunks file in, reply directory out, one dispatch at a time,
+cross-run = uncontracted ⇒ semantic contention parks the run, no operator
+turn). **The cross-run resolver brief is a named W2b design deliverable**:
+the in-wave brief's contending-context block is per-plan, so the
+docket-level brief must be rebuilt from the *two runs'* plan task bodies —
+it gets its own review against the recorded in-wave brief before first
+use (trim U4; "same as in-wave" is the contract, not the brief text).
+Then the full committed suite + **that run's sealed exam re-run against
+the post-fold frontier tree**; red ⇒ unwind the fold (reset the frontier
+ref to its pre-fold sha), park the run. All fold logs/receipts land in
+git; the store gets pointers + status transitions.
+
+**W2c. Attention surface + drain manifest.** Drain-manifest v1 debuts
+here (trim T2): per-run receipt fields verbatim + paths + aggregates +
+the batch SMOKE section (concatenated per-plan probes, deduped, re-aimed
+at seams between plans; advisory only). Dashboard = the #182 variant-C
+page over the store + `ssh exe.dev stat --json`; park cards carry the
+receipts-verbatim detail line; the fold lane is a drill-in. Pages wired
+to the three #181 classes: **class 1 (fleet stall)** fires when the
+frontier cannot advance — orchestrator heartbeat absent or all runs
+parked; **class 2 (spend)** per §W1c; **class 3 (security)** is produced
+by the orchestrator scanning run reports and receipts for the engine's
+own escalation and BLOCKED markers (the run-level escalation list the
+engine already emits — the fleet adds the scanner, not a new list). A
+converge-away storm (repeated guard violations from one writer) **parks
+that run** — the default doctrine, not a page.
+
+**W2d. Sensors + gate reads.** Ship #188 (resolver ROLE_MARKERS entry —
+additive, sensor-side). The #177 designs go live and read over ≥2 drains:
+semantic-miss strata (S3 must stay 0; S2 stratified by writer count),
+measured resolver wall share (replaces the derived 8–13%), straggler
+series at the first observed width >4 — plus the drain-level counters
+this spec's own outcomes need (parks per drain, unwind rate, O2's
+wall/token reading against the measured serial comparator, O4's
+intervention audit; spec-licensed, disclosed in Adds). Rollback: the
+docket-fold driver is outside the run engine — reverting to serial
+drains is deleting a scheduler, not surgery.
+
+## Phase W3 — escalations fire by number only
+
+Nothing in W3 is built on a narrative. Each trigger's constants live in
+their pre-registration documents — cited, not copied, so a source
+amendment cannot leave a stale second copy (trim T3):
+
+| trigger (constants live in the cited source) | response |
+|---|---|
+| one confirmed S3 escaped miss (#177 §3, existence-form) | pause width; pick among #177's five named stronger defenses by the evidence, per subtraction-eval doctrine |
+| resolver wall-share threshold (#177 §2b) with a material across-path fraction (#183 preconditions) | build parallel resolver dispatch against #183's named gate surface |
+| plans systematically narrower than specs allow (#175 trigger, read from wave-shape/fold-rate) | judge-panel decomposition as an authoring escalation |
+| straggler threshold (#177 §2c) | feeds the fold-native program's existing Phase-3 rule verbatim |
+| standing-frontier need across drains, or adversarial-guard need (#178) | celld/DO substrate revisit (~0.3+, both drivers recorded) |
+| third superpowers version-skew incident (#180) | measured migration case — contain posture until then |
+
+## Verification (suite disposition)
+
+The program's builds go through normal marked plans (`Acceptance: suite`;
+sealing on request as ever). `fleet/` is new surface, not periphery: it
+lands with its own pytest/node tests and they join the committed suite.
+The run engine's suite-gate rule stands — any change to
+`harnesses/*.js` (none is planned before W3's resolver item) needs its
+covering `.mjs` sim and sentinel. The frozen periphery is not modified by
+any phase; W2b consumes the fold kernel CLI as a caller.
+
+## Error handling
+
+- Store unreachable mid-run: runs continue (the store is coordination,
+  not verification); leases may expire — claims re-derive from store +
+  clock on reconnect; a claimed-over zombie's renew is rejected by epoch.
+- Sandbox death: lease expires silently, run becomes claimable; the
+  half-done branch is abandoned (runs are idempotent from plan + base).
+- **Orchestrator death and recovery:** drains stall ⇒ page class 1. On
+  restart, the SQLite-persisted store reloads (claims, spend, receipts
+  pointers survive); every lease that expired during downtime re-derives
+  as `expired` — in-flight sandboxes that kept working renew on reconnect
+  (same epoch) or, if claimed-over, hit zombie rejection and stop. If the
+  persisted store is itself lost, the drain re-seeds from git + the
+  docket: run branches, receipts, and the frontier ref are all in git;
+  only unpushed spend rows are written off, recorded in the manifest as a
+  ledger gap. No recovery step is improvised over live sandboxes.
+- Guard converge-away storm: park the offending run (§W2c).
+
+## Release
+
+W1 and W2 each release as normal 0.2.x patches (operator's versioning
+call stands: minor bumps only on explicit call). CI green on main before
+and after, per the standing release gotcha.
+
+## Adds / Removes (author disclosure for trim review)
+
+Adds: `fleet/` (orchestrator process: ws-server wiring + in-process guard
+sweep + claim logic + provisioner + drain driver + manifest writer;
+dashboard page); golden-VM runbook; #188 marker tuple; batch-SMOKE
+manifest section; spend-authority mechanism (§W1c; constants set at the
+W1 gate); the measured serial comparator arm (one paid drain, W2 gate);
+drain-level counters (W2d, spec-licensed); the W3 trigger table
+(agreement, not code).
+Removes: nothing (this program is additive; subtraction candidates appear
+only after the W2 reads exist).
+Deliberately absent: engine plan-authoring workflow (#175), parallel
+resolver dispatch (#183 premature), judge panel (#175 deferred), celld
+(#178/#180 watch), any waves.js change before a W3 trigger, any
+periphery change, sandbox git credentials (transport is
+orchestrator-pull), sandbox recycling.
+
+## Trim review
+
+### Round 1 (fresh-context reviewer, 2026-08-21; grade rev 1: W1 **up**, W2 **up**, W3 **flat**, overall **up** — "the delta above what the map already decided is modest"; verdict: trimmed W1 is the minimal O1 slice; the graver finding is the under-specification cluster U1–U3, which "can fail dangerously by being thin")
+
+Findings and adopt-or-answer (rev 2 incorporates all adoptions):
+
+- **T1 defer AFK sealing lane out of W1 — ADOPTED** (§W1d; lane debuts W2a).
+- **T2 defer drain-manifest v1 to W2 — ADOPTED** (§W2c; W1 reads raw receipts).
+- **T3 W3 table cites constants by source, no second copy — ADOPTED** (§W3).
+- **T4 guard is an in-process sweep, not a separate replica component — ADOPTED** (Background #178 entry, §W1b, Adds).
+- **T5 delete-only sandboxes, no recycling — ADOPTED** (§W1a).
+- **U1 spend authority unoperationalized — ADOPTED**: §W1c added (two-layer mechanism now; constants set at the W1 gate from measured burn — deliberately not invented ungrounded, per the reviewer's own S1 logic).
+- **U2 origin-push credential unscoped — ADOPTED, resolved safer**: transport inverted to orchestrator-pull-over-SSH; sandboxes hold no git credential at all (§W1b). Also discharges S3.
+- **U3 execution posture + security-page producer — ADOPTED**: §W1a (sandbox is the permission boundary) and §W2c (producer = orchestrator scanning the engine's own escalation/BLOCKED markers).
+- **U4 "exactly as in-wave" resolver brief not buildable — ADOPTED**: cross-run brief named as a W2b design deliverable with its own review (§W2b).
+- **U5 orchestrator-death recovery — ADOPTED**: SQLite persister + recovery paragraph (§W1b, §Error handling).
+- **U6 O2 serial comparator undefined — ADOPTED**: one measured serial-drain arm at the W2 gate, paid once (§Goal O2).
+- **U7 1.35× token bound underived — ADOPTED**: demoted to record-and-read; wall remains the criterion (§Goal O2). Discharges S1.
+- **U8 run version identity — ADOPTED**: version stamp in the run report, read at the W1 gate (§W1a, §W1d).
+- **S1 — discharged by U7.** **S3 — discharged by U2.** **S6 — discharged by T5.**
+- **S2 `fleet/` location/no-build — ANSWERED, kept**: a location must be named; the choice is disclosed as delegated detail and matches the repo's viewer/kernel no-build convention.
+- **S4 "strike-tolerance per Julian" — ADOPTED as trim**: replaced by the plainer, doctrine-consistent rule "guard storm parks the offending run" (§W2c, §Error handling); the Julian citation no longer carries mechanism weight.
+- **S5 drain-level counters — ANSWERED, kept**: they are the only way O2/O4 (this spec's licensed pre-registrations) become readable; now explicitly disclosed as spec-licensed in §W2d and Adds.
+
+Operator adjudication of this round: pending at spec approval.
