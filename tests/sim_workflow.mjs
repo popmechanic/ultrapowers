@@ -3228,6 +3228,42 @@ async function scenarioInfraParkBudgetDefers() {
   console.log('scenario infra-park-budget-defers: OK')
 }
 
+// ── Scenario: composition rows reach the report (spec §2b) ────────────────────
+// Two launch tasks in one wave WRITE the same path; only one declares
+// `commutes` over it. The merge composes both writers regardless of route, so
+// the undeclared writer must surface as a `composition-unpinned:` judgment
+// call naming the wave, the path, every writer, and the undeclared one. A
+// second run whose launch tasks carry no `writes` field at all (a plan
+// compiled before the Commutes compiler landed) must NOT fabricate rows —
+// it gets the named skip-note instead, once, per wave.
+async function scenarioCompositionRows() {
+  const pinnedWave = [
+    { id: 'A', title: 'write shared', body: 'do A', tier: 'cheap',
+      writes: ['shared.txt'], commutes: ['shared.txt'] },
+    { id: 'B', title: 'also write shared', body: 'do B', tier: 'cheap',
+      writes: ['shared.txt'] },
+  ]
+  const pinnedArgs = { ...LAUNCH_ARGS, waves: [pinnedWave],
+    integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r1 = await runWorkflow({ agent: makeAgent(), args: pinnedArgs, budget: undefined })
+  const rows = r1.judgmentCalls.filter((j) => j.startsWith('composition-unpinned:'))
+  eq(rows, ['composition-unpinned: wave 1 shared.txt — writers A,B; undeclared: B'],
+    'compositionRows: exactly one unpinned row naming the undeclared writer')
+
+  const unwrittenWave = [
+    { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
+    { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
+  ]
+  const unwrittenArgs = { ...LAUNCH_ARGS, waves: [unwrittenWave],
+    integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
+  const r2 = await runWorkflow({ agent: makeAgent(), args: unwrittenArgs, budget: undefined })
+  assert(!r2.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'compositionRows: no writes field fabricates no unpinned rows')
+  assert(r2.judgmentCalls.some((j) => j === 'wave 1: tasks carry no writes field — composition rows skipped'),
+    'compositionRows: missing writes field produces the skipped-note instead')
+  console.log('scenario composition-rows: OK')
+}
+
 await scenarioTestCmdMissing()
 await scenarioMechanicalTestsCommandNoField()
 await scenarioCriticCommandIgnored()
@@ -3238,5 +3274,6 @@ await scenarioInfraDeathParkRecovers()
 await scenarioInfraDeathRetryDies()
 await scenarioFixRoundNullParks()
 await scenarioInfraParkBudgetDefers()
+await scenarioCompositionRows()
 
 console.log('ALL SCENARIOS PASSED')
