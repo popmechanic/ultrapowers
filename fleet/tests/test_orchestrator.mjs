@@ -28,13 +28,26 @@ const sb1 = mintToken({ sandboxId: 'sb1', ttlMs: 60_000, now: T })
 const sb2 = mintToken({ sandboxId: 'sb2', ttlMs: 60_000, now: T })
 const tokenRecords = [sb1.record, sb2.record]
 
+// `orch` is hoisted so the actions below can read the live store at
+// call-time (see `parkStatusAtRevoke`) — actions fire from inside
+// `orch.sweep(...)`, so by the time this module assigns `orch` in the try
+// block, every callback closing over it already has the right binding.
+let orch
+
 // Injected actions — the orchestrator never shells out itself. `actionsLog`
 // records only the hard actions so it can be asserted by full equality;
-// pages go to their own log for the same reason.
+// pages go to their own log for the same reason. `parkStatusAtRevoke`
+// captures the run's store status at the instant `revokeAndPark` fires, so
+// the ordering guarantee (park lands before the destructive actions run) is
+// asserted directly rather than inferred from side effects.
 const actionsLog = []
 const pageLog = []
+const parkStatusAtRevoke = []
 const actions = {
-  revokeAndPark: (runId, why) => actionsLog.push(`revokeAndPark ${runId} ${why}`),
+  revokeAndPark: (runId, why) => {
+    parkStatusAtRevoke.push(orch.store.getRow('runs', runId)?.status)
+    actionsLog.push(`revokeAndPark ${runId} ${why}`)
+  },
   destroySandbox: (sandboxId) => actionsLog.push(`destroySandbox ${sandboxId}`),
   page: (cls, text) => pageLog.push([cls, text]),
 }
@@ -52,7 +65,7 @@ const convergeAways = (descriptions) => descriptions.filter((d) => d.startsWith(
 const cleanup = () => fs.rmSync(dbDir, { recursive: true, force: true })
 
 try {
-  let orch = await startOrchestrator({ port: PORT, dbDir, tokenRecords, actions, clock })
+  orch = await startOrchestrator({ port: PORT, dbDir, tokenRecords, actions, clock })
 
   // -- 1. token gate --------------------------------------------------------
   // A bad token is refused at the handshake (verifyClient parses ?token= and
@@ -164,12 +177,18 @@ try {
 
   actionsLog.length = 0
   pageLog.length = 0
+  parkStatusAtRevoke.length = 0
   const spendSweep = orch.sweep(T)
 
   assert.deepEqual(
     actionsLog,
     ['revokeAndPark r1 spend-cap-overshoot 120/100', 'destroySandbox sb1'],
     'the hard actions must fire in order: revoke-and-park the run, then destroy the holding sandbox',
+  )
+  assert.deepEqual(
+    parkStatusAtRevoke,
+    ['parked'],
+    'the run must already show parked in the store by the time actions.revokeAndPark fires — park lands before the destructive actions',
   )
   assert.deepEqual(
     convergeAways(spendSweep),
@@ -216,6 +235,7 @@ try {
 
   actionsLog.length = 0
   pageLog.length = 0
+  parkStatusAtRevoke.length = 0
   const pendingOvershootSweep = orch.sweep(T)
 
   assert.deepEqual(
@@ -224,9 +244,19 @@ try {
     'a pending-run overshoot must still fire the hard actions in order',
   )
   assert.deepEqual(
+    parkStatusAtRevoke,
+    ['parked'],
+    'the pending run must already show parked in the store by the time actions.revokeAndPark fires',
+  )
+  assert.deepEqual(
     convergeAways(pendingOvershootSweep),
     [],
     'the legitimate claim, budget, and spend writes for the pending-run overshoot must not be converged away',
+  )
+  assert.deepEqual(
+    pageLog,
+    [['spend', 'r2 spend-cap-overshoot 80/50']],
+    'a spend page must be raised, and only that',
   )
   assert.equal(orch.store.getRow('claims', 'claim:r2').revoked, true, "the pending run's claim must be revoked")
   assert.equal(
@@ -254,6 +284,56 @@ try {
   )
   assert.deepEqual(pageLog, [], 'a clean sweep after the pending-run overshoot must raise no pages')
   assert.deepEqual(actionsLog, [], 'an already-revoked pending-run overshoot must not re-fire the hard actions')
+
+  // -- 3c. spend hard action refused when the park is illegal ---------------
+  // A run stuck in a terminal state (folded — no legal transitions at all)
+  // cannot be parked. The park-first ordering must refuse to revoke the
+  // claim or fire any destructive action in that case, leaving both the
+  // claim and the sandbox intact for an operator to triage by hand.
+  orch.store.setRow('runs', 'r3', {
+    planPath: 'docs/superpowers/plans/r3.md',
+    sandboxId: 'sb1',
+    status: 'folded',
+    branch: 'claw/r3',
+  })
+  const claimedR3 = tryClaim(undefined, { runId: 'r3', claimant: 'sb1', ttlMs: 60_000, now: T })
+  assert.equal(claimedR3.error, undefined, 'sb1 must be able to take a free claim on r3')
+  c1.store.setRow('claims', 'claim:r3', claimedR3.row)
+  orch.store.setRow('budgets', 'r3', { capTokens: 10 })
+  c1.store.setRow('spend', spendRowId('sb1', 3), { runId: 'r3', tokens: 20, at: T })
+  await settle()
+
+  actionsLog.length = 0
+  pageLog.length = 0
+  parkStatusAtRevoke.length = 0
+  const parkIllegalSweep = orch.sweep(T)
+
+  assert.deepEqual(
+    actionsLog,
+    [],
+    'an overshoot whose park is illegal must take no destructive action at all',
+  )
+  assert.deepEqual(
+    parkStatusAtRevoke,
+    [],
+    'actions.revokeAndPark must never fire when the park write is refused',
+  )
+  assert.deepEqual(
+    pageLog,
+    [['security', 'supervisor park refused for r3: illegal transition folded -> parked']],
+    'a park-illegal overshoot must raise exactly one security page naming the refusal',
+  )
+  assert.deepEqual(
+    convergeAways(parkIllegalSweep),
+    [],
+    'the legitimate claim, budget, and spend writes for r3 must not be converged away',
+  )
+  assert.equal(orch.store.getRow('runs', 'r3').status, 'folded', 'a run whose park is illegal must keep its status unchanged')
+  assert.equal(
+    orch.store.getRow('claims', 'claim:r3').revoked,
+    false,
+    'the claim must be left intact when the park is refused',
+  )
 
   // -- 4. persistence -------------------------------------------------------
   for (const c of [c1, c2]) {

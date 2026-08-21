@@ -210,6 +210,25 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
       if (!claimRow || claimRow.holder === undefined || claimRow.revoked) continue
 
       const why = `spend-cap-overshoot ${spent}/${capTokens}`
+
+      // The park write is attempted FIRST and gates everything destructive
+      // that follows: revoking the claim and tearing down the sandbox cannot
+      // be undone, so neither happens unless the run can actually land in
+      // 'parked'. A run in a terminal state (folded, say) has no legal path
+      // there — that is an operator triage case, not something the
+      // orchestrator should rip infrastructure out from under — so it pages
+      // and leaves the claim and sandbox exactly as they were.
+      const runRow = store.getRow('runs', scopeId)
+      if (runRow) {
+        const parkedRow = { ...runRow, status: 'parked', parkedWhy: why }
+        const parkRefusal = guardViolation('runs', scopeId, parkedRow, runRow, SUPERVISOR_ID, now, { supervisor: true })
+        if (parkRefusal) {
+          actions.page('security', `supervisor park refused for ${scopeId}: ${parkRefusal}`)
+          continue
+        }
+        store.setRow('runs', scopeId, parkedRow)
+      }
+
       const revokedRow = revoke(claimRow)
       // The orchestrator's own hard action is still put to its own guard —
       // with the §W1b supervisory exemption, which permits a revoke on a claim
@@ -223,14 +242,6 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
         continue
       }
       store.setRow('claims', claimId, revokedRow)
-
-      const runRow = store.getRow('runs', scopeId)
-      if (runRow) {
-        const parkedRow = { ...runRow, status: 'parked', parkedWhy: why }
-        const parkRefusal = guardViolation('runs', scopeId, parkedRow, runRow, SUPERVISOR_ID, now, { supervisor: true })
-        if (parkRefusal) actions.page('security', `supervisor park refused for ${scopeId}: ${parkRefusal}`)
-        else store.setRow('runs', scopeId, parkedRow)
-      }
 
       descriptions.push(`spend-cap-overshoot ${scopeId} ${spent}/${capTokens}`)
       actions.page('spend', `${scopeId} ${why}`)
