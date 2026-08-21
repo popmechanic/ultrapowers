@@ -21,8 +21,12 @@ It is a versioned doc the operator edits freely.
 
 A READ-ONLY discovery pass — it mutates nothing, so it is an improvised
 dynamic workflow per the harness read/write boundary, never a committed
-harness. Fan out over `gh issue list` and the repository: for each open,
-well-defined issue, score well-definedness, alignment to `docs/objectives.md`,
+harness. Fan out over `gh issue list` and the repository. **Skip every issue
+carrying a `wayfinder:*` label** — those are wayfinder decision tickets
+(questions resolved by a decision, worked through their map), not build
+issues; sweeping one into an implementation plan builds an answer to an
+unresolved question. For each remaining open, well-defined issue, score
+well-definedness, alignment to `docs/objectives.md`,
 estimated blast radius (likely files), and risk; cluster duplicates and
 shared root causes. Write the ranked slate to `docs/superpowers/docket.md`
 using the entry format below, every entry `State: triaged`. Then present the
