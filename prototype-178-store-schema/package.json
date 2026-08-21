@@ -1,0 +1,15 @@
+{
+  "name": "prototype-178-store-schema",
+  "private": true,
+  "description": "PROTOTYPE (#178) — throwaway, wipe me",
+  "type": "module",
+  "scripts": {
+    "proto": "node scenarios.mjs",
+    "proto:tui": "node tui.mjs",
+    "proto:ws": "node ws-run.mjs"
+  },
+  "dependencies": {
+    "tinybase": "^6",
+    "ws": "^8"
+  }
+}
