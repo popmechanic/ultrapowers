@@ -34,6 +34,11 @@ assert.equal(guardViolation('receipts', 'r1:gate', { verdict: 'PASS' }, undefine
              'receipt must be a git pointer (sha + path)')
 assert.equal(guardViolation('receipts', 'r1:gate', { sha: 'abc', path: 'gate-receipt.json' }, undefined, 'sbA', 0), null)
 
+// spend-overshoot edge: a park write must be legal even while the run is
+// still 'pending' — the orchestrator can detect an overshoot before a
+// sandbox ever advances the run to 'claimed'/'running'.
+assert.equal(legalTransition('pending', 'parked'), true)
+
 // the supervisory exemption (spec §W1b): orchestrator revoke of a HELD claim
 const held = tryClaim(undefined, { runId: 'r3', claimant: 'sbA', ttlMs: 60000, now: 1000 }).row
 const revokedRow = revoke(held)

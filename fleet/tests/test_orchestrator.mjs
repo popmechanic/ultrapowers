@@ -195,6 +195,66 @@ try {
   assert.deepEqual(pageLog, [], 'a clean sweep must raise no pages')
   assert.deepEqual(actionsLog, [], 'an already-revoked overshoot must not re-fire the hard actions')
 
+  // -- 3b. spend hard action while the run is still 'pending' --------------
+  // A sandbox can burn tokens before ever advancing the run past 'pending'
+  // (e.g. spend racing ahead of the claimed/running transition), and the
+  // overshoot pull must still park the run — the spend-overshoot edge that
+  // makes 'parked' legal from 'pending' in fleet/store.mjs.
+  orch.store.setRow('runs', 'r2', {
+    planPath: 'docs/superpowers/plans/r2.md',
+    sandboxId: 'sb2',
+    status: 'pending',
+    branch: 'claw/r2',
+  })
+  const claimedR2 = tryClaim(undefined, { runId: 'r2', claimant: 'sb2', ttlMs: 60_000, now: T })
+  assert.equal(claimedR2.error, undefined, 'sb2 must be able to take a free claim on r2')
+  c2.store.setRow('claims', 'claim:r2', claimedR2.row)
+  orch.store.setRow('budgets', 'r2', { capTokens: 50 })
+  c2.store.setRow('spend', spendRowId('sb2', 1), { runId: 'r2', tokens: 40, at: T })
+  c2.store.setRow('spend', spendRowId('sb2', 2), { runId: 'r2', tokens: 40, at: T })
+  await settle()
+
+  actionsLog.length = 0
+  pageLog.length = 0
+  const pendingOvershootSweep = orch.sweep(T)
+
+  assert.deepEqual(
+    actionsLog,
+    ['revokeAndPark r2 spend-cap-overshoot 80/50', 'destroySandbox sb2'],
+    'a pending-run overshoot must still fire the hard actions in order',
+  )
+  assert.deepEqual(
+    convergeAways(pendingOvershootSweep),
+    [],
+    'the legitimate claim, budget, and spend writes for the pending-run overshoot must not be converged away',
+  )
+  assert.equal(orch.store.getRow('claims', 'claim:r2').revoked, true, "the pending run's claim must be revoked")
+  assert.equal(
+    orch.store.getRow('runs', 'r2').status,
+    'parked',
+    'a run still pending at overshoot time must still end parked',
+  )
+  assert.equal(
+    orch.store.getRow('runs', 'r2').parkedWhy,
+    'spend-cap-overshoot 80/50',
+    'the park reason on a pending-run overshoot must record why, verbatim',
+  )
+
+  // The pending -> parked write is the orchestrator's own supervised action,
+  // so — like the r1 overshoot above — it must pass the guard cleanly on the
+  // NEXT sweep too: zero converge-aways for those writes.
+  await settle()
+  actionsLog.length = 0
+  pageLog.length = 0
+  const nextPendingSweep = orch.sweep(T)
+  assert.deepEqual(
+    convergeAways(nextPendingSweep),
+    [],
+    'the pending-run overshoot writes (claim revoke + pending->parked) must not be converged away by the next sweep',
+  )
+  assert.deepEqual(pageLog, [], 'a clean sweep after the pending-run overshoot must raise no pages')
+  assert.deepEqual(actionsLog, [], 'an already-revoked pending-run overshoot must not re-fire the hard actions')
+
   // -- 4. persistence -------------------------------------------------------
   for (const c of [c1, c2]) {
     await c.synchronizer.stopSync()

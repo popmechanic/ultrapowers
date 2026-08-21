@@ -25,7 +25,7 @@
 export const RUN_STATUSES = ['pending', 'claimed', 'running', 'gate-green', 'folded', 'parked', 'revoked']
 
 const LEGAL = {
-  pending: ['claimed', 'revoked'],
+  pending: ['claimed', 'revoked', 'parked'], // 'parked' too: a spend overshoot can be detected before a sandbox ever claims the run
   claimed: ['running', 'parked', 'revoked', 'pending'], // -> pending on lease expiry reclaim
   running: ['gate-green', 'parked', 'revoked'],
   'gate-green': ['folded', 'parked'],
