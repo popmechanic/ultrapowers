@@ -1,6 +1,6 @@
 # The Width Program — fleet-scale operation: wide plans, distributed sealed drains, run-level fold, coordinated by a TinyBase store
 
-**Status: SPEC (rev 3, post-trim-review rounds 1–2) — the destination of wayfinder map
+**Status: SPEC (rev 4, trim-review rounds 1–3 complete and TERMINATED) — the destination of wayfinder map
 #174, whose 9 tickets were resolved 2026-08-21 and whose Decisions list this
 document compiles into phases. Sibling to
 `2026-08-18-fold-native-authoring-program.md` (the enabler program, shipped
@@ -108,11 +108,13 @@ Pre-registered outcomes (read at each phase gate, §W1d/§W2d):
   store module, and the **fleet run shim** — the small sandbox-resident
   client (delivered with the run assignment) that claims and renews the
   lease, appends spend rows from the run report's token counters, flips
-  run status, and reports gate-green. The shim exists because the #178
-  guard semantics require these writes to come from the sandbox itself
-  (renews and spend rows are writer-scoped — the orchestrator cannot proxy
-  them); it **wraps** the run invocation and the run engine stays
-  unchanged. **No `anthropic` SDK and no API key anywhere in
+  run status, and reports gate-green. The shim exists for two reasons:
+  spend rows are **guard-enforced** writer-scoped (the `<writerId>:<seq>`
+  namespace makes a proxied spend row a literal guard violation), and
+  renews must come from the sandbox for **liveness semantics** — a proxied
+  renew would defeat the dead-sandbox lease-expiry detection §Error
+  handling depends on. It **wraps** the run invocation and the run engine
+  stays unchanged. **No `anthropic` SDK and no API key anywhere in
   `fleet/`** — sandbox model access rides the exe.dev LLM integration
   (session auth, not repo code).
 - The run engine (`skills/ultrapowers/harnesses/waves.js`) is **unchanged
@@ -139,8 +141,9 @@ base ref over the same SSH transport it later pulls from (the golden
 clone is only as fresh as hand-maintenance). **W1a preflight probe:**
 before the first real run, verify VM→VM `git fetch` over SSH end to end —
 it is the one transport link no #179 fact demonstrates; the named
-fallback is a read-only git remote over the sandbox's `https://<vm>.exe.xyz`
-proxy. Runner tier
+fallback is symmetric read-only git remotes over the `https://<vm>.exe.xyz`
+proxies — the orchestrator pulls run branches from the sandbox's, and the
+sandbox fetches its base ref at provision from the orchestrator's. Runner tier
 6–8 vCPU (width w needs w+2). **Sandboxes are deleted after fold/park —
 never recycled** (a reused sandbox carries prior-run residue; clone-per-run
 costs 0.7s). The run stamps its plugin version + engine sha into its run
@@ -151,14 +154,23 @@ sandbox runs the plain TinyBase ws-server with the #178 schema, **backed
 by its per-path SQLite persister** (the substrate research's supported
 mode). The persister exists for one stated reason: **§W1c's hard spend cap
 depends on ledger continuity across orchestrator restarts** — without it,
-a restart would erase the very sums the cap enforces. (Claims need no
-persistence: they re-derive as expired either way.) The converge-away guard
+a restart would erase the very sums the cap enforces. (Persisted claims
+are also a real recovery side benefit: a lost claims row re-derives as
+*free*, not expired, which would fail in-flight sandboxes' renews and
+abandon their runs — persistence is what lets §Error handling's
+renew-on-reconnect resume them.) The converge-away guard
 runs as a sweep in the same process. Claim/lease logic lifts from
-`schema.mjs` (rewritten under tests). Store rows carry pointers and small
+`schema.mjs` (rewritten under tests — including one deliberate delta: the
+guard grants the orchestrator process a **supervisory exemption** so its
+own §W1c hard-action revoke of a held claim is not converged-away; a
+verbatim lift would reject it at the holder check before the revoke
+exemption is reached. The rewrite carries the test case for exactly
+this). Store rows carry pointers and small
 scalars only — receipts are `{sha, path, verdict-as-display-hint}`;
 content authority is git. **Branch transport: the orchestrator PULLS run
 branches from sandboxes over SSH** (`git fetch ssh://<sandbox>`); sandboxes
-hold no origin credential and cannot reach the origin repo at all. The
+hold no origin credential and by policy never initiate transport (the repo
+is public, so this is policy, not capability — stated honestly). The
 orchestrator alone holds a push credential, and only it writes
 `fleet/<runId>` branches and the frontier ref to origin. Main's existing
 branch protection is untouched. Stated honestly, the orchestrator's full
@@ -189,7 +201,9 @@ data exists.
 **W1d. Gate read.** **O1**, plus: lease-renewal continuity across the run
 (no false expiry), every receipt the run produced resolvable at its sha
 on the fetched branch, the version stamp present, and spend rows summing
-to within the run report's own token totals. The W1 plan's sealed exam is
+to within the run report's own token totals — an **observational** read at
+n=1 (the tolerance it sets is derived from this same run; it becomes
+pass/fail from W2 on). The W1 plan's sealed exam is
 authored **the existing in-session way** — the AFK sealing lane debuts in
 W2 where n>1 makes it earn (trim T1). Rollback: W1 failure modes are
 provisioning/auth/store bugs — fix or abandon costs nothing; the run
@@ -204,8 +218,9 @@ effort, RED-proof through the exact gate runner; only *where* the author
 runs moves (#181). The authored exam travels the same transport as
 everything else: the orchestrator pulls it from the sealing sandbox and
 pushes it to origin before dispatch, so runs receive it in their base.
-The drain driver claims runs into ~2 concurrent
-sandboxes (pool arithmetic, #179). Plan dependencies serialize at
+The drain driver dispatches runs to ~2 concurrent
+sandboxes (pool arithmetic, #179); each sandbox's shim makes the actual
+claim, guard-legally. Plan dependencies serialize at
 dispatch (#176).
 
 **W2b. Docket-frontier fold.** As each run goes gate-green (in arrival
@@ -317,7 +332,7 @@ Deliberately absent: engine plan-authoring workflow (#175), parallel
 resolver dispatch (#183 premature), judge panel (#175 deferred), celld
 (#178/#180 watch), any waves.js change before a W3 trigger, any
 periphery change, sandbox git credentials (transport is
-orchestrator-pull), sandbox recycling.
+orchestrator-initiated in both directions), sandbox recycling.
 
 ## Trim review
 
@@ -362,4 +377,16 @@ Findings and adopt-or-answer (rev 3 incorporates all adoptions):
 
 Operator adjudication of this round: pending at spec approval.
 
-### Round 3 (fresh-context reviewer, scoped to the rev-3 delta per round 2's termination judgment): pending.
+### Round 3 (fresh-context reviewer, scoped to the rev-3 delta, 2026-08-21; delta grade **flat** — "every one converts a hidden dependency round 2 proved already latent into a stated contract"; **termination judgment: TERMINATE** — 7 findings, all wording/bookkeeping or single-clause completions with no design freedom; reviewer recommended folding them at adjudication rather than a round 4)
+
+Findings and adopt-or-answer (rev 4 folds all seven in):
+
+- **F1 shim rationale half-misattributed — ADOPTED**: spend rows are guard-enforced writer-scoped; renews are sandbox-written for liveness semantics (§Where it lives).
+- **F2 verbatim guard lift would converge-away the orchestrator's own hard-action revoke — ADOPTED**: supervisory exemption named in §W1b with its test case in the planned rewrite.
+- **F3 base-delivery leg had no fallback — ADOPTED**: symmetric read-only HTTPS-proxy remotes in both directions (§W1a); "cannot reach origin" relabeled as policy, not capability (§W1b).
+- **F4 persister parenthetical imprecise — ADOPTED**: lost claims re-derive as free, not expired; persisted claims are what make renew-on-reconnect resumable (§W1b).
+- **F5 Deliberately-absent label — ADOPTED**: "orchestrator-initiated in both directions".
+- **F6 W1 spend-sum read circular at n=1 — ADOPTED**: labeled observational at W1, pass/fail from W2 (§W1d).
+- **F7 "driver claims runs" verb — ADOPTED**: driver dispatches; the shim claims (§W2a).
+
+**Trim review complete: rounds terminated per the review-to-diminishing-returns protocol. Operator adjudication of all three rounds: at spec approval.**
