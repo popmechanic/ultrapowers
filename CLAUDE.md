@@ -70,9 +70,10 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   deletion (`read-after-write`/`prose-reference`/`ambiguous-files`/`catch-all`,
   spec §2a), adjudicated by the recorded corpus migration reading
   (`evals/frontier/results/2026-08-20-phase2-migration.md`: exactly the
-  expected `−3 prose-reference` + degrade-deletion mode flips, no other
-  delta, against the pre-registered 97-plan census) plus the T15 rig re-run
-  (Task 12). Sealed acceptance is opt-in ("seal this plan"); `suite` is the
+  expected `−3 prose-reference` + degrade-deletion mode flips — plus that
+  deletion's one downstream wave-shape promotion, on a single plan whose
+  deleted edge was gating — and no other delta, against the pre-registered
+  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is opt-in ("seal this plan"); `suite` is the
   default disposition.
 - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by

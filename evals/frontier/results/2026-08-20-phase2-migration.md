@@ -30,7 +30,9 @@ two corpora:
   show the seven new plans' shape.
 
 Both corpora compiled with `--overlap fold` and `--overlap serialize`;
-`dag_edges` `why`-label multiset and `mode` collected per plan per mode. Seven
+`dag_edges` `why`-label multiset, `mode`, **and `waves`** collected per plan
+per mode (the wave shape is what the engine actually schedules, so an
+edge-only reading would miss a scheduling change). Seven
 sealed fixture repos under `evals/fixtures/` (`wide`, `chained`, `mixed`,
 `degrade`, `contend`, `contend-prod`, `contend-big` — the `test_fixture_seals.py`
 set; `webapp` and `flawed` are excluded there and here) compiled the same way
@@ -102,14 +104,50 @@ Only two plans in the 97 carry `prose-reference` edges at all — matching
 | `2026-08-13-frontier-mode-in-engine.md` | serialize | `{interface: 2, marker: 10, prose-reference: 1, write-after-write: 1}` | `{interface: 2, marker: 10, write-after-write: 1}` | parallel → parallel |
 
 2 + 1 = 3 edges lost, exactly the expected `−3`. Neither plan's `mode`
-changes — the deleted edges never gated their wave placement.
+changes. One of the three deleted edges **was** gating, however, and moves
+its plan's wave shape — recorded next.
+
+### Wave-shape consequence — one plan, both modes
+
+Deleting an edge moves a wave boundary whenever that edge was the only thing
+holding its target back. Of the three deleted `prose-reference` edges,
+exactly one is gating:
+
+| deleted edge | plan | other incoming edges to the target | gating? |
+| --- | --- | --- | --- |
+| `1 → 3` | `2026-06-16-superpowers-v6-and-efficiency.md` | **none** | **yes** |
+| `1 → 10` | `2026-06-16-superpowers-v6-and-efficiency.md` | `3 → 10` (marker), `9 → 10` (marker) | no |
+| `3 → 9` | `2026-08-13-frontier-mode-in-engine.md` | `4 → 9` (marker) | no |
+
+So `2026-06-16-superpowers-v6-and-efficiency.md` — and only that plan —
+changes wave shape, identically under both overlap modes:
+
+| plan | overlap | old waves | new waves |
+| --- | --- | --- | --- |
+| `2026-06-16-superpowers-v6-and-efficiency.md` | fold | `[['1','2','4','5','6'],['3','7','8','9'],['10','13'],['11'],['12']]` | `[['1','2','3','4','5','6'],['7','8','9'],['10','13'],['11'],['12']]` |
+| `2026-06-16-superpowers-v6-and-efficiency.md` | serialize | `[['1','2','4','5','6'],['3','7','8','9'],['10','13'],['11'],['12']]` | `[['1','2','3','4','5','6'],['7','8','9'],['10','13'],['11'],['12']]` |
+
+Task 3 is promoted from wave 2 into wave 1; the wave count is unchanged (5),
+and no task moves later. Wave shapes are byte-identical old vs. new on the
+other 96 plans in both modes — measured across all 97 × 2 = 194 (plan, mode)
+pairs, exactly the 2 pairs tabled above differ.
+
+This stays inside the licensed deletion rather than exceeding it. The
+pre-registered answer is stated in edge-label and `mode` terms, and a wave
+boundary is a pure function of the edge set: promoting a task whose only
+constraint was a deleted ordering-guess edge *is* the deletion taking
+effect, not a second behavior change. `2026-08-13-frontier-mode-in-engine.md`
+shows the complementary case — its deleted edge was non-gating, so its waves
+are unchanged.
 
 ## Step 3b — mode-only flips (multiset unchanged, `sequential` → `parallel`)
 
 Every plan below carried the old compiler's `degrade_reason` "…fully
-overlapping writes" — the sole other change the deletion licenses. No
-plan's `mode` flipped for any other reason (no plan gained or lost the
-single-implementation-task trigger).
+overlapping writes" — the third and last change the deletion licenses, after
+the `−3` edges and the one wave-shape promotion above. No plan's `mode`
+flipped for any other reason (no plan gained or lost the
+single-implementation-task trigger). None of these plans' wave shapes
+change; the only wave change on the corpus is the Step 3a one.
 
 | plan | fold flip | serialize flip | old `degrade_reason` |
 | --- | --- | --- | --- |
@@ -152,18 +190,27 @@ other delta.
 all seven sealed fixtures, the only differences the current compiler
 produces relative to the pre-registered answer are:
 
-1. `−3 prose-reference` edges (2 plans; the deleted heuristic tier), and
+1. `−3 prose-reference` edges (2 plans; the deleted heuristic tier),
 2. `sequential` → `parallel` mode flips wherever the old compiler's deleted
    `fully_overlapping` degrade was the plan's only sequential trigger (3
    plans under `fold`, matching the aggregate `20 → 17`; 3 more under
-   `serialize` only, matching `23 → 17`; plus 3 of the seven fixtures).
+   `serialize` only, matching `23 → 17`; plus 3 of the seven fixtures), and
+3. the direct arithmetic consequence of (1) on one plan's wave shape:
+   `2026-06-16-superpowers-v6-and-efficiency.md` promotes Task 3 from wave 2
+   into wave 1 in both overlap modes, because the deleted `1 → 3` edge was
+   Task 3's sole incoming constraint. Wave shapes are byte-identical on the
+   other 96 plans and on all seven fixtures. This is not a delta beyond the
+   licensed deletion — a wave boundary is a pure function of the edge set, so
+   deleting a gating ordering-guess edge necessarily promotes its target;
+   that is the deletion working, not new behavior.
 
 No other `why`-label count changed (`marker` 180/180, `interface` 17/17,
 `write-after-create` 2/2, `write-after-write` 35/35 under `serialize`, all
 exact). No plan or fixture that compiled before now fails, or vice versa. No
 compiler behavior outside the named deletion moved at all. This is the
 "exactly `−3 prose-reference`, plus any `sequential`-mode flips from the
-degrade deletion" diff the plan called for, and nothing else — the
+degrade deletion" diff the plan called for — plus that diff's own downstream
+effect on one plan's wave shape, and nothing else — the
 measured-inert-deletion adjudication (§2d) is satisfied by this reading; the
 T15 rig re-run (Task 12) is the remaining integration-spanning acceptance
 check.
