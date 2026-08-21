@@ -25,6 +25,21 @@ observed directly over SSH or read from exe.dev's own docs
   action) is the upgrade path; per-VM vCPU ceilings on larger plans are
   unknown until one exists. Tier sizing keys off target wave width via w+2.
 
+### Addendum (same day): blocker DISCHARGED — plan upgraded to XLarge
+
+- Operator upgraded to **Individual Plan (XLarge), $160/mo: 16 vCPUs · 64 GB
+  shared across VMs**, 800 GB pooled disk (transfer unchanged at 200 GB/mo).
+- Re-probed live: `new --cpu=8 --memory=16GB` → **`nproc: 8`**, 16 GB
+  presented (probe `proto-179-cpu8`, deleted). A `--cpu=16` VM also creates
+  (pool max; probe deleted unbooted). Requested vCPUs present 1:1 to nproc.
+- **Fleet arithmetic on the 16-vCPU pool:** an 8-vCPU runner gives
+  min(16, 8−2) = **6 concurrent agents** (width-6 waves); a 16-vCPU runner
+  gives 14 but consumes the whole pool. Practical shape: 2-vCPU orchestrator
+  + 6–8-vCPU runners; **~2 pool-saturating concurrent runs**, which matches
+  the ~2–3 runs the subscription token window supports anyway. Allocation is
+  oversubscription-tolerant (the account's ~20 idle 2-vCPU VMs coexist), so
+  idle VMs don't consume the pool — busy ones contend.
+
 ## 2. Image / snapshot flow
 
 - VMs boot from **OCI container images** (`--image`, default
