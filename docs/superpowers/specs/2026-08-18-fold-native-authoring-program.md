@@ -1,6 +1,16 @@
 # Fold-native authoring program — Phase 1 (resolver reach), Phase 2 (authoring/compiler subtraction + composition contracts), Phase 3 (engine decision rule)
 
-_Program spec 2026-08-18, rev 6 — FINAL after trim review (5 rounds to terminal clean; round 5 verdict `ended`: B14 + T27 + nine wording items applied; reviewer's grade Phase 1 flat / Phase 2 down / Phase 3 flat / overall **down** — see §Trim review). Brainstormed 2026-08-18
+_Program spec 2026-08-18, rev 7 — rev 6 was FINAL after trim review (5 rounds
+to terminal clean; round 5 verdict `ended`; see §Trim review); **rev 7 is the
+2026-08-20 Width Program charting amendment** (map: issue #174; inputs:
+`2026-08-19-phase2-design-inputs.md`, issue #172), one trim round (§Trim
+review round 6): the **assume rung** (§2b consumer 3 — compile/fold-time
+exploitation of declared `Commutes:`), the **author-for-the-resolver
+guidance paragraph** (§2c), and the **semantic-contention posture sentence**
+(Phase 2 preamble). Phase 1 shipped as 0.2.15 (`91a67c5`, gate PASS
+E1″ 0.432 / E2″ 0.800) before this amendment; §1 text is the as-built record
+and rev 7 does not edit it — Phase-2 deltas against shipped §1b behavior are
+stated in §2b. Brainstormed 2026-08-18
 against `2026-08-18-rewrite-design-inputs.md` §5 (the value-ranked synthesis)
 with the operator; three phases, each its own plan and release, each gated by
 a pre-registered measurement. Nothing architectural is kept on principle —
@@ -410,6 +420,14 @@ refusal paths. Rollback = `--overlap serialize` (unchanged knob).
 
 Planned only after the Phase-1 gate passes and the shakedown is read.
 
+**Semantic-contention posture (explicit, rev 7):** the compiler and the fold
+path are file-granular; cross-file semantic contention — shared counters,
+ordering assumptions, suite-global state — is **defended by verification
+(integration suite + sealed exam), not modeled**, and Phase 2 deliberately
+adds no machinery for it. Live specimen: round-2 cell 20260819175934's
+process-global rate-limit counter made the whole suite share one budget —
+flagged by review, invisible to any merge machinery by construction.
+
 ### 2a. Compiler: keep existence, delete ordering-guesses
 
 Grounded: `build_edges` runs `marker`, `text`, `write-after-create`,
@@ -476,7 +494,7 @@ sequential` under fold) — expected diff exactly "−3 prose-reference, plus
 any `sequential`-mode flips from the degrade deletion"; the seven fixture
 repos' compiled shapes recorded and diffed.
 
-### 2b. Composition contracts — one additive marker, two consumers
+### 2b. Composition contracts — one additive marker, three consumers (rev 7 adds the assume rung)
 
 `**Commutes:**` — optional header-block marker (own `MARKER_COMMUTES`
 regex beside `Review:` **and** added to `MARKER_ISH`, else the line ends the
@@ -485,11 +503,14 @@ task's own `Files:` (else a rendered marker conflict, not an error): "my
 edits to these files are order-insensitive additive registrations."
 Consumers:
 
-1. **Compiler + resolver brief** — a contended pair (same wave, intersecting
-   `Files:` writes) where *both* writers declare the path →
-   `declared-commutative` in the transparency render and the one-line
-   `contract:` header in that path's hunks file (§1a); any writer undeclared
-   → `composition-unpinned` in the render (not an edge, not a block).
+1. **Compiler + resolver brief** — a contended path (same wave, intersecting
+   `Files:` writes) where **every writer** declares it (rev 7, round 6 T4:
+   the pair-wise "both writers" unit is superseded — for three writers of
+   whom two declare, the path is undeclared) → `declared-commutative` in
+   the transparency render, annotated *expected to auto-union* (§2b
+   consumer 3), and the one-line `contract:` header in that path's hunks
+   file (§1a); any writer undeclared → `composition-unpinned` in the render
+   (not an edge, not a block).
 2. **Report render + residual manifest** — engine-authored, deterministic:
    `contendedMerge` computes it from the wave's declared `files` overlap
    (the `fileSets` `contendedWave` already builds — declared overlap is what
@@ -517,6 +538,60 @@ Consumers:
    target. The suite/exam already gates behavior; the manifest row keeps the
    composition question visible and dispositioned.
 
+3. **The assume rung (rev 7)** — decided at the 2026-08-20 Width Program
+   charting (map #174): a surface every writer declared stops *counting* as
+   contention. Two sub-consumers (the render reclassification lives in
+   consumer 1, edited in place — round 6, T4):
+   - **Metric denominators.** §2d's contended-wave fold-rate denominator
+     becomes waves with ≥1 **undeclared** contended pair; fully-declared
+     pairs leave that denominator and are reported as their own pair count
+     plus an **auto-union rate** — conflict-level, both terms readable from
+     `conflicts.json` (round 6, B3): `autoResolved` ÷ conflicts on
+     fully-declared paths (`autoResolved` + dispatched with the `contract:`
+     header). Both numbers ride the report render, so
+     declare-to-dodge-the-metric stays visible: declared pairs are still
+     counted, still exam-gated, still canary-read.
+   - **Deterministic union auto-resolution (fold-time; the valuable one).**
+     Delta against shipped §1b behavior: **the fold no longer stops on
+     auto-resolvable conflicts; dispatch stops and parks are unchanged.**
+     When a fold (or a `resolve`'s continued fold) opens a `lines`/`add-add`
+     conflict on a path where **both sides declared** (`--commutes`; the
+     hunk header's both-sides condition, consumer 2) **and every segment of
+     every hunk is `added`** (no `deleted` segment anywhere in the conflict
+     — a deletion is not an additive registration, so the declaration does
+     not license it), the CLI resolves it in-process with no resolver
+     dispatch: the resolution is the **kernel's own merged block body**
+     (marker lines dropped, `deleted`-segment lines dropped — exactly the
+     `strip_markers` form the §Verification round-trip property pins as a
+     legal splice), applied through the same splice + `apply_resolution`
+     path so the log records an ordinary resolve event (rehydrate, replay,
+     K-gates, the epoch idempotency guard: all untouched), then folding
+     continues once the stop holds no other open entry (§1b unchanged).
+     The safety ground is **weave-inertness, not the self-checks** (round
+     6, B1: the raw-shuffle excludes resolutions and replay is
+     content-blind, so the self-checks alone would not catch a perturbing
+     resolution): the auto-union reply byte-equals the frontier's current
+     visible lines for the path, and the kernel's `update_state` is the
+     identity on visible-equal lines — the resolution leaves the weave
+     byte-identical, so the live fold sequence equals the raw one the
+     completion self-checks already gate. A builder changing the auto-union
+     content (e.g. reordering) loses this ground and is not covered by the
+     self-checks; the inertness pin (§Verification) is the guard.
+     Narration + hunks files are still written (audit trail); the
+     `conflicts.json` entry gains `"autoResolved": true` and **keeps
+     `dispatchable: true`** (round 6, B2); the baked contended-merge STEP's
+     `open` derivation and PARKED rule **exclude `autoResolved: true`
+     entries** and copy the `autoResolved` count (STEP re-baked,
+     drift-pinned); fold/`resolve` stdout and `FOLD_SCHEMA` gain an
+     additive `autoResolved` count (rides `frontierEntry` into the report).
+     Any `deleted` segment, any undeclared writer, any non-`lines` kind →
+     the declare-rung behavior unchanged (dispatch with the `contract:`
+     header, or park). No new refusal paths: a false `Commutes:`
+     declaration degrades to exactly what ships without the rung — the
+     union the resolver would have been instructed to produce — and its
+     behavioral check remains the suite + sealed exam, per the posture
+     sentence above.
+
 Sensor: "unpinned folds → 0" is read from frontier records + the compile
 object. Sequential executors ignore the marker; ultraplan review audits the
 claim the way it audits test contracts. Cross-task invariant *exams* remain
@@ -532,6 +607,17 @@ the sealed-plan route (existing), not new machinery.
   created file — `read-after-write` is deleted). `plan-markers.md` mirrors; the
   recommendation-rubric same-file clause updated byte-identically in both
   legs (`BRANCH_CLAUSES` pin).
+- **Author for the resolver (rev 7)** — one paragraph of authoring guidance
+  in ultraplan SKILL.md (mirrored in `plan-markers.md` with the rest of
+  §2c): resolver-friendly layout is what manufactures the commutativity
+  `Commutes:` declares and fold harvests — stable anchors (register against
+  a named constant or section no task moves), designated append zones (a
+  marked grow-here region per shared surface), registration patterns (one
+  edit site per concern; additive entries, never reordering existing ones).
+  The contend fixtures embody this; nothing currently teaches it. It is
+  **guidance, not a compiler input** (design-inputs note's guard): no
+  marker, no validator term, no compile-time consumer — `Commutes:` is what
+  carries the claim honestly. Counts inside the §2c word budget.
 - **Scoped body relaxation** (07-04 verdict), as rules not a marker: an
   `implementation` body must be interface- and test-complete; implementation
   steps may *sketch* routine glue **except** when the task is
@@ -565,10 +651,12 @@ the sealed-plan route (existing), not new machinery.
 Ships in the fold path (already the default); `--overlap serialize` stays as
 the rollback until the canary reads. **Pre-registered reads at
 `engineVersion ≥` release over ≥2 sense passes:** contended-wave fold rate —
-share of waves with ≥1 contended pair (compile object) that folded without
+share of waves with ≥1 **undeclared** contended pair (compile object; rev 7 —
+fully-declared pairs leave the denominator and are read as their own count +
+auto-union rate, §2b consumer 3) that folded without
 fallback (frontier records) — from the 0.2.x baseline (1/13 pairs) to a
-majority, and contended pairs per marked plan not falling (the authoring
-half); engine/finding-caused redirect-round rate flat vs 0.2.x baseline;
+majority, and contended pairs per marked plan (declared + undeclared) not
+falling (the authoring half); engine/finding-caused redirect-round rate flat vs 0.2.x baseline;
 `composition-unpinned` manifest rows trending to zero; body-relaxation's
 own canary (redirect-round rate on sketched vs exact tasks). Mechanics before release:
 T15 rig on `contend-prod` + `contend-big` with the new compiler (arm identity
@@ -629,12 +717,25 @@ build (plan task 1).
 Phase 2: corpus regression pin; compiler tests rewritten to the kept tiers
 (deleted-tier tests removed, not skipped; `serialize` = write-after-write
 pinned); marked-implementation Files-less refusal + `catch-all` label
-refusal pinned; `Commutes:` grammar + two consumers + `writes` launch field
+refusal pinned; `Commutes:` grammar + consumers 1–2 + `writes` launch field
 + the `composition-unpinned:` string shape pinned; `judgmentCalls` composition
 string + manifest-row derivation pin; `--commutes` CLI + args plumbing;
 `fully_overlapping` degrade deletion; kept-set edge check in the fold
 identity branch; migration reading recorded;
 rubric two-leg pin; ultraplan validator; T15 rig mechanics re-run.
+Assume rung (rev 7): both-declared + all-`added` conflict auto-resolves to
+the kernel-merged block body with an ordinary resolve event in the log
+(replay green); **inertness pin** — the post-auto-resolve weave state is
+byte-identical (equivalently: a following fold's conflict set is unchanged
+by the auto-resolution); a `deleted` segment anywhere in the conflict →
+normal dispatch with the `contract:` header (pinned); undeclared writer →
+normal dispatch (pinned); `autoResolved` in `conflicts.json` (entry keeps
+`dispatchable: true`)/stdout/`FOLD_SCHEMA`; STEP `open` derivation and
+PARKED rule exclude `autoResolved` entries (sim scenario, sentinel;
+baked-prompt pin green after re-bake); a fold whose every conflict
+auto-resolves does not stop (sim scenario, sentinel); denominator split
+(undeclared-only fold rate + declared-pair count + conflict-level
+auto-union rate) pinned by fixture.
 Cross-phase: the Phase-2 T15 rig run is the integration acceptance.
 
 ## Error handling
@@ -646,8 +747,10 @@ compile-time grammar refusals; no silent greens. Rollbacks:
 
 ## Release
 
-Phase 1 → 0.3.0 (architectural: cap retired, brief shape changed). Phase 2 →
-0.4.0. Both manifests, `chore(release)` commit, main CI green confirmed.
+Phase 1 shipped as **0.2.15** (`91a67c5`, 2026-08-19); Phase 2 → **0.2.17**
+(rev 7 — the operator's standing versioning call, minor bumps only on
+explicit call, supersedes rev 6's 0.3.0/0.4.0 line). Both manifests,
+`chore(release)` commit, main CI green confirmed.
 
 ## Adds / Removes (author disclosure for trim review)
 
@@ -665,12 +768,20 @@ re-narrate *response* to staleness (the 4-line epoch refusal itself is
 kept as the idempotency guard; the `attempt ≤ 2` structure is re-purposed,
 not removed), the "fold everything then narrate" shape, `_recursion_headroom`
 sizing. (Rev 1's `KERNEL_LINE_CEILING` deleted at trim review.)
-Adds (Phase 2): `Commutes:` marker + two consumers (hunk-header contract
+Adds (Phase 2): `Commutes:` marker + consumers 1–2 (hunk-header contract
 line via `--commutes`; engine-authored `judgmentCalls` string) + the
 `writes`/`commutes` launch fields, `composition-unpinned` render + manifest
 row, Files-less/`catch-all`/brace-glob grammar refusals, kept-set edge check
 in the fold identity branch, one-time migration reading, ultraplan
 body-relaxation rule (one exception), P6 prose line.
+Adds (Phase 2, rev 7): assume-rung auto-union (kernel-merged body,
+all-`added` guard, weave-inertness ground + pin, `autoResolved` fields, no
+stop on auto-resolvable conflicts — dispatch stops and parks unchanged),
+contended-merge STEP re-bake (`open`/PARKED exclusion + `autoResolved`
+count), consumer-1 render reclassification to the every-writer unit, split
+fold-rate denominators + conflict-level auto-union rate;
+author-for-the-resolver guidance paragraph (skill text only);
+semantic-contention posture sentence.
 Removes (Phase 2): compiler tiers `write-after-write` (+ pre-filter),
 `ambiguous-files`, `prose-reference`/`description-inferred`, `catch-all`,
 `read-after-write`, the `fully_overlapping` degrade; ultraplan
@@ -816,6 +927,53 @@ Adds/Removes staleness. Reviewer's grounding this round strengthened two
 claims: the pre-scan ⊇ property holds by kernel structure (group boundaries
 ignore visibility), and every `added both` segment is whitespace-only by
 construction.
+
+### Round 6 (rev-7 amendment review only; fresh-context reviewer grounded in the shipped Phase-1 code on main; grade of the amendment: `netConceptDelta` **up** — purely additive, zero removals)
+
+Reviewer ground-confirmations: the kernel-merged block body is well-defined
+and derivable at the stop (`repo_weave._fold_text` keeps the marker-free
+weave; `merge_states`' annotation-minus-annotations contract; `hunks.py`
+`strip_markers` + the pinned round-trip property), and the all-`added`
+guard is checkable from the narration's closed segment-kind vocabulary; the
+auto-resolve event at the narrated epoch composes with the shipped epoch
+guard and `_current_stop`.
+
+Blockers — all resolved: **B1** the "order-independence inherited via
+self-checks" ground was wrong (`raw_shuffle_outcomes` folds raw tasks with
+resolutions excluded and compares shuffles only to each other; replay is
+content-blind) — ADOPTED: replaced with the weave-inertness ground (the
+auto-union byte-equals the frontier's current visible lines;
+`update_state` is the identity on visible-equal lines) + the inertness pin.
+**B2** `autoResolved` entries collided with the baked STEP's
+conflicts-index `open` derivation and PARKED rule — ADOPTED:
+`dispatchable: true` kept; the STEP excludes `autoResolved` entries and
+copies the count; STEP named in Adds, re-baked, drift-pinned. **B3** the
+auto-union rate mixed units (conflict-level numerator ÷ pair-level
+denominator; n writers = n−1 conflicts but C(n,2) pairs) — ADOPTED:
+conflict-level rate, both terms from `conflicts.json`; the declared-pair
+count stays the separate companion number.
+
+Trims/wording: **T4** ADOPTED (the "three-way render classification"
+sub-consumer was a near-duplicate of consumer 1 with a contradictory unit —
+deleted; consumer 1 edited in place to the every-writer unit +
+expected-to-auto-union; its separate pin and Adds item dropped); **T5**
+ADOPTED (both-sides condition = cross-reference to consumer 2, not
+restated); **W6** ADOPTED ("stops only on dispatchable conflicts" was
+wrong-by-omission about parks → "no stop on auto-resolvable conflicts;
+dispatch stops and parks unchanged", both places); **W7** ADOPTED (folding
+continues only once the stop holds no other open entry, §1b unchanged);
+**W8** ADOPTED (stale "two consumers" references → "consumers 1–2").
+
+Scope reconciliation (recorded): the Release-line rewrite is in-scope
+housekeeping recording two prior operator calls (0.2.15 shipped; standing
+small-increment versioning), not new design; the posture "sentence" is two
+sentences plus the specimen citation (benign, matches the design-inputs
+note); the fold-time auto-resolution exceeds the charting decision's
+literal "compile-time" wording but is licensed by the design-inputs note's
+"fold without expecting conflict, rather than resolving one" and reuses
+existing seams end-to-end — recognized as the amendment's one stretch; the
+denominator split loses no rev-6 comparability (the 0.2.x baseline carries
+no declarations, so every baseline contended wave reads as undeclared).
 
 Under-specification fixes (round 1): per-hunk reply files replace the delimited
 grammar (bijective via `split_lines`, no escaping); STEP + `FOLD_SCHEMA`
