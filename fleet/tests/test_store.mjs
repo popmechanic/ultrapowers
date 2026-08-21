@@ -38,6 +38,9 @@ assert.equal(guardViolation('receipts', 'r1:gate', { sha: 'abc', path: 'gate-rec
 // still 'pending' — the orchestrator can detect an overshoot before a
 // sandbox ever advances the run to 'claimed'/'running'.
 assert.equal(legalTransition('pending', 'parked'), true)
+// boundary anchor: the widening above is exactly the spend-overshoot edge —
+// 'pending' must not have quietly gained any other outbound transition.
+assert.equal(legalTransition('pending', 'running'), false)
 
 // the supervisory exemption (spec §W1b): orchestrator revoke of a HELD claim
 const held = tryClaim(undefined, { runId: 'r3', claimant: 'sbA', ttlMs: 60000, now: 1000 }).row
