@@ -18,6 +18,13 @@
 // `main()` — not a hand-rolled stand-in, so the receipts rows and the
 // integration-branch name under test are written by the code that will write
 // them in a live run. Only the engine invocation itself is stubbed.
+//
+// Three hostile/degenerate shapes get their own scenarios, because each is a
+// way a green read could be manufactured rather than earned: a branch cell
+// carrying shell metacharacters (the sandbox writes that cell, the orchestrator
+// shells it), a receipt pointing at a path that does not exist in the tree at
+// its sha (which is what a pointer into a GITIGNORED directory looks like), and
+// a run that resolves without ever publishing anything.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -31,11 +38,13 @@ import { runShim } from '../shim.mjs'
 import {
   applyBranch,
   applyReceipt,
+  applyRunReceipts,
   auxStoreId,
   applyReportedTokens,
   applyStamp,
   detectIntegrationBranch,
   findReceiptFiles,
+  isSafeBranchName,
   main as shimMain,
   readAssignment,
   readGateGreen,
@@ -164,11 +173,27 @@ try {
     return exec
   }
 
-  // A hand-rolled stand-in sandbox, used only where the receipt must carry a
-  // sha production code would never write (an absent one, an unreachable one).
-  // It is a real `runShim` against the driver's own orchestrator, over the real
-  // ws transport, holding a real claim, using shim-main's own store writers.
-  const startStubSandbox = ({ assignment, runId, receiptSha, exec, branch = INTEGRATION_BRANCH }) => {
+  // A hand-rolled stand-in sandbox, used only where the sandbox must publish
+  // something production code would never write: a sha that does not exist, a
+  // sha on no fetched branch, a path absent from the tree, a branch cell full of
+  // shell metacharacters, or nothing at all. It is a real `runShim` against the
+  // driver's own orchestrator, over the real ws transport, holding a real claim,
+  // using shim-main's own store writers.
+  //
+  // `rawBranch` bypasses `applyBranch` deliberately: a hostile sandbox writes
+  // the cell directly, so validating only on the write side would leave the
+  // orchestrator's shell exposed. `publish: false` writes neither branch nor
+  // receipt — the run resolves and publishes nothing.
+  const startStubSandbox = ({
+    assignment,
+    runId,
+    receiptSha,
+    exec,
+    branch = INTEGRATION_BRANCH,
+    receiptPath = 'gate-receipt.json',
+    rawBranch = null,
+    publish = true,
+  }) => {
     const sandboxId = sandboxIdFor(runId)
     return (async () => {
       // Distinct store id — see shim-main's `auxStoreId`: two live
@@ -192,7 +217,7 @@ try {
         ttlMs: assignment.ttlMs,
         clock,
         invokeRun: async () => {
-          applyReceipt(store, runId, 'gate', { sha: receiptSha, path: 'gate-receipt.json', verdict: 'PASS' })
+          if (publish) applyReceipt(store, runId, 'gate', { sha: receiptSha, path: receiptPath, verdict: 'PASS' })
           // A real run takes minutes; this one must at least take a tick. The
           // shim's teardown does not await its synchronizer, so a run that
           // resolves inside the same tick it started leaves `running`,
@@ -207,9 +232,10 @@ try {
 
       // Published AFTER the run, exactly as `main()` does: `runShim`'s status
       // writes replace the whole row from their own synced view.
-      applyBranch(store, runId, branch)
       applyStamp(store, runId, stamp)
       applyReportedTokens(store, runId, 4200)
+      if (rawBranch !== null) store.setCell('runs', runId, 'branch', rawBranch)
+      else if (publish) applyBranch(store, runId, branch)
       await synchronizer.save()
       await synchronizer.stopSync()
       await synchronizer.destroy()
@@ -227,6 +253,8 @@ try {
     tickMs: 25,
     settleMs: 1_200,
     heartbeatTimeoutMs: 20_000,
+    publishPollMs: 50,
+    publishTimeoutMs: 8_000,
   }
 
   // -- 1. the happy path, driven by the PRODUCTION sandbox entrypoint --------
@@ -264,6 +292,20 @@ try {
     // shim failed" and "the driver misread a good run".
     assert.deepEqual(await sandbox, { status: 'gate-green' })
 
+    // Production `main()` does not point a receipt at the engine's own artifact
+    // path — `.claude/ultrapowers/` is GITIGNORED, so that pointer would not
+    // dereference at any sha. It copies the receipt into the tree and commits
+    // it on the integration branch, so the branch tip MOVED.
+    const receiptsSha = (await sh(`git -C "${sandboxRepo}" rev-parse ${INTEGRATION_BRANCH}`)).stdout.trim()
+    assert.match(receiptsSha, /^[0-9a-f]{40}$/)
+    assert.notEqual(receiptsSha, integrationSha, 'the receipts commit must advance the integration branch')
+    const committedReceipt = `fleet-receipts/${runId}/gate-receipt.json`
+    assert.equal(
+      (await sh(`git -C "${sandboxRepo}" cat-file -e ${receiptsSha}:${committedReceipt}`)).code,
+      0,
+      'the committed receipt must exist in the tree at the recorded sha',
+    )
+
     // The §W1d gate read, asserted by FULL equality — the contract is these five
     // keys and nothing else, so an added or renamed key fails here.
     assert.deepEqual(read, {
@@ -293,11 +335,12 @@ try {
     assert.deepEqual(detail.receipts, [
       {
         rowId: `${runId}:gate`,
-        sha: integrationSha,
-        path: RECEIPT_PATH,
+        sha: receiptsSha,
+        path: committedReceipt,
         verdict: 'PASS',
         exists: true,
         reachable: true,
+        dereferenced: true,
         resolved: true,
       },
     ])
@@ -320,15 +363,21 @@ try {
     // verified with a real existence pre-check AND a real reachability check
     // against the fetched branch.
     const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
-    const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${integrationSha}`)
+    const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}`)
     const ancIdx = exec.cmds.findIndex(
-      (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${integrationSha} FETCH_HEAD`,
+      (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} FETCH_HEAD`,
     )
+    // The dereference leg: the recorded PATH must exist in the tree at the
+    // recorded sha. Reachability alone would happily green a pointer into a
+    // gitignored directory that no commit ever contained.
+    const derefIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}:${committedReceipt}`)
     assert.ok(fetchIdx >= 0, `expected a run-branch fetch, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(catIdx >= 0, `expected a cat-file on the receipt sha, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(ancIdx >= 0, `expected a reachability check on the receipt sha, got: ${JSON.stringify(exec.cmds)}`)
+    assert.ok(derefIdx >= 0, `expected a dereference of the receipt path, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(fetchIdx < catIdx, 'the branch must be fetched before its receipts are resolved')
     assert.ok(fetchIdx < ancIdx, 'reachability is decided against the FETCHED branch')
+    assert.ok(fetchIdx < derefIdx, 'the pointer is dereferenced against the FETCHED branch')
 
     // The sandbox is always torn down.
     assert.ok(
@@ -371,6 +420,7 @@ try {
         verdict: 'PASS',
         exists: false,
         reachable: false,
+        dereferenced: false,
         resolved: false,
       },
     ])
@@ -414,6 +464,7 @@ try {
         verdict: 'PASS',
         exists: true,
         reachable: false,
+        dereferenced: false,
         resolved: false,
       },
     ])
@@ -428,7 +479,16 @@ try {
     let sandbox = null
     const exec = makeExec((assignment) => {
       setTimeout(() => {
-        sandbox = startStubSandbox({ assignment, runId, receiptSha: olderSha, exec, branch: OLDER_BRANCH })
+        // `old.txt` is the file that branch's commit actually introduced, so the
+        // pointer dereferences there and nowhere else.
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+        })
       }, 30)
     })
 
@@ -452,7 +512,202 @@ try {
     assert.equal(read.o1, true)
   }
 
-  // -- 5. shim-main's pure helpers -------------------------------------------
+  // -- 5. a hostile branch cell never reaches the shell ----------------------
+  // `runs.<id>.branch` is written by the SANDBOX and interpolated by the
+  // orchestrator into a `/bin/sh -c git fetch`. A branch cell carrying shell
+  // metacharacters must fail the read outright — not be quoted, not be escaped,
+  // not be executed.
+  {
+    const runId = 'run-drive-5'
+    const pwned = path.join(tmp, 'pwned')
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: headSha,
+          exec,
+          rawBranch: `main; touch ${pwned}`,
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db5'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(read.receiptsResolvable, false, 'an unsafe branch name must fail the read')
+    assert.equal(read.o1, false)
+    assert.ok(
+      !exec.cmds.some((cmd) => cmd.includes('pwned')),
+      `the injected command must never reach exec, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.equal(fs.existsSync(pwned), false, 'the injected command must not have run')
+    assert.ok(
+      detail.errors.some((e) => e.includes('unsafe branch')),
+      `expected an explicit unsafe-branch error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    // The receipt was never verified, so it is reported unresolved rather than
+    // silently omitted.
+    assert.deepEqual(detail.receipts, [
+      { rowId: `${runId}:gate`, sha: headSha, path: 'gate-receipt.json', verdict: 'PASS' },
+    ])
+  }
+
+  // -- 6. a pointer that does not DEREFERENCE fails --------------------------
+  // The shape a receipt into a gitignored directory takes: the sha is real and
+  // reachable from the fetched branch, and the path simply is not in its tree.
+  {
+    const runId = 'run-drive-6'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: integrationSha,
+          exec,
+          receiptPath: '.claude/ultrapowers/run-nope/gate-receipt.json',
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db6'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(read.receiptsResolvable, false, 'a path absent from the tree at its sha must not resolve')
+    assert.equal(read.o1, false)
+    assert.deepEqual(detail.receipts, [
+      {
+        rowId: `${runId}:gate`,
+        sha: integrationSha,
+        path: '.claude/ultrapowers/run-nope/gate-receipt.json',
+        verdict: 'PASS',
+        exists: true,
+        reachable: true,
+        dereferenced: false,
+        resolved: false,
+      },
+    ])
+  }
+
+  // -- 7. a run that publishes nothing reads RED, on a bound -----------------
+  // The publish/settle race, closed fail-closed: the driver waits for the
+  // sandbox to actually publish its branch and receipts, and a run that never
+  // does reads red with an explicit error rather than being napped past.
+  {
+    const runId = 'run-drive-7'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({ assignment, runId, receiptSha: headSha, exec, publish: false })
+      }, 30)
+    })
+
+    const startedAt = Date.now()
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db7'),
+      exec,
+      runId,
+      publishTimeoutMs: 1_000,
+    })
+    await sandbox
+
+    assert.equal(read.o1, false, 'a run that published nothing is not O1')
+    assert.equal(read.receiptsResolvable, false)
+    assert.ok(
+      detail.errors.includes('publish timeout'),
+      `expected an explicit publish timeout, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.deepEqual(detail.receipts, [])
+    // Bounded: the wait is capped, not open-ended.
+    assert.ok(Date.now() - startedAt < 20_000, 'the publish wait must be bounded')
+    // Nothing was fetched, because there was no published branch to fetch.
+    assert.ok(
+      !exec.cmds.some((cmd) => / fetch /.test(cmd)),
+      `nothing may be fetched for an unpublished run, got: ${JSON.stringify(exec.cmds)}`,
+    )
+  }
+
+  // -- 8. the production receipt writer: copy, commit, point at the tree ------
+  // Two `run-*` directories, so the kind must be keyed by directory, and both
+  // pointers must dereference at the sha they record.
+  {
+    const multiRepo = path.join(tmp, 'multi-repo')
+    const multiBranch = 'ultra/integration-20260821999999'
+    fs.mkdirSync(multiRepo, { recursive: true })
+    writeFile(multiRepo, 'seed.txt', 'seed\n')
+    const seeded = await sh(
+      'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
+        `git add -A && git -c commit.gpgsign=false commit -q -m seed && git checkout -q -b ${multiBranch}`,
+      multiRepo,
+    )
+    assert.equal(seeded.code, 0, `multi-repo fixture failed: ${seeded.stderr}`)
+    // Written but NOT committed — and unreachable to `git add` without `-f`
+    // once the directory is ignored, which is exactly the live shape.
+    writeFile(multiRepo, '.gitignore', '.claude/ultrapowers/\n')
+    writeFile(multiRepo, '.claude/ultrapowers/run-aaa/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+    writeFile(multiRepo, '.claude/ultrapowers/run-bbb/gate-receipt.json', JSON.stringify({ verdict: 'BLOCKED' }))
+
+    const store = createMergeableStore('multi-receipts')
+    const written = await applyRunReceipts(store, 'run-m', {
+      repoDir: multiRepo,
+      exec: (cmd) => sh(cmd),
+      branch: multiBranch,
+    })
+    const sha = (await sh(`git -C "${multiRepo}" rev-parse ${multiBranch}`)).stdout.trim()
+
+    assert.deepEqual(written, [
+      {
+        kind: 'gate-run-aaa',
+        sha,
+        path: 'fleet-receipts/run-m/run-aaa-gate-receipt.json',
+        verdict: 'PASS',
+      },
+      {
+        kind: 'gate-run-bbb',
+        sha,
+        path: 'fleet-receipts/run-m/run-bbb-gate-receipt.json',
+        verdict: 'BLOCKED',
+      },
+    ])
+    assert.deepEqual(store.getRow('receipts', 'run-m:gate-run-aaa'), {
+      sha,
+      path: 'fleet-receipts/run-m/run-aaa-gate-receipt.json',
+      verdict: 'PASS',
+    })
+    assert.deepEqual(store.getRow('receipts', 'run-m:gate-run-bbb'), {
+      sha,
+      path: 'fleet-receipts/run-m/run-bbb-gate-receipt.json',
+      verdict: 'BLOCKED',
+    })
+    // Both pointers dereference at the sha they record — the whole point.
+    for (const row of written) {
+      assert.equal(
+        (await sh(`git -C "${multiRepo}" cat-file -e ${sha}:${row.path}`)).code,
+        0,
+        `${row.path} must exist in the tree at ${sha}`,
+      )
+    }
+    // A run with no receipts writes nothing rather than an empty pointer.
+    assert.deepEqual(
+      await applyRunReceipts(store, 'run-none', { repoDir: repoDir, exec: (cmd) => sh(cmd), branch: 'main' }),
+      [],
+    )
+  }
+
+  // -- 9. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')
     fs.writeFileSync(
@@ -545,6 +800,31 @@ try {
     assert.equal(store.getCell('runs', 'run-x', 'pluginVersion'), '9.9.9')
     assert.equal(store.getCell('runs', 'run-x', 'reportedTokens'), 1234)
     assert.equal(store.getCell('runs', 'run-x', 'branch'), INTEGRATION_BRANCH)
+
+    // Branch names are validated on the WRITE side too, so a run that somehow
+    // detected a hostile ref never publishes it. Rejection leaves the cell as it
+    // was — it does not blank a good name.
+    for (const hostile of [
+      'main; touch /tmp/pwned',
+      'main && rm -rf /',
+      'main $(id)',
+      'main`id`',
+      'main | tee /tmp/x',
+      'ultra/integration 20260821',
+      '--upload-pack=evil',
+      'ultra/../../etc/passwd',
+      'main\ntouch /tmp/x',
+    ]) {
+      assert.equal(isSafeBranchName(hostile), false, `${JSON.stringify(hostile)} must be rejected`)
+      applyBranch(store, 'run-x', hostile)
+      assert.equal(store.getCell('runs', 'run-x', 'branch'), INTEGRATION_BRANCH)
+    }
+    for (const legal of [INTEGRATION_BRANCH, 'fleet-run', 'main', 'release/1.2.3_rc-4']) {
+      assert.equal(isSafeBranchName(legal), true, `${legal} must be accepted`)
+    }
+    assert.equal(isSafeBranchName(''), false)
+    assert.equal(isSafeBranchName(undefined), false)
+    assert.equal(isSafeBranchName(42), false)
   }
 
   console.log('ALL TESTS PASSED')

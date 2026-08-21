@@ -41,6 +41,53 @@ export const DEFAULT_REPORT_FILE = `${RUN_ARTIFACT_DIR}/fleet-run/report.json`
 export const GATE_RECEIPT_FILE = 'gate-receipt.json'
 
 /**
+ * Where receipts are COPIED to so they survive as git objects.
+ *
+ * `RUN_ARTIFACT_DIR` is gitignored (repo `.gitignore`: `.claude/ultrapowers/`),
+ * so a receipt left where the engine wrote it exists in no tree at any sha — the
+ * pointer would name a path the driver can never dereference, and the file dies
+ * with the sandbox. Copying it here and committing it on the integration branch
+ * is what makes `{sha, path}` an actual pointer.
+ */
+export const FLEET_RECEIPT_DIR = 'fleet-receipts'
+
+/**
+ * The character class a git ref or repo-relative path may use before it is
+ * interpolated into a shell command.
+ *
+ * Both ends interpolate: this file shells `git checkout <branch>`, and the
+ * driver shells `git fetch <url> <branch>` and `git cat-file -e <sha>:<path>`
+ * with values THIS SIDE published. The branch name is sandbox-authored data on
+ * the orchestrator's side of the trust boundary, so it is validated where it is
+ * written AND again where it is used — a write-side-only check protects nothing
+ * against a sandbox that writes the store cell directly.
+ */
+export const SAFE_GIT_NAME = /^[A-Za-z0-9._\/-]+$/
+
+/**
+ * Whether a ref/path is safe to interpolate. Beyond the character class, a
+ * leading `-` is rejected (git would read it as an option, which is argument
+ * injection without a single shell metacharacter) and `..` is rejected (path
+ * traversal out of the repo).
+ */
+export const isSafeBranchName = (value) =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  SAFE_GIT_NAME.test(value) &&
+  !value.startsWith('-') &&
+  !value.split('/').includes('..')
+
+/**
+ * A repo-relative path, as the other pointer half. Same character class and the
+ * same two extra rejections — a receipt path is interpolated into
+ * `git cat-file -e <sha>:<path>` exactly as a branch name is into `git fetch`.
+ */
+export const isSafeRepoPath = isSafeBranchName
+
+/** A git object name, as a pointer half. Same interpolation hazard, tighter shape. */
+export const isSafeSha = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value)
+
+/**
  * The sandbox's own id — the writer namespace its spend rows must live under
  * and the holder its claim carries.
  *
@@ -203,38 +250,100 @@ export const applyReceipt = (store, runId, kind, { sha, path: receiptPath, verdi
  * Publish the branch the run integrated to. `setCell` for the same reason
  * `applyStamp` uses it, and an empty branch is skipped rather than blanking a
  * name already in place — the driver's fallback is a name that does not exist.
+ *
+ * A name that is not shell-safe is REJECTED and the cell left as it was: the
+ * orchestrator interpolates this value into a `git fetch`, so publishing
+ * `main; rm -rf /` would be handing it a command. This is the write-side half
+ * of the check; the driver validates again on read, because a hostile sandbox
+ * would not come through this function at all.
  */
 export const applyBranch = (store, runId, branch) => {
-  if (typeof branch === 'string' && branch.length > 0) store.setCell('runs', runId, 'branch', branch)
+  if (!isSafeBranchName(branch)) return false
+  store.setCell('runs', runId, 'branch', branch)
+  return true
+}
+
+/**
+ * Where a discovered receipt is copied to inside the checkout.
+ *
+ * `fleet-receipts/<runId>/<basename>` collides the moment a sandbox holds two
+ * run directories: every engine receipt is called `gate-receipt.json`, so both
+ * would copy onto one file and one pointer would name the other's content. The
+ * source run directory disambiguates, exactly as the row `kind` does, and only
+ * when there is something to disambiguate.
+ */
+export const receiptDestination = (runId, relPath, unique) => {
+  const base = path.basename(relPath)
+  const sourceDir = path.basename(path.dirname(relPath))
+  return `${FLEET_RECEIPT_DIR}/${runId}/${unique ? base : `${sourceDir}-${base}`}`
 }
 
 /**
  * Write one receipts row per artifact the run produced — the production writer.
  *
- * A receipt is a POINTER into git: the sha is the tip of the branch the run
- * integrated to, the path is repo-relative, and `verdict` is copied from the
- * receipt file for display only (the driver re-derives resolvability from git
- * itself and never trusts this field). With no sha there is nothing to point
- * at, so nothing is written — the orchestrator's guard rejects a receipt row
- * missing either pointer half anyway.
+ * A receipt is a POINTER into git: `{sha, path}` must dereference, i.e.
+ * `git cat-file -e <sha>:<path>` must succeed on the branch the driver fetches
+ * back. The engine writes its receipts under `.claude/ultrapowers/`, which is
+ * GITIGNORED — a pointer left there is in no tree at any sha and dies with the
+ * sandbox. So each receipt is copied into `fleet-receipts/<runId>/`, force-added
+ * (the source directory is ignored; the destination should not have to depend on
+ * that), and committed on the integration branch. The sha recorded is that
+ * branch's tip AFTER the commit, so the pointer resolves.
  *
- * Returns the rows written. Never throws.
+ * `verdict` is copied from the receipt file for display only — the driver
+ * re-derives resolvability from git itself and never trusts this field.
+ *
+ * Returns the rows written. Never throws: a sandbox that cannot commit its
+ * receipts still finishes, and the driver reads the gap as unresolved.
  */
 export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) => {
-  const sha = await revParse({ repoDir, exec, ref: branch || 'HEAD' })
-  if (!sha) return []
   const files = findReceiptFiles(repoDir)
-  const written = []
+  if (files.length === 0) return []
+  // `runId` becomes a path component and is shelled below; the orchestrator
+  // authors it, but nothing downstream should depend on that being true.
+  if (!isSafeRepoPath(runId)) return []
+
+  // Commit ON the integration branch — that is the ref the driver fetches, and
+  // a receipt committed anywhere else points at a tree it will never see. Best
+  // effort: if the checkout fails, the commit lands elsewhere, the sha below is
+  // still read from `branch`, and the pointer fails to dereference. Fail-closed
+  // and visible, never a silently mismatched pointer.
+  if (isSafeBranchName(branch)) await exec(`git -C ${repoDir} checkout -q ${branch}`)
+
+  const staged = []
   for (const relPath of files) {
+    const destRel = receiptDestination(runId, relPath, files.length === 1)
+    try {
+      fs.mkdirSync(path.dirname(path.join(repoDir, destRel)), { recursive: true })
+      fs.copyFileSync(path.join(repoDir, relPath), path.join(repoDir, destRel))
+    } catch {
+      continue
+    }
     const receipt = readJson(path.join(repoDir, relPath))
-    const verdict = typeof receipt?.verdict === 'string' ? receipt.verdict : ''
     // `gate` is the schema's kind for the one receipt a run normally produces.
     // More than one means more than one engine run directory survived in the
     // sandbox, so the kind is keyed by that directory: stable across re-reads,
     // and unique, which the row id depends on.
     const kind = files.length === 1 ? 'gate' : `gate-${path.basename(path.dirname(relPath))}`
-    applyReceipt(store, runId, kind, { sha, path: relPath, verdict })
-    written.push({ kind, sha, path: relPath, verdict })
+    staged.push({ kind, destRel, verdict: typeof receipt?.verdict === 'string' ? receipt.verdict : '' })
+  }
+  if (staged.length === 0) return []
+
+  await exec(`git -C ${repoDir} add -f ${staged.map((entry) => entry.destRel).join(' ')}`)
+  // The identity is supplied inline: a golden image with no git identity
+  // configured must not be the reason a run's receipts are unreachable.
+  await exec(
+    `git -C ${repoDir} -c user.email=fleet@localhost -c user.name=fleet -c commit.gpgsign=false ` +
+      `commit -q -m "fleet: receipts for ${runId}"`,
+  )
+
+  const sha = await revParse({ repoDir, exec, ref: branch || 'HEAD' })
+  if (!sha) return []
+
+  const written = []
+  for (const entry of staged) {
+    applyReceipt(store, runId, entry.kind, { sha, path: entry.destRel, verdict: entry.verdict })
+    written.push({ kind: entry.kind, sha, path: entry.destRel, verdict: entry.verdict })
   }
   return written
 }
@@ -314,15 +423,23 @@ export const main = async ({
   // view, so anything written while it is still running can be dropped by its
   // next transition.
 
-  // The branch first, because the receipts point at its tip. Publishing it is
-  // what lets the driver fetch the run back at all — the sandbox never pushes,
-  // and `ultra/integration-<stamp>` is a name only the engine knows.
-  const branch = await detectIntegrationBranch({ repoDir, exec })
-  applyBranch(store, runId, branch)
-  await applyRunReceipts(store, runId, { repoDir, exec, branch })
-
+  // The trailing scalars go FIRST. The driver waits for the publish signal —
+  // a non-default branch plus a non-empty receipts table — and then computes its
+  // read, so anything written after that signal races the read it belongs to.
+  // Writing the stamp and the token total ahead of the branch and the receipts
+  // makes the signal mean "everything is published", not "most of it is".
   applyStamp(store, runId, stamp)
   applyReportedTokens(store, runId, readReportTokens(reportFile))
+
+  // Then the branch, because the receipts are committed onto it and point at
+  // its tip. Publishing it is what lets the driver fetch the run back at all —
+  // the sandbox never pushes, and `ultra/integration-<stamp>` is a name only the
+  // engine knows.
+  const branch = await detectIntegrationBranch({ repoDir, exec })
+  // Receipts before the branch cell: the commit MOVES the tip, and the branch
+  // cell is the last half of the signal the driver waits on.
+  await applyRunReceipts(store, runId, { repoDir, exec, branch })
+  applyBranch(store, runId, branch)
 
   await synchronizer.save()
   await synchronizer.stopSync()

@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
 import { provisionRun, destroySandbox } from './provision.mjs'
-import { sandboxIdFor } from './shim-main.mjs'
+import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -39,6 +39,9 @@ const isNonEmptyString = (value) => typeof value === 'string' && value.length > 
  * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
  * @param {() => number} [opts.clock] - the logical clock. Frozen under test; an
  *   input to claim/guard decisions, never to timeouts.
+ * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
+ *   reaches a terminal status, for the sandbox to publish what it produced.
+ *   Clamped to `heartbeatTimeoutMs`.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -60,6 +63,8 @@ export const driveOne = async ({
   tickMs = 1_000,
   settleMs = 750,
   heartbeatTimeoutMs = 30 * 60_000,
+  publishPollMs = 250,
+  publishTimeoutMs = heartbeatTimeoutMs,
 }) => {
   const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${port}/${FLEET_PATH}`
   const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
@@ -146,7 +151,16 @@ export const driveOne = async ({
 
   let status = 'unknown'
   let timedOut = false
+  let publishTimedOut = false
   const startedAt = Date.now()
+
+  // The rows this run published, by the same filter the read uses — so "has it
+  // published its receipts yet" and "which receipts am I verifying" can never
+  // disagree.
+  const receiptsFor = () =>
+    Object.entries(store.getTable('receipts'))
+      .filter(([rowId, row]) => rowId.startsWith(`${runId}:`) || row.runId === runId)
+      .map(([rowId, row]) => ({ rowId, sha: row.sha, path: row.path, verdict: row.verdict }))
 
   try {
     // 1. Seed the run and its budget, and let them reach the server before any
@@ -210,9 +224,37 @@ export const driveOne = async ({
       await sleep(tickMs)
     }
 
-    // 4. Settle. The sandbox's last writes — the closing version stamp, the
-    //    reported-token total, a receipt written just before the status flip —
-    //    are still in flight when the status arrives.
+    // 4. Wait for the PUBLISH, not for a nap.
+    //
+    //    The status flip and the run's output are separate writes: the sandbox
+    //    reaches `gate-green` first and only then detects its integration
+    //    branch, commits the receipts onto it, and publishes both. A fixed
+    //    settle is a bet that all of that fits inside one constant — and it
+    //    silently loses that bet on a slow sandbox, reading red for a run that
+    //    was merely late. So the driver waits for the signal itself: the branch
+    //    cell moved off the fallback AND the receipts table has rows for this
+    //    run. The wait is BOUNDED by the heartbeat timeout, and a run that never
+    //    publishes inside it reads red with `publish timeout` — fail-closed, and
+    //    honest about which failure it was.
+    if (!timedOut && status === 'gate-green') {
+      const publishDeadline = Date.now() + Math.min(publishTimeoutMs, heartbeatTimeoutMs)
+      for (;;) {
+        runSweep()
+        observeClaim()
+        const published = store.getCell('runs', runId, 'branch')
+        if (isNonEmptyString(published) && published !== branch && receiptsFor().length > 0) break
+        if (Date.now() >= publishDeadline) {
+          publishTimedOut = true
+          errors.push('publish timeout')
+          break
+        }
+        await sleep(publishPollMs)
+      }
+    }
+
+    // 5. Settle the trailing scalars. `main()` writes the stamp and the token
+    //    total AHEAD of the publish signal, so they have normally arrived by
+    //    now; this is the margin for their sync round-trip, not the mechanism.
     await sleep(settleMs)
     runSweep()
     observeClaim()
@@ -224,9 +266,7 @@ export const driveOne = async ({
   // --- the read ------------------------------------------------------------
   const reachedGateGreen = status === 'gate-green'
 
-  const receipts = Object.entries(store.getTable('receipts'))
-    .filter(([rowId, row]) => rowId.startsWith(`${runId}:`) || row.runId === runId)
-    .map(([rowId, row]) => ({ rowId, sha: row.sha, path: row.path, verdict: row.verdict }))
+  const receipts = receiptsFor()
 
   // Receipts resolve only against a branch actually fetched back from the
   // sandbox, and only sha-by-sha. No receipts at all is NOT resolvable: an
@@ -237,36 +277,63 @@ export const driveOne = async ({
   // only a fallback for a run that never published one, and it is expected to
   // fail the fetch rather than quietly resolve against something else.
   //
-  // Resolution is two checks, and the second is the load-bearing one.
-  // `cat-file -e` answers "is this object in the local store", which any commit
-  // that ever arrived here satisfies — including one from an unrelated branch
-  // that has nothing to do with this run. `merge-base --is-ancestor <sha>
-  // FETCH_HEAD` answers the question the gate is actually asking: is this
-  // receipt reachable from the branch this run produced. `cat-file` is kept
-  // ahead of it purely as an existence pre-check, so an absent sha is
-  // distinguishable from a present-but-unreachable one in the detail file.
+  // Resolution is three checks, and each closes a way the one before it can be
+  // satisfied by something that is not this run's receipt:
+  //
+  //   exists       `cat-file -e <sha>` — is this object in the local store at
+  //                all. Any commit that ever arrived here satisfies it,
+  //                including one from an unrelated branch, so it is only an
+  //                existence pre-check: it makes "no such commit" legible as
+  //                distinct from the failures below.
+  //   reachable    `merge-base --is-ancestor <sha> FETCH_HEAD` — is the commit
+  //                on the branch this run actually produced.
+  //   dereferenced `cat-file -e <sha>:<path>` — does the recorded PATH exist in
+  //                the tree at that commit. Without it, a pointer into a
+  //                gitignored directory (which is where the engine writes its
+  //                receipts) passes both checks above while naming a file no
+  //                commit ever contained and nothing can ever fetch.
+  //
+  // The branch name and both pointer halves are SANDBOX-authored data that this
+  // process interpolates into a shell. They are validated here — not quoted,
+  // not escaped — and a value that fails validation fails the read without ever
+  // reaching `exec`.
   let receiptsResolvable = false
-  if (reachedGateGreen && receipts.length > 0 && vmName) {
+  if (reachedGateGreen && !publishTimedOut && receipts.length > 0 && vmName) {
     try {
       const runBranch = store.getCell('runs', runId, 'branch') ?? branch
-      const fetched = await exec(
-        `git -C ${repoDir} fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${runBranch}`,
-      )
-      if (fetched?.code !== 0) {
-        errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)
+      if (!isSafeBranchName(runBranch)) {
+        errors.push(`unsafe branch name in runs.${runId}.branch — refusing to fetch`)
       } else {
-        receiptsResolvable = true
-        for (const receipt of receipts) {
-          const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
-          const exists = seen?.code === 0
-          let reachable = false
-          if (exists) {
-            const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} FETCH_HEAD`)
-            reachable = ancestry?.code === 0
+        const fetched = await exec(
+          `git -C ${repoDir} fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${runBranch}`,
+        )
+        if (fetched?.code !== 0) {
+          errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)
+        } else {
+          receiptsResolvable = true
+          for (const receipt of receipts) {
+            if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
+              errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
+              receiptChecks.push({ ...receipt, exists: false, reachable: false, dereferenced: false, resolved: false })
+              receiptsResolvable = false
+              continue
+            }
+            const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
+            const exists = seen?.code === 0
+            let reachable = false
+            let dereferenced = false
+            if (exists) {
+              const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} FETCH_HEAD`)
+              reachable = ancestry?.code === 0
+            }
+            if (reachable) {
+              const blob = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}:${receipt.path}`)
+              dereferenced = blob?.code === 0
+            }
+            const resolved = exists && reachable && dereferenced
+            receiptChecks.push({ ...receipt, exists, reachable, dereferenced, resolved })
+            if (!resolved) receiptsResolvable = false
           }
-          const resolved = exists && reachable
-          receiptChecks.push({ ...receipt, exists, reachable, resolved })
-          if (!resolved) receiptsResolvable = false
         }
       }
     } catch (error) {
@@ -289,9 +356,16 @@ export const driveOne = async ({
 
   const read = {
     // O1: provision -> claim -> run -> gate-green -> receipts, every receipt
-    // binding to a real sha on the fetched branch, and zero store-caused
-    // failures (nothing the guard had to converge away).
-    o1: reachedGateGreen && receipts.length > 0 && receiptsResolvable && convergedAway.length === 0 && !timedOut,
+    // binding to a real, reachable, dereferenceable pointer on the fetched
+    // branch, published inside the bound, and zero store-caused failures
+    // (nothing the guard had to converge away).
+    o1:
+      reachedGateGreen &&
+      receipts.length > 0 &&
+      receiptsResolvable &&
+      convergedAway.length === 0 &&
+      !timedOut &&
+      !publishTimedOut,
     receiptsResolvable,
     leaseContinuity,
     versionStamp,
@@ -306,6 +380,7 @@ export const driveOne = async ({
     vmName,
     status,
     timedOut,
+    publishTimedOut,
     elapsedMs: Date.now() - startedAt,
     receipts: receiptChecks.length > 0 ? receiptChecks : receipts,
     convergedAway,
