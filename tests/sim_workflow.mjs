@@ -2223,14 +2223,10 @@ async function scenarioWavesPathFileBackedBodies() {
   const r = await runWorkflow({
     agent: makeAgent((label, prompt) => {
       prompts[label] = prompt
-      // The preflight confirms the file covers the bodyless task id 'A'.
-      if (label === 'waves-file-check') return { ok: true, ids: ['A', 'B'] }
       return undefined
     }),
     args, budget: undefined,
   })
-  assert(/waves-file-check/.test(Object.keys(prompts).join(',')),
-    'wavesPath: a preflight check agent ran before setup')
   assert(/read your verbatim task text from the JSON file at \/repo\/\.claude\/ultrapowers\/waves-sim\.json/.test(prompts['impl:A']),
     'wavesPath: impl:A reads its body from the file at wavesPath')
   assert(prompts['impl:A'].includes('"id" is "A"'),
@@ -2243,16 +2239,16 @@ async function scenarioWavesPathFileBackedBodies() {
   console.log('scenario wavesPath-file-backed-bodies: OK')
 }
 
-// ── Scenario: roadmap registers before the wavesPath preflight (#setup-at-bottom) ─
+// ── Scenario: roadmap registers before the setup agent (#setup-at-bottom) ──────
 // The engine lists phases in FIRST-registration order. An agent dispatched before
 // any phase() call lands in an implicit unnamed group ("Phase 0") that permanently
 // sorts ABOVE Setup in the live view — so the W2 roadmap pre-registration must run
-// before the waves-file-check preflight agent, and supplied args.waveLabels must be
-// the registered wave titles.
-async function scenarioRoadmapRegistersBeforePreflight() {
+// before the setup agent, and supplied args.waveLabels must be the registered wave
+// titles.
+async function scenarioRoadmapRegistersBeforeSetup() {
   const events = []
   const waves = [
-    [{ id: 'A', title: 'alpha', tier: 'cheap' }], // bodyless → preflight runs
+    [{ id: 'A', title: 'alpha', tier: 'cheap' }], // bodyless → wavesPath supplies it
     [{ id: 'B', title: 'beta', tier: 'cheap' }, { id: 'C', title: 'gamma', tier: 'cheap' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
@@ -2261,21 +2257,20 @@ async function scenarioRoadmapRegistersBeforePreflight() {
   await runWorkflow({
     agent: makeAgent((label) => {
       events.push('agent:' + label)
-      if (label === 'waves-file-check') return { ok: true, ids: ['A', 'B', 'C'] }
       return undefined
     }),
     args, budget: undefined,
     phase: (t) => events.push('phase:' + t),
   })
   const firstAgent = events.findIndex((e) => e.startsWith('agent:'))
-  assert(events[firstAgent] === 'agent:waves-file-check',
-    'roadmap-order: preflight is the first agent dispatched (got ' + events[firstAgent] + ')')
+  assert(events[firstAgent] === 'agent:setup',
+    'roadmap-order: setup is the first agent dispatched (got ' + events[firstAgent] + ')')
   eq(events.slice(0, firstAgent),
      ['phase:Setup', 'phase:Data layer', 'phase:2 Modules',
       'phase:Integration Review', 'phase:Setup'],
      'roadmap-order: the full execution-order roadmap (Setup first, supplied wave ' +
-     'labels, Integration Review) must be registered before the preflight agent runs')
-  console.log('scenario roadmap-registers-before-preflight: OK')
+     'labels, Integration Review) must be registered before the setup agent runs')
+  console.log('scenario roadmap-registers-before-setup: OK')
 }
 
 // ── Scenario: a bodyless task without wavesPath must fail loud ─────────────────
@@ -2290,48 +2285,6 @@ async function scenarioWavesPathRequiredForMissingBody() {
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
   assert(threw, 'wavesPath-missing: a bodyless task without wavesPath must throw the fail-loud error')
   console.log('scenario wavesPath-required-for-missing-body: OK')
-}
-
-// ── Scenario: wavesPath preflight fails loud on a missing file ────────────────
-async function scenarioWavesPathPreflightMissingFile() {
-  let implRan = false
-  let threw = false
-  const waves = [[{ id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] }]] // bodyless
-  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/nope/waves.json' }
-  try {
-    await runWorkflow({
-      agent: makeAgent((label) => {
-        if (label === 'waves-file-check') return { ok: false, error: 'file not found' }
-        if (label.startsWith('impl:')) { implRan = true }
-        return undefined
-      }),
-      args, budget: undefined,
-    })
-  } catch (e) { threw = /wavesPath file unusable/.test(e.message) && /file not found/.test(e.message) }
-  assert(threw, 'preflightMissing: an unusable wavesPath file must throw before any task')
-  assert(!implRan, 'preflightMissing: no implementer runs after a failed preflight')
-  console.log('scenario wavesPath-preflight-missing-file: OK')
-}
-
-// ── Scenario: wavesPath preflight fails loud when a task id is not covered ─────
-async function scenarioWavesPathPreflightMissingId() {
-  let threw = false
-  const waves = [[
-    { id: 'A', title: 'a', tier: 'cheap', files: ['a.txt'] },   // bodyless
-    { id: 'B', title: 'b', tier: 'cheap', files: ['b.txt'] },   // bodyless
-  ]]
-  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's', wavesPath: '/x/waves.json', edges: [] }
-  try {
-    await runWorkflow({
-      agent: makeAgent((label) => {
-        if (label === 'waves-file-check') return { ok: true, ids: ['A'] } // B missing
-        return undefined
-      }),
-      args, budget: undefined,
-    })
-  } catch (e) { threw = /no body for task id\(s\): B/.test(e.message) }
-  assert(threw, 'preflightMissingId: a bodyless task absent from the file must throw, naming it')
-  console.log('scenario wavesPath-preflight-missing-id: OK')
 }
 
 // ── Scenario: an empty inline body with NO wavesPath fails loud ───────────────
@@ -2575,10 +2528,8 @@ await scenarioAcceptanceSuiteGreen()
 await scenarioAcceptanceSuiteRed()
 await scenarioReviewDiscipline()
 await scenarioWavesPathFileBackedBodies()
-await scenarioRoadmapRegistersBeforePreflight()
+await scenarioRoadmapRegistersBeforeSetup()
 await scenarioWavesPathRequiredForMissingBody()
-await scenarioWavesPathPreflightMissingFile()
-await scenarioWavesPathPreflightMissingId()
 await scenarioEmptyBodyNoWavesPathThrows()
 await scenarioBootstrapAndPerTaskTestCmd()
 await scenarioForwardedSignals()

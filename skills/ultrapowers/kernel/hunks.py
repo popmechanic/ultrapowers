@@ -98,7 +98,15 @@ def _eof_both_tail(lines, start, end):
     return []
 
 
-def derive(annotated):
+def derive(annotated, contract=None):
+    """(hunks text, block index). `contract`, when given, is one extra line
+    written directly under every `HUNK …` header — the composition contract
+    for a path every writer declared commutative (spec §1a/§2b consumer 2).
+
+    It is brief TEXT only: the block index is byte-identical with and without
+    it, so a reply written against a contracted brief splices at exactly the
+    offsets `cmd_resolve` re-derives from the narration.
+    """
     lines = rw.split_lines(annotated)
     spans = _blocks(lines)
     blocks, out = [], []
@@ -117,6 +125,8 @@ def derive(annotated):
         blocks.append({"id": hid, "start": start, "end": end, "bodyEnd": body_end,
                        "eofTail": tail})
         out.append("HUNK %s lines %d-%d" % (hid, start + 1, end + 1))
+        if contract:
+            out.append(contract)
         out.append("--- context (read-only)"); out.extend("  " + l for l in before)
         out.append("--- conflict"); out.extend(lines[start:body_end + 1])
         if tail:
@@ -139,6 +149,35 @@ def strip_markers(annotated):
         if keep:
             out.append(ln)
     return out
+
+
+def union_replies(annotated, blocks):
+    """Kernel-merged block bodies, one reply per hunk — or None when any block
+    carries a `deleted` segment.
+
+    This is the assume rung's resolution (spec §2b consumer 3): the union the
+    kernel itself computed, marker lines dropped, which is exactly the
+    `strip_markers` form the round-trip property pins as a legal splice. That
+    equality is the safety ground — the reply byte-equals the frontier's
+    current visible lines, so applying it leaves the weave untouched.
+
+    A `deleted` segment anywhere disqualifies the block: a deletion is not an
+    additive registration, so a `Commutes:` declaration does not license it and
+    the declare-rung dispatch handles it instead.
+
+    Scoped to `start..bodyEnd`, not `start..end`: an EOF `added both` segment
+    has already left the block for trailing context, and `splice` re-appends
+    `eofTail` itself — reading to `end` would emit those lines twice.
+    """
+    lines = rw.split_lines(annotated)
+    replies = {}
+    for b in blocks:
+        segs = _segments(lines, b["start"], b["bodyEnd"])
+        if any(kind == "deleted" for kind, _side, _content in segs):
+            return None
+        replies[b["id"]] = [ln for kind, _side, content in segs
+                            if kind == "added" for ln in content]
+    return replies
 
 
 def read_reply_dir(reply_dir, blocks):

@@ -114,6 +114,32 @@ def test_ultraplan_carries_shrink_budget_and_escalation_guidance():
     assert "Tier escalation-prone tasks up front." in text
 
 
+def test_ultraplan_carries_the_commutes_and_resolver_doctrine():
+    text = ULTRAPLAN.read_text()
+    # The Commutes marker is authored here, not only in the compiler.
+    assert "**Commutes:**" in text
+    # Fold-native authoring guidance: write tasks the merge resolver can fold.
+    assert "author for the resolver" in text.lower()
+
+
+def test_ultraplan_relaxes_bodies_except_for_adversarial_review():
+    text = ULTRAPLAN.read_text()
+    # Scoped override of writing-plans' "complete code in every step": routine
+    # glue may be sketched — except on adversarially reviewed tasks.
+    assert "sketch" in text
+    assert "**Review:** adversarial" in text
+    assert "interface- and test-complete" in text
+
+
+def test_ultraplan_drops_the_phantom_edge_authoring_rules():
+    # The prose-reference / description-inferred tiers are deleted from the
+    # compiler, so the authoring rules that existed only to dodge them go too.
+    text = ULTRAPLAN.read_text()
+    assert "Describe siblings by role" not in text
+    assert "description-inferred" not in text
+    assert "prose-reference" not in text
+
+
 def test_contract_documents_the_files_grammar():
     # plan-markers.md is the canonical contract (#85): it must document the
     # narrowed Files grammar the compiler now enforces — canonical labels,

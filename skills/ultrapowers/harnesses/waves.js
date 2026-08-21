@@ -1798,60 +1798,6 @@ if (budgetExhausted()) {
   }
 }
 
-// ── wavesPath preflight (FAIL LOUD, before spending task agents) ──────────────
-// When bodies are delivered via the file, one cheap read-only agent confirms the
-// file exists, parses, and covers every bodyless task id — so a wrong/stale path
-// or a dropped id fails the run up front instead of failing N expensive worktree
-// agents that each cannot find their body. Skipped when every body is inline.
-// Defined here, RUN below — after the W2 roadmap pre-registration. An agent
-// dispatched before any phase() call creates an implicit unnamed group
-// ("Phase 0") that permanently sorts ABOVE Setup (#setup-at-bottom); running
-// after the roadmap groups the preflight under the active Setup phase.
-const bodylessIds = WAVES.flat()
-  .filter((t) => !(typeof t.body === 'string' && t.body.trim() !== ''))
-  .map((t) => String(t.id))
-async function preflightWavesFile() {
-  if (!(wavesPath && bodylessIds.length > 0)) return
-  const WAVES_FILE_PREFLIGHT =
-    'You are a read-only preflight agent. Read the JSON file at WAVES_FILE in the ' +
-    'session repository with your file-read tool. Do NOT write, create, stage, or ' +
-    'modify anything — your only output is the JSON result. Parse the file and return ' +
-    '{ "ok": true, "ids": [...] } where ids lists every string value of "id" in its ' +
-    'top-level "tasks" array. If the file is missing, unreadable, or not valid JSON, ' +
-    'return { "ok": false, "error": "<short reason>" }. Return only the JSON object.'
-  const WAVES_FILE_SCHEMA = {
-    type: 'object',
-    required: ['ok'],
-    properties: {
-      ok: { type: 'boolean' },
-      ids: { type: 'array', items: { type: 'string' } },
-      error: { type: 'string' },
-    },
-  }
-  let probe
-  try {
-    probe = await agent(
-      GUARD + '\n\n' + WAVES_FILE_PREFLIGHT + '\nWAVES_FILE: ' + wavesPath,
-      { label: 'waves-file-check', model: TIER.cheap, schema: WAVES_FILE_SCHEMA })
-  } catch (e) {
-    throw new Error('ultrapowers: could not preflight args.wavesPath (' + wavesPath +
-      '): ' + String((e && e.message) || e) + '. Refusing to run before any task.')
-  }
-  if (!probe || probe.ok !== true) {
-    throw new Error('ultrapowers: args.wavesPath file unusable (' + wavesPath + '): ' +
-      ((probe && probe.error) || 'preflight did not confirm ok') +
-      '. Write it with compile_plan.py --emit-launch before launch.')
-  }
-  const have = new Set(Array.isArray(probe.ids) ? probe.ids.map(String) : [])
-  const missing = bodylessIds.filter((id) => !have.has(id))
-  if (missing.length) {
-    throw new Error('ultrapowers: args.wavesPath (' + wavesPath +
-      ') has no body for task id(s): ' + missing.join(', ') +
-      '. Re-run compile_plan.py --emit-launch so every bodyless task is covered.')
-  }
-}
-
-
 // W2: pre-register every phase up front so the live roadmap shows all phases as
 // pending, not one-at-a-time — and in EXECUTION ORDER. phase() is keyed by title
 // — re-calling a title re-activates its existing group box (engine: same phase
@@ -1870,9 +1816,6 @@ phase('Setup')
 for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
 phase('Integration Review')
 phase('Setup')
-// The wavesPath preflight runs here — after the roadmap, under the active Setup
-// phase — so its agent never mints a pre-Setup "Phase 0" group (#setup-at-bottom).
-await preflightWavesFile()
 const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
 if (!setup || setup.branch !== integrationBranch || !setup.headSha) {

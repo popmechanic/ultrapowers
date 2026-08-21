@@ -63,7 +63,7 @@ The ultrapowers plugin is installed. Two standing rules:
    the execution-fit analysis, then offer THREE options, parallel first, tagging
    the single best-fit option "(recommended)". Read three signals off the marked
    plan: T = number of implementation tasks; parallel width = is there a wave with
-   ≥2 independent tasks (after treating same-file edits between tasks the compiler will not fold as dependencies); risk =
+   ≥2 independent tasks, after treating non-text same-file edits between tasks as dependencies (text overlap folds at merge); risk =
    sealed acceptance, a high-stakes surface (auth, payments, migrations, data
    integrity, public API), or hard-to-verify behavior. Decide, first match wins:
    risk → Ultrapowers (the risk override); parallel width and T≥4 → Ultrapowers;

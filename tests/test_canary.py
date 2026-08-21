@@ -90,8 +90,7 @@ def test_workflow_supports_file_backed_bodies_and_polyglot_knobs():
     assert "ARGS.wavesPath" in wf
     assert "read your verbatim task text from the JSON file at" in wf
     # fail-loud preflight before spending task agents
-    assert "waves-file-check" in wf
-    assert "preflight" in wf.lower()
+    assert "waves-file-check" not in wf  # preflight deleted (spec §2c, design-inputs §2)
     # per-worktree bootstrap for the fresh, isolated roles
     assert "ARGS.bootstrapCmd" in wf
     assert "WORKTREE SETUP:" in wf

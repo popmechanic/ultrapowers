@@ -3,18 +3,21 @@
 
 Parses a plan into tasks (fence-aware), classifies each per the plan-markers
 contract (explicit **Type:** trusted; heuristics otherwise, flagged
-"heuristic": true), builds the dependency DAG (marker edges + file-overlap
-inference + read-after-write + prose-reference + write-after-write whose
-overlap set covers writes union Test: paths + ambiguous-files serialization +
-explicit text, with explicit/semantic edges taking precedence so
-document-order heuristics yield by reachability to any opposing earlier
-path), runs Kahn layering with cycle detection, and emits the Step-3
-transparency block as JSON on stdout.
+"heuristic": true), builds the dependency DAG (explicit marker and text edges,
+interface edges, and the one existence edge write-after-create — a task cannot
+modify a file another task has yet to create), runs Kahn layering with cycle
+detection, and emits the Step-3 transparency block as JSON on stdout.
 
-One scheduling knob, `--overlap {serialize,fold}` (default `serialize`, the
-byte-identical legacy behavior): under `fold` the write-after-write tier
-declines to create the edge for eligible overlapping pairs, so they share a
-wave and the engine folds their same-file edits at merge time.
+The compiler orders only what a task DECLARES. Two tasks whose declared paths
+merely overlap are NOT ordered — the kernel folds their same-file edits at
+merge time. The one scheduling knob, `--overlap {serialize,fold}` (default
+`fold`), is the rollback lever: `serialize`, and only `serialize`, re-enables
+the document-order `write-after-write` tier.
+
+What the compiler cannot see it refuses instead of guessing at: an
+implementation task that declares no file paths is invisible to contention
+detection, so it is a loud compile error rather than a silently serialized
+"ambiguous" task.
 
 The orchestrating agent runs this instead of hand-deriving waves; its
 judgment is reserved for heuristic-flagged classifications and the derived
@@ -39,12 +42,18 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # Marker-shaped: bold-prefixed type/depends-on/review label in ANY colon
 # position — `**Type:**`, `**type:**`, `**Type :**`, and the colon-outside
 # form `**Type**:` all count, so a near-miss never silently degrades to prose.
-MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review)\s*(?:\*\*)?\s*:", re.I)
+MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review|commutes)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
 # Authored review-depth marker (ultraplan #87): `**Review:** adversarial|lean`.
 # Valid values are enforced where it is consumed in parse_task — an invalid
 # or duplicate value is a compile-time SystemExit, never a silent default.
 MARKER_REVIEW = re.compile(r"^\*\*Review:\*\*\s*([a-z-]+)\s*$")
+# Declared order-insensitive additive registrations (spec §2b): comma-separated
+# backticked paths the task asserts are safe to auto-union with another
+# declaring task's edits to the same path. Validated against the task's own
+# Files: block after it closes (see parse_task) — a path outside Files: is a
+# rendered marker conflict, never a SystemExit.
+MARKER_COMMUTES = re.compile(r"^\*\*Commutes:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
@@ -55,12 +64,6 @@ FILE_ISH = re.compile(r"^[-*+]\s*(create|modify|test)\s*:", re.I)
 # A colon-less natural-English bullet ("- Modify the config") does not match and
 # stays a soft near-miss; `- none` is filtered by the caller before capture.
 FILES_LABEL_LINE = re.compile(r"^[-*+]\s*([A-Za-z][A-Za-z0-9()/ _-]*?)\s*:\s*(.+?)\s*$")
-# The catch-all Files bullet (#85): `- catch-all: <prose>` declares an open
-# write set the author cannot enumerate as concrete paths. Matched BEFORE
-# FILES_LABEL_LINE routes the bullet into files_raw (which would otherwise
-# flag it as an unknown label "catch-all") — a catch-all bullet is a distinct
-# construct, not a Files grammar violation.
-CATCH_ALL_LINE = re.compile(r"^[-*+]\s*catch-all\s*:\s*(.+)$", re.I)
 FILES_ISH = re.compile(r"^\*\*\s*files\s*(?:\*\*)?\s*:", re.I)
 PATH_RE = re.compile(r"`([^`]+)`")
 TEXT_DEP = re.compile(r"(?:depends\s+on|after|requires)[\s:*]+Task\s+([A-Za-z0-9]+)", re.I)
@@ -70,7 +73,6 @@ TEXT_DEP_LIST = re.compile(
     r"(?:depends\s+on|after|requires)[\s:*]+Tasks\s+"
     r"((?:[A-Za-z0-9]+)(?:\s*(?:,|and|&)\s*[A-Za-z0-9]+)*)", re.I)
 LIST_SPLIT = re.compile(r"\s*(?:,|\band\b|&)\s*", re.I)
-GLOB_CHARS = re.compile(r"[*?\[{]")
 # Whether a Files-entry token names a file, vs a bare identifier (function name),
 # a dotted attribute reference (`schema.User`), or a route. Files entries are
 # declared to list paths, so the rule keeps real paths and rejects identifier-
@@ -228,14 +230,10 @@ def parse_task(t, raise_on_marker_error=True):
     every task's violations in one pass rather than aborting at the first."""
     ttype = None
     deps, deps_none = [], False
+    commutes = []
     late_markers = []
     marker_violations = []
     creates, modifies, reads = [], [], []
-    # Every `- catch-all: <prose>` bullet's prose, in document order (#85). A
-    # task declares AT MOST one — a second is a grammar violation surfaced by
-    # _files_violations, so every one seen is recorded here rather than the
-    # second silently overwriting the first.
-    catch_all_raw = []
     # Verbatim (label, rest) for every `Label: value` Files bullet (canonical or
     # not) — the strict-grammar input to _files_violations (#85). Unknown-label
     # lines are CAPTURED here, not dropped, so they surface as loud violations.
@@ -315,6 +313,23 @@ def parse_task(t, raise_on_marker_error=True):
                     marker_violations.append(msg)
                 else:
                     t["review"] = val
+        elif (m := MARKER_COMMUTES.match(s)):
+            if not in_header:
+                late_markers.append(s)
+            else:
+                # Accumulate across repeated **Commutes:** lines, same as
+                # **Depends-on:**. Prefer backticked paths; a bare comma-split
+                # token is kept only when it is path-like on its own — a stray
+                # prose fragment must not fabricate a phantom commutes path.
+                for tok in m.group(1).split(","):
+                    tok = tok.strip()
+                    if not tok:
+                        continue
+                    backticked = [p for p in PATH_RE.findall(tok) if _is_pathlike(p)]
+                    if backticked:
+                        commutes.extend(backticked)
+                    elif _is_pathlike(tok):
+                        commutes.append(tok)
         elif is_markerish and s.rstrip() == "**Depends-on:**":
             # Exact marker, missing value. Inside the header it silently
             # degrades to the heuristics; outside it is a placement violation
@@ -334,7 +349,8 @@ def parse_task(t, raise_on_marker_error=True):
             # paths on the header line itself. Backticked path-like tokens are
             # honored as writes (conservative: inline form does not distinguish
             # Create/Modify/Test, and a write is the safe assumption). A
-            # non-path remainder is ignored and falls to ambiguous-files.
+            # non-path remainder contributes nothing, so a marked
+            # implementation task written that way is refused as Files-less.
             rest = s[len("**Files:**"):].strip()
             if rest:
                 inline = [p.split(":")[0] for p in PATH_RE.findall(rest)
@@ -345,7 +361,8 @@ def parse_task(t, raise_on_marker_error=True):
             continue
         if FILES_ISH.match(s):
             # `**Files**:` / `**files:**` never opens the block — entries under
-            # it fall to ambiguous serialization.
+            # it contribute no paths, so a marked implementation task written
+            # that way is refused by the Files-less rule in _files_violations.
             continue
         if s.startswith("**Interfaces:**"):
             # Opening the Interfaces block closes any open Files block cleanly,
@@ -388,18 +405,6 @@ def parse_task(t, raise_on_marker_error=True):
             # with "- [": close, then fall through to normal processing.
             if s.startswith("- ["):
                 in_files = False
-            cm = CATCH_ALL_LINE.match(s) if in_files else None
-            if cm:
-                # `- catch-all: <prose>` (#85): a declared OPEN write set —
-                # the task's scope cannot be enumerated as concrete paths, so
-                # it conflicts with every other implementation task for
-                # scheduling (build_edges orders it after everything else,
-                # forcing it into its own wave). Every occurrence is recorded
-                # (not just the first) so a second bullet surfaces as a
-                # violation instead of silently overwriting the first.
-                catch_all_raw.append(cm.group(1).strip())
-                files_entries_seen = True
-                continue
             f = FILE_LINE.match(s) if in_files else None
             # Strict-grammar capture (#85): record EVERY `Label: value` Files
             # bullet — canonical or not — so _files_violations can flag annotated
@@ -435,7 +440,7 @@ def parse_task(t, raise_on_marker_error=True):
                     # _is_pathlike rule as backticked tokens, so backtick presence
                     # never flips a token's classification) — a prose value ("run
                     # pytest manually") must not fabricate a phantom path that
-                    # defeats the conservative ambiguous-files fallback.
+                    # buys a marked implementation task past the Files-less refusal.
                     paths = [first] if _is_pathlike(first) else []
                 paths = [p.split(":")[0] for p in paths if p]  # drop :line-range
                 if paths:
@@ -452,14 +457,25 @@ def parse_task(t, raise_on_marker_error=True):
             elif s and not s.startswith("-"):
                 in_files = False
 
-    # A task with no concrete paths, or one whose paths carry glob chars (a `{`
-    # brace survives the strict Files grammar), is ambiguous — serialized
-    # conservatively by the ambiguous-files tier in build_edges.
-    all_paths = creates + modifies + reads
-    files_ambiguous = (
-        (not creates and not modifies and not reads) or
-        bool([p for p in all_paths if GLOB_CHARS.search(p)])
-    )
+    # Commutes: validation (spec §2b) — now that the Files: block has closed,
+    # every declared commutes path must be one this task itself creates,
+    # modifies, or reads. A path outside that set is a rendered marker
+    # conflict (surfaced by the caller via commutes_conflicts, folded into
+    # marker_conflicts), never a SystemExit — and the offending path is
+    # dropped from the task's own commutes list so it never participates in
+    # auto-union eligibility downstream.
+    commutes_conflicts = []
+    own_paths = set(creates) | set(modifies) | set(reads)
+    kept_commutes = []
+    for p in commutes:
+        if p in own_paths:
+            kept_commutes.append(p)
+        else:
+            commutes_conflicts.append(
+                "Task {}: Commutes path `{}` is not in this task's own "
+                "Files: block — declaration ignored for that path".format(
+                    t["id"], p))
+    commutes = kept_commutes
 
     # Fence-stripped prose: classification evidence and text-dependency scanning
     # run over this, not the raw body, so a fenced example (e.g. a bash snippet
@@ -475,23 +491,16 @@ def parse_task(t, raise_on_marker_error=True):
     prose_lines = [line for line, fenced in _fence_aware_lines(t["body"])
                    if not fenced and not TASK_HEAD.match(line)]
     prose = "\n".join(prose_lines)
-    # Region split for the prose-reference tier: everything BEFORE the first
-    # `- [ ]` checkbox step is the DESCRIPTION region (markers, `**Files:**`,
-    # `**Interfaces:**` Produces/Consumes, description paragraphs); from the first
-    # checkbox on is the STEP region. A backticked sibling-file name appearing
-    # ONLY in the description region injects a phantom serializing edge
-    # ([108894a8435da7c7]) — the prose-reference tier warns it as
-    # kind="description-inferred" rather than the procedural kind="inference".
-    desc_lines, step_lines, in_steps = [], [], False
-    for line in prose_lines:
-        if not in_steps and re.match(r"^\s{0,3}- \[", line):
-            in_steps = True
-        (step_lines if in_steps else desc_lines).append(line)
 
     t.update(marker_type=ttype,
              # ids win over a contradictory `none` (the none assertion is void
              # once concrete prerequisites are declared).
              depends_on=deps, depends_none=deps_none and not deps,
+             # Declared order-insensitive additive registrations (spec §2b),
+             # filtered to paths that survived the own-Files validation above;
+             # [] when the task declares no **Commutes:** marker at all.
+             commutes=sorted(set(commutes)),
+             commutes_conflicts=commutes_conflicts,
              late_markers=late_markers,
              # Marker-VALUE validation failures collected instead of raised
              # (only populated when raise_on_marker_error=False — the --check
@@ -499,18 +508,11 @@ def parse_task(t, raise_on_marker_error=True):
              # violation there raises SystemExit immediately instead.
              marker_violations=marker_violations,
              files_raw=files_raw,
-             # First `- catch-all:` bullet wins as the authoritative prose (a
-             # second is a violation, not a silent overwrite — see
-             # catch_all_raw, consumed by _files_violations).
-             catch_all=(catch_all_raw[0] if catch_all_raw else None),
-             catch_all_raw=catch_all_raw,
              creates=sorted(set(creates)), modifies=sorted(set(modifies)),
              reads=sorted(set(reads)),
              writes=sorted(set(creates) | set(modifies)),
              interfaces={"consumes": consumes, "produces": produces},
-             files_ambiguous=files_ambiguous, prose=prose,
-             prose_desc="\n".join(desc_lines),
-             prose_steps="\n".join(step_lines))
+             prose=prose)
     return t
 
 
@@ -528,10 +530,10 @@ def classify(t):
         return "gate", True
     # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
     # build/verification (positive build/QA evidence, no implementation prose) is
-    # a gate, not implementation — otherwise it draws an ambiguous-files fan-in
-    # from every upstream task and forces a serial tail ([c171bd23cbab3265]). The
-    # build/QA-evidence guard keeps a prose-only task (no writes, no build/QA
-    # steps) classified `implementation` rather than swept into the gate bucket.
+    # a gate, not implementation — a verification task belongs in `gates`, not in
+    # the wave plan ([c171bd23cbab3265]). The build/QA-evidence guard keeps a
+    # prose-only task (no writes, no build/QA steps) classified `implementation`
+    # rather than swept into the gate bucket.
     if (not t["writes"] and BUILDQA_EV.search(prose)
             and not _has_implementation_prose(prose)):
         return "gate", True
@@ -604,48 +606,6 @@ def parse_global_constraints(text):
     return "\n".join(body)
 
 
-# Minimum module-stem length for attribute-style prose matching (`schema.User`).
-# One- and two-letter stems (`a.txt` -> `a.`) match too much English to trust.
-PROSE_REF_MIN_STEM = 3
-
-
-def prose_references(creator_paths, prose):
-    """Backticked tokens in fence-stripped prose that reference a created path:
-    the exact path, its basename, or — for stems >= PROSE_REF_MIN_STEM — the
-    module stem used as an attribute reference (`schema.User` referencing
-    apistub/schema.py). Returns the set of matched created paths."""
-    tokens = {t.strip() for t in PATH_RE.findall(prose)}
-    hits = set()
-    for path in creator_paths:
-        base = path.rsplit("/", 1)[-1]
-        stem = base.rsplit(".", 1)[0]
-        for tok in tokens:
-            if tok == path or tok.endswith("/" + path) or tok == base:
-                hits.add(path)
-            elif (len(stem) >= PROSE_REF_MIN_STEM and tok != base
-                  and tok.startswith(stem + ".")):
-                hits.add(path)
-    return hits
-
-
-def _desc_field_label(creator_paths, desc_text):
-    """A human label for the description-region field that backticks one of
-    creator_paths — used to name the field in a description-inferred warning."""
-    for line in desc_text.splitlines():
-        if not prose_references(creator_paths, line):
-            continue
-        low = line.strip().lower()
-        if "produces" in low:
-            return "a `Produces:` interface field"
-        if "consumes" in low:
-            return "a `Consumes:` interface field"
-        if (low.startswith("**files") or FILE_LINE.match(line.strip())
-                or FILE_ISH.match(line.strip())):
-            return "a `**Files:**` entry"
-        return "a description paragraph"
-    return "a description/Interfaces field"
-
-
 # Placeholder interface values — 'Consumes: nothing (…)' is authoring prose
 # for "no contract", never a producible symbol. Tokenizing them to "" deletes
 # the placeholder-pairing edge class at the representation (2026-07-03
@@ -695,20 +655,26 @@ def _interface_token(entry):
 
 # Strict Files grammar (#85). A Files bullet must be a bare canonical label
 # followed by one or more backticked paths and NOTHING else. `Test fixture(s)` /
-# `Fixture(s)` remain canonical aliases (used by existing tests/fixtures). Three
+# `Fixture(s)` remain canonical aliases (used by existing tests/fixtures). Four
 # things are loud violations, each carrying a did-you-mean fix:
-#   * an UNKNOWN LABEL (Delete/Read/… or a wrong-case `modify:`),
-#   * a GLOB path (`*`, `?`, `[` — a `{` brace is deliberately left to the softer
-#     ambiguous-files serialization so `src/{a,b}.py` stays a warning, not a bail),
-#   * a TRAILING ANNOTATION after the path(s) ("(only the pool init, lines 12-40)").
-# An annotated line contributes NOTHING silently: it always surfaces here, so a
+#   * an UNKNOWN LABEL (Delete/Read/`catch-all`/… or a wrong-case `modify:`),
+#   * a GLOB path (`*`, `?`, `[`, `{` — EVERY glob char bails; the brace used to
+#     fall through to a soft ambiguous-files serialization, and that tier is gone),
+#   * a TRAILING ANNOTATION after the path(s) ("(only the pool init, lines 12-40)"),
+#   * an explicitly-marked implementation task that declares NO parseable path.
+# A violating line contributes NOTHING silently: it always surfaces here, so a
 # same-wave write race can never hide behind a parenthetical (2026-07-03 foreign
-# run: the two most contended files silently lost overlap coverage).
+# run: the two most contended files silently lost overlap coverage) — nor behind
+# a Files-less task the compiler cannot see any contention for at all.
 CANONICAL_FILE_LABELS = ("Create", "Modify", "Test", "Test fixture(s)",
                          "Fixture(s)")
+# `catch-all` was the declared-open-write-set construct (#85). The tier that
+# consumed it is gone, so the bullet is now just an unknown label — routed
+# through the same did-you-mean rather than parsed into a phantom construct.
 _LABEL_SUGGEST = {"delete": "Modify", "remove": "Modify", "read": "Test",
-                  "create-or-modify": "Modify", "add": "Create"}
-_FILES_GLOB_CHARS = "*?["
+                  "create-or-modify": "Modify", "add": "Create",
+                  "catch-all": "Modify"}
+_FILES_GLOB_CHARS = "*?[{"
 
 
 # Dispositions whose Files block is exempt from the strict grammar (#91): a
@@ -739,10 +705,6 @@ def _files_violations(task):
     "backtick each path" near-miss, so overlap inference is never blocked by a
     formatting-only miss."""
     out = []
-    if len(task.get("catch_all_raw", [])) > 1:
-        out.append(
-            "Task %s: more than one catch-all bullet — a task declares at "
-            "most one open write set" % task.get("id"))
     for label, rest in task.get("files_raw", []):
         paths = PATH_RE.findall(rest)
         if label not in CANONICAL_FILE_LABELS:
@@ -767,6 +729,20 @@ def _files_violations(task):
                 "  got:  - %s: %s\n"
                 "  fix:  - %s: `%s`   (move the note into the task prose)"
                 % (task.get("id"), label, rest, label, paths[0]))
+    # A Files-LESS implementation task is invisible to contention detection:
+    # with the ambiguous-files tier gone there is no conservative serialization
+    # to fall back on, so it would silently share a wave with whatever it
+    # actually edits. Refuse instead. Keyed on the EXPLICIT `**Type:**` marker
+    # for the same reason `_files_grammar_exempt` is (a heuristic key would let
+    # the empty Files block that CAUSED the gate guess buy its own exemption),
+    # and a `- none` block reaches here identically: it parses to no paths.
+    if (task.get("marker_type") == "implementation"
+            and not (task.get("creates") or task.get("modifies")
+                     or task.get("reads"))):
+        out.append(
+            "Task %s: implementation task declares no file paths under Files: "
+            "— add Create/Modify/Test paths (a Files-less task is invisible to "
+            "contention detection)" % task.get("id"))
     return out
 
 
@@ -791,10 +767,10 @@ def collect_violations(plan_path):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
     pass instead of exiting at the first: Files grammar (_files_violations,
-    which also covers the catch-all-bullet rule) and marker-value validation
-    (currently **Review:** — parse_task raises immediately in the normal compile
-    path; here raise_on_marker_error=False makes it accumulate per task instead
-    of aborting on the first task with a bad marker).
+    which also covers the Files-less-implementation rule) and marker-value
+    validation (currently **Review:** — parse_task raises immediately in the
+    normal compile path; here raise_on_marker_error=False makes it accumulate
+    per task instead of aborting on the first task with a bad marker).
 
     Interface values are NOT grammar-checked: a prose contract description is
     valid documentation and this repo's house style (#85 redirect). The
@@ -910,87 +886,38 @@ def derive_wave_label(tasks):
     return str(len(tasks)) + " parallel tasks"
 
 
-# Overlap disposition for the write-after-write tier (frontier mode, spec
-# docs/superpowers/specs/2026-08-12-frontier-mode-in-engine-design.md §1):
-#   "serialize" — today's rule: two tasks whose overlap sets intersect are
-#                 ordered in document order. Byte-identical to the pre-knob
-#                 compiler on every plan shape.
-#   "fold"      — an eligible overlapping pair KEEPS NO serializing edge; the
-#                 pair is scheduled into one wave and the engine folds the two
+# Overlap disposition — the ROLLBACK KNOB, and nothing else:
+#   "fold"      (default) — two tasks whose declared paths merely overlap are
+#                 NOT ordered; they share a wave and the kernel folds their
 #                 same-file edits at merge time.
-# The shipped default is `fold` (the spec-§5 pass-branch follow-up, adopted
-# after the 2026-08-14 counted A/B: 0.640x wall, 1.111x tokens, all hard gates
-# green — evals/frontier/results/2026-08-14-t15-ab.md). `serialize` remains
-# fully supported and reproduces the pre-flip behavior byte-for-byte.
+#   "serialize" — re-enables the document-order `write-after-write` tier, and
+#                 exactly that tier: every other edge label is identical
+#                 between the two modes.
+# `fold` became the default after the 2026-08-14 counted A/B (0.640x wall,
+# 1.111x tokens, all hard gates green — evals/frontier/results/2026-08-14-t15-ab.md).
 OVERLAP_MODES = ("serialize", "fold")
 OVERLAP_DEFAULT = "fold"
 
 
-class _PathEligibility(dict):
-    """dict[path] -> (eligible: bool, reason: str | None), resolved against
-    `root` and computed lazily on first access, memoised thereafter (one
-    filesystem probe per path, however many pairs share it).
+def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
+    """Returns (edges, conflicts).
 
-    Two checks, no size term (the resolver line cap retired with spec
-    2026-08-18 §1d — the kernel folds on a 1 GiB-stack thread, so a big file
-    is no longer a reason to keep a pair serialized).
-
-    Order of checks: symlink first (`Path.is_symlink()` — never read a
-    broken link's bytes; gitlinks are left to the runtime guard, keeping this
-    compiler subprocess-free); a path that does not exist under `root` is
-    eligible (nothing to inspect — a soon-to-be-created path never forces
-    serialization); otherwise a null byte marks the file non-text, and
-    anything else is eligible.
-    """
-
-    def __init__(self, root):
-        super().__init__()
-        self._root = root
-
-    def __missing__(self, path):
-        full = self._root / path
-        if full.is_symlink():
-            result = (False, "symlink")
-        elif not full.exists():
-            result = (True, None)
-        else:
-            data = full.read_bytes()
-            if b"\x00" in data:
-                result = (False, "non-text (contains a null byte)")
-            else:
-                result = (True, None)
-        self[path] = result
-        return result
-
-
-def _path_eligibility(root):
-    """Factory: a fresh, per-compile memo of `_PathEligibility` over `root`."""
-    return _PathEligibility(root)
-
-
-def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
-    """Returns (edges, conflicts, dropped_pairs).
-
-    `dropped_pairs` holds BOTH orderings of every pair whose
-    `write-after-write` edge the fold mode declined to create; it is empty
-    under `serialize`, which is what makes that mode byte-identical to the
-    pre-knob compiler (the labeling predicate in main() reduces to today's
-    expression literally when the set is empty).
+    Edges are DECLARED-ordering only: marker, text, interface, and the one
+    existence edge write-after-create. Mere same-file overlap orders nothing —
+    unless `overlap_mode == "serialize"`, the rollback knob, which re-adds the
+    document-order `write-after-write` tier and only that tier.
     """
     if overlap_mode not in OVERLAP_MODES:
         raise ValueError("unknown overlap mode: %r" % (overlap_mode,))
     # Edge precedence:
-    # explicit (marker, text) > semantic order-independent (write-after-create,
-    # read-after-write) > document-order heuristics (write-after-write,
-    # ambiguous-files), which yield to any opposing earlier PATH (reachability),
-    # not just a direct reverse edge.
+    # explicit (marker, text) > semantic order-independent (write-after-create)
+    # > the document-order `write-after-write` heuristic (serialize mode only),
+    # which yields to any opposing earlier PATH (reachability), not just a
+    # direct reverse edge.
     # A cycle that survives this precedence is a genuine plan contradiction
     # and stays a loud error.
     ids = {t["id"] for t in impl}
     edges, conflicts, seen = [], [], set()
-    # Pairs whose write-after-write edge fold mode declined to create, in BOTH
-    # orderings (the labeling predicate below iterates every ordered pair).
-    dropped_pairs = set()
     # Fix E: maintain the adjacency map incrementally instead of rebuilding it
     # on every would_cycle call inside the O(N^2) pair loops (measured
     # superlinear blowup >= 80 tasks). add() appends to adj as it appends edges.
@@ -1036,37 +963,6 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
             visited.add(n)
             stack.extend(adj.get(n, []))
         return False
-
-    # Hermetic, memoised per path over the whole compile (spec §1): built once,
-    # consulted by every pair's fold_eligible() call below. `None` when no
-    # `--repo-root` was given — the pre-filter is then INERT and every pair is
-    # eligible (documented property; the runtime materialization guard remains
-    # authoritative for everything a static pre-filter cannot see).
-    path_eligibility = _path_eligibility(repo_root) if repo_root is not None else None
-
-    def fold_eligible(a, b):
-        """Whether the fold path may take this overlapping pair.
-
-        A pair keeps its serializing edge (returns False) when any path in
-        its overlap set — `writes ∪ reads`, both sides — resolved against
-        `repo_root` and existing there, is non-text or a symlink. Size is not
-        a term: the fold thread reaches big files. Every ineligible path is
-        recorded once in `marker_conflicts` (task "", the `type_conflicts`
-        `task:""` precedent), regardless of how many pairs share it —
-        `add_conflict`'s `(task, edge)` dedupe keys on the path alone.
-        """
-        if path_eligibility is None:
-            return True
-        overlap = ((set(a["writes"]) | set(a["reads"]))
-                   | (set(b["writes"]) | set(b["reads"])))
-        result = True
-        for path in sorted(overlap):
-            elig, reason = path_eligibility[path]
-            if not elig:
-                add_conflict("", path, reason + " — pairs kept serialized",
-                              kind="inference")
-                result = False
-        return result
 
     # Tier 1: Explicit — marker edges
     for t in impl:
@@ -1119,26 +1015,23 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
                         "text dependency names a task outside the implementation set "
                         "(unknown id or gate/release/manual) — edge dropped")
 
-    # Tier 2: Semantic, order-independent — write-after-create and read-after-write
+    # Tier 2: Semantic, order-independent — write-after-create. The ONE
+    # existence edge: a task cannot modify a file another task has yet to
+    # create, whatever the document order says.
     for a in impl:
         for b in impl:
             if a["id"] == b["id"]:
                 continue
             if set(a["creates"]) & set(b["modifies"]):
                 add(a["id"], b["id"], "write-after-create")
-            # read-after-write: b reads a file that a writes (no order condition)
-            if set(a["writes"]) & set(b["reads"]):
-                add(a["id"], b["id"], "read-after-write")
 
     # Interface tier (v6, spec 2026-06-16 §1.3). When B Consumes a symbol A
     # Produces (EXACT normalized-token equality — never fuzzy), B depends on A:
-    # add a producer -> consumer edge. Recorded BEFORE the Tier 2.5 prose-
-    # reference loop so that when both would order the same pair, the explicit
-    # Interfaces edge wins the `why` label. The interface signal is the most
+    # add a producer -> consumer edge. The interface signal is the most
     # informative `why` for its pair, so when an earlier tier (marker, file
     # overlap) already recorded the (a, b) pair, its label is PROMOTED to
-    # "interface"; otherwise a fresh edge is added. Like prose-reference the
-    # symbols may not map to files, so it is cycle-guarded.
+    # "interface"; otherwise a fresh edge is added. The symbols may not map to
+    # files, so it is cycle-guarded.
     # Every edge NOT already covered by a Depends-on marker or a file-overlap edge
     # is surfaced as a loud "undeclared dependency" finding: the plan runs
     # correctly AND the author is told their Depends-on was wrong. A Consumes with
@@ -1163,8 +1056,7 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
             declared = a["id"] in b["depends_on"]
             file_overlap = (existing is not None
                             and existing["why"] in ("write-after-create",
-                                                    "write-after-write",
-                                                    "read-after-write"))
+                                                    "write-after-write"))
             if existing is not None:
                 # Pair already ordered (marker / file overlap / earlier tier):
                 # promote its label to the more informative "interface".
@@ -1186,132 +1078,29 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
                     + ("" if added else " (edge already present)"),
                     kind="undeclared-dependency")
 
-    # Tier 2.5: Semantic, order-independent — prose-reference. B's prose names a
-    # file A creates (backticked exact path, basename, or module-stem attribute
-    # like `schema.User`). Eval run mixed-B-2 (2026-06-13) is the motivating
-    # failure: a task spec said "returns a `schema.User`" while declaring
-    # Depends-on: none, waved parallel to the task creating apistub/schema.py,
-    # and its failure cascade-blocked the rest of the diamond. Prose matching is
-    # fuzzier than Files matching, so unlike tier 2 these edges are
-    # cycle-guarded like tier 3, and each NEWLY added edge is surfaced in
-    # marker_conflicts so the Step-3 gate shows the inference.
-    for a in impl:
-        if not a["creates"]:
-            continue
-        for b in impl:
-            if a["id"] == b["id"]:
-                continue
-            desc_hits = prose_references(a["creates"], b["prose_desc"])
-            step_hits = prose_references(a["creates"], b["prose_steps"])
-            hits = desc_hits | step_hits
-            if hits and not would_cycle(a["id"], b["id"]):
-                before = len(edges)
-                add(a["id"], b["id"], "prose-reference")
-                if len(edges) > before:
-                    # Use a distinct key ("inferred:" prefix) so this note coexists
-                    # with the "Depends-on: none overridden" note that add() may have
-                    # emitted for the same edge (both use (task, edge) as the dedup
-                    # key; without the prefix the conflict_seen guard would drop one).
-                    edge = "inferred: " + a["id"] + " -> " + b["id"] + " (prose-reference)"
-                    if desc_hits and not step_hits:
-                        # The reference lives ONLY in a description/Interfaces
-                        # field (no step body uses it): a backticked filename
-                        # there injects a phantom serializing edge — a distinct,
-                        # softer warning class than a procedural step reference.
-                        field = _desc_field_label(a["creates"], b["prose_desc"])
-                        add_conflict(
-                            b["id"], edge,
-                            "description-inferred edge: Task " + b["id"] + "'s "
-                            + field + " backticks "
-                            + ", ".join(sorted(desc_hits)[:3])
-                            + " created by Task " + a["id"]
-                            + " — a filename in a description/Interfaces field "
-                            "injects a serializing edge; declare **Depends-on:** "
-                            + a["id"] + " if it is a real dependency, or rewrite "
-                            "the mention if it is not",
-                            kind="description-inferred")
-                    else:
-                        add_conflict(
-                            b["id"], edge,
-                            "prose-reference edge inferred: task prose references "
-                            + ", ".join(sorted(hits)[:3])
-                            + " created by Task " + a["id"]
-                            + " — declare **Depends-on:** " + a["id"]
-                            + " to make it explicit (or rewrite the mention if it is "
-                            "not a real dependency)",
-                            kind="inference")
-
-    # Tier 3: Document-order heuristics — yield to any opposing earlier PATH.
-    # Each tier-3 edge is reachability-checked against everything added before it
-    # (tiers 1-2 plus earlier tier-3 edges), so tier-3 can never close a cycle;
-    # any surviving cycle is an explicit/semantic contradiction.
-    for a in impl:
-        for b in impl:
-            if a["id"] == b["id"]:
-                continue
-            # write-after-write: the overlap set is (writes union reads) on both
-            # sides. Upstream TDD semantics make a `Test:` path a WRITE (the task
-            # writes the failing test and commits it), so two tasks listing the
-            # same `Test:` path must serialize or they guarantee a merge conflict.
-            # As accepted conservatism this also serializes two pure readers of one
-            # shared fixture. Add only when doc order is forward AND b cannot
-            # already reach a (reachability guard, Bug A).
-            #
-            # Frontier mode (spec §1a): when the knob is `fold` and the pair is
-            # eligible, the edge is DROPPED — at construction, never by
-            # post-hoc filtering, because the `ambiguous-files` and catch-all
-            # tiers below consult reachability through the accumulated
-            # adjacency and an edge removed after the fact would leave those
-            # tasks unordered against peers they must still serialize behind.
-            # Only a pair the loop WOULD have given a new edge is droppable:
-            # forward document order, not already in `seen` (so a marker /
-            # text / interface / semantic edge keeps the pair serialized —
-            # neither dropped nor freed), and not cycle-blocked.
-            a_touch = set(a["writes"]) | set(a["reads"])
-            b_touch = set(b["writes"]) | set(b["reads"])
-            if (a_touch & b_touch
-                    and a["order"] < b["order"]
-                    and (a["id"], b["id"]) not in seen
-                    and not would_cycle(a["id"], b["id"])):
-                if overlap_mode == "fold" and fold_eligible(a, b):
-                    dropped_pairs.add((a["id"], b["id"]))
-                    dropped_pairs.add((b["id"], a["id"]))
-                else:
+    # Tier 3 (`--overlap serialize` ONLY — the rollback knob): document-order
+    # `write-after-write`. The overlap set is (writes union reads) on both
+    # sides, so two tasks listing the same `Test:` path serialize too. Add only
+    # when doc order is forward AND b cannot already reach a (reachability
+    # guard, Bug A), so the tier can never close a cycle.
+    #
+    # Under the shipped `fold` default this loop does not run at all: mere
+    # same-file overlap orders nothing and the kernel folds the two edits at
+    # merge time.
+    if overlap_mode == "serialize":
+        for a in impl:
+            for b in impl:
+                if a["id"] == b["id"]:
+                    continue
+                a_touch = set(a["writes"]) | set(a["reads"])
+                b_touch = set(b["writes"]) | set(b["reads"])
+                if (a_touch & b_touch
+                        and a["order"] < b["order"]
+                        and (a["id"], b["id"]) not in seen
+                        and not would_cycle(a["id"], b["id"])):
                     add(a["id"], b["id"], "write-after-write")
 
-    # ambiguous-files: serialize task T at its document position, yielding to any
-    # opposing earlier path (reachability), not just a direct reverse edge.
-    for t in impl:
-        if t["files_ambiguous"]:
-            for u in impl:
-                if u["id"] == t["id"]:
-                    continue
-                if u["order"] < t["order"] and not would_cycle(u["id"], t["id"]):
-                    add(u["id"], t["id"], "ambiguous-files")
-                elif u["order"] > t["order"] and not would_cycle(t["id"], u["id"]):
-                    add(t["id"], u["id"], "ambiguous-files")
-
-    # Catch-all tier (#85): `- catch-all: <prose>` declares an OPEN write set
-    # that cannot be scoped to concrete paths, so it conflicts with every
-    # other implementation task for scheduling — it must never share a wave
-    # with anything. Order every other task before it, UNLESS an earlier tier
-    # (or an earlier catch-all pass) already ordered the catch-all task
-    # before that other task — would_cycle(u, t) is True exactly when t
-    # already (transitively) reaches u, i.e. the plan already put the
-    # catch-all task first; that existing order is respected rather than
-    # forced into a cycle. Runs last, after every file-overlap tier, so it
-    # sees the complete edge set.
-    for t in impl:
-        if not t.get("catch_all"):
-            continue
-        for u in impl:
-            if u["id"] == t["id"]:
-                continue
-            if would_cycle(u["id"], t["id"]):
-                continue  # t already precedes u — respect the existing order
-            add(u["id"], t["id"], "catch-all")
-
-    return edges, conflicts, dropped_pairs
+    return edges, conflicts
 
 
 def find_cycle(members, edges):
@@ -1392,25 +1181,16 @@ def main(argv=None):
                          "--emit-launch/--emit-args/--run-dir.")
     ap.add_argument("--overlap", choices=OVERLAP_MODES, default=OVERLAP_DEFAULT,
                     help="how two tasks whose declared paths overlap are "
-                         "scheduled: 'serialize' (the default) orders them in "
-                         "document order via a write-after-write edge; 'fold' "
-                         "drops that edge for eligible pairs so they share a "
-                         "wave and the engine folds their same-file edits at "
-                         "merge time. Every other edge label is untouched.")
+                         "scheduled: 'fold' (the default) does not order them "
+                         "at all — they share a wave and the kernel folds "
+                         "their same-file edits at merge time; 'serialize' is "
+                         "the rollback knob, re-adding the document-order "
+                         "write-after-write edge and nothing else. Every "
+                         "other edge label is identical in both modes.")
     ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
                          "routes all scratch there")
-    ap.add_argument("--repo-root", type=Path, default=None, dest="repo_root",
-                    metavar="PATH",
-                    help="repo root the `--overlap fold` eligibility "
-                         "pre-filter probes: a pair keeps its serializing "
-                         "edge when a path in its overlap set, resolved "
-                         "against PATH and existing there, is non-text or a "
-                         "symlink (size is not a term). "
-                         "Without --repo-root the pre-filter is inert and "
-                         "every pair is eligible; ignored under "
-                         "--overlap serialize.")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1525,6 +1305,13 @@ def main(argv=None):
                  + ") — markers go immediately after the task heading"}
         for t in tasks if t.get("late_markers")]
 
+    # A **Commutes:** path outside the task's own Files: block (spec §2b) is a
+    # rendered marker conflict, never a compile error — one entry per
+    # offending path, since a task may declare several.
+    type_conflicts.extend(
+        {"task": t["id"], "edge": "", "note": note}
+        for t in tasks for note in t.get("commutes_conflicts", []))
+
     acceptance = parse_acceptance(plan_text)
     global_constraints = parse_global_constraints(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
@@ -1552,22 +1339,10 @@ def main(argv=None):
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the runbook and gates "
               "still apply.", file=sys.stderr)
-    edges, conflicts, dropped_pairs = build_edges(
-        impl, overlap_mode=args.overlap, repo_root=args.repo_root)
+    edges, conflicts = build_edges(impl, overlap_mode=args.overlap)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None
-    # Iterates EVERY ordered pair, exactly as before the knob. Iterating only
-    # the kept-edge pairs would delete the `False` terms that disjoint pairs
-    # contribute and flip ordinary plans to `sequential` in both modes;
-    # iterating "all minus dropped" would make the empty set vacuously True.
-    # `dropped_pairs` is empty under `--overlap serialize`, so the conjunct is
-    # constantly True there and the expression reduces to today's literally —
-    # byte-identity by construction (spec §1b).
-    fully_overlapping = (len(impl) > 1 and all(
-        (set(a["writes"]) & set(b["writes"])
-         and (a["id"], b["id"]) not in dropped_pairs)
-        for a in impl for b in impl if a["id"] != b["id"]))
     # Fix B: a gates/release-only plan has waves: [] — there is nothing to
     # sequence, so skip the degrade entirely (the "no implementation tasks"
     # stderr warning above already covers the situation). Without this guard the
@@ -1575,16 +1350,12 @@ def main(argv=None):
     # `Sequential mode: 0 implementation tasks` against an empty wave list.
     # The single-task trigger is `== 1`, not `<= 2`: a 2-impl-task plan with
     # disjoint writes is genuinely parallelizable into one wave, so degrading it
-    # to two single-task waves would be needless serialization.
-    # The label is the only effect: the flatten that used to follow was dead
-    # code (spec §1b). Whenever `fully_overlapping` fires, the tier-3 loop has
-    # already built a tournament of write-after-write edges and layer() has
-    # returned singleton waves; the `len(impl) == 1` trigger is equally a
-    # no-op on a one-wave list. Deleting it changes no compile.
-    if impl and (len(impl) == 1 or fully_overlapping):
+    # to two single-task waves would be needless serialization. The
+    # fully-overlapping-writes trigger retired with the ordering-guess tiers:
+    # under `fold` overlapping writes are exactly what SHARES a wave.
+    if impl and len(impl) == 1:
         mode = "sequential"
-        degrade = f"Sequential mode: {len(impl)} implementation tasks" + (
-            ", fully overlapping writes" if fully_overlapping else "")
+        degrade = f"Sequential mode: {len(impl)} implementation tasks"
 
     # Every conflict entry carries a `kind` ("conflict" needs human attention,
     # "inference" is a benign auto-inferred edge). type_conflicts are all genuine
@@ -1616,9 +1387,12 @@ def main(argv=None):
           # marker, "lean" when unmarked) and never touched.
           "tier": None,
           "review": by_id[tid].get("review") or "lean",
-          # Declared open write set (#85, additive — None when the task has
-          # no `- catch-all:` bullet).
-          "catchAll": by_id[tid].get("catch_all")} for tid in wave]
+          # Contention-detection inputs (spec §2b): writes is sorted
+          # creates ∪ modifies (Test: paths excluded — a task never "writes"
+          # what it only reads/runs); commutes is the task's own validated
+          # **Commutes:** declaration, [] when undeclared.
+          "writes": by_id[tid].get("writes", []),
+          "commutes": by_id[tid].get("commutes", [])} for tid in wave]
         for wave in waves]
 
     # One deterministic label per wave (same order as waves/launch_waves). The
@@ -1648,17 +1422,18 @@ def main(argv=None):
         # agent reads its own entry by id from this file — bodies never ride
         # inline in the Workflow call, and never transit a model.
         launch_payload = {
+            # No knob slots here (#89): the engine cannot read this file —
+            # tier/review ride the args wave entries. Task agents read only
+            # their body + context from this file.
             "tasks": [{"id": tid, "title": by_id[tid]["title"],
                        "body": by_id[tid]["body"], "files": _files_for(by_id[tid]),
                        "depends_on": by_id[tid]["depends_on"],
                        "interfaces": by_id[tid]["interfaces"],
-                       # No knob slots here (#89): the engine cannot read this
-                       # file — tier/review ride the args wave entries. Task
-                       # agents read only their body + context from this file.
-                       # Declared open write set (#85) — shown to the
-                       # implementer prompt so a catch-all task's scope is
-                       # never silently invisible. None when absent.
-                       "catchAll": by_id[tid].get("catch_all")}
+                       # Same contention-detection fields as launch_waves
+                       # (spec §2b) — kept in sync so a consumer reading
+                       # either file sees the same writes/commutes per task.
+                       "writes": by_id[tid].get("writes", []),
+                       "commutes": by_id[tid].get("commutes", [])}
                       for wave in waves for tid in wave],
             "waves": waves,
             "waveLabels": wave_labels,

@@ -38,6 +38,30 @@ def test_contract_review_marker_lives_in_marker_syntax_block():
     assert "lean" in syntax
 
 
+def test_contract_commutes_marker_lives_in_marker_syntax_block():
+    # `**Commutes:**` is documented as an extension of the existing
+    # MARKER_SYNTAX block (same discipline as **Review:**), so the mirror pin
+    # in test_ultraplan_skill.py carries it into the authoring skill too.
+    blocks = contract_blocks()
+    syntax = blocks["MARKER_SYNTAX"]
+    assert "**Commutes:**" in syntax
+    assert "own `**Files:**`" in syntax          # the own-Files validation rule
+    assert "marker conflict" in syntax           # a stray path is never a compile error
+
+
+DELETED_EDGE_LABELS = ("read-after-write", "prose-reference", "ambiguous-files",
+                       "description-inferred")
+
+
+def test_contract_no_longer_documents_the_deleted_edge_tiers():
+    # Kept `why` vocabulary: marker | text | interface | write-after-create
+    # (+ write-after-write under `--overlap serialize`). The contract doc must
+    # not keep advertising tiers the compiler no longer emits.
+    text = CONTRACT.read_text()
+    for label in DELETED_EDGE_LABELS:
+        assert label not in text, f"plan-markers.md still documents deleted edge tier {label!r}"
+
+
 def test_contract_documents_review_marker_semantics():
     text = CONTRACT.read_text()
     assert "**Review:**" in text

@@ -88,6 +88,40 @@ the continued fold and silently clobber the next task's contribution. Every
 narration is fresh against the frontier it was read off, because folding
 stops at the conflict that opened it.
 
+### Auto-union (the assume rung)
+
+A `resolve` event is also what the CLI writes when it resolves a conflict
+**itself**, with no resolver dispatch. `fold`/`resolve --commutes
+<taskId>=<path1,path2,...>` (repeatable) declares a task's commutative paths.
+When a conflict opens on a path that **every** writer declared — the incoming
+task, plus every already-folded task whose `base..head` diff touches it — and
+**every segment of every hunk is `added`**, the CLI applies the kernel's own
+merged block body (marker lines dropped) through the same splice +
+`apply_resolution` path a reply takes. Any `deleted` segment anywhere in the
+conflict, any undeclared writer, or any non-`lines`/`add/add` kind falls back
+to ordinary dispatch — with the one-line `contract:` header in the hunks file
+whenever every writer declared, whether or not the union applied.
+
+The safety ground is **weave-inertness**, not the self-checks: the union reply
+byte-equals the frontier's current visible lines, and `update_state` is the
+identity on visible-equal lines, so the live fold sequence stays equal to the
+raw one the completion self-checks gate.
+
+The event is an ordinary `resolve` — rehydrate, replay, the K-gates and the
+epoch idempotency guard are untouched. What the auto-union adds is recorded
+in two places, both outside the log:
+
+- the `conflicts.json` entry gains `"autoResolved": true` and **keeps
+  `dispatchable: true`**; its narration and hunks brief are still written, so
+  the audit trail is unchanged;
+- every `fold`/`resolve` stdout reply that carries `conflicts` also carries
+  `"autoResolved": <int>` — the count auto-resolved **in that CLI call**, `0`
+  when none.
+
+A fold no longer stops on a conflict it auto-resolved: an auto-resolved entry
+never appears in `open`, so a fold whose conflicts all union keeps folding.
+Dispatch stops and parks are unchanged.
+
 Recorded, that same resolution re-applies **unconditionally**: the log
 records what actually applied, and re-deciding it would silently drop a
 resolution the run really made. Rehydration appends resolve events to the
@@ -100,8 +134,9 @@ The fold log records what the merge state *did*. It is not the wave's
 scratchpad:
 
 - **conflicts and parks** — the narration files (`conflict-<i>.txt`), their
-  hunk-scoped briefs (`conflict-<i>.hunks.txt`) and every `dispatchable()`
-  verdict, including park reasons — live in the conflicts index beside the log;
+  hunk-scoped briefs (`conflict-<i>.hunks.txt`), every `dispatchable()`
+  verdict including park reasons, and the `autoResolved` flag — live in the
+  conflicts index beside the log;
 - **fold sizing** — `fold_stats.json` beside the log, `{"maxLines": [...]}`,
   one entry per CLI call that folded: the largest text file that call merged.
   It is the one fact nothing else records, which is why it is a file of its
