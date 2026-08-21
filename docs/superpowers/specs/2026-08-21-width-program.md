@@ -1,6 +1,6 @@
 # The Width Program — fleet-scale operation: wide plans, distributed sealed drains, run-level fold, coordinated by a TinyBase store
 
-**Status: SPEC (rev 4, trim-review rounds 1–3 complete and TERMINATED) — the destination of wayfinder map
+**Status: SPEC (rev 4) — OPERATOR-APPROVED 2026-08-21 (approval adjudicated trim rounds 1–3; all findings adopted or answered). The destination of wayfinder map
 #174, whose 9 tickets were resolved 2026-08-21 and whose Decisions list this
 document compiles into phases. Sibling to
 `2026-08-18-fold-native-authoring-program.md` (the enabler program, shipped
