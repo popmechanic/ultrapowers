@@ -187,56 +187,6 @@ def test_marker_edge_orders_two_tasks_topologically(tmp_path):
     assert out["waves"] == [["2"], ["1"]]   # topological, not document, order
 
 
-def test_test_paths_generate_read_after_write_edge(tmp_path):
-    plan = tmp_path / "reads.md"
-    plan.write_text(
-        "# Plan: Reads\n\n"
-        "### Task 1: writer\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `data.json`\n\n- [ ] **Step 1:** write data\n\n"
-        "### Task 2: reader\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `reader.py`\n- Test: `data.json`\n\n- [ ] **Step 1:** consume data\n\n"
-        "### Task 3: bystander\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `other.txt`\n\n- [ ] **Step 1:** write other\n"
-    )
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "2", "why": "read-after-write"} in out["dag_edges"]
-    assert out["waves"] == [["1", "3"], ["2"]]
-
-
-def test_missing_files_block_is_conservatively_serialized(tmp_path):
-    plan = tmp_path / "ambig.md"
-    plan.write_text(
-        "# Plan: Ambiguous\n\n"
-        "### Task 1: first\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `one.txt`\n\n- [ ] **Step 1:** write one\n\n"
-        "### Task 2: mystery\n\n**Type:** implementation\n\n"
-        "- [ ] **Step 1:** refactor something unspecified\n\n"
-        "### Task 3: third\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `three.txt`\n\n- [ ] **Step 1:** write three\n"
-    )
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "2", "why": "ambiguous-files"} in out["dag_edges"]
-    assert {"from": "2", "to": "3", "why": "ambiguous-files"} in out["dag_edges"]
-    assert out["waves"] == [["1"], ["2"], ["3"]]
-
-
-def test_glob_paths_are_ambiguous(tmp_path):
-    # #85: a `*` glob in a Files path is now a LOUD compile error (enumerate the
-    # concrete paths), not a silent ambiguous-files serialization. Same scenario
-    # as the old tolerant pin, flipped to the strict grammar.
-    plan = tmp_path / "glob.md"
-    plan.write_text(
-        "# Plan: Glob\n\n"
-        "### Task 1: first\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `one.txt`\n\n- [ ] **Step 1:** write one\n\n"
-        "### Task 2: globby\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `src/*.ts`\n\n- [ ] **Step 1:** sweep the sources\n"
-    )
-    p = compile_plan_raw(plan)
-    assert p.returncode == 1
-    assert "src/*.ts" in p.stderr and "enumerate" in p.stderr.lower()
-
-
 def test_duplicate_task_ids_are_a_loud_error(tmp_path):
     plan = tmp_path / "dup.md"
     plan.write_text(
@@ -296,23 +246,6 @@ def test_backward_write_after_create_compiles_without_cycle(tmp_path):
     assert out["waves"] == [["B"], ["A"]]
 
 
-def test_backward_read_after_write_with_shared_write_compiles(tmp_path):
-    plan = tmp_path / "raw-back.md"
-    plan.write_text(
-        "# Plan: RAW backward\n\n"
-        "### Task A: reader first\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `reader.py`\n- Modify: `shared.txt`\n- Test: `data.json`\n\n"
-        "- [ ] **Step 1:** consume data\n\n"
-        "### Task B: writer second\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `data.json`\n- Modify: `shared.txt`\n\n"
-        "- [ ] **Step 1:** produce data\n"
-    )
-    out = compile_plan(plan)
-    assert {"from": "B", "to": "A", "why": "read-after-write"} in out["dag_edges"]
-    assert not any(e["from"] == "A" and e["to"] == "B" for e in out["dag_edges"])
-    assert out["waves"] == [["B"], ["A"]]
-
-
 def test_marker_edge_beats_doc_order_write_after_write(tmp_path):
     plan = tmp_path / "marker-vs-waw.md"
     plan.write_text(
@@ -330,11 +263,14 @@ def test_marker_edge_beats_doc_order_write_after_write(tmp_path):
     assert out["waves"] == [["B"], ["A"]]
 
 
-def test_text_edge_beats_ambiguous_files_position(tmp_path):
-    plan = tmp_path / "text-vs-ambig.md"
+def test_text_edge_beats_document_order(tmp_path):
+    # A prose "runs after Task B" in the FIRST task orders it behind the
+    # second: an explicit text edge wins over document position.
+    plan = tmp_path / "text-vs-order.md"
     plan.write_text(
-        "# Plan: Text beats ambiguous\n\n"
-        "### Task A: ambiguous early\n\n**Type:** implementation\n\n"
+        "# Plan: Text beats document order\n\n"
+        "### Task A: early in the document\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Modify: `a.py`\n\n"
         "- [ ] **Step 1:** refactor, runs after Task B finishes\n\n"
         "### Task B: concrete later\n\n**Type:** implementation\n\n"
         "**Files:**\n- Create: `g.py`\n\n- [ ] **Step 1:** create g\n"
@@ -346,13 +282,16 @@ def test_text_edge_beats_ambiguous_files_position(tmp_path):
 
 
 def test_genuine_cycle_still_errors(tmp_path):
+    # Each task creates the file the other modifies, so the surviving semantic
+    # tier (write-after-create — un-cycle-guarded by design) records both
+    # directions. That is a real plan contradiction, not a heuristic one.
     plan = tmp_path / "genuine.md"
     plan.write_text(
         "# Plan: Genuine cycle\n\n"
         "### Task A: needs B's file\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.out`\n- Test: `b.out`\n\n- [ ] **Step 1:** a\n\n"
+        "**Files:**\n- Create: `a.out`\n- Modify: `b.out`\n\n- [ ] **Step 1:** a\n\n"
         "### Task B: needs A's file\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.out`\n- Test: `a.out`\n\n- [ ] **Step 1:** b\n"
+        "**Files:**\n- Create: `b.out`\n- Modify: `a.out`\n\n- [ ] **Step 1:** b\n"
     )
     p = compile_plan_raw(plan)
     assert p.returncode == 1
@@ -422,19 +361,6 @@ def test_unbackticked_path_drops_trailing_prose(tmp_path):
     assert {"from": "A", "to": "B", "why": "write-after-create"} in out["dag_edges"]
 
 
-def test_brace_glob_flags_ambiguous(tmp_path):
-    plan = tmp_path / "brace.md"
-    plan.write_text(
-        "# Plan: Brace glob\n\n"
-        "### Task A: first\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `one.txt`\n\n- [ ] **Step 1:** one\n\n"
-        "### Task B: brace glob\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `src/{a,b}.py`\n\n- [ ] **Step 1:** sweep\n"
-    )
-    out = compile_plan(plan)
-    assert {"from": "A", "to": "B", "why": "ambiguous-files"} in out["dag_edges"]
-
-
 def test_wave_labels_are_derived_per_wave(tmp_path):
     # compile emits a deterministic, meaningful label per wave (single source the
     # engine reads via args.waveLabels and the swarm viewer reads from build_dag).
@@ -468,19 +394,6 @@ def test_zero_implementation_plan_warns_loudly(tmp_path):
     assert "no implementation tasks" in p.stderr
     import json as _json
     assert _json.loads(p.stdout)["waves"] == []
-
-
-def test_fully_overlapping_writes_degrade_and_reason(tmp_path):
-    plan = tmp_path / "overlap.md"
-    body = "".join(
-        "### Task {i}: writer {i}\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `same.txt`\n\n- [ ] **Step 1:** edit\n\n".replace("{i}", i)
-        for i in ("A", "B", "C"))
-    plan.write_text("# Plan: Overlap\n\n" + body)
-    out = compile_plan_serialize(plan)
-    assert out["mode"] == "sequential"
-    assert out["degrade_reason"] == "Sequential mode: 3 implementation tasks, fully overlapping writes"
-    assert out["waves"] == [["A"], ["B"], ["C"]]
 
 
 def test_doc_order_edge_yields_to_transitive_marker_path(tmp_path):
@@ -537,25 +450,11 @@ def test_checkbox_step_shaped_like_files_line_adds_no_writes(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert "b.txt" not in by_id["A"]["writes"]
-    # Task A's prose mentions `b.txt` (even as a negation); the prose-reference
-    # rule infers B -> A because B creates b.txt and A's prose backticks it.
-    assert {"from": "B", "to": "A", "why": "prose-reference"} in out["dag_edges"]
-
-
-def test_shared_test_path_serializes(tmp_path):
-    plan = tmp_path / "sharedtest.md"
-    plan.write_text(
-        "# Plan: Shared test file\n\n"
-        "### Task A: first feature\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `feat_a.py`\n- Test: `tests/test_shared.py`\n\n"
-        "- [ ] **Step 1:** a\n\n"
-        "### Task B: second feature\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `feat_b.py`\n- Test: `tests/test_shared.py`\n\n"
-        "- [ ] **Step 1:** b\n"
-    )
-    out = compile_plan_serialize(plan)
-    assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
-    assert out["waves"] == [["A"], ["B"]]
+    # Task A's prose mentions `b.txt` (as a negation, no less). A backticked
+    # filename in prose orders nothing: the compiler reads Files blocks, not
+    # sentences, so the two tasks stay independent and share a wave.
+    assert out["dag_edges"] == []
+    assert out["waves"] == [["A", "B"]]
 
 
 def test_text_dependency_outside_impl_set_surfaces_conflict(tmp_path):
@@ -639,20 +538,6 @@ def test_task_title_does_not_create_text_edge(tmp_path):
     out = compile_plan(plan)
     assert not any(e["why"] == "text" for e in out["dag_edges"])
     assert out["waves"] == [["1", "2"]]
-
-
-def test_line_ranged_paths_strip_to_overlap(tmp_path):
-    plan = tmp_path / "ranged.md"
-    plan.write_text(
-        "# Plan: Ranged\n\n"
-        "### Task A: edit top\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `src/existing.py:123-145`\n\n- [ ] **Step 1:** top\n\n"
-        "### Task B: edit bottom\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `src/existing.py:200-260`\n\n- [ ] **Step 1:** bottom\n"
-    )
-    out = compile_plan_serialize(plan)
-    assert {"from": "A", "to": "B", "why": "write-after-write"} in out["dag_edges"]
-    assert out["waves"] == [["A"], ["B"]]
 
 
 def test_multiple_depends_on_lines_accumulate(tmp_path):
@@ -880,12 +765,11 @@ def test_blank_line_closes_the_files_block(tmp_path):
         "**Files:**\n- Create: `x.txt`\n\n- [ ] **Step 1:** b\n"
     )
     out = compile_plan(plan)
+    by_id = {t["id"]: t for t in out["tasks"]}
     # The dash bullet after the blank line is prose, not a Files entry: no
-    # phantom 'run' or 'x.txt' read for task A. However, task A's prose does
-    # backtick-reference `x.txt` which task B creates — the prose-reference
-    # rule correctly infers B -> A (A needs x.txt to test against).
-    assert {"from": "B", "to": "A", "why": "prose-reference"} in out["dag_edges"]
-    assert not any(e["why"] == "read-after-write" for e in out["dag_edges"])
+    # phantom 'run' or 'x.txt' read for task A — so nothing orders the pair.
+    assert by_id["A"]["writes"] == ["a.txt"]
+    assert out["dag_edges"] == []
 
 
 def test_override_conflict_edge_field_carries_why_label(tmp_path):
@@ -902,7 +786,7 @@ def test_override_conflict_edge_field_carries_why_label(tmp_path):
     out = compile_plan(plan)
     override = [c for c in out["marker_conflicts"] if "overridden" in c["note"]]
     assert override and _re.fullmatch(
-        r"[A-Za-z0-9]+ -> [A-Za-z0-9]+ \((write-after-create|write-after-write|read-after-write|text|ambiguous-files)\)",
+        r"[A-Za-z0-9]+ -> [A-Za-z0-9]+ \((write-after-create|write-after-write|text|interface)\)",
         override[0]["edge"])
 
 
@@ -1136,28 +1020,12 @@ def test_prosey_unbackticked_value_is_not_a_phantom_path(tmp_path):
         "### Task 2: other\n\n**Type:** implementation\n\n"
         "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
     )
-    out = compile_plan(plan)
-    # 'run' must not become a phantom read path: with no real paths task 1 stays
-    # AMBIGUOUS (conservative ambiguous-files serialization).
-    assert any(e["why"] == "ambiguous-files" for e in out["dag_edges"])
-    assert not any(e["why"] == "read-after-write" for e in out["dag_edges"])
-
-
-def test_glob_ambiguity_is_explained_in_conflicts(tmp_path):
-    # #85: a bracket route (`app/[slug]/page.tsx`) reads as a glob and is now a
-    # LOUD compile error naming the path and telling the author to enumerate,
-    # not a soft ambiguous-files conflict. Same scenario, flipped to strict.
-    plan = tmp_path / "globwhy.md"
-    plan.write_text(
-        "# Plan: Glob why\n\n"
-        "### Task 1: bracket route\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `app/[slug]/page.tsx`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 2: other\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
-    )
     p = compile_plan_raw(plan)
+    # 'run' must not become a phantom read path — and the proof is that the
+    # Files-less refusal fires on task 1: had the prose token been admitted,
+    # the task would carry a path and compile.
     assert p.returncode == 1
-    assert "app/[slug]/page.tsx" in p.stderr and "enumerate" in p.stderr.lower()
+    assert "Task 1: implementation task declares no file paths" in p.stderr
 
 
 def test_all_wrong_level_plan_gets_the_heading_diagnostic(tmp_path):
@@ -1197,8 +1065,8 @@ def test_inline_files_header_backticked_paths_parse(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == ["x.py", "y.py"]
-    # Disjoint concrete paths -> no ambiguous-files serialization, one wave:
-    assert not any(e["why"] == "ambiguous-files" for e in out["dag_edges"])
+    # Disjoint concrete paths -> nothing orders the pair, one wave:
+    assert out["dag_edges"] == []
     assert out["waves"] == [["1", "2"]]
 
 
@@ -1210,103 +1078,9 @@ def test_inline_files_header_prose_value_has_no_writes(tmp_path):
     )
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["writes"] == []          # falls to ambiguous-files as before
-
-
-PROSE_REF_PLAN = """# Demo Implementation Plan
-
-### Task 1: User schema
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Create: `apistub/schema.py`
-- Test: `tests/test_schema.py`
-
-- [ ] **Step 1:** Define the `User` dataclass.
-
-### Task 4: In-memory store
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Create: `apistub/store.py`
-- Test: `tests/test_store.py`
-
-- [ ] **Step 1:** `add(name, email)` creates and returns a `schema.User` with an auto-incrementing id.
-"""
-
-
-def test_prose_reference_edge_orders_creator_before_referencer(tmp_path):
-    plan = tmp_path / "plan.md"
-    plan.write_text(PROSE_REF_PLAN)
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "4", "why": "prose-reference"} in out["dag_edges"]
-    assert out["waves"] == [["1"], ["4"]]
-    notes = " ".join(c["note"] for c in out["marker_conflicts"])
-    # the inference itself is surfaced, and the authored `none` override too
-    assert "prose-reference" in notes
-    assert "Depends-on: none overridden" in notes
-
-
-def test_prose_reference_matches_basename_and_full_path(tmp_path):
-    plan = tmp_path / "plan.md"
-    plan.write_text(PROSE_REF_PLAN.replace(
-        "returns a `schema.User`", "import `apistub/schema.py` and `schema.py`"))
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "4", "why": "prose-reference"} in out["dag_edges"]
-
-
-def test_prose_reference_dedupes_against_declared_marker(tmp_path):
-    plan = tmp_path / "plan.md"
-    plan.write_text(PROSE_REF_PLAN.replace(
-        "**Depends-on:** none\n\n**Files:**\n- Create: `apistub/store.py`",
-        "**Depends-on:** 1\n\n**Files:**\n- Create: `apistub/store.py`"))
-    out = compile_plan(plan)
-    whys = [e["why"] for e in out["dag_edges"]]
-    assert "marker" in whys
-    assert "prose-reference" not in whys          # deduped by the seen-pair guard
-    assert out["marker_conflicts"] == []          # nothing newly inferred -> no note
-
-
-def test_prose_reference_ignores_fenced_examples(tmp_path):
-    plan = tmp_path / "plan.md"
-    fenced = PROSE_REF_PLAN.replace(
-        "- [ ] **Step 1:** `add(name, email)` creates and returns a `schema.User` with an auto-incrementing id.",
-        "- [ ] **Step 1:** Implement the store. Example output:\n\n```\nuser = schema.User(id=1)\n```")
-    plan.write_text(fenced)
-    out = compile_plan(plan)
-    assert all(e["why"] != "prose-reference" for e in out["dag_edges"])
-
-
-def test_prose_reference_short_stem_requires_exact_or_basename(tmp_path):
-    # stem 'a' (from a.txt) is below the minimum stem length: `a.something`
-    # must NOT match, but the exact backticked filename `a.txt` must.
-    plan = tmp_path / "plan.md"
-    plan.write_text("""# Demo Implementation Plan
-
-### Task 1: Alpha
-
-**Type:** implementation
-
-**Files:**
-- Create: `a.txt`
-
-- [ ] **Step 1:** Write `alpha` to the file.
-
-### Task 2: Beta
-
-**Type:** implementation
-
-**Files:**
-- Create: `b.txt`
-
-- [ ] **Step 1:** Write `a.member` style prose and copy the header from `a.txt`.
-""")
-    out = compile_plan(plan)
-    assert {"from": "1", "to": "2", "why": "prose-reference"} in out["dag_edges"]
+    # No **Type:** marker, so the heuristic classifier owns Task 1 and the
+    # Files-less refusal (which keys on the explicit marker) does not fire.
+    assert by_id["1"]["writes"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1449,8 +1223,8 @@ def test_modify_function_names_and_routes_are_not_writes(tmp_path):
     assert "cmd_apply_create" not in by_id["1"]["writes"]
     assert "_build_parser" not in by_id["1"]["writes"]
     assert not any("/api/" in w for w in by_id["1"]["writes"])
-    # The two tasks edit disjoint real files -> no fabricated overlap edge.
-    assert not any(e["why"] == "write-after-write" for e in out["dag_edges"])
+    # The two tasks edit disjoint real files -> no fabricated edge of ANY kind.
+    assert out["dag_edges"] == []
     assert out["waves"] == [["1", "2"]]
 
 
@@ -1489,20 +1263,24 @@ def test_dotted_attribute_ref_is_not_a_write(tmp_path):
     out = compile_plan(plan)
     by_id = {t["id"]: t for t in out["tasks"]}
     assert by_id["1"]["writes"] == ["apistub/schema.py"]
+    # ... and the dropped identifiers fabricate no edge of any kind.
+    assert out["dag_edges"] == []
 
 
 def test_inline_files_all_nonpath_tokens_have_no_writes(tmp_path):
     # An inline **Files:** line whose backticked tokens are all non-path
-    # identifiers contributes no writes (falls to ambiguous-files).
+    # identifiers contributes no writes — so a marked implementation task
+    # written that way is refused as Files-less rather than compiling with an
+    # invisible write set.
     plan = tmp_path / "inlinemiss.md"
     plan.write_text(
         "# Plan: Inline nonpath\n\n"
         "### Task 1: only identifiers\n\n**Type:** implementation\n\n"
         "**Files:** `cmd_foo` `cmd_bar`\n\n- [ ] **Step 1:** a\n"
     )
-    out = compile_plan(plan)
-    by_id = {t["id"]: t for t in out["tasks"]}
-    assert by_id["1"]["writes"] == []
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1
+    assert "Task 1: implementation task declares no file paths" in p.stderr
 
 
 def test_no_space_wrong_level_heading_gets_three_hash_hint(tmp_path):
@@ -2128,33 +1906,6 @@ def test_empty_writes_buildqa_task_classifies_as_gate():
 # marker header block; this mirrors the convention used throughout this file.)
 # ---------------------------------------------------------------------------
 
-def test_description_inferred_edge_has_distinct_kind():
-    plan = '''# Plan: description-inferred edge
-
-### Task 1: Ledger
-**Type:** implementation
-
-**Files:**
-- Create: `merge_ledger.py`
-
-- [ ] write it
-
-### Task 2: Reader
-**Type:** implementation
-
-**Files:**
-- Create: `reader.py`
-
-**Interfaces:**
-- Produces: a reader that complements `merge_ledger.py` by role.
-
-- [ ] write it
-'''
-    out = compile_plan_text(plan)
-    desc_edges = [c for c in out["marker_conflicts"] if c.get("kind") == "description-inferred"]
-    assert desc_edges, "a backticked filename in a description must warn as description-inferred"
-
-
 def test_zero_markers_plan_flags_all_heuristic():
     plan = '''# Plan: zero markers
 
@@ -2230,27 +1981,6 @@ def test_bare_none_files_entry_is_silent():
     assert not any(
         "None" in (c.get("note", "") + c.get("edge", ""))
         for c in out["marker_conflicts"])
-
-
-def test_uppercase_extension_paths_serialize_same_file_writers(tmp_path):
-    """Fable review HIGH finding: `Config.YAML` (uppercase ext, no slash) was
-    dropped from write-sets, so two tasks modifying it waved in parallel."""
-    plan = tmp_path / "p.md"
-    plan.write_text(
-        "# Plan: Upper\n\n**Acceptance:** waived — inline\n\n"
-        "### Task A: writer one\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `Config.YAML`\n- Modify: `a_only.py`\n\n"
-        "- [ ] **Step 1:** edit config\n\n"
-        "### Task B: writer two\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Modify: `Config.YAML`\n- Modify: `b_only.py`\n\n"
-        "- [ ] **Step 1:** edit config again\n")
-    out = compile_plan_serialize(plan)
-    a = next(t for t in out["tasks"] if t["id"] == "A")
-    b = next(t for t in out["tasks"] if t["id"] == "B")
-    assert "Config.YAML" in a["writes"] and "Config.YAML" in b["writes"]
-    assert any(e["from"] == "A" and e["to"] == "B" and e["why"] == "write-after-write"
-               for e in out["dag_edges"])
-    assert out["waves"] == [["A"], ["B"]]
 
 
 def test_mixed_case_attr_ref_still_dropped_from_files(tmp_path):
@@ -2483,121 +2213,6 @@ def test_duplicate_review_marker_is_a_compile_error(tmp_path):
     assert "duplicate" in p.stderr.lower() and "Task 1" in p.stderr
 
 
-# ---------------------------------------------------------------------------
-# Task 3 (grammar-hardening plan, issue #85): the catch-all Files construct.
-# `- catch-all: <prose>` declares an open write set the author cannot
-# enumerate as concrete paths — the task must never share a wave with any
-# other implementation task, and more than one bullet per task is a
-# violation.
-# ---------------------------------------------------------------------------
-
-CATCHALL_PLAN = """# P
-
-**Acceptance:** suite — test
-
-### Task 1: Independent A
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Modify: `src/a.py`
-
-- [ ] **Step 1: do it**
-
-### Task 2: Re-pointer sweep
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Modify: `docs/manual.md`
-- catch-all: any doc-pinning test the full suite shows red — reconcile each pin preserving its semantics
-
-- [ ] **Step 1: do it**
-
-### Task 3: Independent B
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Modify: `src/b.py`
-
-- [ ] **Step 1: do it**
-"""
-
-
-def test_catch_all_parses_and_is_not_a_violation():
-    out = compile_plan_text(CATCHALL_PLAN)  # compiles loudly-clean
-    assert out is not None
-
-
-def test_catch_all_task_never_shares_a_wave():
-    # 2026-07-03 home-run regression: a catch-all task was safe only because
-    # it happened to ride the serial tail; now it is serial by construction.
-    out = compile_plan_text(CATCHALL_PLAN)
-    for wave in out["waves"]:
-        if "2" in wave:
-            assert wave == ["2"]
-
-
-def test_second_catch_all_bullet_is_a_violation():
-    doubled = CATCHALL_PLAN.replace(
-        "- catch-all: any doc-pinning test",
-        "- catch-all: one thing\n- catch-all: any doc-pinning test")
-    r = compile_raw_text(doubled)
-    assert r.returncode != 0
-    # Specifically the "more than one" diagnosis, not just any mention of the
-    # word "catch-all" (a bare unrecognized bullet would ALSO mention the
-    # literal label name, which would make this pass for the wrong reason).
-    assert "more than one catch-all" in r.stderr.lower()
-
-
-def test_catch_all_conflict_edges_are_labeled():
-    out = compile_plan_text(CATCHALL_PLAN)
-    assert any(e.get("why") == "catch-all" for e in out["dag_edges"])
-
-
-def test_catch_all_surfaces_in_emitted_launch_task(tmp_path):
-    payload = _emit_launch_payload(tmp_path, CATCHALL_PLAN, name="catchall.md")
-    by_id = {t["id"]: t for t in payload["tasks"]}
-    assert by_id["2"]["catchAll"] == (
-        "any doc-pinning test the full suite shows red — reconcile each pin "
-        "preserving its semantics")
-    assert by_id["1"]["catchAll"] is None
-
-
-def test_catch_all_bullet_parses_into_task_dict():
-    from compile_plan import split_tasks, parse_task
-    plan = """### Task 1: X
-
-**Type:** implementation
-**Depends-on:** none
-
-**Files:**
-- Modify: `a.py`
-- catch-all: reconcile every red pin
-
-- [ ] **Step 1: do it**
-"""
-    t = parse_task(split_tasks(plan)[0])
-    assert t["catch_all"] == "reconcile every red pin"
-    assert t["catch_all_raw"] == ["reconcile every red pin"]
-
-
-def test_files_violations_flags_second_catch_all_bullet():
-    from compile_plan import _files_violations
-    v = _files_violations({"id": "2", "catch_all_raw": ["one thing", "two thing"]})
-    assert len(v) == 1 and "catch-all" in v[0].lower()
-
-
-def test_files_violations_allows_single_catch_all_bullet():
-    from compile_plan import _files_violations
-    v = _files_violations({"id": "2", "catch_all_raw": ["one thing"], "files_raw": []})
-    assert v == []
-
-
 # Cases are LITERAL, not derived from FILES_EXEMPT_MARKERS: a parametrization
 # that reads the constant shrinks with it and goes vacuously green on exactly
 # the narrowing it exists to catch.
@@ -2657,48 +2272,127 @@ def test_markerless_files_noise_still_blocks_compile(tmp_path):
     assert "unknown files label" in (p.stdout + p.stderr).lower()
 
 
-def test_a_5000_line_text_file_no_longer_keeps_the_write_after_write_edge(tmp_path):
-    """The `--repo-root` pre-filter's line-count term retired (spec 2026-08-18
-    §1d): only symlinks and non-text files still keep a pair serialized.
 
-    5,000 lines is 12.5x the retired 400-line resolver cap, so under
-    the old pre-filter this pair kept its `write-after-write` edge and landed
-    in separate waves with a `pairs kept serialized` inference record. The
-    fold thread makes the size irrelevant, so the pair now shares a wave and
-    nothing is recorded — while the symlink and null-byte terms still bite.
-    """
-    root = tmp_path / "repo"
-    root.mkdir()
-    (root / "big.py").write_text("\n".join("line %d" % i for i in range(5000)))
-    (root / "bin.dat").write_bytes(b"\x00\x01\x02binary")
-    (root / "target.py").write_text("hello\n")
-    (root / "link.py").symlink_to(root / "target.py")
 
-    def _task(tid, path):
-        return ("### Task %s: writer %s\n\n**Type:** implementation\n\n"
-                "**Files:**\n- Modify: `%s`\n\n"
-                "- [ ] **Step 1:** do the work\n\n" % (tid, tid, path))
+# ---------------------------------------------------------------------------
+# Compiler subtraction (spec 2026-08-18 §2a): the ordering-guess tiers are
+# gone, so what the compiler cannot see it REFUSES instead of serializing on a
+# guess. Three refusals carry that weight — a Files-less marked implementation
+# task, a brace glob, and the retired `catch-all` label.
+# ---------------------------------------------------------------------------
 
-    plan = tmp_path / "plan.md"
-    plan.write_text(
-        "# Plan: cap retirement\n\n**Acceptance:** waived — inline test plan\n\n"
-        + _task("A", "big.py") + _task("B", "big.py")
-        + _task("C", "bin.dat") + _task("D", "bin.dat")
-        + _task("E", "link.py") + _task("F", "link.py"))
+PLAN_HEADER = "# Plan: grammar refusals\n\n**Acceptance:** waived — inline test plan\n\n"
 
-    p = subprocess.run(
-        [sys.executable, str(COMPILER), "--overlap", "fold",
-         "--repo-root", str(root), str(plan)],
-        capture_output=True, text=True)
-    assert p.returncode == 0, p.stderr
-    out = json.loads(p.stdout)
 
-    waw = sorted((e["from"], e["to"]) for e in out["dag_edges"]
-                 if e["why"] == "write-after-write")
-    assert waw == [("C", "D"), ("E", "F")]      # the big pair is NOT here
-    wave_of = {tid: i for i, w in enumerate(out["waves"]) for tid in w}
-    assert wave_of["A"] == wave_of["B"]
+def test_files_less_marked_implementation_task_is_refused(tmp_path):
+    plan = tmp_path / "p.md"
+    plan.write_text(PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
 
-    inference = {c["edge"] for c in out["marker_conflicts"]
-                 if c["kind"] == "inference"}
-    assert inference == {"bin.dat", "link.py"}
+**Files:**
+- none
+
+- [ ] **Step 1: do it**
+""")
+    proc = compile_plan_raw(plan)
+    assert proc.returncode != 0
+    assert "declares no file paths under Files:" in proc.stderr
+
+
+def test_files_less_heuristic_task_is_exempt(tmp_path):
+    # No **Type:** marker: heuristic classification — corpus pin protection
+    # (spec §2a, B11). The refusal keys on the EXPLICIT marker only.
+    plan = tmp_path / "p.md"
+    plan.write_text(PLAN_HEADER + """### Task 1: A
+
+**Files:**
+- none
+
+- [ ] **Step 1: implement the thing**
+""")
+    proc = compile_plan_raw(plan)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_test_only_files_block_satisfies_the_refusal(tmp_path):
+    # Two archived marked plans carry Test-only implementation tasks — a
+    # `Test:` path is a declared path, so they stay OK.
+    plan = tmp_path / "p.md"
+    plan.write_text(PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Test: `tests/test_a.py`
+
+- [ ] **Step 1: verify**
+""")
+    proc = compile_plan_raw(plan)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_brace_glob_is_a_hard_violation(tmp_path):
+    # A `{a,b}` brace used to fall through to the soft ambiguous-files
+    # serialization; that tier is gone, so every glob char now bails.
+    plan = tmp_path / "p.md"
+    plan.write_text(PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/{a,b}.py`
+
+- [ ] **Step 1: do it**
+""")
+    proc = compile_plan_raw(plan)
+    assert proc.returncode != 0
+    assert "glob" in proc.stderr
+
+
+def test_catch_all_label_is_a_violation_with_did_you_mean(tmp_path):
+    # `- catch-all:` was a parsed construct; the tier that consumed it is gone,
+    # so the bullet is now just an unknown label with a did-you-mean fix.
+    plan = tmp_path / "p.md"
+    plan.write_text(PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- catch-all: `src/`
+
+- [ ] **Step 1: do it**
+""")
+    proc = compile_plan_raw(plan)
+    assert proc.returncode != 0
+    assert "unknown Files label" in proc.stderr and "Modify" in proc.stderr
+
+
+def test_undeclared_dependency_suppression_set_is_write_after_create_and_write_after_write():
+    # The interface tier suppresses its undeclared-dependency finding for a
+    # pair already ordered by file overlap. That set is now exactly
+    # write-after-create + write-after-write; every other guess label is gone
+    # from the module entirely, so no dead branch can quietly resurrect one.
+    import inspect
+
+    import compile_plan
+    src = inspect.getsource(compile_plan)
+    for gone in ('"read-after-write"', '"prose-reference"',
+                 '"ambiguous-files"', "catch_all"):
+        assert gone not in src, gone
+    assert '"write-after-create"' in src and '"write-after-write"' in src
+
+
+KEPT_EDGE_WHYS = {"marker", "text", "interface", "write-after-create"}
+
+
+def test_compiled_edge_vocabulary_is_the_kept_set(tmp_path):
+    # Every `why` the compiler can emit under the shipped default, across the
+    # whole committed fixture corpus: the four kept labels and nothing else.
+    # `write-after-write` appears only under the `serialize` rollback knob.
+    fixtures = sorted((ROOT / "evals/fixtures").glob("*/plan.md"))
+    assert fixtures, "eval fixture plans must be part of the pin"
+    seen = set()
+    for plan in fixtures + [ROOT / "tests/fixtures/marked-plan.md"]:
+        seen |= {e["why"] for e in compile_plan(plan)["dag_edges"]}
+    assert seen <= KEPT_EDGE_WHYS, seen - KEPT_EDGE_WHYS
