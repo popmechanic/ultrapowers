@@ -231,6 +231,20 @@ export const driveOne = async ({
   // Receipts resolve only against a branch actually fetched back from the
   // sandbox, and only sha-by-sha. No receipts at all is NOT resolvable: an
   // empty set must never read as vacuously green.
+  //
+  // The branch is the one the SANDBOX published (the engine integrates to
+  // `ultra/integration-<stamp>`, a name nothing on this side chose); `branch` is
+  // only a fallback for a run that never published one, and it is expected to
+  // fail the fetch rather than quietly resolve against something else.
+  //
+  // Resolution is two checks, and the second is the load-bearing one.
+  // `cat-file -e` answers "is this object in the local store", which any commit
+  // that ever arrived here satisfies — including one from an unrelated branch
+  // that has nothing to do with this run. `merge-base --is-ancestor <sha>
+  // FETCH_HEAD` answers the question the gate is actually asking: is this
+  // receipt reachable from the branch this run produced. `cat-file` is kept
+  // ahead of it purely as an existence pre-check, so an absent sha is
+  // distinguishable from a present-but-unreachable one in the detail file.
   let receiptsResolvable = false
   if (reachedGateGreen && receipts.length > 0 && vmName) {
     try {
@@ -244,8 +258,14 @@ export const driveOne = async ({
         receiptsResolvable = true
         for (const receipt of receipts) {
           const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
-          const resolved = seen?.code === 0
-          receiptChecks.push({ ...receipt, resolved })
+          const exists = seen?.code === 0
+          let reachable = false
+          if (exists) {
+            const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} FETCH_HEAD`)
+            reachable = ancestry?.code === 0
+          }
+          const resolved = exists && reachable
+          receiptChecks.push({ ...receipt, exists, reachable, resolved })
           if (!resolved) receiptsResolvable = false
         }
       }

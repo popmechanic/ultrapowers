@@ -4,8 +4,13 @@
 // It is the thin outer shell around `runShim`: read the run assignment the
 // provisioner dropped at /home/exedev/fleet-run.json, stamp the run row with
 // the identity of the code that is about to execute, hand `runShim` an
-// `invokeRun` that launches the real engine run, and report the run report's
-// token total back onto the store when it is over.
+// `invokeRun` that launches the real engine run, and — when it is over —
+// publish what the run produced: the branch it integrated to, one receipts row
+// per gate receipt it left behind, and the run report's token total.
+//
+// Publishing the branch is not bookkeeping. The sandbox never pushes (it holds
+// no git credentials), so the driver pulls the run back over the transport it
+// already owns — and the only name it can pull is the one this file reports.
 //
 // Everything a test needs is exported as a small pure function; `main()` is the
 // only part that touches the live sandbox, and it runs only when this file is
@@ -26,8 +31,14 @@ import { runShim } from './shim.mjs'
 export const ASSIGNMENT_PATH = '/home/exedev/fleet-run.json'
 export const REPO_DIR = '/home/exedev/repo'
 
+/** Where the engine writes its per-run artifacts, relative to the repo root. */
+export const RUN_ARTIFACT_DIR = '.claude/ultrapowers'
+
 /** The engine's run report, relative to the repo root. */
-export const DEFAULT_REPORT_FILE = '.claude/ultrapowers/fleet-run/report.json'
+export const DEFAULT_REPORT_FILE = `${RUN_ARTIFACT_DIR}/fleet-run/report.json`
+
+/** The machine-written receipt the engine's gate leaves in each run directory. */
+export const GATE_RECEIPT_FILE = 'gate-receipt.json'
 
 /**
  * The sandbox's own id — the writer namespace its spend rows must live under
@@ -100,9 +111,74 @@ export const readGateGreen = (reportFile) => {
   return report.gate?.verdict === 'PASS'
 }
 
+// --- git readers -----------------------------------------------------------
+// All of them go through the injected `exec` seam and none of them throw: a
+// sandbox that cannot read its own git state still finishes its run and reports
+// the gap honestly, rather than dying with the run's outcome unrecorded.
+
+const revParse = async ({ repoDir, exec, ref }) => {
+  try {
+    const result = await exec(`git -C ${repoDir} rev-parse ${ref}`)
+    if (result?.code !== 0) return ''
+    return String(result.stdout ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The branch the engine run actually integrated to.
+ *
+ * The engine names it `ultra/integration-<stamp>` and tells nobody; the fleet
+ * never gets to choose it. It is detected MECHANICALLY from the refs the run
+ * left behind — never by parsing engine output, which is prose and would drift
+ * with every prompt edit. The newest such ref by committer date is this run's,
+ * because the sandbox is cloned per run and does exactly one.
+ *
+ * Returns `''` when the run integrated nowhere, so the caller publishes nothing
+ * rather than a branch name that does not exist.
+ */
+export const detectIntegrationBranch = async ({ repoDir, exec }) => {
+  try {
+    const result = await exec(
+      `git -C ${repoDir} for-each-ref --format='%(refname:short)' --sort=-committerdate 'refs/heads/ultra/integration-*'`,
+    )
+    if (result?.code !== 0) return ''
+    const [newest] = String(result.stdout ?? '')
+      .split('\n')
+      // The quotes are stripped by the shell on the live path; an `exec` seam
+      // that does not go through one would leave them.
+      .map((line) => line.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean)
+    return newest ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Every machine-written gate receipt the run produced, as repo-relative paths.
+ *
+ * Scoped to `run-*` directories on purpose: the run report shares the artifact
+ * directory (`.claude/ultrapowers/fleet-run/report.json`) and is not a receipt.
+ */
+export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
+  let entries
+  try {
+    entries = fs.readdirSync(path.join(repoDir, artifactDir), { withFileTypes: true })
+  } catch {
+    return []
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('run-'))
+    .map((entry) => path.join(artifactDir, entry.name, GATE_RECEIPT_FILE))
+    .filter((relPath) => fs.existsSync(path.join(repoDir, relPath)))
+    .sort()
+}
+
 // --- store writers ---------------------------------------------------------
-// All three are `setCell`/`setRow` writes of small scalars only — receipts carry
-// pointers into git (sha + path) and never file content.
+// All of them are `setCell`/`setRow` writes of small scalars only — receipts
+// carry pointers into git (sha + path) and never file content.
 
 /**
  * Version-stamp the run row. Written with `setCell` rather than `setRow`
@@ -124,6 +200,46 @@ export const applyReceipt = (store, runId, kind, { sha, path: receiptPath, verdi
 }
 
 /**
+ * Publish the branch the run integrated to. `setCell` for the same reason
+ * `applyStamp` uses it, and an empty branch is skipped rather than blanking a
+ * name already in place — the driver's fallback is a name that does not exist.
+ */
+export const applyBranch = (store, runId, branch) => {
+  if (typeof branch === 'string' && branch.length > 0) store.setCell('runs', runId, 'branch', branch)
+}
+
+/**
+ * Write one receipts row per artifact the run produced — the production writer.
+ *
+ * A receipt is a POINTER into git: the sha is the tip of the branch the run
+ * integrated to, the path is repo-relative, and `verdict` is copied from the
+ * receipt file for display only (the driver re-derives resolvability from git
+ * itself and never trusts this field). With no sha there is nothing to point
+ * at, so nothing is written — the orchestrator's guard rejects a receipt row
+ * missing either pointer half anyway.
+ *
+ * Returns the rows written. Never throws.
+ */
+export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) => {
+  const sha = await revParse({ repoDir, exec, ref: branch || 'HEAD' })
+  if (!sha) return []
+  const files = findReceiptFiles(repoDir)
+  const written = []
+  for (const relPath of files) {
+    const receipt = readJson(path.join(repoDir, relPath))
+    const verdict = typeof receipt?.verdict === 'string' ? receipt.verdict : ''
+    // `gate` is the schema's kind for the one receipt a run normally produces.
+    // More than one means more than one engine run directory survived in the
+    // sandbox, so the kind is keyed by that directory: stable across re-reads,
+    // and unique, which the row id depends on.
+    const kind = files.length === 1 ? 'gate' : `gate-${path.basename(path.dirname(relPath))}`
+    applyReceipt(store, runId, kind, { sha, path: relPath, verdict })
+    written.push({ kind, sha, path: relPath, verdict })
+  }
+  return written
+}
+
+/**
  * The identity of the code about to run: the plugin version from the manifest
  * on disk plus the repo's HEAD. Never throws — a sandbox that cannot read its
  * own identity still runs, and reports an empty stamp the gate reads as absent.
@@ -131,14 +247,7 @@ export const applyReceipt = (store, runId, kind, { sha, path: receiptPath, verdi
 export const readStamp = async ({ repoDir, exec }) => {
   const manifest = readJson(path.join(repoDir, '.claude-plugin', 'plugin.json'))
   const pluginVersion = typeof manifest?.version === 'string' ? manifest.version : ''
-  let engineSha = ''
-  try {
-    const result = await exec(`git -C ${repoDir} rev-parse HEAD`)
-    if (result?.code === 0) engineSha = String(result.stdout ?? '').trim()
-  } catch {
-    engineSha = ''
-  }
-  return { pluginVersion, engineSha }
+  return { pluginVersion, engineSha: await revParse({ repoDir, exec, ref: 'HEAD' }) }
 }
 
 // --- live sandbox path -----------------------------------------------------
@@ -199,6 +308,18 @@ export const main = async ({
     invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, reportFile })),
     readReportTokens: () => readReportTokens(reportFile),
   })
+
+  // Everything below runs AFTER `runShim` has returned, which is deliberate:
+  // `runShim`'s status writes replace the whole runs row from its own synced
+  // view, so anything written while it is still running can be dropped by its
+  // next transition.
+
+  // The branch first, because the receipts point at its tip. Publishing it is
+  // what lets the driver fetch the run back at all — the sandbox never pushes,
+  // and `ultra/integration-<stamp>` is a name only the engine knows.
+  const branch = await detectIntegrationBranch({ repoDir, exec })
+  applyBranch(store, runId, branch)
+  await applyRunReceipts(store, runId, { repoDir, exec, branch })
 
   applyStamp(store, runId, stamp)
   applyReportedTokens(store, runId, readReportTokens(reportFile))
