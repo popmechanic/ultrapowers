@@ -141,8 +141,8 @@ const conflictFoldReply = (open, remaining) => ({
 })
 
 // The documented `frontier[]` key list (references/report-format.md).
-const FRONTIER_KEYS = ['conflictsIndex', 'foldCliCalls', 'foldCliWallTimeSec',
-  'foldLogPath', 'resolverTranscripts', 'selfChecks', 'wave']
+const FRONTIER_KEYS = ['autoResolved', 'conflictsIndex', 'foldCliCalls',
+  'foldCliWallTimeSec', 'foldLogPath', 'resolverTranscripts', 'selfChecks', 'wave']
 function assertFrontierShape(r, tag) {
   assert(Array.isArray(r.frontier), tag + ': report carries a frontier array')
   eq(r.frontier.length, 1, tag + ': exactly one frontier entry for the contended wave')
@@ -1110,6 +1110,129 @@ async function scenarioGuardApplySelfChecksOmitted() {
   console.log('scenario 9o2 guard-apply-selfchecks-omitted: OK')
 }
 
+// ── Scenario 11: Commutes plumbing, autoResolved, composition rows ───────────
+// The rev-7 contract surface (spec §2b): the plan's `Commutes:` declarations ride
+// the fold/resolve commands as `--commutes`, the kernel auto-resolves a conflict
+// on a path EVERY writer declared (no resolver is dispatched for it, and the count
+// comes back as `autoResolved`), and the engine records a `composition-unpinned:`
+// judgment call for every multi-writer path some writer did NOT declare.
+
+// A wave whose two tasks contend on shared.py: t1 declares it commutes, t2 does
+// not. `files` drives contention routing; `writes`/`commutes` drive the rows.
+const commutesWave = () => [[
+  { id: 't1', title: 'one', body: 'append to shared', tier: 'cheap',
+    files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+  { id: 't2', title: 'two', body: 'also append to shared', tier: 'cheap',
+    files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+]]
+
+// ── 11a: an auto-resolved fold completes without a resolver dispatch ─────────
+// The kernel resolved the conflict in process against the contract, so the fold
+// never stopped on it: a COMPLETING reply carrying conflicts 0 and autoResolved 1.
+// Nothing about that may dispatch a resolver, and the count must reach the report.
+async function scenarioAutoResolvedFoldCompletes() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') {
+      return { status: 'FOLDED', conflicts: 0, dispatchable: 0, parked: 0,
+               autoResolved: 1, selfChecks: 'ok',
+               foldLogPath: FDIR + '/fold_log.jsonl',
+               conflictsIndex: FDIR + '/conflicts.json', foldCliWallTimeSec: 3.5,
+               open: [], remaining: [], complete: true }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-auto' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(commutesWave()), budget: undefined })
+
+  assert(has(calls, 'merge:wave1:fold'), 'auto: the wave routed to the contended fold')
+  assert(!calls.some((c) => c.label.startsWith('resolve:')),
+    'auto: an auto-resolved conflict dispatches no resolver')
+  assert(!has(calls, 'merge:wave1'), 'auto: the ordinary git-merge path never ran')
+  eq(r.waveMerges[0].status, 'MERGED', 'auto: the wave adopted its folded candidate')
+  eq(r.waveMerges[0].headSha, 'cand-auto', 'auto: the adopted candidate is the wave head')
+  assertFrontierShape(r, 'auto')
+  eq(r.frontier[0].autoResolved, 1, 'auto: the autoResolved count reaches the frontier entry')
+  eq(r.frontier[0].foldCliCalls, 2, 'auto: fold + materialize = 2 CLI calls, no resolve leg')
+  console.log('scenario 11a auto-resolved-fold: OK')
+}
+
+// ── 11b: --commutes rides fold AND resolve, for declaring tasks only ─────────
+async function scenarioCommutesArgsOnCommands() {
+  const calls = []
+  const open = [openEntry(1, 'shared.py', 2)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open, [])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'unioned' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', autoResolved: 2,
+               open: [], remaining: [] }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-c' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(commutesWave()), budget: undefined })
+
+  const fold = promptFor(calls, 'merge:wave1:fold')
+  assert(fold.indexOf(' --commutes t1=shared.py') !== -1,
+    'commutes-args: the fold command carries the declaring task\'s commutes paths')
+  assert(fold.indexOf('--commutes t2') === -1,
+    'commutes-args: a task declaring nothing contributes no --commutes argument')
+  const ap = promptFor(calls, 'merge:wave1:apply1:1')
+  assert(ap.indexOf(' --commutes t1=shared.py') !== -1,
+    'commutes-args: the resolve command re-supplies the same declarations')
+  assert(ap.indexOf('--commutes t2') === -1,
+    'commutes-args: the resolve command omits the non-declaring task too')
+  // Summed across every reply that carried one — the fold leg reported none.
+  eq(r.frontier[0].autoResolved, 2,
+     'commutes-args: autoResolved is summed across the fold and resolve replies')
+  console.log('scenario 11b commutes-args-on-commands: OK')
+}
+
+// ── 11c: a composition-unpinned row for an undeclared multi-writer path ─────
+async function scenarioCompositionUnpinnedRow() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-u' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(commutesWave()), budget: undefined })
+
+  const rows = r.judgmentCalls.filter((j) => j.startsWith('composition-unpinned:'))
+  eq(rows.length, 1, 'composition: exactly one row for the one undeclared multi-writer path' +
+     ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  eq(rows[0], 'composition-unpinned: wave 1 shared.py — writers t1,t2; undeclared: t2',
+     'composition: the row names the wave, the path, every writer and the undeclared ones')
+  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
+    'composition: a wave whose tasks all carry writes is never skipped')
+  console.log('scenario 11c composition-unpinned-row: OK')
+}
+
+// ── 11d: writes absent → no composition rows, one note instead ───────────────
+// The contendedWave() fixture predates the field, exactly like a launch file
+// compiled before the Commutes compiler landed. Guessing rows off a missing
+// field would fabricate them, so the wave is skipped and says so, once.
+async function scenarioWritesAbsentSkipsCompositionRows() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-w' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+
+  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'writes-absent: no composition row is fabricated from a missing writes field' +
+    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  const notes = r.judgmentCalls.filter((j) => /composition rows skipped/.test(j))
+  eq(notes.length, 1, 'writes-absent: exactly one skip note for the wave' +
+     ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  eq(notes[0], 'wave 1: tasks carry no writes field — composition rows skipped',
+     'writes-absent: the note names the wave')
+  console.log('scenario 11d writes-absent-skips-composition-rows: OK')
+}
+
 await scenarioCleanFold()
 await scenarioConflictResolved()
 await scenarioStaleFallback()
@@ -1146,5 +1269,9 @@ await scenarioStopReplyNeedsNoSelfChecks()
 await scenarioWorkListToComplete()
 await scenarioParkedPreScan()
 await scenarioBudgetExhaustedMidWorkList()
+await scenarioAutoResolvedFoldCompletes()
+await scenarioCommutesArgsOnCommands()
+await scenarioCompositionUnpinnedRow()
+await scenarioWritesAbsentSkipsCompositionRows()
 
 console.log('ALL SCENARIOS PASSED')
