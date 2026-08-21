@@ -1,6 +1,6 @@
 # The Width Program — fleet-scale operation: wide plans, distributed sealed drains, run-level fold, coordinated by a TinyBase store
 
-**Status: SPEC (rev 2, post-trim-review) — the destination of wayfinder map
+**Status: SPEC (rev 3, post-trim-review rounds 1–2) — the destination of wayfinder map
 #174, whose 9 tickets were resolved 2026-08-21 and whose Decisions list this
 document compiles into phases. Sibling to
 `2026-08-18-fold-native-authoring-program.md` (the enabler program, shipped
@@ -82,9 +82,10 @@ Pre-registered outcomes (read at each phase gate, §W1d/§W2d):
 - **O3 (defense holds):** the #177 reads accrue with **S3 = 0** (no
   escaped semantic miss). One confirmed S3 fires that doc's escalation
   bar and pauses width scaling until adjudicated.
-- **O4 (attention economics):** across the first 3 real drains, every
-  operator intervention traces to a park card or page — nothing the
-  operator needed was discovered outside the manifest/dashboard surface.
+- **O4 (attention economics):** every operator intervention traces to a
+  park card or page — nothing the operator needed was discovered outside
+  the manifest/dashboard surface. **Read point: the W2 gate (over its ≥2
+  drains), then a standing read through the first 3 real drains.**
 
 ## Non-goals (this program)
 
@@ -103,8 +104,15 @@ Pre-registered outcomes (read at each phase gate, §W1d/§W2d):
 - New top-level `fleet/` (repo code, plain node, no build step — the
   author's delegated choice, matching the viewer/kernel no-build
   convention): the orchestrator process (ws-server wiring + in-process
-  guard sweep + provisioner + drain driver + manifest writer) and the
-  lifted store module. **No `anthropic` SDK and no API key anywhere in
+  guard sweep + provisioner + drain driver + manifest writer), the lifted
+  store module, and the **fleet run shim** — the small sandbox-resident
+  client (delivered with the run assignment) that claims and renews the
+  lease, appends spend rows from the run report's token counters, flips
+  run status, and reports gate-green. The shim exists because the #178
+  guard semantics require these writes to come from the sandbox itself
+  (renews and spend rows are writer-scoped — the orchestrator cannot proxy
+  them); it **wraps** the run invocation and the run engine stays
+  unchanged. **No `anthropic` SDK and no API key anywhere in
   `fleet/`** — sandbox model access rides the exe.dev LLM integration
   (session auth, not repo code).
 - The run engine (`skills/ultrapowers/harnesses/waves.js`) is **unchanged
@@ -122,9 +130,17 @@ golden VM, SSH-deliver the run assignment and a fresh store token
 (short-TTL, orchestrator-minted — never in the image; the
 snapshot-shared-lease trap), start the run headless under
 `ANTHROPIC_BASE_URL=https://llm.int.exe.xyz` with a dummy
-`ANTHROPIC_API_KEY` (#179, proven). The run executes with full permissions
-**inside** the sandbox — the disposable VM is the permission boundary;
-it holds nothing but the clone and the short-TTL store token. Runner tier
+`ANTHROPIC_API_KEY` (#179, proven), under the fleet run shim (§Where it
+lives). The run executes with full permissions **inside** the sandbox —
+the disposable VM is the permission boundary; it holds nothing but the
+clone, the shim, and the short-TTL store token. The current base sha
+reaches the sandbox at provision time: the orchestrator **pushes** the
+base ref over the same SSH transport it later pulls from (the golden
+clone is only as fresh as hand-maintenance). **W1a preflight probe:**
+before the first real run, verify VM→VM `git fetch` over SSH end to end —
+it is the one transport link no #179 fact demonstrates; the named
+fallback is a read-only git remote over the sandbox's `https://<vm>.exe.xyz`
+proxy. Runner tier
 6–8 vCPU (width w needs w+2). **Sandboxes are deleted after fold/park —
 never recycled** (a reused sandbox carries prior-run residue; clone-per-run
 costs 0.7s). The run stamps its plugin version + engine sha into its run
@@ -133,7 +149,10 @@ report (the join key every #177/W2d read needs).
 **W1b. Orchestrator, store, and branch transport.** A 2-vCPU orchestrator
 sandbox runs the plain TinyBase ws-server with the #178 schema, **backed
 by its per-path SQLite persister** (the substrate research's supported
-mode) so the store survives orchestrator restarts; the converge-away guard
+mode). The persister exists for one stated reason: **§W1c's hard spend cap
+depends on ledger continuity across orchestrator restarts** — without it,
+a restart would erase the very sums the cap enforces. (Claims need no
+persistence: they re-derive as expired either way.) The converge-away guard
 runs as a sweep in the same process. Claim/lease logic lifts from
 `schema.mjs` (rewritten under tests). Store rows carry pointers and small
 scalars only — receipts are `{sha, path, verdict-as-display-hint}`;
@@ -142,20 +161,30 @@ branches from sandboxes over SSH** (`git fetch ssh://<sandbox>`); sandboxes
 hold no origin credential and cannot reach the origin repo at all. The
 orchestrator alone holds a push credential, and only it writes
 `fleet/<runId>` branches and the frontier ref to origin. Main's existing
-branch protection is untouched.
+branch protection is untouched. Stated honestly, the orchestrator's full
+credential set is: the **account-level exe.dev SSH credential** (it
+provisions, deletes, and reaches every sandbox — strictly more than a
+push credential) plus the **sole origin push credential**. That
+concentration is the design: one hardened box instead of N disposable
+ones.
 
 **W1c. Spend authority.** `capTokens` is set per run by the docket sweep
 (from the plan's size class) and a docket cap over all runs; both live in
 `budgets`. Sandboxes append spend rows (writer-namespaced, #178) from the
 run report's token counters at task boundaries. Two enforcement layers,
-per the #178 advisory/post-hoc split: (1) **page** (class 2) when a run's
-burn rate exceeds an anomaly multiple of the trailing per-run median, or
-when docket spend crosses its cap projection; (2) **hard action** when a
-run's ledger sum exceeds its `capTokens`: the orchestrator revokes the
-claim (explicit `revoked`, #178 semantics), deletes the sandbox, and parks
-the run with the overshoot as its why. The anomaly multiple and cap
-defaults are **set at the W1 gate from the first run's measured burn** —
-pre-registering the mechanism now, the constants when data exists.
+per the #178 advisory/post-hoc split: (1) **page** (class 2) when docket
+spend crosses its cap projection — the trailing-median burn-rate page is
+statistically empty below a window of runs, so it **activates only once a
+trailing window of ≥5 runs exists** (W2 at the earliest); (2) **hard
+action** when a run's ledger sum exceeds its `capTokens`: the orchestrator
+revokes the claim (explicit `revoked`, #178 semantics), deletes the
+sandbox, and parks the run with the overshoot as its why — and because a
+revoked claim is claimable by no one, **the park card's next-act includes
+the explicit operator claim reset**, or the drained run would wedge at
+claim time. The anomaly multiple, cap defaults, and the §W1d
+spend-vs-report tolerance are **set at the W1 gate from the first run's
+measured burn** — pre-registering the mechanism now, the constants when
+data exists.
 
 **W1d. Gate read.** **O1**, plus: lease-renewal continuity across the run
 (no false expiry), every receipt the run produced resolvable at its sha
@@ -172,7 +201,10 @@ engine was never touched.
 (unchanged, HITL) produces plans; sealed exams are authored by the **AFK
 sealing lane** — sandboxes on API billing, same seal-author brief, pinned
 effort, RED-proof through the exact gate runner; only *where* the author
-runs moves (#181). The drain driver claims runs into ~2 concurrent
+runs moves (#181). The authored exam travels the same transport as
+everything else: the orchestrator pulls it from the sealing sandbox and
+pushes it to origin before dispatch, so runs receive it in their base.
+The drain driver claims runs into ~2 concurrent
 sandboxes (pool arithmetic, #179). Plan dependencies serialize at
 dispatch (#176).
 
@@ -271,7 +303,10 @@ and after, per the standing release gotcha.
 
 Adds: `fleet/` (orchestrator process: ws-server wiring + in-process guard
 sweep + claim logic + provisioner + drain driver + manifest writer;
-dashboard page); golden-VM runbook; #188 marker tuple; batch-SMOKE
+dashboard page; **the fleet run shim**); **the SQLite store persister**
+(kept for §W1c ledger continuity, stated in §W1b); **the cross-run
+resolver brief** (a designed, separately-reviewed W2b deliverable);
+golden-VM runbook; #188 marker tuple; batch-SMOKE
 manifest section; spend-authority mechanism (§W1c; constants set at the
 W1 gate); the measured serial comparator arm (one paid drain, W2 gate);
 drain-level counters (W2d, spec-licensed); the W3 trigger table
@@ -309,3 +344,22 @@ Findings and adopt-or-answer (rev 2 incorporates all adoptions):
 - **S5 drain-level counters — ANSWERED, kept**: they are the only way O2/O4 (this spec's licensed pre-registrations) become readable; now explicitly disclosed as spec-licensed in §W2d and Adds.
 
 Operator adjudication of this round: pending at spec approval.
+
+### Round 2 (fresh-context reviewer, 2026-08-21; grade rev 2: W1 **up**, W2 **up**, W3 **flat**, overall **up** — "every rev-2 concept either makes a pre-registered outcome readable or closes a round-1 hole"; termination judgment: **round 3 needed, narrowly** — three contract-level completions, "I expect rev 3's delta to be a handful of sentences and the next round to terminate")
+
+Findings and adopt-or-answer (rev 3 incorporates all adoptions):
+
+- **T-r2-1 dual recovery story (persister + git re-seed) — ADOPTED (keep persister, state linkage)**: §W1b now states the persister exists solely for §W1c ledger continuity; claims need no persistence. Persister added to Adds (discharges S-r2-1).
+- **T-r2-2 trailing-median page empty at n=1–2 — ADOPTED**: §W1c layer (1) narrowed to docket-cap projection; the median-multiple page activates at a ≥5-run trailing window.
+- **U-r2-1 sandbox-side fleet client required but unnamed — ADOPTED**: the **fleet run shim** named in §Where-it-lives (with the guard-semantics reason it must exist), wired into §W1a, added to Adds (discharges S-r2-3). The largest catch of the round.
+- **U-r2-2 base-ref delivery unstated — ADOPTED**: orchestrator pushes the base ref to the sandbox at provision over the same SSH transport (§W1a).
+- **U-r2-3 VM→VM SSH fetch unproven + credential set understated — ADOPTED**: W1a preflight probe named, HTTPS-proxy remote as fallback; §W1b states the orchestrator's full credential set honestly (account-level exe.dev SSH + sole origin push) and why the concentration is the design.
+- **U-r2-4 spend-revoked park not drainable — ADOPTED**: park card's next-act includes the explicit operator claim reset (§W1c).
+- **U-r2-5 sealed-exam transport — ADOPTED**: orchestrator pulls from the sealing sandbox, pushes to origin pre-dispatch (§W2a).
+- **U-r2-6 O4 read point — ADOPTED**: W2 gate over ≥2 drains, then standing through the first 3 (§Goal).
+- **U-r2-7 spend-sum tolerance — ADOPTED**: set at the W1 gate (§W1c).
+- **S-r2-1/S-r2-2/S-r2-3 Adds disclosure gaps — ADOPTED**: persister, cross-run resolver brief, and fleet run shim all disclosed in Adds.
+
+Operator adjudication of this round: pending at spec approval.
+
+### Round 3 (fresh-context reviewer, scoped to the rev-3 delta per round 2's termination judgment): pending.
