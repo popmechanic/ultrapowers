@@ -283,16 +283,16 @@ def run_cli(*args):
                           capture_output=True, text=True)
 
 
-def do_fold(repo, run_dir, wave, base_sha, branch_specs):
+def do_fold(repo, run_dir, wave, base_sha, branch_specs, extra=()):
     """branch_specs: [(taskId, branchName, headSha), ...] in task-index order."""
     args = ["fold", "--repo", str(repo), "--run-dir", str(run_dir),
             "--wave", str(wave), "--base", base_sha]
     for tid, name, sha in branch_specs:
         args += ["--branch", "%s=%s:%s" % (tid, name, sha)]
-    return run_cli(*args)
+    return run_cli(*args, *extra)
 
 
-def do_resolve(repo, run_dir, wave, i, reply_dir, branch_specs):
+def do_resolve(repo, run_dir, wave, i, reply_dir, branch_specs, extra=()):
     """The `resolve` mirror of `do_fold`: the wave's task list is re-supplied
     on every call, and the narration is addressed by its conflicts.json `i`."""
     args = ["resolve", "--repo", str(repo), "--run-dir", str(run_dir),
@@ -300,6 +300,14 @@ def do_resolve(repo, run_dir, wave, i, reply_dir, branch_specs):
             "--reply-dir", str(reply_dir)]
     for tid, name, sha in branch_specs:
         args += ["--branch", "%s=%s:%s" % (tid, name, sha)]
+    return run_cli(*args, *extra)
+
+
+def do_materialize(repo, run_dir, wave, prev_head, branch_specs):
+    args = ["materialize", "--repo", str(repo), "--run-dir", str(run_dir),
+            "--wave", str(wave), "--prev-head", prev_head]
+    for tid, _name, sha in branch_specs:
+        args += ["--task-head", "%s=%s" % (tid, sha)]
     return run_cli(*args)
 
 
@@ -347,6 +355,7 @@ def test_fold_writes_log_narrations_and_index_at_the_first_stop(tmp_path):
     payload = last_json(result)
     assert payload == {"clean": False, "conflicts": 1, "dispatchable": 1,
                        "parked": 0, "complete": False, "remaining": [],
+                       "autoResolved": 0,
                        "open": [{"i": 1, "path": "app.py", "kind": "lines",
                                  "epoch": 2,
                                  "hunksFile": str(wave_dir / "conflict-1.hunks.txt"),
@@ -492,6 +501,7 @@ def test_fold_of_a_10k_line_single_writer_file_stays_inside_the_exit_contract(tm
         assert result.returncode == 0
         assert payload == {"clean": True, "conflicts": 0, "dispatchable": 0,
                            "parked": 0, "open": [], "remaining": [],
+                           "autoResolved": 0,
                            "complete": True, "selfChecks": "ok"}
         # In-process too: the kernel needs the big-stack thread wherever it is
         # driven, which is why the helper is the CLI's, not a local hack.
@@ -808,6 +818,7 @@ def test_resolve_applies_then_continues_to_completion_with_self_checks(tmp_path)
     r2 = do_resolve(repo, run_dir, 1, q["open"][0]["i"], d2, specs)
     assert r2.returncode == 0, r2.stderr
     assert last_json(r2) == {"applied": True, "open": [], "remaining": [],
+                             "autoResolved": 0,
                              "complete": True, "selfChecks": "ok"}
 
     assert [ev["type"] for ev in wave_events(run_dir)] == [
@@ -838,6 +849,7 @@ def test_resolve_splices_hunk_replies_and_appends_the_lines_event(tmp_path):
     result = do_resolve(repo, run_dir, 1, p["open"][0]["i"], d, specs)
     assert result.returncode == 0, result.stderr
     assert last_json(result) == {"applied": True, "open": [], "remaining": [],
+                                 "autoResolved": 0,
                                  "complete": True, "selfChecks": "ok"}
 
     whole = ("def a(x):\n    return x\n\ndef b(y):\n    return 0\n"
@@ -899,6 +911,7 @@ def test_a_stop_with_two_open_paths_waits_for_both(tmp_path):
                     specs)
     assert r2.returncode == 0, r2.stderr
     assert last_json(r2) == {"applied": True, "open": [], "remaining": [],
+                             "autoResolved": 0,
                              "complete": True, "selfChecks": "ok"}
 
     manifest = ff.rehydrate(
@@ -1086,3 +1099,292 @@ def test_resolve_continued_fold_kernel_park_exits_3_and_records(
         in captured.err
     index = json.loads((wave_dir / "conflicts.json").read_text())
     assert any(e["kind"] == "kernel-limit" for e in index)
+
+
+# --- the composition contract: `--commutes`, the header, the assume rung ----
+
+COMMUTES_BASE = "# registry begin\n# registry end\n"
+
+
+def _commutes_writer(repo, base_sha, name, body):
+    _git(repo, "checkout", "-q", "-b", name, base_sha)
+    (repo / "shared.py").write_text(body)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", name)
+    sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", base_sha)
+    return sha
+
+
+def _registry(*entries):
+    return "".join(["# registry begin\n"] + ["%s\n" % e for e in entries]
+                   + ["# registry end\n"])
+
+
+def make_commutes_repo(tmp_path, n_writers=2, name="commutes"):
+    """`n_writers` writers, each registering ONE additive line into the same
+    marked zone of `shared.py` — the shape `Commutes:` is declared against.
+
+    Every conflict this opens is all-`added`, so it is exactly the assume
+    rung's eligible case; the expected union is the writers' lines in fold
+    order between the two zone markers.
+    """
+    repo = tmp_path / name
+    _init(repo)
+    (repo / "shared.py").write_text(COMMUTES_BASE)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+
+    specs = []
+    for k in range(1, n_writers + 1):
+        tid = "t%d" % k
+        sha = _commutes_writer(repo, base_sha, tid, _registry("%s_entry()" % tid))
+        specs.append((tid, tid, sha))
+    return repo, base_sha, specs
+
+
+def expected_union_text(n_writers=2):
+    return _registry(*["t%d_entry()" % k for k in range(1, n_writers + 1)])
+
+
+def make_commutes_deleting_repo(tmp_path):
+    """Both writers touch the same zone, but t1 DELETES the pre-existing entry
+    while t2 registers alongside it: the narration carries a `deleted` segment,
+    so the declaration does not license a union."""
+    repo = tmp_path / "commutes-del"
+    _init(repo)
+    (repo / "shared.py").write_text(_registry("old_entry()"))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+
+    t1 = _commutes_writer(repo, base_sha, "t1", _registry())
+    t2 = _commutes_writer(repo, base_sha, "t2",
+                          _registry("old_entry()", "t2_entry()"))
+    return repo, base_sha, [("t1", "t1", t1), ("t2", "t2", t2)]
+
+
+def commutes_args(*task_ids, path="shared.py"):
+    args = []
+    for tid in task_ids:
+        args += ["--commutes", "%s=%s" % (tid, path)]
+    return args
+
+
+def read_index(run_dir, wave=1):
+    return json.loads(
+        (run_dir / "frontier" / ("wave-%d" % wave) / "conflicts.json").read_text())
+
+
+def test_both_declared_all_added_conflict_auto_resolves(tmp_path):
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs, extra=commutes_args("t1", "t2"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 1
+    assert reply["open"] == [] and reply["complete"] is True
+    assert reply["selfChecks"] == "ok"          # replay + shuffle green
+
+    entry = read_index(run_dir)[0]
+    assert entry["autoResolved"] is True and entry["dispatchable"] is True
+    # The audit trail is still written: narration + hunks brief both on disk.
+    wave_dir = run_dir / "frontier" / "wave-1"
+    assert (wave_dir / ("conflict-%d.txt" % entry["i"])).is_file()
+    assert Path(entry["hunksFile"]).is_file()
+
+    events = wave_events(run_dir)
+    assert [e["type"] for e in events] == ["base", "fold", "fold", "resolve"]
+    resolve = events[-1]
+    assert resolve["path"] == "shared.py"
+    assert resolve["lines"] == rw.split_lines(expected_union_text())
+
+
+def test_auto_union_is_weave_inert(tmp_path):
+    """The inertness pin (spec rev 7): materialized content equals the kernel's
+    own merged content — the union the raw fold produces with markers
+    stripped. A builder that changed the auto-union body (reordering, say)
+    would lose the ground the self-checks do not cover."""
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    assert do_fold(repo, run_dir, 1, base_sha, specs,
+                   extra=commutes_args("t1", "t2")).returncode == 0
+
+    m = do_materialize(repo, run_dir, 1, base_sha, specs)
+    assert m.returncode == 0, m.stdout + m.stderr
+    sha = last_json(m)["candidateSha"]
+    blob = subprocess.run(["git", "-C", str(repo), "show", "%s:shared.py" % sha],
+                          check=True, capture_output=True, text=True).stdout
+    assert blob == expected_union_text()
+
+    # And the frontier the log replays to is that same content, byte for byte.
+    manifest = ff.rehydrate(
+        repo, run_dir / "frontier/wave-1/fold_log.jsonl").manifest()
+    assert manifest["shared.py"] == expected_union_text()
+
+
+def test_undeclared_writer_dispatches_normally(tmp_path):
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs, extra=commutes_args("t1"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 0 and len(reply["open"]) == 1
+    hunks_text = Path(reply["open"][0]["hunksFile"]).read_text()
+    assert "contract:" not in hunks_text
+    assert read_index(run_dir)[0].get("autoResolved") is None
+
+
+def test_both_declared_dispatch_carries_contract_header(tmp_path):
+    """One side deletes a line inside the block: contract header YES, union NO.
+
+    A deletion is not an additive registration, so the declaration licenses
+    the resolver brief but never the in-process union.
+    """
+    repo, base_sha, specs = make_commutes_deleting_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs,
+                extra=commutes_args("t1", "t2"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 0 and len(reply["open"]) == 1
+    hunks_text = Path(reply["open"][0]["hunksFile"]).read_text()
+    assert "contract: both sides declared these edits commutative" in hunks_text
+    assert "begin deleted" in (
+        run_dir / "frontier/wave-1/conflict-1.txt").read_text()
+
+
+def test_fold_whose_every_conflict_auto_resolves_does_not_stop(tmp_path):
+    """Three writers of one zone: the fold no longer stops on an
+    auto-resolvable conflict, so one CLI call runs the wave to completion."""
+    repo, base_sha, specs = make_commutes_repo(tmp_path, n_writers=3)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs,
+                extra=commutes_args("t1", "t2", "t3"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["complete"] is True and reply["autoResolved"] == 2
+    assert reply["open"] == [] and reply["selfChecks"] == "ok"
+
+    manifest = ff.rehydrate(
+        repo, run_dir / "frontier/wave-1/fold_log.jsonl").manifest()
+    assert manifest["shared.py"] == expected_union_text(3)
+
+
+def test_no_commutes_flag_changes_nothing(tmp_path):
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs)
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 0 and len(reply["open"]) == 1
+    assert "contract:" not in Path(reply["open"][0]["hunksFile"]).read_text()
+
+
+def test_declaring_a_different_path_does_not_contract_this_one(tmp_path):
+    """`--commutes` is path-scoped: a declaration naming another file leaves
+    the contended path exactly as undeclared."""
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs,
+                extra=commutes_args("t1", "t2", path="other.py"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 0 and len(reply["open"]) == 1
+    assert "contract:" not in Path(reply["open"][0]["hunksFile"]).read_text()
+
+
+def test_a_third_undeclared_writer_leaves_its_own_conflict_uncontracted(tmp_path):
+    """Rev 7's every-writer unit is evaluated per conflict against the writers
+    that have actually folded: t1+t2 both declared, so their conflict unions;
+    t3 is undeclared, so the conflict IT opens dispatches with no header."""
+    repo, base_sha, specs = make_commutes_repo(tmp_path, n_writers=3)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs,
+                extra=commutes_args("t1", "t2"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    first = last_json(r)
+    assert first["autoResolved"] == 1 and len(first["open"]) == 1
+    assert "contract:" not in Path(first["open"][0]["hunksFile"]).read_text()
+
+
+def test_an_undeclared_already_folded_writer_blocks_the_contract(tmp_path):
+    """The both-sides condition counts every already-folded task that touches
+    the path, not just the incoming one: with t1 undeclared, t2's and t3's
+    conflicts are both uncontracted even though t2 and t3 declared."""
+    repo, base_sha, specs = make_commutes_repo(tmp_path, n_writers=3)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs,
+                extra=commutes_args("t2", "t3"))
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["autoResolved"] == 0 and len(reply["open"]) == 1
+    assert "contract:" not in Path(reply["open"][0]["hunksFile"]).read_text()
+
+
+def make_mixed_commutes_repo(tmp_path):
+    """One declared path and one undeclared path, contended at different folds.
+
+    `other.py` is contended by t1+t2 and declared by nobody, so folding t2
+    stops and dispatches. `shared.py` is contended by t1+t3 and declared by
+    both, so the resolve's CONTINUED fold auto-unions it in the same call.
+    """
+    repo = tmp_path / "mixed"
+    _init(repo)
+    (repo / "shared.py").write_text(COMMUTES_BASE)
+    (repo / "other.py").write_text("o = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+
+    def writer(name, shared=None, other=None):
+        _git(repo, "checkout", "-q", "-b", name, base_sha)
+        if shared is not None:
+            (repo / "shared.py").write_text(shared)
+        if other is not None:
+            (repo / "other.py").write_text(other)
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-qm", name)
+        sha = _git(repo, "rev-parse", "HEAD")
+        _git(repo, "checkout", "-q", base_sha)
+        return (name, name, sha)
+
+    return repo, base_sha, [
+        writer("t1", shared=_registry("t1_entry()"), other="o = 2\n"),
+        writer("t2", other="o = 3\n"),
+        writer("t3", shared=_registry("t3_entry()")),
+    ]
+
+
+def test_resolve_continues_folding_and_auto_resolves_a_later_conflict(tmp_path):
+    """The continued fold carries the rung too: a dispatched resolve that
+    unblocks the wave auto-unions the next declared conflict in the same call
+    and reports the count."""
+    repo, base_sha, specs = make_mixed_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    declared = commutes_args("t1", "t3")        # other.py declared by nobody
+    first = last_json(do_fold(repo, run_dir, 1, base_sha, specs, extra=declared))
+    assert first["autoResolved"] == 0 and len(first["open"]) == 1
+    assert first["open"][0]["path"] == "other.py" and first["remaining"] == ["t3"]
+
+    entry = first["open"][0]
+    d = _reply_dir(tmp_path, "reply-1-1", h1="o = 9\n")
+    r = do_resolve(repo, run_dir, 1, entry["i"], d, specs, extra=declared)
+    assert r.returncode == 0, r.stdout + r.stderr
+    reply = last_json(r)
+    assert reply["complete"] is True and reply["autoResolved"] == 1
+    assert reply["selfChecks"] == "ok"
+
+    manifest = ff.rehydrate(
+        repo, run_dir / "frontier/wave-1/fold_log.jsonl").manifest()
+    assert manifest["shared.py"] == _registry("t1_entry()", "t3_entry()")
+    assert manifest["other.py"] == "o = 9\n"
+
+
+def test_malformed_commutes_spec_is_an_argument_error(tmp_path):
+    repo, base_sha, specs = make_commutes_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha, specs, extra=["--commutes", "t1"])
+    assert r.returncode == 2
+    assert "--commutes must be" in r.stderr
