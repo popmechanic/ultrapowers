@@ -39,10 +39,6 @@ ROLE_MARKERS = [
     # never matched, so every completeness-critic transcript classified
     # "unknown". Corrected case only; role name and marker phrase unchanged.
     ("what plan requirement is unmet?", "integration"),
-    # The wavesPath preflight agent (label "waves-file-check", cheap tier,
-    # dispatched near line 1028 of waves.js) had no marker at all and also
-    # classified "unknown".
-    ("You are a read-only preflight agent", "waves-file-check"),
 ]
 
 # Absolute thrash heuristic: an implementer doing many turns for little output. Tuned so
