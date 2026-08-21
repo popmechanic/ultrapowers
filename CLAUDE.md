@@ -66,8 +66,14 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   agent + brief), the gate scripts (`gate_check.py`, `ultra_gate.py`,
   `run_lock.sh`), and the compiler's diagnostic vocabulary change only for an
   eval-measured regression (`evals/ab_runner.py` numbers), never on an
-  incident narrative alone. Sealed acceptance is opt-in ("seal this plan");
-  `suite` is the default disposition.
+  incident narrative alone — the one licensed exception is the Phase-2 tier
+  deletion (`read-after-write`/`prose-reference`/`ambiguous-files`/`catch-all`,
+  spec §2a), adjudicated by the recorded corpus migration reading
+  (`evals/frontier/results/2026-08-20-phase2-migration.md`: exactly the
+  expected `−3 prose-reference` + degrade-deletion mode flips, no other
+  delta, against the pre-registered 97-plan census) plus the T15 rig re-run
+  (Task 12). Sealed acceptance is opt-in ("seal this plan"); `suite` is the
+  default disposition.
 - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
   `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
