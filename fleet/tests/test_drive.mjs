@@ -316,6 +316,13 @@ try {
             await sleep(250)
             return { gateGreen: true }
           },
+          // The real run reads its cumulative output-token total from the engine
+          // SESSION TRANSCRIPTS (`readSessionTokens`); the engine is stubbed here,
+          // so no transcript is written. Inject the reader seam — exactly as the
+          // production default `() => readSessionTokens(sessionId)` is injectable —
+          // so this exercises the spend read without a real engine or a write into
+          // the test user's home directory.
+          readTokens: () => 4200,
         })
       }, 30)
     })
