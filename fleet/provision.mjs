@@ -23,11 +23,13 @@ function sleep(ms) {
  * @param {string} opts.repoDir - local path to the repo to push from.
  * @param {number} opts.ttlMs - token/lease TTL delivered to the sandbox.
  * @param {string} opts.wsUrl - orchestrator ws URL delivered to the sandbox.
+ * @param {string} opts.planPath - repo-relative path to the plan the sandbox's
+ *   engine invocation should run against.
  * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, planPath, exec, clock = Date.now }) {
   const vmName = `fleet-${runId}`
 
   // 1. Clone the golden VM into a fresh, run-scoped sandbox.
@@ -54,7 +56,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
 
   // 4. Deliver the token + run assignment. The payload rides a heredoc inside
   //    the single exec(cmd) string, since exec has no separate stdin channel.
-  const payload = { runId, token, wsUrl, ttlMs }
+  const payload = { runId, token, wsUrl, ttlMs, planPath }
   await exec(
     `ssh ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
   )

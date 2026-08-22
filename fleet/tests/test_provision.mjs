@@ -27,6 +27,7 @@ import { hashToken } from '../tokens.mjs'
     repoDir: '/tmp/repo',
     ttlMs: 60000,
     wsUrl: 'ws://orch.exe.xyz:8151/fleet',
+    planPath: 'docs/superpowers/plans/2026-08-21-width-w1.md',
     exec,
     clock: () => 1000,
   })
@@ -68,6 +69,7 @@ import { hashToken } from '../tokens.mjs'
   assert.equal(payload.token, result.token, 'the raw token is delivered to the sandbox')
   assert.equal(payload.wsUrl, 'ws://orch.exe.xyz:8151/fleet')
   assert.equal(payload.ttlMs, 60000)
+  assert.equal(payload.planPath, 'docs/superpowers/plans/2026-08-21-width-w1.md', 'the plan path is delivered to the sandbox')
 
   // Step 5: base push.
   assert.ok(
