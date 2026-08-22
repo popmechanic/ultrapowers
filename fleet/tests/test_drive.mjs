@@ -430,6 +430,31 @@ try {
       `expected the teardown command, got: ${JSON.stringify(exec.cmds)}`,
     )
 
+    // Evidence BEFORE teardown (#197): shim.log, the assignment, the engine
+    // transcripts and the gitignored run dirs die with the VM, and every live
+    // diagnosis depended on them. The driver pulls them — small artifacts only,
+    // never the whole repo — exactly once, and strictly before the `rm`.
+    const pullIdx = exec.cmds.findIndex((c) => /^ssh -o BatchMode=yes -o ConnectTimeout=10 fleet-run-drive-1\.exe\.xyz 'cd \/home\/exedev && tar czf - shim\.log fleet-run\.json \.claude\/projects /.test(c))
+    const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
+    assert.ok(pullIdx >= 0, `expected a sandbox log pull, got: ${JSON.stringify(exec.cmds)}`)
+    assert.ok(pullIdx < rmIdx, 'sandbox logs are pulled BEFORE the sandbox is destroyed')
+    assert.equal(exec.cmds.filter((c) => /tar czf - shim\.log/.test(c)).length, 1, 'the log pull fires exactly once')
+    const pullCmd = exec.cmds[pullIdx]
+    assert.ok(/repo\/\.claude\/ultrapowers\/run-/.test(pullCmd) || /run-\*\//.test(pullCmd), `the pull must include the gitignored run dirs, got: ${pullCmd}`)
+    assert.ok(/> \S+\/sandbox-logs\.tgz$/.test(pullCmd), `the pull must land in a sandbox-logs.tgz, got: ${pullCmd}`)
+    // Destination lives beside the gate read, under dbDir.
+    const dest = pullCmd.match(/> (\S+\/sandbox-logs\.tgz)$/)[1]
+    assert.ok(dest.startsWith(path.join(tmp, 'db1')), `log destination must be under dbDir, got: ${dest}`)
+    assert.ok(fs.existsSync(path.dirname(dest)), 'the destination directory is created before the pull runs')
+    assert.equal(detail.sandboxLogs, dest, 'the detail names where the evidence landed')
+    // The tunnel is torn down with the sandbox (#196): after the rm.
+    const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`))
+    assert.ok(killIdx > rmIdx, `the tunnel kill follows the rm, got: ${JSON.stringify(exec.cmds)}`)
+    // And the tunnel was opened before the shim started.
+    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`)
+    const shimIdx = exec.cmds.findIndex((c) => /nohup node .*shim-main\.mjs/.test(c))
+    assert.ok(tunnelIdx >= 0 && tunnelIdx < shimIdx, `the reverse tunnel opens before the shim starts, got: ${JSON.stringify(exec.cmds)}`)
+
     // The delivered assignment carried the orchestrator's own ws URL and port —
     // and the PLAN. `planPath` is the sandbox's only source for what it was
     // dispatched to run: the shim reads its assignment file before it has
@@ -702,6 +727,50 @@ try {
       !exec.cmds.some((cmd) => / fetch /.test(cmd)),
       `nothing may be fetched for an unpublished run, got: ${JSON.stringify(exec.cmds)}`,
     )
+  }
+
+  // -- 7b. a FAILED log pull never blocks teardown or the report -----------
+  // The pull is best-effort: the billing clock is what teardown protects, so a
+  // pull that throws (or returns non-zero) is recorded in `errors` and the `rm`
+  // still goes out, the orchestrator still stops, and the report is still
+  // written. Nothing is thrown.
+  {
+    const runId = 'run-drive-7b'
+    let sandbox = null
+    const inner = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({ assignment, runId, receiptSha: headSha, exec, publish: true })
+      }, 30)
+    })
+    const exec = async (cmd) => {
+      if (/tar czf - shim\.log/.test(cmd)) {
+        inner.cmds.push(cmd)
+        throw new Error('ssh: connect to host fleet-run-drive-7b.exe.xyz port 22: Connection timed out')
+      }
+      return inner(cmd)
+    }
+    exec.cmds = inner.cmds
+
+    const { read, reportPath, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db7b'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(exec.cmds.filter((c) => /tar czf - shim\.log/.test(c)).length, 1, 'the pull is attempted exactly once')
+    assert.ok(
+      exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
+      `the sandbox is destroyed even though the pull failed, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(
+      detail.errors.some((e) => /sandbox logs/.test(e) && /Connection timed out/.test(e)),
+      `the failed pull is recorded, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.equal(detail.sandboxLogs, null, 'no evidence landed')
+    assert.ok(fs.existsSync(reportPath), 'the report is still written')
+    assert.equal(typeof read.o1, 'boolean')
   }
 
   // -- 8. the production receipt writer: copy, commit, point at the tree ------

@@ -27,6 +27,20 @@ const TERMINAL = new Set(['gate-green', 'parked', 'revoked', 'folded'])
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0
 
 /**
+ * The evidence-before-teardown pull (#197), as proven in the live run: tar the
+ * SMALL sandbox artifacts — shim.log, the delivered assignment, the engine's
+ * session transcripts (`~/.claude/projects`), and the gitignored
+ * `.claude/ultrapowers/run-*` dirs inside the repo — back to the orchestrator
+ * as one archive. Never the repo itself. Every diagnosis in the live run
+ * depended on exactly these files, and they die with the VM.
+ */
+export const sandboxLogPullCommand = ({ vmName, dest }) =>
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 ${vmName}.exe.xyz ` +
+  `'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects ` +
+  `$(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|repo/|") 2>/dev/null' ` +
+  `> ${dest}`
+
+/**
  * Drive one remote run and return its §W1d gate read.
  *
  * @param {object} opts
@@ -42,6 +56,9 @@ const isNonEmptyString = (value) => typeof value === 'string' && value.length > 
  * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
  *   reaches a terminal status, for the sandbox to publish what it produced.
  *   Clamped to `heartbeatTimeoutMs`.
+ * @param {number} [opts.logPullTimeoutMs] - bound on the evidence pull that
+ *   precedes teardown. A pull that outruns it is recorded as an error and the
+ *   sandbox is destroyed anyway — the pull must never keep a VM alive.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -65,6 +82,7 @@ export const driveOne = async ({
   heartbeatTimeoutMs = 30 * 60_000,
   publishPollMs = 250,
   publishTimeoutMs = heartbeatTimeoutMs,
+  logPullTimeoutMs = 120_000,
 }) => {
   const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${port}/${FLEET_PATH}`
   const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
@@ -80,10 +98,40 @@ export const driveOne = async ({
 
   let vmName = null
   let destroyed = false
+  let pulled = false
+  let sandboxLogs = null
+
+  // Evidence BEFORE teardown (#197). Best-effort and bounded: a failed or slow
+  // pull is pushed to `errors` and teardown proceeds — the billing clock is the
+  // thing teardown protects, and the pull must not risk leaving a VM alive.
+  // Guarded once, like the destroy, because it is wired to every teardown path
+  // (the cap-overshoot action and the normal end of run).
+  const pullLogsOnce = async () => {
+    if (pulled || !vmName) return
+    pulled = true
+    const dir = path.join(dbDir, 'sandbox-logs', `${vmName}-${Date.now()}`)
+    const dest = path.join(dir, 'sandbox-logs.tgz')
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+      let timer
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve({ code: -1, stdout: `timed out after ${logPullTimeoutMs}ms` }), logPullTimeoutMs)
+      })
+      const result = await Promise.race([exec(sandboxLogPullCommand({ vmName, dest })), timeout]).finally(() =>
+        clearTimeout(timer),
+      )
+      if (result?.code === 0) sandboxLogs = dest
+      else errors.push(`pull sandbox logs: code ${result?.code} ${(result?.stdout ?? '').trim()}`.trim())
+    } catch (error) {
+      errors.push(`pull sandbox logs: ${error?.message ?? error}`)
+    }
+  }
+
   const destroyOnce = async () => {
     if (destroyed || !vmName) return
     destroyed = true
-    await destroySandbox({ vmName, exec })
+    await pullLogsOnce()
+    await destroySandbox({ vmName, port, exec })
   }
 
   const actions = {
@@ -192,6 +240,7 @@ export const driveOne = async ({
       repoDir,
       ttlMs,
       wsUrl: resolvedWsUrl,
+      port,
       planPath,
       exec,
       clock,
@@ -394,6 +443,9 @@ export const driveOne = async ({
     errors,
     epochs: [...epochs],
     capTokens,
+    // Where the pre-teardown evidence pull landed (`sandbox-logs.tgz`), or
+    // null when it failed — the failure is in `errors`.
+    sandboxLogs: null,
   }
 
   // Tear down BEFORE the report is written, so a failed teardown — the one
@@ -408,6 +460,7 @@ export const driveOne = async ({
   } catch (error) {
     errors.push(`destroySandbox: ${error?.message ?? error}`)
   }
+  detail.sandboxLogs = sandboxLogs
   try {
     await stop()
   } catch (error) {

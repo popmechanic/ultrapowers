@@ -155,6 +155,26 @@ node fleet-drive-one.tmp.mjs docs/superpowers/plans/<the-approved-plan>.md
 rm fleet-drive-one.tmp.mjs
 ```
 
+Two things a live run needs now live in `fleet/` proper, so the script above
+needs no exec wrapper of its own:
+
+- **Transport (#196).** exe.dev VMs share no private network and raw VM→VM TCP
+  is blocked, so `provisionRun` opens an SSH reverse tunnel
+  (`ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R <port>:127.0.0.1:<port> fleet-<runId>.exe.xyz`)
+  after the sandbox is reachable and before the shim starts — which is what
+  keeps `driveOne`'s default `wsUrl` `ws://127.0.0.1:<port>/fleet` true on both
+  ends. A tunnel that fails to open throws out of `provisionRun` (the run is
+  recorded red in `detail.errors`, the sandbox still torn down). `destroySandbox`
+  kills the detached tunnel process after the `rm`.
+- **Evidence before teardown (#197).** `driveOne` pulls the small sandbox
+  artifacts — `shim.log`, `fleet-run.json`, `~/.claude/projects` (engine
+  transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to
+  `<dbDir>/sandbox-logs/fleet-<runId>-<stamp>/sandbox-logs.tgz` before every
+  `destroySandbox` (normal end of run and the cap-overshoot action alike). The
+  pull is best-effort and bounded (`logPullTimeoutMs`, default 120 s): a failed
+  pull lands in `detail.errors` and teardown proceeds. `detail.sandboxLogs`
+  names the archive, or is `null`.
+
 `driveOne` defaults `runId` to `run-1` and `capTokens` to `2_000_000` — pass
 explicit `runId`/`capTokens` in the options object above for anything other
 than a first calibration run. `destroySandbox` (`fleet/provision.mjs`) is
