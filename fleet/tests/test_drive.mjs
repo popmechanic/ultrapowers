@@ -48,6 +48,7 @@ import {
   main as shimMain,
   readAssignment,
   readGateGreen,
+  receiptDestination,
   readReportTokens,
   readStamp,
   sandboxIdFor,
@@ -707,7 +708,197 @@ try {
     )
   }
 
-  // -- 9. shim-main's pure helpers -------------------------------------------
+  // -- 9. a partial copy failure sinks the WHOLE publish ---------------------
+  // Two receipts, the second's copy fails. A survivor row resolving on its
+  // own would let `o1` read true for a run that did not finish publishing
+  // what it claimed to — the fix must refuse to stage or commit ANY receipt
+  // once one copy has failed, not merely skip the failed one.
+  {
+    const partialRepo = path.join(tmp, 'partial-repo')
+    const partialBranch = 'ultra/integration-20260821888888'
+    fs.mkdirSync(partialRepo, { recursive: true })
+    writeFile(partialRepo, 'seed.txt', 'seed\n')
+    const seeded = await sh(
+      'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
+        `git add -A && git -c commit.gpgsign=false commit -q -m seed && git checkout -q -b ${partialBranch}`,
+      partialRepo,
+    )
+    assert.equal(seeded.code, 0, `partial-repo fixture failed: ${seeded.stderr}`)
+    writeFile(partialRepo, '.gitignore', '.claude/ultrapowers/\n')
+    writeFile(partialRepo, '.claude/ultrapowers/run-aaa/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+    writeFile(partialRepo, '.claude/ultrapowers/run-bbb/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+
+    // Block the SECOND file's copy destination by pre-creating a DIRECTORY at
+    // exactly the path `receiptDestination` computes for it — `fs.copyFileSync`
+    // fails (EISDIR) rather than writing, simulating a real copy failure
+    // without touching fs internals.
+    const blockedDestRel = receiptDestination('run-p', '.claude/ultrapowers/run-bbb/gate-receipt.json', false)
+    fs.mkdirSync(path.join(partialRepo, blockedDestRel), { recursive: true })
+
+    const store = createMergeableStore('partial-receipts')
+    const written = await applyRunReceipts(store, 'run-p', {
+      repoDir: partialRepo,
+      exec: (cmd) => sh(cmd),
+      branch: partialBranch,
+    })
+    assert.deepEqual(written, [], 'a failed copy must sink the whole publish, not just its own row')
+    assert.deepEqual(store.getTable('receipts'), {}, 'no receipts row may be written when any copy fails')
+    // Nothing was committed either — the failure was caught before add/commit.
+    const log = await sh(`git -C "${partialRepo}" log --oneline ${partialBranch}`, partialRepo)
+    assert.ok(!log.stdout.includes('fleet: receipts'), 'a partial publish must not be committed')
+  }
+
+  // -- 10. …and that partial publish reads RED end to end --------------------
+  // The unit-level check above shows `applyRunReceipts` itself refuses to
+  // stage anything; this closes the loop through the actual driver — the
+  // production writer, wired the way `main()` wires it, against a sandbox
+  // that never finishes publishing. It must read exactly like the "published
+  // nothing" case (scenario 7): red, on the same bound, for the same reason.
+  {
+    const runId = 'run-drive-10a'
+    const failRepo = path.join(tmp, 'fail-repo')
+    const failBranch = 'ultra/integration-20260821777777'
+    fs.mkdirSync(failRepo, { recursive: true })
+    writeFile(failRepo, 'seed.txt', 'seed\n')
+    const seeded = await sh(
+      'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
+        `git add -A && git -c commit.gpgsign=false commit -q -m seed && git checkout -q -b ${failBranch}`,
+      failRepo,
+    )
+    assert.equal(seeded.code, 0, `fail-repo fixture failed: ${seeded.stderr}`)
+    writeFile(failRepo, '.gitignore', '.claude/ultrapowers/\n')
+    writeFile(failRepo, '.claude/ultrapowers/run-ccc/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+    writeFile(failRepo, '.claude/ultrapowers/run-ddd/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+    const blockedDestRel2 = receiptDestination(runId, '.claude/ultrapowers/run-ddd/gate-receipt.json', false)
+    fs.mkdirSync(path.join(failRepo, blockedDestRel2), { recursive: true })
+
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        const sandboxId = sandboxIdFor(runId)
+        sandbox = (async () => {
+          const store = createMergeableStore(auxStoreId(sandboxId))
+          const socket = new WebSocket(`${assignment.wsUrl}?token=${assignment.token}`)
+          const synchronizer = await createWsSynchronizer(store, socket)
+          await synchronizer.startSync()
+          const outcome = await runShim({
+            wsUrl: assignment.wsUrl,
+            token: assignment.token,
+            sandboxId,
+            runId,
+            ttlMs: assignment.ttlMs,
+            clock,
+            invokeRun: async () => {
+              await sleep(250)
+              return { gateGreen: true }
+            },
+            readReportTokens: () => 4200,
+          })
+          // Exactly what `main()` does after `runShim` returns: publish
+          // receipts with the production writer (one of two destinations
+          // pre-blocked), then the branch — over the real exec seam against
+          // the throwaway repo above.
+          await applyRunReceipts(store, runId, { repoDir: failRepo, exec: (cmd) => sh(cmd), branch: failBranch })
+          applyBranch(store, runId, failBranch)
+          await synchronizer.save()
+          await synchronizer.stopSync()
+          await synchronizer.destroy()
+          return outcome
+        })()
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db10a'),
+      exec,
+      runId,
+      publishTimeoutMs: 1_000,
+    })
+    await sandbox
+
+    // The branch published, but the receipts table never gained a row — the
+    // publish signal requires both, so the driver never fetches and times out
+    // exactly as it does for a run that published nothing at all.
+    assert.equal(read.o1, false, 'a partial receipts publish must read red, not merely receipt-short')
+    assert.equal(read.receiptsResolvable, false)
+    assert.deepEqual(detail.receipts, [], 'no receipts row survives a partial publish')
+    assert.ok(
+      detail.errors.includes('publish timeout'),
+      `expected an explicit publish timeout, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- 11. a hostile receipt pointer never reaches the shell -----------------
+  // `receipt.sha`/`receipt.path` are rows the SANDBOX wrote (via `applyReceipt`
+  // in a stand-in here, production `applyRunReceipts` in the happy path) and
+  // the driver interpolates them into `git cat-file`/`merge-base`. A pointer
+  // carrying shell metacharacters must fail the read outright, with the
+  // payload never once reaching `exec`.
+  {
+    const runId = 'run-drive-10'
+    const pwned = path.join(tmp, 'pwned-receipt')
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        const sandboxId = sandboxIdFor(runId)
+        sandbox = (async () => {
+          const store = createMergeableStore(auxStoreId(sandboxId))
+          const socket = new WebSocket(`${assignment.wsUrl}?token=${assignment.token}`)
+          const synchronizer = await createWsSynchronizer(store, socket)
+          await synchronizer.startSync()
+          const outcome = await runShim({
+            wsUrl: assignment.wsUrl,
+            token: assignment.token,
+            sandboxId,
+            runId,
+            ttlMs: assignment.ttlMs,
+            clock,
+            invokeRun: async () => {
+              // Both pointer halves carry shell metacharacters — a `; touch`
+              // in the sha and a `$( )` in the path — so either check alone
+              // failing to guard would let the payload through.
+              applyReceipt(store, runId, 'gate', {
+                sha: `${headSha}; touch ${pwned}`,
+                path: `gate-receipt.json; touch ${pwned}`,
+                verdict: 'PASS',
+              })
+              await sleep(250)
+              return { gateGreen: true }
+            },
+            readReportTokens: () => 4200,
+          })
+          applyBranch(store, runId, INTEGRATION_BRANCH)
+          await synchronizer.save()
+          await synchronizer.stopSync()
+          await synchronizer.destroy()
+          return outcome
+        })()
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db10'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(read.receiptsResolvable, false, 'an unsafe receipt pointer must fail the read')
+    assert.equal(read.o1, false)
+    assert.ok(
+      !exec.cmds.some((cmd) => cmd.includes('pwned')),
+      `the injected receipt payload must never reach exec, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.equal(fs.existsSync(pwned), false, 'the injected command must not have run')
+    assert.ok(
+      detail.errors.some((e) => e.includes('unsafe receipt pointer')),
+      `expected an explicit unsafe-pointer error, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- 11. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')
     fs.writeFileSync(

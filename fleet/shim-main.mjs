@@ -164,6 +164,12 @@ export const readGateGreen = (reportFile) => {
 // the gap honestly, rather than dying with the run's outcome unrecorded.
 
 const revParse = async ({ repoDir, exec, ref }) => {
+  // `ref` reaches a shell exactly as `branch` does at the `git checkout` call
+  // below — guarded the same way, so a caller that passes an unsafe branch
+  // name (as `applyRunReceipts` does when it falls back to the run's own
+  // `branch`) never gets it interpolated. Mirrors that guard's shape: reject
+  // and return the documented empty result rather than shell out at all.
+  if (!isSafeBranchName(ref)) return ''
   try {
     const result = await exec(`git -C ${repoDir} rev-parse ${ref}`)
     if (result?.code !== 0) return ''
@@ -293,8 +299,21 @@ export const receiptDestination = (runId, relPath, unique) => {
  * `verdict` is copied from the receipt file for display only — the driver
  * re-derives resolvability from git itself and never trusts this field.
  *
+ * A copy failure on ANY receipt sinks the WHOLE publish: every other receipt
+ * is still attempted (so the failure is visible in full, not just at the
+ * first file), but nothing is staged, committed, or written to the store
+ * unless every copy succeeded. A survivor row resolving on its own would let
+ * `o1` read true for a run that did not actually finish publishing what it
+ * claimed to — the driver's fail-closed reads (an empty receipts table, or
+ * its publish-timeout) are the correct outcome for a partial publish, not a
+ * one-receipt-short green.
+ *
  * Returns the rows written. Never throws: a sandbox that cannot commit its
- * receipts still finishes, and the driver reads the gap as unresolved.
+ * receipts still finishes, and the driver reads the gap as unresolved. This
+ * includes a REJECTING `exec` (checkout, add, or commit) — the whole publish
+ * block degrades to "nothing published" rather than propagating an exception
+ * past `main()`'s `synchronizer.save()` and skipping the trailing scalar
+ * writes it still owes the store.
  */
 export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) => {
   const files = findReceiptFiles(repoDir)
@@ -303,49 +322,56 @@ export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) 
   // authors it, but nothing downstream should depend on that being true.
   if (!isSafeRepoPath(runId)) return []
 
-  // Commit ON the integration branch — that is the ref the driver fetches, and
-  // a receipt committed anywhere else points at a tree it will never see. Best
-  // effort: if the checkout fails, the commit lands elsewhere, the sha below is
-  // still read from `branch`, and the pointer fails to dereference. Fail-closed
-  // and visible, never a silently mismatched pointer.
-  if (isSafeBranchName(branch)) await exec(`git -C ${repoDir} checkout -q ${branch}`)
+  try {
+    // Commit ON the integration branch — that is the ref the driver fetches,
+    // and a receipt committed anywhere else points at a tree it will never
+    // see. Best effort: if the checkout fails, the commit lands elsewhere,
+    // the sha below is still read from `branch`, and the pointer fails to
+    // dereference. Fail-closed and visible, never a silently mismatched
+    // pointer.
+    if (isSafeBranchName(branch)) await exec(`git -C ${repoDir} checkout -q ${branch}`)
 
-  const staged = []
-  for (const relPath of files) {
-    const destRel = receiptDestination(runId, relPath, files.length === 1)
-    try {
-      fs.mkdirSync(path.dirname(path.join(repoDir, destRel)), { recursive: true })
-      fs.copyFileSync(path.join(repoDir, relPath), path.join(repoDir, destRel))
-    } catch {
-      continue
+    const staged = []
+    let anyCopyFailed = false
+    for (const relPath of files) {
+      const destRel = receiptDestination(runId, relPath, files.length === 1)
+      try {
+        fs.mkdirSync(path.dirname(path.join(repoDir, destRel)), { recursive: true })
+        fs.copyFileSync(path.join(repoDir, relPath), path.join(repoDir, destRel))
+      } catch {
+        anyCopyFailed = true
+        continue
+      }
+      const receipt = readJson(path.join(repoDir, relPath))
+      // `gate` is the schema's kind for the one receipt a run normally produces.
+      // More than one means more than one engine run directory survived in the
+      // sandbox, so the kind is keyed by that directory: stable across re-reads,
+      // and unique, which the row id depends on.
+      const kind = files.length === 1 ? 'gate' : `gate-${path.basename(path.dirname(relPath))}`
+      staged.push({ kind, destRel, verdict: typeof receipt?.verdict === 'string' ? receipt.verdict : '' })
     }
-    const receipt = readJson(path.join(repoDir, relPath))
-    // `gate` is the schema's kind for the one receipt a run normally produces.
-    // More than one means more than one engine run directory survived in the
-    // sandbox, so the kind is keyed by that directory: stable across re-reads,
-    // and unique, which the row id depends on.
-    const kind = files.length === 1 ? 'gate' : `gate-${path.basename(path.dirname(relPath))}`
-    staged.push({ kind, destRel, verdict: typeof receipt?.verdict === 'string' ? receipt.verdict : '' })
+    if (anyCopyFailed || staged.length === 0) return []
+
+    await exec(`git -C ${repoDir} add -f ${staged.map((entry) => entry.destRel).join(' ')}`)
+    // The identity is supplied inline: a golden image with no git identity
+    // configured must not be the reason a run's receipts are unreachable.
+    await exec(
+      `git -C ${repoDir} -c user.email=fleet@localhost -c user.name=fleet -c commit.gpgsign=false ` +
+        `commit -q -m "fleet: receipts for ${runId}"`,
+    )
+
+    const sha = await revParse({ repoDir, exec, ref: branch || 'HEAD' })
+    if (!sha) return []
+
+    const written = []
+    for (const entry of staged) {
+      applyReceipt(store, runId, entry.kind, { sha, path: entry.destRel, verdict: entry.verdict })
+      written.push({ kind: entry.kind, sha, path: entry.destRel, verdict: entry.verdict })
+    }
+    return written
+  } catch {
+    return []
   }
-  if (staged.length === 0) return []
-
-  await exec(`git -C ${repoDir} add -f ${staged.map((entry) => entry.destRel).join(' ')}`)
-  // The identity is supplied inline: a golden image with no git identity
-  // configured must not be the reason a run's receipts are unreachable.
-  await exec(
-    `git -C ${repoDir} -c user.email=fleet@localhost -c user.name=fleet -c commit.gpgsign=false ` +
-      `commit -q -m "fleet: receipts for ${runId}"`,
-  )
-
-  const sha = await revParse({ repoDir, exec, ref: branch || 'HEAD' })
-  if (!sha) return []
-
-  const written = []
-  for (const entry of staged) {
-    applyReceipt(store, runId, entry.kind, { sha, path: entry.destRel, verdict: entry.verdict })
-    written.push({ kind: entry.kind, sha, path: entry.destRel, verdict: entry.verdict })
-  }
-  return written
 }
 
 /**
