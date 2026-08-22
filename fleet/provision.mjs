@@ -11,6 +11,49 @@ import { mintToken } from './tokens.mjs'
 const PROBE_MAX_RETRIES = 60
 const PROBE_BACKOFF_MS = 500
 
+/** Where the per-run engine env file lands on the sandbox (#213). */
+export const ENGINE_ENV_PATH = '/home/exedev/fleet-env'
+const ENGINE_ENV_EOF = 'FLEET_ENV_EOF'
+const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** POSIX single-quote a value: `'` becomes `'\''`. */
+const shQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`
+
+/**
+ * Render `engineEnv` as the body of a `.`-sourceable sh file, one
+ * `KEY='value'` line per entry. Keys must be plain env identifiers and values
+ * must be single-line and must not contain the heredoc sentinel — anything
+ * else is refused up front, before a command is issued, so nothing can smuggle
+ * shell into the sourced file.
+ */
+export function engineEnvFileBody(engineEnv) {
+  const lines = []
+  for (const [key, value] of Object.entries(engineEnv ?? {})) {
+    if (!ENV_KEY.test(key)) throw new Error(`provisionRun: engineEnv key ${JSON.stringify(key)} is not a plain env identifier`)
+    const text = String(value)
+    if (/[\r\n]/.test(text) || text.includes(ENGINE_ENV_EOF)) {
+      throw new Error(`provisionRun: engineEnv value for ${key} must be a single line without the heredoc sentinel`)
+    }
+    lines.push(`${key}=${shQuote(text)}`)
+  }
+  return lines.join('\n')
+}
+
+/** The engine env-file delivery command: same umask-077 heredoc pattern as the assignment. */
+export function engineEnvDeliveryCommand({ vmName, engineEnv }) {
+  return `ssh ${vmName}.exe.xyz 'umask 077 && cat > ${ENGINE_ENV_PATH}' <<'${ENGINE_ENV_EOF}'\n${engineEnvFileBody(engineEnv)}\n${ENGINE_ENV_EOF}`
+}
+
+/**
+ * The detached shim start. With an env file delivered, it is sourced under
+ * `set -a` so every assignment is exported to the shim and, through its
+ * inherited-env `spawn`, to the engine — the secret is never on an argv.
+ */
+export function shimStartCommand({ vmName, withEngineEnv = false }) {
+  const prefix = withEngineEnv ? `set -a && . ${ENGINE_ENV_PATH} && set +a && ` : ''
+  return `ssh ${vmName}.exe.xyz '${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs > shim.log 2>&1 &'`
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -30,12 +73,19 @@ function sleep(ms) {
  *   that makes a loopback `wsUrl` true on both ends (#196).
  * @param {string} opts.planPath - repo-relative path to the plan the sandbox's
  *   engine invocation should run against.
+ * @param {Record<string,string>} [opts.engineEnv] - environment the engine
+ *   must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN` for Max-subscription auth, #213).
+ *   Delivered per run as a sourced env file on the sandbox — never baked into
+ *   the golden image, never on a process argv. Omit for none.
  * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, exec, clock = Date.now }) {
   const vmName = `fleet-${runId}`
+  const withEngineEnv = Boolean(engineEnv && Object.keys(engineEnv).length > 0)
+  // Validate up front: a bad key/value must fail before the golden is cloned.
+  const engineEnvCommand = withEngineEnv ? engineEnvDeliveryCommand({ vmName, engineEnv }) : null
 
   // 1. Clone the golden VM into a fresh, run-scoped sandbox.
   await exec(`ssh exe.dev "cp ${golden} ${vmName} --json"`)
@@ -66,6 +116,10 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
     `ssh ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
   )
 
+  // 4b. Deliver the engine's env (#213) the same way — a 0600 file the shim
+  //     start below sources. Nothing here reads the values; they pass through.
+  if (engineEnvCommand) await exec(engineEnvCommand)
+
   // 5. Push the base ref the sandbox builds its run from.
   await exec(
     `git -C ${repoDir} push ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${baseRef}:refs/heads/fleet-base`
@@ -87,8 +141,9 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
     }
   }
 
-  // 7. Start the sandbox-side shim, detached.
-  await exec(`ssh ${vmName}.exe.xyz 'nohup node /home/exedev/repo/fleet/shim-main.mjs > shim.log 2>&1 &'`)
+  // 7. Start the sandbox-side shim, detached — with the engine env sourced
+  //    when one was delivered.
+  await exec(shimStartCommand({ vmName, withEngineEnv }))
 
   return { vmName, token, record }
 }

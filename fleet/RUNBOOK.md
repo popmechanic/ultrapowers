@@ -50,28 +50,48 @@ Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
 issues `ssh exe.dev "cp fleet-golden fleet-<runId> --json"` as its first command
 — never `fleet-golden` itself, which stays untouched between runs.
 
-## LLM integration check
+## Engine auth — the Max subscription, delivered per run (#213)
 
-The §W1a zero-secrets probe: a dummy-key `claude -p` call through the exe.dev
-LLM integration returns a real completion with **no key ever present on the
-VM** (#179 fact sheet §4, proven on a live probe). Run this once against
-`fleet-golden` before the first real run, and again any time the golden image
-is rebuilt:
+The engine (`claude -p` inside each sandbox) bills the operator's Claude
+**Max subscription**, not the hosting provider's LLM gateway. Two facts from
+the Claude Code auth docs drive the setup: `claude setup-token` issues a
+one-year subscription OAuth token for headless use via
+`CLAUDE_CODE_OAUTH_TOKEN`, and auth precedence is
+`ANTHROPIC_API_KEY` > `apiKeyHelper` > `CLAUDE_CODE_OAUTH_TOKEN` — so the
+golden must carry **no** `ANTHROPIC_API_KEY` / `ANTHROPIC_BASE_URL`
+(with them present every run silently bills the provider's gateway instead;
+that is how runs 1–8 burned ~$5 each of exe.dev Shelley credits).
 
 ```bash
-ssh fleet-golden.exe.xyz '
-  ANTHROPIC_BASE_URL=https://llm.int.exe.xyz \
-  ANTHROPIC_API_KEY=exe-gateway \
-  claude -p "reply with exactly: OK" --model claude-haiku-4-5-20251001
-'
-# expected stdout: OK
+# 1. On the operator laptop, once a year (browser flow; prints the token):
+claude setup-token
+#    Save the printed token to a 0600 file, e.g. ~/.secrets/fleet-claude-oauth-token.
+
+# 2. Put it on the ORCHESTRATOR only — it holds the credentials (§W1a); the
+#    golden image holds none. Never echo it into a shell history or a transcript.
+scp ~/.secrets/fleet-claude-oauth-token fleet-orchestrator.exe.xyz:/home/exedev/.fleet/claude-oauth-token
+ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/claude-oauth-token'
+
+# 3. Golden settings.json: NO ANTHROPIC_* keys. Edit with jq, never a heredoc
+#    overwrite (that dropped enabledPlugins once and cost a run — see #193):
+ssh -n fleet-golden.exe.xyz 'f=~/.claude/settings.json; jq "del(.env.ANTHROPIC_BASE_URL, .env.ANTHROPIC_API_KEY)" $f > $f.new && mv $f.new $f && cat $f && claude plugin list | grep -c enabled'
+#    expected: env keeps CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS; permissions + enabledPlugins intact; "1".
 ```
 
-If this fails, stop — no real run can succeed without model access, and no
-`fleet/` code path holds an `anthropic` SDK or key to fall back on by design
-(spec §Where it lives; repo-wide no-API-key rule, `CLAUDE.md`). Fix the
-account's `llm` integration (`ssh exe.dev integrations edit llm --anthropic=byok
---anthropic-key=-`) before proceeding, not by adding a key anywhere in `fleet/`.
+The driver passes the token as `engineEnv` (below). `provisionRun` delivers it
+to the sandbox as `/home/exedev/fleet-env` (umask 077, same heredoc pattern as
+`fleet-run.json`) and starts the shim with `set -a && . /home/exedev/fleet-env
+&& set +a && nohup node …` — sourced, never on an argv, never in the image. The
+shim logs `claude auth status` (`authMethod`, `subscriptionType`) to `shim.log`
+right before the engine launch, so every run's pulled evidence (#197) names the
+credential it rode; expect `"authMethod":"oauth"`/subscription, **not**
+`"api_key"`. A sandbox only holds the token for the run's lifetime; rotate with
+a fresh `setup-token` if one is ever suspected compromised.
+
+Max usage is one 5-hour + weekly window **per user across all machines**, so
+the fleet shares the operator's own window; that — not vCPU — bounds width.
+There is no per-invocation spend flag; the shim's `readSessionTokens` and the
+orchestrator's cap are the spend control.
 
 ## Preflight
 
@@ -137,6 +157,11 @@ const exec = (cmd) =>
     )
   })
 
+import fs from 'node:fs'
+// The subscription OAuth token lives ONLY on the orchestrator (0600); it is
+// read here and delivered per run by provisionRun — see "Engine auth" above.
+const CLAUDE_CODE_OAUTH_TOKEN = fs.readFileSync('/home/exedev/.fleet/claude-oauth-token', 'utf8').trim()
+
 const { read, reportPath, detailPath } = await driveOne({
   planPath: process.argv[2],          // e.g. docs/superpowers/plans/some-approved-plan.md
   golden: 'fleet-golden',
@@ -144,6 +169,7 @@ const { read, reportPath, detailPath } = await driveOne({
   dbDir: '/tmp/fleet-orch-live',       // orchestrator's per-path SQLite persister dir
   repoDir: process.cwd(),              // local checkout the base is pushed from
   exec,
+  engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
 })
 
 console.log(JSON.stringify(read, null, 2))

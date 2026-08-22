@@ -168,4 +168,79 @@ import { hashToken } from '../tokens.mjs'
   assert.deepEqual(cmds, ['ssh exe.dev "rm fleet-r1 --json"'])
 }
 
+
+// provisionRun with `engineEnv` (#213): the engine's credentials — today the
+// Max-subscription `CLAUDE_CODE_OAUTH_TOKEN` — are delivered per run from the
+// orchestrator as a sourced env file, never baked into the golden image and
+// never placed on a process argv. The file rides the same umask-077 heredoc
+// pattern as `fleet-run.json`; the shim is started with it sourced so the
+// engine `spawn` inherits it. Without `engineEnv` nothing changes (the
+// scenario above still counts 7 execs).
+{
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+  const token = 'sk-ant-oat01-FAKE-TOKEN-with-$dollar-and-\'quote\''
+  await provisionRun({
+    golden: 'fleet-golden',
+    runId: 'r3',
+    baseRef: 'refs/heads/main',
+    repoDir: '/tmp/repo',
+    ttlMs: 60000,
+    wsUrl: 'ws://127.0.0.1:8153/fleet',
+    port: 8153,
+    planPath: 'docs/plan.md',
+    engineEnv: { CLAUDE_CODE_OAUTH_TOKEN: token },
+    exec,
+    clock: () => 1000,
+  })
+  // clone, probe, assignment, ENV FILE, push, tunnel, shim-start = 7 (probe passes first time here).
+  assert.equal(cmds.length, 7, `expected 7 exec calls with engineEnv, got ${cmds.length}: ${JSON.stringify(cmds)}`)
+  const envCmd = cmds[3]
+  assert.ok(
+    envCmd.startsWith("ssh fleet-r3.exe.xyz 'umask 077 && cat > /home/exedev/fleet-env'"),
+    `cmds[3] should deliver the env file under umask 077, got: ${envCmd}`
+  )
+  const body = envCmd.match(/<<'FLEET_ENV_EOF'\n([\s\S]*?)\nFLEET_ENV_EOF/)
+  assert.ok(body, 'env delivery must embed a FLEET_ENV_EOF heredoc payload')
+  // One `KEY='value'` line per entry, single-quoted with embedded quotes
+  // escaped, so `.`-sourcing it in sh yields the exact value back.
+  assert.equal(body[1], `CLAUDE_CODE_OAUTH_TOKEN='sk-ant-oat01-FAKE-TOKEN-with-$dollar-and-'\\''quote'\\'''`)
+  // The shim start sources the file (set -a exports every assignment) and
+  // carries NO secret on its own argv.
+  const start = cmds[6]
+  assert.ok(start.includes('set -a && . /home/exedev/fleet-env && set +a && nohup node /home/exedev/repo/fleet/shim-main.mjs'), `shim start must source the env file, got: ${start}`)
+  assert.ok(!start.includes('sk-ant-oat01'), 'the token must never appear on the shim-start argv')
+  // The store-token assignment is still delivered, unchanged, before the env file.
+  assert.ok(cmds[2].includes('fleet-run.json'), `cmds[2] should still be the assignment delivery, got: ${cmds[2]}`)
+}
+
+// engineEnv keys are validated: anything that is not a plain env identifier
+// is refused before a single command is issued (no way to smuggle shell into
+// the sourced file via a key).
+{
+  const cmds = []
+  const exec = async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '{}' } }
+  await assert.rejects(
+    provisionRun({
+      golden: 'fleet-golden', runId: 'r4', baseRef: 'refs/heads/main', repoDir: '/tmp/repo', ttlMs: 1,
+      wsUrl: 'ws://127.0.0.1:8154/fleet', port: 8154, planPath: 'docs/plan.md',
+      engineEnv: { 'BAD KEY; rm -rf /': 'x' }, exec, clock: () => 1,
+    }),
+    /engineEnv/,
+  )
+  assert.equal(cmds.length, 0, 'an invalid engineEnv key must be refused before any command runs')
+  await assert.rejects(
+    provisionRun({
+      golden: 'fleet-golden', runId: 'r5', baseRef: 'refs/heads/main', repoDir: '/tmp/repo', ttlMs: 1,
+      wsUrl: 'ws://127.0.0.1:8155/fleet', port: 8155, planPath: 'docs/plan.md',
+      engineEnv: { OK_KEY: 'line1\nFLEET_ENV_EOF\nrm -rf /' }, exec, clock: () => 1,
+    }),
+    /engineEnv/,
+  )
+  assert.equal(cmds.length, 0, 'a multi-line engineEnv value must be refused before any command runs')
+}
+
 console.log('ALL TESTS PASSED')

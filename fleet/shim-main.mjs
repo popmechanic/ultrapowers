@@ -684,9 +684,12 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
  * `runShim` parks the run (fail-closed) and the reason reaches the sandbox log
  * instead of being inferred from a silent park.
  *
- * The environment is inherited — that is where `ANTHROPIC_BASE_URL` and the
- * dummy key live. No credential is read or set here. The engine itself is
- * unchanged in W1; this only wraps it.
+ * The environment is inherited — that is where the engine's credential lives
+ * (`CLAUDE_CODE_OAUTH_TOKEN`, sourced from the per-run env file `provisionRun`
+ * delivers, #213). No credential is read or set here; `claude auth status` is
+ * logged before launch so the run's evidence names the credential it rode
+ * (`authMethod`), best-effort — a failed status read never blocks the run. The
+ * engine itself is unchanged in W1; this only wraps it.
  */
 export const invokeEngineRun = async ({
   repoDir,
@@ -714,6 +717,16 @@ export const invokeEngineRun = async ({
   if (checkedOut?.code !== 0) {
     log(`fleet: could not check out ${BASE_REF} — refusing to run against the image's HEAD`)
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
+  }
+
+  // Which credential will this run spend? Logged, not enforced — the evidence
+  // pull (#197) carries shim.log, so a run that rode the wrong auth is legible.
+  try {
+    const status = await exec(`${ENGINE_COMMAND} auth status`)
+    const parsed = JSON.parse(status?.stdout ?? '')
+    log(`fleet: engine auth ${JSON.stringify({ authMethod: parsed.authMethod, apiKeySource: parsed.apiKeySource, subscriptionType: parsed.subscriptionType })}`)
+  } catch {
+    log('fleet: engine auth status unreadable (continuing)')
   }
 
   const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath, sessionId), cwd: repoDir })

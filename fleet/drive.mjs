@@ -56,6 +56,9 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
  * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
  *   reaches a terminal status, for the sandbox to publish what it produced.
  *   Clamped to `heartbeatTimeoutMs`.
+ * @param {Record<string,string>} [opts.engineEnv] - environment the sandbox
+ *   engine must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN`, #213); delivered per run
+ *   by `provisionRun`, held by the orchestrator, never baked into the golden.
  * @param {number} [opts.logPullTimeoutMs] - bound on the evidence pull that
  *   precedes teardown. A pull that outruns it is recorded as an error and the
  *   sandbox is destroyed anyway — the pull must never keep a VM alive.
@@ -83,6 +86,7 @@ export const driveOne = async ({
   publishPollMs = 250,
   publishTimeoutMs = heartbeatTimeoutMs,
   logPullTimeoutMs = 120_000,
+  engineEnv,
 }) => {
   const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${port}/${FLEET_PATH}`
   const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
@@ -242,6 +246,7 @@ export const driveOne = async ({
       wsUrl: resolvedWsUrl,
       port,
       planPath,
+      engineEnv,
       exec,
       clock,
     })
