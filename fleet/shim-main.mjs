@@ -20,8 +20,10 @@
 // integration (`ANTHROPIC_BASE_URL` + a dummy key set on the golden image), so
 // this file neither reads nor sets an API key, and imports no vendor SDK.
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import WebSocket from 'ws'
 import { createMergeableStore } from 'tinybase'
@@ -176,6 +178,106 @@ export const readReportTokens = (reportFile) => {
     }
   }
   return null
+}
+
+/**
+ * Sum every `output_tokens` reading in one Claude Code session transcript.
+ *
+ * A transcript is newline-delimited JSON; each assistant message carries a
+ * `message.usage` (or bare `usage`) block, and `output_tokens` is that turn's
+ * generation. Summing them over a live, append-only transcript yields a
+ * CUMULATIVE total that only rises — exactly the shape `maybeAppendSpend`'s
+ * delta sampling needs.
+ */
+const sumTranscriptOutputTokens = (file) => {
+  let content
+  try {
+    content = fs.readFileSync(file, 'utf8')
+  } catch {
+    return 0
+  }
+  let total = 0
+  for (const raw of content.split('\n')) {
+    if (!raw) continue
+    let record
+    try {
+      record = JSON.parse(raw)
+    } catch {
+      continue
+    }
+    const usage = record?.message?.usage ?? record?.usage
+    const out = usage?.output_tokens
+    if (typeof out === 'number' && Number.isFinite(out)) total += out
+  }
+  return total
+}
+
+/** `.claude/projects` under the sandbox user's home — where the engine writes transcripts. */
+export const PROJECTS_ROOT = ['.claude', 'projects']
+
+/**
+ * The run's total output-token cost, read from the engine SESSION TRANSCRIPTS
+ * — the only place token counts exist (`report.json` carries none, which is
+ * why `readReportTokens` is null against today's engine).
+ *
+ * The run is launched with a fixed `--session-id`, so its transcript is a
+ * deterministic `{projects}/*​/{sessionId}.jsonl`, and every subagent it spawns
+ * (the majority of the spend) nests under
+ * `{projects}/*​/{sessionId}/subagents/workflows/*​/agent-*.jsonl`. Summing
+ * `output_tokens` across all of them gives the run's true cumulative cost.
+ *
+ * Keyed by the run-unique session id, so a cloned golden warm-up session
+ * sharing the same project directory is never counted. Returns `null` — not
+ * `0` — when no transcript for this session exists yet, so the §W1d
+ * "reported: number|null" distinction survives before the engine has written
+ * anything.
+ */
+export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
+  if (!isNonEmptyString(sessionId)) return null
+  const projectsRoot = path.join(home, ...PROJECTS_ROOT)
+  let projectDirs
+  try {
+    projectDirs = fs
+      .readdirSync(projectsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(projectsRoot, entry.name))
+  } catch {
+    return null
+  }
+
+  const transcripts = []
+  for (const dir of projectDirs) {
+    const mainTranscript = path.join(dir, `${sessionId}.jsonl`)
+    if (fs.existsSync(mainTranscript)) transcripts.push(mainTranscript)
+
+    const workflowsRoot = path.join(dir, sessionId, 'subagents', 'workflows')
+    let workflowDirs = []
+    try {
+      workflowDirs = fs
+        .readdirSync(workflowsRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => path.join(workflowsRoot, entry.name))
+    } catch {
+      workflowDirs = []
+    }
+    for (const workflowDir of workflowDirs) {
+      let agentFiles = []
+      try {
+        agentFiles = fs
+          .readdirSync(workflowDir)
+          .filter((name) => /^agent-.*\.jsonl$/.test(name))
+          .map((name) => path.join(workflowDir, name))
+      } catch {
+        agentFiles = []
+      }
+      transcripts.push(...agentFiles)
+    }
+  }
+
+  if (transcripts.length === 0) return null
+  let total = 0
+  for (const file of transcripts) total += sumTranscriptOutputTokens(file)
+  return total
 }
 
 /**
@@ -537,7 +639,18 @@ export const shellExec = (cmd) =>
 
 /** The engine launch, as an argv. Exported so a test can pin what is spawned. */
 export const ENGINE_COMMAND = 'claude'
-export const engineArgs = (planPath) => ['-p', `/ultrapowers ${planPath}`]
+
+/**
+ * The engine launch argv. A `sessionId`, when given, is threaded to
+ * `--session-id` so the run's transcript lands at a deterministic path
+ * `readSessionTokens` can find. Omitting it yields the bare form unchanged, so
+ * every existing caller and pin still holds.
+ */
+export const engineArgs = (planPath, sessionId) => {
+  const args = ['-p', `/ultrapowers ${planPath}`]
+  if (isNonEmptyString(sessionId)) args.push('--session-id', sessionId)
+  return args
+}
 
 /**
  * The default spawn seam: run a command to completion, resolve its exit code.
@@ -578,6 +691,7 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
 export const invokeEngineRun = async ({
   repoDir,
   planPath,
+  sessionId,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
@@ -602,7 +716,7 @@ export const invokeEngineRun = async ({
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
   }
 
-  const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath), cwd: repoDir })
+  const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath, sessionId), cwd: repoDir })
   // Resolved AFTER the run, because the run is what creates the directory.
   // The verdict lives in the gate receipt, never in report.json — see
   // `readGateGreen`.
@@ -616,21 +730,24 @@ export const main = async ({
   repoDir = REPO_DIR,
   exec = shellExec,
   invokeRun,
+  readTokens: readTokensOverride,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
   const { runId, token, wsUrl, ttlMs } = assignment
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
 
-  // Resolved on every read, not once: the engine mints `run-<stamp>/` DURING
-  // the run, so a path taken now would name a directory that does not exist
-  // yet and would still name it after the run had written one.
-  //
-  // Always via discovery, never an assignment override: `provisionRun` never
-  // sends `reportFile` and `invokeEngineRun` never reads it, so a dead
-  // override here was a second, silently divergent reader — both readers now
-  // resolve the same run-* directory.
-  const reportFile = () => findRunReportFile(repoDir)
+  // A run-unique session id forced onto the engine launch (`--session-id`), so
+  // its transcript — and every subagent's under it — lands at a deterministic
+  // path `readSessionTokens` can sum for this run's true output-token cost.
+  // report.json carries no token count, so the transcripts are the only source.
+  const sessionId = randomUUID()
+
+  // The run's cumulative output-token total, from the engine session
+  // transcripts (`readSessionTokens`). Injectable as a seam — like `invokeRun`
+  // and `exec` — so a test can drive `main()` to a spend read without a real
+  // engine writing a real transcript into the user's home.
+  const readTokens = readTokensOverride ?? (() => readSessionTokens(sessionId))
 
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
@@ -652,8 +769,8 @@ export const main = async ({
     sandboxId,
     runId,
     ttlMs,
-    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, exec })),
-    readReportTokens: () => readReportTokens(reportFile()),
+    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec })),
+    readReportTokens: readTokens,
   })
 
   // Everything below runs AFTER `runShim` has returned, which is deliberate:
@@ -667,7 +784,7 @@ export const main = async ({
   // Writing the stamp and the token total ahead of the branch and the receipts
   // makes the signal mean "everything is published", not "most of it is".
   applyStamp(store, runId, stamp)
-  applyReportedTokens(store, runId, readReportTokens(reportFile()))
+  applyReportedTokens(store, runId, readTokens())
 
   // Then the branch, because the receipts are committed onto it and point at
   // its tip. Publishing it is what lets the driver fetch the run back at all —
