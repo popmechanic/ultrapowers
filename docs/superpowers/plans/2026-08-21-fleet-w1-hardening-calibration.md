@@ -10,7 +10,7 @@
 
 **Spec:** Issue #190 (fleet W1 residuals), items "park-refusal page latch", "main()'s default invokeRun binding has no covering test", "findGateReceiptFile not scoped / newest-wins assertion missing".
 
-**Acceptance:** suite — three small hardening changes in `fleet/` whose verification is their own sentinel tests joining the committed suite via `tests/test_fleet_suite.py`; this plan is also the W1 Task 10 calibration run, whose held-out verification is the live §W1d gate read.
+**Acceptance:** suite — three small hardening changes in `fleet/`, each verified by its own sentinel test joining the committed suite via `tests/test_fleet_suite.py`. The committed `python3 -m pytest` suite is the whole verification; there is no held-out exam.
 
 ## Global Constraints
 
