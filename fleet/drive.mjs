@@ -180,6 +180,11 @@ export const driveOne = async ({
     //    detached, so the token record is registered here — one microtask after
     //    that command returns and well before a remote node process can boot,
     //    import, and complete a ws handshake.
+    //    `planPath` rides the assignment because the sandbox has no other way
+    //    to learn which plan it was dispatched to run — the store row carries
+    //    one, but the shim reads its assignment file before it has synced
+    //    anything. Without it the engine is launched with a literal
+    //    `undefined` plan path.
     const provisioned = await provisionRun({
       golden,
       runId,
@@ -187,6 +192,7 @@ export const driveOne = async ({
       repoDir,
       ttlMs,
       wsUrl: resolvedWsUrl,
+      planPath,
       exec,
       clock,
     })

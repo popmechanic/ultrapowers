@@ -34,11 +34,30 @@ export const REPO_DIR = '/home/exedev/repo'
 /** Where the engine writes its per-run artifacts, relative to the repo root. */
 export const RUN_ARTIFACT_DIR = '.claude/ultrapowers'
 
-/** The engine's run report, relative to the repo root. */
-export const DEFAULT_REPORT_FILE = `${RUN_ARTIFACT_DIR}/fleet-run/report.json`
+/**
+ * The engine's run report, INSIDE its run directory.
+ *
+ * There is no fixed path to it. `ultra_gate.py` writes both the report and the
+ * gate receipt into `.claude/ultrapowers/run-<stamp>/`, where `<stamp>` is
+ * minted by the run itself — so the file is found by scanning, exactly as the
+ * receipts are, and never by naming a directory the engine does not create.
+ */
+export const RUN_REPORT_FILE = 'report.json'
 
 /** The machine-written receipt the engine's gate leaves in each run directory. */
 export const GATE_RECEIPT_FILE = 'gate-receipt.json'
+
+/**
+ * The branch `provisionRun` pushes the driver's base ref to inside the sandbox
+ * (`<baseRef>:refs/heads/fleet-base`).
+ *
+ * A LITERAL, and deliberately so: it is the one ref name this side chooses, it
+ * is interpolated into a shell, and nothing upstream may influence it. The run
+ * must execute the base the driver pushed — a sandbox left on the golden
+ * image's HEAD would run, gate, and report against whatever code the image was
+ * baked with, which is a green read for code nobody asked to test.
+ */
+export const BASE_REF = 'fleet-base'
 
 /**
  * Where receipts are COPIED to so they survive as git objects.
@@ -63,6 +82,8 @@ export const FLEET_RECEIPT_DIR = 'fleet-receipts'
  * against a sandbox that writes the store cell directly.
  */
 export const SAFE_GIT_NAME = /^[A-Za-z0-9._\/-]+$/
+
+const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0
 
 /**
  * Whether a ref/path is safe to interpolate. Beyond the character class, a
@@ -155,6 +176,7 @@ export const readGateGreen = (reportFile) => {
   const report = readJson(reportFile)
   if (!report || typeof report !== 'object') return false
   if (report.gateGreen === true) return true
+  if (report.gateVerdict === 'PASS') return true
   return report.gate?.verdict === 'PASS'
 }
 
@@ -210,12 +232,15 @@ export const detectIntegrationBranch = async ({ repoDir, exec }) => {
 }
 
 /**
- * Every machine-written gate receipt the run produced, as repo-relative paths.
+ * The engine's run directories, oldest first.
  *
- * Scoped to `run-*` directories on purpose: the run report shares the artifact
- * directory (`.claude/ultrapowers/fleet-run/report.json`) and is not a receipt.
+ * Sorted by NAME, which is chronological by construction: the directory is
+ * `run-<stamp>` and the stamp is `YYYYMMDDHHMMSS`. Sorting by name rather than
+ * by mtime keeps discovery a pure function of what is on disk — an mtime is
+ * moved by anything that touches the directory, including this file's own
+ * receipt copy.
  */
-export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
+export const runArtifactDirs = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
   let entries
   try {
     entries = fs.readdirSync(path.join(repoDir, artifactDir), { withFileTypes: true })
@@ -224,9 +249,38 @@ export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
   }
   return entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith('run-'))
-    .map((entry) => path.join(artifactDir, entry.name, GATE_RECEIPT_FILE))
-    .filter((relPath) => fs.existsSync(path.join(repoDir, relPath)))
+    .map((entry) => entry.name)
     .sort()
+}
+
+/**
+ * Every machine-written gate receipt the run produced, as repo-relative paths.
+ *
+ * Scoped to `run-*` directories on purpose, and to the receipt file by name:
+ * the run report lives in the SAME directory and is not a receipt.
+ */
+export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) =>
+  runArtifactDirs(repoDir, artifactDir)
+    .map((name) => path.join(artifactDir, name, GATE_RECEIPT_FILE))
+    .filter((relPath) => fs.existsSync(path.join(repoDir, relPath)))
+
+/**
+ * The newest run report on disk, as an absolute path, or `''` when the engine
+ * has not written one.
+ *
+ * Resolved LAZILY, never once up front: the run directory does not exist when
+ * the sandbox boots — the engine mints it mid-run — so a path computed before
+ * the run is a path to nothing. Every read goes through here so a report that
+ * appears halfway through a run is picked up on the next sample rather than
+ * missed for the run's whole life.
+ */
+export const findRunReportFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
+  const names = runArtifactDirs(repoDir, artifactDir)
+  for (let i = names.length - 1; i >= 0; i -= 1) {
+    const candidate = path.join(repoDir, artifactDir, names[i], RUN_REPORT_FILE)
+    if (fs.existsSync(candidate)) return candidate
+  }
+  return ''
 }
 
 // --- store writers ---------------------------------------------------------
@@ -387,7 +441,12 @@ export const readStamp = async ({ repoDir, exec }) => {
 
 // --- live sandbox path -----------------------------------------------------
 
-const shellExec = (cmd) =>
+/**
+ * The default `exec` seam: run a shell command, resolve `{code, stdout}`, never
+ * reject. A spawn that fails outright resolves `code: 1` — every caller here
+ * branches on the code, and none of them wants an exception instead.
+ */
+export const shellExec = (cmd) =>
   new Promise((resolve) => {
     const child = spawn('/bin/sh', ['-c', cmd])
     let stdout = ''
@@ -398,17 +457,69 @@ const shellExec = (cmd) =>
     child.on('close', (code) => resolve({ code: code ?? 1, stdout }))
   })
 
+/** The engine launch, as an argv. Exported so a test can pin what is spawned. */
+export const ENGINE_COMMAND = 'claude'
+export const engineArgs = (planPath) => ['-p', `/ultrapowers ${planPath}`]
+
 /**
- * Launch the engine run headless and inherit the sandbox's environment — that
- * is where `ANTHROPIC_BASE_URL` and the dummy key live. The engine itself is
+ * The default spawn seam: run a command to completion, resolve its exit code.
+ * `stdio: 'inherit'` deliberately — the engine's output is the sandbox's log,
+ * and buffering a multi-minute run in memory would serve nobody.
+ */
+export const spawnEngineProcess = ({ command, args, cwd }) =>
+  new Promise((resolve) => {
+    const child = spawn(command, args, { cwd, stdio: 'inherit' })
+    child.on('error', () => resolve(1))
+    child.on('close', (code) => resolve(code ?? 1))
+  })
+
+/**
+ * Launch the engine run headless, against the base the driver pushed.
+ *
+ * Two things must be true before a single token is spent, and both are checked
+ * here rather than assumed:
+ *
+ *   planPath   The assignment carries it (`provisionRun` puts it in the
+ *              payload). Spawning without it hands the engine the literal
+ *              string `undefined` as a plan path — the run starts, burns a
+ *              sandbox, and fails on nothing legible. Absent means fail, now.
+ *   fleet-base The provisioner pushed the driver's base ref to this branch,
+ *              and the sandbox's checkout is still the golden image's HEAD
+ *              until something moves it. Running without this checkout tests
+ *              the IMAGE, not the base under test — a green read for code the
+ *              driver never sent. A failed checkout means fail, now.
+ *
+ * Both failures return an explicit `error` rather than a bare falsy outcome, so
+ * `runShim` parks the run (fail-closed) and the reason reaches the sandbox log
+ * instead of being inferred from a silent park.
+ *
+ * The environment is inherited — that is where `ANTHROPIC_BASE_URL` and the
+ * dummy key live. No credential is read or set here. The engine itself is
  * unchanged in W1; this only wraps it.
  */
-const invokeEngineRun = ({ repoDir, planPath, reportFile }) =>
-  new Promise((resolve) => {
-    const child = spawn('claude', ['-p', `/ultrapowers ${planPath}`], { cwd: repoDir, stdio: 'inherit' })
-    child.on('error', () => resolve({ gateGreen: false }))
-    child.on('close', (code) => resolve({ gateGreen: code === 0 && readGateGreen(reportFile) }))
-  })
+export const invokeEngineRun = async ({
+  repoDir,
+  planPath,
+  exec = shellExec,
+  spawnEngine = spawnEngineProcess,
+  log = console.error,
+}) => {
+  if (!isNonEmptyString(planPath)) {
+    log('fleet: run assignment carries no planPath — refusing to launch the engine')
+    return { gateGreen: false, error: 'missing planPath' }
+  }
+
+  // A literal ref name, so there is nothing to validate and nothing to inject.
+  const checkedOut = await exec(`git -C ${repoDir} checkout -q ${BASE_REF}`)
+  if (checkedOut?.code !== 0) {
+    log(`fleet: could not check out ${BASE_REF} — refusing to run against the image's HEAD`)
+    return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
+  }
+
+  const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath), cwd: repoDir })
+  // Resolved AFTER the run, because the run is what creates the directory.
+  return { gateGreen: code === 0 && readGateGreen(findRunReportFile(repoDir)) }
+}
 
 const withToken = (wsUrl, token) => `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}token=${token}`
 
@@ -422,7 +533,12 @@ export const main = async ({
   const { runId, token, wsUrl, ttlMs } = assignment
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
-  const reportFile = path.resolve(repoDir, assignment.reportFile ?? DEFAULT_REPORT_FILE)
+
+  // Resolved on every read, not once: the engine mints `run-<stamp>/` DURING
+  // the run, so a path taken now would name a directory that does not exist
+  // yet and would still name it after the run had written one.
+  const reportFile = () =>
+    assignment.reportFile ? path.resolve(repoDir, assignment.reportFile) : findRunReportFile(repoDir)
 
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
@@ -440,8 +556,8 @@ export const main = async ({
     sandboxId,
     runId,
     ttlMs,
-    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, reportFile })),
-    readReportTokens: () => readReportTokens(reportFile),
+    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, exec })),
+    readReportTokens: () => readReportTokens(reportFile()),
   })
 
   // Everything below runs AFTER `runShim` has returned, which is deliberate:
@@ -455,7 +571,7 @@ export const main = async ({
   // Writing the stamp and the token total ahead of the branch and the receipts
   // makes the signal mean "everything is published", not "most of it is".
   applyStamp(store, runId, stamp)
-  applyReportedTokens(store, runId, readReportTokens(reportFile))
+  applyReportedTokens(store, runId, readReportTokens(reportFile()))
 
   // Then the branch, because the receipts are committed onto it and point at
   // its tip. Publishing it is what lets the driver fetch the run back at all —

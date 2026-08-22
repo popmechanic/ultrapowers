@@ -19,6 +19,14 @@
 // integration-branch name under test are written by the code that will write
 // them in a live run. Only the engine invocation itself is stubbed.
 //
+// The sandbox's LIVE launch leg — `invokeEngineRun`, `shellExec`,
+// `spawnEngineProcess`, and run-report discovery — gets its own scenarios at
+// the end, driven over injected exec/spawn recorders. Those functions are what
+// every other scenario stubs past, so nothing else here can catch a defect in
+// them: which code the run executes (the pushed `fleet-base`, not the golden
+// image's HEAD), which plan it is given, and where its report is read from are
+// decided there and nowhere else.
+//
 // Three hostile/degenerate shapes get their own scenarios, because each is a
 // way a green read could be manufactured rather than earned: a branch cell
 // carrying shell metacharacters (the sandbox writes that cell, the orchestrator
@@ -42,8 +50,13 @@ import {
   auxStoreId,
   applyReportedTokens,
   applyStamp,
+  BASE_REF,
   detectIntegrationBranch,
+  engineArgs,
+  ENGINE_COMMAND,
   findReceiptFiles,
+  findRunReportFile,
+  invokeEngineRun,
   isSafeBranchName,
   main as shimMain,
   readAssignment,
@@ -51,7 +64,10 @@ import {
   receiptDestination,
   readReportTokens,
   readStamp,
+  runArtifactDirs,
   sandboxIdFor,
+  shellExec,
+  spawnEngineProcess,
 } from '../shim-main.mjs'
 
 const PORT = 8153
@@ -72,8 +88,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // fleet chose — these are the two such branches the stand-in sandbox carries.
 const INTEGRATION_BRANCH = 'ultra/integration-20260821125904'
 const OLDER_BRANCH = 'ultra/integration-19990101000000'
-const RECEIPT_PATH = '.claude/ultrapowers/run-20260821125904/gate-receipt.json'
-const REPORT_PATH = '.claude/ultrapowers/fleet-run/report.json'
+// Both artifacts live in the SAME run directory — that is where `ultra_gate.py`
+// writes them, and the whole point of discovery is that neither has a fixed
+// path the fleet may assume.
+const RUN_DIR = '.claude/ultrapowers/run-20260821125904'
+const RECEIPT_PATH = `${RUN_DIR}/gate-receipt.json`
+const REPORT_PATH = `${RUN_DIR}/report.json`
 
 // Real shell execution, used for the git commands the spec insists must be real.
 const sh = (cmd, cwd) =>
@@ -136,8 +156,9 @@ try {
   const integrationSha = (await sh('git rev-parse HEAD', sandboxRepo)).stdout.trim()
   assert.notEqual(integrationSha, olderSha)
 
-  // The engine's run report. It lives under `.claude/ultrapowers/fleet-run/`,
-  // NOT under a `run-*` directory, so receipt discovery must not pick it up.
+  // The engine's run report — in the run directory beside the gate receipt.
+  // Receipt discovery must still not pick it up: it is scoped to the receipt's
+  // FILE NAME, not merely to the directory.
   writeFile(sandboxRepo, REPORT_PATH, JSON.stringify({ usage: { outputTokens: 4200 } }))
 
   // -- a sha that EXISTS locally but is reachable from no fetched branch -----
@@ -386,9 +407,14 @@ try {
       `expected the teardown command, got: ${JSON.stringify(exec.cmds)}`,
     )
 
-    // The delivered assignment carried the orchestrator's own ws URL and port.
+    // The delivered assignment carried the orchestrator's own ws URL and port —
+    // and the PLAN. `planPath` is the sandbox's only source for what it was
+    // dispatched to run: the shim reads its assignment file before it has
+    // synced any store row, so a driver that does not forward it launches the
+    // engine with a literal `undefined` plan path.
     assert.equal(exec.delivered.runId, runId)
     assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${PORT}/fleet`)
+    assert.equal(exec.delivered.planPath, driveDefaults.planPath)
   }
 
   // -- 2. an ABSENT sha sinks receiptsResolvable AND o1 ----------------------
@@ -1016,6 +1042,237 @@ try {
     assert.equal(isSafeBranchName(''), false)
     assert.equal(isSafeBranchName(undefined), false)
     assert.equal(isSafeBranchName(42), false)
+  }
+
+  // -- 12. the engine launch itself ------------------------------------------
+  // `invokeEngineRun` is the whole live leg of the sandbox: it is what decides
+  // WHAT code runs (the pushed base, not the golden image's HEAD), WHICH plan
+  // it runs, and whether the result counts as green. It is driven here over
+  // injected exec/spawn seams against a real sandbox-shaped repo, with one
+  // shared call log so the ORDER of the two side effects is pinned, not just
+  // their presence.
+  const engineRepo = path.join(tmp, 'engine-repo')
+  {
+    fs.mkdirSync(engineRepo, { recursive: true })
+    writeFile(engineRepo, 'seed.txt', 'seed\n')
+
+    const ENGINE_PLAN = 'docs/superpowers/plans/2026-08-21-width-w1.md'
+    const ENGINE_RUN_DIR = '.claude/ultrapowers/run-20990101000000'
+
+    // The recorder: exec and spawn share one array, so "checkout before spawn"
+    // is an assertion about a single ordered history rather than two.
+    const makeRecorder = ({ checkoutCode = 0, engineCode = 0, onSpawn = null } = {}) => {
+      const calls = []
+      const logs = []
+      return {
+        calls,
+        logs,
+        log: (line) => logs.push(line),
+        exec: async (cmd) => {
+          calls.push(cmd)
+          return { code: checkoutCode, stdout: '' }
+        },
+        spawnEngine: async ({ command, args, cwd }) => {
+          calls.push([command, ...args].join(' '))
+          if (onSpawn) await onSpawn({ cwd })
+          return engineCode
+        },
+      }
+    }
+
+    // The engine writes its report DURING the run, so the report is synthesized
+    // by the spawn itself. That is what proves discovery is resolved after the
+    // run rather than at boot, when the directory does not exist.
+    const writesReport = (body) => async ({ cwd }) => writeFile(cwd, `${ENGINE_RUN_DIR}/report.json`, JSON.stringify(body))
+
+    // -- the happy path --
+    {
+      const rec = makeRecorder({ onSpawn: writesReport({ gateVerdict: 'PASS', outputTokens: 4321 }) })
+      const outcome = await invokeEngineRun({
+        repoDir: engineRepo,
+        planPath: ENGINE_PLAN,
+        exec: rec.exec,
+        spawnEngine: rec.spawnEngine,
+        log: rec.log,
+      })
+
+      // Exactly two side effects, in exactly this order: check out the pushed
+      // base, THEN launch the engine. A spawn that preceded the checkout would
+      // run the golden image's HEAD and gate it green.
+      assert.equal(rec.calls.length, 2, `expected checkout then spawn, got: ${JSON.stringify(rec.calls)}`)
+      const checkoutIdx = rec.calls.findIndex((c) => c === `git -C ${engineRepo} checkout -q ${BASE_REF}`)
+      const spawnIdx = rec.calls.findIndex((c) => c.startsWith(ENGINE_COMMAND))
+      assert.ok(checkoutIdx >= 0, `expected a ${BASE_REF} checkout, got: ${JSON.stringify(rec.calls)}`)
+      assert.ok(spawnIdx >= 0, `expected an engine spawn, got: ${JSON.stringify(rec.calls)}`)
+      assert.ok(checkoutIdx < spawnIdx, 'the base must be checked out BEFORE the engine is spawned')
+
+      // The plan the assignment named, verbatim — never the literal `undefined`
+      // a missing assignment field used to produce.
+      assert.equal(rec.calls[spawnIdx], `${ENGINE_COMMAND} ${engineArgs(ENGINE_PLAN).join(' ')}`)
+      assert.ok(rec.calls[spawnIdx].includes(ENGINE_PLAN), `the spawn must carry the assignment's planPath`)
+      assert.ok(!rec.calls[spawnIdx].includes('undefined'))
+
+      assert.deepEqual(outcome, { gateGreen: true })
+
+      // …and the discovered report is the file the engine actually wrote, read
+      // by both readers.
+      const discovered = findRunReportFile(engineRepo)
+      assert.equal(discovered, path.join(engineRepo, ENGINE_RUN_DIR, 'report.json'))
+      assert.equal(readGateGreen(discovered), true)
+      assert.equal(readReportTokens(discovered), 4321)
+    }
+
+    // -- a non-zero engine exit is never green, however the report reads --
+    {
+      const rec = makeRecorder({ engineCode: 1, onSpawn: writesReport({ gateVerdict: 'PASS', outputTokens: 4321 }) })
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false },
+      )
+    }
+
+    // -- a clean exit with a BLOCKED report is not green either --
+    {
+      const rec = makeRecorder({ onSpawn: writesReport({ gateVerdict: 'BLOCKED', outputTokens: 4321 }) })
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false },
+      )
+    }
+
+    // -- an ABSENT planPath fails explicitly, before anything is spent --------
+    for (const missing of [undefined, null, '', 42]) {
+      const rec = makeRecorder()
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: missing,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false, error: 'missing planPath' },
+        `planPath ${JSON.stringify(missing)} must fail the run explicitly`,
+      )
+      // Nothing was checked out and nothing was spawned — the sandbox is not
+      // burned on a run that cannot be dispatched.
+      assert.deepEqual(rec.calls, [], `nothing may run without a planPath, got: ${JSON.stringify(rec.calls)}`)
+      assert.ok(
+        rec.logs.some((line) => line.includes('planPath')),
+        `expected an explicit planPath failure on the log, got: ${JSON.stringify(rec.logs)}`,
+      )
+    }
+
+    // -- a FAILED base checkout fails explicitly, before the engine spawns ----
+    {
+      const rec = makeRecorder({ checkoutCode: 1 })
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false, error: `checkout ${BASE_REF} failed` },
+      )
+      // The checkout was attempted; the engine was NOT. Running here would gate
+      // the golden image's HEAD green and report it as the driver's base.
+      assert.deepEqual(rec.calls, [`git -C ${engineRepo} checkout -q ${BASE_REF}`])
+      assert.ok(
+        rec.logs.some((line) => line.includes(BASE_REF)),
+        `expected an explicit checkout failure on the log, got: ${JSON.stringify(rec.logs)}`,
+      )
+    }
+
+    // -- an exec seam that throws is a failed checkout, not a crash -----------
+    {
+      const rec = makeRecorder()
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          exec: async () => ({ code: 128, stdout: '' }),
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false, error: `checkout ${BASE_REF} failed` },
+      )
+      assert.deepEqual(rec.calls, [], 'the engine must not spawn after a failed checkout')
+    }
+  }
+
+  // -- 13. run-report discovery ----------------------------------------------
+  // The engine names its run directory with a stamp it mints itself, so there
+  // is no fixed report path to read — the previous constant
+  // (`.claude/ultrapowers/fleet-run/report.json`) named a directory the engine
+  // never creates, and every token read came back null.
+  {
+    const discoRepo = path.join(tmp, 'disco-repo')
+    fs.mkdirSync(discoRepo, { recursive: true })
+
+    // No artifact directory at all.
+    assert.deepEqual(runArtifactDirs(discoRepo), [])
+    assert.equal(findRunReportFile(discoRepo), '')
+    assert.equal(readReportTokens(findRunReportFile(discoRepo)), null)
+    assert.equal(readGateGreen(findRunReportFile(discoRepo)), false)
+
+    // Two runs, and a non-`run-` sibling that must be ignored entirely.
+    writeFile(discoRepo, '.claude/ultrapowers/run-19990101000000/report.json', JSON.stringify({ totalTokens: 11 }))
+    writeFile(discoRepo, '.claude/ultrapowers/run-20990101000000/report.json', JSON.stringify({ totalTokens: 22 }))
+    writeFile(discoRepo, '.claude/ultrapowers/fleet-run/report.json', JSON.stringify({ totalTokens: 99 }))
+    assert.deepEqual(runArtifactDirs(discoRepo), ['run-19990101000000', 'run-20990101000000'])
+    assert.equal(findRunReportFile(discoRepo), path.join(discoRepo, '.claude/ultrapowers/run-20990101000000/report.json'))
+    assert.equal(readReportTokens(findRunReportFile(discoRepo)), 22, 'the NEWEST run directory wins')
+
+    // A newer run directory carrying only a gate receipt is skipped for the
+    // report — a run that gated but never wrote a report must not blank the
+    // reading of one that did.
+    writeFile(discoRepo, '.claude/ultrapowers/run-21000101000000/gate-receipt.json', JSON.stringify({ verdict: 'PASS' }))
+    assert.equal(readReportTokens(findRunReportFile(discoRepo)), 22)
+
+    // Receipt discovery is scoped by FILE NAME, so a report sharing the run
+    // directory is never mistaken for a receipt.
+    assert.deepEqual(findReceiptFiles(discoRepo), ['.claude/ultrapowers/run-21000101000000/gate-receipt.json'])
+    assert.deepEqual(findReceiptFiles(sandboxRepo), [RECEIPT_PATH])
+  }
+
+  // -- 14. the default exec and spawn seams ----------------------------------
+  // Every other test injects over these two, so without this they are the only
+  // code in the sandbox that nothing has ever run.
+  {
+    // `shellExec` resolves — never rejects — and reports the real exit code.
+    assert.deepEqual(await shellExec('echo hi'), { code: 0, stdout: 'hi\n' })
+    assert.deepEqual(await shellExec('exit 7'), { code: 7, stdout: '' })
+    // stderr is deliberately NOT folded into stdout: callers that parse stdout
+    // (`rev-parse`, `for-each-ref`) must see exactly what the command printed.
+    assert.deepEqual(await shellExec('echo out; echo err 1>&2'), { code: 0, stdout: 'out\n' })
+    // A command the shell cannot find is a non-zero code, not a throw.
+    const missing = await shellExec('fleet-no-such-binary-9f3a')
+    assert.notEqual(missing.code, 0)
+
+    // `spawnEngineProcess` resolves the child's exit code, and a spawn that
+    // fails outright resolves 1 rather than rejecting.
+    assert.equal(await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'exit 3'], cwd: tmp }), 3)
+    assert.equal(await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'exit 0'], cwd: tmp }), 0)
+    assert.equal(await spawnEngineProcess({ command: path.join(tmp, 'no-such-binary'), args: [], cwd: tmp }), 1)
+
+    // The engine argv is a pinned shape — the plan path is one argument of a
+    // single `/ultrapowers <plan>` prompt, not a bare positional.
+    assert.equal(ENGINE_COMMAND, 'claude')
+    assert.deepEqual(engineArgs('docs/plan.md'), ['-p', '/ultrapowers docs/plan.md'])
   }
 
   console.log('ALL TESTS PASSED')
