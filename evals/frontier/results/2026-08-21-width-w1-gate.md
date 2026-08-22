@@ -69,30 +69,59 @@ only the pointer. W1 is proven on real `exe.dev` infrastructure.
 | run-4 | 3-task hardening | parked ~35min, **full pipeline** | Provision→claim→wave(3)→reviews→merge(`adb88d4`)→gate all ran; receipt published (`002fa210…`) with real sha; lease + stamp true. `o1:false` only because gate verdict = **NEEDS_ACK**: a single `deferred:external` ack from my plan's self-referential acceptance line (declared its own held-out verification to be the live run). **Plan-authoring defect.** Fixed → run-5. |
 | run-5 | 3-task hardening (acceptance de-self-referenced) | parked ~42min | Again NEEDS_ACK, but a **different** `deferred:external` ack: Task 3 tests the shim's real-golden-image behavior, verifiable only under real infra, so the engine's completeness critic honestly defers it. Any plan that tests the fleet's own real-infra behavior emits such an ack. **Intrinsic to the payload**, not a defect. |
 | **run-6** | **1-task self-contained smoke** (`fleet/runid.mjs`, pure) | **gate-green ~24min** | Zero deferrable claims → gate verdict **PASS** → shim greens → receipt resolves → **`o1: true`**. |
+| **run-7** | same smoke plan, on the #195 token-source fix | **gate-green ~23min** | O1-green **and** first real spend read: `spendObservational {reported: 44571, ledger: 44571}` (was `null/0` on runs 1–6). Proves the token source live; recorded as the floor baseline below. |
 
 The shim greens only on a bare gate verdict of `PASS` (`readGateGreen` in
 `shim-main.mjs`); `NEEDS_ACK` maps to park. This is the load-bearing lesson from
 runs 4–5: a headless run's O1 requires a plan with **no** honest ack — a fully
 self-contained payload. Recorded as a W1d finding (below).
 
-## Constants set at this gate — NONE CAN BE SET (blocked on #190 item 1)
+## Constants set at this gate — DEFERRED TO W2; run-7 recorded as the FLOOR baseline
 
-Per §W1c/§W1d the cap defaults, anomaly multiple, and spend-vs-report tolerance
-are "set at the W1 gate from the first run's measured burn." **No burn number
-exists.** `spendObservational.reported` was `null` on every run (1–6): the
-engine's `report.json` carries **no** token field (keys are
-`integrationBranch/waves/tasks/tests/acceptance/baseline/waveMerges/frontier/
-coverage/…`; `readReportTokens` scans `report`/`usage`/`result` for
-`outputTokens|totalTokens|tokens` and finds none), so zero spend rows land and the
-ledger sums to `0`. This is exactly the empirically-confirmed inertness of #190
-item 1 ("spend hard-cap is inert against today's engine"). The spend read is
-observational at n=1 by construction (§W1d finding F6); this run confirms it is
-also **structurally empty** until a token source is wired.
+### The measurement now works (was blocked on #190 item 1)
 
-→ **The three W1-set constants remain unset and cannot be grounded from this
-gate.** Wiring a token source (#190 item 1 — likely run transcripts / audit_run
-counters) is a prerequisite to any of them. Recording `reported: null, ledger: 0`
-as the honest measured value, not inventing constants ungrounded.
+Runs 1–6 all read `spendObservational.reported: null, ledger: 0` — the engine's
+`report.json` carries no token field, so the spend hard-cap was inert (#190
+item 1, confirmed empirically). **That is now fixed** (#195, merged `9d1929b`):
+the shim launches the engine with a fixed `--session-id` and sums `output_tokens`
+across the run's transcript **and its subagents'** (`readSessionTokens`). Proven
+live on **run-7** (same self-contained smoke plan as run-6, so also O1-green):
+
+```json
+{ "o1": true, "receiptsResolvable": true, "leaseContinuity": true, "versionStamp": true,
+  "spendObservational": { "reported": 44571, "ledger": 44571 } }
+```
+
+`reported == ledger` exactly, and the count was observed rising monotonically
+through the run (5,679 → 13,255 → 26,137 → 44,571) — the cumulative shape the
+delta sampler requires. The spend cap is no longer inert: spend rows land and sum.
+
+### But the constants are NOT set from run-7 — deliberately (operator call 2026-08-22)
+
+run-7's 44,571 output tokens is a **FLOOR reading, not a typical run.** The smoke
+plan is one trivial pure function + its test, sized to gate a clean PASS — so its
+cost is essentially the engine's fixed per-run overhead (preflight, compile, knob
+validation, one micro-task, review, merge, gate) with almost no implementation on
+top. Anchoring a spend cap near this floor would false-park every real
+(3–8 task) plan.
+
+Two of the three constants are, per the spec, **defined** to need more than one run:
+
+| Constant | Why not from run-7 | Where it belongs |
+|---|---|---|
+| **Anomaly multiple** (burn-rate page) | Spec §W1c: "activates only once a trailing window of **≥5 runs** exists (W2 at the earliest)." | **W2** |
+| **Spend-vs-report tolerance** | run-7 gives one data point of **zero** drift (`reported == ledger`), and both come from reading the same transcripts; a tolerance band describes drift across many runs. Spec §W1d: pass/fail "from W2 on." | **W2** |
+| **Cap defaults** (per-run + docket) | Want a *typical-with-headroom* figure; a single floor-cost run gives neither the typical nor the spread. | **W2** (grounded from a representative multi-run sample) |
+
+**Decision:** record run-7 as the floor baseline; **keep the current placeholder
+per-run cap of `2,000,000` output tokens** — ~45× the floor, high enough never to
+false-trip a real job, low enough to still catch a genuine runaway, and now
+*functional* rather than inert. Set the three constants in **W2**, from ≥5 runs on
+representative plans (per-run cap ≈ the sample's 90th percentile + headroom). Not
+inventing them from a degenerate n=1.
+
+- **Floor baseline (run-7):** 44,571 output tokens for a minimal 1-task plan.
+- **Placeholder per-run cap (unchanged):** 2,000,000 output tokens (`driveOne` default; orchestrator `budgets`).
 
 ## Findings (candidates for issues)
 
