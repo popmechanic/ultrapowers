@@ -60,6 +60,13 @@ export const GATE_RECEIPT_FILE = 'gate-receipt.json'
 export const BASE_REF = 'fleet-base'
 
 /**
+ * The plugin manifest, repo-relative — the version half of the version stamp.
+ *
+ * Read out of a git ref rather than off disk, so see `readStamp` for why.
+ */
+export const MANIFEST_PATH = '.claude-plugin/plugin.json'
+
+/**
  * Where receipts are COPIED to so they survive as git objects.
  *
  * `RUN_ARTIFACT_DIR` is gitignored (repo `.gitignore`: `.claude/ultrapowers/`),
@@ -196,6 +203,25 @@ const revParse = async ({ repoDir, exec, ref }) => {
     const result = await exec(`git -C ${repoDir} rev-parse ${ref}`)
     if (result?.code !== 0) return ''
     return String(result.stdout ?? '').trim()
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * A file's contents AT A REF, without consulting the working tree.
+ *
+ * `git show <ref>:<path>` is what makes the stamp's two halves name the same
+ * commit: the checkout moves during a run, a ref does not. Both interpolated
+ * values are guarded, exactly as `revParse` guards its own — and like every
+ * reader here it returns the empty result rather than throwing.
+ */
+const showFile = async ({ repoDir, exec, ref, file }) => {
+  if (!isSafeBranchName(ref) || !isSafeRepoPath(file)) return ''
+  try {
+    const result = await exec(`git -C ${repoDir} show ${ref}:${file}`)
+    if (result?.code !== 0) return ''
+    return String(result.stdout ?? '')
   } catch {
     return ''
   }
@@ -429,14 +455,39 @@ export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) 
 }
 
 /**
- * The identity of the code about to run: the plugin version from the manifest
- * on disk plus the repo's HEAD. Never throws — a sandbox that cannot read its
- * own identity still runs, and reports an empty stamp the gate reads as absent.
+ * The identity of the code about to run — read from the REF the driver pushed,
+ * never from the checkout.
+ *
+ * The checkout is not that identity at any point in a run. The sandbox boots on
+ * the golden image's HEAD; `invokeEngineRun` then moves it onto `BASE_REF`; the
+ * engine then leaves it on `ultra/integration-<stamp>`. So a stamp read from
+ * HEAD (or from the manifest on disk) names the IMAGE when taken before the run
+ * and a descendant when taken after — in the first case attesting, as the
+ * identity of the code that ran, a commit the driver never sent. The driver's
+ * read only checks that the cells are non-empty, so that misattribution passes
+ * `versionStamp` and reaches the gate looking exactly like a correct one.
+ *
+ * `BASE_REF` is the fixed point: `provisionRun` pushes the driver's base to it,
+ * nothing moves it afterwards, and it still resolves once the engine has moved
+ * HEAD — so the stamp is the same whether it is taken before or after the run,
+ * and both halves come from the one commit under test.
+ *
+ * A repo where the ref does not resolve stamps EMPTY, with no fall back to
+ * disk: an unpushed base means `invokeEngineRun` fails the run anyway, and a
+ * fallback would restore precisely the misattribution above with nothing on the
+ * read able to see it. Never throws — a sandbox that cannot read its own
+ * identity still runs, and reports the gap the gate reads as absent.
  */
-export const readStamp = async ({ repoDir, exec }) => {
-  const manifest = readJson(path.join(repoDir, '.claude-plugin', 'plugin.json'))
-  const pluginVersion = typeof manifest?.version === 'string' ? manifest.version : ''
-  return { pluginVersion, engineSha: await revParse({ repoDir, exec, ref: 'HEAD' }) }
+export const readStamp = async ({ repoDir, exec, ref = BASE_REF }) => {
+  const engineSha = await revParse({ repoDir, exec, ref })
+  if (!engineSha) return { pluginVersion: '', engineSha: '' }
+  let manifest = null
+  try {
+    manifest = JSON.parse(await showFile({ repoDir, exec, ref, file: MANIFEST_PATH }))
+  } catch {
+    manifest = null
+  }
+  return { pluginVersion: typeof manifest?.version === 'string' ? manifest.version : '', engineSha }
 }
 
 // --- live sandbox path -----------------------------------------------------
@@ -547,6 +598,10 @@ export const main = async ({
   const synchronizer = await createWsSynchronizer(store, new WebSocket(withToken(wsUrl, token)))
   await synchronizer.startSync()
 
+  // Read ONCE and re-applied below rather than re-read after the run. That is
+  // sound only because it is sourced from `BASE_REF`, which the run does not
+  // move: a stamp read from the checkout would be stale by the time the engine
+  // returned, which is exactly the bug `readStamp` documents.
   const stamp = await readStamp({ repoDir, exec })
   applyStamp(store, runId, stamp)
 

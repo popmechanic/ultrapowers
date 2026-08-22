@@ -127,6 +127,11 @@ try {
   assert.equal(init.code, 0, `git init/commit failed: ${init.stderr}`)
   const headSha = (await sh('git rev-parse HEAD', repoDir)).stdout.trim()
   assert.match(headSha, /^[0-9a-f]{40}$/, 'the test fixture must produce a real 40-hex commit sha')
+  // Every sandbox carries this ref: `provisionRun` pushes the driver's base to
+  // it, and it is the ONLY name that identifies the code under test once the
+  // engine has moved the checkout onto its own integration branch. The stand-in
+  // sandboxes below stamp from it exactly as `main()` does.
+  assert.equal((await sh(`git branch ${BASE_REF} main`, repoDir)).code, 0)
 
   // -- the stand-in sandbox repo --------------------------------------------
   // A real clone carrying two `ultra/integration-*` branches with explicit,
@@ -136,6 +141,10 @@ try {
   const cloned = await sh(`git clone -q "${repoDir}" "${sandboxRepo}"`, tmp)
   assert.equal(cloned.code, 0, `git clone failed: ${cloned.stderr}`)
   await sh('git config user.email t@example.com && git config user.name t', sandboxRepo)
+  // The pushed base, as the provisioner leaves it. It stays put for the whole
+  // run while HEAD moves twice (base checkout, then the engine's integration
+  // branch), which is precisely why the stamp is read from it and not from HEAD.
+  assert.equal((await sh(`git branch ${BASE_REF} main`, sandboxRepo)).code, 0)
 
   await sh(`git checkout -q -b ${OLDER_BRANCH}`, sandboxRepo)
   writeFile(sandboxRepo, 'old.txt', 'old\n')
@@ -283,6 +292,9 @@ try {
   {
     const runId = 'run-drive-1'
     let sandbox = null
+    // The production entrypoint's own git traffic, so the stamp's SOURCE is
+    // pinned end to end and not only in the unit scenario below.
+    const shimCalls = []
     const exec = makeExec((assignment) => {
       // The provisioner's shim start is a detached `nohup … &`, so the sandbox
       // comes up AFTER the command returns — exactly as it does live.
@@ -295,7 +307,10 @@ try {
         sandbox = shimMain({
           assignmentPath,
           repoDir: sandboxRepo,
-          exec: (cmd) => sh(cmd),
+          exec: (cmd) => {
+            shimCalls.push(cmd)
+            return sh(cmd)
+          },
           invokeRun: async () => {
             await sleep(250)
             return { gateGreen: true }
@@ -415,6 +430,20 @@ try {
     assert.equal(exec.delivered.runId, runId)
     assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${PORT}/fleet`)
     assert.equal(exec.delivered.planPath, driveDefaults.planPath)
+
+    // The stamp names the code under test. `main()` stamps BEFORE the run, and
+    // the run is what moves the checkout — first onto the pushed base, then onto
+    // the engine's integration branch — so a stamp read from the checkout names
+    // whatever the golden image happened to be baked at. It is read from the
+    // pushed ref instead, which is stable across both moves.
+    assert.ok(
+      shimCalls.includes(`git -C ${sandboxRepo} rev-parse ${BASE_REF}`),
+      `main() must stamp from ${BASE_REF}, got: ${JSON.stringify(shimCalls)}`,
+    )
+    assert.ok(
+      !shimCalls.some((cmd) => /rev-parse HEAD$/.test(cmd)),
+      `the stamp must never be read from the sandbox's HEAD, got: ${JSON.stringify(shimCalls)}`,
+    )
   }
 
   // -- 2. an ABSENT sha sinks receiptsResolvable AND o1 ----------------------
@@ -964,15 +993,73 @@ try {
     assert.equal(readGateGreen(reportFile), false)
     assert.equal(readGateGreen(path.join(tmp, 'does-not-exist.json')), false)
 
-    // The stamp: version from the manifest on disk, sha from the exec seam.
-    const stamp = await readStamp({ repoDir, exec: async () => ({ code: 0, stdout: `${headSha}\n` }) })
-    assert.deepEqual(stamp, { pluginVersion: '9.9.9', engineSha: headSha })
+    // The stamp attests THE CODE THAT RUNS — the base ref the driver pushed —
+    // and never the checkout it happens to be captured beside. Those differ in
+    // every live run: the sandbox boots on the golden image's HEAD, `main()`
+    // stamps before `invokeEngineRun` moves the checkout onto `fleet-base`, and
+    // the engine then leaves HEAD on its own integration branch. A stamp read
+    // from HEAD or from the working tree therefore names a commit the driver
+    // never sent, while `versionStamp` (non-emptiness only) still reads true —
+    // an attestation of the wrong code that the gate cannot tell from a right
+    // one. Both halves are pinned here against a repo built so the two answers
+    // cannot coincide.
+    const stampRepo = path.join(tmp, 'stamp-repo')
+    fs.mkdirSync(stampRepo, { recursive: true })
+    writeFile(stampRepo, '.claude-plugin/plugin.json', JSON.stringify({ version: '1.0.0-base' }))
+    const stampInit = await sh(
+      'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
+        `git add -A && git -c commit.gpgsign=false commit -q -m base && git branch ${BASE_REF}`,
+      stampRepo,
+    )
+    assert.equal(stampInit.code, 0, `stamp fixture init failed: ${stampInit.stderr}`)
+    const baseSha = (await sh(`git rev-parse ${BASE_REF}`, stampRepo)).stdout.trim()
+
+    // …then move the checkout off it, carrying a DIFFERENT manifest — the shape
+    // a golden image baked at another sha presents.
+    writeFile(stampRepo, '.claude-plugin/plugin.json', JSON.stringify({ version: '2.0.0-image' }))
+    const stampMoved = await sh(
+      'git checkout -q -b image && git add -A && git -c commit.gpgsign=false commit -q -m image',
+      stampRepo,
+    )
+    assert.equal(stampMoved.code, 0, `stamp fixture move failed: ${stampMoved.stderr}`)
+    const imageSha = (await sh('git rev-parse HEAD', stampRepo)).stdout.trim()
+    assert.notEqual(imageSha, baseSha, 'the fixture must make HEAD and the base ref disagree')
+
+    const stamp = await readStamp({ repoDir: stampRepo, exec: (cmd) => sh(cmd) })
+    assert.deepEqual(stamp, { pluginVersion: '1.0.0-base', engineSha: baseSha })
+    assert.notEqual(stamp.engineSha, imageSha, 'the stamped sha must not be the checkout it was read beside')
+    assert.notEqual(stamp.pluginVersion, '2.0.0-image', 'the version must come from the ref, not the working tree')
+
+    // A sandbox the base was never pushed to reports an EMPTY stamp rather than
+    // falling back to whatever is on disk — a fallback would restore exactly the
+    // misattribution above, silently and with no way for the gate to see it.
+    assert.deepEqual(await readStamp({ repoDir: stampRepo, exec: (cmd) => sh(cmd), ref: 'no-such-ref' }), {
+      pluginVersion: '',
+      engineSha: '',
+    })
     // A repo with no manifest and a failing git still yields a well-formed,
     // empty stamp rather than throwing inside a live sandbox.
     assert.deepEqual(await readStamp({ repoDir: path.join(tmp, 'nope'), exec: async () => ({ code: 1, stdout: '' }) }), {
       pluginVersion: '',
       engineSha: '',
     })
+    // The ref reaches a shell on both legs (`rev-parse` and the manifest read),
+    // so an unsafe one is refused before either runs.
+    {
+      const seen = []
+      assert.deepEqual(
+        await readStamp({
+          repoDir: stampRepo,
+          exec: async (cmd) => {
+            seen.push(cmd)
+            return { code: 0, stdout: '' }
+          },
+          ref: 'fleet-base; touch /tmp/pwned',
+        }),
+        { pluginVersion: '', engineSha: '' },
+      )
+      assert.deepEqual(seen, [], `an unsafe ref must never reach a shell, got: ${JSON.stringify(seen)}`)
+    }
 
     // Branch detection is MECHANICAL — the newest `ultra/integration-*` ref in
     // the sandbox's own repo, never a parse of engine output.
@@ -1001,8 +1088,8 @@ try {
       sandboxId: 's',
       status: 'running',
       branch: INTEGRATION_BRANCH,
-      pluginVersion: '9.9.9',
-      engineSha: headSha,
+      pluginVersion: '1.0.0-base',
+      engineSha: baseSha,
       reportedTokens: 1234,
     })
     assert.deepEqual(store.getRow('receipts', 'run-x:gate'), {
@@ -1014,7 +1101,7 @@ try {
     applyStamp(store, 'run-x', { pluginVersion: '', engineSha: '' })
     applyReportedTokens(store, 'run-x', null)
     applyBranch(store, 'run-x', '')
-    assert.equal(store.getCell('runs', 'run-x', 'pluginVersion'), '9.9.9')
+    assert.equal(store.getCell('runs', 'run-x', 'pluginVersion'), '1.0.0-base')
     assert.equal(store.getCell('runs', 'run-x', 'reportedTokens'), 1234)
     assert.equal(store.getCell('runs', 'run-x', 'branch'), INTEGRATION_BRANCH)
 
