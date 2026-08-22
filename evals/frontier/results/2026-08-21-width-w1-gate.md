@@ -70,6 +70,7 @@ only the pointer. W1 is proven on real `exe.dev` infrastructure.
 | run-5 | 3-task hardening (acceptance de-self-referenced) | parked ~42min | Again NEEDS_ACK, but a **different** `deferred:external` ack: Task 3 tests the shim's real-golden-image behavior, verifiable only under real infra, so the engine's completeness critic honestly defers it. Any plan that tests the fleet's own real-infra behavior emits such an ack. **Intrinsic to the payload**, not a defect. |
 | **run-6** | **1-task self-contained smoke** (`fleet/runid.mjs`, pure) | **gate-green ~24min** | Zero deferrable claims → gate verdict **PASS** → shim greens → receipt resolves → **`o1: true`**. |
 | **run-7** | same smoke plan, on the #195 token-source fix | **gate-green ~23min** | O1-green **and** first real spend read: `spendObservational {reported: 44571, ledger: 44571}` (was `null/0` on runs 1–6). Proves the token source live; recorded as the floor baseline below. |
+| **run-8** | same smoke plan, on the committed #196/#197 path (no wrapper) | **gate-green ~25min** | First live drain through `provisionRun`'s own reverse tunnel (#196) and `driveOne`'s evidence-before-teardown pull (#197): tunnel opened/killed by the committed code, ws `ESTAB` over it, `sandbox-logs.tgz` (321 KB: shim.log, fleet-run.json, 13 transcripts, run dirs) pulled before `rm`. `spendObservational {reported: 47171, ledger: 47171}`. Record: #189 comment 2026-08-22 21:16 UTC. |
 
 The shim greens only on a bare gate verdict of `PASS` (`readGateGreen` in
 `shim-main.mjs`); `NEEDS_ACK` maps to park. This is the load-bearing lesson from
@@ -164,4 +165,5 @@ inventing them from a degenerate n=1.
 - run-6 read + detail: on `fleet-orchestrator:/home/exedev/fleet-orch-live/gate-read-run-6.{json,detail.json}`.
 - Pulled sandbox evidence (shim.log, engine + agent transcripts, run dirs) for runs 2/3/4/5/6:
   `fleet-orchestrator:/home/exedev/fleet-run-logs/fleet-<runId>-*/sandbox-logs.tgz` (evidence-before-teardown pull).
+- run-8 read + detail + pulled evidence: `fleet-orchestrator:/home/exedev/fleet-orch-live/{gate-read-run-8.json,gate-read-run-8.detail.json,sandbox-logs/fleet-run-8-1787433414011/sandbox-logs.tgz}`; run-7's dir preserved as `fleet-orch-live.run-7`.
 - Golden + orchestrator VMs left running for W2; all `fleet-run-*` sandboxes destroyed.
