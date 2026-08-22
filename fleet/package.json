@@ -1,0 +1,6 @@
+{
+  "name": "ultrapowers-fleet",
+  "private": true,
+  "type": "module",
+  "dependencies": { "tinybase": "^6", "ws": "^8" }
+}
