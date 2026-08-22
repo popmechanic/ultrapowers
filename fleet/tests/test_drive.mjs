@@ -1277,15 +1277,22 @@ try {
         log: rec.log,
       })
 
-      // Exactly two side effects, in exactly this order: check out the pushed
-      // base, THEN launch the engine. A spawn that preceded the checkout would
-      // run the golden image's HEAD and gate it green.
-      assert.equal(rec.calls.length, 2, `expected checkout then spawn, got: ${JSON.stringify(rec.calls)}`)
+      // Exactly three side effects, in exactly this order: check out the pushed
+      // base, read which credential the engine will ride (`claude auth status`,
+      // logged — #213), THEN launch the engine. A spawn that preceded the
+      // checkout would run the golden image's HEAD and gate it green.
+      assert.equal(rec.calls.length, 3, `expected checkout, auth status, then spawn, got: ${JSON.stringify(rec.calls)}`)
       const checkoutIdx = rec.calls.findIndex((c) => c === `git -C ${engineRepo} checkout -q ${BASE_REF}`)
-      const spawnIdx = rec.calls.findIndex((c) => c.startsWith(ENGINE_COMMAND))
+      const authIdx = rec.calls.findIndex((c) => c === `${ENGINE_COMMAND} auth status`)
+      const spawnIdx = rec.calls.findIndex((c) => c.startsWith(`${ENGINE_COMMAND} -p`))
+      assert.ok(authIdx >= 0 && authIdx < spawnIdx, `auth status must be read before the engine is spawned, got: ${JSON.stringify(rec.calls)}`)
       assert.ok(checkoutIdx >= 0, `expected a ${BASE_REF} checkout, got: ${JSON.stringify(rec.calls)}`)
       assert.ok(spawnIdx >= 0, `expected an engine spawn, got: ${JSON.stringify(rec.calls)}`)
       assert.ok(checkoutIdx < spawnIdx, 'the base must be checked out BEFORE the engine is spawned')
+      // The credential read is logged for the evidence pull; an unparseable
+      // status (the recorder returns no JSON) degrades to the explicit
+      // "unreadable" line and never blocks the launch.
+      assert.ok(rec.logs.some((l) => l.includes('fleet: engine auth')), `expected an engine-auth log line, got: ${JSON.stringify(rec.logs)}`)
 
       // The plan the assignment named, verbatim — never the literal `undefined`
       // a missing assignment field used to produce.
