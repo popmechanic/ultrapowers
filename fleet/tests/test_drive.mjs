@@ -54,6 +54,7 @@ import {
   detectIntegrationBranch,
   engineArgs,
   ENGINE_COMMAND,
+  findGateReceiptFile,
   findReceiptFiles,
   findRunReportFile,
   invokeEngineRun,
@@ -953,7 +954,7 @@ try {
     )
   }
 
-  // -- 11. shim-main's pure helpers -------------------------------------------
+  // -- 12. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')
     fs.writeFileSync(
@@ -984,13 +985,17 @@ try {
     fs.writeFileSync(reportFile, JSON.stringify({ totalTokens: 7 }))
     assert.equal(readReportTokens(reportFile), 7)
 
-    // Gate verdict.
-    fs.writeFileSync(reportFile, JSON.stringify({ gateGreen: true }))
-    assert.equal(readGateGreen(reportFile), true)
-    fs.writeFileSync(reportFile, JSON.stringify({ gate: { verdict: 'PASS' } }))
-    assert.equal(readGateGreen(reportFile), true)
-    fs.writeFileSync(reportFile, JSON.stringify({ gate: { verdict: 'BLOCKED' } }))
-    assert.equal(readGateGreen(reportFile), false)
+    // Gate verdict — read from the machine-written gate RECEIPT, never from
+    // report.json (which carries no verdict field at all). `NEEDS_ACK` reads
+    // false exactly like `BLOCKED`: it parks for operator triage rather than
+    // greening, which is the fleet's park-by-default posture.
+    const receiptFile = path.join(tmp, 'gate-receipt.json')
+    fs.writeFileSync(receiptFile, JSON.stringify({ verdict: 'PASS' }))
+    assert.equal(readGateGreen(receiptFile), true)
+    fs.writeFileSync(receiptFile, JSON.stringify({ verdict: 'BLOCKED' }))
+    assert.equal(readGateGreen(receiptFile), false)
+    fs.writeFileSync(receiptFile, JSON.stringify({ verdict: 'NEEDS_ACK' }))
+    assert.equal(readGateGreen(receiptFile), false)
     assert.equal(readGateGreen(path.join(tmp, 'does-not-exist.json')), false)
 
     // The stamp attests THE CODE THAT RUNS — the base ref the driver pushed —
@@ -1131,7 +1136,7 @@ try {
     assert.equal(isSafeBranchName(42), false)
   }
 
-  // -- 12. the engine launch itself ------------------------------------------
+  // -- 13. the engine launch itself ------------------------------------------
   // `invokeEngineRun` is the whole live leg of the sandbox: it is what decides
   // WHAT code runs (the pushed base, not the golden image's HEAD), WHICH plan
   // it runs, and whether the result counts as green. It is driven here over
@@ -1167,14 +1172,27 @@ try {
       }
     }
 
-    // The engine writes its report DURING the run, so the report is synthesized
-    // by the spawn itself. That is what proves discovery is resolved after the
-    // run rather than at boot, when the directory does not exist.
-    const writesReport = (body) => async ({ cwd }) => writeFile(cwd, `${ENGINE_RUN_DIR}/report.json`, JSON.stringify(body))
+    // The engine writes its report AND its gate receipt DURING the run, into
+    // the same run directory — so both are synthesized by the spawn itself.
+    // That is what proves discovery is resolved after the run rather than at
+    // boot, when the directory does not exist.
+    //
+    // The two files are deliberately split: `report.json` carries no verdict
+    // field in the real engine, so it is written from `report` alone (the
+    // token count) and the receipt — the ONLY source `readGateGreen` reads —
+    // is written separately, only when `verdict` is supplied. A subtest that
+    // omits `verdict` leaves no receipt behind at all, exactly like an engine
+    // run that never reached its gate.
+    const writesArtifacts =
+      ({ report = {}, verdict } = {}) =>
+      async ({ cwd }) => {
+        writeFile(cwd, `${ENGINE_RUN_DIR}/report.json`, JSON.stringify(report))
+        if (verdict !== undefined) writeFile(cwd, `${ENGINE_RUN_DIR}/gate-receipt.json`, JSON.stringify({ verdict }))
+      }
 
     // -- the happy path --
     {
-      const rec = makeRecorder({ onSpawn: writesReport({ gateVerdict: 'PASS', outputTokens: 4321 }) })
+      const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'PASS' }) })
       const outcome = await invokeEngineRun({
         repoDir: engineRepo,
         planPath: ENGINE_PLAN,
@@ -1201,17 +1219,20 @@ try {
 
       assert.deepEqual(outcome, { gateGreen: true })
 
-      // …and the discovered report is the file the engine actually wrote, read
-      // by both readers.
-      const discovered = findRunReportFile(engineRepo)
-      assert.equal(discovered, path.join(engineRepo, ENGINE_RUN_DIR, 'report.json'))
-      assert.equal(readGateGreen(discovered), true)
-      assert.equal(readReportTokens(discovered), 4321)
+      // …and the discovered report and receipt are the files the engine
+      // actually wrote — the verdict from the receipt, the token count from
+      // the report, exactly as the two readers are split.
+      const discoveredReport = findRunReportFile(engineRepo)
+      assert.equal(discoveredReport, path.join(engineRepo, ENGINE_RUN_DIR, 'report.json'))
+      assert.equal(readReportTokens(discoveredReport), 4321)
+      const discoveredReceipt = findGateReceiptFile(engineRepo)
+      assert.equal(discoveredReceipt, path.join(engineRepo, ENGINE_RUN_DIR, 'gate-receipt.json'))
+      assert.equal(readGateGreen(discoveredReceipt), true)
     }
 
-    // -- a non-zero engine exit is never green, however the report reads --
+    // -- a non-zero engine exit is never green, however the receipt reads -----
     {
-      const rec = makeRecorder({ engineCode: 1, onSpawn: writesReport({ gateVerdict: 'PASS', outputTokens: 4321 }) })
+      const rec = makeRecorder({ engineCode: 1, onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'PASS' }) })
       assert.deepEqual(
         await invokeEngineRun({
           repoDir: engineRepo,
@@ -1224,9 +1245,26 @@ try {
       )
     }
 
-    // -- a clean exit with a BLOCKED report is not green either --
+    // -- a clean exit with a BLOCKED gate receipt is not green either ----------
     {
-      const rec = makeRecorder({ onSpawn: writesReport({ gateVerdict: 'BLOCKED', outputTokens: 4321 }) })
+      const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'BLOCKED' }) })
+      assert.deepEqual(
+        await invokeEngineRun({
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+        }),
+        { gateGreen: false },
+      )
+    }
+
+    // -- a clean exit with a NEEDS_ACK gate receipt parks, not greens ----------
+    // A `NEEDS_ACK` run gates for operator triage, not a silent pass — the
+    // fleet's park-by-default posture reads it exactly like `BLOCKED`.
+    {
+      const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'NEEDS_ACK' }) })
       assert.deepEqual(
         await invokeEngineRun({
           repoDir: engineRepo,
@@ -1284,14 +1322,19 @@ try {
       )
     }
 
-    // -- an exec seam that throws is a failed checkout, not a crash -----------
+    // -- an exec seam that THROWS is a failed checkout, not a crash -----------
+    // Not a non-zero code — an actually rejecting promise, the case a bare
+    // `checkedOut?.code !== 0` check cannot catch and only a try/catch around
+    // the await can.
     {
       const rec = makeRecorder()
       assert.deepEqual(
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
-          exec: async () => ({ code: 128, stdout: '' }),
+          exec: async () => {
+            throw new Error('exec seam exploded')
+          },
           spawnEngine: rec.spawnEngine,
           log: rec.log,
         }),
@@ -1301,7 +1344,7 @@ try {
     }
   }
 
-  // -- 13. run-report discovery ----------------------------------------------
+  // -- 14. run-report discovery ----------------------------------------------
   // The engine names its run directory with a stamp it mints itself, so there
   // is no fixed report path to read — the previous constant
   // (`.claude/ultrapowers/fleet-run/report.json`) named a directory the engine
@@ -1314,7 +1357,8 @@ try {
     assert.deepEqual(runArtifactDirs(discoRepo), [])
     assert.equal(findRunReportFile(discoRepo), '')
     assert.equal(readReportTokens(findRunReportFile(discoRepo)), null)
-    assert.equal(readGateGreen(findRunReportFile(discoRepo)), false)
+    assert.equal(findGateReceiptFile(discoRepo), '')
+    assert.equal(readGateGreen(findGateReceiptFile(discoRepo)), false)
 
     // Two runs, and a non-`run-` sibling that must be ignored entirely.
     writeFile(discoRepo, '.claude/ultrapowers/run-19990101000000/report.json', JSON.stringify({ totalTokens: 11 }))
@@ -1334,9 +1378,19 @@ try {
     // directory is never mistaken for a receipt.
     assert.deepEqual(findReceiptFiles(discoRepo), ['.claude/ultrapowers/run-21000101000000/gate-receipt.json'])
     assert.deepEqual(findReceiptFiles(sandboxRepo), [RECEIPT_PATH])
+
+    // `findGateReceiptFile` follows the SAME newest-with-the-file rule as
+    // `findRunReportFile`, against its sibling — the run-21000101000000
+    // directory is newest overall AND the only one with a receipt, so it wins
+    // even though it has no report.json of its own.
+    assert.equal(
+      findGateReceiptFile(discoRepo),
+      path.join(discoRepo, '.claude/ultrapowers/run-21000101000000/gate-receipt.json'),
+    )
+    assert.equal(readGateGreen(findGateReceiptFile(discoRepo)), true)
   }
 
-  // -- 14. the default exec and spawn seams ----------------------------------
+  // -- 15. the default exec and spawn seams ----------------------------------
   // Every other test injects over these two, so without this they are the only
   // code in the sandbox that nothing has ever run.
   {

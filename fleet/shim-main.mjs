@@ -178,13 +178,24 @@ export const readReportTokens = (reportFile) => {
   return null
 }
 
-/** Whether the engine's own gate passed. A missing/unreadable report is not green. */
-export const readGateGreen = (reportFile) => {
-  const report = readJson(reportFile)
-  if (!report || typeof report !== 'object') return false
-  if (report.gateGreen === true) return true
-  if (report.gateVerdict === 'PASS') return true
-  return report.gate?.verdict === 'PASS'
+/**
+ * Whether the engine's own gate passed — read from the machine-written GATE
+ * RECEIPT (`gate-receipt.json`), never from `report.json`.
+ *
+ * The engine's report carries no verdict field at all; the verdict
+ * (`PASS | BLOCKED | NEEDS_ACK`) is written by `ultra_gate.py` into the
+ * sibling receipt in the same run directory. `report.json` remains solely
+ * the token-count source for `readReportTokens` — the two readers are
+ * deliberately split across the two files the engine actually writes.
+ *
+ * True iff `verdict === 'PASS'`. `BLOCKED` and `NEEDS_ACK` both read false —
+ * a `NEEDS_ACK` run parks for operator triage, which is the fleet's
+ * park-by-default posture, not a silent green. A missing/unreadable receipt
+ * is not green either.
+ */
+export const readGateGreen = (receiptFile) => {
+  const receipt = readJson(receiptFile)
+  return receipt?.verdict === 'PASS'
 }
 
 // --- git readers -----------------------------------------------------------
@@ -307,6 +318,22 @@ export const findRunReportFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
     if (fs.existsSync(candidate)) return candidate
   }
   return ''
+}
+
+/**
+ * The newest machine-written gate receipt on disk, as an absolute path, or
+ * `''` when the engine has not gated yet — the file `readGateGreen` reads.
+ *
+ * Reuses `findReceiptFiles` rather than re-scanning: that function already
+ * walks `runArtifactDirs` oldest-first and filters to receipts that exist, so
+ * its LAST entry is the newest run directory that has one — exactly the
+ * discovery `findRunReportFile` performs for `report.json`, against the
+ * sibling file.
+ */
+export const findGateReceiptFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
+  const files = findReceiptFiles(repoDir, artifactDir)
+  const newest = files.at(-1)
+  return newest ? path.join(repoDir, newest) : ''
 }
 
 // --- store writers ---------------------------------------------------------
@@ -561,7 +588,15 @@ export const invokeEngineRun = async ({
   }
 
   // A literal ref name, so there is nothing to validate and nothing to inject.
-  const checkedOut = await exec(`git -C ${repoDir} checkout -q ${BASE_REF}`)
+  // Wrapped: a REJECTING exec (not merely a non-zero code) must degrade to the
+  // same explicit failure — an exec seam that throws is a failed checkout,
+  // never an uncaught crash mid-run.
+  let checkedOut
+  try {
+    checkedOut = await exec(`git -C ${repoDir} checkout -q ${BASE_REF}`)
+  } catch {
+    checkedOut = { code: 1 }
+  }
   if (checkedOut?.code !== 0) {
     log(`fleet: could not check out ${BASE_REF} — refusing to run against the image's HEAD`)
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
@@ -569,7 +604,9 @@ export const invokeEngineRun = async ({
 
   const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath), cwd: repoDir })
   // Resolved AFTER the run, because the run is what creates the directory.
-  return { gateGreen: code === 0 && readGateGreen(findRunReportFile(repoDir)) }
+  // The verdict lives in the gate receipt, never in report.json — see
+  // `readGateGreen`.
+  return { gateGreen: code === 0 && readGateGreen(findGateReceiptFile(repoDir)) }
 }
 
 const withToken = (wsUrl, token) => `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}token=${token}`
@@ -588,8 +625,12 @@ export const main = async ({
   // Resolved on every read, not once: the engine mints `run-<stamp>/` DURING
   // the run, so a path taken now would name a directory that does not exist
   // yet and would still name it after the run had written one.
-  const reportFile = () =>
-    assignment.reportFile ? path.resolve(repoDir, assignment.reportFile) : findRunReportFile(repoDir)
+  //
+  // Always via discovery, never an assignment override: `provisionRun` never
+  // sends `reportFile` and `invokeEngineRun` never reads it, so a dead
+  // override here was a second, silently divergent reader — both readers now
+  // resolve the same run-* directory.
+  const reportFile = () => findRunReportFile(repoDir)
 
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
