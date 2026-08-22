@@ -41,6 +41,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
 - `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
   test data by `tests/test_compile_plan.py` and `tests/test_fixture_seals.py`.
+- `fleet/` — Width Program W1 (spec `docs/superpowers/specs/2026-08-21-width-program.md`):
+  orchestrator (TinyBase ws-server + guard + spend authority), sandbox run shim, exe.dev
+  provisioner, drive-one driver, `RUNBOOK.md` for the live run. Own npm deps in
+  `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`. Not plugin
+  machinery — changes here never require a plugin release.
 
 ## Wayfinding (program-scale routing) — decided on #180
 
