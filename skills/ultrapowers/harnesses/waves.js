@@ -265,7 +265,7 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Inputs you receive:',
   '- TASK: the full, verbatim task text — do not paraphrase or reinterpret it',
-  '- WORKTREE_PATH: absolute path to your isolated worktree',
+  "- WORKTREE_PATH: the directory you start in IS your isolated worktree — run pwd first and treat that path as the ONLY absolute prefix you may write under. The session repository (the primary checkout the plan's paths were written against — a valid, writable path on the same disk) is forbidden even for appending a test: prefer relative paths, and if a command of yours would name any other checkout, stop and report BLOCKED instead.",
   '- BRANCH: the branch you must work on (already checked out for you)',
   '- BASE: sha of the integration-branch HEAD your work builds on',
   '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
