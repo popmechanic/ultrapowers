@@ -32,6 +32,9 @@ ROLE_MARKERS = [
     ("You are the setup agent", "setup"),
     ("You are the wave merge agent", "merge"),
     ("You are the reconciliation agent", "reconcile"),
+    # #188: the resolver prompt (references/wave-merge.md RESOLVER_PROMPT,
+    # baked into waves.js) opens with this phrase.
+    ("You are a merge-conflict resolver", "resolver"),
     # Bugfix: this marker previously read "What ..." (capital W); the actual
     # baked completeness-critic prompt (references/wave-merge.md's
     # COMPLETENESS_PROMPT block, baked into waves.js's completenessPrompt())

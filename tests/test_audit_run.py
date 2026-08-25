@@ -177,3 +177,19 @@ def test_audit_missing_dir_totals_carry_empty_wall_sec_by_task(tmp_path):
     from audit_run import audit
     out = audit(tmp_path / "does-not-exist")
     assert out["totals"]["wallSecByTask"] == {}
+
+
+# --- Task 1 (#188): Resolver role marker
+
+RESOLVER = ("SAFETY: ...\n\nYou are a merge-conflict resolver for one file in one wave. "
+            "You have no repo to explore: read exactly the hunks file named below.\n")
+
+
+def test_resolver_prompt_classifies_as_resolver(tmp_path):
+    from audit_run import classify
+    assert classify(RESOLVER) == "resolver"
+    agent_file(tmp_path, "r1", RESOLVER, "test-model", turns=2)
+    p = run_audit(tmp_path)
+    assert p.returncode == 0, p.stderr
+    assert "| resolver | test-model | 2 | 20 |" in p.stdout
+    assert "unclassified" not in p.stdout

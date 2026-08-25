@@ -20,7 +20,7 @@ SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
                   "transcript dir", "recommended", "depends-on")
 SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
 
-ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
+ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "resolver", "integration"}
 
 # #160(ii): the audit's token unit, named once so cost-lens readers stop
 # comparing it to the Workflow tool's reported total.
