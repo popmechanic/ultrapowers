@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -229,6 +230,15 @@ def validate_knobs(args_path, root):
                           "detail": "cannot cut probe worktree: %s"
                                     % (r.stderr or r.stdout).strip()}))
         return 1
+    # SIGTERM's default disposition ends the process WITHOUT unwinding, so the
+    # `finally` below never ran when a tool timeout killed a mid-suite probe
+    # and wt-knob-<pid> stayed registered (#251). Turn it into an exception:
+    # `subprocess.run` kills its child on the way out, `finally` removes the
+    # worktree. SIGKILL cannot be caught — sweep_worktrees.sh reaps a probe
+    # whose pid is gone.
+    def _on_term(signum, _frame):
+        raise SystemExit(128 + signum)
+    prev_term = signal.signal(signal.SIGTERM, _on_term)
     try:
         result = {"ok": True, "stage": "knob-validate"}
         bootstrap_red = False
@@ -261,6 +271,7 @@ def validate_knobs(args_path, root):
                                       "output": "[baseline timed out after 1800s]"}
             baseline_red = not result["baseline"]["ok"]
     finally:
+        signal.signal(signal.SIGTERM, prev_term)
         rm = sh(["git", "worktree", "remove", "--force", str(probe_wt)],
                 cwd=root)
         if rm.returncode != 0:

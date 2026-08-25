@@ -216,6 +216,18 @@ scan_engine_procs() {
     }'
 }
 
+# ── validate-knobs probe worktrees ─────────────────────────────────────────
+# `ultra_run.py --validate-knobs` cuts a detached probe at
+# .claude/ultrapowers/wt-knob-<pid> and removes it in a `finally` — which a
+# SIGKILL mid-suite skips, and the wf_* globs above never see the leftover
+# (#251). The pid in the name is the liveness test: a live pid is a probe in
+# progress, a dead one is a full checkout nobody will ever remove.
+probe_alive() {
+  local pid="${1##*wt-knob-}"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null
+}
+
 # TERM the given pids, poll up to ~5s for them to exit, KILL survivors.
 # Reaping never fails the sweep — a pid may vanish between scan and signal.
 kill_with_grace() {
@@ -286,6 +298,15 @@ if [ -n "$AUDIT" ]; then
     lock=""
     if is_locked "$wt"; then lock=", locked — possibly live; verify before removing"; fi
     echo "orphan worktree: $wt ($(human_kb "$kb"), $((age / 86400))d old${lock})"
+  done
+  for wt in "$ROOT"/.claude/ultrapowers/wt-knob-*; do
+    [ -e "$wt" ] || continue
+    probe_alive "$wt" && continue
+    orphans=$((orphans + 1))
+    kb="$(du -sk "$wt" 2>/dev/null | cut -f1 || true)"
+    case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
+    orphan_kb=$((orphan_kb + kb))
+    echo "orphan probe worktree: $wt ($(human_kb "$kb"), validate-knobs pid ${wt##*wt-knob-} is gone)"
   done
   while IFS= read -r br; do
     [ -n "$br" ] || continue
@@ -391,6 +412,23 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
   # --force --force also removes locked worktrees; a stale directory git no
   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
   # Increment only on a successful removal so the summary is accurate.
+  if git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
+    removed_worktrees=$((removed_worktrees + 1))
+  elif rm -rf "$wt" 2>/dev/null; then
+    removed_worktrees=$((removed_worktrees + 1))
+  else
+    echo "warn: could not fully remove $wt — inspect manually" >&2
+  fi
+done
+# Probe worktrees are the driver's, not a run's: a dead pid is garbage under
+# any scope, a live pid is a validate-knobs still running its suite.
+for wt in "$ROOT"/.claude/ultrapowers/wt-knob-*; do
+  [ -e "$wt" ] || continue
+  if probe_alive "$wt"; then
+    kept_worktrees=$((kept_worktrees + 1))
+    echo "kept (probe pid ${wt##*wt-knob-} is alive): $wt"
+    continue
+  fi
   if git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
     removed_worktrees=$((removed_worktrees + 1))
   elif rm -rf "$wt" 2>/dev/null; then
