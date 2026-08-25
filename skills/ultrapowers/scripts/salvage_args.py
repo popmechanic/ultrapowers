@@ -18,7 +18,6 @@ import sys
 
 import redirect_args as ra
 
-ra.PROG = "salvage_args"
 BLOCKED_RE = re.compile(r"^(\S+): (?:blocked — |cascade-blocked by )")
 
 
@@ -46,7 +45,12 @@ def salvage_set(report):
 
 
 def findings_naming(report, tid):
-    pat = re.compile(r"\btask\s+" + re.escape(tid) + r"\b", re.IGNORECASE)
+    # Matches "task(s)" followed, within the same sentence (no ".", ";" or
+    # newline in between), by the id as a whole word — so "tasks 2 and 3
+    # left the guard untested" names BOTH task 2 and task 3, while "task 22"
+    # never names id "2" (word-boundary on the id itself).
+    pat = re.compile(r"\btasks?\b(?:(?!\.|;|\n)[\s\S])*?\b" + re.escape(tid) + r"\b",
+                     re.IGNORECASE)
     return [str(f) for f in (report.get("completenessFindings") or [])
             if pat.search(str(f))]
 
@@ -76,6 +80,7 @@ def not_attempted(unfinished_line, findings):
 
 
 def main():
+    ra.PROG = "salvage_args"
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--receipt", required=True)
     ap.add_argument("--report", required=True,
