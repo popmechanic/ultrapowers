@@ -123,7 +123,7 @@ def test_collect_computes_wall_sec_from_first_and_last_timestamp(tmp_path):
     from audit_run import collect
     agent_file_ts(tmp_path, "a1", IMPL_7, "test-model",
                  ["2026-08-18T00:00:00.000Z", "2026-08-18T00:01:30.000Z"])
-    model, turns, out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    model, turns, out_tokens, wall_sec, _first = collect(tmp_path / "agent-a1.jsonl")
     assert model == "test-model" and turns == 2 and out_tokens == 20
     assert wall_sec == 90.0
 
@@ -131,14 +131,14 @@ def test_collect_computes_wall_sec_from_first_and_last_timestamp(tmp_path):
 def test_collect_wall_sec_zero_when_timestamps_absent(tmp_path):
     from audit_run import collect
     agent_file(tmp_path, "a1", IMPL_7, "test-model", turns=2)  # no `timestamp` field at all
-    _model, _turns, _out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    _model, _turns, _out_tokens, wall_sec, _first = collect(tmp_path / "agent-a1.jsonl")
     assert wall_sec == 0.0
 
 
 def test_collect_wall_sec_zero_with_single_timestamp(tmp_path):
     from audit_run import collect
     agent_file_ts(tmp_path, "a1", IMPL_7, "test-model", ["2026-08-18T00:00:00.000Z"])
-    _model, _turns, _out_tokens, wall_sec = collect(tmp_path / "agent-a1.jsonl")
+    _model, _turns, _out_tokens, wall_sec, _first = collect(tmp_path / "agent-a1.jsonl")
     assert wall_sec == 0.0
 
 
@@ -193,3 +193,65 @@ def test_resolver_prompt_classifies_as_resolver(tmp_path):
     assert p.returncode == 0, p.stderr
     assert "| resolver | test-model | 2 | 20 |" in p.stdout
     assert "unclassified" not in p.stdout
+
+
+# --- Task 2 (#224): FILES-line task attribution, attempt numbering, liveWallSecByTask.
+
+IMPL_FILES_ONLY = ("SAFETY: ...\n\nYou are an implementer subagent operating inside a dedicated git worktree.\n"
+                   "\nBASE: abc\nFILES: commands/kb-setup.md, tests/test_setup.py\n"
+                   "SIBLING FILES: 1: app/lib.ts\n\nTASK:\nAMEND (two gate findings) on the merged file.\n")
+REVIEW_FILES_ONLY = ("SAFETY: ...\n\nYou are an independent reviewer. You receive the original task text.\n"
+                     "\nFILES: commands/kb-setup.md, tests/test_setup.py\n")
+FILES_BY_TASK = {"1": ["app/lib.ts"], "5": ["commands/kb-setup.md", "tests/test_setup.py"],
+                 "6": ["CLAUDE.md"]}
+
+
+def test_classify_falls_back_to_files_line_join():
+    from audit_run import classify
+    assert classify(IMPL_FILES_ONLY) == "impl:?"                    # no launch: today's answer
+    assert classify(IMPL_FILES_ONLY, FILES_BY_TASK) == "impl:5"
+    assert classify(REVIEW_FILES_ONLY, FILES_BY_TASK) == "review:5"
+    # order-insensitive, and an ambiguous (non-unique) match stays '?'
+    assert classify(IMPL_FILES_ONLY, {"5": ["tests/test_setup.py", "commands/kb-setup.md"]}) == "impl:5"
+    assert classify(IMPL_FILES_ONLY, {"5": FILES_BY_TASK["5"], "7": FILES_BY_TASK["5"]}) == "impl:?"
+    # an explicit id line still wins over the FILES join
+    assert classify(IMPL_ID_2 + "\nFILES: commands/kb-setup.md, tests/test_setup.py\n", FILES_BY_TASK) == "impl:2"
+
+
+def test_audit_accepts_files_by_task_for_attribution(tmp_path):
+    from audit_run import audit
+    agent_file(tmp_path, "a1", IMPL_FILES_ONLY, "test-model", turns=1)
+    assert [a["role"] for a in audit(tmp_path)["agents"]] == ["impl:?"]
+    assert [a["role"] for a in audit(tmp_path, FILES_BY_TASK)["agents"]] == ["impl:5"]
+
+
+def test_audit_numbers_attempts_and_reports_live_wall_sec(tmp_path):
+    from audit_run import audit
+    # task 7: a zombie first attempt (8000 s) then the live retry (900 s)
+    agent_file_ts(tmp_path, "z1", IMPL_7, "test-model",
+                  ["2026-08-19T10:00:00Z", "2026-08-19T12:13:20Z"])   # 8000 s
+    agent_file_ts(tmp_path, "a2", IMPL_7, "test-model",
+                  ["2026-08-19T12:20:00Z", "2026-08-19T12:35:00Z"])   # 900 s
+    agent_file_ts(tmp_path, "b1", IMPL_9, "test-model",
+                  ["2026-08-19T10:00:00Z", "2026-08-19T10:05:00Z"])   # 300 s
+    data = audit(tmp_path)
+    by_file = {a["file"]: a for a in data["agents"]}
+    assert by_file["agent-z1.jsonl"]["attempt"] == 1
+    assert by_file["agent-a2.jsonl"]["attempt"] == 2
+    assert by_file["agent-b1.jsonl"]["attempt"] == 1
+    assert data["totals"]["wallSecByTask"] == {"7": 8900.0, "9": 300.0}     # raw sum unchanged
+    assert data["totals"]["liveWallSecByTask"] == {"7": 900.0, "9": 300.0}  # last attempt only
+    assert data["escalatedTasks"] == ["7"]
+
+
+def test_audit_attempt_order_falls_back_to_filename_without_timestamps(tmp_path):
+    from audit_run import audit
+    agent_file(tmp_path, "b", IMPL_7, "test-model", turns=1)
+    agent_file(tmp_path, "a", IMPL_7, "test-model", turns=1)
+    by_file = {x["file"]: x for x in audit(tmp_path)["agents"]}
+    assert by_file["agent-a.jsonl"]["attempt"] == 1 and by_file["agent-b.jsonl"]["attempt"] == 2
+
+
+def test_audit_missing_dir_totals_carry_empty_live_wall_sec(tmp_path):
+    from audit_run import audit
+    assert audit(tmp_path / "nope")["totals"]["liveWallSecByTask"] == {}
