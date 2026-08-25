@@ -601,7 +601,7 @@
 **Notes:** Pure doc subtraction, cheap tier, suite is the gate; bundle with #186 or ship as a one-task plan. Rewrite rules 6 / Ambiguous-Files block / precedence in dependency-analysis.md (:18,:71,:74-81,:102,:158) to the kept vocabulary (tests/test_compile_plan.py:2385 KEPT_EDGE_WHYS = marker, text, interface, write-after-create, + write-after-write under serialize); delete the --repo-root pre-filter paragraphs (say once: the runtime materialization guard is the sole eligibility authority); design-rationale.md:168 'prose-reference edge'; SKILL.md:38 '--repo-root is always stamped' (flag retired, ultra_run.py:135); drop 'ambiguous-files' from schedule_model.py:10 ONLY if evals/frontier tests still pass; add the `text: 0 → 0 (unchanged)` row to the migration record's Current-compiler table; fill CLAUDE.md:99 only. Do NOT touch the compiler or its diagnostic vocabulary (FROZEN).
 
 ### #186: Test-strength follow-ups from Phase-2 adversarial reviews (autoResolved sum, compositionRows negatives, parse re-pins)
-**State:** queued
+**State:** executed
 **Score:** 6 — code quality (each item names a mutation that stays green today) + integration correctness (autoResolved/compositionRows feed the residual manifest on the contended-merge path)
 **Est-files:** tests/frontier_merge.mjs, skills/ultrapowers/harnesses/waves.js, tests/test_compile_plan.py
 **Plan:** docs/superpowers/plans/2026-08-25-phase2-test-strength.md
