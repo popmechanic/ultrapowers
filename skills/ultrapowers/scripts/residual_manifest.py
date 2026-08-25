@@ -49,7 +49,7 @@ ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
                  r"\[(?P<family>[A-Za-z]+)\] "
                  r"(?P<text>.*) — disposition:(?P<value>.*)$")
 DISPOSITION = re.compile(
-    r"^(?:fixed|acked(?::\S.*)?|filed:\S+(?:\s.*)?|waived:\S.*)$")
+    r"^(?:fixed(?::\S.*)?|acked(?::\S.*)?|filed:\S+(?:\s.*)?|waived:\S.*)$")
 
 ROUND_REPORT = re.compile(r"^report-(\d+)\.json$")
 
@@ -177,7 +177,8 @@ def derive(report_paths, ack_list):
 def emit(rows, sources):
     lines = ["# Residual manifest", "",
              "<!-- derived from: " + ", ".join(sources) + " -->",
-             "<!-- disposition one of: fixed | acked[:<annotation>] | "
+             "<!-- disposition one of: fixed[:<annotation>] | "
+             "acked[:<annotation>] | "
              "filed:<ref>[ <note>] | waived:<reason> -->", ""]
     if not rows:
         lines.append("No residual findings.")

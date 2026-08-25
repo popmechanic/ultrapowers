@@ -270,6 +270,31 @@ def test_check_green_accepts_annotated_acked_and_filed_note(tmp_path):
         assert "CLEAN" in r.stdout
 
 
+def test_check_green_accepts_annotated_fixed(tmp_path):
+    # #260: fixed carries an annotation like acked does — WHERE the fix landed
+    # is the audit trail; the grammar must not force it to be discarded.
+    rp = write(tmp_path, "r.json", report())
+    row = manifest_rows(run(rp).stdout)[0]
+    for value in ("fixed:PR #255, fold_wave.py refusal",
+                  "fixed:commit 0c84027"):
+        m = tmp_path / "residual-manifest.md"
+        m.write_text(row + " " + value + "\n")
+        r = run("--check", m)
+        assert r.returncode == 0, (value, r.stdout, r.stderr)
+        assert "CLEAN" in r.stdout
+
+
+def test_check_red_pins_bare_fixed_colon(tmp_path):
+    # #260: an opened annotation slot must be non-empty, same as acked:
+    rp = write(tmp_path, "r.json", report())
+    row = manifest_rows(run(rp).stdout)[0]
+    m = tmp_path / "residual-manifest.md"
+    m.write_text(row + " fixed:\n")
+    r = run("--check", m)
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert row.split()[1] in r.stderr
+
+
 def test_check_red_pins_empty_annotation_forms(tmp_path):
     # #158: an annotation slot must be non-empty when opened; bare filed: stays red
     rp = write(tmp_path, "r.json", report())
