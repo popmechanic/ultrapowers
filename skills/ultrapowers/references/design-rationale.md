@@ -164,10 +164,12 @@ waiver-with-reason.
 
 Eval run mixed-B-2 (2026-06-13): a task spec said "returns a `schema.User`" while
 declaring `Depends-on: none`, was waved parallel to the schema task, and its
-failure cascade-blocked the rest of the diamond. That is the motivating failure
-behind the compiler's **prose-reference edge**
-(`references/dependency-analysis.md`) — an undeclared dependency expressed only in
-prose is serialized instead of cascading at runtime — and behind the **Salvage**
+failure cascade-blocked the rest of the diamond. A prose-only reference like that is no longer inferred: the prose-reference tier
+that once serialized it was deleted in Phase 2 (0.2.17), so the guard is authoring —
+declare the `**Interfaces:**` `Consumes`/`Produces` pair or the `**Depends-on:**`
+marker (`references/dependency-analysis.md`), and the compiler's loud
+`undeclared-dependency` finding catches a declared-but-unlinked pair at the Step-3
+render. The same run motivated the **Salvage**
 path, which pulls a failed/blocked branch's already-correct work in rather than
 reimplementing it. The same run motivated the FILES and SIBLING-FILES scope rules
 baked into the implementer/reviewer prompts (`references/reviewer-prompts.md`):
