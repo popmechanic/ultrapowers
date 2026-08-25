@@ -91,7 +91,8 @@ pre-dispositioned `acked` — derivation from a durable record, never
 auto-judgment. Every other row derives with an empty disposition slot for
 the orchestrator or operator to fill with one of:
 
-- `fixed` — verified closed (say how in the row text).
+- `fixed` or `fixed:<annotation>` — verified closed; say how in the
+  annotation (the PR/commit where the fix landed) or the row text.
 - `acked` or `acked:<annotation>` — operator acknowledged; the required
   action is named in the row text or the annotation. Anything beyond
   already-authorized tooling lands here — the manifest authorizes no new
