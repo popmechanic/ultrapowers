@@ -48,7 +48,8 @@ Every invocation is a fresh process: no subcommand carries anything in
 memory from the last one, per the fold log's self-sufficiency contract.
 
 Exit codes: 0 success, 2 precondition refusal (a pre-existing log, a missing
-log, a log/list disagreement, a stale resolution), 3 self-check failure
+log, a log/list disagreement, a stale resolution, a task head not descended
+from the base), 3 self-check failure
 (which includes a kernel recursion limit the fold thread could not absorb —
 recorded as a named kernel-limit park in the conflicts index, never a crash),
 4 a rejected resolver reply. For `materialize` the non-zero codes carry its
@@ -526,6 +527,41 @@ def _write_kernel_park(wave_dir, index, epoch, park):
     return entry
 
 
+def _undescended(repo, base_sha, branches):
+    """The task heads the base is NOT an ancestor of: `[(taskId, headSha)]`.
+
+    `rw.publish` diffs each head two-point against the base, so a head cut
+    from a stale ref (a worktree the implementer never re-anchored) reads as
+    "revert everything the base gained since" — folded, that reverted 3,472
+    lines of an integration line on a green suite (#246). Such a head is the
+    one input the fold cannot interpret; the caller refuses before writing
+    anything, and the engine's fallback (an ordinary three-way merge) handles
+    the stale parent correctly.
+    """
+    stale = []
+    for task_id, _branch_name, head_sha in branches:
+        r = subprocess.run(["git", "-C", str(repo), "merge-base",
+                            "--is-ancestor", base_sha, head_sha],
+                           capture_output=True)
+        if r.returncode != 0:
+            stale.append((task_id, head_sha))
+    return stale
+
+
+def _refuse_undescended(repo, base_sha, branches, wave):
+    """Exit-2 refusal path shared by `fold` and `resolve`: True when refused."""
+    stale = _undescended(repo, base_sha, branches)
+    if not stale:
+        return False
+    print("refusing wave %d: task head(s) not descended from base %s: %s — "
+          "the worktree was cut from a stale ref; rebase or cherry-pick onto "
+          "the base before folding (#246)"
+          % (wave, base_sha[:7],
+             ", ".join("%s=%s" % (t, h[:7]) for t, h in stale)),
+          file=sys.stderr)
+    return True
+
+
 def _prepare(repo, base_sha, branches):
     """(base state, published task states, largest folded text file).
 
@@ -580,6 +616,8 @@ def cmd_fold(args):
     branches = args.branches  # [(taskId, branchName, headSha)], argv order
     all_ids = [task_id for task_id, _n, _h in branches]
 
+    if _refuse_undescended(repo, base_sha, branches, args.wave):
+        return 2
     base, states, max_lines = _prepare(repo, base_sha, branches)
     wave_dir.mkdir(parents=True, exist_ok=True)
     _record_max_lines(wave_dir, max_lines)
@@ -679,6 +717,8 @@ def cmd_resolve(args):
     if not ok:
         print("log/list disagreement for wave %d: the recorded folds are not a "
               "prefix of the supplied task list" % args.wave, file=sys.stderr)
+        return 2
+    if _refuse_undescended(repo, base_sha, branches, args.wave):
         return 2
 
     # The already-folded prefix is the log's own fold events, in order — the

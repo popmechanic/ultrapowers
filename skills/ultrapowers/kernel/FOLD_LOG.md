@@ -51,6 +51,14 @@ The commit every task in the wave branched from. `rehydrate` refuses a log
 that does not open with it. Otherwise inert: it seeds the engine and is
 skipped by the event walk.
 
+It is also a precondition on every head: `fold` and `resolve` refuse (exit 2,
+nothing written) any task head the base is not an ancestor of. Each task's
+state is published as a two-point diff against the base, so a head cut from a
+stale ref would read as a revert of everything the base gained since — folded,
+that silently reverted 3,472 lines of an integration line on a green suite
+(#246). The engine's fallback, an ordinary three-way merge, handles a stale
+parent correctly; the fold cannot.
+
 ### `fold` — one per task folded, in task-index order
 
 ```json
