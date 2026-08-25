@@ -100,6 +100,10 @@ the orchestrator or operator to fill with one of:
   reference (a free-text note may follow the ref).
 - `waived:<reason>` — stays open with the reason stated.
 
+After a PASS verdict the default for every advisory row is `filed:<ref>`
+(SKILL.md Step 5, **After PASS: file, batch, price**); `fixed` is earned by
+the one batched redirect round, never by a round per row.
+
 (Supersedes the old per-item `closed | still-open | needs-human` triple:
 `closed → fixed`; `still-open → filed:<ref>` or `waived:<reason>` — staying
 open with neither a ref nor a reason is exactly the evaporation this
