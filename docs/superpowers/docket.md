@@ -585,7 +585,7 @@
 **Notes:** parked at gate 2026-08-25 (operator narrowing): defer: after run-9 / W2 — fleet live-unproven without the Max token (#208); keep 0.2.18 to the distill slate — CLUSTER A. Two tasks: (1) evidenceDir option defaulting OUTSIDE dbDir (sibling fleet-evidence/); gate-read-<runId>.json may stay in dbDir, the tgz + #215's stat/credits go to evidenceDir (drive.mjs:92,116-117); (2) answer 'does a persisted store affect a new run?' WITH A TEST (drive test on a pre-populated store carrying prior-run rows asserting sweep/spend/leaseContinuity unaffected) — the answer sets the RUNBOOK line ('persisted store harmless → never wipe' vs 'mv, never rm'; RUNBOOK:169,198 has no guidance). Sequence BEFORE #215 so its new files land in the right place.
 
 ### #224: ultralearn: sensor precision v5 — audit keyed by (stamp, task, attempt) with dead attempts excluded, relaunch role attribution via wf-runs.json, every fold call recorded, terminus/planningFound correct for in-session approve
-**State:** queued
+**State:** executed
 **Score:** 6 — token efficiency indirectly (unblocks #230's tier-cost audit and the fold canary); sensor-only; the retrospective is unverifiable until this lands
 **Est-files:** skills/ultralearn/scripts/harvest_runs.py, skills/ultrapowers/scripts/audit_run.py, tests/test_harvest_runs.py, tests/test_audit_run.py, skills/ultradocket/scripts/record_wf_run.py
 **Plan:** docs/superpowers/plans/2026-08-25-sensor-precision-v5.md
