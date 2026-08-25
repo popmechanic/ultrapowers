@@ -32,10 +32,12 @@ def run_helper(run, findings, *extra):
                            "--findings", str(f), *extra], capture_output=True, text=True)
 
 
-def test_amend_appends_redirect_narrows_files_sets_tier_keeps_siblings(tmp_path):
+def test_amend_appends_redirect_unions_files_sets_tier_keeps_siblings(tmp_path):
+    # #223: `files` is DERIVED — task FILES ∪ instruction paths ∪ finding
+    # files — and never narrows; a finding naming only c.py still keeps a.py.
     run = make_run(tmp_path)
     r = run_helper(run, [{"task": "1", "instruction": "fix the guard",
-                          "files": ["a.py", "c.py"], "tier": "standard"}])
+                          "files": ["c.py"], "tier": "standard"}])
     assert r.returncode == 0, r.stderr
     out_args = json.loads(Path(r.stdout.strip()).read_text())
     assert out_args["resume"] is True
@@ -309,3 +311,44 @@ def test_legacy_integrationbranch_key_wins_over_branch(tmp_path):
     assert r.returncode == 0, r.stderr
     out_args = json.loads(Path(r.stdout.strip()).read_text())
     assert out_args["integrationBranch"] == "ultra/int-legacy"
+
+
+def test_files_derived_from_instruction_paths(tmp_path):
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction":
+                          "add the guard in `src/guard.py`, cover it in tests/test_guard.py::test_x, "
+                          "and leave Foo.Bar alone (see README)."}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    assert new_launch["tasks"]["1"]["files"] == ["a.py", "src/guard.py", "tests/test_guard.py", "README"]
+    assert out_args["waves"][0][0]["files"] == ["a.py", "src/guard.py", "tests/test_guard.py", "README"]
+
+
+def test_files_never_narrow_below_task_files(tmp_path):
+    # a hand-narrowed finding cannot exclude the task's own FILES
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "trim it", "files": ["z.py"]}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["waves"][0][0]["files"] == ["a.py", "z.py"]
+
+
+def test_files_unchanged_when_nothing_names_a_path(tmp_path):
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "rename the helper and rerun"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    assert new_launch["tasks"]["1"]["files"] == ["a.py"]
+    assert out_args["waves"][0][0]["files"] == ["a.py"]
+
+
+def test_instruction_paths_and_derive_files_units():
+    sys.path.insert(0, str(SCRIPT.parent))
+    import redirect_args as ra
+    assert ra.instruction_paths("edit `a/b.py`, (c.md) and d.py; then tests/t.py::test_k.") == \
+        ["a/b.py", "c.md", "d.py", "tests/t.py"]
+    assert ra.instruction_paths("no paths here, just Foo.Bar and v1.2") == ["v1.2"]
+    assert ra.derive_files(["a.py"], "touch b.py and a.py", ["c.py", "b.py"]) == ["a.py", "b.py", "c.py"]
+    assert ra.derive_files(["a.py"], "", []) == ["a.py"]

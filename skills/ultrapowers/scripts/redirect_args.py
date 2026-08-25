@@ -2,7 +2,7 @@
 """Author redirect relaunch args deterministically (#115, rotation #222).
 
 Reads the run receipt's argsFile and its launch file (wavesPath), applies
-amend-only findings (body REDIRECT append, file-scope narrow, tier
+amend-only findings (body REDIRECT append, file-scope union (#223), tier
 right-size) to COPIES, and emits redirect-args.json with resume: true and the
 explicit integrationBranch the resume path requires. The orchestrator authors
 findings.json from the gate report; this helper validates and applies that
@@ -18,6 +18,8 @@ import os
 import re
 import shutil
 import sys
+
+import compile_plan  # same scripts dir: the compiler's own path-token rule
 
 PROG = "redirect_args"
 CHAIN_LAUNCH = "relaunch-launch.json"
@@ -149,6 +151,33 @@ def emit_relaunch(ctx, selected, args_name):
     return args_path
 
 
+_STRIP = "`'\"()[]{}<>"
+
+
+def instruction_paths(instruction):
+    """Path-like tokens in a redirect instruction, first-appearance order,
+    deduped: the compiler's _is_pathlike rule applied to whitespace tokens
+    stripped of quoting/bracket characters, trailing ,;:. punctuation and a
+    trailing ::node pytest selector."""
+    out = []
+    for raw in (instruction or "").split():
+        tok = raw.strip(_STRIP).rstrip(",;:.").strip(_STRIP)
+        tok = tok.split("::", 1)[0]
+        if tok and compile_plan._is_pathlike(tok) and tok not in out:
+            out.append(tok)
+    return out
+
+
+def derive_files(task_files, instruction, finding_files):
+    """#223: files is a footprint — task FILES ∪ instruction paths ∪ the
+    finding's files, ordered, deduped. It can only grow; never narrows."""
+    out = []
+    for p in list(task_files or []) + instruction_paths(instruction) + list(finding_files or []):
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--receipt", required=True)
@@ -173,9 +202,10 @@ def main():
         if not instruction:
             die("finding %d (task %s) has no instruction" % (i, tid))
         tasks[tid]["body"] = tasks[tid].get("body", "") + "\n\nREDIRECT: " + instruction + "\n"
-        if f.get("files"):
-            tasks[tid]["files"] = list(f["files"])
-            entries[tid]["files"] = list(f["files"])
+        derived = derive_files(tasks[tid].get("files") or entries[tid].get("files"),
+                               instruction, f.get("files"))
+        tasks[tid]["files"] = list(derived)
+        entries[tid]["files"] = list(derived)
         if f.get("tier"):
             entries[tid]["tier"] = f["tier"]
     print(emit_relaunch(ctx, amended, "redirect-args.json"))
