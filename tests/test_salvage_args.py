@@ -7,6 +7,9 @@ SALVAGE = SCRIPTS / "salvage_args.py"
 REDIRECT = SCRIPTS / "redirect_args.py"
 SHA_B = "b" * 40
 
+sys.path.insert(0, str(SCRIPTS))
+import salvage_args as sa  # noqa: E402 — unit tests below exercise it directly
+
 
 def make_run(tmp_path):
     run = tmp_path / "run-20260825-1"
@@ -109,21 +112,63 @@ def test_nothing_to_salvage_exits_1(tmp_path):
         tasks=[{"task": "1", "status": "done"}, {"task": "2", "status": "done"}],
         unfinished=["9: deferred (budget exhausted)"]))
     r = run_salvage(run, rp)
-    assert r.returncode == 1 and "nothing to salvage" in r.stderr
+    assert r.returncode == 1
+    assert r.stderr.startswith("salvage_args:")
+    assert "nothing to salvage" in r.stderr
 
 
 def test_failed_task_unknown_to_launch_exits_1(tmp_path):
     run = make_run(tmp_path)
     rp = write_report(run, report_obj(tasks=[{"task": "7", "status": "failed"}]))
     r = run_salvage(run, rp)
-    assert r.returncode == 1 and "7" in r.stderr
+    assert r.returncode == 1
+    assert r.stderr.startswith("salvage_args:")
+    assert "failed task '7' is unknown" in r.stderr
 
 
 def test_not_a_report_exits_1(tmp_path):
     run = make_run(tmp_path)
     rp = write_report(run, {"grantedAt": "x", "instruction": "y", "ackList": []})
     r = run_salvage(run, rp)
-    assert r.returncode == 1 and "not a report" in r.stderr
+    assert r.returncode == 1
+    assert r.stderr.startswith("salvage_args:")
+    assert "not a report" in r.stderr
+
+
+def test_cascade_blocked_with_no_failed_tasks_is_salvaged(tmp_path):
+    run = make_run(tmp_path)
+    rp = write_report(run, report_obj(
+        tasks=[{"task": "1", "status": "done"}, {"task": "2", "status": "done"}],
+        unfinished=["3: cascade-blocked by wave 1"]))
+    r = run_salvage(run, rp)
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert [[e["id"] for e in w] for w in out_args["waves"]] == [["3"]]
+    launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    by_id = {t["id"]: t for t in launch["tasks"]}
+    body3 = by_id["3"]["body"]
+    assert "PRIOR ATTEMPT" in body3 and "not attempted" in body3
+    assert "3: cascade-blocked by wave 1" in body3
+
+
+def test_integration_branch_flag_overrides_args(tmp_path):
+    run = make_run(tmp_path)
+    rp = write_report(run, report_obj())
+    r = run_salvage(run, rp, "--integration-branch", "ultra/other")
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["integrationBranch"] == "ultra/other"
+
+
+def test_findings_naming_matches_multiple_ids_in_one_sentence():
+    report = {"completenessFindings": ["tasks 2 and 3 left the guard untested"]}
+    assert sa.findings_naming(report, "2") == ["tasks 2 and 3 left the guard untested"]
+    assert sa.findings_naming(report, "3") == ["tasks 2 and 3 left the guard untested"]
+
+
+def test_findings_naming_does_not_match_id_as_substring():
+    report = {"completenessFindings": ["task 22 needs another look"]}
+    assert sa.findings_naming(report, "2") == []
 
 
 def test_rotates_round_artifacts_after_emit(tmp_path):
@@ -144,6 +189,7 @@ def test_validation_failure_leaves_artifacts_untouched(tmp_path):
     heads = run / "heads"; heads.mkdir()
     r = run_salvage(run, rp)
     assert r.returncode == 1
+    assert r.stderr.startswith("salvage_args:")
     assert heads.exists() and not (run / "report-1.json").exists()
 
 
