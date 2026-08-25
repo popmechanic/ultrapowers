@@ -287,3 +287,43 @@ def test_emitted_header_names_optional_annotation_forms(tmp_path):
     out = run(rp).stdout
     assert "acked[:<annotation>]" in out
     assert "filed:<ref>[ <note>]" in out
+
+
+def test_run_dir_unions_round_reports_in_round_order_then_live(tmp_path):
+    run_dir = tmp_path / "run-x"; run_dir.mkdir()
+    write(run_dir, "report-2.json", report(completenessFindings=["second"]))
+    write(run_dir, "report-10.json", report(completenessFindings=["tenth"]))
+    write(run_dir, "report-1.json", report(completenessFindings=["first"]))
+    write(run_dir, "report.json", report(completenessFindings=["live"]))
+    r = run("--run-dir", run_dir)
+    assert r.returncode == 0, r.stderr
+    texts = [l.split("] ", 1)[1].split(" — disposition:")[0]
+             for l in manifest_rows(r.stdout) if "[completenessFindings]" in l]
+    assert texts == ["first", "second", "tenth", "live"]
+    head = r.stdout.splitlines()[2]
+    assert head.startswith("<!-- derived from: ")
+    assert head.index("report-1.json") < head.index("report-2.json") < head.index("report-10.json") < head.index("report.json")
+
+
+def test_run_dir_with_only_live_report(tmp_path):
+    run_dir = tmp_path / "run-x"; run_dir.mkdir()
+    write(run_dir, "report.json", report())
+    r = run("--run-dir", run_dir)
+    assert r.returncode == 0, r.stderr
+    assert rid("completenessFindings", CF) in r.stdout
+
+
+def test_run_dir_without_any_report_exits_1(tmp_path):
+    run_dir = tmp_path / "run-x"; run_dir.mkdir()
+    (run_dir / "report-final.json").write_text("{}")   # not a round file
+    r = run("--run-dir", run_dir)
+    assert r.returncode == 1 and "no report" in r.stderr
+
+
+def test_run_dir_is_exclusive_with_positional_reports_and_check(tmp_path):
+    run_dir = tmp_path / "run-x"; run_dir.mkdir()
+    rp = write(run_dir, "report.json", report())
+    r = run("--run-dir", run_dir, rp)
+    assert r.returncode == 1 and "--run-dir" in r.stderr
+    r = run("--run-dir", run_dir, "--check", tmp_path / "m.md")
+    assert r.returncode == 1 and "--run-dir" in r.stderr
