@@ -12,6 +12,8 @@ mechanical close check: exit 0 iff every row is dispositioned.
 Modes:
   derive: residual_manifest.py <report.json> [more-reports...]
               [--gate-acks <standing-approval.json>]  > residual-manifest.md
+  derive: residual_manifest.py --run-dir <runDir> [--gate-acks ...]
+              > residual-manifest.md
   check:  residual_manifest.py --check <manifest.md>
 
 Row grammar (one line per row, exactly; anything else is commentary):
@@ -28,6 +30,7 @@ gate, at the ceremony the gate feeds -- it extends no frozen gate script.
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 
@@ -48,6 +51,8 @@ ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
 DISPOSITION = re.compile(
     r"^(?:fixed|acked(?::\S.*)?|filed:\S+(?:\s.*)?|waived:\S.*)$")
 
+ROUND_REPORT = re.compile(r"^report-(\d+)\.json$")
+
 
 def die(msg):
     print("residual_manifest: " + msg, file=sys.stderr)
@@ -60,6 +65,27 @@ def load_json(path, what):
             return json.load(f)
     except (OSError, json.JSONDecodeError, TypeError) as e:
         die("unreadable %s %r (%s)" % (what, path, e))
+
+
+def round_reports(run_dir):
+    """Every round's snapshot (report-<n>.json, ascending n) followed by the
+    live report.json when present -- the union input #222 makes mechanical."""
+    try:
+        names = os.listdir(run_dir)
+    except OSError as e:
+        die("unreadable run dir %r (%s)" % (run_dir, e))
+    rounds = []
+    for name in names:
+        m = ROUND_REPORT.match(name)
+        if m:
+            rounds.append((int(m.group(1)), name))
+    paths = [os.path.join(run_dir, name) for _, name in sorted(rounds)]
+    live = os.path.join(run_dir, "report.json")
+    if os.path.isfile(live):
+        paths.append(live)
+    if not paths:
+        die("no report-<n>.json or report.json under %r" % run_dir)
+    return paths
 
 
 def load_result(path):
@@ -195,6 +221,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("reports", nargs="*",
                     help="report.json files to union (derive mode)")
+    ap.add_argument("--run-dir", default=None, metavar="RUN_DIR",
+                    help="derive over <RUN_DIR>/report-<n>.json (round order) "
+                         "then <RUN_DIR>/report.json")
     ap.add_argument("--gate-acks", default=None, metavar="STANDING_APPROVAL",
                     help="standing-approval.json whose recorded ackList "
                          "pre-dispositions matching deferredVerification "
@@ -204,12 +233,15 @@ def main():
     a = ap.parse_args()
 
     if a.check:
-        if a.reports or a.gate_acks:
-            die("--check takes a manifest only (no reports, no --gate-acks)")
+        if a.reports or a.run_dir or a.gate_acks:
+            die("--check takes a manifest only (no reports, no --run-dir, no --gate-acks)")
         return check(a.check)
+    if a.run_dir:
+        if a.reports or a.check:
+            die("--run-dir takes no positional reports and no --check")
+        a.reports = round_reports(a.run_dir)
     if not a.reports:
-        die("derive mode needs at least one report.json "
-            "(or --check <manifest>)")
+        die("derive mode needs at least one report.json (or --check <manifest>)")
     ack_list = []
     if a.gate_acks:
         ack_list = load_json(a.gate_acks, "gate-acks").get("ackList") or []
