@@ -314,6 +314,16 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   integration branch are unsanctioned — route every post-gate edit through this
   lane. Record the relaunch's printed Run ID (`record_wf_run.py <stamp>
   <wf_runId>`, as in Step 4). Return here.
+- **After PASS: file, batch, price** — once the gate returns PASS (exit 0),
+  every advisory residual (minor review findings, non-blocking completeness
+  findings, judgment calls) defaults to `filed:<ref>` in the residual manifest
+  (`references/finishing-notes.md` §Residual manifest). Findings you do intend
+  to fix go into ONE redirect round — never a round per finding. An elective
+  polish relaunch is the operator's explicit choice, priced before asking:
+  state the round's fixed cost (tasks relaunched × this run's per-round cost —
+  quote `audit_run.py` turns/tokens for the prior round when present). This
+  changes nothing for NEEDS_ACK or BLOCKED: the ack rules above stay
+  authoritative, and batching never means an ack is swallowed.
 - **Round artifacts** — both composers rotate the prior round's artifacts as
   their last step, after a successful emit: `report.json` is snapshotted to
   `report-<n>.json` and `heads/` renamed to `heads-<n>/`, so every round's gate
