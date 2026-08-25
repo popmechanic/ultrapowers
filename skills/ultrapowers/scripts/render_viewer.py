@@ -91,7 +91,7 @@ def build_index(run_dir):
     for f in sorted(run_dir.glob("agent-*.jsonl")):
         role_full = audit_run.classify(audit_run.first_user_text(f))  # "impl:1" / "merge" / "unknown"
         role, _, task = role_full.partition(":")
-        model, turns, out_tokens, _wall_sec = audit_run.collect(f)
+        model, turns, out_tokens, _wall_sec, _first = audit_run.collect(f)
         tools, first_line = 0, ""
         for line in f.read_text().splitlines():
             try:

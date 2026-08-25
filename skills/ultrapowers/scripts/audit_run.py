@@ -15,13 +15,17 @@ from __future__ import annotations
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 TASK_HEAD = re.compile(r"### Task ([A-Za-z0-9]+):")
 # The real engine prompt references the task by id rather than an inlined
 # header:  …find the object whose "id" is "2"…  (per-task impl/reviewer prompts).
 TASK_ID = re.compile(r'"id"\s+is\s+"([A-Za-z0-9]+)"')
+# #224: a relaunch-round prompt whose body was inlined without a "### Task N:"
+# heading (and no wavesPath "id" sentence) still carries the task's declared
+# file scope on one line — the one deterministic key left to join on.
+FILES_LINE = re.compile(r"^FILES: (.+)$", re.MULTILINE)
 # First phrases of the baked prompts (reviewer-prompts.md / wave-merge.md).
 # tests/test_no_prompt_drift.py pins those sources into waves.js, so the
 # classifier inherits their stability; an unmatched prompt degrades to
@@ -66,12 +70,23 @@ def first_user_text(path):
     return ""
 
 
-def classify(text):
+def _files_line_task(text, files_by_task):
+    m = FILES_LINE.search(text)
+    if not m or not files_by_task:
+        return None
+    want = {p.strip() for p in m.group(1).split(", ") if p.strip()}
+    hits = [tid for tid, files in files_by_task.items()
+            if isinstance(files, list) and set(files) == want]
+    return hits[0] if len(hits) == 1 else None
+
+
+def classify(text, files_by_task=None):
     for marker, role in ROLE_MARKERS:
         if marker in text:
             if role in ("impl", "review"):
                 m = TASK_ID.search(text) or TASK_HEAD.search(text)
-                return role + ":" + (m.group(1) if m else "?")
+                tid = m.group(1) if m else _files_line_task(text, files_by_task)
+                return role + ":" + (tid if tid else "?")
             return role
     return "unknown"
 
@@ -85,10 +100,12 @@ def _parse_ts(ts):
 
 
 def collect(path):
-    """(model, turns, out_tokens, wall_sec). wall_sec = last record `timestamp`
-    minus first record `timestamp` across the whole transcript (any record
-    type), 0.0 when fewer than two parseable timestamps are present — a
-    transcript with no `timestamp` field at all never raises."""
+    """(model, turns, out_tokens, wall_sec, first_ts). wall_sec = last record
+    `timestamp` minus first record `timestamp` across the whole transcript
+    (any record type), 0.0 when fewer than two parseable timestamps are
+    present — a transcript with no `timestamp` field at all never raises.
+    first_ts is the transcript's first parseable timestamp (a datetime) or
+    None, used to order same-role attempts (#224)."""
     model, turns, out_tokens = "?", 0, 0
     first_ts, last_ts = None, None
     for line in path.read_text().splitlines():
@@ -110,26 +127,45 @@ def collect(path):
         model = msg.get("model", model)
         out_tokens += (msg.get("usage") or {}).get("output_tokens", 0) or 0
     wall_sec = (last_ts - first_ts).total_seconds() if first_ts is not None and last_ts is not None else 0.0
-    return model, turns, out_tokens, wall_sec
+    return model, turns, out_tokens, wall_sec, first_ts
 
 
-def audit(transcript_dir):
+def audit(transcript_dir, files_by_task=None):
     """Structured effort audit for one per-run engine transcript dir.
 
     Advisory by contract: a missing/empty/drifted dir returns a dict with an
-    empty 'agents' list and a 'note' — never raises."""
+    empty 'agents' list and a 'note' — never raises. `files_by_task` (launch
+    task id -> declared files) enables the FILES-line join for prompts that
+    carry no task-id line (#224)."""
     d = Path(transcript_dir)
     files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
     if not files:
-        return {"agents": [], "totals": {"turns": 0, "outputTokens": 0, "wallSecByTask": {}},
+        return {"agents": [], "totals": {"turns": 0, "outputTokens": 0,
+                                         "wallSecByTask": {}, "liveWallSecByTask": {}},
                 "escalatedTasks": [], "thrashCandidates": [],
                 "note": f"no agent-*.jsonl under {transcript_dir}"}
     agents = []
     for f in files:
-        role = classify(first_user_text(f))
-        model, turns, out_tokens, wall_sec = collect(f)
+        role = classify(first_user_text(f), files_by_task)
+        model, turns, out_tokens, wall_sec, first_ts = collect(f)
         agents.append({"role": role, "model": model, "turns": turns,
-                       "outputTokens": out_tokens, "wallSec": wall_sec})
+                       "outputTokens": out_tokens, "wallSec": wall_sec,
+                       "file": f.name, "_first": first_ts})
+    # attempt: 1-based order among transcripts sharing one impl:/review: role,
+    # by first timestamp (unstamped last) then filename — earlier attempts are
+    # the escalation/zombie retries a raw sum double-counts (#224).
+    by_role = {}
+    for a in agents:
+        if a["role"].startswith(("impl:", "review:")):
+            by_role.setdefault(a["role"], []).append(a)
+    for lst in by_role.values():
+        lst.sort(key=lambda a: (a["_first"] is None,
+                                a["_first"] or datetime.min.replace(tzinfo=timezone.utc),
+                                a["file"]))
+        for i, a in enumerate(lst, 1):
+            a["attempt"] = i
+    for a in agents:
+        a.pop("_first", None)
     agents.sort(key=lambda a: -a["turns"])
     totals = {"turns": sum(a["turns"] for a in agents),
               "outputTokens": sum(a["outputTokens"] for a in agents)}
@@ -144,6 +180,11 @@ def audit(transcript_dir):
     # that escalated has more than one transcript feeding the same id).
     totals["wallSecByTask"] = {tid: sum(a["wallSec"] for a in lst)
                                for tid, lst in impl_by_task.items()}
+    # liveWallSecByTask: wallSec of the highest-attempt (live/final) impl
+    # transcript only — the escalation retry chain's real wall-clock cost,
+    # not the raw sum which double-counts abandoned zombie attempts (#224).
+    totals["liveWallSecByTask"] = {tid: max(lst, key=lambda a: a["attempt"])["wallSec"]
+                                   for tid, lst in impl_by_task.items()}
     # thrashCandidates: absolute high-turns/low-output, no same-model peer needed.
     thrash = [a for a in agents
               if a["role"].startswith("impl")
@@ -168,7 +209,7 @@ def main(argv=None):
     rows = []
     for f in files:
         role = classify(first_user_text(f))
-        model, turns, out_tokens, _wall_sec = collect(f)
+        model, turns, out_tokens, _wall_sec, _first = collect(f)
         rows.append((role, model, turns, out_tokens))
     rows.sort(key=lambda r: -r[2])
 
