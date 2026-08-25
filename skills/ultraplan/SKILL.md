@@ -268,7 +268,12 @@ documentation** — the compiler reads them, so populate them deliberately:
 1. **`## Global Constraints`** (a header section, project-wide). Copy the spec's
    binding, cross-cutting requirements verbatim — version floors, naming/copy
    rules, platform requirements. ultrapowers forwards it to **every reviewer as
-   its attention lens**.
+   its attention lens**. Process rules — TDD ordering, "write the failing
+   test first", commit cadence — are per-task steps, never Global Constraints:
+   forwarded as a reviewer lens they can only produce unverifiable process
+   findings against every task, since no diff evidences the order work was
+   done in. State what must be true of the result (tests present, behavior
+   covered), not the order it was produced in.
 
 2. **`**Interfaces:**`** (per task). `Produces:` names the function names and
    param/return types later tasks rely on; `Consumes:` names the signatures this
