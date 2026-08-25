@@ -952,3 +952,33 @@ def test_disk_headroom_stage_runs_right_after_compile(tmp_path):
     names = [s["stage"] for s in json.loads(r.stdout)["stages"]]
     assert names.index("disk-headroom") == names.index("compile") + 1
     assert names.index("disk-headroom") < names.index("test-command")
+
+
+def _probe_dirs(repo):
+    return sorted(p.name for p in (repo / ".claude/ultrapowers").glob("wt-knob-*"))
+
+
+def test_validate_knobs_removes_its_probe_worktree_on_sigterm(tmp_path):
+    """#251: a SIGTERM mid-suite (the tool timeout that killed the drain's
+    first --validate-knobs) must still run the probe worktree's removal —
+    the default SIGTERM disposition skips `finally` and leaked wt-knob-<pid>."""
+    repo = make_repo(tmp_path)
+    args_path = repo / "args.json"
+    args_path.write_text(json.dumps({"testCmd": "sleep 30"}))
+    proc = subprocess.Popen([sys.executable, str(RUN), "--validate-knobs",
+                             str(args_path)], cwd=repo,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.time() + 15
+        while time.time() < deadline and not _probe_dirs(repo):
+            time.sleep(0.1)
+        assert _probe_dirs(repo), "probe worktree never appeared"
+        proc.terminate()
+        proc.wait(timeout=15)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert proc.returncode != 0
+    assert _probe_dirs(repo) == []
+    wl = sh(["git", "worktree", "list", "--porcelain"], cwd=repo).stdout
+    assert "wt-knob-" not in wl

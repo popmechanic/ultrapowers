@@ -743,3 +743,49 @@ def test_audit_reports_orphan_process_without_reaping(tmp_path):
         assert proc.poll() is None       # report-only: audit reaps nothing
     finally:
         proc.kill()
+
+
+def add_probe_worktree(repo, pid):
+    """A `ultra_run.py --validate-knobs` probe: detached, named by the
+    driver's pid, under .claude/ultrapowers (not .claude/worktrees)."""
+    wt = repo / ".claude" / "ultrapowers" / f"wt-knob-{pid}"
+    wt.parent.mkdir(parents=True, exist_ok=True)
+    git(repo, "worktree", "add", "--detach", str(wt), "HEAD")
+    return wt
+
+
+DEAD_PID = 999999999  # above every platform's pid ceiling: kill -0 always fails
+
+
+def test_audit_reports_a_dead_validate_knobs_probe_and_removes_nothing(tmp_path):
+    """#251: a probe whose driver pid is gone (SIGKILL mid-suite) is a leak the
+    wf_* glob never saw. The audit names it; report-only."""
+    repo = make_repo(tmp_path)
+    wt = add_probe_worktree(repo, DEAD_PID)
+    p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert f"orphan probe worktree: {wt}" in p.stdout
+    assert wt.exists()
+    assert "audit: clean" not in p.stdout
+
+
+def test_sweep_reaps_a_dead_probe_and_spares_a_live_one(tmp_path):
+    """A probe named by a live pid is a validate-knobs in progress; one named
+    by a dead pid is garbage regardless of --run scope."""
+    repo = make_repo(tmp_path)
+    dead = add_probe_worktree(repo, DEAD_PID)
+    live_proc = subprocess.Popen(["sleep", "60"])
+    try:
+        live = add_probe_worktree(repo, live_proc.pid)
+        p = subprocess.run(["bash", str(SWEEP), "--all"], cwd=repo,
+                           capture_output=True, text=True)
+        assert p.returncode == 0, p.stderr
+        assert not dead.exists()
+        assert live.exists()
+        assert f"kept (probe pid {live_proc.pid} is alive): {live}" in p.stdout
+        wl = git(repo, "worktree", "list", "--porcelain").stdout
+        assert str(dead) not in wl and str(live) in wl
+    finally:
+        live_proc.kill()
+        live_proc.wait()
