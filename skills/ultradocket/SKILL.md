@@ -72,6 +72,14 @@ One iteration:
    well-defined issue is half a spec, so the interview is short.
 3. **Plan** through the normal pipeline: brainstorm → `superpowers:writing-plans`
    + `ultrapowers:ultraplan` → operator approval → the ultraplan sealing step.
+   **Per-plan approval is the default contract**: the sweep pauses at each
+   plan for the operator's signature before advancing — plan approval is the
+   operator's control point, and they should never have to interrupt mid-sweep
+   to reclaim it ([92e1c33dd33a3f12]). Batching approvals across entries is an
+   explicit operator opt-in only. When the operator asks the sweep to "review
+   it for me", summarize the plan against the issue's stated scope and any
+   standing scope cuts, flag every deviation, and still take an explicit
+   per-plan yes.
    Plans the sweep writes must carry the exact compiling Acceptance form —
    `**Acceptance:** suite — <one-line rationale>` (or the sealed/waived
    equivalents) — verified by the pipeline's existing `compile_plan.py --check`
