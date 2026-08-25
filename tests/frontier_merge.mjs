@@ -1333,6 +1333,8 @@ async function scenarioCompositionAllDeclaredNoRow() {
   assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
     'all-declared: every writer declared the path — no unpinned composition' +
     ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
+    'all-declared: the no-row outcome comes from the declared-commutes path, never the skip path')
   console.log('scenario 11g composition-all-declared-no-row: OK')
 }
 
