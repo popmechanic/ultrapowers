@@ -96,8 +96,8 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   expected `−3 prose-reference` + degrade-deletion mode flips — plus that
   deletion's one downstream wave-shape promotion, on a single plan whose
   deleted edge was gating — and no other delta, against the pre-registered
-  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is opt-in ("seal this plan"); `suite` is the
-  default disposition.
+  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is
+  opt-in ("seal this plan"); `suite` is the default disposition.
 - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
   `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
