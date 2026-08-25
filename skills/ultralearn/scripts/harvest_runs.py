@@ -4,6 +4,7 @@ build per-run bundles into a local cache. Read-only and advisory: malformed or
 missing input is skipped with a diagnostic, never raised."""
 from __future__ import annotations
 
+import copy
 import functools
 import hashlib
 import json
@@ -20,7 +21,7 @@ SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
                   "transcript dir", "recommended", "depends-on")
 SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
 
-ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
+ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "resolver", "integration"}
 
 # #160(ii): the audit's token unit, named once so cost-lens readers stop
 # comparing it to the Workflow tool's reported total.
@@ -123,6 +124,39 @@ def _last_launch_tool_use_index(records, stamp):
                 if m and m.group(1) == stamp:
                     idx_found = idx
     return idx_found
+
+
+_JSON_SPAN = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _approve_receipt_seen(records, stamp):
+    """#224: True when a tool_result AFTER this stamp's last launch carries
+    ultra_gate.py --approve's printed receipt for it — mode "approve", the
+    same stamp, lockReleased true. Machine-written evidence that the approve
+    checkout + sweep ran, not a prose marker."""
+    start = _last_launch_tool_use_index(records, stamp)
+    if start is None:
+        return False
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if idx <= start or not (isinstance(b, dict) and b.get("type") == "tool_result"):
+            continue
+        txt = _block_text(b)
+        if '"approve"' not in txt:
+            continue
+        obj = None
+        try:
+            obj = json.loads(txt)
+        except json.JSONDecodeError:
+            m = _JSON_SPAN.search(txt)
+            if m:
+                try:
+                    obj = json.loads(m.group(0))
+                except json.JSONDecodeError:
+                    obj = None
+        if (isinstance(obj, dict) and obj.get("mode") == "approve"
+                and obj.get("stamp") == stamp and obj.get("lockReleased") is True):
+            return True
+    return False
 
 
 def _last_artifact_record_index(records, registry):
@@ -600,7 +634,7 @@ def _drain_stamp_terminus(run_dir, drain_receipts):
     return "approved" if not non_approved else non_approved[-1]
 
 
-def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
+def _stamp_terminus(run_dir, stamp_reports, drain_receipts=(), approve_seen=False):
     """Per-stamp terminus (#126 Task 2, generalized receipt-or-stamp by #150
     mode c): the disk receipt's own verdict, upgraded to `approved` when git
     ancestry proves the run's head landed on its base branch. Structured
@@ -611,11 +645,16 @@ def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
     always takes precedence; `drain_receipts` (the #150 stamp mirror) is
     consulted only when no disk receipt exists — the drain skips Step-5 and
     tears the runDir down, so for those runs the mirror is the only gate
-    evidence left. Neither present -> `unknown`."""
+    evidence left. Neither present -> `unknown`. #224: NEEDS_ACK is the one
+    verdict an in-session approve receipt (`approve_seen`) upgrades — acks
+    are given in-session by design, while BLOCKED stays BLOCKED (the #126
+    pin)."""
     if stamp_reports:
         receipt = stamp_reports[-1]["receipt"]
         verdict = receipt.get("verdict", "unknown")
         if run_dir and _git_ancestry_approved(run_dir, receipt):
+            return "approved"
+        if verdict == "NEEDS_ACK" and approve_seen:
             return "approved"
         return verdict
     if drain_receipts:
@@ -623,10 +662,12 @@ def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
     return "unknown"
 
 
-def _runs_for_bundle(registry, gate_reports):
+def _runs_for_bundle(registry, gate_reports, records=None):
     """Group merged gate_reports by launched stamp into the `runs` bundle
     field (#113 Task 2): [{stamp, planPath, gateReports, terminus}], one
-    entry per registry stamp in transcript (launch) order."""
+    entry per registry stamp in transcript (launch) order. #224: `records`
+    (when given) is scanned per stamp for an in-session approve receipt that
+    can upgrade a NEEDS_ACK verdict."""
     by_stamp = {}
     for g in gate_reports:
         by_stamp.setdefault(g["stamp"], []).append(g)
@@ -638,11 +679,14 @@ def _runs_for_bundle(registry, gate_reports):
         # gate receipt exists for this stamp — it never enters gateReports
         # (which stay disk-sourced only), it only informs terminus.
         drain_receipts = [] if stamp_reports else _drain_stamp_receipts(run_dir, stamp)
+        approve_seen = _approve_receipt_seen(records, stamp) if records is not None else False
         runs.append({
             "stamp": stamp,
             "planPath": registry["planPathsByStamp"].get(stamp),
             "gateReports": stamp_reports,
-            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts),
+            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts, approve_seen),
+            "wfRunIds": _wf_run_ids(run_dir),
+            "frontier": {"maxLinesByWave": _frontier_max_lines(run_dir)},
         })
     return runs
 
@@ -680,16 +724,27 @@ def _merge_audits(audits):
     for a in audits:
         agents.extend(a.get("agents") or [])
         for k, v in (a.get("totals") or {}).items():
+            if k == "liveWallSecByTask":
+                # #224: this would collide across stamps exactly like
+                # wallSecByTask does — liveWallSecByRun (keyed by the unique
+                # wfRunId) is the honest merged form, so this raw per-dir
+                # field is dropped from the merge rather than summed.
+                continue
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 totals[k] = totals.get(k, 0) + v
             elif isinstance(v, dict):
                 # #166: dict-valued totals (wallSecByTask) merge key-wise —
                 # numeric leaves sum per task id; bools/non-numerics dropped.
+                # #224: a dict-valued leaf (liveWallSecByRun's per-wfRunId
+                # sub-dict) is deep-copied in once — its key is unique per
+                # transcript dir already, so it must never be summed.
                 sub = totals.setdefault(k, {})
                 if isinstance(sub, dict):
                     for sk, sv in v.items():
                         if isinstance(sv, (int, float)) and not isinstance(sv, bool):
                             sub[sk] = sub.get(sk, 0) + sv
+                        elif isinstance(sv, dict) and sk not in sub:
+                            sub[sk] = copy.deepcopy(sv)
         note = a.get("note")
         if note:
             notes.append(note)
@@ -751,6 +806,38 @@ def _read_launch(run_dir):
     if not isinstance(waves, list) or not isinstance(edges, list):
         return None
     return {"waves": waves, "edges": edges}
+
+
+def _launch_files_by_task(run_dir):
+    """{task id: declared files} from <run_dir>/launch.json tasks (list or
+    dict shape) — the join key the FILES-line attribution needs (#224).
+    Soft: {} on any absence or malformation."""
+    if not run_dir:
+        return {}
+    try:
+        obj = json.loads((Path(run_dir) / "launch.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    tasks = obj.get("tasks") if isinstance(obj, dict) else None
+    items = (tasks.values() if isinstance(tasks, dict)
+             else tasks if isinstance(tasks, list) else [])
+    out = {}
+    for t in items:
+        if isinstance(t, dict) and isinstance(t.get("files"), list) and t.get("id") is not None:
+            out[str(t["id"])] = [str(p) for p in t["files"]]
+    return out
+
+
+def _wf_run_ids(run_dir):
+    """The <run_dir>/wf-runs.json id array (strings only). MEMBERSHIP only:
+    the file is sorted by the writer, never launch order (#224)."""
+    if not run_dir:
+        return []
+    try:
+        obj = json.loads((Path(run_dir) / "wf-runs.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return []
+    return [x for x in obj if isinstance(x, str)] if isinstance(obj, list) else []
 
 
 def _plan_word_count(plan_path, run_dir):
@@ -984,9 +1071,30 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     # top-level `terminus` becomes the aggregate across runs when the session
     # actually registered any stamped launches, else "unknown" (no registry
     # stamps means no disk source to read a verdict from at all).
-    runs = _runs_for_bundle(registry, gate_reports)
+    runs = _runs_for_bundle(registry, gate_reports, records)
     terminus = _aggregate_terminus(runs, "unknown")
-    audit = _merge_audits([audit_run.audit(d) for d in tdirs])
+    # #224: each transcript dir is one relaunch round; join it to its stamp
+    # through that stamp's wf-runs.json (membership) and number rounds in
+    # transcript order. The FILES-line join reads the stamp's launch.json.
+    stamp_by_run_id = {}
+    for stamp in registry["stamps"]:
+        for rid in _wf_run_ids(registry["runDirsByStamp"].get(stamp)):
+            stamp_by_run_id.setdefault(rid, stamp)
+    audits, rounds_seen = [], {}
+    for d in tdirs:
+        wf_run_id = Path(d).name
+        stamp = stamp_by_run_id.get(wf_run_id)
+        round_ix = rounds_seen.get(stamp, 0)
+        rounds_seen[stamp] = round_ix + 1
+        files_by_task = _launch_files_by_task(registry["runDirsByStamp"].get(stamp)) if stamp else None
+        a = audit_run.audit(d, files_by_task)
+        for agent in a.get("agents") or []:
+            agent.update({"wfRunId": wf_run_id, "stamp": stamp, "round": round_ix})
+        live = (a.get("totals") or {}).get("liveWallSecByTask")
+        if isinstance(live, dict) and live:
+            a.setdefault("totals", {})["liveWallSecByRun"] = {wf_run_id: dict(live)}
+        audits.append(a)
+    audit = _merge_audits(audits)
     planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found,
                                           has_registered_launch=bool(registry["stamps"]))

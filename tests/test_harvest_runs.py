@@ -1626,3 +1626,146 @@ def test_bundle_omits_planning_key_when_not_found(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["planningFound"] is False
     assert "planning" not in bundle
+
+
+# --- #224: NEEDS_ACK approved in-session (machine approve receipt) reads approved
+
+def test_needs_ack_receipt_with_in_session_approve_reads_approved(tmp_path):
+    run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    ok = json.dumps(_approve_marker())  # stamp "20260703-000000"
+    recs = REAL + [_wf_launch("20260703-000000", run_dir=str(run1)),
+                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}])]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    assert bundle["runs"][-1]["terminus"] == "approved"
+    assert bundle["truncated"] is False
+
+
+def test_approve_receipt_before_the_launch_or_for_another_stamp_does_not_count(tmp_path):
+    run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    other = dict(_approve_marker(), stamp="20260703-999999")
+    recs = REAL + [
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": json.dumps(_approve_marker())}]}]),
+        _wf_launch("20260703-000000", run_dir=str(run1)),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": json.dumps(other)}]}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+             json.dumps(dict(_approve_marker(), lockReleased=False))}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "NEEDS_ACK"
+
+
+def test_approve_receipt_seen_unit():
+    launch = _wf_launch("s1", run_dir="/repo/.claude/ultrapowers/run-s1")
+    hit = _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+           "approve done:\n" + json.dumps(dict(_approve_marker(), stamp="s1"))}]}])
+    assert h._approve_receipt_seen([launch, hit], "s1") is True
+    assert h._approve_receipt_seen([hit, launch], "s1") is False      # before the launch
+    assert h._approve_receipt_seen([launch, hit], "s2") is False      # other stamp
+    assert h._approve_receipt_seen([launch], "s1") is False
+
+
+def test_launch_files_by_task_and_wf_run_ids_soft(tmp_path):
+    assert h._launch_files_by_task(None) == {} and h._wf_run_ids(None) == []
+    run_dir = tmp_path / "run"; run_dir.mkdir()
+    assert h._launch_files_by_task(str(run_dir)) == {} and h._wf_run_ids(str(run_dir)) == []
+    (run_dir / "launch.json").write_text(json.dumps(
+        {"waves": [["1"]], "edges": [], "tasks": [{"id": "1", "files": ["a.py"]}, {"id": "2"}]}))
+    (run_dir / "wf-runs.json").write_text(json.dumps(["wf_b-2", "wf_a-1", 7]))
+    assert h._launch_files_by_task(str(run_dir)) == {"1": ["a.py"]}
+    assert h._wf_run_ids(str(run_dir)) == ["wf_b-2", "wf_a-1"]
+    (run_dir / "launch.json").write_text(json.dumps(
+        {"waves": [], "edges": [], "tasks": {"3": {"id": "3", "files": ["c.py"]}}}))
+    assert h._launch_files_by_task(str(run_dir)) == {"3": ["c.py"]}
+    (run_dir / "wf-runs.json").write_text("{corrupt")
+    assert h._wf_run_ids(str(run_dir)) == []
+
+
+def _impl_transcript(d, name, task_line, ts):
+    d.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps({"type": "user", "message": {"content": [{"type": "text", "text":
+             "SAFETY: ...\n\nYou are an implementer subagent operating inside a dedicated git worktree.\n"
+             + task_line}]}})]
+    for t in ts:
+        lines.append(json.dumps({"type": "assistant", "timestamp": t,
+                                 "message": {"model": "m", "usage": {"output_tokens": 5}}}))
+    (d / f"agent-{name}.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def test_bundle_tags_agents_with_wf_run_id_stamp_round_and_live_wall(tmp_path):
+    # one stamp, two rounds: the first launch (wf_x-1) and a redirect relaunch
+    # (wf_x-2) whose prompt carries only a FILES: line. wf-runs.json is SORTED.
+    run1 = tmp_path / "run-20260825-000001"; run1.mkdir()
+    (run1 / "launch.json").write_text(json.dumps(
+        {"waves": [["1"]], "edges": [], "tasks": [{"id": "1", "files": ["a.py", "b.py"]}]}))
+    (run1 / "wf-runs.json").write_text(json.dumps(["wf_x-1", "wf_x-2"]))
+    d1 = tmp_path / "wf" / "wf_x-1"; d2 = tmp_path / "wf" / "wf_x-2"
+    _impl_transcript(d1, "a", '\nTASK: … find the object whose "id" is "1" …\n',
+                     ["2026-08-25T10:00:00Z", "2026-08-25T10:10:00Z"])          # 600 s
+    _impl_transcript(d2, "b", "\nFILES: b.py, a.py\n\nTASK:\nAMEND the guard.\n",
+                     ["2026-08-25T11:00:00Z", "2026-08-25T11:02:00Z"])          # 120 s
+    recs = [
+        _rec("user", [{"type": "text", "text": "build the thing"}]),
+        _wf_launch("20260825-000001", run_dir=str(run1)),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+             "text": f"Transcript dir: {d1}\n"}]}]),
+        _wf_launch("20260825-000001", run_dir=str(run1)),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+             "text": f"Transcript dir: {d2}\n"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    agents = sorted(bundle["audit"]["agents"], key=lambda a: a["wfRunId"])
+    assert [(a["wfRunId"], a["stamp"], a["round"], a["role"], a["attempt"]) for a in agents] == [
+        ("wf_x-1", "20260825-000001", 0, "impl:1", 1),
+        ("wf_x-2", "20260825-000001", 1, "impl:1", 1),
+    ]
+    assert bundle["audit"]["totals"]["wallSecByTask"] == {"1": 720.0}     # summed across dirs, unchanged
+    assert bundle["audit"]["totals"]["liveWallSecByRun"] == {"wf_x-1": {"1": 600.0}, "wf_x-2": {"1": 120.0}}
+    assert bundle["runs"][0]["wfRunIds"] == ["wf_x-1", "wf_x-2"]
+    assert bundle["runs"][0]["frontier"] == {"maxLinesByWave": {}}
+
+
+def test_bundle_agent_with_unlisted_dir_has_null_stamp(tmp_path):
+    run1 = tmp_path / "run-20260825-000002"; run1.mkdir()
+    d1 = tmp_path / "wf" / "wf_q-9"
+    _impl_transcript(d1, "a", '\nTASK: … whose "id" is "1" …\n', ["2026-08-25T10:00:00Z"])
+    recs = [
+        _rec("user", [{"type": "text", "text": "build the thing"}]),
+        _wf_launch("20260825-000002", run_dir=str(run1)),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
+             "text": f"Transcript dir: {d1}\n"}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    a = bundle["audit"]["agents"][0]
+    assert (a["wfRunId"], a["stamp"], a["round"]) == ("wf_q-9", None, 0)
+
+
+def test_runs_entries_carry_per_stamp_frontier(tmp_path):
+    run1 = tmp_path / "run-20260825-000003"; run1.mkdir()
+    d = run1 / "frontier" / "wave-1"; d.mkdir(parents=True)
+    (d / "fold_stats.json").write_text(json.dumps({"maxLines": [4, 9]}))
+    recs = REAL + [_wf_launch("20260825-000003", run_dir=str(run1))]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["runs"][-1]["frontier"] == {"maxLinesByWave": {"1": [4, 9]}}
