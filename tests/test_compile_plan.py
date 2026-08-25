@@ -1166,6 +1166,16 @@ def compile_plan_text(plan_md):
         pathlib.Path(p).unlink(missing_ok=True)
 
 
+def _serialize_text(plan_md):
+    import tempfile, os
+    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
+    pathlib.Path(p).write_text(plan_md)
+    try:
+        return compile_plan_serialize(pathlib.Path(p))
+    finally:
+        pathlib.Path(p).unlink(missing_ok=True)
+
+
 def compile_raw_text(plan_md):
     import tempfile, os
     fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
@@ -2363,7 +2373,7 @@ def test_catch_all_label_is_a_violation_with_did_you_mean(tmp_path):
 """)
     proc = compile_plan_raw(plan)
     assert proc.returncode != 0
-    assert "unknown Files label" in proc.stderr and "Modify" in proc.stderr
+    assert "Task 1: unknown Files label 'catch-all' for `src/` — use Modify" in proc.stderr
 
 
 def test_undeclared_dependency_suppression_set_is_write_after_create_and_write_after_write():
@@ -2481,3 +2491,102 @@ def test_emit_launch_task_dicts_carry_writes_and_commutes(tmp_path):
     t1 = payload["tasks"][0]
     assert t1["writes"] == ["a.py"]
     assert t1["commutes"] == ["a.py"]
+
+def test_uppercase_extension_path_stays_in_write_set():
+    # Orphaned by the tier-test deletion (was a Fable-review HIGH regression
+    # pin): `Config.YAML` is a file, not a Mixed.Case attribute — two tasks
+    # modifying it overlap, and both carry it in `writes`. Bare (no `/`) on
+    # purpose: a slash would satisfy _is_pathlike before the extension rule runs.
+    plan = PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `Config.YAML`
+
+- [ ] **Step 1: do it**
+
+### Task 2: B
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `Config.YAML`
+
+- [ ] **Step 1: do it**
+"""
+    out = compile_plan_text(plan)
+    assert [t["writes"] for t in out["tasks"]] == [["Config.YAML"], ["Config.YAML"]]
+    ser = _serialize_text(plan)
+    assert [(e["from"], e["to"], e["why"]) for e in ser["dag_edges"]] == [("1", "2", "write-after-write")]
+
+
+def test_line_range_suffix_is_stripped_from_write_set():
+    # `src/existing.py:123-145` and `src/existing.py:200-210` are ONE file:
+    # the suffix is stripped, so the write sets match and the pair overlaps.
+    plan = PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/existing.py:123-145`
+
+- [ ] **Step 1: do it**
+
+### Task 2: B
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/existing.py:200-210`
+
+- [ ] **Step 1: do it**
+"""
+    out = compile_plan_text(plan)
+    assert [t["writes"] for t in out["tasks"]] == [["src/existing.py"], ["src/existing.py"]]
+    assert [e["files"] for w in out["launch_waves"] for e in w] == [["src/existing.py"], ["src/existing.py"]]
+    ser = _serialize_text(plan)
+    assert [(e["from"], e["to"], e["why"]) for e in ser["dag_edges"]] == [("1", "2", "write-after-write")]
+
+
+def test_interface_edge_with_file_overlap_suppresses_undeclared_finding():
+    # Behavioral twin of the source-grep suppression-set test. The overlap
+    # that suppresses is write-after-create (an existence edge recorded
+    # BEFORE the interface tier): the pair is already ordered, so the tier
+    # promotes the label to `interface` and raises NO undeclared-dependency
+    # finding. (The docket imagined `--overlap serialize`'s write-after-write
+    # as the suppressor; it cannot be — that tier runs AFTER the interface
+    # tier, so a serialize compile of a Modify/Modify pair still raises the
+    # finding. Verified by probe at planning; pinned here as it really is.)
+    plan = PLAN_HEADER + """### Task 1: A
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `src/schema.py`
+
+**Interfaces:**
+- Produces: `User`
+
+- [ ] **Step 1: do it**
+
+### Task 2: B
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/schema.py`
+
+**Interfaces:**
+- Consumes: `User`
+
+- [ ] **Step 1: do it**
+"""
+    for out in (compile_plan_text(plan), _serialize_text(plan)):
+        assert [(e["from"], e["to"], e["why"]) for e in out["dag_edges"]] == [("1", "2", "interface")]
+        assert [c["kind"] for c in out["marker_conflicts"]] == ["inference"]
+    # the no-overlap twin DOES raise it, in both modes
+    twin = plan.replace("- Modify: `src/schema.py`", "- Modify: `src/other.py`")
+    for out in (compile_plan_text(twin), _serialize_text(twin)):
+        assert [(e["from"], e["to"], e["why"]) for e in out["dag_edges"]] == [("1", "2", "interface")]
+        assert sorted(c["kind"] for c in out["marker_conflicts"]) == ["inference", "undeclared-dependency"]
