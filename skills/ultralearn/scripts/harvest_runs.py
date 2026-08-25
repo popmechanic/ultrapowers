@@ -4,6 +4,7 @@ build per-run bundles into a local cache. Read-only and advisory: malformed or
 missing input is skipped with a diagnostic, never raised."""
 from __future__ import annotations
 
+import copy
 import functools
 import hashlib
 import json
@@ -684,6 +685,8 @@ def _runs_for_bundle(registry, gate_reports, records=None):
             "planPath": registry["planPathsByStamp"].get(stamp),
             "gateReports": stamp_reports,
             "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts, approve_seen),
+            "wfRunIds": _wf_run_ids(run_dir),
+            "frontier": {"maxLinesByWave": _frontier_max_lines(run_dir)},
         })
     return runs
 
@@ -721,16 +724,27 @@ def _merge_audits(audits):
     for a in audits:
         agents.extend(a.get("agents") or [])
         for k, v in (a.get("totals") or {}).items():
+            if k == "liveWallSecByTask":
+                # #224: this would collide across stamps exactly like
+                # wallSecByTask does — liveWallSecByRun (keyed by the unique
+                # wfRunId) is the honest merged form, so this raw per-dir
+                # field is dropped from the merge rather than summed.
+                continue
             if isinstance(v, (int, float)) and not isinstance(v, bool):
                 totals[k] = totals.get(k, 0) + v
             elif isinstance(v, dict):
                 # #166: dict-valued totals (wallSecByTask) merge key-wise —
                 # numeric leaves sum per task id; bools/non-numerics dropped.
+                # #224: a dict-valued leaf (liveWallSecByRun's per-wfRunId
+                # sub-dict) is deep-copied in once — its key is unique per
+                # transcript dir already, so it must never be summed.
                 sub = totals.setdefault(k, {})
                 if isinstance(sub, dict):
                     for sk, sv in v.items():
                         if isinstance(sv, (int, float)) and not isinstance(sv, bool):
                             sub[sk] = sub.get(sk, 0) + sv
+                        elif isinstance(sv, dict) and sk not in sub:
+                            sub[sk] = copy.deepcopy(sv)
         note = a.get("note")
         if note:
             notes.append(note)
@@ -792,6 +806,38 @@ def _read_launch(run_dir):
     if not isinstance(waves, list) or not isinstance(edges, list):
         return None
     return {"waves": waves, "edges": edges}
+
+
+def _launch_files_by_task(run_dir):
+    """{task id: declared files} from <run_dir>/launch.json tasks (list or
+    dict shape) — the join key the FILES-line attribution needs (#224).
+    Soft: {} on any absence or malformation."""
+    if not run_dir:
+        return {}
+    try:
+        obj = json.loads((Path(run_dir) / "launch.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    tasks = obj.get("tasks") if isinstance(obj, dict) else None
+    items = (tasks.values() if isinstance(tasks, dict)
+             else tasks if isinstance(tasks, list) else [])
+    out = {}
+    for t in items:
+        if isinstance(t, dict) and isinstance(t.get("files"), list) and t.get("id") is not None:
+            out[str(t["id"])] = [str(p) for p in t["files"]]
+    return out
+
+
+def _wf_run_ids(run_dir):
+    """The <run_dir>/wf-runs.json id array (strings only). MEMBERSHIP only:
+    the file is sorted by the writer, never launch order (#224)."""
+    if not run_dir:
+        return []
+    try:
+        obj = json.loads((Path(run_dir) / "wf-runs.json").read_text())
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return []
+    return [x for x in obj if isinstance(x, str)] if isinstance(obj, list) else []
 
 
 def _plan_word_count(plan_path, run_dir):
@@ -1027,7 +1073,28 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     # stamps means no disk source to read a verdict from at all).
     runs = _runs_for_bundle(registry, gate_reports, records)
     terminus = _aggregate_terminus(runs, "unknown")
-    audit = _merge_audits([audit_run.audit(d) for d in tdirs])
+    # #224: each transcript dir is one relaunch round; join it to its stamp
+    # through that stamp's wf-runs.json (membership) and number rounds in
+    # transcript order. The FILES-line join reads the stamp's launch.json.
+    stamp_by_run_id = {}
+    for stamp in registry["stamps"]:
+        for rid in _wf_run_ids(registry["runDirsByStamp"].get(stamp)):
+            stamp_by_run_id.setdefault(rid, stamp)
+    audits, rounds_seen = [], {}
+    for d in tdirs:
+        wf_run_id = Path(d).name
+        stamp = stamp_by_run_id.get(wf_run_id)
+        round_ix = rounds_seen.get(stamp, 0)
+        rounds_seen[stamp] = round_ix + 1
+        files_by_task = _launch_files_by_task(registry["runDirsByStamp"].get(stamp)) if stamp else None
+        a = audit_run.audit(d, files_by_task)
+        for agent in a.get("agents") or []:
+            agent.update({"wfRunId": wf_run_id, "stamp": stamp, "round": round_ix})
+        live = (a.get("totals") or {}).get("liveWallSecByTask")
+        if isinstance(live, dict) and live:
+            a.setdefault("totals", {})["liveWallSecByRun"] = {wf_run_id: dict(live)}
+        audits.append(a)
+    audit = _merge_audits(audits)
     planning_found = stitch_planning(plan_path, records)
     session_kind = classify_session_kind(records, audit, gate_report, planning_found,
                                           has_registered_launch=bool(registry["stamps"]))
