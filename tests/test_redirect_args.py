@@ -317,7 +317,7 @@ def test_files_derived_from_instruction_paths(tmp_path):
     run = make_run(tmp_path)
     r = run_helper(run, [{"task": "1", "instruction":
                           "add the guard in `src/guard.py`, cover it in tests/test_guard.py::test_x, "
-                          "and leave Foo.Bar alone (see README)."}])
+                          "and leave Foo.Bar alone (see `README`)."}])
     assert r.returncode == 0, r.stderr
     out_args = json.loads(Path(r.stdout.strip()).read_text())
     new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
@@ -349,6 +349,19 @@ def test_instruction_paths_and_derive_files_units():
     import redirect_args as ra
     assert ra.instruction_paths("edit `a/b.py`, (c.md) and d.py; then tests/t.py::test_k.") == \
         ["a/b.py", "c.md", "d.py", "tests/t.py"]
-    assert ra.instruction_paths("no paths here, just Foo.Bar and v1.2") == ["v1.2"]
+    # plan-defect (review of #223): the compiler's rule accepts Capitalized bare
+    # words and digit-only extensions; free prose needs the narrower rule.
+    assert ra.instruction_paths("no paths here, just Foo.Bar and v1.2") == []
+    assert ra.instruction_paths("Restore the deleted test in tests/test_x.py; keep .gitignore. Then rerun pytest.") == \
+        ["tests/test_x.py", ".gitignore"]
+    assert ra.instruction_paths("Fix the off-by-one in src/a.py:12-14 (see the PASS verdict). It must return JSON, e.g. {}") == \
+        ["src/a.py"]
+    assert ra.instruction_paths("update `Makefile` and README") == ["Makefile"]
     assert ra.derive_files(["a.py"], "touch b.py and a.py", ["c.py", "b.py"]) == ["a.py", "b.py", "c.py"]
     assert ra.derive_files(["a.py"], "", []) == ["a.py"]
+
+
+def test_non_list_files_in_a_finding_exits_1(tmp_path):
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "x", "files": "c.py"}])
+    assert r.returncode == 1 and "files must be a list" in r.stderr

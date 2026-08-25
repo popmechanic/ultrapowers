@@ -152,18 +152,33 @@ def emit_relaunch(ctx, selected, args_name):
 
 
 _STRIP = "`'\"()[]{}<>"
+_LINE_RANGE = re.compile(r":\d+(?:-\d+)?$")
+_NOT_PATHS = {"e.g", "i.e", "etc", "cf", "vs"}
 
 
 def instruction_paths(instruction):
     """Path-like tokens in a redirect instruction, first-appearance order,
-    deduped: the compiler's _is_pathlike rule applied to whitespace tokens
-    stripped of quoting/bracket characters, trailing ,;:. punctuation and a
-    trailing ::node pytest selector."""
+    deduped. Free prose is not a Files: block, so the compiler's _is_pathlike
+    rule is narrowed (#223 review): a token with a `/`, a dotfile, or a real
+    extension counts on its own; an extensionless bare name (README,
+    Makefile) counts ONLY when the instruction backticked it — otherwise every
+    sentence-initial Capitalized word would become a file. Quoting/brackets,
+    trailing ,;:. punctuation, a ::node pytest selector and a :line-range
+    suffix are stripped first."""
     out = []
     for raw in (instruction or "").split():
+        backticked = raw.startswith("`")
         tok = raw.strip(_STRIP).rstrip(",;:.").strip(_STRIP)
-        tok = tok.split("::", 1)[0]
-        if tok and compile_plan._is_pathlike(tok) and tok not in out:
+        tok = _LINE_RANGE.sub("", tok.split("::", 1)[0])
+        if not tok or tok.lower() in _NOT_PATHS or not compile_plan._is_pathlike(tok):
+            continue
+        ext = compile_plan.EXT_RE.search(tok)
+        if ext is not None and ext.group(1).isdigit():
+            continue                      # v1.2 / 3.4.5: a version, not a file
+        bare = "/" not in tok and not tok.startswith(".") and ext is None
+        if bare and not backticked:
+            continue                      # Restore / Then / PASS: prose, not a path
+        if tok not in out:
             out.append(tok)
     return out
 
@@ -202,6 +217,8 @@ def main():
         if not instruction:
             die("finding %d (task %s) has no instruction" % (i, tid))
         tasks[tid]["body"] = tasks[tid].get("body", "") + "\n\nREDIRECT: " + instruction + "\n"
+        if f.get("files") is not None and not isinstance(f["files"], list):
+            die("finding %d (task %s): files must be a list" % (i, tid))
         derived = derive_files(tasks[tid].get("files") or entries[tid].get("files"),
                                instruction, f.get("files"))
         tasks[tid]["files"] = list(derived)
