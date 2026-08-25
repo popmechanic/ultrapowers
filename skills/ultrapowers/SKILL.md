@@ -252,9 +252,9 @@ from the BASE/HEAD shas recorded in the report; the run's records
 (transcripts, receipts, launch/args) stay for the viewer and later harvests.
 
 **Resume gates derive the union.** At any gate reached via relaunch, derive and
-render the manifest (`residual_manifest.py` over every gate report this
-integration branch has produced) — render only; `--check` runs solely at run
-close.
+render the manifest (`residual_manifest.py --run-dir <runDir>` — every round's
+`report-<n>.json` plus the live `report.json`) — render only; `--check` runs
+solely at run close.
 
 Render the report per `references/report-format.md` plus the **post-merge runbook**
 (`release`/`manual` tasks, verbatim), then present:
@@ -279,25 +279,24 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   phases or runs**, run one **holistic cross-phase** review of the fully-integrated
   tree against the *combined* plan and gate on it **before the final PR**
   (single-run pipelines already got it at Step 4). Then (every run) derive
-  `<runDir>/residual-manifest.md` from every round's gate report and disposition
+  `<runDir>/residual-manifest.md` (`residual_manifest.py --run-dir <runDir>`) and disposition
   every row (`residual_manifest.py --check` green), apply the
   `references/finishing-notes.md` checks, and proceed to
   `superpowers:finishing-a-development-branch`, carrying the runbook and
   manifest.
 - **Salvage** — offer whenever the report has `failed` tasks or dep-blocked
-  `unfinished` entries. Build the new `waves` mechanically: every `failed` task
-  plus every dep-/cascade-blocked `unfinished` task, in Step-2 order with their
-  edges. Append a **PRIOR ATTEMPT** note to each failed task's `body` — its
-  **kept branch** + HEAD sha from `tasks[]`, its blocking `notes`, any
-  completeness finding naming it, and the instruction to pull correct prior work in
-  (`git checkout <sha> -- <path>`) rather than reimplement. Present the salvage
-  waves, relaunch (`resume: true`, same `integrationBranch`; compose args by
-  spreading the receipt's argsFile — carries the now-mandatory `pluginRoot`/`runDir`
-  keys — never by rebuilding from the report; a relaunch reconstructing args from
-  the report is refused by the harness). Before relaunching, delete
-  `<runDir>/heads/`: the prior launch's slots would otherwise masquerade as the
-  relaunch's sidecar authority, and their shas are already durable in the
-  finalized report. Record the new launch's printed Run ID
+  `unfinished` entries. Run `python3 <pluginRoot>/skills/ultrapowers/scripts/salvage_args.py
+  --receipt <runDir>/receipt.json --report <saved-result.json>`. It derives the
+  salvage waves mechanically — every `failed` task plus every dep-/cascade-blocked
+  `unfinished` task, in Step-2 order with their edges (budget-deferred entries are
+  listed on stderr, not salvaged) — appends a **PRIOR ATTEMPT** block to each
+  selected task's body from `tasks[]` (kept branch + HEAD sha, review verdict,
+  blocking notes, completeness findings naming it, and the instruction to pull
+  correct prior work in with `git checkout <sha> -- <path>` rather than
+  reimplement), and composes the relaunch args by spreading the receipt's
+  argsFile (`resume: true`, same `integrationBranch`). A hand-composed salvage is
+  unsanctioned. Present the salvage waves, relaunch `ultrapowers-run` with the
+  emitted args file, and record the new launch's printed Run ID
   (`record_wf_run.py <stamp> <wf_runId>`, as in Step 4). Return here.
 - **Redirect (micro-redirect)** — author `findings.json` from the gate report
   (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
@@ -315,6 +314,12 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   integration branch are unsanctioned — route every post-gate edit through this
   lane. Record the relaunch's printed Run ID (`record_wf_run.py <stamp>
   <wf_runId>`, as in Step 4). Return here.
+- **Round artifacts** — both composers rotate the prior round's artifacts as
+  their last step, after a successful emit: `report.json` is snapshotted to
+  `report-<n>.json` and `heads/` renamed to `heads-<n>/`, so every round's gate
+  report and sidecars survive and the relaunch's merge writes a fresh `heads/`
+  (a stale higher `wave-<n>` slot can no longer win the critic's detach rule).
+  Nothing is deleted; never clear `heads/` or `report.json` by hand.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
