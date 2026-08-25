@@ -64,13 +64,14 @@ The gate report's three finding families — `completenessFindings`,
 `judgmentCalls`, `deferredVerification` — feed one derived obligation list
 at finishing: the residual manifest. Derivation and disposition are
 required at run close and at drain-entry close; the finishing summary
-attaches the manifest. Derive it from **all** of this run's gate reports
-(resume/redirect rounds each pass theirs — the union is computed, never
-remembered):
+attaches the manifest. Derive it from **all** of this run's gate reports —
+the composers snapshot each round's `report.json` to `report-<n>.json`, so
+`--run-dir` unions every round plus the live report; the union is computed,
+never remembered:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/residual_manifest.py \
-  <report.json> [more-reports...] [--gate-acks <runDir>/standing-approval.json] \
+  --run-dir <runDir> [--gate-acks <runDir>/standing-approval.json] \
   > <runDir>/residual-manifest.md
 ```
 
