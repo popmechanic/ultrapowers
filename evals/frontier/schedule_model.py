@@ -6,6 +6,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "ultrapowers" / "kernel"))
 from frontier_fold import sampled_orders, fold_all  # noqa: E402  (promoted to the kernel; modeling-only module imports back)
 
+# `ambiguous-files` is a RETIRED compiler label (Phase 2, 0.2.17) kept here
+# only because tests/test_frontier_cell.py and tests/test_frontier_schedule.py
+# build synthetic edges with it — the model drops it as same-file, harmlessly.
 SAME_FILE_WHYS = frozenset({"write-after-create", "write-after-write",
                             "ambiguous-files"})
 

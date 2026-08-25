@@ -35,8 +35,6 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
 `fold` — eligible overlapping-file tasks share a wave and fold at merge
 time; `serialize` reproduces the pre-0.2.0 behavior — see
 `references/dependency-analysis.md`). Omit it for the compiler's default.
-`--repo-root` is always stamped onto the compile call — no operator input
-needed.
 
 One call runs every deterministic stage fail-closed — git-repo check,
 worktree-capability probe, self-host engine skew, superpowers compatibility,

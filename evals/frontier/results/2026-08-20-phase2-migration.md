@@ -74,6 +74,7 @@ vocabulary, per the deletion.
 | label | fold Δ | serialize Δ |
 | --- | --- | --- |
 | marker | 0 | 0 |
+| text | 0 | 0 |
 | interface | 0 | 0 |
 | write-after-create | 0 | 0 |
 | write-after-write | n/a (tier absent under fold in both) | 0 |
