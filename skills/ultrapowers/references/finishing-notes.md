@@ -20,6 +20,23 @@ This check is the `allow_squash_merge` / rebase detection step: when
 are false, squash is not available — surface this before the merge attempt so the
 operator chooses a compatible merge method.
 
+## Post-approve ordering — merged suite before push, never `merge && push`
+
+Gate-verified green does not survive environment-stateful tests: a suite that
+mutates real user/machine state (a home-dir cache, wall-clock-sensitive
+fixtures) can flip verdicts on an identical tree, so the suite can go red on
+the exact SHA the gate verified ([54172dee1b7f9d70]). Two rules at finishing:
+
+1. After the merge lands locally, **run the suite on the merged tree before
+   pushing** — the push is the irreversible step, so the last verification
+   belongs immediately before it.
+2. **Never chain the merge and the push in one command** (`git merge … &&
+   git push`). Chaining forfeits the stop point: a red post-merge suite is
+   only actionable if nothing has been published yet.
+
+If the post-merge suite goes red on a gate-verified SHA, suspect environment-
+stateful tests before suspecting the merge.
+
 ## Deploy scope — warn when the base is far ahead of the deploy target
 
 A small approved fix can sit on a long-lived feature branch; a "pull the default
