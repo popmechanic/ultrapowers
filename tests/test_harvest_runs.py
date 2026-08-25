@@ -1626,3 +1626,50 @@ def test_bundle_omits_planning_key_when_not_found(tmp_path):
     bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["planningFound"] is False
     assert "planning" not in bundle
+
+
+# --- #224: NEEDS_ACK approved in-session (machine approve receipt) reads approved
+
+def test_needs_ack_receipt_with_in_session_approve_reads_approved(tmp_path):
+    run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    ok = json.dumps(_approve_marker())  # stamp "20260703-000000"
+    recs = REAL + [_wf_launch("20260703-000000", run_dir=str(run1)),
+                   _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}])]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "approved"
+    assert bundle["runs"][-1]["terminus"] == "approved"
+    assert bundle["truncated"] is False
+
+
+def test_approve_receipt_before_the_launch_or_for_another_stamp_does_not_count(tmp_path):
+    run1 = tmp_path / "run-20260703-000000"; run1.mkdir()
+    (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
+    other = dict(_approve_marker(), stamp="20260703-999999")
+    recs = REAL + [
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": json.dumps(_approve_marker())}]}]),
+        _wf_launch("20260703-000000", run_dir=str(run1)),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": json.dumps(other)}]}]),
+        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+             json.dumps(dict(_approve_marker(), lockReleased=False))}]}]),
+    ]
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
+                         "-Users-marcusestes-Websites-ultrapowers")
+    bundle = json.loads((out / "bundle.json").read_text())
+    assert bundle["terminus"] == "NEEDS_ACK"
+
+
+def test_approve_receipt_seen_unit():
+    launch = _wf_launch("s1", run_dir="/repo/.claude/ultrapowers/run-s1")
+    hit = _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
+           "approve done:\n" + json.dumps(dict(_approve_marker(), stamp="s1"))}]}])
+    assert h._approve_receipt_seen([launch, hit], "s1") is True
+    assert h._approve_receipt_seen([hit, launch], "s1") is False      # before the launch
+    assert h._approve_receipt_seen([launch, hit], "s2") is False      # other stamp
+    assert h._approve_receipt_seen([launch], "s1") is False

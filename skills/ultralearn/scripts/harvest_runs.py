@@ -125,6 +125,39 @@ def _last_launch_tool_use_index(records, stamp):
     return idx_found
 
 
+_JSON_SPAN = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _approve_receipt_seen(records, stamp):
+    """#224: True when a tool_result AFTER this stamp's last launch carries
+    ultra_gate.py --approve's printed receipt for it — mode "approve", the
+    same stamp, lockReleased true. Machine-written evidence that the approve
+    checkout + sweep ran, not a prose marker."""
+    start = _last_launch_tool_use_index(records, stamp)
+    if start is None:
+        return False
+    for idx, _r, b in _iter_blocks_indexed(records):
+        if idx <= start or not (isinstance(b, dict) and b.get("type") == "tool_result"):
+            continue
+        txt = _block_text(b)
+        if '"approve"' not in txt:
+            continue
+        obj = None
+        try:
+            obj = json.loads(txt)
+        except json.JSONDecodeError:
+            m = _JSON_SPAN.search(txt)
+            if m:
+                try:
+                    obj = json.loads(m.group(0))
+                except json.JSONDecodeError:
+                    obj = None
+        if (isinstance(obj, dict) and obj.get("mode") == "approve"
+                and obj.get("stamp") == stamp and obj.get("lockReleased") is True):
+            return True
+    return False
+
+
 def _last_artifact_record_index(records, registry):
     """Index (into `records`) of the slice envelope's tail bound, registry-
     keyed (spec §5, F6-adjudicated): an artifact qualifies only if it is a
@@ -600,7 +633,7 @@ def _drain_stamp_terminus(run_dir, drain_receipts):
     return "approved" if not non_approved else non_approved[-1]
 
 
-def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
+def _stamp_terminus(run_dir, stamp_reports, drain_receipts=(), approve_seen=False):
     """Per-stamp terminus (#126 Task 2, generalized receipt-or-stamp by #150
     mode c): the disk receipt's own verdict, upgraded to `approved` when git
     ancestry proves the run's head landed on its base branch. Structured
@@ -611,11 +644,16 @@ def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
     always takes precedence; `drain_receipts` (the #150 stamp mirror) is
     consulted only when no disk receipt exists — the drain skips Step-5 and
     tears the runDir down, so for those runs the mirror is the only gate
-    evidence left. Neither present -> `unknown`."""
+    evidence left. Neither present -> `unknown`. #224: NEEDS_ACK is the one
+    verdict an in-session approve receipt (`approve_seen`) upgrades — acks
+    are given in-session by design, while BLOCKED stays BLOCKED (the #126
+    pin)."""
     if stamp_reports:
         receipt = stamp_reports[-1]["receipt"]
         verdict = receipt.get("verdict", "unknown")
         if run_dir and _git_ancestry_approved(run_dir, receipt):
+            return "approved"
+        if verdict == "NEEDS_ACK" and approve_seen:
             return "approved"
         return verdict
     if drain_receipts:
@@ -623,10 +661,12 @@ def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
     return "unknown"
 
 
-def _runs_for_bundle(registry, gate_reports):
+def _runs_for_bundle(registry, gate_reports, records=None):
     """Group merged gate_reports by launched stamp into the `runs` bundle
     field (#113 Task 2): [{stamp, planPath, gateReports, terminus}], one
-    entry per registry stamp in transcript (launch) order."""
+    entry per registry stamp in transcript (launch) order. #224: `records`
+    (when given) is scanned per stamp for an in-session approve receipt that
+    can upgrade a NEEDS_ACK verdict."""
     by_stamp = {}
     for g in gate_reports:
         by_stamp.setdefault(g["stamp"], []).append(g)
@@ -638,11 +678,12 @@ def _runs_for_bundle(registry, gate_reports):
         # gate receipt exists for this stamp — it never enters gateReports
         # (which stay disk-sourced only), it only informs terminus.
         drain_receipts = [] if stamp_reports else _drain_stamp_receipts(run_dir, stamp)
+        approve_seen = _approve_receipt_seen(records, stamp) if records is not None else False
         runs.append({
             "stamp": stamp,
             "planPath": registry["planPathsByStamp"].get(stamp),
             "gateReports": stamp_reports,
-            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts),
+            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts, approve_seen),
         })
     return runs
 
@@ -984,7 +1025,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
     # top-level `terminus` becomes the aggregate across runs when the session
     # actually registered any stamped launches, else "unknown" (no registry
     # stamps means no disk source to read a verdict from at all).
-    runs = _runs_for_bundle(registry, gate_reports)
+    runs = _runs_for_bundle(registry, gate_reports, records)
     terminus = _aggregate_terminus(runs, "unknown")
     audit = _merge_audits([audit_run.audit(d) for d in tdirs])
     planning_found = stitch_planning(plan_path, records)
