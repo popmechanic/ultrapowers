@@ -300,7 +300,7 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   (`record_wf_run.py <stamp> <wf_runId>`, as in Step 4). Return here.
 - **Redirect (micro-redirect)** — author `findings.json` from the gate report
   (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
-  — narrow `files` to the fix, right-size `tier` down when the fix is mechanical),
+  — `files` is derived as the task's FILES ∪ paths the instruction names ∪ the finding's `files`, never narrowed; right-size `tier` down when the fix is mechanical),
   then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
   --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
   `ultrapowers-run` with the emitted args file. `redirect_args.py` composes the

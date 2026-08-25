@@ -2,7 +2,7 @@
 """Author redirect relaunch args deterministically (#115, rotation #222).
 
 Reads the run receipt's argsFile and its launch file (wavesPath), applies
-amend-only findings (body REDIRECT append, file-scope narrow, tier
+amend-only findings (body REDIRECT append, file-scope union (#223), tier
 right-size) to COPIES, and emits redirect-args.json with resume: true and the
 explicit integrationBranch the resume path requires. The orchestrator authors
 findings.json from the gate report; this helper validates and applies that
@@ -18,6 +18,8 @@ import os
 import re
 import shutil
 import sys
+
+import compile_plan  # same scripts dir: the compiler's own path-token rule
 
 PROG = "redirect_args"
 CHAIN_LAUNCH = "relaunch-launch.json"
@@ -149,6 +151,48 @@ def emit_relaunch(ctx, selected, args_name):
     return args_path
 
 
+_STRIP = "`'\"()[]{}<>"
+_LINE_RANGE = re.compile(r":\d+(?:-\d+)?$")
+_NOT_PATHS = {"e.g", "i.e", "etc", "cf", "vs"}
+
+
+def instruction_paths(instruction):
+    """Path-like tokens in a redirect instruction, first-appearance order,
+    deduped. Free prose is not a Files: block, so the compiler's _is_pathlike
+    rule is narrowed (#223 review): a token with a `/`, a dotfile, or a real
+    extension counts on its own; an extensionless bare name (README,
+    Makefile) counts ONLY when the instruction backticked it — otherwise every
+    sentence-initial Capitalized word would become a file. Quoting/brackets,
+    trailing ,;:. punctuation, a ::node pytest selector and a :line-range
+    suffix are stripped first."""
+    out = []
+    for raw in (instruction or "").split():
+        backticked = raw.startswith("`")
+        tok = raw.strip(_STRIP).rstrip(",;:.").strip(_STRIP)
+        tok = _LINE_RANGE.sub("", tok.split("::", 1)[0])
+        if not tok or tok.lower() in _NOT_PATHS or not compile_plan._is_pathlike(tok):
+            continue
+        ext = compile_plan.EXT_RE.search(tok)
+        if ext is not None and ext.group(1).isdigit():
+            continue                      # v1.2 / 3.4.5: a version, not a file
+        bare = "/" not in tok and not tok.startswith(".") and ext is None
+        if bare and not backticked:
+            continue                      # Restore / Then / PASS: prose, not a path
+        if tok not in out:
+            out.append(tok)
+    return out
+
+
+def derive_files(task_files, instruction, finding_files):
+    """#223: files is a footprint — task FILES ∪ instruction paths ∪ the
+    finding's files, ordered, deduped. It can only grow; never narrows."""
+    out = []
+    for p in list(task_files or []) + instruction_paths(instruction) + list(finding_files or []):
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--receipt", required=True)
@@ -173,9 +217,12 @@ def main():
         if not instruction:
             die("finding %d (task %s) has no instruction" % (i, tid))
         tasks[tid]["body"] = tasks[tid].get("body", "") + "\n\nREDIRECT: " + instruction + "\n"
-        if f.get("files"):
-            tasks[tid]["files"] = list(f["files"])
-            entries[tid]["files"] = list(f["files"])
+        if f.get("files") is not None and not isinstance(f["files"], list):
+            die("finding %d (task %s): files must be a list" % (i, tid))
+        derived = derive_files(tasks[tid].get("files") or entries[tid].get("files"),
+                               instruction, f.get("files"))
+        tasks[tid]["files"] = list(derived)
+        entries[tid]["files"] = list(derived)
         if f.get("tier"):
             entries[tid]["tier"] = f["tier"]
     print(emit_relaunch(ctx, amended, "redirect-args.json"))
