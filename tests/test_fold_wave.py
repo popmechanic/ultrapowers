@@ -1388,3 +1388,69 @@ def test_malformed_commutes_spec_is_an_argument_error(tmp_path):
     r = do_fold(repo, run_dir, 1, base_sha, specs, extra=["--commutes", "t1"])
     assert r.returncode == 2
     assert "--commutes must be" in r.stderr
+
+
+def make_stale_head_repo(tmp_path):
+    """The #246 shape: the run base B1 sits ON TOP of an older commit B0, and
+    one task's worktree was cut from B0 (a stale ref the implementer never
+    re-anchored). Diffed two-point against B1, that head reads as 'revert
+    everything B1 gained' — 3,472 lines on the live drain."""
+    repo = tmp_path / "repo"
+    _init(repo)
+    (repo / "app.py").write_text(BASE_APP)
+    (repo / "other.txt").write_text("hello\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "b0")
+    b0 = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-q", "-b", "stale", b0)
+    (repo / "other.txt").write_text("hello from the stale task\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "stale task")
+    stale_sha = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-q", b0)
+    (repo / "gained.py").write_text("def gained():\n    return 1\n")
+    (repo / "app.py").write_text(T3_APP)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "b1 — what the run base gained after b0")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-q", "-b", "t1", base_sha)
+    (repo / "app.py").write_text(T3_APP.replace("z + 5", "z + 6"))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "t1")
+    t1_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", base_sha)
+    return repo, base_sha, {"t1": t1_sha, "stale": stale_sha}
+
+
+def test_fold_refuses_a_task_head_not_descended_from_the_base(tmp_path):
+    """#246: a head whose parent is not the run base is exactly the input the
+    two-point publish cannot interpret — refuse (exit 2, nothing written) so
+    the merge role reports ERROR and the engine falls back to a 3-way merge,
+    instead of folding a silent revert on a green suite."""
+    repo, base_sha, heads = make_stale_head_repo(tmp_path)
+    run_dir = tmp_path / "run"
+    r = do_fold(repo, run_dir, 1, base_sha,
+                [("t1", "t1", heads["t1"]), ("stale", "stale", heads["stale"])])
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "stale=" + heads["stale"][:7] in r.stderr
+    assert "not descended from base " + base_sha[:7] in r.stderr
+    assert "t1=" not in r.stderr
+    assert not (run_dir / "frontier" / "wave-1" / "fold_log.jsonl").exists()
+
+
+def test_fold_accepts_every_head_descended_from_the_base(tmp_path):
+    """The guard is ancestry, not identity: a head several commits past the
+    base still folds."""
+    repo, base_sha, heads = make_stale_head_repo(tmp_path)
+    _git(repo, "checkout", "-q", "t1")
+    (repo / "other.txt").write_text("second commit on t1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "t1 again")
+    t1_head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", base_sha)
+    r = do_fold(repo, tmp_path / "run", 1, base_sha, [("t1", "t1", t1_head)])
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert last_json(r)["clean"] is True
