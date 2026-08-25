@@ -171,27 +171,102 @@ def make_heads(run):
     return heads
 
 
-def test_heads_cleared_after_successful_emit(tmp_path):
-    # #131: a stale wave-4 slot from the prior launch must not survive into
-    # the relaunch, where the critic's highest-numbered-slot rule reads it.
+def make_report(run, marker="round-one"):
+    (run / "report.json").write_text(json.dumps(
+        {"integrationBranch": "ultra/int-1", "waves": [["1", "2"]],
+         "tasks": [{"task": "1", "status": "done"}], "tests": {"passed": True},
+         "unfinished": [], "completenessFindings": [marker]}))
+
+
+def test_heads_rotated_after_successful_emit(tmp_path):
+    # #222 (supersedes the #131 rmtree): a stale wave-4 slot from the prior
+    # launch must not survive into the relaunch's heads/, but nothing is
+    # deleted — the prior round's slots move to heads-1/.
     run = make_run(tmp_path)
     heads = make_heads(run)
     r = run_helper(run, [{"task": "1", "instruction": "fix"}])
     assert r.returncode == 0, r.stderr
     assert not heads.exists()
+    assert (run / "heads-1" / "wave-4").read_text() == "b" * 40 + "\n"
+    assert (run / "heads-1" / "task-1").is_file()
     assert (run / "redirect-args.json").is_file()  # emit happened first
+    assert "round 1" in r.stderr
 
 
-def test_heads_beside_receipt_cleared_even_with_out_dir(tmp_path):
-    # the deletion target is pinned to dirname(receipt), never --out-dir
+def test_report_snapshotted_to_round_file_after_successful_emit(tmp_path):
     run = make_run(tmp_path)
-    heads = make_heads(run)
+    make_report(run)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    snap = json.loads((run / "report-1.json").read_text())
+    assert snap["completenessFindings"] == ["round-one"]
+    # the live report.json is a COPY source, never removed — the next gate
+    # overwrites it; the snapshot is the durable record
+    assert (run / "report.json").is_file()
+
+
+def test_rotation_beside_receipt_even_with_out_dir(tmp_path):
+    # the rotation target is pinned to dirname(receipt), never --out-dir
+    run = make_run(tmp_path)
+    make_heads(run)
+    make_report(run)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     r = run_helper(run, [{"task": "1", "instruction": "fix"}],
                    "--out-dir", str(elsewhere))
     assert r.returncode == 0, r.stderr
-    assert not heads.exists()
+    assert not (run / "heads").exists()
+    assert (run / "heads-1").is_dir() and (run / "report-1.json").is_file()
+    assert not (elsewhere / "heads-1").exists()
+    assert (elsewhere / "redirect-args.json").is_file()
+
+
+def test_round_counter_increments_across_rounds(tmp_path):
+    run = make_run(tmp_path)
+    make_heads(run)
+    make_report(run, "round-one")
+    r1 = run_helper(run, [{"task": "1", "instruction": "one"}])
+    assert r1.returncode == 0, r1.stderr
+    # the next gate rewrites report.json and the next merge rewrites heads/
+    make_heads(run)
+    make_report(run, "round-two")
+    r2 = run_helper(run, [{"task": "2", "instruction": "two"}])
+    assert r2.returncode == 0, r2.stderr
+    assert json.loads((run / "report-1.json").read_text())["completenessFindings"] == ["round-one"]
+    assert json.loads((run / "report-2.json").read_text())["completenessFindings"] == ["round-two"]
+    assert (run / "heads-1").is_dir() and (run / "heads-2").is_dir()
+    assert not (run / "heads").exists()
+
+
+def test_round_counter_continues_from_existing_artifacts(tmp_path):
+    # an orchestrator that already has report-3.json / heads-3 on disk (e.g.
+    # a salvage round) gets round 4 — never a clobbered earlier snapshot
+    run = make_run(tmp_path)
+    (run / "report-3.json").write_text("{}")
+    make_heads(run)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    assert (run / "heads-4").is_dir() and not (run / "heads").exists()
+    assert (run / "report-3.json").read_text() == "{}"
+
+
+def test_heads_only_rotation_when_report_absent(tmp_path):
+    run = make_run(tmp_path)
+    make_heads(run)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    assert (run / "heads-1").is_dir()
+    assert not (run / "report-1.json").exists()
+
+
+def test_chain_file_is_relaunch_launch_json(tmp_path):
+    # #222: one chain file shared with salvage_args.py
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert Path(out_args["wavesPath"]).name == "relaunch-launch.json"
+    assert not (run / "redirect-launch.json").exists()
 
 
 def test_heads_untouched_on_validation_failure(tmp_path):
