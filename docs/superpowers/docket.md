@@ -553,7 +553,7 @@
 **Notes:** Issue names the WRONG file: the completeness-critic brief is wave-merge.md:279-312 (BAKE:COMPLETENESS_PROMPT, :282), not reviewer-prompts.md — audit REVIEWER_PROMPT (:121-160) too since several reviewers also recorded it. One clause: a claim about the ORDER work was performed that the integrated diff cannot evidence is not a finding — omit it (not gaps/unverified/deferredVerification); constraints about test presence/coverage still verify. Do NOT reword 'what plan requirement is unmet?' — audit_run.py:41 ROLE_MARKERS keys on it. Root cause is plans copying a TDD line into ## Global Constraints (11 plans; ultraplan SKILL.md:268-271 forwards them as every reviewer's lens) — brainstorm decides whether to restore arm A's dropped second half: ultraplan guidance that process-ordering rules are per-task steps, never Global Constraints (mirror plan-markers.md, keep test_ultraplan_skill.py green). Re-bake + drift pin + .mjs sims; coordinate ONE waves.js bake with #222/#223. Verify by absence of acked:process TDD rows in the next bundle.
 
 ### #225: SKILL.md Step 5 prose: post-PASS redirect policy — advisory residuals default to `filed:`; elective polish relaunch is an explicit operator opt-in with the round's fixed cost stated (the cycle's ONE additive guard)
-**State:** queued
+**State:** executed
 **Score:** 7 — token efficiency head-on (58% tokens / 69% wall in a five-round tail); autonomy (default disposition without an operator round)
 **Est-files:** skills/ultrapowers/SKILL.md, skills/ultrapowers/references/finishing-notes.md
 **Plan:** docs/superpowers/plans/2026-08-25-post-pass-redirect-policy.md
