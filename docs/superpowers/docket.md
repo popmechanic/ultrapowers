@@ -545,7 +545,7 @@
 **Notes:** Two tasks. T1 reviewer-prompts.md :57 (IMPLEMENTER 'confirm every changed path is named there') + :134 (REVIEWER 'modifications outside FILES are blocking') — modifications outside FILES become a reported advisory (concern/judgment call); deletions outside FILES stay blocking verbatim; SIBLING FILES rule (:38,:147) untouched; re-bake waves.js, drift pin green, check tests/sim_workflow.mjs fixtures for the sentence. T2 redirect_args.py:98-100 derives `files` = task FILES ∪ instruction paths (path-like token regex, deterministic+tested) ∪ finding files and never narrows; rewrite the narrowing pin at test_redirect_args.py:35-49; strike SKILL.md:303-304 'narrow files to the fix' (leave the tier clause alone — #230 watch owns it). No canary (agreed at distill). Sequence AFTER #222 or plan together as one redirect-lane plan and bake waves.js ONCE with #226. #233 (watch) is the authoring-side complement — cite, don't bundle.
 
 ### #226: deletion: stop manufacturing 'TDD red-before-green not observable' residual rows — the completeness critic treats process-ordering claims as non-findings
-**State:** queued
+**State:** executed
 **Score:** 7 — token efficiency + autonomy (11 zero-information acked:process dispositions per run under #149's mandatory-ack grammar); simplification (the cycle's mandatory deletion)
 **Est-files:** skills/ultrapowers/references/wave-merge.md, skills/ultrapowers/references/reviewer-prompts.md, skills/ultrapowers/harnesses/waves.js, tests/test_no_prompt_drift.py, skills/ultraplan/SKILL.md, skills/ultrapowers/references/plan-markers.md
 **Plan:** docs/superpowers/plans/2026-08-25-process-ordering-non-findings.md
