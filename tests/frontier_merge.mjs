@@ -1189,6 +1189,29 @@ async function scenarioCommutesArgsOnCommands() {
   console.log('scenario 11b commutes-args-on-commands: OK')
 }
 
+// ── 11e: autoResolved is a SUM, not last-value-wins ─────────────────────────
+// 11a/11b each carry the count on ONE leg, so `+=` → `=` in addWall stays green
+// there. Here the fold leg reports 1 and the resolve leg 2: frontier must be 3.
+async function scenarioAutoResolvedSumsAcrossLegs() {
+  const calls = []
+  const open = [openEntry(1, 'shared.py', 2)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return Object.assign(conflictFoldReply(open, []), { autoResolved: 1 })
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'unioned' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', autoResolved: 2,
+               open: [], remaining: [] }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-sum' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(commutesWave()), budget: undefined })
+  eq(r.waveMerges[0].headSha, 'cand-sum', 'sum: the wave adopted its folded candidate')
+  eq(r.frontier[0].autoResolved, 3,
+     'sum: autoResolved is 1 (fold) + 2 (resolve) = 3 — a last-value-wins accumulator reads 2')
+  console.log('scenario 11e auto-resolved-sums-across-legs: OK')
+}
+
 // ── 11c: a composition-unpinned row for an undeclared multi-writer path ─────
 async function scenarioCompositionUnpinnedRow() {
   const calls = []
@@ -1272,6 +1295,99 @@ await scenarioBudgetExhaustedMidWorkList()
 await scenarioAutoResolvedFoldCompletes()
 await scenarioCommutesArgsOnCommands()
 await scenarioCompositionUnpinnedRow()
+// ── 11f–11i: composition rows — the four negative paths ─────────────────────
+// (f) one writer per path → no row (delete the `ids.length < 2` guard: green today)
+// (g) every writer declared → no row (delete the `undeclared.length` guard: green today)
+// (h) mixed writes (one task carries `writes`, one does not) → ONE skip note, no row
+// (i) partially-merged wave (a writer failed) → the failed writer is excluded, no row
+async function scenarioCompositionSingleWriterNoRow() {
+  const calls = []
+  const agent = makeAgent(calls)
+  const waves = [[
+    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['a.py'], writes: ['a.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['b.py'], writes: ['b.py'], commutes: [] },
+  ]]
+  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
+  eq(r.waveMerges[0].status, 'MERGED', 'single-writer: the wave merged')
+  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'single-writer: a path with one writer is never a composition row' +
+    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
+    'single-writer: a wave whose tasks all carry writes is never skipped')
+  console.log('scenario 11f composition-single-writer-no-row: OK')
+}
+
+async function scenarioCompositionAllDeclaredNoRow() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-all' }
+    return undefined
+  })
+  const waves = [[
+    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+  ]]
+  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
+  eq(r.waveMerges[0].headSha, 'cand-all', 'all-declared: the contended wave adopted its candidate')
+  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'all-declared: every writer declared the path — no unpinned composition' +
+    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario 11g composition-all-declared-no-row: OK')
+}
+
+async function scenarioCompositionMixedWritesSkipNote() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-mixed' }
+    return undefined
+  })
+  const waves = [[
+    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'] },   // no writes field
+  ]]
+  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
+  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'mixed-writes: no row is guessed when any task lacks writes' +
+    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  const notes = r.judgmentCalls.filter((j) => /composition rows skipped/.test(j))
+  eq(notes, ['wave 1: tasks carry no writes field — composition rows skipped'],
+     'mixed-writes: exactly one skip note, naming the wave')
+  console.log('scenario 11h composition-mixed-writes-skip-note: OK')
+}
+
+async function scenarioCompositionPartiallyMergedExcludesFailedWriter() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'impl:t2' || label === 'fix:t2') {
+      return { status: 'BLOCKED', summary: 'cannot', branch: 'wt-t2', headSha: 'sha-t2' }
+    }
+    return undefined
+  })
+  // both tasks WRITE shared.py and neither declares it — but t2 never merges,
+  // so the merged wave has one writer and no composition exists to pin.
+  const waves = [[
+    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+  ]]
+  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
+  eq(r.tasks.find((t) => t.task === 't2').status, 'failed', 'partial: t2 failed')
+  eq(r.waveMerges[0].status, 'MERGED', 'partial: the wave merged t1 alone')
+  assert(!has(calls, 'merge:wave1:fold'), 'partial: one mergeable task is not a contended wave')
+  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
+    'partial: the failed writer is excluded from the row derivation' +
+    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
+  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
+    'partial: the merged task carries writes — never skipped')
+  console.log('scenario 11i composition-partially-merged-excludes-failed-writer: OK')
+}
+
 await scenarioWritesAbsentSkipsCompositionRows()
+await scenarioAutoResolvedSumsAcrossLegs()
+await scenarioCompositionSingleWriterNoRow()
+await scenarioCompositionAllDeclaredNoRow()
+await scenarioCompositionMixedWritesSkipNote()
+await scenarioCompositionPartiallyMergedExcludesFailedWriter()
 
 console.log('ALL SCENARIOS PASSED')

@@ -1389,6 +1389,13 @@ const contendingTasksBlock = (waveTasks) => {
       : '')
 }
 
+// The tasks of wave `waveIdx` that actually merged — one join, used by the
+// contended-merge routing and the composition rows alike (#186: it was
+// written twice, and two copies is where one drifts).
+const mergedWaveTasks = (waveIdx, merged) =>
+  (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
+    .filter((t) => t && merged.some((r) => r.task === t.id))
+
 // Returns the adoption result (MERGE_SCHEMA shape) when the candidate was
 // adopted, or null to fall the wave back to the git-merge path. Fallback is live
 // strictly before adoption: the fold consumes task branches but never destroys
@@ -1399,8 +1406,7 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
   // ENGINE-AUTHORED wave base: waveBaseSha advances only AFTER a merge, so at
   // dispatch time it is exactly the previous integration head.
   const prevHead = waveBaseSha
-  const waveTasks = (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
-    .filter((t) => t && merged.some((r) => r.task === t.id))
+  const waveTasks = mergedWaveTasks(waveIdx, merged)
   const transcripts = []
   let fold = null
   // The fold-CLI invocations this wave drove, the wall clock they reported, and
@@ -1756,9 +1762,7 @@ async function mergeWave(results, waveIdx) {
   // and git-merge paths alike — the composition is real either way, and two call
   // sites is where one of them drifts. Scoped to the tasks that actually merged:
   // a task that never landed wrote nothing and cannot contend.
-  compositionRows(waveIdx + 1,
-    (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
-      .filter((t) => t && merged.some((r) => r.task === t.id)))
+  compositionRows(waveIdx + 1, mergedWaveTasks(waveIdx, merged))
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
     // Fallback (null) drops through to the git-merge path below with the branch
