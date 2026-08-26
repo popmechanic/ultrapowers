@@ -7,7 +7,7 @@ One JSONL file per wave, written by the frontier CLI and read back by
 <runDir>/frontier/wave-<n>/fold_log.jsonl
 ```
 
-`<n>` is **1-based**, matching the `heads/` slot convention. Everything else
+`<n>` is **1-based**, matching the wave numbering the run reports. Everything else
 the wave records lives beside it in the same directory.
 
 The log is also **the authority for what has folded**. The wave's task list
