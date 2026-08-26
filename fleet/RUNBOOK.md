@@ -170,6 +170,9 @@ const { read, reportPath, detailPath } = await driveOne({
   repoDir: process.cwd(),              // local checkout the base is pushed from
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
+  // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
+  // memory from <evidenceDir>/stat.json once runs carry it (W2); golden 8/16 default.
+  // sandboxCpu: 8, sandboxMemory: '16GB',
 })
 
 console.log(JSON.stringify(read, null, 2))

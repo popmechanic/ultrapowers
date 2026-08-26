@@ -59,6 +59,9 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
  * @param {Record<string,string>} [opts.engineEnv] - environment the sandbox
  *   engine must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN`, #213); delivered per run
  *   by `provisionRun`, held by the orchestrator, never baked into the golden.
+ * @param {number} [opts.sandboxCpu] - number of vCPUs for the cloned sandbox.
+ * @param {string} [opts.sandboxMemory] - memory size for the cloned sandbox (e.g. '8GB').
+ * @param {string} [opts.sandboxDisk] - disk size for the cloned sandbox (e.g. '30GB').
  * @param {number} [opts.logPullTimeoutMs] - bound on the evidence pull that
  *   precedes teardown. A pull that outruns it is recorded as an error and the
  *   sandbox is destroyed anyway — the pull must never keep a VM alive.
@@ -87,6 +90,9 @@ export const driveOne = async ({
   publishTimeoutMs = heartbeatTimeoutMs,
   logPullTimeoutMs = 120_000,
   engineEnv,
+  sandboxCpu,
+  sandboxMemory,
+  sandboxDisk,
 }) => {
   const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
@@ -248,6 +254,9 @@ export const driveOne = async ({
       port: effectivePort,
       planPath,
       engineEnv,
+      cpu: sandboxCpu,
+      memory: sandboxMemory,
+      disk: sandboxDisk,
       exec,
       clock,
     })
