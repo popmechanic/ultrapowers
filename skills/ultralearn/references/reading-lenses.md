@@ -89,6 +89,14 @@ platform weather never masquerades as rigor signal. Across runs this
 count becomes the redirect-round *rate*, the canary metric distill watches to
 judge whether an adopted rigor-for-efficiency trade is paying.
 
+Machine-readably: the count finding additionally carries
+`redirectRounds` — `{"total": N, "infra": a, "finding": b, "plan": c,
+"elective": d}`, non-negative integers (the cause counts should sum to
+`total`) — and `implementationTasks` (integer). The title prose stays as
+the human headline; the structured fields are what the canary aggregates
+by `engineVersion`, so emit them on every count finding, including the
+zero (`{"total": 0, ...}`).
+
 ## Output schema (one object per finding)
 
 - `runId` (string) — copy from `bundle.json`.
@@ -101,6 +109,10 @@ judge whether an adopted rigor-for-efficiency trade is paying.
 - `implication` (string) — what it suggests changing.
 - `surface` (string) — the repo area a fix would touch (e.g. references/*.md,
   the routing hook, ultraplan, report-format.md, SKILL.md, README).
+- `redirectRounds` (object — required on the redirect-round count finding
+  only) — `{total, infra, finding, plan, elective}`, non-negative integers.
+- `implementationTasks` (integer — required on the redirect-round count
+  finding only) — the run's implementation-task count.
 
 ## The foreign rule (mandatory)
 

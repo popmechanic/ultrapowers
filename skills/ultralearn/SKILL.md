@@ -59,7 +59,9 @@ every future run; a representation change is paid once — so before drafting
 any fix, name what made the defect possible and propose the change to that.
 A reactive per-defect guard is the fallback (on a recurring cluster the
 consolidation attempt is recorded first), machinery is earned by recurrence
-(first occurrence → prose or a watch-item; second → build), and at most one
+(first occurrence → prose or a watch-item; second → build — the parked list
+is the open `watch-item`-labeled GitHub issues, read at distill start via
+`gh issue list --label watch-item --state open`), and at most one
 additive guard per cycle is recommended for adoption. Weigh each finding's `engineVersion`: a cluster seen
 only under versions older than the current release may already be addressed — flag
 it as possibly-stale and confirm against the current engine before proposing a

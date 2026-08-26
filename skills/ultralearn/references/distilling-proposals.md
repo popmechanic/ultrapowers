@@ -79,7 +79,15 @@ Two budget rules keep the portfolio honest across cycles:
 - **Machinery is earned by recurrence.** A first occurrence gets a prose fix
   or a watch-item naming the recurrence that would justify a build; the build
   happens on the second occurrence. Never ship enforcement machinery around a
-  prose rule that has not yet been given the chance to fail.
+  prose rule that has not yet been given the chance to fail. The parked
+  first occurrences live as **open `watch-item`-labeled GitHub issues** —
+  the authoritative list, never a memory note or local file. Before
+  clustering, read it: `gh issue list --label watch-item --state open`.
+  A new finding matching an open watch-item's named recurrence is a
+  **second occurrence** — the build is licensed, and the proposal cites the
+  watch-item issue number. On adoption, close the fired watch-item citing
+  the evidence; park a new first occurrence by filing a new `watch-item`
+  issue. Filing and closing stay operator-gated like all distill output.
 - **One additive guard per cycle.** Structural changes and deletions are
   unbudgeted; recommend at most one `additive-guard` for adoption per
   distill — the rest park as watch-items, however tempting.
