@@ -49,7 +49,7 @@ def make_run(tmp_path):
 
 
 def make_report(tmp_path, tips, envelope=False, last_status="MERGED",
-                final_recorded="f" * 40):
+                final_recorded="f" * 40, base_sha=None):
     body = {
         "waveMerges": [
             {"wave": 1, "status": "MERGED", "headSha": "a" * 40,
@@ -66,8 +66,11 @@ def make_report(tmp_path, tips, envelope=False, last_status="MERGED",
              "headSha": "c" * 40},
         ],
     }
+    if base_sha:
+        body["baseSha"] = base_sha
     p = tmp_path / "report.json"
-    p.write_text(json.dumps({"result": body} if envelope else body))
+    # The envelope carries sibling keys the rewrite must preserve (#275).
+    p.write_text(json.dumps({"summary": "ok", "result": body} if envelope else body))
     return p
 
 
@@ -94,7 +97,8 @@ def test_derives_task_heads_and_final_tip(tmp_path):
 def test_intermediate_wave_headsha_left_untouched(tmp_path):
     repo, tips, tip = make_run(tmp_path)
     report = make_report(tmp_path, tips)
-    run(report, repo)
+    r = run(report, repo)
+    assert r.returncode == 0, r.stderr
     data = json.loads(report.read_text())
     assert data["waveMerges"][0]["headSha"] == "a" * 40  # model-recorded context
 
@@ -112,7 +116,9 @@ def test_envelope_shaped_report(tmp_path):
     report = make_report(tmp_path, tips, envelope=True)
     r = run(report, repo)
     assert r.returncode == 0, r.stderr
-    data = json.loads(report.read_text())["result"]
+    full = json.loads(report.read_text())
+    assert full["summary"] == "ok"   # the rewrite preserves envelope siblings
+    data = full["result"]
     assert data["waveMerges"][1]["headSha"] == tip
 
 
@@ -215,3 +221,64 @@ def test_resume_round_report_only_lists_new_tasks(tmp_path):
     data = json.loads(p.read_text())
     assert data["tasks"][0]["headSha"] == tips["3"]
     assert data["waveMerges"][0]["headSha"] == tip
+
+
+def _root_commit(repo):
+    return _git(repo, "rev-list", "--max-parents=0", "HEAD")
+
+
+def test_vacuous_merged_branch_fails_when_base_known(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    base = _root_commit(repo)
+    _git(repo, "branch", "worktree-wf_t-4", base)   # zero commits past the run base
+    report = make_report(tmp_path, tips, base_sha=base)
+    data = json.loads(report.read_text())
+    data["waveMerges"][0]["branches"].append("4")
+    data["tasks"].append({"task": "4", "status": "done",
+                          "branch": "worktree-wf_t-4", "headSha": "e" * 40})
+    report.write_text(json.dumps(data))
+    before = report.read_text()
+    r = run(report, repo)
+    assert r.returncode == 1
+    assert "already an ancestor of the run base" in r.stderr
+    assert "worktree-wf_t-4" in r.stderr
+    assert report.read_text() == before
+
+
+def test_missing_base_sha_skips_guard_with_named_warning(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    _git(repo, "branch", "worktree-wf_t-4", _root_commit(repo))
+    report = make_report(tmp_path, tips)   # no baseSha
+    data = json.loads(report.read_text())
+    data["waveMerges"][0]["branches"].append("4")
+    data["tasks"].append({"task": "4", "status": "done",
+                          "branch": "worktree-wf_t-4", "headSha": "e" * 40})
+    report.write_text(json.dumps(data))
+    r = run(report, repo)
+    assert r.returncode == 0, r.stderr
+    assert "vacuous-merge guard skipped" in r.stderr
+
+
+def test_genuine_branches_pass_with_base_present(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    report = make_report(tmp_path, tips, base_sha=_root_commit(repo))
+    r = run(report, repo)
+    assert r.returncode == 0, r.stderr
+
+
+def test_missing_report_file_names_the_fact(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    r = run(tmp_path / "nope.json", repo)
+    assert r.returncode == 1
+    assert "finalize_report: cannot read --report" in r.stderr
+    assert "Traceback" not in r.stderr
+
+
+def test_malformed_report_names_the_fact(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    p = tmp_path / "report.json"
+    p.write_text("{not json")
+    r = run(p, repo)
+    assert r.returncode == 1
+    assert "not valid JSON" in r.stderr
+    assert "Traceback" not in r.stderr
