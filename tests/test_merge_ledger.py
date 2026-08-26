@@ -141,6 +141,110 @@ def test_digest_tags_synthetic_rows(tmp_path):
     assert "_(abstracted)_" in field_line
 
 
+def test_structured_redirect_fields_pass_through(tmp_path):
+    # #220: the canary fields must land in the ledger row intact.
+    ledger = tmp_path / "ledger.jsonl"
+    f = _finding(title="redirect count",
+                 redirectRounds={"total": 3, "infra": 1, "finding": 2,
+                                 "plan": 0, "elective": 0},
+                 implementationTasks=7)
+    m.merge_findings([f], ledger, lambda rid: "home")
+    entry = json.loads(ledger.read_text().splitlines()[0])
+    assert entry["redirectRounds"]["total"] == 3
+    assert entry["implementationTasks"] == 7
+
+
+def test_digest_renders_redirect_rate_table(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="rr a", runId="r1",
+                  redirectRounds={"total": 3, "infra": 1, "finding": 2,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=6),
+         _finding(title="rr b", runId="r2",
+                  redirectRounds={"total": 1, "infra": 0, "finding": 1,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=4)],
+        ledger, lambda rid: "home", lambda rid: "0.2.21")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    text = digest.read_text()
+    assert "redirect-round rate by engineVersion" in text
+    # 0.2.21: 2 runs, 4 rounds, 10 tasks, rate 0.40
+    row = next(line for line in text.splitlines() if line.startswith("| 0.2.21"))
+    assert "| 2 |" in row and "| 4 |" in row and "| 10 |" in row and "0.40" in row
+
+
+def test_digest_tolerates_old_shape_rows(tmp_path):
+    # Append-only ledger: historical rows carry no structured fields and
+    # must neither crash the digest nor enter the rate table.
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="old prose-only count", runId="r1"),
+         _finding(title="new structured", runId="r2",
+                  redirectRounds={"total": 2, "infra": 0, "finding": 2,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=5)],
+        ledger, lambda rid: "home")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    text = digest.read_text()
+    table_rows = [line for line in text.splitlines()
+                  if line.startswith("|") and "engineVersion" not in line
+                  and "---" not in line]
+    assert len(table_rows) == 1  # only the structured row aggregates
+
+
+def test_digest_skips_malformed_redirect_rounds(tmp_path):
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="bad shape", runId="r1", redirectRounds="three"),
+         _finding(title="bad total", runId="r2",
+                  redirectRounds={"total": "x"})],
+        ledger, lambda rid: "home")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)  # must not raise
+    assert "redirect-round rate by engineVersion" not in digest.read_text()
+
+
+def test_digest_rate_dash_when_tasks_unknown(tmp_path):
+    # A structured count with no implementationTasks still aggregates —
+    # rate renders as an em-dash instead of dividing by zero.
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="rr no tasks", runId="r1",
+                  redirectRounds={"total": 2, "infra": 0, "finding": 2,
+                                  "plan": 0, "elective": 0})],
+        ledger, lambda rid: "home", lambda rid: "0.2.21")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    row = next(line for line in digest.read_text().splitlines()
+               if line.startswith("| 0.2.21"))
+    assert "—" in row
+
+
+def test_digest_dedupes_runid_last_row_wins(tmp_path):
+    # Trim review F7b: a re-sensed run whose retitled count finding landed
+    # twice (the ledger dedupes by runId+lens+title, so a retitle duplicates)
+    # counts ONCE — the last qualifying ledger row wins.
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="rr first", runId="r1",
+                  redirectRounds={"total": 5, "infra": 0, "finding": 5,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=10),
+         _finding(title="rr resensed", runId="r1",
+                  redirectRounds={"total": 2, "infra": 0, "finding": 2,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=10)],
+        ledger, lambda rid: "home", lambda rid: "0.2.21")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    row = next(line for line in digest.read_text().splitlines()
+               if line.startswith("| 0.2.21"))
+    assert "| 1 |" in row and "| 2 |" in row and "0.20" in row
+
+
 def test_bundle_lookups_expands_tilde(tmp_path, monkeypatch):
     # The skill doc's own example call passes ~/.claude/ultralearn; an
     # unexpanded tilde made every bundle read fail closed to 'foreign' and

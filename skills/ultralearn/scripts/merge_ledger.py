@@ -70,6 +70,48 @@ def merge_findings(findings, ledger_path, origin_lookup, engine_lookup=None):
     return {"added": len(added), "skipped": len(findings) - len(added)}
 
 
+def _redirect_rate_table(findings):
+    """#220: aggregate structured redirect-round counts by engineVersion.
+    Rows lacking a well-formed redirectRounds (dict with int total) are
+    skipped — historical prose-only rows never enter the table. One row per
+    runId: the LAST qualifying ledger row wins (append-only → most recent).
+    A version's rate renders "—" unless every counted row carries an integer
+    implementationTasks (a partial denominator would inflate the rate)."""
+    latest = {}
+    for f in findings:
+        rr = f.get("redirectRounds")
+        if (isinstance(rr, dict) and isinstance(rr.get("total"), int)
+                and not isinstance(rr.get("total"), bool)):
+            latest[f.get("runId")] = f
+    by_ver = {}
+    for f in latest.values():
+        ver = f.get("engineVersion") or "unknown"
+        row = by_ver.setdefault(ver, {"runs": 0, "rounds": 0, "tasks": 0,
+                                      "tasksKnown": True})
+        row["runs"] += 1
+        row["rounds"] += f["redirectRounds"]["total"]
+        tasks = f.get("implementationTasks")
+        if isinstance(tasks, int) and not isinstance(tasks, bool):
+            row["tasks"] += tasks
+        else:
+            row["tasksKnown"] = False
+    if not by_ver:
+        return []
+    lines = ["## redirect-round rate by engineVersion", "",
+             "| engineVersion | n runs | Σ rounds | Σ tasks | rate |",
+             "| --- | --- | --- | --- | --- |"]
+    for ver in sorted(by_ver):
+        row = by_ver[ver]
+        if row["tasksKnown"] and row["tasks"] > 0:
+            rate = f"{row['rounds'] / row['tasks']:.2f}"
+        else:
+            rate = "—"
+        lines.append(f"| {ver} | {row['runs']} | {row['rounds']} "
+                     f"| {row['tasks']} | {rate} |")
+    lines.append("")
+    return lines
+
+
 def regenerate_digest(ledger_path, digest_path):
     findings = _read_jsonl(ledger_path)
     by_lens = {lens: [] for lens in LENSES}
@@ -77,6 +119,7 @@ def regenerate_digest(ledger_path, digest_path):
         by_lens.setdefault(f.get("lens", "other"), []).append(f)
     lines = ["# ultralearn — observation ledger (digest)", "",
              f"{len(findings)} finding(s) across {len({f.get('runId') for f in findings})} run(s).", ""]
+    lines.extend(_redirect_rate_table(findings))
     for lens in LENSES:
         items = by_lens.get(lens, [])
         if not items:
