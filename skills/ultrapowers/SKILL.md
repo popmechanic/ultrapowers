@@ -204,13 +204,14 @@ driver, finalize the saved result JSON:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/finalize_report.py \
-  --report <saved-result.json> --heads <runDir>/heads --repo .
+  --report <saved-result.json> --repo . --branch <integrationBranch>
 ```
 
-It rewrites the envelope's `result.*` headSha fields in place from the mechanical
-sidecars. A non-zero exit is a pre-gate failure: surface it and do **NOT** run
-`ultra_gate.py`; never fall back to token-reported values. Then run the gate
-driver with the finalized file:
+It rewrites the envelope's `result.*` headSha fields in place, derived from
+integration-branch ancestry (merged task branch tips + the integration tip for
+the final MERGED wave). A non-zero exit is a pre-gate failure: surface it and
+do **NOT** run `ultra_gate.py`; never fall back to token-reported values. Then
+run the gate driver with the finalized file:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
