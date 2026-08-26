@@ -73,8 +73,13 @@ async function scenarioMiss() {
   const cap = {}
   const review = {
     command: 'pytest', testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true,
-    // Task A's commit is NOT an ancestor of the integration HEAD — a silent drop.
-    ancestryMisses: [{ task: 'A', headSha: 'sha-A' }],
+    // Task A's commit is NOT an ancestor of the integration HEAD — a silent
+    // drop. Task C's branch did not even resolve — since #259 headSha may
+    // carry the resolution-failure message instead of a sha (#275).
+    ancestryMisses: [
+      { task: 'A', headSha: 'sha-A' },
+      { task: 'C', headSha: "fatal: ambiguous argument 'wt-C': unknown revision or path not in the working tree" },
+    ],
   }
   const report = await runWorkflow({ agent: makeAgent(review, cap), args: baseArgs })
 
@@ -92,10 +97,15 @@ async function scenarioMiss() {
 
   // A miss forces BLOCKED: gitVerified withheld even though onIntegrationHead was true.
   assert(report.gitVerified === false, 'ancestry miss withholds gitVerified (run BLOCKED)')
-  assert(Array.isArray(report.ancestryMisses) && report.ancestryMisses.length === 1,
-    'report surfaces the ancestry miss')
+  assert(Array.isArray(report.ancestryMisses) && report.ancestryMisses.length === 2,
+    'report surfaces both ancestry misses')
   const named = report.judgmentCalls.some((j) => /ancestry miss/.test(j) && /task A/.test(j) && /BLOCKED/.test(j))
   assert(named, 'a judgmentCall names the dropped task and marks the run BLOCKED')
+  // #275: a resolution-failure message in headSha renders WHOLE — truncation
+  // to 12 chars destroyed everything past "fatal: ambig".
+  const fullMsg = report.judgmentCalls.some((j) =>
+    j.indexOf("fatal: ambiguous argument 'wt-C': unknown revision or path not in the working tree") !== -1)
+  assert(fullMsg, 'a resolution-failure headSha reaches the judgmentCall untruncated')
   console.log('scenario ancestry-miss: OK')
 }
 
@@ -111,6 +121,9 @@ async function scenarioClean() {
   assert(report.ancestryMisses.length === 0, 'no ancestry misses recorded')
   const anyMissCall = report.judgmentCalls.some((j) => /ancestry miss/.test(j))
   assert(!anyMissCall, 'no ancestry-miss judgmentCall on a clean run')
+  // #275: the run base rides the report so finalize_report.py can guard
+  // vacuous merge claims. Agent-reported (setup reply) — context, not authority.
+  assert(report.baseSha === 'int0', 'report carries the setup base sha as baseSha')
   console.log('scenario ancestry-clean: OK')
 }
 

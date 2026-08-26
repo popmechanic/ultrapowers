@@ -2216,8 +2216,10 @@ if (!review || typeof review !== 'object') {
 const ancestryMisses = (review && Array.isArray(review.ancestryMisses)) ? review.ancestryMisses : []
 if (ancestryMisses.length) {
   for (const m of ancestryMisses) {
+    // Rendered whole (#275): since #259 headSha may carry a resolution-failure
+    // message rather than a sha, and truncation destroyed it.
     judgmentCalls.push('integration ancestry miss (#70): task ' + (m && m.task) +
-      ' reported merged (headSha ' + String((m && m.headSha) || '').slice(0, 12) +
+      ' reported merged (headSha ' + String((m && m.headSha) || '') +
       ') is NOT an ancestor of the integration HEAD — silently dropped; the run is BLOCKED, do not merge')
   }
   log('BLOCKED: ' + ancestryMisses.length + ' task(s) missing from the integration ancestry (#70)')
@@ -2298,6 +2300,10 @@ const missingDeliverables = missingIds
 // ── Structured return value (matches references/report-format.md) ─────────────
 return {
   integrationBranch,
+  // The run base (the setup reply's head sha — agent-reported context, not
+  // authority): finalize_report.py reads it to refuse a merged claim whose
+  // branch carries no commits beyond the run base (#275).
+  baseSha: setup.headSha,
   waves: WAVES.map((w) => w.map((t) => t.id)),
   dependencyEdges,
   tasks: taskResults,
