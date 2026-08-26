@@ -193,6 +193,8 @@ def test_digest_tolerates_old_shape_rows(tmp_path):
                   if line.startswith("|") and "engineVersion" not in line
                   and "---" not in line]
     assert len(table_rows) == 1  # only the structured row aggregates
+    # Review nit: the prose-only row must not leak into the counts either.
+    assert "| 1 |" in table_rows[0] and "| 2 |" in table_rows[0]
 
 
 def test_digest_skips_malformed_redirect_rounds(tmp_path):
@@ -221,6 +223,27 @@ def test_digest_rate_dash_when_tasks_unknown(tmp_path):
     row = next(line for line in digest.read_text().splitlines()
                if line.startswith("| 0.2.21"))
     assert "—" in row
+
+
+def test_digest_rate_dash_on_partial_task_denominator(tmp_path):
+    # Review minor: a version where only SOME rows carry implementationTasks
+    # must render "—", not divide by the partial denominator (which would
+    # silently inflate the rate — the exact bug the rule prevents).
+    ledger = tmp_path / "ledger.jsonl"
+    m.merge_findings(
+        [_finding(title="rr with tasks", runId="r1",
+                  redirectRounds={"total": 3, "infra": 0, "finding": 3,
+                                  "plan": 0, "elective": 0},
+                  implementationTasks=6),
+         _finding(title="rr without tasks", runId="r2",
+                  redirectRounds={"total": 1, "infra": 1, "finding": 0,
+                                  "plan": 0, "elective": 0})],
+        ledger, lambda rid: "home", lambda rid: "0.2.21")
+    digest = tmp_path / "ledger.md"
+    m.regenerate_digest(ledger, digest)
+    row = next(line for line in digest.read_text().splitlines()
+               if line.startswith("| 0.2.21"))
+    assert "—" in row and "0.67" not in row and "0.50" not in row
 
 
 def test_digest_dedupes_runid_last_row_wins(tmp_path):
