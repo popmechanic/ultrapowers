@@ -41,6 +41,59 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
   `> ${dest}`
 
 /**
+ * The VM names this module is willing to interpolate into a shell. `vmName`
+ * comes back from `provisionRun` (which derives it as `fleet-<runId>`), so it
+ * is not sandbox-authored — but it IS interpolated into ssh command strings, so
+ * it is validated here rather than trusted, and a mismatch refuses the command
+ * loudly instead of running it.
+ */
+export const isSafeVmName = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)
+
+/**
+ * The sandbox's own resource samples, pulled from the exe.dev control plane
+ * before the VM is destroyed — `stat` is a 10-minute sampler, so the derived
+ * peaks are a FLOOR estimate and never a maximum.
+ */
+export const sandboxStatCommand = ({ vmName }) =>
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat ${vmName} --json --range=24h"`
+
+/**
+ * The month's per-box credit spend. Interpolates nothing — the row for this
+ * run's VM is selected after the fact, in `deriveCreditSpendUsd`.
+ */
+export const creditsUsageCommand = () =>
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "billing credits usage --group=box --detail --json"`
+
+/**
+ * Reduce a `stat --json` payload to the three numbers the W1 gate reads.
+ * Returns null when the payload carries no usable sample.
+ */
+export const deriveSandboxStat = (statJson) => {
+  // Array.isArray guard: a malformed-but-valid payload (points as an object)
+  // must degrade to null, never throw past destroyOnce (#280 run-9b critic).
+  const pts = (Array.isArray(statJson?.points) ? statJson.points : []).filter((p) => typeof p?.cpu_cores === 'number')
+  if (!pts.length) return null
+  const cores = pts.map((p) => p.cpu_cores)
+  const mems = pts.map((p) => p.mem_used_bytes).filter((m) => typeof m === 'number')
+  return {
+    peakCores: Math.max(...cores),
+    meanCores: cores.reduce((a, b) => a + b, 0) / cores.length,
+    peakMemBytes: mems.length ? Math.max(...mems) : null,
+  }
+}
+
+/**
+ * This run's own credit spend, in USD. A payload with no row for this VM means
+ * the control plane recorded no spend against it — that is a flat 0, not an
+ * unknown; a row whose cost is not a number IS unknown, and reads null.
+ */
+export const deriveCreditSpendUsd = (creditsJson, vmName) => {
+  const rows = Array.isArray(creditsJson?.groups) ? creditsJson.groups : []
+  const row = rows.find((g) => g?.box === vmName)
+  return row ? (typeof row.cost_usd === 'number' ? row.cost_usd : null) : 0
+}
+
+/**
  * Drive one remote run and return its §W1d gate read.
  *
  * @param {object} opts
@@ -48,6 +101,11 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
  * @param {string} opts.golden - the golden VM to clone the sandbox from.
  * @param {number} opts.port - port the orchestrator's ws-server binds.
  * @param {string} opts.dbDir - directory for the orchestrator's sqlite store.
+ *   It is a PERSISTER dir, kept across runs — every read here is scoped by
+ *   `runId`, so prior-run rows do not perturb a new run's gate read.
+ * @param {string} [opts.evidenceDir] - where this run's evidence lands
+ *   (default `${dbDir}-evidence`). Deliberately OUTSIDE `dbDir`, so wiping the
+ *   store for a fresh-store experiment never deletes the evidence.
  * @param {string} opts.repoDir - local checkout the base is pushed from and the
  *   run branch is fetched back into.
  * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
@@ -79,6 +137,7 @@ export const driveOne = async ({
   capTokens = 2_000_000,
   wsHost = '127.0.0.1',
   wsUrl,
+  evidenceDir,
   reportPath,
   tickMs = 1_000,
   settleMs = 750,
@@ -88,7 +147,8 @@ export const driveOne = async ({
   logPullTimeoutMs = 120_000,
   engineEnv,
 }) => {
-  const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
+  const resolvedEvidenceDir = evidenceDir ?? `${dbDir}-evidence`
+  const resolvedReportPath = reportPath ?? path.join(resolvedEvidenceDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
 
   // Handed to the orchestrator by reference — a token minted mid-run is honored
@@ -103,30 +163,111 @@ export const driveOne = async ({
   let destroyed = false
   let pulled = false
   let sandboxLogs = null
+  let sandboxStat = null
+  let creditSpendUsd = null
+
+  // One command, bounded by `logPullTimeoutMs`. The bound is PER COMMAND, not
+  // shared across the three captures: a slow `stat` must not eat the budget the
+  // credits pull still needs, and no capture may outlive its own bound.
+  const boundedExec = (cmd) => {
+    let timer
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ code: -1, stdout: `timed out after ${logPullTimeoutMs}ms` }), logPullTimeoutMs)
+    })
+    return Promise.race([Promise.resolve().then(() => exec(cmd)), timeout]).finally(() => clearTimeout(timer))
+  }
+
+  // The two control-plane captures that must happen while the VM still exists:
+  // its resource samples and the month's per-box credit spend. Both write their
+  // RAW stdout to the evidence dir regardless of whether it parses, so a shape
+  // change on exe.dev's side is diagnosable from the artifact rather than lost.
+  //
+  // Every failure mode here — refused command, non-zero exit, timeout, invalid
+  // JSON, a payload that parses but carries nothing usable — pushes to `errors`
+  // and leaves the field null. Nothing propagates: a throw on this path would
+  // skip `destroySandbox` and leak a billed VM (#280, run-9b's in-sandbox
+  // critic), which is the one outcome teardown exists to prevent.
+  const captureJson = async ({ label, cmd, file }) => {
+    const destination = path.join(resolvedEvidenceDir, file)
+    let raw = null
+    try {
+      const result = await boundedExec(cmd)
+      raw = typeof result?.stdout === 'string' ? result.stdout : ''
+      fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
+      fs.writeFileSync(destination, raw)
+      if (result?.code !== 0) {
+        errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
+        return null
+      }
+    } catch (error) {
+      errors.push(`${label}: ${error?.message ?? error}`)
+      return null
+    }
+    try {
+      return JSON.parse(raw)
+    } catch (error) {
+      errors.push(`${label} parse: ${error?.message ?? error}`)
+      return null
+    }
+  }
 
   // Evidence BEFORE teardown (#197). Best-effort and bounded: a failed or slow
   // pull is pushed to `errors` and teardown proceeds — the billing clock is the
   // thing teardown protects, and the pull must not risk leaving a VM alive.
   // Guarded once, like the destroy, because it is wired to every teardown path
   // (the cap-overshoot action and the normal end of run).
+  //
+  // Evidence lands in `resolvedEvidenceDir`, never in `dbDir`: the store dir is
+  // persisted across runs and is the thing an operator wipes for a fresh-store
+  // experiment, and evidence must not die with that wipe.
   const pullLogsOnce = async () => {
     if (pulled || !vmName) return
     pulled = true
-    const dir = path.join(dbDir, 'sandbox-logs', `${vmName}-${Date.now()}`)
+    const dir = path.join(resolvedEvidenceDir, 'sandbox-logs', `${vmName}-${Date.now()}`)
     const dest = path.join(dir, 'sandbox-logs.tgz')
     try {
       fs.mkdirSync(dir, { recursive: true })
-      let timer
-      const timeout = new Promise((resolve) => {
-        timer = setTimeout(() => resolve({ code: -1, stdout: `timed out after ${logPullTimeoutMs}ms` }), logPullTimeoutMs)
-      })
-      const result = await Promise.race([exec(sandboxLogPullCommand({ vmName, dest })), timeout]).finally(() =>
-        clearTimeout(timer),
-      )
+      const result = await boundedExec(sandboxLogPullCommand({ vmName, dest }))
       if (result?.code === 0) sandboxLogs = dest
       else errors.push(`pull sandbox logs: code ${result?.code} ${(result?.stdout ?? '').trim()}`.trim())
     } catch (error) {
       errors.push(`pull sandbox logs: ${error?.message ?? error}`)
+    }
+
+    // `vmName` is interpolated into the stat command, so it is validated before
+    // the command exists — refused loudly rather than shelled.
+    if (!isSafeVmName(vmName)) {
+      errors.push(`sandbox stat: unsafe vm name ${JSON.stringify(vmName)} — refusing to run`)
+    } else {
+      const statJson = await captureJson({
+        label: 'sandbox stat',
+        cmd: sandboxStatCommand({ vmName }),
+        file: 'stat.json',
+      })
+      if (statJson !== null) {
+        // Derivation is wrapped at the CALL SITE: a throw out of a deriver is a
+        // parse failure like any other, not a reason to skip teardown.
+        try {
+          const derived = deriveSandboxStat(statJson)
+          if (derived === null) errors.push('sandbox stat derive: no usable cpu_cores samples in stat.json')
+          else sandboxStat = derived
+        } catch (error) {
+          errors.push(`sandbox stat derive: ${error?.message ?? error}`)
+        }
+      }
+    }
+
+    const creditsJson = await captureJson({
+      label: 'credits usage',
+      cmd: creditsUsageCommand(),
+      file: 'credits.json',
+    })
+    if (creditsJson !== null) {
+      try {
+        creditSpendUsd = deriveCreditSpendUsd(creditsJson, vmName)
+      } catch (error) {
+        errors.push(`credits usage derive: ${error?.message ?? error}`)
+      }
     }
   }
 
@@ -452,6 +593,13 @@ export const driveOne = async ({
     // Where the pre-teardown evidence pull landed (`sandbox-logs.tgz`), or
     // null when it failed — the failure is in `errors`.
     sandboxLogs: null,
+    // The sandbox's own resource samples, captured before teardown. A FLOOR
+    // estimate — `stat` samples every 10 minutes — or null when the capture or
+    // its derivation failed (the failure is in `errors`).
+    sandboxStat: null,
+    // This run's credit spend in USD, from the control plane's per-box ledger.
+    // `0` means the ledger carried no row for this VM; `null` means unknown.
+    creditSpendUsd: null,
     // The orchestrator's actual bound port (`port: 0` binds an ephemeral one) —
     // the read-back channel triage uses when `port` was not pinned.
     effectivePort: null,
@@ -471,6 +619,8 @@ export const driveOne = async ({
     errors.push(`destroySandbox: ${error?.message ?? error}`)
   }
   detail.sandboxLogs = sandboxLogs
+  detail.sandboxStat = sandboxStat
+  detail.creditSpendUsd = creditSpendUsd
   try {
     await stop()
   } catch (error) {
