@@ -1,24 +1,22 @@
 // tests/sim_derived_heads.mjs
 //
-// Behavioral sim for the #114 derived-task-heads sidecar. Like sim_workflow.mjs
-// and wave_ancestry_sim.mjs this runs the REAL orchestrator body from
+// Behavioral sim for the #259 fold-over-git heads contract — the subtraction that
+// replaced #114's <runDir>/heads/ sidecar. Like sim_workflow.mjs and
+// wave_ancestry_sim.mjs this runs the REAL orchestrator body from
 // skills/ultrapowers/harnesses/waves.js with stubbed engine globals
 // (agent/parallel/phase/log/args/budget) — the research-preview Workflow engine
 // can't run in CI, so we execute the wrapped body the same way the engine does
 // and inspect the prompts it actually dispatched.
 //
-// What it pins: the merge and reconcile agents are told to record every merged
-// task head and the post-merge integration HEAD into <runDir>/heads/ by shell
-// redirection (never by typing a sha) with every rev-parse pinned to the
-// integration worktree via git -C (#173 — a bare rev-parse resolves against the
-// agent's cwd), from the LAUNCH DIRECTORY (the integration worktree path is
-// repo-root-relative, so git -C only resolves there — the same prompts send the
-// agent INTO the worktree, where a -C read would die 'cannot change to' and
-// leave an empty slot), and to self-check the wave slot against the headSha they
-// are about to report; each dispatch names its concrete slots,
-// and the completeness critic is told those files — not the shas quoted in its
-// own prompt — are the authority. Assertions quote the DISPATCHED string, never
-// a paraphrase.
+// What it pins: NO engine role is told to write a sha anywhere. Git is the
+// ledger — task branches survive their merge and the integration branch tip IS
+// the run's tree — so the merge, reconcile and adopt prompts carry no
+// heads-recording step and no dispatch appends a slot line, and the completeness
+// critic DERIVES its detach target from the branch it was sent to verify (confirm
+// git branch --show-current, then git rev-parse HEAD) rather than reading a
+// sidecar. The recorded merge sha stays in the prompt as a labelled cross-check
+// only, and mergedShas hands the critic {task, branch} pairs so it resolves every
+// tip itself. Assertions quote the DISPATCHED string, never a paraphrase.
 //
 // NOT run by pytest/CI (it's a Node sim). Run manually:  node tests/sim_derived_heads.mjs
 // Self-asserting: throws (exit 1) on any failed expectation.
@@ -46,6 +44,9 @@ function assert(cond, msg) {
 function has(haystack, needle, msg) {
   assert(haystack.indexOf(needle) !== -1, msg + '\n  missing literal: ' + JSON.stringify(needle))
 }
+function lacks(haystack, needle, msg) {
+  assert(haystack.indexOf(needle) === -1, msg + '\n  forbidden literal present: ' + JSON.stringify(needle))
+}
 
 // Two waves: A,B merge in wave 1; C merges in wave 2.
 const WAVES = [
@@ -56,64 +57,26 @@ const WAVES = [
   [{ id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' }],
 ]
 const RUN_DIR = '/repo/.claude/ultrapowers/run-sim'
-const baseArgs = { waves: WAVES, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
+const INTEGRATION_BRANCH = 'ultra/integration-sim'
+const baseArgs = { waves: WAVES, integrationBranch: INTEGRATION_BRANCH, stamp: 'sim',
   edges: [['A', 'C']], testCmd: 'pnpm check',
   pluginRoot: '/opt/plug', runDir: RUN_DIR }
 
-// The integration worktree path the engine derives from the launch stamp
-// (waves.js: '.claude/worktrees/wf_' + stamp + '-integration'). Every slot read
-// in the sidecar sentence is pinned to it with git -C, so no recorded sha can
-// depend on the merge agent's ambient cwd (#173). It is RELATIVE to the repo
-// root, which is why the sentence names the launch directory as the place the
-// -C reads must run from.
-const INTEGRATION_WT = '.claude/worktrees/wf_' + baseArgs.stamp + '-integration'
+// Every span the sidecar convention used to contribute. None of it may survive on
+// any merge-side dispatch: the token form (an unsubstituted engine path), the
+// substituted form (what the agent would actually have read), the instruction
+// verb, and the per-dispatch slot line the engine used to append.
+const FORBIDDEN_SIDECAR = [
+  '<runDir>/heads',
+  RUN_DIR + '/heads',
+  'record heads',
+  'For this wave that means slots',
+]
 
-// The sidecar-write instruction, exactly as it must reach a merge-side agent
-// once <runDir> has been substituted. Both the merge and the reconcile agent
-// report MERGED heads, so both carry it verbatim.
-const SIDECAR_SENTENCE =
-  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — the session repo ' +
-  'root this dispatch started you in, the one place the relative worktree path ' +
-  INTEGRATION_WT + ' resolves; cd back to it first if you have moved. Then run mkdir -p ' +
-  RUN_DIR + '/heads, then for each task branch you merged run git -C ' + INTEGRATION_WT +
-  ' rev-parse <branch> > ' + RUN_DIR + '/heads/task-<taskId>, then git -C ' + INTEGRATION_WT +
-  ' rev-parse HEAD > ' + RUN_DIR + '/heads/wave-<waveNumber>. Shell redirection only — never ' +
-  'type a sha by hand, and never a bare rev-parse for a slot: -C pins every read to the ' +
-  "integration worktree. A 'cannot change to' failure means you are not in the launch " +
-  'directory — cd back there and rerun; never fall back to a bare rev-parse. Before reporting, ' +
-  'self-check the wave slot: cat ' + RUN_DIR + '/heads/wave-<waveNumber> must print exactly ' +
-  'the headSha you are about to report; if it is empty or different, cd to the launch ' +
-  'directory and re-record.'
-
-// The critic's file-read authority instruction, post-substitution.
-const CRITIC_SENTENCE =
-  'Authoritative shas live in ' + RUN_DIR + '/heads/: read task-<id> for each merged task id in ' +
-  'your inputs, and the highest-numbered wave-<n> slot is your detach target. Treat a missing or ' +
-  'malformed slot for a merged task exactly as an ancestry miss. Sha values quoted elsewhere in ' +
-  'this prompt are context, not authority.'
-
-// Assert the coarse mechanism the task text names, then the verbatim sentence.
-function assertSidecarInstruction(prompt, who) {
-  has(prompt, 'heads/task-', who + ': names the per-task sidecar slot')
-  has(prompt, 'git -C ' + INTEGRATION_WT + ' rev-parse',
-      who + ': records heads with a git -C rev-parse pinned to the integration worktree')
-  has(prompt, '> ', who + ': records heads by shell redirection')
-  // #173 round 2: INTEGRATION_WT is repo-root-relative, and the same prompt orders
-  // the agent to cd INTO the worktree — so the sentence must say WHERE the -C reads
-  // run, or they die 'cannot change to' and leave the slot empty.
-  has(prompt, 'FROM THE LAUNCH DIRECTORY',
-      who + ': anchors the -C reads to the launch directory, where the relative path resolves')
-  has(prompt, SIDECAR_SENTENCE, who + ': carries the sidecar-write sentence verbatim')
-  // #173: a bare rev-parse resolves against the agent's cwd, which is how an
-  // eval-baseline sha reached heads/wave-4. No slot write may be cwd-relative,
-  // and no failure path may fall back to one.
-  assert(prompt.indexOf('then git rev-parse HEAD > ') === -1,
-    who + ': records no slot with a bare, cwd-relative rev-parse')
-  has(prompt, 'never fall back to a bare rev-parse',
-      who + ': forbids a bare rev-parse as the recovery from a failed -C read')
-  assert(prompt.indexOf('<runDir>') === -1,
-    who + ': the <runDir> token must be substituted before dispatch')
-  has(prompt, RUN_DIR + '/heads', who + ': the sidecar dir is the run dir this launch was given')
+function assertNoSidecarInstruction(prompt, who) {
+  for (const needle of FORBIDDEN_SIDECAR) {
+    lacks(prompt, needle, who + ': carries no heads-sidecar instruction')
+  }
 }
 
 // Capture every dispatched prompt by label; drive merge outcomes per label.
@@ -146,94 +109,115 @@ function makeAgent(mergeStatusFor, captured, cannotVerifyFor) {
   }
 }
 
-// ── Scenario 1: the merge agent is told to write the sidecars, with concrete slots ──
-async function scenarioMergeWritesSidecars() {
+// Every merge-side label the run dispatched, in dispatch order.
+const mergeSideLabels = (captured) =>
+  Object.keys(captured).filter((l) => l.startsWith('merge:') || l.startsWith('reconcile:'))
+
+// ── Scenario 1: no merge dispatch records a sha, and the sweep survives ───────
+async function scenarioMergeRecordsNothing() {
   const captured = {}
   await runWorkflow({ agent: makeAgent(null, captured), args: baseArgs })
 
-  const w1 = captured['merge:wave1']
-  const w2 = captured['merge:wave2']
-  assert(typeof w1 === 'string' && typeof w2 === 'string', 'both wave merges dispatched')
+  const labels = mergeSideLabels(captured)
+  assert(labels.length === 2, 'both wave merges dispatched (got ' + JSON.stringify(labels) + ')')
 
-  assertSidecarInstruction(w1, 'merge:wave1')
-  assertSidecarInstruction(w2, 'merge:wave2')
+  for (const label of labels) {
+    assertNoSidecarInstruction(captured[label], label)
+    // The sweep step is NOT part of the deletion: it survives, re-anchored to the
+    // MERGED verdict alone now that there are no heads to record first.
+    has(captured[label], 'If and only if you are reporting MERGED, sweep',
+        label + ': the wave-barrier sweep is gated on the MERGED verdict alone')
+    has(captured[label], 'git worktree remove --force',
+        label + ': still carries the identity-checked worktree sweep')
+  }
 
-  // The per-dispatch line names the concrete slots so the agent infers nothing:
-  // the wave's mergeable task ids plus this wave's integration-HEAD slot.
-  has(w1, 'For this wave that means slots: heads/task-A, heads/task-B, and heads/wave-1.',
-      'merge:wave1: per-dispatch line names this wave\'s concrete slots')
-  has(w2, 'For this wave that means slots: heads/task-C and heads/wave-2.',
-      'merge:wave2: per-dispatch line names this wave\'s concrete slots')
-  // Slot names are per-wave, never carried over from a neighbouring wave.
-  assert(w2.indexOf('heads/wave-1') === -1, 'merge:wave2: does not name wave 1\'s slot')
-  assert(w1.indexOf('heads/wave-2') === -1, 'merge:wave1: does not name wave 2\'s slot')
-  assert(w1.indexOf('heads/task-C') === -1, 'merge:wave1: does not name a later wave\'s task slot')
-
-  console.log('scenario merge-writes-sidecars: OK')
+  console.log('scenario merge-records-nothing: OK')
 }
 
-// ── Scenario 2: the reconciliation agent carries the same instruction ─────────
-async function scenarioReconcileWritesSidecars() {
+// ── Scenario 2: the reconciliation agent records nothing either ───────────────
+async function scenarioReconcileRecordsNothing() {
   const captured = {}
   // Wave 1's merge conflicts once; the reconciliation agent resolves it and is
-  // the role that then reports the MERGED head — so it must record it too.
+  // the role that then reports the MERGED head — under the sidecar convention it
+  // carried the record-heads span verbatim. It must not any more.
   const mergeStatusFor = (label) => (label === 'merge:wave1' ? 'CONFLICT' : 'MERGED')
   await runWorkflow({ agent: makeAgent(mergeStatusFor, captured), args: baseArgs })
 
   const rec = captured['reconcile:wave1:1']
   assert(typeof rec === 'string', 'reconciliation agent dispatched after the conflict')
-  assertSidecarInstruction(rec, 'reconcile:wave1:1')
-  has(rec, 'For this wave that means slots: heads/task-A, heads/task-B, and heads/wave-1.',
-      'reconcile:wave1:1: per-dispatch line names this wave\'s concrete slots')
-  console.log('scenario reconcile-writes-sidecars: OK')
+  assertNoSidecarInstruction(rec, 'reconcile:wave1:1')
+  has(rec, 'If and only if you are reporting MERGED, sweep',
+      'reconcile:wave1:1: the sweep is gated on the MERGED verdict alone')
+
+  // ...and every other merge-side dispatch in the same run is clean too.
+  for (const label of mergeSideLabels(captured)) {
+    assertNoSidecarInstruction(captured[label], label)
+  }
+  console.log('scenario reconcile-records-nothing: OK')
 }
 
-// ── Scenario 3: the completeness critic reads the sidecars as the authority ───
-async function scenarioCriticReadsSidecars() {
+// ── Scenario 3: the critic derives its tree from git, not from a sidecar ──────
+async function scenarioCriticDerivesFromGit() {
   const captured = {}
   await runWorkflow({ agent: makeAgent(null, captured), args: baseArgs })
 
   const critic = captured['integration']
   assert(typeof critic === 'string', 'completeness critic dispatched')
-  has(critic, RUN_DIR + '/heads/', 'critic: pointed at the run\'s heads sidecar dir')
-  has(critic, 'detach target', 'critic: told which slot is its detach target')
-  has(critic, 'ancestry miss', 'critic: a missing/malformed slot is an ancestry miss')
-  has(critic, CRITIC_SENTENCE, 'critic: carries the file-read-authority sentence verbatim')
-  assert(critic.indexOf('<runDir>') === -1,
-    'critic: the <runDir> token must be substituted before dispatch')
 
-  // #123: the sidecar is the SINGLE authority, and it must be stated FIRST.
-  // The prompt used to open with a hard gate on the model-typed recorded sha
-  // ("run git checkout --detach <recorded> … if it does not, report BLOCKED")
-  // and only mention the sidecar in its closing sentence — so a fabricated
-  // recorded sha detached the agent at a value nobody derived, then surfaced
-  // as an unexplained BLOCKED. Pin the derived-first ordering, the derived
-  // detach target, and the specific recorded-vs-derived mismatch signal.
-  // Wave 2 is the last wave, so its merge reply is the recorded merge sha.
+  // The derivation is from git itself, anchored on the branch the critic was sent
+  // to verify — never a sha typed into the prompt, never a sidecar slot.
+  has(critic, 'derive that tree from git itself',
+      'critic: told to derive the tree from git')
+  has(critic, 'git branch --show-current prints ' + INTEGRATION_BRANCH,
+      'critic: the branch identity check names the run\'s integration branch')
+  has(critic, 'run git checkout --detach <derived>',
+      'critic: detaches at the derived tip, never at the recorded sha')
+  has(critic, 'Authoritative shas live in git',
+      'critic: git is named as the sha authority')
+  lacks(critic, '<runDir>/heads', 'critic: no sidecar token survives')
+  lacks(critic, RUN_DIR + '/heads', 'critic: no substituted sidecar path survives')
+
+  // The recorded value stays, labelled as recorded, and a mismatch reports the
+  // specific recorded-vs-derived signal. Wave 2 is the last wave, so its merge
+  // reply is the recorded merge sha.
   const RECORDED_SHA = 'head-merge:wave2'
   has(critic, 'the recorded merge sha is ' + RECORDED_SHA,
       'critic: the recorded value is interpolated, labelled as recorded')
-  const headsAt = critic.indexOf(RUN_DIR + '/heads/')
-  const recordedAt = critic.indexOf(RECORDED_SHA)
-  assert(headsAt !== -1 && recordedAt !== -1 && headsAt < recordedAt,
-    'critic: the heads/ derivation precedes the first mention of the recorded sha')
-  has(critic, 'run git checkout --detach <derived>',
-      'critic: detaches at the derived slot value, never at the recorded sha')
-  has(critic, 'recorded merge sha <recorded> != derived heads/ slot <derived>',
+  has(critic, 'recorded merge sha <recorded> != derived integration tip <derived>',
       'critic: a mismatch reports the specific recorded-vs-derived signal')
-  console.log('scenario critic-reads-sidecars: OK')
+  // The derivation is stated BEFORE the recorded sha is ever mentioned.
+  const derivedAt = critic.indexOf('derive that tree from git itself')
+  const recordedAt = critic.indexOf(RECORDED_SHA)
+  assert(derivedAt !== -1 && recordedAt !== -1 && derivedAt < recordedAt,
+    'critic: the git derivation precedes the first mention of the recorded sha')
+
+  // mergedShas hands over {task, branch} — no sha travels, so the critic must
+  // resolve every tip itself.
+  has(critic, 'resolve the branch tip yourself with git rev-parse',
+      'critic: told to resolve each branch tip itself')
+  const listAt = critic.indexOf('mergedShas: ')
+  assert(listAt !== -1, 'critic: the mergedShas list is interpolated')
+  const list = critic.slice(listAt + 'mergedShas: '.length)
+  for (const id of ['A', 'B', 'C']) {
+    has(list, '"branch":"wt-' + id + '"',
+        'critic: mergedShas carries task ' + id + '\'s branch name')
+  }
+  lacks(list, '"headSha"', 'critic: no headSha key rides the mergedShas list')
+  lacks(list, 'sha-A', 'critic: no implementer-typed sha rides the mergedShas list')
+
+  console.log('scenario critic-derives-from-git: OK')
 }
 
 // ── Scenario 4: reviewer-authored prose reaches the critic UNSUBSTITUTED ──────
 // Path substitution is for ENGINE-authored text only. The CANNOT-VERIFY checklist
-// is written by the per-task reviewers, and a reviewer describing this very
-// feature quotes the literal <runDir> token — rewriting that quotation would hand
+// is written by the per-task reviewers, and a reviewer describing a run-directory
+// path quotes the literal <runDir> token — rewriting that quotation would hand
 // the critic prose the reviewer never wrote. Same rule that keeps the plan's
 // GLOBAL CONSTRAINTS outside fillPaths(), applied to a span that sits mid-prompt.
 async function scenarioCannotVerifyPassesThroughVerbatim() {
   const captured = {}
   // Reviewer prose deliberately quoting the literal token, twice, in both fields.
-  const REQUIREMENT = 'the merge agent writes <runDir>/heads/task-<id> by redirection'
+  const REQUIREMENT = 'the fold writes <runDir>/frontier/wave-1/conflicts.json'
   const WHY = 'spans tasks — <runDir> is not visible in this diff'
   const cannotVerifyFor = (label) =>
     (label === 'review:A:1' ? [{ requirement: REQUIREMENT, why: WHY }] : [])
@@ -267,13 +251,13 @@ async function scenarioCannotVerifyPassesThroughVerbatim() {
   assert(at !== -1 && after !== -1 && at < after,
     'critic: the checklist is spliced at its seam, ahead of the constraints sentence')
 
-  // Engine-authored spans in the SAME prompt are still substituted.
-  has(critic, CRITIC_SENTENCE, 'critic: engine text is still path-substituted')
+  // Engine-authored spans in the SAME prompt still carry the git-derived contract.
+  has(critic, 'Authoritative shas live in git', 'critic: engine text is unchanged by the splice')
   console.log('scenario cannot-verify-passes-through-verbatim: OK')
 }
 
-await scenarioMergeWritesSidecars()
-await scenarioReconcileWritesSidecars()
-await scenarioCriticReadsSidecars()
+await scenarioMergeRecordsNothing()
+await scenarioReconcileRecordsNothing()
+await scenarioCriticDerivesFromGit()
 await scenarioCannotVerifyPassesThroughVerbatim()
 console.log('ALL SCENARIOS PASSED')
