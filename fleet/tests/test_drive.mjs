@@ -1,9 +1,10 @@
 // fleet/tests/test_drive.mjs — sentinel-style spec for the W1 drive-one driver.
 //
-// Concurrency-safe by construction: port 8153 is reserved for this file alone
-// (8151-8159 is the fleet test range), and every byte of state — the throwaway
-// git repos, the orchestrator's sqlite dir, the gate-read report — lives under
-// an `fs.mkdtemp` directory unique to this process. No shared fixtures.
+// Concurrency-safe by construction: it drives with `port: 0` (an ephemeral
+// port, read back off `detail.effectivePort`), and every byte of state — the
+// throwaway git repos, the orchestrator's sqlite dir, the gate-read report —
+// lives under an `fs.mkdtemp` directory unique to this process. No shared
+// fixtures.
 //
 // The sandbox VM is simulated; nothing about the *verification* is. Two REAL
 // git repos stand in for the two ends of the transport — `repoDir` is the
@@ -71,8 +72,6 @@ import {
   shellExec,
   spawnEngineProcess,
 } from '../shim-main.mjs'
-
-const PORT = 8153
 
 // A frozen clock. Every claim/guard decision in the fleet is a pure function of
 // it, so freezing removes all wall-clock flake from lease continuity; the
@@ -279,7 +278,7 @@ try {
   const driveDefaults = {
     planPath: 'docs/superpowers/plans/example.md',
     golden: 'fleet-golden',
-    port: PORT,
+    port: 0,
     repoDir,
     clock,
     ttlMs: 60_000,
@@ -443,16 +442,25 @@ try {
     const pullCmd = exec.cmds[pullIdx]
     assert.ok(/repo\/\.claude\/ultrapowers\/run-/.test(pullCmd) || /run-\*\//.test(pullCmd), `the pull must include the gitignored run dirs, got: ${pullCmd}`)
     assert.ok(/> \S+\/sandbox-logs\.tgz$/.test(pullCmd), `the pull must land in a sandbox-logs.tgz, got: ${pullCmd}`)
-    // Destination lives beside the gate read, under dbDir.
+    // Destination lives beside the gate read, in the EVIDENCE dir — never
+    // inside `dbDir`, which is the persister dir an operator wipes for a
+    // fresh-store experiment. Evidence must survive that wipe.
     const dest = pullCmd.match(/> (\S+\/sandbox-logs\.tgz)$/)[1]
-    assert.ok(dest.startsWith(path.join(tmp, 'db1')), `log destination must be under dbDir, got: ${dest}`)
+    assert.ok(dest.startsWith(path.join(tmp, 'db1-evidence')),
+      'log destination must be under evidenceDir, never under dbDir: ' + dest)
+    assert.ok(!dest.startsWith(path.join(tmp, 'db1', 'sandbox-logs')),
+      'evidence must not live inside the persister dir')
     assert.ok(fs.existsSync(path.dirname(dest)), 'the destination directory is created before the pull runs')
+    // ...and the gate read defaults there too, beside the archive.
+    assert.equal(reportPath, path.join(tmp, 'db1-evidence', `gate-read-${runId}.json`))
     assert.equal(detail.sandboxLogs, dest, 'the detail names where the evidence landed')
-    // The tunnel is torn down with the sandbox (#196): after the rm.
-    const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`))
+    // The tunnel is torn down with the sandbox (#196): after the rm. The
+    // orchestrator bound an ephemeral port (`port: 0`); `detail.effectivePort`
+    // is the read-back channel for the port it actually bound.
+    const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`))
     assert.ok(killIdx > rmIdx, `the tunnel kill follows the rm, got: ${JSON.stringify(exec.cmds)}`)
     // And the tunnel was opened before the shim started.
-    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`)
+    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
     const shimIdx = exec.cmds.findIndex((c) => /nohup node .*shim-main\.mjs/.test(c))
     assert.ok(tunnelIdx >= 0 && tunnelIdx < shimIdx, `the reverse tunnel opens before the shim starts, got: ${JSON.stringify(exec.cmds)}`)
 
@@ -462,7 +470,7 @@ try {
     // synced any store row, so a driver that does not forward it launches the
     // engine with a literal `undefined` plan path.
     assert.equal(exec.delivered.runId, runId)
-    assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${PORT}/fleet`)
+    assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${detail.effectivePort}/fleet`)
     assert.equal(exec.delivered.planPath, driveDefaults.planPath)
 
     // The stamp names the code under test. `main()` stamps BEFORE the run, and
@@ -772,6 +780,334 @@ try {
     assert.equal(detail.sandboxLogs, null, 'no evidence landed')
     assert.ok(fs.existsSync(reportPath), 'the report is still written')
     assert.equal(typeof read.o1, 'boolean')
+  }
+
+  // -- the control-plane capture fixtures ------------------------------------
+  // Trimmed copies of the REAL payloads captured off exe.dev on 2026-08-26 —
+  // shape, key names and units are the control plane's, not this spec's, so a
+  // shape change upstream fails here rather than silently reading null in a
+  // live run. `stat` is a 10-minute sampler, which is why the derived peaks are
+  // a floor estimate; two points is enough to pin peak AND mean.
+  //
+  // The VM these were captured from is `fleet-r1`, so the scenarios below drive
+  // `runId: 'r1'` — `sandboxIdFor` derives `fleet-<runId>`, and the credit row
+  // is selected by exact box name.
+  const STAT_FIXTURE = JSON.stringify({
+    name: 'fleet-r1',
+    status: 'running',
+    range: '24h',
+    points: [
+      {
+        timestamp: '2026-08-25T08:10:56Z',
+        cpu_cores: 0.01,
+        cpu_nominal: 8,
+        mem_used_bytes: 1064488960,
+        mem_total_bytes: 17179869184,
+      },
+      {
+        timestamp: '2026-08-25T08:20:56Z',
+        cpu_cores: 3.5,
+        cpu_nominal: 8,
+        mem_used_bytes: 9064488960,
+        mem_total_bytes: 17179869184,
+      },
+    ],
+  })
+  const CREDITS_FIXTURE = JSON.stringify({
+    group: 'box',
+    month: '2026-08',
+    total_cost_usd: 44.46,
+    groups: [
+      { box: 'fleet-r1', key: 'fleet-r1', cost_usd: 0.78, cost_microcents: 783905, requests: 11 },
+      { box: '(deleted)', key: '(deleted)', cost_usd: 40.03, cost_microcents: 40031119, requests: 988 },
+    ],
+  })
+
+  const STAT_CMD = /"stat \S+ --json --range=24h"/
+  const CREDITS_CMD = /billing credits usage --group=box --detail --json/
+
+  // `makeExec` with the two control-plane captures stubbed. Anything a stub does
+  // NOT claim falls through to the shared exec, so the rest of the run — the
+  // tunnel, the shim start, the real git traffic, the teardown — is unchanged.
+  // A stub may be a result object or a function (which may throw, standing in
+  // for an ssh that never connected).
+  const makeCaptureExec = (onShimStart, { stat, credits }) => {
+    const inner = makeExec(onShimStart)
+    const exec = async (cmd) => {
+      if (STAT_CMD.test(cmd) && stat !== undefined) {
+        inner.cmds.push(cmd)
+        return typeof stat === 'function' ? stat(cmd) : stat
+      }
+      if (CREDITS_CMD.test(cmd) && credits !== undefined) {
+        inner.cmds.push(cmd)
+        return typeof credits === 'function' ? credits(cmd) : credits
+      }
+      return inner(cmd)
+    }
+    exec.cmds = inner.cmds
+    return exec
+  }
+
+  // -- 7c. stat + credits are captured BEFORE teardown, raw and derived -------
+  // The two numbers the W1 gate reads about cost — the sandbox's own resource
+  // peak and its credit spend — exist only while the VM does. They are captured
+  // on the same pre-teardown leg as the log pull, the RAW payloads are kept so
+  // an upstream shape change is diagnosable from the artifact, and the derived
+  // fields ride the detail.
+  {
+    const runId = 'r1'
+    const evidenceDir = path.join(tmp, 'evidence-r1')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 0, stdout: CREDITS_FIXTURE } },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7c'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.deepEqual(res.detail.sandboxStat, { peakCores: 3.5, meanCores: 1.755, peakMemBytes: 9064488960 })
+    assert.equal(res.detail.creditSpendUsd, 0.78)
+    assert.ok(fs.existsSync(path.join(evidenceDir, 'stat.json')), 'raw stat.json written')
+    assert.ok(fs.existsSync(path.join(evidenceDir, 'credits.json')), 'raw credits.json written')
+    // RAW, byte for byte — the artifact is the control plane's answer, not a
+    // re-serialization of what this process managed to parse out of it.
+    assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), STAT_FIXTURE)
+    assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), CREDITS_FIXTURE)
+    // The captures name THIS vm and ride the validated command builders.
+    assert.ok(
+      exec.cmds.includes(`ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-${runId} --json --range=24h"`),
+      `expected the stat capture, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    // Both captures happen while the VM still exists.
+    const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
+    const statIdx = exec.cmds.findIndex((c) => STAT_CMD.test(c))
+    const creditsIdx = exec.cmds.findIndex((c) => CREDITS_CMD.test(c))
+    assert.ok(rmIdx >= 0, `expected the teardown command, got: ${JSON.stringify(exec.cmds)}`)
+    assert.ok(statIdx >= 0 && statIdx < rmIdx, 'stat is captured before the sandbox is destroyed')
+    assert.ok(creditsIdx >= 0 && creditsIdx < rmIdx, 'credits are captured before the sandbox is destroyed')
+    // Evidence never lands in the persister dir.
+    assert.ok(!fs.existsSync(path.join(tmp, 'db7c', 'stat.json')), 'evidence must not live inside dbDir')
+    assert.equal(res.reportPath, path.join(evidenceDir, `gate-read-${runId}.json`))
+    assert.equal(res.detailPath, path.join(evidenceDir, `gate-read-${runId}.detail.json`))
+    assert.deepEqual(JSON.parse(fs.readFileSync(res.detailPath, 'utf8')).sandboxStat, res.detail.sandboxStat)
+  }
+
+  // -- 7d. a malformed-but-valid stat payload degrades to null, never throws ---
+  // `points` as an OBJECT parses fine and then explodes any code that assumes an
+  // array. An unguarded throw here would escape `pullLogsOnce` and skip
+  // `destroySandbox` — leaking a billed VM, which is the one outcome teardown
+  // exists to prevent (#280, run-9b's in-sandbox critic).
+  {
+    const runId = 'r1d'
+    const evidenceDir = path.join(tmp, 'evidence-r1d')
+    const malformed = JSON.stringify({ name: 'fleet-r1d', points: { '0': { cpu_cores: 1.5 } } })
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 0, stdout: malformed }, credits: { code: 0, stdout: CREDITS_FIXTURE } },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7d'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.equal(res.detail.sandboxStat, null, 'a payload with no usable sample reads null')
+    assert.ok(
+      res.detail.errors.some((e) => /stat/.test(e)),
+      `the failed derivation is recorded, got: ${JSON.stringify(res.detail.errors)}`,
+    )
+    // The raw artifact survives regardless — that is how an upstream shape
+    // change gets diagnosed rather than guessed at.
+    assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), malformed)
+    assert.ok(
+      exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
+      `the sandbox is destroyed anyway, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    // The credits leg is not collateral damage of the stat leg's failure.
+    assert.equal(res.detail.creditSpendUsd, 0)
+  }
+
+  // -- 7e. a stat capture that never connects never blocks teardown ----------
+  {
+    const runId = 'r1e'
+    const evidenceDir = path.join(tmp, 'evidence-r1e')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      {
+        stat: () => {
+          throw new Error('ssh: connect to host exe.dev port 22: Connection timed out')
+        },
+        credits: { code: 0, stdout: CREDITS_FIXTURE },
+      },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7e'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.equal(res.detail.sandboxStat, null)
+    assert.ok(
+      res.detail.errors.some((e) => /stat/.test(e) && /Connection timed out/.test(e)),
+      `the failed stat capture is recorded, got: ${JSON.stringify(res.detail.errors)}`,
+    )
+    assert.ok(
+      exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
+      `destroySandbox still runs after a failed capture, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    // A capture that never returned has no raw payload to keep.
+    assert.ok(!fs.existsSync(path.join(evidenceDir, 'stat.json')), 'no stat.json for a capture that never ran')
+    assert.equal(res.detail.creditSpendUsd, 0)
+  }
+
+  // -- 7f. no credit row for this box is a flat 0, not an unknown ------------
+  // The control plane simply records nothing against a box that spent nothing.
+  // Reading that as `null` would make "cost us nothing" indistinguishable from
+  // "we could not find out", and the W1 spend read depends on the difference.
+  {
+    const runId = 'r1f'
+    const evidenceDir = path.join(tmp, 'evidence-r1f')
+    const noRow = JSON.stringify({
+      group: 'box',
+      month: '2026-08',
+      total_cost_usd: 40.03,
+      groups: [{ box: '(deleted)', key: '(deleted)', cost_usd: 40.03, cost_microcents: 40031119, requests: 988 }],
+    })
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 0, stdout: noRow } },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7f'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.equal(res.detail.creditSpendUsd, 0, 'no row for this box means no spend recorded — flat 0')
+    assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), noRow)
+  }
+
+  // -- 7g. a PERSISTED dbDir does not perturb the next run's gate read --------
+  // `dbDir` is a persister dir, kept across runs — the RUNBOOK tells operators
+  // never to `rm` it. That is only safe if every read the gate makes is scoped
+  // by `runId`: run 2 must sum its own receipts, judge its own claim, and see
+  // the guard converge nothing about run 1's rows. Evidence lives outside the
+  // store, so each run gets its own `evidenceDir` while the store is shared.
+  {
+    const sharedDb = path.join(tmp, 'db-persist')
+    const runIdA = 'run-persist-a'
+    const runIdB = 'run-persist-b'
+
+    let sandboxA = null
+    const execA = makeExec((assignment) => {
+      setTimeout(() => {
+        sandboxA = startStubSandbox({
+          assignment,
+          runId: runIdA,
+          receiptSha: olderSha,
+          exec: execA,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+        })
+      }, 30)
+    })
+    const first = await driveOne({
+      ...driveDefaults,
+      dbDir: sharedDb,
+      evidenceDir: path.join(tmp, 'evidence-persist-a'),
+      exec: execA,
+      runId: runIdA,
+    })
+    await sandboxA
+    assert.equal(first.read.o1, true, 'run 1 must be green, or run 2 proves nothing')
+    assert.deepEqual(first.read.spendObservational, { reported: 4200, ledger: 4200 })
+    assert.ok(fs.existsSync(sharedDb), 'the store dir persists after run 1')
+
+    let sandboxB = null
+    const execB = makeExec((assignment) => {
+      setTimeout(() => {
+        sandboxB = startStubSandbox({
+          assignment,
+          runId: runIdB,
+          receiptSha: olderSha,
+          exec: execB,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+        })
+      }, 30)
+    })
+    const second = await driveOne({
+      ...driveDefaults,
+      dbDir: sharedDb,
+      evidenceDir: path.join(tmp, 'evidence-persist-b'),
+      exec: execB,
+      runId: runIdB,
+    })
+    await sandboxB
+
+    // The spend read sums run 2's receipts ONLY — an unscoped sum would read
+    // 8400 here, because run 1's spend rows are still in the store.
+    assert.deepEqual(second.read.spendObservational, { reported: 4200, ledger: 4200 })
+    // The claim read judges run 2's claim only: one epoch, never expired,
+    // never revoked. Run 1's resolved claim is still a row in the same table.
+    assert.equal(second.read.leaseContinuity, true)
+    assert.deepEqual(second.detail.epochs, [1])
+    // And the guard raises nothing about run 1's rows: a persisted store is
+    // baselined, not re-judged.
+    assert.deepEqual(second.detail.convergedAway, [])
+    assert.deepEqual(second.detail.pages, [])
+    assert.equal(second.read.o1, true, 'a persisted store must not sink the next run')
+    // The receipts under verification are run 2's, by row id.
+    assert.deepEqual(
+      second.detail.receipts.map((r) => r.rowId),
+      [`${runIdB}:gate`],
+    )
+    // Run 1's evidence was never touched by run 2 — that is the whole point of
+    // keeping it outside `dbDir`.
+    assert.ok(fs.existsSync(first.reportPath), "run 1's gate read survives run 2")
+    assert.notEqual(first.reportPath, second.reportPath)
   }
 
   // -- 8. the production receipt writer: copy, commit, point at the tree ------

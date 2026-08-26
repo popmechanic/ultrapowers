@@ -59,6 +59,33 @@ function sleep(ms) {
 }
 
 /**
+ * Validate and build size flags for sandbox provisioning.
+ * @param {object} opts
+ * @param {number} [opts.cpu] - number of vCPUs (positive integer)
+ * @param {string} [opts.memory] - memory size (must match ^\d+GB$)
+ * @param {string} [opts.disk] - disk size (must match ^\d+GB$)
+ * @returns {string} space-prefixed flags string, empty string if no sizes given
+ */
+const sizeFlags = ({ cpu, memory, disk }) => {
+  const flags = []
+  if (cpu !== undefined) {
+    if (!Number.isInteger(cpu) || cpu <= 0) {
+      throw new Error(`provisionRun: cpu must be a positive integer, got ${JSON.stringify(cpu)}`)
+    }
+    flags.push(`--cpu=${cpu}`)
+  }
+  for (const [name, v] of [['memory', memory], ['disk', disk]]) {
+    if (v !== undefined) {
+      if (typeof v !== 'string' || !/^\d+GB$/.test(v)) {
+        throw new Error(`provisionRun: ${name} must match ^\\d+GB$, got ${JSON.stringify(v)}`)
+      }
+      flags.push(`--${name}=${v}`)
+    }
+  }
+  return flags.length ? ' ' + flags.join(' ') : ''
+}
+
+/**
  * @param {object} opts
  * @param {string} opts.golden - name of the golden VM to clone from.
  * @param {string} opts.runId - the run this sandbox is provisioned for.
@@ -77,18 +104,23 @@ function sleep(ms) {
  *   must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN` for Max-subscription auth, #213).
  *   Delivered per run as a sourced env file on the sandbox — never baked into
  *   the golden image, never on a process argv. Omit for none.
+ * @param {number} [opts.cpu] - number of vCPUs for the cloned sandbox.
+ * @param {string} [opts.memory] - memory size for the cloned sandbox (e.g. '8GB').
+ * @param {string} [opts.disk] - disk size for the cloned sandbox (e.g. '30GB').
  * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, cpu, memory, disk, exec, clock = Date.now }) {
   const vmName = `fleet-${runId}`
   const withEngineEnv = Boolean(engineEnv && Object.keys(engineEnv).length > 0)
   // Validate up front: a bad key/value must fail before the golden is cloned.
   const engineEnvCommand = withEngineEnv ? engineEnvDeliveryCommand({ vmName, engineEnv }) : null
+  // Validate sizing knobs before any exec call.
+  const sizeFlagsStr = sizeFlags({ cpu, memory, disk })
 
   // 1. Clone the golden VM into a fresh, run-scoped sandbox.
-  await exec(`ssh exe.dev "cp ${golden} ${vmName} --json"`)
+  await exec(`ssh exe.dev "cp ${golden} ${vmName}${sizeFlagsStr} --json"`)
 
   // 2. Wait for the clone's SSH to come up before touching it further.
   const probeCmd = `ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${vmName}.exe.xyz true`

@@ -1,8 +1,9 @@
 // fleet/tests/test_orchestrator.mjs — sentinel-style spec for the orchestrator.
 //
-// Concurrency-safe by construction: port 8151 is reserved for this file alone
-// (8151-8159 is the fleet test range), and every byte of persisted state lives
-// under an `fs.mkdtemp` directory unique to this process. No shared fixtures.
+// Concurrency-safe by construction: it binds an ephemeral port (`port: 0`) and
+// reads the bound port back off `startOrchestrator`'s return, and every byte
+// of persisted state lives under an `fs.mkdtemp` directory unique to this
+// process. No shared fixtures.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -14,10 +15,25 @@ import { startOrchestrator, FLEET_PATH } from '../orchestrator.mjs'
 import { mintToken } from '../tokens.mjs'
 import { totalSpent, tryClaim, spendRowId } from '../store.mjs'
 
-const PORT = 8151
+const PORT = 0
 const dbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-orch-'))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const settle = () => sleep(300)
+
+// Bounded poll: every `settle()` call this file used to make was a guess at
+// how long a TinyBase CRDT round trip (client -> ws server -> orchestrator,
+// or the reverse) takes to converge. `until` polls the actual destination
+// store for the row state the next assertion depends on instead, so the
+// suite resolves in tens of milliseconds rather than paying a fixed 300ms at
+// every barrier, and never flakes under load that makes 300ms too short.
+const until = async (fn, what, capMs = 5_000) => {
+  const t0 = Date.now()
+  while (Date.now() - t0 < capMs) {
+    const v = fn()
+    if (v) return v
+    await sleep(50)
+  }
+  throw new Error('until: timed out waiting for ' + what)
+}
 
 // A frozen clock: token expiry and every guard/spend decision in this spec is a
 // pure function of the clock, so freezing it removes all wall-clock flake.
@@ -33,6 +49,11 @@ const tokenRecords = [sb1.record, sb2.record]
 // `orch.sweep(...)`, so by the time this module assigns `orch` in the try
 // block, every callback closing over it already has the right binding.
 let orch
+
+// Set once the first `startOrchestrator` call resolves and read by
+// `joinClient` and the bad-token probe below — both run only after `orch` is
+// assigned.
+let boundPort
 
 // Injected actions — the orchestrator never shells out itself. `actionsLog`
 // records only the hard actions so it can be asserted by full equality;
@@ -54,7 +75,7 @@ const actions = {
 
 const joinClient = async (id, token) => {
   const store = createMergeableStore(id)
-  const socket = new WebSocket(`ws://127.0.0.1:${PORT}/${FLEET_PATH}?token=${token}`)
+  const socket = new WebSocket(`ws://127.0.0.1:${boundPort}/${FLEET_PATH}?token=${token}`)
   const synchronizer = await createWsSynchronizer(store, socket)
   await synchronizer.startSync()
   return { store, synchronizer }
@@ -66,13 +87,16 @@ const cleanup = () => fs.rmSync(dbDir, { recursive: true, force: true })
 
 try {
   orch = await startOrchestrator({ port: PORT, dbDir, tokenRecords, actions, clock })
+  boundPort = orch.port
+  assert.equal(typeof boundPort, 'number', 'startOrchestrator must return the bound port')
+  assert.ok(boundPort > 0, 'the bound port must be a real ephemeral port, not 0')
 
   // -- 1. token gate --------------------------------------------------------
   // A bad token is refused at the handshake (verifyClient parses ?token= and
   // calls verifyToken(token, tokenRecords, clock())); a good token connects
   // and syncs.
   const refused = await new Promise((resolve) => {
-    const bad = new WebSocket(`ws://127.0.0.1:${PORT}/${FLEET_PATH}?token=not-a-real-token`)
+    const bad = new WebSocket(`ws://127.0.0.1:${boundPort}/${FLEET_PATH}?token=not-a-real-token`)
     bad.on('error', () => resolve(true))
     bad.on('open', () => {
       bad.close()
@@ -90,7 +114,11 @@ try {
     status: 'running',
     branch: 'claw/r1',
   })
-  await settle()
+  // NOTE (plan-defect): `store.getRow` returns `{}` — not undefined — for a
+  // row that doesn't exist yet, so a bare `getRow(...)` predicate is always
+  // truthy and `until` returns on its first tick, before the sync has
+  // actually landed the row. `hasRow` is the correct existence check.
+  await until(() => c1.store.hasRow('runs', 'r1'), 'run r1 to reach client c1')
   assert.deepEqual(
     c1.store.getRow('runs', 'r1'),
     { planPath: 'docs/superpowers/plans/r1.md', sandboxId: 'sb1', status: 'running', branch: 'claw/r1' },
@@ -103,7 +131,10 @@ try {
   const claimed = tryClaim(undefined, { runId: 'r1', claimant: 'sb1', ttlMs: 60_000, now: T })
   assert.equal(claimed.error, undefined, 'sb1 must be able to take a free claim')
   c1.store.setRow('claims', 'claim:r1', claimed.row)
-  await settle()
+  await until(
+    () => orch.store.getRow('claims', 'claim:r1')?.holder === 'sb1',
+    'sb1 claim to reach the supervisor store',
+  )
   assert.deepEqual(convergeAways(orch.sweep(T)), [], 'a legitimate first claim must not be converged away')
 
   c2.store.setRow('claims', 'claim:r1', {
@@ -113,7 +144,8 @@ try {
     epoch: 2,
     revoked: false,
   })
-  await settle()
+  await until(() => orch.store.getRow('claims', 'claim:r1')?.holder === 'sb2',
+    'sb2 steal to reach the supervisor store')
 
   const stealSweep = orch.sweep(T)
   assert.ok(stealSweep.length >= 1, `a claim steal must be reported by the sweep, got ${JSON.stringify(stealSweep)}`)
@@ -129,7 +161,10 @@ try {
     ['security'],
     'converging away an unauthorized write must raise exactly one security page',
   )
-  await settle()
+  await until(
+    () => c2.store.getRow('claims', 'claim:r1')?.holder === 'sb1',
+    'the converge-away to reach client c2',
+  )
   assert.equal(c2.store.getRow('claims', 'claim:r1').holder, 'sb1', 'the thief must observe its steal converged away')
 
   // -- 2b. a write racing a heartbeat ---------------------------------------
@@ -144,7 +179,10 @@ try {
     epoch: 3,
     revoked: false,
   })
-  await settle()
+  await until(
+    () => orch.store.getRow('claims', 'claim:r1')?.epoch === 3,
+    'the raced steal (epoch 3) to reach the supervisor store',
+  )
   pageLog.length = 0
   orch.heartbeat(T + 1)
 
@@ -173,7 +211,10 @@ try {
   orch.store.setRow('budgets', 'r1', { capTokens: 100 })
   c1.store.setRow('spend', spendRowId('sb1', 1), { runId: 'r1', tokens: 60, at: T })
   c1.store.setRow('spend', spendRowId('sb1', 2), { runId: 'r1', tokens: 60, at: T })
-  await settle()
+  await until(
+    () => totalSpent(orch.store.getTable('spend'), 'r1') === 120,
+    'sb1 spend rows for r1 to reach the supervisor store',
+  )
 
   actionsLog.length = 0
   pageLog.length = 0
@@ -206,7 +247,12 @@ try {
 
   // The revoke is the orchestrator's own write and passes its own guard via the
   // supervisory exemption — so the NEXT sweep reports zero converge-aways.
-  await settle()
+  // Quiescence predicate: poll until the revoke (the writer's own just-written
+  // row) has converged back to client c1, the row's original holder.
+  await until(
+    () => c1.store.getRow('claims', 'claim:r1')?.revoked === true,
+    'the r1 claim revoke to reach client c1',
+  )
   actionsLog.length = 0
   pageLog.length = 0
   const nextSweep = orch.sweep(T)
@@ -231,7 +277,12 @@ try {
   orch.store.setRow('budgets', 'r2', { capTokens: 50 })
   c2.store.setRow('spend', spendRowId('sb2', 1), { runId: 'r2', tokens: 40, at: T })
   c2.store.setRow('spend', spendRowId('sb2', 2), { runId: 'r2', tokens: 40, at: T })
-  await settle()
+  await until(
+    () =>
+      orch.store.getRow('claims', 'claim:r2')?.holder === 'sb2' &&
+      totalSpent(orch.store.getTable('spend'), 'r2') === 80,
+    'sb2 claim and spend rows for r2 to reach the supervisor store',
+  )
 
   actionsLog.length = 0
   pageLog.length = 0
@@ -273,7 +324,12 @@ try {
   // The pending -> parked write is the orchestrator's own supervised action,
   // so — like the r1 overshoot above — it must pass the guard cleanly on the
   // NEXT sweep too: zero converge-aways for those writes.
-  await settle()
+  // Quiescence predicate, same shape as the r1 case above: poll until the
+  // revoke has converged back to client c2, the r2 claim's original holder.
+  await until(
+    () => c2.store.getRow('claims', 'claim:r2')?.revoked === true,
+    'the r2 claim revoke to reach client c2',
+  )
   actionsLog.length = 0
   pageLog.length = 0
   const nextPendingSweep = orch.sweep(T)
@@ -301,7 +357,12 @@ try {
   c1.store.setRow('claims', 'claim:r3', claimedR3.row)
   orch.store.setRow('budgets', 'r3', { capTokens: 10 })
   c1.store.setRow('spend', spendRowId('sb1', 3), { runId: 'r3', tokens: 20, at: T })
-  await settle()
+  await until(
+    () =>
+      orch.store.getRow('claims', 'claim:r3')?.holder === 'sb1' &&
+      totalSpent(orch.store.getTable('spend'), 'r3') === 20,
+    'sb1 claim and spend row for r3 to reach the supervisor store',
+  )
 
   actionsLog.length = 0
   pageLog.length = 0
@@ -345,8 +406,20 @@ try {
   orch.store.setRow('receipts', 'r1:gate', { sha: 'deadbeef', path: 'docs/gate.md', verdict: 'red' })
   await orch.stop()
 
-  orch = await startOrchestrator({ port: PORT, dbDir, tokenRecords, actions, clock })
-  await settle()
+  // Restart on the FIRST run's bound port — preserving the persistence
+  // semantics under test (the theoretical port-reuse race is accepted;
+  // ephemeral ports are effectively never immediately re-grabbed).
+  const firstBoundPort = boundPort
+  orch = await startOrchestrator({ port: firstBoundPort, dbDir, tokenRecords, actions, clock })
+  boundPort = orch.port
+  assert.equal(boundPort, firstBoundPort, 'restarting on an explicit port must bind exactly that port')
+  // Quiescence predicate: poll until the persister has finished loading the
+  // pre-restart state back into the fresh store (the revoked r1 claim is the
+  // last write from the previous run, so its presence means the load landed).
+  await until(
+    () => orch.store.getRow('claims', 'claim:r1')?.revoked === true,
+    'the persisted store to finish loading after restart',
+  )
   assert.equal(totalSpent(orch.store.getTable('spend'), 'r1'), 120, 'the spend ledger must survive a restart')
   assert.equal(orch.store.getRow('claims', 'claim:r1').revoked, true, 'the revoked claim must survive a restart')
   assert.equal(orch.store.getRow('runs', 'r1').status, 'parked', 'the parked run must survive a restart')

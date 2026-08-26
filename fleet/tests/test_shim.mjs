@@ -10,10 +10,14 @@ import { totalSpent } from '../store.mjs'
 // substrate (an orchestrator's guard/sweep is additive, not load-bearing for
 // the shim's own claim/renew/spend/status protocol). Per-path rooms isolate
 // the three scenarios below even though each narrates the same runId 'r1'.
-const PORT = 8152
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-const wss = new WebSocketServer({ port: PORT })
+const wss = new WebSocketServer({ port: 0 })
+await new Promise((resolve, reject) => {
+  wss.once('listening', resolve)
+  wss.once('error', reject)
+})
+const PORT = wss.address().port
 const server = createWsServer(wss)
 
 const join = async (path, id) => {
