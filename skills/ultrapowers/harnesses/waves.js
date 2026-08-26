@@ -648,8 +648,11 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'First, put yourself on the exact tree the run produced, and derive that tree ' +
   'from git itself — never detach at a sha typed into this prompt. Confirm ' +
-  'git branch --show-current prints ' + integrationBranch + '; if it does not, ' +
-  'report BLOCKED and produce no findings — do not guess a tree. Run ' +
+  'git branch --show-current prints ' + integrationBranch + '; if it prints ' +
+  'nothing (a detached HEAD) but git rev-parse HEAD equals git rev-parse ' +
+  integrationBranch + ', you are already detached on the integration tip — ' +
+  'proceed; in any other case where it does not print ' + integrationBranch +
+  ', report BLOCKED and produce no findings — do not guess a tree. Run ' +
   'git rev-parse HEAD: that sha is <derived>, your detach target. Then run ' +
   'git checkout --detach <derived> and confirm git rev-parse HEAD still equals ' +
   '<derived>; if the detach fails (a dirty or conflicted worktree) or the ' +
@@ -2213,8 +2216,10 @@ if (!review || typeof review !== 'object') {
 const ancestryMisses = (review && Array.isArray(review.ancestryMisses)) ? review.ancestryMisses : []
 if (ancestryMisses.length) {
   for (const m of ancestryMisses) {
+    // Rendered whole (#275): since #259 headSha may carry a resolution-failure
+    // message rather than a sha, and truncation destroyed it.
     judgmentCalls.push('integration ancestry miss (#70): task ' + (m && m.task) +
-      ' reported merged (headSha ' + String((m && m.headSha) || '').slice(0, 12) +
+      ' reported merged (headSha ' + String((m && m.headSha) || '') +
       ') is NOT an ancestor of the integration HEAD — silently dropped; the run is BLOCKED, do not merge')
   }
   log('BLOCKED: ' + ancestryMisses.length + ' task(s) missing from the integration ancestry (#70)')
@@ -2295,6 +2300,10 @@ const missingDeliverables = missingIds
 // ── Structured return value (matches references/report-format.md) ─────────────
 return {
   integrationBranch,
+  // The run base (the setup reply's head sha — agent-reported context, not
+  // authority): finalize_report.py reads it to refuse a merged claim whose
+  // branch carries no commits beyond the run base (#275).
+  baseSha: setup.headSha,
   waves: WAVES.map((w) => w.map((t) => t.id)),
   dependencyEdges,
   tasks: taskResults,

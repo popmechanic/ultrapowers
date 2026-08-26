@@ -17,6 +17,7 @@ the report atomically and only on full success.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -58,8 +59,22 @@ def main():
                     help="the run's integration branch name")
     a = ap.parse_args()
 
-    with open(a.report) as f:
-        report = json.load(f)
+    try:
+        with open(a.report) as f:
+            report = json.load(f)
+    except OSError as e:
+        print("finalize_report: cannot read --report %s: %s" % (a.report, e),
+              file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print("finalize_report: --report %s is not valid JSON: %s"
+              % (a.report, e), file=sys.stderr)
+        sys.exit(1)
+
+    if not isinstance(report, dict):
+        print("finalize_report: --report %s is not a JSON object" % a.report,
+              file=sys.stderr)
+        sys.exit(1)
 
     target, shape_err = select_target(report)
     if shape_err:
@@ -73,6 +88,16 @@ def main():
         sys.exit(1)
 
     errors, warnings = [], []
+    # #275: the run base (agent-reported at setup — context, not authority)
+    # lets us refuse a merged claim whose branch carries no commits beyond it.
+    # Shape-gated to a hex sha: a symbolic value ("HEAD") would resolve to
+    # whatever the repo's HEAD is and could false-block every genuine task.
+    base_str = str(target.get("baseSha") or "")
+    base = (rev_parse(a.repo, base_str)
+            if re.fullmatch(r"[0-9a-f]{7,40}", base_str) else None)
+    if not base:
+        warnings.append("report carries no resolvable baseSha — "
+                        "vacuous-merge guard skipped")
     updated = 0
     tasks_by_id = {str(t.get("task")): t for t in (target.get("tasks") or [])}
     merges = target.get("waveMerges") or []
@@ -94,6 +119,12 @@ def main():
             if not tip_b:
                 errors.append("branch %s (task %s) does not resolve"
                               % (branch, tid))
+                continue
+            if base and is_ancestor(a.repo, tip_b, base):
+                errors.append(
+                    "branch %s (task %s) tip %s is already an ancestor of the "
+                    "run base %s — merged claim carries no commits beyond the "
+                    "run base" % (branch, tid, tip_b, base))
                 continue
             if not is_ancestor(a.repo, tip_b, tip):
                 errors.append(

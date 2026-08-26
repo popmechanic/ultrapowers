@@ -1387,11 +1387,66 @@ async function scenarioCompositionPartiallyMergedExcludesFailedWriter() {
   console.log('scenario 11i composition-partially-merged-excludes-failed-writer: OK')
 }
 
+// ── 11j: partial merge where the SURVIVORS still contend — pins the contended
+// leg of mergedWaveTasks (#247): the failed writer must be excluded from the
+// fold command, the --commutes args, and the resolver's CONTENDING TASKS block.
+async function scenarioPartialMergeContendedSurvivors() {
+  const calls = []
+  const open = [openEntry(1, 'shared.py', 1)]
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'impl:t2' || label === 'fix:t2') {
+      return { status: 'BLOCKED', summary: 'cannot', branch: 'wt-t2', headSha: 'sha-t2' }
+    }
+    if (label === 'merge:wave1:fold') return conflictFoldReply(open, [])
+    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'union' }
+    if (label === 'merge:wave1:apply1:1') {
+      return { status: 'FOLDED', complete: true, selfChecks: 'ok', open: [], remaining: [] }
+    }
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-11j' }
+    return undefined
+  })
+  // Every writer declares commutes on the shared path, INCLUDING the failed
+  // one: a drift joining launch tasks instead of merged tasks would emit t2's
+  // --commutes entry and its CONTENDING TASKS row. t3 declares nothing — a
+  // survivor without a declaration must contribute no --commutes arg.
+  const waves = [[
+    { id: 't1', title: 'one', body: 'b1', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't2', title: 'two', body: 'b2', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't3', title: 'three', body: 'b3', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+  ]]
+  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
+  eq(r.tasks.find((t) => t.task === 't2').status, 'failed', '11j: t2 failed')
+  assert(has(calls, 'merge:wave1:fold'), '11j: two surviving same-file writers still contend')
+  const fold = promptFor(calls, 'merge:wave1:fold')
+  assert(fold.indexOf(' --branch t1=wt-t1:sha-t1 --branch t3=wt-t3:sha-t3') !== -1,
+    '11j: the fold command carries both surviving branches, in task-index order')
+  assert(fold.indexOf('t2=') === -1, '11j: the failed writer never reaches the fold command')
+  assert(fold.indexOf(' --commutes t1=shared.py') !== -1,
+    "11j: the surviving declarer's commutes ride the fold command")
+  assert(fold.indexOf('--commutes t2=') === -1,
+    "11j: the failed writer's commutes are excluded (mergedWaveTasks, not launch tasks)")
+  assert(fold.indexOf('--commutes t3=') === -1,
+    '11j: a survivor with no declaration contributes no --commutes arg')
+  const rp = promptFor(calls, 'resolve:wave1:1:1')
+  assert(rp.indexOf('- task t1: one [files: shared.py]') !== -1 &&
+    rp.indexOf('- task t3: three [files: shared.py]') !== -1,
+    "11j: both survivors' intent reaches the resolver")
+  assert(rp.indexOf('- task t2:') === -1,
+    '11j: the failed writer is absent from CONTENDING TASKS')
+  const adopt = promptFor(calls, 'merge:wave1:adopt')
+  assert(adopt.indexOf('--task-head t2') === -1,
+    '11j: the failed writer contributes no --task-head to materialize')
+  eq(r.waveMerges[0].status, 'MERGED', '11j: the wave merged via the contended path')
+  eq(r.waveMerges[0].headSha, 'cand-11j', '11j: the adopted candidate is the wave head')
+  console.log('scenario 11j partial-merge-contended-survivors: OK')
+}
+
 await scenarioWritesAbsentSkipsCompositionRows()
 await scenarioAutoResolvedSumsAcrossLegs()
 await scenarioCompositionSingleWriterNoRow()
 await scenarioCompositionAllDeclaredNoRow()
 await scenarioCompositionMixedWritesSkipNote()
 await scenarioCompositionPartiallyMergedExcludesFailedWriter()
+await scenarioPartialMergeContendedSurvivors()
 
 console.log('ALL SCENARIOS PASSED')

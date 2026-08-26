@@ -11,6 +11,7 @@ The workflow produces a single structured report object that the main agent pres
   "required": ["integrationBranch", "waves", "tasks", "tests", "unfinished"],
   "properties": {
     "integrationBranch": { "type": "string" },
+    "baseSha": { "type": "string" },
     "waves": { "type": "array", "items": { "type": "array", "items": { "type": "string" } } },
     "dependencyEdges": { "type": "array", "items": { "type": "string" } },
     "tasks": { "type": "array", "items": { "type": "object",
@@ -56,6 +57,7 @@ The workflow produces a single structured report object that the main agent pres
 | Field | Required | Description |
 |---|---|---|
 | `integrationBranch` | yes | Branch where all task branches were merged |
+| `baseSha` | no | The run base — the setup reply's head sha (agent-reported context, not authority). `finalize_report.py` reads it to refuse a merged claim whose branch carries no commits beyond the run base (#275); the git-derived ancestry checks remain the authority. Absent or unresolvable → that guard is skipped with a named warning |
 | `waves` | yes | Ordered list of waves; each wave is a list of task IDs that ran in parallel |
 | `dependencyEdges` | no | Human-readable edges that shaped wave order, e.g. `"task-2 → task-4"` |
 | `tasks` | yes | One entry per task; `status` is `done` or `failed`; dependency-blocked and budget-deferred tasks are reported as strings in `unfinished`, not as `tasks[]` entries |
