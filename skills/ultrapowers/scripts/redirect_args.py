@@ -8,9 +8,13 @@ explicit integrationBranch the resume path requires. The orchestrator authors
 findings.json from the gate report; this helper validates and applies that
 judgment — it never launches anything and never mutates the originals.
 
-#222: after a successful emit, the prior round's report.json and heads/ are
-ROTATED (copied/renamed to report-<n>.json / heads-<n>/) rather than deleted
-— every round's artifacts stay on disk, keyed by round number.
+#222: after a successful emit, the prior round's report.json is ROTATED
+(copied to report-<n>.json) rather than deleted — every round's report stays
+on disk, keyed by round number. A `heads/` dir, if present, is renamed to
+heads-<n>/ too, but that is legacy-dir handling for runs created before #259
+(docs/superpowers/specs/2026-08-26-fold-over-git-heads.md §4) — new runs
+never write `heads/`; headShas are derived from git ancestry at finalize
+time instead.
 """
 import argparse
 import json
@@ -54,10 +58,10 @@ def next_round(run_dir):
 def rotate_round_artifacts(run_dir):
     """#222: key the prior round's artifacts by round number instead of
     deleting them. report.json is COPIED to report-<n>.json (the next gate
-    overwrites the live file); heads/ is RENAMED to heads-<n>/ so the
-    relaunch's merge writes a fresh heads/ and a stale higher wave-<n> slot
-    can no longer win the critic's detach rule (the #131 reason, kept).
-    Nothing is ever deleted."""
+    overwrites the live file). A `heads/` dir, if present, is RENAMED to
+    heads-<n>/ — legacy-dir handling for runs created before #259; new runs
+    never write `heads/` (headShas are derived from git ancestry at
+    finalize time). Nothing is ever deleted."""
     n = next_round(run_dir)
     out = {"round": n, "report": None, "heads": None}
     report = os.path.join(run_dir, "report.json")

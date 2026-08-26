@@ -474,7 +474,7 @@ def _nearest_git_root(path):
 
 def _stamp_head_sha(run_dir, receipt):
     """head lookup (spec §4, F3): `<runDir>/report.json` ->
-    waveMerges[-1].headSha (file-derived, post-#114), falling back to
+    waveMerges[-1].headSha (git-derived at finalize, post-#259), falling back to
     gate-receipt.json's own `branch` field — `receipt` is the same parsed
     disk read `_disk_receipts_for` already made, so this never re-reads that
     file."""

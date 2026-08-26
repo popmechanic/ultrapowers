@@ -1,37 +1,39 @@
 #!/usr/bin/env python3
-"""Overwrite report headSha fields from the run's heads/ sidecars (#114).
+"""Derive report headSha fields from integration-branch ancestry (#259).
 
-The merge agent writes each SHA mechanically (git rev-parse output shell-
-redirected into <runDir>/heads/ slots); this helper copies those file-derived
-values into report.json so nothing the gate trusts ever rides model tokens.
-Fails loudly naming the slot; never falls back to the token-reported values;
-rewrites the report atomically and only on full success.
+Git is the append-only ledger: task branches survive their merge, and the
+integration branch tip IS the tree the run produced, whatever round produced
+it. This helper folds those facts into report.json once, deterministically —
+merge/reconcile agents no longer write <runDir>/heads/ sidecars (#259 deleted
+that convention; #114's invariant — nothing the gate trusts rides model
+tokens — now holds with zero agent compliance). Per merged task the branch
+tip is resolved and asserted an ancestor of the integration tip; the final
+MERGED waveMerges entry gets the tip itself (reconcile agents legitimately
+append fixup commits after the last branch merge). Intermediate wave heads
+stay model-recorded context — no mechanical consumer reads them. Fails
+loudly naming the fact; never falls back to token-reported values; rewrites
+the report atomically and only on full success.
 """
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
 
-HEX40 = re.compile(r"^[0-9a-f]{40}$")
+
+def _git(repo, *args):
+    return subprocess.run(["git", "-C", repo] + list(args),
+                          capture_output=True, text=True)
 
 
-def read_slot(heads_dir, slot):
-    path = os.path.join(heads_dir, slot)
-    if not os.path.isfile(path):
-        return None, "missing sidecar " + slot
-    raw = open(path).read().strip()
-    if not HEX40.match(raw):
-        return None, "malformed sidecar %s: %r" % (slot, raw[:60])
-    return raw, None
+def rev_parse(repo, ref):
+    r = _git(repo, "rev-parse", "--verify", "--quiet", ref + "^{commit}")
+    return r.stdout.strip() if r.returncode == 0 else None
 
 
-def resolves(repo, sha):
-    return subprocess.run(
-        ["git", "-C", repo, "rev-parse", "--verify", "--quiet", sha + "^{commit}"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+def is_ancestor(repo, sha, tip):
+    return _git(repo, "merge-base", "--is-ancestor", sha, tip).returncode == 0
 
 
 def select_target(report):
@@ -51,8 +53,9 @@ def select_target(report):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--report", required=True)
-    ap.add_argument("--heads", required=True)
     ap.add_argument("--repo", required=True)
+    ap.add_argument("--branch", required=True,
+                    help="the run's integration branch name")
     a = ap.parse_args()
 
     with open(a.report) as f:
@@ -63,30 +66,59 @@ def main():
         print("finalize_report: " + shape_err, file=sys.stderr)
         sys.exit(1)
 
-    errors = []
+    tip = rev_parse(a.repo, a.branch)
+    if not tip:
+        print("finalize_report: integration branch %s does not resolve in %s"
+              % (a.branch, a.repo), file=sys.stderr)
+        sys.exit(1)
+
+    errors, warnings = [], []
     updated = 0
     tasks_by_id = {str(t.get("task")): t for t in (target.get("tasks") or [])}
+    merges = target.get("waveMerges") or []
 
-    for wm in target.get("waveMerges") or []:
+    for wm in merges:
         if wm.get("status") != "MERGED":
             continue
-        for slot, apply in [("wave-%s" % wm.get("wave"), lambda s, wm=wm: wm.__setitem__("headSha", s))] + [
-            ("task-%s" % tid, lambda s, tid=tid: tasks_by_id[str(tid)].__setitem__("headSha", s))
-            for tid in (wm.get("branches") or [])
-        ]:
-            task_id = slot[len("task-"):] if slot.startswith("task-") else None
-            if task_id is not None and str(task_id) not in tasks_by_id:
-                errors.append("no tasks[] entry for %s" % slot)
+        for tid in wm.get("branches") or []:
+            entry = tasks_by_id.get(str(tid))
+            if entry is None:
+                errors.append("no tasks[] entry for merged task %s" % tid)
                 continue
-            sha, err = read_slot(a.heads, slot)
-            if err:
-                errors.append(err)
-            elif not resolves(a.repo, sha):
-                errors.append("non-resolving sidecar %s: %s" % (slot, sha))
-            else:
-                apply(sha)
-                updated += 1
+            branch = entry.get("branch")
+            if not branch:
+                errors.append("tasks[] entry for merged task %s has no "
+                              "branch" % tid)
+                continue
+            tip_b = rev_parse(a.repo, branch)
+            if not tip_b:
+                errors.append("branch %s (task %s) does not resolve"
+                              % (branch, tid))
+                continue
+            if not is_ancestor(a.repo, tip_b, tip):
+                errors.append(
+                    "branch %s (task %s) tip %s is not an ancestor of %s "
+                    "tip %s — task reported merged but never landed"
+                    % (branch, tid, tip_b, a.branch, tip))
+                continue
+            recorded = entry.get("headSha")
+            if recorded and recorded != tip_b:
+                warnings.append("task %s: recorded headSha %s != derived %s"
+                                % (tid, recorded, tip_b))
+            entry["headSha"] = tip_b
+            updated += 1
 
+    if merges and merges[-1].get("status") == "MERGED":
+        recorded = merges[-1].get("headSha")
+        if recorded and recorded != tip:
+            warnings.append("final wave: recorded headSha %s != derived tip %s"
+                            % (recorded, tip))
+        merges[-1]["headSha"] = tip
+        updated += 1
+
+    for w in warnings:  # context for the operator, never blocking
+        print("finalize_report: warning: " + w + " (context, not blocking)",
+              file=sys.stderr)
     if errors:
         for e in errors:
             print("finalize_report: " + e, file=sys.stderr)
@@ -96,7 +128,8 @@ def main():
     with os.fdopen(fd, "w") as f:
         json.dump(report, f, indent=2)
     os.replace(tmp, a.report)
-    print("finalize_report: %d headSha field(s) derived from %s" % (updated, a.heads))
+    print("finalize_report: %d headSha field(s) derived from %s ancestry"
+          % (updated, a.branch))
 
 
 if __name__ == "__main__":

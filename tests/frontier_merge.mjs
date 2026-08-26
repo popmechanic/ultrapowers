@@ -45,8 +45,8 @@ function eq(a, b, msg) {
 const PLUGIN_ROOT = '/opt/plug'
 const RUN_DIR = '/repo/.claude/ultrapowers/run-sim'
 const PATH_ARGS = { pluginRoot: PLUGIN_ROOT, runDir: RUN_DIR }
-// Fold-log path convention: <runDir>/frontier/wave-<n>/ with <n> 1-based (the
-// heads/ slot precedent). Asserting the literal here is the pin on that.
+// Fold-log path convention: <runDir>/frontier/wave-<n>/ with <n> 1-based.
+// Asserting the literal here is the pin on that.
 const FDIR = RUN_DIR + '/frontier/wave-1'
 const CLI = 'python3 ' + PLUGIN_ROOT + '/skills/ultrapowers/kernel/fold_wave.py'
 const SETUP_HEAD = 'int0'
@@ -179,10 +179,11 @@ async function scenarioCleanFold() {
     'clean: a zero-conflict fold dispatches no resolver')
 
   const fold = promptFor(calls, 'merge:wave1:fold')
-  // heads/ slot names for every merged task id must reach the contended dispatch —
-  // the completeness critic reads a missing slot as an ancestry miss.
-  for (const slot of ['heads/task-A', 'heads/task-B', 'heads/wave-1']) {
-    assert(fold.indexOf(slot) !== -1, 'clean: fold dispatch names ' + slot)
+  // #259: the contended dispatch records no shas. No sidecar path, and no slot
+  // line — git is the ledger, and the critic derives every sha from it.
+  for (const gone of ['<runDir>/heads', RUN_DIR + '/heads', 'record heads',
+                      'For this wave that means slots']) {
+    assert(fold.indexOf(gone) === -1, 'clean: fold dispatch carries no ' + gone)
   }
   assert(fold.indexOf(FDIR) !== -1,
     'clean: fold dispatch names the 1-based fold directory ' + FDIR)
@@ -198,8 +199,9 @@ async function scenarioCleanFold() {
   assert(adopt.indexOf(CLI + ' materialize --repo . --run-dir ' + RUN_DIR +
     ' --wave 1 --prev-head ' + SETUP_HEAD + ' --task-head A=sha-A --task-head B=sha-B') !== -1,
     'clean: adoption command carries the previous head and every task head')
-  for (const slot of ['heads/task-A', 'heads/task-B', 'heads/wave-1']) {
-    assert(adopt.indexOf(slot) !== -1, 'clean: adoption dispatch names ' + slot)
+  for (const gone of ['<runDir>/heads', RUN_DIR + '/heads', 'record heads',
+                      'For this wave that means slots', 'write no slots']) {
+    assert(adopt.indexOf(gone) === -1, 'clean: adoption dispatch carries no ' + gone)
   }
   const adoptOpts = optsFor(calls, 'merge:wave1:adopt')
   assert(adoptOpts.schema && adoptOpts.schema.properties && adoptOpts.schema.properties.headSha &&

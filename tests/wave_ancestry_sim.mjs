@@ -31,7 +31,8 @@ function assert(cond, msg) {
 }
 
 // Two waves: A,B merge in wave 1; C merges in wave 2. Every task lands, so
-// mergedShas = [{A,sha-A},{B,sha-B},{C,sha-C}] reaches the completeness critic.
+// mergedShas = [{A,wt-A},{B,wt-B},{C,wt-C}] — task id + BRANCH, no sha (#259) —
+// reaches the completeness critic, which resolves each tip itself.
 const WAVES = [
   [
     { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap' },
@@ -80,8 +81,14 @@ async function scenarioMiss() {
   // The critic was fed the accumulated mergedShas + the ancestry instruction.
   assert(/merge-base --is-ancestor/.test(cap.prompt), 'completeness prompt carries the ancestry instruction')
   assert(/mergedShas/.test(cap.prompt), 'completeness prompt carries the mergedShas label')
-  assert(/sha-A/.test(cap.prompt) && /sha-B/.test(cap.prompt) && /sha-C/.test(cap.prompt),
-    'completeness prompt lists every merged task headSha')
+  // #259: the tips are DERIVED, not handed over — the entries carry branch names.
+  assert(cap.prompt.indexOf('resolve the branch tip yourself with git rev-parse') !== -1,
+    'completeness prompt tells the critic to resolve each branch tip itself')
+  const list = cap.prompt.slice(cap.prompt.indexOf('mergedShas: ') + 'mergedShas: '.length)
+  assert(/"branch":"wt-A"/.test(list) && /"branch":"wt-B"/.test(list) && /"branch":"wt-C"/.test(list),
+    'completeness prompt lists every merged task branch')
+  assert(!/"headSha"/.test(list) && !/sha-A/.test(list),
+    'no model-typed headSha rides the mergedShas list')
 
   // A miss forces BLOCKED: gitVerified withheld even though onIntegrationHead was true.
   assert(report.gitVerified === false, 'ancestry miss withholds gitVerified (run BLOCKED)')
