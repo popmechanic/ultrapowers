@@ -155,7 +155,10 @@ def test_missing_tasks_entry_and_missing_branch_fail(tmp_path):
     report.write_text(json.dumps(data))
     r = run(report, repo)
     assert r.returncode == 1
-    assert "task 1" in r.stderr and "7" in r.stderr
+    # full messages: a substring like "7" is satisfied by accident from the
+    # SHAs in the non-blocking warnings this fixture also emits.
+    assert "tasks[] entry for merged task 1 has no branch" in r.stderr
+    assert "no tasks[] entry for merged task 7" in r.stderr
 
 
 def test_non_merged_last_entry_untouched_but_task_heads_derived(tmp_path):
