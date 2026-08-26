@@ -54,6 +54,7 @@ import {
   detectIntegrationBranch,
   engineArgs,
   ENGINE_COMMAND,
+  STANDING_DIRECTIVE,
   findGateReceiptFile,
   findReceiptFiles,
   findRunReportFile,
@@ -1494,9 +1495,19 @@ try {
     assert.equal(await spawnEngineProcess({ command: path.join(tmp, 'no-such-binary'), args: [], cwd: tmp }), 1)
 
     // The engine argv is a pinned shape — the plan path is one argument of a
-    // single `/ultrapowers <plan>` prompt, not a bare positional.
+    // single `/ultrapowers <plan>` prompt (followed by the #280 standing
+    // directive), not a bare positional.
     assert.equal(ENGINE_COMMAND, 'claude')
-    assert.deepEqual(engineArgs('docs/plan.md'), ['-p', '/ultrapowers docs/plan.md'])
+    assert.deepEqual(engineArgs('docs/plan.md'),
+      ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
+    // The directive itself is load-bearing prompt text (#280): pin the grammar
+    // hooks SKILL.md Step 5's standing-grant clause reads.
+    for (const literal of ['never end a turn on a question', 'NEEDS_ACK',
+      'reason runtime or external', 'standing-approval.json FIRST',
+      'Type manual is post-merge runbook material', 'BLOCKED']) {
+      assert.ok(STANDING_DIRECTIVE.includes(literal),
+        'standing directive lost the literal: ' + literal)
+    }
   }
 
   console.log('ALL TESTS PASSED')

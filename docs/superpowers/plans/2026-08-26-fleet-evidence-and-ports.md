@@ -236,7 +236,7 @@ Assertions after the drive:
   assert.ok(fs.existsSync(path.join(evidenceDir, 'credits.json')), 'raw credits.json written')
 ```
 
-And a degraded variant: `exec` throws on the stat command → `res.detail.sandboxStat === null`, an entry in `res.detail.errors` naming stat, and `destroySandbox` still issued (assert the `rm` command appears in `exec` calls).
+A derive-throw variant: `exec` succeeds but returns a malformed-but-valid payload (`points` as an object, not an array) → `res.detail.sandboxStat === null`, an entry in `res.detail.errors`, raw `stat.json` still written, and the `rm` teardown command still issued. And a degraded variant: `exec` throws on the stat command → `res.detail.sandboxStat === null`, an entry in `res.detail.errors` naming stat, and `destroySandbox` still issued (assert the `rm` command appears in `exec` calls).
 
 3. Credits-absent variant: `CREDITS_FIXTURE` with no `fleet-r1` row → `res.detail.creditSpendUsd === 0` (no row = no spend recorded = flat).
 
@@ -272,7 +272,10 @@ Write raw stdout to `<evidenceDir>/stat.json` / `<evidenceDir>/credits.json` reg
 
 ```js
 export const deriveSandboxStat = (statJson) => {
-  const pts = (statJson?.points || []).filter((p) => typeof p?.cpu_cores === 'number')
+  // Array.isArray guard: a malformed-but-valid payload (points as an object)
+  // must degrade to null, never throw past destroyOnce (#280 run-9b critic).
+  const pts = (Array.isArray(statJson?.points) ? statJson.points : [])
+    .filter((p) => typeof p?.cpu_cores === 'number')
   if (!pts.length) return null
   const cores = pts.map((p) => p.cpu_cores)
   const mems = pts.map((p) => p.mem_used_bytes).filter((m) => typeof m === 'number')
@@ -283,12 +286,13 @@ export const deriveSandboxStat = (statJson) => {
   }
 }
 export const deriveCreditSpendUsd = (creditsJson, vmName) => {
-  const row = (creditsJson?.groups || []).find((g) => g?.box === vmName)
+  const rows = Array.isArray(creditsJson?.groups) ? creditsJson.groups : []
+  const row = rows.find((g) => g?.box === vmName)
   return row ? (typeof row.cost_usd === 'number' ? row.cost_usd : null) : 0
 }
 ```
 
-`detail.sandboxStat` / `detail.creditSpendUsd` declared null in the detail template and assigned from the derivations; any capture/parse failure pushes to `errors` and leaves the field null; `destroySandbox` always still runs (the existing `destroyOnce` ordering is unchanged: pull, then destroy).
+`detail.sandboxStat` / `detail.creditSpendUsd` declared null in the detail template and assigned from the derivations, with **each derive call wrapped in try/catch at the call site** — a throw is a parse failure: push the error, leave the field null, still write the raw file. Nothing on this path may propagate past `destroyOnce`: any capture/parse failure pushes to `errors` and leaves the field null; `destroySandbox` always still runs (the existing `destroyOnce` ordering is unchanged: pull, then destroy). [Amended per #280: run-9b's in-sandbox critic found an unguarded derive throw would skip teardown and leak a billed sandbox.]
 
 4. If Step 1's persistence scenario is red, apply runId scoping inside the named reader set only — no sweep/guard/spend semantic changes beyond scoping.
 

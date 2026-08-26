@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readSessionTokens, engineArgs } from '../shim-main.mjs'
+import { readSessionTokens, engineArgs, STANDING_DIRECTIVE } from '../shim-main.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -60,14 +60,14 @@ assert.equal(readSessionTokens(RUN, { home }), 2600, 'warm-up session must not l
 ok('cloned warm-up session ignored (still 2600)')
 
 // --- 5. engineArgs threads the session id; bare form unchanged --------------
-assert.deepEqual(engineArgs('docs/plan.md'), ['-p', '/ultrapowers docs/plan.md'])
-ok('engineArgs bare form unchanged')
+assert.deepEqual(engineArgs('docs/plan.md'), ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
+ok('engineArgs bare form carries the #280 standing directive')
 assert.deepEqual(
   engineArgs('docs/plan.md', RUN),
-  ['-p', '/ultrapowers docs/plan.md', '--session-id', RUN],
+  ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`, '--session-id', RUN],
 )
 ok('engineArgs appends --session-id when given')
-assert.deepEqual(engineArgs('docs/plan.md', ''), ['-p', '/ultrapowers docs/plan.md'])
+assert.deepEqual(engineArgs('docs/plan.md', ''), ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
 ok('engineArgs ignores an empty session id')
 
 fs.rmSync(home, { recursive: true, force: true })

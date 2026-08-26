@@ -641,13 +641,33 @@ export const shellExec = (cmd) =>
 export const ENGINE_COMMAND = 'claude'
 
 /**
+ * The standing pre-authorization carried in every headless launch (#280).
+ * A sandbox session has no operator until the run ends, so a NEEDS_ACK gate
+ * with only routine runtime/external deferred-verification acks must be able
+ * to self-approve under SKILL.md Step 5's standing-grant grammar — the launch
+ * directive is the quotable instruction. run-9b parked-by-question at exactly
+ * this seam and surfaced as a heartbeat timeout. Everything outside the
+ * granted class still parks (fleet park-by-default, #181): the session leaves
+ * the gate receipt as the terminal artifact and exits.
+ */
+export const STANDING_DIRECTIVE =
+  'Headless fleet run: no operator is present until the run ends, so never end a turn on a ' +
+  'question. Standing pre-authorization for the pre-merge gate: on a NEEDS_ACK verdict, ' +
+  'approve if and only if every ack is a deferredVerification item with reason runtime or ' +
+  'external — write run-<stamp>/standing-approval.json FIRST, quoting this directive ' +
+  'verbatim as the instruction. A plan task of Type manual is post-merge runbook material, ' +
+  'never a gate ack to consume. Any ack outside that class, or a BLOCKED verdict, means do ' +
+  'NOT approve: leave the gate receipt as the terminal artifact and end the session ' +
+  'immediately.'
+
+/**
  * The engine launch argv. A `sessionId`, when given, is threaded to
  * `--session-id` so the run's transcript lands at a deterministic path
  * `readSessionTokens` can find. Omitting it yields the bare form unchanged, so
  * every existing caller and pin still holds.
  */
 export const engineArgs = (planPath, sessionId) => {
-  const args = ['-p', `/ultrapowers ${planPath}`]
+  const args = ['-p', `/ultrapowers ${planPath}\n\n${STANDING_DIRECTIVE}`]
   if (isNonEmptyString(sessionId)) args.push('--session-id', sessionId)
   return args
 }
