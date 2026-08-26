@@ -36,45 +36,9 @@ def _with_waiver(path):
     return tmp.name, tmp.name
 
 
-def compile_plan(path):
-    effective, tmp = _with_waiver(path)
-    try:
-        p = subprocess.run([sys.executable, str(COMPILER), str(effective)],
-                           capture_output=True, text=True)
-        assert p.returncode == 0, p.stderr
-        return json.loads(p.stdout)
-    finally:
-        if tmp:
-            pathlib.Path(tmp).unlink(missing_ok=True)
-
-
-def compile_plan_serialize(path):
-    """Explicit-serialize compile: for tests pinning serialize-mode contention
-    semantics (same-file writers serialize), which remain fully supported after
-    the spec-§5 default flip to fold."""
-    effective, tmp = _with_waiver(path)
-    try:
-        p = subprocess.run([sys.executable, str(COMPILER),
-                            "--overlap", "serialize", str(effective)],
-                           capture_output=True, text=True)
-        assert p.returncode == 0, p.stderr
-        return json.loads(p.stdout)
-    finally:
-        if tmp:
-            pathlib.Path(tmp).unlink(missing_ok=True)
-
-
-def compile_plan_raw(path):
-    effective, tmp = _with_waiver(path)
-    try:
-        return subprocess.run([sys.executable, str(COMPILER), str(effective)],
-                              capture_output=True, text=True)
-    finally:
-        if tmp:
-            pathlib.Path(tmp).unlink(missing_ok=True)
-
-
-def compile_plan_raw_with(path, extra):
+def _run_compiler(path, *extra):
+    """Run the compiler on `path` (waiver injected when the fixture carries
+    none); returns the CompletedProcess."""
     effective, tmp = _with_waiver(path)
     try:
         return subprocess.run(
@@ -83,6 +47,29 @@ def compile_plan_raw_with(path, extra):
     finally:
         if tmp:
             pathlib.Path(tmp).unlink(missing_ok=True)
+
+
+def compile_plan(path):
+    p = _run_compiler(path)
+    assert p.returncode == 0, p.stderr
+    return json.loads(p.stdout)
+
+
+def compile_plan_serialize(path):
+    """Explicit-serialize compile: for tests pinning serialize-mode contention
+    semantics (same-file writers serialize), which remain fully supported after
+    the spec-§5 default flip to fold."""
+    p = _run_compiler(path, "--overlap", "serialize")
+    assert p.returncode == 0, p.stderr
+    return json.loads(p.stdout)
+
+
+def compile_plan_raw(path):
+    return _run_compiler(path)
+
+
+def compile_plan_raw_with(path, extra):
+    return _run_compiler(path, *extra)
 
 
 def test_marked_fixture_compiles_to_documented_waves():
@@ -1156,34 +1143,27 @@ def test_fenced_acceptance_line_is_ignored():
 # Text-based compile helpers (thin wrappers to avoid duplicating subprocess logic)
 # ---------------------------------------------------------------------------
 
-def compile_plan_text(plan_md):
+def _with_plan_file(plan_md, fn):
+    """Write `plan_md` to a temp .md file, call `fn(path)`, always clean up."""
     import tempfile, os
     fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
     pathlib.Path(p).write_text(plan_md)
     try:
-        return compile_plan(pathlib.Path(p))
+        return fn(pathlib.Path(p))
     finally:
         pathlib.Path(p).unlink(missing_ok=True)
+
+
+def compile_plan_text(plan_md):
+    return _with_plan_file(plan_md, compile_plan)
 
 
 def _serialize_text(plan_md):
-    import tempfile, os
-    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
-    pathlib.Path(p).write_text(plan_md)
-    try:
-        return compile_plan_serialize(pathlib.Path(p))
-    finally:
-        pathlib.Path(p).unlink(missing_ok=True)
+    return _with_plan_file(plan_md, compile_plan_serialize)
 
 
 def compile_raw_text(plan_md):
-    import tempfile, os
-    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
-    pathlib.Path(p).write_text(plan_md)
-    try:
-        return compile_plan_raw(pathlib.Path(p))
-    finally:
-        pathlib.Path(p).unlink(missing_ok=True)
+    return _with_plan_file(plan_md, compile_plan_raw)
 
 
 # ---------------------------------------------------------------------------
