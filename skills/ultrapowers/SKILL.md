@@ -324,10 +324,11 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   authoritative, and batching never means an ack is swallowed.
 - **Round artifacts** — both composers rotate the prior round's artifacts as
   their last step, after a successful emit: `report.json` is snapshotted to
-  `report-<n>.json` and `heads/` renamed to `heads-<n>/`, so every round's gate
-  report and sidecars survive and the relaunch's merge writes a fresh `heads/`
-  (a stale higher `wave-<n>` slot can no longer win the critic's detach rule).
-  Nothing is deleted; never clear `heads/` or `report.json` by hand.
+  `report-<n>.json`, so every round's gate report survives. No run writes
+  `heads/` any more — headShas are derived from git ancestry at finalize time
+  (`docs/superpowers/specs/2026-08-26-fold-over-git-heads.md` §3-§4); a legacy
+  `heads/` dir left by a pre-#259 run is still renamed to `heads-<n>/` if
+  found on disk. Nothing is deleted; never clear `report.json` by hand.
 - **Terminal teardown** — on **every** non-relaunch exit (declined Approve, Abort,
   abandoned `BLOCKED`), release the run lock so it does not wedge the next run
   (`RUN_LOCK` has no timeout): `ultra_gate.py --teardown --stamp <stamp>`. It keeps
