@@ -415,13 +415,14 @@ const SETUP_PROMPT = resume
      testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
 
-// #114: every sha the controller consumes used to reach it as model-typed JSON,
-// so a fabricated or truncated tail defeated the ancestry check silently. The
-// merge-side roles DERIVE the values instead: `git rev-parse` redirected into a
-// <runDir>/heads/ slot. Both MERGE_PROMPT and RECONCILE_PROMPT report MERGED
-// heads, so the sentence is baked verbatim into each — the drift pin matches a
-// BAKE block against CONTIGUOUS text in this file, so a shared const would break
-// it. <runDir> is a baked literal token filled by fillPaths() at dispatch.
+// #259: the merge-side roles record NO shas. #114's invariant — nothing the gate
+// trusts rides model tokens — is met by git itself: task branches survive their
+// merge and the integration tip IS the run's tree, so the critic derives its
+// detach target and every task tip from git, and finalize_report.py folds the
+// same facts into the report at gate time. A sidecar was a second copy of an
+// already-authoritative ledger, kept in sync by agent compliance; deleting it
+// removes the compliance step rather than policing it. The headSha these agents
+// report is context only.
 const MERGE_PROMPT =
   'You are the wave merge agent, operating ONLY inside the dedicated integration ' +
   'worktree at ' + INTEGRATION_WT + ' — never the session main checkout. cd into ' +
@@ -431,21 +432,7 @@ const MERGE_PROMPT =
   'branch in the given task-index order (deterministic, so conflicts are ' +
   'reproducible). After all merges succeed, ' + testInstruction + '. Report ' +
   'MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict ' +
-  'diff or failing output. Before you report, record heads mechanically FROM ' +
-  'THE LAUNCH DIRECTORY — the session repo root this dispatch started you in, ' +
-  'the one place the relative worktree path ' + INTEGRATION_WT + ' resolves; ' +
-  'cd back to it first if you have moved. Then run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
-  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
-  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
-  'Shell redirection only — never type a sha by hand, and never a bare ' +
-  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
-  "A 'cannot change to' failure means you are not in the launch directory — " +
-  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
-  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
-  'must print exactly the headSha you are about to report; if it is empty or ' +
-  'different, cd to the launch directory and re-record. After the heads are ' +
-  'recorded and only if you are ' +
+  'diff or failing output. If and only if you are ' +
   'reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
@@ -469,20 +456,7 @@ const RECONCILE_PROMPT =
   'other checkout. You are given a merge conflict diff or failing test output. ' +
   'Resolve it on the integration branch, then ' + testInstruction + '. Report ' +
   'MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. ' +
-  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — ' +
-  'the session repo root this dispatch started you in, the one place the ' +
-  'relative worktree path ' + INTEGRATION_WT + ' resolves; cd back to it ' +
-  'first if you have moved. Then run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
-  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
-  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
-  'Shell redirection only — never type a sha by hand, and never a bare ' +
-  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
-  "A 'cannot change to' failure means you are not in the launch directory — " +
-  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
-  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
-  'must print exactly the headSha you are about to report; if it is empty or ' +
-  'different, cd to the launch directory and re-record. After the heads are recorded and only if you ' +
+  'If and only if you ' +
   'are reporting MERGED, ' +
   "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
   'dispatch names the just-merged worktree paths, derived by the engine from ' +
@@ -496,19 +470,6 @@ const RECONCILE_PROMPT =
   'present but fails the branch check must not be removed: skip it and name ' +
   'it in your reply detail. Never delete any branch — branches carry the ' +
   'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
-
-// The prompt constants above cannot know which tasks a given wave merged, so each
-// dispatch appends the concrete slot names built from the ids/wave number in scope
-// there — the agent infers nothing. Oxford-comma list, matching wave-merge.md.
-const headsSlotsLine = (mergedResults, waveNumber) => {
-  const slots = mergedResults.map((r) => 'heads/task-' + r.task)
-  slots.push('heads/wave-' + waveNumber)
-  const last = slots.pop()
-  const list = slots.length > 1 ? (slots.join(', ') + ', and ' + last)
-    : slots.length === 1 ? (slots[0] + ' and ' + last)
-      : last
-  return 'For this wave that means slots: ' + list + '.'
-}
 
 // #151: the wave-barrier sweep line. The engine never sees the runtime
 // wf_<runId>, so worktree paths can only derive from the implementers'
@@ -533,9 +494,9 @@ const sweepPathsLine = (mergedResults) => {
 // ENGINE-AUTHORED: waveBaseSha advances only AFTER a merge, so at dispatch time
 // it is exactly the previous integration head, and the agent derives nothing.
 // The CLI is located through the <pluginRoot> token fillPaths() fills (same
-// precedent as review-package). The heads/ slot sentence is carried verbatim
-// from MERGE_PROMPT — the completeness critic treats a missing slot as an
-// ancestry miss, so a contended prompt without it would block every contended run.
+// precedent as review-package). Like MERGE_PROMPT, this contract records no
+// shas anywhere (#259): the adopted candidate reaches the report as context, and
+// the critic derives the integration tip and every task tip from git.
 // waveDir is ENGINE-AUTHORED too: cmd_fold's stdout carries no report paths, so
 // foldLogPath and conflictsIndex exist only on disk. The prompt names the
 // directory and puts reading its conflicts.json in contract — otherwise the
@@ -603,23 +564,10 @@ const contendedMergePrompt = (prevHead, waveDir) => [
   'is a fatal git error, and merge --ff-only would refuse over the read-tree ' +
   'index). Then ' + testInstruction + '. If it passes, adopt the candidate with ' +
   'git reset --hard <candidate> and report MERGED with that sha as headSha. ' +
-  'Before you report, record heads mechanically FROM THE LAUNCH DIRECTORY — ' +
-  'the session repo root this dispatch started you in, the one place the ' +
-  'relative worktree path ' + INTEGRATION_WT + ' resolves; cd back to it ' +
-  'first if you have moved. Then run mkdir -p <runDir>/heads, ' +
-  'then for each task branch you merged run git -C ' + INTEGRATION_WT +
-  ' rev-parse <branch> > <runDir>/heads/task-<taskId>, then git -C ' +
-  INTEGRATION_WT + ' rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. ' +
-  'Shell redirection only — never type a sha by hand, and never a bare ' +
-  'rev-parse for a slot: -C pins every read to the integration worktree. ' +
-  "A 'cannot change to' failure means you are not in the launch directory — " +
-  'cd back there and rerun; never fall back to a bare rev-parse. Before ' +
-  'reporting, self-check the wave slot: cat <runDir>/heads/wave-<waveNumber> ' +
-  'must print exactly the headSha you are about to report; if it is empty or ' +
-  'different, cd to the launch directory and re-record. If instead the suite fails, adopt nothing and ' +
+  'If instead the suite fails, adopt nothing and ' +
   'restore the worktree — ' +
   'git reset --hard <prevHead>, then git clean -fd — then report TEST_FAILED ' +
-  'with the failing output and write no slots. Do not try to fix a failing ' +
+  'with the failing output. Do not try to fix a failing ' +
   'candidate: the engine falls the wave back to an ordinary git merge, and that ' +
   'path refuses to operate on a dirty or detached worktree. Time the invocation ' +
   'and report its wall clock in foldCliWallTimeSec.',
@@ -660,8 +608,9 @@ const RESOLVER_PROMPT = [
 // #29: a critic that reviews the wrong tree emits confident false findings — the
 // detached checkout is immune to the integration-branch lock, and an unreadable
 // detach target forces BLOCKED rather than a guessed tree. Review-role: #32.
-// #123: the detach target is DERIVED from the heads/ sidecar, stated first and
-// as the single authority; waveBaseSha is model-transcribed and is demoted to a
+// #123/#259: the detach target is DERIVED FROM GIT — the critic confirms it is on
+// the integration branch and takes that branch's tip — stated first and as the
+// single authority; waveBaseSha is model-transcribed and is demoted to a
 // recorded cross-check, so a fabricated sha reads as an explicit
 // recorded-vs-derived mismatch instead of an unexplained BLOCKED.
 // Note the missing cannotVerifyChecklist parameter: the checklist is reviewer-
@@ -670,15 +619,18 @@ const RESOLVER_PROMPT = [
 const completenessPrompt = (mergeHeadSha, mergedShas) => {
   // #70: the integration ancestry assertion. The critic is already detached on the
   // integration HEAD, so it is the one role that can cheaply prove nothing the run
-  // reported as merged was silently dropped. mergedShas carries every mergeable done
-  // task's recorded headSha; the critic asserts each is an ancestor of HEAD and
+  // reported as merged was silently dropped. #259: mergedShas carries each mergeable
+  // done task's id and BRANCH — no sha — so the critic resolves every tip itself and
   // returns the misses under ancestryMisses. Omitted when nothing merged.
   const ancestryBlock = (mergedShas && mergedShas.length)
-    ? (' You are also given mergedShas, the recorded head sha of every mergeable ' +
-       'done task. For each entry, assert that its commit landed in this integration ' +
-       'tree by running git merge-base --is-ancestor <headSha> HEAD; return under ' +
-       'ancestryMisses every task whose recorded head is not an ancestor of the ' +
-       'current HEAD (an empty ancestryMisses when they all are). A recorded head ' +
+    ? (' You are also given mergedShas, the task id and branch name of every ' +
+       'mergeable done task. For each entry, resolve the branch tip yourself with ' +
+       'git rev-parse <branch> and assert that its commit landed in this integration ' +
+       'tree by running git merge-base --is-ancestor <tip> HEAD; return under ' +
+       'ancestryMisses every task whose branch does not resolve or whose tip is not ' +
+       'an ancestor of the current HEAD (an empty ancestryMisses when they all are), ' +
+       "carrying the resolved tip (or the resolution failure) as that entry's " +
+       'headSha. A branch tip ' +
        'that is not an ancestor is a silently dropped task, and the controller ' +
        'treats a non-empty ancestryMisses as BLOCKED. mergedShas: ' +
        JSON.stringify(mergedShas))
@@ -694,17 +646,19 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
    ' — cd into it before any git command; never the session main checkout; your ' +
    'verified detach there also frees the integration branch for the gate.'].join('\n') + '\n' +
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
-  'First, put yourself on the exact tree the run produced, and derive that tree — ' +
-  'never detach at a sha typed into this prompt. Read <runDir>/heads/ and take ' +
-  'the highest-numbered wave-<n> slot: the sha in that slot is <derived>, your ' +
-  'detach target. If no wave-<n> slot there is readable, report BLOCKED and ' +
-  'produce no findings — do not guess a tree. Otherwise run git checkout --detach ' +
-  '<derived>, then git rev-parse HEAD and confirm it equals <derived>; if it does ' +
-  'not, report BLOCKED and produce no findings. Only then cross-check the value ' +
+  'First, put yourself on the exact tree the run produced, and derive that tree ' +
+  'from git itself — never detach at a sha typed into this prompt. Confirm ' +
+  'git branch --show-current prints ' + integrationBranch + '; if it does not, ' +
+  'report BLOCKED and produce no findings — do not guess a tree. Run ' +
+  'git rev-parse HEAD: that sha is <derived>, your detach target. Then run ' +
+  'git checkout --detach <derived> and confirm git rev-parse HEAD still equals ' +
+  '<derived>; if the detach fails (a dirty or conflicted worktree) or the ' +
+  'confirmation differs, report BLOCKED and produce no findings. Only then ' +
+  'cross-check the value ' +
   'the run recorded, which is context and not authority: the recorded merge sha ' +
   'is ' + (mergeHeadSha || '') + '. If that recorded value is non-empty and ' +
   'differs from <derived>, report BLOCKED with a finding that names both, written ' +
-  'exactly as: recorded merge sha <recorded> != derived heads/ slot <derived>. ' +
+  'exactly as: recorded merge sha <recorded> != derived integration tip <derived>. ' +
   'Only once you are verified on that tree: what plan requirement is ' +
   'unmet? What claim is unverified? What code path is untested? ' + testInstruction +
   ', then review the integrated result against the original plan. ' + CANNOT_VERIFY_SLOT +
@@ -712,7 +666,7 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   'not task by task — a worktree-isolated per-task reviewer could only confirm its own slice; ' +
   'list any constraint the integrated result violates as a blocking gap. ' +
   'List every gap, unverified claim, and untested path. A claim about the order in which work was performed — that tests were written before code, that a red run preceded green, that commits came in a given sequence — is not a finding when the integrated diff cannot evidence it: omit it entirely, never as a gap, an unverified claim, or a deferredVerification item; constraints about test presence and coverage still verify. ' +
-  'After confirming HEAD equals <derived> (the heads/-derived detach target), ' +
+  'After confirming HEAD equals <derived> (the git-derived detach target), ' +
   'set onIntegrationHead true in your result (false if you could not confirm it). ' +
   'Read the plan at the provided ' +
   'planPath; for every task reported failed or blocked, check whether its declared ' +
@@ -724,13 +678,13 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   "process boot, device, deploy target), 'external' (an unreachable " +
   "service/credential/network), or 'manual' (requires human judgment), so the gate " +
   'can route runtime/external items to an explicit acknowledgement.' + ancestryBlock +
-  // #114: the shas quoted above (and in ancestryBlock) are model-transcribed —
-  // a fabricated tail would pass an ancestry check against a sha that never
-  // existed. The heads/ sidecars the merge-side roles derived are the authority;
-  // a missing slot for a merged task is itself the failure signal.
-  ' Authoritative shas live in <runDir>/heads/: read task-<id> for each merged ' +
-  'task id in your inputs, and the highest-numbered wave-<n> slot is your detach ' +
-  'target. Treat a missing or malformed slot for a merged task exactly as an ' +
+  // #114/#259: the recorded merge sha quoted above is model-transcribed — a
+  // fabricated tail would pass an ancestry check against a sha that never
+  // existed. Git is the authority the critic reads for itself: the branch tips it
+  // resolves and the integration HEAD it derived. A branch that will not resolve
+  // is itself the failure signal.
+  ' Authoritative shas live in git: the branch tips you resolve yourself and the ' +
+  'integration HEAD you derived. Treat a branch you cannot resolve exactly as an ' +
   'ancestry miss. Sha values quoted elsewhere in this prompt are context, not ' +
   'authority.'
   )
@@ -877,9 +831,11 @@ const REVIEW_SCHEMA = {
       reason: { type: 'string', enum: ['browser', 'runtime', 'external', 'manual'] },
       why: { type: 'string' } } } },
     // #70: the integration ancestry misses. Each entry is a mergeable done task
-    // whose recorded headSha the critic could NOT confirm is an ancestor of the
-    // integration HEAD (git merge-base --is-ancestor failed) — a silent drop. A
-    // non-empty ancestryMisses forces the run BLOCKED (gitVerified withheld).
+    // whose branch tip the critic could NOT confirm is an ancestor of the
+    // integration HEAD (the branch would not resolve, or git merge-base
+    // --is-ancestor failed) — a silent drop. headSha carries the tip the critic
+    // itself resolved (#259), or its resolution failure. A non-empty
+    // ancestryMisses forces the run BLOCKED (gitVerified withheld).
     ancestryMisses: { type: 'array', items: { type: 'object',
       required: ['task', 'headSha'], properties: {
       task: { type: 'string' },
@@ -1401,7 +1357,7 @@ const mergedWaveTasks = (waveIdx, merged) =>
 // strictly before adoption: the fold consumes task branches but never destroys
 // them, and the prompt restores the worktree on a red candidate, so the
 // git-merge path is handed the branch and worktree exactly where it expects them.
-async function contendedMerge(merged, waveIdx, slotsLine) {
+async function contendedMerge(merged, waveIdx) {
   const waveNumber = waveIdx + 1
   // ENGINE-AUTHORED wave base: waveBaseSha advances only AFTER a merge, so at
   // dispatch time it is exactly the previous integration head.
@@ -1443,7 +1399,6 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
     calls++
     return agent(
       fillPaths(GUARD + '\n\n' + contendedMergePrompt(prevHead, frontierDir(waveNumber)) +
-        ' ' + slotsLine +
         '\nSTEP: ' + step + '. Run exactly this command, from inside ' +
         INTEGRATION_WT + ':\n' + command),
       { label: label, model: TIER.mostCapable, schema: schema })
@@ -1754,9 +1709,6 @@ async function mergeWave(results, waveIdx) {
   const branchList = merged
     .map((r, i) => i + '. task=' + r.task + ' branch=' + r.branch + ' sha=' + (r.headSha || ''))
     .join('\n')
-  // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
-  // rides inside fillPaths() with the prompt; the ids come from control flow.
-  const slotsLine = headsSlotsLine(merged, waveIdx + 1)
   const sweepLine = sweepPathsLine(merged)
   // ONE call site, before the routing branch, so the rows land on the contended
   // and git-merge paths alike — the composition is real either way, and two call
@@ -1764,7 +1716,7 @@ async function mergeWave(results, waveIdx) {
   // a task that never landed wrote nothing and cannot contend.
   compositionRows(waveIdx + 1, mergedWaveTasks(waveIdx, merged))
   if (contendedWave(merged, waveIdx)) {
-    const adopted = await contendedMerge(merged, waveIdx, slotsLine)
+    const adopted = await contendedMerge(merged, waveIdx)
     // Fallback (null) drops through to the git-merge path below with the branch
     // and worktree where it expects them; contendedMerge already named the reason.
     if (adopted) return adopted
@@ -1772,7 +1724,7 @@ async function mergeWave(results, waveIdx) {
   let merge
   try {
     merge = await agent(
-      fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
+      fillPaths(GUARD + '\n\n' + MERGE_PROMPT) +
         (sweepLine ? '\n' + sweepLine : '') +
         '\nMerge in this order:\n' + branchList,
       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
@@ -1795,7 +1747,7 @@ async function mergeWave(results, waveIdx) {
     log('wave ' + (waveIdx + 1) + ' reconciliation attempt ' + attempt + ': ' + merge.status)
     try {
       merge = await agent(
-        fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
+        fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT) +
           (sweepLine ? '\n' + sweepLine : '') +
           '\nFailure:\n' + (merge.detail || ''),
         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
@@ -2168,10 +2120,13 @@ for (let w = 0; w < WAVES.length; w++) {
     log('wave ' + (w + 1) + ': MERGED without headSha; review base frozen')
   }
   if (merge.status === 'MERGED' && merge.headSha) waveBaseSha = merge.headSha
-  // #70: this wave's branches landed — record their recorded head shas so the
-  // completeness critic can assert each is an ancestor of the final integration HEAD.
+  // #70: this wave's branches landed — record the task/branch coordinates so the
+  // completeness critic can resolve each tip itself and assert it is an ancestor of
+  // the final integration HEAD. #259: no headSha travels here — the model-typed sha
+  // was never the authority, and carrying it invited a check against a sha that
+  // never existed. Branches survive their merge, so the name is enough.
   if (merge.status === 'MERGED') {
-    mergedShas.push(...results.filter(isMergeable).map((r) => ({ task: r.task, headSha: r.headSha })))
+    mergedShas.push(...results.filter(isMergeable).map((r) => ({ task: r.task, branch: r.branch })))
   }
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
@@ -2201,8 +2156,8 @@ if (budgetExhausted()) {
       ? ('CANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree): ' +
          cannotVerifyItems.map((c) => '[' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('; ') + '. ')
       : ''
-    // #114: the critic prompt carries <runDir> (the heads/ sidecar dir), so the
-    // ENGINE-AUTHORED text flows through fillPaths like every other baked prompt.
+    // The ENGINE-AUTHORED text flows through fillPaths like every other baked
+    // prompt (the critic derives its shas from git, so it carries no sidecar path).
     // The two non-engine spans stay out of that call: globalConstraintsBlock is
     // plan-authored and concatenated outside it, and the reviewer-authored
     // CANNOT-VERIFY checklist — which sits mid-prompt — is spliced into its seam
@@ -2249,9 +2204,9 @@ if (!review || typeof review !== 'object') {
 // carries the critic's verified-by-construction-but-not-sandbox-executable items,
 // each tagged with a reason (browser/runtime/external/manual).
 // ── Integration ancestry assertion (#70) ─────────────────────────────────────
-// The completeness critic, detached on the integration HEAD, asserted for every
-// mergeable done task's recorded headSha that `git merge-base --is-ancestor <sha>
-// HEAD` succeeds. A non-empty ancestryMisses means a task the run reported as
+// The completeness critic, detached on the integration HEAD, resolved every
+// mergeable done task's branch tip itself and asserted `git merge-base
+// --is-ancestor <tip> HEAD` succeeds. A non-empty ancestryMisses means a task the run reported as
 // merged never landed in the integration tree — a silent drop. Name each and
 // force the run BLOCKED: withhold gitVerified (SKILL.md Step 5 reads a false
 // gitVerified as do-not-Approve) so the gate cannot mistake a lossy run for clean.
