@@ -170,6 +170,9 @@ const { read, reportPath, detailPath } = await driveOne({
   repoDir: process.cwd(),              // local checkout the base is pushed from
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
+  // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
+  // memory from <evidenceDir>/stat.json once runs carry it (W2); golden 8/16 default.
+  // sandboxCpu: 8, sandboxMemory: '16GB',
 })
 
 console.log(JSON.stringify(read, null, 2))
@@ -195,11 +198,29 @@ needs no exec wrapper of its own:
 - **Evidence before teardown (#197).** `driveOne` pulls the small sandbox
   artifacts — `shim.log`, `fleet-run.json`, `~/.claude/projects` (engine
   transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to
-  `<dbDir>/sandbox-logs/fleet-<runId>-<stamp>/sandbox-logs.tgz` before every
-  `destroySandbox` (normal end of run and the cap-overshoot action alike). The
-  pull is best-effort and bounded (`logPullTimeoutMs`, default 120 s): a failed
-  pull lands in `detail.errors` and teardown proceeds. `detail.sandboxLogs`
-  names the archive, or is `null`.
+  `<evidenceDir>/sandbox-logs/fleet-<runId>-<stamp>/sandbox-logs.tgz` before
+  every `destroySandbox` (normal end of run and the cap-overshoot action alike),
+  where `evidenceDir` defaults to `<dbDir>-evidence`. The pull is best-effort and
+  bounded (`logPullTimeoutMs`, default 120 s): a failed pull lands in
+  `detail.errors` and teardown proceeds. `detail.sandboxLogs` names the archive,
+  or is `null`.
+
+  On the same leg, two control-plane captures that only exist while the VM does:
+  `stat <vm> --json --range=24h` → `<evidenceDir>/stat.json` and
+  `billing credits usage --group=box --detail --json` →
+  `<evidenceDir>/credits.json`, each bounded by its own `logPullTimeoutMs`. The
+  raw payloads are kept whether or not they parse; the derived reads are
+  `detail.sandboxStat` (`{peakCores, meanCores, peakMemBytes}`, or `null`) and
+  `detail.creditSpendUsd` (USD, `0` when the ledger carried no row for this box,
+  `null` when unknown). Every failure here — refused command, non-zero exit,
+  timeout, bad JSON — lands in `detail.errors` and leaves the field `null`;
+  `destroySandbox` still runs.
+
+  Keep `dbDir` across runs — never `rm` it; a persisted store is test-pinned safe
+  (prior-run rows do not perturb a new run's gate read). Evidence lives outside it
+  in `evidenceDir` (default `<dbDir>-evidence`), so a fresh-store experiment never
+  deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
+  10 minutes.
 
 `driveOne` defaults `runId` to `run-1` and `capTokens` to `2_000_000` — pass
 explicit `runId`/`capTokens` in the options object above for anything other
@@ -211,7 +232,7 @@ below for the one case that still needs an operator's hand.
 ## Gate read
 
 `driveOne` writes its return value's `read` object verbatim to `reportPath`
-(default `<dbDir>/gate-read-<runId>.json`) — the file **is** the §W1d read,
+(default `<evidenceDir>/gate-read-<runId>.json`) — the file **is** the §W1d read,
 byte for byte. Check it against the five pre-registered questions:
 
 | Field | §W1d question |

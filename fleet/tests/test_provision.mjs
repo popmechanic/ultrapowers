@@ -243,4 +243,174 @@ import { hashToken } from '../tokens.mjs'
   assert.equal(cmds.length, 0, 'a multi-line engineEnv value must be refused before any command runs')
 }
 
+// provisionRun with sizing knobs: cpu, memory, disk (#216)
+{
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+
+  await provisionRun({
+    golden: 'fleet-golden',
+    runId: 'r6',
+    baseRef: 'refs/heads/main',
+    repoDir: '/tmp/repo',
+    ttlMs: 1000,
+    wsUrl: 'ws://127.0.0.1:8151/fleet',
+    port: 8151,
+    planPath: 'p.md',
+    exec,
+    cpu: 4,
+    memory: '8GB',
+    disk: '30GB',
+  })
+
+  assert.ok(
+    cmds[0].startsWith('ssh exe.dev "cp fleet-golden fleet-r6 --cpu=4 --memory=8GB --disk=30GB --json"'),
+    'sized clone must carry the flags: ' + cmds[0]
+  )
+}
+
+// sized clone with only cpu and memory, disk omitted
+{
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+
+  await provisionRun({
+    golden: 'fleet-golden',
+    runId: 'r7',
+    baseRef: 'refs/heads/main',
+    repoDir: '/tmp/repo',
+    ttlMs: 1000,
+    wsUrl: 'ws://127.0.0.1:8151/fleet',
+    port: 8151,
+    planPath: 'p.md',
+    exec,
+    cpu: 2,
+    memory: '16GB',
+  })
+
+  assert.ok(
+    cmds[0].startsWith('ssh exe.dev "cp fleet-golden fleet-r7 --cpu=2 --memory=16GB --json"'),
+    'partial sizing must carry only the provided flags: ' + cmds[0]
+  )
+}
+
+// unsized clone unchanged (the existing scenario — no sizing knobs)
+{
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    if (cmd.startsWith('ssh -o BatchMode=yes') && cmd.endsWith(' true')) {
+      return { code: 0, stdout: '' }
+    }
+    return { code: 0, stdout: '{}' }
+  }
+
+  await provisionRun({
+    golden: 'fleet-golden',
+    runId: 'r8',
+    baseRef: 'refs/heads/main',
+    repoDir: '/tmp/repo',
+    ttlMs: 1000,
+    wsUrl: 'ws://127.0.0.1:8151/fleet',
+    port: 8151,
+    planPath: 'p.md',
+    exec,
+  })
+
+  assert.ok(
+    cmds[0].startsWith('ssh exe.dev "cp fleet-golden fleet-r8 --json"'),
+    'unsized clone must not have sizing flags: ' + cmds[0]
+  )
+}
+
+// provisionRun: bad cpu values are refused before any exec call
+for (const bad of [{ cpu: 'four' }, { cpu: 0 }, { cpu: -2 }, { cpu: 3.5 }]) {
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+
+  await assert.rejects(
+    () =>
+      provisionRun({
+        golden: 'fleet-golden',
+        runId: 'r9',
+        baseRef: 'refs/heads/main',
+        repoDir: '/tmp/repo',
+        ttlMs: 1000,
+        wsUrl: 'ws://127.0.0.1:8151/fleet',
+        port: 8151,
+        planPath: 'p.md',
+        exec,
+        cpu: bad.cpu,
+      }),
+    /cpu/,
+    'invalid cpu must be refused: ' + JSON.stringify(bad)
+  )
+  assert.equal(cmds.length, 0, 'refusal must happen before any exec call for: ' + JSON.stringify(bad))
+}
+
+// provisionRun: bad memory values are refused before any exec call
+for (const bad of [{ memory: '8' }, { memory: '8gb; rm -rf /' }, { memory: 'lots' }]) {
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+
+  await assert.rejects(
+    () =>
+      provisionRun({
+        golden: 'fleet-golden',
+        runId: 'r10',
+        baseRef: 'refs/heads/main',
+        repoDir: '/tmp/repo',
+        ttlMs: 1000,
+        wsUrl: 'ws://127.0.0.1:8151/fleet',
+        port: 8151,
+        planPath: 'p.md',
+        exec,
+        memory: bad.memory,
+      }),
+    /memory/,
+    'invalid memory must be refused: ' + JSON.stringify(bad)
+  )
+  assert.equal(cmds.length, 0, 'refusal must happen before any exec call for: ' + JSON.stringify(bad))
+}
+
+// provisionRun: bad disk values are refused before any exec call
+for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]) {
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    return { code: 0, stdout: '{}' }
+  }
+
+  await assert.rejects(
+    () =>
+      provisionRun({
+        golden: 'fleet-golden',
+        runId: 'r11',
+        baseRef: 'refs/heads/main',
+        repoDir: '/tmp/repo',
+        ttlMs: 1000,
+        wsUrl: 'ws://127.0.0.1:8151/fleet',
+        port: 8151,
+        planPath: 'p.md',
+        exec,
+        disk: bad.disk,
+      }),
+    /disk/,
+    'invalid disk must be refused: ' + JSON.stringify(bad)
+  )
+  assert.equal(cmds.length, 0, 'refusal must happen before any exec call for: ' + JSON.stringify(bad))
+}
+
 console.log('ALL TESTS PASSED')
