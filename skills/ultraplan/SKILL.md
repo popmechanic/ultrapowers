@@ -39,9 +39,13 @@ independence the sequential pen glides over. Five moves:
    with no real data/interface dependency. Let colliding `Modify` lines collide.
    Two obligations survive: `**Files:**` blocks remain required — they are the
    compiler's contention-detection input — and declare `**Commutes:**` on shared
-   registration surfaces (route tables, export lists, manifests) so the engine
-   can classify that contention and union the additions instead of resolving
-   them. One exception: chain non-text (binary/symlink) same-file pairs with
+   append-natured surfaces so the engine can classify that contention and union
+   the additions instead of resolving them. That means registration surfaces
+   (route tables, export lists, manifests) AND shared test modules: when two
+   tasks each append test functions to the same test file — the most common
+   contention in practice — both tasks declare `**Commutes:**` on it. Declare
+   only for append-shaped edits; a task that also modifies or deletes existing
+   lines in the file must not declare it. One exception: chain non-text (binary/symlink) same-file pairs with
    `Depends-on` — they run in parallel otherwise and always fall back.
 4. **Interrogate every dependency.** For each `Depends-on` you are about to write:
    true data/interface dependency, or just the order you thought of it in? Keep

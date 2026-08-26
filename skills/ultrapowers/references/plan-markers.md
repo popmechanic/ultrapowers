@@ -248,8 +248,10 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   ordering prose.
 - Let same-file edits stand. Concurrent same-file text writes fold at merge, so never
   split a feature, chain a fan, or add a `**Depends-on:**` to dodge a collision. Declare
-  `**Commutes:**` on shared registration surfaces; chain only non-text (binary/symlink)
-  same-file pairs, which always fall back.
+  `**Commutes:**` on shared append-natured surfaces — registration surfaces (route
+  tables, export lists, manifests) and shared test modules where two tasks each append
+  test functions to the same file; both writers declare it, and only for append-shaped
+  edits. Chain only non-text (binary/symlink) same-file pairs, which always fall back.
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.
