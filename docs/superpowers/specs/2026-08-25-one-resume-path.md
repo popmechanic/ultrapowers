@@ -184,3 +184,34 @@ The tail's *price* levers, in order, none touching the frozen periphery:
    token/wall delta vs. missed-finding rate.
 
 Filed as the answer to #241; no code changed.
+
+## Tail composition measurement (2026-08-26 — lever 2 executed)
+
+`audit_run.py` over the six workflow launches of the real five-round tail run
+(`run-20260821125904`, the W1 build — `findings.json`…`findings5.json`, wf ids
+per its `wf-runs.json`; transcripts under the session's
+`subagents/workflows/`). Output tokens per role class:
+
+| | round 0 (main) | tail (rounds 1–5) | tail share |
+|---|---:|---:|---:|
+| implement | — | 375,153 | **48.4%** |
+| review (per-task) | — | 209,553 | **27.0%** |
+| completeness critic | — | 140,944 | 18.2% |
+| merge | — | 34,385 | 4.4% |
+| setup | — | 15,009 | 1.9% |
+| **total** | 565,650 | **775,044** | — |
+
+Tail = 57.8% of the run's 1,340,694 output tokens — matching the ledger's 58%
+figure, so this is the same run the finding measured.
+
+**Reading: the critic does NOT dominate.** Implement+review is 75.4% of the
+tail; the critic is 18.2%. Per this note's own decision rule ("only if the
+critic dominates → lever 3"), the **scoped-critic experiment (#229) lacks its
+trigger** and stays parked. The live lever is **lever 1 — batch amendments**:
+five rounds each re-paid a fixed setup+merge+critic overhead averaging ~38k
+tokens/round; folding five single-finding rounds into two batched ones would
+have saved ~115k tokens of pure round overhead *plus* the redundant per-round
+implement/review restarts, with zero rigor traded. If ultralearn shows the
+one-finding-per-round pattern recurring, the guard is the composer-side nudge
+this note already names (`redirect_args.py` warns on a fresh round < N minutes
+after the prior one), not new machinery.
