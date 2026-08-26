@@ -333,10 +333,12 @@ prompts carry no heads-recording step, and no dispatch appends a slot line.
 Each consumer derives instead:
 
 - The **completeness critic** derives its detach target from the branch it was sent to verify:
-  it confirms `git branch --show-current` is the integration branch, takes `git rev-parse HEAD`
-  as `<derived>`, and detaches there. The recorded merge sha stays in the prompt as a
-  cross-check only — a mismatch reports `recorded merge sha <recorded> != derived integration
-  tip <derived>` — and a wrong branch reports BLOCKED rather than a guessed tree.
+  it confirms `git branch --show-current` is the integration branch (or that it is already
+  detached exactly on that branch's tip — the idempotent re-entry after its own detach, #275),
+  takes `git rev-parse HEAD` as `<derived>`, and detaches there. The recorded merge sha stays
+  in the prompt as a cross-check only — a mismatch reports `recorded merge sha <recorded> !=
+  derived integration tip <derived>` — and a wrong branch reports BLOCKED rather than a
+  guessed tree.
 - The **ancestry assertion** hands the critic `{task, branch}` pairs, not shas. The critic
   resolves each tip itself with `git rev-parse <branch>`, and a branch that does not resolve
   is an ancestry miss exactly like a tip that is not an ancestor.

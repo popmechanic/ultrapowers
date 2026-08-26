@@ -17,6 +17,7 @@ the report atomically and only on full success.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -70,6 +71,11 @@ def main():
               % (a.report, e), file=sys.stderr)
         sys.exit(1)
 
+    if not isinstance(report, dict):
+        print("finalize_report: --report %s is not a JSON object" % a.report,
+              file=sys.stderr)
+        sys.exit(1)
+
     target, shape_err = select_target(report)
     if shape_err:
         print("finalize_report: " + shape_err, file=sys.stderr)
@@ -84,7 +90,11 @@ def main():
     errors, warnings = [], []
     # #275: the run base (agent-reported at setup — context, not authority)
     # lets us refuse a merged claim whose branch carries no commits beyond it.
-    base = rev_parse(a.repo, str(target.get("baseSha") or ""))
+    # Shape-gated to a hex sha: a symbolic value ("HEAD") would resolve to
+    # whatever the repo's HEAD is and could false-block every genuine task.
+    base_str = str(target.get("baseSha") or "")
+    base = (rev_parse(a.repo, base_str)
+            if re.fullmatch(r"[0-9a-f]{7,40}", base_str) else None)
     if not base:
         warnings.append("report carries no resolvable baseSha — "
                         "vacuous-merge guard skipped")

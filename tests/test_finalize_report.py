@@ -282,3 +282,23 @@ def test_malformed_report_names_the_fact(tmp_path):
     assert r.returncode == 1
     assert "not valid JSON" in r.stderr
     assert "Traceback" not in r.stderr
+
+
+def test_non_object_report_names_the_fact(tmp_path):
+    repo, tips, tip = make_run(tmp_path)
+    p = tmp_path / "report.json"
+    p.write_text("[]")   # valid JSON, wrong shape
+    r = run(p, repo)
+    assert r.returncode == 1
+    assert "not a JSON object" in r.stderr
+    assert "Traceback" not in r.stderr
+
+
+def test_symbolic_base_sha_is_ignored_not_resolved(tmp_path):
+    # "HEAD" would resolve to the integration tip and false-block every
+    # genuine merged task — the guard is shape-gated to hex shas.
+    repo, tips, tip = make_run(tmp_path)
+    report = make_report(tmp_path, tips, base_sha="HEAD")
+    r = run(report, repo)
+    assert r.returncode == 0, r.stderr
+    assert "vacuous-merge guard skipped" in r.stderr
