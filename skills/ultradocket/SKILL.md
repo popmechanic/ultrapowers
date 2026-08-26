@@ -240,7 +240,11 @@ entry's residual manifest (`<runDir>/residual-manifest.md`, derived per the
 runs `residual_manifest.py --check` per entry — exit 2 surfaces its
 undispositioned rows in this evidence block; an entry with no gate report
 derives a zero-row manifest, which passes vacuously); plus portfolio
-totals and the could-have-parallelized projection. Then the operator disposes of
+totals and the could-have-parallelized projection. Run the close-of-run hygiene
+check (`skills/ultrapowers/scripts/hygiene_check.sh`) **before the merge to
+base and again at close**, quoting its JSON receipt verbatim beside the other
+receipts — a red receipt blocks the finishing handoff NEEDS_ACK-style, never a
+silent skip. Then the operator disposes of
 the portfolio: merge the docket integration line to base, or open per-issue PRs
 (mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
 advances merged entries `executed → verified`. Parked branches are presented for

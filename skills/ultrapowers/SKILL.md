@@ -280,7 +280,10 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   (single-run pipelines already got it at Step 4). Then (every run) derive
   `<runDir>/residual-manifest.md` (`residual_manifest.py --run-dir <runDir>`) and disposition
   every row (`residual_manifest.py --check` green), apply the
-  `references/finishing-notes.md` checks, and proceed to
+  `references/finishing-notes.md` checks, run the close-of-run hygiene check
+  (`hygiene_check.sh` — quote its JSON receipt verbatim; a red receipt is a
+  NEEDS_ACK-style block on the finishing handoff, never silently skipped;
+  `--fix` deletes only merged engine branches), and proceed to
   `superpowers:finishing-a-development-branch`, carrying the runbook and
   manifest.
 - **Salvage** — offer whenever the report has `failed` tasks or dep-blocked
