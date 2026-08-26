@@ -648,8 +648,11 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
   (planPath ? ('Read the original plan document at ' + planPath + ' first. ') : '') +
   'First, put yourself on the exact tree the run produced, and derive that tree ' +
   'from git itself — never detach at a sha typed into this prompt. Confirm ' +
-  'git branch --show-current prints ' + integrationBranch + '; if it does not, ' +
-  'report BLOCKED and produce no findings — do not guess a tree. Run ' +
+  'git branch --show-current prints ' + integrationBranch + '; if it prints ' +
+  'nothing (a detached HEAD) but git rev-parse HEAD equals git rev-parse ' +
+  integrationBranch + ', you are already detached on the integration tip — ' +
+  'proceed; in any other case where it does not print ' + integrationBranch +
+  ', report BLOCKED and produce no findings — do not guess a tree. Run ' +
   'git rev-parse HEAD: that sha is <derived>, your detach target. Then run ' +
   'git checkout --detach <derived> and confirm git rev-parse HEAD still equals ' +
   '<derived>; if the detach fails (a dirty or conflicted worktree) or the ' +
