@@ -1504,7 +1504,8 @@ try {
     // hooks SKILL.md Step 5's standing-grant clause reads.
     for (const literal of ['never end a turn on a question', 'NEEDS_ACK',
       'reason runtime or external', 'standing-approval.json FIRST',
-      'Type manual is post-merge runbook material', 'BLOCKED']) {
+      'Type manual is post-merge runbook material', 'BLOCKED',
+      'never end a turn to wait', 'kills the run']) {
       assert.ok(STANDING_DIRECTIVE.includes(literal),
         'standing directive lost the literal: ' + literal)
     }

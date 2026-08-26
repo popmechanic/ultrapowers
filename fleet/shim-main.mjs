@@ -652,7 +652,11 @@ export const ENGINE_COMMAND = 'claude'
  */
 export const STANDING_DIRECTIVE =
   'Headless fleet run: no operator is present until the run ends, so never end a turn on a ' +
-  'question. Standing pre-authorization for the pre-merge gate: on a NEEDS_ACK verdict, ' +
+  'question — and never end a turn to wait: while the engine workflow (or any background ' +
+  'task of this run) is incomplete, stay active and await it with blocking work in-turn ' +
+  '(bounded polling of its state is fine); ending a turn to "wait for a notification" ' +
+  'terminates this headless session and kills the run. ' +
+  'Standing pre-authorization for the pre-merge gate: on a NEEDS_ACK verdict, ' +
   'approve if and only if every ack is a deferredVerification item with reason runtime or ' +
   'external — write run-<stamp>/standing-approval.json FIRST, quoting this directive ' +
   'verbatim as the instruction. A plan task of Type manual is post-merge runbook material, ' +
