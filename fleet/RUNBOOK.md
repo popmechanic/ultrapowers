@@ -165,7 +165,7 @@ const CLAUDE_CODE_OAUTH_TOKEN = fs.readFileSync('/home/exedev/.fleet/claude-oaut
 const { read, reportPath, detailPath } = await driveOne({
   planPath: process.argv[2],          // e.g. docs/superpowers/plans/some-approved-plan.md
   golden: 'fleet-golden',
-  port: 8180,                          // pick a port outside the 8151-8159 test range
+  port: 8180,                          // any explicit port works; the fleet tests bind ephemeral ports (port 0)
   dbDir: '/tmp/fleet-orch-live',       // orchestrator's per-path SQLite persister dir
   repoDir: process.cwd(),              // local checkout the base is pushed from
   exec,

@@ -88,7 +88,6 @@ export const driveOne = async ({
   logPullTimeoutMs = 120_000,
   engineEnv,
 }) => {
-  const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${port}/${FLEET_PATH}`
   const resolvedReportPath = reportPath ?? path.join(dbDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
 
@@ -135,7 +134,7 @@ export const driveOne = async ({
     if (destroyed || !vmName) return
     destroyed = true
     await pullLogsOnce()
-    await destroySandbox({ vmName, port, exec })
+    await destroySandbox({ vmName, port: effectivePort, exec })
   }
 
   const actions = {
@@ -151,6 +150,8 @@ export const driveOne = async ({
 
   const orchestrator = await startOrchestrator({ port, dbDir, tokenRecords, actions, clock })
   const { store, sweep, heartbeat, stop } = orchestrator
+  const effectivePort = orchestrator.port
+  const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${effectivePort}/${FLEET_PATH}`
 
   let sweeping = false
   const runSweep = () => {
@@ -244,7 +245,7 @@ export const driveOne = async ({
       repoDir,
       ttlMs,
       wsUrl: resolvedWsUrl,
-      port,
+      port: effectivePort,
       planPath,
       engineEnv,
       exec,
@@ -451,7 +452,11 @@ export const driveOne = async ({
     // Where the pre-teardown evidence pull landed (`sandbox-logs.tgz`), or
     // null when it failed — the failure is in `errors`.
     sandboxLogs: null,
+    // The orchestrator's actual bound port (`port: 0` binds an ephemeral one) —
+    // the read-back channel triage uses when `port` was not pinned.
+    effectivePort: null,
   }
+  detail.effectivePort = effectivePort
 
   // Tear down BEFORE the report is written, so a failed teardown — the one
   // failure that keeps costing money after the run is over — is recorded in the

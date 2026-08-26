@@ -1,9 +1,10 @@
 // fleet/tests/test_drive.mjs — sentinel-style spec for the W1 drive-one driver.
 //
-// Concurrency-safe by construction: port 8153 is reserved for this file alone
-// (8151-8159 is the fleet test range), and every byte of state — the throwaway
-// git repos, the orchestrator's sqlite dir, the gate-read report — lives under
-// an `fs.mkdtemp` directory unique to this process. No shared fixtures.
+// Concurrency-safe by construction: it drives with `port: 0` (an ephemeral
+// port, read back off `detail.effectivePort`), and every byte of state — the
+// throwaway git repos, the orchestrator's sqlite dir, the gate-read report —
+// lives under an `fs.mkdtemp` directory unique to this process. No shared
+// fixtures.
 //
 // The sandbox VM is simulated; nothing about the *verification* is. Two REAL
 // git repos stand in for the two ends of the transport — `repoDir` is the
@@ -71,8 +72,6 @@ import {
   shellExec,
   spawnEngineProcess,
 } from '../shim-main.mjs'
-
-const PORT = 8153
 
 // A frozen clock. Every claim/guard decision in the fleet is a pure function of
 // it, so freezing removes all wall-clock flake from lease continuity; the
@@ -279,7 +278,7 @@ try {
   const driveDefaults = {
     planPath: 'docs/superpowers/plans/example.md',
     golden: 'fleet-golden',
-    port: PORT,
+    port: 0,
     repoDir,
     clock,
     ttlMs: 60_000,
@@ -448,11 +447,13 @@ try {
     assert.ok(dest.startsWith(path.join(tmp, 'db1')), `log destination must be under dbDir, got: ${dest}`)
     assert.ok(fs.existsSync(path.dirname(dest)), 'the destination directory is created before the pull runs')
     assert.equal(detail.sandboxLogs, dest, 'the detail names where the evidence landed')
-    // The tunnel is torn down with the sandbox (#196): after the rm.
-    const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`))
+    // The tunnel is torn down with the sandbox (#196): after the rm. The
+    // orchestrator bound an ephemeral port (`port: 0`); `detail.effectivePort`
+    // is the read-back channel for the port it actually bound.
+    const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`))
     assert.ok(killIdx > rmIdx, `the tunnel kill follows the rm, got: ${JSON.stringify(exec.cmds)}`)
     // And the tunnel was opened before the shim started.
-    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${PORT}:127.0.0.1:${PORT} fleet-${runId}.exe.xyz`)
+    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
     const shimIdx = exec.cmds.findIndex((c) => /nohup node .*shim-main\.mjs/.test(c))
     assert.ok(tunnelIdx >= 0 && tunnelIdx < shimIdx, `the reverse tunnel opens before the shim starts, got: ${JSON.stringify(exec.cmds)}`)
 
@@ -462,7 +463,7 @@ try {
     // synced any store row, so a driver that does not forward it launches the
     // engine with a literal `undefined` plan path.
     assert.equal(exec.delivered.runId, runId)
-    assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${PORT}/fleet`)
+    assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${detail.effectivePort}/fleet`)
     assert.equal(exec.delivered.planPath, driveDefaults.planPath)
 
     // The stamp names the code under test. `main()` stamps BEFORE the run, and

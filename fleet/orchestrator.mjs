@@ -138,6 +138,7 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
     wss.once('listening', resolve)
     wss.once('error', reject)
   })
+  const boundPort = wss.address().port
 
   const openDbs = []
   const persisters = []
@@ -156,7 +157,7 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
   // what makes the sweep honest: it judges the same merged view every sandbox
   // sees, over the same wire, rather than a privileged side channel.
   const store = createMergeableStore(SUPERVISOR_ID)
-  const socket = new WebSocket(`ws://127.0.0.1:${port}/${FLEET_PATH}?token=${loopbackToken}`)
+  const socket = new WebSocket(`ws://127.0.0.1:${boundPort}/${FLEET_PATH}?token=${loopbackToken}`)
   const synchronizer = await createWsSynchronizer(store, socket)
   await synchronizer.startSync()
 
@@ -305,5 +306,5 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
     openDbs.length = 0
   }
 
-  return { store, sweep, heartbeat, stop }
+  return { store, sweep, heartbeat, stop, port: boundPort }
 }
