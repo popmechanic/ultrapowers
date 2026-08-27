@@ -471,4 +471,29 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
   assert.equal(typeof record.tokenHash, 'string')
 }
 
+// --- #190: payload validation refuses before any command ---------------------
+{
+  const base = { golden: 'fleet-golden', runId: 'run-v1', baseRef: 'HEAD', repoDir: '/tmp/x', ttlMs: 60_000, wsUrl: 'ws://127.0.0.1:1/fleet', port: 1, planPath: 'docs/p.md', registerToken: () => {}, clock: () => 0 }
+  for (const [field, value, problem] of [
+    ['runId', undefined, 'missing'],
+    ['planPath', undefined, 'missing'],
+    ['planPath', '', 'missing'],
+    ['wsUrl', undefined, 'missing'],
+    ['ttlMs', undefined, 'missing'],
+    ['ttlMs', -5, 'not a positive finite number'],
+  ]) {
+    const cmds = []
+    const exec = async (cmd) => {
+      cmds.push(cmd)
+      return { code: 0, stdout: '{}' }
+    }
+    await assert.rejects(
+      provisionRun({ ...base, [field]: value, exec }),
+      new RegExp(`invalid payload — ${field}`),
+      `${field}=${String(value)} must refuse`,
+    )
+    assert.deepEqual(cmds, [], `${field}=${String(value)} must refuse BEFORE any exec call`)
+  }
+}
+
 console.log('ALL TESTS PASSED')

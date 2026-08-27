@@ -246,9 +246,10 @@ needs no exec wrapper of its own:
   deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
   10 minutes.
 
-`driveOne` defaults `runId` to `run-1`, `capTokens` to `500_000` (W2 charter
-constant), and `ttlMs` to 4h — still pass explicit `runId` (never reuse one,
-#211) and pass `capTokens`/`ttlMs` explicitly for anything unusual.
+`driveOne` requires an explicit `runId` (it refuses to run without one —
+runIds are unique per account lifetime, #211) and defaults `capTokens` to
+`500_000` (W2 charter constant) and `ttlMs` to 4h — pass `capTokens`/`ttlMs`
+explicitly for anything unusual.
 `destroySandbox` (`fleet/provision.mjs`) is
 called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**

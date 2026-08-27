@@ -235,6 +235,10 @@ try {
     // mutable clock here and passes the SAME clock to `driveOne`.
     clock: stubClock = clock,
     invokeRun: invokeRunOverride = null,
+    // #282/#190: the stamp the sandbox publishes. Defaults to the honest
+    // `readStamp` answer; a scenario that must model a sandbox running code
+    // OTHER than the pushed base (a stale golden) supplies a wrong one here.
+    stamp: stampOverride = null,
   }) => {
     const sandboxId = sandboxIdFor(runId)
     return (async () => {
@@ -245,7 +249,7 @@ try {
       const synchronizer = await createWsSynchronizer(store, socket)
       await synchronizer.startSync()
 
-      const stamp = await readStamp({ repoDir, exec })
+      const stamp = stampOverride ?? (await readStamp({ repoDir, exec }))
       // Stamped before the run so a crashed run still carries its identity, and
       // again after, because `runShim`'s status `setRow` replaces the whole row
       // and can drop cells it has not yet synced.
@@ -2403,6 +2407,154 @@ try {
     )
     assert.ok(Date.now() - startedAt < 15_000, 'the parked wait is bounded by parkedPublishWaitMs, not the gate-green bound')
   }
+
+  // -- V1. #282/#190: the stamp must NAME THE PUSHED BASE ---------------------
+  // The run-16 golden sat four releases stale and nothing said so: `versionStamp`
+  // recorded non-emptiness only, so a sandbox that ran the IMAGE's code stamped
+  // two perfectly non-empty cells and read GREEN. The driver knows exactly what
+  // it pushed — here the sandbox publishes a well-formed stamp naming a
+  // different version at a different sha, and the read must go red and say why.
+  //
+  // Every other leg is the resolvable-receipt shape from scenario 4, so a red
+  // `versionStamp` here can only come from the cross-check: `o1` and
+  // `receiptsResolvable` stay TRUE alongside it.
+  {
+    const runId = 'run-drive-stamp-mismatch'
+    const wrongSha = 'deadbeef'.repeat(5)
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+          stamp: { pluginVersion: '0.0.1', engineSha: wrongSha },
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'dbV1'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    // Full equality: still exactly the five §W1d keys, and only `versionStamp`
+    // moved. A stale-golden run is no longer indistinguishable from a correct one.
+    assert.deepEqual(read, {
+      o1: true,
+      receiptsResolvable: true,
+      leaseContinuity: true,
+      versionStamp: false,
+      spendObservational: { reported: 4200, ledger: 4200 },
+    })
+
+    // …and it says WHICH code ran and which was pushed. Pinned in full: the
+    // expectation is read from the driver's own `baseRef`, so the fixture's
+    // `headSha`/`9.9.9` appearing here is what proves the source.
+    const mismatches = detail.errors.filter((e) => /version stamp mismatch/.test(e))
+    assert.deepEqual(mismatches, [
+      `version stamp mismatch: sandbox ran 0.0.1@${wrongSha}, ` +
+        `pushed base is 9.9.9@${headSha} — stale golden or wrong base (#282)`,
+    ])
+    // The expectation RESOLVED — a skipped cross-check would be a different
+    // (and silently green) failure mode.
+    assert.ok(
+      !detail.errors.some((e) => /version cross-check unavailable/.test(e)),
+      `the driver must have resolved its own base, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------
+  // The cross-check compares against the driver's OWN repo. If that repo cannot
+  // answer — a `baseRef` that does not resolve locally, a manifest missing at
+  // that ref — the honest reading is "unknown", not "wrong": `versionStamp`
+  // keeps its non-emptiness meaning and the gap is narrated instead. Otherwise
+  // a driver-side repo problem manufactures a red on a perfectly good run.
+  {
+    const runId = 'run-drive-stamp-unresolvable'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+          stamp: { pluginVersion: '0.0.1', engineSha: 'deadbeef'.repeat(5) },
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      baseRef: 'no-such-base-ref',
+      dbDir: path.join(tmp, 'dbV2'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(read.versionStamp, true, 'an unresolvable expectation must not manufacture a red stamp')
+    assert.ok(
+      detail.errors.some((e) => e === 'version cross-check unavailable: could not resolve no-such-base-ref locally'),
+      `the skipped cross-check is on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      !detail.errors.some((e) => /version stamp mismatch/.test(e)),
+      `a skipped check never reports a mismatch, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- V3. an unsafe baseRef never reaches the cross-check's shell ------------
+  // `baseRef` is operator input, and the cross-check interpolates it straight
+  // into `git -C … rev-parse <ref>` and `git … show <ref>:<manifest>`. It passes
+  // the same `isSafeBranchName` guard the pointer halves do BEFORE either
+  // command is built; a rejected ref takes the skip path, exactly as an
+  // unresolvable one does. `provision` is stubbed to throw so the drive stops
+  // right after the cross-check — this scenario is about the two commands only.
+  {
+    const badRef = 'main; touch /tmp/fleet-pwned'
+    const cmds = []
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      baseRef: badRef,
+      dbDir: path.join(tmp, 'dbV3'),
+      runId: 'run-drive-stamp-unsafe',
+      exec: async (cmd) => {
+        cmds.push(cmd)
+        return { code: 0, stdout: '' }
+      },
+      provision: async () => {
+        throw new Error('provision stubbed off')
+      },
+    })
+    assert.ok(
+      !cmds.some((c) => c.includes(badRef)),
+      `no command may carry an unsafe baseRef, got: ${JSON.stringify(cmds)}`,
+    )
+    assert.ok(
+      detail.errors.some((e) => e === `version cross-check unavailable: could not resolve ${badRef} locally`),
+      `an unsafe ref skips the cross-check on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // Control: scenario 1 above asserts the full-equality read with
+  // `versionStamp: true` and is UNTOUCHED by this change — its stub stamps from
+  // `BASE_REF`, which in the fixture repo is exactly the base the driver pushes.
+
+  // -- #211 residual: runId is required, never defaulted ----------------------
+  await assert.rejects(
+    driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'dbReq'), exec: async () => ({ code: 0, stdout: '' }) }),
+    /runId is required/,
+  )
 
   console.log('ALL TESTS PASSED')
 } finally {

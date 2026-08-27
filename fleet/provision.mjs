@@ -33,6 +33,9 @@ const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/
 /** POSIX single-quote a value: `'` becomes `'\''`. */
 const shQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`
 
+/** True for a value that is a `string` with at least one character. */
+const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0
+
 /**
  * Render `engineEnv` as the body of a `.`-sourceable sh file, one
  * `KEY='value'` line per entry. Keys must be plain env identifiers and values
@@ -151,6 +154,19 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
 export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
+  // Validate the payload before the first ssh (#190): `JSON.stringify` silently
+  // drops `undefined` fields, so an unvalidated caller mistake does not fail
+  // here — it fails two stages later, on the sandbox, with a payload missing
+  // the field (a literal `undefined` plan path burns a sandbox; a missing
+  // `ttlMs` breaks the lease math). Refuse loudly instead, exactly as
+  // `driveOne`'s runId guard does.
+  if (!isNonEmptyString(runId)) throw new Error('provisionRun: invalid payload — runId is missing')
+  if (!isNonEmptyString(wsUrl)) throw new Error('provisionRun: invalid payload — wsUrl is missing')
+  if (!isNonEmptyString(planPath)) throw new Error('provisionRun: invalid payload — planPath is missing')
+  if (!(Number.isFinite(ttlMs) && ttlMs > 0)) {
+    throw new Error('provisionRun: invalid payload — ttlMs is not a positive finite number')
+  }
+
   const vmName = `fleet-${runId}`
   const withEngineEnv = Boolean(engineEnv && Object.keys(engineEnv).length > 0)
   // Validate up front: a bad key/value must fail before the golden is cloned.
