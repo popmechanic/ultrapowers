@@ -25,10 +25,9 @@ import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import WebSocket from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { runShim } from './shim.mjs'
+import { runShim, connectOpenWs, deliverAndClose } from './shim.mjs'
 
 export const ASSIGNMENT_PATH = '/home/exedev/fleet-run.json'
 export const REPO_DIR = '/home/exedev/repo'
@@ -789,8 +788,15 @@ export const main = async ({
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
   // the reported-token scalar are written over this one.
+  //
+  // The socket comes from `connectOpenWs`, not a bare `new WebSocket(...)`
+  // (#288): a rejection here propagates straight out of `main()` to the
+  // `invokedDirectly` catch below, so the engine never launches with a dead
+  // aux transport.
+  const url = withToken(wsUrl, token)
+  const ws = await connectOpenWs(url, { log: console.error })
   const store = createMergeableStore(auxStoreId(sandboxId))
-  const synchronizer = await createWsSynchronizer(store, new WebSocket(withToken(wsUrl, token)))
+  const synchronizer = await createWsSynchronizer(store, ws)
   await synchronizer.startSync()
 
   // Read ONCE and re-applied below rather than re-read after the run. That is
@@ -833,9 +839,7 @@ export const main = async ({
   await applyRunReceipts(store, runId, { repoDir, exec, branch })
   applyBranch(store, runId, branch)
 
-  await synchronizer.save()
-  await synchronizer.stopSync()
-  await synchronizer.destroy()
+  await deliverAndClose({ store, synchronizer, ws, url, log: console.error })
   return outcome
 }
 

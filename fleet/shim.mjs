@@ -10,6 +10,115 @@ import { tryClaim, tryRenew, spendRowId, legalTransition } from './store.mjs'
 
 const withToken = (wsUrl, token) => `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}token=${token}`
 
+// --- transport liveness (#288) ----------------------------------------------
+// tinybase's createWsSynchronizer resolves SILENTLY when the ws handshake
+// fails: a connection refused AND a 401 handshake rejection both leave the
+// socket at readyState CLOSED with no error ever thrown — so a run can
+// execute end-to-end, invoke the engine, and finish, with zero of its store
+// writes ever reaching the orchestrator. Every socket the shim opens goes
+// through `connectOpenWs`, which resolves only an OPEN socket or rejects with
+// a legible reason; nothing downstream is built on an unverified connection.
+// `deliverAndClose` closes the matching gap on the way OUT: a socket that was
+// open at connect time but died mid-run (the exact #288 shape) still has to
+// get the terminal status write out via one rescue reconnect.
+
+export const CONNECT_TIMEOUT_MS = 30_000
+export const RENEW_CAP_MS = 5 * 60_000
+export const FLUSH_TIMEOUT_MS = 5_000
+export const FLUSH_SETTLE_MS = 250
+
+/**
+ * The renew cadence for a claim's TTL — normally a third of the TTL, but
+ * capped at RENEW_CAP_MS so a long-TTL run still renews often enough to
+ * notice a dropped connection well before its lease would expire. An
+ * explicit override always wins.
+ */
+export const renewIntervalFor = (ttlMs, renewEveryMs) =>
+  renewEveryMs ?? Math.min(Math.floor(ttlMs / 3), RENEW_CAP_MS)
+
+/**
+ * Resolve only an OPEN ws — never a socket mid-handshake, and never one
+ * that's dead on arrival. Both known #288 failure shapes (connection refused,
+ * 401 handshake rejection) surface here as a REJECTION with a legible reason,
+ * instead of as a resolved-but-CLOSED socket a caller might sync against
+ * anyway. A connection that never resolves either way (a TCP accept with no
+ * HTTP upgrade ever sent) is bounded by `timeoutMs`.
+ */
+export const connectOpenWs = (url, { timeoutMs = CONNECT_TIMEOUT_MS, log = console.error } = {}) =>
+  new Promise((resolve, reject) => {
+    const ws = new WebSocket(url)
+    const timer = setTimeout(() => {
+      try {
+        ws.terminate()
+      } catch {}
+      reject(new Error(`ws connect timeout after ${timeoutMs}ms`))
+    }, timeoutMs)
+    ws.once('open', () => {
+      clearTimeout(timer)
+      ws.on('close', (code) => log(`fleet: ws closed (code ${code})`))
+      ws.on('error', (err) => log(`fleet: ws error — ${err?.message ?? err}`))
+      resolve(ws)
+    })
+    ws.once('error', (err) => {
+      clearTimeout(timer)
+      reject(new Error(`ws connect failed: ${err?.message ?? err}`))
+    })
+    ws.once('close', (code) => {
+      clearTimeout(timer)
+      reject(new Error(`ws closed during connect (code ${code})`))
+    })
+  })
+
+/** Save the store, then wait for the socket's write buffer to drain (or time out). */
+export const flushSynchronizer = async (synchronizer, ws) => {
+  await synchronizer.save()
+  const deadline = Date.now() + FLUSH_TIMEOUT_MS
+  while (Date.now() < deadline && ws.bufferedAmount > 0) await new Promise((r) => setTimeout(r, 25))
+  await new Promise((r) => setTimeout(r, FLUSH_SETTLE_MS))
+}
+
+/**
+ * Deliver whatever the store holds and tear down — the shim's ONLY exit path.
+ *
+ * If the socket the shim has been syncing over is still OPEN, flush over it.
+ * If it has died since the last observation (the #288 shape: a mid-run drop
+ * that leaves readyState CLOSED with no error the shim ever saw), the write
+ * that matters most — the terminal status transition — is sitting unsynced in
+ * local store state. One rescue reconnect, over the SAME store, is what gets
+ * it out. A rescue that itself fails to connect or flush is logged and
+ * reported as non-delivery; the caller's teardown still runs either way.
+ */
+export const deliverAndClose = async ({
+  store,
+  synchronizer,
+  ws,
+  url,
+  openSocket = connectOpenWs,
+  log = console.error,
+}) => {
+  if (ws.readyState === WebSocket.OPEN) {
+    await flushSynchronizer(synchronizer, ws)
+    synchronizer.stopSync()
+    synchronizer.destroy()
+    return true
+  }
+  synchronizer.stopSync()
+  synchronizer.destroy()
+  log('fleet: ws dead at publish — one rescue reconnect')
+  try {
+    const ws2 = await openSocket(url, { log })
+    const sync2 = await createWsSynchronizer(store, ws2)
+    await sync2.startSync()
+    await flushSynchronizer(sync2, ws2)
+    sync2.stopSync()
+    sync2.destroy()
+    return true
+  } catch (error) {
+    log(`fleet: publish rescue failed — ${error?.message ?? error}; run outcome not delivered`)
+    return false
+  }
+}
+
 // Writes runs.<runId>.status only when the transition is legal from whatever
 // status is currently synced — a stale/unsynced runs row (or one already at
 // the target status) is a silent no-op rather than a crash.
@@ -30,18 +139,22 @@ export const runShim = async ({
   readReportTokens,
   clock = Date.now,
   renewEveryMs,
+  openSocket = connectOpenWs,
+  log = console.error,
 }) => {
-  const renewInterval = renewEveryMs ?? Math.floor(ttlMs / 3)
+  const renewInterval = renewIntervalFor(ttlMs, renewEveryMs)
   const claimRowId = `claim:${runId}`
+  const url = withToken(wsUrl, token)
 
-  const store = createMergeableStore(sandboxId)
-  const synchronizer = await createWsSynchronizer(store, new WebSocket(withToken(wsUrl, token)))
-  await synchronizer.startSync()
-
-  const teardown = () => {
-    synchronizer.stopSync()
-    synchronizer.destroy()
+  let ws
+  try {
+    ws = await openSocket(url, { log })
+  } catch (error) {
+    return { status: 'no-store', error: String(error?.message ?? error) }
   }
+  const store = createMergeableStore(sandboxId)
+  const synchronizer = await createWsSynchronizer(store, ws)
+  await synchronizer.startSync()
 
   // --- initial claim ---------------------------------------------------
   const claimAttempt = tryClaim(store.getRow('claims', claimRowId), {
@@ -51,7 +164,7 @@ export const runShim = async ({
     now: clock(),
   })
   if (claimAttempt.error) {
-    teardown()
+    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
     return { status: 'lost-claim' }
   }
   store.setRow('claims', claimRowId, claimAttempt.row)
@@ -95,7 +208,12 @@ export const runShim = async ({
   // immediately; the outcome resolved below is 'failed' since invokeRun has
   // already started by the time any renew can fail.
   let claimLost = false
+  let deadLogged = false
   const timer = setInterval(() => {
+    if (ws.readyState !== WebSocket.OPEN && !deadLogged) {
+      deadLogged = true
+      log('fleet: ws connection lost mid-run — will rescue at publish')
+    }
     const row = store.getRow('claims', claimRowId)
     const result = tryRenew(row, { claimant: sandboxId, epoch, ttlMs, now: clock() })
     if (result.error) {
@@ -120,17 +238,17 @@ export const runShim = async ({
 
   if (claimLost) {
     writeStatus('parked')
-    teardown()
+    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
     return { status: 'failed' }
   }
 
   if (outcome && outcome.gateGreen) {
     writeStatus('gate-green')
-    teardown()
+    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
     return { status: 'gate-green' }
   }
 
   writeStatus('parked')
-  teardown()
+  await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
   return { status: 'failed' }
 }
