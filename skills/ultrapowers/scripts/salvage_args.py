@@ -48,10 +48,10 @@ def findings_naming(report, tid):
     # Matches "task(s)" followed by the id as a whole word, with ONLY ids,
     # commas, whitespace, "#", and and/or/& between (#244 residual 3) — so
     # "tasks 2 and 3 left the guard untested" names BOTH task 2 and task 3,
-    # "tasks #2 and #3" still names both, "task 22" never names id "2"
+    # "tasks #2 and #3" and "tasks 2-3" still name both, "task 22" never names id "2"
     # (word-boundary on the id itself), and "Task 1 deleted 3 tests" no
     # longer misattributes the incidental 3.
-    pat = re.compile(r"\btasks?\b[\s,&#]*(?:(?:and|or|\d+)[\s,&#]*)*?\b" + re.escape(tid) + r"\b",
+    pat = re.compile(r"\btasks?\b[\s,&#-]*(?:(?:and|or|\d+)[\s,&#-]*)*?\b" + re.escape(tid) + r"\b",
                      re.IGNORECASE)
     return [str(f) for f in (report.get("completenessFindings") or [])
             if pat.search(str(f))]

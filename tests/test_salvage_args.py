@@ -231,10 +231,13 @@ def test_findings_naming_tightened():
         "tasks 2 and 3 left the guard untested",
         "tasks #2 and #3 still apply",
         "task 22 is unrelated",
+        "tasks 2-3 need the range fix",
     ]}
     assert sa.findings_naming(rep, "3") == ["tasks 2 and 3 left the guard untested",
-                                            "tasks #2 and #3 still apply"]
+                                            "tasks #2 and #3 still apply",
+                                            "tasks 2-3 need the range fix"]
     assert sa.findings_naming(rep, "1") == ["Task 1 deleted 3 tests"]
     assert sa.findings_naming(rep, "2") == ["tasks 2 and 3 left the guard untested",
-                                            "tasks #2 and #3 still apply"]
+                                            "tasks #2 and #3 still apply",
+                                            "tasks 2-3 need the range fix"]
     assert sa.findings_naming(rep, "22") == ["task 22 is unrelated"]
