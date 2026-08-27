@@ -185,7 +185,7 @@ const { read, reportPath, detailPath } = await driveOne({
   heartbeatTimeoutMs: 30 * 60_000,
   claimTimeoutMs: 10 * 60_000,
   // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
-  // memory from <evidenceDir>/stat.json once runs carry it (W2); golden 8/16 default.
+  // memory from <evidenceDir>/stat-<runId>.json once runs carry it (W2); golden 8/16 default.
   // sandboxCpu: 8, sandboxMemory: '16GB',
 })
 
@@ -230,9 +230,9 @@ needs no exec wrapper of its own:
   or is `null`.
 
   On the same leg, two control-plane captures that only exist while the VM does:
-  `stat <vm> --json --range=24h` → `<evidenceDir>/stat.json` and
+  `stat <vm> --json --range=24h` → `<evidenceDir>/stat-<runId>.json` and
   `billing credits usage --group=box --detail --json` →
-  `<evidenceDir>/credits.json`, each bounded by its own `logPullTimeoutMs`. The
+  `<evidenceDir>/credits-<runId>.json`, each bounded by its own `logPullTimeoutMs`. The
   raw payloads are kept whether or not they parse; the derived reads are
   `detail.sandboxStat` (`{peakCores, meanCores, peakMemBytes}`, or `null`) and
   `detail.creditSpendUsd` (USD, `0` when the ledger carried no row for this box,

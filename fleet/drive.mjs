@@ -301,14 +301,17 @@ export const driveOne = async ({
       const statJson = await captureJson({
         label: 'sandbox stat',
         cmd: sandboxStatCommand({ vmName }),
-        file: 'stat.json',
+        // runId-qualified (#323): the evidence dir is shared across runs, so an
+        // unqualified name is clobbered by the next run — and races a sibling
+        // under concurrent drains.
+        file: `stat-${runId}.json`,
       })
       if (statJson !== null) {
         // Derivation is wrapped at the CALL SITE: a throw out of a deriver is a
         // parse failure like any other, not a reason to skip teardown.
         try {
           const derived = deriveSandboxStat(statJson)
-          if (derived === null) errors.push('sandbox stat derive: no usable cpu_cores samples in stat.json')
+          if (derived === null) errors.push(`sandbox stat derive: no usable cpu_cores samples in stat-${runId}.json`)
           else sandboxStat = derived
         } catch (error) {
           errors.push(`sandbox stat derive: ${error?.message ?? error}`)
@@ -320,7 +323,7 @@ export const driveOne = async ({
     const creditsJson = await captureJson({
       label: 'credits usage',
       cmd: creditsUsageCommand(),
-      file: 'credits.json',
+      file: `credits-${runId}.json`,
     })
     if (creditsJson !== null) {
       try {
