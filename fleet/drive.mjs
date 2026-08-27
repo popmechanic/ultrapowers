@@ -165,7 +165,7 @@ export const driveOne = async ({
   repoDir,
   exec,
   clock = Date.now,
-  runId = 'run-1',
+  runId,
   branch = 'fleet-run',
   baseRef = 'HEAD',
   // #279: ttlMs is the store-token lease TTL delivered to the sandbox. 15 min
@@ -211,6 +211,12 @@ export const driveOne = async ({
   // choke point, before the orchestrator starts and before any exec call —
   // an unsafe value is an operator input error, refused loudly, never a run
   // outcome. `pullLogsOnce` keeps its own guard as defense in depth.
+  // #211: runId is required — never defaulted. A default like the old
+  // `'run-1'` invites a second run silently reusing a name, which under
+  // host-key/naming rules is a footgun. Refuse before deriving the vm name.
+  if (typeof runId !== 'string' || runId.length === 0) {
+    throw new Error('driveOne: runId is required — never reuse one (#211)')
+  }
   const entryVmName = sandboxIdFor(runId)
   if (!isSafeVmName(entryVmName)) {
     throw new Error(

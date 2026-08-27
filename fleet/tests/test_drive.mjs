@@ -2404,6 +2404,12 @@ try {
     assert.ok(Date.now() - startedAt < 15_000, 'the parked wait is bounded by parkedPublishWaitMs, not the gate-green bound')
   }
 
+  // -- #211 residual: runId is required, never defaulted ----------------------
+  await assert.rejects(
+    driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'dbReq'), exec: async () => ({ code: 0, stdout: '' }) }),
+    /runId is required/,
+  )
+
   console.log('ALL TESTS PASSED')
 } finally {
   cleanup()
