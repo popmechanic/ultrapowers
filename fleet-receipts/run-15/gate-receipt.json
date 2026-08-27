@@ -1,0 +1,77 @@
+{
+  "mode": "gate",
+  "stamp": "20260827-200331",
+  "wfRuns": [
+    "wf_2da51126-1c2"
+  ],
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-20260827-200331/report.json",
+  "branch": "ultra/integration-20260827-200331",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "lock",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "fleet/drive.mjs \u2014 detail.parkedPublish on a real parked fleet drive (plan Operator smoke, bullet 2) \u2014 Requires a live exe.dev sandbox, a real provisioned run and a real park to produce gate-read-<runId>.detail.json. In-process the shape is proven by N1/N2 against a stub sandbox, but the premise that production shim-main main() publishes branch + receipts after runShim returns on a parked verdict is exercised only by the test stub, never by the real shim. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/drive.mjs \u2014 CREDITS_REFUSAL_NOTE replacing the raw line on the real orchestrator key (plan Operator smoke, bullet 2) \u2014 The refusal text 'command not allowed by SSH key permissions' comes from the exe.dev control plane under the orchestrator key's #213 posture. The test injects that string; that the production control plane still emits exactly this wording is not observable from the repo. (Stream routing is no longer a risk \u2014 the RUNBOOK exec merges stderr into stdout.) [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/fitness.mjs \u2014 driveOne throws 'plan is headless-unfit' before any ssh exe.dev \"cp \u2026\" appears in the live log (plan Operator smoke, bullet 3) \u2014 Requires a real drive against a provisioned sandbox. Statically the check sits at fleet/drive.mjs:243, ahead of startOrchestrator (drive.mjs:413), provision (drive.mjs:509) and every exec call, and N3 asserts provisioned === false against the injected provision seam \u2014 but the live-log ordering itself is unobservable here. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo",
+    "lock": "/home/exedev/repo/.claude/ultrapowers/RUN_LOCK"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "                   [ 55%]\\ntests/test_marker_compiler.py ....                                       [ 55%]\\ntests/test_marker_contract.py ............                               [ 56%]\\ntests/test_merge_ledger.py .......................                       [ 58%]\\ntests/test_no_prompt_drift.py .................                          [ 60%]\\ntests/test_orchestrator_markers.py .                                     [ 60%]\\ntests/test_path_variables.py .                                           [ 60%]\\ntests/test_plan_check.py ..........                                      [ 61%]\\ntests/test_probe.py ...                                                  [ 61%]\\ntests/test_recommendation_rubric.py .............                        [ 62%]\\ntests/test_record_wf_run.py ...........                                  [ 63%]\\ntests/test_redirect_args.py ...................................          [ 66%]\\ntests/test_rehydrate.py ........                                         [ 67%]\\ntests/test_repo_weave_report_determinism.py ...........                  [ 68%]\\ntests/test_report_runbook.py ...                                         [ 68%]\\ntests/test_residual_manifest.py ...........................              [ 70%]\\ntests/test_resolve_superpowers.py .....                                  [ 71%]\\ntests/test_review_package.py ..........                                  [ 71%]\\ntests/test_run_acceptance.py ........................................... [ 75%]\\n...............                                                          [ 76%]\\ntests/test_run_lock.py ..........                                        [ 77%]\\ntests/test_salvage_args.py ...............                               [ 78%]\\ntests/test_serve_viewer.py .....                                         [ 79%]\\ntests/test_session_hook.py .........                                     [ 80%]\\ntests/test_shadow_fold.py ........                                       [ 80%]\\ntests/test_shadow_octopus.py ...                                         [ 81%]\\ntests/test_skill_budget.py .                                             [ 81%]\\ntests/test_skill_wf_run_record.py ...                                    [ 81%]\\ntests/test_superpowers_compat.py s..                                     [ 81%]\\ntests/test_superpowers_contract.py ....                                  [ 81%]\\ntests/test_swarm_agents.py .....                                         [ 82%]\\ntests/test_swarm_layout.py .                                             [ 82%]\\ntests/test_swarm_meso.py .                                               [ 82%]\\ntests/test_swarm_wiring.py ..                                            [ 82%]\\ntests/test_swarm_zoom.py .                                               [ 82%]\\ntests/test_sweep_worktrees.py ........................................   [ 86%]\\ntests/test_terminal_teardown.py ...                                      [ 86%]\\ntests/test_ultra_gate.py ...........................                     [ 88%]\\ntests/test_ultra_run.py ................................................ [ 92%]\\n...................                                                      [ 94%]\\ntests/test_ultra_run_overlap.py ....                                     [ 94%]\\ntests/test_ultraplan_skill.py ...............                            [ 95%]\\ntests/test_validate_skill.py .........                                   [ 96%]\\ntests/test_version_sync.py .                                             [ 96%]\\ntests/test_viewer.py ...................                                 [ 98%]\\ntests/test_warm_cache.py ..............                                  [ 99%]\\ntests/test_wave_ancestry.py .                                            [ 99%]\\ntests/test_webapp_fixture.py ...                                         [ 99%]\\ntests/test_workflow_sim.py .                                             [100%]\\n\\n================= 1184 passed, 1 skipped in 222.07s (0:03:42) ==================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
