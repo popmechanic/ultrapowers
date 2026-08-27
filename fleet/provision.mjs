@@ -73,17 +73,24 @@ export function engineEnvDeliveryCommand({ vmName, engineEnv }) {
  * its inherited-env `spawn`, to the engine — the secret is never on an argv.
  */
 export function shimStartCommand({ vmName, withEngineEnv = false }) {
-  const prefix = withEngineEnv ? `set -a && . ${ENGINE_ENV_PATH} && set +a && ` : ''
-  // `-n` + `< /dev/null` fully detach the shim from the ssh session (#305):
-  // without them the backgrounded node (and the engine under it, inheriting
-  // stdio) holds the session's stdin channel, and the local ssh — whose own
-  // stdin is an open pipe from the caller's exec — does not exit until the
-  // shim DIES. Measured on run-11: provisionRun blocked for the shim's whole
-  // 30-minute life, so the driver's watch loop started against a corpse and
-  // every mid-run progress line was swallowed. `-n` closes the local side,
-  // `< /dev/null` the remote side; either alone breaks the hold, both are
-  // pinned so neither regresses silently.
-  return `ssh -n ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && ${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`
+  const prefix = withEngineEnv ? `set -a && . ${ENGINE_ENV_PATH} && set +a; ` : ''
+  // Detaching the shim from the ssh session took THREE fds and one grammar
+  // rule, each measured (#305, #310):
+  //   `-n`            local ssh stdin (an open pipe from the caller's exec);
+  //   `< /dev/null`   the shim's own stdin;
+  //   `; nohup … &`   the load-bearing one — in `A && B &` the `&` binds to
+  //                   the WHOLE AND-list, which runs in a backgrounded
+  //                   subshell that inherits the session's stdout/stderr
+  //                   (per-command redirects don't cover the subshell) and
+  //                   waits on node as its foreground child, so sshd holds
+  //                   the channel until the shim DIES. run-11 and run-12
+  //                   both blocked provisionRun for the shim's whole life
+  //                   this way; on the golden, the AND-list shape returns in
+  //                   childLifetime+1s, the `;` shape in ~1s. `|| exit 1`
+  //                   keeps the failed-checkout gate the `&&` used to carry.
+  // The env sourcing stays in the MAIN shell (`;`-joined) so its exports
+  // still reach the nohup'd node.
+  return `ssh -n ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 || exit 1; ${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`
 }
 
 function sleep(ms) {
