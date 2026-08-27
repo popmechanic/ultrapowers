@@ -1,5 +1,5 @@
 # tests/test_redirect_args.py
-import json, subprocess, sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "skills/ultrapowers/scripts/redirect_args.py"
@@ -460,6 +460,11 @@ def test_rotation_skips_byte_identical_snapshot(tmp_path):
     second = ra.rotate_round_artifacts(str(run))          # unchanged live report
     assert second["report"] is None
     assert sorted(p.name for p in run.glob("report-*.json")) == ["report-1.json"]
+    # #304: rewrite SAME-SIZE content and pin (size, mtime) to what a stale
+    # filecmp cache entry would key on — the comparison must read bytes, not
+    # trust stat signatures (red on coarse-mtime filesystems otherwise)
+    st = (run / "report.json").stat()
     (run / "report.json").write_text('{"r": 2}')
+    os.utime(run / "report.json", (st.st_atime, st.st_mtime))
     third = ra.rotate_round_artifacts(str(run))           # changed -> snapshots again
     assert third["report"] and (run / "report-2.json").is_file()
