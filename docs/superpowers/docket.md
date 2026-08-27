@@ -703,3 +703,9 @@
 **Notes:** W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
 **Plan:** docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
 **Engine:** ultrapowers (fleet sandbox drive)
+
+### #331: test-suite subtraction slate — shadow-fold orphan cut + consolidation tail
+**State:** accepted
+**Score:** 7 — quality objective (suite legibility + honest coverage); zero-coverage-loss deletion behind the suite gate; operator accepted the FULL slate 2026-08-27
+**Est-files:** evals/frontier/shadow_fold.py (delete), tests/test_shadow_fold.py (delete), tests/test_shadow_octopus.py (delete), tests/test_harvest_runs.py, tests/sim_workflow.mjs, tests/test_compile_plan.py, tests/test_ultra_run.py, tests/test_viewer.py, tests/test_marker_compiler.py, tests/test_ultraplan_skill.py, tests/test_audit_run.py
+**Notes:** from the 2026-08-27 four-auditor sweep (full ranked list in the issue). LOCAL drain, one plan, suite-gated (green before/after, pass count reconciled, wall-clock not regressed). Frozen-periphery dupes are recorded in the issue but OUT of scope. Ride-alongs: two mis-described test fixes, frontier_merge.mjs stale comment, fragile catch-all needles.
