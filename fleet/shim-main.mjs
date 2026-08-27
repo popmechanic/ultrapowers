@@ -422,8 +422,15 @@ export const detectIntegrationBranch = async ({ repoDir, exec }) => {
  * by mtime keeps discovery a pure function of what is on disk — an mtime is
  * moved by anything that touches the directory, including this file's own
  * receipt copy.
+ *
+ * `excludeDirs` is an optional `Set` of run-directory NAMES to treat as
+ * invisible (#190). `main()` snapshots the directories that already exist
+ * before the engine launches and passes them here, so every discovery reader
+ * is scoped to the run's OWN output: a stale gitignored receipt left in a
+ * dirty golden image must never green a run that was never gated. The run's
+ * own directories are exactly the ones that did not exist before launch.
  */
-export const runArtifactDirs = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
+export const runArtifactDirs = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { excludeDirs } = {}) => {
   let entries
   try {
     entries = fs.readdirSync(path.join(repoDir, artifactDir), { withFileTypes: true })
@@ -433,6 +440,7 @@ export const runArtifactDirs = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
   return entries
     .filter((entry) => entry.isDirectory() && entry.name.startsWith('run-'))
     .map((entry) => entry.name)
+    .filter((name) => !excludeDirs?.has(name))
     .sort()
 }
 
@@ -442,8 +450,8 @@ export const runArtifactDirs = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
  * Scoped to `run-*` directories on purpose, and to the receipt file by name:
  * the run report lives in the SAME directory and is not a receipt.
  */
-export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) =>
-  runArtifactDirs(repoDir, artifactDir)
+export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { excludeDirs } = {}) =>
+  runArtifactDirs(repoDir, artifactDir, { excludeDirs })
     .map((name) => path.join(artifactDir, name, GATE_RECEIPT_FILE))
     .filter((relPath) => fs.existsSync(path.join(repoDir, relPath)))
 
@@ -457,8 +465,8 @@ export const findReceiptFiles = (repoDir, artifactDir = RUN_ARTIFACT_DIR) =>
  * appears halfway through a run is picked up on the next sample rather than
  * missed for the run's whole life.
  */
-export const findRunReportFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
-  const names = runArtifactDirs(repoDir, artifactDir)
+export const findRunReportFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { excludeDirs } = {}) => {
+  const names = runArtifactDirs(repoDir, artifactDir, { excludeDirs })
   for (let i = names.length - 1; i >= 0; i -= 1) {
     const candidate = path.join(repoDir, artifactDir, names[i], RUN_REPORT_FILE)
     if (fs.existsSync(candidate)) return candidate
@@ -476,8 +484,8 @@ export const findRunReportFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
  * discovery `findRunReportFile` performs for `report.json`, against the
  * sibling file.
  */
-export const findGateReceiptFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR) => {
-  const files = findReceiptFiles(repoDir, artifactDir)
+export const findGateReceiptFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { excludeDirs } = {}) => {
+  const files = findReceiptFiles(repoDir, artifactDir, { excludeDirs })
   const newest = files.at(-1)
   return newest ? path.join(repoDir, newest) : ''
 }
@@ -568,8 +576,8 @@ export const receiptDestination = (runId, relPath, unique) => {
  * past `main()`'s `synchronizer.save()` and skipping the trailing scalar
  * writes it still owes the store.
  */
-export const applyRunReceipts = async (store, runId, { repoDir, exec, branch }) => {
-  const files = findReceiptFiles(repoDir)
+export const applyRunReceipts = async (store, runId, { repoDir, exec, branch, excludeDirs }) => {
+  const files = findReceiptFiles(repoDir, undefined, { excludeDirs })
   if (files.length === 0) return []
   // `runId` becomes a path component and is shelled below; the orchestrator
   // authors it, but nothing downstream should depend on that being true.
@@ -768,6 +776,7 @@ export const invokeEngineRun = async ({
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
+  excludeDirs,
 }) => {
   if (!isNonEmptyString(planPath)) {
     log('fleet: run assignment carries no planPath — refusing to launch the engine')
@@ -802,8 +811,10 @@ export const invokeEngineRun = async ({
   const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath, sessionId), cwd: repoDir })
   // Resolved AFTER the run, because the run is what creates the directory.
   // The verdict lives in the gate receipt, never in report.json — see
-  // `readGateGreen`.
-  return { gateGreen: code === 0 && readGateGreen(findGateReceiptFile(repoDir)) }
+  // `readGateGreen`. Scoped by `excludeDirs` to the directories this run
+  // minted (#190): a receipt that predates the launch is not this run's
+  // evidence, and reading it would green a run that never gated.
+  return { gateGreen: code === 0 && readGateGreen(findGateReceiptFile(repoDir, undefined, { excludeDirs })) }
 }
 
 const withToken = (wsUrl, token) => `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}token=${token}`
@@ -854,13 +865,21 @@ export const main = async ({
   const stamp = await readStamp({ repoDir, exec })
   applyStamp(store, runId, stamp)
 
+  // The run's scope, snapshotted BEFORE the engine launches (#190): every run
+  // directory on disk right now predates this run, so none of them is this
+  // run's evidence. A dirty golden image can carry a stale gitignored
+  // `gate-receipt.json`, and without this scope it would green — and publish —
+  // a run that never reached the gate. Injected `invokeRun` overrides supply
+  // their own outcome and are unaffected.
+  const preRunDirs = new Set(runArtifactDirs(repoDir))
+
   const outcome = await runShim({
     wsUrl,
     token,
     sandboxId,
     runId,
     ttlMs,
-    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec })),
+    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec, excludeDirs: preRunDirs })),
     readReportTokens: readTokens,
   })
 
@@ -898,7 +917,7 @@ export const main = async ({
   const branch = await detectIntegrationBranch({ repoDir, exec })
   // Receipts before the branch cell: the commit MOVES the tip, and the branch
   // cell is the last half of the signal the driver waits on.
-  await applyRunReceipts(store, runId, { repoDir, exec, branch })
+  await applyRunReceipts(store, runId, { repoDir, exec, branch, excludeDirs: preRunDirs })
   applyBranch(store, runId, branch)
 
   // The aux publish carries the branch, the receipts and the trailing scalars
