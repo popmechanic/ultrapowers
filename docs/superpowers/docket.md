@@ -679,3 +679,27 @@
 **Score:** 3 — presentation-layer vision; low quarter alignment (runs against #200 'silence is healthy'); items 2–3 need an observable the viewer's honesty contract forbids inferring; recommend PARK pending brainstorm
 **Est-files:** skills/ultrapowers/viewer/swarm_template.html, skills/ultrapowers/scripts/swarm_watch.py, skills/ultrapowers/scripts/render_viewer.py, tests/test_viewer.py, tests/test_swarm_agents.py, tests/test_swarm_wiring.py
 **Notes:** parked at gate 2026-08-25: needs brainstorm → spec (verdict observables vs viewer honesty contract; rides #222's per-round artifacts); items 1+4 remain a cheap opt-in — Recommend PARK (needs brainstorm → spec). Partially landed since June (9903f1f, cd73986): station→task mapping, role:task labels, per-station [data-state], text wave readout. Missing is presentation. Items 2–3 (review verdicts / fix-round outcomes as events) need either transcript parsing the viewer README 'Observed vs Inferred' contract must declare, or an engine-written per-task verdict file — which rides #222's per-round artifacts, not a viewer PR: a design decision. Brainstorm settles (1) git-observed-only vs declared-inferred vs engine receipts; (2) acceptance form (manual eyeball vs pinned render_viewer/swarm_watch data contracts — viewer .mjs specs are not in CI or the gate). Cheap win WITHOUT the brainstorm if the operator wants it: items 1+4 only as one small suite-gated task (label `T<id> · <title>` — title already in DAG.tasks[].title via render_viewer.py:83; embed task body in build_dag :68-85; pin both in test_viewer.py). Sequence any viewer work after #222.
+
+### #190: fleet W1 residuals: spend-token source inert, untested invokeRun join, stale-receipt scoping, round advisories
+**State:** queued
+**Score:** 8 — verification-first objective; every item is a fail-closed gap on the live drive path; spend-source item already landed (#195)
+**Est-files:** fleet/shim-main.mjs, fleet/orchestrator.mjs, fleet/provision.mjs, fleet/drive.mjs, fleet/tests/*
+**Notes:** W2a width-2 entry (2026-08-27, pre-authorized coordinator run). Split across the two concurrent plans: shim items (receipt scoping, newest-wins pin, invokeRun join test) in plan C1; orchestrator/provision/driver items (page latch, missing-runs-row destructive fall-through, payload validation, versionStamp cross-check) in plan C2. Done already on main: spend source (#195), publishTimeoutMs-vs-ttl legibility (#279), test-hygiene item waived as low-value.
+**Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md + docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
+**Engine:** ultrapowers (fleet sandbox drive)
+
+### #209: readSessionTokens transcript-format coupling (silent-undercount risk) — defensive interim
+**State:** queued
+**Score:** 6.5 — spend-cap integrity; the engine-emits-its-own-total half is engine-lane and stays open
+**Est-files:** fleet/shim-main.mjs, fleet/tests/test_shim_main_tokens.mjs
+**Notes:** W2a entry. Interim sentinel only (per issue: flag a suspicious shape instead of silently returning a small number); rides plan C1. Engine-side token emission needs an operator lane call — issue stays open after the interim lands.
+**Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md
+**Engine:** ultrapowers (fleet sandbox drive)
+
+### #282: fleet drive papercuts from runs 9/9b
+**State:** queued
+**Score:** 6 — items 2/3/4/5 already landed piecemeal (RUNBOOK update-name + knobs, #299/#302 status propagation, #288 progress + #318 parkedPublish); item 1 (version cross-check) rides plan C2
+**Est-files:** fleet/drive.mjs, fleet/tests/test_drive.mjs
+**Notes:** W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
+**Plan:** docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
+**Engine:** ultrapowers (fleet sandbox drive)
