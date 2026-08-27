@@ -248,7 +248,9 @@ silent skip. Then the operator disposes of
 the portfolio: merge the docket integration line to base, or open per-issue PRs
 (mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
 advances merged entries `executed → verified`. Parked branches are presented for
-the operator to Salvage/Redirect with full context.
+the operator to Salvage/Redirect with full context (a drain run's args carry
+no `integrationBranch` and the drain writes no `gate-receipt.json` — pass
+`--integration-branch <docket-integration-branch>` to the composer).
 
 The drain is **origin-agnostic**: the entry `issue` field is an opaque label,
 and any `gh issue close` / comment-back is an **optional** operator post-step you

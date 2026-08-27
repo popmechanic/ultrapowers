@@ -290,7 +290,7 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   `unfinished` entries. Run `python3 <pluginRoot>/skills/ultrapowers/scripts/salvage_args.py
   --receipt <runDir>/receipt.json --report <saved-result.json>`. It derives the
   salvage waves mechanically — every `failed` task plus every dep-/cascade-blocked
-  `unfinished` task, in Step-2 order with their edges (budget-deferred entries are
+  `unfinished` task, in Step-2 order with their edges (other unfinished entries are
   listed on stderr, not salvaged) — appends a **PRIOR ATTEMPT** block to each
   selected task's body from `tasks[]` (kept branch + HEAD sha, review verdict,
   blocking notes, completeness findings naming it, and the instruction to pull

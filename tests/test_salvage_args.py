@@ -216,3 +216,28 @@ def test_salvage_chains_on_a_prior_redirect_round(tmp_path):
     # no round artifact — the counter is by artifacts present, and the salvage's
     # snapshot is round 1
     assert (run / "report-1.json").is_file()
+
+
+def test_import_leaves_redirect_prog():
+    # residual 2: importing salvage_args must not rebind the sibling's PROG
+    import redirect_args as ra_mod
+    assert ra_mod.PROG == "redirect_args"
+
+
+def test_findings_naming_tightened():
+    # residual 3: the id must follow task(s) with only ids/commas/#/and/or/&
+    rep = {"completenessFindings": [
+        "Task 1 deleted 3 tests",              # incidental number — names only 1
+        "tasks 2 and 3 left the guard untested",
+        "tasks #2 and #3 still apply",
+        "task 22 is unrelated",
+        "tasks 2-3 need the range fix",
+    ]}
+    assert sa.findings_naming(rep, "3") == ["tasks 2 and 3 left the guard untested",
+                                            "tasks #2 and #3 still apply",
+                                            "tasks 2-3 need the range fix"]
+    assert sa.findings_naming(rep, "1") == ["Task 1 deleted 3 tests"]
+    assert sa.findings_naming(rep, "2") == ["tasks 2 and 3 left the guard untested",
+                                            "tasks #2 and #3 still apply",
+                                            "tasks 2-3 need the range fix"]
+    assert sa.findings_naming(rep, "22") == ["task 22 is unrelated"]
