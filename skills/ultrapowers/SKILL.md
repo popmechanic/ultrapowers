@@ -73,7 +73,7 @@ wave entries of the receipt's `argsFile` (slots pre-emitted as `null`; the engin
 reads knobs only from these inline entries); `testCmd` / `bootstrapCmd` ride the
 same args file. The receipt's `llmDerives` list is the checklist:
 
-- **`tier`** per task (`cheap`/`standard`/`most-capable`) by scope/judgment-likelihood.
+- **`tier`** per task (`standard`/`most-capable`) by scope/judgment-likelihood.
   Review agents stay pinned to `most-capable` **by design**, independent of
   plan-authored review *depth* (which sets prompt rigor only); re-tiering
   reviews needs eval evidence, not argument.
@@ -302,7 +302,7 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
   (`record_wf_run.py <stamp> <wf_runId>`, as in Step 4). Return here.
 - **Redirect (micro-redirect)** — author `findings.json` from the gate report
   (one amend entry per affected task: `{"task", "instruction", "files"?, "tier"?}`
-  — `files` is derived as the task's FILES ∪ paths the instruction names ∪ the finding's `files`, never narrowed; right-size `tier` down when the fix is mechanical),
+  — `files` is derived as the task's FILES ∪ paths the instruction names ∪ the finding's `files`, never narrowed; right-size `tier` down to `standard` when the fix is mechanical),
   then run `python3 <pluginRoot>/skills/ultrapowers/scripts/redirect_args.py
   --receipt <runDir>/receipt.json --findings <findings.json>` and relaunch
   `ultrapowers-run` with the emitted args file. `redirect_args.py` composes the
