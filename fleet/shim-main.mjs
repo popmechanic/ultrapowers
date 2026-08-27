@@ -214,10 +214,14 @@ const sumTranscriptOutputTokens = (file) => {
 /** `.claude/projects` under the sandbox user's home — where the engine writes transcripts. */
 export const PROJECTS_ROOT = ['.claude', 'projects']
 
+/** The shape a `readSessionTokenSources` read reports when nothing was found. */
+const EMPTY_TOKEN_SOURCES = { total: null, mainFound: false, subagentFiles: 0 }
+
 /**
- * The run's total output-token cost, read from the engine SESSION TRANSCRIPTS
- * — the only place token counts exist (`report.json` carries none, which is
- * why `readReportTokens` is null against today's engine).
+ * The run's total output-token cost — read from the engine SESSION TRANSCRIPTS,
+ * the only place token counts exist (`report.json` carries none, which is why
+ * `readReportTokens` is null against today's engine) — plus the SHAPE of what
+ * was read (#209).
  *
  * The run is launched with a fixed `--session-id`, so its transcript is a
  * deterministic `{projects}/*​/{sessionId}.jsonl`, and every subagent it spawns
@@ -226,13 +230,32 @@ export const PROJECTS_ROOT = ['.claude', 'projects']
  * `output_tokens` across all of them gives the run's true cumulative cost.
  *
  * Keyed by the run-unique session id, so a cloned golden warm-up session
- * sharing the same project directory is never counted. Returns `null` — not
- * `0` — when no transcript for this session exists yet, so the §W1d
- * "reported: number|null" distinction survives before the engine has written
- * anything.
+ * sharing the same project directory is never counted.
+ *
+ * That sum couples to Claude Code's transcript format on two axes — the
+ * per-message usage shape and the on-disk layout — and a drift in either reads
+ * FEWER tokens while erroring on nothing: a silent undercount underneath a
+ * spend hard-cap. Nothing here can detect a drift on its own, so instead the
+ * probe reports what the walk actually found:
+ *
+ * The sum couples to Claude Code's transcript format on two axes — the
+ * per-message usage shape and the on-disk layout — and a drift in either reads
+ * FEWER tokens while erroring on nothing: a silent undercount underneath a
+ * spend hard-cap. Nothing here can detect a drift on its own, so instead the
+ * probe reports what the walk actually found:
+ *
+ *   - `total` — the sum. `null`, not `0`, when no transcript for this session
+ *     exists yet, so the §W1d "reported: number|null" distinction survives
+ *     before the engine has written anything.
+ *   - `mainFound` — at least one `{projects}/*​/{sessionId}.jsonl` existed.
+ *   - `subagentFiles` — how many `agent-*.jsonl` files were summed.
+ *
+ * `main()` flags the two shapes run-7's data says a real engine run cannot
+ * produce: a total with no main transcript, or a completed run with zero
+ * subagent transcripts (subagents are ~55% of real spend).
  */
-export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
-  if (!isNonEmptyString(sessionId)) return null
+export const readSessionTokenSources = (sessionId, { home = os.homedir() } = {}) => {
+  if (!isNonEmptyString(sessionId)) return { ...EMPTY_TOKEN_SOURCES }
   const projectsRoot = path.join(home, ...PROJECTS_ROOT)
   let projectDirs
   try {
@@ -241,13 +264,18 @@ export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
       .filter((entry) => entry.isDirectory())
       .map((entry) => path.join(projectsRoot, entry.name))
   } catch {
-    return null
+    return { ...EMPTY_TOKEN_SOURCES }
   }
 
   const transcripts = []
+  let mainFound = false
+  let subagentFiles = 0
   for (const dir of projectDirs) {
     const mainTranscript = path.join(dir, `${sessionId}.jsonl`)
-    if (fs.existsSync(mainTranscript)) transcripts.push(mainTranscript)
+    if (fs.existsSync(mainTranscript)) {
+      mainFound = true
+      transcripts.push(mainTranscript)
+    }
 
     const workflowsRoot = path.join(dir, sessionId, 'subagents', 'workflows')
     let workflowDirs = []
@@ -269,15 +297,23 @@ export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
       } catch {
         agentFiles = []
       }
+      subagentFiles += agentFiles.length
       transcripts.push(...agentFiles)
     }
   }
 
-  if (transcripts.length === 0) return null
+  if (transcripts.length === 0) return { ...EMPTY_TOKEN_SOURCES }
   let total = 0
   for (const file of transcripts) total += sumTranscriptOutputTokens(file)
-  return total
+  return { total, mainFound, subagentFiles }
 }
+
+/**
+ * The run's cumulative output-token total — `readSessionTokenSources().total`,
+ * unchanged in every observable way. The spend path only ever wanted the
+ * scalar; the shape is for the #209 sentinel.
+ */
+export const readSessionTokens = (sessionId, opts) => readSessionTokenSources(sessionId, opts).total
 
 /** Ack types inside the #281 standing grant — everything else parks. */
 export const GRANTED_ACK_TYPES = new Set(['deferred:runtime', 'deferred:external'])
@@ -825,6 +861,7 @@ export const main = async ({
   exec = shellExec,
   invokeRun,
   readTokens: readTokensOverride,
+  readTokensSources: readTokensSourcesOverride,
   auxDeliver = deliverAndClose,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
@@ -843,6 +880,13 @@ export const main = async ({
   // and `exec` — so a test can drive `main()` to a spend read without a real
   // engine writing a real transcript into the user's home.
   const readTokens = readTokensOverride ?? (() => readSessionTokens(sessionId))
+
+  // The #209 sentinel's source, on the same seam. A test that injects
+  // `readTokens` alone is driving the spend path, not the transcript layout —
+  // reading the real (empty) sources under it would flag a shape nobody wrote,
+  // so an un-overridden `readTokens` override disables the sentinel entirely.
+  const readTokensSources =
+    readTokensSourcesOverride ?? (readTokensOverride ? null : () => readSessionTokenSources(sessionId))
 
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
@@ -909,6 +953,25 @@ export const main = async ({
   // makes the signal mean "everything is published", not "most of it is".
   applyStamp(store, runId, stamp)
   applyReportedTokens(store, runId, readTokens())
+
+  // #209 interim defense: the token total above is only as trustworthy as the
+  // transcript layout it was summed from, and a layout drift undercounts
+  // silently. We cannot detect the drift — so publish the two SHAPES run-7 says
+  // a real engine run cannot produce (a total with no main transcript; a
+  // completed run with zero subagent transcripts, when subagents are ~55% of
+  // real spend) as a cell the operator and the evidence grep can both see.
+  // A healthy shape writes nothing at all.
+  const sources = readTokensSources?.()
+  if (sources && sources.total !== null && (!sources.mainFound || sources.subagentFiles === 0)) {
+    const warning =
+      'spend-source sentinel: suspicious transcript shape — mainFound=' +
+      sources.mainFound +
+      ' subagentFiles=' +
+      sources.subagentFiles +
+      ' (#209: possible silent undercount; verify the transcript layout)'
+    console.error('fleet: ' + warning)
+    store.setCell('runs', runId, 'spendSentinel', warning)
+  }
 
   // Then the branch, because the receipts are committed onto it and point at
   // its tip. Publishing it is what lets the driver fetch the run back at all —
