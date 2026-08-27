@@ -254,6 +254,16 @@ called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
 below for the one case that still needs an operator's hand.
 
+**Headless fitness (#322).** `driveOne` refuses a plan carrying any task whose
+verification can only be evidenced by human judgment — the known class is the
+instruction-only doc task (`implementation` type, every Files entry a `.md`,
+no `Test:` entry). run-14 proved such a task makes a `deferred:manual` park a
+certainty, discovered only after ~47 min and 203k tokens. Before dispatching:
+rewrite the verification into runtime/external form (add a pinning test), or
+route that task to a local drain. `allowUnfitPlan: true` overrides — pass it
+only with a specific operator pre-authorization for that manual ack, and the
+override is recorded in `detail.errors`.
+
 ## Gate read
 
 `driveOne` writes its return value's `read` object verbatim to `reportPath`

@@ -1657,6 +1657,65 @@ try {
     )
   }
 
+  // -- N3. #322: an unfit plan is refused BEFORE any provisioning -------------
+  {
+    const runId = 'run-drive-unfit'
+    const unfitPlan = path.join('docs', 'unfit-plan.md')
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(
+      path.join(repoDir, unfitPlan),
+      '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n',
+    )
+    let provisioned = false
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        planPath: unfitPlan,
+        dbDir: path.join(tmp, 'dbN3'),
+        exec: async () => ({ code: 0, stdout: '' }),
+        runId,
+        provision: async () => {
+          provisioned = true
+          throw new Error('must never provision an unfit plan')
+        },
+      }),
+      /headless-unfit/,
+    )
+    assert.equal(provisioned, false, 'the refusal must precede provisioning')
+  }
+
+  // -- N4. #322: allowUnfitPlan proceeds, with the override on the record -----
+  {
+    const runId = 'run-drive-unfit-ok'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+        })
+      }, 30)
+    })
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      planPath: path.join('docs', 'unfit-plan.md'),
+      allowUnfitPlan: true,
+      dbDir: path.join(tmp, 'dbN4'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(read.o1, true, 'the override drives normally')
+    assert.ok(
+      detail.errors.some((e) => /headless-fitness: proceeding on operator override/.test(e)),
+      `the override is on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
   // -- 12. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')

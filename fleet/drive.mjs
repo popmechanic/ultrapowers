@@ -17,6 +17,7 @@ import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
 import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from './provision.mjs'
 import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
+import { assessHeadlessFitness } from './fitness.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -149,6 +150,11 @@ export const deriveCreditSpendUsd = (creditsJson, vmName) => {
  *   produces zero output until it times out). Called at every state
  *   transition the watch loop observes. A throwing `progressLog` is caught
  *   and ignored — narration must never be able to break a drive.
+ * @param {boolean} [opts.allowUnfitPlan] - overrides the #322 headless-fitness
+ *   preflight, which otherwise throws (before any provisioning) when the plan
+ *   at `planPath` carries a task whose only evidence is human judgment. Pass
+ *   only with a specific operator pre-authorization; the override is recorded
+ *   in `detail.errors`.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -188,6 +194,10 @@ export const driveOne = async ({
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
+  // #322: overrides the headless-fitness preflight refusal. Pass only with a
+  // specific operator pre-authorization for the manual-judgment task named in
+  // the thrown error — never as a standing default.
+  allowUnfitPlan = false,
   // Injection seams for the provision/teardown legs — the real module
   // functions by default. They exist so the pullLogsOnce refusal branch
   // (defense in depth against a mid-run vmName mutation; unreachable through
@@ -229,6 +239,36 @@ export const driveOne = async ({
   const convergedAway = []
   const receiptChecks = []
   const errors = []
+
+  // #322: headless-fitness preflight. A plan carrying a task whose only
+  // evidence is human judgment is GUARANTEED to park an unattended drive —
+  // refuse it here, before a sandbox exists, not 200k tokens later. An
+  // unreadable plan file skips the check with narration only (the live drive
+  // always has the merged plan on disk; the in-process tests do not).
+  const planFile = path.isAbsolute(planPath) ? planPath : path.join(repoDir, planPath)
+  let planText = null
+  try {
+    planText = fs.readFileSync(planFile, 'utf8')
+  } catch {
+    planText = null
+  }
+  if (planText === null) {
+    note(`headless-fitness: plan unreadable at ${planFile} — check skipped`)
+  } else {
+    const fitness = assessHeadlessFitness(planText)
+    if (!fitness.fit) {
+      const summary = fitness.findings.map((f) => `${f.task}: ${f.reason}`).join('; ')
+      if (!allowUnfitPlan) {
+        throw new Error(
+          `driveOne: plan is headless-unfit — ${summary} — rewrite the verification into ` +
+            `runtime/external form, route the task to a local drain, or pass allowUnfitPlan: true ` +
+            `with a specific operator pre-authorization (#322)`,
+        )
+      }
+      errors.push(`headless-fitness: proceeding on operator override — ${summary}`)
+      note('headless-fitness: unfit plan allowed by allowUnfitPlan')
+    }
+  }
 
   let vmName = null
   let destroyed = false
