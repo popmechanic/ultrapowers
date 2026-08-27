@@ -98,7 +98,7 @@ def test_list_shaped_launch_tasks_are_accepted(tmp_path):
     launch["tasks"] = list(launch["tasks"].values())
     launch_p.write_text(json.dumps(launch))
     r = run_helper(run, [{"task": "1", "instruction": "fix the guard",
-                          "files": ["a.py"], "tier": "cheap"}])
+                          "files": ["a.py"], "tier": "standard"}])
     assert r.returncode == 0, r.stderr
     out_args = json.loads(Path(r.stdout.strip()).read_text())
     new_launch = json.loads(Path(out_args["wavesPath"]).read_text())

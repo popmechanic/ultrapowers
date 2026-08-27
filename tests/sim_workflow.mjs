@@ -37,8 +37,8 @@ function eq(a, b, msg) {
 // Canary plan: A,B independent; C depends on A. waves = [[A,B],[C]].
 const WAVES = [
   [
-    { id: 'A', title: 'create alpha', body: 'create a.txt', tier: 'cheap' },
-    { id: 'B', title: 'create beta', body: 'create b.txt', tier: 'cheap' },
+    { id: 'A', title: 'create alpha', body: 'create a.txt', tier: 'standard' },
+    { id: 'B', title: 'create beta', body: 'create b.txt', tier: 'standard' },
   ],
   [{ id: 'C', title: 'append alpha', body: 'modify a.txt', tier: 'standard' }],
 ]
@@ -202,10 +202,10 @@ async function scenarioWaveBarrierSweep() {
     throw new Error('unexpected agent label: ' + label)
   }
   const waves = [
-    [{ id: 'A', title: 'a', body: 'do a', tier: 'cheap' },
-     { id: 'B', title: 'b', body: 'do b', tier: 'cheap' },
-     { id: 'M', title: 'm', body: 'do m', tier: 'cheap' }],
-    [{ id: 'C', title: 'c', body: 'do c', tier: 'cheap' }],
+    [{ id: 'A', title: 'a', body: 'do a', tier: 'standard' },
+     { id: 'B', title: 'b', body: 'do b', tier: 'standard' },
+     { id: 'M', title: 'm', body: 'do m', tier: 'standard' }],
+    [{ id: 'C', title: 'c', body: 'do c', tier: 'standard' }],
   ]
   const r = await runWorkflow({ agent,
     args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] },
@@ -446,13 +446,13 @@ async function scenarioPortability() {
     reviewProfile: 'adversarial',
     // Legacy knob (#101, retired): must be silently ignored — no throw, no
     // model change — like any other unknown top-level args key.
-    tierOverrides: { cheap: 'opus', mostCapable: 'haiku' },
+    tierOverrides: { standard: 'opus', mostCapable: 'haiku' },
   })
   const r = await runWorkflow({ agent, args, budget: undefined })
-  // Retired knob is IGNORED: tiers map via DEFAULT_TIER (cheap->haiku,
-  // standard->sonnet) even though the legacy arg asked for opus/haiku.
-  eq(seen.implModels['A'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (A)')
-  eq(seen.implModels['B'], 'haiku', 'portability: legacy tierOverrides ignored — cheap stays haiku (B)')
+  // Retired knob is IGNORED: tiers map via DEFAULT_TIER (standard->sonnet)
+  // even though the legacy arg asked for opus/haiku.
+  eq(seen.implModels['A'], 'sonnet', 'portability: legacy tierOverrides ignored — standard stays sonnet (A)')
+  eq(seen.implModels['B'], 'sonnet', 'portability: legacy tierOverrides ignored — standard stays sonnet (B)')
   eq(seen.implModels['C'], 'sonnet', 'portability: standard tier still sonnet (C)')
   // Unconditional reviewers: review and completeness roles run at opus always.
   eq(seen.reviewModels['A'], 'opus', 'portability: reviewer runs at opus, unconditionally (A)')
@@ -619,7 +619,7 @@ async function scenarioPerTaskReview() {
   }
   const waves = [[
     { id: 'A', title: 'high stakes', body: 'do A', tier: 'standard', review: 'adversarial' },
-    { id: 'B', title: 'routine', body: 'do B', tier: 'cheap' }, // no review field -> run default
+    { id: 'B', title: 'routine', body: 'do B', tier: 'standard' }, // no review field -> run default
   ]]
   // No global reviewProfile -> run default is 'lean'. A opts into adversarial.
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ib', stamp: 's' }
@@ -649,9 +649,9 @@ async function scenarioNoEngineDerivedDepth() {
   const waves = [[
     // risk-looking path/title (auth + "Payment migration"), no review field —
     // would have tripped the old RISK_PATH lexicon; must stay lean now.
-    { id: 'R', title: 'Payment migration', body: 'build it', files: ['src/auth/login.py'], tier: 'cheap' },
+    { id: 'R', title: 'Payment migration', body: 'build it', files: ['src/auth/login.py'], tier: 'standard' },
     // same risk-looking path, but explicitly authored lean — also stays lean.
-    { id: 'L', title: 'Auth cleanup', body: 'build it', files: ['src/auth/login.py'], tier: 'cheap', review: 'lean' },
+    { id: 'L', title: 'Auth cleanup', body: 'build it', files: ['src/auth/login.py'], tier: 'standard', review: 'lean' },
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   const r = await runWorkflow({ agent, args, budget: undefined })
@@ -676,7 +676,7 @@ async function scenarioForceUpReviewProfile() {
     return undefined
   })
   const waves = [[
-    { id: 'L', title: 'routine', body: 'build it', tier: 'cheap', review: 'lean' },
+    { id: 'L', title: 'routine', body: 'build it', tier: 'standard', review: 'lean' },
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [], reviewProfile: 'adversarial' }
   const r = await runWorkflow({ agent, args, budget: undefined })
@@ -693,12 +693,12 @@ async function scenarioForceUpReviewProfile() {
 async function scenarioDerivedWaveLabels() {
   const phases = []
   const waves = [
-    [{ id: '1', title: 'Data layer + scaffold', body: 'b', tier: 'cheap' }],
-    [{ id: '2', title: 'Contacts module', body: 'b', tier: 'cheap' },
-     { id: '3', title: 'Deals module', body: 'b', tier: 'cheap' },
-     { id: '4', title: 'Activities module', body: 'b', tier: 'cheap' },
-     { id: '5', title: 'Auth module', body: 'b', tier: 'cheap' }],
-    [{ id: '6', title: 'Integration server', body: 'b', tier: 'cheap' }],
+    [{ id: '1', title: 'Data layer + scaffold', body: 'b', tier: 'standard' }],
+    [{ id: '2', title: 'Contacts module', body: 'b', tier: 'standard' },
+     { id: '3', title: 'Deals module', body: 'b', tier: 'standard' },
+     { id: '4', title: 'Activities module', body: 'b', tier: 'standard' },
+     { id: '5', title: 'Auth module', body: 'b', tier: 'standard' }],
+    [{ id: '6', title: 'Integration server', body: 'b', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] }
   await runWorkflow({ agent: makeAgent(), args, phase: (t) => phases.push(t),
@@ -935,14 +935,23 @@ async function scenarioConcernsPropagate() {
       }
       return undefined
     }),
-    args: baseArgs, budget: undefined,
+    // the one deliberate 'cheap' fixture left: pins the #286 warn+coerce path
+    args: { ...baseArgs, waves: [
+      [
+        { id: 'A', title: 'create alpha', body: 'create a.txt', tier: 'cheap' },
+        { id: 'B', title: 'create beta', body: 'create b.txt', tier: 'standard' },
+      ],
+      [{ id: 'C', title: 'append alpha', body: 'modify a.txt', tier: 'standard' }],
+    ] }, budget: undefined,
   })
   const a = r.tasks.find((t) => t.task === 'A')
   assert(/legacy auth/.test(a.notes), 'concerns: concern lands in task notes')
   assert(r.judgmentCalls.some((j) => /A/.test(j) && /legacy auth/.test(j)),
     'concerns: concern surfaced as a judgment call')
   eq(a.fixIterations, 0, 'economics: clean task records 0 fix iterations')
-  eq(a.tier, 'haiku', 'economics: resolved model recorded (A is cheap)')
+  eq(a.tier, 'sonnet', 'economics: retired cheap tier coerced to standard (sonnet)')
+  assert(r.judgmentCalls.some((j) => /A/.test(j) && /cheap/.test(j) && /retired/.test(j)),
+    'economics: cheap coercion surfaced as a judgment call')
   eq(a.review, 'lean', 'economics: review depth recorded')
   console.log('scenario concerns-propagate: OK')
 }
@@ -1064,8 +1073,8 @@ async function scenarioResumeRequiresBranch() {
 async function scenarioAgentThrowDegrades() {
   const waves = [
     [
-      { id: 'X', title: 'throw task', body: 'task X', tier: 'cheap' },
-      { id: 'Y', title: 'sibling task', body: 'task Y', tier: 'cheap' },
+      { id: 'X', title: 'throw task', body: 'task X', tier: 'standard' },
+      { id: 'Y', title: 'sibling task', body: 'task Y', tier: 'standard' },
     ],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
@@ -1092,7 +1101,7 @@ async function scenarioAgentThrowDegrades() {
 // ── Scenario: merged-without-headsha — MERGED result missing headSha is surfaced ─
 async function scenarioMergedWithoutHeadSha() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
@@ -1141,10 +1150,10 @@ async function scenarioDependentBlockedByFailedTask() {
   const implCalled = new Set()
   const waves = [
     [
-      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+      { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'standard' },
     ],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS,
     waves,
@@ -1184,7 +1193,7 @@ async function scenarioDependentBlockedByFailedTask() {
 // ── Scenario: chunk-cap — 17-task wave must not exceed engine's 16-agent cap ────
 async function scenarioChunkCap() {
   const tasks = Array.from({ length: 17 }, (_, i) =>
-    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'standard' }))
   const args = { ...LAUNCH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const batchSizes = []
   const parallel = (thunks) => { batchSizes.push(thunks.length); return Promise.all(thunks.map((t) => t())) }
@@ -1201,13 +1210,13 @@ async function scenarioTransitiveDepBlock() {
   const implCalled = new Set()
   const waves = [
     [
-      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+      { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'standard' },
     ],
     [
-      { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
-      { id: 'C', title: 'task C', body: 'do C', tier: 'cheap' },
-      { id: 'Y', title: 'task Y', body: 'do Y', tier: 'cheap' },
+      { id: 'B', title: 'task B', body: 'do B', tier: 'standard' },
+      { id: 'C', title: 'task C', body: 'do C', tier: 'standard' },
+      { id: 'Y', title: 'task Y', body: 'do Y', tier: 'standard' },
     ],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
@@ -1242,11 +1251,11 @@ async function scenarioFullyBlockedWaveDoesNotCascade() {
   let zImplBase = null
   const waves = [
     [
-      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-      { id: 'X', title: 'task X', body: 'do X', tier: 'cheap' },
+      { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+      { id: 'X', title: 'task X', body: 'do X', tier: 'standard' },
     ],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
-    [{ id: 'Z', title: 'task Z', body: 'do Z', tier: 'cheap' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
+    [{ id: 'Z', title: 'task Z', body: 'do Z', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
@@ -1372,10 +1381,10 @@ async function scenarioReconcileTier() {
   eq(reconcileModel, 'opus', 'reconcileTier: reconcile tracks DEFAULT_TIER.mostCapable (opus)')
   eq(reviewerModel, 'opus', 'reconcileTier: reviewer runs at opus, unconditionally')
   // setup and merge:wave* follow the cheap tier (haiku).
-  eq(modelsByLabel['setup'], 'haiku', 'reconcileTier: setup uses the cheap model (haiku)')
+  eq(modelsByLabel['setup'], 'haiku', 'reconcileTier: setup uses the utility model (haiku)')
   const mergeWaveLabel = Object.keys(modelsByLabel).find((l) => /^merge:wave/.test(l))
   assert(mergeWaveLabel !== undefined, 'reconcileTier: a merge:wave* agent was dispatched')
-  eq(modelsByLabel[mergeWaveLabel], 'haiku', 'reconcileTier: merge:wave* uses the cheap model (haiku) (label=' + mergeWaveLabel + ')')
+  eq(modelsByLabel[mergeWaveLabel], 'haiku', 'reconcileTier: merge:wave* uses the utility model (haiku) (label=' + mergeWaveLabel + ')')
   console.log('scenario reconcile-tier: OK')
 }
 
@@ -1385,8 +1394,8 @@ async function scenarioDoneWithoutHeadShaNotMerged() {
   const reviewed = new Set()
   const waves = [
     [
-      { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-      { id: 'G', title: 'good task', body: 'do G', tier: 'cheap' },
+      { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+      { id: 'G', title: 'good task', body: 'do G', tier: 'standard' },
     ],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
@@ -1455,8 +1464,8 @@ async function scenarioNoEdgesZeroMergeableCascades() {
   // ── Leg 1: NO edges supplied (omitted) — cascade expected ────────────────────
   const implCalled = new Set()
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   // NO edges supplied
@@ -1484,8 +1493,8 @@ async function scenarioNoEdgesZeroMergeableCascades() {
   // and completes normally; wave 1 merge records SKIPPED; blockedWaves stays empty.
   const implCalled2 = new Set()
   const waves2 = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args2 = { ...LAUNCH_ARGS, waves: waves2, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [] }
   const r2 = await runWorkflow({
@@ -1518,8 +1527,8 @@ async function scenarioLostDoneBlocksDependents() {
   // A returns DONE without headSha => downgraded to failed => B in wave 2 never dispatches.
   const implCalledA = new Set()
   const wavesA = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const argsA = { ...LAUNCH_ARGS, waves: wavesA, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                   edges: [['A', 'B']] }
@@ -1546,7 +1555,7 @@ async function scenarioLostDoneBlocksDependents() {
   // T16 in chunk 2 must see the failure BEFORE dispatch and never be dispatched.
   // This test FAILS before Fix B (the sweep ran only after all chunks).
   const tasks17 = Array.from({ length: 17 }, (_, i) =>
-    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'standard' }))
   const argsB = { ...LAUNCH_ARGS, waves: [tasks17], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                   edges: [['T0', 'T16']] }
   const implCalledB = new Set()
@@ -1592,8 +1601,8 @@ async function scenarioMidRunBudgetDeferral() {
   }
 
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const implDispatched = []
@@ -1635,7 +1644,7 @@ async function scenarioMidRunBudgetDeferral() {
 // ── Scenario: intra-wave edge respected across 16-task chunks ─────────────────
 async function scenarioIntraWaveDepAcrossChunks() {
   const tasks = Array.from({ length: 17 }, (_, i) =>
-    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'cheap' }))
+    ({ id: 'T' + i, title: 't' + i, body: 'do ' + i, tier: 'standard' }))
   const args = { ...LAUNCH_ARGS, waves: [tasks], integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['T0', 'T16']] }
   const implCalled = new Set()
@@ -1694,7 +1703,7 @@ async function scenarioTypoReviewAndUnknownBaseline() {
       }
       return undefined
     }),
-    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]],
             integrationBranch: 'ultra/integration-sim', stamp: 'sim' },
     budget: undefined,
   })
@@ -1707,7 +1716,7 @@ async function scenarioTypoReviewAndUnknownBaseline() {
 // ── Scenario: fix-round DONE without coordinates also fails fast pre-review ───
 async function scenarioFixRoundLostCoordinates() {
   let reviewCount = 0
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1734,8 +1743,8 @@ async function scenarioFixRoundLostCoordinates() {
 // ── Scenario: edges with endpoints outside the waves surface, never bind ──────
 async function scenarioUnboundEdgeEndpointsSurface() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['ghost', 'B']] }
@@ -1751,8 +1760,8 @@ async function scenarioUnboundEdgeEndpointsSurface() {
 // ── Scenario: same-wave edge endpoints surface (cannot block) ─────────────────
 async function scenarioSameWaveEdgeSurfaces() {
   const waves = [[
-    { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-    { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
+    { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+    { id: 'B', title: 'task B', body: 'do B', tier: 'standard' },
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
@@ -1766,7 +1775,7 @@ async function scenarioSameWaveEdgeSurfaces() {
 async function scenarioBudgetDeferralKeepsJudgmentCalls() {
   const r = await runWorkflow({
     agent: makeAgent(),
-    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]],
+    args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]],
             integrationBranch: 'ultra/integration-sim', stamp: 'sim',
             edges: [['ghost', 'A']] },
     budget: { total: 100, remaining: 0 },
@@ -1781,7 +1790,7 @@ async function scenarioBudgetDeferralKeepsJudgmentCalls() {
 // ── Scenarios: merge/reconcile/integration throws are caught and contained ────
 async function scenarioMergeThrowContained() {
   let reconciled = false
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1799,8 +1808,8 @@ async function scenarioMergeThrowContained() {
 
 async function scenarioReconcileThrowContained() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
@@ -1818,7 +1827,7 @@ async function scenarioReconcileThrowContained() {
 }
 
 async function scenarioIntegrationThrowContained() {
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1839,7 +1848,7 @@ async function scenarioIntegrationThrowContained() {
 // ── Scenario: verdict-less reviewer result must not merge as clean ────────────
 async function scenarioVerdictlessReviewSurfaces() {
   let fixDispatched = false
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1882,8 +1891,8 @@ async function scenarioPrototypeNamesSafe() {
 // ── Scenario: inverted edge (dependent in an EARLIER wave) surfaces ───────────
 async function scenarioInvertedEdgeSurfaces() {
   const waves = [
-    [{ id: 'B', title: 'dependent first', body: 'do B', tier: 'cheap' }],
-    [{ id: 'A', title: 'prerequisite second', body: 'do A', tier: 'cheap' }],
+    [{ id: 'B', title: 'dependent first', body: 'do B', tier: 'standard' }],
+    [{ id: 'A', title: 'prerequisite second', body: 'do A', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  edges: [['A', 'B']] }
@@ -1898,7 +1907,7 @@ async function scenarioInvertedEdgeSurfaces() {
 // ── Scenario: status-less impl result fails fast like any lost coordinates ────
 async function scenarioStatuslessImplFailsFast() {
   let reviewed = false
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -1966,9 +1975,9 @@ async function scenarioBudgetDiesBeforeReconcile() {
 // ── Scenario: declared file scope is threaded into impl/review prompts ───────
 async function scenarioFileScope() {
   const waves = [[
-    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap',
+    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'standard',
       files: ['a.txt', 'tests/test_a.py'] },
-    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'cheap', files: ['b.txt'] },
+    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'standard', files: ['b.txt'] },
   ]]
   const prompts = {}
   const agent = makeAgent((label, prompt) => { prompts[label] = prompt; return undefined })
@@ -2215,8 +2224,8 @@ async function scenarioReviewDiscipline() {
 async function scenarioWavesPathFileBackedBodies() {
   const prompts = {}
   const waves = [[
-    { id: 'A', title: 'alpha', tier: 'cheap', files: ['a.txt'] },      // no body -> from file
-    { id: 'B', title: 'beta', tier: 'cheap', body: 'inline body for B' }, // inline body kept
+    { id: 'A', title: 'alpha', tier: 'standard', files: ['a.txt'] },      // no body -> from file
+    { id: 'B', title: 'beta', tier: 'standard', body: 'inline body for B' }, // inline body kept
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [] }
@@ -2248,8 +2257,8 @@ async function scenarioWavesPathFileBackedBodies() {
 async function scenarioRoadmapRegistersBeforeSetup() {
   const events = []
   const waves = [
-    [{ id: 'A', title: 'alpha', tier: 'cheap' }], // bodyless → wavesPath supplies it
-    [{ id: 'B', title: 'beta', tier: 'cheap' }, { id: 'C', title: 'gamma', tier: 'cheap' }],
+    [{ id: 'A', title: 'alpha', tier: 'standard' }], // bodyless → wavesPath supplies it
+    [{ id: 'B', title: 'beta', tier: 'standard' }, { id: 'C', title: 'gamma', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
                  wavesPath: '/repo/.claude/ultrapowers/waves-sim.json', edges: [],
@@ -2279,7 +2288,7 @@ async function scenarioWavesPathRequiredForMissingBody() {
   try {
     await runWorkflow({
       agent: makeAgent(),
-      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', tier: 'cheap' }]], // no body AND no wavesPath
+      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', tier: 'standard' }]], // no body AND no wavesPath
               integrationBranch: 'ib', stamp: 's' },
       budget: undefined })
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
@@ -2293,7 +2302,7 @@ async function scenarioEmptyBodyNoWavesPathThrows() {
   try {
     await runWorkflow({
       agent: makeAgent(),
-      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'cheap' }]],
+      args: { ...LAUNCH_ARGS, waves: [[{ id: 'A', title: 'a', body: '   ', tier: 'standard' }]],
               integrationBranch: 'ib', stamp: 's' },
       budget: undefined })
   } catch (e) { threw = /args\.waves missing or malformed/.test(e.message) }
@@ -2310,8 +2319,8 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
   const PLAN_CONSTRAINT = 'Engine exhaust lives in <runDir>/review/.'
   planAuthoredTexts = [PLAN_PROSE, PLAN_CONSTRAINT]
   const waves = [[
-    { id: 'A', title: 'py task', body: PLAN_PROSE, tier: 'cheap', testCmd: '.venv/bin/pytest -q' },
-    { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
+    { id: 'A', title: 'py task', body: PLAN_PROSE, tier: 'standard', testCmd: '.venv/bin/pytest -q' },
+    { id: 'B', title: 'bun task', body: 'do B', tier: 'standard' },
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  testCmd: 'make test', globalConstraints: PLAN_CONSTRAINT,
@@ -2371,9 +2380,9 @@ async function scenarioBootstrapAndPerTaskTestCmd() {
 async function scenarioForwardedSignals() {
   const prompts = {}
   const waves = [[
-    { id: 'A', title: 'alpha', body: 'do A', tier: 'cheap',
+    { id: 'A', title: 'alpha', body: 'do A', tier: 'standard',
       interfaces: { consumes: ['schema.User'], produces: ['createUser(name: string): User'] } },
-    { id: 'B', title: 'beta', body: 'do B', tier: 'cheap' }, // no interfaces
+    { id: 'B', title: 'beta', body: 'do B', tier: 'standard' }, // no interfaces
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  globalConstraints: 'Node >= 20. All copy uses sentence case.' }
@@ -2543,8 +2552,8 @@ await scenarioCannotVerifySurvivesNoMergedWave()
 async function scenarioWarmCacheBootstrap() {
   const prompts = {}
   const waves = [[
-    { id: 'A', title: 'py task', body: 'do A', tier: 'cheap' },
-    { id: 'B', title: 'bun task', body: 'do B', tier: 'cheap' },
+    { id: 'A', title: 'py task', body: 'do A', tier: 'standard' },
+    { id: 'B', title: 'bun task', body: 'do B', tier: 'standard' },
   ]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', edges: [],
                  bootstrapCmd: 'python3 -m venv .venv && .venv/bin/pip install -e .' }
@@ -2610,7 +2619,7 @@ await scenarioIntegrationReviewNull()
 
 // ── Scenario: tier escalation — first impl throws, retry at next tier succeeds ──
 async function scenarioEscalateRecovers() {
-  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]]
+  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'standard' }]]
   const implModels = []
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
@@ -2628,15 +2637,15 @@ async function scenarioEscalateRecovers() {
   const r = await runWorkflow({ agent, args: { ...baseArgs, waves: ONE, dependencyEdges: [] }, budget: undefined })
   const a = r.tasks.find((t) => t.task === 'A')
   assert(a && a.status === 'done', 'escalate: task A recovered to done (got ' + JSON.stringify(a) + ')')
-  eq(implModels[0], 'haiku', 'escalate: first attempt ran at cheap/haiku')
-  eq(implModels[1], 'sonnet', 'escalate: retry ran at escalated standard/sonnet')
+  eq(implModels[0], 'sonnet', 'escalate: first attempt ran at standard/sonnet')
+  eq(implModels[1], 'opus', 'escalate: retry ran at escalated mostCapable/opus')
   assert(r.judgmentCalls.some((j) => /escalat/i.test(j) && j.includes('A')), 'escalate: escalation recorded in judgmentCalls')
   console.log('scenario escalate-recovers: OK')
 }
 
 // ── Scenario: escalation bounded — two throws → task fails (exactly one retry) ──
 async function scenarioEscalateBounded() {
-  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]]
+  const ONE = [[{ id: 'A', title: 't', body: 'b', tier: 'standard' }]]
   let implCount = 0
   const agent = async (prompt, opts) => {
     const label = opts.label || ''
@@ -2790,7 +2799,7 @@ async function runEscalationScenario(firstFailure) {
     return { status: 'done', branch: 'worktree-1', headSha: 'sha-x' }
   }
   const args = { ...LAUNCH_ARGS,
-    waves: [[{ id: '1', title: 'T1', body: 'b', tier: 'cheap', review: 'lean' }]],
+    waves: [[{ id: '1', title: 'T1', body: 'b', tier: 'standard', review: 'lean' }]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
   }
   const report = await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
@@ -2800,17 +2809,17 @@ async function runEscalationScenario(firstFailure) {
 // A schema/StructuredOutput trip is capability-fixable → escalate one rung (cheap→sonnet).
 {
   const { attempts } = await runEscalationScenario('StructuredOutput schema validation failed')
-  eq(attempts, ['haiku', 'sonnet'], 'schema trip escalates cheap→sonnet')
+  eq(attempts, ['sonnet', 'opus'], 'schema trip escalates standard→opus')
 }
 // A generic transient throw is NOT capability-fixable → retry at the SAME tier.
 {
   const { attempts } = await runEscalationScenario('socket hang up')
-  eq(attempts, ['haiku', 'haiku'], 'non-schema fault retries at same tier')
+  eq(attempts, ['sonnet', 'sonnet'], 'non-schema fault retries at same tier')
 }
 // An Overloaded null-return must NOT blind-escalate → same tier, no top-tier burn.
 {
   const { attempts } = await runEscalationScenario('null')
-  eq(attempts, ['haiku', 'haiku'], 'Overloaded null retries at same tier')
+  eq(attempts, ['sonnet', 'sonnet'], 'Overloaded null retries at same tier')
 }
 // A structural fault is diagnosed as a likely missing Depends-on edge.
 {
@@ -2837,15 +2846,15 @@ console.log('scenario escalation-classifier: OK')
   }
   const args = { ...LAUNCH_ARGS,
     waves: [[
-      { id: 'a', title: 'trivial', body: 'b', tier: 'cheap', review: 'lean' },        // → opus (uniform)
-      { id: 'b', title: 'risky', body: 'b', tier: 'cheap', review: 'adversarial' },   // → opus
+      { id: 'a', title: 'trivial', body: 'b', tier: 'standard', review: 'lean' },        // → opus (uniform)
+      { id: 'b', title: 'risky', body: 'b', tier: 'standard', review: 'adversarial' },   // → opus
       { id: 'c', title: 'mid', body: 'b', tier: 'standard', review: 'lean' },         // → opus
     ]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
-    tierOverrides: { cheap: 'sonnet', mostCapable: 'haiku' },
+    tierOverrides: { standard: 'sonnet', mostCapable: 'haiku' },
   }
   await runWorkflow({ agent, args, budget: { total: null, spent: () => 0, remaining: () => Infinity } })
-  eq(models.a, 'opus', 'lean+cheap task reviewed at the uniform most-capable model (no sonnet floor)')
+  eq(models.a, 'opus', 'lean standard-tier task reviewed at the uniform most-capable model (no sonnet floor)')
   eq(models.b, 'opus', 'adversarial task reviewed at opus')
   eq(models.c, 'opus', 'standard-tier lean task reviewed at opus')
   eq(models.integration, 'opus', 'completeness critic stays opus')
@@ -2877,7 +2886,7 @@ console.log('scenario reviewer-model-uniform-override-proof: OK')
     throw new Error('unexpected label ' + label)
   }
   const args = { ...LAUNCH_ARGS,
-    waves: [[{ id: 'A', title: 't', body: 'b', tier: 'cheap' }]],
+    waves: [[{ id: 'A', title: 't', body: 'b', tier: 'standard' }]],
     integrationBranch: 'ultra/int', stamp: 's', edges: [],
     testCmd: 'make test', bootstrapCmd: 'make deps',
   }
@@ -2907,7 +2916,7 @@ async function runLabelScenario(waveLabels) {
     return { status: 'done', branch: 'w', headSha: 'sha' }
   }
   const args = { ...LAUNCH_ARGS,
-    waves: [[{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }]],
+    waves: [[{ id: '1', title: 'Schema', body: 'b', tier: 'standard', review: 'lean' }]],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
     ...(waveLabels ? { waveLabels } : {}),
   }
@@ -2945,8 +2954,8 @@ console.log('scenario wave-labels: OK')
   }
   const args = { ...LAUNCH_ARGS,
     waves: [
-      [{ id: '1', title: 'Schema', body: 'b', tier: 'cheap', review: 'lean' }],
-      [{ id: '2', title: 'API', body: 'b', tier: 'cheap', review: 'lean' }],
+      [{ id: '1', title: 'Schema', body: 'b', tier: 'standard', review: 'lean' }],
+      [{ id: '2', title: 'API', body: 'b', tier: 'standard', review: 'lean' }],
     ],
     integrationBranch: 'ultra/int', stamp: 's', baseBranch: 'main', edges: [],
     waveLabels: ['Data layer', 'API surface'],
@@ -3060,7 +3069,7 @@ async function scenarioEarlyExhaustStampsCommand() {
 // merge.status and aborting the whole run (#148 §1).
 async function scenarioMergeNullContained() {
   let reconciled = false
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
+  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
@@ -3081,8 +3090,8 @@ async function scenarioMergeNullContained() {
 // loop with the wave blocked and the run alive — never a TypeError (#148 §1).
 async function scenarioReconcileNullContained() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
@@ -3138,8 +3147,8 @@ async function scenarioInfraDeathParkRecovers() {
 // reviewVerdict agent-error, and the dependent is blocked before dispatch.
 async function scenarioInfraDeathRetryDies() {
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
     edges: [['A', 'B']] }
@@ -3202,8 +3211,8 @@ async function scenarioFixRoundNullParks() {
 async function scenarioInfraParkBudgetDefers() {
   let reviewDied = false
   const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
+    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
+    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
   ]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
     edges: [['A', 'B']] }
@@ -3238,9 +3247,9 @@ async function scenarioInfraParkBudgetDefers() {
 // it gets the named skip-note instead, once, per wave.
 async function scenarioCompositionRows() {
   const pinnedWave = [
-    { id: 'A', title: 'write shared', body: 'do A', tier: 'cheap',
+    { id: 'A', title: 'write shared', body: 'do A', tier: 'standard',
       writes: ['shared.txt'], commutes: ['shared.txt'] },
-    { id: 'B', title: 'also write shared', body: 'do B', tier: 'cheap',
+    { id: 'B', title: 'also write shared', body: 'do B', tier: 'standard',
       writes: ['shared.txt'] },
   ]
   const pinnedArgs = { ...LAUNCH_ARGS, waves: [pinnedWave],
@@ -3251,8 +3260,8 @@ async function scenarioCompositionRows() {
     'compositionRows: exactly one unpinned row naming the undeclared writer')
 
   const unwrittenWave = [
-    { id: 'A', title: 'task A', body: 'do A', tier: 'cheap' },
-    { id: 'B', title: 'task B', body: 'do B', tier: 'cheap' },
+    { id: 'A', title: 'task A', body: 'do A', tier: 'standard' },
+    { id: 'B', title: 'task B', body: 'do B', tier: 'standard' },
   ]
   const unwrittenArgs = { ...LAUNCH_ARGS, waves: [unwrittenWave],
     integrationBranch: 'ultra/integration-sim', stamp: 'sim' }

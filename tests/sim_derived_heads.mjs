@@ -51,8 +51,8 @@ function lacks(haystack, needle, msg) {
 // Two waves: A,B merge in wave 1; C merges in wave 2.
 const WAVES = [
   [
-    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap' },
-    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'cheap' },
+    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'standard' },
+    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'standard' },
   ],
   [{ id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' }],
 ]
