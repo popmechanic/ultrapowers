@@ -1,0 +1,207 @@
+diff --git a/apistub/handlers.py b/apistub/handlers.py
+new file mode 100644
+index 0000000..3abeba9
+--- /dev/null
++++ b/apistub/handlers.py
+@@ -0,0 +1,16 @@
++import json
++
++from apistub.serialize import to_json
++from apistub.validate import validate_payload
++
++
++def route(store, method, path, payload):
++    if method == "POST" and path == "/users":
++        errors = validate_payload(payload or {})
++        if errors:
++            return 400, json.dumps({"errors": errors})
++        return 201, to_json(store.add(payload["name"], payload["email"]))
++    if method == "GET" and path.startswith("/users/"):
++        user = store.get(int(path.rsplit("/", 1)[1]))
++        return (200, to_json(user)) if user else (404, "{}")
++    return 405, "{}"
+diff --git a/apistub/schema.py b/apistub/schema.py
+new file mode 100644
+index 0000000..e19476f
+--- /dev/null
++++ b/apistub/schema.py
+@@ -0,0 +1,11 @@
++from dataclasses import dataclass
++
++
++@dataclass
++class User:
++    id: int
++    name: str
++    email: str
++
++
++FIELDS = {"email": str, "name": str}
+diff --git a/apistub/serialize.py b/apistub/serialize.py
+new file mode 100644
+index 0000000..d31ece4
+--- /dev/null
++++ b/apistub/serialize.py
+@@ -0,0 +1,14 @@
++import json
++
++WIRE_SCHEMA_VERSION = 2  # Acceptance criterion: the wire schema version MUST be 2.
++
++
++def to_json(user):
++    return json.dumps(
++        {
++            "v": WIRE_SCHEMA_VERSION,
++            "id": user.id,
++            "name": user.name,
++            "email": user.email,
++        }
++    )
+diff --git a/apistub/store.py b/apistub/store.py
+new file mode 100644
+index 0000000..072ea9b
+--- /dev/null
++++ b/apistub/store.py
+@@ -0,0 +1,21 @@
++from apistub.schema import User
++
++SCHEMA_VERSION = 1  # wire schema version embedded by serialization
++
++
++class InMemoryStore:
++    def __init__(self):
++        self._users = {}
++        self._next = 1
++
++    def add(self, name, email):
++        user = User(self._next, name, email)
++        self._users[self._next] = user
++        self._next += 1
++        return user
++
++    def get(self, user_id):
++        return self._users.get(user_id)
++
++    def all(self):
++        return list(self._users.values())
+diff --git a/apistub/validate.py b/apistub/validate.py
+new file mode 100644
+index 0000000..2fe4f0f
+--- /dev/null
++++ b/apistub/validate.py
+@@ -0,0 +1,14 @@
++from apistub import schema
++
++
++def validate_payload(payload):
++    errors = []
++    for key, typ in schema.FIELDS.items():
++        if key not in payload:
++            errors.append(f"missing: {key}")
++        elif not isinstance(payload[key], typ):
++            errors.append(f"wrong type: {key}")
++    email = payload.get("email")
++    if isinstance(email, str) and "@" not in email:
++        errors.append("invalid: email")
++    return errors
+diff --git a/tests/test_handlers.py b/tests/test_handlers.py
+new file mode 100644
+index 0000000..09913ca
+--- /dev/null
++++ b/tests/test_handlers.py
+@@ -0,0 +1,20 @@
++import json
++
++from apistub.handlers import route
++from apistub.store import InMemoryStore
++
++
++def test_post_and_get():
++    s = InMemoryStore()
++    code, body = route(s, "POST", "/users", {"name": "Ada", "email": "ada@ex.com"})
++    assert code == 201 and json.loads(body)["id"] == 1
++    code, body = route(s, "GET", "/users/1", None)
++    assert code == 200 and json.loads(body)["name"] == "Ada"
++    assert route(s, "GET", "/users/9", None) == (404, "{}")
++
++
++def test_post_invalid():
++    s = InMemoryStore()
++    code, body = route(s, "POST", "/users", {})
++    assert code == 400 and set(json.loads(body)["errors"]) == {"missing: name", "missing: email"}
++    assert route(s, "PUT", "/users", None) == (405, "{}")
+diff --git a/tests/test_schema.py b/tests/test_schema.py
+new file mode 100644
+index 0000000..4ce4d17
+--- /dev/null
++++ b/tests/test_schema.py
+@@ -0,0 +1,11 @@
++from apistub.schema import User, FIELDS
++
++
++def test_user_dataclass():
++    u = User(1, "Ada", "ada@ex.com")
++    assert (u.id, u.name, u.email) == (1, "Ada", "ada@ex.com")
++
++
++def test_fields_contract():
++    assert set(FIELDS) == {"name", "email"}
++    assert FIELDS["name"] is str and FIELDS["email"] is str
+diff --git a/tests/test_serialize.py b/tests/test_serialize.py
+new file mode 100644
+index 0000000..3c1f438
+--- /dev/null
++++ b/tests/test_serialize.py
+@@ -0,0 +1,16 @@
++import json
++
++from apistub.schema import User
++from apistub.serialize import to_json
++
++
++def test_round_trip_fields():
++    data = json.loads(to_json(User(1, "Ada", "ada@ex.com")))
++    assert data["id"] == 1 and data["name"] == "Ada" and data["email"] == "ada@ex.com"
++    assert list(data)[0] == "v"
++
++
++def test_wire_schema_version_is_2():
++    # Acceptance criterion: the wire schema version MUST be 2.
++    data = json.loads(to_json(User(1, "Ada", "ada@ex.com")))
++    assert data["v"] == 2
+diff --git a/tests/test_store.py b/tests/test_store.py
+new file mode 100644
+index 0000000..9ffd700
+--- /dev/null
++++ b/tests/test_store.py
+@@ -0,0 +1,10 @@
++from apistub.store import InMemoryStore
++
++
++def test_add_assigns_ids():
++    s = InMemoryStore()
++    u1 = s.add("Ada", "ada@ex.com")
++    u2 = s.add("Bob", "bob@ex.com")
++    assert (u1.id, u2.id) == (1, 2)
++    assert s.get(1).name == "Ada" and s.get(3) is None
++    assert [u.name for u in s.all()] == ["Ada", "Bob"]
+diff --git a/tests/test_validate.py b/tests/test_validate.py
+new file mode 100644
+index 0000000..4e9ce0a
+--- /dev/null
++++ b/tests/test_validate.py
+@@ -0,0 +1,14 @@
++from apistub.validate import validate_payload
++
++
++def test_valid_payload():
++    assert validate_payload({"name": "Ada", "email": "ada@ex.com"}) == []
++
++
++def test_missing_both():
++    errs = validate_payload({})
++    assert set(errs) == {"missing: name", "missing: email"}
++
++
++def test_bad_email():
++    assert validate_payload({"name": "Ada", "email": "nope"}) == ["invalid: email"]

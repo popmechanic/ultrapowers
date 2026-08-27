@@ -1,0 +1,9 @@
+1-flawed-routing (2026-08-26)
+A/B instrument for #285 reviewer routing. Two INTENTIONAL plan-verbatim
+defects — do NOT "fix" them; the bugs ARE the fixture:
+- class-2 (Task 1): FIELDS = {"email":..., "name":...} contradicts the task's
+  own stated contract (name first). Own-file fix; consumers downstream.
+- class-1 (Task 3): to_json embeds "v": 1 against the stated v2 criterion;
+  the corrective edit spans sibling-owned store.py (SCHEMA_VERSION = 1).
+Task-local tests are deliberately order-/version-insensitive so worktree
+suites stay green; the sealed acceptance asserts the correct contracts.
