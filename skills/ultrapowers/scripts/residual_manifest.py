@@ -238,8 +238,10 @@ def main():
             die("--check takes a manifest only (no reports, no --run-dir, no --gate-acks)")
         return check(a.check)
     if a.run_dir:
-        if a.reports or a.check:
-            die("--run-dir takes no positional reports and no --check")
+        # the a.check half of this guard was dead: the `if a.check:` block
+        # above returns/dies first (#244 residual 6)
+        if a.reports:
+            die("--run-dir takes no positional reports")
         a.reports = round_reports(a.run_dir)
     if not a.reports:
         die("derive mode needs at least one report.json (or --check <manifest>)")

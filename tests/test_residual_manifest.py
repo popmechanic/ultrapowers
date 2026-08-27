@@ -352,3 +352,18 @@ def test_run_dir_is_exclusive_with_positional_reports_and_check(tmp_path):
     assert r.returncode == 1 and "--run-dir" in r.stderr
     r = run("--run-dir", run_dir, "--check", tmp_path / "m.md")
     assert r.returncode == 1 and "--run-dir" in r.stderr
+
+
+def test_run_dir_tolerates_numbering_hole(tmp_path):
+    # #244 residual 5: report-1.json absent, report-3.json present — derive
+    # succeeds and orders the surviving rounds before the live report
+    run_dir = tmp_path / "run-x"; run_dir.mkdir()
+    write(run_dir, "report-3.json", report(completenessFindings=["third"]))
+    write(run_dir, "report.json", report(completenessFindings=["live"]))
+    r = run("--run-dir", run_dir)
+    assert r.returncode == 0, r.stderr
+    texts = [l.split("] ", 1)[1].split(" — disposition:")[0]
+             for l in manifest_rows(r.stdout) if "[completenessFindings]" in l]
+    assert texts == ["third", "live"]
+    head = r.stdout.splitlines()[2]
+    assert head.index("report-3.json") < head.index("report.json")
