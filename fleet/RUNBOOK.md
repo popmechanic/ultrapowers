@@ -44,6 +44,12 @@ ssh fleet-golden.exe.xyz 'claude --version'   # non-empty
 ssh fleet-golden.exe.xyz 'nproc'              # must print 8 (the --cpu=8 above; #179 fact sheet §1)
 ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
 ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-ok'
+ssh fleet-golden.exe.xyz 'claude plugin list'
+#    Compare the printed ultrapowers version against `.claude-plugin/plugin.json`
+#    on the base ref you are about to drive, BEFORE any drive — a stale golden
+#    silently runs an old engine and nothing else here will catch it (#282).
+#    Update with: claude plugin update ultrapowers@ultrapowers
+#    (the bare name `ultrapowers` fails with "Plugin not found").
 ```
 
 Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
@@ -170,6 +176,11 @@ const { read, reportPath, detailPath } = await driveOne({
   repoDir: process.cwd(),              // local checkout the base is pushed from
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
+  runId: 'run-<fresh>',                // unique per account lifetime — NEVER reuse a runId (#211)
+  capTokens: 2_000_000,
+  ttlMs: 4 * 60 * 60 * 1000,
+  heartbeatTimeoutMs: 30 * 60_000,
+  claimTimeoutMs: 10 * 60_000,
   // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
   // memory from <evidenceDir>/stat.json once runs carry it (W2); golden 8/16 default.
   // sandboxCpu: 8, sandboxMemory: '16GB',
@@ -194,7 +205,13 @@ needs no exec wrapper of its own:
   keeps `driveOne`'s default `wsUrl` `ws://127.0.0.1:<port>/fleet` true on both
   ends. A tunnel that fails to open throws out of `provisionRun` (the run is
   recorded red in `detail.errors`, the sandbox still torn down). `destroySandbox`
-  kills the detached tunnel process after the `rm`.
+  kills the detached tunnel process after the `rm`. Every sandbox-bound ssh (and
+  git-over-ssh) command carries
+  `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` because sandboxes
+  are ephemeral — a fresh `fleet-<runId>.exe.xyz` per run, never reused, so there
+  is no host key worth pinning and a reused/recycled hostname would otherwise
+  trip a stale `known_hosts` entry (#211); lobby (`exe.dev`) and golden
+  (`fleet-golden.exe.xyz`) connections keep the normal host-key config.
 - **Evidence before teardown (#197).** `driveOne` pulls the small sandbox
   artifacts — `shim.log`, `fleet-run.json`, `~/.claude/projects` (engine
   transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to

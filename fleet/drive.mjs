@@ -14,7 +14,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
-import { provisionRun, destroySandbox } from './provision.mjs'
+import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from './provision.mjs'
 import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
 
@@ -35,7 +35,7 @@ const isNonEmptyString = (value) => typeof value === 'string' && value.length > 
  * depended on exactly these files, and they die with the VM.
  */
 export const sandboxLogPullCommand = ({ vmName, dest }) =>
-  `ssh -o BatchMode=yes -o ConnectTimeout=10 ${vmName}.exe.xyz ` +
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz ` +
   `'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects ` +
   `$(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|repo/|") 2>/dev/null' ` +
   `> ${dest}`
@@ -575,7 +575,7 @@ export const driveOne = async ({
         errors.push(`unsafe branch name in runs.${runId}.branch — refusing to fetch`)
       } else {
         const fetched = await exec(
-          `git -C ${repoDir} fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${runBranch}`,
+          `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${runBranch}`,
         )
         if (fetched?.code !== 0) {
           errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)

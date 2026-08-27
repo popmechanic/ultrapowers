@@ -44,6 +44,7 @@ import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { driveOne } from '../drive.mjs'
 import { runShim } from '../shim.mjs'
+import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
   applyBranch,
   applyReceipt,
@@ -194,8 +195,8 @@ try {
         if (/nohup node .*shim-main\.mjs/.test(cmd)) onShimStart(exec.delivered)
         return { code: 0, stdout: '{}' }
       }
-      if (/^git -C \S+ push /.test(cmd)) return { code: 0, stdout: '' }
-      const fetched = cmd.match(/^git -C (\S+) fetch ssh:\/\/\S+ (\S+)$/)
+      if (/^git -C \S+ -c core\.sshCommand="[^"]*" push /.test(cmd)) return { code: 0, stdout: '' }
+      const fetched = cmd.match(/^git -C (\S+) -c core\.sshCommand="[^"]*" fetch ssh:\/\/\S+ (\S+)$/)
       if (fetched) return sh(`git -C "${fetched[1]}" fetch "${sandboxRepo}" ${fetched[2]}`)
       if (cmd.startsWith('git ')) return sh(cmd)
       return { code: 0, stdout: '' }
@@ -395,7 +396,7 @@ try {
     // fallback.
     assert.ok(
       exec.cmds.includes(
-        `git -C ${repoDir} fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${INTEGRATION_BRANCH}`,
+        `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${INTEGRATION_BRANCH}`,
       ),
       `expected a fetch of ${INTEGRATION_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
@@ -407,7 +408,7 @@ try {
     // The run branch was fetched before any sha was verified, and the sha was
     // verified with a real existence pre-check AND a real reachability check
     // against the fetched branch.
-    const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
+    const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ -c core\.sshCommand="[^"]*" fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
     const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}`)
     const ancIdx = exec.cmds.findIndex(
       (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} FETCH_HEAD`,
@@ -434,7 +435,7 @@ try {
     // transcripts and the gitignored run dirs die with the VM, and every live
     // diagnosis depended on them. The driver pulls them — small artifacts only,
     // never the whole repo — exactly once, and strictly before the `rm`.
-    const pullIdx = exec.cmds.findIndex((c) => /^ssh -o BatchMode=yes -o ConnectTimeout=10 fleet-run-drive-1\.exe\.xyz 'cd \/home\/exedev && tar czf - shim\.log fleet-run\.json \.claude\/projects /.test(c))
+    const pullIdx = exec.cmds.findIndex((c) => c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz 'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects `))
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     assert.ok(pullIdx >= 0, `expected a sandbox log pull, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(pullIdx < rmIdx, 'sandbox logs are pulled BEFORE the sandbox is destroyed')
@@ -460,7 +461,7 @@ try {
     const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`))
     assert.ok(killIdx > rmIdx, `the tunnel kill follows the rm, got: ${JSON.stringify(exec.cmds)}`)
     // And the tunnel was opened before the shim started.
-    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
+    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
     const shimIdx = exec.cmds.findIndex((c) => /nohup node .*shim-main\.mjs/.test(c))
     assert.ok(tunnelIdx >= 0 && tunnelIdx < shimIdx, `the reverse tunnel opens before the shim starts, got: ${JSON.stringify(exec.cmds)}`)
 
@@ -599,7 +600,7 @@ try {
     await sandbox
 
     assert.ok(
-      exec.cmds.includes(`git -C ${repoDir} fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${OLDER_BRANCH}`),
+      exec.cmds.includes(`git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${OLDER_BRANCH}`),
       `expected a fetch of ${OLDER_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
     assert.ok(
@@ -885,11 +886,19 @@ try {
     // re-serialization of what this process managed to parse out of it.
     assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), STAT_FIXTURE)
     assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), CREDITS_FIXTURE)
-    // The captures name THIS vm and ride the validated command builders.
+    // The captures name THIS vm and ride the validated command builders. Both
+    // target `exe.dev` (the lobby control plane, not the sandbox itself), so
+    // neither carries the sandbox no-pin host-key flags (#211).
     assert.ok(
       exec.cmds.includes(`ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-${runId} --json --range=24h"`),
       `expected the stat capture, got: ${JSON.stringify(exec.cmds)}`,
     )
+    for (const cmd of exec.cmds.filter((c) => STAT_CMD.test(c) || CREDITS_CMD.test(c))) {
+      assert.ok(
+        !cmd.includes('StrictHostKeyChecking') && !cmd.includes('UserKnownHostsFile'),
+        `the lobby stat/credits capture must carry no host-key flags, got: ${cmd}`,
+      )
+    }
     // Both captures happen while the VM still exists.
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     const statIdx = exec.cmds.findIndex((c) => STAT_CMD.test(c))

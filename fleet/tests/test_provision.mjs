@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
-import { provisionRun, destroySandbox } from '../provision.mjs'
+import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import { hashToken } from '../tokens.mjs'
+
+// SANDBOX_SSH_OPTS / sandboxGitSsh: the no-pin host-key posture every
+// sandbox-bound command threads through (#211) — sandboxes are ephemeral, so
+// there is no host key worth pinning, and a reused/recycled hostname would
+// otherwise trip a stale known_hosts entry on ssh's `accept-new` default.
+assert.equal(SANDBOX_SSH_OPTS, '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null')
+assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
 
 // provisionRun: recording exec stub. The SSH-probe leg fails once (code 1)
 // then succeeds (code 0) to prove the retry loop; every other command
@@ -19,6 +26,8 @@ import { hashToken } from '../tokens.mjs'
     }
     return { code: 0, stdout: '{}' }
   }
+
+  const isSandboxBound = (cmd) => cmd.includes(SANDBOX_SSH_OPTS)
 
   const result = await provisionRun({
     golden: 'fleet-golden',
@@ -43,16 +52,18 @@ import { hashToken } from '../tokens.mjs'
   // Exec call count: clone(1) + probe-fail(1) + probe-ok(1) + delivery(1) + push(1) + tunnel(1) + shim-start(1) = 7.
   assert.equal(cmds.length, 7, `expected 7 exec calls, got ${cmds.length}: ${JSON.stringify(cmds)}`)
 
-  // Step 1: clone the golden VM.
+  // Step 1: clone the golden VM — a LOBBY command, no host-key flags.
   assert.ok(
     cmds[0].startsWith('ssh exe.dev "cp fleet-golden fleet-r1 --json"'),
     `cmds[0] should be the golden-clone command, got: ${cmds[0]}`
   )
+  assert.ok(!isSandboxBound(cmds[0]), `the lobby clone must carry no host-key flags, got: ${cmds[0]}`)
 
   // Step 2: wait-for-ssh probe, retried until it succeeds — the identical
   // command re-issued on retry (proving the retry loop, not a different path).
-  assert.ok(cmds[1].startsWith('ssh -o BatchMode=yes'), `cmds[1] should be the ssh probe, got: ${cmds[1]}`)
+  assert.ok(cmds[1].startsWith('ssh -o BatchMode=yes -o ConnectTimeout=5 '), `cmds[1] should be the ssh probe, got: ${cmds[1]}`)
   assert.ok(cmds[1].includes('fleet-r1.exe.xyz true'))
+  assert.ok(isSandboxBound(cmds[1]), `the reachability probe must carry the no-pin host-key flags, got: ${cmds[1]}`)
   assert.equal(cmds[2], cmds[1], 'retry re-issues the identical probe command')
 
   // Step 3: token mint issues no command — already proven by the exec call
@@ -60,7 +71,7 @@ import { hashToken } from '../tokens.mjs'
 
   // Step 4: token + assignment delivery, JSON embedded as a heredoc payload.
   assert.ok(
-    cmds[3].startsWith("ssh fleet-r1.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json'"),
+    cmds[3].startsWith(`ssh ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json'`),
     `cmds[3] should be the delivery command, got: ${cmds[3]}`
   )
   const payloadMatch = cmds[3].match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
@@ -72,13 +83,15 @@ import { hashToken } from '../tokens.mjs'
   assert.equal(payload.ttlMs, 60000)
   assert.equal(payload.planPath, 'docs/superpowers/plans/2026-08-21-width-w1.md', 'the plan path is delivered to the sandbox')
 
-  // Step 5: base push.
+  // Step 5: base push — via `-c core.sshCommand=` carrying the same flags,
+  // since a bare `ssh://` URL gives git no way to pass ssh options.
   assert.ok(
     cmds[4].startsWith(
-      'git -C /tmp/repo push ssh://exedev@fleet-r1.exe.xyz/home/exedev/repo refs/heads/main:refs/heads/fleet-base'
+      `git -C /tmp/repo -c core.sshCommand="${sandboxGitSsh}" push ssh://exedev@fleet-r1.exe.xyz/home/exedev/repo refs/heads/main:refs/heads/fleet-base`
     ),
     `cmds[4] should be the base push, got: ${cmds[4]}`
   )
+  assert.ok(cmds[4].includes(SANDBOX_SSH_OPTS), `the base push must carry the no-pin host-key flags, got: ${cmds[4]}`)
 
   // Step 6: the SSH reverse tunnel (#196). exe.dev VMs share no private
   // network, so the sandbox reaches the orchestrator's ws port only through a
@@ -87,13 +100,17 @@ import { hashToken } from '../tokens.mjs'
   // opened AFTER the reachability probe has passed and BEFORE the shim starts.
   assert.equal(
     cmds[5],
-    'ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R 8151:127.0.0.1:8151 fleet-r1.exe.xyz',
+    `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R 8151:127.0.0.1:8151 fleet-r1.exe.xyz`,
     `cmds[5] should be the reverse tunnel, got: ${cmds[5]}`
   )
 
-  // Step 7: shim start — last, after the tunnel exists to carry its ws.
-  assert.ok(
-    cmds[6].startsWith("ssh fleet-r1.exe.xyz 'nohup node /home/exedev/repo/fleet/shim-main.mjs"),
+  // Step 7: shim start — last, after the tunnel exists to carry its ws. Checks
+  // out `fleet-base` first (#282: the golden's baked-in checkout is stale the
+  // moment a new base is pushed), `&&`-gated ahead of `nohup` so a failed
+  // checkout starts nothing; its output truncates shim.log, the shim appends.
+  assert.equal(
+    cmds[6],
+    `ssh ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`,
     `cmds[6] should be the shim start, got: ${cmds[6]}`
   )
 }
@@ -146,14 +163,15 @@ import { hashToken } from '../tokens.mjs'
   await destroySandbox({ vmName: 'fleet-r1', port: 8151, exec })
   assert.equal(cmds.length, 2, `expected rm + tunnel-kill, got: ${JSON.stringify(cmds)}`)
   assert.equal(cmds[0], 'ssh exe.dev "rm fleet-r1 --json"')
+  assert.ok(!cmds[0].includes('StrictHostKeyChecking') && !cmds[0].includes('UserKnownHostsFile'), `the lobby rm must carry no host-key flags, got: ${cmds[0]}`)
   assert.ok(cmds[1].startsWith('pkill -f '), `cmds[1] should be the tunnel kill, got: ${cmds[1]}`)
   assert.ok(cmds[1].includes('[-]R 8151:127.0.0.1:8151 fleet-r1.exe.xyz'), `tunnel-kill pattern must name port and vm: ${cmds[1]}`)
   assert.ok(!/ -R 8151/.test(cmds[1]), `tunnel-kill pattern must not be matchable by its own argv: ${cmds[1]}`)
-  // The pattern really does match the tunnel's argv and really does not match
-  // the kill command's own argv.
+  // The pattern really does match the tunnel's argv (with its host-key flags)
+  // and really does not match the kill command's own argv.
   const pattern = cmds[1].match(/pkill -f '([^']+)'/)[1]
   const re = new RegExp(pattern)
-  assert.ok(re.test('ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R 8151:127.0.0.1:8151 fleet-r1.exe.xyz'))
+  assert.ok(re.test(`ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R 8151:127.0.0.1:8151 fleet-r1.exe.xyz`))
   assert.ok(!re.test(`/bin/sh -c ${cmds[1]}`))
 }
 
@@ -166,6 +184,7 @@ import { hashToken } from '../tokens.mjs'
   }
   await destroySandbox({ vmName: 'fleet-r1', exec })
   assert.deepEqual(cmds, ['ssh exe.dev "rm fleet-r1 --json"'])
+  assert.ok(!cmds[0].includes('StrictHostKeyChecking') && !cmds[0].includes('UserKnownHostsFile'), `the lobby rm must carry no host-key flags, got: ${cmds[0]}`)
 }
 
 
@@ -200,7 +219,7 @@ import { hashToken } from '../tokens.mjs'
   assert.equal(cmds.length, 7, `expected 7 exec calls with engineEnv, got ${cmds.length}: ${JSON.stringify(cmds)}`)
   const envCmd = cmds[3]
   assert.ok(
-    envCmd.startsWith("ssh fleet-r3.exe.xyz 'umask 077 && cat > /home/exedev/fleet-env'"),
+    envCmd.startsWith(`ssh ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'umask 077 && cat > /home/exedev/fleet-env'`),
     `cmds[3] should deliver the env file under umask 077, got: ${envCmd}`
   )
   const body = envCmd.match(/<<'FLEET_ENV_EOF'\n([\s\S]*?)\nFLEET_ENV_EOF/)
@@ -208,10 +227,15 @@ import { hashToken } from '../tokens.mjs'
   // One `KEY='value'` line per entry, single-quoted with embedded quotes
   // escaped, so `.`-sourcing it in sh yields the exact value back.
   assert.equal(body[1], `CLAUDE_CODE_OAUTH_TOKEN='sk-ant-oat01-FAKE-TOKEN-with-$dollar-and-'\\''quote'\\'''`)
-  // The shim start sources the file (set -a exports every assignment) and
-  // carries NO secret on its own argv.
+  // The shim start checks out fleet-base, THEN sources the env file (set -a
+  // exports every assignment) immediately before `nohup`, and carries NO
+  // secret on its own argv.
   const start = cmds[6]
-  assert.ok(start.includes('set -a && . /home/exedev/fleet-env && set +a && nohup node /home/exedev/repo/fleet/shim-main.mjs'), `shim start must source the env file, got: ${start}`)
+  assert.equal(
+    start,
+    `ssh ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && set -a && . /home/exedev/fleet-env && set +a && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`,
+    `shim start must checkout fleet-base then source the env file, got: ${start}`
+  )
   assert.ok(!start.includes('sk-ant-oat01'), 'the token must never appear on the shim-start argv')
   // The store-token assignment is still delivered, unchanged, before the env file.
   assert.ok(cmds[2].includes('fleet-run.json'), `cmds[2] should still be the assignment delivery, got: ${cmds[2]}`)

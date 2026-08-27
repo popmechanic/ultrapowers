@@ -11,6 +11,20 @@ import { mintToken } from './tokens.mjs'
 const PROBE_MAX_RETRIES = 60
 const PROBE_BACKOFF_MS = 500
 
+/**
+ * Every sandbox-bound ssh (and git-over-ssh) command carries these flags.
+ * Sandboxes are ephemeral (`fleet-<runId>.exe.xyz`) — a fresh VM is minted per
+ * run and never reused, so there is no host key worth pinning, and reusing a
+ * runId (or exe.dev recycling a hostname) would otherwise leave a STALE
+ * known_hosts entry that makes `accept-new` refuse the new VM's key on every
+ * leg — tunnel, push, pull (#211). Lobby-addressed commands (`exe.dev` itself,
+ * and the golden `fleet-golden.exe.xyz`) are long-lived and keep the normal
+ * host-key config; they never get these flags.
+ */
+export const SANDBOX_SSH_OPTS = '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+/** The `core.sshCommand` value for a git-over-ssh call to a sandbox. */
+export const sandboxGitSsh = `ssh ${SANDBOX_SSH_OPTS}`
+
 /** Where the per-run engine env file lands on the sandbox (#213). */
 export const ENGINE_ENV_PATH = '/home/exedev/fleet-env'
 const ENGINE_ENV_EOF = 'FLEET_ENV_EOF'
@@ -41,17 +55,26 @@ export function engineEnvFileBody(engineEnv) {
 
 /** The engine env-file delivery command: same umask-077 heredoc pattern as the assignment. */
 export function engineEnvDeliveryCommand({ vmName, engineEnv }) {
-  return `ssh ${vmName}.exe.xyz 'umask 077 && cat > ${ENGINE_ENV_PATH}' <<'${ENGINE_ENV_EOF}'\n${engineEnvFileBody(engineEnv)}\n${ENGINE_ENV_EOF}`
+  return `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > ${ENGINE_ENV_PATH}' <<'${ENGINE_ENV_EOF}'\n${engineEnvFileBody(engineEnv)}\n${ENGINE_ENV_EOF}`
 }
 
 /**
- * The detached shim start. With an env file delivered, it is sourced under
- * `set -a` so every assignment is exported to the shim and, through its
- * inherited-env `spawn`, to the engine — the secret is never on an argv.
+ * The detached shim start. Checks out the pushed `fleet-base` FIRST — the
+ * golden image's baked-in checkout is stale the moment a new base is pushed
+ * on top of it, and without this the shim runs the golden's own repo state
+ * instead of the base under test (#282). The checkout is `&&`-gated ahead of
+ * `nohup`, so a failed checkout (e.g. a dirty tree refusing it) starts
+ * nothing rather than silently running the wrong code. Its own output
+ * truncates `shim.log` (`>`); the shim then appends (`>>`), so the checkout's
+ * failure reason survives in the same file the shim itself logs to.
+ *
+ * With an env file delivered, it is sourced under `set -a` (immediately
+ * before `nohup`) so every assignment is exported to the shim and, through
+ * its inherited-env `spawn`, to the engine — the secret is never on an argv.
  */
 export function shimStartCommand({ vmName, withEngineEnv = false }) {
   const prefix = withEngineEnv ? `set -a && . ${ENGINE_ENV_PATH} && set +a && ` : ''
-  return `ssh ${vmName}.exe.xyz '${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs > shim.log 2>&1 &'`
+  return `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && ${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`
 }
 
 function sleep(ms) {
@@ -123,7 +146,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   await exec(`ssh exe.dev "cp ${golden} ${vmName}${sizeFlagsStr} --json"`)
 
   // 2. Wait for the clone's SSH to come up before touching it further.
-  const probeCmd = `ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${vmName}.exe.xyz true`
+  const probeCmd = `ssh -o BatchMode=yes -o ConnectTimeout=5 ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz true`
   let reachable = false
   for (let attempt = 0; attempt < PROBE_MAX_RETRIES; attempt++) {
     const result = await exec(probeCmd)
@@ -145,7 +168,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   //    the single exec(cmd) string, since exec has no separate stdin channel.
   const payload = { runId, token, wsUrl, ttlMs, planPath }
   await exec(
-    `ssh ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
+    `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
   )
 
   // 4b. Deliver the engine's env (#213) the same way — a 0600 file the shim
@@ -154,7 +177,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
 
   // 5. Push the base ref the sandbox builds its run from.
   await exec(
-    `git -C ${repoDir} push ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${baseRef}:refs/heads/fleet-base`
+    `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" push ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${baseRef}:refs/heads/fleet-base`
   )
 
   // 6. Open the reverse tunnel the sandbox's ws rides, now that the sandbox is
@@ -182,7 +205,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
 
 /** The reverse-tunnel command, as proven in the live run (#196). */
 export function tunnelCommand({ vmName, port }) {
-  return `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${port}:127.0.0.1:${port} ${vmName}.exe.xyz`
+  return `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R ${port}:127.0.0.1:${port} ${vmName}.exe.xyz`
 }
 
 /**
