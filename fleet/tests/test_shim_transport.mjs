@@ -6,12 +6,16 @@
 // (deliverAndClose's rescue reconnect when the socket died mid-run), and a
 // capped renew cadence (renewIntervalFor).
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import net from 'node:net'
+import os from 'node:os'
+import path from 'node:path'
 import { WebSocketServer, WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsServer } from 'tinybase/synchronizers/synchronizer-ws-server'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { runShim, connectOpenWs, renewIntervalFor } from '../shim.mjs'
+import { main as shimMain } from '../shim-main.mjs'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -245,6 +249,58 @@ const main = async () => {
 
     helper.close()
     ok('live-socket flush delivers gate-green within 1s')
+  }
+
+  // --- 7. shim-main.mjs main() fails fast when the aux socket can't connect -
+  // The fail-fast contract (aux connectOpenWs failure => the engine never
+  // launches) is exercised in-process against the REAL `main()`, not just
+  // `runShim` in isolation — a connection-refused port is enough (fast,
+  // deterministic rejection; no timeout knob needed).
+  {
+    const deadServer = new WebSocketServer({ port: 0 })
+    await new Promise((resolve, reject) => {
+      deadServer.once('listening', resolve)
+      deadServer.once('error', reject)
+    })
+    const deadPort = deadServer.address().port
+    await new Promise((resolve) => deadServer.close(resolve))
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-main-transport-'))
+    const assignmentPath = path.join(tmpDir, 'fleet-run.json')
+    fs.writeFileSync(
+      assignmentPath,
+      JSON.stringify({ runId: 'r1', token: 't', wsUrl: `ws://127.0.0.1:${deadPort}/x`, ttlMs: 300 }),
+    )
+    const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-main-repo-'))
+
+    let invoked = false
+    const invokeRun = () => {
+      invoked = true
+      return Promise.resolve({ gateGreen: true })
+    }
+    // Never expected to run — readStamp (which uses this) sits behind the aux
+    // connectOpenWs call, which is expected to reject first.
+    const exec = () => Promise.resolve({ code: 1, stdout: '' })
+
+    let rejected = false
+    let errMessage = ''
+    try {
+      await shimMain({ assignmentPath, repoDir, exec, invokeRun })
+    } catch (error) {
+      rejected = true
+      errMessage = String(error?.message ?? error)
+    }
+
+    assert.equal(rejected, true, 'main() must reject when the aux connectOpenWs call fails')
+    assert.ok(
+      /connect|closed|timeout/i.test(errMessage),
+      `expected a connect/closed/timeout error, got: ${errMessage}`,
+    )
+    assert.equal(invoked, false, 'invokeRun must never be called when the aux transport is dead')
+
+    fs.rmSync(tmpDir, { recursive: true, force: true })
+    fs.rmSync(repoDir, { recursive: true, force: true })
+    ok("main() fails fast when the aux socket can't connect — engine never launches")
   }
 }
 
