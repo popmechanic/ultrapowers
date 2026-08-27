@@ -17,6 +17,7 @@ never write `heads/`; headShas are derived from git ancestry at finalize
 time instead.
 """
 import argparse
+import filecmp
 import json
 import os
 import re
@@ -27,6 +28,7 @@ import compile_plan  # same scripts dir: the compiler's own path-token rule
 
 PROG = "redirect_args"
 CHAIN_LAUNCH = "relaunch-launch.json"
+LEGACY_CHAIN_LAUNCH = "redirect-launch.json"  # pre-#222 rounds (#244 residual 1)
 _ROUND_RE = re.compile(r"^(?:report|heads)-(\d+)(?:\.json)?$")
 
 
@@ -66,9 +68,15 @@ def rotate_round_artifacts(run_dir):
     out = {"round": n, "report": None, "heads": None}
     report = os.path.join(run_dir, "report.json")
     if os.path.isfile(report):
-        dst = os.path.join(run_dir, "report-%d.json" % n)
-        shutil.copy2(report, dst)
-        out["report"] = dst
+        # #244 residual 4: two composer runs with no gate between them would
+        # snapshot the same bytes twice — skip when the live report is
+        # byte-identical to the highest existing snapshot.
+        highest = os.path.join(run_dir, "report-%d.json" % (n - 1))
+        if not (n > 1 and os.path.isfile(highest)
+                and filecmp.cmp(report, highest, shallow=False)):
+            dst = os.path.join(run_dir, "report-%d.json" % n)
+            shutil.copy2(report, dst)
+            out["report"] = dst
     heads = os.path.join(run_dir, "heads")
     if os.path.isdir(heads):
         dst = os.path.join(run_dir, "heads-%d" % n)
@@ -90,9 +98,23 @@ def load_context(receipt_path, out_dir=None, branch_flag=None):
     if not (isinstance(args_path, str) and os.path.isfile(args_path)):
         die("receipt has no readable argsFile: %r" % args_path)
     args = load_json(args_path, "argsFile")
-    prior_launch = os.path.join(run_dir, CHAIN_LAUNCH)
-    launch_path = (prior_launch if os.path.isfile(prior_launch)
-                   else args.get("wavesPath"))
+    # #244 residuals 1+7: probe each chain-file name (current, then the
+    # pre-#222 legacy name) in run_dir then receipt_dir, so a legacy round or
+    # a mixed --out-dir never silently re-derives pristine bodies.
+    launch_path = None
+    for name in (CHAIN_LAUNCH, LEGACY_CHAIN_LAUNCH):
+        for d in (run_dir, receipt_dir):
+            cand = os.path.join(d, name)
+            if os.path.isfile(cand):
+                launch_path = cand
+                break
+        if launch_path:
+            break
+    if launch_path and os.path.basename(launch_path) == LEGACY_CHAIN_LAUNCH:
+        print("%s: chaining bodies from legacy %s (pre-#222 round)"
+              % (PROG, LEGACY_CHAIN_LAUNCH), file=sys.stderr)
+    if launch_path is None:
+        launch_path = args.get("wavesPath")
     if not (isinstance(launch_path, str) and os.path.isfile(launch_path)):
         die("args has no readable wavesPath: %r" % launch_path)
     launch = load_json(launch_path, "launch file")
@@ -187,11 +209,28 @@ def instruction_paths(instruction):
     return out
 
 
-def derive_files(task_files, instruction, finding_files):
+def derive_files(task_files, instruction, finding_files, declared=None):
     """#223: files is a footprint — task FILES ∪ instruction paths ∪ the
-    finding's files, ordered, deduped. It can only grow; never narrows."""
+    finding's files, ordered, deduped. It can only grow; never narrows.
+    #261: an instruction-derived candidate must exist on the tree or appear
+    in `declared` (the launch's declared-FILES union) — free prose otherwise
+    yields fake paths (masks, code fragments, extension lists); dropped
+    tokens are reported once on stderr, never silently. `declared=None`
+    keeps the guard off for direct/legacy callers. The finding's own files
+    stay trusted (orchestrator-authored). Trust nuance: the chained launch's
+    task files were grown by prior rounds, so pre-guard leaked tokens can
+    self-legitimize in old runs — harmless going forward."""
+    kept, dropped = [], []
+    for p in instruction_paths(instruction):
+        if declared is None or os.path.exists(p) or p in declared:
+            kept.append(p)
+        else:
+            dropped.append(p)
+    if dropped:
+        print("%s: dropped %d instruction token(s) not on tree or in declared FILES: %s"
+              % (PROG, len(dropped), ", ".join(dropped)), file=sys.stderr)
     out = []
-    for p in list(task_files or []) + instruction_paths(instruction) + list(finding_files or []):
+    for p in list(task_files or []) + kept + list(finding_files or []):
         if p and p not in out:
             out.append(p)
     return out
@@ -211,6 +250,8 @@ def main():
     if not (isinstance(findings, list) and findings):
         die("findings must be a non-empty JSON list of amend entries")
     tasks, entries = ctx["tasks"], ctx["entries"]
+    declared = ({p for t in tasks.values() for p in (t.get("files") or [])}
+                | {p for e in entries.values() for p in (e.get("files") or [])})
     amended = set()
     for i, f in enumerate(findings):
         tid = str(f.get("task") or "")
@@ -224,7 +265,7 @@ def main():
         if f.get("files") is not None and not isinstance(f["files"], list):
             die("finding %d (task %s): files must be a list" % (i, tid))
         derived = derive_files(tasks[tid].get("files") or entries[tid].get("files"),
-                               instruction, f.get("files"))
+                               instruction, f.get("files"), declared)
         tasks[tid]["files"] = list(derived)
         entries[tid]["files"] = list(derived)
         if f.get("tier"):

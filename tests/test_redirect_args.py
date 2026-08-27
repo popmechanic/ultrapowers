@@ -313,18 +313,6 @@ def test_legacy_integrationbranch_key_wins_over_branch(tmp_path):
     assert out_args["integrationBranch"] == "ultra/int-legacy"
 
 
-def test_files_derived_from_instruction_paths(tmp_path):
-    run = make_run(tmp_path)
-    r = run_helper(run, [{"task": "1", "instruction":
-                          "add the guard in `src/guard.py`, cover it in tests/test_guard.py::test_x, "
-                          "and leave Foo.Bar alone (see `README`)."}])
-    assert r.returncode == 0, r.stderr
-    out_args = json.loads(Path(r.stdout.strip()).read_text())
-    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
-    assert new_launch["tasks"]["1"]["files"] == ["a.py", "src/guard.py", "tests/test_guard.py", "README"]
-    assert out_args["waves"][0][0]["files"] == ["a.py", "src/guard.py", "tests/test_guard.py", "README"]
-
-
 def test_files_never_narrow_below_task_files(tmp_path):
     # a hand-narrowed finding cannot exclude the task's own FILES
     run = make_run(tmp_path)
@@ -365,3 +353,113 @@ def test_non_list_files_in_a_finding_exits_1(tmp_path):
     run = make_run(tmp_path)
     r = run_helper(run, [{"task": "1", "instruction": "x", "files": "c.py"}])
     assert r.returncode == 1 and "files must be a list" in r.stderr
+
+
+def _ra():
+    sys.path.insert(0, str(SCRIPT.parent))
+    import redirect_args as ra
+    return ra
+
+
+def test_derive_files_guard_drops_fake_paths(capsys):
+    # tokens that leak today (#261): glob mask, code fragment, quoted ext list
+    ra = _ra()
+    out = ra.derive_files(["a.py"], 'set the mask to "src/**/*.py" and rename foo(bar).py; exts ".py, .js"',
+                          [], declared={"a.py"})
+    assert out == ["a.py"]
+    err = capsys.readouterr().err
+    assert "dropped" in err and "src/**/*.py" in err
+
+
+def test_derive_files_guard_keeps_real_and_declared(capsys):
+    # exists-on-tree leg (pytest.ini at repo root) + declared-FILES leg
+    ra = _ra()
+    out = ra.derive_files(["a.py"], "edit pytest.ini then wire lib/util.py",
+                          [], declared={"a.py", "lib/util.py"})
+    assert out == ["a.py", "pytest.ini", "lib/util.py"]
+    assert capsys.readouterr().err == ""
+
+
+def test_derive_files_finding_files_bypass_guard():
+    # orchestrator-authored files are trusted even when absent everywhere
+    ra = _ra()
+    out = ra.derive_files(["a.py"], "", ["brand/new.py"], declared={"a.py"})
+    assert out == ["a.py", "brand/new.py"]
+
+
+def test_derive_files_declared_none_bypasses_guard():
+    # legacy/direct callers without a launch keep #223 behavior
+    ra = _ra()
+    assert ra.derive_files(["a.py"], "touch b.py and a.py", ["c.py", "b.py"]) == ["a.py", "b.py", "c.py"]
+
+
+def test_cli_drops_undeclared_instruction_tokens(tmp_path):
+    # end-to-end negative pin for the guard: none of the instruction's paths
+    # exist on the tree or in the launch's declared FILES
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction":
+                          "add the guard in `src/guard.py`, cover it in tests/test_guard.py::test_x, "
+                          "and leave Foo.Bar alone (see `README`)."}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    new_launch = json.loads(Path(out_args["wavesPath"]).read_text())
+    assert new_launch["tasks"]["1"]["files"] == ["a.py"]
+    assert out_args["waves"][0][0]["files"] == ["a.py"]
+    assert "dropped" in r.stderr
+    for tok in ("src/guard.py", "tests/test_guard.py", "README"):
+        assert tok in r.stderr
+
+
+def test_cli_keeps_declared_sibling_file(tmp_path):
+    # declared-FILES leg end-to-end: b.py is declared by task 2's launch entry
+    run = make_run(tmp_path)
+    r = run_helper(run, [{"task": "1", "instruction": "mirror the change in b.py"}])
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    assert out_args["waves"][0][0]["files"] == ["a.py", "b.py"]
+
+
+def test_legacy_chain_file_fallback(tmp_path):
+    # residual 1: a pre-#222 round left redirect-launch.json; bodies chain
+    # from it (with a stderr warning) instead of re-deriving pristine
+    run = make_run(tmp_path)
+    launch = json.loads((run / "launch.json").read_text())
+    launch["tasks"]["1"]["body"] += "\n\nREDIRECT: prior round amendment\n"
+    (run / "redirect-launch.json").write_text(json.dumps(launch))
+    r = run_helper(run, [{"task": "1", "instruction": "next amendment"}])
+    assert r.returncode == 0, r.stderr
+    assert "redirect-launch.json" in r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    body = json.loads(Path(out_args["wavesPath"]).read_text())["tasks"]["1"]["body"]
+    assert "prior round amendment" in body and "next amendment" in body
+
+
+def test_out_dir_mixing_finds_receipt_side_chain(tmp_path):
+    # residual 7: chain file beside the receipt is found even when --out-dir
+    # points elsewhere
+    run = make_run(tmp_path)
+    launch = json.loads((run / "launch.json").read_text())
+    launch["tasks"]["1"]["body"] += "\n\nREDIRECT: receipt-side amendment\n"
+    (run / "relaunch-launch.json").write_text(json.dumps(launch))
+    out_dir = tmp_path / "elsewhere"
+    out_dir.mkdir()
+    r = run_helper(run, [{"task": "1", "instruction": "another"}],
+                   "--out-dir", str(out_dir))
+    assert r.returncode == 0, r.stderr
+    out_args = json.loads(Path(r.stdout.strip()).read_text())
+    body = json.loads(Path(out_args["wavesPath"]).read_text())["tasks"]["1"]["body"]
+    assert "receipt-side amendment" in body
+
+
+def test_rotation_skips_byte_identical_snapshot(tmp_path):
+    ra = _ra()
+    run = tmp_path
+    (run / "report.json").write_text('{"r": 1}')
+    first = ra.rotate_round_artifacts(str(run))
+    assert first["report"] and (run / "report-1.json").is_file()
+    second = ra.rotate_round_artifacts(str(run))          # unchanged live report
+    assert second["report"] is None
+    assert sorted(p.name for p in run.glob("report-*.json")) == ["report-1.json"]
+    (run / "report.json").write_text('{"r": 2}')
+    third = ra.rotate_round_artifacts(str(run))           # changed -> snapshots again
+    assert third["report"] and (run / "report-2.json").is_file()

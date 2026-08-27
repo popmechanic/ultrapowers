@@ -10,7 +10,7 @@ blocking notes, completeness findings naming the task, and the instruction
 to pull correct prior work in with git checkout <sha> -- <path> rather than
 reimplement); emits salvage-args.json with resume: true; then rotates the
 prior round's artifacts. Never launches anything; never mutates originals.
-Budget-deferred unfinished entries are listed on stderr, not salvaged.
+Other unfinished entries are listed on stderr, not salvaged.
 """
 import argparse
 import re
@@ -45,11 +45,13 @@ def salvage_set(report):
 
 
 def findings_naming(report, tid):
-    # Matches "task(s)" followed, within the same sentence (no ".", ";" or
-    # newline in between), by the id as a whole word — so "tasks 2 and 3
-    # left the guard untested" names BOTH task 2 and task 3, while "task 22"
-    # never names id "2" (word-boundary on the id itself).
-    pat = re.compile(r"\btasks?\b(?:(?!\.|;|\n)[\s\S])*?\b" + re.escape(tid) + r"\b",
+    # Matches "task(s)" followed by the id as a whole word, with ONLY ids,
+    # commas, whitespace, "#", and and/or/& between (#244 residual 3) — so
+    # "tasks 2 and 3 left the guard untested" names BOTH task 2 and task 3,
+    # "tasks #2 and #3" still names both, "task 22" never names id "2"
+    # (word-boundary on the id itself), and "Task 1 deleted 3 tests" no
+    # longer misattributes the incidental 3.
+    pat = re.compile(r"\btasks?\b[\s,&#]*(?:(?:and|or|\d+)[\s,&#]*)*?\b" + re.escape(tid) + r"\b",
                      re.IGNORECASE)
     return [str(f) for f in (report.get("completenessFindings") or [])
             if pat.search(str(f))]
