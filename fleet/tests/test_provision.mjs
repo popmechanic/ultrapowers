@@ -437,4 +437,38 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
   assert.equal(cmds.length, 0, 'refusal must happen before any exec call for: ' + JSON.stringify(bad))
 }
 
+// #302: the token record must be registered with the gate BEFORE the shim
+// start command is issued. The shim-start ssh returns while the remote node
+// process is still booting, so a caller that waits for provisionRun to return
+// before registering the record races the sandbox's first ws connect on a
+// millisecond margin — measured lost on run-10 (instant 401), and the
+// silent-client form of the same loss is the 9-series' zero-write #288.
+{
+  const events = []
+  const exec = async (cmd) => {
+    if (/nohup node/.test(cmd)) events.push('shim-start')
+    return { code: 0, stdout: '{}' }
+  }
+  const { record } = await provisionRun({
+    golden: 'fleet-golden',
+    runId: 'r302',
+    baseRef: 'refs/heads/main',
+    repoDir: '/tmp/repo',
+    ttlMs: 60000,
+    wsUrl: 'ws://127.0.0.1:9/fleet',
+    planPath: 'p.md',
+    exec,
+    registerToken: (r) =>
+      events.push(`register:${typeof r?.tokenHash === 'string' && r.tokenHash.length === 64 ? 'ok' : 'bad'}`),
+  })
+  assert.deepEqual(
+    events,
+    ['register:ok', 'shim-start'],
+    `the record must be registered before the shim start, got ${JSON.stringify(events)}`,
+  )
+  // The same record is still returned — the callback is an ADDITIONAL channel,
+  // not a replacement for the return value existing callers read.
+  assert.equal(typeof record.tokenHash, 'string')
+}
+
 console.log('ALL TESTS PASSED')

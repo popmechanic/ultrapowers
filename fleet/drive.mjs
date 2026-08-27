@@ -405,10 +405,13 @@ export const driveOne = async ({
     //    billed sandbox running with nothing holding its name.
     vmName = sandboxIdFor(runId)
     note(`provisioning ${vmName} from ${golden}`)
-    //    The last thing `provisionRun` does is start the sandbox's shim
-    //    detached, so the token record is registered here — one microtask after
-    //    that command returns and well before a remote node process can boot,
-    //    import, and complete a ws handshake.
+    //    The token record reaches the gate via `registerToken` at MINT time,
+    //    inside provisionRun — never after it returns. The old post-return
+    //    push assumed "one microtask after the shim-start command returns is
+    //    well before a remote node can boot and complete a ws handshake";
+    //    that assumption was measured false (#302, run-10): the shim-start
+    //    ssh backgrounds the whole remote command list and returns while node
+    //    is booting, and the sandbox's first connect landed before the push.
     //    `planPath` rides the assignment because the sandbox has no other way
     //    to learn which plan it was dispatched to run — the store row carries
     //    one, but the shim reads its assignment file before it has synced
@@ -427,11 +430,17 @@ export const driveOne = async ({
       cpu: sandboxCpu,
       memory: sandboxMemory,
       disk: sandboxDisk,
+      // The record reaches the token gate through this callback AT MINT TIME
+      // — before the assignment is delivered, the tunnel opened, or the shim
+      // started (#302). Pushing after provisionRun returned raced the
+      // sandbox's first ws connect on a millisecond margin: the shim-start
+      // ssh returns while the remote node is still booting, and run-10 lost
+      // that race as an instant 401 (the 9-series lost it silently — #288).
+      registerToken: (record) => tokenRecords.push(record),
       exec,
       clock,
     })
     vmName = provisioned.vmName
-    tokenRecords.push(provisioned.record)
     store.setRow('runs', runId, { ...store.getRow('runs', runId), sandboxId: vmName })
     note(`provisioned ${vmName}`)
 

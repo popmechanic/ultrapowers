@@ -43,7 +43,7 @@ import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { driveOne } from '../drive.mjs'
-import { runShim } from '../shim.mjs'
+import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
   applyBranch,
@@ -2000,6 +2000,54 @@ try {
       assert.ok(STANDING_DIRECTIVE.includes(literal),
         'standing directive lost the literal: ' + literal)
     }
+  }
+
+  // -- 20. the gate accepts the delivered token DURING the shim start (#302) -
+  // The live defect: driveOne registered the token record only after
+  // provisionRun returned, while the sandbox's first connect races that push
+  // on a millisecond margin — run-10 lost it (instant 401, then a 10-minute
+  // never-claimed park). Here the fake sandbox connects at the earliest moment
+  // the live one possibly can: synchronously inside the shim-start command,
+  // strictly before provisionRun returns — and the gate must already know the
+  // token. Deterministic where the live race was not.
+  {
+    const runId = 'run-drive-20'
+    let connectResult = 'not-attempted'
+    const exec = async (cmd) => {
+      if (cmd.startsWith('ssh ')) {
+        const payload = cmd.match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
+        if (payload) exec.delivered = JSON.parse(payload[1])
+        if (/nohup node .*shim-main\.mjs/.test(cmd)) {
+          const a = exec.delivered
+          try {
+            const ws = await connectOpenWs(`${a.wsUrl}?token=${a.token}`, { timeoutMs: 3_000, log: () => {} })
+            connectResult = 'accepted'
+            ws.close()
+          } catch (error) {
+            connectResult = `rejected: ${error?.message ?? error}`
+          }
+        }
+        return { code: 0, stdout: '{}' }
+      }
+      return { code: 0, stdout: '' }
+    }
+    exec.delivered = null
+
+    await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db20'),
+      exec,
+      runId,
+      claimTimeoutMs: 400,
+      heartbeatTimeoutMs: 10_000,
+      tickMs: 25,
+      progressLog: () => {},
+    })
+    assert.equal(
+      connectResult,
+      'accepted',
+      `the delivered token must already be registered when the shim starts, got: ${connectResult}`,
+    )
   }
 
   console.log('ALL TESTS PASSED')
