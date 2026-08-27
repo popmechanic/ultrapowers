@@ -29,7 +29,13 @@ await new Promise((resolve, reject) => {
   wss.once('error', reject)
 })
 const PORT = wss.address().port
-const server = createWsServer(wss)
+
+// The path-scoped store-sync wiring, named so a throwaway server can get the
+// SAME handler as the shared `wss` without a duplicated handler body (scenario
+// 9 stands up its own server precisely so it can kill it for good).
+const installSyncHandler = (wsServer) => createWsServer(wsServer)
+
+const server = installSyncHandler(wss)
 
 const join = async (path, id) => {
   const store = createMergeableStore(id)
@@ -203,6 +209,7 @@ const main = async () => {
     })
 
     assert.equal(result5.status, 'gate-green')
+    assert.equal(result5.delivered, true)
 
     const deadline = Date.now() + 3_000
     let statusSeen
@@ -301,6 +308,101 @@ const main = async () => {
     fs.rmSync(tmpDir, { recursive: true, force: true })
     fs.rmSync(repoDir, { recursive: true, force: true })
     ok("main() fails fast when the aux socket can't connect — engine never launches")
+  }
+
+  // --- 8. mid-run reconnect (#299) — a dropped socket is re-opened by the
+  // renew loop, so renews and spend resume flowing BEFORE the terminal write.
+  {
+    const helper = await join('t8', 'helper')
+    helper.store.setRow('runs', 'r1', { planPath: 'plans/x.md', status: 'pending' })
+    await sleep(300)
+
+    const wssClientsBefore = new Set(wss.clients)
+    let tokens = 0
+    const invokeRun = async () => {
+      let shimSocket
+      for (let attempt = 0; attempt < 50 && !shimSocket; attempt++) {
+        shimSocket = [...wss.clients].find((c) => !wssClientsBefore.has(c))
+        if (!shimSocket) await sleep(20)
+      }
+      assert.ok(shimSocket, 'expected to find the shim server-side socket')
+      shimSocket.terminate()
+      // Spend appended AFTER the drop must reach the helper BEFORE the run
+      // resolves — that is what "reconnected" means observably.
+      tokens = 4200
+      const deadline = Date.now() + 5_000
+      for (;;) {
+        const spendRows = Object.values(helper.store.getTable('spend')).filter((r) => r.runId === 'r1')
+        if (spendRows.length > 0) break
+        assert.ok(Date.now() < deadline, 'spend row must arrive mid-run via the reconnected socket')
+        await sleep(50)
+      }
+      return { gateGreen: true }
+    }
+
+    const result8 = await runShim({
+      wsUrl: `ws://localhost:${PORT}/t8`,
+      token: 'tok',
+      sandboxId: 'sbX',
+      runId: 'r1',
+      ttlMs: 300,
+      renewEveryMs: 80,
+      invokeRun,
+      readReportTokens: () => tokens,
+      log: () => {},
+    })
+
+    assert.equal(result8.status, 'gate-green')
+    assert.equal(result8.delivered, true, 'a reconnected run must report delivery')
+
+    const deadline8 = Date.now() + 3_000
+    let statusSeen8
+    while (Date.now() < deadline8) {
+      statusSeen8 = helper.store.getRow('runs', 'r1')?.status
+      if (statusSeen8 === 'gate-green') break
+      await sleep(50)
+    }
+    assert.equal(statusSeen8, 'gate-green')
+    helper.close()
+    ok('mid-run reconnect restores sync before the terminal write')
+  }
+
+  // --- 9. delivered:false — the server is gone for good at publish ----------
+  // A dedicated server (so closing it cannot disturb the shared wss): the shim
+  // connects, the server dies entirely mid-run, every reconnect and the
+  // terminal rescue fail, and the outcome says so.
+  {
+    const soloServer = new WebSocketServer({ port: 0 })
+    await new Promise((resolve, reject) => {
+      soloServer.once('listening', resolve)
+      soloServer.once('error', reject)
+    })
+    installSyncHandler(soloServer) // same handler wiring the shared wss uses
+    const soloPort = soloServer.address().port
+
+    const invokeRun = async () => {
+      for (const client of soloServer.clients) client.terminate()
+      await new Promise((resolve) => soloServer.close(resolve))
+      await sleep(200)
+      return { gateGreen: true }
+    }
+
+    const result9 = await runShim({
+      wsUrl: `ws://localhost:${soloPort}/t9`,
+      token: 'tok',
+      sandboxId: 'sbY',
+      runId: 'r9',
+      ttlMs: 300,
+      renewEveryMs: 80,
+      invokeRun,
+      readReportTokens: () => null,
+      openSocket: (url) => connectOpenWs(url, { timeoutMs: 500, log: () => {} }),
+      log: () => {},
+    })
+
+    assert.equal(result9.status, 'gate-green')
+    assert.equal(result9.delivered, false, 'an undeliverable outcome must say so')
+    ok('dead-forever server reads delivered:false')
   }
 }
 

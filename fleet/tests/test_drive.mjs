@@ -42,7 +42,7 @@ import { execFile } from 'node:child_process'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { driveOne } from '../drive.mjs'
+import { driveOne, isSafeVmName } from '../drive.mjs'
 import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
@@ -226,6 +226,12 @@ try {
     receiptPath = 'gate-receipt.json',
     rawBranch = null,
     publish = true,
+    // Test scaffolding overrides (additive): default to the shared frozen
+    // `clock` and the current happy-path `invokeRun` behavior. A test that
+    // needs to advance time (lease-expiry legibility, #279) supplies its own
+    // mutable clock here and passes the SAME clock to `driveOne`.
+    clock: stubClock = clock,
+    invokeRun: invokeRunOverride = null,
   }) => {
     const sandboxId = sandboxIdFor(runId)
     return (async () => {
@@ -242,14 +248,9 @@ try {
       // and can drop cells it has not yet synced.
       applyStamp(store, runId, stamp)
 
-      const outcome = await runShim({
-        wsUrl: assignment.wsUrl,
-        token: assignment.token,
-        sandboxId,
-        runId,
-        ttlMs: assignment.ttlMs,
-        clock,
-        invokeRun: async () => {
+      const invokeRun =
+        invokeRunOverride ??
+        (async () => {
           if (publish) applyReceipt(store, runId, 'gate', { sha: receiptSha, path: receiptPath, verdict: 'PASS' })
           // A real run takes minutes; this one must at least take a tick. The
           // shim's teardown does not await its synchronizer, so a run that
@@ -259,7 +260,16 @@ try {
           // the timescale the shim is actually written against.
           await sleep(250)
           return { gateGreen: true }
-        },
+        })
+
+      const outcome = await runShim({
+        wsUrl: assignment.wsUrl,
+        token: assignment.token,
+        sandboxId,
+        runId,
+        ttlMs: assignment.ttlMs,
+        clock: stubClock,
+        invokeRun,
         readReportTokens: () => 4200,
       })
 
@@ -336,7 +346,10 @@ try {
     })
     // The sandbox's own verdict, so a red read is never ambiguous between "the
     // shim failed" and "the driver misread a good run".
-    assert.deepEqual(await sandbox, { status: 'gate-green' })
+    // Full equality on purpose — an added or renamed key in the shim outcome
+    // must fail here loudly, never slide by a partial match. `delivered: true`
+    // is part of the contract since #299 (deliverAndClose consumed).
+    assert.deepEqual(await sandbox, { status: 'gate-green', delivered: true })
 
     // Production `main()` does not point a receipt at the engine's own artifact
     // path — `.claude/ultrapowers/` is GITIGNORED, so that pointer would not
@@ -1519,6 +1532,60 @@ try {
     )
   }
 
+  // -- 20. real-plan defaults (#279 + W2 charter): ttlMs 4h, capTokens 500k --
+  {
+    const runId = 'run-drive-20'
+    const exec = makeExec(() => {})
+    const opts = { ...driveDefaults, dbDir: path.join(tmp, 'db20'), exec, runId, claimTimeoutMs: 500, heartbeatTimeoutMs: 60_000, tickMs: 50, settleMs: 100 }
+    delete opts.ttlMs
+    const { detail } = await driveOne(opts)
+
+    assert.equal(detail.capTokens, 500_000, 'capTokens default must be the W2 charter constant')
+    assert.equal(exec.delivered.ttlMs, 4 * 60 * 60_000, 'ttlMs default must be real-plan scale (4h), not the 15-min smoke constant')
+  }
+
+  // -- 21. lease expiry reads as lease expiry, not a generic stall (#279-3) --
+  {
+    const runId = 'run-drive-21'
+    let t21 = 2_000_000
+    const clock21 = () => t21
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          exec,
+          receiptSha: null,
+          publish: false,
+          clock: clock21,
+          invokeRun: async () => {
+            t21 += assignment.ttlMs + 1_000 // the claim is now expired on this test's clock
+            await sleep(1_500)              // give the watch loop ticks to observe it
+            return { gateGreen: false }
+          },
+        })
+      }, 10)
+    })
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db21'),
+      exec,
+      runId,
+      clock: clock21,
+      ttlMs: 5_000,
+      heartbeatTimeoutMs: 20_000,
+      settleMs: 200,
+    })
+    await sandbox
+
+    assert.ok(
+      detail.errors.some((e) => /claim expired mid-watch \(ttlMs=5000\)/.test(e)),
+      `expected a named lease-expiry error, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
   // -- 12. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')
@@ -2045,6 +2112,57 @@ try {
       'accepted',
       `the delivered token must already be registered when the shim starts, got: ${connectResult}`,
     )
+  }
+
+  // -- 22. isSafeVmName accept/reject rows (#290-2 residual) ------------------
+  {
+    for (const good of ['fleet-run-14', 'a', 'A1._-b', 'fleet-run13', 'x'.repeat(64)]) {
+      assert.equal(isSafeVmName(good), true, `expected accept: ${good}`)
+    }
+    for (const bad of ['', ' ', 'fleet run', 'a;b', 'a$(x)', '-leading', '.leading', 'a\nb', 'x'.repeat(65), null, undefined, 42]) {
+      assert.equal(isSafeVmName(bad), false, `expected reject: ${JSON.stringify(bad)}`)
+    }
+  }
+
+  // -- 23. pullLogsOnce refusal branch (#290-2): a provisioner that returns a
+  // mutated unsafe vmName gets its sandbox-addressed captures REFUSED (no ssh
+  // command ever carries the bad name), the refusal lands in detail.errors,
+  // the credits capture (interpolates nothing) still runs, and teardown is
+  // still invoked.
+  {
+    const runId = 'run-drive-23'
+    const exec = makeExec(() => {})
+    const destroyed = []
+    const badName = 'evil;name'
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db23'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      settleMs: 100,
+      provision: async () => ({ vmName: badName }),
+      destroy: async ({ vmName }) => {
+        destroyed.push(vmName)
+      },
+    })
+
+    assert.ok(
+      detail.errors.some((e) => /unsafe vm name/.test(e)),
+      `expected an unsafe-vm-name refusal in errors, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => c.includes(badName)),
+      `no shelled command may carry the unsafe name, got: ${JSON.stringify(exec.cmds.filter((c) => c.includes(badName)))}`,
+    )
+    assert.ok(
+      exec.cmds.some((c) => c.includes('billing credits usage')),
+      'the credits capture interpolates nothing and must still run',
+    )
+    assert.deepEqual(destroyed, [badName], 'teardown must still be invoked exactly once')
   }
 
   console.log('ALL TESTS PASSED')

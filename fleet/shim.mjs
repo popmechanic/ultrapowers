@@ -150,11 +150,56 @@ export const runShim = async ({
   try {
     ws = await openSocket(url, { log })
   } catch (error) {
-    return { status: 'no-store', error: String(error?.message ?? error) }
+    return { status: 'no-store', delivered: false, error: String(error?.message ?? error) }
   }
   const store = createMergeableStore(sandboxId)
-  const synchronizer = await createWsSynchronizer(store, ws)
+  let synchronizer = await createWsSynchronizer(store, ws)
   await synchronizer.startSync()
+
+  // --- mid-run reconnect (#299) -----------------------------------------
+  // A socket that dies mid-run turns every renew into a local no-op: the
+  // orchestrator sees zero progress and, past heartbeatTimeoutMs, destroys
+  // the sandbox under a still-running engine. The renew loop therefore
+  // re-opens and re-syncs over the SAME store on drop detection — single
+  // flight, retried on the next tick if it fails. The terminal rescue in
+  // deliverAndClose stays as the backstop for a drop after the last tick.
+  let reconnectPromise = null
+  const tryReconnect = () => {
+    if (reconnectPromise) return reconnectPromise
+    reconnectPromise = (async () => {
+      let ws2 = null
+      try {
+        ws2 = await openSocket(url, { log })
+        const sync2 = await createWsSynchronizer(store, ws2)
+        await sync2.startSync()
+        try {
+          synchronizer.stopSync()
+          synchronizer.destroy()
+        } catch {}
+        try {
+          ws.terminate()
+        } catch {}
+        ws = ws2
+        synchronizer = sync2
+        log('fleet: ws reconnected mid-run — sync restored')
+        return true
+      } catch (error) {
+        // A socket that opened but whose sync-attach then threw must not leak:
+        // over a multi-hour engine phase this path retries every renew tick,
+        // and each orphaned-but-open socket would otherwise live to run end.
+        if (ws2) {
+          try {
+            ws2.terminate()
+          } catch {}
+        }
+        log(`fleet: mid-run reconnect failed — ${error?.message ?? error}; retrying at next renew`)
+        return false
+      } finally {
+        reconnectPromise = null
+      }
+    })()
+    return reconnectPromise
+  }
 
   // --- initial claim ---------------------------------------------------
   const claimAttempt = tryClaim(store.getRow('claims', claimRowId), {
@@ -164,8 +209,8 @@ export const runShim = async ({
     now: clock(),
   })
   if (claimAttempt.error) {
-    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
-    return { status: 'lost-claim' }
+    const delivered = await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
+    return { status: 'lost-claim', delivered }
   }
   store.setRow('claims', claimRowId, claimAttempt.row)
   const epoch = claimAttempt.row.epoch
@@ -210,9 +255,14 @@ export const runShim = async ({
   let claimLost = false
   let deadLogged = false
   const timer = setInterval(() => {
-    if (ws.readyState !== WebSocket.OPEN && !deadLogged) {
-      deadLogged = true
-      log('fleet: ws connection lost mid-run — will rescue at publish')
+    if (ws.readyState !== WebSocket.OPEN) {
+      if (!deadLogged) {
+        deadLogged = true
+        log('fleet: ws connection lost mid-run — reconnecting')
+      }
+      void tryReconnect()
+    } else {
+      deadLogged = false
     }
     const row = store.getRow('claims', claimRowId)
     const result = tryRenew(row, { claimant: sandboxId, epoch, ttlMs, now: clock() })
@@ -236,19 +286,24 @@ export const runShim = async ({
   clearInterval(timer)
   maybeAppendSpend()
 
+  // Quiesce an in-flight reconnect so the deliver path never races a swap:
+  // deliverAndClose reads `ws`/`synchronizer` at call time, and tearing down a
+  // socket that is mid-replacement would drop the terminal write.
+  if (reconnectPromise) await reconnectPromise.catch(() => {})
+
   if (claimLost) {
     writeStatus('parked')
-    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
-    return { status: 'failed' }
+    const delivered = await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
+    return { status: 'failed', delivered }
   }
 
   if (outcome && outcome.gateGreen) {
     writeStatus('gate-green')
-    await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
-    return { status: 'gate-green' }
+    const delivered = await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
+    return { status: 'gate-green', delivered }
   }
 
   writeStatus('parked')
-  await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
-  return { status: 'failed' }
+  const delivered = await deliverAndClose({ store, synchronizer, ws, url, openSocket, log })
+  return { status: 'failed', delivered }
 }

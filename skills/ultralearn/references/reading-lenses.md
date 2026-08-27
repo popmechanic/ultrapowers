@@ -8,6 +8,11 @@ the five lenses below and return findings as a JSON array. Return raw data only.
 1. **friction** — where the run broke or strained: merge conflicts, blocked or
    cascade-blocked waves, fix-loop exhaustion, gate rejections, lost
    coordinates, operator interventions, re-runs.
+   For a FLEET bundle, read the drive's structured artifact first:
+   `detail.errors`, `detail.timedOut`, `detail.neverClaimed`, and
+   `detail.publishTimedOut` in `gate-read-<runId>.detail.json` name the
+   drive-layer seam (lease expiry, transport death, publish loss) that
+   `shim.log` then evidences.
 2. **routing** — was ultrapowers the right call; did the routing recommendation
    match how the run actually went; were Type/Depends-on markers and wave shape
    good, or did poor marking cause serialization or conflicts.
@@ -19,6 +24,11 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    enforcement guard.
 4. **cost** — tokens, turns, tier choices, parallelism payoff, anything the
    metrics in `bundle.json` reveal about effort versus benefit.
+   For a FLEET bundle, also read `detail.sandboxStat` ({peakCores, meanCores,
+   peakMemBytes} — a floor estimate), `detail.creditSpendUsd` (the
+   gateway-regression canary: fleet-golden baseline ~$0.78/month; growth =
+   flag it), and the raw `stat.json`/`credits.json` beside the gate read —
+   the same aggregation W2's spend-tolerance and sandbox-sizing verdicts use.
 5. **frontier** — OPEN-ENDED. How large/complex did the work get and still
    succeed? What did the agents do that the design did NOT anticipate —
    self-limiting, self-correcting, or otherwise surprising behavior? Seed

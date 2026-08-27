@@ -147,8 +147,15 @@ export const driveOne = async ({
   runId = 'run-1',
   branch = 'fleet-run',
   baseRef = 'HEAD',
-  ttlMs = 15 * 60_000,
-  capTokens = 2_000_000,
+  // #279: ttlMs is the store-token lease TTL delivered to the sandbox. 15 min
+  // was a smoke-run constant; a real plan's engine phase runs for hours, and an
+  // expired lease surfaces two stages away as a heartbeat timeout. 4h covers
+  // any single-plan drain (run-9b precedent).
+  ttlMs = 4 * 60 * 60_000,
+  // W2 charter constant, from measured burn (run-13: 115_256 on a real
+  // drained-issue plan; the engine's fixed floor is ~45k). Replaces the 2M
+  // placeholder.
+  capTokens = 500_000,
   wsHost = '127.0.0.1',
   wsUrl,
   evidenceDir,
@@ -165,6 +172,12 @@ export const driveOne = async ({
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
+  // Injection seams for the provision/teardown legs — the real module
+  // functions by default. They exist so the pullLogsOnce refusal branch
+  // (defense in depth against a mid-run vmName mutation; unreachable through
+  // the public surface post-#298) is testable at all (#290-2).
+  provision = provisionRun,
+  destroy = destroySandbox,
 }) => {
   // #298: `runId` becomes `fleet-<runId>` and is interpolated into every
   // sandbox-bound ssh/git command string downstream (clone, deliveries,
@@ -322,7 +335,7 @@ export const driveOne = async ({
     if (destroyed || !vmName) return
     destroyed = true
     await pullLogsOnce()
-    await destroySandbox({ vmName, port: effectivePort, exec })
+    await destroy({ vmName, port: effectivePort, exec })
   }
 
   const actions = {
@@ -392,6 +405,7 @@ export const driveOne = async ({
 
   let status = 'unknown'
   let timedOut = false
+  let leaseExpiryNoted = false
   let publishTimedOut = false
   let neverClaimed = false
   const startedAt = Date.now()
@@ -431,7 +445,7 @@ export const driveOne = async ({
     //    one, but the shim reads its assignment file before it has synced
     //    anything. Without it the engine is launched with a literal
     //    `undefined` plan path.
-    const provisioned = await provisionRun({
+    const provisioned = await provision({
       golden,
       runId,
       baseRef,
@@ -475,6 +489,13 @@ export const driveOne = async ({
       heartbeat(clock())
       runSweep()
       observeClaim()
+
+      if (sawExpired && !leaseExpiryNoted) {
+        leaseExpiryNoted = true
+        const msg = `claim expired mid-watch (ttlMs=${ttlMs}) — lease/token expiry, not an engine stall`
+        errors.push(msg)
+        note(msg)
+      }
 
       status = store.getCell('runs', runId, 'status') ?? 'unknown'
       if (TERMINAL.has(status)) {

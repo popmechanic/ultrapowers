@@ -874,7 +874,7 @@ export const main = async ({
     console.error('fleet: no store connection — skipping publish (run never executed)')
     synchronizer.stopSync()
     synchronizer.destroy()
-    return outcome
+    return { ...outcome }
   }
 
   // Everything below runs AFTER `runShim` has returned, which is deliberate:
@@ -900,8 +900,11 @@ export const main = async ({
   await applyRunReceipts(store, runId, { repoDir, exec, branch })
   applyBranch(store, runId, branch)
 
-  await deliverAndClose({ store, synchronizer, ws, url, log: console.error })
-  return outcome
+  // The aux publish carries the branch, the receipts and the trailing scalars
+  // — an outcome is only genuinely delivered when BOTH the shim's own store
+  // and this one reached the orchestrator, so the two conjoin.
+  const auxDelivered = await deliverAndClose({ store, synchronizer, ws, url, log: console.error })
+  return { ...outcome, delivered: outcome?.delivered === true && auxDelivered }
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
@@ -909,7 +912,10 @@ if (invokedDirectly) {
   main()
     .then((outcome) => {
       console.log(JSON.stringify(outcome))
-      process.exit(outcome?.status === 'gate-green' ? 0 : 1)
+      // Delivery is part of the exit-code contract: a gate-green run whose
+      // publish never reached the orchestrator is not a success anyone can
+      // observe, and burying that in shim.log makes it invisible.
+      process.exit(outcome?.status === 'gate-green' && outcome?.delivered === true ? 0 : 1)
     })
     .catch((error) => {
       console.error(`fleet shim-main failed: ${error?.message ?? error}`)
