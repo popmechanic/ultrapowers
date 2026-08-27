@@ -15,7 +15,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
 import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from './provision.mjs'
-import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor } from './shim-main.mjs'
+import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor, MANIFEST_PATH } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
 import { assessHeadlessFitness } from './fitness.mjs'
 
@@ -275,6 +275,31 @@ export const driveOne = async ({
       note('headless-fitness: unfit plan allowed by allowUnfitPlan')
     }
   }
+
+  // #282/#190: what the stamp MUST name — resolved at drive start, from the
+  // same ref provisionRun is about to push, so a repo that moves mid-drive
+  // cannot shift the expectation. `baseRef` is operator input interpolated into
+  // the shell here exactly as `provisionRun` interpolates it, so it passes the
+  // same guard first; an unresolvable expectation SKIPS the cross-check (with a
+  // narrating errors line) rather than reddening the stamp from the driver's own
+  // repo state.
+  let expectedStamp = null
+  if (isSafeBranchName(baseRef)) {
+    try {
+      const shaRes = await exec(`git -C ${repoDir} rev-parse ${baseRef}`)
+      const manifestRes = await exec(`git -C ${repoDir} show ${baseRef}:${MANIFEST_PATH}`)
+      if (shaRes?.code === 0 && manifestRes?.code === 0) {
+        const version = JSON.parse(manifestRes.stdout)?.version
+        const sha = String(shaRes.stdout ?? '').trim()
+        if (isSafeSha(sha) && isNonEmptyString(version)) {
+          expectedStamp = { engineSha: sha, pluginVersion: version }
+        }
+      }
+    } catch {
+      expectedStamp = null
+    }
+  }
+  if (expectedStamp === null) errors.push(`version cross-check unavailable: could not resolve ${baseRef} locally`)
 
   let vmName = null
   let destroyed = false
@@ -760,9 +785,25 @@ export const driveOne = async ({
 
   const leaseContinuity = epochs.size === 1 && epochs.has(1) && !sawExpired && !sawRevoked
 
-  const versionStamp =
-    isNonEmptyString(store.getCell('runs', runId, 'pluginVersion')) &&
-    isNonEmptyString(store.getCell('runs', runId, 'engineSha'))
+  // #282/#190: non-emptiness is necessary but nowhere near sufficient — a
+  // sandbox that ran the GOLDEN IMAGE's code instead of the pushed base stamps
+  // two perfectly non-empty cells naming the wrong commit. Cross-check them
+  // against what the driver itself pushed. When that expectation could not be
+  // resolved (`expectedStamp === null`, already narrated above) the check is
+  // skipped and the key keeps its old non-emptiness meaning.
+  const stampedVersion = store.getCell('runs', runId, 'pluginVersion')
+  const stampedSha = store.getCell('runs', runId, 'engineSha')
+  let versionStamp = isNonEmptyString(stampedVersion) && isNonEmptyString(stampedSha)
+  if (versionStamp && expectedStamp !== null) {
+    const match = stampedSha === expectedStamp.engineSha && stampedVersion === expectedStamp.pluginVersion
+    if (!match) {
+      errors.push(
+        `version stamp mismatch: sandbox ran ${stampedVersion}@${stampedSha}, ` +
+          `pushed base is ${expectedStamp.pluginVersion}@${expectedStamp.engineSha} — stale golden or wrong base (#282)`,
+      )
+      versionStamp = false
+    }
+  }
 
   const reportedCell = store.getCell('runs', runId, 'reportedTokens')
   const spendObservational = {
