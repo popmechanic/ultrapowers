@@ -17,7 +17,6 @@ never write `heads/`; headShas are derived from git ancestry at finalize
 time instead.
 """
 import argparse
-import filecmp
 import json
 import os
 import re
@@ -70,10 +69,17 @@ def rotate_round_artifacts(run_dir):
     if os.path.isfile(report):
         # #244 residual 4: two composer runs with no gate between them would
         # snapshot the same bytes twice — skip when the live report is
-        # byte-identical to the highest existing snapshot.
+        # byte-identical to the highest existing snapshot. Compare BYTES
+        # directly (#304): filecmp.cmp consults its (size, mtime)-keyed cache
+        # even with shallow=False, so a same-size rewrite within mtime
+        # granularity returned a stale "equal" and silently lost a snapshot
+        # on coarse-mtime filesystems.
         highest = os.path.join(run_dir, "report-%d.json" % (n - 1))
+        def _same_bytes(a, b):
+            with open(a, "rb") as fa, open(b, "rb") as fb:
+                return fa.read() == fb.read()
         if not (n > 1 and os.path.isfile(highest)
-                and filecmp.cmp(report, highest, shallow=False)):
+                and _same_bytes(report, highest)):
             dst = os.path.join(run_dir, "report-%d.json" % n)
             shutil.copy2(report, dst)
             out["report"] = dst
