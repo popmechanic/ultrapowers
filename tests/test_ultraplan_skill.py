@@ -110,7 +110,7 @@ def test_ultraplan_carries_shrink_budget_and_escalation_guidance():
     text = ULTRAPLAN.read_text()
     # Two new authoring-guidance notes (#87): the shrink-budget pattern and
     # escalation-prone tiering.
-    assert "Shrink budgets are acceptance criteria." in text
+    assert "Shrink budgets are acceptance criteria — stated as deltas." in text
     assert "Tier escalation-prone tasks up front." in text
 
 
