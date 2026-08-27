@@ -134,7 +134,7 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, cpu, memory, disk, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
   const vmName = `fleet-${runId}`
   const withEngineEnv = Boolean(engineEnv && Object.keys(engineEnv).length > 0)
   // Validate up front: a bad key/value must fail before the golden is cloned.
@@ -163,6 +163,15 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   // 3. Mint the short-TTL store token (pure computation — no command).
   const now = clock()
   const { token, record } = mintToken({ sandboxId: vmName, ttlMs, now })
+  // 3b. Register it with the caller's gate BEFORE anything on the sandbox can
+  //     try to use it (#302). The shim-start ssh below returns while the
+  //     remote node process is still booting, so a caller that waits for
+  //     provisionRun to return before registering the record races the
+  //     sandbox's first ws connect on a millisecond margin — measured lost on
+  //     run-10 (instant 401), and the silent-client form of the same loss was
+  //     the 9-series' zero-write #288. The record is still returned below;
+  //     this callback is the ordering channel, not a replacement.
+  if (typeof registerToken === 'function') registerToken(record)
 
   // 4. Deliver the token + run assignment. The payload rides a heredoc inside
   //    the single exec(cmd) string, since exec has no separate stdin channel.
