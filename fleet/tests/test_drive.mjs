@@ -42,7 +42,7 @@ import { execFile } from 'node:child_process'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { driveOne, isSafeVmName } from '../drive.mjs'
+import { driveOne, isSafeVmName, CREDITS_REFUSAL_NOTE } from '../drive.mjs'
 import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
@@ -226,6 +226,9 @@ try {
     receiptPath = 'gate-receipt.json',
     rawBranch = null,
     publish = true,
+    // #318: a parked run publishes exactly as a green one does — the verdict
+    // is the only difference. `false` drives the park path.
+    gateGreen = true,
     // Test scaffolding overrides (additive): default to the shared frozen
     // `clock` and the current happy-path `invokeRun` behavior. A test that
     // needs to advance time (lease-expiry legibility, #279) supplies its own
@@ -259,7 +262,7 @@ try {
           // orchestrator at all. Sleeping here keeps the harness faithful to
           // the timescale the shim is actually written against.
           await sleep(250)
-          return { gateGreen: true }
+          return { gateGreen }
         })
 
       const outcome = await runShim({
@@ -298,6 +301,9 @@ try {
     heartbeatTimeoutMs: 20_000,
     publishPollMs: 50,
     publishTimeoutMs: 8_000,
+    // #318: the parked publish wait applies to every parked scenario below.
+    // Keep it short — the file runs against a 120 s cap.
+    parkedPublishWaitMs: 500,
   }
 
   // -- 1. the happy path, driven by the PRODUCTION sandbox entrypoint --------
@@ -1132,6 +1138,71 @@ try {
     assert.notEqual(first.reportPath, second.reportPath)
   }
 
+  // -- 7h. #319: the orchestrator key's refusal is ONE documented line --------
+  {
+    const runId = 'r1h'
+    const evidenceDir = path.join(tmp, 'evidence-r1h')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      {
+        stat: { code: 0, stdout: STAT_FIXTURE },
+        credits: { code: 1, stdout: 'command not allowed by SSH key permissions' },
+      },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7h'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.equal(res.detail.creditSpendUsd, null, 'a refused capture is unknown, never 0')
+    const creditLines = res.detail.errors.filter((e) => /credits/.test(e))
+    assert.deepEqual(creditLines, [CREDITS_REFUSAL_NOTE], 'exactly one documented line, no raw noise')
+    // The raw artifact still lands — the refusal is diagnosable from disk.
+    assert.equal(
+      fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'),
+      'command not allowed by SSH key permissions',
+    )
+    // A NON-refusal failure keeps the raw default line (the note is not a blanket).
+  }
+  {
+    const runId = 'r1i'
+    const evidenceDir = path.join(tmp, 'evidence-r1i')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 255, stdout: 'ssh: connection reset' } },
+    )
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7i'), evidenceDir, exec, runId })
+    await sandbox
+    assert.ok(
+      res.detail.errors.some((e) => /credits usage: code 255 ssh: connection reset/.test(e)),
+      `a non-refusal failure keeps the raw line, got: ${JSON.stringify(res.detail.errors)}`,
+    )
+    assert.equal(res.detail.creditSpendUsd, null)
+  }
+
   // -- 8. the production receipt writer: copy, commit, point at the tree ------
   // Two `run-*` directories, so the kind must be keyed by directory, and both
   // pointers must dereference at the sha they record.
@@ -1583,6 +1654,65 @@ try {
     assert.ok(
       detail.errors.some((e) => /claim expired mid-watch \(ttlMs=5000\)/.test(e)),
       `expected a named lease-expiry error, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- N3. #322: an unfit plan is refused BEFORE any provisioning -------------
+  {
+    const runId = 'run-drive-unfit'
+    const unfitPlan = path.join('docs', 'unfit-plan.md')
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(
+      path.join(repoDir, unfitPlan),
+      '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n',
+    )
+    let provisioned = false
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        planPath: unfitPlan,
+        dbDir: path.join(tmp, 'dbN3'),
+        exec: async () => ({ code: 0, stdout: '' }),
+        runId,
+        provision: async () => {
+          provisioned = true
+          throw new Error('must never provision an unfit plan')
+        },
+      }),
+      /headless-unfit/,
+    )
+    assert.equal(provisioned, false, 'the refusal must precede provisioning')
+  }
+
+  // -- N4. #322: allowUnfitPlan proceeds, with the override on the record -----
+  {
+    const runId = 'run-drive-unfit-ok'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+        })
+      }, 30)
+    })
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      planPath: path.join('docs', 'unfit-plan.md'),
+      allowUnfitPlan: true,
+      dbDir: path.join(tmp, 'dbN4'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(read.o1, true, 'the override drives normally')
+    assert.ok(
+      detail.errors.some((e) => /headless-fitness: proceeding on operator override/.test(e)),
+      `the override is on the record, got: ${JSON.stringify(detail.errors)}`,
     )
   }
 
@@ -2163,6 +2293,89 @@ try {
       'the credits capture interpolates nothing and must still run',
     )
     assert.deepEqual(destroyed, [badName], 'teardown must still be invoked exactly once')
+  }
+
+  // -- N1. #318 publish-on-park: a parked run's published branch is fetched ---
+  // run-14's shape: the engine integrated and left resolvable receipts, then
+  // the gate parked. The branch must be fetched and reported — unapproved —
+  // while the gate read itself stays exactly as red as before.
+  {
+    const runId = 'run-drive-park-pub'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: integrationSha,
+          receiptPath: RECEIPT_PATH,
+          exec,
+          gateGreen: false,
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      parkedPublishWaitMs: 8_000,
+      dbDir: path.join(tmp, 'dbN1'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    // The read is untouched by the park's publish: still five keys, still red.
+    assert.deepEqual(read, {
+      o1: false,
+      receiptsResolvable: false,
+      leaseContinuity: true,
+      versionStamp: true,
+      spendObservational: { reported: 4200, ledger: 4200 },
+    })
+    assert.equal(detail.status, 'parked')
+    assert.deepEqual(detail.parkedPublish, {
+      branch: INTEGRATION_BRANCH,
+      fetched: true,
+      receiptsResolvable: true,
+      unapproved: true,
+    })
+    // The fetch was REAL: the receipt sha is reachable from FETCH_HEAD.
+    assert.equal(
+      (await sh(`git -C "${repoDir}" merge-base --is-ancestor ${integrationSha} FETCH_HEAD`)).code,
+      0,
+      'the parked branch must actually have been fetched',
+    )
+    assert.ok(
+      !detail.errors.includes('publish timeout'),
+      `a parked publish must never read as a publish timeout, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- N2. a park that published NOTHING stays quiet and quick ----------------
+  {
+    const runId = 'run-drive-park-empty'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({ assignment, runId, receiptSha: headSha, exec, publish: false, gateGreen: false })
+      }, 30)
+    })
+    const startedAt = Date.now()
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'dbN2'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(detail.status, 'parked')
+    assert.equal(detail.parkedPublish, null, 'nothing published → nothing claimed')
+    assert.equal(read.o1, false)
+    assert.ok(
+      !detail.errors.includes('publish timeout'),
+      'an empty parked publish is an absence, not an error',
+    )
+    assert.ok(Date.now() - startedAt < 15_000, 'the parked wait is bounded by parkedPublishWaitMs, not the gate-green bound')
   }
 
   console.log('ALL TESTS PASSED')

@@ -254,6 +254,16 @@ called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
 below for the one case that still needs an operator's hand.
 
+**Headless fitness (#322).** `driveOne` refuses a plan carrying any task whose
+verification can only be evidenced by human judgment — the known class is the
+instruction-only doc task (`implementation` type, every Files entry a `.md`,
+no `Test:` entry). run-14 proved such a task makes a `deferred:manual` park a
+certainty, discovered only after ~47 min and 203k tokens. Before dispatching:
+rewrite the verification into runtime/external form (add a pinning test), or
+route that task to a local drain. `allowUnfitPlan: true` overrides — pass it
+only with a specific operator pre-authorization for that manual ack, and the
+override is recorded in `detail.errors`.
+
 ## Gate read
 
 `driveOne` writes its return value's `read` object verbatim to `reportPath`
@@ -289,6 +299,29 @@ advance:
 - **§W1d spend-vs-report tolerance** — the acceptable drift between
   `spendObservational.reported` and `.ledger` becomes a pass/fail bound from W2
   on; W1 only observes and records it.
+
+## Park triage (#318)
+
+A parked run that published receipts is not lost work. `driveOne` fetches the
+parked run's integration branch exactly as it does a gate-green run's, and
+reports it as `detail.parkedPublish` — `{branch, fetched, receiptsResolvable,
+unapproved: true}` — in the gate-read detail. **`unapproved` means exactly
+that:** no standing grant covers the branch, so merging it requires an
+explicit operator ack of the parked gate receipt's `acks` (read them in
+`fleet-receipts/<runId>/` on the fetched branch). With the ack given, land
+the branch by normal PR — no re-drive needed.
+
+On every park, triage in this order:
+
+1. Read `detail.parkedPublish`. Non-null → the work survived; review the
+   fetched branch and ack-or-reject.
+2. `parkedPublish: null` → recover via the run-14 evidence-diff pattern:
+   the per-task review diffs in the pulled evidence
+   (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
+   apply cleanly to base (PR #317 precedent); reconstruct any
+   integration-only fixes from `report.json`.
+3. **Harvest `report.json`'s `completenessFindings` into issues explicitly**
+   — run-14's carried a real socket-leak defect that existed nowhere else.
 
 ## Teardown guarantee
 

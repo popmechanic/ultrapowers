@@ -17,6 +17,7 @@ import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
 import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from './provision.mjs'
 import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
+import { assessHeadlessFitness } from './fitness.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -63,6 +64,17 @@ export const sandboxStatCommand = ({ vmName }) =>
  */
 export const creditsUsageCommand = () =>
   `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "billing credits usage --group=box --detail --json"`
+
+/**
+ * The orchestrator key's deliberate refusal of billing reads (#213). When the
+ * credits capture fails WITH this signature, the failure is posture, not a
+ * defect — recorded as the single documented note below instead of raw noise,
+ * so W2 spend reads never special-case it (#319). `creditSpendUsd` stays null.
+ */
+export const CREDITS_REFUSAL_RE = /not allowed by SSH key permissions/
+export const CREDITS_REFUSAL_NOTE =
+  'credits usage: skipped — orchestrator key refuses billing reads by design (#213); ' +
+  'read spend from the LOCAL billing canary: ssh exe.dev "billing credits usage --group=box --json"'
 
 /**
  * Reduce a `stat --json` payload to the three numbers the W1 gate reads.
@@ -114,6 +126,10 @@ export const deriveCreditSpendUsd = (creditsJson, vmName) => {
  * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
  *   reaches a terminal status, for the sandbox to publish what it produced.
  *   Clamped to `heartbeatTimeoutMs`.
+ * @param {number} [opts.parkedPublishWaitMs] - the same wait, on the PARKED
+ *   path (#318). Tighter than `publishTimeoutMs` on purpose: a parked run that
+ *   publishes nothing must not idle out the gate-green bound. Clamped to
+ *   `heartbeatTimeoutMs`.
  * @param {Record<string,string>} [opts.engineEnv] - environment the sandbox
  *   engine must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN`, #213); delivered per run
  *   by `provisionRun`, held by the orchestrator, never baked into the golden.
@@ -134,6 +150,11 @@ export const deriveCreditSpendUsd = (creditsJson, vmName) => {
  *   produces zero output until it times out). Called at every state
  *   transition the watch loop observes. A throwing `progressLog` is caught
  *   and ignored — narration must never be able to break a drive.
+ * @param {boolean} [opts.allowUnfitPlan] - overrides the #322 headless-fitness
+ *   preflight, which otherwise throws (before any provisioning) when the plan
+ *   at `planPath` carries a task whose only evidence is human judgment. Pass
+ *   only with a specific operator pre-authorization; the override is recorded
+ *   in `detail.errors`.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -165,6 +186,7 @@ export const driveOne = async ({
   heartbeatTimeoutMs = 30 * 60_000,
   publishPollMs = 250,
   publishTimeoutMs = heartbeatTimeoutMs,
+  parkedPublishWaitMs = 60_000,
   logPullTimeoutMs = 120_000,
   claimTimeoutMs = 10 * 60_000,
   progressLog = (line) => console.error(`[drive ${new Date().toISOString()}] ${line}`),
@@ -172,6 +194,10 @@ export const driveOne = async ({
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
+  // #322: overrides the headless-fitness preflight refusal. Pass only with a
+  // specific operator pre-authorization for the manual-judgment task named in
+  // the thrown error — never as a standing default.
+  allowUnfitPlan = false,
   // Injection seams for the provision/teardown legs — the real module
   // functions by default. They exist so the pullLogsOnce refusal branch
   // (defense in depth against a mid-run vmName mutation; unreachable through
@@ -214,6 +240,36 @@ export const driveOne = async ({
   const receiptChecks = []
   const errors = []
 
+  // #322: headless-fitness preflight. A plan carrying a task whose only
+  // evidence is human judgment is GUARANTEED to park an unattended drive —
+  // refuse it here, before a sandbox exists, not 200k tokens later. An
+  // unreadable plan file skips the check with narration only (the live drive
+  // always has the merged plan on disk; the in-process tests do not).
+  const planFile = path.isAbsolute(planPath) ? planPath : path.join(repoDir, planPath)
+  let planText = null
+  try {
+    planText = fs.readFileSync(planFile, 'utf8')
+  } catch {
+    planText = null
+  }
+  if (planText === null) {
+    note(`headless-fitness: plan unreadable at ${planFile} — check skipped`)
+  } else {
+    const fitness = assessHeadlessFitness(planText)
+    if (!fitness.fit) {
+      const summary = fitness.findings.map((f) => `${f.task}: ${f.reason}`).join('; ')
+      if (!allowUnfitPlan) {
+        throw new Error(
+          `driveOne: plan is headless-unfit — ${summary} — rewrite the verification into ` +
+            `runtime/external form, route the task to a local drain, or pass allowUnfitPlan: true ` +
+            `with a specific operator pre-authorization (#322)`,
+        )
+      }
+      errors.push(`headless-fitness: proceeding on operator override — ${summary}`)
+      note('headless-fitness: unfit plan allowed by allowUnfitPlan')
+    }
+  }
+
   let vmName = null
   let destroyed = false
   let pulled = false
@@ -242,7 +298,7 @@ export const driveOne = async ({
   // and leaves the field null. Nothing propagates: a throw on this path would
   // skip `destroySandbox` and leak a billed VM (#280, run-9b's in-sandbox
   // critic), which is the one outcome teardown exists to prevent.
-  const captureJson = async ({ label, cmd, file }) => {
+  const captureJson = async ({ label, cmd, file, refusal }) => {
     let raw = null
     try {
       const destination = path.join(resolvedEvidenceDir, file)
@@ -251,7 +307,8 @@ export const driveOne = async ({
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
       fs.writeFileSync(destination, raw)
       if (result?.code !== 0) {
-        errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
+        if (refusal && refusal.re.test(raw)) errors.push(refusal.note)
+        else errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
         return null
       }
     } catch (error) {
@@ -324,6 +381,7 @@ export const driveOne = async ({
       label: 'credits usage',
       cmd: creditsUsageCommand(),
       file: `credits-${runId}.json`,
+      refusal: { re: CREDITS_REFUSAL_RE, note: CREDITS_REFUSAL_NOTE },
     })
     if (creditsJson !== null) {
       try {
@@ -548,9 +606,23 @@ export const driveOne = async ({
     //    run. The wait is BOUNDED by the heartbeat timeout, and a run that never
     //    publishes inside it reads red with `publish timeout` — fail-closed, and
     //    honest about which failure it was.
-    if (!timedOut && status === 'gate-green') {
-      const publishDeadline = Date.now() + Math.min(publishTimeoutMs, heartbeatTimeoutMs)
-      note(`publish wait: up to ${Math.min(publishTimeoutMs, heartbeatTimeoutMs)}ms for branch+receipts`)
+    //
+    //    #318: a PARKED run publishes too — main() detects the branch and
+    //    commits the receipts after runShim returns, whatever the verdict —
+    //    and that branch died with the sandbox in run-14. So the wait now
+    //    covers parked as well, on its own tighter bound: a parked run that
+    //    publishes nothing (parked before the engine ran, cap park) must not
+    //    idle out the full gate-green bound, and a cap park has already
+    //    destroyed the sandbox, so `destroyed` breaks the wait immediately.
+    //    Only the gate-green path can set publishTimedOut — a silent parked
+    //    publish is an absence, not a red read.
+    if (!timedOut && (status === 'gate-green' || status === 'parked')) {
+      const bound =
+        status === 'gate-green'
+          ? Math.min(publishTimeoutMs, heartbeatTimeoutMs)
+          : Math.min(parkedPublishWaitMs, heartbeatTimeoutMs)
+      const publishDeadline = Date.now() + bound
+      note(`publish wait (${status}): up to ${bound}ms for branch+receipts`)
       for (;;) {
         runSweep()
         observeClaim()
@@ -559,9 +631,15 @@ export const driveOne = async ({
           note(`publish wait: received ${published}`)
           break
         }
+        if (status === 'parked' && destroyed) {
+          note('publish wait: sandbox already destroyed — nothing will publish')
+          break
+        }
         if (Date.now() >= publishDeadline) {
-          publishTimedOut = true
-          errors.push('publish timeout')
+          if (status === 'gate-green') {
+            publishTimedOut = true
+            errors.push('publish timeout')
+          }
           note('publish wait: timed out')
           break
         }
@@ -614,8 +692,19 @@ export const driveOne = async ({
   // process interpolates into a shell. They are validated here — not quoted,
   // not escaped — and a value that fails validation fails the read without ever
   // reaching `exec`.
+  //
+  // #318: a parked-with-receipts run resolves the same way — the branch is
+  // fetched so a post-hoc human ack can land the work without a ~200k
+  // re-drive — but the result lands ONLY in detail.parkedPublish, marked
+  // unapproved. The gate read's receiptsResolvable stays a gate-green fact:
+  // nothing about a park may brighten the read.
   let receiptsResolvable = false
-  if (reachedGateGreen && !publishTimedOut && receipts.length > 0 && vmName) {
+  let parkedPublish = null
+  const parkedWithReceipts = status === 'parked' && receipts.length > 0
+  if (((reachedGateGreen && !publishTimedOut) || parkedWithReceipts) && receipts.length > 0 && vmName) {
+    let resolvable = false
+    let fetchedOk = false
+    let fetchedBranch = null
     try {
       const runBranch = store.getCell('runs', runId, 'branch') ?? branch
       if (!isSafeBranchName(runBranch)) {
@@ -627,12 +716,14 @@ export const driveOne = async ({
         if (fetched?.code !== 0) {
           errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)
         } else {
-          receiptsResolvable = true
+          fetchedOk = true
+          fetchedBranch = runBranch
+          resolvable = true
           for (const receipt of receipts) {
             if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
               errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
               receiptChecks.push({ ...receipt, exists: false, reachable: false, dereferenced: false, resolved: false })
-              receiptsResolvable = false
+              resolvable = false
               continue
             }
             const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
@@ -649,14 +740,16 @@ export const driveOne = async ({
             }
             const resolved = exists && reachable && dereferenced
             receiptChecks.push({ ...receipt, exists, reachable, dereferenced, resolved })
-            if (!resolved) receiptsResolvable = false
+            if (!resolved) resolvable = false
           }
         }
       }
     } catch (error) {
       errors.push(`receipts: ${error?.message ?? error}`)
-      receiptsResolvable = false
+      resolvable = false
     }
+    if (reachedGateGreen) receiptsResolvable = resolvable
+    else parkedPublish = { branch: fetchedBranch, fetched: fetchedOk, receiptsResolvable: resolvable, unapproved: true }
   }
 
   const leaseContinuity = epochs.size === 1 && epochs.has(1) && !sawExpired && !sawRevoked
@@ -701,6 +794,10 @@ export const driveOne = async ({
     neverClaimed,
     elapsedMs: Date.now() - startedAt,
     receipts: receiptChecks.length > 0 ? receiptChecks : receipts,
+    // #318: a parked run's published branch, fetched locally but UNAPPROVED —
+    // no standing grant covers it; merging it needs an explicit operator ack
+    // of the parked gate receipt. null when the park published nothing.
+    parkedPublish,
     convergedAway,
     pages,
     errors,
