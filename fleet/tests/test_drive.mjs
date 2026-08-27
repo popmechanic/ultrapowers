@@ -1449,47 +1449,44 @@ try {
     assert.ok(lines.some((l) => /never claimed/.test(l)), `expected a never-claimed line, got: ${JSON.stringify(lines)}`)
   }
 
-  // -- 18. an unsafe vm name is refused BEFORE the tar pull, not merely before
-  //    stat (#290-2) --------------------------------------------------------
-  // `sandboxIdFor` derives the vm name directly from `runId` with no
-  // sanitizing — a runId containing a space produces a vmName that fails
-  // `isSafeVmName`. The guard must precede EVERY vmName interpolation in the
-  // pull path: the tar pull runs FIRST and interpolates vmName exactly like
-  // the stat command does, so guarding only the stat call (the historical
-  // shape) left the pull's `<vmName>.exe.xyz` unchecked.
+  // -- 18. an unsafe runId is refused at driveOne ENTRY — before ANY command -
+  // #298: `sandboxIdFor` derives the vm name straight from `runId`, and
+  // provisionRun/destroySandbox interpolate it into ssh/git command strings.
+  // The historical guard sat only in pullLogsOnce (teardown captures), so an
+  // unsafe name was refused for `stat` but still shelled through the clone,
+  // deliveries, tunnel, and rm. One guard at the single choke point covers
+  // every site by construction: driveOne refuses before the orchestrator
+  // starts and before a single exec call. (pullLogsOnce keeps its own guard
+  // as defense in depth — it protects against mid-run mutation, not input.)
   {
-    const runId = 'run 1'
-    const exec = makeExec(() => {
-      // Never claims — the run never gets far enough for that to matter; only
-      // the teardown-time pull path is under test here.
-    })
+    const cmds = []
+    const exec = async (cmd) => {
+      cmds.push(cmd)
+      return { code: 0, stdout: '{}' }
+    }
 
-    const { detail } = await driveOne({
-      ...driveDefaults,
-      dbDir: path.join(tmp, 'db18'),
-      exec,
-      runId,
-      claimTimeoutMs: 500,
-      heartbeatTimeoutMs: 60_000,
-      tickMs: 50,
-    })
+    let threw = null
+    try {
+      await driveOne({
+        ...driveDefaults,
+        dbDir: path.join(tmp, 'db18'),
+        exec,
+        runId: 'run 1',
+      })
+    } catch (error) {
+      threw = error
+    }
 
+    assert.ok(threw, 'an unsafe runId must throw, not drive')
     assert.ok(
-      detail.errors.some((e) => /unsafe vm name/.test(e)),
-      `expected an explicit unsafe-vm-name error, got: ${JSON.stringify(detail.errors)}`,
+      /unsafe runId/.test(threw.message),
+      `expected an explicit unsafe-runId refusal, got: ${threw?.message}`,
     )
-    assert.ok(
-      !exec.cmds.some((c) => c.includes('stat fleet-run 1')),
-      `the stat command must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
-    )
-    assert.ok(
-      !exec.cmds.some((c) => /tar czf/.test(c) && c.includes('fleet-run 1.exe.xyz')),
-      `the tar pull must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
-    )
-    // The credits capture interpolates nothing and still proceeds.
-    assert.ok(
-      exec.cmds.some((c) => CREDITS_CMD.test(c)),
-      `the credits capture must still run even when the vm name is refused, got: ${JSON.stringify(exec.cmds)}`,
+    assert.equal(cmds.length, 0, `refusal must precede every exec call, got: ${JSON.stringify(cmds)}`)
+    assert.equal(
+      fs.existsSync(path.join(tmp, 'db18')),
+      false,
+      'refusal must precede the orchestrator start — no store dir may exist',
     )
   }
 
