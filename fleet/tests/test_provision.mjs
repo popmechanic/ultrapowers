@@ -110,7 +110,7 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   // checkout starts nothing; its output truncates shim.log, the shim appends.
   assert.equal(
     cmds[6],
-    `ssh ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`,
+    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
     `cmds[6] should be the shim start, got: ${cmds[6]}`
   )
 }
@@ -233,7 +233,7 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   const start = cmds[6]
   assert.equal(
     start,
-    `ssh ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && set -a && . /home/exedev/fleet-env && set +a && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`,
+    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && set -a && . /home/exedev/fleet-env && set +a && nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
     `shim start must checkout fleet-base then source the env file, got: ${start}`
   )
   assert.ok(!start.includes('sk-ant-oat01'), 'the token must never appear on the shim-start argv')
