@@ -167,8 +167,9 @@ export const runShim = async ({
   const tryReconnect = () => {
     if (reconnectPromise) return reconnectPromise
     reconnectPromise = (async () => {
+      let ws2 = null
       try {
-        const ws2 = await openSocket(url, { log })
+        ws2 = await openSocket(url, { log })
         const sync2 = await createWsSynchronizer(store, ws2)
         await sync2.startSync()
         try {
@@ -183,6 +184,14 @@ export const runShim = async ({
         log('fleet: ws reconnected mid-run — sync restored')
         return true
       } catch (error) {
+        // A socket that opened but whose sync-attach then threw must not leak:
+        // over a multi-hour engine phase this path retries every renew tick,
+        // and each orphaned-but-open socket would otherwise live to run end.
+        if (ws2) {
+          try {
+            ws2.terminate()
+          } catch {}
+        }
         log(`fleet: mid-run reconnect failed — ${error?.message ?? error}; retrying at next renew`)
         return false
       } finally {

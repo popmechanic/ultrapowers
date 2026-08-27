@@ -346,7 +346,10 @@ try {
     })
     // The sandbox's own verdict, so a red read is never ambiguous between "the
     // shim failed" and "the driver misread a good run".
-    assert.deepEqual(await sandbox, { status: 'gate-green' })
+    // Full equality on purpose — an added or renamed key in the shim outcome
+    // must fail here loudly, never slide by a partial match. `delivered: true`
+    // is part of the contract since #299 (deliverAndClose consumed).
+    assert.deepEqual(await sandbox, { status: 'gate-green', delivered: true })
 
     // Production `main()` does not point a receipt at the engine's own artifact
     // path — `.claude/ultrapowers/` is GITIGNORED, so that pointer would not
