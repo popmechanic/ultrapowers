@@ -279,6 +279,9 @@ export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
   return total
 }
 
+/** Ack types inside the #281 standing grant — everything else parks. */
+export const GRANTED_ACK_TYPES = new Set(['deferred:runtime', 'deferred:external'])
+
 /**
  * Whether the engine's own gate passed — read from the machine-written GATE
  * RECEIPT (`gate-receipt.json`), never from `report.json`.
@@ -289,14 +292,56 @@ export const readSessionTokens = (sessionId, { home = os.homedir() } = {}) => {
  * the token-count source for `readReportTokens` — the two readers are
  * deliberately split across the two files the engine actually writes.
  *
- * True iff `verdict === 'PASS'`. `BLOCKED` and `NEEDS_ACK` both read false —
- * a `NEEDS_ACK` run parks for operator triage, which is the fleet's
- * park-by-default posture, not a silent green. A missing/unreadable receipt
- * is not green either.
+ * A bare `PASS` greens unconditionally. `BLOCKED` never greens. A
+ * `NEEDS_ACK` (the fleet's park-by-default posture, #181) greens ONLY when
+ * the session self-approved it under the #281 standing directive — proven by
+ * three legs of evidence, all read from the SAME run directory as this
+ * receipt, and all fail-closed:
+ *
+ *   1. `standing-approval.json` exists — the session declared its intent to
+ *      self-approve BEFORE running the approve.
+ *   2. every ack in the receipt is inside `GRANTED_ACK_TYPES` — a non-empty
+ *      array (an empty array must never green vacuously) where every entry's
+ *      `type` is granted; anything outside the grant parks.
+ *   3. `approve-receipt.json` exists, is `mode: 'approve'`, and its `stamp`
+ *      matches the gate receipt's own `stamp` — proving the approve that ran
+ *      is THIS run's approve, not some other run's leftover receipt. Then
+ *      `RUN_LOCK` (one level up from the run directory) must no longer name
+ *      this stamp: the approve's own on-disk side effect is releasing that
+ *      lock, so a lock still naming this stamp means the approve never
+ *      actually ran to completion.
+ *
+ * A missing/unreadable receipt is not green either.
  */
 export const readGateGreen = (receiptFile) => {
   const receipt = readJson(receiptFile)
-  return receipt?.verdict === 'PASS'
+  if (!receipt) return false
+  if (receipt.verdict === 'PASS') return true
+  if (receipt.verdict !== 'NEEDS_ACK') return false
+
+  const runDir = path.dirname(receiptFile)
+  if (!readJson(path.join(runDir, 'standing-approval.json'))) return false
+
+  const acks = receipt.gateCheck?.acks
+  if (!Array.isArray(acks) || acks.length === 0) return false
+  if (!acks.every((a) => GRANTED_ACK_TYPES.has(a?.type))) return false
+
+  const approve = readJson(path.join(runDir, 'approve-receipt.json'))
+  if (approve?.mode !== 'approve') return false
+  if (typeof receipt.stamp !== 'string' || receipt.stamp.length === 0) return false
+  if (approve.stamp !== receipt.stamp) return false
+
+  // The approve's own on-disk side effect: run_lock.sh release removes the
+  // lock when it holds this stamp. A lock still naming this stamp means the
+  // approve never actually ran.
+  let lockHolder = null
+  try {
+    lockHolder = fs.readFileSync(path.join(runDir, '..', 'RUN_LOCK'), 'utf8')
+  } catch {
+    lockHolder = null
+  }
+  if (lockHolder === receipt.stamp) return false
+  return true
 }
 
 // --- git readers -----------------------------------------------------------
@@ -658,7 +703,9 @@ export const STANDING_DIRECTIVE =
   'Standing pre-authorization for the pre-merge gate: on a NEEDS_ACK verdict, ' +
   'approve if and only if every ack is a deferredVerification item with reason runtime or ' +
   'external — write run-<stamp>/standing-approval.json FIRST, quoting this directive ' +
-  'verbatim as the instruction. A plan task of Type manual is post-merge runbook material, ' +
+  'verbatim as the instruction. Then execute the Approve (ultra_gate.py --approve) and save ' +
+  'its JSON output verbatim to run-<stamp>/approve-receipt.json — the fleet shim greens the ' +
+  'run only on that receipt. A plan task of Type manual is post-merge runbook material, ' +
   'never a gate ack to consume. Any ack outside that class, or a BLOCKED verdict, means do ' +
   'NOT approve: leave the gate receipt as the terminal artifact and end the session ' +
   'immediately.'
