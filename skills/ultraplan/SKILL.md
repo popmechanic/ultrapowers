@@ -224,10 +224,15 @@ While writing tasks:
   glue in prose. The exception: a task marked `**Review:** adversarial` keeps
   exact code in every step, because its second reviewer audits the diff against
   the plan text.
-- **Shrink budgets are acceptance criteria.** When a task edits a
-  complexity-ratcheted surface (SKILL.md, gate-spec docs), state the numeric
-  ceiling in its body ("skillWords < N") — agents treat a stated budget as a
-  hard criterion, and it forces net simplification.
+- **Shrink budgets are acceptance criteria — stated as deltas.** When a
+  task edits a complexity-ratcheted surface (SKILL.md, gate-spec docs),
+  state the net word delta its own diff implies (`net delta ≤ +N words`,
+  or `≤ −N`) — computable from the task's fenced replacement blocks minus
+  the text they replace, and verified at task end as word-count(file
+  after) − word-count(file before) over the task's own diff. Never state
+  an absolute ceiling: it needs the file's current size plus every
+  sibling task's delta, and a plan-authored number is a second, unpinned
+  copy that drifts — the absolute lives in `tests/test_skill_budget.py`.
 - **Tier escalation-prone tasks up front.** Large single-file refactors blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark them
   `most-capable` rather than letting the launch guess it.
