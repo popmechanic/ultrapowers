@@ -1,0 +1,251 @@
+diff --git a/clitool/cli.py b/clitool/cli.py
+index 85b261a..ce3c2e9 100644
+--- a/clitool/cli.py
++++ b/clitool/cli.py
+@@ -4,14 +4,36 @@ import argparse
+ ROWS = [("ada", 3), ("bob", 5), ("eve", 1)]
+ 
+ 
++def render(row, fmt):
++    name, count = row
++    if fmt == "csv":
++        return "%s,%d" % (name, count)
++    return "%s %d" % (name, count)
++
++
++def clamp(rows, limit):
++    if limit is None:
++        return list(rows)
++    if limit < 0:
++        raise ValueError("limit must be >= 0")
++    return list(rows)[:limit]
++
++
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="report")
++    parser.add_argument("--verbose", action="store_true", default=False)
++    parser.add_argument(
++        "--format", choices=["plain", "csv"], default="plain"
++    )
++    parser.add_argument("--limit", type=int, default=None)
+     return parser
+ 
+ 
+ def main(argv=None):
+     args = build_parser().parse_args(argv)
+-    rows = list(ROWS)
+-    for name, count in rows:
+-        print("%s %d" % (name, count))
++    rows = clamp(ROWS, args.limit)
++    if args.verbose:
++        print("rows: %d" % len(rows))
++    for row in rows:
++        print(render(row, args.format))
+     return 0
+diff --git a/clitool/textutil.py b/clitool/textutil.py
+new file mode 100644
+index 0000000..ed8ebeb
+--- /dev/null
++++ b/clitool/textutil.py
+@@ -0,0 +1,23 @@
++"""Text utility functions."""
++
++
++def pad(text, width):
++    """Pad text with trailing spaces to reach the specified width.
++
++    Args:
++        text: The input string to pad.
++        width: The target width. Must be >= 0.
++
++    Returns:
++        The text padded with trailing spaces, or unchanged if text length >= width.
++
++    Raises:
++        ValueError: If width < 0.
++    """
++    if width < 0:
++        raise ValueError("width must be >= 0")
++
++    if len(text) >= width:
++        return text
++
++    return text + " " * (width - len(text))
+diff --git a/tests/test_format.py b/tests/test_format.py
+new file mode 100644
+index 0000000..de02684
+--- /dev/null
++++ b/tests/test_format.py
+@@ -0,0 +1,39 @@
++"""Tests for the --format option on the CLI."""
++from clitool.cli import build_parser, main, render
++
++
++def test_render_plain():
++    assert render(("ada", 3), "plain") == "ada 3"
++
++
++def test_render_csv():
++    assert render(("ada", 3), "csv") == "ada,3"
++
++
++def test_parser_accepts_format_default_plain():
++    args = build_parser().parse_args([])
++    assert args.format == "plain"
++
++
++def test_parser_accepts_format_csv():
++    args = build_parser().parse_args(["--format", "csv"])
++    assert args.format == "csv"
++
++
++def test_parser_rejects_invalid_format():
++    import pytest
++
++    with pytest.raises(SystemExit):
++        build_parser().parse_args(["--format", "xml"])
++
++
++def test_main_default_output_unchanged(capsys):
++    assert main([]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["ada 3", "bob 5", "eve 1"]
++
++
++def test_main_with_format_csv_prints_every_row_as_csv(capsys):
++    assert main(["--format", "csv"]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["ada,3", "bob,5", "eve,1"]
+diff --git a/tests/test_limit.py b/tests/test_limit.py
+new file mode 100644
+index 0000000..23582d4
+--- /dev/null
++++ b/tests/test_limit.py
+@@ -0,0 +1,57 @@
++"""Tests for the --limit option on the CLI."""
++import pytest
++
++from clitool.cli import build_parser, clamp, main
++
++
++def test_clamp_none_returns_all_rows_as_list():
++    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
++    result = clamp(rows, None)
++    assert result == rows
++    assert isinstance(result, list)
++
++
++def test_clamp_returns_first_limit_rows():
++    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
++    assert clamp(rows, 1) == [("ada", 3)]
++    assert clamp(rows, 2) == [("ada", 3), ("bob", 5)]
++
++
++def test_clamp_limit_zero_returns_empty_list():
++    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
++    assert clamp(rows, 0) == []
++
++
++def test_clamp_limit_greater_than_length_returns_all_rows():
++    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
++    assert clamp(rows, 10) == rows
++
++
++def test_clamp_negative_limit_raises_value_error():
++    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
++    with pytest.raises(ValueError) as excinfo:
++        clamp(rows, -1)
++    assert str(excinfo.value) == "limit must be >= 0"
++
++
++def test_parser_accepts_limit_option_default_none():
++    args = build_parser().parse_args([])
++    assert args.limit is None
++
++
++def test_parser_accepts_limit_option_as_int():
++    args = build_parser().parse_args(["--limit", "1"])
++    assert args.limit == 1
++    assert isinstance(args.limit, int)
++
++
++def test_main_with_limit_prints_only_first_row(capsys):
++    assert main(["--limit", "1"]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["ada 3"]
++
++
++def test_main_without_limit_prints_all_rows(capsys):
++    assert main([]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["ada 3", "bob 5", "eve 1"]
+diff --git a/tests/test_textutil.py b/tests/test_textutil.py
+new file mode 100644
+index 0000000..6c5a827
+--- /dev/null
++++ b/tests/test_textutil.py
+@@ -0,0 +1,34 @@
++"""Tests for text utility functions."""
++import pytest
++from clitool.textutil import pad
++
++
++def test_pad_adds_trailing_spaces():
++    """pad adds trailing spaces to reach the target width."""
++    assert pad("ab", 5) == "ab   "
++
++
++def test_pad_exact_width():
++    """pad returns text unchanged when it exactly matches width."""
++    assert pad("abcde", 5) == "abcde"
++
++
++def test_pad_beyond_width():
++    """pad returns text unchanged when it exceeds width."""
++    assert pad("abcdef", 3) == "abcdef"
++
++
++def test_pad_zero_width():
++    """pad with width=0 returns text unchanged."""
++    assert pad("abc", 0) == "abc"
++
++
++def test_pad_empty_string():
++    """pad pads empty string to width."""
++    assert pad("", 3) == "   "
++
++
++def test_pad_negative_width_raises():
++    """pad raises ValueError for negative width."""
++    with pytest.raises(ValueError, match="width must be >= 0"):
++        pad("ab", -1)
+diff --git a/tests/test_verbose.py b/tests/test_verbose.py
+new file mode 100644
+index 0000000..05e9c94
+--- /dev/null
++++ b/tests/test_verbose.py
+@@ -0,0 +1,24 @@
++"""Tests for the --verbose flag on the CLI."""
++from clitool.cli import build_parser, main
++
++
++def test_parser_accepts_verbose_flag_default_false():
++    args = build_parser().parse_args([])
++    assert args.verbose is False
++
++
++def test_parser_accepts_verbose_flag_true():
++    args = build_parser().parse_args(["--verbose"])
++    assert args.verbose is True
++
++
++def test_main_without_verbose_output_unchanged(capsys):
++    assert main([]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["ada 3", "bob 5", "eve 1"]
++
++
++def test_main_with_verbose_prints_header_then_rows(capsys):
++    assert main(["--verbose"]) == 0
++    out = capsys.readouterr().out.strip().splitlines()
++    assert out == ["rows: 3", "ada 3", "bob 5", "eve 1"]
