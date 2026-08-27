@@ -42,7 +42,7 @@ import { execFile } from 'node:child_process'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { driveOne, isSafeVmName } from '../drive.mjs'
+import { driveOne, isSafeVmName, CREDITS_REFUSAL_NOTE } from '../drive.mjs'
 import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
@@ -1130,6 +1130,71 @@ try {
     // keeping it outside `dbDir`.
     assert.ok(fs.existsSync(first.reportPath), "run 1's gate read survives run 2")
     assert.notEqual(first.reportPath, second.reportPath)
+  }
+
+  // -- 7h. #319: the orchestrator key's refusal is ONE documented line --------
+  {
+    const runId = 'r1h'
+    const evidenceDir = path.join(tmp, 'evidence-r1h')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      {
+        stat: { code: 0, stdout: STAT_FIXTURE },
+        credits: { code: 1, stdout: 'command not allowed by SSH key permissions' },
+      },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7h'), evidenceDir, exec, runId })
+    await sandbox
+
+    assert.equal(res.detail.creditSpendUsd, null, 'a refused capture is unknown, never 0')
+    const creditLines = res.detail.errors.filter((e) => /credits/.test(e))
+    assert.deepEqual(creditLines, [CREDITS_REFUSAL_NOTE], 'exactly one documented line, no raw noise')
+    // The raw artifact still lands — the refusal is diagnosable from disk.
+    assert.equal(
+      fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'),
+      'command not allowed by SSH key permissions',
+    )
+    // A NON-refusal failure keeps the raw default line (the note is not a blanket).
+  }
+  {
+    const runId = 'r1i'
+    const evidenceDir = path.join(tmp, 'evidence-r1i')
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 255, stdout: 'ssh: connection reset' } },
+    )
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7i'), evidenceDir, exec, runId })
+    await sandbox
+    assert.ok(
+      res.detail.errors.some((e) => /credits usage: code 255 ssh: connection reset/.test(e)),
+      `a non-refusal failure keeps the raw line, got: ${JSON.stringify(res.detail.errors)}`,
+    )
+    assert.equal(res.detail.creditSpendUsd, null)
   }
 
   // -- 8. the production receipt writer: copy, commit, point at the tree ------

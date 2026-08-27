@@ -65,6 +65,17 @@ export const creditsUsageCommand = () =>
   `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "billing credits usage --group=box --detail --json"`
 
 /**
+ * The orchestrator key's deliberate refusal of billing reads (#213). When the
+ * credits capture fails WITH this signature, the failure is posture, not a
+ * defect — recorded as the single documented note below instead of raw noise,
+ * so W2 spend reads never special-case it (#319). `creditSpendUsd` stays null.
+ */
+export const CREDITS_REFUSAL_RE = /not allowed by SSH key permissions/
+export const CREDITS_REFUSAL_NOTE =
+  'credits usage: skipped — orchestrator key refuses billing reads by design (#213); ' +
+  'read spend from the LOCAL billing canary: ssh exe.dev "billing credits usage --group=box --json"'
+
+/**
  * Reduce a `stat --json` payload to the three numbers the W1 gate reads.
  * Returns null when the payload carries no usable sample.
  */
@@ -242,7 +253,7 @@ export const driveOne = async ({
   // and leaves the field null. Nothing propagates: a throw on this path would
   // skip `destroySandbox` and leak a billed VM (#280, run-9b's in-sandbox
   // critic), which is the one outcome teardown exists to prevent.
-  const captureJson = async ({ label, cmd, file }) => {
+  const captureJson = async ({ label, cmd, file, refusal }) => {
     let raw = null
     try {
       const destination = path.join(resolvedEvidenceDir, file)
@@ -251,7 +262,8 @@ export const driveOne = async ({
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
       fs.writeFileSync(destination, raw)
       if (result?.code !== 0) {
-        errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
+        if (refusal && refusal.re.test(raw)) errors.push(refusal.note)
+        else errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
         return null
       }
     } catch (error) {
@@ -324,6 +336,7 @@ export const driveOne = async ({
       label: 'credits usage',
       cmd: creditsUsageCommand(),
       file: `credits-${runId}.json`,
+      refusal: { re: CREDITS_REFUSAL_RE, note: CREDITS_REFUSAL_NOTE },
     })
     if (creditsJson !== null) {
       try {
