@@ -16,12 +16,54 @@
 
 const TASK_HEADING_RE = /^### Task /m
 
+// A fence OPENS on a line that is up to three spaces of indent then three or
+// more backticks/tildes, and CLOSES on a later line of the same character,
+// at least as long, with nothing after it but whitespace (CommonMark §4.5).
+const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/
+const fenceCloses = (line, marker) => {
+  const m = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)
+  return m !== null && m[1][0] === marker[0] && m[1].length >= marker.length
+}
+
 /**
  * Strip fenced code blocks (``` … ``` and ~~~ … ~~~) so an EXAMPLE inside a
  * task's own step text (e.g. a task demonstrating what a Files block looks
  * like) never drives classification of the task that contains it.
+ *
+ * Scanned line by line rather than with a single non-greedy regex, because a
+ * regex that pairs any ``` with the NEXT ``` anywhere in the document is
+ * desynchronized by one inline or odd triple-backtick and then deletes real
+ * plan prose — `### Task` headings included — so whole tasks go unassessed and
+ * this guard fails open on exactly the class it exists to catch. Line
+ * anchoring plus length- and character-matched closers is what keeps a plan
+ * that quotes a fence inside a fence (4-backtick outer fences, or a Python
+ * string literal holding "```bash…```") parsed the way a reader sees it.
+ *
+ * Fenced lines are blanked rather than removed so that every surviving line
+ * keeps its position and the `^`-anchored matchers below still line up.
  */
-const stripFences = (text) => text.replace(/(```|~~~)[\s\S]*?\1/g, '')
+const stripFences = (text) => {
+  const lines = text.split('\n')
+  const out = []
+  let marker = null
+  for (const line of lines) {
+    if (marker === null) {
+      const open = line.match(FENCE_OPEN_RE)
+      // A backtick info string may not itself contain a backtick (CommonMark).
+      if (open && !(open[1][0] === '`' && open[2].includes('`'))) {
+        marker = open[1]
+        out.push('')
+      } else {
+        out.push(line)
+      }
+    } else {
+      // An unterminated fence runs to end of document; every line stays blanked.
+      if (fenceCloses(line, marker)) marker = null
+      out.push('')
+    }
+  }
+  return out.join('\n')
+}
 
 /**
  * Split fence-stripped plan text into per-task slices, each headed by its

@@ -4,6 +4,7 @@
 // unattended drive. assessHeadlessFitness names those tasks BEFORE a sandbox
 // exists.
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
 import { assessHeadlessFitness } from '../fitness.mjs'
 
 let passed = 0
@@ -103,5 +104,127 @@ const manualDocTask = `### Task 4: Owner updates the wiki
 // 5. a plan with no tasks at all is fit (nothing to flag)
 assert.deepEqual(assessHeadlessFitness('# empty\n'), { fit: true, findings: [] })
 ok('an empty plan is fit')
+
+// 6. a fence BODY that quotes a fence marker (the corpus shape: a python block
+//    holding the string literal "```bash…```") must not desynchronize the
+//    pairing and swallow the real prose that follows. The old any-```-to-the-
+//    next-``` strip deleted whole `### Task` headings here, so the doc-only
+//    task went unassessed and the guard failed open on its own class.
+{
+  const bt = '`'.repeat(3)
+  // An ODD count of quoted markers inside the block is what desynchronizes an
+  // unanchored pairing: the block's real closer then pairs with the quoted one,
+  // and everything up to the NEXT fence — the whole doc-only task — is deleted.
+  const quoting = `### Task 6: Emit the push hint
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: \`fleet/drive.mjs\`
+- Test: \`fleet/tests/test_drive.mjs\`
+
+- [ ] **Step 1: emit it**
+
+${bt}python
+HINT = "${bt}bash\\ngit push origin main\\n"
+${bt}`
+
+  const trailing = `### Task 9: Emit the other hint
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: \`fleet/drive.mjs\`
+- Test: \`fleet/tests/test_drive.mjs\`
+
+- [ ] **Step 1: emit it**
+
+${bt}python
+TAIL = "done"
+${bt}`
+
+  const text = plan([quoting, docOnlyTask, trailing])
+  assert.equal((text.match(/^### Task /gm) ?? []).length, 3)
+  const res = assessHeadlessFitness(text)
+  assert.equal(res.fit, false)
+  assert.equal(res.findings.length, 1)
+  assert.equal(res.findings[0].task, 'Task 1: Extend the skill text')
+  ok('a fence body quoting fence markers does not swallow later tasks')
+}
+
+// 7. a longer outer fence nests a shorter one: only the OUTER pair delimits, so
+//    the inner example's Files block still cannot leak into classification.
+{
+  const nesting = `### Task 7: Show a plan excerpt
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: \`fleet/fitness.mjs\`
+- Test: \`fleet/tests/test_fitness.mjs\`
+
+- [ ] **Step 1: quote a plan**
+
+\`\`\`\`markdown
+### Task 99: Docs only
+**Type:** implementation
+
+**Files:**
+- Modify: \`docs/leaked.md\`
+
+\`\`\`sh
+echo nested
+\`\`\`
+\`\`\`\`
+`
+  assert.deepEqual(assessHeadlessFitness(plan([nesting])), { fit: true, findings: [] })
+  ok('a 4-backtick fence nesting a 3-backtick fence leaks nothing')
+}
+
+// 8. a fence closes only on its OWN character: a tilde block quoting a backtick
+//    block stays fenced through it.
+{
+  const tilde = `### Task 8: Quote a shell block
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: \`fleet/fitness.mjs\`
+- Test: \`fleet/tests/test_fitness.mjs\`
+
+- [ ] **Step 1: quote it**
+
+~~~markdown
+**Files:**
+- Modify: \`docs/leaked.md\`
+\`\`\`
+still inside the tilde fence
+\`\`\`
+~~~
+`
+  assert.deepEqual(assessHeadlessFitness(plan([tilde])), { fit: true, findings: [] })
+  ok('a tilde fence is not closed by a backtick fence')
+}
+
+// 9. the real corpus plan the desync was found on: both instruction-only doc
+//    tasks are named. Skipped (not failed) if the file is absent, so the fleet
+//    suite still passes from a sandbox checkout that lacks docs/.
+{
+  const corpus = new URL(
+    '../../docs/superpowers/plans/2026-06-11-review-cycle-2-fixes.md',
+    import.meta.url,
+  )
+  if (fs.existsSync(corpus)) {
+    const res = assessHeadlessFitness(fs.readFileSync(corpus, 'utf8'))
+    assert.equal(res.fit, false)
+    assert.deepEqual(
+      res.findings.map((f) => f.task.split(':')[0]),
+      ['Task 6', 'Task 7'],
+    )
+    ok('the corpus repro plan flags both of its instruction-only doc tasks')
+  } else {
+    ok('the corpus repro plan is absent from this checkout — skipped')
+  }
+}
 
 console.log(`\nALL TESTS PASSED (${passed})`)
