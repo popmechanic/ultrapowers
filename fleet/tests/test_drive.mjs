@@ -226,6 +226,12 @@ try {
     receiptPath = 'gate-receipt.json',
     rawBranch = null,
     publish = true,
+    // Test scaffolding overrides (additive): default to the shared frozen
+    // `clock` and the current happy-path `invokeRun` behavior. A test that
+    // needs to advance time (lease-expiry legibility, #279) supplies its own
+    // mutable clock here and passes the SAME clock to `driveOne`.
+    clock: stubClock = clock,
+    invokeRun: invokeRunOverride = null,
   }) => {
     const sandboxId = sandboxIdFor(runId)
     return (async () => {
@@ -242,14 +248,9 @@ try {
       // and can drop cells it has not yet synced.
       applyStamp(store, runId, stamp)
 
-      const outcome = await runShim({
-        wsUrl: assignment.wsUrl,
-        token: assignment.token,
-        sandboxId,
-        runId,
-        ttlMs: assignment.ttlMs,
-        clock,
-        invokeRun: async () => {
+      const invokeRun =
+        invokeRunOverride ??
+        (async () => {
           if (publish) applyReceipt(store, runId, 'gate', { sha: receiptSha, path: receiptPath, verdict: 'PASS' })
           // A real run takes minutes; this one must at least take a tick. The
           // shim's teardown does not await its synchronizer, so a run that
@@ -259,7 +260,16 @@ try {
           // the timescale the shim is actually written against.
           await sleep(250)
           return { gateGreen: true }
-        },
+        })
+
+      const outcome = await runShim({
+        wsUrl: assignment.wsUrl,
+        token: assignment.token,
+        sandboxId,
+        runId,
+        ttlMs: assignment.ttlMs,
+        clock: stubClock,
+        invokeRun,
         readReportTokens: () => 4200,
       })
 
@@ -1516,6 +1526,60 @@ try {
     assert.ok(
       cloneCmd.includes('--cpu=2 --memory=8GB --disk=30GB'),
       `expected the sizing flags on the clone command, got: ${cloneCmd}`,
+    )
+  }
+
+  // -- 20. real-plan defaults (#279 + W2 charter): ttlMs 4h, capTokens 500k --
+  {
+    const runId = 'run-drive-20'
+    const exec = makeExec(() => {})
+    const opts = { ...driveDefaults, dbDir: path.join(tmp, 'db20'), exec, runId, claimTimeoutMs: 500, heartbeatTimeoutMs: 60_000, tickMs: 50, settleMs: 100 }
+    delete opts.ttlMs
+    const { detail } = await driveOne(opts)
+
+    assert.equal(detail.capTokens, 500_000, 'capTokens default must be the W2 charter constant')
+    assert.equal(exec.delivered.ttlMs, 4 * 60 * 60_000, 'ttlMs default must be real-plan scale (4h), not the 15-min smoke constant')
+  }
+
+  // -- 21. lease expiry reads as lease expiry, not a generic stall (#279-3) --
+  {
+    const runId = 'run-drive-21'
+    let t21 = 2_000_000
+    const clock21 = () => t21
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          exec,
+          receiptSha: null,
+          publish: false,
+          clock: clock21,
+          invokeRun: async () => {
+            t21 += assignment.ttlMs + 1_000 // the claim is now expired on this test's clock
+            await sleep(1_500)              // give the watch loop ticks to observe it
+            return { gateGreen: false }
+          },
+        })
+      }, 10)
+    })
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db21'),
+      exec,
+      runId,
+      clock: clock21,
+      ttlMs: 5_000,
+      heartbeatTimeoutMs: 20_000,
+      settleMs: 200,
+    })
+    await sandbox
+
+    assert.ok(
+      detail.errors.some((e) => /claim expired mid-watch \(ttlMs=5000\)/.test(e)),
+      `expected a named lease-expiry error, got: ${JSON.stringify(detail.errors)}`,
     )
   }
 

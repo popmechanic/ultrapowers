@@ -147,8 +147,15 @@ export const driveOne = async ({
   runId = 'run-1',
   branch = 'fleet-run',
   baseRef = 'HEAD',
-  ttlMs = 15 * 60_000,
-  capTokens = 2_000_000,
+  // #279: ttlMs is the store-token lease TTL delivered to the sandbox. 15 min
+  // was a smoke-run constant; a real plan's engine phase runs for hours, and an
+  // expired lease surfaces two stages away as a heartbeat timeout. 4h covers
+  // any single-plan drain (run-9b precedent).
+  ttlMs = 4 * 60 * 60_000,
+  // W2 charter constant, from measured burn (run-13: 115_256 on a real
+  // drained-issue plan; the engine's fixed floor is ~45k). Replaces the 2M
+  // placeholder.
+  capTokens = 500_000,
   wsHost = '127.0.0.1',
   wsUrl,
   evidenceDir,
@@ -392,6 +399,7 @@ export const driveOne = async ({
 
   let status = 'unknown'
   let timedOut = false
+  let leaseExpiryNoted = false
   let publishTimedOut = false
   let neverClaimed = false
   const startedAt = Date.now()
@@ -475,6 +483,13 @@ export const driveOne = async ({
       heartbeat(clock())
       runSweep()
       observeClaim()
+
+      if (sawExpired && !leaseExpiryNoted) {
+        leaseExpiryNoted = true
+        const msg = `claim expired mid-watch (ttlMs=${ttlMs}) — lease/token expiry, not an engine stall`
+        errors.push(msg)
+        note(msg)
+      }
 
       status = store.getCell('runs', runId, 'status') ?? 'unknown'
       if (TERMINAL.has(status)) {

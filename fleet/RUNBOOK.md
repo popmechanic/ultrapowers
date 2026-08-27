@@ -177,8 +177,11 @@ const { read, reportPath, detailPath } = await driveOne({
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
   runId: 'run-<fresh>',                // unique per account lifetime — NEVER reuse a runId (#211)
-  capTokens: 2_000_000,
+  capTokens: 500_000,           // W2 charter constant (from measured burn); raise only on an explicit operator call
   ttlMs: 4 * 60 * 60 * 1000,
+  // ttlMs = store-token lease TTL. Size to the plan's expected wall clock with
+  // margin: 4h covers any single-plan drain (#279 — a 15-min lease on a real
+  // plan expires mid-run and reads as a heartbeat timeout).
   heartbeatTimeoutMs: 30 * 60_000,
   claimTimeoutMs: 10 * 60_000,
   // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
@@ -243,9 +246,10 @@ needs no exec wrapper of its own:
   deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
   10 minutes.
 
-`driveOne` defaults `runId` to `run-1` and `capTokens` to `2_000_000` — pass
-explicit `runId`/`capTokens` in the options object above for anything other
-than a first calibration run. `destroySandbox` (`fleet/provision.mjs`) is
+`driveOne` defaults `runId` to `run-1`, `capTokens` to `500_000` (W2 charter
+constant), and `ttlMs` to 4h — still pass explicit `runId` (never reuse one,
+#211) and pass `capTokens`/`ttlMs` explicitly for anything unusual.
+`destroySandbox` (`fleet/provision.mjs`) is
 called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
 below for the one case that still needs an operator's hand.
