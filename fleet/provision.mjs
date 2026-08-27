@@ -74,7 +74,16 @@ export function engineEnvDeliveryCommand({ vmName, engineEnv }) {
  */
 export function shimStartCommand({ vmName, withEngineEnv = false }) {
   const prefix = withEngineEnv ? `set -a && . ${ENGINE_ENV_PATH} && set +a && ` : ''
-  return `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && ${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`
+  // `-n` + `< /dev/null` fully detach the shim from the ssh session (#305):
+  // without them the backgrounded node (and the engine under it, inheriting
+  // stdio) holds the session's stdin channel, and the local ssh — whose own
+  // stdin is an open pipe from the caller's exec — does not exit until the
+  // shim DIES. Measured on run-11: provisionRun blocked for the shim's whole
+  // 30-minute life, so the driver's watch loop started against a corpse and
+  // every mid-run progress line was swallowed. `-n` closes the local side,
+  // `< /dev/null` the remote side; either alone breaks the hold, both are
+  // pinned so neither regresses silently.
+  return `ssh -n ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 && ${prefix}nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`
 }
 
 function sleep(ms) {
