@@ -893,12 +893,12 @@ try {
 
     assert.deepEqual(res.detail.sandboxStat, { peakCores: 3.5, meanCores: 1.755, peakMemBytes: 9064488960 })
     assert.equal(res.detail.creditSpendUsd, 0.78)
-    assert.ok(fs.existsSync(path.join(evidenceDir, 'stat.json')), 'raw stat.json written')
-    assert.ok(fs.existsSync(path.join(evidenceDir, 'credits.json')), 'raw credits.json written')
+    assert.ok(fs.existsSync(path.join(evidenceDir, `stat-${runId}.json`)), 'raw stat.json written')
+    assert.ok(fs.existsSync(path.join(evidenceDir, `credits-${runId}.json`)), 'raw credits.json written')
     // RAW, byte for byte — the artifact is the control plane's answer, not a
     // re-serialization of what this process managed to parse out of it.
-    assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), STAT_FIXTURE)
-    assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), CREDITS_FIXTURE)
+    assert.equal(fs.readFileSync(path.join(evidenceDir, `stat-${runId}.json`), 'utf8'), STAT_FIXTURE)
+    assert.equal(fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'), CREDITS_FIXTURE)
     // The captures name THIS vm and ride the validated command builders. Both
     // target `exe.dev` (the lobby control plane, not the sandbox itself), so
     // neither carries the sandbox no-pin host-key flags (#211).
@@ -920,7 +920,7 @@ try {
     assert.ok(statIdx >= 0 && statIdx < rmIdx, 'stat is captured before the sandbox is destroyed')
     assert.ok(creditsIdx >= 0 && creditsIdx < rmIdx, 'credits are captured before the sandbox is destroyed')
     // Evidence never lands in the persister dir.
-    assert.ok(!fs.existsSync(path.join(tmp, 'db7c', 'stat.json')), 'evidence must not live inside dbDir')
+    assert.ok(!fs.existsSync(path.join(tmp, 'db7c', `stat-${runId}.json`)), 'evidence must not live inside dbDir')
     assert.equal(res.reportPath, path.join(evidenceDir, `gate-read-${runId}.json`))
     assert.equal(res.detailPath, path.join(evidenceDir, `gate-read-${runId}.detail.json`))
     assert.deepEqual(JSON.parse(fs.readFileSync(res.detailPath, 'utf8')).sandboxStat, res.detail.sandboxStat)
@@ -962,7 +962,7 @@ try {
     )
     // The raw artifact survives regardless — that is how an upstream shape
     // change gets diagnosed rather than guessed at.
-    assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), malformed)
+    assert.equal(fs.readFileSync(path.join(evidenceDir, `stat-${runId}.json`), 'utf8'), malformed)
     assert.ok(
       exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
       `the sandbox is destroyed anyway, got: ${JSON.stringify(exec.cmds)}`,
@@ -1010,7 +1010,7 @@ try {
       `destroySandbox still runs after a failed capture, got: ${JSON.stringify(exec.cmds)}`,
     )
     // A capture that never returned has no raw payload to keep.
-    assert.ok(!fs.existsSync(path.join(evidenceDir, 'stat.json')), 'no stat.json for a capture that never ran')
+    assert.ok(!fs.existsSync(path.join(evidenceDir, `stat-${runId}.json`)), 'no stat.json for a capture that never ran')
     assert.equal(res.detail.creditSpendUsd, 0)
   }
 
@@ -1048,7 +1048,7 @@ try {
     await sandbox
 
     assert.equal(res.detail.creditSpendUsd, 0, 'no row for this box means no spend recorded — flat 0')
-    assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), noRow)
+    assert.equal(fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'), noRow)
   }
 
   // -- 7g. a PERSISTED dbDir does not perturb the next run's gate read --------

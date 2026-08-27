@@ -27,7 +27,7 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    For a FLEET bundle, also read `detail.sandboxStat` ({peakCores, meanCores,
    peakMemBytes} — a floor estimate), `detail.creditSpendUsd` (the
    gateway-regression canary: fleet-golden baseline ~$0.78/month; growth =
-   flag it), and the raw `stat.json`/`credits.json` beside the gate read —
+   flag it), and the raw `stat-<runId>.json`/`credits-<runId>.json` beside the gate read —
    the same aggregation W2's spend-tolerance and sandbox-sizing verdicts use.
 5. **frontier** — OPEN-ENDED. How large/complex did the work get and still
    succeed? What did the agents do that the design did NOT anticipate —

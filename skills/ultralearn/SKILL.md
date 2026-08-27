@@ -34,7 +34,7 @@ runs inside Claude Code — no API key, no external calls.
    sense input, read the commissioned way. Layout (per run, under the repo's
    `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
    `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
-   `gate-read-<runId>.detail.json` (triage detail), `stat.json` + `credits.json`
+   `gate-read-<runId>.detail.json` (triage detail), `stat-<runId>.json` + `credits-<runId>.json`
    (raw control-plane payloads), and `sandbox-logs/<vm>-<stamp>/sandbox-logs.tgz`
    holding `shim.log`, `fleet-run.json`, the engine transcripts
    (`.claude/projects`), and the in-repo `run-*/` dirs. Dispatch one reader per
