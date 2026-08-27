@@ -29,6 +29,20 @@ runs inside Claude Code — no API key, no external calls.
    — accepted. Promote trigger for a drain detector: a sense pass where
    commissioned reads **miss or misread** drain evidence; record the miss as
    a ledger finding.
+   **Fleet evidence bundles are harvest bundles** (#292): the drive layer is
+   invisible to the detector too, so a fleet run's evidence dir is first-class
+   sense input, read the commissioned way. Layout (per run, under the repo's
+   `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
+   `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
+   `gate-read-<runId>.detail.json` (triage detail), `stat.json` + `credits.json`
+   (raw control-plane payloads), and `sandbox-logs/<vm>-<stamp>/sandbox-logs.tgz`
+   holding `shim.log`, `fleet-run.json`, the engine transcripts
+   (`.claude/projects`), and the in-repo `run-*/` dirs. Dispatch one reader per
+   fleet run with the bundle contents; readers set `evidenceAbstracted: true`,
+   use the fleet `runId` as `runId`, and stamp `engineVersion` from the run's
+   version stamp. Pilot corpus: `.claude/ultrapowers/fleet-runs-2026-08-26/`
+   (four distinct drive failure modes + one green engine run) and
+   `fleet-runs-2026-08-27/` (run-13, green).
 2. **Read.** For each new bundle, dispatch a subagent with
    `references/reading-lenses.md` as its instructions plus the bundle's
    `bundle.json` and `slice.md`. The agent returns a JSON array of findings.
