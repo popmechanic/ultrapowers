@@ -15,12 +15,12 @@ per arm plus two arm-B regression cells, run serially via `ab_runner.py`.
 |------|---------|-----|------|-----------|------|-------------------|
 | 20260827033055-flawed-routing-A-serialize | flawed-routing | A (`c758831`) | 888 s | 82,907 | **BLOCKED** | **3 failed** / 1 passed |
 | 20260827034634-flawed-routing-B-serialize | flawed-routing | B (`claw/routing-285` @ `f8fdaa1`) | 1,205 s | 132,708 | **PASS** (all checks) | **4/4 passed** |
-| CELL3_PLACEHOLDER | contend | B | — | — | — | — |
-| CELL4_PLACEHOLDER | mixed | B | — | — | — | — |
+| 20260827040951-contend-B-serialize | contend | B | 612 s | 48,722 | **PASS** (identity valid: 3 waw edges) | 7/7 passed |
+| 20260827042018-mixed-B-serialize | mixed | B | 854 s | 72,005 | **PASS** (all checks; 6/6 tasks clean) | 7/7 passed |
 
-Both flawed-routing rows carry `invalid: arm-identity` — the Task-12
-serialize-identity gate expects ≥2 write-after-write edges and this fixture
-seeds none (disjoint files by design). The identity check is inapplicable to
+The flawed-routing rows and the mixed row carry `invalid: arm-identity` — the Task-12
+serialize-identity gate expects ≥2 write-after-write edges and these fixtures
+seed none (flawed-routing: disjoint files by design; mixed: no contention). The identity check is inapplicable to
 this instrument, not a cell failure; recorded per protocol.
 
 ## Per-seed routing outcomes (the adoption metrics)
@@ -68,9 +68,16 @@ operator turn that arm B does not.
    arm B** (conditions (1) and (2) both cited by name); arm A gated it via
    the critic. No mis-promotion observed in either arm.
 3. No fix-loop exhaustions — **MET** (0 in both cells).
-4. Regression cells green on their own gates — REGRESSION_PLACEHOLDER.
+4. Regression cells green on their own gates — **MET** (contend: gate PASS,
+   identity valid, 0 fix iterations, sealed 7/7; mixed: gate PASS, 6/6 tasks
+   clean, sealed 7/7; zero exhaustions, zero blocked-after-fix, zero
+   falseBlocks in both).
 
-**VERDICT: VERDICT_PLACEHOLDER**
+**VERDICT: ADOPT.** All four clauses met; the branch merges. The routing
+replacement demonstrably converts the class-2 mis-route (arm A: gate BLOCKED,
+acceptance 3-red, redirect owed) into an in-wave fix-loop resolution (arm B:
+gate PASS, acceptance 4/4) while both new gate-routing conditions were
+exercised by name and the sibling fence held everywhere.
 
 ## Notes for the record
 
