@@ -119,6 +119,8 @@ LLM_DERIVES = [
     "pre-filled on the args wave entries",
 ]
 
+# "cheap" stays accepted: pre-#286 launch/args files carry it; waves.js
+# coerces it to standard with a visible judgment call.
 VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
 VALID_REVIEWS = {"lean", "adversarial"}
 

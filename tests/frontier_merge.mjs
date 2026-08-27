@@ -56,9 +56,9 @@ const SETUP_HEAD = 'int0'
 // every scenario here builds it by hand — exactly what a frontier-mode compile
 // would produce.
 const contendedWave = () => [[
-  { id: 'A', title: 'alpha', body: 'edit the shared module', tier: 'cheap',
+  { id: 'A', title: 'alpha', body: 'edit the shared module', tier: 'standard',
     files: ['src/shared.js'] },
-  { id: 'B', title: 'beta', body: 'also edit the shared module', tier: 'cheap',
+  { id: 'B', title: 'beta', body: 'also edit the shared module', tier: 'standard',
     files: ['src/shared.js', 'src/b.js'] },
 ]]
 
@@ -426,8 +426,8 @@ async function scenarioCandidateSuiteFails() {
 async function scenarioRoutingDisjointFiles() {
   const calls = []
   const waves = [[
-    { id: 'A', title: 'alpha', body: 'edit a', tier: 'cheap', files: ['src/a.js'] },
-    { id: 'B', title: 'beta', body: 'edit b', tier: 'cheap', files: ['src/b.js'] },
+    { id: 'A', title: 'alpha', body: 'edit a', tier: 'standard', files: ['src/a.js'] },
+    { id: 'B', title: 'beta', body: 'edit b', tier: 'standard', files: ['src/b.js'] },
   ]]
   const r = await runWorkflow({ agent: makeAgent(calls), args: argsFor(waves), budget: undefined })
   // Both tasks carry the tagged shape, but they came from DISJOINT dropped pairs:
@@ -474,11 +474,11 @@ async function scenarioRoutingResume() {
 async function scenarioRoutingFrozenBase() {
   const calls = []
   const waves = [
-    [{ id: 'X', title: 'prep', body: 'seed the module', tier: 'cheap', files: ['src/x.js'] }],
+    [{ id: 'X', title: 'prep', body: 'seed the module', tier: 'standard', files: ['src/x.js'] }],
     [
-      { id: 'A', title: 'alpha', body: 'edit the shared module', tier: 'cheap',
+      { id: 'A', title: 'alpha', body: 'edit the shared module', tier: 'standard',
         files: ['src/shared.js'] },
-      { id: 'B', title: 'beta', body: 'also edit the shared module', tier: 'cheap',
+      { id: 'B', title: 'beta', body: 'also edit the shared module', tier: 'standard',
         files: ['src/shared.js'] },
     ],
   ]
@@ -1122,9 +1122,9 @@ async function scenarioGuardApplySelfChecksOmitted() {
 // A wave whose two tasks contend on shared.py: t1 declares it commutes, t2 does
 // not. `files` drives contention routing; `writes`/`commutes` drive the rows.
 const commutesWave = () => [[
-  { id: 't1', title: 'one', body: 'append to shared', tier: 'cheap',
+  { id: 't1', title: 'one', body: 'append to shared', tier: 'standard',
     files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
-  { id: 't2', title: 'two', body: 'also append to shared', tier: 'cheap',
+  { id: 't2', title: 'two', body: 'also append to shared', tier: 'standard',
     files: ['shared.py'], writes: ['shared.py'], commutes: [] },
 ]]
 
@@ -1306,8 +1306,8 @@ async function scenarioCompositionSingleWriterNoRow() {
   const calls = []
   const agent = makeAgent(calls)
   const waves = [[
-    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['a.py'], writes: ['a.py'], commutes: [] },
-    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['b.py'], writes: ['b.py'], commutes: [] },
+    { id: 't1', title: 'one', body: 'b', tier: 'standard', files: ['a.py'], writes: ['a.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'standard', files: ['b.py'], writes: ['b.py'], commutes: [] },
   ]]
   const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
   eq(r.waveMerges[0].status, 'MERGED', 'single-writer: the wave merged')
@@ -1327,8 +1327,8 @@ async function scenarioCompositionAllDeclaredNoRow() {
     return undefined
   })
   const waves = [[
-    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
-    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't1', title: 'one', body: 'b', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't2', title: 'two', body: 'b', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
   ]]
   const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
   eq(r.waveMerges[0].headSha, 'cand-all', 'all-declared: the contended wave adopted its candidate')
@@ -1348,8 +1348,8 @@ async function scenarioCompositionMixedWritesSkipNote() {
     return undefined
   })
   const waves = [[
-    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
-    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'] },   // no writes field
+    { id: 't1', title: 'one', body: 'b', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'standard', files: ['shared.py'] },   // no writes field
   ]]
   const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
   assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
@@ -1372,8 +1372,8 @@ async function scenarioCompositionPartiallyMergedExcludesFailedWriter() {
   // both tasks WRITE shared.py and neither declares it — but t2 never merges,
   // so the merged wave has one writer and no composition exists to pin.
   const waves = [[
-    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
-    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't1', title: 'one', body: 'b', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't2', title: 'two', body: 'b', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
   ]]
   const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
   eq(r.tasks.find((t) => t.task === 't2').status, 'failed', 'partial: t2 failed')
@@ -1410,9 +1410,9 @@ async function scenarioPartialMergeContendedSurvivors() {
   // --commutes entry and its CONTENDING TASKS row. t3 declares nothing — a
   // survivor without a declaration must contribute no --commutes arg.
   const waves = [[
-    { id: 't1', title: 'one', body: 'b1', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
-    { id: 't2', title: 'two', body: 'b2', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
-    { id: 't3', title: 'three', body: 'b3', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
+    { id: 't1', title: 'one', body: 'b1', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't2', title: 'two', body: 'b2', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
+    { id: 't3', title: 'three', body: 'b3', tier: 'standard', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
   ]]
   const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
   eq(r.tasks.find((t) => t.task === 't2').status, 'failed', '11j: t2 failed')

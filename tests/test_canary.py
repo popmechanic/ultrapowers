@@ -51,7 +51,8 @@ def test_workflow_model_tiers_use_valid_aliases():
     # small/medium/large are rejected as invalid models. Lock the mapping so it
     # can't silently regress to the broken values.
     wf = WORKFLOW.read_text()
-    assert "cheap: 'haiku'" in wf
+    assert "cheap: 'haiku'" not in wf          # rung retired (#286)
+    assert "UTILITY_MODEL = 'haiku'" in wf     # setup/merge keep the economical model
     assert "standard: 'sonnet'" in wf
     assert "mostCapable: 'opus'" in wf
 

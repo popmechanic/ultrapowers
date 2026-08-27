@@ -846,19 +846,24 @@ const REVIEW_SCHEMA = {
   },
 }
 
-// Model tiers. reviewer-prompts.md names them cheap / standard / most-capable;
-// the workflow agent() API takes Claude aliases haiku / sonnet / opus. Verified
-// live (2026-06-03): small/medium/large are rejected as invalid models, so the
-// agent returns an error instead of doing the work. Map in ONE place here.
-const DEFAULT_TIER = { cheap: 'haiku', standard: 'sonnet', mostCapable: 'opus' }
+// Model tiers. reviewer-prompts.md names them standard / most-capable ('cheap'
+// rung retired, #286); the workflow agent() API takes Claude aliases
+// sonnet / opus. Verified live (2026-06-03): small/medium/large are rejected
+// as invalid models, so the agent returns an error instead of doing the work.
+// Map in ONE place here.
+const DEFAULT_TIER = { standard: 'sonnet', mostCapable: 'opus' }
 const TIER = DEFAULT_TIER
+// Fixed engine roles (setup, per-wave merge) are not ladder rungs — they keep
+// the economical model under their own name ('cheap' rung retired, #286).
+const UTILITY_MODEL = 'haiku'
 // Plans may name the top tier 'most-capable' (dependency-analysis) or 'mostCapable'
 // (this map); normalize so both resolve. Unknown tiers fall back to standard.
 const tierKey = (t) => (t === 'most-capable' ? 'mostCapable' : t)
 // Escalate a tier name one rung for the single post-error retry; the top tier
-// (and any unknown tier) retries in place, so every agent-error yields exactly
-// one retry. Mirrors the DEFAULT_TIER ladder; tierKey normalizes 'most-capable'.
-const TIER_LADDER = ['cheap', 'standard', 'mostCapable']
+// retries in place (an unknown tier retries at mostCapable), so every
+// agent-error yields exactly one retry. Mirrors the DEFAULT_TIER ladder;
+// tierKey normalizes 'most-capable'.
+const TIER_LADDER = ['standard', 'mostCapable']
 const escalateTier = (t) => {
   const i = TIER_LADDER.indexOf(tierKey(t))
   if (i === -1) return 'mostCapable'
@@ -1092,7 +1097,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     log('task ' + task.id + ': unknown tier="' + task.tier +
         '", falling back to standard')
     judgmentCalls.push('task ' + task.id + ': unknown tier="' + task.tier +
-        '" — fell back to standard (valid: cheap, standard, mostCapable/most-capable)')
+        '" — fell back to standard (valid: standard, mostCapable/most-capable; the cheap rung is retired, #286)')
   }
 
   const siblingsStr = siblings || ''
@@ -1730,7 +1735,7 @@ async function mergeWave(results, waveIdx) {
       fillPaths(GUARD + '\n\n' + MERGE_PROMPT) +
         (sweepLine ? '\n' + sweepLine : '') +
         '\nMerge in this order:\n' + branchList,
-      { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
+      { label: 'merge:wave' + (waveIdx + 1), model: UTILITY_MODEL, schema: MERGE_SCHEMA }
     )
   } catch (e) {
     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
@@ -1854,7 +1859,7 @@ phase('Setup')
 for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
 phase('Integration Review')
 phase('Setup')
-const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: TIER.cheap, schema: SETUP_SCHEMA })
+const setup = await agent(GUARD + '\n\n' + SETUP_PROMPT, { label: 'setup', model: UTILITY_MODEL, schema: SETUP_SCHEMA })
 // SKILL.md promises an abort when the integration branch cannot be created.
 if (!setup || setup.branch !== integrationBranch || !setup.headSha) {
   throw new Error(

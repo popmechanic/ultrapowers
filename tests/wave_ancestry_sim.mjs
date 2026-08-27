@@ -35,8 +35,8 @@ function assert(cond, msg) {
 // reaches the completeness critic, which resolves each tip itself.
 const WAVES = [
   [
-    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'cheap' },
-    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'cheap' },
+    { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'standard' },
+    { id: 'B', title: 'beta', body: 'create b.txt', tier: 'standard' },
   ],
   [{ id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' }],
 ]

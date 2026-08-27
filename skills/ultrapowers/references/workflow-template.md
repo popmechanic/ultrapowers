@@ -193,12 +193,12 @@ the reviewers do not multiply concurrency. The wave loop therefore chunks any wa
 
 ### Model-tier mapping (single source)
 
-`reviewer-prompts.md` names tiers `cheap` / `standard` / `most-capable`; the workflow `agent()` API
+`reviewer-prompts.md` names tiers `standard` / `most-capable` (the `cheap` rung is retired, #286); the workflow `agent()` API
 takes the Claude aliases `haiku` / `sonnet` / `opus`. The mapping lives in **one place**, the `TIER`
 constant in `waves.js` (per-task `most-capable` is normalized to the `mostCapable` key and unknown
 *task* tiers fall back to `standard` with a judgment call). Reviewers and the completeness critic
 always run at `most-capable` (`opus`), unconditionally; every other role follows the map
-(setup/merge at `cheap`, reconcile/fix at `mostCapable`).
+(setup/merge at the fixed utility model haiku, reconcile/fix at `mostCapable`).
 
 The per-task reviewer model is `reviewerModelFor()`: uniformly
 `DEFAULT_TIER.mostCapable` (opus), unconditionally. The completeness critic,
