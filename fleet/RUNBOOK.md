@@ -211,7 +211,11 @@ needs no exec wrapper of its own:
   are ephemeral — a fresh `fleet-<runId>.exe.xyz` per run, never reused, so there
   is no host key worth pinning and a reused/recycled hostname would otherwise
   trip a stale `known_hosts` entry (#211); lobby (`exe.dev`) and golden
-  (`fleet-golden.exe.xyz`) connections keep the normal host-key config.
+  (`fleet-golden.exe.xyz`) connections keep the normal host-key config. A socket
+  that dies mid-engine-phase is logged once in shim.log and rescued only at the
+  terminal publish — if the engine phase outlives heartbeatTimeoutMs from the
+  drop, the driver times out and destroys the sandbox before the rescue can run.
+  Mid-run reconnect is a W2 item.
 - **Evidence before teardown (#197).** `driveOne` pulls the small sandbox
   artifacts — `shim.log`, `fleet-run.json`, `~/.claude/projects` (engine
   transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to

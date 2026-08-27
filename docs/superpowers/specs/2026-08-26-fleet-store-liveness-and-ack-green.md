@@ -119,6 +119,9 @@ and surfaces via the driver's `claimTimeoutMs`. Shape:
 /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 &'`.
 (`invokeEngineRun`'s own checkout stays — belt and suspenders. This element
 is net-new deployment machinery, owned as such in the Trim review below.)
+The trailing `&` backgrounds the whole AND-list, so the checkout also runs
+detached — provisionRun never learns its exit status; a failed checkout
+surfaces only via shim.log plus the driver's claimTimeoutMs.
 
 ### 5. #191 — self-approved NEEDS_ACK may green, mechanically
 
@@ -199,8 +202,7 @@ runs them when harness/fleet JS changes is N/A — fleet tests join via
   detail; progress lines emitted through the seam;
 - `readGateGreen`: PASS green; bare NEEDS_ACK red; NEEDS_ACK + all three
   evidence legs green; each leg removed/violated individually → red
-  (including a `deferred:manual` or `coverage` ack, a stamp mismatch, a
-  `sweepFailures` approve);
+  (including a `deferred:manual` or `coverage` ack, a stamp mismatch);
 - command-string pins updated for the host-key flags + fleet-base checkout;
   sizing pass-through and `isSafeVmName` refusal covered.
 

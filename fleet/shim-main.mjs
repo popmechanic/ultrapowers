@@ -863,6 +863,20 @@ export const main = async ({
     readReportTokens: readTokens,
   })
 
+  // `no-store` means `runShim` never got past opening its own socket — the run
+  // never claimed, never ran, never produced anything. There is nothing to
+  // publish: the stamp write above already synced (or didn't, moot either
+  // way), but rewriting it, reading tokens off a session that never launched,
+  // and hunting for a branch/receipts an engine never produced would all be
+  // publishing fiction. Just tear the aux synchronizer down and return —
+  // no `deliverAndClose` here, because there is genuinely nothing to deliver.
+  if (outcome?.status === 'no-store') {
+    console.error('fleet: no store connection — skipping publish (run never executed)')
+    synchronizer.stopSync()
+    synchronizer.destroy()
+    return outcome
+  }
+
   // Everything below runs AFTER `runShim` has returned, which is deliberate:
   // `runShim`'s status writes replace the whole runs row from its own synced
   // view, so anything written while it is still running can be dropped by its
