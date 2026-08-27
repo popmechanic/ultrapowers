@@ -44,6 +44,7 @@ import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { driveOne } from '../drive.mjs'
 import { runShim } from '../shim.mjs'
+import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
   applyBranch,
   applyReceipt,
@@ -194,8 +195,8 @@ try {
         if (/nohup node .*shim-main\.mjs/.test(cmd)) onShimStart(exec.delivered)
         return { code: 0, stdout: '{}' }
       }
-      if (/^git -C \S+ push /.test(cmd)) return { code: 0, stdout: '' }
-      const fetched = cmd.match(/^git -C (\S+) fetch ssh:\/\/\S+ (\S+)$/)
+      if (/^git -C \S+ -c core\.sshCommand="[^"]*" push /.test(cmd)) return { code: 0, stdout: '' }
+      const fetched = cmd.match(/^git -C (\S+) -c core\.sshCommand="[^"]*" fetch ssh:\/\/\S+ (\S+)$/)
       if (fetched) return sh(`git -C "${fetched[1]}" fetch "${sandboxRepo}" ${fetched[2]}`)
       if (cmd.startsWith('git ')) return sh(cmd)
       return { code: 0, stdout: '' }
@@ -395,7 +396,7 @@ try {
     // fallback.
     assert.ok(
       exec.cmds.includes(
-        `git -C ${repoDir} fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${INTEGRATION_BRANCH}`,
+        `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${INTEGRATION_BRANCH}`,
       ),
       `expected a fetch of ${INTEGRATION_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
@@ -407,7 +408,7 @@ try {
     // The run branch was fetched before any sha was verified, and the sha was
     // verified with a real existence pre-check AND a real reachability check
     // against the fetched branch.
-    const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
+    const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ -c core\.sshCommand="[^"]*" fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
     const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}`)
     const ancIdx = exec.cmds.findIndex(
       (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} FETCH_HEAD`,
@@ -434,7 +435,7 @@ try {
     // transcripts and the gitignored run dirs die with the VM, and every live
     // diagnosis depended on them. The driver pulls them — small artifacts only,
     // never the whole repo — exactly once, and strictly before the `rm`.
-    const pullIdx = exec.cmds.findIndex((c) => /^ssh -o BatchMode=yes -o ConnectTimeout=10 fleet-run-drive-1\.exe\.xyz 'cd \/home\/exedev && tar czf - shim\.log fleet-run\.json \.claude\/projects /.test(c))
+    const pullIdx = exec.cmds.findIndex((c) => c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz 'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects `))
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     assert.ok(pullIdx >= 0, `expected a sandbox log pull, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(pullIdx < rmIdx, 'sandbox logs are pulled BEFORE the sandbox is destroyed')
@@ -460,7 +461,7 @@ try {
     const killIdx = exec.cmds.findIndex((c) => c.startsWith('pkill -f ') && c.includes(`[-]R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`))
     assert.ok(killIdx > rmIdx, `the tunnel kill follows the rm, got: ${JSON.stringify(exec.cmds)}`)
     // And the tunnel was opened before the shim started.
-    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
+    const tunnelIdx = exec.cmds.findIndex((c) => c === `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R ${detail.effectivePort}:127.0.0.1:${detail.effectivePort} fleet-${runId}.exe.xyz`)
     const shimIdx = exec.cmds.findIndex((c) => /nohup node .*shim-main\.mjs/.test(c))
     assert.ok(tunnelIdx >= 0 && tunnelIdx < shimIdx, `the reverse tunnel opens before the shim starts, got: ${JSON.stringify(exec.cmds)}`)
 
@@ -599,7 +600,7 @@ try {
     await sandbox
 
     assert.ok(
-      exec.cmds.includes(`git -C ${repoDir} fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${OLDER_BRANCH}`),
+      exec.cmds.includes(`git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${OLDER_BRANCH}`),
       `expected a fetch of ${OLDER_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
     assert.ok(
@@ -885,11 +886,19 @@ try {
     // re-serialization of what this process managed to parse out of it.
     assert.equal(fs.readFileSync(path.join(evidenceDir, 'stat.json'), 'utf8'), STAT_FIXTURE)
     assert.equal(fs.readFileSync(path.join(evidenceDir, 'credits.json'), 'utf8'), CREDITS_FIXTURE)
-    // The captures name THIS vm and ride the validated command builders.
+    // The captures name THIS vm and ride the validated command builders. Both
+    // target `exe.dev` (the lobby control plane, not the sandbox itself), so
+    // neither carries the sandbox no-pin host-key flags (#211).
     assert.ok(
       exec.cmds.includes(`ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-${runId} --json --range=24h"`),
       `expected the stat capture, got: ${JSON.stringify(exec.cmds)}`,
     )
+    for (const cmd of exec.cmds.filter((c) => STAT_CMD.test(c) || CREDITS_CMD.test(c))) {
+      assert.ok(
+        !cmd.includes('StrictHostKeyChecking') && !cmd.includes('UserKnownHostsFile'),
+        `the lobby stat/credits capture must carry no host-key flags, got: ${cmd}`,
+      )
+    }
     // Both captures happen while the VM still exists.
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     const statIdx = exec.cmds.findIndex((c) => STAT_CMD.test(c))
@@ -1364,6 +1373,152 @@ try {
     assert.ok(
       detail.errors.some((e) => e.includes('unsafe receipt pointer')),
       `expected an explicit unsafe-pointer error, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- 16. a sandbox that never claims fails FAST, not at the heartbeat bound -
+  // #288: a sandbox whose ws transport is dead (or whose shim never starts)
+  // writes NOTHING to the store — there is no "progress" for the heartbeat
+  // check to lose, so without a dedicated claim deadline the only exit was
+  // the full heartbeat timeout, with zero output along the way (one live
+  // run's nohup log was 0 bytes). Here the shim-start command fires, exactly
+  // as it does live, but nothing ever claims the run.
+  {
+    const runId = 'run-drive-16'
+    const exec = makeExec(() => {
+      // Deliberately does nothing: the sandbox never connects, never claims.
+    })
+
+    const startedAt = Date.now()
+    const { reportPath, detailPath, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db16'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+    })
+    const elapsed = Date.now() - startedAt
+
+    assert.ok(elapsed < 8_000, `a never-claimed sandbox must fail fast, not at the heartbeat bound, took ${elapsed}ms`)
+    assert.equal(detail.neverClaimed, true, 'the never-claimed reason must be named in the detail')
+    assert.equal(detail.timedOut, false, 'this is a distinct failure from the generic heartbeat timeout')
+    assert.ok(
+      detail.errors.some((e) => /never claimed/.test(e)),
+      `expected an explicit never-claimed error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    // Teardown still ran (the #197/#288 theme: evidence before teardown, on
+    // every stop reason) — the pull and the destroy both fire even though the
+    // sandbox never claimed anything.
+    assert.ok(
+      exec.cmds.some((c) => /tar czf - shim\.log/.test(c)),
+      `expected the evidence pull even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(
+      exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
+      `expected the teardown command even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(fs.existsSync(reportPath), 'the report is still written')
+    assert.ok(fs.existsSync(detailPath), 'the detail is still written')
+  }
+
+  // -- 17. progressLog narrates a live drive -----------------------------------
+  // The fix for one live run's zero-byte nohup log (#288): with no progress
+  // narration, a driver watching a dead sandbox produces no output at all
+  // until it finally times out (or, now, hits the claim deadline).
+  {
+    const runId = 'run-drive-17'
+    const lines = []
+    const exec = makeExec(() => {
+      // Never claims — same dead-transport shape as scenario 16.
+    })
+
+    await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db17'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      progressLog: (line) => lines.push(line),
+    })
+
+    assert.ok(lines.some((l) => /provision/.test(l)), `expected a provisioning line, got: ${JSON.stringify(lines)}`)
+    assert.ok(lines.some((l) => /never claimed/.test(l)), `expected a never-claimed line, got: ${JSON.stringify(lines)}`)
+  }
+
+  // -- 18. an unsafe vm name is refused BEFORE the tar pull, not merely before
+  //    stat (#290-2) --------------------------------------------------------
+  // `sandboxIdFor` derives the vm name directly from `runId` with no
+  // sanitizing — a runId containing a space produces a vmName that fails
+  // `isSafeVmName`. The guard must precede EVERY vmName interpolation in the
+  // pull path: the tar pull runs FIRST and interpolates vmName exactly like
+  // the stat command does, so guarding only the stat call (the historical
+  // shape) left the pull's `<vmName>.exe.xyz` unchecked.
+  {
+    const runId = 'run 1'
+    const exec = makeExec(() => {
+      // Never claims — the run never gets far enough for that to matter; only
+      // the teardown-time pull path is under test here.
+    })
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db18'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+    })
+
+    assert.ok(
+      detail.errors.some((e) => /unsafe vm name/.test(e)),
+      `expected an explicit unsafe-vm-name error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => c.includes('stat fleet-run 1')),
+      `the stat command must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => /tar czf/.test(c) && c.includes('fleet-run 1.exe.xyz')),
+      `the tar pull must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    // The credits capture interpolates nothing and still proceeds.
+    assert.ok(
+      exec.cmds.some((c) => CREDITS_CMD.test(c)),
+      `the credits capture must still run even when the vm name is refused, got: ${JSON.stringify(exec.cmds)}`,
+    )
+  }
+
+  // -- 19. sandbox sizing flags reach the clone command unchanged (#290-3) ----
+  // The knobs ride straight through `driveOne` -> `provisionRun` -> the clone
+  // command with no reshaping in between; a scripted exec that never claims is
+  // enough to observe it — the point here is the WIRING, not a full run.
+  {
+    const runId = 'run-drive-19'
+    const exec = makeExec(() => {})
+
+    await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db19'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      sandboxCpu: 2,
+      sandboxMemory: '8GB',
+      sandboxDisk: '30GB',
+    })
+
+    const cloneCmd = exec.cmds.find((c) => c.startsWith(`ssh exe.dev "cp ${driveDefaults.golden} fleet-${runId}`))
+    assert.ok(cloneCmd, `expected a clone command, got: ${JSON.stringify(exec.cmds)}`)
+    assert.ok(
+      cloneCmd.includes('--cpu=2 --memory=8GB --disk=30GB'),
+      `expected the sizing flags on the clone command, got: ${cloneCmd}`,
     )
   }
 
