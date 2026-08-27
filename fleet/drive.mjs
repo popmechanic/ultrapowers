@@ -125,6 +125,10 @@ export const deriveCreditSpendUsd = (creditsJson, vmName) => {
  * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
  *   reaches a terminal status, for the sandbox to publish what it produced.
  *   Clamped to `heartbeatTimeoutMs`.
+ * @param {number} [opts.parkedPublishWaitMs] - the same wait, on the PARKED
+ *   path (#318). Tighter than `publishTimeoutMs` on purpose: a parked run that
+ *   publishes nothing must not idle out the gate-green bound. Clamped to
+ *   `heartbeatTimeoutMs`.
  * @param {Record<string,string>} [opts.engineEnv] - environment the sandbox
  *   engine must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN`, #213); delivered per run
  *   by `provisionRun`, held by the orchestrator, never baked into the golden.
@@ -176,6 +180,7 @@ export const driveOne = async ({
   heartbeatTimeoutMs = 30 * 60_000,
   publishPollMs = 250,
   publishTimeoutMs = heartbeatTimeoutMs,
+  parkedPublishWaitMs = 60_000,
   logPullTimeoutMs = 120_000,
   claimTimeoutMs = 10 * 60_000,
   progressLog = (line) => console.error(`[drive ${new Date().toISOString()}] ${line}`),
@@ -561,9 +566,23 @@ export const driveOne = async ({
     //    run. The wait is BOUNDED by the heartbeat timeout, and a run that never
     //    publishes inside it reads red with `publish timeout` — fail-closed, and
     //    honest about which failure it was.
-    if (!timedOut && status === 'gate-green') {
-      const publishDeadline = Date.now() + Math.min(publishTimeoutMs, heartbeatTimeoutMs)
-      note(`publish wait: up to ${Math.min(publishTimeoutMs, heartbeatTimeoutMs)}ms for branch+receipts`)
+    //
+    //    #318: a PARKED run publishes too — main() detects the branch and
+    //    commits the receipts after runShim returns, whatever the verdict —
+    //    and that branch died with the sandbox in run-14. So the wait now
+    //    covers parked as well, on its own tighter bound: a parked run that
+    //    publishes nothing (parked before the engine ran, cap park) must not
+    //    idle out the full gate-green bound, and a cap park has already
+    //    destroyed the sandbox, so `destroyed` breaks the wait immediately.
+    //    Only the gate-green path can set publishTimedOut — a silent parked
+    //    publish is an absence, not a red read.
+    if (!timedOut && (status === 'gate-green' || status === 'parked')) {
+      const bound =
+        status === 'gate-green'
+          ? Math.min(publishTimeoutMs, heartbeatTimeoutMs)
+          : Math.min(parkedPublishWaitMs, heartbeatTimeoutMs)
+      const publishDeadline = Date.now() + bound
+      note(`publish wait (${status}): up to ${bound}ms for branch+receipts`)
       for (;;) {
         runSweep()
         observeClaim()
@@ -572,9 +591,15 @@ export const driveOne = async ({
           note(`publish wait: received ${published}`)
           break
         }
+        if (status === 'parked' && destroyed) {
+          note('publish wait: sandbox already destroyed — nothing will publish')
+          break
+        }
         if (Date.now() >= publishDeadline) {
-          publishTimedOut = true
-          errors.push('publish timeout')
+          if (status === 'gate-green') {
+            publishTimedOut = true
+            errors.push('publish timeout')
+          }
           note('publish wait: timed out')
           break
         }
@@ -627,8 +652,19 @@ export const driveOne = async ({
   // process interpolates into a shell. They are validated here — not quoted,
   // not escaped — and a value that fails validation fails the read without ever
   // reaching `exec`.
+  //
+  // #318: a parked-with-receipts run resolves the same way — the branch is
+  // fetched so a post-hoc human ack can land the work without a ~200k
+  // re-drive — but the result lands ONLY in detail.parkedPublish, marked
+  // unapproved. The gate read's receiptsResolvable stays a gate-green fact:
+  // nothing about a park may brighten the read.
   let receiptsResolvable = false
-  if (reachedGateGreen && !publishTimedOut && receipts.length > 0 && vmName) {
+  let parkedPublish = null
+  const parkedWithReceipts = status === 'parked' && receipts.length > 0
+  if (((reachedGateGreen && !publishTimedOut) || parkedWithReceipts) && receipts.length > 0 && vmName) {
+    let resolvable = false
+    let fetchedOk = false
+    let fetchedBranch = null
     try {
       const runBranch = store.getCell('runs', runId, 'branch') ?? branch
       if (!isSafeBranchName(runBranch)) {
@@ -640,12 +676,14 @@ export const driveOne = async ({
         if (fetched?.code !== 0) {
           errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)
         } else {
-          receiptsResolvable = true
+          fetchedOk = true
+          fetchedBranch = runBranch
+          resolvable = true
           for (const receipt of receipts) {
             if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
               errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
               receiptChecks.push({ ...receipt, exists: false, reachable: false, dereferenced: false, resolved: false })
-              receiptsResolvable = false
+              resolvable = false
               continue
             }
             const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
@@ -662,14 +700,16 @@ export const driveOne = async ({
             }
             const resolved = exists && reachable && dereferenced
             receiptChecks.push({ ...receipt, exists, reachable, dereferenced, resolved })
-            if (!resolved) receiptsResolvable = false
+            if (!resolved) resolvable = false
           }
         }
       }
     } catch (error) {
       errors.push(`receipts: ${error?.message ?? error}`)
-      receiptsResolvable = false
+      resolvable = false
     }
+    if (reachedGateGreen) receiptsResolvable = resolvable
+    else parkedPublish = { branch: fetchedBranch, fetched: fetchedOk, receiptsResolvable: resolvable, unapproved: true }
   }
 
   const leaseContinuity = epochs.size === 1 && epochs.has(1) && !sawExpired && !sawRevoked
@@ -714,6 +754,10 @@ export const driveOne = async ({
     neverClaimed,
     elapsedMs: Date.now() - startedAt,
     receipts: receiptChecks.length > 0 ? receiptChecks : receipts,
+    // #318: a parked run's published branch, fetched locally but UNAPPROVED —
+    // no standing grant covers it; merging it needs an explicit operator ack
+    // of the parked gate receipt. null when the park published nothing.
+    parkedPublish,
     convergedAway,
     pages,
     errors,

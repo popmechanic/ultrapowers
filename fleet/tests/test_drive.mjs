@@ -226,6 +226,9 @@ try {
     receiptPath = 'gate-receipt.json',
     rawBranch = null,
     publish = true,
+    // #318: a parked run publishes exactly as a green one does — the verdict
+    // is the only difference. `false` drives the park path.
+    gateGreen = true,
     // Test scaffolding overrides (additive): default to the shared frozen
     // `clock` and the current happy-path `invokeRun` behavior. A test that
     // needs to advance time (lease-expiry legibility, #279) supplies its own
@@ -259,7 +262,7 @@ try {
           // orchestrator at all. Sleeping here keeps the harness faithful to
           // the timescale the shim is actually written against.
           await sleep(250)
-          return { gateGreen: true }
+          return { gateGreen }
         })
 
       const outcome = await runShim({
@@ -298,6 +301,9 @@ try {
     heartbeatTimeoutMs: 20_000,
     publishPollMs: 50,
     publishTimeoutMs: 8_000,
+    // #318: the parked publish wait applies to every parked scenario below.
+    // Keep it short — the file runs against a 120 s cap.
+    parkedPublishWaitMs: 500,
   }
 
   // -- 1. the happy path, driven by the PRODUCTION sandbox entrypoint --------
@@ -2228,6 +2234,89 @@ try {
       'the credits capture interpolates nothing and must still run',
     )
     assert.deepEqual(destroyed, [badName], 'teardown must still be invoked exactly once')
+  }
+
+  // -- N1. #318 publish-on-park: a parked run's published branch is fetched ---
+  // run-14's shape: the engine integrated and left resolvable receipts, then
+  // the gate parked. The branch must be fetched and reported — unapproved —
+  // while the gate read itself stays exactly as red as before.
+  {
+    const runId = 'run-drive-park-pub'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: integrationSha,
+          receiptPath: RECEIPT_PATH,
+          exec,
+          gateGreen: false,
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      parkedPublishWaitMs: 8_000,
+      dbDir: path.join(tmp, 'dbN1'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    // The read is untouched by the park's publish: still five keys, still red.
+    assert.deepEqual(read, {
+      o1: false,
+      receiptsResolvable: false,
+      leaseContinuity: true,
+      versionStamp: true,
+      spendObservational: { reported: 4200, ledger: 4200 },
+    })
+    assert.equal(detail.status, 'parked')
+    assert.deepEqual(detail.parkedPublish, {
+      branch: INTEGRATION_BRANCH,
+      fetched: true,
+      receiptsResolvable: true,
+      unapproved: true,
+    })
+    // The fetch was REAL: the receipt sha is reachable from FETCH_HEAD.
+    assert.equal(
+      (await sh(`git -C "${repoDir}" merge-base --is-ancestor ${integrationSha} FETCH_HEAD`)).code,
+      0,
+      'the parked branch must actually have been fetched',
+    )
+    assert.ok(
+      !detail.errors.includes('publish timeout'),
+      `a parked publish must never read as a publish timeout, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- N2. a park that published NOTHING stays quiet and quick ----------------
+  {
+    const runId = 'run-drive-park-empty'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({ assignment, runId, receiptSha: headSha, exec, publish: false, gateGreen: false })
+      }, 30)
+    })
+    const startedAt = Date.now()
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'dbN2'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(detail.status, 'parked')
+    assert.equal(detail.parkedPublish, null, 'nothing published → nothing claimed')
+    assert.equal(read.o1, false)
+    assert.ok(
+      !detail.errors.includes('publish timeout'),
+      'an empty parked publish is an absence, not an error',
+    )
+    assert.ok(Date.now() - startedAt < 15_000, 'the parked wait is bounded by parkedPublishWaitMs, not the gate-green bound')
   }
 
   console.log('ALL TESTS PASSED')
