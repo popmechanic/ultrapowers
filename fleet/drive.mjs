@@ -172,6 +172,12 @@ export const driveOne = async ({
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
+  // Injection seams for the provision/teardown legs — the real module
+  // functions by default. They exist so the pullLogsOnce refusal branch
+  // (defense in depth against a mid-run vmName mutation; unreachable through
+  // the public surface post-#298) is testable at all (#290-2).
+  provision = provisionRun,
+  destroy = destroySandbox,
 }) => {
   // #298: `runId` becomes `fleet-<runId>` and is interpolated into every
   // sandbox-bound ssh/git command string downstream (clone, deliveries,
@@ -329,7 +335,7 @@ export const driveOne = async ({
     if (destroyed || !vmName) return
     destroyed = true
     await pullLogsOnce()
-    await destroySandbox({ vmName, port: effectivePort, exec })
+    await destroy({ vmName, port: effectivePort, exec })
   }
 
   const actions = {
@@ -439,7 +445,7 @@ export const driveOne = async ({
     //    one, but the shim reads its assignment file before it has synced
     //    anything. Without it the engine is launched with a literal
     //    `undefined` plan path.
-    const provisioned = await provisionRun({
+    const provisioned = await provision({
       golden,
       runId,
       baseRef,

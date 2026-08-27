@@ -42,7 +42,7 @@ import { execFile } from 'node:child_process'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { driveOne } from '../drive.mjs'
+import { driveOne, isSafeVmName } from '../drive.mjs'
 import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
@@ -2109,6 +2109,57 @@ try {
       'accepted',
       `the delivered token must already be registered when the shim starts, got: ${connectResult}`,
     )
+  }
+
+  // -- 22. isSafeVmName accept/reject rows (#290-2 residual) ------------------
+  {
+    for (const good of ['fleet-run-14', 'a', 'A1._-b', 'fleet-run13', 'x'.repeat(64)]) {
+      assert.equal(isSafeVmName(good), true, `expected accept: ${good}`)
+    }
+    for (const bad of ['', ' ', 'fleet run', 'a;b', 'a$(x)', '-leading', '.leading', 'a\nb', 'x'.repeat(65), null, undefined, 42]) {
+      assert.equal(isSafeVmName(bad), false, `expected reject: ${JSON.stringify(bad)}`)
+    }
+  }
+
+  // -- 23. pullLogsOnce refusal branch (#290-2): a provisioner that returns a
+  // mutated unsafe vmName gets its sandbox-addressed captures REFUSED (no ssh
+  // command ever carries the bad name), the refusal lands in detail.errors,
+  // the credits capture (interpolates nothing) still runs, and teardown is
+  // still invoked.
+  {
+    const runId = 'run-drive-23'
+    const exec = makeExec(() => {})
+    const destroyed = []
+    const badName = 'evil;name'
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db23'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      settleMs: 100,
+      provision: async () => ({ vmName: badName }),
+      destroy: async ({ vmName }) => {
+        destroyed.push(vmName)
+      },
+    })
+
+    assert.ok(
+      detail.errors.some((e) => /unsafe vm name/.test(e)),
+      `expected an unsafe-vm-name refusal in errors, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => c.includes(badName)),
+      `no shelled command may carry the unsafe name, got: ${JSON.stringify(exec.cmds.filter((c) => c.includes(badName)))}`,
+    )
+    assert.ok(
+      exec.cmds.some((c) => c.includes('billing credits usage')),
+      'the credits capture interpolates nothing and must still run',
+    )
+    assert.deepEqual(destroyed, [badName], 'teardown must still be invoked exactly once')
   }
 
   console.log('ALL TESTS PASSED')
