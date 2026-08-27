@@ -1367,6 +1367,152 @@ try {
     )
   }
 
+  // -- 16. a sandbox that never claims fails FAST, not at the heartbeat bound -
+  // #288: a sandbox whose ws transport is dead (or whose shim never starts)
+  // writes NOTHING to the store — there is no "progress" for the heartbeat
+  // check to lose, so without a dedicated claim deadline the only exit was
+  // the full heartbeat timeout, with zero output along the way (one live
+  // run's nohup log was 0 bytes). Here the shim-start command fires, exactly
+  // as it does live, but nothing ever claims the run.
+  {
+    const runId = 'run-drive-16'
+    const exec = makeExec(() => {
+      // Deliberately does nothing: the sandbox never connects, never claims.
+    })
+
+    const startedAt = Date.now()
+    const { reportPath, detailPath, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db16'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+    })
+    const elapsed = Date.now() - startedAt
+
+    assert.ok(elapsed < 8_000, `a never-claimed sandbox must fail fast, not at the heartbeat bound, took ${elapsed}ms`)
+    assert.equal(detail.neverClaimed, true, 'the never-claimed reason must be named in the detail')
+    assert.equal(detail.timedOut, false, 'this is a distinct failure from the generic heartbeat timeout')
+    assert.ok(
+      detail.errors.some((e) => /never claimed/.test(e)),
+      `expected an explicit never-claimed error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    // Teardown still ran (the #197/#288 theme: evidence before teardown, on
+    // every stop reason) — the pull and the destroy both fire even though the
+    // sandbox never claimed anything.
+    assert.ok(
+      exec.cmds.some((c) => /tar czf - shim\.log/.test(c)),
+      `expected the evidence pull even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(
+      exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
+      `expected the teardown command even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(fs.existsSync(reportPath), 'the report is still written')
+    assert.ok(fs.existsSync(detailPath), 'the detail is still written')
+  }
+
+  // -- 17. progressLog narrates a live drive -----------------------------------
+  // The fix for one live run's zero-byte nohup log (#288): with no progress
+  // narration, a driver watching a dead sandbox produces no output at all
+  // until it finally times out (or, now, hits the claim deadline).
+  {
+    const runId = 'run-drive-17'
+    const lines = []
+    const exec = makeExec(() => {
+      // Never claims — same dead-transport shape as scenario 16.
+    })
+
+    await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db17'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      progressLog: (line) => lines.push(line),
+    })
+
+    assert.ok(lines.some((l) => /provision/.test(l)), `expected a provisioning line, got: ${JSON.stringify(lines)}`)
+    assert.ok(lines.some((l) => /never claimed/.test(l)), `expected a never-claimed line, got: ${JSON.stringify(lines)}`)
+  }
+
+  // -- 18. an unsafe vm name is refused BEFORE the tar pull, not merely before
+  //    stat (#290-2) --------------------------------------------------------
+  // `sandboxIdFor` derives the vm name directly from `runId` with no
+  // sanitizing — a runId containing a space produces a vmName that fails
+  // `isSafeVmName`. The guard must precede EVERY vmName interpolation in the
+  // pull path: the tar pull runs FIRST and interpolates vmName exactly like
+  // the stat command does, so guarding only the stat call (the historical
+  // shape) left the pull's `<vmName>.exe.xyz` unchecked.
+  {
+    const runId = 'run 1'
+    const exec = makeExec(() => {
+      // Never claims — the run never gets far enough for that to matter; only
+      // the teardown-time pull path is under test here.
+    })
+
+    const { detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db18'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+    })
+
+    assert.ok(
+      detail.errors.some((e) => /unsafe vm name/.test(e)),
+      `expected an explicit unsafe-vm-name error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => c.includes('stat fleet-run 1')),
+      `the stat command must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => /tar czf/.test(c) && c.includes('fleet-run 1.exe.xyz')),
+      `the tar pull must never be issued for an unsafe vm name, got: ${JSON.stringify(exec.cmds)}`,
+    )
+    // The credits capture interpolates nothing and still proceeds.
+    assert.ok(
+      exec.cmds.some((c) => CREDITS_CMD.test(c)),
+      `the credits capture must still run even when the vm name is refused, got: ${JSON.stringify(exec.cmds)}`,
+    )
+  }
+
+  // -- 19. sandbox sizing flags reach the clone command unchanged (#290-3) ----
+  // The knobs ride straight through `driveOne` -> `provisionRun` -> the clone
+  // command with no reshaping in between; a scripted exec that never claims is
+  // enough to observe it — the point here is the WIRING, not a full run.
+  {
+    const runId = 'run-drive-19'
+    const exec = makeExec(() => {})
+
+    await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db19'),
+      exec,
+      runId,
+      claimTimeoutMs: 500,
+      heartbeatTimeoutMs: 60_000,
+      tickMs: 50,
+      sandboxCpu: 2,
+      sandboxMemory: '8GB',
+      sandboxDisk: '30GB',
+    })
+
+    const cloneCmd = exec.cmds.find((c) => c.startsWith(`ssh exe.dev "cp ${driveDefaults.golden} fleet-${runId}`))
+    assert.ok(cloneCmd, `expected a clone command, got: ${JSON.stringify(exec.cmds)}`)
+    assert.ok(
+      cloneCmd.includes('--cpu=2 --memory=8GB --disk=30GB'),
+      `expected the sizing flags on the clone command, got: ${cloneCmd}`,
+    )
+  }
+
   // -- 12. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')

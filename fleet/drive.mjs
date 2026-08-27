@@ -123,6 +123,17 @@ export const deriveCreditSpendUsd = (creditsJson, vmName) => {
  * @param {number} [opts.logPullTimeoutMs] - bound on the evidence pull that
  *   precedes teardown. A pull that outruns it is recorded as an error and the
  *   sandbox is destroyed anyway — the pull must never keep a VM alive.
+ * @param {number} [opts.claimTimeoutMs] - how long a run may sit `pending`
+ *   with no claim row before the drive gives up on it. A sandbox whose ws
+ *   transport never connects (or whose shim never starts) produces zero store
+ *   writes, so without this bound the only exit is `heartbeatTimeoutMs`
+ *   (#288) — this fires first and names the failure instead of reading as a
+ *   generic stall.
+ * @param {(line: string) => void} [opts.progressLog] - a live, timestamped
+ *   line of narration for a long-running drive (#288: a dead run otherwise
+ *   produces zero output until it times out). Called at every state
+ *   transition the watch loop observes. A throwing `progressLog` is caught
+ *   and ignored — narration must never be able to break a drive.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -148,6 +159,8 @@ export const driveOne = async ({
   publishPollMs = 250,
   publishTimeoutMs = heartbeatTimeoutMs,
   logPullTimeoutMs = 120_000,
+  claimTimeoutMs = 10 * 60_000,
+  progressLog = (line) => console.error(`[drive ${new Date().toISOString()}] ${line}`),
   engineEnv,
   sandboxCpu,
   sandboxMemory,
@@ -156,6 +169,15 @@ export const driveOne = async ({
   const resolvedEvidenceDir = evidenceDir ?? `${dbDir}-evidence`
   const resolvedReportPath = reportPath ?? path.join(resolvedEvidenceDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
+  // A throwing progressLog must never break the drive — it is narration, not
+  // a dependency.
+  const note = (line) => {
+    try {
+      progressLog(line)
+    } catch {
+      // narration is best-effort
+    }
+  }
 
   // Handed to the orchestrator by reference — a token minted mid-run is honored
   // on the next handshake without restarting the server.
@@ -194,9 +216,9 @@ export const driveOne = async ({
   // skip `destroySandbox` and leak a billed VM (#280, run-9b's in-sandbox
   // critic), which is the one outcome teardown exists to prevent.
   const captureJson = async ({ label, cmd, file }) => {
-    const destination = path.join(resolvedEvidenceDir, file)
     let raw = null
     try {
+      const destination = path.join(resolvedEvidenceDir, file)
       const result = await boundedExec(cmd)
       raw = typeof result?.stdout === 'string' ? result.stdout : ''
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
@@ -229,22 +251,26 @@ export const driveOne = async ({
   const pullLogsOnce = async () => {
     if (pulled || !vmName) return
     pulled = true
-    const dir = path.join(resolvedEvidenceDir, 'sandbox-logs', `${vmName}-${Date.now()}`)
-    const dest = path.join(dir, 'sandbox-logs.tgz')
-    try {
-      fs.mkdirSync(dir, { recursive: true })
-      const result = await boundedExec(sandboxLogPullCommand({ vmName, dest }))
-      if (result?.code === 0) sandboxLogs = dest
-      else errors.push(`pull sandbox logs: code ${result?.code} ${(result?.stdout ?? '').trim()}`.trim())
-    } catch (error) {
-      errors.push(`pull sandbox logs: ${error?.message ?? error}`)
-    }
 
-    // `vmName` is interpolated into the stat command, so it is validated before
-    // the command exists — refused loudly rather than shelled.
+    // `vmName` is interpolated into BOTH the tar pull and the stat command, so
+    // it is validated once, at the very top, before either exists — refused
+    // loudly rather than shelled. Hoisted ahead of the tar pull (#290-2): the
+    // pull used to run unconditionally, with only the stat call guarded, which
+    // left the first vmName interpolation unchecked.
     if (!isSafeVmName(vmName)) {
-      errors.push(`sandbox stat: unsafe vm name ${JSON.stringify(vmName)} — refusing to run`)
+      errors.push(`unsafe vm name ${JSON.stringify(vmName)} — refusing sandbox-addressed captures`)
     } else {
+      try {
+        const dir = path.join(resolvedEvidenceDir, 'sandbox-logs', `${vmName}-${Date.now()}`)
+        const dest = path.join(dir, 'sandbox-logs.tgz')
+        fs.mkdirSync(dir, { recursive: true })
+        const result = await boundedExec(sandboxLogPullCommand({ vmName, dest }))
+        if (result?.code === 0) sandboxLogs = dest
+        else errors.push(`pull sandbox logs: code ${result?.code} ${(result?.stdout ?? '').trim()}`.trim())
+      } catch (error) {
+        errors.push(`pull sandbox logs: ${error?.message ?? error}`)
+      }
+
       const statJson = await captureJson({
         label: 'sandbox stat',
         cmd: sandboxStatCommand({ vmName }),
@@ -263,6 +289,7 @@ export const driveOne = async ({
       }
     }
 
+    // Interpolates nothing — proceeds even when vmName was refused above.
     const creditsJson = await captureJson({
       label: 'credits usage',
       cmd: creditsUsageCommand(),
@@ -352,6 +379,7 @@ export const driveOne = async ({
   let status = 'unknown'
   let timedOut = false
   let publishTimedOut = false
+  let neverClaimed = false
   const startedAt = Date.now()
 
   // The rows this run published, by the same filter the read uses — so "has it
@@ -376,6 +404,7 @@ export const driveOne = async ({
     //    (clone succeeded, ssh never came up) and would otherwise leave a
     //    billed sandbox running with nothing holding its name.
     vmName = sandboxIdFor(runId)
+    note(`provisioning ${vmName} from ${golden}`)
     //    The last thing `provisionRun` does is start the sandbox's shim
     //    detached, so the token record is registered here — one microtask after
     //    that command returns and well before a remote node process can boot,
@@ -404,10 +433,19 @@ export const driveOne = async ({
     vmName = provisioned.vmName
     tokenRecords.push(provisioned.record)
     store.setRow('runs', runId, { ...store.getRow('runs', runId), sandboxId: vmName })
+    note(`provisioned ${vmName}`)
 
     // 3. Watch until the run resolves, or until nothing has moved for
     //    `heartbeatTimeoutMs`. Progress is any change to the run's status,
     //    claim, spend, or receipts — a live-but-slow run is never timed out.
+    //
+    //    `watchStartedAt` anchors a SEPARATE, tighter bound: a sandbox whose ws
+    //    transport never connects (or whose shim never starts) writes NOTHING
+    //    to the store, so it is never "stalled" by the progress-key check above
+    //    — it never had any progress to lose. Without `claimTimeoutMs` the only
+    //    exit for that sandbox is the full `heartbeatTimeoutMs` (#288), with
+    //    zero output along the way to say why.
+    const watchStartedAt = Date.now()
     let progressKey = ''
     let lastProgressAt = Date.now()
     for (;;) {
@@ -416,20 +454,36 @@ export const driveOne = async ({
       observeClaim()
 
       status = store.getCell('runs', runId, 'status') ?? 'unknown'
-      if (TERMINAL.has(status)) break
+      if (TERMINAL.has(status)) {
+        note(`terminal status ${status} reached`)
+        break
+      }
 
-      const key = JSON.stringify([
-        status,
-        store.getRow('claims', `claim:${runId}`) ?? null,
-        Object.keys(store.getTable('spend')).length,
-        Object.keys(store.getTable('receipts')).length,
-      ])
+      // A row with no claim still reads back as `{}`, not `undefined` — the
+      // same shape `observeClaim` above already guards against — so presence
+      // is decided by `holder`, never by mere truthiness of the row.
+      const claimRow = store.getRow('claims', `claim:${runId}`) ?? null
+      const hasClaim = claimRow !== null && claimRow.holder !== undefined
+      const spendCount = Object.keys(store.getTable('spend')).length
+      const receiptsCount = Object.keys(store.getTable('receipts')).length
+      const key = JSON.stringify([status, claimRow, spendCount, receiptsCount])
       if (key !== progressKey) {
         progressKey = key
         lastProgressAt = Date.now()
+        note(`progress: status=${status} claim=${hasClaim ? claimRow.epoch : 'none'} spend=${spendCount} receipts=${receiptsCount}`)
       }
+
+      if (status === 'pending' && !hasClaim && Date.now() - watchStartedAt > claimTimeoutMs) {
+        neverClaimed = true
+        const msg = `sandbox never claimed within ${claimTimeoutMs}ms — transport dead or shim failed to start`
+        errors.push(msg)
+        note(msg)
+        break
+      }
+
       if (Date.now() - lastProgressAt > heartbeatTimeoutMs) {
         timedOut = true
+        note(`heartbeat timeout after ${heartbeatTimeoutMs}ms with no progress`)
         break
       }
       await sleep(tickMs)
@@ -449,14 +503,19 @@ export const driveOne = async ({
     //    honest about which failure it was.
     if (!timedOut && status === 'gate-green') {
       const publishDeadline = Date.now() + Math.min(publishTimeoutMs, heartbeatTimeoutMs)
+      note(`publish wait: up to ${Math.min(publishTimeoutMs, heartbeatTimeoutMs)}ms for branch+receipts`)
       for (;;) {
         runSweep()
         observeClaim()
         const published = store.getCell('runs', runId, 'branch')
-        if (isNonEmptyString(published) && published !== branch && receiptsFor().length > 0) break
+        if (isNonEmptyString(published) && published !== branch && receiptsFor().length > 0) {
+          note(`publish wait: received ${published}`)
+          break
+        }
         if (Date.now() >= publishDeadline) {
           publishTimedOut = true
           errors.push('publish timeout')
+          note('publish wait: timed out')
           break
         }
         await sleep(publishPollMs)
@@ -592,6 +651,7 @@ export const driveOne = async ({
     status,
     timedOut,
     publishTimedOut,
+    neverClaimed,
     elapsedMs: Date.now() - startedAt,
     receipts: receiptChecks.length > 0 ? receiptChecks : receipts,
     convergedAway,
@@ -621,6 +681,7 @@ export const driveOne = async ({
   // holds `errors` by reference, so late pushes still serialize below. Each leg
   // is caught separately: a sandbox that will not die must not also stop the
   // orchestrator from shutting down and freeing its port.
+  note('teardown start')
   store.delListener(sweepListenerId)
   try {
     await destroyOnce()
@@ -641,6 +702,7 @@ export const driveOne = async ({
   // lives beside it so the gate read stays the contract it declares.
   fs.writeFileSync(resolvedReportPath, `${JSON.stringify(read, null, 2)}\n`)
   fs.writeFileSync(detailPath, `${JSON.stringify(detail, null, 2)}\n`)
+  note(`gate read written to ${resolvedReportPath}`)
 
   return { read, reportPath: resolvedReportPath, detailPath, detail }
 }
