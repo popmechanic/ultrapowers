@@ -1339,7 +1339,7 @@ async function scenarioBaseBranchThreaded() {
 // ── Scenario: reconcile tracks the implementer-side mostCapable ───────────────
 // From reviewer-prompts.md: "reconcile is a fixer, not a reviewer, so it tracks
 // the implementer-side mostCapable" — always DEFAULT_TIER.mostCapable (opus).
-// Also asserts setup and merge:wave* follow the cheap tier (haiku), pinning the
+// Also asserts setup and merge:wave* follow the utility model (haiku), pinning the
 // documented tier routing with no overrides in play (#101).
 async function scenarioReconcileTier() {
   let reconcileModel = null
@@ -1380,7 +1380,7 @@ async function scenarioReconcileTier() {
   assert(reconcileModel !== null, 'reconcileTier: reconcile agent was actually dispatched')
   eq(reconcileModel, 'opus', 'reconcileTier: reconcile tracks DEFAULT_TIER.mostCapable (opus)')
   eq(reviewerModel, 'opus', 'reconcileTier: reviewer runs at opus, unconditionally')
-  // setup and merge:wave* follow the cheap tier (haiku).
+  // setup and merge:wave* follow the utility model (haiku).
   eq(modelsByLabel['setup'], 'haiku', 'reconcileTier: setup uses the utility model (haiku)')
   const mergeWaveLabel = Object.keys(modelsByLabel).find((l) => /^merge:wave/.test(l))
   assert(mergeWaveLabel !== undefined, 'reconcileTier: a merge:wave* agent was dispatched')
@@ -2806,7 +2806,7 @@ async function runEscalationScenario(firstFailure) {
   return { attempts, report }
 }
 
-// A schema/StructuredOutput trip is capability-fixable → escalate one rung (cheap→sonnet).
+// A schema/StructuredOutput trip is capability-fixable → escalate one rung (standard→opus).
 {
   const { attempts } = await runEscalationScenario('StructuredOutput schema validation failed')
   eq(attempts, ['sonnet', 'opus'], 'schema trip escalates standard→opus')
