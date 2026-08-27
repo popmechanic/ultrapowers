@@ -165,6 +165,13 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
   // that match it are, by definition, already authorized.
   let lastKnownGood = clone(store.getTables())
 
+  // #190: a supervisor refusal (park refused, revoke refused, missing runs
+  // row) used to `continue` with no memory, so every subsequent sweep
+  // re-detected the same overshoot and re-paged it — a page storm. Each
+  // distinct refusal (keyed by scope + kind) pages exactly once for the
+  // orchestrator's lifetime.
+  const pagedRefusals = new Set()
+
   const convergeAway = (table, rowId, goodRow) => {
     store.delRow(table, rowId)
     if (goodRow !== undefined) store.setRow(table, rowId, goodRow)
@@ -173,6 +180,12 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
   const sweep = (now) => {
     const descriptions = []
     const current = store.getTables()
+
+    const pageOnce = (key, cls, text) => {
+      if (pagedRefusals.has(key)) return
+      pagedRefusals.add(key)
+      actions.page(cls, text)
+    }
 
     // --- guard pass --------------------------------------------------------
     const convergedAway = []
@@ -219,16 +232,34 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
       // there — that is an operator triage case, not something the
       // orchestrator should rip infrastructure out from under — so it pages
       // and leaves the claim and sandbox exactly as they were.
+      // A missing runs row is an explicit refusal, not a silent skip: it must
+      // page (once) and leave the claim and sandbox untouched — falling
+      // through to revoke + destroy without the park that is supposed to gate
+      // them would be a destructive action with nothing gating it (#190).
+      //
+      // plan-defect: the plan's literal check was `if (!runRow)` after
+      // `store.getRow(...)`, but TinyBase's `getRow` returns `{}` (truthy,
+      // not undefined) for a nonexistent row — so that check never fires and
+      // the missing-row case would silently fall into the park path with an
+      // empty `oldRow`. `hasRow` is the real existence check (same pitfall
+      // already flagged in this file's own test, line ~118).
       const runRow = store.getRow('runs', scopeId)
-      if (runRow) {
-        const parkedRow = { ...runRow, status: 'parked', parkedWhy: why }
-        const parkRefusal = guardViolation('runs', scopeId, parkedRow, runRow, SUPERVISOR_ID, now, { supervisor: true })
-        if (parkRefusal) {
-          actions.page('security', `supervisor park refused for ${scopeId}: ${parkRefusal}`)
-          continue
-        }
-        store.setRow('runs', scopeId, parkedRow)
+      if (!store.hasRow('runs', scopeId)) {
+        pageOnce(
+          `missing-row:${scopeId}`,
+          'security',
+          `supervisor park refused for ${scopeId}: missing runs row — leaving claim and sandbox untouched`,
+        )
+        continue
       }
+
+      const parkedRow = { ...runRow, status: 'parked', parkedWhy: why }
+      const parkRefusal = guardViolation('runs', scopeId, parkedRow, runRow, SUPERVISOR_ID, now, { supervisor: true })
+      if (parkRefusal) {
+        pageOnce(`park-refusal:${scopeId}`, 'security', `supervisor park refused for ${scopeId}: ${parkRefusal}`)
+        continue
+      }
+      store.setRow('runs', scopeId, parkedRow)
 
       const revokedRow = revoke(claimRow)
       // The orchestrator's own hard action is still put to its own guard —
@@ -239,7 +270,7 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
         supervisor: true,
       })
       if (revokeRefusal) {
-        actions.page('security', `supervisor revoke refused for ${scopeId}: ${revokeRefusal}`)
+        pageOnce(`revoke-refusal:${scopeId}`, 'security', `supervisor revoke refused for ${scopeId}: ${revokeRefusal}`)
         continue
       }
       store.setRow('claims', claimId, revokedRow)

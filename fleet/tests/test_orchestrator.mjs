@@ -396,6 +396,55 @@ try {
     'the claim must be left intact when the park is refused',
   )
 
+  // The park-refusal page must latch too: two more sweeps of the same
+  // still-illegal overshoot must add zero further pages.
+  const pagesAfterR3First = pageLog.length
+  orch.sweep(T)
+  orch.sweep(T)
+  assert.equal(
+    pageLog.length,
+    pagesAfterR3First,
+    'the same park-illegal refusal must page ONCE across repeated sweeps, not per sweep',
+  )
+
+  // --- #190: missing-runs-row overshoot pages, never destroys ------------------
+  // A scope with a budget, a held claim, and overshooting spend — but NO runs
+  // row at all — must page a distinct "missing runs row" refusal and touch
+  // neither the claim nor the sandbox: there is nothing to park, so nothing
+  // downstream of the park may fire either.
+  {
+    const pagesBefore = pageLog.length
+    const actionsBefore = actionsLog.length
+    orch.store.setRow('budgets', 'ghost', { capTokens: 10 })
+    orch.store.setRow('claims', 'claim:ghost', {
+      runId: 'ghost',
+      holder: 'sb-ghost',
+      leaseExpiresAt: T + 60_000,
+      epoch: 1,
+      revoked: false,
+    })
+    orch.store.setRow('spend', spendRowId('sb-ghost', 1), { runId: 'ghost', tokens: 20, at: T })
+
+    orch.sweep(T)
+    assert.equal(actionsLog.length, actionsBefore, 'no revoke/destroy without a parkable runs row')
+    const newPages = pageLog.slice(pagesBefore)
+    assert.ok(
+      newPages.some(([cls, text]) => cls === 'security' && /ghost/.test(text) && /missing runs row/.test(text)),
+      `the missing-row refusal must page security, got: ${JSON.stringify(newPages)}`,
+    )
+    assert.equal(
+      orch.store.getRow('claims', 'claim:ghost').revoked,
+      false,
+      'the claim must be left intact when the runs row is missing',
+    )
+
+    // --- the latch: repeated sweeps re-detect the same overshoot silently ----
+    const pagesAfterFirst = pageLog.length
+    orch.sweep(T + 1)
+    orch.sweep(T + 2)
+    assert.equal(pageLog.length, pagesAfterFirst, 'the same missing-row refusal must page ONCE, not per sweep')
+  }
+
   // -- 4. persistence -------------------------------------------------------
   for (const c of [c1, c2]) {
     await c.synchronizer.stopSync()
