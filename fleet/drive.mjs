@@ -166,6 +166,20 @@ export const driveOne = async ({
   sandboxMemory,
   sandboxDisk,
 }) => {
+  // #298: `runId` becomes `fleet-<runId>` and is interpolated into every
+  // sandbox-bound ssh/git command string downstream (clone, deliveries,
+  // tunnel, shim start, rm, captures, fetch). Validate ONCE at the single
+  // choke point, before the orchestrator starts and before any exec call —
+  // an unsafe value is an operator input error, refused loudly, never a run
+  // outcome. `pullLogsOnce` keeps its own guard as defense in depth.
+  const entryVmName = sandboxIdFor(runId)
+  if (!isSafeVmName(entryVmName)) {
+    throw new Error(
+      `driveOne: unsafe runId ${JSON.stringify(runId)} — derived vm name ${JSON.stringify(entryVmName)} ` +
+        `fails isSafeVmName; refusing before any command`,
+    )
+  }
+
   const resolvedEvidenceDir = evidenceDir ?? `${dbDir}-evidence`
   const resolvedReportPath = reportPath ?? path.join(resolvedEvidenceDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
