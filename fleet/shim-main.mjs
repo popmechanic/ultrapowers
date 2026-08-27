@@ -814,6 +814,7 @@ export const main = async ({
   exec = shellExec,
   invokeRun,
   readTokens: readTokensOverride,
+  auxDeliver = deliverAndClose,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
   const { runId, token, wsUrl, ttlMs } = assignment
@@ -903,9 +904,17 @@ export const main = async ({
   // The aux publish carries the branch, the receipts and the trailing scalars
   // — an outcome is only genuinely delivered when BOTH the shim's own store
   // and this one reached the orchestrator, so the two conjoin.
-  const auxDelivered = await deliverAndClose({ store, synchronizer, ws, url, log: console.error })
+  const auxDelivered = await auxDeliver({ store, synchronizer, ws, url, log: console.error })
   return { ...outcome, delivered: outcome?.delivered === true && auxDelivered }
 }
+
+/**
+ * The process exit-code contract (#320): a run is a success ONLY when it is
+ * gate-green AND its publish actually reached the orchestrator. Everything
+ * else — parked, failed, no-store, undelivered, malformed — is 1.
+ */
+export const shimExitCode = (outcome) =>
+  outcome?.status === 'gate-green' && outcome?.delivered === true ? 0 : 1
 
 const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
 if (invokedDirectly) {
@@ -915,7 +924,7 @@ if (invokedDirectly) {
       // Delivery is part of the exit-code contract: a gate-green run whose
       // publish never reached the orchestrator is not a success anyone can
       // observe, and burying that in shim.log makes it invisible.
-      process.exit(outcome?.status === 'gate-green' && outcome?.delivered === true ? 0 : 1)
+      process.exit(shimExitCode(outcome))
     })
     .catch((error) => {
       console.error(`fleet shim-main failed: ${error?.message ?? error}`)
