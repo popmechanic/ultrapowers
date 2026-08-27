@@ -1,0 +1,85 @@
+{
+  "mode": "gate",
+  "stamp": "w2-entry-slate-20260827",
+  "wfRuns": [
+    "wf_49fe6d3a-b2d"
+  ],
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-w2-entry-slate-20260827/report.json",
+  "branch": "ultra/integration-w2-entry-slate-20260827",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "lock",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "skills/ultralearn/SKILL.md pilot-corpus claims: `.claude/ultrapowers/fleet-runs-2026-08-26/` holds \"four distinct drive failure modes + one green engine run\" and `fleet-runs-2026-08-27/` is run-13 green \u2014 `.claude/ultrapowers/` is gitignored and both evidence dirs are absent on this host, so the factual accuracy of the pilot-corpus pointer cannot be checked from the repo or the diff. The paragraph is structurally complete and instruction-only; only its factual referents are unverifiable here. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/shim.mjs mid-run reconnect restoring DRIVER-visible progress (operator smoke: kill the reverse-tunnel ssh mid-engine-phase and watch drive progress lines / shim.log reconnect messages) \u2014 Requires a live orchestrator plus a provisioned exe.dev sandbox and a real reverse tunnel to sever. The in-process test proves store-level resync only; the claim that the driver keeps seeing renews/spend instead of running down the 30-min heartbeat clock is only observable on a real run. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/shim-main.mjs delivered field and non-zero exit on a non-delivered outcome (operator smoke: read the last line of shim.log / the shim's printed outcome JSON after a fleet run) \u2014 The exit-code mapping runs only when shim-main.mjs is invoked as a process inside a sandbox; no test spawns it, so the printed outcome JSON and the non-zero exit are observable only on a live run. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/drive.mjs real-plan defaults end to end (operator smoke: run the RUNBOOK driver snippet without ttlMs/capTokens and read fleet-run.json + gate-read-<runId>.detail.json) \u2014 The constants themselves are unit-pinned by test 20, but the delivered assignment carrying ttlMs 14400000 and the detail carrying capTokens 500000 on a real drained plan needs an actual provisioned sandbox and control-plane round trip. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "ultralearn sense pass consuming a fleet evidence bundle so findings cite detail.* fields (operator smoke) \u2014 Requires dispatching a reader subagent against a real fleet-runs bundle and a human judging whether the returned findings actually cite detail.errors/timedOut/creditSpendUsd rather than transcript prose. The change is instruction-only, so no automated check can evidence it."
+      }
+    ],
+    "repo": "/home/exedev/repo",
+    "lock": "/home/exedev/repo/.claude/ultrapowers/RUN_LOCK"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "                   [ 55%]\\ntests/test_marker_compiler.py ....                                       [ 55%]\\ntests/test_marker_contract.py ............                               [ 56%]\\ntests/test_merge_ledger.py .......................                       [ 58%]\\ntests/test_no_prompt_drift.py .................                          [ 60%]\\ntests/test_orchestrator_markers.py .                                     [ 60%]\\ntests/test_path_variables.py .                                           [ 60%]\\ntests/test_plan_check.py ..........                                      [ 61%]\\ntests/test_probe.py ...                                                  [ 61%]\\ntests/test_recommendation_rubric.py .............                        [ 62%]\\ntests/test_record_wf_run.py ...........                                  [ 63%]\\ntests/test_redirect_args.py ...................................          [ 66%]\\ntests/test_rehydrate.py ........                                         [ 67%]\\ntests/test_repo_weave_report_determinism.py ...........                  [ 68%]\\ntests/test_report_runbook.py ...                                         [ 68%]\\ntests/test_residual_manifest.py ...........................              [ 70%]\\ntests/test_resolve_superpowers.py .....                                  [ 71%]\\ntests/test_review_package.py ..........                                  [ 71%]\\ntests/test_run_acceptance.py ........................................... [ 75%]\\n...............                                                          [ 76%]\\ntests/test_run_lock.py ..........                                        [ 77%]\\ntests/test_salvage_args.py ...............                               [ 78%]\\ntests/test_serve_viewer.py .....                                         [ 79%]\\ntests/test_session_hook.py .........                                     [ 80%]\\ntests/test_shadow_fold.py ........                                       [ 80%]\\ntests/test_shadow_octopus.py ...                                         [ 80%]\\ntests/test_skill_budget.py .                                             [ 81%]\\ntests/test_skill_wf_run_record.py ...                                    [ 81%]\\ntests/test_superpowers_compat.py s..                                     [ 81%]\\ntests/test_superpowers_contract.py ....                                  [ 81%]\\ntests/test_swarm_agents.py .....                                         [ 82%]\\ntests/test_swarm_layout.py .                                             [ 82%]\\ntests/test_swarm_meso.py .                                               [ 82%]\\ntests/test_swarm_wiring.py ..                                            [ 82%]\\ntests/test_swarm_zoom.py .                                               [ 82%]\\ntests/test_sweep_worktrees.py ........................................   [ 86%]\\ntests/test_terminal_teardown.py ...                                      [ 86%]\\ntests/test_ultra_gate.py ...........................                     [ 88%]\\ntests/test_ultra_run.py ................................................ [ 92%]\\n...................                                                      [ 94%]\\ntests/test_ultra_run_overlap.py ....                                     [ 94%]\\ntests/test_ultraplan_skill.py ...............                            [ 95%]\\ntests/test_validate_skill.py .........                                   [ 96%]\\ntests/test_version_sync.py .                                             [ 96%]\\ntests/test_viewer.py ...................                                 [ 98%]\\ntests/test_warm_cache.py ..............                                  [ 99%]\\ntests/test_wave_ancestry.py .                                            [ 99%]\\ntests/test_webapp_fixture.py ...                                         [ 99%]\\ntests/test_workflow_sim.py .                                             [100%]\\n\\n================= 1182 passed, 1 skipped in 202.73s (0:03:22) ==================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
