@@ -310,6 +310,14 @@ try {
   {
     const runId = 'run-drive-1'
     let sandbox = null
+    // The run directory THIS run mints. The fixture's `RUN_DIR` already exists
+    // before the shim starts — it is the stale leftover a dirty golden image
+    // carries, and since #190 production discovery is scoped to the dirs that
+    // did not exist at launch, so a stub engine that mints nothing publishes
+    // nothing. The stub therefore writes its own receipt mid-run, exactly where
+    // the real engine writes one, and the scenario removes it afterwards so the
+    // shared sandbox fixture is left as it was found.
+    const OWN_RUN_DIR = '.claude/ultrapowers/run-20260821130000'
     // The production entrypoint's own git traffic, so the stamp's SOURCE is
     // pinned end to end and not only in the unit scenario below.
     const shimCalls = []
@@ -331,6 +339,11 @@ try {
           },
           invokeRun: async () => {
             await sleep(250)
+            writeFile(
+              sandboxRepo,
+              `${OWN_RUN_DIR}/gate-receipt.json`,
+              JSON.stringify({ verdict: 'PASS', gate: 'ultra_gate' }),
+            )
             return { gateGreen: true }
           },
           // The real run reads its cumulative output-token total from the engine
@@ -506,6 +519,19 @@ try {
       !shimCalls.some((cmd) => /rev-parse HEAD$/.test(cmd)),
       `the stamp must never be read from the sandbox's HEAD, got: ${JSON.stringify(shimCalls)}`,
     )
+
+    // Scoping, end to end (#190): the stale `RUN_DIR` receipt sat on disk the
+    // whole run and was NOT the one published — the committed copy is this
+    // run's own, and the pre-run leftover stayed exactly where it was.
+    assert.equal(
+      (await sh(`git -C "${sandboxRepo}" show ${receiptsSha}:${committedReceipt}`)).stdout,
+      JSON.stringify({ verdict: 'PASS', gate: 'ultra_gate' }),
+    )
+    assert.ok(fs.existsSync(path.join(sandboxRepo, RECEIPT_PATH)), 'the stale leftover must be left untouched')
+
+    // Hand the shared fixture back the way it was found: the run's own dir is
+    // scenario-local, and later scenarios pin discovery against `RUN_DIR` alone.
+    fs.rmSync(path.join(sandboxRepo, OWN_RUN_DIR), { recursive: true, force: true })
   }
 
   // -- 2. an ABSENT sha sinks receiptsResolvable AND o1 ----------------------

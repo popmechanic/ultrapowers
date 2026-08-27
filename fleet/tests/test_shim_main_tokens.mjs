@@ -12,7 +12,16 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readSessionTokens, engineArgs, STANDING_DIRECTIVE } from '../shim-main.mjs'
+import { startOrchestrator, FLEET_PATH } from '../orchestrator.mjs'
+import { mintToken } from '../tokens.mjs'
+import {
+  readSessionTokens,
+  readSessionTokenSources,
+  engineArgs,
+  main as shimMain,
+  sandboxIdFor,
+  STANDING_DIRECTIVE,
+} from '../shim-main.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -70,5 +79,99 @@ ok('engineArgs appends --session-id when given')
 assert.deepEqual(engineArgs('docs/plan.md', ''), ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
 ok('engineArgs ignores an empty session id')
 
+// --- #209: source-shape probe ------------------------------------------------
+// `readSessionTokens` couples to the engine transcript format on two axes (the
+// per-message usage shape and the on-disk layout). A drift in either reads
+// FEWER tokens and never errors — a silent undercount under a spend hard-cap.
+// The probe reports the SHAPE of what was read so the two shapes run-7 says
+// cannot happen on a real engine run are visible rather than invisible.
+const S1 = '22222222-2222-4222-8222-222222222222'
+assert.deepEqual(readSessionTokenSources(S1, { home }), { total: null, mainFound: false, subagentFiles: 0 })
+ok('sources: nothing on disk → total null (observational distinction kept)')
+
+writeTranscript(path.join(proj, `${S1}.jsonl`), [100])
+assert.deepEqual(readSessionTokenSources(S1, { home }), { total: 100, mainFound: true, subagentFiles: 0 })
+ok('sources: main only → mainFound true, zero subagent files (the suspicious shape)')
+
+const wf1 = path.join(proj, S1, 'subagents', 'workflows', 'wf_x-1')
+writeTranscript(path.join(wf1, 'agent-b1.jsonl'), [50, 25])
+assert.deepEqual(readSessionTokenSources(S1, { home }), { total: 175, mainFound: true, subagentFiles: 1 })
+ok('sources: subagent files counted')
+
+// readSessionTokens is unchanged: same totals as the sources probe
+assert.equal(readSessionTokens(S1, { home }), 175)
+ok('readSessionTokens delegates — no behavior change')
+
+// The other suspicious shape: subagent transcripts with NO main transcript.
+const S2 = '33333333-3333-4333-8333-333333333333'
+writeTranscript(path.join(proj, S2, 'subagents', 'workflows', 'wf_y-1', 'agent-c1.jsonl'), [7])
+assert.deepEqual(readSessionTokenSources(S2, { home }), { total: 7, mainFound: false, subagentFiles: 1 })
+ok('sources: subagents without a main transcript → mainFound false')
+
+// An empty session id never reaches the disk at all.
+assert.deepEqual(readSessionTokenSources('', { home }), { total: null, mainFound: false, subagentFiles: 0 })
+ok('sources: empty session id → the null triple')
+
 fs.rmSync(home, { recursive: true, force: true })
+
+// --- #209: the main()-level sentinel cell ------------------------------------
+// A live orchestrator + a real main(), with the token seams injected so no
+// engine has to write a transcript into the user's home. The sentinel cell is
+// read off the ORCHESTRATOR's store, i.e. after the aux publish synced.
+const runMainWithSources = async ({ runId, readTokensSources }) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sentinel-'))
+  const now = Date.now()
+  const { token, record } = mintToken({ sandboxId: sandboxIdFor(runId), ttlMs: 60_000, now })
+  const orch = await startOrchestrator({
+    port: 0,
+    dbDir: path.join(tmp, 'db'),
+    tokenRecords: [record],
+    actions: { page: () => {}, revokeAndPark: () => {}, destroySandbox: () => {} },
+  })
+  orch.store.setRow('runs', runId, { planPath: 'p.md', sandboxId: '', status: 'pending', branch: 'fleet-run' })
+  orch.store.setRow('budgets', runId, { capTokens: 1_000_000 })
+  const assignmentPath = path.join(tmp, 'fleet-run.json')
+  fs.writeFileSync(
+    assignmentPath,
+    JSON.stringify({ runId, token, wsUrl: `ws://127.0.0.1:${orch.port}/${FLEET_PATH}`, ttlMs: 60_000 }),
+  )
+  const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-sentinel-repo-'))
+  try {
+    const outcome = await shimMain({
+      assignmentPath,
+      repoDir,
+      exec: async () => ({ code: 1, stdout: '' }),
+      invokeRun: async () => ({ gateGreen: true }),
+      readTokens: () => 4200,
+      readTokensSources,
+    })
+    return { outcome, sentinel: orch.store.getCell('runs', runId, 'spendSentinel') }
+  } finally {
+    await orch.stop()
+    fs.rmSync(tmp, { recursive: true, force: true })
+    fs.rmSync(repoDir, { recursive: true, force: true })
+  }
+}
+
+{
+  const { outcome, sentinel } = await runMainWithSources({
+    runId: 'run-sentinel-suspicious',
+    readTokensSources: () => ({ total: 4200, mainFound: true, subagentFiles: 0 }),
+  })
+  assert.deepEqual(outcome, { status: 'gate-green', delivered: true })
+  assert.match(sentinel, /spend-source sentinel/)
+  assert.match(sentinel, /mainFound=true subagentFiles=0/)
+  ok('main(): zero subagent transcripts publishes the spendSentinel cell')
+}
+
+{
+  const { outcome, sentinel } = await runMainWithSources({
+    runId: 'run-sentinel-healthy',
+    readTokensSources: () => ({ total: 4200, mainFound: true, subagentFiles: 3 }),
+  })
+  assert.deepEqual(outcome, { status: 'gate-green', delivered: true })
+  assert.equal(sentinel, undefined)
+  ok('main(): a healthy shape writes no sentinel cell')
+}
+
 console.log(`\nALL TESTS PASSED (${passed})`)

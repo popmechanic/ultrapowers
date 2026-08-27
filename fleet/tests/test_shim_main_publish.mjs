@@ -28,7 +28,7 @@ assert.equal(shimExitCode({}), 1)
 ok('shimExitCode: gate-green && delivered===true → 0, everything else → 1')
 
 // --- shared harness: a real orchestrator + real main() ----------------------
-const runMain = async ({ runId, auxDeliver }) => {
+const runMain = async ({ runId, auxDeliver, planPath, omitInvokeRun, execOverride }) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-aux-'))
   const now = Date.now()
   const { token, record } = mintToken({ sandboxId: sandboxIdFor(runId), ttlMs: 60_000, now })
@@ -43,18 +43,28 @@ const runMain = async ({ runId, auxDeliver }) => {
   const assignmentPath = path.join(tmp, 'fleet-run.json')
   fs.writeFileSync(
     assignmentPath,
-    JSON.stringify({ runId, token, wsUrl: `ws://127.0.0.1:${orch.port}/${FLEET_PATH}`, ttlMs: 60_000 }),
+    JSON.stringify({
+      runId,
+      token,
+      wsUrl: `ws://127.0.0.1:${orch.port}/${FLEET_PATH}`,
+      ttlMs: 60_000,
+      ...(planPath ? { planPath } : {}),
+    }),
   )
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-aux-repo-'))
   try {
     return await shimMain({
       assignmentPath,
       repoDir,
-      exec: async () => ({ code: 1, stdout: '' }),
-      invokeRun: async () => {
-        await new Promise((r) => setTimeout(r, 250))
-        return { gateGreen: true }
-      },
+      exec: execOverride ?? (async () => ({ code: 1, stdout: '' })),
+      ...(omitInvokeRun
+        ? {}
+        : {
+            invokeRun: async () => {
+              await new Promise((r) => setTimeout(r, 250))
+              return { gateGreen: true }
+            },
+          }),
       readTokens: () => 4200,
       ...(auxDeliver ? { auxDeliver } : {}),
     })
@@ -79,6 +89,28 @@ const runMain = async ({ runId, auxDeliver }) => {
   assert.deepEqual(outcome, { status: 'gate-green', delivered: true })
   assert.equal(shimExitCode(outcome), 0)
   ok('default aux deliver over a live socket keeps delivered:true, exit 0')
+}
+
+// --- default invokeRun binding: the join parks fail-closed (#190) -----------
+{
+  const cmds = []
+  const outcome = await runMain({
+    runId: 'run-join-1',
+    planPath: 'docs/some-plan.md',
+    omitInvokeRun: true,
+    execOverride: async (cmd) => {
+      cmds.push(cmd)
+      return { code: 1, stdout: '' }
+    },
+  })
+  // checkout of fleet-base failed => invokeEngineRun refuses before any spawn
+  // => runShim parks => status 'failed' (the shim's non-green return shape).
+  assert.equal(outcome.status, 'failed')
+  assert.ok(
+    cmds.some((c) => /git -C \S+ checkout -q fleet-base/.test(c)),
+    `the default binding must thread repoDir+exec into invokeEngineRun, got: ${JSON.stringify(cmds)}`,
+  )
+  ok('default invokeRun binding threads the seams and parks fail-closed')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

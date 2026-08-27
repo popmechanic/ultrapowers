@@ -16,7 +16,15 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { readGateGreen, GRANTED_ACK_TYPES, STANDING_DIRECTIVE } from '../shim-main.mjs'
+import {
+  readGateGreen,
+  GRANTED_ACK_TYPES,
+  STANDING_DIRECTIVE,
+  runArtifactDirs,
+  findReceiptFiles,
+  findGateReceiptFile,
+  findRunReportFile,
+} from '../shim-main.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -203,5 +211,43 @@ ok('STANDING_DIRECTIVE instructs saving approve-receipt.json')
 // --- 16. GRANTED_ACK_TYPES is exactly the #281 granted class ------------------
 assert.deepEqual([...GRANTED_ACK_TYPES].sort(), ['deferred:external', 'deferred:runtime'])
 ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
+
+// --- #190: discovery scoping + newest-wins ---------------------------------
+{
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-scope-'))
+  const dir = (name) => path.join(repo, '.claude/ultrapowers', name)
+  const receipt = (name, verdict) => {
+    fs.mkdirSync(dir(name), { recursive: true })
+    fs.writeFileSync(path.join(dir(name), 'gate-receipt.json'), JSON.stringify({ verdict, stamp: name }))
+  }
+  receipt('run-20260101000000', 'PASS')   // the stale pre-run leftover
+  receipt('run-20260901000000', 'PASS')   // the run's own
+  receipt('run-20260902000000', 'PASS')   // an even newer one
+
+  // newest-wins: the LAST run dir by name sort is the one discovered
+  assert.equal(
+    findGateReceiptFile(repo),
+    path.join(repo, '.claude/ultrapowers/run-20260902000000/gate-receipt.json'),
+  )
+
+  // excludeDirs scoping: pre-run dirs are invisible to every discovery reader
+  const pre = new Set(['run-20260101000000', 'run-20260901000000', 'run-20260902000000'])
+  assert.equal(findGateReceiptFile(repo, undefined, { excludeDirs: pre }), '')
+  assert.deepEqual(findReceiptFiles(repo, undefined, { excludeDirs: pre }), [])
+  assert.deepEqual(runArtifactDirs(repo, undefined, { excludeDirs: pre }), [])
+  assert.equal(findRunReportFile(repo, undefined, { excludeDirs: pre }), '')
+
+  const preOnly = new Set(['run-20260101000000'])
+  assert.deepEqual(runArtifactDirs(repo, undefined, { excludeDirs: preOnly }), [
+    'run-20260901000000',
+    'run-20260902000000',
+  ])
+  assert.equal(
+    findGateReceiptFile(repo, undefined, { excludeDirs: preOnly }),
+    path.join(repo, '.claude/ultrapowers/run-20260902000000/gate-receipt.json'),
+  )
+  fs.rmSync(repo, { recursive: true, force: true })
+  ok('discovery scoping excludes pre-run dirs; newest-wins pinned (#190)')
+}
 
 console.log(`\nALL TESTS PASSED (${passed})`)
