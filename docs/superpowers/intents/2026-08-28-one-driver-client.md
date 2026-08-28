@@ -131,7 +131,7 @@ installed on the operator's machine; the residual is one precedence line.
 
 ## Cadence
 
-One run, width ≤ 4, one wave per sandbox. Two waves fall out: C1 and C5 have no dependencies;
+One run, **width ≤ 8**, one wave per sandbox (measured — `evals/frontier/results/2026-08-28-wave-width.md`). Two waves fall out: C1 and C5 have no dependencies;
 C2, C3, C4 and C6 follow C1.
 
 **Where the §6 schema chafed, recorded for its own revision:**

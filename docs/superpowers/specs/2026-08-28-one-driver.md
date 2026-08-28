@@ -81,7 +81,8 @@ The laptop is a thin client (Amendment 1). Every step below except 1 and 9 runs 
    single-wave run — most of `evals/fixtures/*` — and takes roughly a third to a half off
    the 40–150 k/run authoring cost that §9's cost row admits it cannot pay for.
 5. **Dispatch.** One `claude -p` per task in the wave, concurrently, on this sandbox
-   (packing rule: one wave per sandbox, width ≤ 4). Implement → review → fix, where a fix
+   (packing rule: one wave per sandbox, **width ≤ 8** — measured, not suggested;
+   `evals/frontier/results/2026-08-28-wave-width.md`). Implement → review → fix, where a fix
    round is `--resume <implementer session-id>` (§8, Amendment 6).
 6. **Merge + fold.** Unchanged in semantics: the fold kernel, `fold_wave.py`,
    `wave-merge.md`'s reconciliation, the completeness critic. Map #360 owns its future.
@@ -541,7 +542,11 @@ Six, with numbers, without borrowing Phase 0's.
 | *(Amendment 3, "the driver builds itself")* process supervisor — last `result` line, SIGTERM timeout | **adopted §4a** — absent from a first draft entirely; the trim review caught it. §4a carries the exit-class table, the last-`result`-line rule, and the per-role deadline |
 | *(Amendment 3, same list)* three role flag-sets as data | **adopted §3, corrected to six rows** — Amendment 4 made the flag-sets four; the *role inventory* is seven in `waves.js`, three of which write to the integration worktree (`:232–235`). A four-row table could not express merge / reconcile / resolver |
 
-**Amendment 3's packing rule:** **adopted §2 step 5** — one wave per sandbox, width ≤ 4,
+**Amendment 3's packing rule:** **adopted §2 step 5, with the constant measured and
+raised 4 → 8** (`evals/frontier/results/2026-08-28-wave-width.md`: on a real 8-vCPU
+sandbox, wall-clock is flat to N=12 with 27/27 successes; CPU peak 66% at N=8 and 98% at
+N=12, so 8 is the last width with margin). Amendment 3's 4 was the largest width ever run
+plus one, measured on a box one eighth the size. One wave per sandbox,
 spilling to a second sandbox only above the cap. Amendment 6 confirms nothing about the
 cache argues otherwise (§8f).
 

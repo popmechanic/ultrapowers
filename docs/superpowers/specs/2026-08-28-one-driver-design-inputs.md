@@ -504,3 +504,26 @@ binds, it is visible the moment it moves, and it can never stall a release outri
 | §Amendment 4, the deleted cap's replacement | 0.3.0 **observes**; the wave-boundary control itself is 0.3.1's, fitted to real `api_retry` distributions rather than to an estimate — the same objection that licensed deleting the cap ("calibrated from size means") applies to replacing it with a guess |
 | §Amendment 5, all seven rows | **in 0.3.0**, not deferred; superpowers stays installed, handled by the precedence line |
 | §Decisions taken, 3 (*ultradocket's drain half becomes "drive a plan"*) | becomes **"emit an intent doc"**, and lands **in 0.3.0** |
+
+### Amendment 3's packing constant is measured (2026-08-28) — 4 → 8
+
+*"Capped by a driver constant (4 suggested) … N=3 on a 1-vCPU/2 GB box ran clean"* was the
+largest width ever run **plus one**, measured on a box **one eighth** the size of a real run
+sandbox. Measured properly on a `cp fleet-golden` clone (8 vCPU / 15 GB),
+`evals/frontier/results/2026-08-28-wave-width.md`:
+
+| N | total wall | success | CPU % peak | load peak |
+|---|---|---|---|---|
+| 1 | 11.94 s | 1/1 | — | — |
+| 4 | 14.60 s | 4/4 | 29 | 0.28 |
+| **8** | 12.83 s | **8/8** | **66** | 0.21 |
+| 12 | 13.89 s | 12/12 | **98** | 1.13 |
+
+Wall-clock is **flat** — +16% for 12× the work — with **zero non-success envelopes across
+27 workers**. CPU peak rises ~8 points per worker and hits the ceiling at N=12. **The
+constant becomes 8**: the last width with margin.
+
+**Bounded, and the bound matters:** these workers only *read* (`Read,Grep,Glob`). A real
+implementer runs the test suite, which is CPU-bound in a way `Grep` is not — so this
+measures the dispatch layer's ceiling, not the workload's. Still owed: the same arms with a
+worker that runs `pytest`.
