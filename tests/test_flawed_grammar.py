@@ -12,7 +12,7 @@ EXPECT = {
     "annotated-files.md": "annotation",
     "glob.md": "enumerate",
     "unknown-label.md": "unknown files label",
-    "double-catch-all.md": "catch-all",
+    "double-catch-all.md": "2 violation(s)",
 }
 
 
