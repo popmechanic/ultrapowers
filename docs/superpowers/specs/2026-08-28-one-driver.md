@@ -61,8 +61,16 @@ The laptop is a thin client (Amendment 1). Every step below except 1 and 9 runs 
 4. **Derive wave *n* — for *n* ≥ 2 only.** The **wave author** worker runs read-only against
    `clones/integration` (the merged tree) and emits `plans/wave-<n>.json`: bodies, `Files:`
    **narrowing** inside already-signed tasks, `Commutes:`. It may not add or remove tasks,
-   edges, `tier`, or acceptance statements — those are signed (§6). Schema-validated on the
-   way out.
+   edges, `tier`, or acceptance statements — those are signed (§6).
+
+   **How that is enforced, because a schema cannot do it.** `--json-schema` validates
+   *shape*, not *identity*: a derived plan with an invented task id, a dropped edge, or a
+   reworded acceptance statement is perfectly well-formed. So the driver diffs the derived
+   plan against the signed set **by identity, keyed on `intent.sha`** — the task id set must
+   be equal, `Depends-on` and `Interfaces` and `tier` and every acceptance statement byte-
+   identical, and `Files:` a subset of what was signed. A mismatch is a **failed
+   derivation**, retried once with the diff quoted back, then the run parks. This check is
+   the reason `intent.sha` is in the receipt (§4).
 
    **Wave 1 skips the author entirely.** At wave 1, `clones/integration` *is* BASE, so the
    author would read exactly what the implementer reads from its own clone at the same sha,
@@ -220,7 +228,24 @@ it comes from a measured parity row:
 The 500 k per-run cap and `fleet/orchestrator.mjs:214–281` are deleted (Amendment 4). Three
 mechanisms replace it, all already owned:
 
-0. **What survives of the old path, stated so it is not rediscovered:** the store's `spend`
+0. **The one thing the deleted supervisor did that nothing else does: out-of-band VM
+   reclamation.** `actions.destroySandbox` reaches the orchestrator's action surface at
+   **exactly one site** — `orchestrator.mjs:281`, inside the spend pass this spec deletes.
+   Every other destroy path is `drive.mjs`'s own teardown, which runs **inside the drive
+   process**. So a drive that is killed, crashes, or dies with the orchestrator leaves a
+   **billed VM alive forever**, and deleting the supervisor removes the only reaper. A first
+   draft of this section said "the sandbox is still destroyed at teardown" — true, and
+   incomplete in the expensive direction.
+
+   **Replacement, and it is deliberately a liveness trigger rather than a spend one:** the
+   sweep destroys a sandbox whose **claim lease has expired with no drive heartbeat**. The
+   orchestrator already has claims with holders and a heartbeat timer (`orchestrator.mjs:301`),
+   so this is a predicate over rows that exist, not a new subsystem. It is an addition, and
+   under rule 5 it owes a deletion — it is paid for by the row it replaces, which deleted
+   four behaviours (park, revoke, destroy, page) and buys back one. **The right trigger for
+   destroying a VM is "nothing is using it", never "it spent too much."**
+
+1. **What else survives of the old path, stated so it is not rediscovered:** the store's `spend`
    table stays (`store.mjs:20`) and the **#181 spend page stays observation only, never an
    action** (Amendment 4's own line). `total_cost_usd` is recorded per worker and never
    enforced against — it is a client-side estimate (Amendment 3). Deleting the supervisor
@@ -228,13 +253,21 @@ mechanisms replace it, all already owned:
    is the supervisor's revoke) and `drive.mjs:634` `revokeAndPark` / `:638` `destroySandbox`
    as action handlers; **§8a claims all three as licensed deletions** so they do not become
    the next residuals ticket.
-1. **Wave-boundary admission control.** Between waves the driver decides whether to start
-   the next one. Under pressure it does not: the run folds what it has, publishes, opens
-   the PR, and the receipt says *"stopped at wave 2 of 3 for window pressure."* Honest and
-   terminal, never destructive.
-2. **Per-worker `--max-budget-usd`** as the runaway backstop — exit 1
+2. **Admission control at two granularities, because today's has two.** Between waves the
+   driver decides whether to start the next one; under pressure it does not — the run folds
+   what it has, publishes, opens the PR, and the receipt says *"stopped at wave 2 of 3 for
+   window pressure."* Honest and terminal, never destructive.
+
+   **And mid-wave**, because `waves.js` already checks at eight points inside one
+   (`:1557`, `:1776`, `:1847`, `:1956`, `:1971`, `:2021`, `:2105`, `:2180`), including per
+   16-task chunk, and defers with `BUDGET_DEFERRED_NOTE` rather than running to exhaustion.
+   A boundary-only design would lose that. The driver checks before dispatching each task
+   in a wave and before each reconciliation attempt, deferring the remainder to
+   `unfinished` with the same honest note. **This is behaviour preserved, not machinery
+   added** — the *mechanism* (the Workflow `budget` global) dies either way.
+3. **Per-worker `--max-budget-usd`** as the runaway backstop — exit 1
    `error_max_budget_usd`, clean envelope (parity R-o3/R-l9).
-3. **Per-unit convergence caps** as the terminal condition for a *task* — `attempt <= 2` on
+4. **Per-unit convergence caps** as the terminal condition for a *task* — `attempt <= 2` on
    the reconciler (`waves.js:1775`) and the resolver (`:1556`). **Note what does not
    survive:** today's run-level terminator `budgetExhausted()` (`waves.js:1838–1842`) reads
    the **Workflow runtime's `budget` global** (`:14`) at eleven checkpoints. Deleting the
@@ -328,7 +361,7 @@ spend.
 | slot count | **exactly 7** | a new slot owes a deleted one, in the same PR |
 | engine prose (`SKILL.md`) | **≤ 400 words** | pre-registered in #366; from 864 today, 3,129 before Phase 0 |
 | owned authoring skill (#390) | **≤ 1,500 words** | replaces ultraplan 3,038 + writing-plans 1,059 + brainstorming's shape — a real subtraction, not a rename. **Pinned and enforced in #390, not here** (§9) |
-| **`fleet/` total lines, post-cutover** | **≤ 4,400** | see below |
+| **`fleet/` code lines, post-cutover** | **≤ 4,400** | 3,818 today; +582 to absorb a 2,354-line wave loop. Measured by the exact command below — `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded |
 
 A word ceiling on the intent doc was proposed and **dropped**: rule 7's named target is
 `## Standing decisions` (*"exactly the shape that accretes"*), which the ≤ 8 cap and the
@@ -343,12 +376,30 @@ allowance** on the driver, dressed as a freeze. It was also satisfiable by reloc
 roughly 500–620 lines of `waves.js` are baked prompt text and schemas that this port moves
 into `roles/*.md` and JSON files by design, leaving the count for free.
 
-So the ceiling is **`fleet/**` — every file, not just `.mjs` — at ≤ 4,400 lines**, against
-3,803 today: **+597 to absorb a 2,354-line wave loop**, which is a real constraint and is
-exactly the claim "the port may not grow the code" was reaching for. The prompt files,
-schemas and the intent checker are counted in it, in whatever directory they land.
-`fleet/tests/` is excluded and stated so (6,880 lines today) — tests are the evidence base
-rule 6 protects, and capping them would be the wrong incentive.
+So the ceiling is on **`fleet/` code** at **≤ 4,400 lines**, against **3,818 today** —
+**+582 to absorb a 2,354-line wave loop**, which is a real constraint and is what "the port
+may not grow the code" was reaching for. It counts the prompt files, schemas and the intent
+checker the port creates, in whatever directory they land.
+
+**Measured by exactly this command, because a second draft of this row was already violated
+on the day it was written:**
+
+```
+find fleet -type f -not -path 'fleet/node_modules/*' -not -path 'fleet/tests/*' \
+  -not -name RUNBOOK.md -not -name 'package*.json' | xargs wc -l | tail -1
+```
+
+A draft of this section said "`fleet/**` — every file" at ≤ 4,400. `fleet/**` is **4,476
+today**: it includes `RUNBOOK.md` (521 lines of operator prose) and `package-lock.json`
+(129). The bar failed before the port began. **Excluded, with reasons:** `fleet/tests/`
+(6,880 lines — the evidence base rule 6 protects; capping tests is the wrong incentive),
+`RUNBOOK.md` (operator prose, governed by the prose ceilings, not the code one),
+lockfiles (generated).
+
+**And the baseline moved during this sitting**: `fleet/*.mjs` was 3,803 when §9's first
+draft was written and is **3,818** after PR #393's fix — 15 lines of a bug fix ate 2.5% of
+a first-draft allowance. That is the ceiling doing its job on the first day, and it is why
+the number is anchored to a command rather than to a remembered figure.
 
 ## 7. What the driver may become
 
@@ -408,6 +459,21 @@ concealed it. The four-kind taxonomy (`:86`) survives as the `kind` field; the s
 
 **Changed from kept:** `readSessionTokens` + the spend cap (deleted, §8d); the store's
 `budgets` table (deleted, §8d).
+
+**`waves.js`'s own budget object — a ledger row this spec adds, with its number.** Not in
+the frozen ledger, not in "kept verbatim", and distinct from `orchestrator.mjs`'s spend
+supervisor: `budgetExhausted()` (`waves.js:1838–1842`) reads the **Workflow runtime's
+`budget` global** (`:14`), and eight checkpoints defer work against it — `:1557` (conflict
+resolution), `:1776` (each reconciliation attempt), `:1847` (before setup), `:1956`,
+`:1971`, `:2021`, `:2105`, `:2180` — pushing `BUDGET_DEFERRED_NOTE` (`:181`,
+*"budget exhausted mid-run — remaining work deferred to unfinished"*) into `judgmentCalls`.
+
+**Licensed by:** the `budget` global is the Workflow runtime's, so it dies with the tool —
+there is no choice about the mechanism. **But the behaviour is not free to drop**, and §5
+must carry it (see §5): those checkpoints fire **mid-wave**, including per 16-task chunk,
+while §5's admission control is specified at wave boundaries only. A wave that runs out of
+room at task 9 of 16 defers honestly today and would run to exhaustion under a
+boundary-only design. §5 now specifies both.
 
 **Deletions the cap removal cascades — claimed here so they are not rediscovered** (the
 #386 pattern): `store.mjs:93–111`'s `opts.supervisor` / `supervisorExempt`, whose only
@@ -532,7 +598,7 @@ Every number goes into the cutover release commit. **The release is refused with
 | owned authoring skill | 3,038 (ultraplan) + 1,059 (writing-plans) | **≤ 1,500 — #390's bar, not 0.3.0's.** Stated here so the two cannot drift; a number enforced in another ticket must not refuse this release (§11) |
 | intent-doc schema | — | **exactly 7 slots, ≤ 8 standing decisions** |
 | scripts under `skills/ultrapowers/scripts/` | 13 | **≤ 10** (projected 6, §8a) |
-| `fleet/**` total lines (excl. `fleet/tests/`), post-cutover | 3,803 | **≤ 4,400** — +597 to absorb a 2,354-line wave loop, prompt files, schemas and the intent checker included (§6) |
+| `fleet/` code lines, post-cutover | **3,818** (not 3,803 — PR #393 moved it this sitting) | **≤ 4,400** — +582 to absorb a 2,354-line wave loop; prompt files, schemas and the intent checker counted; `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded, by the command in §6 |
 | guards deleted, each with a licensing number | 11 shipped in Phase 0, **not counted here** | **≥ 6 in this release** (six named in §8a) |
 | gate parity | — | on the **10 fixtures carrying a `plan.md`** (chained, contend, contend-big, contend-prod, degrade, flawed, flawed-routing, mixed, webapp, wide; `jsdeps` has none), the derived plan's **wave shape and gate verdict** equal the old engine's authored plan for the same intent. See the three caveats below — this row is weaker than it looks and the spec says so |
 | live parity | — | **≥ 3 fleet runs green**, one at width ≥ 2, with `reported == ledger` and all five §W1d legs |
@@ -660,7 +726,10 @@ coupling · verbatim implementation code from plans — the source of 6/6 defect
 `skills/ultralearn/references/distilling-proposals.md` §Trim review, grounded in the spec,
 #389, #366, the frozen inputs, the supporting measurements, and the code. It found real
 defects — including one verifiably false cross-reference and one predicate that would have
-halted nearly every run. **Adopt-or-answer for every finding, rejections visible:**
+halted nearly every run. A **second reviewer was spawned in error** (the first appeared idle
+when it was working), stood down, and returned findings anyway; four were new and are
+recorded below as **R2**. Both are credited. **Adopt-or-answer for every finding, rejections
+visible:**
 
 ### Trims
 
@@ -706,8 +775,18 @@ halted nearly every run. **Adopt-or-answer for every finding, rejections visible
 | 6 | deferring `claude plugin eval` to #390 | **ANSWERED** — it tests the client's skills; it is Open question 3 for the operator |
 | 7 | canary 2's taxonomy is load-bearing with no stated classifier | **ADOPTED** (§9) — the reviewer that raises the round classifies it, ties go to *contract* so the canary cannot flatter itself |
 
-**Rejected: none.** Every finding was adopted, adopted with a named limit, or answered; two
-(under-spec 8, 11) are answered rather than implemented, with the reason given.
+### R2 — the second reviewer's independent findings
+
+| # | finding | disposition |
+|---|---|---|
+| R2-1 | **`waves.js`'s own budget object is undispositioned in §8** — `budgetExhausted()` (`:1838`), `BUDGET_DEFERRED_NOTE` (`:181`), and **eight** deferral checkpoints, distinct from `orchestrator.mjs`'s supervisor | **ADOPTED — new ledger row in §8a, and §5 changed.** The sharper half is behavioural: those checkpoints fire **mid-wave**, including per 16-task chunk, while §5 was specified at wave boundaries only. A wave running out of room at task 9 of 16 defers honestly today and would have run to exhaustion under the spec as written. §5 now specifies both granularities |
+| R2-2 | **§5 deletes the only out-of-band VM reclamation.** `actions.destroySandbox` reaches the orchestrator's action surface at exactly one site — `orchestrator.mjs:281`, inside the deleted spend pass; every other destroy is `drive.mjs`'s teardown, **inside the drive process** | **ADOPTED — §5 item 0 rewritten.** A killed or crashed drive would have left a billed VM alive forever. Replaced by a **claim-lease reaper** over rows that already exist (claims have holders; `orchestrator.mjs:301` has the heartbeat). Deliberately a *liveness* trigger: the right reason to destroy a VM is "nothing is using it", never "it spent too much" |
+| R2-3 | **The line ceiling is already stale and, as written, already violated.** `fleet/*.mjs` is **3,818** on main (PR #393 added 15 this sitting), and `fleet/**` — the glob the spec actually wrote — is **4,476**, above the ≤ 4,400 bar | **ADOPTED — §6 and §9 rewritten.** The bar failed on the day it was written. The ceiling is now anchored to an **exact `find` command** with `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded and the reasons given, and the drift is left visible: 15 lines of a bug fix ate 2.5% of the allowance on day one |
+| R2-4 | **The wave author's "may not add or remove tasks" has no enforcement** — `--json-schema` validates shape, not identity against `intent.sha` | **ADOPTED** (§2 step 4). The driver diffs the derived plan against the signed set by identity: equal id sets, byte-identical edges / `Interfaces` / `tier` / acceptance statements, `Files:` a subset. A mismatch is a failed derivation, retried once with the diff quoted, then parked. This is why `intent.sha` is in the receipt |
+
+**Rejected: none, from either reviewer.** Every finding was adopted, adopted with a named
+limit, or answered; two (under-spec 8, 11) are answered rather than implemented, with the
+reason given.
 
 ### `netConceptDelta`, graded by the reviewer: **`flat`**
 
