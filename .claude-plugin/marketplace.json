@@ -4,12 +4,12 @@
     "name": "Marcus Estes",
     "email": "marcus@vibes.diy"
   },
-  "description": "ultrapowers: autonomous parallel execution for Superpowers plans.",
+  "description": "ultrapowers: autonomous parallel execution for Superpowers plans, on an exe.dev fleet you provision.",
   "plugins": [
     {
       "name": "ultrapowers",
       "source": "./",
-      "description": "committed parallel workflow executor for Superpowers plans (/ultrapowers)",
+      "description": "ultrapowers client — runs on an exe.dev fleet you provision (parallel waves in a sandbox, per-task review, orchestrator-opened PR); no local engine",
       "version": "0.2.25"
     }
   ]

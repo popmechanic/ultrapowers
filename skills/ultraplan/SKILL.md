@@ -79,10 +79,10 @@ When a spec becomes several plans run as separate `/ultrapowers` invocations,
 per-phase green does **not** establish integrated green: each run's completeness
 critic sees only its own plan's tree, never the seams between phases — where
 integration bugs live. So give the **final** plan an **integration-spanning
-acceptance**: a sealed exam or suite whose checks cross the earlier phases, run
+acceptance**: a suite whose checks cross the earlier phases, run
 against a tree that contains them. Never let N green per-phase gates stand in for
 one integrated-green gate; if the effort cannot end in one, declare an explicit
-waiver at the final gate ("cross-phase integration unverified — phases sealed
+waiver at the final gate ("cross-phase integration unverified — phases gated
 separately"), never silently.
 
 ## Add markers to every task
@@ -151,9 +151,9 @@ Read three signals off the marked plan:
 
 Decide with the first branch that matches:
 
-1. **risk → Ultrapowers** — the **risk override**. Independent per-task review,
-   the held-out sealed exam, and one pre-merge gate are the value here, not
-   speed. Name the risk in the rationale.
+1. **risk → Ultrapowers** — the **risk override**. Independent per-task review
+   and one pre-merge gate are the value here, not speed. Name the risk in the
+   rationale.
 2. **parallel width and T≥4 → Ultrapowers** — real speedup clears the
    worktree/merge overhead.
 3. **T≤2 → Inline** — too small to spin up machinery.
@@ -169,10 +169,10 @@ small low-risk plans, never verification.
 Show a one-line analysis citing the signals, then the three options with
 **(recommended)** on the winner. Ultrapowers stays listed first regardless:
 
-1. **Ultrapowers** — `/ultrapowers <plan-path>`: parallel waves, worktree
-   isolation, per-task review, one pre-merge human gate. Selecting it
-   authorizes execution: ultrapowers renders its wave plan and launches
-   immediately, without a further approval pause.
+1. **Ultrapowers** — `/ultrapowers <plan-path>`: commits the plan and drives it
+   on the exe.dev fleet (parallel waves in a sandbox, per-task review, the
+   orchestrator opens the PR). Selecting it authorizes execution: the plan
+   is committed and the fleet run launches immediately, without a further approval pause.
 2. **Subagent-Driven** — superpowers:subagent-driven-development, sequential,
    review between tasks.
 3. **Inline** — superpowers:executing-plans, continuous inline execution (upstream removed batch checkpoints in 5.0.0; its handoff text still says otherwise — trust the behavior, not the menu).
@@ -263,8 +263,8 @@ itself (never a separate file) — the operator's post-merge hands-on check:
   button)
 - `see:` the observable result that proves the seam works
 
-Choose probes adversarially: aim where the suite and any sealed exam are
-structurally blind — integration seams, visual/UI states, CLI output feel,
+Choose probes adversarially: aim where the suite is structurally blind —
+integration seams, visual/UI states, CLI output feel,
 error-path wording. Never restate what a committed test asserts. Write probes a
 non-technical operator can run verbatim. If the work has no observable surface
 (pure refactor, internal tooling), write the single line "No observable surface
@@ -325,88 +325,20 @@ keep their pinned positions. Shape:
 - [ ] **Step 1: …**
 ```
 
-## Seal the exam (dispatch at spec approval, collect at plan approval)
+## Acceptance disposition
 
-A marked plan is not execution-ready until it carries an `**Acceptance:**`
-line (the compiler refuses it otherwise). Every input the acceptance author
-needs exists before the plan does, so a `sealed` plan front-runs its seal in
-the background and collects it after the human approves the plan. Collection
-is content-addressed by the spec hash: an edited spec can never match a stale
-seal.
-
-### Dispatch at invocation (before drawing tasks)
-
-At the spec-approval moment — when this skill is invoked alongside
-writing-plans, before any tasks are drawn:
-
-1. Decide the Acceptance disposition first (see "Choosing the disposition").
-   Dispatch happens **only when the operator explicitly requested sealing**
-   ("seal this plan"). Otherwise skip dispatch and collect entirely — the plan
-   takes `**Acceptance:** suite — <reason>` directly.
-2. Compute the spec hash: `shasum -a 256 <spec-file>` → `specSha256`.
-3. Dedup against the vault `~/.ultrapowers/acceptance/`: a sealed dir recording
-   this `specSha256`, a `pending-<first-12-hex>/outcome.json` failure record, or
-   a pending dir whose author is still running each mean this spec is already
-   handled — skip.
-4. Otherwise create `<vault>/pending-<first-12-hex-of-specSha256>/`, write the
-   dispatch receipt `dispatch.json` there (`{specPath, specSha256, dispatchedAt}`
-   — crashed-dispatch detection and stale-spec cleanup read it instead of
-   guessing), and dispatch a fresh-context author subagent in the background:
-   agent type `ultrapowers:seal-author` (whose definition pins the
-   reasoning-effort knob), briefed per `references/seal-author-prompt.md`. Its
-   inputs are ONLY the spec text, the repo's test conventions (framework, run
-   command, naming), the base branch name, the vault path, the spec hash, and the
-   pending dir — never the plan, never this conversation's history. Plan
-   authoring proceeds in the foreground without waiting.
-
-The author proves the suite RED through the exact gate runner
-(`run_acceptance.sh --baseline …`), seals on success, and on GREEN_AT_BASELINE or
-an unfixable EXAM_BOOTSTRAP_ERROR leaves `outcome.json` in its pending dir.
-
-### Collect at plan approval
-
-After the human approves the plan, run the deterministic collector against the
-spec file as approved (same scripts directory as the compiler):
-
-    COLLECT=skills/ultrapowers/scripts
-    python3 $COLLECT/collect_seal.py <spec-file>
-
-It hashes the spec, scans the vault, and reports one case as JSON:
-
-1. **`sealed`** → append the reported `acceptanceLine` to the plan
-   **verbatim**, after the header block, plus the coverage summary as a
-   short appendix. Zero transcription — hand-copying that hash was a live
-   false-block defect.
-2. **`failure`** → surface it at plan approval, never silently after:
-   GREEN_AT_BASELINE counts as attempt #1 toward the stop rule below;
-   EXAM_BOOTSTRAP_ERROR surfaces with its evidence before re-dispatching.
-3. **`pending`** → the author is still running; say so and wait. If no author
-   is actually alive for it, the dispatch crashed: treat as `none`.
-4. **`none`** (spec edited after dispatch, dispatch crashed, or nothing was
-   dispatched) → remove superseded `pending-*` dirs naming this spec path in
-   their `dispatch.json`, then dispatch synchronously and wait.
-
-Two consecutive green-at-baseline attempts → stop and tell the human: the
-spec may describe behavior that already exists.
-
-Point the operator at the vouching rubric in `ultrapowers` SKILL.md Step 3: they vouch by checking that the coverage summary faithfully restates the spec — covered? / invented anything? / examples present? — not by reading the tests.
-
-### Choosing the disposition
-
-Every marked plan declares one of three Acceptance dispositions:
+Every marked plan declares one of two Acceptance dispositions:
 
 - **`**Acceptance:** suite — <reason>`** — the default. The committed suite plus
   per-task review is the verification; the engine binds acceptance to the
   committed test result (`acceptance.passed === tests.passed`).
-- **`**Acceptance:** sealed <seal-id> (sha256:<hash>)`** — opt-in, on explicit
-  operator request ("seal this plan"): a held-out exam authored from the spec by
-  an independent agent, for work whose diff the operator will not read.
 - **`**Acceptance:** waived — <reason>`** — verification genuinely skipped, by
   explicit operator choice. Waivers surface verbatim at the wave-plan gate, in
   the report, and at the pre-merge gate.
 
-Rule of thumb: `suite` unless the operator asks to seal; never seal or waive
-silently on their behalf.
+`sealed` is no longer producible: the sealing subsystem was cut (One Driver
+Phase 0, row 7) — the compiler still parses a `sealed` line (frozen vocabulary)
+and the gate reports it `BLOCKED`. Never waive silently on the operator's behalf.
 
 ## Self-review additions
 
@@ -429,6 +361,6 @@ After writing-plans' own self-review checklist, verify:
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing rides on classification heuristics.
 - Every **test-asserted literal** traces to content the same task prescribes: a test asserting a string, symbol, or behavior the task never writes is a plan contradiction — the test is the authority, so prescribe that content or drop the assertion.
-- The plan carries an **Acceptance:** line — sealed, suite, or an explicit waiver.
+- The plan carries an **Acceptance:** line — suite or an explicit waiver.
 
 (End of SKILL.md.)

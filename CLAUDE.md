@@ -28,7 +28,7 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 ```
 
 - CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultraplan`, then `pytest tests/`.
-- The 5 `tests/*.mjs` viewer/sim specs are **not** in CI — run them manually: `node tests/<name>.mjs`.
+- The 3 `tests/*.mjs` engine sims are **not** in CI — run them manually: `node tests/<name>.mjs`.
 
 ## Layout
 
@@ -40,7 +40,7 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
 - `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
 - `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
-  test data by `tests/test_compile_plan.py` and `tests/test_fixture_seals.py`.
+  test data by `tests/test_compile_plan.py`.
 - `fleet/` — Width Program W1 (spec `docs/superpowers/specs/2026-08-21-width-program.md`):
   orchestrator (TinyBase ws-server + guard + spend authority), sandbox run shim, exe.dev
   provisioner, drive-one driver, `RUNBOOK.md` for the live run. Own npm deps in
@@ -84,7 +84,7 @@ review — a fresh-context subagent proposing the trimmed version (dispatch brie
 `skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec carries a
 `## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
 author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite` (the committed
-suite is the verification; no held-out exam unless the operator asks to seal).
+suite is the verification).
 
 ## Conventions & gotchas (non-obvious — read before editing)
 
@@ -94,10 +94,9 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   `chore(release): 0.0.x — …`, committed to `main`. **After pushing a release, confirm CI on
   `main` is green (`gh run list --branch main --limit 1`)** — main sat red across two releases
   (0.2.12→0.2.13) and nothing surfaced it until PR #161.
-- **The verification periphery is FROZEN (0.1.0).** The sealing subsystem
-  (`collect_seal.py`, `seal_hash.py`, `run_acceptance.sh`, the seal-author
-  agent + brief), the gate scripts (`gate_check.py`, `ultra_gate.py`,
-  `run_lock.sh`), and the compiler's diagnostic vocabulary change only for an
+- **The verification periphery is FROZEN (0.1.0).** The gate scripts
+  (`gate_check.py`, `ultra_gate.py`, `run_acceptance.sh`) and the
+  compiler's diagnostic vocabulary change only for an
   eval-measured regression (`evals/ab_runner.py` numbers), never on an
   incident narrative alone — the one licensed exception is the Phase-2 tier
   deletion (`read-after-write`/`prose-reference`/`ambiguous-files`/`catch-all`,
@@ -106,8 +105,10 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   expected `−3 prose-reference` + degrade-deletion mode flips — plus that
   deletion's one downstream wave-shape promotion, on a single plan whose
   deleted edge was gating — and no other delta, against the pre-registered
-  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is
-  opt-in ("seal this plan"); `suite` is the default disposition.
+  97-plan census) plus the T15 rig re-run (Task 12). `suite` is the default
+  disposition; a `sealed` line still parses (frozen vocabulary) but is
+  `BLOCKED` at the gate — the sealing subsystem was cut in One Driver Phase 0
+  (row 7).
 - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
   `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
@@ -120,8 +121,7 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   `tests/*.mjs` that reference `harnesses/` via `node`, gated on exit code **and** a
   `ALL (SCENARIOS|TESTS) PASSED` sentinel. So a new harness sim MUST print that
   sentinel on success, and harness JS with no covering sim fails the gate (never a
-  shallow green). The viewer specs (`swarm_*`, `audit_*`) reference `viewer/` and
-  are not run by the gate.
+  shallow green).
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script.
@@ -130,9 +130,3 @@ suite is the verification; no held-out exam unless the operator asks to seal).
   text reloads in-session; hook/manifest changes need a new session.
 - **`superpowers` is a dependency, not vendored.** No local checkout — read its skills from the plugin
   cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).
-- **Self-hosting a `/ultrapowers` run? Serialize them.** Concurrent runs in one repo corrupt each
-  other's checkout; clean up worktrees with `skills/ultrapowers/scripts/sweep_worktrees.sh`.
-  This extends to *sessions* during an approve window (#134): `ultra_gate.py --approve` checks out
-  the integration/main branch in the shared primary checkout, so only one session may do git work
-  in a checkout while another session's gate approve can run — the RUN_LOCK serializes runs, not
-  sessions, and a second session's branch silently becomes `main` mid-command otherwise.

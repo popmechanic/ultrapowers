@@ -1,6 +1,6 @@
 ---
 name: ultradocket
-description: Use when the operator has a backlog rather than a single idea — triage open issues into a ranked docket, sweep the accepted queue into sealed engine-tagged plans, and drain that queue through an autonomous build. Optional; the single-feature superpowers flow is unchanged when not summoned.
+description: Use when the operator has a backlog rather than a single idea — triage open issues into a ranked docket, sweep the accepted queue into engine-tagged plans, and drain that queue through an autonomous build. Optional; the single-feature superpowers flow is unchanged when not summoned.
 ---
 
 # Ultradocket
@@ -36,7 +36,7 @@ accepted entries become `State: accepted`.
 Record each entry's triage rationale in the durable `**Notes:**` field (it
 survives every lifecycle transition, unlike free text packed into the `Score`
 line). Triage does **not** assign an acceptance disposition —
-that is decided at planning (sweep step 3). Do not guess `sealed`/`suite` at
+that is decided at planning (sweep step 3). Do not guess `suite`/`waived` at
 triage; conflating the acceptance mode with "self-contained" is a known triage trap.
 
 Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
@@ -71,7 +71,7 @@ One iteration:
    body, the triage notes, and the matched line(s) of `docs/objectives.md`. A
    well-defined issue is half a spec, so the interview is short.
 3. **Plan** through the normal pipeline: brainstorm → `superpowers:writing-plans`
-   + `ultrapowers:ultraplan` → operator approval → the ultraplan sealing step.
+   + `ultrapowers:ultraplan` → operator approval.
    **Per-plan approval is the default contract**: the sweep pauses at each
    plan for the operator's signature before advancing — plan approval is the
    operator's control point, and they should never have to interrupt mid-sweep
@@ -81,8 +81,8 @@ One iteration:
    standing scope cuts, flag every deviation, and still take an explicit
    per-plan yes.
    Plans the sweep writes must carry the exact compiling Acceptance form —
-   `**Acceptance:** suite — <one-line rationale>` (or the sealed/waived
-   equivalents) — verified by the pipeline's existing `compile_plan.py --check`
+   `**Acceptance:** suite — <one-line rationale>` (or the waived
+   equivalent) — verified by the pipeline's existing `compile_plan.py --check`
    step; a bare `suite.` parses as `missing` and reds the drain.
 4. **Choose the engine.** Apply the **shared execution-fit rubric** — the same
    one the routing hook and ultraplan use (pinned by
@@ -90,23 +90,16 @@ One iteration:
    record the chosen engine. Do **not** restate the rubric's branch clauses
    here; reference it. The value is one of `ultrapowers | subagent-driven |
    inline`.
-5. **Write back** in one atomic entry update — plan path, engine, and (for
-   `sealed` plans only) the seal-id — advancing the entry
-   `accepted → planned → queued` via `docket_lib.transition` (`planned` is the
-   intermediate: approved, seal not yet issued for sealed plans; for
-   `suite`/`waived` plans there is no seal and the entry advances straight to
-   `queued`). Never hand-edit the docket prose.
+5. **Write back** in one atomic entry update — plan path and engine —
+   advancing the entry `accepted → planned → queued` via
+   `docket_lib.transition` (`planned` is the approved intermediate; the entry
+   advances straight to `queued`). Never hand-edit the docket prose.
 6. **Auto-advance** to the next `accepted` entry.
 
 The sweep loops until no `accepted` entry remains or the operator stops. Docket
 state is durable, so a sweep may span sittings freely: stopping is simply not
 continuing; resuming re-reads the remaining `accepted` entries. No new
 persistence mechanism is introduced.
-
-**If sealing fails** (a `sealed`-disposition plan only — `suite` and `waived`
-plans author no seal and are never "sealing failures"), the entry stays `planned`
-(approved, unsealed) and the sweep continues; it surfaces for a retry on a later
-sweep. It is never `queued`, so the drain never picks up an unsealed sealed plan.
 
 **In-sweep controls**, offered at each iteration boundary:
 
@@ -132,18 +125,11 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
 1. **Branch** off the current docket integration line HEAD.
 2. **Dispatch by the entry's recorded `Engine`**, auto-advancing any
    human-in-the-loop checkpoint (see "The exam-gated auto-approve" below):
-   - `ultrapowers` → run the plan through the committed waves engine: compile it
-     (`compile_plan.py --emit-launch`), then launch the saved workflow **by its
-     `meta.name` `ultrapowers-run`** (not `waves` — that is the harness file, and
-     launching by it fails "not found") via the Workflow tool, following
-     `/ultrapowers` Steps 2–4 for the engine probe, run lock, and args assembly.
-     Immediately after each Workflow launch, record the runtime run ID:
-     `python3 skills/ultradocket/scripts/record_wf_run.py <stamp> <wf_runId>`
-     (the drain's run-lock stamp, one per drain) — teardown and approve then
-     derive the sweep set exactly as in single-run mode.
-     Do **not** invoke `/ultrapowers`' own Step-5 gate — the drain administers the
-     correctness gate (step 3) and the docket-line merge (step 4) below instead. Waves
-     self-isolates with per-task worktrees and tiers per task.
+   - `ultrapowers` → commit the plan on the docket line and `drive-one` it on the
+     orchestrator (`fleet/RUNBOOK.md` §Live W1 run; the sandbox session runs the
+     `/ultrapowers` §Engine, gate included); the orchestrator's PR/receipt is the
+     gate. For such an entry step 3 reads that gate receipt instead of
+     administering a second gate, and step 4 merges or parks on its verdict.
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
    - `inline` → invoke `superpowers:executing-plans` against the per-plan branch.
@@ -151,7 +137,6 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    the plan's disposition (its `**Acceptance:**` line, read as `acceptance.mode`
    from `compile_plan`). Each runner makes its own detached worktree (agnostic to
    the current checkout) and is exit-code authority:
-   - `sealed` → `run_acceptance.sh <sealId> <branch> <sha256>` — the held-out exam.
    - `suite` → `run_acceptance.sh --suite-gate --branch <branch> --base <docket-integration-line-HEAD>`
      — the committed suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass.
      Passing `--base` (the ref the plan branched from) arms the JS-behavioral
@@ -162,19 +147,6 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      no held-out exam.
    - `waived` → no gate exists; **park for the operator** at the end gate. Never
      auto-merge unverified work.
-
-   Immediately after each drain-administered gate for a **waves-engine
-   (`ultrapowers`) entry**, mirror the outcome to a teardown-surviving stamp
-   record: `python3 skills/ultradocket/scripts/record_wf_run.py stamp <stamp>
-   <entry> --verdict <verdict> --exit-code <exit> --branch <branch> --base
-   <docket-integration-branch>` (same `<stamp>` as the step-2 run-ID
-   record; `<verdict>`/`<exit>` are the gate runner's own JSON verdict and
-   exit code — the stamp is evidence for the ultralearn sensor, never
-   authority; pass the MOVING branch ref for `--base`, never a pinned SHA —
-   the ancestry join re-evaluates against the branch's current tip). A re-gate after a fix round re-records the same
-   `<stamp>`/`<entry>` and overwrites — last write wins; the final verdict is
-   the record. Subagent/inline entries record no stamp: they have no engine
-   runDir or registry stamp for the harvester to key on.
 4. **Merge or park** — the deterministic step:
    - **Green gate** → merge the plan branch into the docket integration line;
      advance the entry `queued → executed` via `docket_lib.transition`; the next
@@ -182,8 +154,7 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    - **Red gate or executor failure** → **park**: keep the branch, transition the
      entry to `parked` with a reason (the gate's `redKind` or the failure), and
      skip the plan's collision-dependents (from `compile_docket`'s collision
-     graph). Disjoint plans continue. (Covers a red suite gate the same way as a
-     red sealed exam — the JSON contract is identical.)
+     graph). Disjoint plans continue.
    - **Missing/uncompilable Plan** → `compile_docket`/`plan_writes` raises a
      friendly error naming the plan; park that entry with the reason before
      spending execution cost. Never surface a raw stack trace.
@@ -203,7 +174,7 @@ Critical/Important findings park the entry exactly as a red gate does
 (Minor: noted at the end gate). Posture drift after this declaration is
 the recurrence that buys enforcement.
 
-### The exam-gated auto-approve
+### The gate-driven auto-approve
 
 The drain runs unattended over non-deterministic executors, so the keep-going
 decision is split from the correctness decision, and the merge keys stay on the
@@ -214,43 +185,34 @@ deterministic side:
   call for the end gate — so the run never blocks. This is catastrophe-only
   autonomy: only a dependency cycle or an inability to create the integration
   branch stops the drain early.
-- **Trust the exam, not "looks done."** A "finished" signal from a
+- **Trust the gate, not "looks done."** A "finished" signal from a
   non-deterministic executor is never enough to merge. Correctness is decided by
-  the plan's held-out sealed exam (`run_acceptance.sh`, exit-code authority):
-  exit 0 ⇒ merge; any non-zero ⇒ park. An over-eager auto-advance therefore
-  cannot land broken work on the integration line — the exam it can't touch
-  gates the merge.
+  the plan's suite gate (`run_acceptance.sh --suite-gate`, exit-code authority)
+  — or, for a fleet-driven entry, the orchestrator's gate receipt: exit 0 ⇒
+  merge; any non-zero ⇒ park. An over-eager auto-advance therefore cannot land
+  broken work on the integration line — the gate it can't touch gates the
+  merge.
 
 The drain widens the set of trusted write-side executors to include the
 committed superpowers executors (`subagent-driven-development`,
 `executing-plans`) alongside the `waves` registry harness. Those are fixed,
 audited skills — not orchestration improvised at runtime — and the safety
 guarantee holds regardless of which one wrote a branch: nothing reaches the
-docket integration line, or `main`, without clearing the deterministic sealed
-exam and the single end gate.
+docket integration line, or `main`, without clearing the deterministic suite
+gate and the single end gate.
 
 ### The single end gate
 
 When the queue drains or the budget ceiling hits, present **one** pre-merge
 portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
 disposition (`executed`/merged or `parked` + reason), branch, the review
-posture used (suite-gate authority, or the escalated tasks named), and the
-entry's residual manifest (`<runDir>/residual-manifest.md`, derived per the
-`skills/ultrapowers/references/finishing-notes.md` §Residual manifest; drain close
-runs `residual_manifest.py --check` per entry — exit 2 surfaces its
-undispositioned rows in this evidence block; an entry with no gate report
-derives a zero-row manifest, which passes vacuously); plus portfolio
-totals and the could-have-parallelized projection. Run the close-of-run hygiene
-check (`skills/ultrapowers/scripts/hygiene_check.sh`) **before the merge to
-base and again at close**, quoting its JSON receipt verbatim beside the other
-receipts — a red receipt blocks the finishing handoff NEEDS_ACK-style, never a
-silent skip. Then the operator disposes of
-the portfolio: merge the docket integration line to base, or open per-issue PRs
-(mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
-advances merged entries `executed → verified`. Parked branches are presented for
-the operator to Salvage/Redirect with full context (a drain run's args carry
-no `integrationBranch` and the drain writes no `gate-receipt.json` — pass
-`--integration-branch <docket-integration-branch>` to the composer).
+posture used (suite-gate authority, or the escalated tasks named); plus
+portfolio totals and the could-have-parallelized projection. Then the operator
+disposes of the portfolio: merge the docket integration line to base, or open
+per-issue PRs (mind the GitHub closing-keyword gotcha in PR bodies). Accepting
+the portfolio advances merged entries `executed → verified`. Parked entries are
+presented with their gate evidence; a re-drive is a new run with a narrower
+plan — there is no in-place salvage or redirect.
 
 The drain is **origin-agnostic**: the entry `issue` field is an opaque label,
 and any `gh issue close` / comment-back is an **optional** operator post-step you
