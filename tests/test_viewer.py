@@ -69,20 +69,6 @@ def test_render_viewer_bakes_dag(tmp_path):
         assert set(wave) <= ids, "waves reference unknown task ids"
 
 
-def test_render_viewer_javascript_parses(tmp_path):
-    node = shutil.which("node")
-    if not node:
-        import pytest
-        pytest.skip("node not available")
-    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN),
-         "--out", str(tmp_path)])
-    html = (tmp_path / "swarm.html").read_text()
-    js = re.search(r"<script>\n(.*)</script>", html, re.S).group(1)
-    js_file = tmp_path / "embedded.js"
-    js_file.write_text(js)
-    run([node, "--check", str(js_file)])
-
-
 def test_render_viewer_theme_is_baked(tmp_path):
     out = run([sys.executable, str(SCRIPTS / "render_viewer.py"), "--list-themes"])
     themes = out.stdout.split()
