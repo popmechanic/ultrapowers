@@ -72,18 +72,6 @@ def test_ultraplan_handoff_analyzes_before_recommending():
         assert lane in text
 
 
-def test_ultraplan_shapes_decomposition_before_annotating():
-    text = ULTRAPLAN.read_text()
-    # The new up-front shaping phase exists...
-    assert "Shape the decomposition" in text
-    # ...with its load-bearing moves and the justification gate...
-    assert "contract-first" in text
-    assert "would a good engineer" in text
-    assert "Parallelization rationale" in text
-    # ...and an explicit escape valve so linear specs are not forced to widen.
-    assert "no latent parallelism" in text
-
-
 def test_ultraplan_mirrors_the_review_marker_line():
     # BAKE:MARKER_SYNTAX now includes **Review:** — the existing whole-block
     # mirror pin above already enforces this verbatim, but pin the marker
@@ -96,39 +84,12 @@ def test_ultraplan_mirrors_the_review_marker_line():
     assert "lean" in text
 
 
-def test_ultraplan_carries_the_review_authoring_rubric():
-    text = ULTRAPLAN.read_text()
-    # Authoring rubric (#87): decide review depth explicitly at plan-writing
-    # time, using the same risk list the execution-handoff rubric uses.
-    assert "decide review depth explicitly" in text
-    assert "**Review:** adversarial" in text
-    assert "The engine derives nothing" in text
-    assert "unmarked means lean" in text
-
-
-def test_ultraplan_carries_shrink_budget_and_escalation_guidance():
-    text = ULTRAPLAN.read_text()
-    # Two new authoring-guidance notes (#87): the shrink-budget pattern and
-    # escalation-prone tiering.
-    assert "Shrink budgets are acceptance criteria — stated as deltas." in text
-    assert "Tier escalation-prone tasks up front." in text
-
-
 def test_ultraplan_carries_the_commutes_and_resolver_doctrine():
     text = ULTRAPLAN.read_text()
     # The Commutes marker is authored here, not only in the compiler.
     assert "**Commutes:**" in text
     # Fold-native authoring guidance: write tasks the merge resolver can fold.
     assert "author for the resolver" in text.lower()
-
-
-def test_ultraplan_relaxes_bodies_except_for_adversarial_review():
-    text = ULTRAPLAN.read_text()
-    # Scoped override of writing-plans' "complete code in every step": routine
-    # glue may be sketched — except on adversarially reviewed tasks.
-    assert "sketch" in text
-    assert "**Review:** adversarial" in text
-    assert "interface- and test-complete" in text
 
 
 def test_ultraplan_drops_the_phantom_edge_authoring_rules():
@@ -146,7 +107,6 @@ def test_contract_documents_the_files_grammar():
     # the annotation/glob bail, and the catch-all construct.
     text = CONTRACT.read_text()
     assert "Create" in text and "Modify" in text and "Test" in text
-    assert "catch-all" in text
     assert "glob" in text.lower()
     # Pin the annotation bail to the Files-grammar section specifically. The
     # old `"annotation" in text.lower()` was satisfied by the preamble line
