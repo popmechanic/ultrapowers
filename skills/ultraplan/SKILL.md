@@ -28,25 +28,26 @@ independence the sequential pen glides over. Five moves:
 2. **Front-load contracts (contract-first).** Where a consumer would wait on a
    producer, fix the shared interface up front as its own small early task that
    `Produces:` the signatures; consumers `Consume:` + `Depends-on:` it and build
-   against the contract in parallel. Highest-leverage move, existing machinery.
+   against the contract in parallel.
 3. **Let same-file edits stand.** Coupling is interfaces and existence, not
    files. The compiler no longer serializes same-file text writes in any form —
    the fold path owns them and resolves concurrent edits at merge — so a shared
    hot file is never a reason to reshape a plan. Three old workarounds are
-   authoring **defects**, not caution: splitting a feature unnaturally (or
-   splitting a file) to dodge a collision; turning a fan of independent tasks
-   into a chain to serialize writers; adding `Depends-on` for file overlap alone
-   with no real data/interface dependency. Let colliding `Modify` lines collide.
+   authoring **defects**: splitting a feature or a file to dodge a collision;
+   chaining a fan of independent tasks to serialize writers; adding
+   `Depends-on` for file overlap alone. Let colliding `Modify` lines collide.
    Two obligations survive: `**Files:**` blocks remain required — they are the
    compiler's contention-detection input — and declare `**Commutes:**` on shared
    append-natured surfaces so the engine can classify that contention and union
    the additions instead of resolving them. That means registration surfaces
-   (route tables, export lists, manifests) AND shared test modules: when two
-   tasks each append test functions to the same test file — the most common
-   contention in practice — both tasks declare `**Commutes:**` on it. Declare
+   (route tables, export lists, manifests) and shared test modules two tasks
+   both append test functions to — both declare `**Commutes:**` on it. Declare
    only for append-shaped edits; a task that also modifies or deletes existing
    lines in the file must not declare it. One exception: chain non-text (binary/symlink) same-file pairs with
    `Depends-on` — they run in parallel otherwise and always fall back.
+   Blast radius follows the contract, not the file: a task that changes a
+   declared `Produces:` shape owns every strict-equality pin of it, in any
+   sibling's file — list that file in its own `**Files:**` (#233).
 4. **Interrogate every dependency.** For each `Depends-on` you are about to write:
    true data/interface dependency, or just the order you thought of it in? Keep
    the real ones; drop the authoring-order ones.
@@ -69,8 +70,8 @@ narrow plan to a sequential executor honestly.
 **Author for the resolver.** Because same-file edits fold instead of serializing,
 write tasks that fold cleanly: give each a stable anchor to edit near (a named
 function, a labeled section), designate an append zone for a list two tasks both
-grow, and prefer additive registration over rewriting a shared block. Guidance
-for the merge resolver, not a compiler input — nothing parses it.
+grow, and prefer additive registration over rewriting a shared block. Resolver
+guidance only — nothing parses it.
 
 ## Efforts too large for one plan
 
@@ -213,6 +214,9 @@ While writing tasks:
    machine: unique port and temp path per test, no shared on-disk fixtures.
 5. **Split impure steps out.** If a task would push, deploy, ssh, or wait on a
    human, that part is its own `release`/`manual` task.
+6. **Name only what exists.** Every path, `report.json` field, or task a body
+   cites must exist at BASE, be created by a task it `Depends-on`, or be defined
+   in `report-format.md`.
 - **Bodies may sketch routine glue — an ultraplan override.** writing-plans
   demands complete code in every step; here that holds only where the code
   carries information the implementer cannot derive. An `implementation` body
@@ -423,7 +427,7 @@ After writing-plans' own self-review checklist, verify:
 - No preamble holds load-bearing coordination missing from the task bodies.
 - Gates, release rituals, and owner actions are marked `gate` / `release` /
   `manual` — nothing rides on classification heuristics.
-- Every **test-asserted literal** traces to content the same task prescribes: walk each task's test steps, and confirm every exact string, symbol, or behavior it checks for appears in what that task's implementation steps produce. A test asserting a literal the task never writes is a plan contradiction — the test is the authority, so fix the plan to prescribe that content, or drop the assertion.
+- Every **test-asserted literal** traces to content the same task prescribes: a test asserting a string, symbol, or behavior the task never writes is a plan contradiction — the test is the authority, so prescribe that content or drop the assertion.
 - The plan carries an **Acceptance:** line — sealed, suite, or an explicit waiver.
 
 (End of SKILL.md.)
