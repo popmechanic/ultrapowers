@@ -125,30 +125,48 @@ needs `rev-parse` + `merge-base --is-ancestor` for the #70/#259 ancestry asserti
 read-only allowlist without them would leave the gate unable to approve and silent merge
 drops undetectable — a weakened receipt, which rule 1 forbids.
 
-**† `git diff --output=<path>` writes a file.** So `Bash(git diff *)` on a role whose
-writable root is *nothing* is a write primitive. The allowlist is therefore not the
-boundary; the **`PreToolUse` hook is**, and it must deny on the resolved *target path*, not
-on the command's shape. Two consequences the spec takes rather than discovers later:
+**Which mechanism is actually load-bearing — measured, not assumed (parity R-w1/w2/w3).**
+A draft of this section said the allowlist is not the boundary and the `PreToolUse` hook is.
+**That is backwards for the read-side roles**, and the repro shows why: a hostile worker
+reached for `python3 << 'EOF' … open(path,'a')`, which matches **no** write-form denylist a
+hook can practically enumerate — no `>`, no `tee`, no `--output`. It was denied by the
+**closed allowlist**. So:
 
-- The hook denies any `Edit`/`Write` whose `file_path` resolves outside the role's writable
-  root, and any `Bash` whose command matches the driver's small list of write-capable git
-  forms (`--output`, `-o`, `>`, `>>`, `tee`) — a **closed list checked against a
-  denylist of forms**, not a general "does this shell command write" predicate, which is
-  unspecifiable. Anything not on the list that still writes lands inside the sandbox and
-  nowhere else, which is what the VM is for.
-- The parity doc's own caveat stands (`:141`): the built-in read-only command set runs
-  regardless of the allowlist. The hook is the boundary; the sandbox is the backstop; the
-  allowlist is a narrowing, not a proof.
+- **For a role whose tools are an allowlist** (wave author, reviewer, critic), the
+  **allowlist is the boundary** and the hook is belt-and-braces. Arbitrary `Bash` is never
+  reachable, so there is no shell-write predicate to specify — the unspecifiable problem
+  disappears rather than being solved.
+- **For the implementer**, which runs `acceptEdits` with a broad tool set and must still be
+  confined to its own clone, the **hook is the boundary**. It denies any `Edit`/`Write`
+  whose `file_path` resolves outside the writable root, plus a closed denylist of
+  write-capable `Bash` forms (`>`, `>>`, `tee`, `--output`, `-o`). That denylist is
+  admittedly incomplete — R-w3 is the proof — which is exactly why the implementer's
+  confinement is backed by a disposable VM and not trusted on its own.
+- **`git diff --output=<path>` writes a file**, so `Bash(git diff *)` is a write primitive
+  even on a read-only role. It stays in the allowlist because the *target* is confined by
+  the hook and the blast radius by the sandbox; the parity doc's caveat (`:141`) that the
+  built-in read-only command set runs regardless of the allowlist stands.
+
+**Measured, on the golden's 2.1.238, with this exact flag-set** (parity R-w3): under a
+hostile prompt ordering four escape routes, `--add-dir` permitted the write to
+`<run>/plans/`, and `Write`, `echo >>`, `sed -i` and a Python heredoc into the clone were
+all denied. Exit 0, 8 turns, the worker reported honestly which routes it had tried.
 
 **The wave author is the delicate one, and its shape is the point.** It runs with `cwd =
 clones/integration` so it reads the *merged* tree, but may `Write` only under
 `<run>/plans/` — so it cannot edit the code it is planning against, the separation that
 makes "derive the plan" different from "start implementing." Writing **outside cwd**
-requires `--add-dir <run>/plans`, which the parity doc lists as present on both versions but
-**not exercised** (`:82`). **That is a build-blocking verification, named here so it cannot
-be assumed:** before the wave author is built, repro that `--add-dir` plus the hook permits
-a write to the run dir and denies one to the clone. If it does not hold, the wave author's
-cwd becomes `<run>/` and it reads the tree through `--add-dir` in the other direction.
+requires `--add-dir <run>/plans` — which was the spec's one build-blocking unknown and is
+now **discharged**: parity R-w1/w2/w3, run 2026-08-28 on the golden's 2.1.238. The shape
+holds exactly as specified, so the fallback (inverting cwd to `<run>/` and reading the tree
+through `--add-dir`) is **not needed**.
+
+One finding from that repro is worth carrying into every role prompt: in R-w1 a
+*cooperative* role prompt ("you never edit the code you are planning against") produced a
+clean-looking pass with **zero denials and one hook call** — the model simply declined. That
+is prompt-level compliance masquerading as enforcement, the #32 class this spec exists to
+delete. **Confinement is only ever verified against a neutral role prompt and a hostile
+task.**
 
 Per Amendment 6, giving each role its own system-prompt file costs nothing (the shared cache
 block precedes the appended prompt), and **every worker carries
@@ -855,7 +873,7 @@ than accept a third attempt).
 
 **Still owed before the plan, and named so they are not assumed** (§3, §9, §10):
 
-- `--add-dir` is unexercised and the wave author's confinement depends on it — repro before
-  building the role.
+- ~~`--add-dir` is unexercised~~ — **DISCHARGED 2026-08-28** (parity R-w1/w2/w3): the
+  wave-author flag-set holds under a hostile prompt; no cwd inversion needed.
 - `ab_runner` must be re-armed on the driver before gate parity can be reported.
 - The claim-lease reaper lands in the same PR as the cap deletion, never after.
