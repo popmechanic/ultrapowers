@@ -73,8 +73,10 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   a pre-registered bar; read its §Rules — surface ceiling, deletion owed per guard — before
   touching `skills/ultrapowers/` or `fleet/`; the frozen in-repo copy the spec must
   adopt-or-answer row by row is `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`,
-  **incl. Amendments 4–5 — the #243 plan shape: sign intent, derive the plan, no verbatim
-  implementation code, per-run token cap deleted**; spec+build = #389, blocked on #382);
+  **incl. Amendments 4–6 — the #243 plan shape: sign intent, derive the plan, no verbatim
+  implementation code, per-run token cap deleted; and #382's measured cache rows (cross-process
+  prefix sharing holds, `-p` writes the 1 h breakpoint, ~73% of every worker's prefix is a read,
+  fix rounds `--resume`)**; spec+build = **#389, unblocked 2026-08-28**);
   #238 *The Authoring Frontier* (plan authoring; #243 resolved 2026-08-28 → #390
   dependency posture); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,

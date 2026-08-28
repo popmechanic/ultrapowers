@@ -120,7 +120,7 @@ Caveat: the Agent tool ran the helper **in the background**, so stream-json carr
 | R-o10a | 238 | `-p --resume 1111…1101 "Now reply with the JSON {\"ok\":false}" --json-schema S1` (≈10 min after R-o1) | exit 0, same `session_id`, `{"ok":false}`, `cache_read:18223 cache_create:7054`, cost **0.0164** | works headless |
 | R-o10b | 238 | fresh dispatch carrying the same context in the prompt | exit 0, `cache_read:22319 cache_create:2801`, cost **0.0095** | n=1: resume cost 1.7× fresh — the prior turn's cache had partly expired, so resume re-created 7 k tokens of cache |
 
-Verdict: **holds (mechanism)**; the cost claim is **not supported at n=1** — keep the design-inputs pre-registered measurement. Both runs printed `Warning: no stdin data received in 3s, proceeding without it` — the driver must spawn workers with stdin closed (`</dev/null`).
+Verdict: **holds (mechanism)**; the cost claim is **not supported at n=1** — measured and **reversed** on 2026-08-28, see `2026-08-28-prompt-cache-across-workers.md` §F: under control (one session, same clone, 2 s and 11 min apart) **resume is 3.1× cheaper than a fresh dispatch** (cc 109/92 vs 2,776), and R-o10a's *"the prior turn's cache had partly expired"* is wrong — Claude Code writes its `-p` prefix with the **1 h** breakpoint and nothing expires at 11 minutes (§D/§E). **Fix rounds resume.** Both runs printed `Warning: no stdin data received in 3s, proceeding without it` — the driver must spawn workers with stdin closed (`</dev/null`).
 
 ### Item 11 — `--bare` + `--append-system-prompt-file` + `--json-schema`
 
@@ -142,7 +142,7 @@ Fixture `/tmp/p365-bare`: `CLAUDE.md` = `SECRET_WORD=pineapple`; `.claude/settin
 | Per-worker knobs | holds: `--model/--effort/--fallback-model/--max-turns/--max-budget-usd` all accepted on 2.1.238 (`--max-turns` is hidden from `--help`); budget trip exits 1 |
 | Spend from the result, not the transcript | holds with caveat: sum `modelUsage`, not `usage` (last call only); `total_cost_usd` is a client-side estimate; `CLAUDE_CODE_ENABLE_TELEMETRY` not reproduced |
 | Isolated sessions per worker | holds: distinct `--session-id`, shared or per-run `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` honored on 2.1.238; no locks; fresh config dir needs no onboarding |
-| Fix rounds resume, not restart | holds (mechanism); cost claim unsupported at n=1 (resume 1.7× fresh) — measure as pre-registered |
+| Fix rounds resume, not restart | **holds, and the cost claim now favours resume** — measured 2026-08-28 (#382 note §F): resume **3.1× cheaper** than fresh dispatch; the R-o10 1.7× was n=1 and its expiry explanation is falsified |
 | Prompt files, no bake | **`--bare` does not hold under OAuth (blocker)**; `--append-system-prompt-file` holds; substitute `--setting-sources user --disable-slash-commands` + per-run `CLAUDE_CONFIG_DIR` achieves the row's intent |
 | Worker-side subagents, bounded | holds; `subagent_stats.refused.*` exposes cap trips; stream-json may carry two `result` lines |
 | Failure classes from exit codes + events | does not hold as tabled: observed `0` (incl. SIGINT abort with `is_error:true`), `1` (max_turns, budget, credential), `143` (SIGTERM); no `2`, no `130`. Classify from `subtype`/`terminal_reason`. `api_retry` shape cited, not reproduced |
@@ -164,7 +164,7 @@ Fixture `/tmp/p365-bare`: `CLAUDE.md` = `SECRET_WORD=pineapple`; `.claude/settin
 | spend (readSessionTokens) | `modelUsage` in the result envelope | sum + cap; token unit kept |
 | overload / AGENT_NULL heuristics | `subtype`, `terminal_reason`, `is_error`, exit 1/143, `system/api_retry` | a classification table |
 | per-wave concurrency | none (each `-p` is one process) | wave scheduler + N-process supervisor |
-| fix round | `--resume <sid>` or fresh dispatch | pick per the pre-registered measurement |
+| fix round | `--resume <sid>` | **settled 2026-08-28** (#382 note §F): resume, 3.1× cheaper than a fresh dispatch |
 | subagent bound | `--agents` + `CLAUDE_CODE_MAX_*` env | none |
 | kill / timeout | SIGTERM → 143, no envelope | timeout supervisor; treat 143 as retryable-once |
 
@@ -215,7 +215,7 @@ something? From the official docs (claude-code-guide agent; every cell cites its
 | Parallelism | ≤16 concurrent agents per run, CPU-bound; account-level rate limits ([workflows#behavior-and-limits](https://code.claude.com/docs/en/workflows#behavior-and-limits)) | no per-process cap; same account-level limits ([headless](https://code.claude.com/docs/en/headless#basic-usage)) |
 | Worktree isolation | `isolation:'worktree'` declarative, auto-cleanup — cut from the session checkout, not BASE (#314) | driver clones at BASE itself (the point of Half 2) |
 | Resume / replay | `resumeFromRunId` replays a run in-session, returns cached `agent()` results ([workflows#resume-after-a-pause](https://code.claude.com/docs/en/workflows#resume-after-a-pause)) | `--resume`/`--continue` continue ONE session; no saved-result replay → **#383** |
-| Prompt cache | agents with matching config share a prefix in-run; TTL 5 min, `subagentPromptCacheTtl` up to 1 h ([workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out)) | per process; sharing across processes undocumented → **#382** |
+| Prompt cache | agents with matching config share a prefix in-run; TTL 5 min, `subagentPromptCacheTtl` up to 1 h ([workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out)) | **measured 2026-08-28 (#382, CLOSED):** sharing holds across processes, runs and sessions; `-p` writes the **1 h** breakpoint by default (`ephemeral_5m` = 0) — ~73% of every sibling's prefix is a cache read with no packing effort |
 | Structured output | `agent({schema})` retries with tier escalation | `--json-schema` retries in-loop, never escalates (§2 item 1); driver keeps `runTaskInner`'s escalation |
 | Observability | `/workflows` live phases + per-agent transcripts ([workflows#watch-the-run](https://code.claude.com/docs/en/workflows#watch-the-run)) | `stream-json` events incl. `system/api_retry`; OTEL — the store/W2c surface is ours to build |
 | Permissions | `agent()` inherits the session's mode, no per-agent override | `--permission-mode`, `--allowedTools`, `--settings` hooks per worker ([headless#auto-approve-tools](https://code.claude.com/docs/en/headless#auto-approve-tools)) — role isolation becomes enforced |
@@ -224,7 +224,7 @@ something? From the official docs (claude-code-guide agent; every cell cites its
 | Auth | session login | OAuth token (non-bare only — `--bare` refuses it, §8) → **#384** |
 | Background | background run, per-agent pause/stop, notifications ([workflows#manage-runs](https://code.claude.com/docs/en/workflows#manage-runs)) | the driver's process supervisor (§5) |
 
-**Lost, and measurable:** in-run cache sharing (#382), cheap replay (#383). **Lost, and wanted gone:**
+**Lost, and measurable:** ~~in-run cache sharing (#382)~~ — **not lost, measured 2026-08-28: `-p` shares more, for longer** — cheap replay (#383). **Lost, and wanted gone:**
 session-checkout worktrees, session-inherited permissions, the registry snapshot, baked prompts.
 **Gained:** enforced per-worker tool isolation, cost as data, event-level failure classes, no LLM
 orchestrator. The honest read: Workflows are built for one human's interactive session; a headless,
