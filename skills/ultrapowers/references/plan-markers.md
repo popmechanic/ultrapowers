@@ -40,7 +40,8 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   the engine may union them instead of resolving them. Declare it only when
   true — review audits the claim the way it audits a test contract. A path
   outside the task's own `**Files:**` block is surfaced as a marker conflict
-  and dropped, never a compile error.
+  and dropped, never a compile error. Like every marker it belongs in the
+  header block; after `**Files:**` it is discarded and `--check` refuses it.
 <!-- /BAKE -->
 
 Example:

@@ -763,6 +763,15 @@ def _malformed_task_headings(plan_text):
             and not match_head(line)]
 
 
+def _late_marker_note(task_id, late_markers):
+    """The one wording for a marker found outside the header block — shared by
+    the transparency render and the --check refusal (#332) so the two never
+    drift."""
+    return ("Task {}: marker line(s) outside the header block ignored ({}) — "
+            "markers go immediately after the task heading".format(
+                task_id, "; ".join(sorted(set(late_markers))[:3])))
+
+
 def collect_violations(plan_path):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
@@ -805,6 +814,15 @@ def collect_violations(plan_path):
     violations = []
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
+    # A **Commutes:** after the header block is discarded by the runtime
+    # compile and surfaced only as a render conflict the author never sees
+    # (#332); at authoring time that is a refusal, worded with the render's
+    # own late-marker note so no new diagnostic vocabulary enters.
+    for t in tasks:
+        late = [m for m in t.get("late_markers", [])
+                if m.startswith("**Commutes:**")]
+        if late:
+            violations.append(_late_marker_note(t["id"], late))
     # Files grammar is disposition-scoped (#91): only EXPLICITLY marked
     # gate/manual/release tasks are exempt — see _files_grammar_exempt for why
     # this must never key on the heuristic classifier.
@@ -1300,9 +1318,8 @@ def main(argv=None):
     # first checkbox step) are never trusted — surface each task once.
     type_conflicts = [
         {"task": t["id"], "edge": "",
-         "note": "marker line(s) outside the header block ignored ("
-                 + "; ".join(sorted(set(t["late_markers"]))[:3])
-                 + ") — markers go immediately after the task heading"}
+         "note": _late_marker_note(t["id"], t["late_markers"])
+                 .split(": ", 1)[1]}
         for t in tasks if t.get("late_markers")]
 
     # A **Commutes:** path outside the task's own Files: block (spec §2b) is a

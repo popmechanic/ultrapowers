@@ -102,7 +102,8 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   the engine may union them instead of resolving them. Declare it only when
   true — review audits the claim the way it audits a test contract. A path
   outside the task's own `**Files:**` block is surfaced as a marker conflict and
-  dropped, never a compile error.
+  dropped, never a compile error. Like every marker it belongs in the
+  header block; after `**Files:**` it is discarded and `--check` refuses it.
 
 While marking the plan, decide review depth explicitly: mark
 `**Review:** adversarial` on tasks whose failure is costly or hard to see — the
@@ -112,9 +113,9 @@ The engine derives nothing: unmarked means lean, by construction.
 
 Placement is enforced: the compiler trusts markers only in the contiguous block
 immediately after the task heading — a later marker is ignored and surfaced as a
-conflict in the transparency render. A plan with **no markers at all** still
+conflict. A plan with **no markers at all** still
 compiles, but every disposition is guessed and the render flags it
-**`0 markers — all dispositions inferred`**. Mark your tasks.
+**`0 markers — all dispositions inferred`**.
 
 ## Replace the plan header
 
@@ -125,9 +126,6 @@ writing-plans mandates this header line on every plan:
 On a marked plan, REPLACE it with:
 
 > **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-Without this, the header directs any skills-obedient agent into the sequential
-executor.
 
 ## Execution Handoff (analyze, then recommend)
 
