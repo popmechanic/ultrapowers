@@ -129,11 +129,12 @@ No rigor-for-efficiency trade adopted since 0.2.18 shows a rising canary.
 - **P4:** ADOPTED as a whole-scale deletion of credit telemetry — PR **#343**;
   stat leg and the shim's `engine auth` line kept, no assert added. #319 marked
   superseded.
-- **P5:** not decided this sitting — stands as drafted (versionStamp reads the
-  installed plugin on the sandbox; closes #282's image-side half).
+- **P5:** ADOPTED — the shim stamps the INSTALLED plugin version (`claude plugin
+  list --json`) and the driver reds `versionStamp` on a mismatch with the pushed
+  manifest — PR **#348**; closes #282's image-side half.
 - **P6:** ADOPTED — `hygiene_check.sh --run-dir` reads the base branch from the
-  receipt; a branch whose PR is merged counts as merged (squash-merge blindness);
-  #237 (e) retired.
+  receipt; a branch whose PR is merged counts as merged (squash-merge blindness) —
+  PR **#347** (with the `filed:#N|URL` grammar); #237 (e) retired.
 - **Parked → filed:** reviewer blocking-line inconsistency = watch-item **#344**;
   `filed:` rows that file nothing → FIXED directly instead of parked
   (`residual_manifest.py --check` now requires `filed:#N` or a URL).
