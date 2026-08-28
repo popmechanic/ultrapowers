@@ -194,12 +194,150 @@ async function scenarioTiming() {
 // Scenarios that drive the real harness body through runWorkflow() with a
 // git-backed implementer stub are added here.
 
+const WAVES = [[
+  { id: 'A', title: 'alpha', body: 'create a.txt', tier: 'standard' },
+  { id: 'B', title: 'beta', body: 'create b.txt', tier: 'standard' },
+  { id: 'C', title: 'gamma', body: 'create c.txt', tier: 'standard' },
+]]
+const INTEGRATION_BRANCH = 'ultra/integration-sim'
+const launchArgs = () => ({ waves: WAVES, integrationBranch: INTEGRATION_BRANCH, stamp: 'sim',
+  edges: [], testCmd: 'true', pluginRoot: '/opt/plug', runDir: path.join(TMP, 'run') })
+const BASE_RE = /\nBASE: ([0-9a-f]{40})\n/
+const TRIP_RE = /^task [A-Z]: worktree provisioned at [0-9a-f]{40}, not BASE [0-9a-f]{40} — reset to BASE before any work \(#314\)$/
+const UNVERIFIED_RE = /^task [A-Z]: implementer reported no startHead — BASE anchoring unverified \(#314\)$/
+const trips = { newer: 0, older: 0, clean: 0, missing: 0 }
+
+// A git-backed implementer: provisions a real worktree from `cutRef` (what the
+// runtime does), runs the prompt's anchor recipe, commits one file on BASE,
+// and reports its coordinates plus the pre-reset sha as startHead — or omits
+// startHead when `omitStartHead` is set (the engine-bypass case).
+function makeAgent({ base, cutRef, omitStartHead, captured, failFirstReviewOf }) {
+  const { target } = REPO
+  const reviews = {}
+  return async (prompt, opts) => {
+    const label = opts.label || ''
+    if (captured) captured[label] = { prompt, opts }
+    if (label === 'setup') return { branch: INTEGRATION_BRANCH, headSha: base, baselinePassed: true }
+    if (label.startsWith('impl:') || label.startsWith('fix:')) {
+      const id = label.split(':')[1]
+      const dispatchedBase = prompt.match(BASE_RE)[1]
+      const { dir, branch } = provision(target, cutRef)
+      const { startHead } = anchorToBase(dir, dispatchedBase)
+      fs.writeFileSync(path.join(dir, id.toLowerCase() + '.txt'), 'work ' + label + '\n')
+      git(dir, 'add', '.')
+      git(dir, 'commit', '-q', '-m', 'work ' + label)
+      const reply = { status: 'DONE', summary: 's', branch, headSha: git(dir, 'rev-parse', 'HEAD') }
+      if (!omitStartHead) reply.startHead = startHead
+      return reply
+    }
+    if (label.startsWith('review:')) {
+      const id = label.split(':')[1]
+      reviews[id] = (reviews[id] || 0) + 1
+      if (failFirstReviewOf === id && reviews[id] === 1)
+        return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'missing assertion' }] }
+      return { verdict: 'PASS', issues: [] }
+    }
+    if (label.startsWith('merge:')) return { status: 'MERGED', headSha: base }
+    if (label === 'integration')
+      return { testsPassed: true, output: 'ok', findings: [], onIntegrationHead: true, ancestryMisses: [] }
+    throw new Error('unexpected agent label: ' + label)
+  }
+}
+
+// Every task's commit must sit directly on BASE — the real-git proof that the
+// work was built on the right parent after the correction.
+function assertBuiltOnBase(report, base) {
+  const { target } = REPO
+  for (const t of report.tasks) {
+    eq(t.status, 'done', 'engine: task ' + t.task + ' done')
+    eq(git(target, 'rev-parse', t.headSha + '^'), base, 'engine: task ' + t.task + ' commit parent is BASE')
+  }
+}
+
+async function scenarioEngineNewer() {
+  const { base1, newer } = REPO
+  const report = await runWorkflow({ agent: makeAgent({ base: base1, cutRef: newer }), args: launchArgs() })
+  eq(report.tasks.length, 3, 'engine-newer: three task entries')
+  for (const t of report.tasks)
+    eq(t.baseCorrected, { from: newer, to: base1 }, 'engine-newer: task ' + t.task + ' records the correction')
+  const calls = report.judgmentCalls.filter((j) => TRIP_RE.test(j))
+  eq(calls.length, 3, 'engine-newer: one #314 trip call per task')
+  assert(calls.every((j) => j.includes(newer) && j.includes(base1)), 'engine-newer: trip calls name both shas')
+  assertBuiltOnBase(report, base1)
+  trips.newer = calls.length
+  console.log('scenario engine-newer: OK')
+}
+
+async function scenarioEngineOlder() {
+  const { base2, older } = REPO
+  const report = await runWorkflow({ agent: makeAgent({ base: base2, cutRef: older }), args: launchArgs() })
+  for (const t of report.tasks)
+    eq(t.baseCorrected, { from: older, to: base2 }, 'engine-older: task ' + t.task + ' records the correction')
+  const calls = report.judgmentCalls.filter((j) => TRIP_RE.test(j))
+  eq(calls.length, 3, 'engine-older: one #314 trip call per task')
+  assertBuiltOnBase(report, base2)
+  trips.older = calls.length
+  console.log('scenario engine-older: OK')
+}
+
+async function scenarioEngineClean() {
+  const { base1 } = REPO
+  const before = resets
+  const report = await runWorkflow({ agent: makeAgent({ base: base1, cutRef: base1 }), args: launchArgs() })
+  for (const t of report.tasks)
+    eq(t.baseCorrected, null, 'engine-clean: task ' + t.task + ' records null (no correction)')
+  const calls = report.judgmentCalls.filter((j) => TRIP_RE.test(j) || UNVERIFIED_RE.test(j))
+  eq(calls.length, 0, 'engine-clean: zero #314 judgment calls')
+  eq(resets - before, 0, 'engine-clean: zero resets')
+  assertBuiltOnBase(report, base1)
+  trips.clean = calls.length
+  console.log('scenario engine-clean: OK')
+}
+
+async function scenarioEngineMissingStartHead() {
+  const { base1, newer } = REPO
+  const report = await runWorkflow({
+    agent: makeAgent({ base: base1, cutRef: newer, omitStartHead: true }), args: launchArgs() })
+  for (const t of report.tasks)
+    eq(t.baseCorrected, null, 'engine-missing: no startHead → null, never a fabricated correction')
+  eq(report.judgmentCalls.filter((j) => TRIP_RE.test(j)).length, 0, 'engine-missing: no trip call without a startHead')
+  eq(report.judgmentCalls.filter((j) => UNVERIFIED_RE.test(j)).length, 3, 'engine-missing: one unverified call per task')
+  trips.missing = report.judgmentCalls.filter((j) => TRIP_RE.test(j)).length
+  console.log('scenario engine-missing-starthead: OK')
+}
+
+async function scenarioPromptAndSchemaPins() {
+  const { base1 } = REPO
+  const captured = {}
+  await runWorkflow({
+    agent: makeAgent({ base: base1, cutRef: base1, captured, failFirstReviewOf: 'A' }), args: launchArgs() })
+  for (const label of ['impl:A', 'fix:A:1']) {
+    const d = captured[label]
+    assert(d, 'pins: ' + label + ' dispatched')
+    assert(d.opts.schema.required.includes('startHead'), 'pins: ' + label + ' schema requires startHead')
+    eq(d.opts.schema.properties.startHead, { type: 'string' }, 'pins: ' + label + ' schema types startHead')
+    for (const lit of [
+      '1. Anchor to BASE first, before any other command: run git rev-parse HEAD and report the printed sha verbatim as startHead in your JSON result',
+      'run git reset --hard <BASE> and confirm git rev-parse HEAD now equals BASE before anything else',
+      'Never run git stash in an engine worktree',
+      'git show <sha>:<path> or git diff <sha> -- <path> instead',
+    ]) assert(d.prompt.includes(lit), 'pins: ' + label + ' prompt carries the literal: ' + lit)
+  }
+  console.log('scenario prompt-and-schema-pins: OK')
+}
+
 const RUN = [
   scenarioRecipeNewer,
   scenarioRecipeOlder,
   scenarioRecipeClean,
   scenarioTiming,
-  // engine scenarios append here
+  scenarioEngineNewer,
+  scenarioEngineOlder,
+  scenarioEngineClean,
+  scenarioEngineMissingStartHead,
+  scenarioPromptAndSchemaPins,
+  async () => console.log('TRIPS newer=' + trips.newer + ' older=' + trips.older +
+    ' clean=' + trips.clean + ' missing=' + trips.missing),
 ]
 try {
   for (const s of RUN) await s()
