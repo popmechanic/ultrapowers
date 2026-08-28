@@ -1122,6 +1122,97 @@ try {
     )
   }
 
+  // -- 12. #336: a parked run whose branch could NOT be fetched reads null ----
+  // run-15's residual: the fetch leg failed (or the branch cell was unsafe)
+  // and parkedPublish still came back non-null, shaped {branch:null,
+  // fetched:false} — which the RUNBOOK reads as "the work survived". It did
+  // not: the branch dies with the sandbox at teardown. Non-null now means
+  // exactly "fetched into repoDir"; the reason it was not is in `errors`.
+  // (The fetched shape is pinned by N1 in test_drive_lifecycle.mjs.)
+  {
+    const runId = 'run-drive-336-nofetch'
+    // A perfectly safe branch name that exists in NO repo — the real
+    // `git fetch` (retargeted onto the stand-in sandbox repo) fails on it.
+    const ghostBranch = 'ultra/integration-00000000000000'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: integrationSha,
+          receiptPath: RECEIPT_PATH,
+          exec,
+          branch: ghostBranch,
+          gateGreen: false,
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      parkedPublishWaitMs: 8_000,
+      dbDir: path.join(tmp, 'db-336-nofetch'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(detail.status, 'parked')
+    assert.ok(
+      exec.cmds.some((cmd) => new RegExp(` fetch ssh://\\S+ ${ghostBranch}$`).test(cmd)),
+      `the fetch must have been ATTEMPTED (this is the fetch-failed path, not the unsafe path), got: ${JSON.stringify(exec.cmds.filter((c) => c.includes('fetch')))}`,
+    )
+    assert.equal(detail.parkedPublish, null, 'a branch that was not fetched did not survive — null, never {branch:null, fetched:false}')
+    assert.ok(
+      detail.errors.some((e) => new RegExp(`^fetch ${ghostBranch} failed \\(code \\d+\\)$`).test(e)),
+      `the failed fetch is on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.equal(read.o1, false)
+    assert.equal(read.receiptsResolvable, false, 'a park never brightens the gate read')
+    assert.ok(!detail.errors.includes('publish timeout'), 'a parked publish is never a publish timeout')
+  }
+
+  // -- 12b. …and an UNSAFE branch cell on a parked run reads null the same way
+  // The guard refuses before the shell (scenario 5's posture, on the parked
+  // path); the object must not exist for a branch nothing fetched.
+  {
+    const runId = 'run-drive-336-unsafe'
+    const pwned = path.join(tmp, 'pwned-336')
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: headSha,
+          exec,
+          rawBranch: `main; touch ${pwned}`,
+          gateGreen: false,
+        })
+      }, 30)
+    })
+
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      parkedPublishWaitMs: 8_000,
+      dbDir: path.join(tmp, 'db-336-unsafe'),
+      exec,
+      runId,
+    })
+    await sandbox
+
+    assert.equal(detail.status, 'parked')
+    assert.equal(detail.parkedPublish, null, 'an unsafe branch cell was never fetched — null')
+    assert.ok(
+      detail.errors.some((e) => e.includes('unsafe branch')),
+      `expected an explicit unsafe-branch error, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(!exec.cmds.some((cmd) => cmd.includes('pwned-336')), 'the injected command must never reach exec')
+    assert.equal(fs.existsSync(pwned), false, 'the injected command must not have run')
+    assert.equal(read.o1, false)
+  }
+
   console.log('ALL TESTS PASSED')
 } finally {
   cleanup()

@@ -734,7 +734,12 @@ export const driveOne = async ({
       resolvable = false
     }
     if (reachedGateGreen) receiptsResolvable = resolvable
-    else parkedPublish = { branch: fetchedBranch, fetched: fetchedOk, receiptsResolvable: resolvable, unapproved: true }
+    // #336: non-null ⟺ the branch was fetched into repoDir. A failed or
+    // refused fetch leaves NOTHING on this side — the branch dies with the
+    // sandbox at teardown — so it reads null (RUNBOOK park triage step 2:
+    // evidence-diff recovery), never a survived-shaped object carrying
+    // `branch: null`. Why it was not fetched is already in `errors`.
+    else if (fetchedOk) parkedPublish = { branch: fetchedBranch, fetched: true, receiptsResolvable: resolvable, unapproved: true }
   }
 
   const leaseContinuity = epochs.size === 1 && epochs.has(1) && !sawExpired && !sawRevoked
@@ -812,7 +817,8 @@ export const driveOne = async ({
     receipts: receiptChecks.length > 0 ? receiptChecks : receipts,
     // #318: a parked run's published branch, fetched locally but UNAPPROVED —
     // no standing grant covers it; merging it needs an explicit operator ack
-    // of the parked gate receipt. null when the park published nothing.
+    // of the parked gate receipt. null when the park published nothing OR its
+    // branch could not be fetched (#336) — `errors` says which.
     parkedPublish,
     convergedAway,
     pages,

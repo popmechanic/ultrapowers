@@ -338,19 +338,26 @@ advance:
 
 A parked run that published receipts is not lost work. `driveOne` fetches the
 parked run's integration branch exactly as it does a gate-green run's, and
-reports it as `detail.parkedPublish` — `{branch, fetched, receiptsResolvable,
-unapproved: true}` — in the gate-read detail. **`unapproved` means exactly
-that:** no standing grant covers the branch, so merging it requires an
-explicit operator ack of the parked gate receipt's `acks` (read them in
-`fleet-receipts/<runId>/` on the fetched branch). With the ack given, land
-the branch by normal PR — no re-drive needed.
+reports it as `detail.parkedPublish` — `{branch, fetched: true,
+receiptsResolvable, unapproved: true}`, or `null` when nothing was fetched —
+in the gate-read detail. **`unapproved` means exactly that:** no standing
+grant covers the branch, so merging it requires an explicit operator ack of
+the parked gate receipt's `acks` (read them in `fleet-receipts/<runId>/` on
+the fetched branch). With the ack given, land the branch by normal PR — no
+re-drive needed.
 
 On every park, triage in this order:
 
-1. Read `detail.parkedPublish`. Non-null → the work survived; review the
-   fetched branch and ack-or-reject.
-2. `parkedPublish: null` → recover via the run-14 evidence-diff pattern:
-   the per-task review diffs in the pulled evidence
+1. Read `detail.parkedPublish`. Non-null means exactly one thing (#336): the
+   parked run's branch IS fetched into the orchestrator checkout (`fetched`
+   is always `true` when the object exists). Review `branch` and
+   ack-or-reject; `receiptsResolvable` says whether every receipt pointer
+   resolved on it.
+2. `parkedPublish: null` → nothing survived on this side, for one of two
+   reasons — the park published nothing, or the branch could not be fetched
+   before teardown (`detail.errors` carries `fetch <branch> failed (code N)`
+   or `unsafe branch name …`). Either way, recover via the run-14
+   evidence-diff pattern: the per-task review diffs in the pulled evidence
    (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
    apply cleanly to base (PR #317 precedent); reconstruct any
    integration-only fixes from `report.json`.
