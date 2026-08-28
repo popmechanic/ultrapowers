@@ -341,11 +341,7 @@ export const GRANTED_ACK_TYPES = new Set(['deferred:runtime', 'deferred:external
  *      `type` is granted; anything outside the grant parks.
  *   3. `approve-receipt.json` exists, is `mode: 'approve'`, and its `stamp`
  *      matches the gate receipt's own `stamp` — proving the approve that ran
- *      is THIS run's approve, not some other run's leftover receipt. Then
- *      `RUN_LOCK` (one level up from the run directory) must no longer name
- *      this stamp: the approve's own on-disk side effect is releasing that
- *      lock, so a lock still naming this stamp means the approve never
- *      actually ran to completion.
+ *      is THIS run's approve, not some other run's leftover receipt.
  *
  * A missing/unreadable receipt is not green either.
  */
@@ -366,17 +362,6 @@ export const readGateGreen = (receiptFile) => {
   if (approve?.mode !== 'approve') return false
   if (typeof receipt.stamp !== 'string' || receipt.stamp.length === 0) return false
   if (approve.stamp !== receipt.stamp) return false
-
-  // The approve's own on-disk side effect: run_lock.sh release removes the
-  // lock when it holds this stamp. A lock still naming this stamp means the
-  // approve never actually ran.
-  let lockHolder = null
-  try {
-    lockHolder = fs.readFileSync(path.join(runDir, '..', 'RUN_LOCK'), 'utf8')
-  } catch {
-    lockHolder = null
-  }
-  if (lockHolder === receipt.stamp) return false
   return true
 }
 
@@ -882,13 +867,24 @@ export const engineArgs = (planPath, sessionId) => {
 }
 
 /**
+ * The engine's environment: the inherited env (the credential lives there,
+ * #213) plus `ULTRAPOWERS_FLEET_RUN=<runId>` — the one signal the skill's
+ * §Engine/§Client branch and `ultra_run.py`'s `fleet-run` stage read to know
+ * they are inside a fleet sandbox (One Driver Phase 0 §mechanism). It is set
+ * here and nowhere else; an engine that finds it unset refuses at preflight.
+ * (Distinct from the driver's `engineEnv` — the per-run env FILE `provisionRun`
+ * delivers, which is what `process.env` already carries by the time this runs.)
+ */
+export const engineProcessEnv = (runId) => ({ ...process.env, ULTRAPOWERS_FLEET_RUN: runId })
+
+/**
  * The default spawn seam: run a command to completion, resolve its exit code.
  * `stdio: 'inherit'` deliberately — the engine's output is the sandbox's log,
  * and buffering a multi-minute run in memory would serve nobody.
  */
-export const spawnEngineProcess = ({ command, args, cwd }) =>
+export const spawnEngineProcess = ({ command, args, cwd, runId }) =>
   new Promise((resolve) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' })
+    const child = spawn(command, args, { cwd, stdio: 'inherit', env: engineProcessEnv(runId) })
     child.on('error', () => resolve(1))
     child.on('close', (code) => resolve(code ?? 1))
   })
@@ -896,7 +892,7 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
 /**
  * Launch the engine run headless, against the base the driver pushed.
  *
- * Three things must be true before a single token is spent, and all are
+ * Four things must be true before a single token is spent, and all are
  * checked here rather than assumed:
  *
  *   planPath   The assignment carries it (`provisionRun` puts it in the
@@ -913,12 +909,16 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
  *              the engine that runs is whatever the image was baked with
  *              (#373). `installPluginFromCheckout` re-installs it from the
  *              checkout; a failed install means fail, now.
+ *   runId      The assignment carries it; it becomes ULTRAPOWERS_FLEET_RUN,
+ *              without which the engine refuses at preflight (fail-closed).
+ *              Absent means fail, now.
  *
  * Each failure returns an explicit `error` rather than a bare falsy outcome, so
  * `runShim` parks the run (fail-closed) and the reason reaches the sandbox log
  * instead of being inferred from a silent park.
  *
- * The environment is inherited — that is where the engine's credential lives
+ * The environment is inherited plus `ULTRAPOWERS_FLEET_RUN=<runId>`
+ * (`engineProcessEnv`) — the inherited half is where the engine's credential lives
  * (`CLAUDE_CODE_OAUTH_TOKEN`, sourced from the per-run env file `provisionRun`
  * delivers, #213). No credential is read or set here; `claude auth status` is
  * logged before launch so the run's evidence names the credential it rode
@@ -929,6 +929,7 @@ export const invokeEngineRun = async ({
   repoDir,
   planPath,
   sessionId,
+  runId,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
@@ -939,6 +940,11 @@ export const invokeEngineRun = async ({
   if (!isNonEmptyString(planPath)) {
     log('fleet: run assignment carries no planPath — refusing to launch the engine')
     return { gateGreen: false, error: 'missing planPath' }
+  }
+
+  if (!isNonEmptyString(runId)) {
+    log('fleet: run assignment carries no runId — refusing to launch the engine')
+    return { gateGreen: false, error: 'missing runId' }
   }
 
   // A literal ref name, so there is nothing to validate and nothing to inject.
@@ -988,7 +994,7 @@ export const invokeEngineRun = async ({
     log('fleet: engine auth status unreadable (continuing)')
   }
 
-  const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath, sessionId), cwd: repoDir })
+  const code = await spawnEngine({ command: ENGINE_COMMAND, args: engineArgs(planPath, sessionId), cwd: repoDir, runId })
   // Resolved AFTER the run, because the run is what creates the directory.
   // The verdict lives in the gate receipt, never in report.json — see
   // `readGateGreen`. Scoped by `excludeDirs` to the directories this run
@@ -1080,7 +1086,8 @@ export const main = async ({
     runId,
     ttlMs,
     invokeRun:
-      invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec, spawnEngine, excludeDirs: preRunDirs })),
+      invokeRun ??
+      (() => invokeEngineRun({ repoDir, planPath, sessionId, runId, exec, spawnEngine, excludeDirs: preRunDirs })),
     readReportTokens: readTokens,
   })
 

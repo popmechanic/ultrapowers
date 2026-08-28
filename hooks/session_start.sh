@@ -68,9 +68,10 @@ The ultrapowers plugin is installed. Two standing rules:
    integrity, public API, loops/cursors/pagination/budgets/termination logic), or hard-to-verify behavior. Decide, first match wins:
    risk → Ultrapowers (the risk override); parallel width and T≥4 → Ultrapowers;
    T≤2 → Inline; else → Subagent-Driven. Show a one-line analysis, then:
-   1. Ultrapowers — /ultrapowers <plan-path>: parallel waves, worktree isolation,
-      per-task review, one pre-merge human gate. Selecting ultrapowers authorizes execution:
-      begin implementation immediately after rendering the wave plan, with no approval pause.
+   1. Ultrapowers — /ultrapowers <plan-path>: commits the plan and drives it on the
+      exe.dev fleet (parallel waves in a sandbox, per-task review, the orchestrator
+      opens the PR). Selecting ultrapowers authorizes execution: the plan is committed
+      and the fleet run launched immediately, with no approval pause.
    2. Subagent-Driven — superpowers:subagent-driven-development (sequential).
    3. Inline — superpowers:executing-plans (inline).
 </ultrapowers-routing>

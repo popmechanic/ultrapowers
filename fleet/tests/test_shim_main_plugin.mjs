@@ -81,7 +81,7 @@ ok('pluginInstallCommands: marketplace add <repo> → uninstall → install, in 
   const { cmds, exec } = mkExec()
   const { spawns, spawnEngine } = mkSpawn(cmds)
   const logs = []
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: (l) => logs.push(l) })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: (l) => logs.push(l) })
   assert.deepEqual(outcome, { gateGreen: false })
   const at = (cmd) => cmds.indexOf(cmd)
   assert.ok(at(CHECKOUT) >= 0, `checkout must be issued, got ${JSON.stringify(cmds)}`)
@@ -101,7 +101,7 @@ for (const [i, failing] of INSTALL.entries()) {
   const { cmds, exec } = mkExec({ fail: [failing] })
   const { spawns, spawnEngine } = mkSpawn(cmds)
   const logs = []
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: (l) => logs.push(l) })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: (l) => logs.push(l) })
   assert.deepEqual(outcome, { gateGreen: false, error: `plugin install from checkout failed: \`${failing}\` exited 1` })
   assert.equal(spawns.length, 0, 'nothing spawns on a failed install')
   assert.deepEqual(cmds.filter((c) => INSTALL.includes(c)), INSTALL.slice(0, i + 1), 'the sequence stops at the first failure')
@@ -114,7 +114,7 @@ for (const [i, failing] of INSTALL.entries()) {
 {
   const { cmds, exec } = mkExec({ throwOn: INSTALL[0] })
   const { spawns, spawnEngine } = mkSpawn(cmds)
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: quiet })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: quiet })
   assert.deepEqual(outcome, { gateGreen: false, error: `plugin install from checkout failed: \`${INSTALL[0]}\` exited 1` })
   assert.equal(spawns.length, 0)
   ok('a rejecting exec seam on an install command refuses the launch, never crashes')
@@ -124,7 +124,7 @@ for (const [i, failing] of INSTALL.entries()) {
 {
   const { cmds, exec } = mkExec({ fail: [CHECKOUT] })
   const { spawns, spawnEngine } = mkSpawn(cmds)
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: quiet })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: quiet })
   assert.deepEqual(outcome, { gateGreen: false, error: `checkout ${BASE_REF} failed` })
   assert.equal(cmds.filter((c) => INSTALL.includes(c)).length, 0, 'no install command before a successful checkout')
   assert.equal(spawns.length, 0)
@@ -135,7 +135,7 @@ for (const [i, failing] of INSTALL.entries()) {
 {
   const { cmds, exec } = mkExec({ sha: '5d8960b3780a41d1898b4de1735fc6e9a3adff6c' })
   const { spawns, spawnEngine } = mkSpawn(cmds)
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: quiet })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: quiet })
   assert.equal(outcome.gateGreen, false)
   assert.match(outcome.error, /^plugin install from checkout failed: installed gitCommitSha 5d8960b\S+ is not fleet-base 42734e8/)
   assert.equal(spawns.length, 0)
@@ -144,7 +144,7 @@ for (const [i, failing] of INSTALL.entries()) {
 {
   const { cmds, exec } = mkExec({ sha: SHA.slice(0, 12) })
   const { spawns, spawnEngine } = mkSpawn(cmds)
-  await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: quiet })
+  await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: quiet })
   assert.equal(spawns.length, 1, 'an abbreviated sha that prefixes fleet-base is a match')
   ok('an abbreviated installed sha matching fleet-base still launches')
 }
@@ -152,7 +152,7 @@ for (const [i, failing] of INSTALL.entries()) {
   const { cmds, exec } = mkExec({ sha: null })
   const { spawns, spawnEngine } = mkSpawn(cmds)
   const logs = []
-  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', exec, spawnEngine, log: (l) => logs.push(l) })
+  const outcome = await invokeEngineRun({ repoDir: REPO, planPath: 'docs/p.md', runId: 'run-plugin', exec, spawnEngine, log: (l) => logs.push(l) })
   assert.deepEqual(outcome, { gateGreen: false })
   assert.equal(spawns.length, 1, 'an unreadable installed_plugins.json does not block the launch')
   assert.ok(logs.some((l) => l.includes('gitCommitSha unreadable')))

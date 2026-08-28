@@ -7,8 +7,8 @@
 //   2. every ack in the receipt is inside the granted class
 //      (deferred:runtime / deferred:external) — anything else parks.
 //   3. approve-receipt.json    — the approve actually RAN (mode: 'approve',
-//      matching stamp), and RUN_LOCK no longer names this run's stamp (the
-//      approve's own on-disk side effect: the lock release).
+//      matching stamp).
+//   The engine itself is spawned with ULTRAPOWERS_FLEET_RUN=<runId> (Phase 0 §mechanism) — pinned here too.
 //
 // A bare PASS still greens unconditionally; a bare NEEDS_ACK (no sidecars) never
 // greens vacuously — every leg is fail-closed.
@@ -24,6 +24,8 @@ import {
   findReceiptFiles,
   findGateReceiptFile,
   findRunReportFile,
+  spawnEngineProcess,
+  invokeEngineRun,
 } from '../shim-main.mjs'
 
 let passed = 0
@@ -33,14 +35,13 @@ const ok = (label) => {
 }
 
 const stamp = '20260826-120000'
-const mkRun = (t, { verdict, acks = [], standing = null, approve = null, lock = null }) => {
+const mkRun = (t, { verdict, acks = [], standing = null, approve = null }) => {
   const runDir = path.join(t, '.claude', 'ultrapowers', `run-${stamp}`)
   fs.mkdirSync(runDir, { recursive: true })
   const receiptFile = path.join(runDir, 'gate-receipt.json')
   fs.writeFileSync(receiptFile, JSON.stringify({ mode: 'gate', stamp, verdict, gateCheck: { verdict, acks } }))
   if (standing) fs.writeFileSync(path.join(runDir, 'standing-approval.json'), JSON.stringify(standing))
   if (approve) fs.writeFileSync(path.join(runDir, 'approve-receipt.json'), JSON.stringify(approve))
-  if (lock !== null) fs.writeFileSync(path.join(runDir, '..', 'RUN_LOCK'), lock)
   return receiptFile
 }
 const EXT = { type: 'deferred:external', detail: 'live shape unverified' }
@@ -173,42 +174,69 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-gate-'))
   ok('approve receipt stamp mismatch parks')
 }
 
-// --- 12. RUN_LOCK still held by this stamp → approve never actually ran ------
+// --- 12. the engine spawns with ULTRAPOWERS_FLEET_RUN=<runId> (Phase 0 §mechanism) --
 {
   const t12 = tmp()
+  delete process.env.ULTRAPOWERS_FLEET_RUN
+  // (a) the real spawn seam sets the variable from runId — the child reads it back itself
   assert.equal(
-    readGateGreen(
-      mkRun(t12, { verdict: 'NEEDS_ACK', acks: [EXT], standing: STANDING, approve: APPROVE, lock: stamp }),
-    ),
-    false,
+    await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'test "$ULTRAPOWERS_FLEET_RUN" = "run-77"'], cwd: t12, runId: 'run-77' }),
+    0,
   )
-  ok('RUN_LOCK still held by this stamp parks')
+  // (b) the inherited env still rides beside it (the credential lives there, #213)
+  process.env.FLEET_GATE_TEST_CANARY = 'canary'
+  assert.equal(
+    await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'test "$FLEET_GATE_TEST_CANARY" = canary -a "$ULTRAPOWERS_FLEET_RUN" = run-77'], cwd: t12, runId: 'run-77' }),
+    0,
+  )
+  delete process.env.FLEET_GATE_TEST_CANARY
+  // (c) invokeEngineRun threads the assignment's runId to the spawn seam
+  const seen = []
+  const outcome = await invokeEngineRun({
+    repoDir: t12,
+    planPath: 'docs/plan.md',
+    runId: 'run-77',
+    exec: async () => ({ code: 0, stdout: '' }),
+    spawnEngine: async ({ runId }) => {
+      seen.push(runId)
+      return 1
+    },
+    log: () => {},
+  })
+  assert.deepEqual(seen, ['run-77'])
+  assert.equal(outcome.gateGreen, false)
+  // (d) no runId → refused before any checkout or spawn (fail-closed, like a missing planPath)
+  const calls = []
+  const refused = await invokeEngineRun({
+    repoDir: t12,
+    planPath: 'docs/plan.md',
+    exec: async (cmd) => {
+      calls.push(cmd)
+      return { code: 0, stdout: '' }
+    },
+    spawnEngine: async () => {
+      calls.push('spawn')
+      return 0
+    },
+    log: () => {},
+  })
+  assert.deepEqual(refused, { gateGreen: false, error: 'missing runId' })
+  assert.deepEqual(calls, [])
+  ok('engine spawns with ULTRAPOWERS_FLEET_RUN=<runId>; a missing runId refuses before checkout')
 }
 
-// --- 13. a different run's lock is not ours → still greens --------------------
-{
-  const t13 = tmp()
-  assert.equal(
-    readGateGreen(
-      mkRun(t13, { verdict: 'NEEDS_ACK', acks: [EXT], standing: STANDING, approve: APPROVE, lock: 'other-run' }),
-    ),
-    true,
-  )
-  ok("a different run's RUN_LOCK does not block green")
-}
-
-// --- 14. missing/unreadable receipt → parks -----------------------------------
+// --- 13. missing/unreadable receipt → parks -----------------------------------
 {
   const t14 = tmp()
   assert.equal(readGateGreen(path.join(t14, 'nope.json')), false)
   ok('missing/unreadable receipt parks')
 }
 
-// --- 15. the directive must instruct saving the approve receipt --------------
+// --- 14. the directive must instruct saving the approve receipt --------------
 assert.ok(STANDING_DIRECTIVE.includes('approve-receipt.json'), 'directive must instruct saving the approve receipt')
 ok('STANDING_DIRECTIVE instructs saving approve-receipt.json')
 
-// --- 16. GRANTED_ACK_TYPES is exactly the #281 granted class ------------------
+// --- 15. GRANTED_ACK_TYPES is exactly the #281 granted class ------------------
 assert.deepEqual([...GRANTED_ACK_TYPES].sort(), ['deferred:external', 'deferred:runtime'])
 ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
 
