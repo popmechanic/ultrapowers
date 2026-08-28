@@ -64,6 +64,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - **"Frontier" is always qualified:** *merge frontier* (fold kernel) / *map frontier*
   (takeable wayfinder tickets) / *docket frontier* (run-integration tree). Bare
   "frontier" is banned in specs, docs, and issues.
+- **Open maps:** #238 *The Authoring Frontier* (plan authoring); #360 *The Merge
+  Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
+  kernel or orchestrator-store work; the binding one: *Manyana merges values,
+  TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
+  and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).
 
 ## How features are built here
 
