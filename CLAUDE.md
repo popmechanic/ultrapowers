@@ -68,7 +68,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   THE engine: every run is an encapsulated `claude -p` fleet on exe.dev, the laptop a thin
   client; no LLM orchestrator, no Workflow tool, no local substrate; cutover 0.3.0 against
   a pre-registered bar; read its §Rules — surface ceiling, deletion owed per guard — before
-  touching `skills/ultrapowers/` or `fleet/`); #238 *The Authoring Frontier* (plan
+  touching `skills/ultrapowers/` or `fleet/`; the frozen in-repo copy the spec must
+  adopt-or-answer row by row is `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`); #238 *The Authoring Frontier* (plan
   authoring); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
