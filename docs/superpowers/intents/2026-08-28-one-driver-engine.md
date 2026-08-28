@@ -46,7 +46,9 @@ dependencies and the ultradocket rework ship in the same release from a separate
 - **Interfaces:** `dispatchWorker({role, task, clone, sessionId}) -> envelope`
 - **Produces:** `runWorker(opts) -> {structuredOutput, usage, exitClass, sessionId}`;
   `classifyExit(envelope, code) -> 'success'|'max_turns'|'budget'|'auth'|'sigterm'|'abort'`
-- **Files:** `fleet/worker.mjs`, `fleet/roles/*.md`, `fleet/tests/test_worker.mjs`
+- **Files:** `fleet/worker.mjs`, `fleet/roles/implementer.md`, `fleet/roles/reviewer.md`,
+  `fleet/roles/critic.md`, `fleet/roles/write-side.md`, `fleet/tests/test_worker.mjs`
+  *(`fleet/roles/wave-author.md` belongs to T6, which owns that role)*
 - **tier:** most-capable
 - **Acceptance:** `do:` kill a worker mid-run with SIGTERM. `see:` the driver records exit
   class `sigterm` with no envelope, retries that task exactly once, and the run continues.
@@ -183,7 +185,12 @@ dependencies and the ultradocket rework ship in the same release from a separate
 - **Depends-on:** T4, T5, T8
 - **Interfaces:** `evals/ab_runner.py` drives the driver, remotely
 - **Produces:** gate parity runnable on the fleet
-- **Files:** `evals/ab_runner.py`, `evals/fixtures/*/intent.md`, `tests/test_ab_runner.py`
+- **Files:** `evals/ab_runner.py`, `tests/test_ab_runner.py`,
+  `evals/fixtures/chained/intent.md`, `evals/fixtures/contend/intent.md`,
+  `evals/fixtures/contend-big/intent.md`, `evals/fixtures/contend-prod/intent.md`,
+  `evals/fixtures/degrade/intent.md`, `evals/fixtures/flawed/intent.md`,
+  `evals/fixtures/flawed-routing/intent.md`, `evals/fixtures/mixed/intent.md`,
+  `evals/fixtures/webapp/intent.md`, `evals/fixtures/wide/intent.md`
 - **tier:** most-capable
 - **Acceptance:** `do:` run gate parity across the ten fixtures carrying a `plan.md`.
   `see:` for each, the derived plan's wave shape and gate verdict equal the old engine's
@@ -238,6 +245,11 @@ not exercise 8; it is a default waiting on the first run that needs it.
   exist yet, so the compiler's write-after-write overlap edges are derived from predicted
   paths. Standing decision 2 exists only to absorb that. A schema that distinguished
   *existing* from *created* files would not need it.
+- **The compiler refuses globs in `Files:`, and it is right to** — a glob silently drops
+  overlap coverage, which is the entire reason `Files:` is signed. Two tasks carried one
+  (`fleet/roles/*.md`, `evals/fixtures/*/intent.md`) and were caught by a dry-run compile
+  before any spend. **The intent checker (client C2) must refuse a glob at authoring
+  time**, so this is never discovered by the compiler again.
 - **`Depends-on: —` appears four times.** Four genuinely independent tasks is a wide wave 1,
   which is good — but it also means wave 1 does the most work with the least derived context,
   the inverse of what the derivation tier is for.

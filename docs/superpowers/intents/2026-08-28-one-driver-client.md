@@ -52,15 +52,18 @@ installed on the operator's machine; the residual is one precedence line.
 - **Interfaces:** `check_intent.py <intent.md>` → exit 0 or a named refusal
 - **Produces:** refusal on an empty or `unknown` slot, on a slot count ≠ 7, on > 8 standing
   decisions, on a task missing any of id / `Depends-on` / `Interfaces` / `Produces:` /
-  `Files:` / `tier` / acceptance, and on a human-eyes acceptance statement with no matching
-  pre-authorization
+  `Files:` / `tier` / acceptance, on a **glob in a `Files:` block**, and on a human-eyes
+  acceptance statement with no matching pre-authorization
 - **Files:** `skills/ultrapowers/scripts/check_intent.py`, `tests/test_check_intent.py`
 - **tier:** most-capable
 - **Acceptance:** `do:` run it against an intent whose `## Cadence` heading is also mentioned
   in prose earlier in the file. `see:` it counts the **heading**, not the prose mention —
   slot boundaries anchor at line start. A first hand-validation of the engine intent got this
   wrong and silently reported **0 standing decisions** where there were 7: a false green, in
-  the one tool whose whole job is refusing false greens.
+  the one tool whose whole job is refusing false greens. `do:` also run it against a task
+  whose `Files:` block contains `fleet/roles/*.md`. `see:` refused — a glob silently drops
+  the overlap coverage that signing `Files:` exists to provide, and the engine intent shipped
+  two before a dry-run compile caught them.
 
 ### C3 — delete `ultraplan` and drop the seven dependencies
 
@@ -131,8 +134,11 @@ installed on the operator's machine; the residual is one precedence line.
 
 ## Cadence
 
-One run, **width ≤ 8**, one wave per sandbox (measured — `evals/frontier/results/2026-08-28-wave-width.md`). Two waves fall out: C1 and C5 have no dependencies;
-C2, C3, C4 and C6 follow C1.
+One run, **width ≤ 8**, one wave per sandbox (measured — `evals/frontier/results/2026-08-28-wave-width.md`).
+
+**Three waves, not the two a first draft claimed** — `[C1, C5]`, `[C2, C3, C4]`, `[C6]`.
+C6 depends on C1 **and** C2, so it cannot ride wave 2. The compiler said so on a dry run
+(`tools/intent_to_plan.py` → `compile_plan.py`); the author's arithmetic did not.
 
 **Where the §6 schema chafed, recorded for its own revision:**
 
