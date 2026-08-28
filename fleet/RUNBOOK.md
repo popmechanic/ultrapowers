@@ -81,8 +81,7 @@ ssh exe.dev "new --name=fleet-orchestrator --cpu=2 --memory=4GB --setup-script=/
 
 # 2. Its own SSH key, registered on the account SCOPED BY TAG so the key can
 #    reach fleet VMs (cp/rm/stat for provisioning + teardown) but nothing else
-#    on the account — this is why `billing credits usage` from the orchestrator
-#    is refused by design (#213/#319); read credits from the laptop instead.
+#    on the account (#213).
 ssh fleet-orchestrator.exe.xyz 'ssh-keygen -t ed25519 -N "" -C fleet-orchestrator -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub'
 ssh exe.dev "ssh-key add --tag=fleet '<the printed public key>'"
 ssh exe.dev "tag fleet-golden fleet"        # every fleet VM carries the tag; provisionRun copies fleet-golden, so clones inherit it
@@ -252,16 +251,15 @@ needs no exec wrapper of its own:
   `detail.errors` and teardown proceeds. `detail.sandboxLogs` names the archive,
   or is `null`.
 
-  On the same leg, two control-plane captures that only exist while the VM does:
-  `stat <vm> --json --range=24h` → `<evidenceDir>/stat-<runId>.json` and
-  `billing credits usage --group=box --detail --json` →
-  `<evidenceDir>/credits-<runId>.json`, each bounded by its own `logPullTimeoutMs`. The
-  raw payloads are kept whether or not they parse; the derived reads are
-  `detail.sandboxStat` (`{peakCores, meanCores, peakMemBytes}`, or `null`) and
-  `detail.creditSpendUsd` (USD, `0` when the ledger carried no row for this box,
-  `null` when unknown). Every failure here — refused command, non-zero exit,
-  timeout, bad JSON — lands in `detail.errors` and leaves the field `null`;
-  `destroySandbox` still runs.
+  On the same leg, one control-plane capture that only exists while the VM does:
+  `stat <vm> --json --range=24h` → `<evidenceDir>/stat-<runId>.json`, bounded by
+  its own `logPullTimeoutMs`. The raw payload is kept whether or not it parses;
+  the derived read is `detail.sandboxStat` (`{peakCores, meanCores,
+  peakMemBytes}`, or `null`). Every failure here — refused command, non-zero
+  exit, timeout, bad JSON — lands in `detail.errors` and leaves the field
+  `null`; `destroySandbox` still runs. (There is no credit-spend capture: the
+  engine rides the Max subscription, and `shim.log`'s `engine auth` line is the
+  per-run receipt of that route.)
 
   Keep `dbDir` across runs — never `rm` it; a persisted store is test-pinned safe
   (prior-run rows do not perturb a new run's gate read). Evidence lives outside it

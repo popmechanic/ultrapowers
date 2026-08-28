@@ -59,24 +59,6 @@ export const sandboxStatCommand = ({ vmName }) =>
   `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat ${vmName} --json --range=24h"`
 
 /**
- * The month's per-box credit spend. Interpolates nothing — the row for this
- * run's VM is selected after the fact, in `deriveCreditSpendUsd`.
- */
-export const creditsUsageCommand = () =>
-  `ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "billing credits usage --group=box --detail --json"`
-
-/**
- * The orchestrator key's deliberate refusal of billing reads (#213). When the
- * credits capture fails WITH this signature, the failure is posture, not a
- * defect — recorded as the single documented note below instead of raw noise,
- * so W2 spend reads never special-case it (#319). `creditSpendUsd` stays null.
- */
-export const CREDITS_REFUSAL_RE = /not allowed by SSH key permissions/
-export const CREDITS_REFUSAL_NOTE =
-  'credits usage: skipped — orchestrator key refuses billing reads by design (#213); ' +
-  'read spend from the LOCAL billing canary: ssh exe.dev "billing credits usage --group=box --json"'
-
-/**
  * Reduce a `stat --json` payload to the three numbers the W1 gate reads.
  * Returns null when the payload carries no usable sample.
  */
@@ -92,17 +74,6 @@ export const deriveSandboxStat = (statJson) => {
     meanCores: cores.reduce((a, b) => a + b, 0) / cores.length,
     peakMemBytes: mems.length ? Math.max(...mems) : null,
   }
-}
-
-/**
- * This run's own credit spend, in USD. A payload with no row for this VM means
- * the control plane recorded no spend against it — that is a flat 0, not an
- * unknown; a row whose cost is not a number IS unknown, and reads null.
- */
-export const deriveCreditSpendUsd = (creditsJson, vmName) => {
-  const rows = Array.isArray(creditsJson?.groups) ? creditsJson.groups : []
-  const row = rows.find((g) => g?.box === vmName)
-  return row ? (typeof row.cost_usd === 'number' ? row.cost_usd : null) : 0
 }
 
 /**
@@ -306,11 +277,10 @@ export const driveOne = async ({
   let pulled = false
   let sandboxLogs = null
   let sandboxStat = null
-  let creditSpendUsd = null
 
   // One command, bounded by `logPullTimeoutMs`. The bound is PER COMMAND, not
-  // shared across the three captures: a slow `stat` must not eat the budget the
-  // credits pull still needs, and no capture may outlive its own bound.
+  // shared across the captures: a slow log pull must not eat the budget the
+  // `stat` capture still needs, and no capture may outlive its own bound.
   const boundedExec = (cmd) => {
     let timer
     const timeout = new Promise((resolve) => {
@@ -319,17 +289,17 @@ export const driveOne = async ({
     return Promise.race([Promise.resolve().then(() => exec(cmd)), timeout]).finally(() => clearTimeout(timer))
   }
 
-  // The two control-plane captures that must happen while the VM still exists:
-  // its resource samples and the month's per-box credit spend. Both write their
-  // RAW stdout to the evidence dir regardless of whether it parses, so a shape
-  // change on exe.dev's side is diagnosable from the artifact rather than lost.
+  // The control-plane capture that must happen while the VM still exists: its
+  // resource samples. It writes its RAW stdout to the evidence dir regardless
+  // of whether it parses, so a shape change on exe.dev's side is diagnosable
+  // from the artifact rather than lost.
   //
   // Every failure mode here — refused command, non-zero exit, timeout, invalid
   // JSON, a payload that parses but carries nothing usable — pushes to `errors`
   // and leaves the field null. Nothing propagates: a throw on this path would
   // skip `destroySandbox` and leak a billed VM (#280, run-9b's in-sandbox
   // critic), which is the one outcome teardown exists to prevent.
-  const captureJson = async ({ label, cmd, file, refusal }) => {
+  const captureJson = async ({ label, cmd, file }) => {
     let raw = null
     try {
       const destination = path.join(resolvedEvidenceDir, file)
@@ -338,8 +308,7 @@ export const driveOne = async ({
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
       fs.writeFileSync(destination, raw)
       if (result?.code !== 0) {
-        if (refusal && refusal.re.test(raw)) errors.push(refusal.note)
-        else errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
+        errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
         return null
       }
     } catch (error) {
@@ -404,21 +373,6 @@ export const driveOne = async ({
         } catch (error) {
           errors.push(`sandbox stat derive: ${error?.message ?? error}`)
         }
-      }
-    }
-
-    // Interpolates nothing — proceeds even when vmName was refused above.
-    const creditsJson = await captureJson({
-      label: 'credits usage',
-      cmd: creditsUsageCommand(),
-      file: `credits-${runId}.json`,
-      refusal: { re: CREDITS_REFUSAL_RE, note: CREDITS_REFUSAL_NOTE },
-    })
-    if (creditsJson !== null) {
-      try {
-        creditSpendUsd = deriveCreditSpendUsd(creditsJson, vmName)
-      } catch (error) {
-        errors.push(`credits usage derive: ${error?.message ?? error}`)
       }
     }
   }
@@ -857,9 +811,6 @@ export const driveOne = async ({
     // estimate — `stat` samples every 10 minutes — or null when the capture or
     // its derivation failed (the failure is in `errors`).
     sandboxStat: null,
-    // This run's credit spend in USD, from the control plane's per-box ledger.
-    // `0` means the ledger carried no row for this VM; `null` means unknown.
-    creditSpendUsd: null,
     // The orchestrator's actual bound port (`port: 0` binds an ephemeral one) —
     // the read-back channel triage uses when `port` was not pinned.
     effectivePort: null,
@@ -881,7 +832,6 @@ export const driveOne = async ({
   }
   detail.sandboxLogs = sandboxLogs
   detail.sandboxStat = sandboxStat
-  detail.creditSpendUsd = creditSpendUsd
   try {
     await stop()
   } catch (error) {
