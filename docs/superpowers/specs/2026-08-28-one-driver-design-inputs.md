@@ -101,6 +101,9 @@ The complexity the review names — the 6-step operator protocol (SKILL.md, 3,12
 - #368 — task: the orchestrator opens the PR (Amendment 1 decision 5; buildable now)
 - ~~#364~~ — superseded by Amendment 1 (no local substrate)
 - (to file after the grilling) `wayfinder:task` — the one-driver spec + build
+- #382 — research: prompt-cache sharing across a wave of separate `claude -p` workers (added 2026-08-28 from the Workflows comparison, parity doc §9; sequenced BEFORE the spec — its answer is the cost row)
+- #383 — prototype: re-drive reuse, the driver's `resumeFromRunId` (added 2026-08-28; after cutover, on the driver; bar ≥ 50% tokens on a one-task park)
+- #384 — watch-item: `-p` bare-by-default breaks subscription OAuth (from Amendment 3)
 
 Written by the coordinating session as the trace of the 2026-08-28 conversation. The operator said: "Sometimes I think we're too iterative together. I don't mind investing in big, nearly clean room rebuilds." This map is that investment, with the one constraint that keeps it from reproducing what it replaces.
 

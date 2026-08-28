@@ -204,3 +204,29 @@ No other blocker. Everything else is a caveat or a driver-side table.
 - https://code.claude.com/docs/en/env-vars — `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME` (v2.1.234+), `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` / `_SPAWN_DEPTH` (v2.1.217+), `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`, `CLAUDE_CODE_ENABLE_TELEMETRY`.
 - https://code.claude.com/docs/en/agent-sdk/overview, /agent-sdk/structured-outputs, /agent-sdk/cost-tracking — SDK capabilities, `error_max_structured_output_retries`, client-side cost estimate, third-party login policy.
 - https://code.claude.com/docs/en/sandboxing — enablement via `/sandbox`; no `-p` statement.
+
+## 9. What the Workflow tool gave us that `claude -p` does not (docs comparison, 2026-08-28)
+
+Asked after the Phase 0 cut: is Workflows purely a set of limitations, or does leaving it cost
+something? From the official docs (claude-code-guide agent; every cell cites its page):
+
+| feature | Workflows (`agent()`) | `claude -p` / Agent SDK |
+|---|---|---|
+| Parallelism | ≤16 concurrent agents per run, CPU-bound; account-level rate limits ([workflows#behavior-and-limits](https://code.claude.com/docs/en/workflows#behavior-and-limits)) | no per-process cap; same account-level limits ([headless](https://code.claude.com/docs/en/headless#basic-usage)) |
+| Worktree isolation | `isolation:'worktree'` declarative, auto-cleanup — cut from the session checkout, not BASE (#314) | driver clones at BASE itself (the point of Half 2) |
+| Resume / replay | `resumeFromRunId` replays a run in-session, returns cached `agent()` results ([workflows#resume-after-a-pause](https://code.claude.com/docs/en/workflows#resume-after-a-pause)) | `--resume`/`--continue` continue ONE session; no saved-result replay → **#383** |
+| Prompt cache | agents with matching config share a prefix in-run; TTL 5 min, `subagentPromptCacheTtl` up to 1 h ([workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out)) | per process; sharing across processes undocumented → **#382** |
+| Structured output | `agent({schema})` retries with tier escalation | `--json-schema` retries in-loop, never escalates (§2 item 1); driver keeps `runTaskInner`'s escalation |
+| Observability | `/workflows` live phases + per-agent transcripts ([workflows#watch-the-run](https://code.claude.com/docs/en/workflows#watch-the-run)) | `stream-json` events incl. `system/api_retry`; OTEL — the store/W2c surface is ours to build |
+| Permissions | `agent()` inherits the session's mode, no per-agent override | `--permission-mode`, `--allowedTools`, `--settings` hooks per worker ([headless#auto-approve-tools](https://code.claude.com/docs/en/headless#auto-approve-tools)) — role isolation becomes enforced |
+| Cost | tokens in the UI only | `total_cost_usd` / `modelUsage` in the envelope (§2 item 3) |
+| Failure | `agent()` → `null` on unrecoverable error; no retry control | exits 0/1/143 + `subtype` (§2 item 7) |
+| Auth | session login | OAuth token (non-bare only — `--bare` refuses it, §8) → **#384** |
+| Background | background run, per-agent pause/stop, notifications ([workflows#manage-runs](https://code.claude.com/docs/en/workflows#manage-runs)) | the driver's process supervisor (§5) |
+
+**Lost, and measurable:** in-run cache sharing (#382), cheap replay (#383). **Lost, and wanted gone:**
+session-checkout worktrees, session-inherited permissions, the registry snapshot, baked prompts.
+**Gained:** enforced per-worker tool isolation, cost as data, event-level failure classes, no LLM
+orchestrator. The honest read: Workflows are built for one human's interactive session; a headless,
+multi-run, base-pinned fleet is exactly where those conveniences became #314, the sweep
+choreography, and the probe.
