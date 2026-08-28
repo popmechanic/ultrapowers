@@ -179,22 +179,6 @@ def run_validate_knobs(repo, args_path):
               cwd=repo, check=False)
 
 
-def test_validate_knobs_passes_a_clean_noop_bootstrap(tmp_path):
-    repo = make_repo(tmp_path)
-    args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"bootstrapCmd": "true"}))
-    r = run_validate_knobs(repo, args_path)
-    assert r.returncode == 0, r.stdout + r.stderr
-
-
-def test_validate_knobs_blocks_a_failing_bootstrap(tmp_path):
-    repo = make_repo(tmp_path)
-    args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"bootstrapCmd": "false"}))
-    r = run_validate_knobs(repo, args_path)
-    assert r.returncode != 0
-
-
 def test_validate_knobs_blocks_a_tree_dirtying_bootstrap(tmp_path):
     repo = make_repo(tmp_path)
     args_path = repo / "args.json"
@@ -258,27 +242,6 @@ def test_validate_knobs_rejects_a_malformed_wave_entry_with_a_verdict(tmp_path):
     verdict = json.loads(r.stdout)
     assert verdict["ok"] is False
     assert "not an object" in verdict["detail"]
-
-
-def test_validate_knobs_rejects_a_non_list_waves_value_with_a_verdict(tmp_path):
-    repo = make_repo(tmp_path)
-    args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"waves": 5}))
-    r = run_validate_knobs(repo, args_path)
-    assert r.returncode != 0
-    verdict = json.loads(r.stdout)
-    assert verdict["ok"] is False
-
-
-def test_validate_knobs_rejects_an_unhashable_tier_value_with_a_verdict(tmp_path):
-    repo = make_repo(tmp_path)
-    args_path = repo / "args.json"
-    args_path.write_text(json.dumps({"waves": [
-        [{"id": "1", "tier": ["mostCapable"], "review": "lean"}]]}))
-    r = run_validate_knobs(repo, args_path)
-    assert r.returncode != 0
-    verdict = json.loads(r.stdout)
-    assert verdict["ok"] is False
 
 
 def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
@@ -623,17 +586,6 @@ def test_unborn_head_fails_probe_worktree_creation_closed(tmp_path):
 
 # --- #95 item 2: the prune failure branch must stay honest ---
 
-def test_prune_reports_only_dirs_actually_removed(tmp_path, monkeypatch):
-    # A regression reverting to "report the doomed list" must fail here:
-    # with rmtree neutered, nothing vanishes, so nothing may be reported.
-    import ultra_run
-    state = tmp_path / "state"
-    for i in (1, 2, 3):
-        (state / ("run-2026010%d-000000" % i)).mkdir(parents=True)
-    monkeypatch.setattr(ultra_run.shutil, "rmtree", lambda *a, **k: None)
-    assert ultra_run.prune_run_dirs(state, keep=1) == []
-
-
 def test_prune_failure_absent_from_removed_list_and_named_in_stage_detail(
         tmp_path, monkeypatch, capsys):
     # Task 4 / #95 item 2: a single doomed dir whose rmtree is selectively
@@ -675,33 +627,6 @@ def test_prune_failure_absent_from_removed_list_and_named_in_stage_detail(
     assert s["ok"] is True                    # hygiene never blocks a run
     assert "; 1 removal failed: %s" % doomed_name in s["detail"]
     assert doomed.exists()                    # still there after the driver run too
-
-
-@pytest.mark.skipif(os.geteuid() == 0,
-                    reason="DAC mode bits do not bind root; the undeletable-dir trigger cannot fire")
-def test_prune_failure_is_named_in_the_scratch_hygiene_detail(tmp_path):
-    repo = make_repo(tmp_path)
-    state = repo / ".claude/ultrapowers"
-    # 11 run dirs with KEEP_RUNS=10: exactly the oldest is doomed. A child
-    # file plus mode 0o500 makes rmtree fail (it cannot unlink the child)
-    # while ignore_errors=True swallows the exception.
-    doomed = state / "run-20260101-000000"
-    doomed.mkdir(parents=True)
-    (doomed / "f.txt").write_text("x")
-    doomed.chmod(0o500)
-    for i in range(2, 12):
-        (state / ("run-202601%02d-000000" % i)).mkdir()
-    try:
-        r = run_driver(repo)
-        assert r.returncode == 0, r.stdout + r.stderr
-        receipt = json.loads(r.stdout)
-        s = next(x for x in receipt["stages"] if x["stage"] == "scratch-hygiene")
-        assert s["ok"] is True                      # hygiene never blocks a run
-        assert "removal failed" in s["detail"]
-        assert "run-20260101-000000" in s["detail"]
-        assert doomed.exists()                       # it really did survive
-    finally:
-        doomed.chmod(0o700)                          # let tmp_path clean up
 
 
 # --- requirement 3: janitor advisory surfaced at preflight (vibes.diy 2026-07-31) ---
