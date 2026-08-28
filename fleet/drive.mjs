@@ -125,7 +125,8 @@ export const deriveSandboxStat = (statJson) => {
  *   preflight, which otherwise throws (before any provisioning) when the plan
  *   at `planPath` carries a task whose only evidence is human judgment. Pass
  *   only with a specific operator pre-authorization; the override is recorded
- *   in `detail.errors`.
+ *   in `detail.errors`. The plan is read as committed at `baseRef` (#337); an
+ *   uncommitted or dirty plan is refused regardless of this flag.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -219,20 +220,56 @@ export const driveOne = async ({
 
   // #322: headless-fitness preflight. A plan carrying a task whose only
   // evidence is human judgment is GUARANTEED to park an unattended drive —
-  // refuse it here, before a sandbox exists, not 200k tokens later. An
-  // unreadable plan file skips the check with narration only (the live drive
-  // always has the merged plan on disk; the in-process tests do not).
+  // refuse it here, before a sandbox exists, not 200k tokens later.
+  //
+  // #337: the text assessed is the plan AS COMMITTED AT `baseRef` — the same
+  // source `provisionRun` pushes and the sandbox executes — never the working
+  // tree. Assessing the working tree let the verdict attach to text that was
+  // never dispatched (a spurious refusal on an uncommitted edit; a silent
+  // pass of an unfit committed plan). Two divergences are operator errors,
+  // refused outright and NOT fitness verdicts, so `allowUnfitPlan` does not
+  // cover them: a plan present in the working tree but absent at `baseRef`
+  // (uncommitted — the sandbox would receive nothing), and a plan whose
+  // working-tree copy differs from the committed one (dirty — nobody can say
+  // which text the verdict is about). A plan absent from BOTH skips the check
+  // with narration only (the live drive always has the merged plan committed;
+  // the in-process tests do not).
   const planFile = path.isAbsolute(planPath) ? planPath : path.join(repoDir, planPath)
-  let planText = null
+  const planRel = path.relative(repoDir, planFile)
+  let workingText = null
   try {
-    planText = fs.readFileSync(planFile, 'utf8')
+    workingText = fs.readFileSync(planFile, 'utf8')
   } catch {
-    planText = null
+    workingText = null
   }
-  if (planText === null) {
-    note(`headless-fitness: plan unreadable at ${planFile} — check skipped`)
+  let committedText = null
+  // Both halves are interpolated into a shell: the ref passes the guard
+  // provisionRun applies to it, the path the receipt-pointer guard (same
+  // character class, no `..` segment — a path that escapes the checkout can
+  // be at no ref). A guard miss reads as "absent at baseRef".
+  if (isSafeBranchName(baseRef) && isSafeRepoPath(planRel)) {
+    try {
+      const shown = await exec(`git -C ${repoDir} show ${baseRef}:${planRel}`)
+      if (shown?.code === 0 && typeof shown.stdout === 'string') committedText = shown.stdout
+    } catch {
+      committedText = null
+    }
+  }
+  if (committedText === null && workingText === null) {
+    note(`headless-fitness: plan absent at ${baseRef}:${planRel} and unreadable at ${planFile} — check skipped`)
+  } else if (committedText === null) {
+    throw new Error(
+      `driveOne: plan ${planRel} is in the working tree but not committed at ${baseRef} — the sandbox ` +
+        `executes the pushed ${baseRef}, never the working tree; commit it, or pass the ref that carries it (#337)`,
+    )
+  } else if (workingText !== null && workingText !== committedText) {
+    throw new Error(
+      `driveOne: plan ${planRel} differs between ${baseRef}:${planRel} (what the sandbox executes) and the ` +
+        `working tree ${planFile} — commit or discard the edit so the fitness verdict attaches to the ` +
+        `dispatched text (#337)`,
+    )
   } else {
-    const fitness = assessHeadlessFitness(planText)
+    const fitness = assessHeadlessFitness(committedText)
     if (!fitness.fit) {
       const summary = fitness.findings.map((f) => `${f.task}: ${f.reason}`).join('; ')
       if (!allowUnfitPlan) {

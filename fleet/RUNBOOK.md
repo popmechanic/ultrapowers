@@ -288,15 +288,22 @@ called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
 below for the one case that still needs an operator's hand.
 
-**Headless fitness (#322).** `driveOne` refuses a plan carrying any task whose
-verification can only be evidenced by human judgment — the known class is the
-instruction-only doc task (`implementation` type, every Files entry a `.md`,
-no `Test:` entry). run-14 proved such a task makes a `deferred:manual` park a
-certainty, discovered only after ~47 min and 203k tokens. Before dispatching:
-rewrite the verification into runtime/external form (add a pinning test), or
-route that task to a local drain. `allowUnfitPlan: true` overrides — pass it
-only with a specific operator pre-authorization for that manual ack, and the
-override is recorded in `detail.errors`.
+**Headless fitness (#322, #337).** `driveOne` refuses a plan carrying any task
+whose verification can only be evidenced by human judgment — the known class
+is the instruction-only doc task (`implementation` type, every Files entry a
+`.md`, no `Test:` entry). run-14 proved such a task makes a `deferred:manual`
+park a certainty, discovered only after ~47 min and 203k tokens. Before
+dispatching: rewrite the verification into runtime/external form (add a
+pinning test), or route that task to a local drain. `allowUnfitPlan: true`
+(`--allow-unfit-plan`) overrides — pass it only with a specific operator
+pre-authorization for that manual ack, and the override is recorded in
+`detail.errors`. The plan assessed is the one **committed at `baseRef`**
+(`git show <baseRef>:<planPath>`, default `HEAD`) — the same text the sandbox
+executes — never the working tree. Two operator errors are refused before any
+provisioning and are not covered by the override: the plan is in the working
+tree but not committed at `baseRef` (`not committed at …` — commit it), or the
+working-tree copy differs from the committed one (`differs between …` — commit
+or discard the edit). Merge the plan and drive from a clean checkout.
 
 ## Gate read
 

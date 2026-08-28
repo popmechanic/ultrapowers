@@ -1122,6 +1122,163 @@ try {
     )
   }
 
+  // -- 13. #337: the fitness preflight reads the plan AS COMMITTED AT baseRef --
+  // The sandbox executes the plan the driver PUSHES (baseRef), never the
+  // driver's working tree. These four scenarios pin the source and the two
+  // divergences that are refused as operator errors. Plans are committed onto
+  // side branches through a temporary index — HEAD, the working tree and the
+  // fixture shas every other scenario relies on are untouched.
+  const commitPlanOnBranch = async ({ branch, relPath, text }) => {
+    const tag = branch.replace(/[^A-Za-z0-9]/g, '_')
+    const idx = path.join(tmp, `${tag}.idx`)
+    const blobFile = path.join(tmp, `${tag}.blob`)
+    fs.writeFileSync(blobFile, text)
+    const r = await sh(
+      `set -e; blob=$(git hash-object -w "${blobFile}"); ` +
+        `GIT_INDEX_FILE="${idx}" git read-tree main; ` +
+        `GIT_INDEX_FILE="${idx}" git update-index --add --cacheinfo 100644,$blob,${relPath}; ` +
+        `tree=$(GIT_INDEX_FILE="${idx}" git write-tree); ` +
+        `commit=$(git commit-tree $tree -p main -m ${branch}); ` +
+        `git branch ${branch} $commit; printf '%s' $commit`,
+      repoDir,
+    )
+    assert.equal(r.code, 0, `commitPlanOnBranch(${branch}) failed: ${r.stderr}`)
+    const sha = r.stdout.trim()
+    assert.match(sha, /^[0-9a-f]{40}$/)
+    return sha
+  }
+  const UNFIT_PLAN =
+    '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n'
+  const FIT_PLAN =
+    '# P\n\n### Task 1: Code\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `fleet/x.mjs`\n- Test: `fleet/tests/test_x.mjs`\n\n- [ ] **Step 1: edit**\n'
+  const unfitRel = 'docs/committed-unfit.md'
+  const fitRel = 'docs/committed-fit.md'
+  await commitPlanOnBranch({ branch: 'plan-unfit', relPath: unfitRel, text: UNFIT_PLAN })
+  const fitSha = await commitPlanOnBranch({ branch: 'plan-fit', relPath: fitRel, text: FIT_PLAN })
+  const neverProvision = async () => {
+    throw new Error('must never provision on a #337 refusal')
+  }
+
+  // 13a. the silent-pass direction: an UNFIT plan committed at baseRef with NO
+  //      working-tree copy at all is refused — the source is baseRef, not disk.
+  {
+    assert.equal(fs.existsSync(path.join(repoDir, unfitRel)), false, 'precondition: absent from the working tree')
+    let provisioned = false
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        planPath: unfitRel,
+        baseRef: 'plan-unfit',
+        dbDir: path.join(tmp, 'db-337a'),
+        exec: makeExec(() => {}),
+        runId: 'run-drive-337-committed-unfit',
+        provision: async () => {
+          provisioned = true
+          return neverProvision()
+        },
+      }),
+      /headless-unfit/,
+    )
+    assert.equal(provisioned, false, 'the refusal must precede provisioning')
+  }
+
+  // 13b. the dirty direction: a FIT plan at baseRef whose working-tree copy
+  //      differs is refused, naming both sides — and allowUnfitPlan does NOT
+  //      cover it (it is an operator error, not a fitness verdict).
+  {
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, fitRel), UNFIT_PLAN)
+    let provisioned = false
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        planPath: fitRel,
+        baseRef: 'plan-fit',
+        allowUnfitPlan: true,
+        dbDir: path.join(tmp, 'db-337b'),
+        exec: makeExec(() => {}),
+        runId: 'run-drive-337-dirty',
+        provision: async () => {
+          provisioned = true
+          return neverProvision()
+        },
+      }),
+      (error) => {
+        assert.match(error.message, /differs between plan-fit:docs\/committed-fit\.md/)
+        assert.ok(error.message.includes(path.join(repoDir, fitRel)), `must name the working-tree path, got: ${error.message}`)
+        assert.match(error.message, /#337/)
+        return true
+      },
+    )
+    assert.equal(provisioned, false, 'the refusal must precede provisioning')
+  }
+
+  // 13c. the uncommitted direction: a plan in the working tree but ABSENT at
+  //      baseRef (HEAD here — main never carried it) is refused: the sandbox
+  //      would receive nothing.
+  {
+    let provisioned = false
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        planPath: fitRel,
+        allowUnfitPlan: true,
+        dbDir: path.join(tmp, 'db-337c'),
+        exec: makeExec(() => {}),
+        runId: 'run-drive-337-uncommitted',
+        provision: async () => {
+          provisioned = true
+          return neverProvision()
+        },
+      }),
+      /not committed at HEAD/,
+    )
+    assert.equal(provisioned, false, 'the refusal must precede provisioning')
+  }
+
+  // 13d. control: a FIT plan at baseRef with an IDENTICAL working-tree copy
+  //      drives normally — no refusal, no override line, stamp cross-check
+  //      against the side branch resolves.
+  {
+    fs.writeFileSync(path.join(repoDir, fitRel), FIT_PLAN)
+    const runId = 'run-drive-337-clean'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+          stamp: { pluginVersion: '9.9.9', engineSha: fitSha },
+        })
+      }, 30)
+    })
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      planPath: fitRel,
+      baseRef: 'plan-fit',
+      dbDir: path.join(tmp, 'db-337d'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(read.o1, true, 'a clean committed plan drives normally')
+    assert.equal(read.versionStamp, true, 'the stamp expectation resolved from the side branch')
+    assert.ok(
+      !detail.errors.some((e) => /headless|#337/.test(e)),
+      `no fitness or #337 noise on the clean path, got: ${JSON.stringify(detail.errors)}`,
+    )
+    assert.ok(
+      exec.cmds.some((cmd) => cmd === `git -C ${repoDir} show plan-fit:${fitRel}`),
+      `the plan must have been read from baseRef, got: ${JSON.stringify(exec.cmds.filter((c) => c.includes(' show ')))}`,
+    )
+    // Leave the fixture as found for whatever scenario is unioned after this.
+    fs.rmSync(path.join(repoDir, fitRel))
+  }
+
   console.log('ALL TESTS PASSED')
 } finally {
   cleanup()
