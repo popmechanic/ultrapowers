@@ -72,7 +72,9 @@ def test_workflow_consumes_structured_edges():
 
 def test_workflow_requires_headsha_and_commit_discipline():
     wf = WORKFLOW.read_text()
-    assert "required: ['status', 'summary', 'branch', 'headSha']" in wf
+    # startHead joined the required list with the #314 provisioning-drift guard:
+    # the pre-reset sha the engine compares against BASE to derive baseCorrected.
+    assert "required: ['status', 'summary', 'branch', 'headSha', 'startHead']" in wf
     assert "Commit your work" in wf
     assert "fix-loop cap" in wf          # exhaustion is logged, not silent
     # The stale comment wrapped "v5.0.6" and "direction" across two source
