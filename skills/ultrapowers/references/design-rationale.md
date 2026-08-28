@@ -6,31 +6,14 @@ when changing the engine, the gate, or the scripts — not during routine runs.
 
 ---
 
-## § Step 1 — Self-host skew
-
-When the working directory is the ultrapowers repository, the installed plugin
-cache may lag `main` — launching the stale cache means the self-test exercises
-the wrong engine ([ae56a1205e971b82]). On `SKEW`, install the repo engine into
-`.claude/workflows/` before launch so the run exercises the current repo code,
-not the stale cached copy: copy
-`$(git rev-parse --show-toplevel)/skills/ultrapowers/harnesses/waves.js` to
-`.claude/workflows/waves.js`. This overwrite is safe — Step 4a already treats the
-installed file as ephemeral and overwrites it each run. The preflight only
-applies when self-hosting (the repo root matches the plugin root's parent tree).
-In ordinary project use the cache is the correct engine; skip it.
-
----
-
 ## § Step 4 — Determinism guard and the read/write boundary
 
 > **Determinism guard:** never trigger the run with the `ultracode` keyword or by
 > asking for "a workflow" in prose — that opt-in makes Claude **author a new
 > script at runtime**, which is exactly the nondeterminism this skill exists to
 > remove. The only sanctioned launch is the saved workflow installed at Step 4a.
-> If it cannot be launched, diagnose with the Step 4a½ preflight before falling
-> back — a freshly installed-this-session copy that the engine cannot yet see is a
-> stale registry (cured by a new session), **not** the engine drift that Step 6
-> exists for.
+> If it cannot be launched, the run fails (no receipt → red) — never a
+> fallback, never an improvised script.
 
 ultrapowers runs two kinds of phase, and they have different rules:
 
@@ -62,10 +45,10 @@ The plugin's **SessionStart hook** (`hooks/session_start.sh`) does this install
 at the start of *every* session — that is the load-bearing install, because the
 engine snapshots its saved-workflow registry **once, at session start**. A copy
 that lands on disk before that snapshot is registered this session; a copy
-written *during* the session (the manual Step-4a install) is only registered
+written *during* the session (`ultra_run.py`'s `install` stage) is only registered
 **next** session. This is exactly why a fresh checkout's first `/ultrapowers`
-could fail with `Workflow "ultrapowers-probe" not found` even though Step 4a had
-just copied the file: the project `.claude/workflows/` is gitignored and starts
+could fail with `Workflow "ultrapowers-run" not found` even though the install stage
+had just copied the file: the project `.claude/workflows/` is gitignored and starts
 empty, so at the registry snapshot only the plugin-shipped workflows existed. The
 hook closes that window for normal use; the manual install remains an idempotent
 safety net (hooks disabled, a non-hook surface, a hand-installed skill).
@@ -80,23 +63,6 @@ named `ultrapowers-run`, not `ultrapowers`, so the engine's auto-registered
 
 ---
 
-## § Step 4a½ — Args-probe payload-drop history
-
-Launch the saved workflow `ultrapowers-probe` with a representative payload to
-verify that the by-name launch delivers args faithfully — a tiny `ping`-only
-probe can pass while a real-sized payload is silently dropped
-([fb8635c59d4fea1c]). The probe echoes back the waves count and first task id so
-a by-name launch's arg delivery is confirmed, not just `ping`; an
-`echoWaves`/`echoFirstId` mismatch is a payload round-trip failure ([fb8635c5])
-that routes to the sequential fallback, **not** a launch of the real workflow
-with an arg-delivery failure confirmed. The three failure modes have different
-cures: a **not-found** probe is a stale registry snapshot (cured by a new
-session, not the sequential fallback); a probe that **launches but `ok` is not
-true / errors mid-run** is genuine engine drift (Step 6); an **echo mismatch** is
-the payload round-trip failure above (Step 6).
-
----
-
 ## § Step 5 — Verdict independence from checkout position (#84)
 
 The workflow's setup agent checks out the integration branch in a **dedicated
@@ -106,8 +72,7 @@ it. The integrity checks below derive from ref-resolved `HEAD` — the report's
 recorded merge sha and the completeness critic's own `git rev-parse HEAD`, both
 verified mechanically — not from where the session happens to sit. And
 acceptance is administered in a **fresh detached worktree** of the branch
-(`run_acceptance.sh` does this for the sealed exam and the suite gate alike —
-see § Step 5 — Why sealed exams are administered at the gate), so the other
+(`run_acceptance.sh --suite-gate` does this), so the other
 place the checkout position could bite is closed too. Neither leg alone
 establishes position-independence: head-match without the detached suite-gate
 would still run the tests in whatever tree the operator left behind.
@@ -144,22 +109,6 @@ guard turns that crash into a deterministic gate refusal —
 
 ---
 
-## § Step 5 — Why sealed exams are administered at the gate (#36)
-
-For a `sealed` disposition the workflow reports `status: PENDING_GATE` — the
-workflow could not administer the exam: it has no shell, and **relaying the
-runner's JSON through a model corrupts it** (#36, the deleted RELAY path). So the
-exam is administered deterministically, in the gate session, by
-`run_acceptance.sh`, whose exit code is the authority; the emitted JSON is
-rendered verbatim as a receipt, never a narrative the model retypes. The runner
-creates its own detached worktree of the branch, so it is agnostic to the current
-checkout. A non-zero exit carries a descriptive `status` (`assertion` vs
-`collection` red, `EXAM_BOOTSTRAP_ERROR`, `SEAL_BROKEN`, `SEAL_MISSING`, runner
-`ERROR`); an operator override of a red/broken/missing exam is recorded as a
-waiver-with-reason.
-
----
-
 ## § Dependency inference — the mixed-B-2 eval war story
 
 Eval run mixed-B-2 (2026-06-13): a task spec said "returns a `schema.User`" while
@@ -169,30 +118,7 @@ that once serialized it was deleted in Phase 2 (0.2.17), so the guard is authori
 declare the `**Interfaces:**` `Consumes`/`Produces` pair or the `**Depends-on:**`
 marker (`references/dependency-analysis.md`), and the compiler's loud
 `undeclared-dependency` finding catches a declared-but-unlinked pair at the Step-3
-render. The same run motivated the **Salvage**
-path, which pulls a failed/blocked branch's already-correct work in rather than
-reimplementing it. The same run motivated the FILES and SIBLING-FILES scope rules
+render. The same run motivated the FILES and SIBLING-FILES scope rules
 baked into the implementer/reviewer prompts (`references/reviewer-prompts.md`):
 the implementer's final commit deleted a sibling-owned file its task never named,
 and the reviewer treated it as an ordinary judgment call.
-
----
-
-## § Step 3 — Acceptance vouching (why the rubric needs no code-reading)
-
-The sealed-exam vouching rubric asks the operator to compare the exam's
-plain-English coverage summary against **their own** spec, never the test code:
-the operator cannot see the sealed test and does not need to. An honest
-implementation could fail an exam that invented checks the spec never asked for,
-so the second rubric question (invented anything?) is as load-bearing as the
-first (everything covered?). If the operator cannot vouch, the remedy is to
-re-seal (the ultraplan sealing step) or waive explicitly — never rubber-stamp a
-summary that does not match the spec.
-
-**2026-07-03 field evidence (foreign engine run, engine 0.0.30).** A 7-task
-production run confirmed the attention-moving thesis directly: the operator's
-only involvement was the planning decisions, vouching for the sealed exam's
-coverage at launch, and one physical-world check no tooling could reach
-(confirming an email landed in a personal inbox). Everything from launch to
-the pre-merge gate ran unattended, and the operator's unrelated
-work-in-progress came back byte-for-byte intact.

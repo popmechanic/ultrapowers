@@ -1,7 +1,7 @@
 {
   "name": "ultrapowers",
   "version": "0.2.25",
-  "description": "Autonomous, parallel, worktree-isolated execution of Superpowers plans via a committed Dynamic Workflow. Pairs with superpowers; invoke as /ultrapowers <plan-path> instead of subagent-driven-development.",
+  "description": "The client for ultrapowers: /ultrapowers <plan-path> commits an approved Superpowers plan and runs on an exe.dev fleet you provision — parallel waves in a disposable sandbox, independent per-task review, the orchestrator opens the PR. No local engine.",
   "author": {
     "name": "Marcus Estes",
     "email": "marcus@vibes.diy"

@@ -596,6 +596,7 @@ try {
       const outcome = await invokeEngineRun({
         repoDir: engineRepo,
         planPath: ENGINE_PLAN,
+        runId: 'run-lifecycle',
         exec: rec.exec,
         spawnEngine: rec.spawnEngine,
         log: rec.log,
@@ -658,6 +659,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,
@@ -673,6 +675,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,
@@ -690,6 +693,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,
@@ -705,6 +709,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: missing,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,
@@ -728,6 +733,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,
@@ -753,6 +759,7 @@ try {
         await invokeEngineRun({
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: async () => {
             throw new Error('exec seam exploded')
           },
@@ -802,6 +809,7 @@ try {
         const outcome = await invokeEngineRun({
           repoDir: dirtyRepo,
           planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
           exec: rec.exec,
           spawnEngine: rec.spawnEngine,
           log: rec.log,

@@ -45,8 +45,7 @@ savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to 
 plans and checks; cheaper models do the building in between.
 
 **2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
-counts — so you don't have to read the code yourself. High-stakes work can also be held to an exam
-written from your spec that the builder never sees and can't game. You make one approval at the
+counts — so you don't have to read the code yourself. You make one approval at the
 end, on the finished result, instead of signing off on code you can't (or don't want to) judge.
 
 **3. Faster finishes.** (Sometimes.) When the plan allows, independent work runs at the same time instead of one
@@ -82,11 +81,10 @@ machinery you don't need.
 
 In field use the human surface compresses to exactly the designed touchpoints:
 on a recent 7-task production run the operator's entire involvement was the
-planning decisions, vouching for the sealed exam's coverage at launch, and one
-physical-world check no tooling could reach (confirming an email landed in a
-personal inbox) — everything between launch and the pre-merge gate ran
-autonomously, and the operator's unrelated work-in-progress was restored
-byte-for-byte.
+planning decisions and one physical-world check no tooling could reach
+(confirming an email landed in a personal inbox) — everything between launch
+and the pre-merge gate ran autonomously, and the operator's unrelated
+work-in-progress was restored byte-for-byte.
 
 ## How it works
 
@@ -96,6 +94,10 @@ isolation, while their intermediate work stays out of your main session.
 ([Claude Code's docs explain the feature →](https://code.claude.com/docs/en/workflows)) This whole
 project started as an experiment with that new native machinery: *what happens if you point it at a
 real, approved plan?*
+
+### How it runs
+
+ultrapowers runs on an exe.dev fleet you provision — the plugin is the client. `/ultrapowers <plan-path>` commits your approved plan and launches a run on the fleet orchestrator; every wave, review, and test suite executes inside a disposable sandbox, and the orchestrator opens the pull request with the gate receipt in its body. There is no local engine: nothing builds, tests, or merges on your machine. Provisioning the fleet is a one-time setup — see [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md).
 
 The clearest way to see what it does is to zoom in — the whole plan, then one task, then a single
 agent.
@@ -129,7 +131,6 @@ ultrapowers reads your approved plan and builds exactly this graph — one start
 into independent work and back into a single result — then cuts the middle into **waves**: each wave a
 set of tasks with nothing left to wait for, launched together. Three tasks that don't touch each other
 run as three agents at once; a task that needs them waits one wave and starts the moment they land.
-(It's the same picture the swarm viewer draws live as a run unfolds.)
 
 ### Zoom in: one task's life
 
@@ -144,9 +145,7 @@ history, a private workshop cut from the same cloth. That's the quiet corner of 
 whole thing safe: a dozen agents build "the same project" at once without ever fighting over a file on
 disk. One agent builds the task there, commit by commit. Then an **independent review** checks the
 result against *exactly the point it forked from* — not the latest state of everything — so it can't
-mistake another wave's work for this task's. For high-stakes work there's also a **sealed exam**: an
-acceptance test written from your spec and locked away before the build starts, that the agent never
-sees — pass or fail by its exit code, nothing to spin. You can't game a test you can't read. If the
+mistake another wave's work for this task's. If the
 review asks for a fix, the task loops until it passes, then **merges back** onto the one integration
 branch.
 
@@ -173,12 +172,11 @@ And this is exactly what it looks like running in Claude Code:
 ### It doesn't improvise
 
 The script that orchestrates all of this is committed and frozen; it never writes a fresh version of
-itself at runtime. Same plan in, same structure out. And before every real run a tiny probe checks the
-engine still behaves — so if Claude Code's workflow feature ever shifts underneath us, the run steps
-down to plain sequential execution instead of breaking in the middle.
+itself at runtime. Same plan in, same structure out. And every run happens in a sandbox that exists
+only for that run — nothing it does can touch your checkout, and nothing it leaves behind survives it.
 
 None of it this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
-dependency graphs, git worktrees, sealed tests — wired onto a new runtime, each doing one small job
+dependency graphs, git worktrees, disposable sandboxes — wired onto a new runtime, each doing one small job
 well. 
 
 ## Get started
@@ -193,7 +191,7 @@ Install it from inside Claude Code:
 **Superpowers is required.** Install it alongside ultrapowers — ultrapowers hands the brainstorming,
 planning, and wrap-up back to Superpowers' own skills.
 
-**Where it runs.** ultrapowers runs on Claude Code's Workflows feature, available on every paid plan, across the CLI, Desktop app, IDE extensions, and SDK. On Claude Code for the web, where Workflows isn't available, it falls back to running your plan one task at a time — same plan, same result, just sequential.
+**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. Claude Code's Workflows feature runs inside the sandbox, never on your machine, so the plugin works from any Claude Code surface that can commit a plan.
 
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
