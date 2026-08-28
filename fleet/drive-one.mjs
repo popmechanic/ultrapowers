@@ -101,13 +101,19 @@ export const parseArgs = (argv) => {
 // `env` (#368) is LAYERED over the process environment for that one command —
 // the publish leg's GH_TOKEN rides here and nowhere else: never on argv, never
 // exported into this process, never in the log.
+// #362-1: stdout and stderr travel SEPARATELY. drive.mjs's #337 preflight
+// compares the working-tree plan byte-for-byte against `git show`'s stdout;
+// folding stderr chatter (a `warning:`/`hint:` line from a global config)
+// into it read a clean, committed plan as dirty and hard-refused the drive.
+// Callers that want the diagnostic text of a failed command read `stderr`.
 export const shellExec = (cmd, { env } = {}) =>
   new Promise((resolve) => {
     execFile(
       '/bin/sh',
       ['-c', cmd],
       { maxBuffer: 1024 * 1024 * 16, env: env ? { ...process.env, ...env } : process.env },
-      (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout: `${stdout}${stderr}` }),
+      (error, stdout, stderr) =>
+        resolve({ code: error?.code ?? 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') }),
     )
   })
 
