@@ -42,7 +42,7 @@ import { execFile } from 'node:child_process'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { driveOne, isSafeVmName, CREDITS_REFUSAL_NOTE } from '../drive.mjs'
+import { driveOne, isSafeVmName } from '../drive.mjs'
 import { runShim, connectOpenWs } from '../shim.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
 import {
@@ -840,8 +840,7 @@ try {
   // a floor estimate; two points is enough to pin peak AND mean.
   //
   // The VM these were captured from is `fleet-r1`, so the scenarios below drive
-  // `runId: 'r1'` — `sandboxIdFor` derives `fleet-<runId>`, and the credit row
-  // is selected by exact box name.
+  // `runId: 'r1'` — `sandboxIdFor` derives `fleet-<runId>`.
   const STAT_FIXTURE = JSON.stringify({
     name: 'fleet-r1',
     status: 'running',
@@ -863,34 +862,19 @@ try {
       },
     ],
   })
-  const CREDITS_FIXTURE = JSON.stringify({
-    group: 'box',
-    month: '2026-08',
-    total_cost_usd: 44.46,
-    groups: [
-      { box: 'fleet-r1', key: 'fleet-r1', cost_usd: 0.78, cost_microcents: 783905, requests: 11 },
-      { box: '(deleted)', key: '(deleted)', cost_usd: 40.03, cost_microcents: 40031119, requests: 988 },
-    ],
-  })
-
   const STAT_CMD = /"stat \S+ --json --range=24h"/
-  const CREDITS_CMD = /billing credits usage --group=box --detail --json/
 
-  // `makeExec` with the two control-plane captures stubbed. Anything a stub does
-  // NOT claim falls through to the shared exec, so the rest of the run — the
-  // tunnel, the shim start, the real git traffic, the teardown — is unchanged.
-  // A stub may be a result object or a function (which may throw, standing in
-  // for an ssh that never connected).
-  const makeCaptureExec = (onShimStart, { stat, credits }) => {
+  // `makeExec` with the control-plane stat capture stubbed. Anything the stub
+  // does NOT claim falls through to the shared exec, so the rest of the run —
+  // the tunnel, the shim start, the real git traffic, the teardown — is
+  // unchanged. The stub may be a result object or a function (which may throw,
+  // standing in for an ssh that never connected).
+  const makeCaptureExec = (onShimStart, { stat }) => {
     const inner = makeExec(onShimStart)
     const exec = async (cmd) => {
       if (STAT_CMD.test(cmd) && stat !== undefined) {
         inner.cmds.push(cmd)
         return typeof stat === 'function' ? stat(cmd) : stat
-      }
-      if (CREDITS_CMD.test(cmd) && credits !== undefined) {
-        inner.cmds.push(cmd)
-        return typeof credits === 'function' ? credits(cmd) : credits
       }
       return inner(cmd)
     }
@@ -898,12 +882,11 @@ try {
     return exec
   }
 
-  // -- 7c. stat + credits are captured BEFORE teardown, raw and derived -------
-  // The two numbers the W1 gate reads about cost — the sandbox's own resource
-  // peak and its credit spend — exist only while the VM does. They are captured
-  // on the same pre-teardown leg as the log pull, the RAW payloads are kept so
-  // an upstream shape change is diagnosable from the artifact, and the derived
-  // fields ride the detail.
+  // -- 7c. stat is captured BEFORE teardown, raw and derived ------------------
+  // The sandbox's own resource peak exists only while the VM does. It is
+  // captured on the same pre-teardown leg as the log pull, the RAW payload is
+  // kept so an upstream shape change is diagnosable from the artifact, and the
+  // derived field rides the detail.
   {
     const runId = 'r1'
     const evidenceDir = path.join(tmp, 'evidence-r1')
@@ -921,40 +904,35 @@ try {
           })
         }, 30)
       },
-      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 0, stdout: CREDITS_FIXTURE } },
+      { stat: { code: 0, stdout: STAT_FIXTURE } },
     )
 
     const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7c'), evidenceDir, exec, runId })
     await sandbox
 
     assert.deepEqual(res.detail.sandboxStat, { peakCores: 3.5, meanCores: 1.755, peakMemBytes: 9064488960 })
-    assert.equal(res.detail.creditSpendUsd, 0.78)
     assert.ok(fs.existsSync(path.join(evidenceDir, `stat-${runId}.json`)), 'raw stat.json written')
-    assert.ok(fs.existsSync(path.join(evidenceDir, `credits-${runId}.json`)), 'raw credits.json written')
     // RAW, byte for byte — the artifact is the control plane's answer, not a
     // re-serialization of what this process managed to parse out of it.
     assert.equal(fs.readFileSync(path.join(evidenceDir, `stat-${runId}.json`), 'utf8'), STAT_FIXTURE)
-    assert.equal(fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'), CREDITS_FIXTURE)
-    // The captures name THIS vm and ride the validated command builders. Both
-    // target `exe.dev` (the lobby control plane, not the sandbox itself), so
-    // neither carries the sandbox no-pin host-key flags (#211).
+    // The capture names THIS vm and rides the validated command builder. It
+    // targets `exe.dev` (the lobby control plane, not the sandbox itself), so
+    // it carries none of the sandbox no-pin host-key flags (#211).
     assert.ok(
       exec.cmds.includes(`ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-${runId} --json --range=24h"`),
       `expected the stat capture, got: ${JSON.stringify(exec.cmds)}`,
     )
-    for (const cmd of exec.cmds.filter((c) => STAT_CMD.test(c) || CREDITS_CMD.test(c))) {
+    for (const cmd of exec.cmds.filter((c) => STAT_CMD.test(c))) {
       assert.ok(
         !cmd.includes('StrictHostKeyChecking') && !cmd.includes('UserKnownHostsFile'),
-        `the lobby stat/credits capture must carry no host-key flags, got: ${cmd}`,
+        `the lobby stat capture must carry no host-key flags, got: ${cmd}`,
       )
     }
-    // Both captures happen while the VM still exists.
+    // The capture happens while the VM still exists.
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     const statIdx = exec.cmds.findIndex((c) => STAT_CMD.test(c))
-    const creditsIdx = exec.cmds.findIndex((c) => CREDITS_CMD.test(c))
     assert.ok(rmIdx >= 0, `expected the teardown command, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(statIdx >= 0 && statIdx < rmIdx, 'stat is captured before the sandbox is destroyed')
-    assert.ok(creditsIdx >= 0 && creditsIdx < rmIdx, 'credits are captured before the sandbox is destroyed')
     // Evidence never lands in the persister dir.
     assert.ok(!fs.existsSync(path.join(tmp, 'db7c', `stat-${runId}.json`)), 'evidence must not live inside dbDir')
     assert.equal(res.reportPath, path.join(evidenceDir, `gate-read-${runId}.json`))
@@ -985,7 +963,7 @@ try {
           })
         }, 30)
       },
-      { stat: { code: 0, stdout: malformed }, credits: { code: 0, stdout: CREDITS_FIXTURE } },
+      { stat: { code: 0, stdout: malformed } },
     )
 
     const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7d'), evidenceDir, exec, runId })
@@ -1003,8 +981,6 @@ try {
       exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
       `the sandbox is destroyed anyway, got: ${JSON.stringify(exec.cmds)}`,
     )
-    // The credits leg is not collateral damage of the stat leg's failure.
-    assert.equal(res.detail.creditSpendUsd, 0)
   }
 
   // -- 7e. a stat capture that never connects never blocks teardown ----------
@@ -1029,7 +1005,6 @@ try {
         stat: () => {
           throw new Error('ssh: connect to host exe.dev port 22: Connection timed out')
         },
-        credits: { code: 0, stdout: CREDITS_FIXTURE },
       },
     )
 
@@ -1047,44 +1022,6 @@ try {
     )
     // A capture that never returned has no raw payload to keep.
     assert.ok(!fs.existsSync(path.join(evidenceDir, `stat-${runId}.json`)), 'no stat.json for a capture that never ran')
-    assert.equal(res.detail.creditSpendUsd, 0)
-  }
-
-  // -- 7f. no credit row for this box is a flat 0, not an unknown ------------
-  // The control plane simply records nothing against a box that spent nothing.
-  // Reading that as `null` would make "cost us nothing" indistinguishable from
-  // "we could not find out", and the W1 spend read depends on the difference.
-  {
-    const runId = 'r1f'
-    const evidenceDir = path.join(tmp, 'evidence-r1f')
-    const noRow = JSON.stringify({
-      group: 'box',
-      month: '2026-08',
-      total_cost_usd: 40.03,
-      groups: [{ box: '(deleted)', key: '(deleted)', cost_usd: 40.03, cost_microcents: 40031119, requests: 988 }],
-    })
-    let sandbox = null
-    const exec = makeCaptureExec(
-      (assignment) => {
-        setTimeout(() => {
-          sandbox = startStubSandbox({
-            assignment,
-            runId,
-            receiptSha: olderSha,
-            exec,
-            branch: OLDER_BRANCH,
-            receiptPath: 'old.txt',
-          })
-        }, 30)
-      },
-      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 0, stdout: noRow } },
-    )
-
-    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7f'), evidenceDir, exec, runId })
-    await sandbox
-
-    assert.equal(res.detail.creditSpendUsd, 0, 'no row for this box means no spend recorded — flat 0')
-    assert.equal(fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'), noRow)
   }
 
   // -- 7g. a PERSISTED dbDir does not perturb the next run's gate read --------
@@ -1166,71 +1103,6 @@ try {
     // keeping it outside `dbDir`.
     assert.ok(fs.existsSync(first.reportPath), "run 1's gate read survives run 2")
     assert.notEqual(first.reportPath, second.reportPath)
-  }
-
-  // -- 7h. #319: the orchestrator key's refusal is ONE documented line --------
-  {
-    const runId = 'r1h'
-    const evidenceDir = path.join(tmp, 'evidence-r1h')
-    let sandbox = null
-    const exec = makeCaptureExec(
-      (assignment) => {
-        setTimeout(() => {
-          sandbox = startStubSandbox({
-            assignment,
-            runId,
-            receiptSha: olderSha,
-            exec,
-            branch: OLDER_BRANCH,
-            receiptPath: 'old.txt',
-          })
-        }, 30)
-      },
-      {
-        stat: { code: 0, stdout: STAT_FIXTURE },
-        credits: { code: 1, stdout: 'command not allowed by SSH key permissions' },
-      },
-    )
-
-    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7h'), evidenceDir, exec, runId })
-    await sandbox
-
-    assert.equal(res.detail.creditSpendUsd, null, 'a refused capture is unknown, never 0')
-    const creditLines = res.detail.errors.filter((e) => /credits/.test(e))
-    assert.deepEqual(creditLines, [CREDITS_REFUSAL_NOTE], 'exactly one documented line, no raw noise')
-    // The raw artifact still lands — the refusal is diagnosable from disk.
-    assert.equal(
-      fs.readFileSync(path.join(evidenceDir, `credits-${runId}.json`), 'utf8'),
-      'command not allowed by SSH key permissions',
-    )
-    // A NON-refusal failure keeps the raw default line (the note is not a blanket).
-  }
-  {
-    const runId = 'r1i'
-    const evidenceDir = path.join(tmp, 'evidence-r1i')
-    let sandbox = null
-    const exec = makeCaptureExec(
-      (assignment) => {
-        setTimeout(() => {
-          sandbox = startStubSandbox({
-            assignment,
-            runId,
-            receiptSha: olderSha,
-            exec,
-            branch: OLDER_BRANCH,
-            receiptPath: 'old.txt',
-          })
-        }, 30)
-      },
-      { stat: { code: 0, stdout: STAT_FIXTURE }, credits: { code: 255, stdout: 'ssh: connection reset' } },
-    )
-    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7i'), evidenceDir, exec, runId })
-    await sandbox
-    assert.ok(
-      res.detail.errors.some((e) => /credits usage: code 255 ssh: connection reset/.test(e)),
-      `a non-refusal failure keeps the raw line, got: ${JSON.stringify(res.detail.errors)}`,
-    )
-    assert.equal(res.detail.creditSpendUsd, null)
   }
 
   // -- 8. the production receipt writer: copy, commit, point at the tree ------
@@ -2287,8 +2159,7 @@ try {
   // -- 23. pullLogsOnce refusal branch (#290-2): a provisioner that returns a
   // mutated unsafe vmName gets its sandbox-addressed captures REFUSED (no ssh
   // command ever carries the bad name), the refusal lands in detail.errors,
-  // the credits capture (interpolates nothing) still runs, and teardown is
-  // still invoked.
+  // and teardown is still invoked.
   {
     const runId = 'run-drive-23'
     const exec = makeExec(() => {})
@@ -2317,10 +2188,6 @@ try {
     assert.ok(
       !exec.cmds.some((c) => c.includes(badName)),
       `no shelled command may carry the unsafe name, got: ${JSON.stringify(exec.cmds.filter((c) => c.includes(badName)))}`,
-    )
-    assert.ok(
-      exec.cmds.some((c) => c.includes('billing credits usage')),
-      'the credits capture interpolates nothing and must still run',
     )
     assert.deepEqual(destroyed, [badName], 'teardown must still be invoked exactly once')
   }

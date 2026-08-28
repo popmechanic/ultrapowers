@@ -25,10 +25,10 @@ the five lenses below and return findings as a JSON array. Return raw data only.
 4. **cost** — tokens, turns, tier choices, parallelism payoff, anything the
    metrics in `bundle.json` reveal about effort versus benefit.
    For a FLEET bundle, also read `detail.sandboxStat` ({peakCores, meanCores,
-   peakMemBytes} — a floor estimate), `detail.creditSpendUsd` (the
-   gateway-regression canary: fleet-golden baseline ~$0.78/month; growth =
-   flag it), and the raw `stat-<runId>.json`/`credits-<runId>.json` beside the gate read —
-   the same aggregation W2's spend-tolerance and sandbox-sizing verdicts use.
+   peakMemBytes} — a floor estimate) and the raw `stat-<runId>.json` beside the
+   gate read — the same aggregation W2's sandbox-sizing verdict uses — and
+   `shim.log`'s `engine auth` line (`authMethod` must read `oauth_token`; any
+   other value means the engine billed a gateway, flag it).
 5. **frontier** — OPEN-ENDED. How large/complex did the work get and still
    succeed? What did the agents do that the design did NOT anticipate —
    self-limiting, self-correcting, or otherwise surprising behavior? Seed
