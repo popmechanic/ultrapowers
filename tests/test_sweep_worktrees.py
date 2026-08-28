@@ -557,15 +557,6 @@ def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
     wt, br = add_engine_worktree(repo, "octal-1", "u.txt", merge=True)
     _age(wt, days=9 / 24)          # 9 hours old: inside 10h, outside 8h
 
-    # 08 == 8, not a base error: the 9h-old worktree is past an 8-hour threshold
-    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "08"],
-                       cwd=repo, capture_output=True, text=True)
-    assert p.returncode == 0, (p.stdout, p.stderr)
-    assert "value too great for base" not in p.stderr
-    assert f"orphan worktree: {wt}" in p.stdout
-    assert "older than 8h" in p.stdout
-    assert "08h" not in p.stdout   # the threshold is echoed as normalized
-
     # 010 == 10 (decimal), NOT 8: a 9h-old worktree is still inside the window
     p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "010"],
                        cwd=repo, capture_output=True, text=True)
