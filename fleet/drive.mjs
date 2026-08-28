@@ -7,10 +7,13 @@
 //
 // Every side effect that leaves this process rides the injected `exec(cmd)`
 // seam (via the provisioner) or the orchestrator's injected `actions`, so the
-// whole driver is exercisable with no VMs and no credentials in reach. It holds
-// no credentials of its own: the sandbox's store token is minted inside
-// `provisionRun` and delivered over ssh, and this module only ever handles the
-// resulting record (a hash and an expiry).
+// whole driver is exercisable with no VMs and no credentials in reach. The
+// sandbox's store token is minted inside `provisionRun` and delivered over
+// ssh, and this module only ever handles the resulting record (a hash and an
+// expiry). The one credential it reads itself is the orchestrator's GitHub
+// token (#368), for the publish leg at the very end — handed to `git push`
+// and `gh` as an env var through `exec(cmd, {env})`, never logged, never in
+// `detail`.
 import fs from 'node:fs'
 import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
@@ -49,6 +52,156 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
  * loudly instead of running it.
  */
 export const isSafeVmName = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)
+
+// --- the publish leg (#368) -------------------------------------------------
+// After a run resolves, the orchestrator — not the laptop — pushes the fetched
+// integration branch to GitHub and opens the PR whose body is the gate receipt.
+// Green run → a normal PR; parked-with-publish → a DRAFT PR titled `[parked] …`
+// with the ack list first (the park card IS the draft PR; the operator acks by
+// marking it ready). Merge stays the human's: nothing here enables auto-merge.
+
+/** Where the orchestrator keeps its GitHub token (0600, orchestrator only). */
+export const GITHUB_TOKEN_PATH = '/home/exedev/.fleet/github-token'
+
+/** Single-quote a string for `/bin/sh -c`. Never applied to sandbox-authored data. */
+export const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`
+
+/**
+ * The plan's `Closes` convention. No plan in the repo carried one before
+ * #368 (titles name issues as `(#318 #319)`, `**Spec:**` names them in prose —
+ * neither is a close), so this is the convention from here on: in the plan
+ * HEADER (everything before the first `## ` section), a `**Closes:** #N, #M`
+ * line or a bare `Closes #N` line. Every `#N` on such a line becomes a
+ * `Closes #N` line in the PR body; the rest of the plan is never scanned.
+ */
+export const parsePlanCloses = (planText) => {
+  const header = String(planText ?? '').split(/\n## /)[0]
+  const numbers = new Set()
+  for (const line of header.matchAll(/^[ \t]*(?:\*\*)?Closes:?(?:\*\*)?:?[ \t]*(.+)$/gim)) {
+    for (const hit of line[1].matchAll(/#(\d+)/g)) numbers.add(Number(hit[1]))
+  }
+  return [...numbers]
+}
+
+/** The plan's H1 (control characters stripped), else its file name. */
+export const planTitleFrom = (planText, planPath) => {
+  const h1 = String(planText ?? '').match(/^#[ \t]+(.+)$/m)?.[1]
+  const raw = h1 && h1.trim().length > 0 ? h1 : path.basename(String(planPath ?? 'plan'))
+  return raw.replace(/[\x00-\x1f\x7f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
+}
+
+/** The PR title — `[parked] ` prefixed on the draft path. */
+export const pullRequestTitle = ({ runId, planText, planPath, parked }) =>
+  `${parked ? '[parked] ' : ''}fleet ${runId}: ${planTitleFrom(planText, planPath)}`
+
+/**
+ * The PR body: the gate receipt rendered. `receipt` is the parsed
+ * `fleet-receipts/<runId>/gate-receipt.json` from the fetched branch (or null
+ * when it could not be read — the body says so rather than pretending).
+ * Parked → the acks come FIRST, before the verdict; green → verdict, checks,
+ * acks. Then the five §W1d legs, spend, `autoResolved` and the
+ * completeness-critic findings when the receipt carries them (they live in
+ * the engine's gitignored `report.json`, which is not on the branch — the
+ * evidence bundle has it), the receipt pointers, the driver's notes, the
+ * `Closes #N` lines, and the standard trailer.
+ */
+export const renderPullRequestBody = ({
+  runId,
+  planPath,
+  branch,
+  vmName,
+  parked,
+  receipt,
+  receiptSource,
+  read,
+  receipts,
+  closes,
+  errors,
+}) => {
+  const gate = receipt?.gateCheck && typeof receipt.gateCheck === 'object' ? receipt.gateCheck : receipt ?? {}
+  const verdict = receipt?.verdict ?? gate?.verdict ?? 'unknown'
+  const checks = Array.isArray(gate?.checks) ? gate.checks : []
+  const acks = Array.isArray(gate?.acks) ? gate.acks : []
+  const autoResolved = receipt?.autoResolved ?? gate?.autoResolved
+  const findings = receipt?.completenessFindings ?? gate?.completenessFindings
+  const lines = []
+  const ackLines = () => {
+    lines.push(`## Acks${parked ? ' required' : ''} (${acks.length})`)
+    if (acks.length === 0) lines.push('- none')
+    for (const ack of acks) lines.push(`- **${ack?.type ?? 'ack'}** — ${String(ack?.detail ?? '').trim()}`)
+    lines.push('')
+  }
+
+  lines.push(`# fleet ${runId} — ${parked ? 'parked gate receipt' : 'gate receipt'}`)
+  lines.push('')
+  lines.push(`Plan \`${planPath}\` · branch \`${branch}\` · sandbox \`${vmName ?? 'unknown'}\``)
+  lines.push('')
+  if (parked) {
+    lines.push('**Parked.** This draft PR is the park card: review the acks below, then mark it ready to ack. Merge stays yours.')
+    lines.push('')
+    ackLines()
+  }
+  lines.push(`## Verdict: ${verdict}`)
+  lines.push('')
+  if (receipt === null) {
+    lines.push(`_gate receipt unreadable (${receiptSource ?? 'no resolved receipt'}) — verdict is the store's word only._`)
+    lines.push('')
+  }
+  lines.push(`## Checks (${checks.length})`)
+  if (checks.length === 0) lines.push('- none')
+  for (const check of checks) {
+    const detail = String(check?.detail ?? '').trim()
+    lines.push(`- [${check?.ok ? 'x' : ' '}] ${check?.name ?? 'check'}${detail ? ` — ${detail}` : ''}`)
+  }
+  lines.push('')
+  if (!parked) ackLines()
+
+  lines.push('## §W1d gate read')
+  lines.push('')
+  lines.push('| leg | value |')
+  lines.push('|---|---|')
+  for (const leg of ['o1', 'receiptsResolvable', 'leaseContinuity', 'versionStamp']) lines.push(`| ${leg} | ${read?.[leg]} |`)
+  const spend = read?.spendObservational ?? {}
+  lines.push(`| spendObservational | reported ${spend.reported ?? 'null'} / ledger ${spend.ledger ?? 'null'} |`)
+  lines.push('')
+  lines.push(`## Spend`)
+  lines.push('')
+  lines.push(`reported: ${spend.reported ?? 'null'} · ledger: ${spend.ledger ?? 'null'} (output tokens)`)
+  lines.push('')
+  if (typeof autoResolved === 'number') {
+    lines.push(`## autoResolved: ${autoResolved}`)
+    lines.push('')
+  }
+  if (Array.isArray(findings) && findings.length > 0) {
+    lines.push(`## Completeness-critic findings (${findings.length})`)
+    for (const finding of findings) lines.push(`- ${typeof finding === 'string' ? finding : JSON.stringify(finding)}`)
+    lines.push('')
+  }
+  lines.push(`## Receipts (${receipts.length})`)
+  if (receipts.length === 0) lines.push('- none')
+  for (const r of receipts) {
+    const resolved = r.resolved === undefined ? 'unverified' : r.resolved ? 'resolved' : 'UNRESOLVED'
+    lines.push(`- \`${r.sha}\` \`${r.path}\` — ${r.verdict || 'no verdict'}, ${resolved}`)
+  }
+  lines.push('')
+  lines.push('_`autoResolved` and the completeness-critic findings render only when the receipt carries them; otherwise they live in `report.json` inside the evidence bundle, not on this branch._')
+  lines.push('')
+  if (errors.length > 0) {
+    lines.push(`## Driver notes (${errors.length})`)
+    for (const e of errors) lines.push(`- ${e}`)
+    lines.push('')
+  }
+  for (const n of closes) lines.push(`Closes #${n}`)
+  if (closes.length > 0) lines.push('')
+  lines.push('🤖 Generated with [Claude Code](https://claude.com/claude-code)')
+  return `${lines.join('\n')}\n`
+}
+
+/** The PR number out of `gh pr create`'s output, or null. */
+export const parsePullRequestUrl = (output) => {
+  const hit = String(output ?? '').match(/https:\/\/github\.com\/\S+?\/pull\/(\d+)/)
+  return hit ? { url: hit[0], number: Number(hit[1]) } : null
+}
 
 /**
  * The sandbox's own resource samples, pulled from the exe.dev control plane
@@ -127,6 +280,15 @@ export const deriveSandboxStat = (statJson) => {
  *   only with a specific operator pre-authorization; the override is recorded
  *   in `detail.errors`. The plan is read as committed at `baseRef` (#337); an
  *   uncommitted or dirty plan is refused regardless of this flag.
+ * @param {string} [opts.githubTokenPath] - the orchestrator's GitHub token
+ *   file (#368; default `GITHUB_TOKEN_PATH`). Read here, handed to `git push`
+ *   and `gh` ONLY as the `GH_TOKEN` env var through `exec(cmd, {env})` —
+ *   never on a command line, never in `detail`. Absent → the run still reads
+ *   exactly as it would have; `github-token missing …` lands in
+ *   `detail.errors` and no PR is opened.
+ * @param {string} [opts.prBase] - the PR's base branch (default `main`).
+ *   Operator input that reaches a shell, so it passes `isSafeBranchName` at
+ *   entry like `runId` does.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -176,7 +338,15 @@ export const driveOne = async ({
   // the public surface post-#298) is testable at all (#290-2).
   provision = provisionRun,
   destroy = destroySandbox,
+  // #368: the publish leg's inputs. The token stays on the orchestrator.
+  githubTokenPath = GITHUB_TOKEN_PATH,
+  prBase = 'main',
 }) => {
+  // #368: `prBase` is operator input interpolated into `gh pr create`; refuse
+  // an unsafe one at entry, before any command, exactly as `runId` is.
+  if (!isSafeBranchName(prBase)) {
+    throw new Error(`driveOne: unsafe prBase ${JSON.stringify(prBase)} — fails isSafeBranchName; refusing before any command`)
+  }
   // #298: `runId` becomes `fleet-<runId>` and is interpolated into every
   // sandbox-bound ssh/git command string downstream (clone, deliveries,
   // tunnel, shim start, rm, captures, fetch). Validate ONCE at the single
@@ -318,12 +488,13 @@ export const driveOne = async ({
   // One command, bounded by `logPullTimeoutMs`. The bound is PER COMMAND, not
   // shared across the captures: a slow log pull must not eat the budget the
   // `stat` capture still needs, and no capture may outlive its own bound.
-  const boundedExec = (cmd) => {
+  // `opts` (an env for the command, #368) rides through to `exec` untouched.
+  const boundedExec = (cmd, opts) => {
     let timer
     const timeout = new Promise((resolve) => {
       timer = setTimeout(() => resolve({ code: -1, stdout: `timed out after ${logPullTimeoutMs}ms` }), logPullTimeoutMs)
     })
-    return Promise.race([Promise.resolve().then(() => exec(cmd)), timeout]).finally(() => clearTimeout(timer))
+    return Promise.race([Promise.resolve().then(() => exec(cmd, opts)), timeout]).finally(() => clearTimeout(timer))
   }
 
   // The control-plane capture that must happen while the VM still exists: its
@@ -722,11 +893,17 @@ export const driveOne = async ({
   // nothing about a park may brighten the read.
   let receiptsResolvable = false
   let parkedPublish = null
+  // #368: the fetched tip, pinned by sha the moment the fetch lands — the
+  // publish leg pushes THIS object, so nothing that touches FETCH_HEAD later
+  // can change what reaches GitHub, and a folded tip goes up as-is (merge
+  // commits included; a linear replay re-creates the overlap the fold
+  // unioned — #363).
+  let fetchedOk = false
+  let fetchedBranch = null
+  let fetchedTip = null
   const parkedWithReceipts = status === 'parked' && receipts.length > 0
   if (((reachedGateGreen && !publishTimedOut) || parkedWithReceipts) && receipts.length > 0 && vmName) {
     let resolvable = false
-    let fetchedOk = false
-    let fetchedBranch = null
     try {
       const runBranch = store.getCell('runs', runId, 'branch') ?? branch
       if (!isSafeBranchName(runBranch)) {
@@ -741,6 +918,10 @@ export const driveOne = async ({
           fetchedOk = true
           fetchedBranch = runBranch
           resolvable = true
+          const tip = await exec(`git -C ${repoDir} rev-parse FETCH_HEAD`)
+          const tipSha = String(tip?.stdout ?? '').trim()
+          if (tip?.code === 0 && isSafeSha(tipSha)) fetchedTip = tipSha
+          else errors.push(`rev-parse FETCH_HEAD after fetching ${runBranch} failed (code ${tip?.code}) — nothing to push`)
           for (const receipt of receipts) {
             if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
               errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
@@ -872,6 +1053,11 @@ export const driveOne = async ({
     // The ultrapowers version the sandbox reported as INSTALLED (#282 image
     // side), or null when the shim did not stamp one.
     installedPluginVersion,
+    // #368: the PR the orchestrator opened — `{number, url, draft, branch}` —
+    // or null, with the reason in `errors` (token missing, push or `gh`
+    // failed, nothing fetched). Never a gate-read input: green stays green,
+    // parked stays parked, whatever happened here.
+    pullRequest: null,
     // The orchestrator's actual bound port (`port: 0` binds an ephemeral one) —
     // the read-back channel triage uses when `port` was not pinned.
     effectivePort: null,
@@ -893,6 +1079,108 @@ export const driveOne = async ({
   }
   detail.sandboxLogs = sandboxLogs
   detail.sandboxStat = sandboxStat
+
+  // --- the publish leg (#368) -----------------------------------------------
+  // AFTER teardown (the billing clock never waits on GitHub) and BEFORE the
+  // store stops (so the PR url is stamped on the runs row). Runs only when the
+  // branch is actually in `repoDir` with a pinned tip: a green run whose
+  // receipts RESOLVE (a gate-green status with a pointer that does not bind is
+  // a defect to diagnose, not a PR to open — RUNBOOK §Gate read), or a park
+  // that published (`parkedPublish` non-null; the draft PR is the park card
+  // even when a pointer is off, and its body says so). Every failure lands in
+  // `errors` and leaves `pullRequest` null — the read above is already final
+  // and is never touched. The token is read here, rides ONLY the env of the
+  // two commands, is scrubbed from any output that is recorded, and is never
+  // logged.
+  const publishable = fetchedOk && fetchedTip !== null && ((reachedGateGreen && receiptsResolvable) || parkedPublish !== null)
+  if (fetchedOk && reachedGateGreen && !receiptsResolvable) {
+    errors.push(`PR not opened: gate-green but receipts unresolvable on ${fetchedBranch} — diagnose before publishing`)
+  }
+  if (publishable) {
+    const parked = !reachedGateGreen
+    let token = null
+    try {
+      token = fs.readFileSync(githubTokenPath, 'utf8').trim()
+    } catch {
+      token = null
+    }
+    if (!token) {
+      errors.push(`github-token missing at ${githubTokenPath} — PR not opened`)
+      note('publish: github-token missing — branch not pushed, PR not opened')
+    } else {
+      const scrub = (text) => String(text ?? '').split(token).join('<redacted>').trim()
+      try {
+        // The receipt to render: the run's own `gate` row when it resolved,
+        // else the first resolved pointer. Both halves of a resolved pointer
+        // already passed isSafeSha/isSafeRepoPath before reaching a shell.
+        const resolved = receiptChecks.filter((r) => r.resolved)
+        const chosen = resolved.find((r) => r.rowId === `${runId}:gate`) ?? resolved[0] ?? null
+        let receipt = null
+        let receiptSource = null
+        if (chosen) {
+          receiptSource = `${chosen.sha}:${chosen.path}`
+          const shown = await exec(`git -C ${repoDir} show ${chosen.sha}:${chosen.path}`)
+          if (shown?.code === 0) {
+            try {
+              receipt = JSON.parse(shown.stdout)
+            } catch (error) {
+              errors.push(`gate receipt ${receiptSource} is not JSON: ${error?.message ?? error}`)
+            }
+          } else errors.push(`git show ${receiptSource} failed (code ${shown?.code})`)
+        }
+        const closes = parsePlanCloses(committedText)
+        const body = renderPullRequestBody({
+          runId,
+          planPath,
+          branch: fetchedBranch,
+          vmName,
+          parked,
+          receipt,
+          receiptSource,
+          read,
+          receipts: detail.receipts,
+          closes,
+          errors: [...errors],
+        })
+        fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
+        const bodyFile = path.join(resolvedEvidenceDir, `pr-body-${runId}.md`)
+        fs.writeFileSync(bodyFile, body)
+        const title = pullRequestTitle({ runId, planText: committedText, planPath, parked })
+
+        // 1. Push the fetched tip AS-IS. `origin` is the orchestrator clone's
+        //    https remote; `gh auth git-credential` turns GH_TOKEN into the
+        //    push credential with nothing written to disk. No prompt may ever
+        //    hang an unattended drive.
+        const pushCmd =
+          `git -C ${repoDir} -c credential.helper= -c credential.helper='!gh auth git-credential' ` +
+          `push origin ${fetchedTip}:refs/heads/${fetchedBranch}`
+        const pushed = await boundedExec(pushCmd, { env: { GH_TOKEN: token, GIT_TERMINAL_PROMPT: '0' } })
+        if (pushed?.code !== 0) {
+          errors.push(`push ${fetchedBranch} to origin failed (code ${pushed?.code}) ${scrub(pushed?.stdout)}`.trim())
+          note(`publish: push of ${fetchedBranch} failed`)
+        } else {
+          note(`publish: pushed ${fetchedBranch} (${fetchedTip}) to origin`)
+          // 2. Open the PR. Draft on the parked path — the park card.
+          const ghCmd =
+            `cd ${shellQuote(repoDir)} && gh pr create --base ${prBase} --head ${fetchedBranch} ` +
+            `--title ${shellQuote(title)} --body-file ${shellQuote(bodyFile)}${parked ? ' --draft' : ''}`
+          const created = await boundedExec(ghCmd, { env: { GH_TOKEN: token, GH_PROMPT_DISABLED: '1' } })
+          const parsed = created?.code === 0 ? parsePullRequestUrl(created.stdout) : null
+          if (parsed === null) {
+            errors.push(`gh pr create for ${fetchedBranch} failed (code ${created?.code}) ${scrub(created?.stdout)}`.trim())
+            note(`publish: gh pr create failed for ${fetchedBranch}`)
+          } else {
+            detail.pullRequest = { number: parsed.number, url: parsed.url, draft: parked, branch: fetchedBranch }
+            store.setCell('runs', runId, 'pullRequestUrl', parsed.url)
+            note(`publish: opened ${parked ? 'draft ' : ''}PR #${parsed.number} ${parsed.url}`)
+          }
+        }
+      } catch (error) {
+        errors.push(`pull request: ${scrub(error?.message ?? error)}`)
+      }
+    }
+  }
+
   try {
     await stop()
   } catch (error) {

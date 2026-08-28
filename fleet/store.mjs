@@ -8,6 +8,8 @@
 //
 // runs:     rowId = runId (orchestrator-authored: `run-<n>`)
 //           { planPath, sandboxId, status, branch }
+//           + pullRequestUrl (driver-stamped after the run, #368: the PR the
+//             orchestrator opened on the fetched branch; absent until then)
 //           status: pending -> claimed -> running -> gate-green -> folded
 //                   (parked and revoked reachable from any active state)
 // claims:   rowId = `claim:<runId>` (one claim per run)
