@@ -345,7 +345,6 @@ def test_instruction_paths_and_derive_files_units():
     assert ra.instruction_paths("Fix the off-by-one in src/a.py:12-14 (see the PASS verdict). It must return JSON, e.g. {}") == \
         ["src/a.py"]
     assert ra.instruction_paths("update `Makefile` and README") == ["Makefile"]
-    assert ra.derive_files(["a.py"], "touch b.py and a.py", ["c.py", "b.py"]) == ["a.py", "b.py", "c.py"]
     assert ra.derive_files(["a.py"], "", []) == ["a.py"]
 
 

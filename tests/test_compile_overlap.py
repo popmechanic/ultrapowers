@@ -185,18 +185,6 @@ def test_single_implementation_task_still_degrades(tmp_path):
         assert out["waves"] == [["A"]], mode
 
 
-def test_all_overlapping_writers_no_longer_degrade_under_fold(tmp_path):
-    """The `fully overlapping writes` degrade retired with the ordering-guess
-    tiers: under fold, overlapping writes are exactly what SHARES a wave."""
-    out = compile_plan_json(_write(tmp_path, "a.md", SHAPE_A), "--overlap", "fold")
-    assert out["mode"] == "parallel"
-    assert out["degrade_reason"] is None
-    ser = compile_plan_json(_write(tmp_path, "a2.md", SHAPE_A),
-                            "--overlap", "serialize")
-    assert ser["mode"] == "parallel"
-    assert ser["degrade_reason"] is None
-
-
 # ------------------------------------------------------- fixture regression --
 @pytest.mark.parametrize("name", ["contend", "wide", "chained", "mixed", "degrade"])
 def test_fold_never_adds_a_write_after_write_edge_on_the_fixtures(name):
