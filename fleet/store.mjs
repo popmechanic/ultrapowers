@@ -18,10 +18,68 @@
 // budgets:  rowId = scopeId (runId or docketId)  { capTokens }
 // spend:    rowId = `<writerId>:<seq>` (writer-namespaced, APPEND-ONLY)
 //           { runId, tokens, at }  — totals are always derived by readers.
+// admission:      PLANNED (one-driver stage 3, #403) — rowId = `<writerId>:<seq>`
+//                 (writer-namespaced, APPEND-ONLY, same shape as `spend`)
+//                 { runId, waveIndex, decision, apiRetries, maxRetryDelayMs, at }
+//                 Fed by N workers; a grow-only set, never a cell. Records only —
+//                 `decision` is always `observed` in 0.3.0 (the gate is 0.3.1's).
+// judgmentCalls:  PLANNED (one-driver stage 3, #403) — rowId = `<writerId>:<seq>`
+//                 (writer-namespaced, APPEND-ONLY)
+//                 { runId, taskId, kind, question, taken, rationale }
+//                 The operator adjudicates these at the PR, so a lost one is a
+//                 silently weakened receipt — which is exactly why it is a row.
 // receipts: rowId = `<runId>:<kind>`  kind: gate | exam | fold
 //           { sha, path, verdict }
 //           sha+path are POINTERS INTO GIT (the authority); `verdict` is a
 //           display hint only — never load-bearing.
+//
+// --- THE ROW/CELL AXIS RULE (read before adding any table) ------------------
+//
+// The convergence engine is TinyBase's MergeableStore, synced through the
+// orchestrator's ws-server. TinyBase's own docs: "acts as a Conflict-Free
+// Replicated Data Type (CRDT) ... using Hybrid Logical Clocks for causality
+// tracking." Every value is stored as a stamp — [thing, hlc, hash] — and merge
+// happens PER SLOT, where a slot is one `table.rowId.cellId`. On sync, the
+// higher HLC stamp wins that slot. Deterministically, on every replica.
+//
+// That is correct behaviour, and it is why WHICH AXIS you put concurrency on
+// decides whether data survives:
+//
+//   ROW AXIS   two writers, two rowIds -> two slots -> nothing to resolve.
+//              BOTH SURVIVE. This is a union, i.e. a grow-only set; a total is
+//              a fold over the rows at read time (see `totalSpent`).
+//
+//   CELL AXIS  two writers, one rowId+cellId -> one slot -> HLC picks one.
+//              THE OTHER VALUE IS DISCARDED, not merged.
+//
+// The CRDT does not know your number is a sum. It converges the slot, which is
+// its job. **If a sum lives in one slot, correct convergence destroys addends.**
+//
+// So:  STATUS IS A REGISTER (cell, LWW — `runs.status`, `claims.holder`).
+//      EVIDENCE IS A SET    (row, union — `spend`, and anything that accumulates).
+//      TOTALS ARE FOLDS     (derived by readers, never stored in a cell).
+//
+// `spend` is the worked example and `guardViolation` enforces it: the rowId must
+// start with `<writerId>:` (two writers CANNOT pick the same key) and a row that
+// exists cannot be rewritten (append-only). Together those give safety by
+// construction rather than by care — and idempotence for free, since a duplicate
+// delivery after a reconnect is refused as already-existing. They also sidestep
+// clock skew: HLC uses Date.now(), so across VMs "who wins" depends on wall
+// clocks — but on the row axis nothing competes, so skew cannot cost data. On the
+// cell axis it can, which is why `runs.status` is fenced by `legalTransition`
+// instead of trusted to stamps.
+//
+// `runs.reportedTokens` is the counter-example kept deliberately in view: an
+// accumulated number in a CELL. That is why a `reported == ledger` check has to
+// exist at all — one quantity maintained two ways, then reconciled. Under the
+// one-driver port both sides come from the driver reading the same envelope, so
+// the check degenerates to comparing a value to itself (see the one-driver spec
+// §9). Do not add another cell like it.
+//
+// THREE LAYERS, THREE MERGES — do not cross them (CLAUDE.md §Wayfinding):
+//   file content -> Manyana        (merges VALUES; never LWW a weave payload)
+//   run evidence -> TinyBase rows  (union)
+//   current status -> TinyBase cells (LWW)
 // ---------------------------------------------------------------------------
 
 export const RUN_STATUSES = ['pending', 'claimed', 'running', 'gate-green', 'folded', 'parked', 'revoked']
