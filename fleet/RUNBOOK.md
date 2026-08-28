@@ -43,6 +43,9 @@ ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest && python3 -m pyt
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
 #    The plugin is addressed as <plugin>@<marketplace>; the bare name fails with
 #    "Plugin not found". Register the marketplace first (it is this repo).
+#    THIS IS THE BOOTSTRAP ONLY (#373): it puts *a* plugin in the image so the
+#    per-run re-install below has something to uninstall. It does NOT choose
+#    the engine under test — see the note after step 6.
 ssh fleet-golden.exe.xyz 'claude plugin marketplace add popmechanic/ultrapowers'
 ssh fleet-golden.exe.xyz 'claude plugin install ultrapowers@ultrapowers'   # no superpowers install — deliberately absent
 
@@ -66,15 +69,39 @@ ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
 ssh fleet-golden.exe.xyz 'git -C /home/exedev/repo remote get-url origin && test -z "$(git -C /home/exedev/repo status --porcelain)" && echo clone-clean'
 ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-ok'
 ssh fleet-golden.exe.xyz 'claude plugin list'
-#    Compare the printed ultrapowers version against `.claude-plugin/plugin.json`
-#    on the base ref you are about to drive, BEFORE any drive — a stale golden
-#    runs an old engine; the drive's `versionStamp` leg now catches it (the shim
-#    stamps the installed version, #282) but only after a whole run is spent.
-#    Update with: claude plugin update ultrapowers@ultrapowers
-#    (the bare name `ultrapowers` fails with "Plugin not found"), THEN prune
-#    the transcripts the update session left behind — step 5 again:
+#    The version printed here is NOT the engine a run will execute (#373, below).
+#    Keep the golden's `claude` CLI and its deps fresh as ordinary hygiene —
+#    `claude plugin update` refreshes nothing at the same version anyway — and
+#    prune the transcripts the update session leaves behind (step 5 again):
 ssh fleet-golden.exe.xyz 'claude plugin update ultrapowers@ultrapowers && rm -rf ~/.claude/projects/*'
 ```
+
+**The engine under test is the pushed base, not the golden's plugin (#373).**
+The marketplace install in step 3 is the bootstrap only. Every run re-installs
+the plugin inside its own sandbox from the sandbox's `fleet-base` checkout —
+`fleet/shim-main.mjs` `invokeEngineRun` runs `pluginInstallCommands`
+(`claude plugin marketplace add /home/exedev/repo` → `claude plugin uninstall
+ultrapowers@ultrapowers` → `claude plugin install ultrapowers@ultrapowers`,
+~2 s) after the `fleet-base` checkout and before the engine launches, and
+REFUSES TO LAUNCH if any of the three fails (the run parks with
+`plugin install from checkout failed: …` in shim.log; it never falls through
+to the image's plugin). The `installedPluginVersion` cell the drive's
+`versionStamp` leg reads is stamped from the post-install `claude plugin list`,
+so it names the pushed manifest by construction. Consequences:
+
+- `claude plugin update` on the golden is no longer how the engine under test is
+  chosen — the base ref you push IS the engine. A branch, or main between
+  releases, runs its own engine. Rebuilding the golden after a release is
+  hygiene, not a prerequisite for driving that release.
+- The bootstrap install must exist: `claude plugin uninstall` exits 1 when
+  nothing is installed, and the run refuses at that step. A golden built
+  without step 3 drives nothing.
+- The local-path `marketplace add` REPLACES the golden's GitHub marketplace
+  entry of the same name (`ultrapowers`) inside the sandbox clone only; the
+  golden itself is never touched.
+- The per-run `claude plugin …` commands write no session transcript
+  (`~/.claude/projects` stays clean), so the evidence bundle (#197) is not
+  polluted by them.
 
 Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
 issues `ssh exe.dev "cp fleet-golden fleet-<runId> --json"` as its first command
@@ -316,7 +343,7 @@ byte for byte. Check it against the five pre-registered questions:
 | `o1` | Did provision → claim → run → gate-green → receipts complete with zero store-caused failures (nothing the guard had to converge away)? |
 | `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> FETCH_HEAD`), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
 | `leaseContinuity` | Did the lease renew across the whole run with no false expiry? |
-| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, do they match what the driver pushed (#282), and does the plugin the sandbox reports as INSTALLED (`claude plugin list --json`, stamped as `installedPluginVersion`) match the pushed manifest? A stale golden image reds this leg with the update command in `detail.errors`. |
+| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, do they match what the driver pushed (#282), and does the plugin the sandbox reports as INSTALLED (`claude plugin list --json`, stamped as `installedPluginVersion`) match the pushed manifest? Since #373 the sandbox installs the plugin from its own `fleet-base` checkout before launching, so the installed half agrees by construction; a red here means that install did not take — `detail.errors` says so and shim.log carries the `claude plugin` lines. |
 | `spendObservational` | `{reported, ledger}` — the run report's own token total vs. the shim's spend-row sum. **Observational at n=1 by construction** (spec §W1d, finding F6): this first run's own numbers are the input, not a pass/fail check yet. |
 
 `o1` through `versionStamp` must all be `true`. A `false` `o1` (or a non-empty
