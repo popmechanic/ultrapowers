@@ -303,9 +303,12 @@ def test_bootstrap_failure_is_env_error_not_red(tmp_path):
     assert "redKind" not in out
 
 
-def test_missing_module_collection_red_keeps_status_ok(tmp_path):
-    """Regression on the prior contract: a feature-absent collection error is
-    still status OK / passed False (now additionally labeled 'collection')."""
+def test_unimplemented_feature_assertion_red_keeps_status_ok(tmp_path):
+    """The feature_built=False fixture writes a PRESENT mod.py whose `add`
+    raises NotImplementedError, so the red is an assertion/runtime red
+    (redKind == "assertion"), not a collection red — the genuine
+    collection-red cases are test_collection_error_from_missing_module_is_honest_red
+    and test_collection_red_is_labeled."""
     vault, seal_id, digest = make_vault(tmp_path)
     repo = make_repo(tmp_path, feature_built=False)
     code, out = administer(vault, seal_id, digest, repo)
