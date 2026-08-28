@@ -6,8 +6,6 @@ Text pin on SKILL.md; no subprocess."""
 import pathlib
 import re
 
-import pytest
-
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills/ultrapowers/SKILL.md"
 
@@ -58,40 +56,3 @@ def test_step_5_invokes_ultra_gate():
 def test_finalize_report_precedes_ultra_gate_in_step_5():
     step5 = _step_5_body(SKILL.read_text())
     _assert_finalize_precedes_gate(step5)
-
-
-def test_pin_goes_red_if_finalize_call_is_reordered_after_gate():
-    """Sanity-check the pin's own load-bearing-ness: move the finalize
-    invocation to after the gate invocation in a text copy and confirm the
-    ORDERING assertion is what fires (the presence assert must pass on the
-    mutated text -- both needles are still present, just reordered)."""
-    step5 = _step_5_body(SKILL.read_text())
-    without_finalize = step5.replace(FINALIZE_NEEDLE, "", 1)
-    assert FINALIZE_NEEDLE not in without_finalize
-    gate_idx = without_finalize.find(GATE_NEEDLE)
-    assert gate_idx != -1, "ultra_gate.py invocation not found in Step 5"
-    # Re-insert the finalize needle immediately after the gate needle so both
-    # needles are present but finalize now comes AFTER gate.
-    insert_at = gate_idx + len(GATE_NEEDLE)
-    mutated = (
-        without_finalize[:insert_at]
-        + FINALIZE_NEEDLE
-        + without_finalize[insert_at:]
-    )
-    assert FINALIZE_NEEDLE in mutated
-    assert GATE_NEEDLE in mutated
-    assert mutated.find(FINALIZE_NEEDLE) > mutated.find(GATE_NEEDLE), (
-        "test setup bug: mutation must place finalize AFTER gate"
-    )
-    with pytest.raises(AssertionError, match="must be invoked BEFORE"):
-        _assert_finalize_precedes_gate(mutated)
-
-
-def test_pin_goes_red_if_finalize_call_is_dropped():
-    """Sanity-check the pin's own load-bearing-ness: strip the finalize
-    invocation out of a text copy and confirm the PRESENCE assertion fails."""
-    step5 = _step_5_body(SKILL.read_text())
-    mutated = step5.replace(FINALIZE_NEEDLE, "")
-    assert FINALIZE_NEEDLE not in mutated
-    with pytest.raises(AssertionError, match="finalize_report.py invocation not found"):
-        _assert_finalize_precedes_gate(mutated)

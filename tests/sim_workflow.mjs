@@ -1787,26 +1787,32 @@ async function scenarioBudgetDeferralKeepsJudgmentCalls() {
   console.log('scenario budget-deferral-keeps-judgment-calls: OK')
 }
 
-// ── Scenarios: merge/reconcile/integration throws are caught and contained ────
-async function scenarioMergeThrowContained() {
+// ── Scenarios: merge/reconcile/integration faults are caught and contained ────
+// A merge or reconcile agent can die two ways — it throws (engine fault), or it
+// replies null on terminal Overloaded. Containment must be identical either way:
+// the dispatch normalizes both into a synthesized CONFLICT instead of
+// TypeError-ing at merge.status and aborting the whole run (#148 §1). One body
+// per role therefore covers both faults; `fault()` supplies the death.
+async function runMergeFaultScenario({ tag, name, fault, faultDesc, completedSuffix }) {
   let reconciled = false
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
   const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
   const r = await runWorkflow({
     agent: makeAgent((label) => {
-      if (label.startsWith('merge:')) throw new Error('engine fault in merge')
+      if (label.startsWith('merge:')) return fault()
       if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
       return undefined
     }),
     args, budget: undefined,
   })
-  assert(reconciled, 'mergeThrow: a thrown merge agent degrades to CONFLICT and reconcile dispatches')
-  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeThrow: reconcile recovered the wave')
-  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeThrow: run completed normally')
-  console.log('scenario merge-throw-contained: OK')
+  assert(reconciled, `${tag}: ${faultDesc} degrades to CONFLICT and reconcile dispatches`)
+  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', `${tag}: reconcile recovered the wave`)
+  assert(r.tasks.length === 1 && r.blockedWaves.length === 0,
+    `${tag}: run completed normally${completedSuffix || ''}`)
+  console.log(`scenario ${name}: OK`)
 }
 
-async function scenarioReconcileThrowContained() {
+async function runReconcileFaultScenario({ tag, name, fault, blockedMsg, extraAssert }) {
   const waves = [
     [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
     [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
@@ -1815,16 +1821,28 @@ async function scenarioReconcileThrowContained() {
   const r = await runWorkflow({
     agent: makeAgent((label) => {
       if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
-      if (label.startsWith('reconcile:')) throw new Error('engine fault in reconcile')
+      if (label.startsWith('reconcile:')) return fault()
       return undefined
     }),
     args, budget: undefined,
   })
-  eq(r.blockedWaves.length, 1, 'reconcileThrow: wave 1 blocked after both thrown reconciles')
+  eq(r.blockedWaves.length, 1, `${tag}: ${blockedMsg}`)
+  if (extraAssert) extraAssert(r)
   assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
-    'reconcileThrow: wave 2 cascade-blocked, run still returned a report')
-  console.log('scenario reconcile-throw-contained: OK')
+    `${tag}: wave 2 cascade-blocked, run still returned a report`)
+  console.log(`scenario ${name}: OK`)
 }
+
+const scenarioMergeThrowContained = () => runMergeFaultScenario({
+  tag: 'mergeThrow', name: 'merge-throw-contained', faultDesc: 'a thrown merge agent',
+  fault: () => { throw new Error('engine fault in merge') },
+})
+
+const scenarioReconcileThrowContained = () => runReconcileFaultScenario({
+  tag: 'reconcileThrow', name: 'reconcile-throw-contained',
+  blockedMsg: 'wave 1 blocked after both thrown reconciles',
+  fault: () => { throw new Error('engine fault in reconcile') },
+})
 
 async function scenarioIntegrationThrowContained() {
   const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
@@ -3067,48 +3085,22 @@ async function scenarioEarlyExhaustStampsCommand() {
 // agent() returns null (not throws) on terminal Overloaded; the merge dispatch
 // must normalize it like its catch branch instead of TypeError-ing at
 // merge.status and aborting the whole run (#148 §1).
-async function scenarioMergeNullContained() {
-  let reconciled = false
-  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }]]
-  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
-  const r = await runWorkflow({
-    agent: makeAgent((label) => {
-      if (label.startsWith('merge:')) return null // terminal Overloaded: null reply, no throw
-      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
-      return undefined
-    }),
-    args, budget: undefined,
-  })
-  assert(reconciled, 'mergeNull: a null merge reply degrades to CONFLICT and reconcile dispatches')
-  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeNull: reconcile recovered the wave')
-  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeNull: run completed normally — no TypeError abort')
-  console.log('scenario merge-null-contained: OK')
-}
+const scenarioMergeNullContained = () => runMergeFaultScenario({
+  tag: 'mergeNull', name: 'merge-null-contained', faultDesc: 'a null merge reply',
+  fault: () => null, // terminal Overloaded: null reply, no throw
+  completedSuffix: ' — no TypeError abort',
+})
 
 // ── Scenario: null RECONCILE reply → synthesized CONFLICT → attempt cap ends it ─
 // Both reconcile attempts die; the existing attempt cap (2) must terminate the
 // loop with the wave blocked and the run alive — never a TypeError (#148 §1).
-async function scenarioReconcileNullContained() {
-  const waves = [
-    [{ id: 'A', title: 'task A', body: 'do A', tier: 'standard' }],
-    [{ id: 'B', title: 'task B', body: 'do B', tier: 'standard' }],
-  ]
-  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
-  const r = await runWorkflow({
-    agent: makeAgent((label) => {
-      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
-      if (label.startsWith('reconcile:')) return null // dead reconcile agent, both attempts
-      return undefined
-    }),
-    args, budget: undefined,
-  })
-  eq(r.blockedWaves.length, 1, 'reconcileNull: wave 1 blocked after both null reconciles (attempt cap 2)')
-  assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
-    'reconcileNull: block detail names the null reply, not a TypeError')
-  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
-    'reconcileNull: wave 2 cascade-blocked, run still returned a report')
-  console.log('scenario reconcile-null-contained: OK')
-}
+const scenarioReconcileNullContained = () => runReconcileFaultScenario({
+  tag: 'reconcileNull', name: 'reconcile-null-contained',
+  blockedMsg: 'wave 1 blocked after both null reconciles (attempt cap 2)',
+  fault: () => null, // dead reconcile agent, both attempts
+  extraAssert: (r) => assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
+    'reconcileNull: block detail names the null reply, not a TypeError'),
+})
 
 // ── Scenario: dead reviewer → park → barrier retry succeeds (#148 §2–§3) ──────
 // review:A:1 returns null once (terminal Overloaded). The task must PARK — not

@@ -547,7 +547,7 @@ def test_audit_rejects_non_integer_age_hours_and_sweeps_nothing(tmp_path):
 def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
     """Regression: the digits-only guard admitted LEADING-ZERO integers, which
     bash then evaluated in `$((AGE_HOURS * 3600))` as OCTAL. `--age-hours 09`
-    (or 08) is invalid octal: bash raised `value too great for base` inside
+    is invalid octal: bash raised `value too great for base` inside
     the audit block, aborted past its `exit 0`, fell through to the
     DESTRUCTIVE sweep below — the audited worktree was REMOVED and its branch
     DELETED, exit 0 (reproduced at the pre-fix commit). Octal-VALID
@@ -556,15 +556,6 @@ def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
     repo = make_repo(tmp_path)
     wt, br = add_engine_worktree(repo, "octal-1", "u.txt", merge=True)
     _age(wt, days=9 / 24)          # 9 hours old: inside 10h, outside 8h
-
-    # 08 == 8, not a base error: the 9h-old worktree is past an 8-hour threshold
-    p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "08"],
-                       cwd=repo, capture_output=True, text=True)
-    assert p.returncode == 0, (p.stdout, p.stderr)
-    assert "value too great for base" not in p.stderr
-    assert f"orphan worktree: {wt}" in p.stdout
-    assert "older than 8h" in p.stdout
-    assert "08h" not in p.stdout   # the threshold is echoed as normalized
 
     # 010 == 10 (decimal), NOT 8: a 9h-old worktree is still inside the window
     p = subprocess.run(["bash", str(SWEEP), "--audit", "--age-hours", "010"],

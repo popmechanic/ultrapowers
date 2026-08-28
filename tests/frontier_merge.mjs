@@ -51,10 +51,9 @@ const FDIR = RUN_DIR + '/frontier/wave-1'
 const CLI = 'python3 ' + PLUGIN_ROOT + '/skills/ultrapowers/kernel/fold_wave.py'
 const SETUP_HEAD = 'int0'
 
-// A contended-shaped wave: two tasks whose declared `files` intersect. Under the
-// shipped `--overlap serialize` default the compiler can never emit this, so
-// every scenario here builds it by hand — exactly what a frontier-mode compile
-// would produce.
+// A contended-shaped wave: two tasks whose declared `files` intersect. The
+// shipped `--overlap fold` default emits exactly this shape; every scenario
+// here builds it by hand for determinism.
 const contendedWave = () => [[
   { id: 'A', title: 'alpha', body: 'edit the shared module', tier: 'standard',
     files: ['src/shared.js'] },

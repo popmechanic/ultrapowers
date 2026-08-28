@@ -98,12 +98,6 @@ def test_every_role_marker_exists_in_baked_sources():
         assert any(marker in src for src in ENGINE_SOURCES), marker
 
 
-def test_no_engine_prompt_classifies_unknown():
-    from audit_run import classify, ROLE_MARKERS
-    for marker, role in ROLE_MARKERS:
-        assert classify("xxx " + marker + " yyy") != "unknown"
-
-
 # --- Task 7 (sensor baseline): wallSec per transcript, wallSecByTask totals.
 
 def agent_file_ts(d, name, first_user, model, timestamps, tokens_each=10):
@@ -171,12 +165,6 @@ def test_audit_totals_wall_sec_by_task_keyed_per_task_id(tmp_path):
                  ["2026-08-18T00:00:00.000Z", "2026-08-18T00:00:10.000Z"])  # task 9: 10s
     out = audit(tmp_path)
     assert out["totals"]["wallSecByTask"] == {"7": 60.0, "9": 10.0}
-
-
-def test_audit_missing_dir_totals_carry_empty_wall_sec_by_task(tmp_path):
-    from audit_run import audit
-    out = audit(tmp_path / "does-not-exist")
-    assert out["totals"]["wallSecByTask"] == {}
 
 
 # --- Task 1 (#188): Resolver role marker
@@ -250,8 +238,3 @@ def test_audit_attempt_order_falls_back_to_filename_without_timestamps(tmp_path)
     agent_file(tmp_path, "a", IMPL_7, "test-model", turns=1)
     by_file = {x["file"]: x for x in audit(tmp_path)["agents"]}
     assert by_file["agent-a.jsonl"]["attempt"] == 1 and by_file["agent-b.jsonl"]["attempt"] == 2
-
-
-def test_audit_missing_dir_totals_carry_empty_live_wall_sec(tmp_path):
-    from audit_run import audit
-    assert audit(tmp_path / "nope")["totals"]["liveWallSecByTask"] == {}

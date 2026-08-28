@@ -147,6 +147,9 @@ def test_unknown_overlap_value_is_rejected(tmp_path):
 
 # --------------------------------------------------------------- the waves --
 def test_overlapping_writers_share_one_wave_under_fold(tmp_path):
+    """Also pins that the `fully overlapping writes` degrade stayed retired in
+    BOTH modes: serialize orders the writers with edges, it does not fall back
+    to sequential — the one-task-per-wave shape alone would not show that."""
     out = compile_plan_json(_write(tmp_path, "a.md", SHAPE_A), "--overlap", "fold")
     assert out["waves"] == [["A", "B", "C"]]
     assert out["mode"] == "parallel"
@@ -156,6 +159,8 @@ def test_overlapping_writers_share_one_wave_under_fold(tmp_path):
                             "--overlap", "serialize")
     assert _edges(ser, "write-after-write") == [("A", "B"), ("A", "C"), ("B", "C")]
     assert ser["waves"] == [["A"], ["B"], ["C"]]
+    assert ser["mode"] == "parallel"
+    assert ser["degrade_reason"] is None
 
 
 def test_write_after_create_survives_fold(tmp_path):
@@ -183,18 +188,6 @@ def test_single_implementation_task_still_degrades(tmp_path):
         assert out["mode"] == "sequential", mode
         assert out["degrade_reason"] == "Sequential mode: 1 implementation tasks", mode
         assert out["waves"] == [["A"]], mode
-
-
-def test_all_overlapping_writers_no_longer_degrade_under_fold(tmp_path):
-    """The `fully overlapping writes` degrade retired with the ordering-guess
-    tiers: under fold, overlapping writes are exactly what SHARES a wave."""
-    out = compile_plan_json(_write(tmp_path, "a.md", SHAPE_A), "--overlap", "fold")
-    assert out["mode"] == "parallel"
-    assert out["degrade_reason"] is None
-    ser = compile_plan_json(_write(tmp_path, "a2.md", SHAPE_A),
-                            "--overlap", "serialize")
-    assert ser["mode"] == "parallel"
-    assert ser["degrade_reason"] is None
 
 
 # ------------------------------------------------------- fixture regression --

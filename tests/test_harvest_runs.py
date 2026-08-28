@@ -36,6 +36,19 @@ DISCUSSION = [
 ]
 
 
+def _build(recs, tmp_path, slug="-Users-x-proj",
+           home="-Users-marcusestes-Websites-ultrapowers"):
+    """write recs -> session jsonl -> build_bundle -> (out_dir, parsed bundle).
+
+    bundle is None when build_bundle returns None (non-run sessions)."""
+    session = tmp_path / "sess.jsonl"
+    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    out = h.build_bundle(session, slug, tmp_path / "cache", home)
+    if out is None:
+        return None, None
+    return out, json.loads((out / "bundle.json").read_text())
+
+
 def test_real_run_detected():
     assert h.is_real_run(REAL) is True
 
@@ -68,14 +81,9 @@ def test_build_bundle_writes_json_and_slice(tmp_path):
     # launch); #126 deletes the legacy prose scan classify_session_kind used
     # to lean on, so a registered launch is appended to keep this an "engine"
     # session — unrelated to what this test actually pins (bundle/slice I/O).
-    session = tmp_path / "sess.jsonl"
     recs = REAL + [_wf_launch("REAL-1")]
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    cache = tmp_path / "cache"
-    home = "-Users-marcusestes-Websites-ultrapowers"
-    out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x", cache, home)
+    out, bundle = _build(recs, tmp_path, "-Users-marcusestes-Documents-Legal-x")
     assert out is not None
-    bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["origin"] == "foreign"
     assert bundle["planPath"] is None or isinstance(bundle["planPath"], str)
     assert set(bundle) >= {"runId", "sessionId", "projectSlug", "origin", "gateReport", "audit"}
@@ -83,10 +91,7 @@ def test_build_bundle_writes_json_and_slice(tmp_path):
 
 
 def test_build_bundle_skips_non_run(tmp_path):
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in DISCUSSION) + "\n")
-    out = h.build_bundle(session, "any", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
+    out, _ = _build(DISCUSSION, tmp_path, "any")
     assert out is None
 
 
@@ -183,10 +188,7 @@ def test_doc_dense_decoy_never_manufactures_a_bundle(tmp_path):
     # now it's moot by construction — no transcript text is ever scanned for
     # receipts, and DOC_DENSE's Workflow args carry a planPath but no runDir,
     # so no stamp is ever registered either. No engine signal at all -> meta.
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in DOC_DENSE) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
+    out, _ = _build(DOC_DENSE, tmp_path)
     assert out is None
 
 
@@ -196,11 +198,7 @@ def test_gate_report_singular_is_last_disk_receipt_of_last_registered_stamp(tmp_
     (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("NEEDS_ACK", 2)))
     (run2 / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
     recs = REAL + [_wf_launch("1", run_dir=str(run1)), _wf_launch("2", run_dir=str(run2))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["gateReport"]["verdict"] == "PASS"        # last registered stamp's disk receipt
     assert [g["stamp"] for g in bundle["gateReports"]] == ["1", "2"]
 
@@ -215,11 +213,7 @@ def test_gate_report_singular_is_none_when_last_stamp_has_no_disk_receipt(tmp_pa
     (run1 / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
     # stamp "2" is registered (launched) but has nothing readable on disk.
     recs = REAL + [_wf_launch("1", run_dir=str(run1)), _wf_launch("2")]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["gateReport"] is None                      # never stamp "1"'s stale receipt
     assert [g["stamp"] for g in bundle["gateReports"]] == ["1"]
     assert bundle["runs"][0]["gateReports"][0]["receipt"]["verdict"] == "PASS"  # per-run entry unaffected
@@ -241,12 +235,8 @@ def test_pre_driver_session_bundles_with_no_gate_report(tmp_path):
             f"Transcript dir: {tdir}\nfinal report: "
             '{"integrationBranch":"ultra/integration-20260701-000000","tasks":[]}'}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
+    out, bundle = _build(recs, tmp_path)
     assert out is not None
-    bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["sessionKind"] == "engine"
     assert bundle["gateReport"] is None
     assert bundle["gateReports"] == []
@@ -294,12 +284,8 @@ def test_engine_epoch_unknown_without_timestamp():
 
 
 def test_build_bundle_includes_engine_version(tmp_path):
-    session = tmp_path / "sess.jsonl"
     recs = [dict(REAL[0], timestamp="2026-06-20T10:00:00.000Z")] + REAL[1:] + [_wf_launch("REAL-1")]
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
-                         tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path, "-Users-marcusestes-Documents-Legal-x")
     assert "engineVersion" in bundle
     assert set(bundle["engineVersion"]) == {"epoch", "asOf", "basis"}
     assert bundle["engineVersion"]["basis"] == "foreign-date-upper-bound"
@@ -332,9 +318,8 @@ def test_non_engine_workflow_session_is_not_an_engine_run(tmp_path):
     tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_meta"
     _agent_file(tdir, 1, "Search the web for X and draft an issue.")
     _agent_file(tdir, 2, "Summarize the findings.")
-    session = tmp_path / "s.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=False)) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
+    out, _ = _build(_run_session(tdir, with_integration=False), tmp_path,
+                    home="-Users-x-home")
     assert out is None
 
 
@@ -342,11 +327,9 @@ def test_real_engine_session_is_kept_and_tagged(tmp_path):
     tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_real"
     _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
     _agent_file(tdir, 2, "You are the wave merge agent, operating on the session repo main checkout.")
-    session = tmp_path / "s.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
+    out, bundle = _build(_run_session(tdir, with_integration=True), tmp_path,
+                         home="-Users-x-home")
     assert out is not None
-    bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["sessionKind"] == "engine"
 
 
@@ -399,11 +382,7 @@ def test_printed_approve_marker_alone_does_not_flip_terminus(tmp_path):
     ok = json.dumps(_approve_marker())  # stamp "20260703-000000", matches the launch below
     recs = REAL + [_wf_launch("20260703-000000", run_dir=str(run1)),
                    _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}])]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["terminus"] == "BLOCKED"  # no git-merge evidence -> stays BLOCKED
 
 
@@ -447,12 +426,8 @@ def test_bundle_carries_evidence_fields(tmp_path):
     (run1 / "gate-receipt.json").write_text(json.dumps(
         {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "1",
          "integrationBranch": "ultra/x"}))
-    session = tmp_path / "sess.jsonl"
     recs = REAL + [_wf_launch("1", run_dir=str(run1))]
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-marcusestes-Documents-Legal-x",
-                         tmp_path / "cache", "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path, "-Users-marcusestes-Documents-Legal-x")
     assert bundle["gateReport"]["integrationBranch"] == "ultra/x"  # unchanged meaning
     assert bundle["gateReports"][0]["receipt"]["integrationBranch"] == "ultra/x"
     assert bundle["terminus"] == "NEEDS_ACK"
@@ -507,11 +482,7 @@ def test_build_bundle_never_attaches_pasted_fixture_receipt(tmp_path):
             + [_rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
                 "plan fixture: " + json.dumps(
                     {"mode": "gate", "verdict": "PASS", "stamp": "FIXTURE-1"})}]}])])
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert [r["stamp"] for r in bundle["runs"]] == ["REAL-1"]  # FIXTURE-1 never registered
     assert bundle["gateReports"] == []
     assert bundle["gateReport"] is None
@@ -546,11 +517,7 @@ def test_build_bundle_never_attaches_out_of_registry_receipts(tmp_path):
     (run_b / "gate-receipt.json").write_text(json.dumps(
         {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "B-2"}))
     recs = REAL + [_wf_launch("A-1", run_dir=str(run_a))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     stamps = {g.get("stamp") for g in bundle["gateReports"]}
     assert "B-2" not in stamps and "A-1" in stamps
 
@@ -573,11 +540,7 @@ def test_relative_plan_path_never_leaks_home_repo_receipts(tmp_path, monkeypatch
     (foreign_run / "gate-receipt.json").write_text(json.dumps(
         {"mode": "gate", "verdict": "PASS", "stamp": "F4-1"}))
     recs = REAL + [_wf_launch("F4-1", plan="../relative/plan.md", run_dir=str(foreign_run))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-foreign", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path, "-Users-x-foreign")
     assert bundle["gateReport"]["verdict"] == "PASS"           # from the foreign runDir
     assert bundle["gateReport"].get("stamp") != "home-decoy"   # never the CWD-relative decoy
 
@@ -598,11 +561,7 @@ def test_runs_array_groups_by_stamp_with_aggregate_terminus(tmp_path):
     recs = (REAL
             + [_wf_launch("S1", "docs/superpowers/plans/a.md", run_dir=str(run1)),
                _wf_launch("S2", "docs/superpowers/plans/b.md", run_dir=str(run2))])
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     runs = bundle["runs"]
     assert [r["stamp"] for r in runs] == ["S1", "S2"]
     assert runs[0]["planPath"].endswith("a.md") and runs[0]["terminus"] == "PASS"
@@ -685,12 +644,8 @@ def test_launch_only_session_bundles_as_engine_unknown(tmp_path):
         _rec("user", [{"type": "tool_result", "content": [{"type": "text",
             "text": f"Transcript dir: {tdir}"}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
+    out, bundle = _build(recs, tmp_path)
     assert out is not None
-    bundle = json.loads((out / "bundle.json").read_text())
     assert bundle["sessionKind"] == "engine"
     assert bundle["terminus"] == "unknown"
     assert bundle["truncated"] is True
@@ -918,11 +873,7 @@ def test_truncated_recomputed_from_git_ancestry_terminus(tmp_path):
     (run_dir / "report.json").write_text(json.dumps({"waveMerges": [{"headSha": head_sha}]}))
     (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("BLOCKED", 1)))
     recs = REAL + [_wf_launch("S1", run_dir=str(run_dir))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["terminus"] == "approved"
     assert bundle["truncated"] is False
     assert bundle["gateReports"][-1]["receipt"]["verdict"] == "BLOCKED"
@@ -1150,12 +1101,8 @@ def test_build_bundle_audits_repeated_transcript_dir_once(tmp_path):
         _rec("user", [{"type": "tool_result", "content": [{"type": "text",
             "text": f"Transcript dir: {tdir}"}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-x-home")
+    out, bundle = _build(recs, tmp_path, home="-Users-x-home")
     assert out is not None
-    bundle = json.loads((out / "bundle.json").read_text())
     assert len(bundle["audit"]["agents"]) == 1
     assert bundle["audit"]["totals"] == {"turns": 1, "outputTokens": 7}
 
@@ -1212,11 +1159,7 @@ def test_build_bundle_approved_slice_keeps_post_artifact_approval_exchange(tmp_p
                _rec("user", [{"type": "tool_result", "content": [{"type": "text",
                    "text": ok}]}]),
                _rec("user", [{"type": "text", "text": "ship it - thanks"}])])
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    out, bundle = _build(recs, tmp_path)
     assert bundle["terminus"] == "approved"
     assert "ship it - thanks" in (out / "slice.md").read_text()
 
@@ -1257,11 +1200,7 @@ def test_drain_stamp_gives_terminus_when_run_dir_deleted(tmp_path):
                         "ultra/entry-146", "ultra/docket-20260814-120000")
     run_dir = repo / ".claude/ultrapowers/run-20260814-120000"  # never exists on disk
     recs = REAL + [_wf_launch("20260814-120000", run_dir=str(run_dir))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["gateReports"] == []            # no disk gate receipt existed
     assert bundle["runs"][0]["terminus"] == "PASS"
     assert bundle["terminus"] == "PASS"
@@ -1283,11 +1222,7 @@ def test_drain_stamp_ancestry_upgrades_to_approved(tmp_path):
                         "ultra/entry-146", "ultra/docket-D")
     run_dir = repo / ".claude/ultrapowers/run-20260814-130000"  # deleted
     recs = REAL + [_wf_launch("20260814-130000", run_dir=str(run_dir))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["runs"][0]["terminus"] == "approved"
     assert bundle["terminus"] == "approved"
     assert bundle["truncated"] is False
@@ -1410,11 +1345,7 @@ def test_engine_epoch_prefers_cache_path_for_foreign_only():
 
 def test_build_bundle_stamps_cache_path_version_for_foreign(tmp_path):
     recs = [_cache_turn("0.2.0")] + REAL + [_wf_launch("S1")]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["engineVersion"]["epoch"] == "0.2.0"
     assert bundle["engineVersion"]["basis"] == "plugin-cache-path"
 
@@ -1440,11 +1371,7 @@ def test_bundle_carries_plural_transcript_dirs(tmp_path):
     d1 = tmp_path / "wf_a"; d1.mkdir(); (d1 / "agent-1.jsonl").write_text("")
     d2 = tmp_path / "wf_b"; d2.mkdir(); (d2 / "agent-2.jsonl").write_text("")
     recs = REAL[:1] + [_wf_launch("S1"), _tdir_result(d1), _tdir_result(d2)]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["transcriptDirs"] == [str(d1), str(d2)]
     assert bundle["transcriptDir"] == str(d2)          # singular keeps "last dir"
 
@@ -1571,22 +1498,14 @@ def test_bundle_carries_frontier_max_lines_and_launch_dag(tmp_path):
     (run1 / "frontier/wave-1/fold_stats.json").write_text(json.dumps({"maxLines": [147, 6012]}))
     (run1 / "launch.json").write_text(json.dumps({"waves": [["1", "2"]], "edges": []}))
     recs = REAL + [_wf_launch("1", run_dir=str(run1))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["frontier"] == {"maxLinesByWave": {"1": [147, 6012]}}
     assert bundle["launch"] == {"waves": [["1", "2"]], "edges": []}
 
 
 def test_bundle_frontier_and_launch_are_empty_soft_when_absent(tmp_path):
     recs = REAL + [_wf_launch("1")]   # default run_dir never exists on disk
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["frontier"] == {"maxLinesByWave": {}}
     assert bundle["launch"] is None
 
@@ -1608,22 +1527,14 @@ def test_bundle_planning_word_and_turn_counts_when_planning_found(tmp_path):
         _rec("user", [{"type": "text", "text": "looks good, proceed"}]),      # planning turn
     ] + REAL      # REAL[0] is a third user-text turn; REAL[1]/[2] never count
     + [_wf_launch("1", plan_rel, run_dir=str(run_dir))])
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["planningFound"] is True
     assert bundle["planning"] == {"planWords": 5, "planningTurns": 3}
 
 
 def test_bundle_omits_planning_key_when_not_found(tmp_path):
     recs = REAL + [_wf_launch("1")]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["planningFound"] is False
     assert "planning" not in bundle
 
@@ -1636,11 +1547,7 @@ def test_needs_ack_receipt_with_in_session_approve_reads_approved(tmp_path):
     ok = json.dumps(_approve_marker())  # stamp "20260703-000000"
     recs = REAL + [_wf_launch("20260703-000000", run_dir=str(run1)),
                    _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": ok}]}])]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["terminus"] == "approved"
     assert bundle["runs"][-1]["terminus"] == "approved"
     assert bundle["truncated"] is False
@@ -1657,11 +1564,7 @@ def test_approve_receipt_before_the_launch_or_for_another_stamp_does_not_count(t
         _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text":
              json.dumps(dict(_approve_marker(), lockReleased=False))}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["terminus"] == "NEEDS_ACK"
 
 
@@ -1723,11 +1626,7 @@ def test_bundle_tags_agents_with_wf_run_id_stamp_round_and_live_wall(tmp_path):
         _rec("user", [{"type": "tool_result", "content": [{"type": "text",
              "text": f"Transcript dir: {d2}\n"}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     agents = sorted(bundle["audit"]["agents"], key=lambda a: a["wfRunId"])
     assert [(a["wfRunId"], a["stamp"], a["round"], a["role"], a["attempt"]) for a in agents] == [
         ("wf_x-1", "20260825-000001", 0, "impl:1", 1),
@@ -1749,11 +1648,7 @@ def test_bundle_agent_with_unlisted_dir_has_null_stamp(tmp_path):
         _rec("user", [{"type": "tool_result", "content": [{"type": "text",
              "text": f"Transcript dir: {d1}\n"}]}]),
     ]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     a = bundle["audit"]["agents"][0]
     assert (a["wfRunId"], a["stamp"], a["round"]) == ("wf_q-9", None, 0)
 
@@ -1763,9 +1658,5 @@ def test_runs_entries_carry_per_stamp_frontier(tmp_path):
     d = run1 / "frontier" / "wave-1"; d.mkdir(parents=True)
     (d / "fold_stats.json").write_text(json.dumps({"maxLines": [4, 9]}))
     recs = REAL + [_wf_launch("20260825-000003", run_dir=str(run1))]
-    session = tmp_path / "sess.jsonl"
-    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
-    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
-                         "-Users-marcusestes-Websites-ultrapowers")
-    bundle = json.loads((out / "bundle.json").read_text())
+    _, bundle = _build(recs, tmp_path)
     assert bundle["runs"][-1]["frontier"] == {"maxLinesByWave": {"1": [4, 9]}}

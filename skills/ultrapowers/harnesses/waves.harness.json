@@ -4,6 +4,6 @@
   "purpose": "plan -> parallel waves -> independent review -> merge",
   "writeSide": true,
   "version": "0.0.13",
-  "fixtures": "tests/test_workflow_sim.py",
+  "fixtures": "tests/test_js_specs.py",
   "driftTest": "tests/test_no_prompt_drift.py"
 }
