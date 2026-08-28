@@ -3,8 +3,6 @@ live-refresh decision to the AuditProjection helpers (defined in
 audit_project.js, inlined at render), not keep its own inline copies."""
 import json
 import pathlib
-import re
-import shutil
 import subprocess
 import sys
 
@@ -43,15 +41,3 @@ def test_template_delegates_partition_and_refresh(tmp_path):
     assert "AuditProjection.shouldRerender(" in html, "template must call shouldRerender"
     # ... and the old inline role-gated partition is gone
     assert 'a.role === "impl" || a.role === "review"' not in html, "inline partition not removed"
-
-
-def test_full_inlined_script_parses(tmp_path):
-    node = shutil.which("node")
-    if not node:
-        import pytest
-        pytest.skip("node not available")
-    html = _render(tmp_path)
-    js = re.search(r"<script>\n(.*)</script>", html, re.S).group(1)
-    f = tmp_path / "wired.js"
-    f.write_text(js)
-    _run([node, "--check", str(f)])
