@@ -724,6 +724,76 @@ try {
       )
       assert.deepEqual(rec.calls, [], 'the engine must not spawn after a failed checkout')
     }
+
+    // -- #190: a PASSING spawn on a DIRTY image greens on ITS OWN receipt ----
+    // The positive half of receipt scoping. What landed with #329 was the
+    // negative shape — a pre-run directory is invisible to every reader, and
+    // a spawn that mints nothing greens nothing (test_shim_main_gate, and
+    // scenario 1 of test_drive through `main()`'s receipts publish). None of
+    // that can tell a correct scope from an over-eager one: an `excludeDirs`
+    // that hid every directory, or the newest, would pass those tests and red
+    // every real run. So here the scoped set is the one `main()` snapshots,
+    // the image carries a stale receipt in a directory that sorts NEWEST, and
+    // the spawn mints its own directory — the verdict must come from the
+    // run's own receipt in BOTH directions:
+    //   stale BLOCKED + own PASS    → green   (unscoped newest-wins reads red)
+    //   stale PASS    + own BLOCKED → red     (unscoped newest-wins reads green)
+    {
+      const STALE_RUN_DIR = '.claude/ultrapowers/run-29990101000000' // sorts AFTER ENGINE_RUN_DIR
+      for (const [label, staleVerdict, ownVerdict, expectGreen] of [
+        ['stale BLOCKED, own PASS', 'BLOCKED', 'PASS', true],
+        ['stale PASS, own BLOCKED', 'PASS', 'BLOCKED', false],
+      ]) {
+        const dirtyRepo = path.join(tmp, `dirty-engine-repo-${staleVerdict}`)
+        fs.mkdirSync(dirtyRepo, { recursive: true })
+        writeFile(dirtyRepo, 'seed.txt', 'seed\n')
+        writeFile(dirtyRepo, `${STALE_RUN_DIR}/gate-receipt.json`, JSON.stringify({ verdict: staleVerdict }))
+        writeFile(dirtyRepo, `${STALE_RUN_DIR}/report.json`, JSON.stringify({ outputTokens: 1 }))
+
+        // Exactly what `main()` snapshots before launch: the stale directory,
+        // and nothing else, predates this run.
+        const preRunDirs = new Set(runArtifactDirs(dirtyRepo))
+        assert.deepEqual([...preRunDirs], ['run-29990101000000'], label)
+        // Control: UNSCOPED newest-wins discovery reads the stale receipt, so
+        // any green/red below that agrees with it proves nothing — the
+        // expectations are deliberately the opposite of this reading.
+        assert.equal(readGateGreen(findGateReceiptFile(dirtyRepo)), staleVerdict === 'PASS', label)
+
+        const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: ownVerdict }) })
+        const outcome = await invokeEngineRun({
+          repoDir: dirtyRepo,
+          planPath: ENGINE_PLAN,
+          exec: rec.exec,
+          spawnEngine: rec.spawnEngine,
+          log: rec.log,
+          excludeDirs: preRunDirs,
+        })
+        assert.deepEqual(outcome, { gateGreen: expectGreen }, label)
+
+        // The engine ran exactly as it does on a clean image — checkout, auth
+        // status, spawn — so the scope changed the READ and nothing about the
+        // launch.
+        assert.equal(rec.calls.length, 3, `${label}: ${JSON.stringify(rec.calls)}`)
+        assert.ok(rec.calls.some((c) => c.startsWith(`${ENGINE_COMMAND} -p`)), `${label}: the engine was spawned`)
+        // The receipt the verdict came from is the run's OWN, and the stale one
+        // is still on disk, untouched — scoping hides it, never deletes it.
+        assert.equal(
+          findGateReceiptFile(dirtyRepo, undefined, { excludeDirs: preRunDirs }),
+          path.join(dirtyRepo, ENGINE_RUN_DIR, 'gate-receipt.json'),
+          label,
+        )
+        assert.equal(readGateGreen(path.join(dirtyRepo, ENGINE_RUN_DIR, 'gate-receipt.json')), expectGreen, label)
+        assert.ok(fs.existsSync(path.join(dirtyRepo, STALE_RUN_DIR, 'gate-receipt.json')), `${label}: stale receipt left in place`)
+        // …and the same scope carries through to the receipts the shim would
+        // publish: only the run's own receipt is a candidate, never the stale
+        // one — `applyRunReceipts` walks this exact list.
+        assert.deepEqual(
+          findReceiptFiles(dirtyRepo, undefined, { excludeDirs: preRunDirs }),
+          [`${ENGINE_RUN_DIR}/gate-receipt.json`],
+          label,
+        )
+      }
+    }
   }
 
   // -- 14. run-report discovery ----------------------------------------------
