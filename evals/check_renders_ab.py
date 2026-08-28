@@ -16,6 +16,12 @@ nothing about the numbers — those are the operator's to read (adoption bar:
 every known instance surfaced, zero canonical false positives). Deterministic,
 headless, stdlib + git only. Never runs in CI beyond the schema pin in
 tests/test_check_renders_ab.py.
+
+This cell lives inside its own BASE, so it is written to stay OUT of its own
+measurement: every needle is assembled at run time (`_held`) rather than
+spelled out, and `self_reference()` reports any advisory that names a file the
+cell owns. Without that the doc reproduces only while these files are untracked
+— see the `## Bar` self-reference line.
 """
 from __future__ import annotations
 
@@ -34,19 +40,49 @@ RENDERS = ("blast-radius", "referent")
 DOC_SECTIONS = ("## Corpus", "## Known instances", "## Canonical false positives",
                 "## Render size", "## Bar (#345)", "## Raw advisories (arm B)")
 
+# --- self-insensitivity (the needles are HELD, never literal) ---------------
+# For the 2026-08-27-* plans BASE is the repo root, so this script and its test
+# sit INSIDE the corpus's own BASE, and both renders resolve by grepping tracked
+# CODE files (`*.py` among them): blast-radius greps every Produces symbol as a
+# whole word, referent greps a path/field literal. A needle spelled out here
+# would therefore be found BY the very render hunting it — the cell would
+# suppress its own specimen and insert its own paths into blast-radius lists,
+# and the committed doc would stop being reproducible from the committed tree
+# (it would only reproduce while these files were still untracked). `_held`
+# assembles each such string at run time from fragments, so the literal never
+# appears in this file's bytes; `SELF_PATHS` is what the property pin watches.
+
+
+def _held(*parts):
+    """Assemble a needle so its literal never appears in this file's bytes."""
+    return "".join(parts)
+
+
+#: Files this eval cell owns — they must never appear in a measured advisory.
+SELF_PATHS = ("evals/check_renders_ab.py", "tests/test_check_renders_ab.py")
+
+_RUN_SHIM = _held("run", "Shim")                                # Produces symbol
+_DRIVE_TEST = _held("fleet/tests/test_", "drive.mjs")           # blast-radius hit
+_EVIDENCE_DIR = _held(".claude/ultrapowers/fleet-runs-", "2026-08-26")
+_SPEND_FIELD = _held("detail.credit", "SpendUsd")
+
+#: Every string that must stay non-literal in the SELF_PATHS sources.
+HELD_LITERALS = (_RUN_SHIM, _DRIVE_TEST, _EVIDENCE_DIR, _SPEND_FIELD)
+
 # The true-positive list: (plan stem, render, task id, needle). A needle is a
 # substring expected on SOME line of an advisory block for that plan/render/
 # task in arm B's stdout. All three are run-14 (#345's specimens).
 KNOWN_INSTANCES = [
     {"plan": "2026-08-27-w2-entry-slate", "render": "blast-radius", "task": "1",
-     "needle": "fleet/tests/test_drive.mjs",
-     "why": "run-14 task 1: additive `runShim` outcome shape change; the strict-equality "
-            "pin lived in sibling-owned test_drive.mjs; cost one redirect round (#233)"},
+     "needle": _DRIVE_TEST,
+     "why": "run-14 task 1: additive `%s` outcome shape change; the strict-equality "
+            "pin lived in a sibling-owned fleet test; cost one redirect round (#233)"
+            % _RUN_SHIM},
     {"plan": "2026-08-27-w2-entry-slate", "render": "referent", "task": "4",
-     "needle": ".claude/ultrapowers/fleet-runs-2026-08-26",
+     "needle": _EVIDENCE_DIR,
      "why": "gitignored evidence dir named as if committed (#321 item 2)"},
     {"plan": "2026-08-27-w2-entry-slate", "render": "referent", "task": "4",
-     "needle": "detail.creditSpendUsd",
+     "needle": _SPEND_FIELD,
      "why": "per-run spend field labeled with a monthly baseline; the field is gone at "
             "BASE since #343, so the existence check surfaces it"},
 ]
@@ -99,7 +135,26 @@ def measure(entry):
         "lines_added": b.stdout.count("\n") - a.stdout.count("\n"),
         "advisories": blocks,
         "stdout_b": b.stdout,
+        "base_path": base,
     }
+
+
+# CODE_EXTS as the renders define them: the file set both greps search.
+_CODE_PATHSPECS = ["--"] + ["*" + e for e in (".py", ".js", ".mjs", ".cjs",
+                                              ".ts", ".tsx", ".jsx", ".sh")]
+
+
+def carriers(base, needle):
+    """Tracked code files under `base` whose text contains `needle` — the
+    renders' greps search exactly this file set, so a non-empty list is why a
+    known instance did NOT surface (something at BASE resolved its referent).
+    Diagnostic only: it changes no measured number."""
+    try:
+        p = subprocess.run(["git", "-C", str(base), "grep", "-l", "-F", needle,
+                            *_CODE_PATHSPECS], capture_output=True, text=True)
+    except OSError:
+        return []
+    return sorted(p.stdout.split()) if p.returncode == 0 else []
 
 
 def known_status(rows):
@@ -107,6 +162,7 @@ def known_status(rows):
     out = []
     for k in KNOWN_INSTANCES:
         row = by_name.get(k["plan"])
+        found = []
         if row is None:
             status = "not run"
         else:
@@ -114,8 +170,19 @@ def known_status(rows):
                       and any(k["needle"] in l for l in b["lines"])
                       for b in row["advisories"])
             status = "yes" if hit else "NO"
-        out.append({**k, "surfaced": status})
+            if status == "NO":
+                found = carriers(row["base_path"], k["needle"])
+        out.append({**k, "surfaced": status, "carriers": found})
     return out
+
+
+def self_reference(rows):
+    """`<plan>: <advisory line>` for every measured advisory line naming a file
+    this cell owns. Non-empty means the cell is measuring itself and the doc is
+    not reproducible from the committed tree — see SELF_PATHS."""
+    return ["%s: %s" % (r["name"], line.strip())
+            for r in rows for b in r["advisories"] for line in b["lines"]
+            if any(p in line for p in SELF_PATHS)]
 
 
 def render_doc(rows, known, base_sha):
@@ -127,7 +194,10 @@ def render_doc(rows, known, base_sha):
              "`evals/fixtures/*/plan.md` (BASE = the fixture's `project/`; canonical = %s) + "
              "every `docs/superpowers/plans/2026-08-27-*.md` (BASE = repo root). Produced by "
              "`python3 evals/check_renders_ab.py`; numbers below are read by the operator, "
-             "not asserted by any test." % (base_sha, "/".join(CANONICAL)))
+             "not asserted by any test. `Base:` is the HEAD the run measured, so a "
+             "regeneration after this file is committed records the newer sha; every "
+             "other number here is reproducible from the committed tree."
+             % (base_sha, "/".join(CANONICAL)))
     L.append("")
     L.append("## Corpus")
     L.append("")
@@ -147,6 +217,18 @@ def render_doc(rows, known, base_sha):
     for k in known:
         L.append("| `%s` | %s | %s | `%s` | %s | %s |" % (
             k["plan"], k["render"], k["task"], k["needle"], k["surfaced"], k["why"]))
+    for k in known:
+        if k["surfaced"] != "NO":
+            continue
+        if k["carriers"]:
+            why = ("%d tracked code file(s) at BASE contain that text, so the render's "
+                   "grep resolved it — %s"
+                   % (len(k["carriers"]), ", ".join("`%s`" % c for c in k["carriers"])))
+        else:
+            why = ("no tracked code file at BASE contains that text, so the render "
+                   "passed over it for another reason")
+        L.append("")
+        L.append("`%s` did not surface: %s" % (k["needle"], why))
     L.append("")
     L.append("## Canonical false positives")
     L.append("")
@@ -180,6 +262,10 @@ def render_doc(rows, known, base_sha):
     L.append("- canonical false positives: %d (bar: 0)" % fp)
     L.append("- exit-code / verdict-line parity: %s" % (
         "all rows equal" if not parity else "MISMATCH on " + ", ".join(parity)))
+    selfref = self_reference(rows)
+    L.append("- cell self-reference in advisories: %s" % (
+        "none (the cell's own files are outside every measurement)" if not selfref
+        else "PRESENT — " + "; ".join(selfref)))
     L.append("")
     L.append("## Raw advisories (arm B)")
     L.append("")
@@ -216,6 +302,7 @@ def main(argv=None):
         "canonical_false_positives": sum(
             r["counts"]["blast-radius"] + r["counts"]["referent"]
             for r in rows if r["canonical"]),
+        "self_reference": self_reference(rows),
     }))
     return 0
 

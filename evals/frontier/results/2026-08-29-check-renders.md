@@ -1,6 +1,6 @@
 # Eval cell: two `--check` renders — P1 blast-radius + P2 referent-existence (#345)
 
-Base: `406080a`. Arms: **A** = `compile_plan.py --check <plan>` (current); **B** = `--check --renders --base <base>` (both renders). Corpus: every `evals/fixtures/*/plan.md` (BASE = the fixture's `project/`; canonical = wide/chained/mixed/degrade/contend) + every `docs/superpowers/plans/2026-08-27-*.md` (BASE = repo root). Produced by `python3 evals/check_renders_ab.py`; numbers below are read by the operator, not asserted by any test.
+Base: `7aa1616`. Arms: **A** = `compile_plan.py --check <plan>` (current); **B** = `--check --renders --base <base>` (both renders). Corpus: every `evals/fixtures/*/plan.md` (BASE = the fixture's `project/`; canonical = wide/chained/mixed/degrade/contend) + every `docs/superpowers/plans/2026-08-27-*.md` (BASE = repo root). Produced by `python3 evals/check_renders_ab.py`; numbers below are read by the operator, not asserted by any test. `Base:` is the HEAD the run measured, so a regeneration after this file is committed records the newer sha; every other number here is reproducible from the committed tree.
 
 ## Corpus
 
@@ -26,9 +26,11 @@ Base: `406080a`. Arms: **A** = `compile_plan.py --check <plan>` (current); **B**
 
 | Plan | Render | Task | Needle | Surfaced | Why |
 |---|---|---|---|---|---|
-| `2026-08-27-w2-entry-slate` | blast-radius | 1 | `fleet/tests/test_drive.mjs` | yes | run-14 task 1: additive `runShim` outcome shape change; the strict-equality pin lived in sibling-owned test_drive.mjs; cost one redirect round (#233) |
+| `2026-08-27-w2-entry-slate` | blast-radius | 1 | `fleet/tests/test_drive.mjs` | yes | run-14 task 1: additive `runShim` outcome shape change; the strict-equality pin lived in a sibling-owned fleet test; cost one redirect round (#233) |
 | `2026-08-27-w2-entry-slate` | referent | 4 | `.claude/ultrapowers/fleet-runs-2026-08-26` | yes | gitignored evidence dir named as if committed (#321 item 2) |
 | `2026-08-27-w2-entry-slate` | referent | 4 | `detail.creditSpendUsd` | NO | per-run spend field labeled with a monthly baseline; the field is gone at BASE since #343, so the existence check surfaces it |
+
+`detail.creditSpendUsd` did not surface: 1 tracked code file(s) at BASE contain that text, so the render's grep resolved it — `tests/test_check_renders.py`
 
 ## Canonical false positives
 
@@ -51,6 +53,7 @@ Base: `406080a`. Arms: **A** = `compile_plan.py --check <plan>` (current); **B**
 - known instances surfaced: 2/3
 - canonical false positives: 0 (bar: 0)
 - exit-code / verdict-line parity: all rows equal
+- cell self-reference in advisories: none (the cell's own files are outside every measurement)
 
 ## Raw advisories (arm B)
 

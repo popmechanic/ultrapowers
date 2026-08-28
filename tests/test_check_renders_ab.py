@@ -20,9 +20,12 @@ def _table_rows(text, heading):
 
 
 def test_parse_advisories_groups_blocks():
+    # The sample symbol/paths are synthetic on purpose: a real corpus symbol
+    # spelled out here would make this file part of the measurement it pins
+    # (see test_cell_stays_out_of_its_own_measurement).
     out = ("PLAN OK\n\n"
-           "ADVISORY blast-radius: Task 1 Produces `runShim` — 2 file(s) at BASE outside Task 1's Files mention it:\n"
-           "  - fleet/drive.mjs\n  - fleet/tests/test_drive.mjs\n"
+           "ADVISORY blast-radius: Task 1 Produces `sampleWidget` — 2 file(s) at BASE outside Task 1's Files mention it:\n"
+           "  - sample/a.mjs\n  - sample/tests/test_a.mjs\n"
            "ADVISORY referent: Task 4 names `x/y.md` — not at BASE, not in Task 4's Files, not Created by a task it Depends-on\n")
     blocks = cell.parse_advisories(out)
     assert [(b["render"], b["task"], len(b["lines"])) for b in blocks] == [
@@ -63,6 +66,20 @@ def test_restricted_campaign_writes_the_schema(tmp_path):
     assert re.search(r"^- known instances surfaced: \d+/%d$" % len(cell.KNOWN_INSTANCES),
                      text, re.M)
     assert re.search(r"^- canonical false positives: \d+ \(bar: 0\)$", text, re.M)
+
+
+def test_cell_stays_out_of_its_own_measurement():
+    """The cell lives inside the BASE it measures, so its own bytes must be
+    invisible to both renders — otherwise the committed doc reproduces only
+    while these files are untracked (the stale-artifact failure)."""
+    for rel in cell.SELF_PATHS:
+        src = (ROOT / rel).read_text()
+        for literal in cell.HELD_LITERALS:
+            assert literal not in src, (rel, literal)
+    repo_rooted = [e for e in cell.corpus() if e["base"] == cell.ROOT]
+    assert repo_rooted, "the repo-rooted plans are where self-reference can bite"
+    rows = [cell.measure(e) for e in repo_rooted]
+    assert cell.self_reference(rows) == []
 
 
 def test_committed_results_doc_matches_schema():
