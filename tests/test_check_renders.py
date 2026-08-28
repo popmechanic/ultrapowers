@@ -292,3 +292,119 @@ def test_blast_radius_is_silent_on_canonical_fixtures():
 
 
 # --- per-render pins are appended below this line (append zone) ------------
+
+
+# --------------------------------------------------------------------------- #
+# Task 3 — P2 referent-existence                                              #
+# --------------------------------------------------------------------------- #
+P2_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: creator
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Create: `src/new_mod.py`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing
+
+- [ ] **Step 1:** write `src/new_mod.py` beside `src/present.py`; note `src/missing.py`, `present.py`, `./rel.mjs`, `../up.mjs`, `/tmp/scratch`, `text/html`, `src/{a,b}.py`, `src/<name>.py`, `https://example.com/x.md`, `fleet-run.json`, and `src/missing.py:12-40` again
+
+### Task 2: depender
+
+**Type:** implementation
+**Depends-on:** 1
+
+**Files:**
+- Modify: `src/present.py`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing
+
+- [ ] **Step 1:** read `src/new_mod.py`; fields `result.gitVerified`, `tasks[].status`, `report.nope`, `detail.errors`, `detail.creditSpendUsd`, `waveMerges[].headSha`; see Task 1 and Task 9 and Task 9 again; Task agents see only their body; Task IDs are strings
+
+```markdown
+Inside a fence: `docs/inside-fence.md` and `Task 99` and `detail.creditSpendUsd`.
+```
+
+### Task 3: stranger
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `README.md`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing
+
+- [ ] **Step 1:** also touches `src/new_mod.py`
+"""
+
+P2_FILES = {
+    "src/present.py": "errors = []\nOUT = 'fleet-run.json'\n",
+    "README.md": "hi\n",
+}
+
+
+def test_path_referent_heuristics():
+    f = compile_plan._path_referent
+    assert f("src/missing.py") == "src/missing.py"
+    assert f("src/missing.py:12-40") == "src/missing.py"
+    assert f("docs/dir/") == "docs/dir"
+    assert f("present.py") == "present.py"
+    assert f("fleet-run.json") == "fleet-run.json"
+    for skip in ("./rel.mjs", "../up.mjs", "/tmp/scratch", "text/html",
+                 "src/{a,b}.py", "src/<name>.py", "https://example.com/x.md",
+                 "src/*.py", "${dbDir}-evidence", "~/.claude/x.md",
+                 "fetch('/links')", "a b/c", "-flag", "helper", "schema.User",
+                 "detail.errors", "0.2.22", ".gitignore"):
+        assert f(skip) is None, skip
+
+
+def test_report_field_vocab_reads_report_format():
+    vocab = compile_plan._report_field_vocab()
+    for name in ("integrationBranch", "gitVerified", "waveMerges", "headSha",
+                 "status", "detail", "coverage", "complete", "tasks_merged"):
+        assert name in vocab, name
+    assert "creditSpendUsd" not in vocab
+
+
+def test_referents_render_each_unresolved_once(tmp_path):
+    repo = git_repo(tmp_path, P2_FILES)
+    plan = tmp_path / "plan.md"
+    plan.write_text(P2_PLAN)
+    p = check(plan, "--renders", "--base", str(repo))
+    assert p.returncode == 0
+    adv = [l for l in p.stdout.splitlines() if l.startswith("ADVISORY referent:")]
+    assert adv == [
+        "ADVISORY referent: Task 1 names `src/missing.py` — not at BASE, not in Task 1's Files, not Created by a task it Depends-on",
+        "ADVISORY referent: Task 2 names `report.nope` — `nope` is not a report-format.md field and appears in no code file at BASE",
+        "ADVISORY referent: Task 2 names `detail.creditSpendUsd` — `creditSpendUsd` is not a report-format.md field and appears in no code file at BASE",
+        "ADVISORY referent: Task 2 names `docs/inside-fence.md` — not at BASE, not in Task 2's Files, not Created by a task it Depends-on",
+        "ADVISORY referent: Task 2 names Task 9 — no such task heading in this plan",
+        "ADVISORY referent: Task 3 names `src/new_mod.py` — not at BASE, not in Task 3's Files, not Created by a task it Depends-on",
+    ]
+    # nothing else leaked: resolved paths, skipped shapes, resolved fields,
+    # real task refs, prose "Task agents"/"Task IDs", fenced `Task 99`.
+    for absent in ("present.py", "rel.mjs", "up.mjs", "/tmp/scratch", "text/html",
+                   "{a,b}", "<name>", "example.com", "fleet-run.json",
+                   "gitVerified", "tasks[].status", "detail.errors", "headSha",
+                   "names Task 1", "Task 99", "agents", "IDs"):
+        assert not any(absent in l for l in adv), absent
+    assert check(plan).stdout == "PLAN OK\n"
+
+
+def test_referents_are_silent_on_canonical_fixtures():
+    for name in CANONICAL:
+        plan = ROOT / "evals/fixtures" / name / "plan.md"
+        base = ROOT / "evals/fixtures" / name / "project"
+        p = check(plan, "--renders", "--base", str(base))
+        assert p.returncode == 0 and "ADVISORY referent" not in p.stdout, name

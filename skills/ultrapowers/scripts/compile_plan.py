@@ -1314,6 +1314,134 @@ ADVISORY_RENDERS.append(("blast-radius", _render_blast_radius))
 
 # --- advisory renders register below (append zone) --------------------------
 
+# P2 — referent existence (#321 item 2 ∪ #237(b) ∪ #237(c); #345 eval cell).
+# A plan body asserting the existence of something the compiler can check —
+# a path against the tree at BASE, a report/detail field against
+# report-format.md (or the code that defines it), a `Task N` against the
+# plan's own headings — is resolved once; each unresolved referent renders
+# once, advisory. Ultraplan authoring rule 6 is the prose half.
+_REFERENT_EXTS = frozenset(
+    "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
+    "sql csv lock cfg ini env tgz log".split())
+_MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
+_FIELD_HEADS = ("report", "result", "detail", "tasks", "waveMerges", "frontier",
+                "coverage", "acceptance", "tests", "baseline", "blockedWaves",
+                "missingDeliverables", "deferredVerification")
+_FIELD_RE = re.compile(r"^(?:%s)(?:\[\])?(?:\.[A-Za-z_]\w*(?:\[\])?)+$"
+                       % "|".join(_FIELD_HEADS))
+# `Task <id>` where <id> LOOKS like a task id: contains a digit, or is 1-3
+# uppercase alphanumerics led by a letter (`A`, `B3`, `IV`). `Task agents`,
+# `Task IDs`, `Task list` never match. Only the first id of a list/range is
+# captured — under-reporting is the safe direction for an advisory.
+_TASK_REF_RE = re.compile(r"\bTasks?\s+((?=[A-Za-z0-9]*\d)[A-Za-z0-9]+|[A-Z][A-Z0-9]{0,2})\b")
+_FILES_BULLET_RE = re.compile(
+    r"^\s*[-*+]\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
+
+
+def _path_referent(tok):
+    """The normalized repo path a backticked token names, or None when the
+    token is not a repo-path referent (identifier, dotted field, URL, glob,
+    template, placeholder, absolute path, import specifier, MIME type)."""
+    t = tok.strip()
+    if (not t or any(c in t for c in "*?{}<>$~ ()'\"") or "://" in t
+            or t.startswith(("-", "/", "./", "../")) or _MIME_RE.match(t)):
+        return None
+    t = re.sub(r":\d+(?:-\d+)?$", "", t).rstrip("/")
+    if "/" in t:
+        return t
+    if t.startswith("."):
+        return None  # a dotfile name alone is not a referent worth resolving
+    m = EXT_RE.search(t)
+    if m and m.group(1).lower() in _REFERENT_EXTS:
+        return t
+    return None
+
+
+def _report_field_vocab():
+    """Every field name report-format.md defines: JSON keys in its schema
+    block plus every segment of every backticked dotted token in its text."""
+    text = (PLUGIN_ROOT / "skills/ultrapowers/references/report-format.md").read_text()
+    names = set(re.findall(r'"([A-Za-z_]\w*)"\s*:', text))
+    for tok in re.findall(r"`([A-Za-z_][\w\[\].]*)`", text):
+        for seg in tok.split("."):
+            seg = seg.replace("[]", "")
+            if seg:
+                names.add(seg)
+    return names
+
+
+def _referent_scan_lines(task):
+    """Body lines whose backticked tokens are referents: EVERY line including
+    fenced content (a fenced markdown block names paths just as deadly),
+    minus the fence markers themselves (their backtick runs mis-pair
+    PATH_RE), the Files: bullets (the contract, grammar-checked), and the
+    Commutes marker."""
+    out = []
+    for line, _fenced in _fence_aware_lines(task["body"]):
+        s = line.strip()
+        if FENCE.match(s) or _FILES_BULLET_RE.match(line) or s.startswith("**Commutes:**"):
+            continue
+        out.append(line)
+    return out
+
+
+def _render_referents(tasks, ctx):
+    base, tracked, ids = ctx["base"], ctx["tracked"], ctx["task_ids"]
+    basenames = {p.rsplit("/", 1)[-1] for p in tracked}
+    creates = {t["id"]: set(t["creates"]) for t in tasks}
+    all_files = set()
+    for t in tasks:
+        all_files |= set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+    vocab = _report_field_vocab()
+    lines = []
+    for t in tasks:
+        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+        dep_creates = set()
+        for d in t["depends_on"]:
+            dep_creates |= creates.get(d, set())
+        seen = set()
+        for line in _referent_scan_lines(t):
+            for tok in PATH_RE.findall(line):
+                tok = tok.strip()
+                p = _path_referent(tok)
+                if p is not None:
+                    if p in seen:
+                        continue
+                    seen.add(p)
+                    resolved = (
+                        p in tracked or p in own or p in dep_creates
+                        or ("/" not in p and (p in basenames
+                                              or any(f.endswith("/" + p) for f in all_files)))
+                        or _git_literal_in_code(base, p))
+                    if not resolved:
+                        lines.append("ADVISORY referent: Task %s names `%s` — not at BASE, "
+                                     "not in Task %s's Files, not Created by a task it "
+                                     "Depends-on" % (t["id"], p, t["id"]))
+                    continue
+                if _FIELD_RE.match(tok):
+                    if tok in seen:
+                        continue
+                    seen.add(tok)
+                    segs = [s.replace("[]", "") for s in tok.split(".")[1:]]
+                    missing = [s for s in segs
+                               if s not in vocab and not _git_word_files(base, s)]
+                    if missing:
+                        lines.append("ADVISORY referent: Task %s names `%s` — `%s` is not a "
+                                     "report-format.md field and appears in no code file "
+                                     "at BASE" % (t["id"], tok, missing[0]))
+        for m in _TASK_REF_RE.finditer(t["prose"]):
+            ref = m.group(1)
+            key = "Task " + ref
+            if ref in ids or key in seen:
+                continue
+            seen.add(key)
+            lines.append("ADVISORY referent: Task %s names Task %s — no such task heading "
+                         "in this plan" % (t["id"], ref))
+    return lines
+
+
+ADVISORY_RENDERS.append(("referent", _render_referents))
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
