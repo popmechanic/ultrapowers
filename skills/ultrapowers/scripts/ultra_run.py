@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""Deterministic pre-launch driver for /ultrapowers (SKILL.md Steps 1-4b).
+"""Deterministic pre-launch driver for /ultrapowers (SKILL.md §Engine).
 
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
-git-repo check, worktree-capability probe, self-host engine skew, superpowers
-compatibility, plan compile, committed-workflow install, run lock + dirty
-baseline, and deterministic knob derivation (baseBranch from the launched
-checkout, probe payload).
+fleet-run (the sandbox env contract), git-repo check, worktree-capability
+probe, superpowers compatibility, plan compile, test-command derivation,
+committed-workflow install, dirty baseline, and baseBranch from the launched
+checkout.
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
 contract: the orchestrator reads it instead of re-deriving the choreography
-from prose. The stamp is the lock id for the whole run; wf_<runId> is used
-only for worktree sweeps. Exit 0 iff every stage passed; otherwise the last
-receipt stage names what failed. The driver never launches the workflow —
-only the orchestrator can call tools; `llmDerives` names exactly what it
-still owns.
+from prose. Exit 0 iff every stage passed; otherwise the last receipt stage
+names what failed. The driver never launches the workflow — only the
+orchestrator can call tools; `llmDerives` names exactly what it still owns.
 """
 from __future__ import annotations
 
@@ -30,45 +28,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 HARNESSES = HERE.parent / "harnesses"
-PLUGIN_ROOT = HERE.parents[2]
 
-RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
-KEEP_RUNS = 10
-
-# #151 disk-headroom guard: per-concurrent-worktree footprint envelope and
-# the absolute block floor. Hardcoded by design — the env knob was deleted
-# at trim review (a tuning surface on an advisory warn is machinery not yet
-# earned by field data).
-GIB = 1024 ** 3
-HEADROOM_PER_TASK = int(1.5 * GIB)
-HEADROOM_FLOOR = 2 * GIB
-
-
-def _run_dirs(state_dir):
-    """All state_dir entries matching the strict run-<stamp> pattern, sorted
-    oldest-first (the stamp format sorts lexicographically = chronologically)."""
-    if not state_dir.is_dir():
-        return []
-    return sorted(d for d in state_dir.iterdir()
-                  if d.is_dir() and RUN_DIR_RE.match(d.name))
-
-
-def _doomed(state_dir, keep):
-    runs = _run_dirs(state_dir)
-    return runs[:-keep] if keep else runs
-
-
-def prune_run_dirs(state_dir, keep=KEEP_RUNS):
-    """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
-    strict run-<stamp> names — everything else under the state dir
-    (scratch/, pending seal dirs, operator files) is not ours to touch.
-    Stamp format sorts lexicographically = chronologically. Returns only the
-    names actually removed — a failed rmtree (ignore_errors=True swallows
-    the exception) must not be reported as pruned."""
-    doomed = _doomed(state_dir, keep)
-    for d in doomed:
-        shutil.rmtree(d, ignore_errors=True)
-    return [d.name for d in doomed if not d.exists()]
 
 def detect_test_cmd(root):
     """Deterministic test-command detection ladder (#96). File presence only,
@@ -100,11 +60,6 @@ def detect_test_cmd(root):
         return "cargo test", "cargo-toml"
     return None, None
 
-
-PROBE = {"name": "ultrapowers-probe",
-         "args": {"ping": "pong",
-                  "waves": [{"id": "probe-1", "title": "probe", "body": "b"}]},
-         "assert": {"echoWaves": 1, "echoFirstId": "probe-1"}}
 
 LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
@@ -236,8 +191,8 @@ def validate_knobs(args_path, root):
     # `finally` below never ran when a tool timeout killed a mid-suite probe
     # and wt-knob-<pid> stayed registered (#251). Turn it into an exception:
     # `subprocess.run` kills its child on the way out, `finally` removes the
-    # worktree. SIGKILL cannot be caught — sweep_worktrees.sh reaps a probe
-    # whose pid is gone.
+    # worktree. SIGKILL cannot be caught — the sandbox is disposable
+    # (Phase 0 row 2).
     def _on_term(signum, _frame):
         raise SystemExit(128 + signum)
     prev_term = signal.signal(signal.SIGTERM, _on_term)
@@ -330,29 +285,25 @@ def main(argv=None):
         print(json.dumps(receipt, indent=2))
         return 1
 
+    # One Driver Phase 0 (#371): every /ultrapowers run is a fleet run. The
+    # shim sets ULTRAPOWERS_FLEET_RUN=<runId> in the engine process's env; an
+    # unset or blank value means a laptop session is trying to run the engine
+    # locally — refuse before any cost. Replaces the #129 launch-checkout
+    # guard (row 9), which protected a long-lived laptop checkout.
+    fleet_run = os.environ.get("ULTRAPOWERS_FLEET_RUN", "").strip()
+    if not stage("fleet-run", bool(fleet_run),
+                 success="fleet run " + fleet_run,
+                 failure="ULTRAPOWERS_FLEET_RUN is unset — `/ultrapowers` runs "
+                         "only inside a fleet sandbox — launch `drive-one` on "
+                         "the orchestrator"):
+        return bail()
+
     r = sh(["git", "rev-parse", "--show-toplevel"], cwd=a.repo)
     if not stage("git-repo", r.returncode == 0,
                  success=r.stdout.strip(),
                  failure=r.stderr or "not inside a git repository"):
         return bail()
     root = Path(r.stdout.strip())
-
-    # #129: a worktree-isolated session (EnterWorktree) resolves its toplevel
-    # to <main-repo>/.claude/worktrees/<name>. Every later stage passes there,
-    # but the session's Bash isolation guard refuses git commands aimed at the
-    # engine's integration worktree (cut at the PRIMARY root), so the run is
-    # unexecutable and fails only mid-merge, stranding tasks on branches.
-    parts = root.resolve().parts
-    isolated = any(parts[i:i + 2] == (".claude", "worktrees")
-                   for i in range(len(parts) - 1))
-    if not stage("launch-checkout", not isolated,
-                 success="primary checkout (not worktree-isolated)",
-                 failure="launch checkout %s is inside .claude/worktrees/ — a "
-                         "worktree-isolated session cannot execute the run "
-                         "(the session Bash guard refuses the engine's "
-                         "integration worktree); exit the worktree and launch "
-                         "/ultrapowers from the repo root checkout" % root):
-        return bail()
 
     state_dir = root / ".claude/ultrapowers"
     run_dir = state_dir / ("run-" + stamp)
@@ -369,24 +320,6 @@ def main(argv=None):
                  failure=r.stderr):
         return bail()
 
-    # Self-host skew: only meaningful when the target repo IS the plugin repo.
-    if root.resolve() == PLUGIN_ROOT.resolve():
-        r = sh(["bash", str(HERE / "check_engine_skew.sh"),
-                str(PLUGIN_ROOT), str(root)])
-        out = (r.stdout + r.stderr).strip()
-        if "SKEW" in out:
-            (root / ".claude/workflows").mkdir(parents=True, exist_ok=True)
-            shutil.copy2(HARNESSES / "waves.js",
-                         root / ".claude/workflows/waves.js")
-            stage("engine-skew", True,
-                  success="SKEW — repo waves.js copied into .claude/workflows")
-        elif not stage("engine-skew", r.returncode == 0,
-                       success=out or "IN_SYNC",
-                       failure=out or "skew check failed"):
-            return bail()
-    else:
-        stage("engine-skew", True, success="skipped — not self-hosting")
-
     # Superpowers compatibility: non-zero means a contract token is missing —
     # the orchestrator surfaces the human gate; the driver just fails closed.
     r = sh([sys.executable, str(HERE / "check_superpowers_compat.py")], cwd=root)
@@ -395,25 +328,11 @@ def main(argv=None):
                  failure=r.stdout + r.stderr):
         return bail()
 
-    # Scratch hygiene: the state dir self-ignores (content `*`) so every run
-    # dir is structurally invisible to git in any repo, and old run records
-    # are pruned keep-newest-10 — a live run's stamp is always the newest, so
-    # the keep-10 window always retains it regardless of lock state. Exhaust
-    # (<runDir>/review) is deleted earlier, at the SKILL.md gate step; this
-    # prune is the crash backstop that gives cleanup a trigger even when a
-    # run died before its gate.
+    # The state dir self-ignores (content `*`) so every run dir is structurally
+    # invisible to git in any repo — gate_check's clean-tree check depends on
+    # it. Nothing is pruned: one sandbox per run, rm'd (Phase 0 rows 2, 11).
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / ".gitignore").write_text("*\n")
-    doomed_names = [d.name for d in _doomed(state_dir, KEEP_RUNS)]
-    pruned = prune_run_dirs(state_dir)
-    if not doomed_names:
-        detail = "nothing to prune"
-    else:
-        detail = "pruned %d old run dir(s)" % len(pruned)
-        failed = [n for n in doomed_names if n not in pruned]
-        if failed:
-            detail += "; %d removal failed: %s" % (len(failed), ", ".join(failed))
-    stage("scratch-hygiene", True, success=detail)
 
     run_dir.mkdir(parents=True, exist_ok=True)
     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
@@ -431,37 +350,6 @@ def main(argv=None):
                  success=summary, failure=r.stderr or r.stdout):
         return bail()
     receipt["compile"] = compile_obj
-
-    # Disk headroom (#151): the cycle's one budgeted additive guard, placed
-    # after compile (it needs compile_obj["waves"] for the widest-wave width)
-    # and before anything expensive. The widest wave bounds peak concurrent
-    # worktree footprint. Advisory by default — warn stays ok:true with a
-    # verdict-stating detail (#97; warn shape per the worktree-audit stage) —
-    # because a tight-but-sufficient host must not false-block. Block only
-    # when free < min(2 GiB, estimate): the floor never exceeds what the run
-    # actually needs, so a narrow run on a small host is never refused by a
-    # floor larger than its own estimate.
-    widest = max((len(w) for w in (compile_obj.get("waves") or [])), default=0)
-    estimate = widest * HEADROOM_PER_TASK
-    free = shutil.disk_usage(root).free
-    floor = min(HEADROOM_FLOOR, estimate)
-
-    def _gib(n):
-        return "%.1f GiB" % (n / GIB)
-
-    headroom = ("free %s vs estimate %s (widest wave %d x 1.5 GiB)"
-                % (_gib(free), _gib(estimate), widest))
-    if free < floor:
-        stage("disk-headroom", False,
-              failure="BLOCKED: " + headroom + " — free is below the "
-                      "min(2 GiB, estimate) floor; free disk space and relaunch")
-        return bail()
-    if free < estimate:
-        stage("disk-headroom", True,
-              success="WARN: " + headroom + " — the run may exhaust disk "
-                      "mid-merge; consider freeing space (advisory)")
-    else:
-        stage("disk-headroom", True, success="ok: " + headroom)
 
     # An explicitly-passed knob is judged on its stripped value: a whitespace
     # command would be stamped verbatim and eval to a false green at the gate,
@@ -502,11 +390,6 @@ def main(argv=None):
                  failure="no harness manifests found under " + str(HARNESSES)):
         return bail()
 
-    r = sh(["bash", str(HERE / "run_lock.sh"), "acquire", stamp], cwd=root)
-    if not stage("lock", r.returncode == 0,
-                 success="lock acquired: " + stamp,
-                 failure=r.stderr or r.stdout):
-        return bail()
     r = write_dirty_baseline(root)
     dirt_lines = len([l for l in (root / ".claude/ultrapowers/DIRTY_SNAPSHOT")
                       .read_text().splitlines() if l.strip()])
@@ -515,15 +398,6 @@ def main(argv=None):
                          % dirt_lines,
                  failure=r.stderr):
         return bail()
-
-    # Janitor advisory (requirement 3, vibes.diy 2026-07-31): surface leftover
-    # engine worktrees/branches from CONCLUDED runs at the next launch, so
-    # "kept for inspection" cannot silently become kept-forever. The lock is
-    # already held, so this run is exempt by construction. Advisory only —
-    # a janitor report must never block a launch.
-    r = sh(["bash", str(HERE / "sweep_worktrees.sh"), "--audit"], cwd=root)
-    audit_out = (r.stdout or r.stderr or "").strip()
-    stage("worktree-audit", True, success=audit_out or "audit produced no output")
 
     # The base is the branch the operator launched from — by construction it
     # contains the plan and the session's context (#100). Repo default only
@@ -541,9 +415,9 @@ def main(argv=None):
     if not base:
         return bail()
 
-    receipt.update({"ok": True, "lockId": stamp, "baseBranch": base,
+    receipt.update({"ok": True, "baseBranch": base,
                     "launchFile": str(launch), "argsFile": str(args_file),
-                    "workflowName": "ultrapowers-run", "probe": PROBE,
+                    "workflowName": "ultrapowers-run",
                     "llmDerives": LLM_DERIVES,
                     "testCmd": test_cmd, "testCmdSource": test_src})
     if a.bootstrap_cmd:

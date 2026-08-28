@@ -9,8 +9,7 @@ before Approve), 1 = BLOCKED (do not Approve).
 Fail-closed by construction: git is the ground truth the report is checked
 AGAINST, so a corrupted or hand-edited report can only produce BLOCKED,
 never a false PASS. This script does not administer acceptance (that is
-run_acceptance.sh, per disposition) and does not release locks or sweep
-worktrees (explicit orchestrator actions on this verdict).
+run_acceptance.sh, per disposition).
 
 The clean-tree check compares against the dirty set recorded at snapshot
 time (`DIRTY_SNAPSHOT`); with no snapshot it treats all dirt as new.
@@ -47,8 +46,7 @@ def main(argv=None):
     ap.add_argument("--repo", type=Path, default=Path.cwd())
     a = ap.parse_args(argv)
 
-    context = {"repo": str(a.repo.resolve()),
-               "lock": str((a.repo / ".claude/ultrapowers/RUN_LOCK").resolve())}
+    context = {"repo": str(a.repo.resolve())}
 
     checks, acks = [], []
 
@@ -64,12 +62,6 @@ def main(argv=None):
         check("report-parse", False, "report unreadable or malformed: " + str(e))
         return emit(checks, acks, context)
     check("report-parse", True)
-
-    r = sh(["bash", str(HERE / "run_lock.sh"), "check", a.run_id], cwd=a.repo)
-    check("lock", r.returncode == 0,
-          "" if r.returncode == 0 else
-          "RUN_LOCK does not hold " + a.run_id +
-          " — a concurrent run may have replaced it; do not Approve")
 
     r = sh(["git", "status", "--porcelain"], cwd=a.repo)
     lines = {l for l in r.stdout.splitlines() if l.strip()}

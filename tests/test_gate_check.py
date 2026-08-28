@@ -29,8 +29,9 @@ def make_repo(tmp_path):
     sh(["git", "init", "-q", "-b", "main"], cwd=repo)
     sh(["git", "config", "user.email", "t@t"], cwd=repo)
     sh(["git", "config", "user.name", "t"], cwd=repo)
-    # .claude/ holds RUN_LOCK (untracked); ignore it or the clean-tree check
-    # sees the lock file itself as dirt — mirrors the real repo's .gitignore.
+    # .claude/ is the driver's state dir (untracked); ignore it or the
+    # clean-tree check sees the run dir as dirt — mirrors the real repo's
+    # .gitignore.
     (repo / ".gitignore").write_text(".claude/\n")
     (repo / "f.txt").write_text("base\n")
     sh(["git", "add", "."], cwd=repo)
@@ -41,7 +42,6 @@ def make_repo(tmp_path):
     sh(["git", "commit", "-qm", "work"], cwd=repo)
     head = sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
     sh(["git", "checkout", "-q", "main"], cwd=repo)
-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "acquire", "wf_test"], cwd=repo)
     return repo, head
 
 
@@ -77,13 +77,6 @@ def test_all_green_is_pass_exit_0(tmp_path):
     p, out = run_gate(repo, good_report(head))
     assert p.returncode == 0 and out["verdict"] == "PASS", p.stdout
     assert all(c["ok"] for c in out["checks"]) and out["acks"] == []
-
-
-def test_lock_mismatch_blocks(tmp_path):
-    repo, head = make_repo(tmp_path)
-    p, out = run_gate(repo, good_report(head), run_id="wf_other")
-    assert p.returncode == 1 and out["verdict"] == "BLOCKED"
-    assert not check_named(out, "lock")["ok"]
 
 
 def test_dirty_tree_blocks(tmp_path):
@@ -212,9 +205,10 @@ def test_no_baseline_falls_back_strict(tmp_path):
     assert r.returncode == 1
 
 
-def test_verdict_echoes_repo_and_lock_context(tmp_path):
+def test_verdict_echoes_repo_context_and_no_lock(tmp_path):
     """A wrong-cwd invocation must be self-diagnosing (2026-07-03 distill:
-    mislocated gate_check produced a spurious BLOCKED)."""
+    mislocated gate_check produced a spurious BLOCKED). The lock context key
+    died with RUN_LOCK (One Driver Phase 0, row 1)."""
     repo, head = make_repo(tmp_path)
     report = tmp_path / "report.json"
     report.write_text(json.dumps(good_report(head)))
@@ -223,4 +217,7 @@ def test_verdict_echoes_repo_and_lock_context(tmp_path):
             "--repo", str(repo)], check=False)
     out = json.loads(r.stdout)
     assert out["repo"] == str(repo.resolve())
-    assert out["lock"].endswith(".claude/ultrapowers/RUN_LOCK")
+    assert "lock" not in out
+    assert [c["name"] for c in out["checks"]] == [
+        "report-parse", "clean-tree", "wave-merges", "head-match",
+        "git-verified", "ancestry", "deliverables"]

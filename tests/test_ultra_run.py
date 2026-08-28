@@ -14,8 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
-from ultra_run import prune_run_dirs  # noqa: E402
 from ultra_run import detect_test_cmd  # noqa: E402
+
+# One Driver Phase 0: the launch pipeline refuses unless the shim's env var is
+# set. Every driver invocation in this file runs as the engine session.
+FLEET_ENV = dict(os.environ, ULTRAPOWERS_FLEET_RUN="run-test")
 
 PLAN = (
     "# P\n\n**Acceptance:** waived — test fixture\n\n"
@@ -26,8 +29,9 @@ PLAN = (
 )
 
 
-def sh(cmd, cwd=None, check=True):
-    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+def sh(cmd, cwd=None, check=True, env=None):
+    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True,
+                          text=True, env=env)
 
 
 def make_repo(tmp_path):
@@ -46,7 +50,7 @@ def make_repo(tmp_path):
 
 def run_driver(repo, *extra):
     return sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1", *extra],
-              cwd=repo, check=False)
+              cwd=repo, check=False, env=FLEET_ENV)
 
 
 def test_happy_path_receipt(tmp_path):
@@ -55,14 +59,12 @@ def test_happy_path_receipt(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     receipt = json.loads(r.stdout)
     assert receipt["ok"] is True
-    assert receipt["lockId"] == "t1"          # the stamp IS the lock id
     assert all(s["ok"] for s in receipt["stages"])
-    stage_names = [s["stage"] for s in receipt["stages"]]
-    for expected in ("git-repo", "worktree-probe", "engine-skew",
-                     "superpowers-compat", "compile", "disk-headroom",
-                     "test-command", "install",
-                     "lock", "dirty-baseline"):
-        assert expected in stage_names
+    # The surviving stages, in the order spec §Engine lists them (Phase 0).
+    assert [s["stage"] for s in receipt["stages"]] == [
+        "fleet-run", "git-repo", "worktree-probe", "superpowers-compat",
+        "compile", "test-command", "install", "dirty-baseline", "base-branch"]
+    assert receipt["stages"][0]["detail"] == "fleet run run-test"
     run_dir = repo / ".claude/ultrapowers/run-t1"
     assert (run_dir / "receipt.json").is_file()
     assert (run_dir / "launch.json").is_file()
@@ -76,13 +78,12 @@ def test_happy_path_receipt(tmp_path):
     assert entries and all(t["tier"] is None for t in entries)
     assert all(t["review"] in ("lean", "adversarial") for t in entries)
     assert any("waves[][].tier" in d for d in receipt["llmDerives"])
-    # lock + dirty-baseline actually happened, with the dirty set recorded
-    assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
     assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
-    # the checkout-position half of the retired family records nothing (#104)
-    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
-    # probe contract pre-computed for the orchestrator
-    assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
+    # the state dir still self-ignores (structural, not the deleted prune)
+    assert (repo / ".claude/ultrapowers/.gitignore").read_text() == "*\n"
+    # Phase 0 rows 1 and 5: no lock, no probe contract.
+    assert not (repo / ".claude/ultrapowers/RUN_LOCK").exists()
+    assert "lockId" not in receipt and "probe" not in receipt
     assert receipt["workflowName"] == "ultrapowers-run"
     assert receipt["testCmd"] == "python3 -m pytest"
 
@@ -116,53 +117,17 @@ def test_dirty_baseline_is_empty_on_a_clean_launch(tmp_path):
     assert dirty.read_text() == ""
 
 
-def test_not_a_git_repo_fails_first_stage(tmp_path):
+def test_not_a_git_repo_fails_the_git_repo_stage(tmp_path):
     bare = tmp_path / "not-a-repo"
     bare.mkdir()
     (bare / "plan.md").write_text(PLAN)
     r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
-           cwd=bare, check=False)
+           cwd=bare, check=False, env=FLEET_ENV)
     assert r.returncode != 0
     receipt = json.loads(r.stdout)
     assert receipt["ok"] is False
+    assert receipt["stages"][0]["stage"] == "fleet-run"
     assert receipt["stages"][-1]["stage"] == "git-repo"
-
-
-def test_worktree_isolated_launch_fails_closed(tmp_path):
-    """#129: a session launched from inside .claude/worktrees/ (EnterWorktree
-    isolation) passes every later stage but cannot execute the run — the
-    session Bash guard refuses the engine's integration worktree. Preflight
-    must fail closed with the remedy, before any cost is spent."""
-    repo = make_repo(tmp_path)
-    wt = repo / ".claude/worktrees/session-wt"
-    sh(["git", "worktree", "add", "-q", str(wt), "HEAD"], cwd=repo)
-    (wt / "plan.md").write_text(PLAN)
-    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
-           cwd=wt, check=False)
-    assert r.returncode != 0
-    receipt = json.loads(r.stdout)
-    assert receipt["ok"] is False
-    assert receipt["stages"][-1]["stage"] == "launch-checkout"
-    assert receipt["stages"][-1]["ok"] is False
-    assert "repo root" in receipt["stages"][-1]["detail"]
-
-
-def test_primary_checkout_launch_passes_launch_checkout_stage(tmp_path):
-    repo = make_repo(tmp_path)
-    r = run_driver(repo)
-    receipt = json.loads(r.stdout)
-    stage = [s for s in receipt["stages"] if s["stage"] == "launch-checkout"][0]
-    assert stage["ok"] is True
-
-
-def test_held_lock_fails_lock_stage(tmp_path):
-    repo = make_repo(tmp_path)
-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "acquire", "other-run"], cwd=repo)
-    r = run_driver(repo)
-    assert r.returncode != 0
-    receipt = json.loads(r.stdout)
-    assert receipt["stages"][-1]["stage"] == "lock"
-    assert receipt["stages"][-1]["ok"] is False
 
 
 def test_uncompilable_plan_fails_compile_stage(tmp_path):
@@ -272,33 +237,6 @@ def test_run_dir_requires_emit_args(tmp_path):
     assert "--run-dir requires --emit-args" in (r.stdout + r.stderr)
 
 
-def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
-    repo = make_repo(tmp_path)
-    state = repo / ".claude/ultrapowers"
-    state.mkdir(parents=True)
-    # 12 stale stamp-format run dirs; the 2 oldest must be pruned (keep 10).
-    for day in range(10, 22):
-        (state / f"run-202601{day:02d}-000000").mkdir()
-    # Decoys that the prune must NEVER touch: non-matching names.
-    (state / "scratch").mkdir()
-    (state / "pending-abc123def456").mkdir()
-    (state / "run-keepme").mkdir()          # prefix collides, format does not
-    r = run_driver(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    survivors = sorted(d.name for d in state.iterdir()
-                       if d.name.startswith("run-2026"))
-    assert len(survivors) == 10
-    assert survivors[0] == "run-20260112-000000"   # the 2 oldest are gone
-    assert (state / "scratch").is_dir()
-    assert (state / "pending-abc123def456").is_dir()
-    assert (state / "run-keepme").is_dir()
-    assert (state / "run-t1").is_dir()             # the current run, untouched
-    assert (state / ".gitignore").read_text() == "*\n"
-    receipt = json.loads(r.stdout)
-    assert any(s["stage"] == "scratch-hygiene" and s["ok"]
-               for s in receipt["stages"])
-
-
 def test_check_rejects_run_dir(tmp_path):
     repo = make_repo(tmp_path)
     r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
@@ -307,38 +245,6 @@ def test_check_rejects_run_dir(tmp_path):
     out = r.stdout + r.stderr
     assert "--check is mutually exclusive" in out
     assert "--run-dir" in out
-
-
-def test_prune_run_dirs_keeps_newest_including_a_live_run(tmp_path):
-    # Direct unit test of prune_run_dirs: the driver-level test's "run-t1"
-    # stamp can never match RUN_DIR_RE, so it proves nothing about a real
-    # run dir surviving the prune. Seed 12 stale dirs plus a newest dir
-    # standing in for the current run.
-    state = tmp_path / "state"
-    state.mkdir()
-    stale = [f"run-202601{day:02d}-000000" for day in range(10, 22)]  # 12
-    for name in stale:
-        (state / name).mkdir()
-    current = "run-20260122-000000"          # newest — stands in for a live run
-    (state / current).mkdir()
-    # Decoys the prune must NEVER touch.
-    (state / "scratch").mkdir()
-    (state / "pending-abc123def456").mkdir()
-    (state / "run-keepme").mkdir()
-
-    removed = prune_run_dirs(state, keep=10)
-
-    survivors = sorted(d.name for d in state.iterdir()
-                       if d.name.startswith("run-2026"))
-    assert current in survivors
-    assert len(survivors) == 10
-    expected_pruned = stale[:3]              # the 3 oldest of the 13 stamped dirs
-    assert sorted(removed) == sorted(expected_pruned)
-    for name in expected_pruned:
-        assert not (state / name).exists()
-    assert (state / "scratch").is_dir()
-    assert (state / "pending-abc123def456").is_dir()
-    assert (state / "run-keepme").is_dir()
 
 
 def test_detect_test_cmd_ladder(tmp_path):
@@ -479,7 +385,7 @@ def test_failure_details_survive_not_a_repo(tmp_path):
     plain.mkdir()
     (plain / "plan.md").write_text("# nothing")
     r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t9"],
-           cwd=plain, check=False)
+           cwd=plain, check=False, env=FLEET_ENV)
     assert r.returncode != 0
     receipt = json.loads(r.stdout)
     s = next(x for x in receipt["stages"] if x["stage"] == "git-repo")
@@ -584,83 +490,6 @@ def test_unborn_head_fails_probe_worktree_creation_closed(tmp_path):
     assert not (repo / "dirt.txt").exists()      # the command never ran here
 
 
-# --- #95 item 2: the prune failure branch must stay honest ---
-
-def test_prune_failure_absent_from_removed_list_and_named_in_stage_detail(
-        tmp_path, monkeypatch, capsys):
-    # Task 4 / #95 item 2: a single doomed dir whose rmtree is selectively
-    # neutered (monkeypatched to a no-op for that path only — every other
-    # candidate is genuinely removed) must be honestly reported on BOTH
-    # surfaces: (a) prune_run_dirs's own return value never lists it as
-    # removed, and (b) the driver's scratch-hygiene stage detail names it
-    # in the "; N removal failed:" wording rather than silently counting it
-    # as pruned (the old report-the-doomed-list behavior would do neither).
-    import ultra_run
-    repo = make_repo(tmp_path)
-    state = repo / ".claude/ultrapowers"
-    state.mkdir(parents=True)
-    doomed_name = "run-20260101-000000"
-    doomed = state / doomed_name
-    doomed.mkdir()
-    for i in range(2, 12):          # 10 more -> 11 total; KEEP_RUNS=10 -> 1 doomed
-        (state / ("run-202601%02d-000000" % i)).mkdir()
-
-    real_rmtree = ultra_run.shutil.rmtree
-
-    def selective_noop(path, *a, **k):
-        if pathlib.Path(path) == doomed:
-            return None      # this one refuses to go — no-op just for it
-        return real_rmtree(path, *a, **k)
-
-    monkeypatch.setattr(ultra_run.shutil, "rmtree", selective_noop)
-
-    # (a) direct check on prune_run_dirs's own return value.
-    removed = ultra_run.prune_run_dirs(state, keep=10)
-    assert doomed_name not in removed
-    assert doomed.exists()                    # it really did survive
-
-    # (b) the driver-level scratch-hygiene stage detail must name it.
-    rc = ultra_run.main(["plan.md", "--stamp", "t1", "--repo", str(repo)])
-    receipt = json.loads(capsys.readouterr().out)
-    assert rc == 0
-    s = next(x for x in receipt["stages"] if x["stage"] == "scratch-hygiene")
-    assert s["ok"] is True                    # hygiene never blocks a run
-    assert "; 1 removal failed: %s" % doomed_name in s["detail"]
-    assert doomed.exists()                    # still there after the driver run too
-
-
-# --- requirement 3: janitor advisory surfaced at preflight (vibes.diy 2026-07-31) ---
-
-def test_preflight_surfaces_worktree_audit_without_blocking(tmp_path):
-    """Requirement 3: concluded-run leftovers surface at the NEXT run's
-    preflight instead of relying on the operator's memory — advisory only."""
-    repo = make_repo(tmp_path)
-    stale = repo / ".claude" / "worktrees" / "wf_deadrun-1"
-    sh(["git", "worktree", "add", "-b", "worktree-wf_deadrun-1", str(stale)],
-       cwd=repo)
-    old = time.time() - 3 * 86400
-    os.utime(stale, (old, old))
-
-    r = run_driver(repo)
-    assert r.returncode == 0, r.stdout + r.stderr        # never blocks
-    receipt = json.loads(r.stdout)
-    audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
-    assert len(audit) == 1
-    assert audit[0]["ok"] is True
-    assert "wf_deadrun-1" in audit[0]["detail"]
-    assert stale.exists()                                # advisory: untouched
-
-
-def test_preflight_audit_is_clean_on_a_clean_repo(tmp_path):
-    repo = make_repo(tmp_path)
-    r = run_driver(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    receipt = json.loads(r.stdout)
-    audit = [s for s in receipt["stages"] if s["stage"] == "worktree-audit"]
-    assert len(audit) == 1 and audit[0]["ok"] is True
-    assert "audit: clean" in audit[0]["detail"]
-
-
 def test_validate_knobs_green_baseline_exits_0(tmp_path):
     repo = make_repo(tmp_path)
     args_path = repo / "args.json"
@@ -754,131 +583,6 @@ def test_explicit_empty_test_cmd_fails_the_stage(tmp_path, cmd):
     assert "testCmd" not in receipt
 
 
-# --- #151: disk-headroom preflight stage (the cycle's one budgeted guard) ---
-# free vs estimate = widest_wave_width x 1.5 GiB (hardcoded, no env knob).
-# warn stays ok:true (advisory; a tight-but-sufficient host must not
-# false-block); block only when free < min(2 GiB, estimate), so a narrow
-# run on a small host is never refused by a floor larger than its own need.
-
-GIB = 1024 ** 3
-
-# Two INDEPENDENT tasks -> one wave of width 2 -> estimate 3.0 GiB, floor 2 GiB.
-WIDE_PLAN = (
-    "# P\n\n**Acceptance:** waived — test fixture\n\n"
-    "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
-    "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
-    "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** none\n\n"
-    "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
-)
-
-
-def make_wide_repo(tmp_path):
-    repo = make_repo(tmp_path)
-    (repo / "plan.md").write_text(WIDE_PLAN)
-    sh(["git", "add", "plan.md"], cwd=repo)
-    sh(["git", "commit", "-qm", "wide plan"], cwd=repo)
-    return repo
-
-
-def run_main_with_free(repo, monkeypatch, capsys, free_bytes):
-    """Drive ultra_run.main in-process with shutil.disk_usage faked."""
-    import ultra_run
-
-    class Usage:
-        def __init__(self, free):
-            self.free = free
-
-    monkeypatch.setattr(ultra_run.shutil, "disk_usage",
-                        lambda path: Usage(free_bytes))
-    rc = ultra_run.main(["plan.md", "--stamp", "t1", "--repo", str(repo)])
-    return rc, json.loads(capsys.readouterr().out)
-
-
-def headroom_stage(receipt):
-    return next(s for s in receipt["stages"] if s["stage"] == "disk-headroom")
-
-
-def test_disk_headroom_ok_at_estimate_boundary(tmp_path, monkeypatch, capsys):
-    # free == estimate -> ok (Free >= estimate is the ok branch).
-    repo = make_wide_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 3 * GIB)
-    assert rc == 0
-    s = headroom_stage(receipt)
-    assert s["ok"] is True
-    assert s["detail"].startswith("ok: ")
-    assert "free 3.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
-
-
-def test_disk_headroom_warns_below_estimate_above_floor(tmp_path, monkeypatch, capsys):
-    repo = make_wide_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(2.5 * GIB))
-    assert rc == 0                                   # advisory: never blocks here
-    s = headroom_stage(receipt)
-    assert s["ok"] is True                           # warn-as-ok:true (worktree-audit shape)
-    assert s["detail"].startswith("WARN: ")
-    assert "free 2.5 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
-
-
-def test_disk_headroom_warn_not_block_at_floor_boundary(tmp_path, monkeypatch, capsys):
-    # free == floor (2 GiB) -> still WARN; block is strictly free < floor.
-    repo = make_wide_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 2 * GIB)
-    assert rc == 0
-    s = headroom_stage(receipt)
-    assert s["ok"] is True
-    assert s["detail"].startswith("WARN: ")
-
-
-def test_disk_headroom_blocks_below_floor(tmp_path, monkeypatch, capsys):
-    repo = make_wide_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 1 * GIB)
-    assert rc != 0
-    assert receipt["ok"] is False
-    s = headroom_stage(receipt)
-    assert s["ok"] is False
-    assert s["detail"].startswith("BLOCKED: ")
-    assert "free 1.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
-    assert "min(2 GiB, estimate)" in s["detail"]
-    # Blocked BEFORE anything expensive: no later stage ran.
-    names = [x["stage"] for x in receipt["stages"]]
-    assert "test-command" not in names and "lock" not in names
-
-
-def test_disk_headroom_min_floor_narrow_run_not_blocked_by_flat_floor(
-        tmp_path, monkeypatch, capsys):
-    # The default PLAN chains 1 -> 2: widest wave 1 -> estimate 1.5 GiB,
-    # floor min(2 GiB, 1.5 GiB) = 1.5 GiB. free 1.7 GiB >= estimate -> ok.
-    # A flat 2 GiB floor would have false-blocked this narrow run.
-    repo = make_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.7 * GIB))
-    assert rc == 0
-    s = headroom_stage(receipt)
-    assert s["ok"] is True
-    assert s["detail"].startswith("ok: ")
-    assert "widest wave 1" in s["detail"]
-
-
-def test_disk_headroom_min_floor_narrow_run_blocks_below_own_estimate(
-        tmp_path, monkeypatch, capsys):
-    # Same narrow plan, free 1.4 GiB < floor (= estimate 1.5 GiB) -> block.
-    repo = make_repo(tmp_path)
-    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.4 * GIB))
-    assert rc != 0
-    s = headroom_stage(receipt)
-    assert s["ok"] is False
-    assert s["detail"].startswith("BLOCKED: ")
-
-
-def test_disk_headroom_stage_runs_right_after_compile(tmp_path):
-    # Real disk_usage (dev/CI hosts have headroom); ordering is the contract.
-    repo = make_repo(tmp_path)
-    r = run_driver(repo)
-    assert r.returncode == 0, r.stdout + r.stderr
-    names = [s["stage"] for s in json.loads(r.stdout)["stages"]]
-    assert names.index("disk-headroom") == names.index("compile") + 1
-    assert names.index("disk-headroom") < names.index("test-command")
-
-
 def _probe_dirs(repo):
     return sorted(p.name for p in (repo / ".claude/ultrapowers").glob("wt-knob-*"))
 
@@ -907,3 +611,27 @@ def test_validate_knobs_removes_its_probe_worktree_on_sigterm(tmp_path):
     assert _probe_dirs(repo) == []
     wl = sh(["git", "worktree", "list", "--porcelain"], cwd=repo).stdout
     assert "wt-knob-" not in wl
+
+
+# --- One Driver Phase 0 §The one mechanism: fleet-run is the first stage ---
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_unset_fleet_run_refuses_before_any_other_stage(tmp_path, value):
+    """ULTRAPOWERS_FLEET_RUN unset (or blank) means a laptop session is trying
+    to run the engine locally. The first stage refuses; nothing else runs and
+    no run dir is minted (replaces the #129 launch-checkout guard, row 9)."""
+    repo = make_repo(tmp_path)
+    env = {k: v for k, v in os.environ.items() if k != "ULTRAPOWERS_FLEET_RUN"}
+    if value is not None:
+        env["ULTRAPOWERS_FLEET_RUN"] = value
+    r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
+           cwd=repo, check=False, env=env)
+    assert r.returncode != 0
+    receipt = json.loads(r.stdout)
+    assert receipt["ok"] is False
+    assert [s["stage"] for s in receipt["stages"]] == ["fleet-run"]
+    assert receipt["stages"][0]["ok"] is False
+    detail = receipt["stages"][0]["detail"]
+    assert "`/ultrapowers` runs only inside a fleet sandbox" in detail
+    assert "launch `drive-one` on the orchestrator" in detail
+    assert not (repo / ".claude/ultrapowers/run-t1").exists()

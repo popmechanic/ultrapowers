@@ -1,7 +1,7 @@
 """ultra_gate.py: the deterministic gate driver (SKILL.md Step 5 mechanics).
 Runs against a throwaway git repo with a stubbed run_acceptance.sh so
-acceptance DISPATCH is tested without a real sealed vault. gate_check.py,
-run_lock.sh, and the envelope unwrap are exercised for real.
+acceptance DISPATCH is tested without a real vault. gate_check.py and the
+envelope unwrap are exercised for real.
 
 The second half of the file (#96) pins the suite-disposition contract: the
 acceptance command and bootstrap come exclusively from `receipt.json`, never
@@ -51,15 +51,12 @@ def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None,
 
     scripts = tmp_path / "scripts"
     scripts.mkdir()
-    for f in ("ultra_gate.py", "gate_check.py", "run_lock.sh",
-              "sweep_worktrees.sh"):
+    for f in ("ultra_gate.py", "gate_check.py"):
         shutil.copy2(SCRIPTS / f, scripts / f)
     (scripts / "run_acceptance.sh").write_text(
         "#!/usr/bin/env bash\necho \"STUB $@\"\nexit 0\n")
     (scripts / "run_acceptance.sh").chmod(0o755)
 
-    # the pre-launch state ultra_run would have left behind
-    sh(["bash", str(scripts / "run_lock.sh"), "acquire", "t1"], cwd=repo)
     if seed_dirty_baseline:
         write_dirty_baseline(repo)
     run_dir = repo / ".claude/ultrapowers/run-t1"
@@ -106,6 +103,7 @@ def test_envelope_unwrap_and_pass(tmp_path):
     saved = repo / ".claude/ultrapowers/run-t1/report.json"
     assert json.loads(saved.read_text())["integrationBranch"] == "ultra/int"
     assert out["acceptance"]["disposition"] == "waived"
+    assert "wfRuns" not in out
 
 
 def test_bare_report_also_accepted(tmp_path):
@@ -149,16 +147,24 @@ def test_gate_leaves_the_session_checkout_where_it_found_it(tmp_path):
     assert sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip() == before
 
 
-def test_sealed_acceptance_dispatch(tmp_path):
-    """Sealed disposition invokes run_acceptance.sh with sealId, branch, hash."""
+def test_sealed_disposition_is_blocked_without_administering(tmp_path):
+    """Phase 0 row 7: sealed acceptance is no longer administered. The gate
+    BLOCKS with the gate receipt as the terminal artifact and never invokes
+    run_acceptance.sh (the stub would have echoed STUB into the output)."""
     repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
     result = tmp_path / "result.json"
     result.write_text(json.dumps(good_report(head)))
     r = run_gate(repo, scripts, result)
     out = json.loads(r.stdout)
-    assert out["acceptance"]["disposition"] == "sealed"
-    assert "abc123 ultra/int " + "d" * 64 in out["acceptance"]["output"]
-    assert r.returncode == 0
+    assert r.returncode == 1
+    assert out["verdict"] == "BLOCKED"
+    assert out["acceptance"] == {
+        "disposition": "sealed", "exit": None,
+        "reason": "sealed acceptance is not administered — Phase 0 row 7"}
+    assert "STUB" not in r.stdout
+    saved = json.loads((repo / ".claude/ultrapowers/run-t1/gate-receipt.json")
+                       .read_text())
+    assert saved["verdict"] == "BLOCKED"
 
 
 def test_suite_acceptance_dispatch(tmp_path):
@@ -178,7 +184,8 @@ def test_suite_acceptance_dispatch(tmp_path):
 
 
 def test_failed_acceptance_forces_blocked(tmp_path):
-    repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
+    repo, scripts, head = make_repo(tmp_path, acceptance_mode="suite",
+                                    receipt_extra={"testCmd": "make check"})
     (scripts / "run_acceptance.sh").write_text(
         "#!/usr/bin/env bash\necho RED\nexit 1\n")
     (scripts / "run_acceptance.sh").chmod(0o755)
@@ -209,18 +216,10 @@ def test_unrecognizable_result_is_blocked(tmp_path):
     assert json.loads(r.stdout)["verdict"] == "BLOCKED"
 
 
-def test_teardown_releases_lock_keeps_worktrees(tmp_path):
-    repo, scripts, _ = make_repo(tmp_path)
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--teardown"], cwd=repo, check=False)
-    assert r.returncode == 0
-    out = json.loads(r.stdout)
-    assert out["lockReleased"] is True
-    assert "sweep" in out
-    assert not (repo / ".claude/ultrapowers/RUN_LOCK").exists()
-
-
-def test_approve_checks_out_branch_and_releases(tmp_path):
+def test_approve_checks_out_branch_and_prints_the_approve_receipt(tmp_path):
+    """Approve = checkout only (Phase 0 rows 1–2: no lock, no sweep). The
+    printed JSON is what the orchestrator saves verbatim to
+    run-<stamp>/approve-receipt.json; the shim greens only on a matching stamp."""
     repo, scripts, _ = make_repo(tmp_path)
     r = sh([sys.executable, str(scripts / "ultra_gate.py"),
             "--stamp", "t1", "--approve", "--branch", "ultra/int"],
@@ -228,7 +227,21 @@ def test_approve_checks_out_branch_and_releases(tmp_path):
     assert r.returncode == 0, r.stdout + r.stderr
     cur = sh(["git", "branch", "--show-current"], cwd=repo).stdout.strip()
     assert cur == "ultra/int"
+    assert json.loads(r.stdout) == {"mode": "approve", "stamp": "t1",
+                                    "branch": "ultra/int"}
     assert not (repo / ".claude/ultrapowers/RUN_LOCK").exists()
+
+
+def test_teardown_and_wf_run_flags_are_gone(tmp_path):
+    """Rows 1–2: --teardown (lock release) and --wf-run (sweep belt) died
+    with the lock and the sweep; argparse refuses them."""
+    repo, scripts, _ = make_repo(tmp_path)
+    for flag in (["--teardown"], ["--approve", "--branch", "ultra/int",
+                                  "--wf-run", "wf_x"]):
+        r = sh([sys.executable, str(scripts / "ultra_gate.py"),
+                "--stamp", "t1", *flag], cwd=repo, check=False)
+        assert r.returncode == 2, flag
+        assert "unrecognized arguments" in r.stderr
 
 
 # ── #96: suite acceptance derives its inputs from the receipt ────────────
@@ -330,201 +343,3 @@ def test_empty_receipt_testcmd_blocks_loudly(tmp_path, monkeypatch, capsys):
     code, _, ra = _run_gate(tmp_path / "a", monkeypatch, {"testCmd": ""})
     assert code == 1 and ra is None
     assert "receipt lacks testCmd" in json.loads(capsys.readouterr().out)["detail"]
-
-
-# ── requirement 1: the gate derives wf run ids; approve sweeps the full set ──
-# A resumed run mints a NEW wf_<runId> per Workflow invocation, so an
-# orchestrator-threaded id covers only the last launch. The driver derives each
-# launch's id from the report's task branches and unions across gate calls
-# (vibes.diy 2026-07-31 post-mortem).
-
-
-def add_worktree(repo, name):
-    wt = repo / ".claude" / "worktrees" / name
-    sh(["git", "worktree", "add", "-b", "worktree-" + name, str(wt)], cwd=repo)
-    return wt
-
-
-def test_gate_records_every_launch_wf_run_id(tmp_path):
-    """Finding 1 root cause: a resumed run mints a NEW wf_runId per Workflow
-    invocation, and coverage was orchestrator-threaded. The gate derives each
-    launch's runId from the report's task branches and unions across gates."""
-    repo, scripts, head = make_repo(tmp_path)
-    report = good_report(head)
-    report["tasks"] = [
-        {"task": "1", "status": "done", "branch": "worktree-wf_1d170a73-a62-1"},
-        {"task": "2", "status": "done", "branch": "worktree-wf_1d170a73-a62-2"},
-    ]
-    r1 = tmp_path / "r1.json"
-    r1.write_text(json.dumps({"result": report}))
-    run_gate(repo, scripts, r1)
-    wf_file = repo / ".claude/ultrapowers/run-t1/wf-runs.json"
-    assert json.loads(wf_file.read_text()) == ["wf_1d170a73-a62"]
-
-    # a Salvage/Redirect relaunch gates again under a fresh runtime id — union
-    report["tasks"] = [{"task": "2", "status": "done",
-                        "branch": "worktree-wf_7cf88e9e-c10-1"}]
-    r2 = tmp_path / "r2.json"
-    r2.write_text(json.dumps({"result": report}))
-    r = run_gate(repo, scripts, r2)
-    assert json.loads(wf_file.read_text()) == ["wf_1d170a73-a62",
-                                               "wf_7cf88e9e-c10"]
-    assert json.loads(r.stdout)["wfRuns"] == ["wf_1d170a73-a62",
-                                              "wf_7cf88e9e-c10"]
-
-
-def test_gate_skips_unparseable_branches_without_failing(tmp_path):
-    repo, scripts, head = make_repo(tmp_path)
-    report = good_report(head)
-    report["tasks"] = [{"task": "1", "status": "done", "branch": "feat/odd-name"},
-                       {"task": "2", "status": "done"}]
-    result = tmp_path / "r.json"
-    result.write_text(json.dumps({"result": report}))
-    r = run_gate(repo, scripts, result)
-    assert r.returncode == 0, r.stdout + r.stderr        # still a PASS verdict
-    assert not (repo / ".claude/ultrapowers/run-t1/wf-runs.json").exists()
-
-
-def test_approve_sweeps_every_recorded_run_id_plus_stamp(tmp_path):
-    """Requirement 1: one gate call, total coverage — every recorded runtime
-    id AND the wf_<stamp> integration worktree, no orchestrator-threaded list."""
-    repo, scripts, _ = make_repo(tmp_path)
-    run_dir = repo / ".claude/ultrapowers/run-t1"
-    (run_dir / "wf-runs.json").write_text(
-        json.dumps(["wf_1d170a73-a62", "wf_7cf88e9e-c10"]))
-    wt_a = add_worktree(repo, "wf_1d170a73-a62-1")
-    wt_b = add_worktree(repo, "wf_7cf88e9e-c10-1")
-    wt_int = add_worktree(repo, "wf_t1-integration")
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
-           cwd=repo, check=False)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert not wt_a.exists() and not wt_b.exists() and not wt_int.exists()
-    out = json.loads(r.stdout)
-    assert sorted(out["swept"]) == ["wf_1d170a73-a62", "wf_7cf88e9e-c10",
-                                    "wf_t1"]
-    # every entry carries its exit code, and a clean approve reports no failures
-    assert [v["exit"] for v in out["swept"].values()] == [0, 0, 0]
-    assert "sweepFailures" not in out
-
-
-def test_approve_without_records_still_sweeps_the_stamp(tmp_path):
-    repo, scripts, _ = make_repo(tmp_path)
-    wt_int = add_worktree(repo, "wf_t1-integration")
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
-           cwd=repo, check=False)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert not wt_int.exists()
-    out = json.loads(r.stdout)
-    assert list(out["swept"]) == ["wf_t1"]
-    assert out["swept"]["wf_t1"]["exit"] == 0
-
-
-def test_approve_wf_run_flag_is_still_honored_as_belt(tmp_path):
-    repo, scripts, _ = make_repo(tmp_path)
-    wt = add_worktree(repo, "wf_extra999-zzz-1")
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--approve", "--branch", "ultra/int",
-            "--wf-run", "wf_extra999-zzz"],
-           cwd=repo, check=False)
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert not wt.exists()
-    out = json.loads(r.stdout)
-    assert "wf_extra999-zzz" in out["swept"]
-    assert out["swept"]["wf_extra999-zzz"]["exit"] == 0
-
-
-def test_record_wf_runs_accepts_an_odd_shaped_runtime_id(tmp_path):
-    """The id shape is minted by the Workflow runtime, not this repo. A strict
-    shape pin would silently skip every branch on drift and approve would sweep
-    nothing — reintroducing the exact leak this closes. The match is structural.
-    """
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    report = {"tasks": [{"branch": "worktree-wf_ABCDEF123-longsuffix-1"},
-                        {"branch": "worktree-wf_1d170a73-a62-2"}]}
-    assert ultra_gate.record_wf_runs(run_dir, report, "t1") == (
-        ["wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"], False)
-    assert json.loads((run_dir / "wf-runs.json").read_text()) == [
-        "wf_1d170a73-a62", "wf_ABCDEF123-longsuffix"]
-
-
-def test_record_wf_runs_never_records_the_integration_stamp_id(tmp_path):
-    """The loose pattern also matches `worktree-wf_<stamp>-integration` when the
-    stamp itself is hyphenated. wf_<stamp> is swept unconditionally at approve,
-    so recording it would only add noise to the derived set."""
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    stamp = "20260731-155401"
-    report = {"tasks": [{"branch": "worktree-wf_" + stamp + "-integration"},
-                        {"branch": "worktree-wf_1d170a73-a62-1"}]}
-    assert ultra_gate.record_wf_runs(run_dir, report, stamp)[0] == [
-        "wf_1d170a73-a62"]
-    assert json.loads((run_dir / "wf-runs.json").read_text()) == [
-        "wf_1d170a73-a62"]
-
-
-def test_approve_reports_a_failed_sweep_and_exits_nonzero(tmp_path):
-    """A sweep that exits non-zero must never read as a clean approve: keeping
-    only stdout would render an empty summary and exit 0 — an invisible leak."""
-    repo, scripts, _ = make_repo(tmp_path)
-    (scripts / "sweep_worktrees.sh").write_text(
-        "#!/usr/bin/env bash\necho 'sweep boom' >&2\nexit 3\n")
-    (scripts / "sweep_worktrees.sh").chmod(0o755)
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
-           cwd=repo, check=False)
-    assert r.returncode == 1, r.stdout + r.stderr
-    out = json.loads(r.stdout)
-    assert out["sweepFailures"] == ["wf_t1"]
-    assert out["swept"]["wf_t1"]["exit"] == 3
-    assert "sweep boom" in out["swept"]["wf_t1"]["output"]
-    assert out["lockReleased"] is True    # the lock still gets released
-
-
-def test_teardown_names_the_recorded_run_ids(tmp_path):
-    repo, scripts, _ = make_repo(tmp_path)
-    run_dir = repo / ".claude/ultrapowers/run-t1"
-    (run_dir / "wf-runs.json").write_text(json.dumps(["wf_1d170a73-a62"]))
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--teardown"], cwd=repo, check=False)
-    assert r.returncode == 0
-    out = json.loads(r.stdout)
-    assert out["wfRuns"] == ["wf_1d170a73-a62"]
-    # worktrees still kept — teardown remains evidence-preserving
-    assert "sweep" in out
-
-
-def test_approve_fails_loud_on_unreadable_wf_runs_record(tmp_path):
-    """A corrupt wf-runs.json means sweep coverage is UNKNOWN — approve must
-    say so and exit non-zero, never present a full-looking receipt (the same
-    invisible-leak shape the swept exit-code recording closed)."""
-    repo, scripts, _ = make_repo(tmp_path)
-    run_dir = repo / ".claude/ultrapowers/run-t1"
-    (run_dir / "wf-runs.json").write_text("{corrupt")
-    r = sh([sys.executable, str(scripts / "ultra_gate.py"),
-            "--stamp", "t1", "--approve", "--branch", "ultra/int"],
-           cwd=repo, check=False)
-    assert r.returncode == 1, r.stdout + r.stderr
-    out = json.loads(r.stdout)
-    assert out["wfRunsUnreadable"] is True
-    # the stamp id is still swept — coverage degraded, not abandoned
-    assert "wf_t1" in out["swept"]
-
-
-def test_gate_surfaces_and_rebuilds_unreadable_wf_runs_record(tmp_path):
-    repo, scripts, head = make_repo(tmp_path)
-    run_dir = repo / ".claude/ultrapowers/run-t1"
-    (run_dir / "wf-runs.json").write_text("{corrupt")
-    report = good_report(head)
-    report["tasks"] = [{"task": "1", "status": "done",
-                        "branch": "worktree-wf_1d170a73-a62-1"}]
-    result = tmp_path / "r.json"
-    result.write_text(json.dumps({"result": report}))
-    r = run_gate(repo, scripts, result)
-    out = json.loads(r.stdout)
-    assert out["wfRunsUnreadable"] is True
-    assert out["wfRuns"] == ["wf_1d170a73-a62"]      # rebuilt from this launch
-    saved = json.loads((run_dir / "wf-runs.json").read_text())
-    assert saved == ["wf_1d170a73-a62"]
