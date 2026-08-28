@@ -107,8 +107,7 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 
 While marking the plan, decide review depth explicitly: mark
 `**Review:** adversarial` on tasks whose failure is costly or hard to see — the
-fit analysis's risk list below (auth, payments, migrations, data integrity,
-public API, behavior hard to verify by reading). Everything else stays lean.
+fit analysis's risk list below. Everything else stays lean.
 The engine derives nothing: unmarked means lean, by construction.
 
 Placement is enforced: the compiler trusts markers only in the contiguous block
@@ -147,7 +146,7 @@ Read three signals off the marked plan:
   Compute it by hand from the `**Depends-on:**` graph plus the `**Files:**` blocks.
 - **risk** — true if Acceptance is `sealed` (the operator cannot read the diff),
   the work touches a high-stakes surface (auth, payments, migrations, data
-  integrity, public API), or behavior is hard to verify by reading.
+  integrity, public API, loops/cursors/pagination/budgets/termination logic), or behavior is hard to verify by reading.
 
 Decide with the first branch that matches:
 
