@@ -42,6 +42,7 @@ import {
 } from '../shim-main.mjs'
 import {
   clock,
+  GITHUB_TOKEN,
   INTEGRATION_BRANCH,
   OLDER_BRANCH,
   RECEIPT_PATH,
@@ -56,6 +57,7 @@ const {
   tmp,
   repoDir,
   sandboxRepo,
+  originRepo,
   cleanup,
   headSha,
   olderSha,
@@ -293,6 +295,20 @@ try {
     )
     assert.ok(fs.existsSync(path.join(sandboxRepo, RECEIPT_PATH)), 'the stale leftover must be left untouched')
 
+    // #368, on the PRODUCTION publish path: the receipt row `main()` wrote is
+    // the pointer the publish leg reads the body from, the receipts commit it
+    // made is the tip that reaches origin as-is, and the PR is a normal one.
+    // The leg's full contract is pinned in test_drive_pr.mjs; this pins that
+    // the production writer and the leg agree on the pointer.
+    assert.deepEqual(detail.pullRequest, { number: 4242, url: 'https://github.com/popmechanic/ultrapowers/pull/4242', draft: false, branch: INTEGRATION_BRANCH })
+    assert.ok(
+      exec.cmds.includes(`git -C ${repoDir} -c credential.helper= -c credential.helper='!gh auth git-credential' push origin ${receiptsSha}:refs/heads/${INTEGRATION_BRANCH}`),
+      `the receipts commit is the tip pushed to origin, got: ${JSON.stringify(exec.cmds.filter((c) => / push origin /.test(c)))}`,
+    )
+    assert.equal((await sh(`git -C "${originRepo}" rev-parse refs/heads/${INTEGRATION_BRANCH}`)).stdout.trim(), receiptsSha)
+    assert.ok(exec.cmds.includes(`git -C ${repoDir} show ${receiptsSha}:${committedReceipt}`), 'the body is rendered from the committed receipt')
+    assert.ok(!exec.cmds.some((c) => c.includes(GITHUB_TOKEN)), 'the token never reaches a command line')
+
     // Hand the shared fixture back the way it was found: the run's own dir is
     // scenario-local, and later scenarios pin discovery against `RUN_DIR` alone.
     fs.rmSync(path.join(sandboxRepo, OWN_RUN_DIR), { recursive: true, force: true })
@@ -507,6 +523,14 @@ try {
         resolved: false,
       },
     ])
+    // #368: a gate-green status whose receipts do not resolve is a defect to
+    // diagnose, not a PR to open — nothing is pushed, and the detail says why.
+    assert.equal(detail.pullRequest, null)
+    assert.ok(!exec.cmds.some((c) => / push origin | gh pr create /.test(c)), 'no push, no PR for unresolvable receipts')
+    assert.ok(
+      detail.errors.includes(`PR not opened: gate-green but receipts unresolvable on ${INTEGRATION_BRANCH} — diagnose before publishing`),
+      JSON.stringify(detail.errors),
+    )
   }
 
   // -- 7. a run that publishes nothing reads RED, on a bound -----------------

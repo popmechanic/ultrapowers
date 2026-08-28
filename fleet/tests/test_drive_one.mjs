@@ -12,6 +12,7 @@ import {
   buildDriveOptions,
   main,
   parseArgs,
+  shellExec,
   usage,
 } from '../drive-one.mjs'
 
@@ -36,7 +37,38 @@ const ok = (label) => {
   assert.equal(p.repoDir, REPO_DIR)
   assert.equal(p.allowUnfitPlan, false)
   assert.equal(p.evidenceDir, undefined)
+  // #368: the GitHub token sits beside the OAuth token; the PR targets main.
+  assert.equal(p.githubTokenPath, '/home/exedev/.fleet/github-token')
+  assert.equal(p.prBase, 'main')
   ok('defaults match the RUNBOOK heredoc constants')
+}
+
+{
+  const p = parseArgs(['p.md', 'run-47', '--github-token-path', '/tmp/gh-tok', '--pr-base', 'release/1'])
+  assert.equal(p.githubTokenPath, '/tmp/gh-tok')
+  assert.equal(p.prBase, 'release/1')
+  const o = buildDriveOptions(p, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
+  assert.equal(o.githubTokenPath, '/tmp/gh-tok')
+  assert.equal(o.prBase, 'release/1')
+  assert.match(usage(), /--github-token-path FILE/)
+  // The GitHub token is NOT read here: driveOne reads it itself (fs) and hands
+  // it to git/gh as an env — buildDriveOptions only forwards the PATH.
+  assert.equal('GH_TOKEN' in o, false)
+  assert.ok(!JSON.stringify(o).includes('gh-tok-contents'))
+  ok('#368: --github-token-path / --pr-base ride through as paths and names, never as a token')
+}
+
+{
+  // #368: shellExec layers a per-command env over the process environment —
+  // the channel GH_TOKEN rides — and leaves the process itself untouched.
+  const withEnv = await shellExec('printf %s "$FLEET_TEST_VAR"', { env: { FLEET_TEST_VAR: 'rode-the-env' } })
+  assert.deepEqual(withEnv, { code: 0, stdout: 'rode-the-env' })
+  const without = await shellExec('printf %s "${FLEET_TEST_VAR-unset}"')
+  assert.deepEqual(without, { code: 0, stdout: 'unset' })
+  assert.equal(process.env.FLEET_TEST_VAR, undefined, 'the per-command env must not leak into the process')
+  const inherits = await shellExec('printf %s "$PATH"', { env: { FLEET_TEST_VAR: 'x' } })
+  assert.equal(inherits.stdout, process.env.PATH, 'the process env is inherited under the layered one')
+  ok('#368: shellExec(cmd, {env}) layers env per command; no env → process env, nothing leaks')
 }
 
 {
