@@ -709,15 +709,18 @@ export const readStamp = async ({ repoDir, exec, ref = BASE_REF }) => {
 }
 
 /**
- * The ultrapowers version the ENGINE will actually run — the plugin installed
- * in the image, read from `claude plugin list --json`. `readStamp` attests
- * the pushed base; this attests the golden. The two disagree exactly when the
- * image is stale (#282: the run-16 golden sat four releases behind and both
- * halves of the old cross-check came from the pushed ref, so nothing said
- * so). Never throws; an unreadable list stamps '' and the driver skips the
- * image-side check.
+ * The ultrapowers version the ENGINE actually ran — the plugin installed in
+ * the sandbox, read from `claude plugin list --json`. `readStamp` attests the
+ * pushed base; this attests what was installed. The two disagreed exactly
+ * when the image was stale (#282: the run-16 golden sat four releases behind
+ * and both halves of the old cross-check came from the pushed ref, so nothing
+ * said so). Since #373 the run installs the plugin FROM the `BASE_REF`
+ * checkout before the engine launches (`installPluginFromCheckout`), so
+ * `main()` reads this AFTER the run and the two halves agree by
+ * construction — same manifest, same sha. Never throws; an unreadable list
+ * stamps '' and the driver skips the installed-plugin check.
  */
-export const readInstalledPluginVersion = async ({ exec, pluginId = 'ultrapowers@ultrapowers' }) => {
+export const readInstalledPluginVersion = async ({ exec, pluginId = PLUGIN_ID }) => {
   try {
     const res = await exec(`${ENGINE_COMMAND} plugin list --json`)
     if (res?.code !== 0) return ''
@@ -732,23 +735,113 @@ export const readInstalledPluginVersion = async ({ exec, pluginId = 'ultrapowers
 // --- live sandbox path -----------------------------------------------------
 
 /**
- * The default `exec` seam: run a shell command, resolve `{code, stdout}`, never
- * reject. A spawn that fails outright resolves `code: 1` — every caller here
- * branches on the code, and none of them wants an exception instead.
+ * The default `exec` seam: run a shell command, resolve `{code, stdout, stderr}`,
+ * never reject. A spawn that fails outright resolves `code: 1` — every caller
+ * here branches on the code, and none of them wants an exception instead.
+ * `stderr` is carried so a refused launch can quote WHY (`claude plugin …`
+ * reports its failures there); no reader branches on it.
  */
 export const shellExec = (cmd) =>
   new Promise((resolve) => {
     const child = spawn('/bin/sh', ['-c', cmd])
     let stdout = ''
+    let stderr = ''
     child.stdout.on('data', (chunk) => {
       stdout += chunk
     })
-    child.on('error', () => resolve({ code: 1, stdout }))
-    child.on('close', (code) => resolve({ code: code ?? 1, stdout }))
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.on('error', () => resolve({ code: 1, stdout, stderr }))
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
   })
 
 /** The engine launch, as an argv. Exported so a test can pin what is spawned. */
 export const ENGINE_COMMAND = 'claude'
+
+/** The plugin under test, as `<plugin>@<marketplace>` — the only form the CLI resolves. */
+export const PLUGIN_ID = 'ultrapowers@ultrapowers'
+
+/**
+ * Install the ultrapowers plugin FROM THE CHECKOUT — the exact command
+ * sequence, in order, established live on a `cp fleet-golden` probe (#373).
+ *
+ * The golden image installs the plugin by RELEASED VERSION from the GitHub
+ * marketplace, and `claude plugin update|install` at the same version is a
+ * no-op ("already at the latest version") even when the content behind that
+ * version has moved — so every fleet run before this executed the released
+ * engine against the pushed base, whatever the base carried. Three commands
+ * make the pushed base the engine:
+ *
+ *   1. `marketplace add <repoDir>` — the repo's own `.claude-plugin/marketplace.json`
+ *      (`source: "./"`) registers as a directory marketplace under the SAME
+ *      name (`ultrapowers`), replacing the golden's GitHub entry in place, so
+ *      `PLUGIN_ID` keeps resolving. Idempotent ("already on disk").
+ *   2. `uninstall` — the only way to make step 3 refresh: install at the same
+ *      version is otherwise a no-op. Exits 1 when nothing is installed, so a
+ *      golden without its bootstrap install refuses here, legibly.
+ *   3. `install` — copies the checkout (a real directory copy, purged first, so
+ *      files a cut deleted do not linger) into the plugin cache and records
+ *      the checkout's HEAD as `gitCommitSha`. ~1.8 s for all three.
+ *
+ * `repoDir` is the literal `REPO_DIR` on the live path; it is interpolated
+ * into a shell exactly as `git -C ${repoDir}` is everywhere above.
+ */
+export const pluginInstallCommands = ({ repoDir }) => [
+  `${ENGINE_COMMAND} plugin marketplace add ${repoDir}`,
+  `${ENGINE_COMMAND} plugin uninstall ${PLUGIN_ID}`,
+  `${ENGINE_COMMAND} plugin install ${PLUGIN_ID}`,
+]
+
+/**
+ * Where the CLI records what it installed, including the `gitCommitSha` it
+ * copied from — the one place that sha exists (`plugin list --json` carries
+ * only the version). Shelled through `exec` like every other read here.
+ */
+export const INSTALLED_PLUGINS_COMMAND = 'cat "$HOME/.claude/plugins/installed_plugins.json"'
+
+/**
+ * The commit the installed plugin was copied from, per the CLI's own record,
+ * or `''` when unreadable. Never throws.
+ */
+export const readInstalledPluginSha = async ({ exec, pluginId = PLUGIN_ID }) => {
+  try {
+    const res = await exec(INSTALLED_PLUGINS_COMMAND)
+    if (res?.code !== 0) return ''
+    const entries = JSON.parse(res.stdout ?? '')?.plugins?.[pluginId]
+    const sha = Array.isArray(entries) ? entries[0]?.gitCommitSha : undefined
+    return typeof sha === 'string' ? sha : ''
+  } catch {
+    return ''
+  }
+}
+
+const oneLine = (result) =>
+  `${String(result?.stdout ?? '')} ${String(result?.stderr ?? '')}`.replace(/\s+/g, ' ').trim()
+
+/**
+ * Run `pluginInstallCommands` in order through the injected `exec`, logging
+ * each. Stops at the FIRST failure — a non-zero exit or a rejecting exec —
+ * and names the command that failed, so the caller refuses the launch rather
+ * than letting the image's stale plugin run in its place.
+ */
+export const installPluginFromCheckout = async ({ repoDir, exec, log = console.error }) => {
+  for (const cmd of pluginInstallCommands({ repoDir })) {
+    let result
+    try {
+      result = await exec(cmd)
+    } catch (error) {
+      result = { code: 1, stdout: '', stderr: String(error?.message ?? error) }
+    }
+    const code = result?.code ?? 'n/a'
+    if (result?.code !== 0) {
+      log(`fleet: \`${cmd}\` exited ${code}: ${oneLine(result)}`)
+      return { ok: false, error: `plugin install from checkout failed: \`${cmd}\` exited ${code}` }
+    }
+    log(`fleet: \`${cmd}\` → ${oneLine(result)}`)
+  }
+  return { ok: true }
+}
 
 /**
  * The standing pre-authorization carried in every headless launch (#280).
@@ -803,8 +896,8 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
 /**
  * Launch the engine run headless, against the base the driver pushed.
  *
- * Two things must be true before a single token is spent, and both are checked
- * here rather than assumed:
+ * Three things must be true before a single token is spent, and all are
+ * checked here rather than assumed:
  *
  *   planPath   The assignment carries it (`provisionRun` puts it in the
  *              payload). Spawning without it hands the engine the literal
@@ -815,8 +908,13 @@ export const spawnEngineProcess = ({ command, args, cwd }) =>
  *              until something moves it. Running without this checkout tests
  *              the IMAGE, not the base under test — a green read for code the
  *              driver never sent. A failed checkout means fail, now.
+ *   plugin     The engine IS the installed plugin, and the golden installs it
+ *              by released version — so even with `fleet-base` checked out,
+ *              the engine that runs is whatever the image was baked with
+ *              (#373). `installPluginFromCheckout` re-installs it from the
+ *              checkout; a failed install means fail, now.
  *
- * Both failures return an explicit `error` rather than a bare falsy outcome, so
+ * Each failure returns an explicit `error` rather than a bare falsy outcome, so
  * `runShim` parks the run (fail-closed) and the reason reaches the sandbox log
  * instead of being inferred from a silent park.
  *
@@ -836,6 +934,8 @@ export const invokeEngineRun = async ({
   log = console.error,
   excludeDirs,
 }) => {
+  // Order, and it is load-bearing: planPath → checkout BASE_REF → install the
+  // plugin FROM that checkout → launch. Each step refuses on failure.
   if (!isNonEmptyString(planPath)) {
     log('fleet: run assignment carries no planPath — refusing to launch the engine')
     return { gateGreen: false, error: 'missing planPath' }
@@ -855,6 +955,28 @@ export const invokeEngineRun = async ({
     log(`fleet: could not check out ${BASE_REF} — refusing to run against the image's HEAD`)
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
   }
+
+  // The engine under test is the checkout, not the image (#373): install the
+  // plugin from `repoDir` now that it sits on `BASE_REF`. Any failure refuses
+  // the launch — the alternative is the golden's stale plugin running against
+  // the pushed base and reporting a green nobody asked for.
+  const installed = await installPluginFromCheckout({ repoDir, exec, log })
+  if (!installed.ok) {
+    log(`fleet: ${installed.error} — refusing to launch the engine on the image's plugin`)
+    return { gateGreen: false, error: installed.error }
+  }
+  // Cross-check the CLI's own record of what it copied against the ref the
+  // driver pushed. A readable sha that names another commit is the install
+  // silently serving something else; an unreadable one (file moved, shape
+  // drifted) is logged and the three exit codes above stand as the contract.
+  const installedSha = await readInstalledPluginSha({ exec })
+  const baseSha = await revParse({ repoDir, exec, ref: BASE_REF })
+  if (installedSha && baseSha && !installedSha.startsWith(baseSha) && !baseSha.startsWith(installedSha)) {
+    const error = `plugin install from checkout failed: installed gitCommitSha ${installedSha} is not ${BASE_REF} ${baseSha}`
+    log(`fleet: ${error} — refusing to launch the engine`)
+    return { gateGreen: false, error }
+  }
+  log(`fleet: ${PLUGIN_ID} installed from the ${BASE_REF} checkout (gitCommitSha ${installedSha || 'unreadable'})`)
 
   // Which credential will this run spend? Logged, not enforced — the evidence
   // pull (#197) carries shim.log, so a run that rode the wrong auth is legible.
@@ -881,6 +1003,10 @@ export const main = async ({
   assignmentPath = ASSIGNMENT_PATH,
   repoDir = REPO_DIR,
   exec = shellExec,
+  // The engine spawn, injectable like `exec` so a test can drive `main()`
+  // through the real `invokeEngineRun` (checkout → plugin install → launch)
+  // without ever starting a `claude` process.
+  spawnEngine = spawnEngineProcess,
   invokeRun,
   readTokens: readTokensOverride,
   readTokensSources: readTokensSourcesOverride,
@@ -932,10 +1058,12 @@ export const main = async ({
   // move: a stamp read from the checkout would be stale by the time the engine
   // returned, which is exactly the bug `readStamp` documents.
   const stamp = await readStamp({ repoDir, exec })
-  // The image-side half of #282: what is INSTALLED, beside what was pushed.
+  applyStamp(store, runId, stamp)
+  // The installed half of #282 is NOT read here: what is installed right now
+  // is the golden's bootstrap plugin, and `invokeEngineRun` replaces it from
+  // the `BASE_REF` checkout before the engine launches (#373). It is read once,
+  // after the run, so the cell names the plugin the engine actually ran.
   const readInstalledPlugin = readInstalledPluginOverride ?? (() => readInstalledPluginVersion({ exec }))
-  const installedPluginVersion = await readInstalledPlugin()
-  applyStamp(store, runId, { ...stamp, installedPluginVersion })
 
   // The run's scope, snapshotted BEFORE the engine launches (#190): every run
   // directory on disk right now predates this run, so none of them is this
@@ -951,7 +1079,8 @@ export const main = async ({
     sandboxId,
     runId,
     ttlMs,
-    invokeRun: invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec, excludeDirs: preRunDirs })),
+    invokeRun:
+      invokeRun ?? (() => invokeEngineRun({ repoDir, planPath, sessionId, exec, spawnEngine, excludeDirs: preRunDirs })),
     readReportTokens: readTokens,
   })
 
@@ -979,7 +1108,12 @@ export const main = async ({
   // read, so anything written after that signal races the read it belongs to.
   // Writing the stamp and the token total ahead of the branch and the receipts
   // makes the signal mean "everything is published", not "most of it is".
-  applyStamp(store, runId, stamp)
+  //
+  // `installedPluginVersion` is read HERE, after the run: `invokeEngineRun`
+  // installed the plugin from the `BASE_REF` checkout before launching, so
+  // this is the post-install `claude plugin list` — the plugin that ran.
+  const installedPluginVersion = await readInstalledPlugin()
+  applyStamp(store, runId, { ...stamp, installedPluginVersion })
   applyReportedTokens(store, runId, readTokens())
 
   // #209 interim defense: the token total above is only as trustworthy as the

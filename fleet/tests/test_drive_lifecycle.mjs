@@ -39,7 +39,9 @@ import {
   findReceiptFiles,
   findRunReportFile,
   invokeEngineRun,
+  INSTALLED_PLUGINS_COMMAND,
   isSafeBranchName,
+  pluginInstallCommands,
   readAssignment,
   readGateGreen,
   readReportTokens,
@@ -599,18 +601,32 @@ try {
         log: rec.log,
       })
 
-      // Exactly three side effects, in exactly this order: check out the pushed
-      // base, read which credential the engine will ride (`claude auth status`,
-      // logged — #213), THEN launch the engine. A spawn that preceded the
-      // checkout would run the golden image's HEAD and gate it green.
-      assert.equal(rec.calls.length, 3, `expected checkout, auth status, then spawn, got: ${JSON.stringify(rec.calls)}`)
-      const checkoutIdx = rec.calls.findIndex((c) => c === `git -C ${engineRepo} checkout -q ${BASE_REF}`)
-      const authIdx = rec.calls.findIndex((c) => c === `${ENGINE_COMMAND} auth status`)
+      // Exactly these side effects, in exactly this order: check out the pushed
+      // base, install the plugin FROM that checkout (#373 — the three
+      // `pluginInstallCommands`, then the CLI's own record of what it copied
+      // and the `fleet-base` sha it is checked against), read which credential
+      // the engine will ride (`claude auth status`, logged — #213), THEN launch
+      // the engine. A spawn that preceded the checkout would run the golden
+      // image's HEAD and gate it green; one that preceded the install would
+      // run the image's plugin against the pushed base.
+      const install = pluginInstallCommands({ repoDir: engineRepo })
+      assert.deepEqual(
+        rec.calls.slice(0, 7),
+        [
+          `git -C ${engineRepo} checkout -q ${BASE_REF}`,
+          ...install,
+          INSTALLED_PLUGINS_COMMAND,
+          `git -C ${engineRepo} rev-parse ${BASE_REF}`,
+          `${ENGINE_COMMAND} auth status`,
+        ],
+        `expected checkout, plugin install from the checkout, auth status, then spawn, got: ${JSON.stringify(rec.calls)}`,
+      )
+      assert.equal(rec.calls.length, 8, `expected exactly one spawn after the seven reads, got: ${JSON.stringify(rec.calls)}`)
+      const checkoutIdx = 0
+      const authIdx = 6
       const spawnIdx = rec.calls.findIndex((c) => c.startsWith(`${ENGINE_COMMAND} -p`))
-      assert.ok(authIdx >= 0 && authIdx < spawnIdx, `auth status must be read before the engine is spawned, got: ${JSON.stringify(rec.calls)}`)
-      assert.ok(checkoutIdx >= 0, `expected a ${BASE_REF} checkout, got: ${JSON.stringify(rec.calls)}`)
-      assert.ok(spawnIdx >= 0, `expected an engine spawn, got: ${JSON.stringify(rec.calls)}`)
-      assert.ok(checkoutIdx < spawnIdx, 'the base must be checked out BEFORE the engine is spawned')
+      assert.equal(spawnIdx, 7, `the engine spawn must be the last side effect, got: ${JSON.stringify(rec.calls)}`)
+      assert.ok(authIdx < spawnIdx && checkoutIdx < spawnIdx)
       // The credential read is logged for the evidence pull; an unparseable
       // status (the recorder returns no JSON) degrades to the explicit
       // "unreadable" line and never blocks the launch.
@@ -793,10 +809,10 @@ try {
         })
         assert.deepEqual(outcome, { gateGreen: expectGreen }, label)
 
-        // The engine ran exactly as it does on a clean image — checkout, auth
-        // status, spawn — so the scope changed the READ and nothing about the
-        // launch.
-        assert.equal(rec.calls.length, 3, `${label}: ${JSON.stringify(rec.calls)}`)
+        // The engine ran exactly as it does on a clean image — checkout, plugin
+        // install from the checkout (#373), auth status, spawn — so the scope
+        // changed the READ and nothing about the launch.
+        assert.equal(rec.calls.length, 8, `${label}: ${JSON.stringify(rec.calls)}`)
         assert.ok(rec.calls.some((c) => c.startsWith(`${ENGINE_COMMAND} -p`)), `${label}: the engine was spawned`)
         // The receipt the verdict came from is the run's OWN, and the stale one
         // is still on disk, untouched — scoping hides it, never deletes it.
@@ -870,11 +886,12 @@ try {
   // code in the sandbox that nothing has ever run.
   {
     // `shellExec` resolves — never rejects — and reports the real exit code.
-    assert.deepEqual(await shellExec('echo hi'), { code: 0, stdout: 'hi\n' })
-    assert.deepEqual(await shellExec('exit 7'), { code: 7, stdout: '' })
+    assert.deepEqual(await shellExec('echo hi'), { code: 0, stdout: 'hi\n', stderr: '' })
+    assert.deepEqual(await shellExec('exit 7'), { code: 7, stdout: '', stderr: '' })
     // stderr is deliberately NOT folded into stdout: callers that parse stdout
     // (`rev-parse`, `for-each-ref`) must see exactly what the command printed.
-    assert.deepEqual(await shellExec('echo out; echo err 1>&2'), { code: 0, stdout: 'out\n' })
+    // It rides alongside (#373: a refused plugin install quotes it in the log).
+    assert.deepEqual(await shellExec('echo out; echo err 1>&2'), { code: 0, stdout: 'out\n', stderr: 'err\n' })
     // A command the shell cannot find is a non-zero code, not a throw.
     const missing = await shellExec('fleet-no-such-binary-9f3a')
     assert.notEqual(missing.code, 0)
