@@ -113,6 +113,64 @@ Side observation (R-o7a): the harness refused a standalone `sleep 90` (`Blocked:
 
 Exit-code table the driver can rely on (2.1.238, observed): `0` = completed **or SIGINT-aborted** (check `is_error`); `1` = `error_max_turns` / `error_max_budget_usd` / not-logged-in; `143` = SIGTERM, no envelope. Everything else → classify from `subtype` + `terminal_reason` (`completed`, `max_turns`, `budget_exhausted`, `aborted_streaming`).
 
+### Item 7b — `api_error_status` is the discriminator the driver needs (2026-08-28, laptop 2.1.251)
+
+Run while specifying `runWorker`'s `AGENT_NULL` mapping (#401). Item 7 gave the exit codes;
+this gives the field that separates **an API-layer failure** from **a client-side limit** —
+which is exactly the `agent()` contract's infra-vs-task-failure line.
+
+| case | exit | `subtype` | `is_error` | `terminal_reason` | **`api_error_status`** | `result` |
+|---|---|---|---|---|---|---|
+| success | 0 | `success` | false | `completed` | **null** | string |
+| `--max-turns 1` | **1** | `error_max_turns` | true | `max_turns` | **null** | null |
+| `--max-budget-usd 0.0001` | **1** | `error_max_budget_usd` | true | `budget_exhausted` | **null** | null |
+| `--model no-such-model-xyz` | **1** | **`success`** ⚠ | true | **`api_error`** | **404** | error text |
+| SIGINT (R-o7b, 2.1.238) | 0 | `error_during_execution` | true | `aborted_streaming` | — | null |
+| SIGTERM (R-o7a) | **143** | *no envelope at all* | | | | |
+
+**Three findings.**
+
+1. **`api_error_status` is populated for API-layer failures and null for client-side
+   limits.** 404 carried `404`; `max_turns` and `budget_exhausted` carried `null`. So
+   `api_error_status !== null` is an observed discriminator for "the API refused" versus
+   "we hit a limit we set ourselves" — and the latter is a *task* outcome, not an infra one.
+2. **`subtype` is unreliable and must never be keyed on alone.** The invalid-model run
+   returned `subtype: "success"` with `is_error: true` and `result` carrying an error
+   message. Read `is_error` + `terminal_reason` + `api_error_status`; treat `subtype` as a
+   label, not a verdict.
+3. **`terminal_reason: "api_error"` exists**, alongside `completed`, `max_turns`,
+   `budget_exhausted`, `aborted_streaming`.
+
+**Still not reproduced: a real 529.** It cannot be forced without external load. What is
+*observed* is the mechanism — `api_error_status` carries the HTTP status of an API-layer
+failure — so the driver keying `529/503/429` there is a short inference from a demonstrated
+field, not a guessed envelope. **Say so in the code.**
+
+**Correction to a research report received the same day:** it reported `max_turns` and
+`budget_exhausted` as **exit 0** and presented a 529 envelope as though observed. Both exit
+codes are **1**, verified here on 2.1.251 and matching R-o2b/R-o3 on 2.1.238 — so this is not
+a version difference — and the 529 envelope was never triggered. The `api_error_status` find
+is the report's real contribution and is kept.
+
+### Item 7c — what the Workflow `agent()` contract actually says (documented)
+
+> *"An `agent()` call resolves to `null` if you stop it mid-run or it hits an unrecoverable
+> API error."*
+> — [workflows#what-the-saved-script-looks-like](https://code.claude.com/docs/en/workflows#what-the-saved-script-looks-like)
+
+Two conditions, and **"unrecoverable" is undefined** — the docs never say which statuses
+qualify, nor whether the runtime retries first. Note the first condition: `agent()` nulls on
+**abort as well as** API error, so `runWorker` should null on `aborted_streaming` too, not
+only on overload.
+
+The SDK-level retry policy is documented — *"automatically retry transient failures … with
+exponential backoff, twice by default, honoring the `retry-after` header"*
+([api/errors#http-errors](https://platform.claude.com/docs/en/api/errors#http-errors)) — but
+**whether `claude -p` inherits it is undocumented**, and no `--max-retries` flag or env var
+exists. The envelope carries **no retry count**, so a first-attempt 529 and a
+retries-exhausted 529 are indistinguishable from it. That gap is real and belongs in the
+code as a stated assumption.
+
 ### Item 8 — subagents inside a worker
 
 | id | ver | command | observed | verdict |
