@@ -1392,6 +1392,93 @@ try {
     )
     // Leave the fixture as found for whatever scenario is unioned after this.
     fs.rmSync(path.join(repoDir, fitRel))
+    // #362-5: and the side branches + the `docs/` dir the 13-series minted —
+    // a later scenario enumerating `refs/heads/*` or asserting a clean tree
+    // must not be order-dependent on these blocks. (13e–13g mint their own
+    // state and clean it up themselves; they never use plan-fit/plan-unfit.)
+    assert.equal((await sh('git branch -D plan-fit plan-unfit', repoDir)).code, 0, 'the 13-series side branches are deleted')
+    fs.rmSync(path.join(repoDir, 'docs'), { recursive: true, force: true })
+    assert.equal(fs.existsSync(path.join(repoDir, 'docs')), false, 'the 13-series leaves no docs/ dir in repoDir')
+    assert.equal((await sh('git branch --list "plan-*"', repoDir)).stdout.trim(), '', 'the 13-series leaves no plan-* branch')
+  }
+
+  // -- 13f. #362-2: a plan path that fails the interpolation guard is refused
+  //        AS a path problem — before any exec call, before the orchestrator —
+  //        never as "not committed at baseRef" (which it may well be).
+  {
+    const unsafeRel = 'docs/plan with space.md'
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, unsafeRel), FIT_PLAN)
+    const outside = path.join(tmp, 'outside-362.md')
+    fs.writeFileSync(outside, FIT_PLAN)
+    for (const [label, planPath, dbName] of [
+      ['a space in the path', unsafeRel, 'db-362f-space'],
+      ['an absolute path outside repoDir', outside, 'db-362f-outside'],
+    ]) {
+      const cmds = []
+      const exec = async (cmd) => {
+        cmds.push(cmd)
+        return { code: 0, stdout: '' }
+      }
+      await assert.rejects(
+        driveOne({
+          ...driveDefaults,
+          planPath,
+          dbDir: path.join(tmp, dbName),
+          exec,
+          runId: `run-drive-362-${dbName}`,
+          provision: neverProvision,
+        }),
+        (error) => {
+          assert.match(error.message, /fails the repo-path guard/, `${label}: ${error.message}`)
+          assert.match(error.message, /#362/, `${label}: ${error.message}`)
+          assert.doesNotMatch(error.message, /not committed/, `${label}: must not claim the plan is uncommitted: ${error.message}`)
+          return true
+        },
+      )
+      assert.equal(cmds.length, 0, `${label}: refusal must precede every exec call, got: ${JSON.stringify(cmds)}`)
+      assert.equal(fs.existsSync(path.join(tmp, dbName)), false, `${label}: refusal must precede the orchestrator start — no store dir may exist`)
+    }
+    fs.rmSync(path.join(repoDir, unsafeRel))
+    fs.rmSync(outside)
+  }
+
+  // -- 13g. #362-3: a plan absent from BOTH baseRef and the working tree skips
+  //        the fitness check with exactly this narration — the branch every
+  //        pre-#337 scenario reaches implicitly via driveDefaults.planPath,
+  //        pinned by its text for the first time.
+  {
+    const absentRel = 'docs/superpowers/plans/example.md'
+    assert.equal(driveDefaults.planPath, absentRel, 'precondition: this IS the default every other scenario drives')
+    assert.equal(fs.existsSync(path.join(repoDir, absentRel)), false, 'precondition: absent from the working tree')
+    assert.notEqual((await sh(`git cat-file -e HEAD:${absentRel}`, repoDir)).code, 0, 'precondition: absent at HEAD')
+    const lines = []
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db-362g'),
+      exec: makeExec(() => {}),
+      runId: 'run-drive-362-skip',
+      progressLog: (line) => lines.push(line),
+      // Stop the drive right after the preflight — the narration is what is
+      // under test, not a run.
+      provision: async () => {
+        throw new Error('sentinel-362-skip')
+      },
+    })
+    assert.equal(read.o1, false)
+    assert.ok(
+      detail.errors.some((e) => e === 'drive: sentinel-362-skip'),
+      `the aborted provision is on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+    const expected = `headless-fitness: plan absent at HEAD:${absentRel} and unreadable at ${path.join(repoDir, absentRel)} — check skipped`
+    assert.ok(
+      lines.includes(expected),
+      `expected the skip narration verbatim, got: ${JSON.stringify(lines.filter((l) => /headless/.test(l)))}`,
+    )
+    assert.ok(
+      !detail.errors.some((e) => /headless|#337/.test(e)),
+      `a skipped check is narration only, never an errors line, got: ${JSON.stringify(detail.errors)}`,
+    )
   }
 
   console.log('ALL TESTS PASSED')

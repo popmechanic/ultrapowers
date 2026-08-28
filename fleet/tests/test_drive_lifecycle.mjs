@@ -354,6 +354,14 @@ try {
     )
   }
 
+  // #362-5: leave the fixture as N3 found it — the side branch and the
+  // working-tree copy it minted are gone before the next scenario, so nothing
+  // downstream is order-dependent on the N3/N4 pair.
+  fs.rmSync(path.join(repoDir, 'docs'), { recursive: true, force: true })
+  assert.equal((await sh('git branch -D unfit-plan', repoDir)).code, 0, 'the N3 side branch is deleted')
+  assert.equal(fs.existsSync(path.join(repoDir, unfitPlan)), false, 'the N3 working-tree copy is gone')
+  assert.equal((await sh('git branch --list unfit-plan', repoDir)).stdout.trim(), '', 'no unfit-plan branch remains')
+
   // -- 12. shim-main's pure helpers -------------------------------------------
   {
     const assignmentFile = path.join(tmp, 'fleet-run.json')

@@ -416,8 +416,20 @@ export const driveOne = async ({
   // Both halves are interpolated into a shell: the ref passes the guard
   // provisionRun applies to it, the path the receipt-pointer guard (same
   // character class, no `..` segment — a path that escapes the checkout can
-  // be at no ref). A guard miss reads as "absent at baseRef".
-  if (isSafeBranchName(baseRef) && isSafeRepoPath(planRel)) {
+  // be at no ref). #362: a path that fails its guard is refused AS a path
+  // problem, here, before any exec call — not read as "absent at baseRef"
+  // and then reported as an uncommitted plan (run-20's critic: misleading,
+  // and non-overridable). The ref keeps its guard-miss reading of "absent":
+  // the stamp cross-check below skips on it with a narrating errors line.
+  if (!isSafeRepoPath(planRel)) {
+    throw new Error(
+      `driveOne: plan path ${JSON.stringify(planRel)} (from ${planPath}) fails the repo-path guard — ` +
+        `[A-Za-z0-9._/-] only, no leading '-', no '..' segment, and inside ${repoDir}; the path is ` +
+        `interpolated into 'git show ${baseRef}:<path>' and pushed to the sandbox as-is. Move or rename ` +
+        `the plan (#362)`,
+    )
+  }
+  if (isSafeBranchName(baseRef)) {
     try {
       const shown = await exec(`git -C ${repoDir} show ${baseRef}:${planRel}`)
       if (shown?.code === 0 && typeof shown.stdout === 'string') committedText = shown.stdout
