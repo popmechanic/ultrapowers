@@ -71,23 +71,47 @@ def test_restricted_campaign_writes_the_schema(tmp_path):
 def test_cell_stays_out_of_its_own_measurement():
     """The cell lives inside the BASE it measures, so its own bytes must be
     invisible to both renders — otherwise the committed doc reproduces only
-    while these files are untracked (the stale-artifact failure)."""
-    for rel in cell.SELF_PATHS:
+    while these files are untracked (the stale-artifact failure), and a
+    literal in a cell file resolves the very referent a known instance is
+    waiting on (run-18: the renders' test fixture carried the missing spend
+    field, so P2 read 2/3). SELF_PATHS must be COMPLETE — every tracked file
+    of this cell — and every one of them rides arm B as --exclude."""
+    tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "--",
+                              "*check_renders*"], capture_output=True, text=True)
+    cell_files = set(tracked.stdout.split()) - {
+        "evals/frontier/results/2026-08-29-check-renders.md"}
+    assert cell_files <= set(cell.SELF_PATHS), cell_files - set(cell.SELF_PATHS)
+    assert set(cell.HELD_SOURCES) <= set(cell.SELF_PATHS)
+    for rel in cell.HELD_SOURCES:
         src = (ROOT / rel).read_text()
         for literal in cell.HELD_LITERALS:
             assert literal not in src, (rel, literal)
+    for rel in cell.SELF_PATHS:
+        assert "--exclude" in cell._exclude_args() and rel in cell._exclude_args()
     repo_rooted = [e for e in cell.corpus() if e["base"] == cell.ROOT]
     assert repo_rooted, "the repo-rooted plans are where self-reference can bite"
     rows = [cell.measure(e) for e in repo_rooted]
     assert cell.self_reference(rows) == []
+    # and a cell file cannot be why a known instance failed to surface
+    for k in cell.known_status(rows):
+        assert not (set(k["carriers"]) & set(cell.SELF_PATHS)), k
 
 
 def test_committed_results_doc_matches_schema():
+    # Schema only — never the numbers, and never the corpus SIZE: a new
+    # fixture or 2026-08-27-* plan must not red the suite until the doc is
+    # regenerated. Every row must name a plan the live corpus knows.
     assert DOC.exists(), "Task 4 runs the campaign and commits the doc"
     text = DOC.read_text()
     for heading in cell.DOC_SECTIONS:
         assert heading in text, heading
-    assert len(_table_rows(text, "## Corpus")) == len(cell.corpus())
+    live = {"`%s`" % e["name"] for e in cell.corpus()}
+    corpus_rows = _table_rows(text, "## Corpus")
+    assert corpus_rows and {r[0] for r in corpus_rows} <= live, \
+        {r[0] for r in corpus_rows} - live
+    for r in corpus_rows:
+        assert r[2] == r[3], r          # exit parity is the frozen contract
     assert len(_table_rows(text, "## Known instances")) == len(cell.KNOWN_INSTANCES)
     assert [r[0] for r in _table_rows(text, "## Canonical false positives")] == \
         ["`%s`" % f for f in cell.CANONICAL]
+    assert re.search(r"^- cell self-reference in advisories: none", text, re.M)

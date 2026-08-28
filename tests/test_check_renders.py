@@ -104,10 +104,81 @@ def test_renders_skip_note_when_base_is_not_a_git_checkout(tmp_path):
     p = check(plan, "--renders", "--base", str(nogit))
     assert p.returncode == 0
     lines = p.stdout.splitlines()
-    assert lines[0] == "PLAN OK"
-    assert lines[1] == ""
-    assert lines[2].startswith("advisory renders skipped: ")
-    assert "not a git checkout" in lines[2]
+    assert lines == ["PLAN OK", "",
+                     "ADVISORY renders skipped: %s is not a git checkout" % nogit]
+
+
+def test_renders_skip_note_when_plan_is_outside_any_checkout_and_no_base(tmp_path):
+    # default_base() is None here; the note must still carry the ADVISORY
+    # prefix and name the directory it looked from — never a literal `None`.
+    plan = tmp_path / "plan.md"
+    plan.write_text(CLEAN_PLAN)
+    p = check(plan, "--renders")
+    assert p.returncode == 0
+    lines = p.stdout.splitlines()
+    assert lines == ["PLAN OK", "",
+                     "ADVISORY renders skipped: no git checkout found for %s (pass --base)"
+                     % tmp_path.resolve()]
+    assert "None" not in p.stdout
+
+
+def test_every_renders_line_starts_with_the_advisory_prefix(tmp_path):
+    # the one shape contract every --renders line honours, across the skip
+    # notes, the registered renders and the failure line alike.
+    plan = tmp_path / "plan.md"
+    plan.write_text(CLEAN_PLAN)
+    nogit = tmp_path / "nogit"
+    nogit.mkdir()
+    for extra in (("--renders",), ("--renders", "--base", str(nogit))):
+        out = check(plan, *extra).stdout
+        tail = out.split("PLAN OK\n\n", 1)[1]
+        assert tail and all(l.startswith("ADVISORY ") for l in tail.splitlines()), out
+
+
+def test_failing_render_degrades_to_one_line_and_never_changes_exit(tmp_path, monkeypatch, capsys):
+    repo = git_repo(tmp_path, {"src/a.py": "x = 1\n"})
+
+    def boom(tasks, ctx):
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(compile_plan, "ADVISORY_RENDERS", [
+        ("boom", boom), ("after", lambda tasks, ctx: ["ADVISORY after: Task 1 ran"])])
+    plan = tmp_path / "plan.md"
+    plan.write_text(CLEAN_PLAN)
+    rc = compile_plan.main(["--check", str(plan), "--renders", "--base", str(repo)])
+    assert rc == 0
+    assert capsys.readouterr().out == (
+        "PLAN OK\n\nADVISORY boom: render failed (RuntimeError)\nADVISORY after: Task 1 ran\n")
+
+
+def test_exclude_hides_paths_from_every_tracked_file_lookup(tmp_path):
+    # --exclude (repeatable, requires --renders): the eval campaign's seam for
+    # keeping its own files out of the measurement. Hidden from the blast
+    # list, from the referent resolver's grep, and from ctx["tracked"].
+    repo = git_repo(tmp_path, {
+        "src/lib.py": "def widgetMaker():\n    pass\n",
+        "tests/t1.py": "widgetMaker()\n",
+        "tests/self_test.py": "widgetMaker()\nOUT = 'ghost/file.json'\n",
+    })
+    plan = tmp_path / "plan.md"
+    plan.write_text(P1_PLAN.replace(
+        "`helper(x: int) -> dict` now returns a dict; the `delivered` flag and the `shapeChanged` field are new",
+        "`widgetMaker()`").replace("- [ ] **Step 1: do it**\n\n### Task 2",
+                                   "- [ ] **Step 1:** write `ghost/file.json`\n\n### Task 2", 1))
+    full = check(plan, "--renders", "--base", str(repo)).stdout
+    assert "  - tests/self_test.py\n" in full and "ghost/file.json" not in full
+    p = check(plan, "--renders", "--base", str(repo), "--exclude", "tests/self_test.py")
+    assert p.returncode == 0
+    assert p.stdout == (
+        "PLAN OK\n"
+        "\n"
+        "ADVISORY blast-radius: Task 1 Produces `widgetMaker` — 1 file(s) at BASE outside Task 1's Files mention it:\n"
+        "  - tests/t1.py\n"
+        "ADVISORY referent: Task 1 names `ghost/file.json` — not at BASE, not in Task 1's Files, not Created by a task it Depends-on\n"
+    )
+    assert compile_plan._git_tracked(repo, ("tests/self_test.py",)) == {"src/lib.py", "tests/t1.py"}
+    q = check(plan, "--exclude", "tests/self_test.py")
+    assert q.returncode != 0 and "--exclude requires --renders" in q.stderr
 
 
 def test_registered_render_prints_after_verdict_and_never_changes_exit(tmp_path, monkeypatch, capsys):
@@ -375,6 +446,31 @@ def test_report_field_vocab_reads_report_format():
                  "status", "detail", "coverage", "complete", "tasks_merged"):
         assert name in vocab, name
     assert "creditSpendUsd" not in vocab
+
+
+def test_missing_report_format_degrades_to_a_note_not_a_traceback(tmp_path):
+    # the critic's repro: the compiler copied into a tree with no
+    # report-format.md. PLAN OK, exit 0, one note, field referents skipped
+    # (never reported as unknown), path/task referents still rendered.
+    tree = tmp_path / "tree" / "skills" / "ultrapowers" / "scripts"
+    tree.mkdir(parents=True)
+    copy = tree / "compile_plan.py"
+    copy.write_text(COMPILER.read_text())
+    repo = git_repo(tmp_path, P2_FILES)
+    plan = tmp_path / "plan.md"
+    plan.write_text(P2_PLAN)
+    p = subprocess.run([sys.executable, str(copy), "--check", str(plan),
+                        "--renders", "--base", str(repo)],
+                       capture_output=True, text=True)
+    assert p.returncode == 0, p.stderr
+    assert "Traceback" not in p.stderr and "render failed" not in p.stdout
+    assert p.stdout.startswith("PLAN OK\n\n")
+    adv = [l for l in p.stdout.splitlines() if l.startswith("ADVISORY referent:")]
+    assert adv[0] == ("ADVISORY referent: report-format.md vocabulary unavailable — "
+                      "field referents not checked")
+    assert not any("report-format.md field" in l for l in adv)
+    assert any("names `src/missing.py`" in l for l in adv)
+    assert any("names Task 9" in l for l in adv)
 
 
 def test_referents_render_each_unresolved_once(tmp_path):

@@ -18,10 +18,12 @@ headless, stdlib + git only. Never runs in CI beyond the schema pin in
 tests/test_check_renders_ab.py.
 
 This cell lives inside its own BASE, so it is written to stay OUT of its own
-measurement: every needle is assembled at run time (`_held`) rather than
-spelled out, and `self_reference()` reports any advisory that names a file the
-cell owns. Without that the doc reproduces only while these files are untracked
-— see the `## Bar` self-reference line.
+measurement: arm B passes every cell-owned file (`SELF_PATHS`) to the compiler
+as `--exclude`, so neither render can see them; the campaign's own needles are
+additionally assembled at run time (`_held`) rather than spelled out; and
+`self_reference()` reports any advisory that names a file the cell owns.
+Without that the doc reproduces only while these files are untracked — see the
+`## Bar` self-reference line.
 """
 from __future__ import annotations
 
@@ -40,17 +42,20 @@ RENDERS = ("blast-radius", "referent")
 DOC_SECTIONS = ("## Corpus", "## Known instances", "## Canonical false positives",
                 "## Render size", "## Bar (#345)", "## Raw advisories (arm B)")
 
-# --- self-insensitivity (the needles are HELD, never literal) ---------------
-# For the 2026-08-27-* plans BASE is the repo root, so this script and its test
-# sit INSIDE the corpus's own BASE, and both renders resolve by grepping tracked
-# CODE files (`*.py` among them): blast-radius greps every Produces symbol as a
-# whole word, referent greps a path/field literal. A needle spelled out here
-# would therefore be found BY the very render hunting it — the cell would
-# suppress its own specimen and insert its own paths into blast-radius lists,
-# and the committed doc would stop being reproducible from the committed tree
-# (it would only reproduce while these files were still untracked). `_held`
-# assembles each such string at run time from fragments, so the literal never
-# appears in this file's bytes; `SELF_PATHS` is what the property pin watches.
+# --- self-insensitivity (the cell is EXCLUDED; its needles are HELD) --------
+# For the 2026-08-27-* plans BASE is the repo root, so this script, its test,
+# and the renders' own test file sit INSIDE the corpus's own BASE, and both
+# renders resolve by grepping tracked CODE files (`*.py` among them):
+# blast-radius greps every Produces symbol as a whole word, referent greps a
+# path/field literal. A needle spelled out in any of them is found BY the very
+# render hunting it — the cell suppresses its own specimen (run-18: the
+# renders' test fixture spelled the missing spend field, so P2 "resolved" it)
+# and inserts its own paths into blast-radius lists, and the committed doc
+# stops being reproducible from the committed tree. Two layers: every
+# `SELF_PATHS` file rides arm B as `--exclude`, so the renders never see them
+# (the renders' test file keeps its literal fixtures readable); and this
+# script + its test keep their needles `_held` — assembled at run time from
+# fragments — as defence in depth. The property pin watches both.
 
 
 def _held(*parts):
@@ -58,16 +63,25 @@ def _held(*parts):
     return "".join(parts)
 
 
-#: Files this eval cell owns — they must never appear in a measured advisory.
-SELF_PATHS = ("evals/check_renders_ab.py", "tests/test_check_renders_ab.py")
+#: Files this eval cell owns — excluded from every measurement (`--exclude` on
+#: arm B and on the `carriers` diagnostic); they must never appear in a
+#: measured advisory.
+SELF_PATHS = ("evals/check_renders_ab.py", "tests/test_check_renders_ab.py",
+              "tests/test_check_renders.py")
+#: The SELF_PATHS sources that must ALSO keep every needle non-literal.
+HELD_SOURCES = ("evals/check_renders_ab.py", "tests/test_check_renders_ab.py")
 
 _RUN_SHIM = _held("run", "Shim")                                # Produces symbol
 _DRIVE_TEST = _held("fleet/tests/test_", "drive.mjs")           # blast-radius hit
 _EVIDENCE_DIR = _held(".claude/ultrapowers/fleet-runs-", "2026-08-26")
 _SPEND_FIELD = _held("detail.credit", "SpendUsd")
 
-#: Every string that must stay non-literal in the SELF_PATHS sources.
+#: Every string that must stay non-literal in the HELD_SOURCES.
 HELD_LITERALS = (_RUN_SHIM, _DRIVE_TEST, _EVIDENCE_DIR, _SPEND_FIELD)
+
+
+def _exclude_args():
+    return [a for p in SELF_PATHS for a in ("--exclude", p)]
 
 # The true-positive list: (plan stem, render, task id, needle). A needle is a
 # substring expected on SOME line of an advisory block for that plan/render/
@@ -104,7 +118,7 @@ def corpus():
 def run_check(plan, base, renders):
     cmd = [sys.executable, str(COMPILER), "--check", str(plan)]
     if renders:
-        cmd += ["--renders", "--base", str(base)]
+        cmd += ["--renders", "--base", str(base)] + _exclude_args()
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
@@ -146,12 +160,15 @@ _CODE_PATHSPECS = ["--"] + ["*" + e for e in (".py", ".js", ".mjs", ".cjs",
 
 def carriers(base, needle):
     """Tracked code files under `base` whose text contains `needle` — the
-    renders' greps search exactly this file set, so a non-empty list is why a
-    known instance did NOT surface (something at BASE resolved its referent).
-    Diagnostic only: it changes no measured number."""
+    renders' greps search exactly this file set (minus SELF_PATHS, as arm B
+    does), so a non-empty list is why a known instance did NOT surface
+    (something at BASE resolved its referent). Diagnostic only: it changes no
+    measured number."""
     try:
         p = subprocess.run(["git", "-C", str(base), "grep", "-l", "-F", needle,
-                            *_CODE_PATHSPECS], capture_output=True, text=True)
+                            *_CODE_PATHSPECS,
+                            *[":(exclude)" + s for s in SELF_PATHS]],
+                           capture_output=True, text=True)
     except OSError:
         return []
     return sorted(p.stdout.split()) if p.returncode == 0 else []
@@ -190,14 +207,15 @@ def render_doc(rows, known, base_sha):
     L.append("# Eval cell: two `--check` renders — P1 blast-radius + P2 referent-existence (#345)")
     L.append("")
     L.append("Base: `%s`. Arms: **A** = `compile_plan.py --check <plan>` (current); **B** = "
-             "`--check --renders --base <base>` (both renders). Corpus: every "
+             "`--check --renders --base <base>` (both renders), with every cell-owned file "
+             "(`%s`) passed as `--exclude` so the cell never measures itself. Corpus: every "
              "`evals/fixtures/*/plan.md` (BASE = the fixture's `project/`; canonical = %s) + "
              "every `docs/superpowers/plans/2026-08-27-*.md` (BASE = repo root). Produced by "
              "`python3 evals/check_renders_ab.py`; numbers below are read by the operator, "
              "not asserted by any test. `Base:` is the HEAD the run measured, so a "
              "regeneration after this file is committed records the newer sha; every "
              "other number here is reproducible from the committed tree."
-             % (base_sha, "/".join(CANONICAL)))
+             % (base_sha, "`, `".join(SELF_PATHS), "/".join(CANONICAL)))
     L.append("")
     L.append("## Corpus")
     L.append("")
@@ -264,7 +282,7 @@ def render_doc(rows, known, base_sha):
         "all rows equal" if not parity else "MISMATCH on " + ", ".join(parity)))
     selfref = self_reference(rows)
     L.append("- cell self-reference in advisories: %s" % (
-        "none (the cell's own files are outside every measurement)" if not selfref
+        "none (the cell's own files are --exclude'd from every measurement)" if not selfref
         else "PRESENT — " + "; ".join(selfref)))
     L.append("")
     L.append("## Raw advisories (arm B)")

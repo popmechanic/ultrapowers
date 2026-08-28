@@ -1189,8 +1189,11 @@ def layer(impl, edges):
 #
 # A render is `fn(tasks, ctx) -> list[str]`: `tasks` is the parse_task output
 # for every task in document order; `ctx` is {"base": Path, "plan_path": Path,
-# "tracked": set[str] (git ls-files under base), "task_ids": set[str]}. Every
-# line a render returns starts with the literal prefix "ADVISORY ".
+# "tracked": set[str] (git ls-files under base), "task_ids": set[str],
+# "exclude": tuple[str, ...] (base-relative paths hidden from every tracked-
+# file lookup — `--exclude`, the eval campaign's seam for keeping its own
+# files out of its measurement; empty by default)}. Every line a render
+# returns starts with the literal prefix "ADVISORY ".
 CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
 # Registry of (name, fn). Renders APPEND themselves here — an order-insensitive
 # registration surface; the order lines print in is registration order.
@@ -1208,24 +1211,31 @@ def _git(base, *args):
     return p.stdout if p.returncode == 0 else ""
 
 
-def _git_tracked(base):
-    """Tracked paths under `base`, relative to it."""
-    return set(_git(base, "ls-files").split())
+def _exclude_pathspecs(exclude):
+    return [":(exclude)" + p for p in exclude]
 
 
-def _code_pathspecs():
-    return ["--"] + ["*" + ext for ext in CODE_EXTS]
+def _git_tracked(base, exclude=()):
+    """Tracked paths under `base`, relative to it, minus `exclude`."""
+    spec = ["--", "."] + _exclude_pathspecs(exclude) if exclude else []
+    return set(_git(base, "ls-files", *spec).split())
 
 
-def _git_word_files(base, word):
+def _code_pathspecs(exclude=()):
+    return ["--"] + ["*" + ext for ext in CODE_EXTS] + _exclude_pathspecs(exclude)
+
+
+def _git_word_files(base, word, exclude=()):
     """Tracked CODE files (CODE_EXTS) under `base` containing `word` as a
     whole word (`git grep -l -w -F`), sorted, relative to `base`."""
-    return sorted(_git(base, "grep", "-l", "-w", "-F", word, *_code_pathspecs()).split())
+    return sorted(_git(base, "grep", "-l", "-w", "-F", word,
+                       *_code_pathspecs(exclude)).split())
 
 
-def _git_literal_in_code(base, literal):
+def _git_literal_in_code(base, literal, exclude=()):
     """True when some tracked CODE file under `base` contains `literal`."""
-    return bool(_git(base, "grep", "-l", "-F", literal, *_code_pathspecs()).strip())
+    return bool(_git(base, "grep", "-l", "-F", literal,
+                     *_code_pathspecs(exclude)).strip())
 
 
 def default_base(plan_path):
@@ -1234,12 +1244,14 @@ def default_base(plan_path):
     return Path(top) if top else None
 
 
-def render_advisories(plan_path, base):
+def render_advisories(plan_path, base, exclude=()):
     """Every registered render's lines for `plan_path` against the tree at
     `base`. Returns [] when the plan failed the check's structural early-abort
     net (malformed heading, no tasks, duplicate ids) — a parse the check could
     not trust is not one to render over. A `base` that is not a git checkout
-    yields the single skip note instead of guessing."""
+    yields the single skip note instead of guessing. A render that raises
+    degrades to one `render failed` line — advisory output never changes the
+    check's exit code, so nothing here may propagate."""
     plan_text = Path(plan_path).read_text()
     if _malformed_task_headings(plan_text):
         return []
@@ -1247,23 +1259,32 @@ def render_advisories(plan_path, base):
     ids = [t["id"] for t in raw]
     if not raw or len(set(ids)) != len(ids):
         return []
-    if base is None or not _git(base, "rev-parse", "--show-toplevel").strip():
-        return ["advisory renders skipped: %s is not a git checkout" % base]
+    if base is None:
+        return ["ADVISORY renders skipped: no git checkout found for %s (pass --base)"
+                % Path(plan_path).resolve().parent]
+    if not _git(base, "rev-parse", "--show-toplevel").strip():
+        return ["ADVISORY renders skipped: %s is not a git checkout" % base]
     tasks = [parse_task(t, raise_on_marker_error=False) for t in raw]
+    exclude = tuple(exclude)
     ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
-           "tracked": _git_tracked(base), "task_ids": set(ids)}
+           "tracked": _git_tracked(base, exclude), "task_ids": set(ids),
+           "exclude": exclude}
     lines = []
-    for _name, fn in ADVISORY_RENDERS:
-        lines.extend(fn(tasks, ctx))
+    for name, fn in ADVISORY_RENDERS:
+        try:
+            lines.extend(fn(tasks, ctx))
+        except Exception as e:  # noqa: BLE001 — advisory: degrade, never raise
+            lines.append("ADVISORY %s: render failed (%s)" % (name, type(e).__name__))
     return lines
 
 
 # P1 — Produces blast radius (#233 build, #345 eval cell). For every symbol a
 # task's Produces declares, the CODE files at BASE outside the task's own
 # Files that mention it as a whole word. Keyed on EVERY Produces symbol, not
-# only deleted/renamed ones — run-14's additive `runShim` shape change had its
-# strict-equality pin in a sibling-owned test file. Advisory: a listed file
-# is somewhere the implementer must look (ultraplan Move 3), never a refusal.
+# only deleted/renamed ones — run-14's additive shim-outcome shape change had
+# its strict-equality pin in a sibling-owned test file. Advisory: a listed
+# file is somewhere the implementer must look (ultraplan Move 3), never a
+# refusal.
 _SYMBOL_RE = re.compile(r"^[A-Za-z_]\w*$")
 _BLAST_LIST_CAP = 8
 
@@ -1297,7 +1318,8 @@ def _render_blast_radius(tasks, ctx):
     for t in tasks:
         own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
         for sym in _produces_symbols(t):
-            hits = [f for f in _git_word_files(ctx["base"], sym) if f not in own]
+            hits = [f for f in _git_word_files(ctx["base"], sym, ctx.get("exclude", ()))
+                    if f not in own]
             if not hits:
                 continue
             lines.append("ADVISORY blast-radius: Task %s Produces `%s` — %d file(s) "
@@ -1359,8 +1381,14 @@ def _path_referent(tok):
 
 def _report_field_vocab():
     """Every field name report-format.md defines: JSON keys in its schema
-    block plus every segment of every backticked dotted token in its text."""
-    text = (PLUGIN_ROOT / "skills/ultrapowers/references/report-format.md").read_text()
+    block plus every segment of every backticked dotted token in its text.
+    None when the file cannot be read (a compiler copied out of its plugin
+    tree) — the field check then skips rather than reporting every field
+    as unknown."""
+    try:
+        text = (PLUGIN_ROOT / "skills/ultrapowers/references/report-format.md").read_text()
+    except OSError:
+        return None
     names = set(re.findall(r'"([A-Za-z_]\w*)"\s*:', text))
     for tok in re.findall(r"`([A-Za-z_][\w\[\].]*)`", text):
         for seg in tok.split("."):
@@ -1392,8 +1420,12 @@ def _render_referents(tasks, ctx):
     all_files = set()
     for t in tasks:
         all_files |= set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+    exclude = ctx.get("exclude", ())
     vocab = _report_field_vocab()
     lines = []
+    if vocab is None:
+        lines.append("ADVISORY referent: report-format.md vocabulary unavailable — "
+                     "field referents not checked")
     for t in tasks:
         own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
         dep_creates = set()
@@ -1412,19 +1444,19 @@ def _render_referents(tasks, ctx):
                         p in tracked or p in own or p in dep_creates
                         or ("/" not in p and (p in basenames
                                               or any(f.endswith("/" + p) for f in all_files)))
-                        or _git_literal_in_code(base, p))
+                        or _git_literal_in_code(base, p, exclude))
                     if not resolved:
                         lines.append("ADVISORY referent: Task %s names `%s` — not at BASE, "
                                      "not in Task %s's Files, not Created by a task it "
                                      "Depends-on" % (t["id"], p, t["id"]))
                     continue
-                if _FIELD_RE.match(tok):
+                if vocab is not None and _FIELD_RE.match(tok):
                     if tok in seen:
                         continue
                     seen.add(tok)
                     segs = [s.replace("[]", "") for s in tok.split(".")[1:]]
                     missing = [s for s in segs
-                               if s not in vocab and not _git_word_files(base, s)]
+                               if s not in vocab and not _git_word_files(base, s, exclude)]
                     if missing:
                         lines.append("ADVISORY referent: Task %s names `%s` — `%s` is not a "
                                      "report-format.md field and appears in no code file "
@@ -1485,6 +1517,11 @@ def main(argv=None):
                     help="with --renders only: the tree the renders resolve "
                          "against (default: the git toplevel of the plan's "
                          "directory)")
+    ap.add_argument("--exclude", action="append", default=[], metavar="PATH",
+                    help="with --renders only, repeatable: a BASE-relative "
+                         "tracked path the renders must not see (the eval "
+                         "campaign's seam for keeping its own files out of "
+                         "its measurement)")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1498,6 +1535,8 @@ def main(argv=None):
                  "advisory tail; plain compile never prints them)")
     if args.base is not None and not args.renders:
         sys.exit("error: --base requires --renders")
+    if args.exclude and not args.renders:
+        sys.exit("error: --exclude requires --renders")
     if args.check:
         violations = collect_violations(args.plan)
         if violations:
@@ -1513,7 +1552,8 @@ def main(argv=None):
             # blank line, ONLY when there is something to say. rc is untouched.
             lines = render_advisories(args.plan,
                                       args.base if args.base is not None
-                                      else default_base(args.plan))
+                                      else default_base(args.plan),
+                                      exclude=tuple(args.exclude))
             if lines:
                 print()
                 print("\n".join(lines))
