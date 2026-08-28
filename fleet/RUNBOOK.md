@@ -32,17 +32,29 @@ ssh exe.dev "new --name=fleet-golden --cpu=8 --memory=16GB --setup-script=/tmp/f
 
 # 2. Clone the repo into the exact path provision.mjs and shim-main.mjs expect
 #    (fleet/shim-main.mjs: REPO_DIR = '/home/exedev/repo').
-ssh fleet-golden.exe.xyz 'git clone https://git.example/ultrapowers /home/exedev/repo'
+ssh fleet-golden.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo'
+#    The engine commits inside the sandbox and the suite is pytest, so the
+#    image needs a git identity and pytest (python3 ships with exeuntu):
+ssh fleet-golden.exe.xyz 'git config --global user.name fleet && git config --global user.email fleet@localhost'
+ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest && python3 -m pytest --version'
 
 # 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
 #    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
-ssh fleet-golden.exe.xyz 'claude plugin install ultrapowers'   # no superpowers install — deliberately absent
+#    The plugin is addressed as <plugin>@<marketplace>; the bare name fails with
+#    "Plugin not found". Register the marketplace first (it is this repo).
+ssh fleet-golden.exe.xyz 'claude plugin marketplace add popmechanic/ultrapowers'
+ssh fleet-golden.exe.xyz 'claude plugin install ultrapowers@ultrapowers'   # no superpowers install — deliberately absent
 
-# 4. Verify the posture before trusting the image for real runs.
+# 4. Warm the clone once so the first real run pays no cold cost (pyc caches,
+#    plugin registry) and prove the suite actually runs in the image:
+ssh fleet-golden.exe.xyz 'cd /home/exedev/repo && python3 -m pytest -q tests/test_version_sync.py'
+
+# 5. Verify the posture before trusting the image for real runs.
 ssh fleet-golden.exe.xyz 'claude --version'   # non-empty
 ssh fleet-golden.exe.xyz 'nproc'              # must print 8 (the --cpu=8 above; #179 fact sheet §1)
 ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
+ssh fleet-golden.exe.xyz 'git -C /home/exedev/repo remote get-url origin && test -z "$(git -C /home/exedev/repo status --porcelain)" && echo clone-clean'
 ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-ok'
 ssh fleet-golden.exe.xyz 'claude plugin list'
 #    Compare the printed ultrapowers version against `.claude-plugin/plugin.json`
@@ -55,6 +67,36 @@ ssh fleet-golden.exe.xyz 'claude plugin list'
 Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
 issues `ssh exe.dev "cp fleet-golden fleet-<runId> --json"` as its first command
 — never `fleet-golden` itself, which stays untouched between runs.
+
+## Orchestrator VM
+
+One long-lived VM (`fleet-orchestrator`) runs the TinyBase ws-server, the
+driver, and holds the only credentials in the fleet (§W1a). It is the machine
+you run every drive FROM; sandboxes push their run branches back to its
+checkout.
+
+```bash
+# 1. Create it (small — it never runs an engine; the sandboxes do).
+ssh exe.dev "new --name=fleet-orchestrator --cpu=2 --memory=4GB --setup-script=/tmp/fleet-golden-setup.sh --json"
+
+# 2. Its own SSH key, registered on the account SCOPED BY TAG so the key can
+#    reach fleet VMs (cp/rm/stat for provisioning + teardown) but nothing else
+#    on the account — this is why `billing credits usage` from the orchestrator
+#    is refused by design (#213/#319); read credits from the laptop instead.
+ssh fleet-orchestrator.exe.xyz 'ssh-keygen -t ed25519 -N "" -C fleet-orchestrator -f ~/.ssh/id_ed25519 && cat ~/.ssh/id_ed25519.pub'
+ssh exe.dev "ssh-key add --tag=fleet '<the printed public key>'"
+ssh exe.dev "tag fleet-golden fleet"        # every fleet VM carries the tag; provisionRun copies fleet-golden, so clones inherit it
+ssh fleet-orchestrator.exe.xyz 'printf "Host *.exe.xyz exe.dev\n  StrictHostKeyChecking accept-new\n  IdentitiesOnly yes\n  IdentityFile ~/.ssh/id_ed25519\n" > ~/.ssh/config && chmod 600 ~/.ssh/config'
+
+# 3. A clone of this repo at the same path the shim expects, with fleet's deps.
+ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo && cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
+#    Before EVERY drive, bring it to the base ref you mean to drive — the driver
+#    pushes the base from this checkout (drive-one.mjs --repo-dir defaults to it)
+#    and the #282 versionStamp cross-check reads plugin.json from it:
+ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q main && git -C /home/exedev/repo pull -q --ff-only && git -C /home/exedev/repo log --oneline -1'
+```
+
+The OAuth token lands here in the next section; nothing else secret lives on it.
 
 ## Engine auth — the Max subscription, delivered per run (#213)
 
@@ -142,61 +184,42 @@ ssh exe.dev "rm fleet-preflight-probe --json"
 
 ## Live W1 run
 
-`fleet/drive.mjs` exports `driveOne({planPath, golden, port, dbDir, repoDir, exec, ...})`
-(`fleet/drive.mjs`) — it is a library function, not a CLI; it starts the
+`fleet/drive.mjs` exports `driveOne(...)` — a library function that starts the
 orchestrator, provisions a sandbox via `provisionRun`/`destroySandbox`
 (`fleet/provision.mjs`), watches the run to `gate-green` or `parked`, and
-writes the §W1d gate read to disk. Drive it with a short script:
-
-Run from the repo root — the throwaway script below imports `./fleet/drive.mjs`
-by relative path, so it must sit next to `fleet/`:
+writes the §W1d gate read to disk. The committed CLI `fleet/drive-one.mjs`
+wraps it (#193): no throwaway script to retype, nothing left untracked in the
+checkout, and it works from any cwd (the base is pushed from the checkout the
+CLI lives in — `--repo-dir` overrides).
 
 ```bash
-cat > fleet-drive-one.tmp.mjs <<'EOF'
-import { execFile } from 'node:child_process'
-import { driveOne } from './fleet/drive.mjs'
+# On the orchestrator, after the "bring the clone to the base ref" step above.
+# runId is unique per account lifetime — NEVER reuse one (#211); the token is
+# read from /home/exedev/.fleet/claude-oauth-token (--token-path overrides) and
+# travels only as engineEnv — see "Engine auth" above.
+#
+# Detach it from your ssh session: the remote job inherits the channel's stdin,
+# so `ssh -n` alone is not enough — redirect stdin from /dev/null too, or a
+# human terminal sits blocked for the whole run.
+ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && nohup node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/tmp/drive-run-<fresh>.out 2>&1 &'
 
-const exec = (cmd) =>
-  new Promise((resolve) => {
-    execFile('/bin/sh', ['-c', cmd], { maxBuffer: 1024 * 1024 * 16 }, (error, stdout, stderr) =>
-      resolve({ code: error?.code ?? 0, stdout: `${stdout}${stderr}` })
-    )
-  })
-
-import fs from 'node:fs'
-// The subscription OAuth token lives ONLY on the orchestrator (0600); it is
-// read here and delivered per run by provisionRun — see "Engine auth" above.
-const CLAUDE_CODE_OAUTH_TOKEN = fs.readFileSync('/home/exedev/.fleet/claude-oauth-token', 'utf8').trim()
-
-const { read, reportPath, detailPath } = await driveOne({
-  planPath: process.argv[2],          // e.g. docs/superpowers/plans/some-approved-plan.md
-  golden: 'fleet-golden',
-  port: 8180,                          // any explicit port works; the fleet tests bind ephemeral ports (port 0)
-  dbDir: '/tmp/fleet-orch-live',       // orchestrator's per-path SQLite persister dir
-  repoDir: process.cwd(),              // local checkout the base is pushed from
-  exec,
-  engineEnv: { CLAUDE_CODE_OAUTH_TOKEN },
-  runId: 'run-<fresh>',                // unique per account lifetime — NEVER reuse a runId (#211)
-  capTokens: 500_000,           // W2 charter constant (from measured burn); raise only on an explicit operator call
-  ttlMs: 4 * 60 * 60 * 1000,
-  // ttlMs = store-token lease TTL. Size to the plan's expected wall clock with
-  // margin: 4h covers any single-plan drain (#279 — a 15-min lease on a real
-  // plan expires mid-run and reads as a heartbeat timeout).
-  heartbeatTimeoutMs: 30 * 60_000,
-  claimTimeoutMs: 10 * 60_000,
-  // sandboxCpu: <widest wave width> + 2, clamped to the plan's max_cpus — calibrate
-  // memory from <evidenceDir>/stat-<runId>.json once runs carry it (W2); golden 8/16 default.
-  // sandboxCpu: 8, sandboxMemory: '16GB',
-})
-
-console.log(JSON.stringify(read, null, 2))
-console.log(`report: ${reportPath}`)
-console.log(`detail: ${detailPath}`)
-EOF
-
-node fleet-drive-one.tmp.mjs docs/superpowers/plans/<the-approved-plan>.md
-rm fleet-drive-one.tmp.mjs
+# Watch it (the shim/driver progress log rides stderr into the same file):
+ssh fleet-orchestrator.exe.xyz 'tail -f /tmp/drive-run-<fresh>.out'
 ```
+
+Knobs, all optional (defaults = the W2 charter constants):
+`--port 8180` (any explicit port; concurrent drains take distinct ports),
+`--db-dir /tmp/fleet-orch-live` (the orchestrator's per-path SQLite persister
+dir; concurrent drains take distinct dirs — that separation is the W2a isolation),
+`--golden fleet-golden`, `--cap-tokens 500000` (raise only on an explicit
+operator call), `--ttl-hours 4` (store-token lease TTL — size to the plan's
+expected wall clock with margin; a short lease expires mid-run and reads as a
+heartbeat timeout, #279), `--evidence-dir DIR`, `--sandbox-cpu N` (widest wave
+width + 2, clamped to the plan's max) / `--sandbox-memory 16GB` (calibrate from
+`stat-<runId>.json`; golden 8/16 default), `--allow-unfit-plan` (only with a
+specific operator pre-authorization for the manual-judgment task named by the
+#322 refusal — never a standing default). `node fleet/drive-one.mjs` with no
+arguments prints the usage line.
 
 Two things a live run needs now live in `fleet/` proper, so the script above
 needs no exec wrapper of its own:
