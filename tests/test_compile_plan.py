@@ -792,24 +792,6 @@ def test_blank_after_files_header_does_not_discard_entries(tmp_path):
     assert {"from": "A", "to": "B", "why": "write-after-create"} in out["dag_edges"]
 
 
-def test_near_miss_task_heading_is_a_loud_error(tmp_path):
-    plan = tmp_path / "headmiss.md"
-    plan.write_text(
-        "# Plan: Heading miss\n\n"
-        "### Task 1: first\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
-        "### Task 1.5: dotted id folds away silently today\n\n"
-        "**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n\n"
-        "### Task 2: third\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `c.txt`\n\n- [ ] **Step 1:** c\n"
-    )
-    p = compile_plan_raw(plan)
-    assert p.returncode == 1
-    assert "heading" in p.stderr.lower()
-    assert "1.5" in p.stderr
-
-
 def test_trusted_type_wins_alongside_typod_dep_marker(tmp_path):
     # A valid **Type:** is trusted even when an adjacent near-miss dep marker
     # (`**Depends-On:**`) degrades to prose; the task stays a trusted gate.
@@ -845,19 +827,52 @@ def test_indented_valid_heading_is_a_real_task(tmp_path):
     assert by_id["2"]["writes"] == ["b.txt"]
 
 
-def test_four_hash_and_caps_headings_error_loudly(tmp_path):
-    for bad in ("#### Task 2: four hashes", "### TASK 2: all caps"):
-        plan = tmp_path / "badhead.md"
-        plan.write_text(
-            "# Plan: Bad heading\n\n"
-            "### Task 1: first\n\n**Type:** implementation\n\n"
-            "**Files:**\n- Create: `a.txt`\n\n- [ ] **Step 1:** a\n\n"
-            + bad + "\n\n**Type:** implementation\n\n"
-            "**Files:**\n- Create: `b.txt`\n\n- [ ] **Step 1:** b\n"
-        )
-        p = compile_plan_raw(plan)
-        assert p.returncode == 1, bad
-        assert "heading" in p.stderr.lower(), bad
+# The malformed-heading net: every case routes to the single frozen heading
+# diagnostic. must_raw is checked against stderr as-is, must_lower against
+# stderr.lower(), absent_raw must NOT appear. FROZEN vocabulary — needles
+# change only for an eval-measured regression.
+HEADING_CASES = [
+    pytest.param("### Task 1.5: dotted id folds away silently today",
+                 ["1.5"], ["heading"], [], id="dotted-id"),
+    pytest.param("#### Task 2: four hashes",
+                 [], ["heading"], [], id="four-hashes"),
+    pytest.param("##### Task 2: five hashes",
+                 [], ["heading"], [], id="five-hashes"),
+    pytest.param("####Task 2: four hashes no space",
+                 ["EXACTLY three hashes"], [], [], id="no-space"),
+    pytest.param("## Task 2: two hashes",
+                 ["EXACTLY three hashes"], ["did you mean"], [],
+                 id="two-hashes-hint"),
+    # `### TASK 2:` is the right level (three hashes); the fault is the case,
+    # so the three-hash hint must NOT fire (it would mislead).
+    pytest.param("### TASK 2: all caps",
+                 [], ["heading"], ["EXACTLY three hashes"], id="caps-no-hint"),
+    # `## Task 2:` would fold its content into the previous task silently —
+    # the net must keep refusing it, naming the heading "not recognized".
+    pytest.param("## Task 2: mis-leveled",
+                 ["not recognized"], [], [], id="mis-leveled-refuses"),
+]
+
+
+@pytest.mark.parametrize("bad,must_raw,must_lower,absent_raw", HEADING_CASES)
+def test_bad_task_heading_diagnostics(tmp_path, bad, must_raw, must_lower,
+                                      absent_raw):
+    plan = tmp_path / "badhead.md"
+    plan.write_text(
+        "# Plan: Bad heading\n\n"
+        "### Task 1: first\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
+        + bad + "\n\n**Type:** implementation\n\n"
+        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
+    )
+    p = compile_plan_raw(plan)
+    assert p.returncode == 1, bad
+    for needle in must_raw:
+        assert needle in p.stderr, (bad, needle, p.stderr)
+    for needle in must_lower:
+        assert needle in p.stderr.lower(), (bad, needle, p.stderr)
+    for needle in absent_raw:
+        assert needle not in p.stderr, (bad, needle, p.stderr)
 
 
 def test_lowercase_files_label_is_a_loud_violation(tmp_path):
@@ -872,21 +887,6 @@ def test_lowercase_files_label_is_a_loud_violation(tmp_path):
     p = compile_plan_raw(plan)
     assert p.returncode == 1
     assert "modify" in p.stderr and "Create/Modify/Test" in p.stderr
-
-
-def test_wrong_level_task_headings_error_loudly(tmp_path):
-    for bad in ("## Task 2: two hashes", "##### Task 2: five hashes"):
-        plan = tmp_path / "levelhead.md"
-        plan.write_text(
-            "# Plan: Wrong level\n\n"
-            "### Task 1: first\n\n**Type:** implementation\n\n"
-            "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
-            + bad + "\n\n**Type:** implementation\n\n"
-            "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
-        )
-        p = compile_plan_raw(plan)
-        assert p.returncode == 1, bad
-        assert "heading" in p.stderr.lower(), bad
 
 
 def test_section_titles_with_task_word_stay_legal(tmp_path):
@@ -1273,55 +1273,9 @@ def test_inline_files_all_nonpath_tokens_have_no_writes(tmp_path):
     assert "Task 1: implementation task declares no file paths" in p.stderr
 
 
-def test_no_space_wrong_level_heading_gets_three_hash_hint(tmp_path):
-    plan = tmp_path / "nospace.md"
-    plan.write_text(
-        "# Plan: No space\n\n"
-        "### Task 1: ok\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
-        "####Task 2: four hashes no space\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
-    )
-    p = compile_plan_raw(plan)
-    assert p.returncode == 1
-    assert "EXACTLY three hashes" in p.stderr
-
-
 # ---------------------------------------------------------------------------
 # Problem 5: heading-level hint and conflict/inference separation
 # ---------------------------------------------------------------------------
-
-def test_wrong_level_heading_emits_three_hash_hint(tmp_path):
-    plan = tmp_path / "wronglevel.md"
-    plan.write_text(
-        "# Plan: Wrong level\n\n"
-        "### Task 1: ok\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
-        "## Task 2: two hashes\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
-    )
-    p = compile_plan_raw(plan)
-    assert p.returncode == 1
-    assert "EXACTLY three hashes" in p.stderr
-    assert "did you mean" in p.stderr.lower()
-
-
-def test_caps_heading_does_not_get_level_hint(tmp_path):
-    # `### TASK 2:` is the right level (three hashes); the fault is the case, so
-    # the three-hash hint must NOT fire (it would mislead).
-    plan = tmp_path / "caps.md"
-    plan.write_text(
-        "# Plan: Caps\n\n"
-        "### Task 1: ok\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1:** a\n\n"
-        "### TASK 2: all caps\n\n**Type:** implementation\n\n"
-        "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1:** b\n"
-    )
-    p = compile_plan_raw(plan)
-    assert p.returncode == 1
-    assert "heading" in p.stderr.lower()
-    assert "EXACTLY three hashes" not in p.stderr
-
 
 def test_conflicts_carry_kind_and_inferences_are_separated(tmp_path):
     # A benign auto-inferred edge (write-after-create overriding Depends-on: none)
@@ -1999,21 +1953,6 @@ def test_prose_section_heading_with_task_word_and_colon_compiles(tmp_path):
         "## Task list: what remains\n\nmore prose\n")
     out = compile_plan(plan)
     assert [t["id"] for t in out["tasks"]] == ["A"]
-
-
-def test_wrong_level_task_id_heading_still_refuses(tmp_path):
-    """The heading net must keep catching genuinely mis-leveled task headings —
-    `## Task 2:` folds its content into the previous task silently."""
-    plan = tmp_path / "p.md"
-    plan.write_text(
-        "# Plan: Bad level\n\n**Acceptance:** waived — inline\n\n"
-        "### Task 1: real work\n\n**Files:**\n- Modify: `a.py`\n\n"
-        "- [ ] **Step 1:** work\n\n"
-        "## Task 2: mis-leveled\n\n**Files:**\n- Modify: `b.py`\n\n"
-        "- [ ] **Step 1:** more work\n")
-    p = compile_plan_raw(plan)
-    assert p.returncode != 0
-    assert "not recognized" in p.stderr
 
 
 def test_global_constraints_stop_at_first_task_heading(tmp_path):
