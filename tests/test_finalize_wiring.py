@@ -1,5 +1,5 @@
-"""Pin: SKILL.md's Step 5 (pre-merge gate) must invoke finalize_report.py
-BEFORE ultra_gate.py, in that same step. This wiring (Task1<->Task3 from the
+"""Pin: SKILL.md's §Engine (the sandbox gate) must invoke finalize_report.py
+BEFORE ultra_gate.py, in that same section. This wiring (Task1<->Task3 from the
 #123 docket) was previously unpinned prose only -- an edit could silently drop
 the finalize call, or reorder it after the gate, and nothing would catch it.
 Text pin on SKILL.md; no subprocess."""
@@ -13,11 +13,11 @@ FINALIZE_NEEDLE = "finalize_report.py"
 GATE_NEEDLE = "ultra_gate.py"
 
 
-def _step_5_body(text):
-    """Return the SKILL.md text spanning '## Step 5' up to (not including)
-    the next top-level '## ' heading."""
-    m = re.search(r"^## Step 5 .*$", text, flags=re.MULTILINE)
-    assert m, "skills/ultrapowers/SKILL.md has no '## Step 5' heading"
+def _engine_body(text):
+    """Return the SKILL.md text spanning '## Engine' up to (not including)
+    the next top-level '## ' heading — the sandbox session's gate lives there."""
+    m = re.search(r"^## Engine.*$", text, flags=re.MULTILINE)
+    assert m, "skills/ultrapowers/SKILL.md has no '## Engine' heading"
     start = m.end()
     nxt = re.search(r"^## ", text[start:], flags=re.MULTILINE)
     end = start + nxt.start() if nxt else len(text)
@@ -25,34 +25,23 @@ def _step_5_body(text):
 
 
 def _assert_finalize_precedes_gate(text):
-    """Shared presence+ordering assertion body: both the needles must be
-    present, and finalize_report.py must appear before ultra_gate.py. Used by
-    both the green pin test and the red-check mutations below so the same
-    assertion logic is what's proven load-bearing."""
     finalize_idx = text.find(FINALIZE_NEEDLE)
     gate_idx = text.find(GATE_NEEDLE)
-    assert finalize_idx != -1, "finalize_report.py invocation not found in Step 5"
-    assert gate_idx != -1, "ultra_gate.py invocation not found in Step 5"
+    assert finalize_idx != -1, "finalize_report.py invocation not found in §Engine"
+    assert gate_idx != -1, "ultra_gate.py invocation not found in §Engine"
     assert finalize_idx < gate_idx, (
-        "finalize_report.py must be invoked BEFORE ultra_gate.py in Step 5 -- "
+        "finalize_report.py must be invoked BEFORE ultra_gate.py in §Engine -- "
         f"finalize at index {finalize_idx}, gate at index {gate_idx}"
     )
 
 
-def test_step_5_invokes_finalize_report():
-    step5 = _step_5_body(SKILL.read_text())
-    assert FINALIZE_NEEDLE in step5, (
-        "SKILL.md Step 5 must invoke finalize_report.py before the gate driver"
-    )
+def test_engine_invokes_finalize_report():
+    assert FINALIZE_NEEDLE in _engine_body(SKILL.read_text())
 
 
-def test_step_5_invokes_ultra_gate():
-    step5 = _step_5_body(SKILL.read_text())
-    assert GATE_NEEDLE in step5, (
-        "SKILL.md Step 5 must invoke ultra_gate.py"
-    )
+def test_engine_invokes_ultra_gate():
+    assert GATE_NEEDLE in _engine_body(SKILL.read_text())
 
 
-def test_finalize_report_precedes_ultra_gate_in_step_5():
-    step5 = _step_5_body(SKILL.read_text())
-    _assert_finalize_precedes_gate(step5)
+def test_finalize_report_precedes_ultra_gate_in_engine():
+    _assert_finalize_precedes_gate(_engine_body(SKILL.read_text()))
