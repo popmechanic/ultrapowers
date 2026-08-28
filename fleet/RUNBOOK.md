@@ -50,7 +50,16 @@ ssh fleet-golden.exe.xyz 'claude plugin install ultrapowers@ultrapowers'   # no 
 #    plugin registry) and prove the suite actually runs in the image:
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo && python3 -m pytest -q tests/test_version_sync.py'
 
-# 5. Verify the posture before trusting the image for real runs.
+# 5. Prune the golden's Claude transcripts before trusting the image. Every
+#    `claude` invocation above (plugin install, warm-up) leaves a session
+#    transcript under ~/.claude/projects; those ride into every sandbox clone
+#    and land in the evidence bundle `driveOne` pulls (#197), polluting the
+#    ultralearn sense corpus — six-day-old golden transcripts have been found
+#    in run bundles. Repeat this after EVERY `claude plugin update` on the
+#    golden (see step 6): the update session writes a transcript too.
+ssh fleet-golden.exe.xyz 'rm -rf ~/.claude/projects/*'
+
+# 6. Verify the posture before trusting the image for real runs.
 ssh fleet-golden.exe.xyz 'claude --version'   # non-empty
 ssh fleet-golden.exe.xyz 'nproc'              # must print 8 (the --cpu=8 above; #179 fact sheet §1)
 ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
@@ -62,7 +71,9 @@ ssh fleet-golden.exe.xyz 'claude plugin list'
 #    runs an old engine; the drive's `versionStamp` leg now catches it (the shim
 #    stamps the installed version, #282) but only after a whole run is spent.
 #    Update with: claude plugin update ultrapowers@ultrapowers
-#    (the bare name `ultrapowers` fails with "Plugin not found").
+#    (the bare name `ultrapowers` fails with "Plugin not found"), THEN prune
+#    the transcripts the update session left behind — step 5 again:
+ssh fleet-golden.exe.xyz 'claude plugin update ultrapowers@ultrapowers && rm -rf ~/.claude/projects/*'
 ```
 
 Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
