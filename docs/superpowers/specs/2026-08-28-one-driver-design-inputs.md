@@ -387,7 +387,8 @@ spec adopts these rows; the note is the citation.
 | The Workflow arm | **not reconstructable** — `fleet-receipts/run-*/` holds the gate receipt only, and Workflows report tokens in the UI only (parity §9). Comparison is docs-claim vs measurement, and stated as such |
 
 **Packing rule: unchanged.** Amendment 3's rule stands as written — one wave per sandbox,
-width ≤ ~4. Launching siblings together is a wall-clock choice, not a cache choice: the
+width ≤ ~4 *(raised to **8** by measurement — see the amendment at the end of this file)*.
+Launching siblings together is a wall-clock choice, not a cache choice: the
 prefix is there an hour later either way. No TTL flag, no launch-window choreography.
 
 **Cost row: not endangered.** `tokens per merged task ≤ 1.15×` — the cache term moves
