@@ -758,6 +758,21 @@ export const driveOne = async ({
       versionStamp = false
     }
   }
+  // The image-side half (#282, distill P5): the two cells above both derive
+  // from the pushed ref, so a plugin baked STALE into the golden image passes
+  // them. The shim also stamps the version `claude plugin list` reports as
+  // installed; when it disagrees with the pushed manifest, the engine that ran
+  // was not the one under test. Absent (older shim, unreadable list) → skipped.
+  const installedCell = store.getCell('runs', runId, 'installedPluginVersion')
+  const installedPluginVersion = isNonEmptyString(installedCell) ? installedCell : null
+  if (installedPluginVersion !== null && expectedStamp !== null && installedPluginVersion !== expectedStamp.pluginVersion) {
+    errors.push(
+      `installed plugin mismatch: sandbox has ultrapowers ${installedPluginVersion} installed, ` +
+        `pushed base is ${expectedStamp.pluginVersion} — stale golden image; ` +
+        `run \`claude plugin update ultrapowers@ultrapowers\` on fleet-golden (#282)`,
+    )
+    versionStamp = false
+  }
 
   const reportedCell = store.getCell('runs', runId, 'reportedTokens')
   const spendObservational = {
@@ -811,6 +826,9 @@ export const driveOne = async ({
     // estimate — `stat` samples every 10 minutes — or null when the capture or
     // its derivation failed (the failure is in `errors`).
     sandboxStat: null,
+    // The ultrapowers version the sandbox reported as INSTALLED (#282 image
+    // side), or null when the shim did not stamp one.
+    installedPluginVersion,
     // The orchestrator's actual bound port (`port: 0` binds an ephemeral one) —
     // the read-back channel triage uses when `port` was not pinned.
     effectivePort: null,

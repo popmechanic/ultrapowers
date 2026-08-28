@@ -52,6 +52,7 @@ import {
   auxStoreId,
   applyReportedTokens,
   applyStamp,
+  readInstalledPluginVersion,
   BASE_REF,
   detectIntegrationBranch,
   engineArgs,
@@ -239,6 +240,9 @@ try {
     // `readStamp` answer; a scenario that must model a sandbox running code
     // OTHER than the pushed base (a stale golden) supplies a wrong one here.
     stamp: stampOverride = null,
+    // #282 image side (distill P5): the version the sandbox reports as
+    // INSTALLED. Null = the stub stamps none (an older shim).
+    installedPluginVersion: installedOverride = null,
   }) => {
     const sandboxId = sandboxIdFor(runId)
     return (async () => {
@@ -249,7 +253,10 @@ try {
       const synchronizer = await createWsSynchronizer(store, socket)
       await synchronizer.startSync()
 
-      const stamp = stampOverride ?? (await readStamp({ repoDir, exec }))
+      const stamp = {
+        ...(stampOverride ?? (await readStamp({ repoDir, exec }))),
+        ...(installedOverride ? { installedPluginVersion: installedOverride } : {}),
+      }
       // Stamped before the run so a crashed run still carries its identity, and
       // again after, because `runShim`'s status `setRow` replaces the whole row
       // and can drop cells it has not yet synced.
@@ -357,6 +364,9 @@ try {
           // so this exercises the spend read without a real engine or a write into
           // the test user's home directory.
           readTokens: () => 4200,
+          // #282 image side: the fixture manifest is 9.9.9; a test must never
+          // consult the host machine's real `claude plugin list`.
+          readInstalledPlugin: async () => '9.9.9',
         })
       }, 30)
     })
@@ -2335,6 +2345,85 @@ try {
       !detail.errors.some((e) => /version cross-check unavailable/.test(e)),
       `the driver must have resolved its own base, got: ${JSON.stringify(detail.errors)}`,
     )
+  }
+
+  // -- V2. #282 image side (distill P5): the INSTALLED plugin must match ------
+  // Both cells the V1 cross-check reads derive from the pushed ref, so a
+  // plugin baked stale into the golden image passes it. The shim also stamps
+  // what `claude plugin list` reports as installed; a disagreement with the
+  // pushed manifest reds `versionStamp` and names the fix.
+  {
+    const runId = 'run-drive-stamp-installed-stale'
+    let sandbox = null
+    const exec = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+          installedPluginVersion: '0.0.0-stale-image',
+        })
+      }, 30)
+    })
+    const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'dbV2'), exec, runId })
+    await sandbox
+    assert.equal(read.o1, true, 'the image-side mismatch is a stamp verdict, not an o1 failure')
+    assert.equal(read.versionStamp, false)
+    assert.equal(detail.installedPluginVersion, '0.0.0-stale-image')
+    assert.ok(
+      detail.errors.some((e) => /installed plugin mismatch: sandbox has ultrapowers 0\.0\.0-stale-image installed/.test(e) && /#282/.test(e)),
+      `expected the installed-plugin mismatch line, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+  // A sandbox whose installed plugin matches the pushed manifest stays green,
+  // and an older shim that stamps no installed version is skipped, not red.
+  {
+    const manifest = await sh(`git show HEAD:.claude-plugin/plugin.json`, driveDefaults.repoDir)
+    const pushedVersion = manifest.code === 0 ? JSON.parse(manifest.stdout)?.version : null
+    for (const [runId, installed] of [
+      ['run-drive-stamp-installed-match', pushedVersion],
+      ['run-drive-stamp-installed-absent', null],
+    ]) {
+      if (installed === undefined) continue
+      let sandbox = null
+      const exec = makeExec((assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+            installedPluginVersion: installed,
+          })
+        }, 30)
+      })
+      const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, `db-${runId}`), exec, runId })
+      await sandbox
+      assert.equal(read.versionStamp, true, `${runId}: ${JSON.stringify(detail.errors)}`)
+      assert.equal(detail.installedPluginVersion, installed)
+      assert.ok(!detail.errors.some((e) => /installed plugin mismatch/.test(e)), runId)
+    }
+  }
+  // readInstalledPluginVersion: the `claude plugin list --json` shape observed
+  // on fleet-golden 2026-08-28; anything else reads '' and never throws.
+  {
+    const listing = JSON.stringify([
+      { id: 'ultrapowers@ultrapowers', version: '0.2.23', scope: 'user', enabled: true },
+      { id: 'other@market', version: '9.9.9' },
+    ])
+    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: listing }) }), '0.2.23')
+    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: '[]' }) }), '')
+    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 1, stdout: 'boom' }) }), '')
+    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: 'not json' }) }), '')
+    assert.equal(await readInstalledPluginVersion({ exec: async () => { throw new Error('no claude') } }), '')
+    const cmds = []
+    await readInstalledPluginVersion({ exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '[]' } } })
+    assert.deepEqual(cmds, [`${ENGINE_COMMAND} plugin list --json`])
   }
 
   // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------

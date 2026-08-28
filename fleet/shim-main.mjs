@@ -536,9 +536,10 @@ export const findGateReceiptFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { e
  * view, and a `setRow` there drops cells it has not yet received. An empty
  * component is skipped rather than blanking a stamp already in place.
  */
-export const applyStamp = (store, runId, { pluginVersion, engineSha } = {}) => {
+export const applyStamp = (store, runId, { pluginVersion, engineSha, installedPluginVersion } = {}) => {
   if (pluginVersion) store.setCell('runs', runId, 'pluginVersion', pluginVersion)
   if (engineSha) store.setCell('runs', runId, 'engineSha', engineSha)
+  if (installedPluginVersion) store.setCell('runs', runId, 'installedPluginVersion', installedPluginVersion)
 }
 
 export const applyReportedTokens = (store, runId, tokens) => {
@@ -707,6 +708,27 @@ export const readStamp = async ({ repoDir, exec, ref = BASE_REF }) => {
   return { pluginVersion: typeof manifest?.version === 'string' ? manifest.version : '', engineSha }
 }
 
+/**
+ * The ultrapowers version the ENGINE will actually run — the plugin installed
+ * in the image, read from `claude plugin list --json`. `readStamp` attests
+ * the pushed base; this attests the golden. The two disagree exactly when the
+ * image is stale (#282: the run-16 golden sat four releases behind and both
+ * halves of the old cross-check came from the pushed ref, so nothing said
+ * so). Never throws; an unreadable list stamps '' and the driver skips the
+ * image-side check.
+ */
+export const readInstalledPluginVersion = async ({ exec, pluginId = 'ultrapowers@ultrapowers' }) => {
+  try {
+    const res = await exec(`${ENGINE_COMMAND} plugin list --json`)
+    if (res?.code !== 0) return ''
+    const list = JSON.parse(res.stdout ?? '')
+    const entry = Array.isArray(list) ? list.find((p) => p?.id === pluginId) : null
+    return typeof entry?.version === 'string' ? entry.version : ''
+  } catch {
+    return ''
+  }
+}
+
 // --- live sandbox path -----------------------------------------------------
 
 /**
@@ -862,6 +884,9 @@ export const main = async ({
   invokeRun,
   readTokens: readTokensOverride,
   readTokensSources: readTokensSourcesOverride,
+  // #282 image side: injectable like `readTokens`, so a test driving `main()`
+  // never consults the host machine's real `claude plugin list`.
+  readInstalledPlugin: readInstalledPluginOverride,
   auxDeliver = deliverAndClose,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
@@ -907,7 +932,10 @@ export const main = async ({
   // move: a stamp read from the checkout would be stale by the time the engine
   // returned, which is exactly the bug `readStamp` documents.
   const stamp = await readStamp({ repoDir, exec })
-  applyStamp(store, runId, stamp)
+  // The image-side half of #282: what is INSTALLED, beside what was pushed.
+  const readInstalledPlugin = readInstalledPluginOverride ?? (() => readInstalledPluginVersion({ exec }))
+  const installedPluginVersion = await readInstalledPlugin()
+  applyStamp(store, runId, { ...stamp, installedPluginVersion })
 
   // The run's scope, snapshotted BEFORE the engine launches (#190): every run
   // directory on disk right now predates this run, so none of them is this
