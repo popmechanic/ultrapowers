@@ -337,7 +337,7 @@ Every number goes into the cutover release commit. **The release is refused with
 | scripts under `skills/ultrapowers/scripts/` | 13 | **≤ 10** (projected 6, §8a) |
 | driver + engine, combined lines | 6,157 | **≤ 6,157 — the port may not grow the code** |
 | guards deleted, each with a licensing number | 11 (Phase 0) | **≥ 6 more** (projected 4 named + Phase 0's) |
-| gate parity | — | on every `evals/fixtures/*/`, the **derived** plan's wave shape and gate verdict equal the old engine's **authored** plan for the same intent. Each fixture gains an intent doc |
+| gate parity | — | on every `evals/fixtures/*/plan.md` (**10 fixtures**: chained, contend, contend-big, contend-prod, degrade, flawed, flawed-routing, mixed, webapp, wide — `jsdeps` carries no plan), the **derived** plan's wave shape and gate verdict equal the old engine's **authored** plan for the same intent. Each of the 10 gains an intent doc; writing them is in-scope build work, not a follow-up |
 | live parity | — | **≥ 3 fleet runs green**, one at width ≥ 2, with `reported == ledger` and all five §W1d legs |
 | cost | runs 13–23 ledger | **tokens per merged task ≤ 1.15×** |
 | parks per run | 3 across runs 18–23, all `deferred:manual` | **0** |
