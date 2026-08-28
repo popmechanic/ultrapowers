@@ -17,7 +17,10 @@ ambitious work approachable for less-technical operators: ultrapowers is built f
 large, complex tasks that reward parallelism and independent verification.
 
 This file is for agents **developing the plugin**; end-user docs are in `README.md`.
-ultrapowers extends (does not fork) superpowers.
+ultrapowers extends (does not fork) superpowers — **LIFTED by the operator 2026-08-28**
+(#243 grilling; #366 Amendment 5). The new posture — one owned authoring skill, the
+practice-skill dependencies dropped rather than vendored — lands with **#390**; until it
+does, this rule still describes the code but no longer describes the decision.
 
 ## Commands
 
@@ -69,8 +72,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   client; no LLM orchestrator, no Workflow tool, no local substrate; cutover 0.3.0 against
   a pre-registered bar; read its §Rules — surface ceiling, deletion owed per guard — before
   touching `skills/ultrapowers/` or `fleet/`; the frozen in-repo copy the spec must
-  adopt-or-answer row by row is `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`); #238 *The Authoring Frontier* (plan
-  authoring); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
+  adopt-or-answer row by row is `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`,
+  **incl. Amendments 4–5 — the #243 plan shape: sign intent, derive the plan, no verbatim
+  implementation code, per-run token cap deleted**; spec+build = #389, blocked on #382);
+  #238 *The Authoring Frontier* (plan authoring; #243 resolved 2026-08-28 → #390
+  dependency posture); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
   and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).

@@ -1,4 +1,4 @@
-# One Driver — design inputs (map #366, frozen 2026-08-28; mirrors Amendment 2 + child #371)
+# One Driver — design inputs (map #366, frozen 2026-08-28; mirrors Amendments 1–5, children #371/#389/#390)
 
 **What this file is.** The committed, in-repo copy of wayfinder map #366 as it stood
 at the end of the sitting that chartered it — the diagnosis, the two-half eureka, the
@@ -8,9 +8,10 @@ sprawl and get forgotten; this file is the version the build must read.
 
 **Consumption contract.** The one-driver spec (`docs/superpowers/specs/<date>-one-driver.md`,
 written after the #243 grilling) MUST carry a `## Design inputs` section that lists every
-row of the **deletion ledger** and every row of the **harness mechanics** table below and,
-for each, says one of: `adopted` (with the spec section that implements it), `answered`
-(why not, in one sentence), or `deferred` (to which ticket). A spec that skips a row is
+row of the **deletion ledger** and every row of the **harness mechanics** table below —
+**including the rows Amendments 3, 4 and 5 correct or replace** — and, for each, says one
+of: `adopted` (with the spec section that implements it), `answered` (why not, in one
+sentence), or `deferred` (to which ticket). A spec that skips a row is
 not plan-ready — the same adopt-or-answer discipline the trim review already imposes.
 The pre-registered **bar** goes into the cutover release commit verbatim with its numbers
 filled in; the release is refused without them.
@@ -95,12 +96,13 @@ The complexity the review names — the 6-step operator protocol (SKILL.md, 3,12
 
 - #364 — prototype: the facsimile sandbox
 - #365 — research: `claude -p` worker parity
-- #243 — grilling: plan only the merge frontier (prerequisite for the spec)
+- #243 — grilling: plan only the merge frontier — **RESOLVED 2026-08-28** → Amendments 4 + 5
 - #360 — map: The Merge Frontier (sequenced after cutover)
 - #371 — task: Phase 0, the encapsulation-only cut (Amendment 2; after #368)
 - #368 — task: the orchestrator opens the PR (Amendment 1 decision 5; buildable now)
 - ~~#364~~ — superseded by Amendment 1 (no local substrate)
-- (to file after the grilling) `wayfinder:task` — the one-driver spec + build
+- #389 — `wayfinder:task`: the one-driver spec + build (filed after the grilling; #382 is its remaining input)
+- #390 — `wayfinder:task`: dependency posture — one owned authoring skill (Amendment 5; on map #238)
 - #382 — research: prompt-cache sharing across a wave of separate `claude -p` workers (added 2026-08-28 from the Workflows comparison, parity doc §9; sequenced BEFORE the spec — its answer is the cost row)
 - #383 — prototype: re-drive reuse, the driver's `resumeFromRunId` (added 2026-08-28; after cutover, on the driver; bar ≥ 50% tokens on a one-task park)
 - #384 — watch-item: `-p` bare-by-default breaks subscription OAuth (from Amendment 3)
@@ -188,3 +190,179 @@ worktree disk/CPU, not the CLI. Sandboxes-per-wave buys nothing and multiplies `
 `modelUsage` token metering, the failure-class table, three role flag-sets (data, not prose),
 the per-run config-dir layout.
 
+
+## Amendment 4 (operator, 2026-08-28) — the plan shape: sign intent, derive the plan
+
+Rule 4 said the plan's shape is #243's call. It was decided in an operator grilling on
+2026-08-28 (full record: #243, decision comment). **The operator signs an intent
+document; the plan is machine-derived one wave at a time against the merged tree, and is
+disposable.** The driver implements this shape, not today's.
+
+**The three tiers.** *Signed* (operator, once, pre-run): task set, `Depends-on` edges,
+`Interfaces`, one acceptance statement per task, `## Global Constraints`,
+`## Standing decisions`, cadence. *In-loop planning* (the wave author, per wave, against
+the merged tree): all bodies and steps, `**Files:**` refinement inside an approved task,
+`**Commutes:**`. *Building* (the implementer): the diff only — never its own `Files:`,
+never the acceptance statement.
+
+**No verbatim implementation code in plans.** Each implementation task carries one
+operator-verifiable acceptance statement: a `do:`/`see:` example where behavior is
+observable, a number or bar where it is not. Verbatim *contract* survives (`Produces:`
+signatures, the acceptance statement); verbatim *implementation* dies. Licensed by the
+defect record: all six defects in runs 18–23 were in verbatim body parts, and Phase 0's
+own bar (864 words / 13 scripts / 11 guards / parity green) is the proof the number-form
+verifies non-observable work. A task that can produce neither an example nor a number is
+the #322/run-14 shape and becomes inexpressible at authoring time.
+
+**No new mid-run human contact.** On a fork the wave author takes its recommended branch,
+writes the fork and both readings into the receipt (#204 loudness), and continues; the
+operator adjudicates at the PR. Parks shrink to the trust core (irreversible/destructive,
+credentials/security, admission refusal). Today's parks are terminal and lose nothing
+(`parkedPublish`); a mid-run park would lose waves 2–N and is strictly more expensive
+than anything that exists. Anticipated forks are pre-authorized in `## Standing
+decisions`, generalizing the #191 standing grant from ack classes to decision classes;
+its question bank is drawn from the ultralearn ledger and the redirect corpus, never
+invented.
+
+**One gate per run, unchanged** (ultraplan's integrated-green rule; rule 1). The receipt
+grows to carry the derivation: intent sha, each wave's derived plan, every judgment call,
+acceptance-statement → evidence pairs.
+
+### Rows of this file that change shape
+
+| row | change |
+|---|---|
+| NEEDS_ACK prose grammar → `standing-approval.json` | the schema expands to express pre-authorized **manual claims** and **decision classes**, not just ack classes |
+| `check_superpowers_compat.py`, `resolve_superpowers.py`, `superpowers_contract.py` | the carve-out *"authoring still does (HITL)"* is **void** — the authoring path is forked too (see Amendment 5); all three die outright |
+| `readSessionTokens` and the spend cap (kept-verbatim) | **the cap is deleted** — see below |
+| the store (#308) (kept-verbatim) | the `budgets` table goes; new rows for admission decisions and judgment calls |
+| `compile_plan.py` (+ `--check --renders`) (kept-verbatim) | gains a sibling — the deterministic **intent-doc checker** — and its `--renders` advisory now runs against **real code** at derivation time, strictly better than #345's measured 3/3 against a stale base |
+| §Harness mechanics / §5 "three role flag-sets" | becomes **four**: implementer, reviewer, critic, **wave author** (read-only on code, write only to the run dir) |
+| §Amendment 1 "the laptop authors" | splits — the laptop authors **intent**; the fleet authors **plans** |
+| child #382 | gains an input: a serial authoring pass *between* waves is dead time in which prefix caches decay (#365: resume 1.7× fresh after ~10 min) |
+
+### The per-run token cap is deleted
+
+`fleet/orchestrator.mjs:214–281` (the spend pass: park + revoke claim + **destroy
+sandbox** + page), the `budgets` table, `remaining`/`mayEnqueueSpend` in `store.mjs`, and
+the `capTokens` plumbing through `drive.mjs` / `drive-one.mjs` / `shim.mjs`.
+
+Licensed by: it is post-hoc (the tokens are spent before it can fire, so it only destroys
+the in-flight work — and unlike a gate park there is no `parkedPublish`); **it has never
+fired** (peak across runs 12–23 is run-18's 313,749 = 63% of cap); it measures dollars
+when the scarce resource is the account rate window shared with the operator's own
+sessions (`exe-dev-economics`; the eval-cell lesson *"read `/usage`, not a guessed
+window"*; parity doc §7); and it was calibrated from size means against the recorded
+lesson *"calibration = size means not floors."*
+
+Replaced by three mechanisms already owned: **wave-boundary admission control** off the
+real meter (under pressure the next wave does not start; the run folds, publishes and ends
+honestly — *"stopped at wave 2 of 3 for window pressure"* in the receipt); **per-worker
+`--max-budget-usd`** as the runaway backstop (exit 1 `error_max_budget_usd`, clean
+envelope, parity doc R-o3/R-l9); and the **existing convergence caps** as the terminal
+condition. The #181 spend page stays as observation only, never an action.
+
+**Verify before adopt, beside #382:** whether the remaining window is programmatically
+readable from the orchestrator. `rate_limit_event` is confirmed observable in
+`stream-json` (parity doc R-o8); `/usage` scriptability is unverified.
+
+### Manual acks are pre-authorized (parks → 0 in the observed record)
+
+The gate is **untouched** and still honestly emits `deferred:manual` (#322's scope note
+stands — the ack classing is correct). The run consumes a *named* pre-authorization from
+`## Standing decisions` and self-approves; the receipt quotes both the claim and the
+pre-authorization that discharged it. The intent-doc checker refuses any human-eyes
+acceptance statement with no matching pre-authorization, so a guaranteed park is caught at
+authoring, free. This is not a periphery edit: the gate's logic is unchanged and the class
+becomes unpopulated by construction at the authoring layer.
+
+> **All three parks in runs 18–23 were `deferred:manual`** — run-18 (the #345 adoption
+> verdict), run-19 (suite-gate discovery verified statically only), run-21 (the `/plugin`
+> card wording). Runs 20/22/23 carried only `deferred:runtime`/`external` acks, all
+> self-approved, all green. **Parks under this rule across runs 18–23: 0.**
+
+`**Commutes:**` moves to the derivation tier (#271's datum: declaration, not nature, is
+the bottleneck) and **stays** — #242(c)'s retirement trigger has not fired; run-20 produced
+the first real `autoResolved: 1`.
+
+### The bar, restated
+
+| row | restated |
+|---|---|
+| cost | `tokens ≤ 1.0×` per run → **tokens per *merged task* ≤ 1.15×**. The unit changes because a run's task count is no longer fixed once do-overs move between runs. The 1.15× is a deliberate pre-registered admission: **this design does not pay for itself in tokens** (saved ≈ 38–100k/run against an authoring pass per wave ≈ 40–150k/run — a wash, plausibly negative). It buys the deletion of a defect class, spend moved off the operator's shared window, and attention moved to statements the operator can adjudicate. A bar one expects to fail is not a bar |
+| gate parity | measured on the **derived** plan against the old engine's authored plan for the same intent (same wave shape, same gate verdict); each `evals/fixtures/*/` gains an intent doc |
+| parks per run | strengthened from "≤ old" — the observed record goes to 0 |
+| prose ceiling | a second ceiling for the owned authoring skill, plus the intent doc's own (below) |
+| guards deleted ≥6 | +4 rows: the spend-cap supervisor, the #322 dispatch-time fitness preflight, and the three superpowers-compat scripts |
+| scripts ≤10 | +1 intent checker, −1 fitness preflight — holds |
+
+### New rule 7 — the intent doc's schema is ceilinged
+
+`## Standing decisions` is exactly the shape that accretes; every future incident will want
+to add one, which is *"each scar became another step in the protocol"* with a fresh home
+and a good excuse. **A fixed slot count and a word ceiling, pinned by a test the way
+`test_skill_budget.py` pins SKILL.md. A new slot owes a deleted one. Standing decisions are
+capped per intent doc** — past the cap the effort is too big and gets decomposed, not
+annotated.
+
+### Canaries (pre-registered)
+
+Map #238's target *"plan-caused redirect rounds → ~0"* is **rejected as unfalsifiable** —
+it goes to zero by construction once plans carry no bodies. The cause taxonomy splits into
+**contract-caused** (the signed artifact was wrong) and **derivation-caused** (the wave
+author wrote a bad body against real code).
+
+| # | canary | baseline | bar |
+|---|---|---|---|
+| 1 | redirect rounds per task, all causes | 0.57 (29/51, distill 2026-08-24) | ≤ 0.57, no regression |
+| 2 | derivation-caused rounds per task | 0.33 equivalent (17/51 plan-caused) | ≤ 0.15 |
+| 3 | judgment calls overturned by the operator at the PR | new | ≤ 1 in 5; worse → that fork class reverts to parking |
+
+
+## Amendment 5 (operator, 2026-08-28) — "extends, does not fork" is lifted
+
+CLAUDE.md's founding constraint (*ultrapowers extends, does not fork, superpowers*) was a
+decision taken when the project was a bolt-on execution method. The operator lifted it in
+the #243 grilling. **Fork exactly one thing — the authoring path — and drop the rest
+rather than vendoring it.**
+
+- **Owned (forked):** `superpowers:brainstorming` + `superpowers:writing-plans` +
+  `ultrapowers:ultraplan` collapse into **one** authoring skill carrying the slot schema,
+  the fork question bank, the read-back, and the deterministic completeness check.
+- **Dropped (not vendored):** `subagent-driven-development`, `executing-plans`,
+  `using-git-worktrees`, `test-driven-development`, `requesting-code-review`,
+  `verification-before-completion`, `systematic-debugging`. Nothing in the pipeline
+  invokes them; the reviewer, critic and gate do this in-engine with receipts.
+- **Uncoupled:** mattpocock skills stay available to operator sessions, required by nothing.
+
+**Measured case:** `ultraplan/SKILL.md` is 3,038 words against `writing-plans`' 1,059 —
+2.9× its parent — and carries three explicit overrides of it (replacing the mandated
+header line; *"writing-plans demands complete code in every step; here that holds only
+where…"*; two execution options becoming three). Under Amendment 4 that override becomes
+total. **Vendoring was considered and rejected:** `subagent-driven-development` alone is
+4,825 words and the set is ~10,000 — the largest surface addition in project history, one
+release after Phase 0's −9,104 lines, against rule 5 — and it does not cure the stated
+problem, because superpowers' `SessionStart` hook fires from the *user's* install
+regardless of what we depend on.
+
+**Residual, handled without machinery:** that hook names the skill by hand (*"'Let's build
+X' → superpowers:brainstorming first"*), and its own text supplies the lever — *"User
+instructions (CLAUDE.md, AGENTS.md, direct requests) take precedence over skills."* One
+precedence line in the existing `hooks/session_start.sh` declares which skill owns this
+pipeline. If that proves insufficient in practice, *then* there is a measured case for
+something heavier. Check the license before shipping derived prose.
+
+Recorded as its own `wayfinder:task` on map #238 — it changes what the plugin *is*
+(CLAUDE.md's standing rule, the marketplace description, the hook, three skills), not only
+how plans are shaped.
+
+**Net complexity of Amendments 4+5, audited before the operator confirmed:** prose down
+(ultraplan's body rules, its three override sections, `plan-markers.md`'s authoring half
+and "Executor variance" section; 8,552 words of superpowers skills no longer loaded and
+reconciled at authoring time; one owned skill replacing three), **scripts −3**, **guards
+−2 with numbers**, and **four prose↔code seams deleted** against one added — deleted:
+plan-text ↔ real code (6/6 defects), superpowers ↔ ultrapowers, guessed number ↔
+destructive action, gate class ↔ standing grant; added: intent doc ↔ derived plan.
+Increases named honestly: two artifacts where there was one, a new failure mode (a plan can
+be *derived* wrong — canary 2 exists for it), a new audit obligation in the receipt, and
+maintenance of a forked skill. Rule 7 is the condition that keeps the ledger from reversing.
