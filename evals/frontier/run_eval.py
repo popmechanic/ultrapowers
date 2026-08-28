@@ -880,10 +880,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-# Public aliases for the shadow-fold front-end (spec 2026-08-11): the replay
-# internals are reused as-is — behavior pinned by the existing sim tests.
-group_chain = _group_chain
-replay_group = _replay_group
-is_ancestor = _is_ancestor

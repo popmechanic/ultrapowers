@@ -547,7 +547,7 @@ def test_audit_rejects_non_integer_age_hours_and_sweeps_nothing(tmp_path):
 def test_audit_age_hours_leading_zeros_are_decimal_not_octal(tmp_path):
     """Regression: the digits-only guard admitted LEADING-ZERO integers, which
     bash then evaluated in `$((AGE_HOURS * 3600))` as OCTAL. `--age-hours 09`
-    (or 08) is invalid octal: bash raised `value too great for base` inside
+    is invalid octal: bash raised `value too great for base` inside
     the audit block, aborted past its `exit 0`, fell through to the
     DESTRUCTIVE sweep below — the audited worktree was REMOVED and its branch
     DELETED, exit 0 (reproduced at the pre-fix commit). Octal-VALID
