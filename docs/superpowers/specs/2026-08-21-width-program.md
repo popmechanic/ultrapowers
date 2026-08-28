@@ -196,7 +196,13 @@ the explicit operator claim reset**, or the drained run would wedge at
 claim time. The anomaly multiple, cap defaults, and the §W1d
 spend-vs-report tolerance are **set at the W1 gate from the first run's
 measured burn** — pre-registering the mechanism now, the constants when
-data exists.
+data exists. **Unit (decided 2026-08-28, distill P3):** `capTokens`, the
+spend ledger, `spendObservational`, and every W2 spend constant are
+measured by the shim's `readSessionTokens` sum — never by the engine
+workflow's own `totalTokens`, which counts cache reads and every subagent
+and read 3.1× the ledger on run-17 (590,339 vs 191,668). A constant set
+against the wrong measure fires the hard action at a third of the intended
+headroom, or never.
 
 **W1d. Gate read.** **O1**, plus: lease-renewal continuity across the run
 (no false expiry), every receipt the run produced resolvable at its sha
