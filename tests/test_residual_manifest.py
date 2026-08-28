@@ -367,3 +367,25 @@ def test_run_dir_tolerates_numbering_hole(tmp_path):
     assert texts == ["third", "live"]
     head = r.stdout.splitlines()[2]
     assert head.index("report-3.json") < head.index("report.json")
+
+
+def test_check_red_when_filed_names_no_issue(tmp_path):
+    # A `filed:` ref must be an issue number or a URL: run-15's residual
+    # manifest carried two `filed:needs-followup-issue` rows and nothing was
+    # filed until a later sense pass opened the issues by hand (#336/#337).
+    rp = write(tmp_path, "r.json", report())
+    row = manifest_rows(run(rp).stdout)[0]
+    for value in ("filed:needs-followup-issue", "filed:TODO", "filed:152",
+                  "filed:later — see notes"):
+        m = tmp_path / "residual-manifest.md"
+        m.write_text(row + " " + value + "\n")
+        r = run("--check", m)
+        assert r.returncode == 2, (value, r.stdout, r.stderr)
+        assert row.split()[1] in r.stderr, value
+    for value in ("filed:#152", "filed:#152 tracked there",
+                  "filed:https://github.com/popmechanic/ultrapowers/issues/336",
+                  "filed:https://github.com/popmechanic/ultrapowers/issues/336 — parkedPublish"):
+        m = tmp_path / "residual-manifest.md"
+        m.write_text(row + " " + value + "\n")
+        r = run("--check", m)
+        assert r.returncode == 0, (value, r.stdout, r.stderr)

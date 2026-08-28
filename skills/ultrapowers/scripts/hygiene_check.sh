@@ -23,36 +23,61 @@
 #                 .claude/ultrapowers/wt-* leftover directories exist
 #   run_lock    — no .claude/ultrapowers/RUN_LOCK
 #   local_branches  — worktree-wf_* / ultra/integration-* / ultra/docket-*:
-#                 merged → stale (deleted under --fix); unmerged → kept
-#                 evidence (informational, never red)
-#   remote_branches — origin branches merged into origin/<branch> by ancestry,
-#                 excluding <branch>, proto/*, claw/proto-* → stale (deleted
-#                 under --fix)
+#                 merged (by ancestry, or by a MERGED PR when gh is reachable
+#                 — squash merges leave no ancestry) → stale (deleted under
+#                 --fix); unmerged → kept evidence (informational, never red)
+#   remote_branches — origin branches merged into origin/<branch> (same two
+#                 tests), excluding <branch>, proto/*, claw/proto-* → stale
+#                 (deleted under --fix)
 #   processes   — no lingering engine processes (node tests/*.mjs,
 #                 fold_wave.py, pytest run out of a wf_* worktree path)
 #   ci          — informational only: `gh` status of origin/<branch> HEAD;
 #                 never affects the exit code
 #
-# Usage: hygiene_check.sh [--branch <name>] [--fix] [--no-fetch]
+# Usage: hygiene_check.sh [--branch <name>] [--run-dir <dir>] [--fix] [--no-fetch]
+#   --run-dir reads the expected branch from <dir>/receipt.json's baseBranch
+#   (the branch the run was launched from — `fleet-base` on the fleet lane,
+#   where a hardcoded `main` was red on every run). An explicit --branch wins;
+#   with neither, `main`.
 #   --no-fetch skips the network fetch (sync compares against the local
-#   remote-tracking ref); for offline use and tests.
+#   remote-tracking ref) and the `gh` merged-PR lookup; for offline use and tests.
 set -u
 
-BRANCH="main"
+BRANCH=""
+RUN_DIR=""
 FIX="no"
 FETCH="yes"
 while [ $# -gt 0 ]; do
   case "$1" in
     --branch) BRANCH="${2:?--branch needs a name}"; shift ;;
+    --run-dir) RUN_DIR="${2:?--run-dir needs a path}"; shift ;;
     --fix) FIX="yes" ;;
     --no-fetch) FETCH="no" ;;
-    *) echo "usage: hygiene_check.sh [--branch <name>] [--fix] [--no-fetch]" >&2; exit 2 ;;
+    *) echo "usage: hygiene_check.sh [--branch <name>] [--run-dir <dir>] [--fix] [--no-fetch]" >&2; exit 2 ;;
   esac
   shift
 done
+if [ -z "$BRANCH" ] && [ -n "$RUN_DIR" ] && [ -f "$RUN_DIR/receipt.json" ]; then
+  BRANCH="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1])).get("baseBranch") or "")' \
+            "$RUN_DIR/receipt.json" 2>/dev/null)"
+fi
+BRANCH="${BRANCH:-main}"
 
 ROOT="$(git rev-parse --show-toplevel)" || exit 2
 cd "$ROOT"
+
+# A squash-merged branch is never an ancestor of the base, so ancestry alone
+# reads it as unmerged evidence forever (#237(e): the integration branch that
+# survived --approve and auto-merge). When `gh` can reach the remote, a branch
+# whose PR is MERGED counts as merged. Offline (--no-fetch) or without gh:
+# ancestry only — never a false red.
+pr_merged() {
+  [ "$FETCH" = "yes" ] || return 1
+  command -v gh >/dev/null 2>&1 || return 1
+  local n
+  n="$(gh pr list --state merged --head "$1" --json number --jq 'length' 2>/dev/null || echo 0)"
+  [ -n "$n" ] && [ "$n" != "0" ]
+}
 
 # Each check appends one line: <name>\t<ok|red|info>\t<detail>
 RESULTS="$(mktemp)"
@@ -116,7 +141,7 @@ fi
 REMAIN_LOCAL=""; KEPT_LOCAL=""
 for b in $(git for-each-ref --format='%(refname:short)' \
     'refs/heads/worktree-wf_*' 'refs/heads/ultra/integration-*' 'refs/heads/ultra/docket-*'); do
-  if git merge-base --is-ancestor "$b" "$BRANCH" 2>/dev/null; then
+  if git merge-base --is-ancestor "$b" "$BRANCH" 2>/dev/null || pr_merged "$b"; then
     if [ "$FIX" = "yes" ] && git branch -D "$b" >/dev/null 2>&1; then
       echo "deleted local branch $b" >> "$FIXED"
     else
@@ -140,7 +165,7 @@ if git rev-parse --verify --quiet "origin/$BRANCH" >/dev/null; then
     case "$rb" in
       "$BRANCH"|proto/*|claw/proto-*) continue ;;
     esac
-    if git merge-base --is-ancestor "origin/$rb" "origin/$BRANCH" 2>/dev/null; then
+    if git merge-base --is-ancestor "origin/$rb" "origin/$BRANCH" 2>/dev/null || pr_merged "$rb"; then
       if [ "$FIX" = "yes" ] && git push origin --delete "$rb" >/dev/null 2>&1; then
         echo "deleted remote branch $rb" >> "$FIXED"
       else

@@ -21,7 +21,8 @@ Row grammar (one line per row, exactly; anything else is commentary):
 with <id> = <family>-<12-hex sha256 of the normalized text> (byte-identical
 duplicates within one report tiebreak -2, -3, ...) and <value> one of
 fixed | acked[:<annotation>] | filed:<ref>[ <note>] | waived:<reason>
-(an opened annotation slot must be non-empty; #158).
+(an opened annotation slot must be non-empty, #158; a `filed:` <ref> is `#<N>` or
+a URL — a bare label files nothing and is refused).
 
 Canonical manifest location: <runDir>/residual-manifest.md, beside
 report.json. NON-FROZEN and advisory-by-construction: a layer above the
@@ -48,8 +49,12 @@ STRUCTURAL_SUFFIX = (" [structural false-green: sandbox could not "
 ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
                  r"\[(?P<family>[A-Za-z]+)\] "
                  r"(?P<text>.*) — disposition:(?P<value>.*)$")
+# A `filed:` ref is an issue number (`#152`) or a URL — a bare label such as
+# `filed:needs-followup-issue` files nothing and is refused (run-15's two
+# such rows produced no issue until a later sense pass filed them by hand).
 DISPOSITION = re.compile(
-    r"^(?:fixed(?::\S.*)?|acked(?::\S.*)?|filed:\S+(?:\s.*)?|waived:\S.*)$")
+    r"^(?:fixed(?::\S.*)?|acked(?::\S.*)?"
+    r"|filed:(?:#\d+|https?://\S+)(?:\s.*)?|waived:\S.*)$")
 
 ROUND_REPORT = re.compile(r"^report-(\d+)\.json$")
 
