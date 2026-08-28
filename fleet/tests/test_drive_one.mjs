@@ -62,9 +62,9 @@ const ok = (label) => {
   // #368: shellExec layers a per-command env over the process environment —
   // the channel GH_TOKEN rides — and leaves the process itself untouched.
   const withEnv = await shellExec('printf %s "$FLEET_TEST_VAR"', { env: { FLEET_TEST_VAR: 'rode-the-env' } })
-  assert.deepEqual(withEnv, { code: 0, stdout: 'rode-the-env' })
+  assert.deepEqual(withEnv, { code: 0, stdout: 'rode-the-env', stderr: '' })
   const without = await shellExec('printf %s "${FLEET_TEST_VAR-unset}"')
-  assert.deepEqual(without, { code: 0, stdout: 'unset' })
+  assert.deepEqual(without, { code: 0, stdout: 'unset', stderr: '' })
   assert.equal(process.env.FLEET_TEST_VAR, undefined, 'the per-command env must not leak into the process')
   const inherits = await shellExec('printf %s "$PATH"', { env: { FLEET_TEST_VAR: 'x' } })
   assert.equal(inherits.stdout, process.env.PATH, 'the process env is inherited under the layered one')
@@ -192,6 +192,22 @@ ok('usage names the committed entry point')
   assert.equal(lines[2], 'detail: /tmp/d.json')
   assert.ok(!lines.join('\n').includes('tok'), 'the token must never be printed')
   ok('main parses, drives once, prints the gate read + paths, never the token')
+}
+
+// --- shellExec (#362-1) ----------------------------------------------------
+// The production exec seam keeps stdout PURE. drive.mjs's #337 preflight
+// compares the working-tree plan byte-for-byte against `git show`'s stdout,
+// so stderr chatter folded into stdout read a clean committed plan as dirty
+// and hard-refused the drive (run-20 critic). stderr travels separately and
+// is only ever appended to diagnostic lines.
+{
+  assert.deepEqual(await shellExec('printf out; printf err 1>&2'), { code: 0, stdout: 'out', stderr: 'err' })
+  assert.deepEqual(await shellExec('exit 7'), { code: 7, stdout: '', stderr: '' })
+  const missing = await shellExec('fleet-no-such-binary-362')
+  assert.notEqual(missing.code, 0)
+  assert.equal(missing.stdout, '', 'a failure leaves stdout empty — the diagnostic is on stderr')
+  assert.ok(missing.stderr.length > 0, 'the shell names the missing binary on stderr')
+  ok('shellExec keeps stdout pure and carries stderr separately (#362-1)')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

@@ -1295,6 +1295,11 @@ try {
       /headless-unfit/,
     )
     assert.equal(provisioned, false, 'the refusal must precede provisioning')
+    // #362-6: the refusal precedes the orchestrator start AND teardown — no
+    // store dir, no evidence dir (scenario 18 in test_drive_lifecycle.mjs is
+    // the pattern). Pinned so a later reordering of the preflight is caught.
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337a')), false, 'refusal must precede the orchestrator start — no store dir may exist')
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337a-evidence')), false, 'refusal must precede teardown captures — no evidence dir may exist')
   }
 
   // 13b. the dirty direction: a FIT plan at baseRef whose working-tree copy
@@ -1326,6 +1331,11 @@ try {
       },
     )
     assert.equal(provisioned, false, 'the refusal must precede provisioning')
+    // #362-6: the refusal precedes the orchestrator start AND teardown — no
+    // store dir, no evidence dir (scenario 18 in test_drive_lifecycle.mjs is
+    // the pattern). Pinned so a later reordering of the preflight is caught.
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337b')), false, 'refusal must precede the orchestrator start — no store dir may exist')
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337b-evidence')), false, 'refusal must precede teardown captures — no evidence dir may exist')
   }
 
   // 13c. the uncommitted direction: a plan in the working tree but ABSENT at
@@ -1349,6 +1359,11 @@ try {
       /not committed at HEAD/,
     )
     assert.equal(provisioned, false, 'the refusal must precede provisioning')
+    // #362-6: the refusal precedes the orchestrator start AND teardown — no
+    // store dir, no evidence dir (scenario 18 in test_drive_lifecycle.mjs is
+    // the pattern). Pinned so a later reordering of the preflight is caught.
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337c')), false, 'refusal must precede the orchestrator start — no store dir may exist')
+    assert.equal(fs.existsSync(path.join(tmp, 'db-337c-evidence')), false, 'refusal must precede teardown captures — no evidence dir may exist')
   }
 
   // 13d. control: a FIT plan at baseRef with an IDENTICAL working-tree copy
@@ -1392,6 +1407,171 @@ try {
     )
     // Leave the fixture as found for whatever scenario is unioned after this.
     fs.rmSync(path.join(repoDir, fitRel))
+    // #362-5: and the side branches + the `docs/` dir the 13-series minted —
+    // a later scenario enumerating `refs/heads/*` or asserting a clean tree
+    // must not be order-dependent on these blocks. (13e–13g mint their own
+    // state and clean it up themselves; they never use plan-fit/plan-unfit.)
+    assert.equal((await sh('git branch -D plan-fit plan-unfit', repoDir)).code, 0, 'the 13-series side branches are deleted')
+    fs.rmSync(path.join(repoDir, 'docs'), { recursive: true, force: true })
+    assert.equal(fs.existsSync(path.join(repoDir, 'docs')), false, 'the 13-series leaves no docs/ dir in repoDir')
+    assert.equal((await sh('git branch --list "plan-*"', repoDir)).stdout.trim(), '', 'the 13-series leaves no plan-* branch')
+  }
+
+  // -- 13f. #362-2: a plan path that fails the interpolation guard is refused
+  //        AS a path problem — before any exec call, before the orchestrator —
+  //        never as "not committed at baseRef" (which it may well be).
+  {
+    const unsafeRel = 'docs/plan with space.md'
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, unsafeRel), FIT_PLAN)
+    const outside = path.join(tmp, 'outside-362.md')
+    fs.writeFileSync(outside, FIT_PLAN)
+    for (const [label, planPath, dbName] of [
+      ['a space in the path', unsafeRel, 'db-362f-space'],
+      ['an absolute path outside repoDir', outside, 'db-362f-outside'],
+    ]) {
+      const cmds = []
+      const exec = async (cmd) => {
+        cmds.push(cmd)
+        return { code: 0, stdout: '' }
+      }
+      await assert.rejects(
+        driveOne({
+          ...driveDefaults,
+          planPath,
+          dbDir: path.join(tmp, dbName),
+          exec,
+          runId: `run-drive-362-${dbName}`,
+          provision: neverProvision,
+        }),
+        (error) => {
+          assert.match(error.message, /fails the repo-path guard/, `${label}: ${error.message}`)
+          assert.match(error.message, /#362/, `${label}: ${error.message}`)
+          assert.doesNotMatch(error.message, /not committed/, `${label}: must not claim the plan is uncommitted: ${error.message}`)
+          return true
+        },
+      )
+      assert.equal(cmds.length, 0, `${label}: refusal must precede every exec call, got: ${JSON.stringify(cmds)}`)
+      assert.equal(fs.existsSync(path.join(tmp, dbName)), false, `${label}: refusal must precede the orchestrator start — no store dir may exist`)
+    }
+    fs.rmSync(path.join(repoDir, unsafeRel))
+    fs.rmSync(outside)
+  }
+
+  // -- 13g. #362-3: a plan absent from BOTH baseRef and the working tree skips
+  //        the fitness check with exactly this narration — the branch every
+  //        pre-#337 scenario reaches implicitly via driveDefaults.planPath,
+  //        pinned by its text for the first time.
+  {
+    const absentRel = 'docs/superpowers/plans/example.md'
+    assert.equal(driveDefaults.planPath, absentRel, 'precondition: this IS the default every other scenario drives')
+    assert.equal(fs.existsSync(path.join(repoDir, absentRel)), false, 'precondition: absent from the working tree')
+    assert.notEqual((await sh(`git cat-file -e HEAD:${absentRel}`, repoDir)).code, 0, 'precondition: absent at HEAD')
+    const lines = []
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      dbDir: path.join(tmp, 'db-362g'),
+      exec: makeExec(() => {}),
+      runId: 'run-drive-362-skip',
+      progressLog: (line) => lines.push(line),
+      // Stop the drive right after the preflight — the narration is what is
+      // under test, not a run.
+      provision: async () => {
+        throw new Error('sentinel-362-skip')
+      },
+    })
+    assert.equal(read.o1, false)
+    assert.ok(
+      detail.errors.some((e) => e === 'drive: sentinel-362-skip'),
+      `the aborted provision is on the record, got: ${JSON.stringify(detail.errors)}`,
+    )
+    const expected = `headless-fitness: plan absent at HEAD:${absentRel} and unreadable at ${path.join(repoDir, absentRel)} — check skipped`
+    assert.ok(
+      lines.includes(expected),
+      `expected the skip narration verbatim, got: ${JSON.stringify(lines.filter((l) => /headless/.test(l)))}`,
+    )
+    assert.ok(
+      !detail.errors.some((e) => /headless|#337/.test(e)),
+      `a skipped check is narration only, never an errors line, got: ${JSON.stringify(detail.errors)}`,
+    )
+  }
+
+  // -- 13e. #362-1: stderr chatter on `git show` must not read as a dirty plan
+  // The production seam used to fold stderr into stdout, so a `warning:` line
+  // from `git show <baseRef>:<plan>` made `workingText !== committedText`
+  // fire on a clean, committed plan — a hard refusal with no override. The
+  // seam is pinned pure in test_drive_one.mjs; this pins the other half: the
+  // preflight compares `stdout` ONLY and ignores a `stderr` field. Own side
+  // branch, own file, cleaned up below — order-independent of 13f/13g.
+  {
+    const chatterRel = 'docs/committed-chatter.md'
+    const chatterSha = await commitPlanOnBranch({ branch: 'plan-chatter', relPath: chatterRel, text: FIT_PLAN })
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, chatterRel), FIT_PLAN)
+    const runId = 'run-drive-362-chatter'
+    let sandbox = null
+    let chattered = 0
+    const inner = makeExec((assignment) => {
+      setTimeout(() => {
+        sandbox = startStubSandbox({
+          assignment,
+          runId,
+          receiptSha: olderSha,
+          exec,
+          branch: OLDER_BRANCH,
+          receiptPath: 'old.txt',
+          stamp: { pluginVersion: '9.9.9', engineSha: chatterSha },
+        })
+      }, 30)
+    })
+    // Wraps the fixture exec; `opts` (#368's per-command env) rides through.
+    // Matched by exact command (not a `show plan-chatter:` prefix, which the
+    // #282 stamp cross-check's own `git show plan-chatter:<manifest>` also
+    // satisfies) so only the #337 preflight's read of the plan itself chatters.
+    const exec = async (cmd, opts) => {
+      const result = await inner(cmd, opts)
+      if (cmd === `git -C ${repoDir} show plan-chatter:${chatterRel}`) {
+        chattered += 1
+        return { ...result, stderr: `warning: fixture chatter on stderr (#362)\n${result.stderr ?? ''}` }
+      }
+      return result
+    }
+    exec.cmds = inner.cmds
+    exec.calls = inner.calls
+    const { read, detail } = await driveOne({
+      ...driveDefaults,
+      planPath: chatterRel,
+      baseRef: 'plan-chatter',
+      dbDir: path.join(tmp, 'db-362e'),
+      exec,
+      runId,
+    })
+    await sandbox
+    assert.equal(chattered, 1, 'the plan must have been read from baseRef through the chattering exec')
+    assert.equal(read.o1, true, 'stderr chatter on git show must not refuse a clean committed plan')
+    assert.equal(read.versionStamp, true, 'the stamp expectation resolved from the side branch')
+    assert.ok(
+      !detail.errors.some((e) => /headless|#337|differs between/.test(e)),
+      `no fitness or #337 noise on the clean path, got: ${JSON.stringify(detail.errors)}`,
+    )
+
+    // #362-4: `git show` emits the raw blob; the working tree is the smudged
+    // checkout. The byte-for-byte comparison above assumes they coincide,
+    // which holds only while NO .gitattributes (eol/text/filter) covers the
+    // plans. Pinned here so adding one surfaces as this line, not as every
+    // clean live drive refusing with `differs between …`.
+    const repoRoot = decodeURIComponent(new URL('../..', import.meta.url).pathname)
+    const attrs = await sh('git ls-files -- .gitattributes "*/.gitattributes"', repoRoot)
+    assert.equal(attrs.code, 0, `git ls-files failed: ${attrs.stderr}`)
+    assert.equal(
+      attrs.stdout.trim(),
+      '',
+      'a .gitattributes entered the repo — the #337 byte-equality check now needs to compare smudged text (#362-4)',
+    )
+
+    // Leave the fixture as found.
+    fs.rmSync(path.join(repoDir, chatterRel))
+    assert.equal((await sh('git branch -D plan-chatter', repoDir)).code, 0)
   }
 
   console.log('ALL TESTS PASSED')
