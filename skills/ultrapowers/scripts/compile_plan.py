@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1176,6 +1177,90 @@ def layer(impl, edges):
     return waves
 
 
+# --------------------------------------------------------------------------- #
+# Advisory renders (#345 eval cell) — `--check --renders` ONLY.               #
+# --------------------------------------------------------------------------- #
+# The --check diagnostic vocabulary is frozen (0.1.0). These renders are
+# ADVISORY: they print AFTER the check verdict, never change the exit code,
+# and print nothing at all when they have nothing to say — so `PLAN OK` stays
+# byte-identical on a clean plan. They live behind the `--renders` flag so the
+# default `--check` output is unchanged until an eval-measured adoption flips
+# the default (evals/check_renders_ab.py writes the measurement).
+#
+# A render is `fn(tasks, ctx) -> list[str]`: `tasks` is the parse_task output
+# for every task in document order; `ctx` is {"base": Path, "plan_path": Path,
+# "tracked": set[str] (git ls-files under base), "task_ids": set[str]}. Every
+# line a render returns starts with the literal prefix "ADVISORY ".
+CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
+# Registry of (name, fn). Renders APPEND themselves here — an order-insensitive
+# registration surface; the order lines print in is registration order.
+ADVISORY_RENDERS = []
+
+
+def _git(base, *args):
+    """git in `base`; stdout text, or '' on ANY failure (missing git, not a
+    checkout, no match) — advisory code never raises."""
+    try:
+        p = subprocess.run(["git", "-C", str(base), *args],
+                           capture_output=True, text=True)
+    except OSError:
+        return ""
+    return p.stdout if p.returncode == 0 else ""
+
+
+def _git_tracked(base):
+    """Tracked paths under `base`, relative to it."""
+    return set(_git(base, "ls-files").split())
+
+
+def _code_pathspecs():
+    return ["--"] + ["*" + ext for ext in CODE_EXTS]
+
+
+def _git_word_files(base, word):
+    """Tracked CODE files (CODE_EXTS) under `base` containing `word` as a
+    whole word (`git grep -l -w -F`), sorted, relative to `base`."""
+    return sorted(_git(base, "grep", "-l", "-w", "-F", word, *_code_pathspecs()).split())
+
+
+def _git_literal_in_code(base, literal):
+    """True when some tracked CODE file under `base` contains `literal`."""
+    return bool(_git(base, "grep", "-l", "-F", literal, *_code_pathspecs()).strip())
+
+
+def default_base(plan_path):
+    """The git toplevel of the plan's directory, or None outside a checkout."""
+    top = _git(Path(plan_path).resolve().parent, "rev-parse", "--show-toplevel").strip()
+    return Path(top) if top else None
+
+
+def render_advisories(plan_path, base):
+    """Every registered render's lines for `plan_path` against the tree at
+    `base`. Returns [] when the plan failed the check's structural early-abort
+    net (malformed heading, no tasks, duplicate ids) — a parse the check could
+    not trust is not one to render over. A `base` that is not a git checkout
+    yields the single skip note instead of guessing."""
+    plan_text = Path(plan_path).read_text()
+    if _malformed_task_headings(plan_text):
+        return []
+    raw = split_tasks(plan_text)
+    ids = [t["id"] for t in raw]
+    if not raw or len(set(ids)) != len(ids):
+        return []
+    if base is None or not _git(base, "rev-parse", "--show-toplevel").strip():
+        return ["advisory renders skipped: %s is not a git checkout" % base]
+    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw]
+    ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
+           "tracked": _git_tracked(base), "task_ids": set(ids)}
+    lines = []
+    for _name, fn in ADVISORY_RENDERS:
+        lines.extend(fn(tasks, ctx))
+    return lines
+
+
+# --- advisory renders register below (append zone) --------------------------
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -1209,6 +1294,15 @@ def main(argv=None):
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
                          "routes all scratch there")
+    ap.add_argument("--renders", action="store_true",
+                    help="with --check only (#345): after the verdict, print "
+                         "the ADVISORY renders (Produces blast-radius, "
+                         "referent-existence). Advisory: never changes the exit "
+                         "code; prints nothing when there is nothing to say.")
+    ap.add_argument("--base", type=Path, default=None,
+                    help="with --renders only: the tree the renders resolve "
+                         "against (default: the git toplevel of the plan's "
+                         "directory)")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1217,15 +1311,31 @@ def main(argv=None):
         sys.exit("error: --check is mutually exclusive with --emit-launch/"
                  "--emit-args/--run-dir (--check only validates grammar; it "
                  "never emits launch files)")
+    if args.renders and not args.check:
+        sys.exit("error: --renders requires --check (renders are the check's "
+                 "advisory tail; plain compile never prints them)")
+    if args.base is not None and not args.renders:
+        sys.exit("error: --base requires --renders")
     if args.check:
         violations = collect_violations(args.plan)
         if violations:
             print("\n\n".join(violations))
             print()
             print(f"{len(violations)} violation(s)")
-            return 2
-        print("PLAN OK")
-        return 0
+            rc = 2
+        else:
+            print("PLAN OK")
+            rc = 0
+        if args.renders:
+            # Advisory tail (#345): after the frozen verdict, separated by one
+            # blank line, ONLY when there is something to say. rc is untouched.
+            lines = render_advisories(args.plan,
+                                      args.base if args.base is not None
+                                      else default_base(args.plan))
+            if lines:
+                print()
+                print("\n".join(lines))
+        return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
                  "ride via the launch file, so wavesPath is always populated)")
