@@ -191,3 +191,31 @@ def test_check_still_flags_files_grammar_on_markerless_tasks(tmp_path):
     proc = run_check(tmp_path, plan)
     assert proc.returncode == 2
     assert "unknown files label" in (proc.stdout + proc.stderr).lower()
+
+
+# #332: a **Commutes:** placed after the Files: block is silently discarded by
+# the runtime compile (surfaced only as a render conflict the author never
+# sees). --check refuses it with the SAME late-marker note the render uses —
+# no new diagnostic vocabulary.
+LATE_COMMUTES = CANONICAL.replace(
+    "- Modify: `src/a.py`\n",
+    "- Modify: `src/a.py`\n\n**Commutes:** `src/a.py`\n")
+
+HEADER_COMMUTES = CANONICAL.replace(
+    "**Review:** adversarial\n",
+    "**Review:** adversarial\n**Commutes:** `src/a.py`\n")
+
+
+def test_check_refuses_a_commutes_marker_placed_after_files(tmp_path):
+    proc = run_check(tmp_path, LATE_COMMUTES)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "Task 1: marker line(s) outside the header block ignored" in proc.stdout
+    assert "**Commutes:**" in proc.stdout
+    assert "markers go immediately after the task heading" in proc.stdout
+    assert "1 violation(s)" in proc.stdout
+
+
+def test_check_accepts_a_commutes_marker_in_the_header(tmp_path):
+    proc = run_check(tmp_path, HEADER_COMMUTES)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "PLAN OK" in proc.stdout
