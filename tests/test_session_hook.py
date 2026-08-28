@@ -41,28 +41,22 @@ def test_session_start_script_emits_the_routing_rule():
     assert "no approval pause" in out
 
 
-def test_session_start_installs_saved_workflows_before_registry_snapshot():
-    # Root cause of "Workflow 'ultrapowers-probe' not found": the engine
-    # snapshots its saved-workflow registry at session start, but Step 4a
-    # copied the harnesses MID-session — too late to register. The hook must
-    # install them at session start (CLAUDE_PROJECT_DIR/.claude/workflows) so
-    # they exist before the snapshot, for every registered harness.
+def test_session_start_installs_waves_js_before_registry_snapshot():
+    # The engine snapshots its saved-workflow registry at session start, so the
+    # hook installs the harness THEN (CLAUDE_PROJECT_DIR/.claude/workflows).
+    # The set is fixed — waves.js, copied by name; the manifest reader died with
+    # the registry probe (One Driver Phase 0, row 5).
     with tempfile.TemporaryDirectory() as proj:
         p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
                            capture_output=True, text=True,
                            env={"CLAUDE_PROJECT_DIR": proj, "PATH": _path()})
         assert p.returncode == 0, p.stderr
-        wf = pathlib.Path(proj) / ".claude" / "workflows"
-        manifests = sorted((ROOT / "skills/ultrapowers/harnesses").glob("*.harness.json"))
-        assert manifests, "no harness manifests to install"
-        for m in manifests:
-            spec = json.loads(m.read_text())
-            installed = wf / spec["file"]
-            assert installed.exists(), f"hook did not install {spec['file']}"
-            # meta.name must survive the copy — that is what the engine resolves by.
-            name = re.search(r"meta\s*=\s*\{.*?name:\s*'([^']+)'",
-                             installed.read_text(), re.S)
-            assert name and name.group(1) == spec["name"]
+        installed = pathlib.Path(proj) / ".claude" / "workflows" / "waves.js"
+        assert installed.exists(), "hook did not install waves.js"
+        # meta.name must survive the copy — that is what the engine resolves by.
+        name = re.search(r"meta\s*=\s*\{.*?name:\s*'([^']+)'",
+                         installed.read_text(), re.S)
+        assert name and name.group(1) == "ultrapowers-run"
 
 
 def test_session_start_install_does_not_pollute_routing_context():
@@ -128,32 +122,6 @@ def test_session_start_install_is_idempotent():
                                capture_output=True, text=True,
                                env={"CLAUDE_PROJECT_DIR": proj, "PATH": _path()})
             assert p.returncode == 0, p.stderr
-        wf = pathlib.Path(proj) / ".claude" / "workflows"
-        for m in sorted((ROOT / "skills/ultrapowers/harnesses").glob("*.harness.json")):
-            spec = json.loads(m.read_text())
-            installed = wf / spec["file"]
-            assert installed.exists(), f"hook did not install {spec['file']}"
-            assert installed.read_text() == (ROOT / "skills/ultrapowers/harnesses" / spec["file"]).read_text()
-
-
-def test_session_start_gc_noops_on_reader_failure(tmp_path):
-    # A failing python3 SHIM on an otherwise-FULL PATH — not PATH=/bin, which
-    # also loses basename and makes this test pass vacuously (empty base
-    # matches the empty installed_set pattern, so rm is unreachable even
-    # with the guard deleted). This test must fail when the guard is removed.
-    import os
-    shim = tmp_path / "shim"
-    shim.mkdir()
-    (shim / "python3").write_text("#!/bin/sh\nexit 1\n")
-    (shim / "python3").chmod(0o755)
-    wf = tmp_path / "proj" / ".claude" / "workflows"
-    wf.mkdir(parents=True)
-    (wf / "waves.js").write_text("// installed harness\n")
-    env = dict(os.environ,
-               PATH="%s:%s" % (shim, os.environ["PATH"]),
-               CLAUDE_PROJECT_DIR=str(tmp_path / "proj"))
-    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
-                       capture_output=True, text=True, env=env)
-    assert p.returncode == 0, p.stderr
-    assert "<ultrapowers-routing>" in p.stdout      # hook contract intact
-    assert (wf / "waves.js").exists()  # reader failure must NOT uninstall
+        installed = pathlib.Path(proj) / ".claude" / "workflows" / "waves.js"
+        assert installed.read_text() == (
+            ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
