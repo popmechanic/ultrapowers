@@ -209,7 +209,7 @@ When the reviewer returns `FIX_REQUIRED`:
 
 | Tier | Use when | Notes |
 |------|----------|-------|
-| **standard** | The floor tier — transcription-grade work included; also multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify | |
+| **standard** | The floor tier — transcription-grade work included; also multi-file integration, new features touching ≥3 modules, tasks requiring reading multiple subsystems — or ANY task, regardless of diff size, hitting a judgment-risk class: (1) shell/git/environment semantics, where specs are often subtly wrong; (2) edits to test-pinned docs or strings, which require pin-hunting across files; (3) steps that anticipate deviation ("if X differs, do Y") or whose code the plan author could not run to verify; (4) loops, cursors, pagination, budgets and termination logic — algorithmic risk that diff size hides (#231: a bounded cursor walk on the cheap rung was the one task to fail, and its fix round shipped a new defect) | |
 | **most-capable** | Spec/code review passes, architectural design decisions, resolving ambiguous or conflicting requirements, fix-round re-dispatches | |
 | per-task reviewer | `opus` — uniform, no floor | unconditional |
 

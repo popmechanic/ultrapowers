@@ -18,6 +18,10 @@ SHARED_TOKENS = [
     "parallel width",
     "risk override",
     "T≥4",
+    # #231 (fired watch): algorithmic risk joins the high-stakes surfaces in
+    # BOTH legs' risk lists — a bounded cursor walk on lean review was the
+    # one task to fail in vibes.diy @0.2.13.
+    "loops/cursors/pagination/budgets/termination logic",
 ]
 
 
