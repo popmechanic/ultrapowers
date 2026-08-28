@@ -64,7 +64,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - **"Frontier" is always qualified:** *merge frontier* (fold kernel) / *map frontier*
   (takeable wayfinder tickets) / *docket frontier* (run-integration tree). Bare
   "frontier" is banned in specs, docs, and issues.
-- **Open maps:** #238 *The Authoring Frontier* (plan authoring); #360 *The Merge
+- **Open maps:** #366 *The One Driver* (chartered 2026-08-28 — the fleet driver becomes
+  THE engine: every run is an encapsulated `claude -p` fleet, no LLM orchestrator, no
+  Workflow tool; cutover 0.3.0 against a pre-registered bar; read its §Rules — surface
+  ceiling, deletion owed per guard — before touching `skills/ultrapowers/` or `fleet/`);
+  #238 *The Authoring Frontier* (plan authoring); #360 *The Merge
   Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
