@@ -14,7 +14,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { driveOne } from './drive.mjs'
+import { driveOne, GITHUB_TOKEN_PATH } from './drive.mjs'
 
 // The checkout this file lives in — the base ref is pushed from here, so the
 // CLI works from any cwd (the RUNBOOK's old "run from the repo root" rule).
@@ -30,6 +30,10 @@ export const DEFAULTS = Object.freeze({
   ttlHours: 4,
   tokenPath: '/home/exedev/.fleet/claude-oauth-token',
   repoDir: REPO_DIR,
+  // #368: the GitHub token the publish leg hands `git push`/`gh` as GH_TOKEN
+  // (env only), and the PR's base branch.
+  githubTokenPath: GITHUB_TOKEN_PATH,
+  prBase: 'main',
 })
 
 const FLAGS = Object.freeze({
@@ -43,6 +47,8 @@ const FLAGS = Object.freeze({
   '--sandbox-memory': 'sandboxMemory',
   '--token-path': 'tokenPath',
   '--repo-dir': 'repoDir',
+  '--github-token-path': 'githubTokenPath',
+  '--pr-base': 'prBase',
 })
 const NUMERIC = new Set(['port', 'capTokens', 'ttlHours', 'sandboxCpu'])
 
@@ -50,7 +56,7 @@ export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
   '[--golden VM] [--cap-tokens N] [--ttl-hours N] [--evidence-dir DIR] ' +
   '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
-  '[--allow-unfit-plan]'
+  '[--github-token-path FILE] [--pr-base BRANCH] [--allow-unfit-plan]'
 
 export const parseArgs = (argv) => {
   const positional = []
@@ -92,10 +98,16 @@ export const parseArgs = (argv) => {
   return { planPath, runId, ...opts }
 }
 
-export const shellExec = (cmd) =>
+// `env` (#368) is LAYERED over the process environment for that one command —
+// the publish leg's GH_TOKEN rides here and nowhere else: never on argv, never
+// exported into this process, never in the log.
+export const shellExec = (cmd, { env } = {}) =>
   new Promise((resolve) => {
-    execFile('/bin/sh', ['-c', cmd], { maxBuffer: 1024 * 1024 * 16 }, (error, stdout, stderr) =>
-      resolve({ code: error?.code ?? 0, stdout: `${stdout}${stderr}` })
+    execFile(
+      '/bin/sh',
+      ['-c', cmd],
+      { maxBuffer: 1024 * 1024 * 16, env: env ? { ...process.env, ...env } : process.env },
+      (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout: `${stdout}${stderr}` }),
     )
   })
 
@@ -121,6 +133,8 @@ export const buildDriveOptions = (
   ...(parsed.sandboxCpu ? { sandboxCpu: parsed.sandboxCpu } : {}),
   ...(parsed.sandboxMemory ? { sandboxMemory: parsed.sandboxMemory } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,
+  githubTokenPath: parsed.githubTokenPath,
+  prBase: parsed.prBase,
 })
 
 export const main = async (argv = process.argv.slice(2), { drive = driveOne, log = console.log, ...deps } = {}) => {

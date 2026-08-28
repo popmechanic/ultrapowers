@@ -61,6 +61,13 @@ export const RUN_DIR = '.claude/ultrapowers/run-20260821125904'
 export const RECEIPT_PATH = `${RUN_DIR}/gate-receipt.json`
 export const REPORT_PATH = `${RUN_DIR}/report.json`
 
+// #368: the stand-in GitHub token and the stubbed `gh pr create` answer. The
+// token is a fixture string a spec can grep every command line for — it must
+// appear in NO command and in NO detail, only in the env `gh` was handed.
+export const GITHUB_TOKEN = 'ghp_FIXTURE_TOKEN_0123456789abcdef'
+export const PR_URL = 'https://github.com/popmechanic/ultrapowers/pull/4242'
+export const GH_PR_CREATE_OK = { code: 0, stdout: `${PR_URL}\n` }
+
 // Real shell execution, used for the git commands the spec insists must be real.
 export const sh = (cmd, cwd) =>
   new Promise((resolve) => {
@@ -145,6 +152,18 @@ export const setupDriveFixture = async () => {
     // FILE NAME, not merely to the directory.
     writeFile(sandboxRepo, REPORT_PATH, JSON.stringify({ usage: { outputTokens: 4200 } }))
 
+    // -- the GitHub stand-in (#368) --------------------------------------------
+    // A bare repo plays `origin`: the driver's publish leg pushes the fetched
+    // tip to it FOR REAL (`git push origin <sha>:refs/heads/<branch>`), so a
+    // spec can read the pushed ref back and prove it is byte-for-byte the tip
+    // the sandbox integrated — never a rebase. `gh pr create` itself is stubbed
+    // (below); the token file stands in for /home/exedev/.fleet/github-token.
+    const originRepo = path.join(tmp, 'origin.git')
+    const originInit = await sh(`git init -q --bare "${originRepo}" && git -C "${repoDir}" remote add origin "${originRepo}"`, tmp)
+    assert.equal(originInit.code, 0, `origin fixture failed: ${originInit.stderr}`)
+    const githubTokenPath = path.join(tmp, 'github-token')
+    fs.writeFileSync(githubTokenPath, `${GITHUB_TOKEN}\n`, { mode: 0o600 })
+
     // -- a sha that EXISTS locally but is reachable from no fetched branch -----
     // Built with `commit-tree` so it never touches a working tree: `cat-file -e`
     // will find it, `merge-base --is-ancestor` against FETCH_HEAD will not.
@@ -154,14 +173,21 @@ export const setupDriveFixture = async () => {
     await sh(`git branch fleet-unreachable ${unreachableSha}`, repoDir)
 
     // -- shared exec stub ------------------------------------------------------
-    // ssh never happens, and `git push` would need it, so that leg is stubbed
-    // green. The FETCH leg is real — retargeted from the sandbox's ssh URL onto
-    // the stand-in sandbox repo on disk — which is what makes FETCH_HEAD a real
-    // ref and reachability a real answer. Every other git command runs for real.
-    const makeExec = (onShimStart) => {
+    // ssh never happens, and the sandbox-bound `git push` would need it, so
+    // that leg is stubbed green. The FETCH leg is real — retargeted from the
+    // sandbox's ssh URL onto the stand-in sandbox repo on disk — which is what
+    // makes FETCH_HEAD a real ref and reachability a real answer. The
+    // GitHub-bound `push origin` (#368) is real too, against the bare
+    // `originRepo` above. `gh pr create` is stubbed: it answers with a PR URL
+    // (or whatever `gh` is overridden to), and the env the driver handed it is
+    // recorded in `exec.calls` so a spec can prove the token rode the env and
+    // never the command line. Every other git command runs for real.
+    const makeExec = (onShimStart, { gh = GH_PR_CREATE_OK } = {}) => {
       const cmds = []
-      const exec = async (cmd) => {
+      const calls = []
+      const exec = async (cmd, opts) => {
         cmds.push(cmd)
+        calls.push({ cmd, env: opts?.env ?? null })
         if (cmd.startsWith('ssh ')) {
           const payload = cmd.match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
           if (payload) exec.delivered = JSON.parse(payload[1])
@@ -171,10 +197,12 @@ export const setupDriveFixture = async () => {
         if (/^git -C \S+ -c core\.sshCommand="[^"]*" push /.test(cmd)) return { code: 0, stdout: '' }
         const fetched = cmd.match(/^git -C (\S+) -c core\.sshCommand="[^"]*" fetch ssh:\/\/\S+ (\S+)$/)
         if (fetched) return sh(`git -C "${fetched[1]}" fetch "${sandboxRepo}" ${fetched[2]}`)
+        if (/ gh pr create /.test(cmd)) return typeof gh === 'function' ? gh(cmd, opts) : gh
         if (cmd.startsWith('git ')) return sh(cmd)
         return { code: 0, stdout: '' }
       }
       exec.cmds = cmds
+      exec.calls = calls
       exec.delivered = null
       return exec
     }
@@ -287,12 +315,17 @@ export const setupDriveFixture = async () => {
       // #318: the parked publish wait applies to every parked scenario below.
       // Keep it short — the file runs against a 120 s cap.
       parkedPublishWaitMs: 500,
+      // #368: the publish leg reads the token here — the fixture file, never
+      // the orchestrator's real path.
+      githubTokenPath,
     }
 
     return {
       tmp,
       repoDir,
       sandboxRepo,
+      originRepo,
+      githubTokenPath,
       cleanup,
       headSha,
       olderSha,

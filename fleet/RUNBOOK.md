@@ -107,7 +107,8 @@ ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapo
 ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q main && git -C /home/exedev/repo pull -q --ff-only && git -C /home/exedev/repo log --oneline -1'
 ```
 
-The OAuth token lands here in the next section; nothing else secret lives on it.
+The OAuth token lands here in the next section and the GitHub token in the one
+after (#368); nothing else secret lives on it.
 
 ## Engine auth — the Max subscription, delivered per run (#213)
 
@@ -151,6 +152,44 @@ Max usage is one 5-hour + weekly window **per user across all machines**, so
 the fleet shares the operator's own window; that — not vCPU — bounds width.
 There is no per-invocation spend flag; the shim's `readSessionTokens` and the
 orchestrator's cap are the spend control.
+
+## GitHub auth (#368) — the orchestrator opens the PR
+
+The second (and last) secret in the fleet. After a run resolves, `driveOne`
+pushes the fetched run branch to `origin` (GitHub) and opens the PR itself —
+see §Live W1 run "The orchestrator opens the PR". That needs a **fine-grained
+personal access token scoped to this one repository** with exactly
+`Contents: Read and write` + `Pull requests: Read and write` (nothing else —
+no `Workflows`, no org scope). It lives beside the OAuth token, on the
+orchestrator only: never on the golden, never in a sandbox (the sandbox still
+pushes to the orchestrator's checkout over the tunnel exactly as today and
+never sees GitHub).
+
+```bash
+# 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate:
+#    Repository access: only popmechanic/ultrapowers.
+#    Permissions: Contents (Read and write), Pull requests (Read and write).
+#    Save the printed token to a 0600 file, e.g. ~/.secrets/fleet-github-token.
+
+# 2. Put it on the ORCHESTRATOR only — same pattern as the OAuth token.
+scp ~/.secrets/fleet-github-token fleet-orchestrator.exe.xyz:/home/exedev/.fleet/github-token
+ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/github-token'
+
+# 3. Prove it, without printing it: gh reads GH_TOKEN from the env.
+ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh auth status 2>&1 | grep -v token'
+```
+
+`driveOne` reads the file (`--github-token-path` overrides the path) and hands
+it to `git push` and `gh pr create` **only** as the `GH_TOKEN` environment
+variable of those two commands (`exec(cmd, {env})`, layered per command — never
+on an argv, never exported into the driver process, never in `detail`, and
+scrubbed from any command output that is recorded). The push authenticates
+through `-c credential.helper='!gh auth git-credential'`, so nothing is written
+to the orchestrator's git config; the clone's `origin` must stay the **https**
+URL from §Orchestrator VM. A missing token file is not a failure of the run:
+`detail.errors` gets `github-token missing at … — PR not opened`, the branch is
+still fetched into the orchestrator checkout, and the gate read is exactly what
+it would have been. Rotate by generating a new token and repeating step 2.
 
 ## Preflight
 
@@ -305,6 +344,50 @@ tree but not committed at `baseRef` (`not committed at …` — commit it), or t
 working-tree copy differs from the committed one (`differs between …` — commit
 or discard the edit). Merge the plan and drive from a clean checkout.
 
+**The orchestrator opens the PR (#368).** Once the run resolves and its
+branch is fetched into the orchestrator checkout, `driveOne` — after teardown,
+so the billing clock never waits on GitHub — pushes the fetched tip to
+`origin` **as-is** (`git push origin <tip-sha>:refs/heads/<runBranch>`; merge
+commits included, never rebased — a linear replay re-creates the overlap the
+fold unioned, #363) and opens the PR with `gh pr create --base main --head
+<runBranch> --body-file <evidenceDir>/pr-body-<runId>.md`. The body is the
+gate receipt (`fleet-receipts/<runId>/gate-receipt.json`, read off the branch
+at its receipt pointer) rendered: verdict, checks, acks, the five §W1d legs,
+spend, `autoResolved` and the completeness-critic findings when the receipt
+carries them (they live in the engine's gitignored `report.json`, which is in
+the evidence bundle and not on the branch), the receipt pointers, the driver's
+notes, then `Closes #N` lines from the plan header and the standard trailer.
+Green → a normal PR; parked with `parkedPublish` → a **draft** PR titled
+`[parked] …` with the ack list first (§Park triage). A gate-green run whose
+receipts do not resolve gets NO PR (`PR not opened: gate-green but receipts
+unresolvable …` in `detail.errors`) — diagnose first, per §Gate read.
+
+The plan's **`Closes` convention** (new with #368 — no plan carried one
+before): in the plan header, above the first `## ` section, a
+`**Closes:** #N, #M` line (or a bare `Closes #N` line). The title's
+`(#318 #319)` parenthetical and `**Spec:**` prose are references, not closes,
+and are never harvested; neither is anything below the first section heading.
+
+The result is `detail.pullRequest` — `{number, url, draft, branch}` — and the
+url is stamped on the runs row (`pullRequestUrl`). Any failure (token missing,
+push refused, `gh` error) lands in `detail.errors`, leaves `pullRequest`
+`null`, and never touches the gate read: green stays green, parked stays
+parked. The branch is still fetched locally in that case, so nothing is lost —
+push and open the PR by hand from the orchestrator checkout, never from the
+laptop.
+
+**Merge is still the human's.** The orchestrator never enables auto-merge; the
+operator reviews and merges on GitHub (and deletes the branch there).
+
+This **deletes** the laptop-side integration procedure used through run-20
+(2026-08-28, three times in one sitting), every step of it: `git fetch
+<orchestrator> <runBranch>` onto the laptop → pin the tip as `keep/run-N` →
+rebase-or-merge onto main → local test run → `gh pr create` from the laptop →
+`gh pr merge --auto` → hand-delete the surviving branch — and with it the
+`keep/run-N` pinning habit and the `FETCH_HEAD`-only near-loss class (#333
+item 1): the branch lives on GitHub the moment the run ends. The laptop never
+fetches a run branch again.
+
 ## Gate read
 
 `driveOne` writes its return value's `read` object verbatim to `reportPath`
@@ -324,6 +407,12 @@ byte for byte. Check it against the five pre-registered questions:
 stop and diagnose before touching the constants below — per spec, W1 failure
 modes are provisioning/auth/store bugs and cost nothing to fix or abandon; the
 run engine was never touched.
+
+The sibling detail also carries `pullRequest` (#368): `{number, url, draft,
+branch}` for the PR the orchestrator opened on the run branch, or `null` with
+the reason in `errors`. Post the gate read on #189 **with the PR number**; the
+review and the merge happen on GitHub — the run branch is never fetched to the
+laptop (§Live W1 run, "The orchestrator opens the PR").
 
 **Constants this first run sets** (spec §W1c/§W1d — "set at the W1 gate from
 the first run's measured burn"), to be filled in once a `spendObservational`
@@ -349,17 +438,23 @@ reports it as `detail.parkedPublish` — `{branch, fetched: true,
 receiptsResolvable, unapproved: true}`, or `null` when nothing was fetched —
 in the gate-read detail. **`unapproved` means exactly that:** no standing
 grant covers the branch, so merging it requires an explicit operator ack of
-the parked gate receipt's `acks` (read them in `fleet-receipts/<runId>/` on
-the fetched branch). With the ack given, land the branch by normal PR — no
-re-drive needed.
+the parked gate receipt's `acks`. **The park card is the draft PR** (#368):
+when `parkedPublish` is non-null the orchestrator has already pushed the
+branch and opened a draft PR titled `[parked] …` whose body leads with the
+ack list (`detail.pullRequest`, `draft: true`). Acking is marking the PR
+ready for review; rejecting is closing it. Merge stays the human's, on
+GitHub — no re-drive, and no laptop-side fetch/rebase/PR.
 
 On every park, triage in this order:
 
-1. Read `detail.parkedPublish`. Non-null means exactly one thing (#336): the
-   parked run's branch IS fetched into the orchestrator checkout (`fetched`
-   is always `true` when the object exists). Review `branch` and
-   ack-or-reject; `receiptsResolvable` says whether every receipt pointer
-   resolved on it.
+1. Read `detail.parkedPublish` and `detail.pullRequest`. Non-null
+   `parkedPublish` means exactly one thing (#336): the parked run's branch IS
+   fetched into the orchestrator checkout (`fetched` is always `true` when
+   the object exists), and `pullRequest` names the draft PR that wraps it
+   (or is `null` with the push/`gh`/token reason in `errors` — then push and
+   open the draft by hand from the orchestrator checkout). Review the acks
+   at the top of the PR body; `receiptsResolvable` says whether every receipt
+   pointer resolved on the branch. Mark ready to ack, close to reject.
 2. `parkedPublish: null` → nothing survived on this side, for one of two
    reasons — the park published nothing, or the branch could not be fetched
    before teardown (`detail.errors` carries `fetch <branch> failed (code N)`
