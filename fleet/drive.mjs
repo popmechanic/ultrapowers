@@ -244,7 +244,11 @@ export const deriveSandboxStat = (statJson) => {
  *   store for a fresh-store experiment never deletes the evidence.
  * @param {string} opts.repoDir - local checkout the base is pushed from and the
  *   run branch is fetched back into.
- * @param {(cmd: string) => Promise<{stdout: string, code: number}>} opts.exec
+ * @param {(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
+ *   `stdout` is compared byte-for-byte against the working tree by the #337
+ *   preflight, so an exec MUST keep stderr off it (#362); `stderr`, when
+ *   present, is only joined into diagnostic lines (execDiagnostic). The optional
+ *   env is the per-command layered environment the publish leg hands git/gh (#368).
  * @param {() => number} [opts.clock] - the logical clock. Frozen under test; an
  *   input to claim/guard decisions, never to timeouts.
  * @param {number} [opts.publishTimeoutMs] - how long to wait, after the run
@@ -485,6 +489,12 @@ export const driveOne = async ({
   let sandboxLogs = null
   let sandboxStat = null
 
+  // #362-1: the exec seam keeps stderr OFF stdout (the #337 preflight compares
+  // stdout byte-for-byte), so a failed command's reason — which git, ssh and
+  // gh print on stderr — is joined back in for the diagnostic lines only.
+  const execDiagnostic = (result) =>
+    [String(result?.stdout ?? '').trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
+
   // One command, bounded by `logPullTimeoutMs`. The bound is PER COMMAND, not
   // shared across the captures: a slow log pull must not eat the budget the
   // `stat` capture still needs, and no capture may outlive its own bound.
@@ -516,7 +526,7 @@ export const driveOne = async ({
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
       fs.writeFileSync(destination, raw)
       if (result?.code !== 0) {
-        errors.push(`${label}: code ${result?.code} ${raw.trim()}`.trim())
+        errors.push(`${label}: code ${result?.code} ${execDiagnostic(result)}`.trim())
         return null
       }
     } catch (error) {
@@ -558,7 +568,7 @@ export const driveOne = async ({
         fs.mkdirSync(dir, { recursive: true })
         const result = await boundedExec(sandboxLogPullCommand({ vmName, dest }))
         if (result?.code === 0) sandboxLogs = dest
-        else errors.push(`pull sandbox logs: code ${result?.code} ${(result?.stdout ?? '').trim()}`.trim())
+        else errors.push(`pull sandbox logs: code ${result?.code} ${execDiagnostic(result)}`.trim())
       } catch (error) {
         errors.push(`pull sandbox logs: ${error?.message ?? error}`)
       }
@@ -1159,7 +1169,7 @@ export const driveOne = async ({
           `push origin ${fetchedTip}:refs/heads/${fetchedBranch}`
         const pushed = await boundedExec(pushCmd, { env: { GH_TOKEN: token, GIT_TERMINAL_PROMPT: '0' } })
         if (pushed?.code !== 0) {
-          errors.push(`push ${fetchedBranch} to origin failed (code ${pushed?.code}) ${scrub(pushed?.stdout)}`.trim())
+          errors.push(`push ${fetchedBranch} to origin failed (code ${pushed?.code}) ${scrub(execDiagnostic(pushed))}`.trim())
           note(`publish: push of ${fetchedBranch} failed`)
         } else {
           note(`publish: pushed ${fetchedBranch} (${fetchedTip}) to origin`)
@@ -1170,7 +1180,7 @@ export const driveOne = async ({
           const created = await boundedExec(ghCmd, { env: { GH_TOKEN: token, GH_PROMPT_DISABLED: '1' } })
           const parsed = created?.code === 0 ? parsePullRequestUrl(created.stdout) : null
           if (parsed === null) {
-            errors.push(`gh pr create for ${fetchedBranch} failed (code ${created?.code}) ${scrub(created?.stdout)}`.trim())
+            errors.push(`gh pr create for ${fetchedBranch} failed (code ${created?.code}) ${scrub(execDiagnostic(created))}`.trim())
             note(`publish: gh pr create failed for ${fetchedBranch}`)
           } else {
             detail.pullRequest = { number: parsed.number, url: parsed.url, draft: parked, branch: fetchedBranch }

@@ -232,7 +232,7 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
     const tunnel = await exec(tunnelCommand({ vmName, port }))
     if (tunnel?.code !== 0) {
       throw new Error(
-        `provisionRun: reverse tunnel ${port}:127.0.0.1:${port} to ${vmName} failed to open (code ${tunnel?.code}): ${(tunnel?.stdout ?? '').trim()}`
+        `provisionRun: reverse tunnel ${port}:127.0.0.1:${port} to ${vmName} failed to open (code ${tunnel?.code}): ${[(tunnel?.stdout ?? '').trim(), (tunnel?.stderr ?? '').trim()].filter(Boolean).join(' ')}`
       )
     }
   }
