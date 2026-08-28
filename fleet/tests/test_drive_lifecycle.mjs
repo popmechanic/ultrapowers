@@ -271,21 +271,40 @@ try {
   }
 
   // -- N3. #322: an unfit plan is refused BEFORE any provisioning -------------
+  // #337: the preflight reads the plan as COMMITTED at baseRef, so the unfit
+  // plan is committed onto a side branch (temporary index; HEAD, the working
+  // tree and every fixture sha stay put) and the drive names that ref. The
+  // working-tree copy is written too, identical — the honest live shape.
+  const unfitPlan = 'docs/unfit-plan.md'
+  const UNFIT_PLAN_TEXT =
+    '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n'
+  const unfitSha = await (async () => {
+    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    fs.writeFileSync(path.join(repoDir, unfitPlan), UNFIT_PLAN_TEXT)
+    const idx = path.join(tmp, 'unfit-plan.idx')
+    const r = await sh(
+      `set -e; blob=$(git hash-object -w ${unfitPlan}); ` +
+        `GIT_INDEX_FILE="${idx}" git read-tree main; ` +
+        `GIT_INDEX_FILE="${idx}" git update-index --add --cacheinfo 100644,$blob,${unfitPlan}; ` +
+        `tree=$(GIT_INDEX_FILE="${idx}" git write-tree); ` +
+        `commit=$(git commit-tree $tree -p main -m unfit-plan); ` +
+        `git branch unfit-plan $commit; printf '%s' $commit`,
+      repoDir,
+    )
+    assert.equal(r.code, 0, `committing the unfit plan on a side branch failed: ${r.stderr}`)
+    return r.stdout.trim()
+  })()
+  assert.match(unfitSha, /^[0-9a-f]{40}$/)
   {
     const runId = 'run-drive-unfit'
-    const unfitPlan = path.join('docs', 'unfit-plan.md')
-    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
-    fs.writeFileSync(
-      path.join(repoDir, unfitPlan),
-      '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n',
-    )
     let provisioned = false
     await assert.rejects(
       driveOne({
         ...driveDefaults,
         planPath: unfitPlan,
+        baseRef: 'unfit-plan',
         dbDir: path.join(tmp, 'dbN3'),
-        exec: async () => ({ code: 0, stdout: '' }),
+        exec: makeExec(() => {}),
         runId,
         provision: async () => {
           provisioned = true
@@ -310,12 +329,15 @@ try {
           exec,
           branch: OLDER_BRANCH,
           receiptPath: 'old.txt',
+          // The stamp expectation is resolved from `baseRef` — the side branch.
+          stamp: { pluginVersion: '9.9.9', engineSha: unfitSha },
         })
       }, 30)
     })
     const { read, detail } = await driveOne({
       ...driveDefaults,
-      planPath: path.join('docs', 'unfit-plan.md'),
+      planPath: unfitPlan,
+      baseRef: 'unfit-plan',
       allowUnfitPlan: true,
       dbDir: path.join(tmp, 'dbN4'),
       exec,
@@ -323,6 +345,7 @@ try {
     })
     await sandbox
     assert.equal(read.o1, true, 'the override drives normally')
+    assert.equal(read.versionStamp, true, 'the expectation resolved from the side branch')
     assert.ok(
       detail.errors.some((e) => /headless-fitness: proceeding on operator override/.test(e)),
       `the override is on the record, got: ${JSON.stringify(detail.errors)}`,

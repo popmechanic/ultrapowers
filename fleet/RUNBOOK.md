@@ -288,15 +288,22 @@ called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
 below for the one case that still needs an operator's hand.
 
-**Headless fitness (#322).** `driveOne` refuses a plan carrying any task whose
-verification can only be evidenced by human judgment — the known class is the
-instruction-only doc task (`implementation` type, every Files entry a `.md`,
-no `Test:` entry). run-14 proved such a task makes a `deferred:manual` park a
-certainty, discovered only after ~47 min and 203k tokens. Before dispatching:
-rewrite the verification into runtime/external form (add a pinning test), or
-route that task to a local drain. `allowUnfitPlan: true` overrides — pass it
-only with a specific operator pre-authorization for that manual ack, and the
-override is recorded in `detail.errors`.
+**Headless fitness (#322, #337).** `driveOne` refuses a plan carrying any task
+whose verification can only be evidenced by human judgment — the known class
+is the instruction-only doc task (`implementation` type, every Files entry a
+`.md`, no `Test:` entry). run-14 proved such a task makes a `deferred:manual`
+park a certainty, discovered only after ~47 min and 203k tokens. Before
+dispatching: rewrite the verification into runtime/external form (add a
+pinning test), or route that task to a local drain. `allowUnfitPlan: true`
+(`--allow-unfit-plan`) overrides — pass it only with a specific operator
+pre-authorization for that manual ack, and the override is recorded in
+`detail.errors`. The plan assessed is the one **committed at `baseRef`**
+(`git show <baseRef>:<planPath>`, default `HEAD`) — the same text the sandbox
+executes — never the working tree. Two operator errors are refused before any
+provisioning and are not covered by the override: the plan is in the working
+tree but not committed at `baseRef` (`not committed at …` — commit it), or the
+working-tree copy differs from the committed one (`differs between …` — commit
+or discard the edit). Merge the plan and drive from a clean checkout.
 
 ## Gate read
 
@@ -338,19 +345,26 @@ advance:
 
 A parked run that published receipts is not lost work. `driveOne` fetches the
 parked run's integration branch exactly as it does a gate-green run's, and
-reports it as `detail.parkedPublish` — `{branch, fetched, receiptsResolvable,
-unapproved: true}` — in the gate-read detail. **`unapproved` means exactly
-that:** no standing grant covers the branch, so merging it requires an
-explicit operator ack of the parked gate receipt's `acks` (read them in
-`fleet-receipts/<runId>/` on the fetched branch). With the ack given, land
-the branch by normal PR — no re-drive needed.
+reports it as `detail.parkedPublish` — `{branch, fetched: true,
+receiptsResolvable, unapproved: true}`, or `null` when nothing was fetched —
+in the gate-read detail. **`unapproved` means exactly that:** no standing
+grant covers the branch, so merging it requires an explicit operator ack of
+the parked gate receipt's `acks` (read them in `fleet-receipts/<runId>/` on
+the fetched branch). With the ack given, land the branch by normal PR — no
+re-drive needed.
 
 On every park, triage in this order:
 
-1. Read `detail.parkedPublish`. Non-null → the work survived; review the
-   fetched branch and ack-or-reject.
-2. `parkedPublish: null` → recover via the run-14 evidence-diff pattern:
-   the per-task review diffs in the pulled evidence
+1. Read `detail.parkedPublish`. Non-null means exactly one thing (#336): the
+   parked run's branch IS fetched into the orchestrator checkout (`fetched`
+   is always `true` when the object exists). Review `branch` and
+   ack-or-reject; `receiptsResolvable` says whether every receipt pointer
+   resolved on it.
+2. `parkedPublish: null` → nothing survived on this side, for one of two
+   reasons — the park published nothing, or the branch could not be fetched
+   before teardown (`detail.errors` carries `fetch <branch> failed (code N)`
+   or `unsafe branch name …`). Either way, recover via the run-14
+   evidence-diff pattern: the per-task review diffs in the pulled evidence
    (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
    apply cleanly to base (PR #317 precedent); reconstruct any
    integration-only fixes from `report.json`.
