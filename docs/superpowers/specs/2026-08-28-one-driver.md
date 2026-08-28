@@ -1,8 +1,9 @@
 # The One Driver — spec (#389, map #366)
 
-**Status:** DRAFT, **trim review complete** (see `## Trim review` — every finding adopted or
-answered; `netConceptDelta` graded **`flat`** by the reviewer). Awaiting **operator review**;
-three decisions are put to the operator at the end of this file.
+**Status:** **PLAN-READY.** Trim review complete (two reviewers; every finding adopted or
+answered; `netConceptDelta` graded **`flat`** by the reviewer, not the author). Operator
+review complete — seven decisions taken 2026-08-28, recorded at the end of this file.
+Next artifact is the **intent document** for the port itself.
 **Map:** #366 *The One Driver*. **Ticket:** #389. **Client half:** #390 (dependency posture).
 **Design inputs (frozen, adopt-or-answer row by row):**
 `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`, **Amendments 1–6**.
@@ -253,18 +254,13 @@ mechanisms replace it, all already owned:
    is the supervisor's revoke) and `drive.mjs:634` `revokeAndPark` / `:638` `destroySandbox`
    as action handlers; **§8a claims all three as licensed deletions** so they do not become
    the next residuals ticket.
-2. **Admission control at two granularities, because today's has two.** Between waves the
-   driver decides whether to start the next one; under pressure it does not — the run folds
-   what it has, publishes, opens the PR, and the receipt says *"stopped at wave 2 of 3 for
-   window pressure."* Honest and terminal, never destructive.
-
-   **And mid-wave**, because `waves.js` already checks at eight points inside one
-   (`:1557`, `:1776`, `:1847`, `:1956`, `:1971`, `:2021`, `:2105`, `:2180`), including per
-   16-task chunk, and defers with `BUDGET_DEFERRED_NOTE` rather than running to exhaustion.
-   A boundary-only design would lose that. The driver checks before dispatching each task
-   in a wave and before each reconciliation attempt, deferring the remainder to
-   `unfinished` with the same honest note. **This is behaviour preserved, not machinery
-   added** — the *mechanism* (the Workflow `budget` global) dies either way.
+2. **Admission observation, at two granularities — because today's control has two.**
+   `waves.js` checks at eight points *inside* a wave (`:1557`, `:1776`, `:1847`, `:1956`,
+   `:1971`, `:2021`, `:2105`, `:2180`), including per 16-task chunk, and defers with
+   `BUDGET_DEFERRED_NOTE` rather than running to exhaustion. **0.3.0 records at both
+   granularities and acts at neither**, so 0.3.1's control can be fitted to whichever
+   granularity the data says matters. Recording both is the cheap half; choosing is the half
+   that needs numbers.
 3. **Per-worker `--max-budget-usd`** as the runaway backstop — exit 1
    `error_max_budget_usd`, clean envelope (parity R-o3/R-l9).
 4. **Per-unit convergence caps** as the terminal condition for a *task* — `attempt <= 2` on
@@ -281,43 +277,39 @@ mechanisms replace it, all already owned:
 `setup-token` credential is not accepted for it** (429, the endpoint's unauthenticated
 shape; four controls in the note). So:
 
-**A first draft of this section said "a `rate_limit_event` seen by any worker is pressure."
-That is wrong and the trim review caught it.** There is no documented `rate_limit_event`
-type at all: what `stream-json` carries is `system`/`api_retry`, whose `error` field takes
-`rate_limit` as **one of its values**
-([headless#handle-api-retries](https://code.claude.com/docs/en/headless#handle-api-retries)),
+**A first draft of this section gated waves on a `rate_limit_event`. Two things killed it.**
+There is no documented `rate_limit_event` type at all — what `stream-json` carries is
+`system`/`api_retry`, whose `error` field takes `rate_limit` as one of its values
+([headless#handle-api-retries](https://code.claude.com/docs/en/headless#handle-api-retries)) —
 and parity R-o8 saw one in a **21-second, width-1 test on an account at 9% utilization**.
 Retries are ordinary. A predicate that halts on the first one halts nearly every multi-wave
-run at wave 1 and writes an untrue sentence into the receipt.
+run at wave 1.
 
-> **The cutover ships a two-part predicate over `system`/`api_retry` events**, counted per
-> wave, across all of that wave's workers:
->
-> 1. **Refuse the next wave** when a worker **exhausted** its retries on a `rate_limit`
->    error — i.e. an envelope that terminated with `attempt == max_retries` and
->    `error: "rate_limit"`. That is the account saying no, not the API being busy.
-> 2. **Refuse the next wave** when the wave's `rate_limit` retry *rate* crosses a
->    driver constant — `≥ 1` such retry per worker, averaged — **and** the largest observed
->    `retry_delay_ms` in the wave exceeds a threshold. Both numbers are **set from the first
->    three fleet runs' observed distributions, not guessed** — the same discipline that
->    licensed deleting the cap, whose sin was being calibrated from size means.
->
-> Anything less is recorded in `admission[]` and the next wave starts. The receipt never
-> says "stopped for window pressure" unless clause 1 or 2 fired, and it quotes the counts
-> that fired it.
->
-> **Deferred to a follow-up ticket:** a profile-scoped orchestrator credential polling
-> `/api/oauth/usage` at each wave boundary — the *predictive* form, which needs no
-> threshold-tuning because it reads utilization directly.
+The second draft replaced it with a threshold calibrated from the first three runs. **The
+operator rejected that too, this sitting, and the reasoning is the same one that deleted the
+cap:**
 
-The reason for taking the reactive signal first is not that it is better — it is measurably
-worse, and the thresholds above are the price. It is that it adds no credential surface in
-the release whose whole claim is subtraction, and that even a crude reactive signal
-dominates the thing being deleted: a post-hoc dollar cap that could only destroy work
-already paid for, and that never fired in twelve runs (peak 63%). **If the first three runs
-cannot produce a threshold that separates ordinary retries from real pressure, the honest
-outcome is to ship admission control as observation-only and take the follow-up ticket into
-the cutover** — not to keep a number that halts good runs.
+> **0.3.0 ships admission control as OBSERVATION ONLY.** The driver records `api_retry`
+> counts, `error` values and `retry_delay_ms` per wave into `admission[]`, and **gates
+> nothing**. The control itself is built in **0.3.1**, from the data 0.3.0 collects.
+
+Three facts make that the right trade rather than a punt:
+
+1. **The cap it replaces never fired** in twelve runs — peak run-18 at 63%. This gates a
+   problem that has not yet occurred on this account.
+2. **A threshold from n=3 is the cap's own mistake with a new name.** The 500 k cap was
+   licensed for deletion partly because it was *"calibrated from size means"*; shipping a
+   guessed number to replace a guessed number learns nothing.
+3. **The failure mode without gating is cheap and honest.** Under starvation the engine
+   already records `AGENT_NULL`, skips waves and BLOCKs the gate without fabricating
+   anything (`eval-cell-ops-lessons`). The cost of not gating is a slow, expensive run —
+   **not a corrupt one.** That asymmetry is what makes it safe to wait for real numbers.
+
+**What 0.3.1 gets that 0.3.0 could not have:** a distribution of `api_retry` behaviour from
+real multi-wave runs, so the predicate — whether that ends up being retry exhaustion, a rate
+threshold, or the predictive `/api/oauth/usage` poll — is fitted to observed pressure rather
+than to an estimate. The deferred credential work (below) can be scheduled against that same
+release.
 
 ## 6. The intent document, and rule 7's ceiling
 
@@ -357,49 +349,46 @@ spend.
 
 | ceiling | number | why this one |
 |---|---|---|
-| `## Standing decisions` entries | **≤ 8** | the accretion site rule 7 actually names; a cap is the only counter-reflex that has worked (rule 5) |
+| `## Standing decisions` entries | **≤ 8** | the accretion site rule 7 actually names; a cap is the counter-reflex with a track record |
 | slot count | **exactly 7** | a new slot owes a deleted one, in the same PR |
 | engine prose (`SKILL.md`) | **≤ 400 words** | pre-registered in #366; from 864 today, 3,129 before Phase 0 |
-| owned authoring skill (#390) | **≤ 1,500 words** | replaces ultraplan 3,038 + writing-plans 1,059 + brainstorming's shape — a real subtraction, not a rename. **Pinned and enforced in #390, not here** (§9) |
-| **`fleet/` code lines, post-cutover** | **≤ 4,400** | 3,818 today; +582 to absorb a 2,354-line wave loop. Measured by the exact command below — `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded |
+| **owned authoring skill** | **≤ 1,500 words** | replaces ultraplan 3,038 + writing-plans 1,059 + brainstorming's shape. **A release-refusing bar in 0.3.0** (operator, this sitting) — see the escape hatch below |
 
-A word ceiling on the intent doc was proposed and **dropped**: rule 7's named target is
-`## Standing decisions` (*"exactly the shape that accretes"*), which the ≤ 8 cap and the
-fixed slot count already close. A third number on the same artifact is one more thing the
-checker enforces and the operator remembers, for a failure mode no amendment names.
+Each is pinned by a test, the way `test_skill_budget.py` pins SKILL.md.
 
-**On the line ceiling, corrected.** A first draft set it at ≤ 6,157 — today's `fleet/*.mjs`
-(3,803) plus `waves.js` (2,354) — under the heading *"the port may not grow the code."* The
-arithmetic is right and the constraint was not: after cutover `waves.js` is **deleted**, so
-that ceiling measures `fleet/*.mjs` alone against a 6,157 allowance — a **62% growth
-allowance** on the driver, dressed as a freeze. It was also satisfiable by relocation:
-roughly 500–620 lines of `waves.js` are baked prompt text and schemas that this port moves
-into `roles/*.md` and JSON files by design, leaving the count for free.
+**The escape hatch, and it is the reason these can be hard bars:** a ceiling is raised only
+by writing the **new number and its reason into the release commit body** — the practice
+established at 0.2.23. So a ceiling binds, it is visible the moment it moves, and it can
+never stall a release outright. That is what makes it different from a number nobody can
+meet.
 
-So the ceiling is on **`fleet/` code** at **≤ 4,400 lines**, against **3,818 today** —
-**+582 to absorb a 2,354-line wave loop**, which is a real constraint and is what "the port
-may not grow the code" was reaching for. It counts the prompt files, schemas and the intent
-checker the port creates, in whatever directory they land.
+**No line ceiling on code (operator decision, this sitting — amends #366 rule 5).** A draft
+of this spec proposed one twice, at ≤ 6,157 and then ≤ 4,400, and both were wrong in
+instructive ways: the first allowed 62% driver growth while claiming to freeze the code, and
+the second was **already violated on the day it was written** (`fleet/**` = 4,476). Three
+reasons it is dropped rather than fixed a third time:
 
-**Measured by exactly this command, because a second draft of this row was already violated
-on the day it was written:**
+1. **The evidence behind rule 5 is about prose, not code.** Its one proof is the SKILL.md
+   word pin (3,129 → 864), where length *is* the harm — more steps for an LLM to sequence
+   means more places to drift. A 2,354-line wave loop is not dangerous because it is 2,354
+   lines.
+2. **On this codebase the proxy is actively harmful.** Comments run 33–50% of the files a
+   ceiling would govern (`shim-main.mjs` 50%, `drive.mjs` 36%, `orchestrator.mjs` 33%,
+   `waves.js` 33%) — and here they *are* the design record: why `BASE_REF` is the fixed
+   point, why four things must be true before a token is spent. Given the operator does not
+   read code, that prose is how the reasoning survives at all. A line ceiling taxes it.
+3. **It fails this project's own doctrine.** Incident narratives never justify guards, and a
+   line ceiling is a guard on ourselves with no measured case behind it.
 
-```
-find fleet -type f -not -path 'fleet/node_modules/*' -not -path 'fleet/tests/*' \
-  -not -name RUNBOOK.md -not -name 'package*.json' | xargs wc -l | tail -1
-```
+**What carries rule 5's intent instead** — three counts that measure things a human or an
+LLM must actually hold, plus the rule that names the real enemy:
 
-A draft of this section said "`fleet/**` — every file" at ≤ 4,400. `fleet/**` is **4,476
-today**: it includes `RUNBOOK.md` (521 lines of operator prose) and `package-lock.json`
-(129). The bar failed before the port began. **Excluded, with reasons:** `fleet/tests/`
-(6,880 lines — the evidence base rule 6 protects; capping tests is the wrong incentive),
-`RUNBOOK.md` (operator prose, governed by the prose ceilings, not the code one),
-lockfiles (generated).
-
-**And the baseline moved during this sitting**: `fleet/*.mjs` was 3,803 when §9's first
-draft was written and is **3,818** after PR #393's fix — 15 lines of a bug fix ate 2.5% of
-a first-draft allowance. That is the ceiling doing its job on the first day, and it is why
-the number is anchored to a command rather than to a remembered figure.
+- **scripts ≤ 10** (§9) · **guards deleted ≥ 6, each with its number** (§8a) · the prose
+  ceilings above;
+- and §7's rule: *every guard added after go-live owes a deletion in the same PR, and a
+  measured number.* The diagnosis that chartered #366 was *"each scar became another step in
+  the protocol"* — accreted **guards**, which that rule names precisely and a line count
+  cannot distinguish from a well-factored function.
 
 ## 7. What the driver may become
 
@@ -409,8 +398,6 @@ Rule 5 is the rule that keeps this from being tower #2, so it gets teeth here:
   Not "a deletion eventually" — the same PR, with both the deletion and the number that
   licenses the addition named in the commit body. An incident narrative is not a number
   (`subtraction-eval-doctrine`).
-- **The line ceiling in §6 is the outer bound.** A PR that crosses it is refused regardless
-  of what it adds.
 - **Port, don't rewrite** (rule 3). `tests/sim_workflow.mjs`, `sim_base_ancestry.mjs`,
   `sim_derived_heads.mjs` become driver sims — same scenarios, same
   `ALL (SCENARIOS|TESTS) PASSED` sentinel. A rewrite that cannot run them is a different
@@ -562,15 +549,34 @@ cache argues otherwise (§8f).
 
 ### 8e. Amendment 5 — "extends, does not fork" is lifted
 
+**#390 ships INSIDE 0.3.0** (decided this sitting). A draft of this spec deferred it beside
+the release; that was wrong, and the reason is a coupling rather than a preference: **the
+driver consumes an intent document, and the only thing that produces one is #390.** An
+engine released first would have a derived-plan pipeline whose input artifact has no
+authoring tool — the front and back halves of one release disagreeing. The counter-argument
+that carried the deferral was a license review of unknown length; **superpowers is MIT**
+(© 2025 Jesse Vincent), which permits modify/merge/publish/sublicense with an attribution
+notice, so that work is minutes and does not gate anything.
+
 | row | disposition |
 |---|---|
-| One owned authoring skill (brainstorming + writing-plans + ultraplan collapse) | **deferred → #390**, the client half. This spec depends on its *output* (the intent doc schema, §6) and specifies that schema here so #390 and #389 cannot drift |
-| Drop the seven practice skills, do not vendor | **deferred → #390** |
-| mattpocock skills uncoupled | **deferred → #390** |
-| One precedence line in `hooks/session_start.sh` | **deferred → #390** |
-| Word ceiling pinned by a test | **adopted §6** (the number), **built in #390** |
-| Retire the three compat scripts | **adopted §8a** — engine-path deletion is this spec's; #390 owns the authoring-path consequence |
-| Check the license before shipping derived prose | **deferred → #390** |
+| One owned authoring skill (brainstorming + writing-plans + ultraplan collapse) | **adopted, in 0.3.0.** Schema in §6 so the two halves cannot drift; ceiling ≤ 1,500 words, release-refusing (§9) |
+| Drop the seven practice skills, do not vendor | **adopted, in 0.3.0** — 10,054 words dropped as dependencies, none copied |
+| mattpocock skills uncoupled | **adopted** — available to operator sessions, required by nothing in the pipeline |
+| One precedence line in `hooks/session_start.sh` | **adopted, in 0.3.0** — see below |
+| Word ceiling pinned by a test | **adopted §6, §9** — enforced in this release |
+| Retire the three compat scripts | **adopted §8a** |
+| Check the license before shipping derived prose | **adopted §10** — MIT; ship the copyright and permission notice with the derived prose. Not a gate |
+
+**Superpowers stays installed on the operator's machine** (decided this sitting). Dropping
+the *dependency* does not stop superpowers running: its `SessionStart` hook fires from the
+user's own install, wrapped in `<EXTREMELY_IMPORTANT>`, with a routing table that names
+`superpowers:brainstorming` by hand. Uninstalling would fix that and cost the operator
+10,054 words of practice skills they use **outside** ultrapowers. So the residual is handled
+by one precedence line in our existing hook, leaning on superpowers' own documented rule
+(*"User instructions … take precedence over skills"*), declaring that the ultrapowers
+authoring skill owns the plan-authoring pipeline. **No new mechanism.** If that measurably
+fails in practice, *then* there is a case for something heavier — not before.
 | CLAUDE.md's own standing rule (*"extends, does not fork"*) | **adopted §10 step 4** — the rule is already marked lifted in CLAUDE.md (PR #391); the **text is deleted** in the 0.3.0 release commit, alongside the engine-path deletions. A first draft assigned it to nobody |
 
 ### 8f. Amendment 6 — #382 measured
@@ -595,10 +601,9 @@ Every number goes into the cutover release commit. **The release is refused with
 | measure | today | bar |
 |---|---|---|
 | engine prose | 864 words (`SKILL.md`) | **≤ 400** |
-| owned authoring skill | 3,038 (ultraplan) + 1,059 (writing-plans) | **≤ 1,500 — #390's bar, not 0.3.0's.** Stated here so the two cannot drift; a number enforced in another ticket must not refuse this release (§11) |
+| owned authoring skill | 3,038 (ultraplan) + 1,059 (writing-plans) | **≤ 1,500 — a release-refusing bar in 0.3.0**, since #390 now ships inside it. Raisable only by stating the new number and its reason in the release commit body (§6) |
 | intent-doc schema | — | **exactly 7 slots, ≤ 8 standing decisions** |
 | scripts under `skills/ultrapowers/scripts/` | 13 | **≤ 10** (projected 6, §8a) |
-| `fleet/` code lines, post-cutover | **3,818** (not 3,803 — PR #393 moved it this sitting) | **≤ 4,400** — +582 to absorb a 2,354-line wave loop; prompt files, schemas and the intent checker counted; `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded, by the command in §6 |
 | guards deleted, each with a licensing number | 11 shipped in Phase 0, **not counted here** | **≥ 6 in this release** (six named in §8a) |
 | gate parity | — | on the **10 fixtures carrying a `plan.md`** (chained, contend, contend-big, contend-prod, degrade, flawed, flawed-routing, mixed, webapp, wide; `jsdeps` has none), the derived plan's **wave shape and gate verdict** equal the old engine's authored plan for the same intent. See the three caveats below — this row is weaker than it looks and the spec says so |
 | live parity | — | **≥ 3 fleet runs green**, one at width ≥ 2, with `reported == ledger` and all five §W1d legs |
@@ -674,19 +679,41 @@ receipt field, so #220's by-cause-by-engineVersion rate stays computable.
 
 ## 10. Cutover
 
+0.3.0 is one release and it is large by decision, not by drift. What is in it:
+
+| half | contents |
+|---|---|
+| **engine** | the `waves.js` port into the driver; the deletion ledger (§8a); the process supervisor (§4a); admission **observation** (§5); the claim-lease reaper; `ab_runner` re-armed on the driver |
+| **client** | the merged authoring skill ≤ 1,500 words; `ultraplan` deleted; the seven practice skills dropped; the precedence line in `hooks/session_start.sh`; CLAUDE.md's *"extends, does not fork"* text deleted; README + marketplace wording (Amendment 1 decision 6); **`ultradocket`'s sweep reworked to emit intent docs** |
+
+**`ultradocket` is in the release** (operator decision, this sitting, against the
+recommendation to defer it). The reasoning is completeness: after the cutover **no tool
+anywhere should still emit the old artifact**. Its drain half sweeps issues into plans; the
+driver now consumes intent. Leaving it would mean shipping one tool that produces something
+nothing can read. Its triage half is unchanged.
+
+Steps:
+
 1. Build on branch `one-driver`. The old path is untouched until the new one clears §9.
 2. The existing sims must pass against the driver (rule 3): `sim_workflow.mjs`,
-   `sim_base_ancestry.mjs`, `sim_derived_heads.mjs`, same sentinel. The suite-gate's
-   harness-JS leg follows the code to its new home.
-3. Validate with fleet runs — the fleet is both vehicle and first customer.
-4. **One release, 0.3.0**, deleting the old path in the same release, with every §9 number
-   in the release commit. This is the operator's explicit override of "stay on 0.2.x."
-5. **#386 closes at this release** — each of its residual lines is deleted or explicitly
-   kept, including the stale prose naming deleted scripts, `waves.harness.json`, the
-   ultradocket `Seal` field, and the execution-handoff rubric's Inline/Subagent-Driven
-   options (abolished by Amendment 1, refused by the `fleet-run` stage).
-6. **#354 closes as moot** (§8a), and **#384 stays open** as a watch (§8b).
-7. Then map **#360 Tier 1** lands on the simplified base.
+   `sim_base_ancestry.mjs`, `sim_derived_heads.mjs`, same `ALL (SCENARIOS|TESTS) PASSED`
+   sentinel. The suite-gate's harness-JS leg follows the code to its new home.
+3. Ship the copyright and permission notice with any prose derived from superpowers (MIT).
+4. Validate with fleet runs — the fleet is both vehicle and first customer.
+5. **One release, 0.3.0**, deleting the old path in the same release, with every §9 number
+   in the release commit. The operator's explicit override of "stay on 0.2.x."
+6. **#386 closes at this release** — each residual line deleted or explicitly kept,
+   including the stale prose naming deleted scripts, `waves.harness.json`, the ultradocket
+   `Seal` field, and the execution-handoff rubric's Inline/Subagent-Driven options.
+7. **#354 closes as moot** (§8a); **#384 stays open** as a watch (§8b); **#390 closes with
+   this release**, not beside it.
+8. Then map **#360 Tier 1** lands on the simplified base.
+
+**Named risk, since the release grew by decision:** this now carries the port, the cutover,
+`ab_runner` re-arming, 10 intent docs, ≥ 3 validating fleet runs, an authoring-skill fork,
+seven dropped skills and an ultradocket rework. The mitigation is not to trim scope — the
+operator chose it — but to **land it in reviewable pieces on one branch**, engine and client
+independently green, with the release commit as the only integration point.
 
 ## 11. Out of scope
 
@@ -698,9 +725,13 @@ receipt field, so #220's by-cause-by-engineVersion rate stays computable.
   that changes — manual acks being discharged by pre-authorization — happens at the
   *authoring* layer, leaving the gate's logic untouched (§8d).
 - **Re-drive reuse** (#383) — after cutover, on the driver.
-- **The predictive admission signal** (§5) — a follow-up ticket, not the cutover.
-- **The client half** (#390) — sequenced with this spec, specified only where the two must
-  not drift (§6, §8e).
+- **Admission control itself** (§5) — 0.3.0 observes and records; **0.3.1 builds the gate**
+  from that data, and can schedule the profile-scoped credential for the predictive
+  `/api/oauth/usage` signal against the same release.
+- **`claude plugin eval`** — gates the **client** surface, built with the authoring skill.
+  The engine's gate is the three sims, the fixture corpus, the gate itself and ≥ 3 live
+  fleet runs; after cutover the engine's skill surface is ~400 words, which leaves plugin
+  eval little to test there.
 
 ## Trim review
 
@@ -768,7 +799,7 @@ visible:**
 | # | expansion | disposition |
 |---|---|---|
 | 1 | six ceilings where #389 asked for three | **PARTLY ADOPTED** — now five, and one (the authoring skill) is #390's to enforce. Rule 7 explicitly asks for a slot count *and* a standing-decisions cap, so two of the three are its own text |
-| 2 | the combined-line ceiling permits +2,354 lines of driver growth and excludes what the port creates | **ADOPTED** (§6, §9). The arithmetic was right and the constraint was not. Replaced by `fleet/**` ≤ 4,400 against 3,803 today, counting prompt files, schemas and the intent checker, excluding `fleet/tests/` |
+| 2 | the combined-line ceiling permits +2,354 lines of driver growth and excludes what the port creates | **ADOPTED, and the ceiling is now DELETED entirely** (§6). Both reviewers were right and a third attempt would have been wrong too: the operator dropped the line ceiling this sitting, amending #366 rule 5. Rule 5's intent carries in the prose ceilings, scripts ≤ 10, guards ≥ 6, and §7's guard-deletion rule — which names accreted guards precisely, where a line count cannot tell a guard from a well-factored function |
 | 3 | the wave author gains scheduling and spend authority by omission | **ADOPTED** (§6) — `Files:` and `tier` signed; the author may only narrow |
 | 4 | the run-directory layout as a specified artifact | **ANSWERED, kept.** The handoff named "where the derived plan lives and how the receipt carries it" as a question the spec must settle; a layout is the answer. `judgment/` is deleted (trim 3) and `roles/` added, which is the port's own surface |
 | 5 | `admission[]` and `standingDecisions[]` beyond Amendment 4's four | **ADOPTED as disclosure** (§4) — six changes, four additions and two re-types, stated as such |
@@ -781,7 +812,7 @@ visible:**
 |---|---|---|
 | R2-1 | **`waves.js`'s own budget object is undispositioned in §8** — `budgetExhausted()` (`:1838`), `BUDGET_DEFERRED_NOTE` (`:181`), and **eight** deferral checkpoints, distinct from `orchestrator.mjs`'s supervisor | **ADOPTED — new ledger row in §8a, and §5 changed.** The sharper half is behavioural: those checkpoints fire **mid-wave**, including per 16-task chunk, while §5 was specified at wave boundaries only. A wave running out of room at task 9 of 16 defers honestly today and would have run to exhaustion under the spec as written. §5 now specifies both granularities |
 | R2-2 | **§5 deletes the only out-of-band VM reclamation.** `actions.destroySandbox` reaches the orchestrator's action surface at exactly one site — `orchestrator.mjs:281`, inside the deleted spend pass; every other destroy is `drive.mjs`'s teardown, **inside the drive process** | **ADOPTED — §5 item 0 rewritten.** A killed or crashed drive would have left a billed VM alive forever. Replaced by a **claim-lease reaper** over rows that already exist (claims have holders; `orchestrator.mjs:301` has the heartbeat). Deliberately a *liveness* trigger: the right reason to destroy a VM is "nothing is using it", never "it spent too much" |
-| R2-3 | **The line ceiling is already stale and, as written, already violated.** `fleet/*.mjs` is **3,818** on main (PR #393 added 15 this sitting), and `fleet/**` — the glob the spec actually wrote — is **4,476**, above the ≤ 4,400 bar | **ADOPTED — §6 and §9 rewritten.** The bar failed on the day it was written. The ceiling is now anchored to an **exact `find` command** with `fleet/tests/`, `RUNBOOK.md` and lockfiles excluded and the reasons given, and the drift is left visible: 15 lines of a bug fix ate 2.5% of the allowance on day one |
+| R2-3 | **The line ceiling is already stale and, as written, already violated.** `fleet/*.mjs` is **3,818** on main (PR #393 added 15 this sitting), and `fleet/**` — the glob the spec actually wrote — is **4,476**, above the ≤ 4,400 bar | **ADOPTED, and it ended the ceiling.** The finding that a bar failed on the day it was written is what prompted the operator to drop the line ceiling outright rather than let a third draft try again (§6). The two failed drafts are kept in §6 as the argument |
 | R2-4 | **The wave author's "may not add or remove tasks" has no enforcement** — `--json-schema` validates shape, not identity against `intent.sha` | **ADOPTED** (§2 step 4). The driver diffs the derived plan against the signed set by identity: equal id sets, byte-identical edges / `Interfaces` / `tier` / acceptance statements, `Files:` a subset. A mismatch is a failed derivation, retried once with the diff quoted, then parked. This is why `intent.sha` is in the receipt |
 
 **Rejected: none, from either reviewer.** Every finding was adopted, adopted with a named
@@ -803,20 +834,28 @@ Phase 0. **The author's Adds/Removes disclosure above implies `down` and the rev
 right that it does not earn it.** The disclosure is left unedited, as the record of what the
 author claimed before the grade.
 
-## Open, for the operator
+## Decisions taken (operator, 2026-08-28 — this spec is now plan-ready)
 
-1. **The ceiling numbers in §6** are proposals, not decisions. The one that binds hardest is
-   **`fleet/**` ≤ 4,400 lines** — +597 to absorb a 2,354-line wave loop. It is deliberately
-   tight; the alternative is a looser number that does not constrain anything.
-2. **§5's disposition** — a *reactive* admission signal for the cutover (a two-clause
-   predicate over `api_retry` events, thresholds set from the first three runs), with the
-   *predictive* `/api/oauth/usage` poll deferred. The alternative is provisioning the
-   orchestrator with a second credential class now and getting the better signal in 0.3.0.
-   §5 also names the honest fallback: if no threshold separates ordinary retries from real
-   pressure, ship admission control as observation-only.
-3. **§8b defers `claude plugin eval` to #390.** If it should gate the engine too, say so.
-4. **The reviewer graded `netConceptDelta` `flat`, not `down`** — because #390 carries the
-   biggest concept deletion and five ledger rows already shipped in Phase 0. That is a
-   judgment about *this release standing alone*. If you want 0.3.0 to grade `down` on its
-   own, the lever is sequencing #390 into it rather than beside it — which couples the
-   release to a skill fork, and §11 currently keeps them separate on purpose.
+Seven, in the order they were put. Each changed the spec; none is left open.
+
+| # | decision | effect |
+|---|---|---|
+| 1 | **No line ceiling on code.** Rule 5's intent carries in the prose ceilings, scripts ≤ 10, guards ≥ 6, and §7's guard-deletion rule | §6, §7, §9. **Amends #366 rule 5** — mirrored into the design-inputs file the same sitting |
+| 2 | **Admission control ships as observation only in 0.3.0**; the gate is built in 0.3.1 from the data 0.3.0 collects | §5, §11. The claim-lease VM reaper ships regardless — that is a leak fix, not a policy choice |
+| 3 | **`claude plugin eval` gates the client only** | §11, §8b |
+| 4 | **#390 ships inside 0.3.0** *(author's call, delegated)* — the driver consumes an intent doc and only #390 produces one | §8e, §10, §11 |
+| 5 | **The authoring skill's ≤ 1,500-word ceiling is a release-refusing bar**, raisable only by stating the new number and its reason in the release commit body | §6, §9 |
+| 6 | **Superpowers stays installed**; one precedence line in `hooks/session_start.sh` declares which skill owns the pipeline | §8e |
+| 7 | **`ultradocket`'s sweep is reworked inside 0.3.0** — *against the recommendation to defer it*, so no tool anywhere still emits the old artifact | §10 |
+
+Two of these went against the author's recommendation and are recorded as such: **7** (the
+release grows to stay coherent) and, in a different direction, **1** (the author proposed a
+ceiling twice and both drafts were defective — the operator removed the mechanism rather
+than accept a third attempt).
+
+**Still owed before the plan, and named so they are not assumed** (§3, §9, §10):
+
+- `--add-dir` is unexercised and the wave author's confinement depends on it — repro before
+  building the role.
+- `ab_runner` must be re-armed on the driver before gate parity can be reported.
+- The claim-lease reaper lands in the same PR as the cap deletion, never after.
