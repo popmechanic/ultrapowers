@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1176,6 +1177,304 @@ def layer(impl, edges):
     return waves
 
 
+# --------------------------------------------------------------------------- #
+# Advisory renders (#345 eval cell) — `--check --renders` ONLY.               #
+# --------------------------------------------------------------------------- #
+# The --check diagnostic vocabulary is frozen (0.1.0). These renders are
+# ADVISORY: they print AFTER the check verdict, never change the exit code,
+# and print nothing at all when they have nothing to say — so `PLAN OK` stays
+# byte-identical on a clean plan. They live behind the `--renders` flag so the
+# default `--check` output is unchanged until an eval-measured adoption flips
+# the default (evals/check_renders_ab.py writes the measurement).
+#
+# A render is `fn(tasks, ctx) -> list[str]`: `tasks` is the parse_task output
+# for every task in document order; `ctx` is {"base": Path, "plan_path": Path,
+# "tracked": set[str] (git ls-files under base), "task_ids": set[str],
+# "exclude": tuple[str, ...] (base-relative paths hidden from every tracked-
+# file lookup — `--exclude`, the eval campaign's seam for keeping its own
+# files out of its measurement; empty by default)}. Every line a render
+# returns starts with the literal prefix "ADVISORY ".
+CODE_EXTS = (".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".sh")
+# Registry of (name, fn). Renders APPEND themselves here — an order-insensitive
+# registration surface; the order lines print in is registration order.
+ADVISORY_RENDERS = []
+
+
+def _git(base, *args):
+    """git in `base`; stdout text, or '' on ANY failure (missing git, not a
+    checkout, no match) — advisory code never raises."""
+    try:
+        p = subprocess.run(["git", "-C", str(base), *args],
+                           capture_output=True, text=True)
+    except OSError:
+        return ""
+    return p.stdout if p.returncode == 0 else ""
+
+
+def _exclude_pathspecs(exclude):
+    return [":(exclude)" + p for p in exclude]
+
+
+def _git_tracked(base, exclude=()):
+    """Tracked paths under `base`, relative to it, minus `exclude`."""
+    spec = ["--", "."] + _exclude_pathspecs(exclude) if exclude else []
+    return set(_git(base, "ls-files", *spec).split())
+
+
+def _code_pathspecs(exclude=()):
+    return ["--"] + ["*" + ext for ext in CODE_EXTS] + _exclude_pathspecs(exclude)
+
+
+def _git_word_files(base, word, exclude=()):
+    """Tracked CODE files (CODE_EXTS) under `base` containing `word` as a
+    whole word (`git grep -l -w -F`), sorted, relative to `base`."""
+    return sorted(_git(base, "grep", "-l", "-w", "-F", word,
+                       *_code_pathspecs(exclude)).split())
+
+
+def _git_literal_in_code(base, literal, exclude=()):
+    """True when some tracked CODE file under `base` contains `literal`."""
+    return bool(_git(base, "grep", "-l", "-F", literal,
+                     *_code_pathspecs(exclude)).strip())
+
+
+def default_base(plan_path):
+    """The git toplevel of the plan's directory, or None outside a checkout."""
+    top = _git(Path(plan_path).resolve().parent, "rev-parse", "--show-toplevel").strip()
+    return Path(top) if top else None
+
+
+def render_advisories(plan_path, base, exclude=()):
+    """Every registered render's lines for `plan_path` against the tree at
+    `base`. Returns [] when the plan failed the check's structural early-abort
+    net (malformed heading, no tasks, duplicate ids) — a parse the check could
+    not trust is not one to render over. A `base` that is not a git checkout
+    yields the single skip note instead of guessing. A render that raises
+    degrades to one `render failed` line — advisory output never changes the
+    check's exit code, so nothing here may propagate."""
+    plan_text = Path(plan_path).read_text()
+    if _malformed_task_headings(plan_text):
+        return []
+    raw = split_tasks(plan_text)
+    ids = [t["id"] for t in raw]
+    if not raw or len(set(ids)) != len(ids):
+        return []
+    if base is None:
+        return ["ADVISORY renders skipped: no git checkout found for %s (pass --base)"
+                % Path(plan_path).resolve().parent]
+    if not _git(base, "rev-parse", "--show-toplevel").strip():
+        return ["ADVISORY renders skipped: %s is not a git checkout" % base]
+    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw]
+    exclude = tuple(exclude)
+    ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
+           "tracked": _git_tracked(base, exclude), "task_ids": set(ids),
+           "exclude": exclude}
+    lines = []
+    for name, fn in ADVISORY_RENDERS:
+        try:
+            lines.extend(fn(tasks, ctx))
+        except Exception as e:  # noqa: BLE001 — advisory: degrade, never raise
+            lines.append("ADVISORY %s: render failed (%s)" % (name, type(e).__name__))
+    return lines
+
+
+# P1 — Produces blast radius (#233 build, #345 eval cell). For every symbol a
+# task's Produces declares, the CODE files at BASE outside the task's own
+# Files that mention it as a whole word. Keyed on EVERY Produces symbol, not
+# only deleted/renamed ones — run-14's additive shim-outcome shape change had
+# its strict-equality pin in a sibling-owned test file. Advisory: a listed
+# file is somewhere the implementer must look (ultraplan Move 3), never a
+# refusal.
+_SYMBOL_RE = re.compile(r"^[A-Za-z_]\w*$")
+_BLAST_LIST_CAP = 8
+
+
+def _multiword_symbol(sym):
+    """camelCase / snake_case / CONSTANT_CASE — an identifier, not a word."""
+    return "_" in sym or any(c.isupper() for c in sym[1:])
+
+
+def _produces_symbols(task):
+    """Symbol tokens the task's Produces lines declare, document order, deduped.
+    Every backticked span reduces like _interface_token's lead (cut at the
+    first '(', whitespace, or ':'); the lead span is kept at >= 5 chars or
+    multi-word, a non-lead span only when multi-word — single common words
+    (`main`, `delivered`, `token`) are grep noise, measured (#345)."""
+    out = []
+    for entry in task["interfaces"]["produces"]:
+        for k, span in enumerate(PATH_RE.findall(entry)):
+            sym = re.split(r"[(\s:]", span, 1)[0].strip("`").strip()
+            if not _SYMBOL_RE.match(sym) or sym.lower() in PLACEHOLDER_TOKENS:
+                continue
+            if not _multiword_symbol(sym) and (k > 0 or len(sym) < 5):
+                continue
+            if sym not in out:
+                out.append(sym)
+    return out
+
+
+def _render_blast_radius(tasks, ctx):
+    lines = []
+    for t in tasks:
+        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+        for sym in _produces_symbols(t):
+            hits = [f for f in _git_word_files(ctx["base"], sym, ctx.get("exclude", ()))
+                    if f not in own]
+            if not hits:
+                continue
+            lines.append("ADVISORY blast-radius: Task %s Produces `%s` — %d file(s) "
+                         "at BASE outside Task %s's Files mention it:"
+                         % (t["id"], sym, len(hits), t["id"]))
+            lines.extend("  - " + f for f in hits[:_BLAST_LIST_CAP])
+            if len(hits) > _BLAST_LIST_CAP:
+                lines.append("  … +%d more" % (len(hits) - _BLAST_LIST_CAP))
+    return lines
+
+
+ADVISORY_RENDERS.append(("blast-radius", _render_blast_radius))
+
+
+# --- advisory renders register below (append zone) --------------------------
+
+# P2 — referent existence (#321 item 2 ∪ #237(b) ∪ #237(c); #345 eval cell).
+# A plan body asserting the existence of something the compiler can check —
+# a path against the tree at BASE, a report/detail field against
+# report-format.md (or the code that defines it), a `Task N` against the
+# plan's own headings — is resolved once; each unresolved referent renders
+# once, advisory. Ultraplan authoring rule 6 is the prose half.
+_REFERENT_EXTS = frozenset(
+    "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
+    "sql csv lock cfg ini env tgz log".split())
+_MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
+_FIELD_HEADS = ("report", "result", "detail", "tasks", "waveMerges", "frontier",
+                "coverage", "acceptance", "tests", "baseline", "blockedWaves",
+                "missingDeliverables", "deferredVerification")
+_FIELD_RE = re.compile(r"^(?:%s)(?:\[\])?(?:\.[A-Za-z_]\w*(?:\[\])?)+$"
+                       % "|".join(_FIELD_HEADS))
+# `Task <id>` where <id> LOOKS like a task id: contains a digit, or is 1-3
+# uppercase alphanumerics led by a letter (`A`, `B3`, `IV`). `Task agents`,
+# `Task IDs`, `Task list` never match. Only the first id of a list/range is
+# captured — under-reporting is the safe direction for an advisory.
+_TASK_REF_RE = re.compile(r"\bTasks?\s+((?=[A-Za-z0-9]*\d)[A-Za-z0-9]+|[A-Z][A-Z0-9]{0,2})\b")
+_FILES_BULLET_RE = re.compile(
+    r"^\s*[-*+]\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\))\s*:")
+
+
+def _path_referent(tok):
+    """The normalized repo path a backticked token names, or None when the
+    token is not a repo-path referent (identifier, dotted field, URL, glob,
+    template, placeholder, absolute path, import specifier, MIME type)."""
+    t = tok.strip()
+    if (not t or any(c in t for c in "*?{}<>$~ ()'\"") or "://" in t
+            or t.startswith(("-", "/", "./", "../")) or _MIME_RE.match(t)):
+        return None
+    t = re.sub(r":\d+(?:-\d+)?$", "", t).rstrip("/")
+    if "/" in t:
+        return t
+    if t.startswith("."):
+        return None  # a dotfile name alone is not a referent worth resolving
+    m = EXT_RE.search(t)
+    if m and m.group(1).lower() in _REFERENT_EXTS:
+        return t
+    return None
+
+
+def _report_field_vocab():
+    """Every field name report-format.md defines: JSON keys in its schema
+    block plus every segment of every backticked dotted token in its text.
+    None when the file cannot be read (a compiler copied out of its plugin
+    tree) — the field check then skips rather than reporting every field
+    as unknown."""
+    try:
+        text = (PLUGIN_ROOT / "skills/ultrapowers/references/report-format.md").read_text()
+    except OSError:
+        return None
+    names = set(re.findall(r'"([A-Za-z_]\w*)"\s*:', text))
+    for tok in re.findall(r"`([A-Za-z_][\w\[\].]*)`", text):
+        for seg in tok.split("."):
+            seg = seg.replace("[]", "")
+            if seg:
+                names.add(seg)
+    return names
+
+
+def _referent_scan_lines(task):
+    """Body lines whose backticked tokens are referents: EVERY line including
+    fenced content (a fenced markdown block names paths just as deadly),
+    minus the fence markers themselves (their backtick runs mis-pair
+    PATH_RE), the Files: bullets (the contract, grammar-checked), and the
+    Commutes marker."""
+    out = []
+    for line, _fenced in _fence_aware_lines(task["body"]):
+        s = line.strip()
+        if FENCE.match(s) or _FILES_BULLET_RE.match(line) or s.startswith("**Commutes:**"):
+            continue
+        out.append(line)
+    return out
+
+
+def _render_referents(tasks, ctx):
+    base, tracked, ids = ctx["base"], ctx["tracked"], ctx["task_ids"]
+    basenames = {p.rsplit("/", 1)[-1] for p in tracked}
+    creates = {t["id"]: set(t["creates"]) for t in tasks}
+    all_files = set()
+    for t in tasks:
+        all_files |= set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+    exclude = ctx.get("exclude", ())
+    vocab = _report_field_vocab()
+    lines = []
+    if vocab is None:
+        lines.append("ADVISORY referent: report-format.md vocabulary unavailable — "
+                     "field referents not checked")
+    for t in tasks:
+        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+        dep_creates = set()
+        for d in t["depends_on"]:
+            dep_creates |= creates.get(d, set())
+        seen = set()
+        for line in _referent_scan_lines(t):
+            for tok in PATH_RE.findall(line):
+                tok = tok.strip()
+                p = _path_referent(tok)
+                if p is not None:
+                    if p in seen:
+                        continue
+                    seen.add(p)
+                    resolved = (
+                        p in tracked or p in own or p in dep_creates
+                        or ("/" not in p and (p in basenames
+                                              or any(f.endswith("/" + p) for f in all_files)))
+                        or _git_literal_in_code(base, p, exclude))
+                    if not resolved:
+                        lines.append("ADVISORY referent: Task %s names `%s` — not at BASE, "
+                                     "not in Task %s's Files, not Created by a task it "
+                                     "Depends-on" % (t["id"], p, t["id"]))
+                    continue
+                if vocab is not None and _FIELD_RE.match(tok):
+                    if tok in seen:
+                        continue
+                    seen.add(tok)
+                    segs = [s.replace("[]", "") for s in tok.split(".")[1:]]
+                    missing = [s for s in segs
+                               if s not in vocab and not _git_word_files(base, s, exclude)]
+                    if missing:
+                        lines.append("ADVISORY referent: Task %s names `%s` — `%s` is not a "
+                                     "report-format.md field and appears in no code file "
+                                     "at BASE" % (t["id"], tok, missing[0]))
+        for m in _TASK_REF_RE.finditer(t["prose"]):
+            ref = m.group(1)
+            key = "Task " + ref
+            if ref in ids or key in seen:
+                continue
+            seen.add(key)
+            lines.append("ADVISORY referent: Task %s names Task %s — no such task heading "
+                         "in this plan" % (t["id"], ref))
+    return lines
+
+
+ADVISORY_RENDERS.append(("referent", _render_referents))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
@@ -1209,6 +1508,20 @@ def main(argv=None):
                     help="absolute per-run directory; stamped into the args "
                          "skeleton as runDir (with pluginRoot) so the engine "
                          "routes all scratch there")
+    ap.add_argument("--renders", action="store_true",
+                    help="with --check only (#345): after the verdict, print "
+                         "the ADVISORY renders (Produces blast-radius, "
+                         "referent-existence). Advisory: never changes the exit "
+                         "code; prints nothing when there is nothing to say.")
+    ap.add_argument("--base", type=Path, default=None,
+                    help="with --renders only: the tree the renders resolve "
+                         "against (default: the git toplevel of the plan's "
+                         "directory)")
+    ap.add_argument("--exclude", action="append", default=[], metavar="PATH",
+                    help="with --renders only, repeatable: a BASE-relative "
+                         "tracked path the renders must not see (the eval "
+                         "campaign's seam for keeping its own files out of "
+                         "its measurement)")
     args = ap.parse_args(argv)
     emit_launch = args.emit_launch
     emit_args = args.emit_args
@@ -1217,15 +1530,34 @@ def main(argv=None):
         sys.exit("error: --check is mutually exclusive with --emit-launch/"
                  "--emit-args/--run-dir (--check only validates grammar; it "
                  "never emits launch files)")
+    if args.renders and not args.check:
+        sys.exit("error: --renders requires --check (renders are the check's "
+                 "advisory tail; plain compile never prints them)")
+    if args.base is not None and not args.renders:
+        sys.exit("error: --base requires --renders")
+    if args.exclude and not args.renders:
+        sys.exit("error: --exclude requires --renders")
     if args.check:
         violations = collect_violations(args.plan)
         if violations:
             print("\n\n".join(violations))
             print()
             print(f"{len(violations)} violation(s)")
-            return 2
-        print("PLAN OK")
-        return 0
+            rc = 2
+        else:
+            print("PLAN OK")
+            rc = 0
+        if args.renders:
+            # Advisory tail (#345): after the frozen verdict, separated by one
+            # blank line, ONLY when there is something to say. rc is untouched.
+            lines = render_advisories(args.plan,
+                                      args.base if args.base is not None
+                                      else default_base(args.plan),
+                                      exclude=tuple(args.exclude))
+            if lines:
+                print()
+                print("\n".join(lines))
+        return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
                  "ride via the launch file, so wavesPath is always populated)")

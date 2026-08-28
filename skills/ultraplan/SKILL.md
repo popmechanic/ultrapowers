@@ -109,11 +109,11 @@ Markers are bold-labeled lines placed immediately after the task heading, before
 While marking the plan, decide review depth explicitly: mark
 `**Review:** adversarial` on tasks whose failure is costly or hard to see — the
 fit analysis's risk list below. Everything else stays lean.
-The engine derives nothing: unmarked means lean, by construction.
+The engine derives nothing: unmarked means lean.
 
 Placement is enforced: the compiler trusts markers only in the contiguous block
 immediately after the task heading — a later marker is ignored and surfaced as a
-conflict. A plan with **no markers at all** still
+conflict. A plan with **no markers** still
 compiles, but every disposition is guessed and the render flags it
 **`0 markers — all dispositions inferred`**.
 
@@ -216,7 +216,8 @@ While writing tasks:
    human, that part is its own `release`/`manual` task.
 6. **Name only what exists.** Every path, `report.json` field, or task a body
    cites must exist at BASE, be created by a task it `Depends-on`, or be defined
-   in `report-format.md`.
+   in `report-format.md`. Run `compile_plan.py --check --renders <plan>` and
+   read its `ADVISORY` blast-radius and referent lines before handoff.
 - **Bodies may sketch routine glue — an ultraplan override.** writing-plans
   demands complete code in every step; here that holds only where the code
   carries information the implementer cannot derive. An `implementation` body
@@ -237,20 +238,20 @@ While writing tasks:
 - **Tier escalation-prone tasks up front.** Large single-file refactors blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark them
   `most-capable` rather than letting the launch guess it.
-- **Spike tasks that spawn the real agent CLI must isolate `CLAUDE_CONFIG_DIR` (or disable session persistence)** — a spawned session can otherwise write false memories into the host project.
+- **Spike tasks that spawn the real agent CLI must isolate `CLAUDE_CONFIG_DIR` (or disable session persistence)** — otherwise it can write false memories into the host project.
 
 ## The final authoring step — validate
 
 A marked plan is not done until it passes the grammar check (the compiler
-lives in the ultrapowers skill's own scripts directory):
+lives in the ultrapowers skill's scripts directory):
 
     COMPILE_PLAN=skills/ultrapowers/scripts
     python3 $COMPILE_PLAN/compile_plan.py --check <plan.md>
 
 Exit 0 (`PLAN OK`) — hand the plan off. Any violation prints a did-you-mean
 fix; apply it and re-run. The runtime parser accepts exactly this grammar, so a
-plan that skips the check fails at launch instead — when a fix costs a session
-instead of seconds.
+plan that skips the check fails at launch — when a fix costs a session, not
+seconds.
 
 ## Operator smoke — aim the one human check
 

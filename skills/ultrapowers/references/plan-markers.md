@@ -213,7 +213,12 @@ nothing else:
 Interfaces grammar below — over an entire plan in one pass, printing every
 violation with its did-you-mean fix and exiting 2, or printing `PLAN OK` and
 exiting 0. Plain compile enforces the same rules but stops at the first
-violating task (`SystemExit`) instead of collecting every one.
+violating task (`SystemExit`) instead of collecting every one. `--check --renders`
+appends the advisory renders after the verdict — P1 Produces blast-radius (code
+files at BASE outside a task's Files that mention a Produces symbol) and P2
+referent-existence (paths, `report.json` fields, `Task N` refs the body names
+that resolve nowhere); every such line starts with `ADVISORY `, and the verdict
+and exit code are unchanged (#345).
 
 ## Interfaces grammar
 
@@ -258,7 +263,9 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   list that file in its own `**Files:**` (#233).
 - Name only what exists: every path, `report.json` field, or task a body cites must
   exist at BASE, be created by a task it `Depends-on`, or be defined in
-  `report-format.md` — a phantom referent is a dead letter across worktrees.
+  `report-format.md` — a phantom referent is a dead letter across worktrees. Run
+  `scripts/compile_plan.py --check --renders <plan.md>` and read its `ADVISORY`
+  blast-radius and referent lines before handoff.
 - Never instruct branch creation — the executor owns branching.
 - Give every test a unique port / temp path so same-wave suites can run concurrently.
 - Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.

@@ -1,0 +1,69 @@
+{
+  "mode": "gate",
+  "stamp": "20260828-031426",
+  "wfRuns": [
+    "wf_22d93f7b-733"
+  ],
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-20260828-031426/report.json",
+  "branch": "ultra/integration-20260828-031426",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "lock",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:manual",
+        "detail": "evals/frontier/results/2026-08-29-check-renders.md \u2014 the #345 adoption verdict (## Bar: known instances surfaced 2/3, canonical false positives 0) \u2014 The plan explicitly makes the adoption bar the operator's mechanical verdict at integration, not a task and not asserted by any test ('If known_surfaced < known_total ... leave it so: the operator adjudicates at integration'). The doc regenerates byte-identically on the integrated tree, so the artifact is sound; what needs a human is whether 2/3 blocks adoption given that the single NO is caused by the plan's own tests/test_check_renders.py being tracked inside the measured BASE (finding 1) rather than by the referent heuristic."
+      }
+    ],
+    "repo": "/home/exedev/repo",
+    "lock": "/home/exedev/repo/.claude/ultrapowers/RUN_LOCK"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "                   [ 44%]\\ntests/test_harvest_runs.py ............................................. [ 48%]\\n...............................................................          [ 53%]\\ntests/test_hunks.py ...................                                  [ 55%]\\ntests/test_hygiene_check.py ...........                                  [ 56%]\\ntests/test_js_specs.py ......                                            [ 56%]\\ntests/test_judge.py ...                                                  [ 57%]\\ntests/test_kernel_bijection.py .......                                   [ 57%]\\ntests/test_marker_compiler.py .                                          [ 57%]\\ntests/test_marker_contract.py ............                               [ 58%]\\ntests/test_merge_ledger.py .......................                       [ 60%]\\ntests/test_no_prompt_drift.py .................                          [ 62%]\\ntests/test_orchestrator_markers.py .                                     [ 62%]\\ntests/test_path_variables.py .                                           [ 62%]\\ntests/test_plan_check.py ............                                    [ 63%]\\ntests/test_probe.py ...                                                  [ 63%]\\ntests/test_recommendation_rubric.py ..............                       [ 64%]\\ntests/test_record_wf_run.py ...........                                  [ 65%]\\ntests/test_redirect_args.py ...................................          [ 68%]\\ntests/test_rehydrate.py ........                                         [ 69%]\\ntests/test_repo_weave_report_determinism.py ...........                  [ 70%]\\ntests/test_report_runbook.py ...                                         [ 70%]\\ntests/test_residual_manifest.py ............................             [ 72%]\\ntests/test_resolve_superpowers.py .....                                  [ 73%]\\ntests/test_review_package.py ..........                                  [ 74%]\\ntests/test_run_acceptance.py ........................................... [ 77%]\\n...............                                                          [ 79%]\\ntests/test_run_lock.py ..........                                        [ 79%]\\ntests/test_salvage_args.py ...............                               [ 81%]\\ntests/test_serve_viewer.py .....                                         [ 81%]\\ntests/test_session_hook.py .........                                     [ 82%]\\ntests/test_skill_budget.py .                                             [ 82%]\\ntests/test_skill_wf_run_record.py ...                                    [ 82%]\\ntests/test_superpowers_compat.py s..                                     [ 82%]\\ntests/test_superpowers_contract.py ....                                  [ 83%]\\ntests/test_swarm_agents.py .....                                         [ 83%]\\ntests/test_swarm_wiring.py .                                             [ 83%]\\ntests/test_sweep_worktrees.py ........................................   [ 87%]\\ntests/test_terminal_teardown.py ...                                      [ 87%]\\ntests/test_ultra_gate.py ...........................                     [ 89%]\\ntests/test_ultra_run.py ................................................ [ 93%]\\n.............                                                            [ 94%]\\ntests/test_ultra_run_overlap.py ....                                     [ 95%]\\ntests/test_ultraplan_skill.py ...........                                [ 96%]\\ntests/test_validate_skill.py .........                                   [ 96%]\\ntests/test_version_sync.py .                                             [ 97%]\\ntests/test_viewer.py ..................                                  [ 98%]\\ntests/test_warm_cache.py ..............                                  [ 99%]\\ntests/test_webapp_fixture.py ...                                         [100%]\\n\\n================= 1180 passed, 1 skipped in 243.81s (0:04:03) ==================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
