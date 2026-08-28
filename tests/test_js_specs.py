@@ -20,6 +20,7 @@ SPECS = [
     ("audit_project_spec.mjs", "ALL TESTS PASSED"),
     ("wave_ancestry_sim.mjs", "ALL SCENARIOS PASSED"),
     ("sim_workflow.mjs", "ALL SCENARIOS PASSED"),
+    ("sim_base_ancestry.mjs", "ALL SCENARIOS PASSED"),
 ]
 
 

@@ -274,7 +274,7 @@ const IMPLEMENTER_PROMPT = [
   '- INTERFACES - the exact neighboring signatures your task consumes and the contract it produces (may be absent). Consumes names symbols earlier tasks expose that you may call; Produces is the contract later tasks rely on — match those names and types exactly, since the implementers that consume them never see your code.',
   '',
   'Workflow — red green refactor:',
-  "1. Anchor to BASE first: run git rev-parse HEAD; if it differs from BASE, run git reset --hard <BASE> before anything else — engine worktrees are sometimes cut from a stale ref, and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts.",
+  "1. Anchor to BASE first, before any other command: run git rev-parse HEAD and report the printed sha verbatim as startHead in your JSON result; if it differs from BASE, run git reset --hard <BASE> and confirm git rev-parse HEAD now equals BASE before anything else — engine worktrees are cut from the session checkout, not from BASE, so a mismatch is expected whenever the repository holds commits newer than the run base (#314), and building on the wrong parent reintroduces other tasks' changes and forces merge conflicts. Never run git stash in an engine worktree: stash refs are repository-global and race the implementers running beside you — read an earlier state with git show <sha>:<path> or git diff <sha> -- <path> instead.",
   '2. If a WORKTREE SETUP line is present, run it before building or testing: it prefers a warm dependency cache (a near-instant hardlink-clone of a prebuilt node_modules / .venv) and falls through to a real install on a cache miss, then warms the cache for sibling worktrees. The cache is an optimization only — your work is correct whether it hits or misses.',
   '3. Read and restate the acceptance criteria from the task text before touching code.',
   '4. Write or update tests that encode those criteria. Where the task specifies exact outputs — error lists and their order, JSON shapes, return values — assert the full expected value with equality, not loose containment, and cover the type edge cases the spec implies (e.g. a bool passing an int check). Confirm they fail (pnpm check or equivalent).',
@@ -696,13 +696,14 @@ const completenessPrompt = (mergeHeadSha, mergedShas) => {
 // ── Baked schemas (source: references/reviewer-prompts.md) ────────────────────
 const IMPLEMENTER_SCHEMA = {
   type: 'object',
-  required: ['status', 'summary', 'branch', 'headSha'],
+  required: ['status', 'summary', 'branch', 'headSha', 'startHead'],
   properties: {
     status: { enum: ['DONE', 'DONE_WITH_CONCERNS', 'NEEDS_CONTEXT', 'BLOCKED'] },
     summary: { type: 'string' },
     concerns: { type: 'array', items: { type: 'string' } },
     branch: { type: 'string' },
     headSha: { type: 'string' },
+    startHead: { type: 'string' },
   },
 }
 const REVIEWER_SCHEMA = {
@@ -1111,6 +1112,30 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // blind-escalation into the same overload storm.
   if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
   noteConcerns(impl)
+  // #314: the provisioning-drift guard. Engine worktrees are cut by the runtime
+  // (isolation: 'worktree'), not by this script, so the assert that HEAD equals
+  // BASE before any work can only run inside the worktree — the prompt's step 1
+  // orders it and the schema REQUIRES the pre-reset sha back as startHead. The
+  // engine derives the correction here (never model-typed): a startHead that
+  // differs from the dispatched BASE means the worktree was provisioned off
+  // BASE and the implementer reset to it. Exact equality, not ancestry — on the
+  // #314 shape BASE is an ancestor of the stale ref, so an ancestor test passes
+  // silently. Recorded on the task entry and as an autonomy judgment call — the
+  // signal the #314 eval record counts. An absent startHead is engine-bypass
+  // class (the schema requires it): the anchor is unverified, and says so.
+  // Fix-round replies are not compared: their BASE is the prior implementation
+  // HEAD, so a reset there is by design.
+  let baseCorrected = null
+  if (typeof impl.startHead === 'string' && impl.startHead.trim()) {
+    if (impl.startHead.trim() !== baseSha) {
+      baseCorrected = { from: impl.startHead.trim(), to: baseSha }
+      judgmentCalls.push('task ' + task.id + ': worktree provisioned at ' + baseCorrected.from +
+        ', not BASE ' + baseSha + ' — reset to BASE before any work (#314)')
+      log('task ' + task.id + ': provisioned off BASE — corrected (#314)')
+    }
+  } else {
+    judgmentCalls.push('task ' + task.id + ': implementer reported no startHead — BASE anchoring unverified (#314)')
+  }
   // Fail fast on a DONE without mergeable coordinates (schema requires
   // branch/headSha, so this needs an engine bypass): dispatching the reviewer
   // would thread "HEAD: undefined" into a checkout it cannot perform — the
@@ -1122,13 +1147,13 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     judgmentCalls.push('task ' + task.id + ': reported done without mergeable ' +
       'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
     log('task ' + task.id + ' FAILED: done without mergeable coordinates — review skipped')
-    return { task: task.id, status: 'failed', branch: impl.branch,
+    return { task: task.id, baseCorrected, status: 'failed', branch: impl.branch,
              reviewVerdict: 'lost-coordinates',
              notes: 'reported done without mergeable coordinates — downgraded to failed before review',
              tier: economics.tier, review: economics.review, fixIterations: 0 }
   }
   if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-    return { task: task.id, status: 'failed', branch: impl.branch,
+    return { task: task.id, baseCorrected, status: 'failed', branch: impl.branch,
              reviewVerdict: 'not-reviewed', notes: impl.summary,
              tier: economics.tier, review: economics.review, fixIterations: 0 }
   }
@@ -1203,7 +1228,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         judgmentCalls.push('task ' + task.id +
           ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
       }
-      return { task: task.id, status: 'done', branch: impl.branch,
+      return { task: task.id, baseCorrected, status: 'done', branch: impl.branch,
                headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail)
                  .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
@@ -1211,7 +1236,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     }
     if (iter === 2) {
       log('task ' + task.id + ' FAILED: fix-loop cap (2) reached with blocking issues remaining')
-      return { task: task.id, status: 'failed', branch: impl.branch,
+      return { task: task.id, baseCorrected, status: 'failed', branch: impl.branch,
                reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
                tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
@@ -1255,13 +1280,13 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
       judgmentCalls.push('task ' + task.id + ': fix round reported done without mergeable ' +
         'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
       log('task ' + task.id + ' FAILED: fix round done without mergeable coordinates — review skipped')
-      return { task: task.id, status: 'failed', branch: impl.branch,
+      return { task: task.id, baseCorrected, status: 'failed', branch: impl.branch,
                reviewVerdict: 'lost-coordinates',
                notes: 'fix round reported done without mergeable coordinates — downgraded to failed before review',
                tier: economics.tier, review: economics.review, fixIterations: 1 }
     }
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-      return { task: task.id, status: 'failed', branch: impl.branch,
+      return { task: task.id, baseCorrected, status: 'failed', branch: impl.branch,
                reviewVerdict: 'blocked-after-fix', notes: impl.summary,
                tier: economics.tier, review: economics.review, fixIterations: 1 }
     }

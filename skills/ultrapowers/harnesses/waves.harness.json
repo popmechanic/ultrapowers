@@ -3,7 +3,7 @@
   "file": "waves.js",
   "purpose": "plan -> parallel waves -> independent review -> merge",
   "writeSide": true,
-  "version": "0.0.13",
+  "version": "0.0.14",
   "fixtures": "tests/test_js_specs.py",
   "driftTest": "tests/test_no_prompt_drift.py"
 }
