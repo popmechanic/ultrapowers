@@ -800,18 +800,21 @@ export const driveOne = async ({
       versionStamp = false
     }
   }
-  // The image-side half (#282, distill P5): the two cells above both derive
+  // The installed half (#282, distill P5): the two cells above both derive
   // from the pushed ref, so a plugin baked STALE into the golden image passes
   // them. The shim also stamps the version `claude plugin list` reports as
-  // installed; when it disagrees with the pushed manifest, the engine that ran
-  // was not the one under test. Absent (older shim, unreadable list) → skipped.
+  // installed AFTER the run; since #373 the sandbox installs the plugin from
+  // its own `fleet-base` checkout before launching (and refuses to launch if
+  // that fails), so a disagreement here means that install did not take —
+  // the engine that ran was not the one under test. Absent (older shim,
+  // unreadable list) → skipped.
   const installedCell = store.getCell('runs', runId, 'installedPluginVersion')
   const installedPluginVersion = isNonEmptyString(installedCell) ? installedCell : null
   if (installedPluginVersion !== null && expectedStamp !== null && installedPluginVersion !== expectedStamp.pluginVersion) {
     errors.push(
       `installed plugin mismatch: sandbox has ultrapowers ${installedPluginVersion} installed, ` +
-        `pushed base is ${expectedStamp.pluginVersion} — stale golden image; ` +
-        `run \`claude plugin update ultrapowers@ultrapowers\` on fleet-golden (#282)`,
+        `pushed base is ${expectedStamp.pluginVersion} — the sandbox's install from its fleet-base ` +
+        `checkout did not take (#373); read the \`claude plugin\` lines in shim.log (#282)`,
     )
     versionStamp = false
   }
