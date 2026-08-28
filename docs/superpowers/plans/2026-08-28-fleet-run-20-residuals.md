@@ -23,8 +23,8 @@
 - Every `fleet/tests/*.mjs` file must exit 0 within 120 s AND print `ALL TESTS PASSED` (that exact string, #351) — `tests/test_fleet_suite.py` gates on both. Measured on main at 90061f9: `fleet/tests/test_drive.mjs` 61 s. New scenarios must be cheap (reuse `driveDefaults`, short waits, never a scenario that idles a full default timeout); the two tasks together may add at most one full stub-sandbox drive (~6 s) plus pre-provision refusals (<1 s each).
 - The §W1d gate-read object stays EXACTLY five keys — `o1`, `receiptsResolvable`, `leaseContinuity`, `versionStamp`, `spendObservational` — existing tests pin it by full `deepEqual`. New drive facts go in `detail` only.
 - Edits to `fleet/tests/test_drive.mjs` are PURELY ADDITIVE: no existing line is modified or deleted; new scenario blocks are appended immediately before the file's final `console.log('ALL TESTS PASSED')` line; inserted assertions go at the named anchors only. Each appended scenario is order-independent of its sibling task's appends (unique `runId`, unique `dbDir`, its own side branch, cleans up after itself), because the fold may union them in either order.
-- The `exec` seam contract, after this plan: `(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{code: number, stdout: string, stderr?: string}>` — `opts.env` is #368's per-command layered environment and is untouched here; `stdout` is exactly what the command printed on stdout; `stderr` is optional (test stubs may omit it) and is only ever appended to diagnostic lines, never compared or parsed.
-- `python3 -m pytest` green (baseline on main at 42734e8 + whatever main has gained) before merge.
+- The `exec` seam contract, after this plan: `(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{code: number, stdout: string, stderr?: string}>` — the optional env is #368's per-command layered environment and is untouched here; `stdout` is exactly what the command printed on stdout; `stderr` is optional (test stubs may omit it) and is only ever appended to diagnostic lines, never compared or parsed.
+- `python3 -m pytest` green (baseline on main at 90061f9 + whatever main has gained) before merge.
 
 ---
 
@@ -47,11 +47,11 @@
 
 **Why.** `fleet/drive.mjs`'s #337 dirty check compares the working-tree plan byte-for-byte against `exec('git -C <repo> show <baseRef>:<rel>').stdout`, but the PRODUCTION seam `shellExec` (`fleet/drive-one.mjs`) resolves `stdout: \`${stdout}${stderr}\``. Any stderr chatter from `git show` that still exits 0 (a `warning:`/`hint:` from a global config, an advice message) lands in `committedText`, `workingText !== committedText` fires, and the live drive hard-refuses a clean, committed plan with `differs between …` — no override exists for that branch. The fixture never caught it because `_drive_helpers.mjs`'s `sh` keeps `stderr` off `stdout`. The stamp read (`JSON.parse(manifestRes.stdout)`) tolerated the concatenation only by accident; it is unaffected by the fix. Two more unpinned properties ride along: `git show` emits the raw blob while the working tree is the smudged checkout, which only coincide because the repo carries no `.gitattributes` (item 4), and the three #337 refusal scenarios assert `provisioned === false` but not that no orchestrator/store directory was created (item 6; scenario 18 in `fleet/tests/test_drive_lifecycle.mjs` is the pattern).
 
-**Region map for `fleet/drive.mjs`** (a sibling task edits the preflight block in the same file; stay out of it): this task touches ONLY (a) the `@param … opts.exec` JSDoc line above `export const driveOne`, (b) the `errors.push(\`${label}: code …\`)` line inside `captureJson`, and (c) the `else errors.push(\`pull sandbox logs: code …\`)` line inside `pullLogsOnce`. Do not touch anything between `const planFile = …` and the end of the `assessHeadlessFitness` conditional.
+**Region map for `fleet/drive.mjs`** (a sibling task edits the preflight block in the same file; stay out of it): this task touches ONLY (a) the `@param … opts.exec` JSDoc line above `export const driveOne`, (b) the teardown-capture section — one new helper inserted directly above `const boundedExec = (cmd, opts) => {`, the `errors.push(\`${label}: code …\`)` line inside `captureJson`, and the `else errors.push(\`pull sandbox logs: code …\`)` line inside `pullLogsOnce` — and (c) the two publish-leg failure lines `errors.push(\`push ${fetchedBranch} to origin failed …\`)` and `errors.push(\`gh pr create for ${fetchedBranch} failed …\`)`. Do not touch anything between `const planFile = …` and the end of the `assessHeadlessFitness` conditional (the #337 preflight — Task 2's region). Do not touch `fleet/shim-main.mjs` (its own `shellExec` is #373 / PR #375's).
 
-Keep `fleet/tests/test_drive.mjs` under the 120 s cap (#351): this task adds exactly one full stub-sandbox drive (13e, ~6 s on a 60 s baseline) and three pairs of `fs.existsSync` assertions.
+Keep `fleet/tests/test_drive.mjs` under the 120 s cap (#351): this task adds exactly one full stub-sandbox drive (13e, ~6 s on a 61 s baseline) and three pairs of `fs.existsSync` assertions.
 
-- [ ] **Step 1: Write the failing `shellExec` shape pin.** In `fleet/tests/test_drive_one.mjs`, add `shellExec` to the import list from `../drive-one.mjs` (alphabetical: after `parseArgs`, before `usage`), then insert this block immediately before the file's final `console.log(\`\nALL TESTS PASSED (${passed})\`)` line:
+- [ ] **Step 1: Write the failing `shellExec` shape pin.** In `fleet/tests/test_drive_one.mjs`, `shellExec` is already imported from `../drive-one.mjs`. First update the two existing #368 `deepEqual` pins in the block that begins `// #368: shellExec layers a per-command env over the process environment` so they carry the new key — replace `assert.deepEqual(withEnv, { code: 0, stdout: 'rode-the-env' })` with `assert.deepEqual(withEnv, { code: 0, stdout: 'rode-the-env', stderr: '' })` and `assert.deepEqual(without, { code: 0, stdout: 'unset' })` with `assert.deepEqual(without, { code: 0, stdout: 'unset', stderr: '' })` (the other two assertions in that block read `.stdout` and are unchanged). Then insert this block immediately before the file's final `console.log(\`\nALL TESTS PASSED (${passed})\`)` line:
 
 ```js
 // --- shellExec (#362-1) ----------------------------------------------------
@@ -74,52 +74,65 @@ Keep `fleet/tests/test_drive.mjs` under the 120 s cap (#351): this task adds exa
 - [ ] **Step 2: Run it to see it fail.**
 
 Run: `node fleet/tests/test_drive_one.mjs`
-Expected: FAIL at the first `deepEqual` — actual `{ code: 0, stdout: 'outerr' }` (stderr concatenated, no `stderr` key).
+Expected: FAIL at the updated `withEnv` pin — actual `{ code: 0, stdout: 'rode-the-env' }` has no `stderr` key (and, had it got that far, the new block's first `deepEqual` would see `stdout: 'outerr'`, stderr concatenated).
 
-- [ ] **Step 3: Fix `shellExec`.** In `fleet/drive-one.mjs`, replace the `shellExec` export with:
+- [ ] **Step 3: Fix `shellExec`.** In `fleet/drive-one.mjs`, replace the `shellExec` export (its `// \`env\` (#368) is LAYERED …` comment included) with:
 
 ```js
+// `env` (#368) is LAYERED over the process environment for that one command —
+// the publish leg's GH_TOKEN rides here and nowhere else: never on argv, never
+// exported into this process, never in the log.
 // #362-1: stdout and stderr travel SEPARATELY. drive.mjs's #337 preflight
 // compares the working-tree plan byte-for-byte against `git show`'s stdout;
 // folding stderr chatter (a `warning:`/`hint:` line from a global config)
 // into it read a clean, committed plan as dirty and hard-refused the drive.
 // Callers that want the diagnostic text of a failed command read `stderr`.
-export const shellExec = (cmd) =>
+export const shellExec = (cmd, { env } = {}) =>
   new Promise((resolve) => {
-    execFile('/bin/sh', ['-c', cmd], { maxBuffer: 1024 * 1024 * 16 }, (error, stdout, stderr) =>
-      resolve({ code: error?.code ?? 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+    execFile(
+      '/bin/sh',
+      ['-c', cmd],
+      { maxBuffer: 1024 * 1024 * 16, env: env ? { ...process.env, ...env } : process.env },
+      (error, stdout, stderr) =>
+        resolve({ code: error?.code ?? 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') }),
     )
   })
 ```
 
-- [ ] **Step 4: Keep the diagnostics legible.** Three lines used to inherit stderr text through the concatenation; give each the `stderr` field explicitly so a failed teardown capture or tunnel still names its reason.
+- [ ] **Step 4: Keep the diagnostics legible.** Five lines used to inherit stderr text through the concatenation (a failed `ssh … stat`, log pull, `git push`, or `gh pr create` names its reason on stderr); give each the `stderr` field explicitly.
 
-In `fleet/drive.mjs`, inside `captureJson`, replace the non-zero-code branch:
+In `fleet/drive.mjs`, insert directly above the comment block that precedes `const boundedExec = (cmd, opts) => {`:
 
 ```js
-      if (result?.code !== 0) {
-        const diag = [raw.trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
-        errors.push(`${label}: code ${result?.code} ${diag}`.trim())
-        return null
-      }
+  // #362-1: the exec seam keeps stderr OFF stdout (the #337 preflight compares
+  // stdout byte-for-byte), so a failed command's reason — which git, ssh and
+  // gh print on stderr — is joined back in for the diagnostic lines only.
+  const execDiagnostic = (result) =>
+    [String(result?.stdout ?? '').trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
+```
+
+In `fleet/drive.mjs`, inside `captureJson`, replace the non-zero-code branch's `errors.push` line:
+
+```js
+        errors.push(`${label}: code ${result?.code} ${execDiagnostic(result)}`.trim())
 ```
 
 In `fleet/drive.mjs`, inside `pullLogsOnce`, replace the `else errors.push(\`pull sandbox logs: …\`)` line:
 
 ```js
-        else {
-          const diag = [String(result?.stdout ?? '').trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
-          errors.push(`pull sandbox logs: code ${result?.code} ${diag}`.trim())
-        }
+        else errors.push(`pull sandbox logs: code ${result?.code} ${execDiagnostic(result)}`.trim())
 ```
+
+In `fleet/drive.mjs`, in the publish leg, replace `${scrub(pushed?.stdout)}` in the `push ${fetchedBranch} to origin failed …` line with `${scrub(execDiagnostic(pushed))}`, and `${scrub(created?.stdout)}` in the `gh pr create for ${fetchedBranch} failed …` line with `${scrub(execDiagnostic(created))}`. (`parsePullRequestUrl(created.stdout)` stays on pure stdout — that is where `gh` prints the URL.) The pins in `fleet/tests/test_drive_pr.mjs` use `startsWith` + a regex on the tail, so they are unaffected.
 
 In `fleet/drive.mjs`, replace the `opts.exec` JSDoc line above `export const driveOne`:
 
 ```js
- * @param {(cmd: string) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
+ * @param {(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
  *   `stdout` is compared byte-for-byte against the working tree by the #337
  *   preflight, so an exec MUST keep stderr off it (#362); `stderr`, when
- *   present, is only appended to the diagnostic lines the teardown captures push.
+ *   present, is only joined into diagnostic lines (execDiagnostic). The optional
+ *   env is the per-command layered environment the publish leg hands git/gh (#368).
 ```
 
 In `fleet/provision.mjs`, in the reverse-tunnel failure throw, replace the trailing interpolation `${(tunnel?.stdout ?? '').trim()}` with:
@@ -130,8 +143,8 @@ ${[(tunnel?.stdout ?? '').trim(), (tunnel?.stderr ?? '').trim()].filter(Boolean)
 
 - [ ] **Step 5: Run the shape pin and the neighbours.**
 
-Run: `node fleet/tests/test_drive_one.mjs && node fleet/tests/test_provision.mjs && node fleet/tests/test_drive_lifecycle.mjs`
-Expected: each prints `ALL TESTS PASSED`. (Lifecycle scenario 15 pins `shim-main.mjs`'s own `shellExec` by `deepEqual` to `{code, stdout}` — that is a DIFFERENT function and is untouched.)
+Run: `node fleet/tests/test_drive_one.mjs && node fleet/tests/test_provision.mjs && node fleet/tests/test_drive_pr.mjs && node fleet/tests/test_drive_lifecycle.mjs`
+Expected: each prints `ALL TESTS PASSED`. (Lifecycle scenario 15 pins `shim-main.mjs`'s own `shellExec` by `deepEqual` — a DIFFERENT function, owned by #373 / PR #375, untouched here whichever shape it has at merge time.)
 
 - [ ] **Step 6: Write the failing drive-level scenario + the `.gitattributes` pin.** Append to `fleet/tests/test_drive.mjs` immediately before its final `console.log('ALL TESTS PASSED')` line (inside the `try`, after scenario 13d). Everything used — `tmp`, `repoDir`, `olderSha`, `makeExec`, `startStubSandbox`, `driveDefaults`, `driveOne`, `OLDER_BRANCH`, `sh`, `fs`, `path`, `assert`, and the 13-series locals `commitPlanOnBranch` / `FIT_PLAN` — is already in scope; add no imports.
 
@@ -164,14 +177,17 @@ Expected: each prints `ALL TESTS PASSED`. (Lifecycle scenario 15 pins `shim-main
         })
       }, 30)
     })
-    const exec = async (cmd) => {
-      const result = await inner(cmd)
+    // Wraps the fixture exec; `opts` (#368's per-command env) rides through.
+    const exec = async (cmd, opts) => {
+      const result = await inner(cmd, opts)
       if (/^git -C \S+ show plan-chatter:/.test(cmd)) {
         chattered += 1
         return { ...result, stderr: `warning: fixture chatter on stderr (#362)\n${result.stderr ?? ''}` }
       }
       return result
     }
+    exec.cmds = inner.cmds
+    exec.calls = inner.calls
     const { read, detail } = await driveOne({
       ...driveDefaults,
       planPath: chatterRel,
@@ -222,7 +238,7 @@ Expected: each prints `ALL TESTS PASSED`. (Lifecycle scenario 15 pins `shim-main
 - [ ] **Step 8: Run the drive spec, then the whole fleet suite, and time it.**
 
 Run: `time node fleet/tests/test_drive.mjs`
-Expected: `ALL TESTS PASSED`, wall time under 120 s (target ≤ 70 s). Scenario 13e passes against the fixed preflight because `driveOne` reads only `shown.stdout`; the `chattered === 1` assertion proves the injected branch was the one compared.
+Expected: `ALL TESTS PASSED`, wall time under 120 s (target ≤ 70 s on the 61 s baseline). Scenario 13e passes against the fixed preflight because `driveOne` reads only `shown.stdout`; the `chattered === 1` assertion proves the injected branch was the one compared. 13e's green run also exercises the #368 publish leg through the fixture's stubbed push / `gh pr create`, exactly as 13d does.
 
 Run: `python3 -m pytest tests/test_fleet_suite.py -q`
 Expected: green.
@@ -253,9 +269,9 @@ git commit -m "fleet: shellExec keeps stdout pure (#362-1); pin .gitattributes-a
 
 **Why.** In the #337 preflight, when `isSafeRepoPath(planRel)` fails (a plan path with a space, or an absolute `planPath` outside `repoDir` whose `planRel` starts with `..`), `committedText` stays null while `workingText` reads fine, so `driveOne` throws `plan <rel> is in the working tree but not committed at <baseRef>` for a plan that IS committed — misleading and non-overridable, and no scenario drives it (item 2). The absent-from-both skip narration is exercised implicitly by every pre-#337 scenario via `driveDefaults.planPath` but asserted nowhere (item 3). And the #337 scenarios leave branches `plan-fit`/`plan-unfit` (test_drive.mjs) and `unfit-plan` (test_drive_lifecycle.mjs) plus a `docs/` dir in `repoDir`, so any future scenario enumerating `refs/heads/*` or asserting a clean tree becomes order-dependent on them (item 5).
 
-**Region map for `fleet/drive.mjs`** (a sibling task edits the `opts.exec` JSDoc line, the `captureJson` error line and the `pull sandbox logs` line in the same file; stay out of those): this task touches ONLY the preflight block — the lines from `let committedText = null` through the closing `}` of the `if (isSafeBranchName(baseRef) && isSafeRepoPath(planRel)) { … }` block. The four-way conditional that follows and its three messages are unchanged.
+**Region map for `fleet/drive.mjs`** (a sibling task edits the `opts.exec` JSDoc line, the `boundedExec`/`captureJson`/`pullLogsOnce` neighbourhood and the two publish-leg failure lines in the same file; stay out of those): this task touches ONLY the preflight block — the lines from `let committedText = null` through the closing `}` of the `if (isSafeBranchName(baseRef) && isSafeRepoPath(planRel)) { … }` block, inside the `#322`/`#337` comment-headed section that starts at `const planFile = …`. The four-way conditional that follows and its three messages are unchanged.
 
-Keep `fleet/tests/test_drive.mjs` under the 120 s cap (#351): this task adds two pre-provision refusals (13f, no orchestrator started, well under 1 s) and one orchestrator-start-then-abort drive (13g, ~1–2 s). The lifecycle file gains two git commands.
+Keep `fleet/tests/test_drive.mjs` under the 120 s cap (#351): on the 61 s baseline (main at 90061f9) this task adds two pre-provision refusals (13f, no orchestrator started, well under 1 s) and one orchestrator-start-then-abort drive (13g, ~1–2 s). The lifecycle file gains two git commands.
 
 - [ ] **Step 1: Write the failing guard-miss scenario.** Append to `fleet/tests/test_drive.mjs` immediately before its final `console.log('ALL TESTS PASSED')` line (inside the `try`, after scenario 13d). Everything used — `tmp`, `repoDir`, `driveDefaults`, `driveOne`, `fs`, `path`, `assert`, and the 13-series locals `FIT_PLAN` / `neverProvision` — is already in scope; add no imports. Uses the default `baseRef` (`HEAD`) and no side branch, so it is order-independent of 13e and of the cleanup in Step 6.
 
@@ -415,7 +431,7 @@ Expected: `ALL TESTS PASSED` — the narration text already exists in `driveOne`
 - [ ] **Step 8: Run both drive specs, time them, then the whole fleet suite.**
 
 Run: `time node fleet/tests/test_drive.mjs && time node fleet/tests/test_drive_lifecycle.mjs`
-Expected: both print `ALL TESTS PASSED`, each under 120 s (`test_drive.mjs` target ≤ 65 s on the 60 s baseline).
+Expected: both print `ALL TESTS PASSED`, each under 120 s (`test_drive.mjs` target ≤ 65 s on the 61 s baseline).
 
 Run: `python3 -m pytest tests/test_fleet_suite.py -q`
 Expected: green.
