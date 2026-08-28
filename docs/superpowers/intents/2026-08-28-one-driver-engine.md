@@ -222,7 +222,10 @@ park.
 
 ## Cadence
 
-One run, waves derived against the merged tree. Width ≤ 4, one wave per sandbox.
+One run, waves derived against the merged tree. **Width ≤ 8, one wave per sandbox** —
+measured on a real 8-vCPU sandbox (`evals/frontier/results/2026-08-28-wave-width.md`),
+not the inherited "4 suggested". This intent's own graph peaks at width 4, so 0.3.0 will
+not exercise 8; it is a default waiting on the first run that needs it.
 
 **Where the §6 schema chafed, recorded for #390 rather than worked around:**
 

@@ -241,7 +241,7 @@ clone. The flag is adopted; the contortion stays rejected.
 
 ## Decisions returned to the one-driver spec (#389)
 
-1. **Packing rule stands as #365 decided it** — one wave per sandbox, width ≤ ~4, siblings launched
+1. **Packing rule stands as #365 decided it** — one wave per sandbox, width **≤ 8** (measured 2026-08-28, `evals/frontier/results/2026-08-28-wave-width.md`; at N=12 the cache read share was **98.2%**, corroborating §A at real width), siblings launched
    together. No TTL flag, no `subagentPromptCacheTtl` analogue, no launch-window choreography.
    Launching siblings *together* is a wall-clock choice, not a cache choice: the cache is there an
    hour later either way.
