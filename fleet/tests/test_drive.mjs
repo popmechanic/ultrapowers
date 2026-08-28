@@ -724,6 +724,51 @@ try {
     assert.deepEqual(JSON.parse(fs.readFileSync(res.detailPath, 'utf8')).sandboxStat, res.detail.sandboxStat)
   }
 
+  // -- 7c-bis. a REFUSED capture keeps its reason in the artifact (#385 item 3) -
+  // #362 made stdout pure, and the artifact is written from stdout alone — so a
+  // command that failed with its reason on stderr wrote an EMPTY evidence file,
+  // losing exactly what the artifact exists to carry. The failure path now
+  // appends stderr under a delimiter. The success path above (7c) asserts the
+  // artifact is still byte-for-byte the payload, so this cannot have changed a
+  // green capture.
+  {
+    const runId = 'r1s'
+    const evidenceDir = path.join(tmp, 'evidence-r1s')
+    const reason = 'exe.dev: unknown flag --range=24h'
+    let sandbox = null
+    const exec = makeCaptureExec(
+      (assignment) => {
+        setTimeout(() => {
+          sandbox = startStubSandbox({
+            assignment,
+            runId,
+            receiptSha: olderSha,
+            exec,
+            branch: OLDER_BRANCH,
+            receiptPath: 'old.txt',
+          })
+        }, 30)
+      },
+      { stat: { code: 2, stdout: '', stderr: reason } },
+    )
+
+    const res = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db7s'), evidenceDir, exec, runId })
+    await sandbox
+
+    // The capture degrades to null and the run proceeds — teardown is never at risk.
+    assert.equal(res.detail.sandboxStat, null)
+    const artifact = path.join(evidenceDir, `stat-${runId}.json`)
+    assert.ok(fs.existsSync(artifact), 'a refused capture still writes its artifact')
+    const written = fs.readFileSync(artifact, 'utf8')
+    assert.notEqual(written, '', 'the artifact must not be empty when the reason is on stderr')
+    assert.ok(
+      written.includes(reason),
+      `the refusal reason must survive into the artifact, got: ${JSON.stringify(written)}`,
+    )
+    // The trailer is delimited, so a reader can tell payload from reason.
+    assert.ok(written.includes('--- stderr ---'), 'stderr is delimited, not concatenated blind')
+  }
+
   // -- 7d. a malformed-but-valid stat payload degrades to null, never throws ---
   // `points` as an OBJECT parses fine and then explodes any code that assumes an
   // array. An unguarded throw here would escape `pullLogsOnce` and skip

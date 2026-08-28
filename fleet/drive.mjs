@@ -519,10 +519,16 @@ export const driveOne = async ({
     return Promise.race([Promise.resolve().then(() => exec(cmd, opts)), timeout]).finally(() => clearTimeout(timer))
   }
 
+  // Separates a failed command's stderr from its (usually empty) stdout in the
+  // evidence artifact. Written only on the failure path (#385 item 3).
+  const STDERR_TRAILER = '\n--- stderr ---\n'
+
   // The control-plane capture that must happen while the VM still exists: its
   // resource samples. It writes its RAW stdout to the evidence dir regardless
-  // of whether it parses, so a shape change on exe.dev's side is diagnosable
-  // from the artifact rather than lost.
+  // of whether it parses — plus, on failure, stderr under `STDERR_TRAILER` —
+  // so BOTH failure shapes are diagnosable from the artifact rather than lost:
+  // a payload that changed shape (stdout, unparseable) and a command that
+  // refused (stdout empty, reason on stderr).
   //
   // Every failure mode here — refused command, non-zero exit, timeout, invalid
   // JSON, a payload that parses but carries nothing usable — pushes to `errors`
@@ -535,9 +541,18 @@ export const driveOne = async ({
       const destination = path.join(resolvedEvidenceDir, file)
       const result = await boundedExec(cmd)
       raw = typeof result?.stdout === 'string' ? result.stdout : ''
+      const stderr = typeof result?.stderr === 'string' ? result.stderr : ''
       fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
-      fs.writeFileSync(destination, raw)
-      if (result?.code !== 0) {
+      // #385 item 3. `raw` is stdout ALONE, and #362 made stdout pure — so a
+      // command that failed with its reason on stderr wrote an EMPTY artifact
+      // here, which is precisely the failure the artifact exists to diagnose.
+      // The FAILURE path appends stderr under a delimiter; the success path is
+      // byte-for-byte what it was, so nothing that reads a green artifact as
+      // JSON can be broken by this. Only `raw` is ever parsed, so the trailer
+      // cannot reach `JSON.parse`.
+      const failed = result?.code !== 0
+      fs.writeFileSync(destination, failed && stderr ? `${raw}${STDERR_TRAILER}${stderr}` : raw)
+      if (failed) {
         errors.push(`${label}: code ${result?.code} ${execDiagnostic(result)}`.trim())
         return null
       }
