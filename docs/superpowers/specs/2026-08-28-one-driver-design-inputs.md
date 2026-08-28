@@ -155,3 +155,31 @@ Half 1 of the eureka does not need Half 2. Before the `waves.js` port begins, on
 
 **Route (revised):** #368 ∥ #365 → **Phase 0 cut** → #243 grilling → one-driver spec (adopt-or-answer every row of this file) → port on branch → 0.3.0 → #360 Tier 1.
 
+
+## Amendment 3 (2026-08-28) — §Harness mechanics verified by #365: three rows corrected, one blocker
+
+`docs/superpowers/specs/2026-08-28-claude-p-worker-parity.md` reproduced every row above
+(36 `claude -p` invocations, 27 on the fleet's 2.1.238, all subscription OAuth). The
+table stands except where this amendment says otherwise; the spec adopts the **corrected**
+row, and the parity doc is the citation.
+
+| row | correction |
+|---|---|
+| Structured worker replies | the harness itself retries in-loop (a `[structured-output-enforce]` nudge; schema violations bounce to the model as tool errors); the fail-closed envelope is `subtype: error_max_turns`, exit 1, `structured_output: null`. So: **not** "non-zero exit, no retry" — the driver's retry-with-escalation wraps a harness that already retried |
+| Spend from the result | subagent tokens fold into `modelUsage` / `total_cost_usd` exactly (#209 retires) — but the top-level `usage` is the LAST API call only; **sum `modelUsage`**. Tokens stay the cap unit; `--max-budget-usd` trips at exit 1 `error_max_budget_usd` (backstop) |
+| Failure classes | observed exits are **0** (completed — and a SIGINT abort with `is_error: true`), **1** (max_turns, budget, not-logged-in), **143** (SIGTERM, no envelope). No 2, no 130. Classify from `subtype` / `terminal_reason`, never the exit code alone; `api_retry` cited, not reproduced |
+| Fix rounds resume | mechanism holds headless; the cost claim is **not** supported at n=1 (resume 1.7× fresh after ~10 min cache decay). The pre-registered measurement stands. Driver must close the worker's stdin (`</dev/null`) |
+| Prompt files, no bake | **BLOCKER: `--bare` refuses subscription OAuth** on 2.1.238 and 2.1.250 ("Not logged in", exit 1, even with `CLAUDE_CODE_OAUTH_TOKEN`; the docs say bare reads only `ANTHROPIC_API_KEY`/`apiKeyHelper` and will become the `-p` default "in a future release"). Proven substitute: `--setting-sources user --disable-slash-commands` + per-run `CLAUDE_CONFIG_DIR` — project hooks don't fire, the repo's CLAUDE.md is not loaded, skills are off, `--json-schema` + `--append-system-prompt-file` honored. **Watch-item for the port:** the day `-p` defaults to bare, workers need an explicit non-bare flag or the fleet's auth route (#213) breaks |
+| Worker-side subagents | holds; a background subagent can emit TWO `result` lines in stream-json — take the last |
+| Agent SDK | cite-only; the docs carry a policy note that third parties may not offer claude.ai login for SDK-built products → CLI-first is also the policy-safe path. Trigger for switching: a synchronous `canUseTool` decision a hook cannot express |
+
+**Packing rule (decided):** one wave per sandbox — workers per sandbox = wave width, capped by a
+driver constant (4 suggested), spilling to a second sandbox only above the cap. N=3 on a
+1-vCPU/2 GB box ran clean; the binding limits are the account rate window and per-worker
+worktree disk/CPU, not the CLI. Sandboxes-per-wave buys nothing and multiplies `cp fleet-golden`.
+
+**The driver builds itself:** worktree provisioning at BASE, wave scheduler + process supervisor
+(last `result` line, SIGTERM timeout), retry-with-escalation on `structured_output: null`,
+`modelUsage` token metering, the failure-class table, three role flag-sets (data, not prose),
+the per-run config-dir layout.
+
