@@ -513,9 +513,50 @@ ssh exe.dev "rm fleet-<runId> --json"
 `rm` accepts multiple VM names in one call (#179 fact sheet §6) — sweep every
 orphan in one shot: `ssh exe.dev "rm fleet-run-1 fleet-run-2 --json"`.
 
-**`skills/ultrapowers/scripts/sweep_worktrees.sh` is unrelated and untouched by
-any of this.** It reclaims local git worktrees on the operator's own machine
-(`CLAUDE.md`: "Self-hosting a `/ultrapowers` run? Serialize them"). Fleet
-sandboxes are disposable `exe.dev` VMs, not worktrees — cleaning up a stuck
-sandbox is always the `ssh exe.dev "rm <vmName> --json"` command above, never
-`sweep_worktrees.sh`.
+**Cleaning up a stuck sandbox is always `ssh exe.dev "rm <vmName> --json"`.**
+(This paragraph used to contrast that with `sweep_worktrees.sh`, a local
+worktree reclaimer deleted in Phase 0 / 0.2.26. Fleet sandboxes are disposable
+`exe.dev` VMs, never worktrees — #386 residual, cleared.)
+
+
+## Capacity — read the meter, never sum the allocation
+
+**One command answers "do we have room":**
+
+```bash
+ssh exe.dev "billing usage --json"   # what the plan actually meters
+ssh exe.dev "billing plan  --json"   # the limits it meters against
+```
+
+**The plan meters CONSUMPTION, not allocation, and the difference is large
+enough to invert a decision.** Summing `allocated_cpus` across `ls --json`
+gave 31 vCPU against a `max_cpus` of 16 — an apparent 2× oversubscription that
+does not exist. The meter is `avg_cpu_cores`, and it read **0.245**. Same trap
+on disk: `disk_capacity_bytes` summed to 288 GB provisioned while the metered
+`disk_used_bytes` was **68.9 GB** of 800 — the plan's own footnote says
+*"measured as filesystem usage"*.
+
+Reading, 2026-08-28, for scale:
+
+| resource | metered | limit | |
+|---|---|---|---|
+| CPU | `avg_cpu_cores` 0.245 | `max_cpus` 16 | 1.5% |
+| disk | `disk_used_bytes` 68.9 GB | `pooled_disk_gb` 800 | 8.6% |
+| VMs | `vm_count` 13 | `max_vms` 50 | 26% |
+| bandwidth | rx 1.1 + tx 2.3 GB | 200 GB | 1.7% |
+
+**So exe.dev capacity has not been, and is not close to, the binding constraint
+on wave width or on concurrent runs.** Do not reason about width from VM sizing
+without reading this first.
+
+**Caveat that matters for width specifically:** `avg_cpu_cores` is an average
+over the billing cycle, so it proves the *account* is far from its meter and
+says nothing about whether one wave saturates one sandbox. That question is
+per-VM, and the instrument is:
+
+```bash
+ssh exe.dev "stat <vmName> --json --range=24h"
+```
+
+which `drive.mjs:212` already captures per run into the evidence bundle. Peak
+vs mean for a wave is read from there, not from `billing usage`.
