@@ -97,7 +97,8 @@ contended-merge/fold (`:1457`), resolver (`:1582`), merge (`:1759`), reconcile (
 critic (`:2199`). Three of those **write to the integration worktree** — `waves.js:232–235`
 names them: *"the setup, merge, and reconcile roles … the run's dedicated integration
 worktree, which those write-side roles may modify."* A four-row table cannot express them,
-so the table is six rows, grouped by **writable root**, which is the only axis that matters:
+so the table below is **five rows covering all seven roles**, grouped by **writable
+root** — the only axis that matters for isolation:
 
 | role | model / effort | permission | tools | writable root |
 |---|---|---|---|---|
@@ -680,7 +681,7 @@ halted nearly every run. **Adopt-or-answer for every finding, rejections visible
 | # | finding | disposition |
 |---|---|---|
 | 1 | §5's `rate_limit_event` predicate is contradicted by its own citation — R-o8 saw one in a 21 s width-1 test at 9% utilization; as written it halts every run at wave 1 | **ADOPTED, section rewritten** (§5). The reviewer is also right that no such event type is documented: it is `system`/`api_retry` with `error: "rate_limit"`. Now a two-clause predicate (retry *exhaustion*, or a rate-plus-delay threshold set from the first three runs), with an explicit fallback to observation-only if no threshold separates ordinary retries from pressure |
-| 2 | §3's four-row table cannot express merge / reconcile / resolver, which write to the integration worktree | **ADOPTED** (§3). Verified at `waves.js:232–235` and the dispatch sites. Table is six rows grouped by writable root |
+| 2 | §3's four-row table cannot express merge / reconcile / resolver, which write to the integration worktree | **ADOPTED** (§3). Verified at `waves.js:232–235` and the dispatch sites. Table is five rows covering all seven roles, grouped by writable root |
 | 3 | the ported critic loses `git checkout --detach`, which releases the branch `ultra_gate.py --approve` needs | **ADOPTED** (§3). Verified at `waves.js:373–376` and `:619–630`. This one weakened a receipt, which rule 1 forbids — the best catch in the review |
 | 4 | `--add-dir` is unexercised; the Bash-write predicate is unspecifiable; `git diff --output=` is an open escape | **ADOPTED with a named limit** (§3). `--add-dir` becomes a build-blocking repro. The Bash denial is a closed denylist of write-capable git forms, not a general predicate — stated as a narrowing, with the hook as boundary and the sandbox as backstop |
 | 5 | wave shape is compiled from `Files:` the intent doc does not carry | **ADOPTED** (§6). `Files:` is signed; the wave author may only *narrow* it. Resolves the contradiction with keeping `compile_plan.py` verbatim |
