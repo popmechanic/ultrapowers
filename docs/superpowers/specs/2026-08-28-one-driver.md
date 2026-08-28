@@ -323,10 +323,25 @@ Three facts make that the right trade rather than a punt:
    anything (`eval-cell-ops-lessons`). The cost of not gating is a slow, expensive run —
    **not a corrupt one.** That asymmetry is what makes it safe to wait for real numbers.
 
-**What 0.3.1 gets that 0.3.0 could not have:** a distribution of `api_retry` behaviour from
+**0.3.0 records two meters, not one**, because they fail differently and 0.3.1 must tell
+them apart:
+
+| meter | source | status |
+|---|---|---|
+| **model** — the account rate window | `api_retry` events in `stream-json` | reactive proxy; the direct read (`/api/oauth/usage`) is blocked on the orchestrator's token scope |
+| **substrate** — exe.dev capacity | `ssh exe.dev "billing usage --json"` + per-run `stat <vm> --range=24h` | **readable today, no credential problem** |
+
+**Read the meter, never sum the allocation.** Summing `allocated_cpus` across VMs reports
+31 against a `max_cpus` of 16 — an apparent 2× oversubscription that does not exist; the
+plan meters `avg_cpu_cores`, which read **0.245**. Disk is the same trap (288 GB provisioned
+vs 68.9 GB metered, against 800). At those readings exe.dev capacity is not the binding
+constraint on width or on concurrent runs, and no width decision should be argued from VM
+sizing without this reading first (RUNBOOK §Capacity).
+
+**What 0.3.1 gets that 0.3.0 could not have:** a distribution of both meters' behaviour from
 real multi-wave runs, so the predicate — whether that ends up being retry exhaustion, a rate
-threshold, or the predictive `/api/oauth/usage` poll — is fitted to observed pressure rather
-than to an estimate. The deferred credential work (below) can be scheduled against that same
+threshold, a capacity threshold, or the predictive `/api/oauth/usage` poll — is fitted to
+observed pressure rather than to an estimate. The deferred credential work (below) can be scheduled against that same
 release.
 
 ## 6. The intent document, and rule 7's ceiling

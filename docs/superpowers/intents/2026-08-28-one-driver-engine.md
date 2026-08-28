@@ -114,17 +114,27 @@ dependencies and the ultradocket rework ship in the same release from a separate
   derivation, quotes the diff back once, and parks on the retry. Wave 1 never invokes the
   wave author at all.
 
-### T7 — admission observation
+### T7 — admission observation, from both meters
 
 - **Depends-on:** T1
 - **Interfaces:** `admission[]` rows on the receipt
-- **Produces:** `api_retry` counts, `error` values and `retry_delay_ms` recorded per wave
-  **and** per task; nothing gated
+- **Produces:** per wave boundary **and** per mid-wave checkpoint — (a) the *model* meter:
+  `api_retry` counts, `error` values and `retry_delay_ms` from `stream-json`; (b) the
+  *substrate* meter: `avg_cpu_cores`, `disk_used_bytes` and `vm_count` from
+  `ssh exe.dev "billing usage --json"`, plus the run sandbox's own
+  `stat <vm> --json --range=24h`. Nothing is gated.
 - **Files:** `fleet/admission.mjs`, `fleet/tests/test_admission.mjs`
 - **tier:** standard
 - **Acceptance:** `see:` after any multi-wave run, `admission[]` carries one row per wave
-  boundary and per mid-wave checkpoint, each with its counts, and **every row's `decision` is
-  `observed`**. A row with any other value is a bug in this release.
+  boundary and per mid-wave checkpoint, each with **both** meters, and **every row's
+  `decision` is `observed`**. A row with any other value is a bug in this release.
+
+  Two meters and not one, because they fail differently and 0.3.1 has to tell them apart:
+  the model meter is the account rate window (the `/api/oauth/usage` half is unreadable from
+  the orchestrator's token, so `api_retry` is the reactive proxy), and the substrate meter is
+  exe.dev capacity, which **is** readable today with no credential problem. **Read the meter,
+  never sum allocation** — summing `allocated_cpus` reports 31 against a cap of 16 while the
+  metered `avg_cpu_cores` is 0.245 (RUNBOOK §Capacity).
 
 ### T8 — the receipt carries the derivation
 
