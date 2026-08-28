@@ -46,6 +46,83 @@ merged tree, and is disposable.
 standing grant, park-by-default, one human gate on the PR. This spec moves *who sequences*,
 never *what is proven* (rule 1).
 
+## 1a. The seam already exists — the port is one function
+
+*Added 2026-08-28, after the spec was plan-ready and while reviewing the build plan. It is
+the most important paragraph in this document, and it makes §10 much smaller.*
+
+`harnesses/waves.js` **is already parameterised over its worker dispatcher.** It is not a
+Workflow-tool program; it is a function of six injected globals, and the Workflow tool is
+merely one thing that supplies them. `tests/sim_workflow.mjs` proves it by supplying a
+different set:
+
+```js
+const factory = new Function(
+  'agent', 'parallel', 'phase', 'log', 'args', 'budget',
+  '"use strict"; return (async () => {\n' + SRC + '\n})();'
+)
+```
+
+So there are already **two** implementations of the seam in the repo — the runtime's, and
+the sim's stub. **The driver is the third.**
+
+**The whole interface is `agent(prompt, opts)` with a four-key options object:**
+
+| key | at how many sites | becomes |
+|---|---|---|
+| `label` | every call | worker identity, receipt and store rows |
+| `model` | every call | `--model` |
+| `schema` | every call | `--json-schema` |
+| `isolation: 'worktree'` | **two** (`:1107` implementer, `:1265` fix) | **the driver cuts a clone at BASE** |
+
+Ten call sites, one contract, and one documented return convention the driver must honour
+exactly: **`agent()` returns `null`** — never throws — on terminal overload, which
+`runTaskInner` converts into `AGENT_NULL` for the barrier-retry path.
+
+Of the other five globals, `parallel` is `Promise.all(thunks.map(t => t()))` (the sim's own
+default), `phase` and `log` are store writes or no-ops, `args` is what `drive-one` already
+assembles, and `budget` is `undefined` — the Workflow runtime's object, deleted with the cap
+(§5, §8a).
+
+### What this changes
+
+**The port is a substitution, not a rebuild.** `waves.js` is 2,354 lines but only ~1,115 are
+logic (778 comments, 385 prompt strings). The wave scheduler, the bounded fix loop, fold
+adoption, reconciliation and the completeness critic **do not change at all**. What changes:
+
+1. **`runWorker(prompt, opts)`** — `agent()`'s contract, backed by `claude -p`. Every
+   measurement in this sitting was rehearsal for this one function: the parity repros (#365),
+   the cache arms (#382), the confinement repro (parity R-w3), the width curve.
+2. **Clones cut at BASE**, replacing `isolation: 'worktree'`. `waves.js:1116` names the
+   defect this removes in its own words — *"Engine worktrees are cut by the runtime
+   (`isolation: 'worktree'`), not by this script"* — which is #314, and why it becomes
+   inexpressible rather than fixed.
+3. Mechanical: the file moves into `fleet/`, the baked prompt strings become `roles/*.md`.
+
+**And the acceptance test already exists.** The three sims run the real `waves.js` against an
+injected dispatcher. Swap the stub for the real one and they are the port's specification:
+if `sim_workflow.mjs` passes with its sentinel, the substitution is correct. They run
+**locally, in seconds, with no LLM** — which Amendment 1 explicitly permits (*"Unit tests and
+sims for developing the driver itself stay local"*).
+
+### The plan this replaces, and why it was wrong
+
+A first build plan decomposed the port into **twelve tasks across five waves creating ten new
+modules** (`worker.mjs`, `clones.mjs`, `roles.mjs`, `settings-hook.mjs`, `wave.mjs`,
+`merge.mjs`, `derive.mjs`, `admission.mjs`, `receipt.mjs`, a schema), to be driven on the
+fleet through a **bridge** that converted the intent document into a marked plan the old
+engine could compile.
+
+That was a rewrite wearing a port's clothes, and it violated rule 3 — *"Port, don't rewrite …
+a rewrite that cannot run the existing sims is a different program"* — in a document that
+cited rule 3. It also stacked three novelties on the one change that must not go wrong: a new
+artifact format, plan bodies removed for the first time, and the engine being retired as the
+executor. A failure would not have said which one failed.
+
+**The operator caught it** with a general observation worth keeping: *things go wrong when one
+system tries to graft onto another.* The bridge was the graft, and it is deleted with this
+amendment.
+
 ## 2. The run, end to end
 
 The laptop is a thin client (Amendment 1). Every step below except 1 and 9 runs on exe.dev.
@@ -715,43 +792,63 @@ author's body was wrong against real code). Ties go to **contract**, so the cana
 is trying to protect never scores itself favourably by ambiguity. The classification is a
 receipt field, so #220's by-cause-by-engineVersion rate stays computable.
 
-## 10. Cutover
+## 10. Cutover — five stages, each one redundant before the next
 
-0.3.0 is one release and it is large by decision, not by drift. What is in it:
+**Restaged 2026-08-28 on §1a.** The ordering principle: *nothing is deleted until the thing
+replacing it has been redundant for three green runs*, and *no stage tests more than one new
+idea at a time*.
 
-| half | contents |
-|---|---|
-| **engine** | the `waves.js` port into the driver; the deletion ledger (§8a); the process supervisor (§4a); admission **observation** (§5); the claim-lease reaper; `ab_runner` re-armed on the driver |
-| **client** | the merged authoring skill ≤ 1,500 words; `ultraplan` deleted; the seven practice skills dropped; the precedence line in `hooks/session_start.sh`; CLAUDE.md's *"extends, does not fork"* text deleted; README + marketplace wording (Amendment 1 decision 6); **`ultradocket`'s sweep reworked to emit intent docs** |
+### Stage 0 — ship the unrelated fix (independent, now)
 
-**`ultradocket` is in the release** (operator decision, this sitting, against the
-recommendation to defer it). The reasoning is completeness: after the cutover **no tool
-anywhere should still emit the old artifact**. Its drain half sweeps issues into plans; the
-driver now consumes intent. Leaving it would mean shipping one tool that produces something
-nothing can read. Its triage half is unchanged.
+The **claim-lease reaper with the cap deletion** (§5 item 0). It is a real billed-VM leak —
+`destroySandbox` reaches the orchestrator's action surface at exactly one site, inside the
+spend pass being deleted — and it has nothing to do with the port. It was bundled into the
+port's task list only by accident of authoring. Ship it on its own, the ordinary way.
 
-Steps:
+### Stage 1 — the substitution (local, sims are the gate)
 
-1. Build on branch `one-driver`. The old path is untouched until the new one clears §9.
-2. The existing sims must pass against the driver (rule 3): `sim_workflow.mjs`,
-   `sim_base_ancestry.mjs`, `sim_derived_heads.mjs`, same `ALL (SCENARIOS|TESTS) PASSED`
-   sentinel. The suite-gate's harness-JS leg follows the code to its new home.
-3. Ship the copyright and permission notice with any prose derived from superpowers (MIT).
-4. Validate with fleet runs — the fleet is both vehicle and first customer.
-5. **One release, 0.3.0**, deleting the old path in the same release, with every §9 number
-   in the release commit. The operator's explicit override of "stay on 0.2.x."
-6. **#386 closes at this release** — each residual line deleted or explicitly kept,
-   including the stale prose naming deleted scripts, `waves.harness.json`, the ultradocket
-   `Seal` field, and the execution-handoff rubric's Inline/Subagent-Driven options.
-7. **#354 closes as moot** (§8a); **#384 stays open** as a watch (§8b); **#390 closes with
-   this release**, not beside it.
-8. Then map **#360 Tier 1** lands on the simplified base.
+`runWorker(prompt, opts)` honouring `agent()`'s four-key contract and its `null` return;
+clones cut at BASE; `waves.js` moved into `fleet/` with the ten call sites substituted and
+its prompt strings lifted to `roles/*.md`.
 
-**Named risk, since the release grew by decision:** this now carries the port, the cutover,
-`ab_runner` re-arming, 10 intent docs, ≥ 3 validating fleet runs, an authoring-skill fork,
-seven dropped skills and an ultradocket rework. The mitigation is not to trim scope — the
-operator chose it — but to **land it in reviewable pieces on one branch**, engine and client
-independently green, with the release commit as the only integration point.
+**Gate:** `sim_workflow.mjs`, `sim_base_ancestry.mjs`, `sim_derived_heads.mjs` pass with
+`ALL SCENARIOS PASSED`, locally, no LLM. **No fleet run, no intent document, no bridge** —
+this stage builds the thing that runs those, so it cannot use them without a graft.
+
+**Why not parallelise it:** a mechanical substitution is a task of sequential understanding,
+and the sims already encode the behaviour it must preserve. Fanning it out buys nothing and
+costs the one property that makes it safe — that one person (or one worker) holds the whole
+contract at once.
+
+### Stage 2 — the first self-hosted run
+
+The new driver drives something small and real. This is simultaneously the proof and the
+work, and it is the first entry against the §9 live-parity bar. Until this stage passes, the
+old path is untouched and remains the fallback.
+
+### Stage 3 — the consequences, each driven by the new driver
+
+Derivation and the wave author, admission observation, `ab_runner` re-armed, the receipt's
+derivation fields, the client half (#390). Each is ordinary work now, because the engine
+building them is the engine they are for.
+
+### Stage 4 — delete the old path, release 0.3.0
+
+Only after the driver has been redundant across **≥3 green runs**. The deletion ledger
+(§8a), the engine `SKILL.md` at ≤400 words, and every §9 number in the release commit.
+
+**What this restaging fixes:** a first draft put the deletion ledger in wave 4 of the same
+run that built the driver — deleting the old engine before the new one had ever driven
+anything, and gutting the suite-gate's harness leg in the run whose gate was meant to be the
+evidence. It also contradicted this spec's own step 1, *"the old path is untouched until the
+new one clears §9."* Now the sequence and the rule agree.
+
+### Standing items across the stages
+
+- **#386** closes at 0.3.0 — each residual deleted or explicitly kept.
+- **#354** closes as moot the moment stage 1 lands (the driver cuts at BASE, §1a).
+- **#384** stays open as a watch.
+- Ship the MIT copyright and permission notice with any prose derived from superpowers.
 
 ## 11. Out of scope
 
