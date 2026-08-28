@@ -149,16 +149,24 @@ def test_gate_leaves_the_session_checkout_where_it_found_it(tmp_path):
     assert sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip() == before
 
 
-def test_sealed_acceptance_dispatch(tmp_path):
-    """Sealed disposition invokes run_acceptance.sh with sealId, branch, hash."""
+def test_sealed_disposition_is_blocked_without_administering(tmp_path):
+    """Phase 0 row 7: sealed acceptance is no longer administered. The gate
+    BLOCKS with the gate receipt as the terminal artifact and never invokes
+    run_acceptance.sh (the stub would have echoed STUB into the output)."""
     repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
     result = tmp_path / "result.json"
     result.write_text(json.dumps(good_report(head)))
     r = run_gate(repo, scripts, result)
     out = json.loads(r.stdout)
-    assert out["acceptance"]["disposition"] == "sealed"
-    assert "abc123 ultra/int " + "d" * 64 in out["acceptance"]["output"]
-    assert r.returncode == 0
+    assert r.returncode == 1
+    assert out["verdict"] == "BLOCKED"
+    assert out["acceptance"] == {
+        "disposition": "sealed", "exit": None,
+        "reason": "sealed acceptance is not administered — Phase 0 row 7"}
+    assert "STUB" not in r.stdout
+    saved = json.loads((repo / ".claude/ultrapowers/run-t1/gate-receipt.json")
+                       .read_text())
+    assert saved["verdict"] == "BLOCKED"
 
 
 def test_suite_acceptance_dispatch(tmp_path):
@@ -178,7 +186,8 @@ def test_suite_acceptance_dispatch(tmp_path):
 
 
 def test_failed_acceptance_forces_blocked(tmp_path):
-    repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
+    repo, scripts, head = make_repo(tmp_path, acceptance_mode="suite",
+                                    receipt_extra={"testCmd": "make check"})
     (scripts / "run_acceptance.sh").write_text(
         "#!/usr/bin/env bash\necho RED\nexit 1\n")
     (scripts / "run_acceptance.sh").chmod(0o755)

@@ -209,12 +209,13 @@ def main(argv=None):
     acc = (run_receipt.get("compile") or {}).get("acceptance") or {}
     mode = acc.get("mode")
     if mode == "sealed":
-        r = sh(["bash", str(HERE / "run_acceptance.sh"),
-                str(acc.get("sealId")), str(branch), str(acc.get("sha256"))],
-               cwd=root)
-        acceptance = {"disposition": "sealed", "exit": r.returncode,
-                      "output": (r.stdout + r.stderr)[-4000:]}
-        acc_pass = r.returncode == 0
+        # One Driver Phase 0, row 7: sealed acceptance is not administered.
+        # run_acceptance.sh's sealed mode is gone, so nothing is dispatched;
+        # the gate receipt below is the terminal artifact (BLOCKED).
+        acceptance = {"disposition": "sealed", "exit": None,
+                      "reason": "sealed acceptance is not administered — "
+                                "Phase 0 row 7"}
+        acc_pass = False
     elif mode == "waived":
         acceptance = {"disposition": "waived", "exit": None,
                       "reason": acc.get("reason", "")}

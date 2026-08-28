@@ -1,50 +1,22 @@
 #!/usr/bin/env bash
-# Administer a sealed acceptance exam against a branch. Deterministic: no
-# agents, no interpretation. Emits exactly one JSON object on stdout.
-# Exit 0 iff the seal verified AND the exam passed.
+# Administer the committed-suite gate for a suite-disposition plan.
+# Deterministic: no agents, no interpretation. Emits exactly one JSON object on
+# stdout. Exit 0 iff the suite passed (and, when --base is given and harness JS
+# changed, the harness sims passed too).
 #
-# Usage: run_acceptance.sh <seal-id> <branch> <expected-sha256>
-#                          [--vault DIR] [--repo DIR]
-#    or: run_acceptance.sh --baseline --suite DIR --branch BASE
-#                          (--manifest FILE | --run CMD [--bootstrap CMD])
-#                          [--repo DIR]   (seal-time RED proof)
-#    or: run_acceptance.sh --suite-gate --branch BRANCH [--run CMD]
+# Usage: run_acceptance.sh --suite-gate --branch BRANCH [--run CMD]
 #                          [--bootstrap CMD] [--base REF] [--repo DIR]
-# Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
+# The sealed-exam and --baseline modes died with the sealing subsystem
+# (One Driver Phase 0, row 7); any other invocation is a usage error (exit 2).
 set -uo pipefail
 
-SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
-VAULT="${HOME}/.ultrapowers/acceptance"
+SEAL_ID="(suite)"; BRANCH=""
 REPO="$(pwd)"
-B_SUITE=""; B_RUN=""; B_BOOT=""; B_MANIFEST=""
 SG_RUN="python3 -m pytest"
 SG_BASE=""; SG_BOOT=""
-MODE="sealed"
-if [ "${1:-}" = "--baseline" ]; then
-  MODE="baseline"; shift
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --suite)     B_SUITE="$2"; shift 2 ;;
-      --branch)    BRANCH="$2";  shift 2 ;;
-      --run)       B_RUN="$2";   shift 2 ;;
-      --bootstrap) B_BOOT="$2";  shift 2 ;;
-      --manifest)  B_MANIFEST="$2"; shift 2 ;;
-      --repo)      REPO="$2";    shift 2 ;;
-      *) echo "unknown argument: $1" >&2; exit 2 ;;
-    esac
-  done
-  : "${B_SUITE:?--baseline requires --suite}"
-  : "${BRANCH:?--baseline requires --branch}"
-  if [ -n "$B_MANIFEST" ]; then
-    if [ -n "$B_RUN" ] || [ -n "$B_BOOT" ]; then
-      echo "--manifest is mutually exclusive with --run/--bootstrap" >&2
-      exit 2
-    fi
-  else
-    : "${B_RUN:?--baseline requires --run (or --manifest)}"
-  fi
-elif [ "${1:-}" = "--suite-gate" ]; then
-  MODE="suite-gate"; SEAL_ID="(suite)"; shift
+MODE="suite-gate"
+if [ "${1:-}" = "--suite-gate" ]; then
+  shift
   while [ $# -gt 0 ]; do
     case "$1" in
       --branch)    BRANCH="$2";  shift 2 ;;
@@ -60,19 +32,9 @@ elif [ "${1:-}" = "--suite-gate" ]; then
     echo "run_acceptance: warning — --suite-gate without --base: harness-JS sim guard disarmed (a branch that changed harnesses/*.js rides a Python-only green; pass --base <ref> to arm it)" >&2
   fi
 else
-  SEAL_ID="${1:?usage: run_acceptance.sh <seal-id> <branch> <sha256> [--vault DIR] [--repo DIR]}"
-  BRANCH="${2:?missing branch}"
-  EXPECTED="${3:?missing expected sha256}"
-  shift 3
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --vault) VAULT="$2"; shift 2 ;;
-      --repo)  REPO="$2";  shift 2 ;;
-      *) echo "unknown argument: $1" >&2; exit 2 ;;
-    esac
-  done
+  echo "usage: run_acceptance.sh --suite-gate --branch BRANCH [--run CMD] [--bootstrap CMD] [--base REF] [--repo DIR]" >&2
+  exit 2
 fi
-HERE="$(cd "$(dirname "$0")" && pwd)"
 
 emit() { # status passed exit_code output [redKind] → prints JSON, never fails
   OUTPUT_TAIL="$(printf '%s' "$4" | tail -c 8000)"
@@ -92,10 +54,7 @@ print(json.dumps(obj))
 EOF
 }
 
-# Shared exam core, used by the sealed gate path (and, in Task 2, --baseline).
-# Creates a detached worktree of $2, mounts the suite at .ultra-acceptance/,
-# runs the optional bootstrap, then the run command, and classifies into R_*
-# globals WITHOUT emitting or exiting — each caller owns its own exit contract.
+# Suite-gate worktree bookkeeping: cleanup removes the detached worktree and its temp parent on every exit.
 EXAM_WT=""
 cleanup() {
   if [ -n "$EXAM_WT" ]; then
@@ -116,99 +75,6 @@ provision_worktree() { # $1=worktree $2=bootstrap_cmd → P_OK/P_CODE/P_OUTPUT
   P_OUTPUT="$( (cd "$1" && eval "$2") 2>&1 )"; P_CODE=$?
   [ "$P_CODE" -ne 0 ] && P_OK=false
   return 0
-}
-
-run_exam() { # $1=suite_dir $2=branch $3=run_cmd $4=bootstrap_cmd
-  local SUITE_DIR="$1" BR="$2" RUN_CMD="$3" BOOT="$4" TMP=""
-  R_REDKIND=""
-  # Canonicalize the temp parent BEFORE it becomes a worktree path: a path that
-  # traverses a symlink (macOS /var, or a symlinked TMPDIR) leaves the exam
-  # running with a logical cwd that differs from its physical one, which
-  # false-reds path-identity-sensitive toolchains. Two steps, never composed:
-  # the composed form would feed a failed `cd` into `dirname` -> "/" and hand
-  # that to the cleanup trap. The `[ -n "$TMP" ] &&` also keeps a failed
-  # `mktemp -d` empty, because `cd ""` succeeds and yields the process cwd.
-  TMP="$(mktemp -d)"
-  [ -n "$TMP" ] && TMP="$(cd "$TMP" && pwd -P)"
-  if [ -z "$TMP" ]; then
-    R_STATUS=ERROR; R_PASSED=false; R_CODE=1
-    R_OUTPUT="could not create a canonical temp parent for the exam worktree (mktemp -d / pwd -P failed)"; return 0
-  fi
-  EXAM_WT="$TMP/exam"
-  if ! git -C "$REPO" worktree add --detach "$EXAM_WT" "$BR" >/dev/null 2>&1; then
-    R_STATUS=ERROR; R_PASSED=false; R_CODE=1
-    R_OUTPUT="could not create exam worktree for branch $BR in $REPO"; return 0
-  fi
-  mkdir -p "$EXAM_WT/.ultra-acceptance"
-  cp -R "$SUITE_DIR/." "$EXAM_WT/.ultra-acceptance/"
-  local RAN_MARKER="$EXAM_WT/.ultra-acceptance/.__ran__"
-  # Inject the pytest ran-marker plugin only for pytest suites; non-pytest
-  # frameworks detect "tests ran" from the runner's own output via RAN_PATTERN.
-  # APPEND, never overwrite: a sealed suite may ship its own conftest.py
-  # (fixtures, sys.path setup) — clobbering it strands every fixture-using
-  # test in a "fixture not found" setup error (false red at the gate).
-  if [ "${FRAMEWORK:-pytest}" = "pytest" ]; then
-    printf '\n' >> "$EXAM_WT/.ultra-acceptance/conftest.py"
-    cat >> "$EXAM_WT/.ultra-acceptance/conftest.py" <<'CONF'
-import pathlib
-def pytest_runtest_call(item):
-    pathlib.Path(__file__).with_name(".__ran__").write_text("1")
-CONF
-  fi
-  # Bootstrap the worktree's environment so the repo's own libraries import.
-  provision_worktree "$EXAM_WT" "$BOOT"
-  if [ "$P_OK" != true ]; then
-    R_STATUS=EXAM_BOOTSTRAP_ERROR; R_PASSED=false; R_CODE=$P_CODE
-    R_OUTPUT="bootstrap failed (exit $P_CODE): $BOOT
-$P_OUTPUT"; return 0
-  fi
-  local OUT CODE ran
-  OUT="$( (cd "$EXAM_WT" && eval "$RUN_CMD") 2>&1 )"; CODE=$?
-  # Determine whether any tests actually ran. For pytest: check the injected
-  # ran-marker file. For non-pytest frameworks: match the runner's stdout/stderr
-  # against the manifest's ranPattern (a configurable extended regex).
-  ran=0
-  if [ "${FRAMEWORK:-pytest}" = "pytest" ]; then
-    [ -f "$RAN_MARKER" ] && ran=1
-  elif [ -n "${RAN_PATTERN:-}" ] && printf '%s' "$OUT" | grep -Eq "${RAN_PATTERN}"; then
-    ran=1
-  fi
-  if [ "$CODE" -eq 0 ]; then
-    # No-tests-ran defense (false-green guard): a green exit earns a pass only
-    # if the sealed suite actually executed a test.
-    if [ "$ran" -eq 0 ]; then
-      R_STATUS=ERROR; R_PASSED=false; R_CODE=1
-      R_OUTPUT="exam exited 0 but ran no sealed tests (zero tests collected or runCmd never executed the suite) — refusing to false-green:
-$OUT"
-    else
-      R_STATUS=OK; R_PASSED=true; R_CODE=0; R_OUTPUT="$OUT"
-    fi
-  else
-    # Non-zero WITH a tests-ran signal => a test executed and failed (assertion
-    # red). WITHOUT it => nothing executed (collection/import red). The bootstrap
-    # above means an env-caused collection error can no longer reach here, so a
-    # surviving collection red is genuine feature-absence.
-    R_STATUS=OK; R_PASSED=false; R_CODE=$CODE; R_OUTPUT="$OUT"
-    if [ "$ran" -eq 1 ]; then R_REDKIND=assertion; else R_REDKIND=collection; fi
-  fi
-  return 0
-}
-
-# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
-# A missing/unreadable manifest or empty runCmd yields an empty first line, which
-# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
-read_manifest() {
-  python3 -c '
-import json, sys
-try:
-    m = json.load(open(sys.argv[1]))
-except Exception:
-    m = {}
-print(m.get("runCmd") or "")
-print(m.get("bootstrapCmd") or "")
-print(m.get("framework") or "pytest")
-print(m.get("ranPattern") or "")
-' "$1"
 }
 
 # ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
@@ -318,84 +184,3 @@ $OUT"; exit 1
     emit OK false "$CODE" "$OUT" assertion; exit 1
   fi
 fi
-
-# ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
-if [ "$MODE" = baseline ]; then
-  if [ -n "$B_MANIFEST" ]; then
-    # Manifest-proven sealing: the RED proof reads the exact fields the gate
-    # will read, and refuses a draft the gate would misread — framework
-    # defaults to pytest at the gate, so a non-pytest runCmd without an
-    # explicit framework/ranPattern false-reds every green exam.
-    if [ ! -f "$B_MANIFEST" ]; then
-      emit MANIFEST_INCOHERENT false 2 "manifest draft not found: $B_MANIFEST"
-      exit 1
-    fi
-    { IFS= read -r B_RUN
-      IFS= read -r B_BOOT
-      IFS= read -r FRAMEWORK
-      IFS= read -r RAN_PATTERN
-    } < <(read_manifest "$B_MANIFEST")
-    if [ -z "$B_RUN" ]; then
-      emit MANIFEST_INCOHERENT false 2 "manifest draft missing runCmd: $B_MANIFEST"
-      exit 1
-    fi
-    if [ "$FRAMEWORK" = "pytest" ]; then
-      if ! printf '%s' "$B_RUN" | grep -q "pytest"; then
-        emit MANIFEST_INCOHERENT false 2 "framework is 'pytest' (or absent) but runCmd does not invoke pytest — a non-pytest suite must declare framework and ranPattern in the manifest: $B_RUN"
-        exit 1
-      fi
-    elif [ -z "$RAN_PATTERN" ]; then
-      emit MANIFEST_INCOHERENT false 2 "framework '$FRAMEWORK' requires a ranPattern (the no-tests-ran defense has no marker outside pytest)"
-      exit 1
-    fi
-  else
-    FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
-  fi
-  run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
-  if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
-    emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
-  fi
-  if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then
-    emit GREEN_AT_BASELINE true "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 1
-  fi
-  emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 1
-fi
-
-# ── Sealed gate path ──────────────────────────────────────────────────────────
-SUITE="$VAULT/$SEAL_ID/suite"
-MANIFEST="$VAULT/$SEAL_ID/manifest.json"
-if [ ! -d "$SUITE" ] || [ ! -f "$MANIFEST" ]; then
-  emit SEAL_MISSING false 1 "vault entry not found: $VAULT/$SEAL_ID"
-  exit 1
-fi
-
-ACTUAL="$(python3 "$HERE/seal_hash.py" "$SUITE")"
-if [ "$ACTUAL" != "$EXPECTED" ]; then
-  emit SEAL_BROKEN false 1 "suite hash $ACTUAL does not match recorded $EXPECTED"
-  exit 1
-fi
-
-{ IFS= read -r RUN_CMD
-  IFS= read -r BOOTSTRAP_CMD
-  IFS= read -r FRAMEWORK
-  IFS= read -r RAN_PATTERN
-} < <(read_manifest "$MANIFEST")
-
-if [ -z "$RUN_CMD" ]; then
-  emit ERROR false 1 "manifest missing or invalid runCmd: $MANIFEST"
-  exit 1
-fi
-
-run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
-# Legacy-seal diagnosis: a pre-consolidation manifest that omits framework/
-# ranPattern for a non-pytest runCmd hits the no-tests-ran refusal with a
-# generic message; name the real cause. Behavior unchanged — still refuses.
-case "$R_OUTPUT" in
-  *"ran no sealed tests"*)
-    if [ "$FRAMEWORK" = "pytest" ] && ! printf '%s' "$RUN_CMD" | grep -q "pytest"; then
-      R_OUTPUT="manifest omits framework/ranPattern for a non-pytest runCmd — re-seal or add the fields (the pytest ran-marker cannot see this runner). $R_OUTPUT"
-    fi ;;
-esac
-emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"
-if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then exit 0; fi
-exit 1
