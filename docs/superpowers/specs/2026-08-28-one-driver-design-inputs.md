@@ -399,9 +399,21 @@ on a re-dispatch into the same clone within the hour, which is the fix-round cas
 1. **Pin the worker CLI version per run.** B1 is invalidated for every worker after a CLI
    roll or a model switch mid-wave, at ~18 k tokens each. The sandbox image already pins
    it — say so on purpose.
-2. **Do not contort the design for B2.** A shared `cwd` across a wave buys ~13 points
-   (~$0.008/worker at opus) and costs the per-clone write confinement that makes role
-   isolation enforceable. Rejected unless the cost row measures tight.
+2. **Adopt `--exclude-dynamic-system-prompt-sections`, and keep rejecting the contortion.**
+   Measured after the docs pass (note §H): the documented flag moves cwd/env/git-status out
+   of the cached prefix and raises cross-clone sharing **72.6% → 88.4%**, cutting per-worker
+   prefix creation 58% — while every worker keeps its own clone. The shared-`cwd` trade,
+   which would have cost the per-clone write confinement that makes role isolation
+   enforceable, stays rejected because it is no longer the only way to buy B2.
+
+
+**Docs pass (primary sources, note §I) — three additions to the measured rows:**
+
+| row | disposition |
+|---|---|
+| The 1 h default we measured is the **main-conversation** bucket; a workflow agent's requests fall outside it and get **5 minutes by default, including on a subscription** ([workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out)) | The port does not merely avoid a TTL setting — it **moves every worker from the 5-minute bucket into the 1-hour one** by making each worker a main conversation. A second, independent reason the driver's cache position beats the engine it replaces |
+| `promptCacheTtl` / `subagentPromptCacheTtl` need **v2.1.242+**; the orchestrator runs **2.1.238** | Immaterial — the default is already the one we want. What the driver owes is the negative: **never set `FORCE_PROMPT_CACHING_5M=1`**, never let `DISABLE_PROMPT_CACHING*` reach a worker's env |
+| `rate_limit_event` is **not a documented event type** — what exists is `system`/`api_retry` with `rate_limit` as one value of its `error` field, alongside `attempt` / `max_retries` / `retry_delay_ms` ([headless#handle-api-retries](https://code.claude.com/docs/en/headless#handle-api-retries)) | **Corrects this amendment's own admission-control wording** and the spec's first draft, which would have halted nearly every multi-wave run at wave 1. The predicate is retry **exhaustion** on a `rate_limit` error, or a rate-plus-delay threshold calibrated from the first three runs — never a single retry |
 
 ### Verify-before-adopt discharged: is the rate window programmatically readable?
 
@@ -427,3 +439,68 @@ credential in the release that is meant to be a subtraction, and a reactive sign
 already strictly better than a post-hoc dollar cap that destroyed the sandbox; a
 profile-scoped orchestrator credential polling `/api/oauth/usage` at wave boundaries as a
 **follow-up ticket**, which is the stronger form of what Amendment 4 asked for.
+
+
+## Amendment 7 (operator, 2026-08-28) — seven decisions on the spec; rule 5 loses its line ceiling
+
+Taken at the review of `docs/superpowers/specs/2026-08-28-one-driver.md` (#389, PR #394).
+The spec is **plan-ready**; these are mirrored here the same sitting, per the map's rule.
+
+| # | decision |
+|---|---|
+| 1 | **No line ceiling on code** — see the rule 5 amendment below |
+| 2 | **Admission control ships as OBSERVATION ONLY in 0.3.0.** The gate is built in 0.3.1 from the data 0.3.0 collects. The claim-lease VM reaper ships regardless (it is a leak fix) |
+| 3 | **`claude plugin eval` gates the client surface only**, not the engine |
+| 4 | **#390 ships INSIDE 0.3.0**, not beside it |
+| 5 | **The owned authoring skill's ≤ 1,500-word ceiling is a release-refusing bar**, raisable only by stating the new number and its reason in the release commit body (the 0.2.23 practice) |
+| 6 | **Superpowers stays installed on the operator's machine**; the residual is one precedence line in `hooks/session_start.sh` |
+| 7 | **`ultradocket`'s sweep is reworked inside 0.3.0** so no tool anywhere still emits the old artifact |
+
+### Rule 5 is amended: the surface ceiling is on PROSE, not on lines of code
+
+**Rule 5 as chartered:** *"Surface ceiling in the spec, deletion owed per guard … the
+ceiling is the only counter-reflex we have found that works (the SKILL.md word pin proved
+it)."* The **deletion-owed-per-guard** half is untouched and remains binding. The **ceiling**
+half is narrowed to the artifact its evidence covers.
+
+**Why, in three measured points rather than a preference:**
+
+1. **The proof behind rule 5 is a prose pin.** SKILL.md 3,129 → 864, where length *is* the
+   harm: more steps for an LLM to sequence is more places to drift. That is the failure the
+   outside review named. A 2,354-line wave loop is not dangerous because it is 2,354 lines.
+2. **On this codebase a line count taxes the design record.** Comments are **33–50%** of the
+   files such a ceiling would govern — `shim-main.mjs` 50%, `drive.mjs` 36%,
+   `orchestrator.mjs` 33%, `waves.js` 33% — and here they carry *why* (`BASE_REF` is the
+   fixed point; four things must be true before a token is spent). The operator does not
+   read code, so that prose is how the reasoning survives at all.
+3. **It fails this project's own doctrine.** Incident narratives never justify guards
+   (`subtraction-eval-doctrine`); a line ceiling is a guard on ourselves with **no measured
+   case** behind it. Two drafts proved the point empirically: the first (≤ 6,157) permitted
+   **62% driver growth** while claiming to freeze the code, and the second (≤ 4,400) was
+   **already violated on the day it was written** (`fleet/**` = 4,476, because it counted
+   `RUNBOOK.md` and a lockfile).
+
+**What now carries rule 5's intent** — counts of things a human or an LLM must actually
+hold, plus the rule that names the real enemy:
+
+- **prose ceilings**: engine `SKILL.md` ≤ 400 words · owned authoring skill ≤ 1,500 words ·
+  intent doc exactly 7 slots, ≤ 8 standing decisions;
+- **scripts ≤ 10**; **guards deleted ≥ 6, each with its licensing number**;
+- **every guard added after go-live owes a deletion in the same PR, and a measured number** —
+  which names *accreted guards*, the thing the chartering diagnosis actually indicted
+  (*"each scar became another step in the protocol"*), where a line count cannot distinguish
+  a guard from a well-factored function.
+
+**All ceilings share one escape hatch, and it is what lets them be hard bars:** a ceiling is
+raised only by writing the new number **and its reason** into the release commit body. It
+binds, it is visible the moment it moves, and it can never stall a release outright.
+
+### Consequences for rows elsewhere in this file
+
+| row | change |
+|---|---|
+| §Pre-registered bar, *"surface ceiling"* | reads **prose ceiling**; the line/word ceiling "for the driver" is deleted, the one "for prompts" stands |
+| §Amendment 4, *"prose ceiling — a second ceiling for the owned authoring skill"* | now a **release-refusing** bar at ≤ 1,500 words |
+| §Amendment 4, the deleted cap's replacement | 0.3.0 **observes**; the wave-boundary control itself is 0.3.1's, fitted to real `api_retry` distributions rather than to an estimate — the same objection that licensed deleting the cap ("calibrated from size means") applies to replacing it with a guess |
+| §Amendment 5, all seven rows | **in 0.3.0**, not deferred; superpowers stays installed, handled by the precedence line |
+| §Decisions taken, 3 (*ultradocket's drain half becomes "drive a plan"*) | becomes **"emit an intent doc"**, and lands **in 0.3.0** |
