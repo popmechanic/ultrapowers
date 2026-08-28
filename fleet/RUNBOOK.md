@@ -59,7 +59,8 @@ ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-o
 ssh fleet-golden.exe.xyz 'claude plugin list'
 #    Compare the printed ultrapowers version against `.claude-plugin/plugin.json`
 #    on the base ref you are about to drive, BEFORE any drive — a stale golden
-#    silently runs an old engine and nothing else here will catch it (#282).
+#    runs an old engine; the drive's `versionStamp` leg now catches it (the shim
+#    stamps the installed version, #282) but only after a whole run is spent.
 #    Update with: claude plugin update ultrapowers@ultrapowers
 #    (the bare name `ultrapowers` fails with "Plugin not found").
 ```
@@ -297,7 +298,7 @@ byte for byte. Check it against the five pre-registered questions:
 | `o1` | Did provision → claim → run → gate-green → receipts complete with zero store-caused failures (nothing the guard had to converge away)? |
 | `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> FETCH_HEAD`), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
 | `leaseContinuity` | Did the lease renew across the whole run with no false expiry? |
-| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` (from `.claude-plugin/plugin.json` and `git rev-parse HEAD` inside the sandbox)? |
+| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, do they match what the driver pushed (#282), and does the plugin the sandbox reports as INSTALLED (`claude plugin list --json`, stamped as `installedPluginVersion`) match the pushed manifest? A stale golden image reds this leg with the update command in `detail.errors`. |
 | `spendObservational` | `{reported, ledger}` — the run report's own token total vs. the shim's spend-row sum. **Observational at n=1 by construction** (spec §W1d, finding F6): this first run's own numbers are the input, not a pass/fail check yet. |
 
 `o1` through `versionStamp` must all be `true`. A `false` `o1` (or a non-empty
