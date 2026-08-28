@@ -182,6 +182,63 @@ measurement:
 The driver does not lose in-run cache sharing. It gains a longer default TTL, sharing that outlives
 the run, and — for the first time — the numbers as data.
 
+### H. `--exclude-dynamic-system-prompt-sections` buys most of B2 back — free
+
+Added 2026-08-28 after the docs pass (below) named a flag §C's arms did not use. It is
+documented as moving *"per-machine sections (cwd, env info, memory paths, git status) from
+the system prompt into the first user message"*
+([cli-reference#cli-flags](https://code.claude.com/docs/en/cli-reference#cli-flags)) and is
+present on the orchestrator's 2.1.238. It applies with `--append-system-prompt-file` (it is
+ignored only with `--system-prompt`). Same probe shape, three fresh clones, a brand-new role
+file:
+
+| arm | clone | task text | cc | cr | share |
+|---|---|---|---|---|---|
+| xds1 (cold) | x1 | one | 3,703 | 21,071 | 85.1% |
+| xds2 | **x2** | one | **2,870** | **21,904** | **88.4%** |
+| xds3 | **x3** | two | **2,870** | **21,904** | **88.4%** |
+
+**A different clone now shares 88.4% instead of 72.6%** — +15.8 points, and per-worker
+prefix creation falls from 6,845 to 2,870 tokens (**−58%**). The working-directory block
+(§C's B2) is no longer in the cached prefix at all; the worker still receives that context,
+relocated to its first user message.
+
+**This overturns decision 3 below as it was first written.** There is no need to *contort*
+anything: the shared-`cwd` trade that would have cost per-clone write confinement is not the
+only way to buy B2 — a documented flag buys most of it while every worker keeps its own
+clone. The flag is adopted; the contortion stays rejected.
+
+### I. What the docs say (primary sources, read 2026-08-28)
+
+| claim | source |
+|---|---|
+| The cache is scoped **per organization** (and per workspace on the API/Bedrock/Foundry); within that boundary *"any two requests with the same model and prefix read the same cache"* | [prompt-caching#cache-scope](https://code.claude.com/docs/en/prompt-caching#cache-scope) |
+| Cache hits require **100% identical prefix bytes** to the breakpoint; the key is a cumulative hash of that prefix | [build-with-claude/prompt-caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) |
+| Pricing: 5-min write **1.25×**, 1-hour write **2.0×**, read **0.1×** base input. A read refreshes the TTL at no cost | same |
+| *"The system prompt embeds the working directory, platform, shell, OS version, and auto memory paths, so two sessions in different directories build different prefixes and miss each other's cache … including worktrees of the same repository"* | [prompt-caching#cache-scope](https://code.claude.com/docs/en/prompt-caching#cache-scope) |
+| TTL controls: `promptCacheTtl` / `CLAUDE_CODE_PROMPT_CACHE_TTL` (main conversation) and `subagentPromptCacheTtl` / `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` (everything else) — **v2.1.242+**. Priority: `FORCE_PROMPT_CACHING_5M=1` > bucket env var > bucket setting > `ENABLE_PROMPT_CACHING_1H=1` > default | [prompt-caching#choose-the-ttl-yourself](https://code.claude.com/docs/en/prompt-caching#choose-the-ttl-yourself) |
+| A workflow agent's requests fall **outside** the main conversation's TTL bucket, so **5 minutes by default, including on a subscription**; `subagentPromptCacheTtl: 1h` raises it | [workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out) |
+| Workflows hold matching siblings until the first response begins, capped at `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS` (**5000** default) | same |
+| `rate_limit_event` is **not a documented event type.** What exists is `system`/`api_retry`, carrying `attempt`, `max_retries`, `retry_delay_ms`, `error_status`, and `error` — where `rate_limit` is one **value of the `error` field** | [headless#handle-api-retries](https://code.claude.com/docs/en/headless#handle-api-retries) |
+| **Undocumented:** any HTTP endpoint for `/usage`; rate-limit response headers under subscription OAuth; cache sharing across workflow runs or sessions | — |
+
+**Three consequences the docs add to the measurement.**
+
+1. **The docs' "different directories miss each other's cache" is true of the *whole* prefix
+   and misleading about the *fraction*.** §A measured 72.6% still shared across directories,
+   and §H raises it to 88.4% with the documented flag. The design question was never
+   all-or-nothing.
+2. **The 1-hour default we measured is the *main-conversation* bucket.** Workflow agents get
+   5 minutes by the docs' own statement — so the port does not merely avoid a TTL setting,
+   it **moves every worker from the 5-minute bucket into the 1-hour one** by making each
+   worker a main conversation. That is a second, independent reason the driver's cache
+   position is better than the engine it replaces.
+3. **The TTL settings are below the golden's floor and not needed.** `promptCacheTtl` needs
+   **2.1.242+**; the orchestrator runs **2.1.238**. Immaterial — the default is already the
+   one we want. What matters is the negative: **never set `FORCE_PROMPT_CACHING_5M=1`**, and
+   never let `DISABLE_PROMPT_CACHING*` reach a worker's environment. Worth a line in the
+   driver's env hygiene rather than a discovery later.
+
 ## Decisions returned to the one-driver spec (#389)
 
 1. **Packing rule stands as #365 decided it** — one wave per sandbox, width ≤ ~4, siblings launched
@@ -192,9 +249,11 @@ the run, and — for the first time — the numbers as data.
    ≤ 1.15×; the cache term moves it toward the driver, not away. Expect ~73% prefix cache-read
    share on a cold wave and ~100% for a re-dispatched worker in the same clone within the hour —
    which is exactly the fix-round case, the most frequent re-dispatch we have.
-3. **Do not contort the design for B2.** Giving every worker a common `cwd` to buy the extra ~13
-   points is worth ~$0.008 per worker at opus and costs the per-clone write confinement that makes
-   role isolation enforceable. Rejected unless the cost row measures tight.
+3. **Adopt `--exclude-dynamic-system-prompt-sections`; keep rejecting the contortion.** §H:
+   the flag raises cross-clone sharing from 72.6% to **88.4%** and cuts per-worker prefix
+   creation 58%, while every worker keeps its own clone. The shared-`cwd` trade — which
+   would have cost the per-clone write confinement that makes role isolation enforceable —
+   stays rejected, because it is no longer the only way to buy B2.
 4. **Role prompts are free to vary; the CLI version is not.** B1 is keyed on model and CLI version
    alone (§C) — per-role, or even per-task, system prompt files cost nothing extra. What *does*
    cost is rolling the CLI or switching models mid-wave: either invalidates B1 for every worker
@@ -261,8 +320,8 @@ a subtraction.
 
 ## Count
 
-**23 measured `claude -p` runs** — 7 haiku wave arms (a0–a4z), 3 six-minute-gap arms (a5*), 1
+**26 measured `claude -p` runs** — 7 haiku wave arms (a0–a4z), 3 six-minute-gap arms (a5*), 1
 eleven-minute-gap arm (a6), 5 model arms (opus ×4, fable ×1), 4 session arms (s1–s4), 3 cold-B1
-arms (cold1–3) — plus **10 HTTP controls** against `/api/oauth/usage` (orchestrator: 3 header variants, bogus token, no auth;
+arms (cold1–3), 3 dynamic-sections arms (xds1–3) — plus **10 HTTP controls** against `/api/oauth/usage` (orchestrator: 3 header variants, bogus token, no auth;
 laptop: valid token ×4, no auth). Every envelope is on the orchestrator at
 `/tmp/p382/log/<id>.json`; none was discarded.
