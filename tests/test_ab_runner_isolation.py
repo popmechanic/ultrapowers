@@ -46,16 +46,16 @@ def test_prepare_session_config_writes_only_inside_workspace(tmp_path, monkeypat
         assert kw.get("env", {}).get("CLAUDE_CONFIG_DIR") == cfg
 
 
-def test_probe_and_drive_carry_the_isolated_env(tmp_path, monkeypatch):
+def test_drive_carries_the_isolated_env(tmp_path, monkeypatch):
+    # The probe died with the registry snapshot (Phase 0 row 5); the drive is
+    # the only claude spawn left and must carry the cell's isolated env.
     cap = Capture()
     monkeypatch.setattr(ab.subprocess, "run", cap)
     env = {"CLAUDE_CONFIG_DIR": str(tmp_path / "cell/claude-config"), "PATH": "/usr/bin"}
-    ab.probe_workflow(tmp_path, env)
     (tmp_path / ".headless-result.json").write_text("{}")
-    monkeypatch.setattr(ab, "probe_workflow", lambda workdir, env: True)
     ab.drive_run(tmp_path, {"planPath": "docs/plans/plan.md"}, env)
     calls = claude_calls(cap)
-    assert calls, "probe/drive spawned no claude at all — wiring broke"
+    assert calls, "drive spawned no claude at all — wiring broke"
     for cmd, kw in calls:
         got = kw.get("env", {}).get("CLAUDE_CONFIG_DIR", "")
         assert got == env["CLAUDE_CONFIG_DIR"]

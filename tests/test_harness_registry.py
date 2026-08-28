@@ -7,6 +7,7 @@ import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 HARNESSES = ROOT / "skills/ultrapowers/harnesses"
+WAVES = HARNESSES / "waves.js"
 
 
 def manifests():
@@ -19,9 +20,12 @@ def meta_name(js_path):
     return m.group(1) if m else None
 
 
-def test_at_least_the_two_core_harnesses_registered():
-    names = {json.loads(m.read_text())["name"] for m in manifests()}
-    assert {"ultrapowers-run", "ultrapowers-probe"} <= names
+def test_the_engine_harness_is_ultrapowers_run():
+    """Read from waves.js's meta.name directly — the manifest reader died with
+    the registry probe (One Driver Phase 0, row 5); the harness file is the
+    authority. `ultrapowers-run` alone: the probe harness is gone."""
+    assert meta_name(WAVES) == "ultrapowers-run"
+    assert sorted(p.name for p in HARNESSES.glob("*.js")) == ["waves.js"]
 
 
 def test_no_writeside_harness_shadows_the_ultrapowers_command():
@@ -32,6 +36,7 @@ def test_no_writeside_harness_shadows_the_ultrapowers_command():
     ultrapowers:ultrapowers SKILL (the documented /ultrapowers entry point) and
     feed a bare plan path straight into the engine. Forbid that name — for both
     the manifest and the harness's own meta.name."""
+    assert meta_name(WAVES) != "ultrapowers"
     for m in manifests():
         spec = json.loads(m.read_text())
         if spec.get("writeSide") is not True:

@@ -1,8 +1,11 @@
 # tests/test_ab_runner.py
 """ab_runner: run-plan assembly and harvest logic. Never invokes claude."""
 import json
+import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "evals"))
@@ -109,24 +112,35 @@ def test_bootstrap_cell_probes_then_falls_back_without_bootstrap(tmp_path, monke
     assert row["status"] == "OK"
 
 
-def test_seed_workflows_refuses_problem_manifests_before_copying(tmp_path):
-    # Fail-closed (spec 2026-08-10): today a bad manifest is silently
-    # skipped and the cell proceeds on a partial seed — after this change
-    # one bad manifest refuses the whole cell, and nothing is copied.
+def test_seed_workflows_copies_waves_js_by_name(tmp_path):
+    # Phase 0 row 5: the harness set is fixed; waves.js is copied by name and
+    # nothing else under harnesses/ is seeded.
     engine = tmp_path / "engine"
     h = engine / "skills/ultrapowers/harnesses"
     h.mkdir(parents=True)
-    (h / "good.harness.json").write_text(json.dumps({"file": "good.js"}))
-    (h / "good.js").write_text("// harness\n")
-    (h / "bad.harness.json").write_text("{not json")
+    (h / "waves.js").write_text("// harness\n")
+    (h / "stray.js").write_text("// not a harness\n")
     workdir = tmp_path / "run"
     workdir.mkdir()
-    try:
+    subprocess.run(["git", "init", "-q", str(workdir)], check=True)
+    ab_runner.seed_workflows(engine, workdir)
+    assert (workdir / ".claude/workflows/waves.js").read_text() == "// harness\n"
+    assert not (workdir / ".claude/workflows/stray.js").exists()
+
+
+def test_seed_workflows_refuses_a_missing_waves_js(tmp_path):
+    # The old "no manifests → refuse an unprobeable cell" guard, narrowed to
+    # the one file: a silent zero-seed would make the cell compare execution
+    # modes, not engines.
+    engine = tmp_path / "engine"
+    (engine / "skills/ultrapowers/harnesses").mkdir(parents=True)
+    workdir = tmp_path / "run"
+    workdir.mkdir()
+    with pytest.raises(SystemExit) as e:
         ab_runner.seed_workflows(engine, workdir)
-        assert False, "should refuse a problems-bearing manifest set"
-    except SystemExit as e:
-        assert "bad.harness.json" in str(e)
-    assert not (workdir / ".claude/workflows/good.js").exists()  # fail BEFORE copy
+    assert "waves.js" in str(e.value)
+    assert not (workdir / ".claude/workflows").exists() or \
+        not list((workdir / ".claude/workflows").iterdir())
 
 
 def test_prepare_cell_runs_the_five_calls_in_order(tmp_path, monkeypatch):

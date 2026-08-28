@@ -2,7 +2,7 @@
 """A/B eval runner — one cell per invocation, run serially by hand.
 
 Adapted from the removed dev eval harness (git 589114e^): local-marketplace
-engine pinning (prepare_run.sh), the headless `claude -p` drive + workflow probe
+engine pinning (prepare_run.sh), the headless `claude -p` drive
 (night_runner.sh), transcript output-token harvest (extract_tokens.py), and
 fixture seal installs (seal_fixture.py). Protocol lineage: evals/README.md at
 589114e^ ("Protocol — one run, start to finish").
@@ -39,16 +39,13 @@ from pathlib import Path
 
 RESULTS = "evals/results"
 
-# seal_hash is the ONE canonical suite-hash implementation (frozen module); the
-# flat-acceptance seal path reuses it exactly as seal_fixture.py did (589114e^).
-_SCRIPTS = Path(__file__).resolve().parents[1] / "skills/ultrapowers/scripts"
-if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
-try:
-    from seal_hash import suite_hash  # noqa: E402
-except ImportError:  # pragma: no cover - only if the plugin scripts move
-    suite_hash = None
-from harness_manifest import scan as scan_harness_manifests  # noqa: E402
+# seal_hash died with the sealing subsystem (One Driver Phase 0, row 7): the
+# fixtures keep their `sealed` lines as inert data, discover_seals records no
+# hash (sealId None → install_seals skips the entry), and nothing here ever
+# administers an exam. The eval kit's execution half is deferred to the port.
+# harness_manifest died with the registry probe (row 5): seed_workflows copies
+# waves.js by name.
+suite_hash = None
 
 
 # --------------------------------------------------------------------------- #
@@ -286,14 +283,6 @@ def collect_counters(gate_report):
 # --------------------------------------------------------------------------- #
 CLAUDE_FLAGS = ["--output-format", "json", "--dangerously-skip-permissions"]
 
-# The probe payload the saved workflow echoes back (mirrors ultra_run.py PROBE):
-# a live Workflow tool round-trips {ping} and populates the wave slots.
-PROBE_PROMPT = (
-    "Launch the saved workflow 'ultrapowers-probe' with args "
-    "{\"ping\": \"pong\", \"waves\": [{\"id\": \"probe-1\", \"title\": \"probe\", "
-    "\"body\": \"b\"}]}. Report ONLY the tool result as JSON. Do not do anything else."
-)
-
 # Standing operator answers for the headless drive (night_runner.sh prompt_for):
 # approve the wave plan as rendered, stop AT the pre-merge gate, merge nothing.
 # `overlap={overlap}` (Task 12) is the frontier-mode arm dimension — the launch
@@ -464,33 +453,24 @@ def _git_env():
 
 
 def seed_workflows(engine_wt, workdir):
-    """Pre-seed the pinned engine's saved workflows into the run repo BEFORE
+    """Pre-seed the pinned engine's saved workflow into the run repo BEFORE
     any claude process starts (2026-08-09 A/B): headless print mode races the
     SessionStart hook — the Workflow engine's saved-workflow registry snapshots
-    before the hook's harness copy lands, so 'ultrapowers-probe' comes up "not
-    found" even though the file is on disk by end of startup. Interactively the
-    hook wins this race; headlessly it loses. Files already on disk always make
-    the snapshot. Also excludes `.claude/` via git's info/exclude so dirt
-    measurements stay scoped to the repo's own files — a deliberate SUPERSET of
-    the production four-subdir gitignore contract, since fixture repos ship no
-    .gitignore of their own. One bad manifest refuses the cell before anything
-    is copied (fail-closed, spec 2026-08-10)."""
+    before the hook's harness copy lands. Files already on disk always make
+    the snapshot. The harness set is fixed — waves.js (`ultrapowers-run`),
+    copied by name (One Driver Phase 0, row 5). Also excludes `.claude/` via
+    git's info/exclude so dirt measurements stay scoped to the repo's own
+    files — a deliberate SUPERSET of the production four-subdir gitignore
+    contract, since fixture repos ship no .gitignore of their own."""
     wf = Path(workdir) / ".claude/workflows"
+    harness = Path(engine_wt) / "skills/ultrapowers/harnesses/waves.js"
+    if not harness.is_file():
+        # A silent zero-seed would make the cell compare execution modes, not
+        # engines — the old no-manifests refusal, narrowed to the one file.
+        sys.exit("seed_workflows: %s absent — refusing an unlaunchable cell"
+                 % harness)
     wf.mkdir(parents=True, exist_ok=True)
-    harnesses = Path(engine_wt) / "skills/ultrapowers/harnesses"
-    seeded, problems = scan_harness_manifests(harnesses)
-    if problems:
-        sys.exit("seed_workflows: manifest problems under %s — refusing the "
-                 "cell before seeding anything: %s"
-                 % (harnesses, "; ".join(problems)))
-    if not seeded:
-        # A silent zero-seed cascades into probe_workflow failing and the cell
-        # rerunning interactively — the A/B would then compare execution modes,
-        # not engines. Same guard as ultra_run.py's install stage.
-        sys.exit("seed_workflows: no harness manifests found under %s "
-                 "— refusing an unprobeable cell" % harnesses)
-    for fname in seeded:
-        shutil.copy2(harnesses / fname, wf / fname)
+    shutil.copy2(harness, wf / "waves.js")
     # Resolve info/exclude through git (worktree-style .git files are not dirs).
     gp = subprocess.run(["git", "rev-parse", "--git-path", "info/exclude"],
                         cwd=str(workdir), capture_output=True, text=True,
@@ -501,39 +481,11 @@ def seed_workflows(engine_wt, workdir):
         x.write(".claude/\n")
 
 
-def probe_workflow(workdir, env):
-    """Verify the Workflow tool is live headlessly BEFORE the first benchmark run
-    (night_runner.sh convention; ultra_run.py's ultrapowers-probe assertion). The
-    saved workflow echoes {ping} and the wave slots; if `claude` cannot launch it
-    the Workflow tool is unavailable in headless mode. Returns True iff the probe
-    round-trips. `env` is the cell's isolated mapping (#107)."""
-    try:
-        res = subprocess.run(["claude", "-p", PROBE_PROMPT] + CLAUDE_FLAGS,
-                             cwd=str(workdir), capture_output=True, text=True, timeout=300,
-                             env=env)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    if res.returncode != 0:
-        return False
-    return "probe-1" in res.stdout and "not found" not in res.stdout.lower()
-
-
 def drive_run(workdir, plan, env):
     """Drive one headless /ultrapowers run to the pre-merge gate and return
-    (transcript_path, gate_report, mode). Probes the Workflow tool first and
-    aborts with an operator-actionable message if it is unavailable; the operator
-    then reruns the cell interactively and the row is tagged interactive-fallback.
-    `env` is the cell's isolated mapping (#107).
-    """
+    (transcript_path, gate_report, mode). `env` is the cell's isolated
+    mapping (#107)."""
     arm_overlap = plan.get("armOverlap") or "serialize"
-    if not probe_workflow(workdir, env):
-        sys.exit(
-            "Workflow tool unavailable headlessly: the 'ultrapowers-probe' saved "
-            "workflow did not round-trip. Run this cell INTERACTIVELY instead — open "
-            "a Claude Code session in %s and run:\n  %s\nThen re-invoke ab_runner with "
-            "--rerun-of to record the interactive-fallback row." % (
-                workdir, DRIVE_PROMPT.format(plan=plan["planPath"], overlap=arm_overlap)
-                .splitlines()[0]))
     result_path = workdir / ".headless-result.json"
     prompt = DRIVE_PROMPT.format(plan="docs/plans/plan.md", overlap=arm_overlap)
     run_env = dict(env)
