@@ -103,7 +103,7 @@ The complexity the review names — the 6-step operator protocol (SKILL.md, 3,12
 - ~~#364~~ — superseded by Amendment 1 (no local substrate)
 - #389 — `wayfinder:task`: the one-driver spec + build (filed after the grilling; #382 is its remaining input)
 - #390 — `wayfinder:task`: dependency posture — one owned authoring skill (Amendment 5; on map #238)
-- #382 — research: prompt-cache sharing across a wave of separate `claude -p` workers (added 2026-08-28 from the Workflows comparison, parity doc §9; sequenced BEFORE the spec — its answer is the cost row)
+- #382 — research: prompt-cache sharing across a wave of separate `claude -p` workers — **RESOLVED + CLOSED 2026-08-28** → Amendment 6 below; #389 unblocked
 - #383 — prototype: re-drive reuse, the driver's `resumeFromRunId` (added 2026-08-28; after cutover, on the driver; bar ≥ 50% tokens on a one-task park)
 - #384 — watch-item: `-p` bare-by-default breaks subscription OAuth (from Amendment 3)
 - #386 — task checklist: Phase 0 residuals owed to the port (stale prose naming deleted scripts, dead code, the cosmetic-manual-ack class, token renewal 2026-11-26) — closes at the 0.3.0 cutover
@@ -175,7 +175,7 @@ row, and the parity doc is the citation.
 | Structured worker replies | the harness itself retries in-loop (a `[structured-output-enforce]` nudge; schema violations bounce to the model as tool errors); the fail-closed envelope is `subtype: error_max_turns`, exit 1, `structured_output: null`. So: **not** "non-zero exit, no retry" — the driver's retry-with-escalation wraps a harness that already retried |
 | Spend from the result | subagent tokens fold into `modelUsage` / `total_cost_usd` exactly (#209 retires) — but the top-level `usage` is the LAST API call only; **sum `modelUsage`**. Tokens stay the cap unit; `--max-budget-usd` trips at exit 1 `error_max_budget_usd` (backstop) |
 | Failure classes | observed exits are **0** (completed — and a SIGINT abort with `is_error: true`), **1** (max_turns, budget, not-logged-in), **143** (SIGTERM, no envelope). No 2, no 130. Classify from `subtype` / `terminal_reason`, never the exit code alone; `api_retry` cited, not reproduced |
-| Fix rounds resume | mechanism holds headless; the cost claim is **not** supported at n=1 (resume 1.7× fresh after ~10 min cache decay). The pre-registered measurement stands. Driver must close the worker's stdin (`</dev/null`) |
+| Fix rounds resume | mechanism holds headless; ~~the cost claim is **not** supported at n=1 (resume 1.7× fresh after ~10 min cache decay)~~ — **measured and REVERSED by Amendment 6: resume is 3.1× cheaper than a fresh dispatch, and nothing decays at 11 min.** Fix rounds resume; the pre-registered measurement is discharged. Driver must close the worker's stdin (`</dev/null`) |
 | Prompt files, no bake | **BLOCKER: `--bare` refuses subscription OAuth** on 2.1.238 and 2.1.250 ("Not logged in", exit 1, even with `CLAUDE_CODE_OAUTH_TOKEN`; the docs say bare reads only `ANTHROPIC_API_KEY`/`apiKeyHelper` and will become the `-p` default "in a future release"). Proven substitute: `--setting-sources user --disable-slash-commands` + per-run `CLAUDE_CONFIG_DIR` — project hooks don't fire, the repo's CLAUDE.md is not loaded, skills are off, `--json-schema` + `--append-system-prompt-file` honored. **Watch-item for the port:** the day `-p` defaults to bare, workers need an explicit non-bare flag or the fleet's auth route (#213) breaks |
 | Worker-side subagents | holds; a background subagent can emit TWO `result` lines in stream-json — take the last |
 | Agent SDK | cite-only; the docs carry a policy note that third parties may not offer claude.ai login for SDK-built products → CLI-first is also the policy-safe path. Trigger for switching: a synchronous `canUseTool` decision a hook cannot express |
@@ -366,3 +366,64 @@ destructive action, gate class ↔ standing grant; added: intent doc ↔ derived
 Increases named honestly: two artifacts where there was one, a new failure mode (a plan can
 be *derived* wrong — canary 2 exists for it), a new audit obligation in the receipt, and
 maintenance of a forked skill. Rule 7 is the condition that keeps the ledger from reversing.
+
+
+## Amendment 6 (2026-08-28) — #382 measured: prompt-cache behaviour across `claude -p` workers
+
+`docs/superpowers/specs/2026-08-28-prompt-cache-across-workers.md` (23 `claude -p` runs +
+10 HTTP controls, all on the fleet's 2.1.238, subscription OAuth, **no settings file on the
+host** so every default is Claude Code's own). This is the input #389 was blocked on. The
+spec adopts these rows; the note is the citation.
+
+| row | measured |
+|---|---|
+| Cross-process prefix sharing | **holds, completely.** A separate process launched after the first exited read **100%** of its prefix (`cc=0, cr=24,984`). Not session-, run- or process-scoped |
+| Default cache TTL in `-p` | **1 hour.** `ephemeral_1h_input_tokens` = the whole write, `ephemeral_5m` = **0**, on haiku / opus / fable. 12× the Workflows fan-out default; **no `subagentPromptCacheTtl` analogue is needed** |
+| What the big block is keyed on | **model + CLI version alone** — not the role prompt, not the clone. Three siblings launched simultaneously in fresh clones with a brand-new role prompt file each read **18,139 (72.6%)**. The appended system prompt sits *after* the breakpoint |
+| Prefix decomposition | B1 18,139 (72.6%, model+CLI) · B2 4,069 (16.3%, role file ⊕ `cwd`) · B3 2,776 (11.1%, task text). opus: 16,020 / 2,777 / 3,186 |
+| Wave-boundary gap (Amendment 4's second question) | **costs nothing.** 6-min gap → 100%/100%/100%; 11-min gap → 100%. Price the serial authoring pass on its own tokens; there is no decay surcharge, and no reason to overlap authoring with execution to protect a cache |
+| Fix round: resume vs fresh | **resume, 3.1× cheaper** (`cc` 109 at 2 s, 92 at 11 min, vs 2,776 fresh). Overturns Amendment 3's row and the parity doc's item 10, whose "the prior turn's cache had partly expired" explanation is falsified |
+| Cost | opus, empty task: cold **$0.0686** → full hit **$0.0120** = **5.7×**. A cold wave of 3 writes 20,535 prefix tokens instead of 74,952 — **72.6% of the wave's prefix write cost is never paid** |
+| The Workflow arm | **not reconstructable** — `fleet-receipts/run-*/` holds the gate receipt only, and Workflows report tokens in the UI only (parity §9). Comparison is docs-claim vs measurement, and stated as such |
+
+**Packing rule: unchanged.** Amendment 3's rule stands as written — one wave per sandbox,
+width ≤ ~4. Launching siblings together is a wall-clock choice, not a cache choice: the
+prefix is there an hour later either way. No TTL flag, no launch-window choreography.
+
+**Cost row: not endangered.** `tokens per merged task ≤ 1.15×` — the cache term moves
+toward the driver, not away. Expect ~73% prefix cache-read share on a cold wave and ~100%
+on a re-dispatch into the same clone within the hour, which is the fix-round case.
+
+**Two spec obligations this adds:**
+
+1. **Pin the worker CLI version per run.** B1 is invalidated for every worker after a CLI
+   roll or a model switch mid-wave, at ~18 k tokens each. The sandbox image already pins
+   it — say so on purpose.
+2. **Do not contort the design for B2.** A shared `cwd` across a wave buys ~13 points
+   (~$0.008/worker at opus) and costs the per-clone write confinement that makes role
+   isolation enforceable. Rejected unless the cost row measures tight.
+
+### Verify-before-adopt discharged: is the rate window programmatically readable?
+
+Amendment 4 deleted the 500 k cap in favour of **wave-boundary admission control off the
+real meter**, and left this unverified. Measured:
+
+**The endpoint is real and scriptable.** `GET https://api.anthropic.com/api/oauth/usage`
+with a bearer OAuth token returns HTTP 200 and `five_hour.utilization` /
+`seven_day.utilization` / `resets_at` / `locked_reason` / `extra_usage` — a rate-window
+reading, exactly what the deleted dollar cap was groping for.
+
+**The orchestrator's credential cannot read it.** `/home/exedev/.fleet/claude-oauth-token`
+returns **429** on every header variant. Controls: bogus token → **401**; **no** auth
+header → **429** from both hosts; laptop keychain token ×3 → **200/200/200**. So 429 is the
+endpoint's *unauthenticated* shape and the `setup-token` credential is not accepted for it —
+it authenticates for inference fine (all 23 runs). The laptop credential carries
+`user:profile` among its scopes; the long-lived one evidently does not. Both are
+`sk-ant-oat01`, both 108 chars — the shape does not distinguish them.
+
+**Disposition the spec must take (recommendation, not a decision):** `rate_limit_event`
+observation in `stream-json` (confirmed, parity R-o8) **for the cutover** — no new
+credential in the release that is meant to be a subtraction, and a reactive signal is
+already strictly better than a post-hoc dollar cap that destroyed the sandbox; a
+profile-scoped orchestrator credential polling `/api/oauth/usage` at wave boundaries as a
+**follow-up ticket**, which is the stronger form of what Amendment 4 asked for.
