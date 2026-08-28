@@ -1,0 +1,309 @@
+// fleet/tests/_drive_helpers.mjs — the shared fixture for the drive-one specs.
+//
+// NOT a test: the name is outside the `test_*.mjs` glob `tests/test_fleet_suite.py`
+// collects, and running it directly is a no-op (pure exports). The two drive
+// specs — `test_drive.mjs` (the gate read: receipt resolution, publish,
+// evidence capture, the production receipt writer) and
+// `test_drive_lifecycle.mjs` (driver lifecycle + refusals, shim-main helpers,
+// the engine launch leg, park and version-stamp verdicts) — were one file
+// until it ran within a few seconds of the suite's 120 s per-file cap; each
+// now builds its own copy of this fixture in its own process.
+//
+// Concurrency-safe by construction: drives use `port: 0` (an ephemeral port,
+// read back off `detail.effectivePort`), and every byte of state — the
+// throwaway git repos, the orchestrator's sqlite dir, the gate-read report —
+// lives under an `fs.mkdtemp` directory unique to the calling process. No
+// shared fixtures across processes.
+//
+// The sandbox VM is simulated; nothing about the *verification* is. Two REAL
+// git repos stand in for the two ends of the transport — `repoDir` is the
+// orchestrator-side checkout, `sandboxRepo` is the sandbox's `/home/exedev/repo`
+// — and the driver's fetch is retargeted from the ssh URL onto the second one
+// and executed for real. So `FETCH_HEAD` is a real ref, and every receipt is
+// resolved by a real `git cat-file -e` plus a real
+// `git merge-base --is-ancestor <sha> FETCH_HEAD`.
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFile } from 'node:child_process'
+import { WebSocket } from 'ws'
+import { createMergeableStore } from 'tinybase'
+import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
+import { runShim } from '../shim.mjs'
+import {
+  applyBranch,
+  applyReceipt,
+  auxStoreId,
+  applyReportedTokens,
+  applyStamp,
+  BASE_REF,
+  readStamp,
+  sandboxIdFor,
+} from '../shim-main.mjs'
+
+// A frozen clock. Every claim/guard decision in the fleet is a pure function of
+// it, so freezing removes all wall-clock flake from lease continuity; the
+// driver's own timeouts deliberately use wall time and are unaffected.
+export const T = 2_000_000
+export const clock = () => T
+
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+// The engine integrates to `ultra/integration-<stamp>` and never to a name the
+// fleet chose — these are the two such branches the stand-in sandbox carries.
+export const INTEGRATION_BRANCH = 'ultra/integration-20260821125904'
+export const OLDER_BRANCH = 'ultra/integration-19990101000000'
+// Both artifacts live in the SAME run directory — that is where `ultra_gate.py`
+// writes them, and the whole point of discovery is that neither has a fixed
+// path the fleet may assume.
+export const RUN_DIR = '.claude/ultrapowers/run-20260821125904'
+export const RECEIPT_PATH = `${RUN_DIR}/gate-receipt.json`
+export const REPORT_PATH = `${RUN_DIR}/report.json`
+
+// Real shell execution, used for the git commands the spec insists must be real.
+export const sh = (cmd, cwd) =>
+  new Promise((resolve) => {
+    execFile('/bin/sh', ['-c', cmd], { cwd }, (error, stdout, stderr) =>
+      resolve({
+        code: typeof error?.code === 'number' ? error.code : error ? 1 : 0,
+        stdout: stdout ?? '',
+        // Kept off `stdout` so command output stays exactly what git printed;
+        // it is here only to make a failed fixture command legible.
+        stderr: stderr ?? '',
+      }),
+    )
+  })
+
+export const writeFile = (root, rel, contents) => {
+  fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true })
+  fs.writeFileSync(path.join(root, rel), contents)
+}
+
+// Build the fixture: the two real repos, the shared exec stub, the stand-in
+// sandbox, and the drive defaults. The caller owns `cleanup()` — call it from
+// a `finally` once the scenarios are done. A fixture that fails to build
+// cleans up after itself before rethrowing.
+export const setupDriveFixture = async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-drive-'))
+  const repoDir = path.join(tmp, 'repo')
+  const sandboxRepo = path.join(tmp, 'sandbox-repo')
+  const cleanup = () => fs.rmSync(tmp, { recursive: true, force: true })
+  try {
+    // -- the orchestrator-side checkout: a real one-commit repo ----------------
+    fs.mkdirSync(repoDir, { recursive: true })
+    writeFile(repoDir, '.claude-plugin/plugin.json', JSON.stringify({ version: '9.9.9' }))
+    writeFile(repoDir, 'f.txt', 'hi\n')
+    const init = await sh(
+      'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
+        'git add -A && git -c commit.gpgsign=false commit -q -m init',
+      repoDir,
+    )
+    assert.equal(init.code, 0, `git init/commit failed: ${init.stderr}`)
+    const headSha = (await sh('git rev-parse HEAD', repoDir)).stdout.trim()
+    assert.match(headSha, /^[0-9a-f]{40}$/, 'the test fixture must produce a real 40-hex commit sha')
+    // Every sandbox carries this ref: `provisionRun` pushes the driver's base to
+    // it, and it is the ONLY name that identifies the code under test once the
+    // engine has moved the checkout onto its own integration branch. The stand-in
+    // sandboxes below stamp from it exactly as `main()` does.
+    assert.equal((await sh(`git branch ${BASE_REF} main`, repoDir)).code, 0)
+
+    // -- the stand-in sandbox repo --------------------------------------------
+    // A real clone carrying two `ultra/integration-*` branches with explicit,
+    // far-apart committer dates, so `--sort=-committerdate` has an unambiguous
+    // winner. The newest one carries the machine-written gate receipt the engine
+    // leaves behind.
+    const cloned = await sh(`git clone -q "${repoDir}" "${sandboxRepo}"`, tmp)
+    assert.equal(cloned.code, 0, `git clone failed: ${cloned.stderr}`)
+    await sh('git config user.email t@example.com && git config user.name t', sandboxRepo)
+    // The pushed base, as the provisioner leaves it. It stays put for the whole
+    // run while HEAD moves twice (base checkout, then the engine's integration
+    // branch), which is precisely why the stamp is read from it and not from HEAD.
+    assert.equal((await sh(`git branch ${BASE_REF} main`, sandboxRepo)).code, 0)
+
+    await sh(`git checkout -q -b ${OLDER_BRANCH}`, sandboxRepo)
+    writeFile(sandboxRepo, 'old.txt', 'old\n')
+    const older = await sh(
+      "git add -A && GIT_COMMITTER_DATE='2020-01-01T00:00:00Z' git -c commit.gpgsign=false commit -q -m older",
+      sandboxRepo,
+    )
+    assert.equal(older.code, 0, `older-branch commit failed: ${older.stderr}`)
+    const olderSha = (await sh('git rev-parse HEAD', sandboxRepo)).stdout.trim()
+
+    await sh(`git checkout -q main && git checkout -q -b ${INTEGRATION_BRANCH}`, sandboxRepo)
+    writeFile(sandboxRepo, RECEIPT_PATH, JSON.stringify({ verdict: 'PASS', gate: 'ultra_gate' }))
+    const integrated = await sh(
+      "git add -A && GIT_COMMITTER_DATE='2030-01-01T00:00:00Z' git -c commit.gpgsign=false commit -q -m integration",
+      sandboxRepo,
+    )
+    assert.equal(integrated.code, 0, `integration commit failed: ${integrated.stderr}`)
+    const integrationSha = (await sh('git rev-parse HEAD', sandboxRepo)).stdout.trim()
+    assert.notEqual(integrationSha, olderSha)
+
+    // The engine's run report — in the run directory beside the gate receipt.
+    // Receipt discovery must still not pick it up: it is scoped to the receipt's
+    // FILE NAME, not merely to the directory.
+    writeFile(sandboxRepo, REPORT_PATH, JSON.stringify({ usage: { outputTokens: 4200 } }))
+
+    // -- a sha that EXISTS locally but is reachable from no fetched branch -----
+    // Built with `commit-tree` so it never touches a working tree: `cat-file -e`
+    // will find it, `merge-base --is-ancestor` against FETCH_HEAD will not.
+    const dangling = await sh("git commit-tree 'HEAD^{tree}' -p HEAD -m unreachable", repoDir)
+    const unreachableSha = dangling.stdout.trim()
+    assert.match(unreachableSha, /^[0-9a-f]{40}$/, `commit-tree failed: ${dangling.stderr}`)
+    await sh(`git branch fleet-unreachable ${unreachableSha}`, repoDir)
+
+    // -- shared exec stub ------------------------------------------------------
+    // ssh never happens, and `git push` would need it, so that leg is stubbed
+    // green. The FETCH leg is real — retargeted from the sandbox's ssh URL onto
+    // the stand-in sandbox repo on disk — which is what makes FETCH_HEAD a real
+    // ref and reachability a real answer. Every other git command runs for real.
+    const makeExec = (onShimStart) => {
+      const cmds = []
+      const exec = async (cmd) => {
+        cmds.push(cmd)
+        if (cmd.startsWith('ssh ')) {
+          const payload = cmd.match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
+          if (payload) exec.delivered = JSON.parse(payload[1])
+          if (/nohup node .*shim-main\.mjs/.test(cmd)) onShimStart(exec.delivered)
+          return { code: 0, stdout: '{}' }
+        }
+        if (/^git -C \S+ -c core\.sshCommand="[^"]*" push /.test(cmd)) return { code: 0, stdout: '' }
+        const fetched = cmd.match(/^git -C (\S+) -c core\.sshCommand="[^"]*" fetch ssh:\/\/\S+ (\S+)$/)
+        if (fetched) return sh(`git -C "${fetched[1]}" fetch "${sandboxRepo}" ${fetched[2]}`)
+        if (cmd.startsWith('git ')) return sh(cmd)
+        return { code: 0, stdout: '' }
+      }
+      exec.cmds = cmds
+      exec.delivered = null
+      return exec
+    }
+
+    // A hand-rolled stand-in sandbox, used only where the sandbox must publish
+    // something production code would never write: a sha that does not exist, a
+    // sha on no fetched branch, a path absent from the tree, a branch cell full of
+    // shell metacharacters, or nothing at all. It is a real `runShim` against the
+    // driver's own orchestrator, over the real ws transport, holding a real claim,
+    // using shim-main's own store writers.
+    //
+    // `rawBranch` bypasses `applyBranch` deliberately: a hostile sandbox writes
+    // the cell directly, so validating only on the write side would leave the
+    // orchestrator's shell exposed. `publish: false` writes neither branch nor
+    // receipt — the run resolves and publishes nothing.
+    const startStubSandbox = ({
+      assignment,
+      runId,
+      receiptSha,
+      exec,
+      branch = INTEGRATION_BRANCH,
+      receiptPath = 'gate-receipt.json',
+      rawBranch = null,
+      publish = true,
+      // #318: a parked run publishes exactly as a green one does — the verdict
+      // is the only difference. `false` drives the park path.
+      gateGreen = true,
+      // Test scaffolding overrides (additive): default to the shared frozen
+      // `clock` and the current happy-path `invokeRun` behavior. A test that
+      // needs to advance time (lease-expiry legibility, #279) supplies its own
+      // mutable clock here and passes the SAME clock to `driveOne`.
+      clock: stubClock = clock,
+      invokeRun: invokeRunOverride = null,
+      // #282/#190: the stamp the sandbox publishes. Defaults to the honest
+      // `readStamp` answer; a scenario that must model a sandbox running code
+      // OTHER than the pushed base (a stale golden) supplies a wrong one here.
+      stamp: stampOverride = null,
+      // #282 image side (distill P5): the version the sandbox reports as
+      // INSTALLED. Null = the stub stamps none (an older shim).
+      installedPluginVersion: installedOverride = null,
+    }) => {
+      const sandboxId = sandboxIdFor(runId)
+      return (async () => {
+        // Distinct store id — see shim-main's `auxStoreId`: two live
+        // MergeableStores sharing an id mint colliding HLCs and lose writes.
+        const store = createMergeableStore(auxStoreId(sandboxId))
+        const socket = new WebSocket(`${assignment.wsUrl}?token=${assignment.token}`)
+        const synchronizer = await createWsSynchronizer(store, socket)
+        await synchronizer.startSync()
+
+        const stamp = {
+          ...(stampOverride ?? (await readStamp({ repoDir, exec }))),
+          ...(installedOverride ? { installedPluginVersion: installedOverride } : {}),
+        }
+        // Stamped before the run so a crashed run still carries its identity, and
+        // again after, because `runShim`'s status `setRow` replaces the whole row
+        // and can drop cells it has not yet synced.
+        applyStamp(store, runId, stamp)
+
+        const invokeRun =
+          invokeRunOverride ??
+          (async () => {
+            if (publish) applyReceipt(store, runId, 'gate', { sha: receiptSha, path: receiptPath, verdict: 'PASS' })
+            // A real run takes minutes; this one must at least take a tick. The
+            // shim's teardown does not await its synchronizer, so a run that
+            // resolves inside the same tick it started leaves `running`,
+            // `gate-green` and the spend row un-flushed and they never reach the
+            // orchestrator at all. Sleeping here keeps the harness faithful to
+            // the timescale the shim is actually written against.
+            await sleep(250)
+            return { gateGreen }
+          })
+
+        const outcome = await runShim({
+          wsUrl: assignment.wsUrl,
+          token: assignment.token,
+          sandboxId,
+          runId,
+          ttlMs: assignment.ttlMs,
+          clock: stubClock,
+          invokeRun,
+          readReportTokens: () => 4200,
+        })
+
+        // Published AFTER the run, exactly as `main()` does: `runShim`'s status
+        // writes replace the whole row from their own synced view.
+        applyStamp(store, runId, stamp)
+        applyReportedTokens(store, runId, 4200)
+        if (rawBranch !== null) store.setCell('runs', runId, 'branch', rawBranch)
+        else if (publish) applyBranch(store, runId, branch)
+        await synchronizer.save()
+        await synchronizer.stopSync()
+        await synchronizer.destroy()
+        return outcome
+      })()
+    }
+
+    const driveDefaults = {
+      planPath: 'docs/superpowers/plans/example.md',
+      golden: 'fleet-golden',
+      port: 0,
+      repoDir,
+      clock,
+      ttlMs: 60_000,
+      tickMs: 25,
+      settleMs: 1_200,
+      heartbeatTimeoutMs: 20_000,
+      publishPollMs: 50,
+      publishTimeoutMs: 8_000,
+      // #318: the parked publish wait applies to every parked scenario below.
+      // Keep it short — the file runs against a 120 s cap.
+      parkedPublishWaitMs: 500,
+    }
+
+    return {
+      tmp,
+      repoDir,
+      sandboxRepo,
+      cleanup,
+      headSha,
+      olderSha,
+      integrationSha,
+      unreachableSha,
+      makeExec,
+      startStubSandbox,
+      driveDefaults,
+    }
+  } catch (error) {
+    cleanup()
+    throw error
+  }
+}
