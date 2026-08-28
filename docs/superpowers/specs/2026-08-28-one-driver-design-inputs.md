@@ -1,4 +1,4 @@
-# One Driver — design inputs (map #366, frozen 2026-08-28)
+# One Driver — design inputs (map #366, frozen 2026-08-28; mirrors Amendment 2 + child #371)
 
 **What this file is.** The committed, in-repo copy of wayfinder map #366 as it stood
 at the end of the sitting that chartered it — the diagnosis, the two-half eureka, the
@@ -97,6 +97,7 @@ The complexity the review names — the 6-step operator protocol (SKILL.md, 3,12
 - #365 — research: `claude -p` worker parity
 - #243 — grilling: plan only the merge frontier (prerequisite for the spec)
 - #360 — map: The Merge Frontier (sequenced after cutover)
+- #371 — task: Phase 0, the encapsulation-only cut (Amendment 2; after #368)
 - #368 — task: the orchestrator opens the PR (Amendment 1 decision 5; buildable now)
 - ~~#364~~ — superseded by Amendment 1 (no local substrate)
 - (to file after the grilling) `wayfinder:task` — the one-driver spec + build
@@ -139,4 +140,18 @@ The driver-engine is not a re-implementation of the Workflow tool on top of bare
 | **Plugin CI** | `claude plugin eval` (early access) | regression-tests the thin client's skills headlessly |
 
 **Verify-before-adopt list for #365:** `--max-budget-usd` under subscription auth; that `--settings` inline hooks fire in `-p`; that `dontAsk` never blocks on a hidden prompt; the exact `structured_output` failure shape; whether `--bare` still honors `--json-schema` + `--append-system-prompt-file`; `CLAUDE_CODE_PROJECT_DIR_NAME` version floor (2.1.234+) on the golden's `claude`.
+
+
+## Amendment 2 (operator, 2026-08-28) — Phase 0: the encapsulation-only cut ships first, on the current engine
+
+Half 1 of the eureka does not need Half 2. Before the `waves.js` port begins, one sitting ships the deletions that only ever protected a shared laptop checkout — on the existing Workflow-tool engine, validated by one fleet run, with the engine loop untouched:
+
+1. **`/ultrapowers` becomes remote-only.** The skill is "commit the plan, launch `drive-one` on the orchestrator, watch the store, read the receipt." SKILL.md's local execution steps (1–6 as they stand) go; the in-sandbox session still runs the engine via the same skill text, so the cut applies inside the sandbox too.
+2. **Delete from the protocol and `skills/ultrapowers/scripts/`:** `run_lock.sh` + RUN_LOCK, `sweep_worktrees.sh` and the wf-runs / `wf_<stamp>` / `--all` choreography, `hygiene_check.sh`, `residual_manifest.py`, `salvage_args.py`, `redirect_args.py` and the Salvage/Redirect lanes (a redirect is a new run with a narrower plan; a park re-drives from `parkedPublish`), the Step 4a½ registry probe + `check_engine_skew.sh` + `harness_manifest.py` + `ultrapowers-probe`, and the NEEDS_ACK prose grammar (the directive's two-move rule and `standing-approval.json`'s schema, already enforced in `shim-main.mjs:318–375`, ARE the rule). Their tests go with them. Sealing + viewer go now too (decision 3).
+3. **#368 lands in the same phase** so the laptop never fetches a run branch again.
+4. **The fleet shim stops running the deleted steps** (it invokes the skill; nothing else changes).
+
+**Why first:** it is roughly half the deletion ledger, it de-risks the port by shrinking what must be ported, and it pays out immediately if the port takes longer than hoped. **Bar for Phase 0 (its own release, 0.2.26 or 0.3.0-pre — operator's call at the time):** SKILL.md ≤ 1,000 words (from 3,129); scripts ≤ 16 (from 26); one fleet run green on the cut engine with all five §W1d legs; the PR opened by the orchestrator. The numbers go in the release commit. Phase 0 is a code-producing effort → normal flow: short spec (it is the ledger rows above), plan, fleet drive of its own build.
+
+**Route (revised):** #368 ∥ #365 → **Phase 0 cut** → #243 grilling → one-driver spec (adopt-or-answer every row of this file) → port on branch → 0.3.0 → #360 Tier 1.
 
