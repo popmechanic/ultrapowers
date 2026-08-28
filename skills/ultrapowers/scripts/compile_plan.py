@@ -1258,6 +1258,60 @@ def render_advisories(plan_path, base):
     return lines
 
 
+# P1 — Produces blast radius (#233 build, #345 eval cell). For every symbol a
+# task's Produces declares, the CODE files at BASE outside the task's own
+# Files that mention it as a whole word. Keyed on EVERY Produces symbol, not
+# only deleted/renamed ones — run-14's additive `runShim` shape change had its
+# strict-equality pin in a sibling-owned test file. Advisory: a listed file
+# is somewhere the implementer must look (ultraplan Move 3), never a refusal.
+_SYMBOL_RE = re.compile(r"^[A-Za-z_]\w*$")
+_BLAST_LIST_CAP = 8
+
+
+def _multiword_symbol(sym):
+    """camelCase / snake_case / CONSTANT_CASE — an identifier, not a word."""
+    return "_" in sym or any(c.isupper() for c in sym[1:])
+
+
+def _produces_symbols(task):
+    """Symbol tokens the task's Produces lines declare, document order, deduped.
+    Every backticked span reduces like _interface_token's lead (cut at the
+    first '(', whitespace, or ':'); the lead span is kept at >= 5 chars or
+    multi-word, a non-lead span only when multi-word — single common words
+    (`main`, `delivered`, `token`) are grep noise, measured (#345)."""
+    out = []
+    for entry in task["interfaces"]["produces"]:
+        for k, span in enumerate(PATH_RE.findall(entry)):
+            sym = re.split(r"[(\s:]", span, 1)[0].strip("`").strip()
+            if not _SYMBOL_RE.match(sym) or sym.lower() in PLACEHOLDER_TOKENS:
+                continue
+            if not _multiword_symbol(sym) and (k > 0 or len(sym) < 5):
+                continue
+            if sym not in out:
+                out.append(sym)
+    return out
+
+
+def _render_blast_radius(tasks, ctx):
+    lines = []
+    for t in tasks:
+        own = set(t["creates"]) | set(t["modifies"]) | set(t["reads"])
+        for sym in _produces_symbols(t):
+            hits = [f for f in _git_word_files(ctx["base"], sym) if f not in own]
+            if not hits:
+                continue
+            lines.append("ADVISORY blast-radius: Task %s Produces `%s` — %d file(s) "
+                         "at BASE outside Task %s's Files mention it:"
+                         % (t["id"], sym, len(hits), t["id"]))
+            lines.extend("  - " + f for f in hits[:_BLAST_LIST_CAP])
+            if len(hits) > _BLAST_LIST_CAP:
+                lines.append("  … +%d more" % (len(hits) - _BLAST_LIST_CAP))
+    return lines
+
+
+ADVISORY_RENDERS.append(("blast-radius", _render_blast_radius))
+
+
 # --- advisory renders register below (append zone) --------------------------
 
 

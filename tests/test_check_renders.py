@@ -177,4 +177,118 @@ def test_renders_run_nothing_on_a_plan_the_check_refused_structurally(tmp_path, 
     assert compile_plan.render_advisories(plan, repo) == []
 
 
+# --------------------------------------------------------------------------- #
+# Task 2 — P1 blast-radius                                                     #
+# --------------------------------------------------------------------------- #
+P1_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: producer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/lib.py`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: `helper(x: int) -> dict` now returns a dict; the `delivered` flag and the `shapeChanged` field are new
+- Produces: `main()` unchanged
+
+- [ ] **Step 1: do it**
+
+### Task 2: consumer
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/other.py`
+- Test: `tests/test_other.py`
+
+**Interfaces:**
+- Consumes: nothing
+- Produces: nothing
+
+- [ ] **Step 1: do it**
+"""
+
+P1_FILES = {
+    "src/lib.py": "def helper(x):\n    return {}\n\ndef main():\n    pass\n",
+    "src/other.py": "from lib import helper\n",
+    "tests/test_other.py": "assert helper(1) == {}\nshapeChanged = True\n",
+    "tests/test_lib.py": "from lib import helper, main\ndelivered = True\n",
+    "notes.md": "helper and shapeChanged are documented here\n",
+}
+
+
+def test_produces_symbols_heuristics():
+    task = {"interfaces": {"produces": [
+        "`helper(x: int) -> dict` now returns a dict; the `delivered` flag and the `shapeChanged` field are new",
+        "`main()` unchanged",
+        "`runShim(...)` resolves `{ status: string, delivered: boolean }`",
+        "`driveOne` gains optional `provision = provisionRun` and `destroy = destroySandbox`",
+        "nothing",
+        "`CREDITS_REFUSAL_NOTE` constant",
+        "`schema.User` dataclass",
+    ]}}
+    # `provision = provisionRun` reduces (cut at whitespace) to the non-lead
+    # single word `provision` and is dropped; `{ status: … }` reduces to `{`.
+    assert compile_plan._produces_symbols(task) == [
+        "helper", "shapeChanged", "runShim", "driveOne", "CREDITS_REFUSAL_NOTE"]
+
+
+def test_blast_radius_lists_code_files_outside_own_files(tmp_path):
+    repo = git_repo(tmp_path, P1_FILES)
+    plan = tmp_path / "plan.md"
+    plan.write_text(P1_PLAN)
+    p = check(plan, "--renders", "--base", str(repo))
+    assert p.returncode == 0
+    assert p.stdout == (
+        "PLAN OK\n"
+        "\n"
+        "ADVISORY blast-radius: Task 1 Produces `helper` — 3 file(s) at BASE outside Task 1's Files mention it:\n"
+        "  - src/other.py\n"
+        "  - tests/test_lib.py\n"
+        "  - tests/test_other.py\n"
+        "ADVISORY blast-radius: Task 1 Produces `shapeChanged` — 1 file(s) at BASE outside Task 1's Files mention it:\n"
+        "  - tests/test_other.py\n"
+    )
+    # `main` (lead, 4 chars) and `delivered` (non-lead single word) are not
+    # keyed; notes.md is not a code file; src/lib.py is Task 1's own file;
+    # Task 2 Produces nothing.
+    assert "`main`" not in p.stdout and "`delivered`" not in p.stdout
+    assert "notes.md" not in p.stdout and "src/lib.py" not in p.stdout
+    assert "Task 2 Produces" not in p.stdout
+    # arm A on the same plan is the bare verdict
+    assert check(plan).stdout == "PLAN OK\n"
+
+
+def test_blast_radius_caps_the_file_list_at_eight(tmp_path):
+    files = {"src/lib.py": "def widgetMaker():\n    pass\n"}
+    for i in range(10):
+        files["tests/t%02d.py" % i] = "widgetMaker()\n"
+    repo = git_repo(tmp_path, files)
+    plan = tmp_path / "plan.md"
+    plan.write_text(P1_PLAN.replace("`helper(x: int) -> dict` now returns a dict; the `delivered` flag and the `shapeChanged` field are new",
+                                    "`widgetMaker()`"))
+    p = check(plan, "--renders", "--base", str(repo))
+    lines = p.stdout.splitlines()
+    header = [l for l in lines if "Produces `widgetMaker`" in l][0]
+    assert header.endswith("— 10 file(s) at BASE outside Task 1's Files mention it:")
+    i = lines.index(header)
+    assert lines[i + 1:i + 9] == ["  - tests/t%02d.py" % k for k in range(8)]
+    assert lines[i + 9] == "  … +2 more"
+
+
+def test_blast_radius_is_silent_on_canonical_fixtures():
+    for name in CANONICAL:
+        plan = ROOT / "evals/fixtures" / name / "plan.md"
+        base = ROOT / "evals/fixtures" / name / "project"
+        p = check(plan, "--renders", "--base", str(base))
+        assert p.returncode == 0 and "ADVISORY blast-radius" not in p.stdout, name
+
+
 # --- per-render pins are appended below this line (append zone) ------------
