@@ -12,7 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 # file -> ceiling N (word count == len(text.split()), identical to wc -w)
 CEILINGS = {
     "skills/ultrapowers/SKILL.md": 1000,  # set 2026-08-28 (One Driver Phase 0, #371 bar row 1)
-    "skills/ultraplan/SKILL.md": 3569,    # set 2026-08-26 (0.2.23 slate, incl. #248 delta bullet)
+    "skills/ultraplan/SKILL.md": 3038,    # set 2026-08-28 (0.2.26, One Driver Phase 0 — sealing step deleted)
 }
 
 
