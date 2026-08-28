@@ -399,9 +399,21 @@ on a re-dispatch into the same clone within the hour, which is the fix-round cas
 1. **Pin the worker CLI version per run.** B1 is invalidated for every worker after a CLI
    roll or a model switch mid-wave, at ~18 k tokens each. The sandbox image already pins
    it — say so on purpose.
-2. **Do not contort the design for B2.** A shared `cwd` across a wave buys ~13 points
-   (~$0.008/worker at opus) and costs the per-clone write confinement that makes role
-   isolation enforceable. Rejected unless the cost row measures tight.
+2. **Adopt `--exclude-dynamic-system-prompt-sections`, and keep rejecting the contortion.**
+   Measured after the docs pass (note §H): the documented flag moves cwd/env/git-status out
+   of the cached prefix and raises cross-clone sharing **72.6% → 88.4%**, cutting per-worker
+   prefix creation 58% — while every worker keeps its own clone. The shared-`cwd` trade,
+   which would have cost the per-clone write confinement that makes role isolation
+   enforceable, stays rejected because it is no longer the only way to buy B2.
+
+
+**Docs pass (primary sources, note §I) — three additions to the measured rows:**
+
+| row | disposition |
+|---|---|
+| The 1 h default we measured is the **main-conversation** bucket; a workflow agent's requests fall outside it and get **5 minutes by default, including on a subscription** ([workflows#prompt-caching-in-a-fan-out](https://code.claude.com/docs/en/workflows#prompt-caching-in-a-fan-out)) | The port does not merely avoid a TTL setting — it **moves every worker from the 5-minute bucket into the 1-hour one** by making each worker a main conversation. A second, independent reason the driver's cache position beats the engine it replaces |
+| `promptCacheTtl` / `subagentPromptCacheTtl` need **v2.1.242+**; the orchestrator runs **2.1.238** | Immaterial — the default is already the one we want. What the driver owes is the negative: **never set `FORCE_PROMPT_CACHING_5M=1`**, never let `DISABLE_PROMPT_CACHING*` reach a worker's env |
+| `rate_limit_event` is **not a documented event type** — what exists is `system`/`api_retry` with `rate_limit` as one value of its `error` field, alongside `attempt` / `max_retries` / `retry_delay_ms` ([headless#handle-api-retries](https://code.claude.com/docs/en/headless#handle-api-retries)) | **Corrects this amendment's own admission-control wording** and the spec's first draft, which would have halted nearly every multi-wave run at wave 1. The predicate is retry **exhaustion** on a `rate_limit` error, or a rate-plus-delay threshold calibrated from the first three runs — never a single retry |
 
 ### Verify-before-adopt discharged: is the rate window programmatically readable?
 
