@@ -41,7 +41,10 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   `superpowers:writing-plans`. (Also `skills/ultradocket/`.)
 - `hooks/session_start.sh` — injects the plan-routing rule into every session and installs the harnesses.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
-- `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
+- `docs/superpowers/{specs,intents,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
+  **`intents/` is the signed artifact under the post-#243 plan shape** (spec §6: seven slots,
+  `Files:`+`tier` signed, one operator-verifiable acceptance statement per task); the plan is
+  machine-derived per wave and disposable, so `plans/` is historical from 0.3.0.
 - `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
   test data by `tests/test_compile_plan.py`.
 - `fleet/` — Width Program W1 (spec `docs/superpowers/specs/2026-08-21-width-program.md`):
