@@ -296,6 +296,51 @@ def test_a_corrupt_patch_file_refuses_rather_than_reading_as_no_change(tmp_path)
     assert not (tmp_path / "run" / "frontier").exists()
 
 
+def test_an_unreadable_base_is_the_named_exit_2_refusal_not_a_traceback(tmp_path):
+    """Provisioning drift (the repo lacks the base commit) must land on the
+    same exit-2 refusal an undescended head does — review reproduced a raw
+    CalledProcessError traceback here."""
+    repo, base_sha, heads = branch_suite.make_repo(tmp_path)
+    specs = patch_specs(repo, base_sha, tmp_path, [("t1", heads["t1"])])
+    r = do_fold(repo, tmp_path / "run", 1, "0" * 40, specs)
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+    assert "base " + "0" * 40 + " is not readable" in r.stderr
+    assert not (tmp_path / "run" / "frontier").exists()
+
+
+def test_a_relative_patch_path_is_recorded_absolute(tmp_path, monkeypatch):
+    """The log is read back from any cwd (rehydrate's self-sufficiency
+    contract) — review reproduced a FileNotFoundError traceback from a
+    recorded relative path."""
+    repo, base_sha, heads = branch_suite.make_repo(tmp_path)
+    specs = patch_specs(repo, base_sha, tmp_path, [("t1", heads["t1"])])
+    monkeypatch.chdir(tmp_path)
+    run_dir = tmp_path / "run"
+    rel = os.path.relpath(specs[0][1], tmp_path)
+    assert not os.path.isabs(rel)
+    r = do_fold(repo, run_dir, 1, base_sha, [("t1", rel)])
+    assert r.returncode == 0, r.stderr
+    (fold_event,) = [e for e in wave_events(run_dir) if e["type"] == "fold"]
+    assert os.path.isabs(fold_event["patch"])
+    # …so rehydrate works from a different cwd.
+    monkeypatch.chdir(repo)
+    assert ff.rehydrate(repo, run_dir / "frontier/wave-1/fold_log.jsonl")
+
+
+def test_a_deleted_patch_file_is_a_named_fallback_at_materialize(tmp_path):
+    repo, base_sha, heads = branch_suite.make_repo(tmp_path)
+    specs = patch_specs(repo, base_sha, tmp_path, [("t1", heads["t1"])])
+    run_dir = tmp_path / "run"
+    assert do_fold(repo, run_dir, 1, base_sha, specs).returncode == 0
+    tree = [e for e in wave_events(run_dir) if e["type"] == "fold"][0]["headSha"]
+    specs[0][1].unlink()
+    m = run_cli("materialize", "--repo", str(repo), "--run-dir", str(run_dir),
+                "--wave", "1", "--prev-head", base_sha, "--task-head", "t1=" + tree)
+    assert m.returncode == 3, m.stdout + m.stderr
+    assert "cannot read patch" in last_json(m)["fallback"]
+
+
 def test_a_missing_patch_file_is_an_argument_error(tmp_path):
     repo, base_sha, _heads = branch_suite.make_repo(tmp_path)
     r = do_fold(repo, tmp_path / "run", 1, base_sha,

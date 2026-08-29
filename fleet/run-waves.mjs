@@ -212,10 +212,16 @@ export function defaultTaskIdOf(label) {
 // BASE is the sha the clone was cut at, which the driver knows from
 // `cloneAtBase`; it is never read back from the clone's HEAD, which the
 // worker's own commits may have moved.
+// `--output` writes the patch from git's own process: the bytes never pass
+// through Node, so there is no maxBuffer to overflow (execFileSync's 1 MiB
+// default threw ENOBUFS on a ~4 MB diff, reproduced in review) and no utf8
+// decode to mangle non-UTF-8 text hunks into U+FFFD before the kernel sees
+// them. `out` is resolved first — git would otherwise write relative to cwd,
+// the clone.
 export function patchAgainstBase({ cwd, base, out, git = defaultGit }) {
   fs.mkdirSync(path.dirname(out), { recursive: true })
   git(['add', '-A'], cwd)
-  const patch = git(['diff', '--cached', '--binary', '--full-index', '--no-renames', base], cwd)
-  fs.writeFileSync(out, patch)
+  git(['diff', '--cached', '--binary', '--full-index', '--no-renames',
+       '--output=' + path.resolve(out), base], cwd)
   return out
 }

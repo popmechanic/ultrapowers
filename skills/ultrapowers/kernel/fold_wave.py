@@ -222,12 +222,10 @@ class TaskRef(NamedTuple):
     """One supplied task, whatever shape it arrived in.
 
     `ref` is the tree-ish the pipeline reads (a commit sha for `--branch` /
-    `--task-head`, the derived tree sha for `--patch`); `name` is the branch
-    name or the patch path, for messages; `patch` is the patch path or None.
-    Indexed unpacking `[0]`/`[2]` in `_fold_prefix_check` relies on this order.
+    `--task-head`, the derived tree sha for `--patch`); `patch` is the patch
+    path or None.
     """
     task_id: str
-    name: str
     ref: str
     patch: Optional[str]
 
@@ -252,7 +250,13 @@ def _parse_branch(spec):
 
 
 def _parse_patch(spec):
-    """`<taskId>=<patchFile>` -> (taskId, patchFile)."""
+    """`<taskId>=<patchFile>` -> (taskId, absolute patchFile).
+
+    Absolute because the path is RECORDED — in the fold log, which rehydrate
+    re-reads verbatim from any cwd. `absolute()` rather than `resolve()`:
+    anchoring to cwd is the point, symlink normalization would make the
+    recorded path differ from the one the caller can grep for.
+    """
     task_id, eq, patch = spec.partition("=")
     if not eq or not task_id or not patch:
         raise argparse.ArgumentTypeError(
@@ -260,29 +264,23 @@ def _parse_patch(spec):
     if not Path(patch).is_file():
         raise argparse.ArgumentTypeError(
             "--patch %s: no such file %r" % (task_id, patch))
-    return task_id, patch
+    return task_id, str(Path(patch).absolute())
 
 
-class _TaskArg(argparse.Action):
-    """`--branch` / `--patch` / `--task-head` into ONE list, in argv order.
+# `--branch` / `--patch` / `--task-head` append `(kind, parsed)` into ONE
+# shared dest, so the interleaving survives: argv order is the fold order,
+# and the log's prefix check is against exactly that order. argparse's own
+# `append` preserves it across different options sharing a dest.
+def _branch_arg(spec):
+    return ("branch", _parse_branch(spec))
 
-    Separate `append` destinations would lose the interleaving, and argv
-    order is the fold order — the engine emits tasks in task-index order and
-    the log's prefix check is against exactly that order.
-    """
-    KINDS = {"--branch": ("branch", _parse_branch),
-             "--patch": ("patch", _parse_patch),
-             "--task-head": ("head", _parse_task_head)}
 
-    def __call__(self, parser, namespace, value, option_string=None):
-        kind, parse = self.KINDS[option_string]
-        try:
-            parsed = parse(value)
-        except argparse.ArgumentTypeError as e:
-            parser.error(str(e))
-        items = list(getattr(namespace, self.dest, None) or [])
-        items.append((kind, parsed))
-        setattr(namespace, self.dest, items)
+def _patch_arg(spec):
+    return ("patch", _parse_patch(spec))
+
+
+def _head_arg(spec):
+    return ("head", _parse_task_head(spec))
 
 
 def _resolve_tasks(repo, base_sha, specs):
@@ -296,11 +294,11 @@ def _resolve_tasks(repo, base_sha, specs):
     tasks = []
     for kind, parsed in specs:
         if kind == "branch":
-            task_id, name, sha = parsed
-            tasks.append(TaskRef(task_id, name, sha, None))
+            task_id, _branch_name, sha = parsed
+            tasks.append(TaskRef(task_id, sha, None))
         elif kind == "head":
             task_id, sha = parsed
-            tasks.append(TaskRef(task_id, "", sha, None))
+            tasks.append(TaskRef(task_id, sha, None))
         else:
             task_id, patch = parsed
             try:
@@ -309,7 +307,7 @@ def _resolve_tasks(repo, base_sha, specs):
                 raise rw.PatchError("patch for task %s (%s) does not apply "
                                     "against base %s: %s"
                                     % (task_id, patch, base_sha[:7], e))
-            tasks.append(TaskRef(task_id, patch, tree, patch))
+            tasks.append(TaskRef(task_id, tree, patch))
     return tasks
 
 
@@ -420,7 +418,7 @@ def _fold_prefix_check(recorded, branches, base_sha):
     if len(folds) > len(branches):
         return False, []
     for k, recorded_fold in enumerate(folds):
-        if recorded_fold != (branches[k][0], branches[k][2]):
+        if recorded_fold != (branches[k].task_id, branches[k].ref):
             return False, []
     return True, list(branches[len(folds):])
 
@@ -1104,9 +1102,8 @@ def cmd_materialize(args):
         return _park("fold log missing for wave %d" % args.wave)
 
     repo = Path(args.repo)
-    recorded = [json.loads(line)
-                for line in rw.split_lines(log_path.read_text()) if line.strip()]
-    base_sha = recorded[0]["sha"] if recorded and recorded[0].get("type") == "base" else None
+    recorded = _read_log(log_path)
+    base_sha = _log_base(recorded)
     if base_sha is None:
         return _park("fold log for wave %d carries no base" % args.wave)
     try:
@@ -1164,9 +1161,11 @@ def main(argv=None):
     p_fold.add_argument("--run-dir", required=True)
     p_fold.add_argument("--wave", required=True, type=int)
     p_fold.add_argument("--base", required=True)
-    p_fold.add_argument("--branch", dest="tasks", action=_TaskArg, default=[],
+    p_fold.add_argument("--branch", dest="tasks", action="append",
+                        type=_branch_arg, default=[],
                         help="<taskId>=<branchName>:<headSha>; repeatable")
-    p_fold.add_argument("--patch", dest="tasks", action=_TaskArg, default=[],
+    p_fold.add_argument("--patch", dest="tasks", action="append",
+                        type=_patch_arg, default=[],
                         help="<taskId>=<patchFile>, a `git diff --binary "
                              "--full-index --no-renames <BASE>`; repeatable, "
                              "in task-index order, mixable with --branch")
@@ -1185,10 +1184,12 @@ def main(argv=None):
                                 "this reply answers")
     p_resolve.add_argument("--reply-dir", required=True,
                            help="directory holding one h<k>.txt per hunk")
-    p_resolve.add_argument("--branch", dest="tasks", action=_TaskArg, default=[],
+    p_resolve.add_argument("--branch", dest="tasks", action="append",
+                           type=_branch_arg, default=[],
                            help="the wave's full task list, re-supplied on "
                                 "every call in task-index order")
-    p_resolve.add_argument("--patch", dest="tasks", action=_TaskArg, default=[],
+    p_resolve.add_argument("--patch", dest="tasks", action="append",
+                           type=_patch_arg, default=[],
                            help="the patch-input form of --branch; same list, "
                                 "same order, every call")
     p_resolve.add_argument("--commutes", dest="commutes", action="append",
@@ -1202,9 +1203,11 @@ def main(argv=None):
     p_mat.add_argument("--run-dir", required=True)
     p_mat.add_argument("--wave", required=True, type=int)
     p_mat.add_argument("--prev-head", required=True)
-    p_mat.add_argument("--task-head", dest="tasks", action=_TaskArg, default=[],
+    p_mat.add_argument("--task-head", dest="tasks", action="append",
+                       type=_head_arg, default=[],
                        help="<taskId>=<headSha>; repeatable")
-    p_mat.add_argument("--patch", dest="tasks", action=_TaskArg, default=[],
+    p_mat.add_argument("--patch", dest="tasks", action="append",
+                       type=_patch_arg, default=[],
                        help="the patch-input form of --task-head: the same "
                             "patch files the fold was given")
     p_mat.add_argument("--allow-unresolved", action="store_true",

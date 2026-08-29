@@ -91,11 +91,24 @@ def apply_patch_tree(repo, base_ref, patch_path):
     which would read a corrupt patch as "no changes".
     """
     patch_path = Path(patch_path)
-    patch = patch_path.read_bytes()
+    try:
+        patch = patch_path.read_bytes()
+    except OSError as e:
+        # A recorded path that no longer resolves (a cleaned run dir, a log
+        # read from another cwd) must be the named refusal, not a traceback.
+        raise PatchError("cannot read patch %s: %s" % (patch_path, e))
     with tempfile.TemporaryDirectory(prefix="fold-patch-") as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
-        subprocess.run(["git", "-C", str(repo), "read-tree", base_ref],
-                       check=True, capture_output=True, env=env)
+        r = subprocess.run(["git", "-C", str(repo), "read-tree", base_ref],
+                           capture_output=True, env=env)
+        if r.returncode != 0:
+            # An unreadable base (provisioning drift: the clone lacks the
+            # commit) gets the same exit-2 refusal an undescended head does —
+            # under --branch that mistake is named; a traceback here would
+            # bypass the caller's park/fallback routing.
+            raise PatchError("base %s is not readable in %s: %s"
+                             % (base_ref, repo,
+                                r.stderr.decode(errors="replace").strip()))
         if patch.strip():
             r = subprocess.run(["git", "-C", str(repo), "apply", "--cached",
                                 "--binary", str(patch_path.resolve())],
