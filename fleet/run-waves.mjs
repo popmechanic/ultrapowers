@@ -268,7 +268,12 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
     try {
       const cwd = cwdFor(opts)
       const id = taskIdOf(opts.label)
-      const out = patchAgainstBase({ cwd, base, out: path.join(patchesDir, 'task-' + id + '.patch'), git })
+      // `base` may be a function returning the LIVE wave base (Amendment 10
+      // engine: later waves build on the adopted integration head, so their
+      // diffs must be taken against it, not the original BASE). A static sha
+      // keeps the original single-wave semantics unchanged.
+      const baseSha = (typeof base === 'function') ? base(opts) : base
+      const out = patchAgainstBase({ cwd, base: baseSha, out: path.join(patchesDir, 'task-' + id + '.patch'), git })
       reply.patch = out
       reply.branch = ''                                  // detached by design; no branch exists
       reply.headSha = git(['rev-parse', 'HEAD'], cwd).trim()  // driver-derived, replacing the model-typed sha

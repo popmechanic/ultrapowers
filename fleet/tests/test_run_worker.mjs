@@ -29,6 +29,7 @@ import {
   ROLES, roleForLabel, sessionIdFor, buildArgs, lastResult, classify, meterOf,
   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES,
 } from '../run-worker.mjs'
+import { isSchemaTrip } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 
@@ -41,23 +42,14 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 // stage 4 should delete it by having waves.js read `err.workerVerdict.class`.
 //
 // Until then the coupling is REAL, and it must not be able to break silently.
-// A hand-copied regex here would go green forever while waves.js's vocabulary
-// drifted underneath it and tier escalation quietly stopped — the exact failure
-// shape `tests/test_no_prompt_drift.py` exists to prevent for baked prompts.
-// So the pattern is extracted from waves.js's own source at test time: change
-// that line, and this fails loudly.
-const WAVES_SRC = fs.readFileSync(
-  new URL('../../skills/ultrapowers/harnesses/waves.js', import.meta.url), 'utf8')
-const SCHEMA_TRIP = (() => {
-  const m = /const isSchemaTrip = \(msg\) =>\s*\n\s*(\/.+\/[a-z]*)\.test\(msg\)/.exec(WAVES_SRC)
-  assert.ok(m, 'could not find isSchemaTrip in waves.js — the escalation coupling moved; ' +
-    'find it and re-anchor this extraction, or delete the coupling (stage 4)')
-  // eslint-disable-next-line no-eval -- a literal read out of a committed source file
-  return eval(m[1])
-})()
-assert.ok(SCHEMA_TRIP instanceof RegExp)
-assert.ok(SCHEMA_TRIP.test('a schema trip'), 'sanity: the extracted regex behaves like one')
-assert.ok(!SCHEMA_TRIP.test('AGENT_NULL: overloaded'), 'sanity: it does not match everything')
+// Since Amendment 10 the engine that consumes this vocabulary is
+// fleet/run-engine.mjs, which is ordinary importable code — so the pin holds
+// the classifier the RUNNING engine uses, imported directly, not a regex
+// scraped out of the waves.js fallback's source (the old extraction pinned a
+// path the driver no longer executes).
+const SCHEMA_TRIP = { test: (s) => isSchemaTrip(s) }
+assert.ok(isSchemaTrip('a schema trip'), 'sanity: the engine classifier behaves like one')
+assert.ok(!isSchemaTrip('AGENT_NULL: overloaded'), 'sanity: it does not match everything')
 
 // ── 1. label -> role: the whole taxonomy waves.js emits ──────────────────────
 // Every one of these strings is a real label from a real call site; the line
@@ -72,8 +64,10 @@ assert.equal(roleForLabel('merge:wave1'), 'writeSide')                    // :17
 assert.equal(roleForLabel('merge:wave1:fold'), 'writeSide')               // :1457
 assert.equal(roleForLabel('merge:wave1:apply0:1'), 'writeSide')           // :1606
 assert.equal(roleForLabel('merge:wave1:adopt'), 'writeSide')              // :1684
-assert.equal(roleForLabel('reconcile:wave1:1'), 'writeSide')              // :1786
-assert.equal(roleForLabel('resolve:wave1:0:1'), 'writeSide')              // :1589
+assert.equal(roleForLabel('reconcile:wave1:1'), 'writeSide')
+// Amendment 10: the resolver replies through its schema and the driver writes
+// the reply directory, so the role is read-only — never write-side.
+assert.equal(roleForLabel('resolve:wave1:0:1'), 'resolver')
 // An undeclared label FAILS LOUD. This is the assertion that keeps the role
 // table honest as waves.js changes: a new dispatch site cannot inherit a
 // permissive role by omission.
@@ -84,18 +78,19 @@ assert.throws(() => roleForLabel(''), /label is required/)
 // Not a style check: for the allowlist roles the ALLOWLIST IS THE BOUNDARY
 // (parity R-w3), so an allowlist that admitted Write or a bare Bash would move
 // the boundary without anyone noticing.
-for (const role of ['reviewer', 'critic']) {
+for (const role of ['reviewer', 'resolver', 'critic']) {
   const tools = ROLES[role].allowedTools
   assert.ok(!tools.includes('Write') && !tools.includes('Edit'), role + ' must not carry a write tool')
   assert.ok(!tools.includes('Bash'), role + ' must not carry unrestricted Bash')
   assert.equal(ROLES[role].writableRoot, null)
   assert.equal(ROLES[role].permissionMode, 'dontAsk')
 }
-// The critic's three extra verbs are load-bearing (waves.js:373-376 and
-// :619-630): without the detach the frozen gate cannot Approve, and without
-// rev-parse + merge-base a silent merge drop is undetectable.
+// Amendment 10 deleted the critic's three extra git verbs: the DRIVER performs
+// the detach and derives the #70 ancestry check from fold receipts, so a
+// critic allowlist that regrew a git verb would silently widen a read-only
+// boundary — pin the collapse.
 for (const verb of ['Bash(git checkout --detach *)', 'Bash(git rev-parse *)', 'Bash(git merge-base *)']) {
-  assert.ok(ROLES.critic.allowedTools.includes(verb), 'critic lost a load-bearing verb: ' + verb)
+  assert.ok(!ROLES.critic.allowedTools.includes(verb), 'critic regrew a deleted verb: ' + verb)
   assert.ok(!ROLES.reviewer.allowedTools.includes(verb), 'reviewer must not have ' + verb)
 }
 // The two verbs an implementer must never have: stash hides work from the
@@ -208,7 +203,7 @@ assert.equal(classify({ exitCode: 0, envelope: env({ subtype: 'error_during_exec
   const v = classify({ exitCode: 1, envelope: env({ subtype: 'error_max_turns', is_error: true, terminal_reason: 'max_turns', structured_output: null }) })
   assert.equal(v.outcome, 'retry')
   assert.equal(v.class, 'max-turns')
-  assert.match(v.detail, SCHEMA_TRIP, 'a retry class must speak waves.js\'s escalation vocabulary')
+  assert.ok(SCHEMA_TRIP.test(v.detail), 'a retry class must speak the engine\'s escalation vocabulary')
 }
 
 // budget: exit 1, api_error_status null (R-o3/R-l9). Per-worker backstop -> the

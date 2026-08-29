@@ -10,7 +10,8 @@
 //   ultra_run.py preflight+compile  →  fill tiers  →  --validate-knobs
 //   →  provision the run tree (spec §5: clones at BASE, patches, workers,
 //      roles, a fresh CLAUDE_CONFIG_DIR, the event log)
-//   →  runWaves() with agent = withPatchCapture(createRunWorker(...))
+//   →  runEngine() with agent = withPatchCapture(createRunWorker(...))
+//      (Amendment 10: the native engine — waves.js is no longer loaded here)
 //   →  fetch the integration branch back from the clone
 //   →  finalize_report.py → ultra_gate.py → the two-move rule → --approve
 //
@@ -30,9 +31,10 @@
 // prefix is stripped).
 //
 // WHERE THE GATE RUNS, and why there is a fetch. The engine's write side works
-// in clones/integration (makeCwdFor routes it there); the setup agent creates
-// `ultra/integration-<stamp>` INSIDE that clone, so at engine end the run's
-// product exists only in the clone's refs. The frozen gate scripts, the shim's
+// in clones/integration (makeCwdFor routes it there); the DRIVER creates
+// `ultra/integration-<stamp>` INSIDE that clone (run-engine setup — no agent
+// is involved since Amendment 10), so at engine end the run's product exists
+// only in the clone's refs. The frozen gate scripts, the shim's
 // receipt discovery, and the publish leg all read the REPO checkout — 23 runs
 // of evidence on that geometry. One driver-owned fetch bridges the two:
 // repo ← clone, the integration branch only, after the engine returns. No
@@ -42,8 +44,9 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  runWaves, cloneAtBase, makeCwdFor, withPatchCapture, makeEventLog, defaultTaskIdOf,
+  cloneAtBase, makeCwdFor, withPatchCapture, makeEventLog, defaultTaskIdOf,
 } from './run-waves.mjs'
+import { runEngine } from './run-engine.mjs'
 import { createRunWorker } from './run-worker.mjs'
 
 export const REPO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -68,6 +71,7 @@ export const ROLE_TIMEOUT_MS = {
   implementer: 30 * 60 * 1000,
   writeSide: 30 * 60 * 1000,
   reviewer: 15 * 60 * 1000,
+  resolver: 15 * 60 * 1000,
   critic: 15 * 60 * 1000,
 }
 
@@ -218,6 +222,8 @@ export const ROLE_PROMPTS = {
     'Your working directory is the run\'s integration tree.\n',
   reviewer:
     'You are running headless inside a disposable fleet sandbox; no operator is present.\n',
+  resolver:
+    'You are running headless inside a disposable fleet sandbox; no operator is present.\n',
   critic:
     'You are running headless inside a disposable fleet sandbox; no operator is present.\n',
 }
@@ -306,7 +312,7 @@ const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'))
 export async function runMain(parsed, deps = {}) {
   const {
     exec = execSeam,
-    runWavesFn = runWaves,
+    runEngineFn = runEngine,
     makeAgent = composeAgent,
     log = console.error,
     env = process.env,
@@ -409,8 +415,12 @@ export async function runMain(parsed, deps = {}) {
   // every transcript is evidence; the credential rides the inherited env
   // (CLAUDE_CODE_OAUTH_TOKEN from the shim's per-run env file) untouched.
   const workerEnv = { ...env, CLAUDE_CONFIG_DIR: tree.configDir, FLEET_RUN_DIR: runDir }
+  // The live patch base: wave 1 captures against BASE; runEngine advances
+  // `current` to each adopted integration head so later waves diff against
+  // the tree they actually built on (see run-engine.mjs patchBase).
+  const patchBase = { current: base }
   const { agent, patchInput } = makeAgent({
-    runId, base,
+    runId, base: () => patchBase.current,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog,
   })
@@ -426,12 +436,19 @@ export async function runMain(parsed, deps = {}) {
     ', width bound ' + WIDTH + ', patch input armed')
   let report
   try {
-    report = await runWavesFn({
-      agent,
+    // Amendment 10: the native engine (fleet/run-engine.mjs) — every git verb
+    // and kernel invocation is driver code through `exec`; agents are
+    // dispatched only for judgments. waves.js is no longer loaded here; it
+    // remains the Workflow-path fallback, untouched.
+    report = await runEngineFn({
       args: launchArgs,
+      agent,
       parallel: boundedParallel(WIDTH),
+      exec,
+      paths: { repoDir, runDir, clonesDir: tree.clonesDir },
       log: eventLog.log,
       phase: eventLog.phase,
+      patchBase,
     })
   } catch (e) {
     return fail('engine-crashed', String((e && e.stack) || e).slice(0, 1500))
