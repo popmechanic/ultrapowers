@@ -17,7 +17,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { runWaves, loadWavesSource, defaultWavesPath, defaultParallel, cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase } from '../run-waves.mjs'
+import { runWaves, loadWavesSource, defaultWavesPath, defaultParallel, cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase, withPatchCapture, makeEventLog, ulid } from '../run-waves.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runwaves-'))
 const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -179,6 +179,81 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
     [['T1', p1], ['T2', p2]], 'the log records each task by its patch')
   assert.equal(git(['rev-parse', 'HEAD'], repo).trim(), NEWER, 'the fold moved nothing in the parent checkout')
   assert.equal(git(['status', '--porcelain'], repo).trim(), '')
+}
+
+// ── 5. withPatchCapture: the driver is the ONLY producer of patch coordinates ─
+{
+  const patchesDir = path.join(tmp, 'wrap-patches')
+  // A fresh clone for the wrap test; the worker edits and COMMITS (moving
+  // HEAD), and also types lies into its reply.
+  const c3 = cloneAtBase({ repo, dest: path.join(tmp, 'clones', 'task-T3'), base: BASE })
+  const wrapped = withPatchCapture({
+    agent: async (_prompt, opts) => {
+      if (opts.label === 'impl:T3') {
+        fs.writeFileSync(path.join(c3, 'a.txt'), 'T3 was here\n')
+        git(['add', '-A'], c3); git(['commit', '-qm', 'T3 round 1'], c3)
+        // Model-typed lies, all three coordinates:
+        return { status: 'DONE', branch: 'wt-T3', headSha: 'deadbeef', patch: '/etc/passwd' }
+      }
+      if (opts.label === 'fix:T3:1') return { status: 'DONE', branch: 'wt-T3', headSha: 'deadbeef' }
+      if (opts.label === 'review:T3:1') return { verdict: 'PASS', typed: true }
+      return null
+    },
+    clonesDir: path.join(tmp, 'clones'), base: BASE, patchesDir,
+  })
+
+  const r = await wrapped('p', { label: 'impl:T3', isolation: 'worktree' })
+  assert.equal(r.patch, path.join(patchesDir, 'task-T3.patch'), 'the patch path is the DRIVER’s, never the model’s')
+  assert.ok(fs.readFileSync(r.patch, 'utf8').includes('+T3 was here'), 'the patch is the clone’s real diff')
+  assert.equal(r.branch, '', 'branch is cleared — detached by design, no branch exists')
+  assert.equal(r.headSha, git(['rev-parse', 'HEAD'], c3).trim(), 'headSha is derived from the clone, replacing the model-typed sha')
+  assert.notEqual(r.headSha, 'deadbeef')
+
+  // A fix round in the SAME clone: uncommitted second edit; capture is against
+  // the PROVISIONING BASE, so the round-2 patch is CUMULATIVE.
+  fs.writeFileSync(path.join(c3, 'fix.txt'), 'round 2\n')
+  const r2 = await wrapped('p', { label: 'fix:T3:1', isolation: 'worktree' })
+  const p2 = fs.readFileSync(r2.patch, 'utf8')
+  assert.ok(p2.includes('+T3 was here') && p2.includes('+round 2'),
+    'a fix-round capture against BASE carries round 1 AND round 2 — cumulative, what the kernel folds')
+
+  // Non-isolated roles pass through untouched; a null reply stays null.
+  const rev = await wrapped('p', { label: 'review:T3:1' })
+  assert.equal(rev.typed, true); assert.ok(!('patch' in rev), 'no capture for non-worktree roles')
+  assert.equal(await wrapped('p', { label: 'impl:OTHER', isolation: 'worktree' }), null,
+    'a null reply is returned as-is (AGENT_NULL path intact)')
+
+  // Capture failure = honest loss: no patch, a named captureError — the
+  // engine's lost-coordinates guard does the rest.
+  const broken = withPatchCapture({ agent: async () => ({ status: 'DONE', patch: '/lie' }),
+    clonesDir: path.join(tmp, 'no-such-clones'), base: BASE, patchesDir })
+  const rb = await broken('p', { label: 'impl:T9', isolation: 'worktree' })
+  assert.ok(!('patch' in rb), 'no patch on capture failure — the model-typed one is gone too')
+  assert.ok(rb.captureError, 'the failure is named on the reply')
+}
+
+// ── 6. makeEventLog: the run’s record, written while it happens (#414 P1) ────
+{
+  const file = path.join(tmp, 'run', 'events.jsonl')
+  const ev = makeEventLog({ file, runId: 'run-24', base: BASE })
+  ev.onEvent({ kind: 'worker:start', label: 'impl:T1', role: 'implementer' })
+  ev.log('wave 1 merge MERGED')
+  ev.phase('Wave 1')
+  ev.onEvent({ kind: 'worker:end', label: 'impl:T1', exitCode: 0 })
+  const rows = fs.readFileSync(file, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+  assert.equal(rows.length, 5)
+  assert.deepEqual(rows.map((r) => r.kind),
+    ['run:open', 'worker:start', 'engine:log', 'engine:phase', 'worker:end'])
+  // Lineage opens the log; every row is id'd and clocked; ids sort by time.
+  assert.equal(rows[0].runId, 'run-24'); assert.equal(rows[0].base, BASE)
+  for (const r of rows) { assert.equal(r.id.length, 26); assert.ok(r.ts > 0) }
+  assert.deepEqual(rows.map((r) => r.id), [...rows.map((r) => r.id)].sort(),
+    'ULID ids sort in append order')
+  // Append-only: a second maker on the same file appends, never truncates.
+  makeEventLog({ file, runId: 'run-24', base: BASE }).log('after reopen')
+  const again = fs.readFileSync(file, 'utf8').trim().split('\n')
+  assert.equal(again.length, 7, 'reopening appends (a new run:open + the line); nothing is overwritten')
+  assert.ok(ulid() !== ulid(), 'ids never collide')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

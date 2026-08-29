@@ -212,6 +212,41 @@ export function defaultTaskIdOf(label) {
 // BASE is the sha the clone was cut at, which the driver knows from
 // `cloneAtBase`; it is never read back from the clone's HEAD, which the
 // worker's own commits may have moved.
+// The driver joins capture to dispatch here: wrap the driver's `agent`
+// (createRunWorker) and the patch becomes a DRIVER-derived coordinate on every
+// isolated worker's reply — captured from the task's own clone after the
+// worker exits, against the BASE the clone was provisioned at (never the
+// clone's HEAD, which the worker's own commits may have moved; for a fix
+// round the same BASE makes the capture CUMULATIVE — round 2's patch carries
+// round 1's work, which is what the kernel folds). Anything the MODEL typed
+// into `patch`/`branch`/`headSha` is overwritten: a model-typed path is a
+// coordinate nobody verified, and waves.js only honors `patch` at all when
+// args.patchInput says a driver produced it.
+//
+// A capture failure attaches `captureError` and leaves NO patch: the reply
+// then fails hasCoordinates and the task is downgraded to lost-coordinates by
+// the engine's existing guard — honest loss, never a silently absent diff.
+export function withPatchCapture({ agent, clonesDir, base, patchesDir,
+                                   git = defaultGit, taskIdOf = defaultTaskIdOf }) {
+  return async (prompt, opts) => {
+    const reply = await agent(prompt, opts)
+    if (!reply || !opts || opts.isolation !== 'worktree') return reply
+    const id = taskIdOf(opts.label)
+    if (!id) return reply
+    delete reply.patch
+    const cwd = path.join(clonesDir, 'task-' + id)
+    try {
+      const out = patchAgainstBase({ cwd, base, out: path.join(patchesDir, 'task-' + id + '.patch'), git })
+      reply.patch = out
+      reply.branch = ''                                  // detached by design; no branch exists
+      reply.headSha = git(['rev-parse', 'HEAD'], cwd).trim()  // driver-derived, replacing the model-typed sha
+    } catch (e) {
+      reply.captureError = String((e && e.message) || e)
+    }
+    return reply
+  }
+}
+
 // `--output` writes the patch from git's own process: the bytes never pass
 // through Node, so there is no maxBuffer to overflow (execFileSync's 1 MiB
 // default threw ENOBUFS on a ~4 MB diff, reproduced in review) and no utf8
@@ -224,4 +259,57 @@ export function patchAgainstBase({ cwd, base, out, git = defaultGit }) {
   git(['diff', '--cached', '--binary', '--full-index', '--no-renames',
        '--output=' + path.resolve(out), base], cwd)
   return out
+}
+
+// ── the run's event log — the record, written while it happens (#414 P1) ─────
+//
+// One append-only JSONL per run: worker envelopes (run-worker's onEvent
+// stream), engine log lines and phases, opened by a lineage record. This is
+// the Experience Compiler map's Raw Layer probe (#415): the receipt an
+// operator reads and the record a sense pass ingests should be RENDERINGS of
+// this file, not parallel artifacts someone assembles afterwards.
+//
+// Design rules, and where they come from:
+// - append-only, write-once rows; events are a grow-only SET (the row axis of
+//   fleet/store.mjs's discipline — never a register, nothing here is ever
+//   overwritten);
+// - ids are ULID-shaped (ms timestamp in Crockford base32 + randomness), so
+//   rows sort by time and never collide — the id shape Julian's ledger uses;
+// - the first record carries lineage (runId, base, engine source), the
+//   Julian lesson applied: `parentRunId` is NOT here because no reader for it
+//   exists yet — "a version marker gets designed WITH its reader, not before";
+// - this module only APPENDS. The reader is ultralearn's sense pass (#415),
+//   and the file's whole contract is: replaying it is reading the run.
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+// Monotonic within the process: two events in the same millisecond still sort
+// in append order (a 4-char sequence sits between the timestamp and the
+// randomness), so the log's order is readable off the ids alone — no reader
+// has to trust line order to reconstruct the sequence.
+let _ulidLastTs = -1, _ulidSeq = 0
+export function ulid(now = Date.now()) {
+  if (now === _ulidLastTs) { _ulidSeq += 1 } else { _ulidLastTs = now; _ulidSeq = 0 }
+  let t = now, ts = ''
+  for (let i = 0; i < 10; i++) { ts = B32[t % 32] + ts; t = Math.floor(t / 32) }
+  let s = _ulidSeq, seq = ''
+  for (let i = 0; i < 4; i++) { seq = B32[s % 32] + seq; s = Math.floor(s / 32) }
+  const bytes = crypto.getRandomValues(new Uint8Array(12))
+  let rand = ''
+  for (let i = 0; i < 12; i++) rand += B32[bytes[i] % 32]
+  return ts + seq + rand
+}
+
+export function makeEventLog({ file, runId, base, source = 'fleet/run-waves.mjs' }) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  const append = (e) => fs.appendFileSync(file, JSON.stringify(e) + '\n')
+  append({ id: ulid(), ts: Date.now(), kind: 'run:open', runId, base, source })
+  return {
+    // run-worker's onEvent sink: worker:start/end/refused, run:fatal — the
+    // envelope vocabulary, recorded verbatim with an id and a clock.
+    onEvent: (e) => append({ id: ulid(), ts: Date.now(), ...e }),
+    // The engine's own narration, one event per line. waves.js log() lines are
+    // prose, but they are the engine's ONLY self-report of judgment calls,
+    // fallbacks and wave boundaries at the moment they happen.
+    log: (line) => append({ id: ulid(), ts: Date.now(), kind: 'engine:log', line: String(line) }),
+    phase: (name) => append({ id: ulid(), ts: Date.now(), kind: 'engine:phase', phase: String(name) }),
+  }
 }

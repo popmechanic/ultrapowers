@@ -167,6 +167,26 @@ def test_missing_tasks_entry_and_missing_branch_fail(tmp_path):
     assert "no tasks[] entry for merged task 7" in r.stderr
 
 
+def test_patch_input_task_without_branch_is_skipped_not_an_error(tmp_path):
+    """Amendment 9: a patch-input task has no branch and no task commit BY
+    DESIGN — its provenance is the fold log. finalize must skip it (leaving
+    its recorded headSha untouched), not block the run on a missing branch."""
+    repo, tips, tip = make_run(tmp_path)
+    report = make_report(tmp_path, tips)
+    data = json.loads(report.read_text())
+    data["tasks"][0]["branch"] = ""
+    data["tasks"][0]["patch"] = "/run/patches/task-1.patch"
+    data["tasks"][0]["headSha"] = "d" * 40
+    report.write_text(json.dumps(data))
+    r = run(report, repo)
+    assert r.returncode == 0, r.stderr
+    out = json.loads(report.read_text())
+    by_id = {t["task"]: t for t in out["tasks"]}
+    assert by_id["1"]["headSha"] == "d" * 40      # left as recorded, not derived
+    assert by_id["2"]["headSha"] == tips["2"]     # branch tasks still derived
+    assert "has no branch" not in r.stderr
+
+
 def test_non_merged_last_entry_untouched_but_task_heads_derived(tmp_path):
     repo, tips, tip = make_run(tmp_path)
     report = make_report(tmp_path, tips, last_status="SKIPPED",

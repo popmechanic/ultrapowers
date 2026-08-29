@@ -112,6 +112,15 @@ def main():
                 continue
             branch = entry.get("branch")
             if not branch:
+                if entry.get("patch"):
+                    # Patch-input task (Amendment 9): no branch and no task
+                    # commit exist BY DESIGN — the worker's contribution is a
+                    # patch against BASE, folded by the kernel. Ancestry has
+                    # nothing to assert and headSha nothing to derive from;
+                    # provenance is the fold log (patch file + derived tree,
+                    # re-verified on every rehydrate). The engine records the
+                    # same exclusion as a judgment call at merge time.
+                    continue
                 errors.append("tasks[] entry for merged task %s has no "
                               "branch" % tid)
                 continue
