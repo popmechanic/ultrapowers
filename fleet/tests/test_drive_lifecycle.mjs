@@ -218,7 +218,9 @@ try {
     )
   }
 
-  // -- 20. real-plan defaults (#279 + W2 charter): ttlMs 4h, capTokens 500k --
+  // -- 20. real-plan default: ttlMs 4h (#279). The capTokens default is DELETED
+  //        with the cap itself (#400) — the run detail carries no cap, and
+  //        `--cap-tokens` is refused by drive-one rather than ignored.
   {
     const runId = 'run-drive-20'
     const exec = makeExec(() => {})
@@ -226,7 +228,7 @@ try {
     delete opts.ttlMs
     const { detail } = await driveOne(opts)
 
-    assert.equal(detail.capTokens, 500_000, 'capTokens default must be the W2 charter constant')
+    assert.equal(detail.capTokens, undefined, 'the run detail must carry no cap: #400 deleted it')
     assert.equal(exec.delivered.ttlMs, 4 * 60 * 60_000, 'ttlMs default must be real-plan scale (4h), not the 15-min smoke constant')
   }
 

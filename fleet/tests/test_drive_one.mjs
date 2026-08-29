@@ -31,7 +31,6 @@ const ok = (label) => {
   assert.equal(p.golden, DEFAULTS.golden)
   assert.equal(p.port, 8180)
   assert.equal(p.dbDir, '/tmp/fleet-orch-live')
-  assert.equal(p.capTokens, 500_000)
   assert.equal(p.ttlHours, 4)
   assert.equal(p.tokenPath, '/home/exedev/.fleet/claude-oauth-token')
   assert.equal(p.repoDir, REPO_DIR)
@@ -74,14 +73,13 @@ const ok = (label) => {
 {
   const p = parseArgs([
     'p.md', 'run-43', '--port', '40109', '--db-dir', '/tmp/x', '--golden', 'g2',
-    '--cap-tokens', '250000', '--ttl-hours', '2', '--evidence-dir', '/tmp/ev',
+    '--ttl-hours', '2', '--evidence-dir', '/tmp/ev',
     '--sandbox-cpu', '4', '--sandbox-memory', '8GB', '--token-path', '/tmp/tok',
     '--repo-dir', '/tmp/repo', '--allow-unfit-plan',
   ])
   assert.equal(p.port, 40109)
   assert.equal(p.dbDir, '/tmp/x')
   assert.equal(p.golden, 'g2')
-  assert.equal(p.capTokens, 250_000)
   assert.equal(p.ttlHours, 2)
   assert.equal(p.evidenceDir, '/tmp/ev')
   assert.equal(p.sandboxCpu, 4)
@@ -89,6 +87,10 @@ const ok = (label) => {
   assert.equal(p.tokenPath, '/tmp/tok')
   assert.equal(p.repoDir, '/tmp/repo')
   assert.equal(p.allowUnfitPlan, true)
+  // The cap is DELETED, not defaulted away (#400). `--cap-tokens` is refused
+  // loudly rather than ignored: an operator who still passes it must find out,
+  // and a flag that parses into nothing is how a deleted subsystem comes back.
+  assert.throws(() => parseArgs(['p.md', 'run-43', '--cap-tokens', '250000']), /unknown flag --cap-tokens/)
   ok('every flag overrides its default; numeric flags coerce')
 }
 
@@ -138,7 +140,6 @@ ok('usage names the committed entry point')
   assert.equal(o.port, 8180)
   assert.equal(o.dbDir, '/tmp/fleet-orch-live')
   assert.equal(o.repoDir, REPO_DIR)
-  assert.equal(o.capTokens, 500_000)
   assert.equal(o.ttlMs, 4 * 60 * 60 * 1000)
   assert.equal(o.heartbeatTimeoutMs, 30 * 60_000)
   assert.equal(o.claimTimeoutMs, 10 * 60_000)

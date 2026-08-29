@@ -311,10 +311,6 @@ export const driveOne = async ({
   // expired lease surfaces two stages away as a heartbeat timeout. 4h covers
   // any single-plan drain (run-9b precedent).
   ttlMs = 4 * 60 * 60_000,
-  // W2 charter constant, from measured burn (run-13: 115_256 on a real
-  // drained-issue plan; the engine's fixed floor is ~45k). Replaces the 2M
-  // placeholder.
-  capTokens = 500_000,
   wsHost = '127.0.0.1',
   wsUrl,
   evidenceDir,
@@ -631,12 +627,28 @@ export const driveOne = async ({
 
   const actions = {
     page: (cls, text) => pages.push([cls, text]),
-    revokeAndPark: (scopeId, why) => pages.push(['revoke-and-park', `${scopeId} ${why}`]),
-    // The orchestrator's hard action against a cap overshoot. Fire-and-forget
-    // by contract (the sweep is synchronous); the same guard keeps the teardown
-    // in `finally` from destroying an already-destroyed sandbox.
-    destroySandbox: () => {
-      void destroyOnce().catch((error) => errors.push(`destroySandbox: ${error?.message ?? error}`))
+    // `revokeAndPark` is DELETED with the spend pass that was its only caller
+    // (#400). The claim-lease reaper does not park or revoke: it destroys an
+    // unused VM and leaves the run reclaimable.
+    //
+    // The orchestrator's out-of-band reclamation. Fire-and-forget by contract
+    // (the sweep is synchronous).
+    //
+    // THE ARGUMENT IS NOW LOAD-BEARING. Under the spend pass this handler
+    // ignored it and always tore down THIS drive's sandbox, which was correct
+    // there — the overshooting run was always our own. The reaper reclaims VMs
+    // belonging to runs whose drive is already dead, so the name must be
+    // honoured. Our own sandbox goes through `destroyOnce` (which pulls its
+    // logs first and is idempotent against the teardown in `finally`); a
+    // foreign one is removed directly, with no log pull, because there is no
+    // live drive whose evidence dir it would belong in.
+    destroySandbox: (target) => {
+      if (target === undefined || target === vmName) {
+        void destroyOnce().catch((error) => errors.push(`destroySandbox: ${error?.message ?? error}`))
+        return
+      }
+      void destroy({ vmName: target, exec }).catch((error) =>
+        errors.push(`reap ${target}: ${error?.message ?? error}`))
     },
   }
 
@@ -710,11 +722,15 @@ export const driveOne = async ({
       .map(([rowId, row]) => ({ rowId, sha: row.sha, path: row.path, verdict: row.verdict }))
 
   try {
-    // 1. Seed the run and its budget, and let them reach the server before any
+    // 1. Seed the run, and let it reach the server before any
     //    sandbox arrives — `runShim` silently no-ops its status writes against a
     //    runs row it has not synced.
     store.setRow('runs', runId, { planPath, sandboxId: '', status: 'pending', branch })
-    store.setRow('budgets', runId, { capTokens })
+    // The first sweep is now load-bearing for a reason it was not before: it is
+    // where the claim-lease reaper reclaims sandboxes orphaned by an EARLIER
+    // drive that died. `dbDir` is shared across runs, so this store already
+    // carries their claim rows. It used to be incidental (it followed the
+    // budget seed); it is kept deliberately.
     runSweep()
     await sleep(Math.min(settleMs, 200))
 
@@ -1082,7 +1098,6 @@ export const driveOne = async ({
     pages,
     errors,
     epochs: [...epochs],
-    capTokens,
     // Where the pre-teardown evidence pull landed (`sandbox-logs.tgz`), or
     // null when it failed — the failure is in `errors`.
     sandboxLogs: null,

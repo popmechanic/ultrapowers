@@ -177,8 +177,12 @@ a fresh `setup-token` if one is ever suspected compromised.
 
 Max usage is one 5-hour + weekly window **per user across all machines**, so
 the fleet shares the operator's own window; that — not vCPU — bounds width.
-There is no per-invocation spend flag; the shim's `readSessionTokens` and the
-orchestrator's cap are the spend control.
+There is no per-invocation spend flag, and **there is no longer a per-run token
+cap** — it was deleted in #400 (one-driver Amendment 4): it never fired in
+twelve runs (peak run-18, 63%), metered dollars when the scarce resource is the
+rate window, and was calibrated from size means. The shim's `readSessionTokens`
+still writes the `spend` ledger; nothing enforces against it. **The rate window
+is the spend control, and reading it is the operator's job.**
 
 ## GitHub auth (#368) — the orchestrator opens the PR
 
@@ -288,8 +292,7 @@ Knobs, all optional (defaults = the W2 charter constants):
 `--port 8180` (any explicit port; concurrent drains take distinct ports),
 `--db-dir /tmp/fleet-orch-live` (the orchestrator's per-path SQLite persister
 dir; concurrent drains take distinct dirs — that separation is the W2a isolation),
-`--golden fleet-golden`, `--cap-tokens 500000` (raise only on an explicit
-operator call), `--ttl-hours 4` (store-token lease TTL — size to the plan's
+`--golden fleet-golden`, `--ttl-hours 4` (store-token lease TTL — size to the plan's
 expected wall clock with margin; a short lease expires mid-run and reads as a
 heartbeat timeout, #279), `--evidence-dir DIR`, `--sandbox-cpu N` (widest wave
 width + 2, clamped to the plan's max) / `--sandbox-memory 16GB` (calibrate from
@@ -346,9 +349,9 @@ needs no exec wrapper of its own:
   10 minutes.
 
 `driveOne` requires an explicit `runId` (it refuses to run without one —
-runIds are unique per account lifetime, #211) and defaults `capTokens` to
-`500_000` (W2 charter constant) and `ttlMs` to 4h — pass `capTokens`/`ttlMs`
-explicitly for anything unusual.
+runIds are unique per account lifetime, #211) and defaults `ttlMs` to 4h — pass
+`--ttl-hours` explicitly for anything unusual. There is no `--cap-tokens`: it is
+**refused as an unknown flag**, not silently ignored (#400).
 `destroySandbox` (`fleet/provision.mjs`) is
 called by `driveOne` itself before it returns, so the sandbox is already torn
 down by the time this script prints its output — see **Teardown guarantee**
@@ -446,10 +449,10 @@ the first run's measured burn"), to be filled in once a `spendObservational`
 reading exists and recorded here or in the docket cap config, not invented in
 advance:
 
-- **Cap defaults** — the per-run `capTokens` and the docket-wide budget cap
-  (both live in the orchestrator's `budgets` table, `fleet/orchestrator.mjs`)
-  should be set from `spendObservational.reported`/`.ledger` with headroom, not
-  left at `driveOne`'s `2_000_000` placeholder default.
+- ~~**Cap defaults**~~ — **deleted (#400).** There is no `capTokens`, no
+  docket-wide budget cap and no `budgets` table. The `spend` ledger is kept as
+  observation; nothing acts on it. Do not reintroduce a threshold fitted to a
+  handful of runs — that is the mistake this deletion is undoing.
 - **Anomaly multiple** — the burn-rate page (spec §W1c enforcement layer 1)
   stays inert until a trailing window of ≥5 runs exists (W2 at the earliest);
   this run only seeds the baseline it will eventually page against.
@@ -503,10 +506,34 @@ ssh exe.dev "rm fleet-<runId> --json"
 ```
 
 If a run's process is killed mid-flight (operator Ctrl-C, host crash) before
-that teardown leg runs, the sandbox is orphaned and still billing. Recover
-manually with the same command `destroySandbox` would have issued:
+that teardown leg runs, the sandbox is orphaned and still billing. **There is
+no provider-side TTL** — `provisionRun` issues a bare `cp`, and the `ttlMs`
+nearby is the store-token lease, not a VM lifetime — so "orphaned" means
+orphaned until someone runs `rm`.
+
+**The claim-lease reaper (#400) reclaims it, and here is exactly what it can
+promise.** The orchestrator's sweep destroys a sandbox whose claim lease expired
+with no drive heartbeat (a live drive renews the lease, so an expired lease
+*is* the absence of a heartbeat), after a further `REAP_GRACE_MS` margin,
+recording the reason as liveness — never spend.
+
+But **there is no long-lived orchestrator process**: `drive.mjs` starts one per
+drive, in-process, so the sweep that would reap a leak dies with the drive that
+caused it. What makes reclamation work anyway is that `--db-dir` is shared
+across runs by default, and persisted, so the dead run's claim row is still
+there when the **next** drive's orchestrator loads the store — and its first
+sweep reaps the orphan. So:
+
+- a **concurrent** drive reaps within a sweep;
+- otherwise the orphan is reclaimed at **the next drive start**, not within one
+  lease period;
+- if no further run is launched, **nothing reaps**.
+
+So the manual recovery below is still the operator's tool, and the one to reach
+for if a VM must go now:
 
 ```bash
+ssh exe.dev "ls --json"              # fleet-<runId> VMs with no live drive
 ssh exe.dev "rm fleet-<runId> --json"
 ```
 
