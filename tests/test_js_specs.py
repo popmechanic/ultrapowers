@@ -18,6 +18,11 @@ SPECS = [
     ("wave_ancestry_sim.mjs", "ALL SCENARIOS PASSED"),
     ("sim_workflow.mjs", "ALL SCENARIOS PASSED"),
     ("sim_base_ancestry.mjs", "ALL SCENARIOS PASSED"),
+    # Added with #401 step 2. All three sims now run waves.js through the
+    # driver's own loader (fleet/run-waves.mjs), so all three are consumers of
+    # shipped code and belong in CI — leaving one of them outside would mean the
+    # loader is two-thirds covered by the tests that are its specification.
+    ("sim_derived_heads.mjs", "ALL SCENARIOS PASSED"),
 ]
 
 

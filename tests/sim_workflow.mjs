@@ -10,21 +10,19 @@
 // Self-asserting: throws (exit 1) on any failed expectation.
 
 import fs from 'node:fs'
+// #401 step 2: the six globals come from the DRIVER's loader, not from a copy
+// built here. The scenarios below are unchanged; what changed is that passing
+// them now says something about the code that ships. `agent` stays stubbed —
+// that is the seam, and fleet/tests/{test,probe}_run_worker* are what test the
+// real dispatcher on the other side of it.
+import { runWaves, loadWavesSource, defaultWavesPath } from '../fleet/run-waves.mjs'
 
-const WF_URL = new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url)
-const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
+// Two scenarios below MUTATE the source and re-run it, to prove a guard inside
+// waves.js is load-bearing. They go through the same loader.
+const SRC = loadWavesSource(defaultWavesPath())
 
-function runWorkflow({ agent, args, budget, parallel: parallelOverride, phase: phaseRecorder }) {
-  const parallel = parallelOverride || ((thunks) => Promise.all(thunks.map((t) => t())))
-  const phase = typeof phaseRecorder === 'function' ? phaseRecorder : () => {}
-  const log = () => {}
-  // Execute the workflow body as the engine would: an async wrapper whose
-  // trailing `return {...}` becomes the resolved report.
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + SRC + '\n})();'
-  )
-  return factory(agent, parallel, phase, log, args, budget)
+function runWorkflow({ agent, args, budget, parallel, phase, source }) {
+  return runWaves({ agent, args, budget, parallel, phase, source })
 }
 
 function assert(cond, msg) {
@@ -1125,17 +1123,7 @@ async function scenarioMetaAbsentEngine() {
   // by removing from 'export const meta' up through the closing '}\n' of that block.
   const srcWithoutMeta = SRC.replace(/const meta\s*=\s*\{[^}]*\}\s*\n/, '')
   assert(srcWithoutMeta !== SRC, 'metaAbsent: the regex actually stripped the meta block — update it if meta gained nesting')
-  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
-  const phase = () => {}
-  const log = () => {}
-  const agent = makeAgent()
-  const args = baseArgs
-  const budget = undefined
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + srcWithoutMeta + '\n})();'
-  )
-  const r = await factory(agent, parallel, phase, log, args, budget)
+  const r = await runWorkflow({ agent: makeAgent(), args: baseArgs, source: srcWithoutMeta })
   assert(r !== undefined && r.tasks !== undefined, 'metaAbsent: run completed (typeof guard holds)')
   assert(r.tasks.every((t) => t.status === 'done'), 'metaAbsent: all tasks done')
   console.log('scenario meta-absent-engine: OK')
@@ -3039,12 +3027,7 @@ async function scenarioMechanicalTestsCommandNoField() {
   const mutatedSrc = SRC.replace(guard,
     "command: ('command' in (review || {})) ? testCmd : review.output, passed: review.testsPassed, output: review.output")
   assert(mutatedSrc !== SRC, 'mechanicalTestsCommandNoField: mutation actually changed SRC')
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + mutatedSrc + '\n})();'
-  )
-  const mutatedReport = await factory(
-    noCommandCritic(), (thunks) => Promise.all(thunks.map((t) => t())), () => {}, () => {}, baseArgs, undefined)
+  const mutatedReport = await runWorkflow({ agent: noCommandCritic(), args: baseArgs, source: mutatedSrc })
   assert(mutatedReport.tests.command !== 'pnpm check',
     'mechanicalTestsCommandNoField: neutralizing the missing-command guard must break this scenario (proves it is load-bearing)')
   console.log('scenario mechanical-tests-command-no-field: OK')
