@@ -113,8 +113,16 @@ assert.ok(D('Bash', { command: 'echo pwned > `echo /etc`/x' }).deny, 'backtick t
 }
 
 // ── the CLI: stdin → exit code ───────────────────────────────────────────────
+// The base env STRIPS FLEET_RUN_DIR: when this suite runs INSIDE a fleet run
+// (the sandbox baseline, a worker's testCmd), the worker env carries the live
+// run's FLEET_RUN_DIR, and every deliberate test denial below would then be
+// appended to that run's confine-denials.jsonl — 4 of run-25's 6 logged
+// denials were this suite, not real escapes, corrupting the confinement
+// evidence. A test that needs the log passes FLEET_RUN_DIR explicitly.
+const baseEnv = { ...process.env }
+delete baseEnv.FLEET_RUN_DIR
 const run = (input, env = {}) => spawnSync('node', [HOOK], {
-  input, encoding: 'utf8', cwd: clone, env: { ...process.env, ...env },
+  input, encoding: 'utf8', cwd: clone, env: { ...baseEnv, ...env },
 })
 {
   // The CLI must AUTHORITATIVELY allow/deny via the PreToolUse decision JSON —
