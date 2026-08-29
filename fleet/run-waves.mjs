@@ -107,11 +107,19 @@ export function runWaves({
 // deleting it would delete the evidence that the cure worked. It goes when the
 // guard-deletion rule (§8) has a measured number to license it, not before.
 //
-// A clone, not a worktree, on purpose: worktrees of one repository share an
-// object store and a HEAD-reference namespace, so N concurrent workers in N
-// worktrees are N writers to one .git. Clones are independent trees, which is
-// what "one worker cannot disturb another" has to mean when the workers are
-// separate OS processes rather than one runtime's tasks.
+// A clone rather than a worktree — and, since Amendment 9 (2026-08-29), that
+// choice is FREE and settled, not a design question. This paragraph used to
+// argue clones on isolation grounds (N worktrees are N writers to one .git)
+// and never asked what the isolation cost: a clone's refs are invisible to the
+// integration tree, and the fold kernel then read `--branch <id>=<ref>:<sha>`
+// from there, so a contended wave — the CRDT path the program exists for —
+// failed outright. Isolation and CRDT merging are substitutes; every unit of
+// isolation bought is width given up. The cure was not to pick the other
+// substrate but to stop the kernel needing refs at all: a task leaves its
+// clone as a PATCH against BASE (`patchAgainstBase` below), so no clone has
+// to see another's objects and isolation's only remaining job is the one it
+// should have had — a stable read-view during a task. Clone stays because it
+// is already written and tested; a worktree would do the same job.
 export const DEFAULT_IDENTITY = {
   'user.name': 'fleet',
   'user.email': 'fleet@localhost',
@@ -181,4 +189,39 @@ export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf }) {
 export function defaultTaskIdOf(label) {
   const m = /^(?:impl|fix):([^:]+)/.exec(String(label || ''))
   return m ? m[1] : null
+}
+
+// ── the patch against BASE — what a worker's tree becomes (Amendment 9) ──────
+//
+// A task's contribution leaves its clone as CONTENT, not as a ref: the diff of
+// the clone's tree against BASE, binary-safe, full-index, no rename detection.
+// The kernel takes it as `fold_wave.py --patch <id>=<file>` and derives the
+// task's tree from it over BASE in a temporary index — so no clone has to see
+// another's objects, the merge agent's integration clone needs no fetch, and
+// the worktree-vs-clone question stops mattering (it was `cloneAtBase`'s
+// comment above arguing the wrong trade: isolation and CRDT merging are
+// substitutes, and what this buys back is width).
+//
+// Captured by the DRIVER after the worker exits, never reported by the worker:
+// a model-typed path is a coordinate nobody verified. `git add -A` first so an
+// untracked file the worker created is in the diff (the implementer prompt
+// asks for a commit, but the capture must not depend on it having happened),
+// then `diff --cached` against BASE so the index — committed or merely staged
+// — is what is captured. `.gitignore` applies, as it would to a commit.
+//
+// BASE is the sha the clone was cut at, which the driver knows from
+// `cloneAtBase`; it is never read back from the clone's HEAD, which the
+// worker's own commits may have moved.
+// `--output` writes the patch from git's own process: the bytes never pass
+// through Node, so there is no maxBuffer to overflow (execFileSync's 1 MiB
+// default threw ENOBUFS on a ~4 MB diff, reproduced in review) and no utf8
+// decode to mangle non-UTF-8 text hunks into U+FFFD before the kernel sees
+// them. `out` is resolved first — git would otherwise write relative to cwd,
+// the clone.
+export function patchAgainstBase({ cwd, base, out, git = defaultGit }) {
+  fs.mkdirSync(path.dirname(out), { recursive: true })
+  git(['add', '-A'], cwd)
+  git(['diff', '--cached', '--binary', '--full-index', '--no-renames',
+       '--output=' + path.resolve(out), base], cwd)
+  return out
 }

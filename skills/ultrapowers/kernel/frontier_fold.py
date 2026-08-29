@@ -170,6 +170,13 @@ def rehydrate(repo, log_path):
     touched-path map; `resolve` events re-apply their recorded lines
     unconditionally. The log plus the repo are the whole record — the wave's
     CLI invocations carry nothing in memory between them.
+
+    A fold event that carries `patch` (patch input, Amendment 9) is
+    re-derived from that file over the base — the tree it yields is
+    unreferenced in the object store and could be pruned, so the file is the
+    durable record — and REFUSED (`ValueError`) if it no longer yields the
+    recorded `headSha`: a patch edited after it folded would otherwise
+    rehydrate into a frontier the log never described.
     """
     log_path = Path(log_path)
     events = [json.loads(line)
@@ -177,7 +184,18 @@ def rehydrate(repo, log_path):
     if not events or events[0].get("type") != "base":
         raise ValueError("fold log %s does not open with a base event" % log_path)
     base_sha = events[0]["sha"]
-    task_heads = [(e["task"], e["headSha"]) for e in events if e["type"] == "fold"]
+    task_heads = []
+    for e in events:
+        if e["type"] != "fold":
+            continue
+        if e.get("patch"):
+            tree = rw.apply_patch_tree(repo, base_sha, e["patch"])
+            if tree != e["headSha"]:
+                raise ValueError(
+                    "fold log records task %s at tree %s but its patch %s now "
+                    "yields %s — the patch changed after it folded"
+                    % (e["task"], e["headSha"][:7], e["patch"], tree[:7]))
+        task_heads.append((e["task"], e["headSha"]))
     base = rw.snapshot_scoped(repo, base_sha,
                               _union_touched(repo, base_sha,
                                              [h for _, h in task_heads]))

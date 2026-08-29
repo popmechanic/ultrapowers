@@ -15,8 +15,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
-import { runWaves, loadWavesSource, defaultWavesPath, defaultParallel, cloneAtBase, makeCwdFor, defaultTaskIdOf } from '../run-waves.mjs'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { runWaves, loadWavesSource, defaultWavesPath, defaultParallel, cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase } from '../run-waves.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runwaves-'))
 const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
@@ -135,6 +136,50 @@ assert.throws(() => cwdFor({ label: 'weird', isolation: 'worktree' }), /no task 
 assert.equal(defaultTaskIdOf('impl:T1'), 'T1')
 assert.equal(defaultTaskIdOf('fix:T1:2'), 'T1')
 assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isolation')
+
+// ── 4. patchAgainstBase: the worker's tree as content (Amendment 9) ──────────
+// Real git on both ends: the driver captures the patch here, and the KERNEL
+// (fold_wave.py, Python) must accept it — two processes, one contract, so a
+// flag drift on either side fails this test rather than the first live run.
+{
+  // T1 committed (its clone is at c1, one commit past BASE). T2 does not
+  // commit at all: an edit, an untracked new file (executable), a delete, and
+  // a binary write, all left in the working tree.
+  const patchesDir = path.join(tmp, 'patches')
+  const p1 = patchAgainstBase({ cwd: c1, base: BASE, out: path.join(patchesDir, 'task-T1.patch') })
+  fs.writeFileSync(path.join(c2, 'a.txt'), 'base\nT2 appended\n')
+  fs.writeFileSync(path.join(c2, 'tool.sh'), '#!/bin/sh\necho t2\n', { mode: 0o755 })
+  fs.writeFileSync(path.join(c2, 'blob.bin'), Buffer.from([0, 1, 2, 3]))
+  const p2 = patchAgainstBase({ cwd: c2, base: BASE, out: path.join(patchesDir, 'task-T2.patch') })
+  const text2 = fs.readFileSync(p2, 'utf8')
+  assert.ok(text2.includes('+T2 appended'), 'the edit is in the patch')
+  assert.ok(text2.includes('new file mode 100755'), 'an untracked executable is in the patch with its mode')
+  assert.ok(text2.includes('GIT binary patch'), 'binary content rides --binary')
+  assert.ok(!/^index [0-9a-f]{7}\.\./m.test(text2), 'full-index, never abbreviated')
+  // The clone's own HEAD did not move: capture is read-only on refs.
+  assert.equal(git(['rev-parse', 'HEAD'], c2).trim(), BASE)
+
+  // The kernel folds both patches over BASE in the parent repo — the one place
+  // the merge agent runs — with no fetch, no shared refs, and a checkout that
+  // is NOT at BASE (it is at NEWER, the #314 shape; --repo only needs objects).
+  const kernel = fileURLToPath(new URL('../../skills/ultrapowers/kernel/fold_wave.py', import.meta.url))
+  const runDir = path.join(tmp, 'run')
+  const fold = spawnSync('python3', [kernel, 'fold', '--repo', repo, '--run-dir', runDir,
+    '--wave', '1', '--base', BASE, '--patch', 'T1=' + p1, '--patch', 'T2=' + p2],
+    { encoding: 'utf8' })
+  assert.equal(fold.status, 0, 'the kernel accepts driver-captured patches: ' + fold.stdout + fold.stderr)
+  const reply = JSON.parse(fold.stdout.trim().split('\n').pop())
+  // T1 rewrote a.txt's only line; T2 appended to it — a same-file conflict the
+  // kernel narrates, which is the CRDT path stage 1's clones could not reach.
+  assert.equal(reply.conflicts, 1, 'the contended path is live under patch input: ' + fold.stdout)
+  assert.equal(reply.open[0].path, 'a.txt')
+  const events = fs.readFileSync(path.join(runDir, 'frontier/wave-1/fold_log.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l))
+  assert.deepEqual(events.filter((e) => e.type === 'fold').map((e) => [e.task, e.patch]),
+    [['T1', p1], ['T2', p2]], 'the log records each task by its patch')
+  assert.equal(git(['rev-parse', 'HEAD'], repo).trim(), NEWER, 'the fold moved nothing in the parent checkout')
+  assert.equal(git(['status', '--porcelain'], repo).trim(), '')
+}
 
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

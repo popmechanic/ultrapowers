@@ -1440,6 +1440,99 @@ async function scenarioPartialMergeContendedSurvivors() {
   console.log('scenario 11j partial-merge-contended-survivors: OK')
 }
 
+// ── Scenario 12: patch input (One Driver Amendment 9) ────────────────────────
+// The driver attaches `patch` to an implementer's reply — the task's diff
+// against BASE, captured from its own tree — and leaves `branch` empty, because
+// under patch input there is no branch to report. The engine must (a) treat
+// that as mergeable coordinates, not lost ones, and (b) hand the kernel
+// `--patch <id>=<file>` in place of `--branch` / `--task-head`, per result.
+async function scenarioPatchInputCommands() {
+  const calls = []
+  const patchOf = (id) => RUN_DIR + '/patches/task-' + id + '.patch'
+  const agent = makeAgent(calls, (label) => {
+    if (label.startsWith('impl:')) {
+      const id = label.split(':')[1]
+      return { status: 'DONE', summary: 's', branch: '', headSha: 'sha-' + id,
+               startHead: SETUP_HEAD, patch: patchOf(id) }
+    }
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-12' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+
+  for (const id of ['A', 'B']) {
+    const t = r.tasks.find((x) => x.task === id)
+    eq(t.status, 'done', '12: a patch result with an empty branch is mergeable, not lost (' + id + ')')
+    assert(t.reviewVerdict !== 'lost-coordinates', '12: no lost-coordinates downgrade for ' + id)
+    eq(t.patch, patchOf(id), '12: the task record carries its patch path (' + id + ')')
+  }
+  assert(!r.judgmentCalls.some((j) => /without mergeable coordinates/.test(j)),
+    '12: no lost-coordinates judgment call (got ' + JSON.stringify(r.judgmentCalls) + ')')
+
+  const fold = promptFor(calls, 'merge:wave1:fold')
+  assert(fold.indexOf(CLI + ' fold --repo . --run-dir ' + RUN_DIR + ' --wave 1 --base ' +
+    SETUP_HEAD + ' --patch A=' + patchOf('A') + ' --patch B=' + patchOf('B')) !== -1,
+    '12: the fold command carries --patch per task, in task-index order, off the previous head')
+  assert(fold.indexOf('--branch') === -1, '12: a patch task is never supplied as --branch')
+
+  const adopt = promptFor(calls, 'merge:wave1:adopt')
+  assert(adopt.indexOf(CLI + ' materialize --repo . --run-dir ' + RUN_DIR +
+    ' --wave 1 --prev-head ' + SETUP_HEAD + ' --patch A=' + patchOf('A') +
+    ' --patch B=' + patchOf('B')) !== -1,
+    '12: the materialize command carries the same --patch list')
+  assert(adopt.indexOf('--task-head') === -1, '12: a patch task is never supplied as --task-head')
+
+  eq(r.waveMerges[0].status, 'MERGED', '12: the wave merged via the contended path')
+  eq(r.waveMerges[0].headSha, 'cand-12', '12: the adopted candidate is the wave head')
+  console.log('scenario 12 patch-input-commands: OK')
+}
+
+// A wave mixing the two shapes (one runtime-style branch result, one driver-
+// style patch result) supplies each in its own form, in task-index order.
+async function scenarioPatchAndBranchMixed() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'impl:B') {
+      return { status: 'DONE', summary: 's', branch: '', headSha: 'sha-B',
+               startHead: SETUP_HEAD, patch: RUN_DIR + '/patches/task-B.patch' }
+    }
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-12b' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  const fold = promptFor(calls, 'merge:wave1:fold')
+  assert(fold.indexOf(' --branch A=wt-A:sha-A --patch B=' + RUN_DIR + '/patches/task-B.patch') !== -1,
+    '12b: each task rides its own shape, in task-index order')
+  const adopt = promptFor(calls, 'merge:wave1:adopt')
+  assert(adopt.indexOf(' --task-head A=sha-A --patch B=' + RUN_DIR + '/patches/task-B.patch') !== -1,
+    '12b: materialize mirrors the fold list shape for shape')
+  eq(r.waveMerges[0].headSha, 'cand-12b', '12b: the wave merged')
+  console.log('scenario 12b patch-and-branch-mixed: OK')
+}
+
+// And the guard it must not weaken: a patch result with NO headSha is still
+// lost — the sha is required whatever the second coordinate is.
+async function scenarioPatchWithoutHeadShaIsLost() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'impl:A') {
+      return { status: 'DONE', summary: 's', branch: '', headSha: '',
+               startHead: SETUP_HEAD, patch: RUN_DIR + '/patches/task-A.patch' }
+    }
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-12c' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave()), budget: undefined })
+  const a = r.tasks.find((x) => x.task === 'A')
+  eq(a.status, 'failed', '12c: a patch with no headSha is lost coordinates')
+  eq(a.reviewVerdict, 'lost-coordinates', '12c: recorded as lost-coordinates')
+  assert(!has(calls, 'review:A:1'), '12c: no review is spent on a lost task')
+  console.log('scenario 12c patch-without-headsha-is-lost: OK')
+}
+
 await scenarioWritesAbsentSkipsCompositionRows()
 await scenarioAutoResolvedSumsAcrossLegs()
 await scenarioCompositionSingleWriterNoRow()
@@ -1447,5 +1540,8 @@ await scenarioCompositionAllDeclaredNoRow()
 await scenarioCompositionMixedWritesSkipNote()
 await scenarioCompositionPartiallyMergedExcludesFailedWriter()
 await scenarioPartialMergeContendedSurvivors()
+await scenarioPatchInputCommands()
+await scenarioPatchAndBranchMixed()
+await scenarioPatchWithoutHeadShaIsLost()
 
 console.log('ALL SCENARIOS PASSED')

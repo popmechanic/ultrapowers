@@ -11,11 +11,15 @@ One JSONL file per wave, written by the frontier CLI and read back by
 the wave records lives beside it in the same directory.
 
 The log is also **the authority for what has folded**. The wave's task list
-is re-supplied to every CLI call as `<taskId>=<branch>:<headSha>` triples; the
-recorded `fold` events must be an `(id, headSha)` prefix of that list over the
-same `base`, or the call refuses (`log/list disagreement`). `remaining` is the
-supplied list minus that prefix, and **`complete` is derived, never recorded**:
-every task folded and no narrated path left unresolved.
+is re-supplied to every CLI call — as `--branch <taskId>=<branch>:<headSha>`
+triples, or as `--patch <taskId>=<file>` patches against the base (One Driver
+Amendment 9), in task-index order and mixable; the recorded `fold` events must
+be an `(id, headSha)` prefix of that list over the same `base`, or the call
+refuses (`log/list disagreement`). For a patch task `headSha` is the **tree**
+the patch yields over the base, derived afresh on every call, so a patch file
+edited mid-wave is that same disagreement. `remaining` is the supplied list
+minus that prefix, and **`complete` is derived, never recorded**: every task
+folded and no narrated path left unresolved.
 
 ## Self-sufficiency contract
 
@@ -51,22 +55,31 @@ The commit every task in the wave branched from. `rehydrate` refuses a log
 that does not open with it. Otherwise inert: it seeds the engine and is
 skipped by the event walk.
 
-It is also a precondition on every head: `fold` and `resolve` refuse (exit 2,
-nothing written) any task head the base is not an ancestor of. Each task's
-state is published as a two-point diff against the base, so a head cut from a
-stale ref would read as a revert of everything the base gained since — folded,
-that silently reverted 3,472 lines of an integration line on a green suite
-(#246). The engine's fallback, an ordinary three-way merge, handles a stale
-parent correctly; the fold cannot.
+It is also a precondition on every branch head: `fold` and `resolve` refuse
+(exit 2, nothing written) any task head the base is not an ancestor of. Each
+task's state is published as a two-point diff against the base, so a head cut
+from a stale ref would read as a revert of everything the base gained since —
+folded, that silently reverted 3,472 lines of an integration line on a green
+suite (#246). The engine's fallback, an ordinary three-way merge, handles a
+stale parent correctly; the fold cannot. A patch task has no ancestry to
+check: it is against the base by construction, and its refusal is the
+patch-side one — a patch that does not apply over the base (exit 2, nothing
+written, the task named on stderr).
 
 ### `fold` — one per task folded, in task-index order
 
 ```json
 {"type": "fold", "task": "<task id>", "headSha": "<the task branch head>"}
+{"type": "fold", "task": "<task id>", "headSha": "<the derived tree>", "patch": "<file>"}
 ```
 
 `headSha` is what makes the log self-sufficient: the task's `TaskState` is
 re-derived with `publish(base, repo, baseSha, headSha)` rather than stored.
+The second form is a **patch task**: `headSha` is the tree sha
+`repo_weave.apply_patch_tree(repo, baseSha, patch)` yields, and `rehydrate`
+re-derives it from the file on every call (the tree object itself is
+unreferenced and may be pruned — the file is the durable record), refusing
+with `ValueError` if the file no longer yields the recorded sha.
 Task-index order (not completion order) is what the CLI writes — completion
 order is not observable to the engine, and K1 order-independence is exactly
 what the self-checks assert, so determinism costs nothing.

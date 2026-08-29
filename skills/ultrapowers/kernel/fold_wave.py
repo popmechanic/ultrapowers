@@ -44,6 +44,25 @@ stop on it. `conflicts.json` marks that entry `"autoResolved": true` (it stays
 into a candidate commit through a TEMPORARY INDEX, so the worktree and every
 branch ref are untouched by construction; adoption is the engine's job.
 
+**Patch input (One Driver Amendment 9, 2026-08-29).** A task may arrive as
+`--patch <taskId>=<file>` instead of `--branch`: `<file>` is a `git diff
+--binary --full-index --no-renames <BASE>` captured in the worker's own tree.
+Folding is a function of CONTENT; only this adapter ever made it a function
+of git, and with patch input it needs no ref the kernel can see — no shared
+object store, no shared branches, no fetch, so the worker's substrate
+(worktree, clone, anything) stops mattering. `repo_weave.apply_patch_tree`
+turns each patch into a tree sha inside a temporary index of `--repo`
+(deterministic: same patch over the same base, same sha), and everything
+downstream reads that tree-ish exactly as it read a commit. The fold log
+records `headSha` (the tree) AND `patch` (the file), so `rehydrate` can
+re-derive the task from the run directory alone and refuse if the patch has
+changed since it folded. A patch that does not apply is the exit-2 refusal —
+the patch-side analogue of an undescended head, which a patch cannot be.
+`materialize --patch` builds the candidate with the previous integration head
+as its ONLY parent: there is no task commit to parent. `--branch` and
+`--task-head` remain as the pre-cutover path (spec §10 stage 2) and are
+deleted with it, on measurement.
+
 Every invocation is a fresh process: no subcommand carries anything in
 memory from the last one, per the fold log's self-sufficiency contract.
 
@@ -66,6 +85,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from typing import NamedTuple, Optional
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
@@ -198,6 +218,18 @@ def _git_env(repo, env, *args, stdin=None):
                           capture_output=True, env=env, input=stdin).stdout
 
 
+class TaskRef(NamedTuple):
+    """One supplied task, whatever shape it arrived in.
+
+    `ref` is the tree-ish the pipeline reads (a commit sha for `--branch` /
+    `--task-head`, the derived tree sha for `--patch`); `patch` is the patch
+    path or None.
+    """
+    task_id: str
+    ref: str
+    patch: Optional[str]
+
+
 def _parse_task_head(spec):
     """`<taskId>=<headSha>` -> (taskId, headSha)."""
     task_id, eq, head_sha = spec.partition("=")
@@ -215,6 +247,68 @@ def _parse_branch(spec):
         raise argparse.ArgumentTypeError(
             "--branch must be <taskId>=<branchName>:<headSha>, got %r" % spec)
     return task_id, branch_name, head_sha
+
+
+def _parse_patch(spec):
+    """`<taskId>=<patchFile>` -> (taskId, absolute patchFile).
+
+    Absolute because the path is RECORDED — in the fold log, which rehydrate
+    re-reads verbatim from any cwd. `absolute()` rather than `resolve()`:
+    anchoring to cwd is the point, symlink normalization would make the
+    recorded path differ from the one the caller can grep for.
+    """
+    task_id, eq, patch = spec.partition("=")
+    if not eq or not task_id or not patch:
+        raise argparse.ArgumentTypeError(
+            "--patch must be <taskId>=<patchFile>, got %r" % spec)
+    if not Path(patch).is_file():
+        raise argparse.ArgumentTypeError(
+            "--patch %s: no such file %r" % (task_id, patch))
+    return task_id, str(Path(patch).absolute())
+
+
+# `--branch` / `--patch` / `--task-head` append `(kind, parsed)` into ONE
+# shared dest, so the interleaving survives: argv order is the fold order,
+# and the log's prefix check is against exactly that order. argparse's own
+# `append` preserves it across different options sharing a dest.
+def _branch_arg(spec):
+    return ("branch", _parse_branch(spec))
+
+
+def _patch_arg(spec):
+    return ("patch", _parse_patch(spec))
+
+
+def _head_arg(spec):
+    return ("head", _parse_task_head(spec))
+
+
+def _resolve_tasks(repo, base_sha, specs):
+    """`[(kind, parsed)]` -> `[TaskRef]`, in argv order.
+
+    The one place patch content becomes a tree-ish: each `--patch` is applied
+    over `base_sha` in a temporary index (`rw.apply_patch_tree`). Raises
+    `rw.PatchError` naming the task when a patch does not apply — the
+    caller's exit-2 refusal, before anything is written.
+    """
+    tasks = []
+    for kind, parsed in specs:
+        if kind == "branch":
+            task_id, _branch_name, sha = parsed
+            tasks.append(TaskRef(task_id, sha, None))
+        elif kind == "head":
+            task_id, sha = parsed
+            tasks.append(TaskRef(task_id, sha, None))
+        else:
+            task_id, patch = parsed
+            try:
+                tree = rw.apply_patch_tree(repo, base_sha, patch)
+            except rw.PatchError as e:
+                raise rw.PatchError("patch for task %s (%s) does not apply "
+                                    "against base %s: %s"
+                                    % (task_id, patch, base_sha[:7], e))
+            tasks.append(TaskRef(task_id, tree, patch))
+    return tasks
 
 
 def _parse_commutes(spec):
@@ -250,8 +344,8 @@ class Contracts:
     def _touched_map(self):
         if self._touched is None:
             self._touched = {
-                tid: set(rw.diff_paths(self.repo, self.base_sha, head_sha))
-                for tid, _branch_name, head_sha in self.branches}
+                t.task_id: set(rw.diff_paths(self.repo, self.base_sha, t.ref))
+                for t in self.branches}
         return self._touched
 
     def eligible(self, path, incoming):
@@ -324,7 +418,7 @@ def _fold_prefix_check(recorded, branches, base_sha):
     if len(folds) > len(branches):
         return False, []
     for k, recorded_fold in enumerate(folds):
-        if recorded_fold != (branches[k][0], branches[k][2]):
+        if recorded_fold != (branches[k].task_id, branches[k].ref):
             return False, []
     return True, list(branches[len(folds):])
 
@@ -447,7 +541,8 @@ def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
     appears in `open`, so a fold whose conflicts ALL auto-resolve keeps going
     (spec §2b consumer 3). Dispatch stops and parks are unchanged.
     """
-    for k, (task_id, _branch_name, head_sha) in enumerate(remaining):
+    for k, task in enumerate(remaining):
+        task_id = task.task_id
         try:
             conflicts = eng.fold(states[task_id])
         except RecursionError:
@@ -455,8 +550,12 @@ def _fold_until_stop(eng, states, remaining, log_path, wave_dir, index,
             # `rw.fold` has returned, so the raise leaves the engine exactly
             # at the previous task — the log truncates cleanly.
             return [], list(remaining[k:]), (task_id, states[task_id])
-        _append_event(log_path,
-                      {"type": "fold", "task": task_id, "headSha": head_sha})
+        event = {"type": "fold", "task": task_id, "headSha": task.ref}
+        if task.patch is not None:
+            # `headSha` is the derived TREE; `patch` is what rehydrate
+            # re-derives it from, so the log + run dir are the whole record.
+            event["patch"] = task.patch
+        _append_event(log_path, event)
         if conflicts:
             epoch = eng.epoch()
             manifest = eng.manifest()
@@ -507,6 +606,10 @@ def _self_checks(repo, base, eng, folded, log_path):
         return "ok"
     except RecursionError:
         return "failed: kernel recursion limit in self-checks"
+    except (rw.PatchError, ValueError) as e:
+        # A recorded patch that no longer applies, or no longer yields the
+        # recorded tree: the run directory disagrees with its own log.
+        return "failed: rehydrate: %s" % e
 
 
 def _write_kernel_park(wave_dir, index, epoch, park):
@@ -537,14 +640,21 @@ def _undescended(repo, base_sha, branches):
     one input the fold cannot interpret; the caller refuses before writing
     anything, and the engine's fallback (an ordinary three-way merge) handles
     the stale parent correctly.
+
+    Patch tasks are not checked: a patch is against the base by construction
+    (it was applied over it to exist as a tree at all), and a tree has no
+    ancestry for `merge-base` to test. The patch-side refusal is "does not
+    apply", raised in `_resolve_tasks` before this runs.
     """
     stale = []
-    for task_id, _branch_name, head_sha in branches:
+    for task in branches:
+        if task.patch is not None:
+            continue
         r = subprocess.run(["git", "-C", str(repo), "merge-base",
-                            "--is-ancestor", base_sha, head_sha],
+                            "--is-ancestor", base_sha, task.ref],
                            capture_output=True)
         if r.returncode != 0:
-            stale.append((task_id, head_sha))
+            stale.append((task.task_id, task.ref))
     return stale
 
 
@@ -570,10 +680,10 @@ def _prepare(repo, base_sha, branches):
     since a narrower scope would misclassify a path a later task also touches
     as an `add/add` instead of a `modify`.
     """
-    touched = ff._union_touched(repo, base_sha, [h for _, _, h in branches])
+    touched = ff._union_touched(repo, base_sha, [t.ref for t in branches])
     base = rw.snapshot_scoped(repo, base_sha, touched)
-    states = {task_id: rw.publish(base, repo, base_sha, head_sha, task_id=task_id)
-              for task_id, _branch_name, head_sha in branches}
+    states = {t.task_id: rw.publish(base, repo, base_sha, t.ref, task_id=t.task_id)
+              for t in branches}
     return base, states, _state_max_lines(base, states)
 
 
@@ -588,7 +698,7 @@ def _pre_scan(base, states, branches):
     """
     eng = ff.FrontierEngine(base)
     conflicts = []
-    for task_id, _branch_name, _head_sha in branches:
+    for task_id in (t.task_id for t in branches):
         try:
             found = eng.fold(states[task_id])
         except RecursionError:
@@ -613,8 +723,12 @@ def cmd_fold(args):
 
     repo = Path(args.repo)
     base_sha = args.base
-    branches = args.branches  # [(taskId, branchName, headSha)], argv order
-    all_ids = [task_id for task_id, _n, _h in branches]
+    try:
+        branches = _resolve_tasks(repo, base_sha, args.tasks)  # [TaskRef], argv order
+    except rw.PatchError as e:
+        print("refusing wave %d: %s" % (args.wave, e), file=sys.stderr)
+        return 2
+    all_ids = [t.task_id for t in branches]
 
     if _refuse_undescended(repo, base_sha, branches, args.wave):
         return 2
@@ -663,7 +777,7 @@ def cmd_fold(args):
         _write_kernel_park(wave_dir, index, eng.epoch(), kernel_park)
         print(json.dumps({"clean": False, "conflicts": len(index),
                           "dispatchable": 0, "parked": len(index),
-                          "open": [], "remaining": [t for t, _n, _h in remaining],
+                          "open": [], "remaining": [t.task_id for t in remaining],
                           "autoResolved": contracts.auto,
                           "complete": False,
                           "selfChecks": "failed: kernel recursion limit "
@@ -680,12 +794,12 @@ def cmd_fold(args):
                           "dispatchable": len(open_entries),
                           "parked": len(stop) - len(open_entries),
                           "open": [_open_view(e) for e in open_entries],
-                          "remaining": [t for t, _n, _h in remaining],
+                          "remaining": [t.task_id for t in remaining],
                           "autoResolved": contracts.auto,
                           "complete": False}))
         return 0
 
-    folded = [states[task_id] for task_id, _n, _h in branches]
+    folded = [states[t.task_id] for t in branches]
     self_checks = _self_checks(repo, base, eng, folded, log_path)
 
     # `complete` is derived, never recorded: every task folded (nothing
@@ -710,9 +824,17 @@ def cmd_resolve(args):
         return 2
 
     repo = Path(args.repo)
-    branches = args.branches
     recorded = _read_log(log_path)
     base_sha = _log_base(recorded)
+    if base_sha is None:
+        print("log/list disagreement for wave %d: the fold log carries no base"
+              % args.wave, file=sys.stderr)
+        return 2
+    try:
+        branches = _resolve_tasks(repo, base_sha, args.tasks)
+    except rw.PatchError as e:
+        print("refusing wave %d: %s" % (args.wave, e), file=sys.stderr)
+        return 2
     ok, remaining = _fold_prefix_check(recorded, branches, base_sha)
     if not ok:
         print("log/list disagreement for wave %d: the recorded folds are not a "
@@ -802,12 +924,12 @@ def cmd_resolve(args):
                               "conflicts": len(open_entries),
                               "dispatchable": len(open_entries),
                               "open": [_open_view(e) for e in open_entries],
-                              "remaining": [t for t, _n, _h in remaining],
+                              "remaining": [t.task_id for t in remaining],
                               "autoResolved": contracts.auto,
                               "complete": False}))
             return 0
 
-    folded = [states[task_id] for task_id, _n, _h in branches]
+    folded = [states[t.task_id] for t in branches]
     self_checks = _self_checks(repo, base, eng, folded, log_path)
 
     # `complete` is derived, never recorded: every task folded and no
@@ -909,11 +1031,16 @@ def _observe_modes(repo, prev_head, task_heads, paths):
     return modes, None, None
 
 
-def _build_candidate(repo, prev_head, task_heads, wave, touched, manifest, modes):
+def _build_candidate(repo, prev_head, parents, wave, touched, manifest, modes):
     """The temporary-index route: seed from `prev_head`, apply the touched set,
     write the tree, commit it. Nothing here names a worktree path or a ref, so
     the checkout cannot move; the blobs land in the object store unreferenced
     until the engine adopts the candidate.
+
+    `parents` are the task COMMITS to record beside `prev_head` — the
+    `--task-head` shas. A `--patch` task has no commit, so it contributes no
+    parent: under patch input the candidate is a plain commit on the
+    integration line, and the task's provenance is the fold log, not the DAG.
     """
     with tempfile.TemporaryDirectory(prefix="fold-index-") as tmp:
         env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
@@ -932,10 +1059,10 @@ def _build_candidate(repo, prev_head, task_heads, wave, touched, manifest, modes
                 # resurrect the path from the seeded index.
                 _git_env(repo, env, "update-index", "--force-remove", "--", p)
         tree = _git_env(repo, env, "write-tree").decode().strip()
-        parents = []
-        for sha in [prev_head] + [h for _, h in task_heads]:
-            parents += ["-p", sha]
-        return _git_env(repo, env, "commit-tree", tree, *parents,
+        parent_args = []
+        for sha in [prev_head] + list(parents):
+            parent_args += ["-p", sha]
+        return _git_env(repo, env, "commit-tree", tree, *parent_args,
                         "-m", "frontier fold wave %d" % wave).decode().strip()
 
 
@@ -975,10 +1102,15 @@ def cmd_materialize(args):
         return _park("fold log missing for wave %d" % args.wave)
 
     repo = Path(args.repo)
-    task_heads = args.task_heads          # [(taskId, headSha)], argv order
-    recorded = [json.loads(line)
-                for line in rw.split_lines(log_path.read_text()) if line.strip()]
-    base_sha = recorded[0]["sha"] if recorded and recorded[0].get("type") == "base" else None
+    recorded = _read_log(log_path)
+    base_sha = _log_base(recorded)
+    if base_sha is None:
+        return _park("fold log for wave %d carries no base" % args.wave)
+    try:
+        tasks = _resolve_tasks(repo, base_sha, args.tasks)   # [TaskRef], argv order
+    except rw.PatchError as e:
+        return _fallback(str(e))
+    task_heads = [(t.task_id, t.ref) for t in tasks]
     heads = [e["headSha"] for e in recorded if e.get("type") == "fold"]
 
     # The completeness refusal, before anything is built: a materialize
@@ -997,6 +1129,8 @@ def cmd_materialize(args):
         eng = ff.rehydrate(repo, log_path)
     except RecursionError:
         return _fallback("kernel recursion limit rehydrating wave %d" % args.wave)
+    except (rw.PatchError, ValueError) as e:
+        return _fallback("rehydrating wave %d: %s" % (args.wave, e))
     manifest = eng.manifest()
 
     # The touched set — not the manifest — is what the candidate applies: the
@@ -1011,8 +1145,9 @@ def cmd_materialize(args):
     if park is not None:
         return _park(park)
 
-    candidate = _build_candidate(repo, args.prev_head, task_heads, args.wave,
-                                 touched, manifest, modes)
+    candidate = _build_candidate(repo, args.prev_head,
+                                 [t.ref for t in tasks if t.patch is None],
+                                 args.wave, touched, manifest, modes)
     print(json.dumps({"candidateSha": candidate}))
     return 0
 
@@ -1026,8 +1161,14 @@ def main(argv=None):
     p_fold.add_argument("--run-dir", required=True)
     p_fold.add_argument("--wave", required=True, type=int)
     p_fold.add_argument("--base", required=True)
-    p_fold.add_argument("--branch", dest="branches", action="append",
-                        type=_parse_branch, default=[], required=True)
+    p_fold.add_argument("--branch", dest="tasks", action="append",
+                        type=_branch_arg, default=[],
+                        help="<taskId>=<branchName>:<headSha>; repeatable")
+    p_fold.add_argument("--patch", dest="tasks", action="append",
+                        type=_patch_arg, default=[],
+                        help="<taskId>=<patchFile>, a `git diff --binary "
+                             "--full-index --no-renames <BASE>`; repeatable, "
+                             "in task-index order, mixable with --branch")
     p_fold.add_argument("--commutes", dest="commutes", action="append",
                         type=_parse_commutes, default=[],
                         help="a task's declared-commutative paths, "
@@ -1043,10 +1184,14 @@ def main(argv=None):
                                 "this reply answers")
     p_resolve.add_argument("--reply-dir", required=True,
                            help="directory holding one h<k>.txt per hunk")
-    p_resolve.add_argument("--branch", dest="branches", action="append",
-                           type=_parse_branch, default=[], required=True,
+    p_resolve.add_argument("--branch", dest="tasks", action="append",
+                           type=_branch_arg, default=[],
                            help="the wave's full task list, re-supplied on "
                                 "every call in task-index order")
+    p_resolve.add_argument("--patch", dest="tasks", action="append",
+                           type=_patch_arg, default=[],
+                           help="the patch-input form of --branch; same list, "
+                                "same order, every call")
     p_resolve.add_argument("--commutes", dest="commutes", action="append",
                            type=_parse_commutes, default=[],
                            help="a task's declared-commutative paths, "
@@ -1058,8 +1203,13 @@ def main(argv=None):
     p_mat.add_argument("--run-dir", required=True)
     p_mat.add_argument("--wave", required=True, type=int)
     p_mat.add_argument("--prev-head", required=True)
-    p_mat.add_argument("--task-head", dest="task_heads", action="append",
-                       type=_parse_task_head, default=[], required=True)
+    p_mat.add_argument("--task-head", dest="tasks", action="append",
+                       type=_head_arg, default=[],
+                       help="<taskId>=<headSha>; repeatable")
+    p_mat.add_argument("--patch", dest="tasks", action="append",
+                       type=_patch_arg, default=[],
+                       help="the patch-input form of --task-head: the same "
+                            "patch files the fold was given")
     p_mat.add_argument("--allow-unresolved", action="store_true",
                        help="build the candidate even though conflicts.json "
                             "carries unresolved entries (forensics only — the "
@@ -1068,6 +1218,12 @@ def main(argv=None):
     p_mat.set_defaults(func=cmd_materialize)
 
     args = parser.parse_args(argv)
+    if not args.tasks:
+        # One shared destination, so neither flag can be `required` on its
+        # own: the wave must name at least one task, in either shape.
+        parser.error("%s needs at least one task: --branch or --patch%s"
+                     % (args.command,
+                        " (or --task-head)" if args.command == "materialize" else ""))
     # Every subcommand drives the kernel's recursive merge walk, so the whole
     # body runs on the big-stack thread; the result (and any exception) comes
     # straight back, leaving the exit contract untouched.
