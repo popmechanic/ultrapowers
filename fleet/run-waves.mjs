@@ -32,6 +32,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+// Explicit, like every other fleet module (run-worker, tokens, shim-main):
+// the bare `crypto` global only exists on Node ≥19, and a sandbox on an older
+// LTS would die with a ReferenceError at the first event append.
+import { webcrypto } from 'node:crypto'
 
 // The engine's own concurrency cap is inside waves.js (CONCURRENCY = 16, its
 // chunking constant). The MEASURED wave width for a real sandbox is 8 (#398),
@@ -212,6 +216,65 @@ export function defaultTaskIdOf(label) {
 // BASE is the sha the clone was cut at, which the driver knows from
 // `cloneAtBase`; it is never read back from the clone's HEAD, which the
 // worker's own commits may have moved.
+// STAGED, deliberately: nothing in fleet/ calls this yet — the drive-one /
+// sandbox assembly that composes it around createRunWorker is #402's declared
+// remainder, and it owes BOTH halves of one obligation in the SAME change:
+// wrap the agent with withPatchCapture AND set args.patchInput. The flag
+// without the wrapper re-opens the model-typed-patch hole; the wrapper
+// without the flag strips every driver-captured patch and loses the whole
+// run to lost-coordinates. They are one decision.
+//
+// The driver joins capture to dispatch here: wrap the driver's `agent`
+// (createRunWorker) and the patch becomes a DRIVER-derived coordinate on every
+// isolated worker's reply — captured from the task's own clone after the
+// worker exits, against the BASE the clone was provisioned at (never the
+// clone's HEAD, which the worker's own commits may have moved; for a fix
+// round the same BASE makes the capture CUMULATIVE — round 2's patch carries
+// round 1's work, which is what the kernel folds). Anything the MODEL typed
+// into `patch`/`branch`/`headSha` is overwritten: a model-typed path is a
+// coordinate nobody verified, and waves.js only honors `patch` at all when
+// args.patchInput says a driver produced it.
+//
+// A capture failure clears ALL THREE coordinates and attaches `captureError`:
+// the reply then fails hasCoordinates and the task is downgraded to
+// lost-coordinates by the engine's existing guard — honest loss, never a
+// silently absent diff. Clearing only `patch` was the #418 review's sharpest
+// finding: IMPLEMENTER_SCHEMA requires branch and headSha, so a real reply
+// always carries model-typed values for both, and leaving them alive on a
+// capture failure made a fabricated-coordinate task mergeable — worst case a
+// model-echoed BASE sha folds the task as a no-op and its work silently
+// vanishes on a green run.
+//
+// The strip of the MODEL-typed patch happens before every return, including
+// the unrecognized-label one: a worktree dispatch whose label taskIdOf cannot
+// read must not pass a model-typed patch through the wrapper.
+export function withPatchCapture({ agent, clonesDir, base, patchesDir,
+                                   git = defaultGit, taskIdOf = defaultTaskIdOf }) {
+  // ONE label→directory mapping: makeCwdFor already owns it (and its
+  // fail-loud missing-clone error). A second copy here is where a clone-
+  // naming change would silently make the capture diff a different tree
+  // than the one the worker wrote to.
+  const cwdFor = makeCwdFor({ clonesDir, taskIdOf })
+  return async (prompt, opts) => {
+    const reply = await agent(prompt, opts)
+    if (!reply || !opts || opts.isolation !== 'worktree') return reply
+    delete reply.patch
+    try {
+      const cwd = cwdFor(opts)
+      const id = taskIdOf(opts.label)
+      const out = patchAgainstBase({ cwd, base, out: path.join(patchesDir, 'task-' + id + '.patch'), git })
+      reply.patch = out
+      reply.branch = ''                                  // detached by design; no branch exists
+      reply.headSha = git(['rev-parse', 'HEAD'], cwd).trim()  // driver-derived, replacing the model-typed sha
+    } catch (e) {
+      reply.branch = ''
+      reply.headSha = ''
+      reply.captureError = String((e && e.message) || e)
+    }
+    return reply
+  }
+}
+
 // `--output` writes the patch from git's own process: the bytes never pass
 // through Node, so there is no maxBuffer to overflow (execFileSync's 1 MiB
 // default threw ENOBUFS on a ~4 MB diff, reproduced in review) and no utf8
@@ -224,4 +287,63 @@ export function patchAgainstBase({ cwd, base, out, git = defaultGit }) {
   git(['diff', '--cached', '--binary', '--full-index', '--no-renames',
        '--output=' + path.resolve(out), base], cwd)
   return out
+}
+
+// ── the run's event log — the record, written while it happens (#414 P1) ─────
+//
+// One append-only JSONL per run: worker envelopes (run-worker's onEvent
+// stream), engine log lines and phases, opened by a lineage record. This is
+// the Experience Compiler map's Raw Layer probe (#415): the receipt an
+// operator reads and the record a sense pass ingests should be RENDERINGS of
+// this file, not parallel artifacts someone assembles afterwards.
+//
+// Design rules, and where they come from:
+// - append-only, write-once rows; events are a grow-only SET (the row axis of
+//   fleet/store.mjs's discipline — never a register, nothing here is ever
+//   overwritten);
+// - ids are ULID-shaped (ms timestamp in Crockford base32 + randomness), so
+//   rows sort by time and never collide — the id shape Julian's ledger uses;
+// - the first record carries lineage (runId, base, engine source), the
+//   Julian lesson applied: `parentRunId` is NOT here because no reader for it
+//   exists yet — "a version marker gets designed WITH its reader, not before";
+// - this module only APPENDS. The reader is ultralearn's sense pass (#415),
+//   and the file's whole contract is: replaying it is reading the run.
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+const b32 = (n, len) => {
+  let s = ''
+  for (let i = 0; i < len; i++) { s = B32[n % 32] + s; n = Math.floor(n / 32) }
+  return s
+}
+// Monotonic within the process, even against a clock that steps BACKWARDS
+// (NTP on a freshly provisioned sandbox): a now at-or-behind the last one
+// reuses the last timestamp and bumps the 4-char sequence between it and the
+// randomness, so the log's order is readable off the ids alone — no reader
+// has to trust line order, and worker:end can never sort before worker:start.
+let _ulidLastTs = -1, _ulidSeq = 0
+export function ulid(now = Date.now()) {
+  if (now <= _ulidLastTs) { _ulidSeq += 1 } else { _ulidLastTs = now; _ulidSeq = 0 }
+  return b32(_ulidLastTs, 10) + b32(_ulidSeq, 4) +
+    Array.from(webcrypto.getRandomValues(new Uint8Array(12)), (b) => B32[b % 32]).join('')
+}
+
+export function makeEventLog({ file, runId, base, source = 'fleet/run-waves.mjs' }) {
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  // ONE stamp site: id and ts come from the same Date.now(), so they can only
+  // diverge when the monotonic clamp fires (a backwards clock step) — and then
+  // deliberately: the id stays the sort key, ts stays the wall clock.
+  const append = (e) => {
+    const ts = Date.now()
+    fs.appendFileSync(file, JSON.stringify({ id: ulid(ts), ts, ...e }) + '\n')
+  }
+  append({ kind: 'run:open', runId, base, source })
+  return {
+    // run-worker's onEvent sink: worker:start/end/refused, run:fatal — the
+    // envelope vocabulary, recorded verbatim with an id and a clock.
+    onEvent: append,
+    // The engine's own narration, one event per line. waves.js log() lines are
+    // prose, but they are the engine's ONLY self-report of judgment calls,
+    // fallbacks and wave boundaries at the moment they happen.
+    log: (line) => append({ kind: 'engine:log', line: String(line) }),
+    phase: (name) => append({ kind: 'engine:phase', phase: String(name) }),
+  }
 }

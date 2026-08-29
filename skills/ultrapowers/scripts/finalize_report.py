@@ -112,6 +112,29 @@ def main():
                 continue
             branch = entry.get("branch")
             if not branch:
+                patch = entry.get("patch")
+                if patch:
+                    # Patch-input task (Amendment 9): no branch and no task
+                    # commit exist BY DESIGN — the worker's contribution is a
+                    # patch against BASE, folded by the kernel. Ancestry has
+                    # nothing to assert and headSha nothing to derive from;
+                    # deep provenance is the fold log (patch file + derived
+                    # tree, re-verified on every rehydrate). But this gate leg
+                    # must not be BLIND for patch tasks while branch tasks get
+                    # the #275/#70 assertions, so it asserts what it can
+                    # deterministically: the named patch file still exists and
+                    # is non-empty. A vanished file is a merged task whose
+                    # only provenance artifact is gone; an EMPTY one is the
+                    # vacuous-merge claim in patch shape — "merged" work that
+                    # changed nothing.
+                    if not os.path.isfile(patch):
+                        errors.append("patch file for merged task %s is "
+                                      "missing: %s" % (tid, patch))
+                    elif os.path.getsize(patch) == 0:
+                        errors.append("patch file for merged task %s is empty "
+                                      "— merged claim carries no changes "
+                                      "(%s)" % (tid, patch))
+                    continue
                 errors.append("tasks[] entry for merged task %s has no "
                               "branch" % tid)
                 continue

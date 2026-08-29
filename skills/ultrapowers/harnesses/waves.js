@@ -907,6 +907,18 @@ const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 const hasCoordinates = (r) => r && r.headSha && (r.branch || r.patch)
 const isMergeable = (r) => r && r.status === 'done' && hasCoordinates(r)
 
+// Patch input is DRIVER-ARMED, never model-claimed. The driver captures each
+// patch itself after the worker exits (fleet/run-waves.mjs withPatchCapture:
+// git diff in the task's own tree, written by the driver, path chosen by the
+// driver) and sets args.patchInput. Without that flag there is no trusted
+// producer — under the Workflow runtime there is no driver at all — so a
+// `patch` field arriving on a reply is a MODEL-TYPED coordinate, exactly what
+// the capture comment forbids, and it is stripped before any guard reads it.
+// Otherwise a worker could name any readable file and the kernel would
+// `git apply` unreviewed bytes into the wave candidate (#402 obligation 1).
+const PATCH_INPUT = !!(args && args.patchInput)
+const stripUntrustedPatch = (r) => { if (r && !PATCH_INPUT) delete r.patch; return r }
+
 // Threaded into implementer/reviewer dispatches so task agents run the project's
 // actual test command instead of guessing ("pnpm check or equivalent"). A task
 // may carry its own `testCmd` (a polyglot plan often has Python tasks running
@@ -1118,6 +1130,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // task for one barrier retry — never an immediate retry or a null-deref
   // blind-escalation into the same overload storm.
   if (impl === null) throw new Error('AGENT_NULL: implementer agent returned null (terminal Overloaded or skipped)')
+  stripUntrustedPatch(impl)
   noteConcerns(impl)
   // #314: the provisioning-drift guard. Engine worktrees are cut by the runtime
   // (isolation: 'worktree'), not by this script, so the assert that HEAD equals
@@ -1168,8 +1181,15 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
   // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
   for (let iter = 1; iter <= 2; iter++) {
+    // Under patch input impl.branch is '' by design (the tree is detached).
+    // An empty interpolation would hand the reviewer a bare "BRANCH:" against
+    // reviewer-prompts.md's input contract — same defect class as the dead
+    // fix loop (#412 finding 4), one prompt over. The VALUE is engine-authored
+    // (the baked text around it is unchanged), so describe the truth instead.
     const reviewPrompt = fillPaths(GUARD + '\n\n' + REVIEWER_PROMPT) +
-      taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
+      taskBodyBlock(task) + '\nBRANCH: ' +
+      (impl.branch || '(none — patch input; the work is the worktree HEAD named below)') +
+      '\nHEAD: ' + impl.headSha +
       '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
@@ -1255,7 +1275,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     impl = await agent(
       fillPaths(GUARD + '\n\n' + IMPLEMENTER_PROMPT) + '\n\nBASE: ' + impl.headSha + testCmdLine(task) + bootstrapLine + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task) +
         '\n\nFIX ROUND — the prior implementation of this task exists at commit ' + impl.headSha +
-        ' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).' +
+        (impl.branch
+          ? (' (branch ' + impl.branch + ', locked by its own worktree — do not try to check it out).')
+          // Patch input: the worker tree is detached (no branch exists by
+          // design) and the fix round runs in the SAME tree, so the prior
+          // work is simply its HEAD.
+          : ' (your own worktree’s HEAD — patch input records no branch).') +
         ' BASE above IS that commit: anchoring to BASE gives you the prior work to amend, not a blank slate.' +
         // The fix agent's own BASE..HEAD is only the delta on top of the prior round; a packet cut
         // from it hides the task's original implementation from the iter-2 reviewer. Anchor and
@@ -1263,12 +1288,23 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         ' Generate your review packet for the FULL task range, not your BASE..HEAD: run review-package with base ' +
         baseSha + ' (the task base) and your committed HEAD. Your BASE above remains your anchor — the prior' +
         ' implementation to amend; only the packet range starts at the task base.' +
-        // Typed sha vs. derived branch tip: if the engine's recorded headSha and the prior branch
-        // have drifted apart, neither is a safe parent — surface it instead of guessing (#146).
-        ' Before anchoring, derive the prior tip: run PRIOR=$(git rev-parse ' + impl.branch +
+        // Typed sha vs. derived tip: if the engine's recorded headSha and the
+        // prior tree have drifted apart, neither is a safe parent — surface it
+        // instead of guessing (#146). The derivation source depends on the
+        // input shape: a branch when one exists, the worktree HEAD under patch
+        // input (`git rev-parse ''` prints nothing, PRIOR would always differ,
+        // and a compliant fix agent would report BLOCKED forever — the dead
+        // fix loop the #412 review found).
+        ' Before anchoring, derive the prior tip: run PRIOR=$(git rev-parse ' +
+        (impl.branch || 'HEAD') +
         '); if PRIOR differs from the BASE sha above, report BLOCKED naming both, written exactly as:' +
         ' typed prior sha <typed> != derived branch tip <derived> — never build on either.' +
-        ' Resolve these blocking issues on top of it, commit on YOUR assigned branch, and report YOUR branch and HEAD:\n' +
+        ' Resolve these blocking issues on top of it, commit' +
+        // Patch input assigns no branch (the tree is detached); telling the
+        // agent to report one two sentences after saying none exists is a
+        // contradiction a compliant agent resolves by reporting BLOCKED.
+        (impl.branch ? ' on YOUR assigned branch, and report YOUR branch and HEAD:\n'
+                     : ' in place (detached HEAD — no branch is assigned under patch input), and report branch \'\' and YOUR HEAD:\n') +
         blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
@@ -1278,6 +1314,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     // message no classifier matches — a mid-storm fix-round death would
     // silently keep the storm-retry behavior instead of parking.
     if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
+    stripUntrustedPatch(impl)
     noteConcerns(impl)
     // Same fail-fast as the initial dispatch: a fix result claiming DONE
     // without mergeable coordinates must not reach the iter-2 reviewer
@@ -1352,9 +1389,19 @@ const frontierEntry = (waveNumber, fold, transcripts, calls, wallSec, selfChecks
 // headSha,…} and no `files`, so reading `r.files` would find undefined and fail
 // CLOSED — every contended wave silently taking the git-merge path with stubbed
 // tests still green.
+// ONE owner for "is the fold path forbidden, and why": contendedWave consumes
+// it as a boolean, the patch route in mergeWave consumes the reason string.
+// Two hand-copies of these guards is how a third condition (the comment below
+// anticipates one) gets added to one and silently missed by the other — a
+// patch wave then dispatching the fold in a state the non-patch path treats
+// as unsafe.
+const foldForbiddenReason = () =>
+  resume ? 'the resume lane'          // redirect, salvage, any future resume lane
+  : !waveBaseLive ? 'a frozen wave base' // it would rewind the branch
+  : null
+
 const contendedWave = (merged, waveIdx) => {
-  if (resume) return false        // redirect, salvage, any future resume lane
-  if (!waveBaseLive) return false // a frozen wave base would rewind the branch
+  if (foldForbiddenReason() !== null) return false
   const wave = Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : []
   const fileSets = merged.map((r) => {
     const t = wave.find((x) => x && x.id === r.task)
@@ -1767,6 +1814,36 @@ async function mergeWave(results, waveIdx) {
   // sites is where one of them drifts. Scoped to the tasks that actually merged:
   // a task that never landed wrote nothing and cannot contend.
   compositionRows(waveIdx + 1, mergedWaveTasks(waveIdx, merged))
+  // Patch results have NO branch for the git-merge path to merge — the fold is
+  // THE merge path for patch input (Amendment 9 item 3), whatever the wave's
+  // `files` overlap says. So a patch-shaped wave routes to the kernel
+  // unconditionally, and every condition that would have fallen back to the
+  // git-merge path — a resume lane, a frozen wave base, a kernel leg that
+  // falls back — blocks the wave cleanly instead: dispatching a merge agent
+  // told to "merge each reported branch" over empty branch names burns two
+  // reconcile attempts on an instruction that cannot be followed (#412 review
+  // finding 2), and the reconcile loop below is skipped for the same reason.
+  if (merged.some((r) => r.patch)) {
+    const noBranches = ' — patch results carry no branches for the git-merge path'
+    const forbidden = foldForbiddenReason()
+    if (forbidden) {
+      return { status: 'CONFLICT', detail: 'patch-input wave cannot merge: ' +
+        forbidden + ' forbids the fold path' + noBranches }
+    }
+    const adopted = await contendedMerge(merged, waveIdx)
+    if (adopted) return adopted
+    // Budget exhaustion inside the fold is a DEFERRAL, not a conflict — the
+    // branch path reaches the same distinction through the git-merge leg's
+    // reconcile loop, which this route skips. Reporting it as CONFLICT would
+    // cascade-block every later wave and lose the "raise the budget and
+    // rerun" guidance the DEFERRED machinery records.
+    if (budgetExhausted()) {
+      return { status: 'DEFERRED', detail: 'budget exhausted during the fold' + noBranches +
+        ' — patches intact, rerun after raising the budget' }
+    }
+    return { status: 'CONFLICT', detail: 'patch-input wave: the fold path fell back ' +
+      '(reason recorded in judgmentCalls)' + noBranches }
+  }
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx)
     // Fallback (null) drops through to the git-merge path below with the branch
@@ -2178,7 +2255,23 @@ for (let w = 0; w < WAVES.length; w++) {
   // was never the authority, and carrying it invited a check against a sha that
   // never existed. Branches survive their merge, so the name is enough.
   if (merge.status === 'MERGED') {
-    mergedShas.push(...results.filter(isMergeable).map((r) => ({ task: r.task, branch: r.branch })))
+    // Patch tasks are excluded, with the exclusion on the record: under patch
+    // input no task commit exists in the DAG for `merge-base --is-ancestor` to
+    // test — the #70 assertion has nothing to assert. Their provenance is the
+    // FOLD LOG (each fold event records the patch file and its derived tree,
+    // and rehydrate refuses a patch that no longer yields the recorded sha).
+    // Leaving them in hands the critic a branch of '' it can never resolve,
+    // which blocks every successful patch run at the gate (#412 review
+    // finding 3).
+    const mergeableNow = results.filter(isMergeable)
+    mergedShas.push(...mergeableNow.filter((r) => !r.patch)
+      .map((r) => ({ task: r.task, branch: r.branch })))
+    const patchTasks = mergeableNow.filter((r) => r.patch).map((r) => r.task)
+    if (patchTasks.length) {
+      judgmentCalls.push('wave ' + (w + 1) + ': patch-input task(s) ' + patchTasks.join(', ') +
+        ' excluded from the #70 ancestry assertion — no task commit exists in the DAG; ' +
+        'provenance is the fold log (patch file + derived tree, verified on every rehydrate)')
+    }
   }
   if (merge.status !== 'MERGED') {
     blockedWaves.push({ wave: w + 1, detail: merge.detail || merge.status })
@@ -2284,12 +2377,14 @@ if (review && review.onIntegrationHead === false)
 // cannot-verify items with no usable completeness critic must not be dropped:
 // when no wave merged, the critic has no merge HEAD to review and reports
 // BLOCKED with no findings, so the items surface at the gate as judgment calls
-// instead (#2.2 error handling). The predicate is `mergedShas.length === 0`, not
-// `!waveBaseSha` (#147): waveBaseSha initializes from the hard-gated setup head
-// and only ever advances to a merge head, so it is never falsy and the branch
-// was dead. mergedShas is pushed only on a MERGED wave, making it the correct
-// in-memory no-wave-merged predicate.
-if (cannotVerifyItems.length && mergedShas.length === 0) {
+// instead (#2.2 error handling). The predicate was `mergedShas.length === 0`
+// (#147 — waveBaseSha is never falsy, so that branch was dead), but the patch
+// exclusion above broke it: an all-patch run whose waves all MERGED has an
+// empty mergedShas, and every cannot-verify item would then falsely record
+// "no completeness critic ran" on a run whose critic DID run. So the
+// no-wave-merged fact is read off waveMerges itself.
+const anyWaveMerged = waveMerges.some((m) => m && m.status === 'MERGED')
+if (cannotVerifyItems.length && !anyWaveMerged) {
   for (const c of cannotVerifyItems) {
     judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
       ' — no completeness critic ran (no merge HEAD); verify manually before the gate')
