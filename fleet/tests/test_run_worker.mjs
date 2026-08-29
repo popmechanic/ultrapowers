@@ -313,12 +313,19 @@ fs.writeFileSync(process.env.FAKE_ARGV_OUT, JSON.stringify(process.argv.slice(2)
 // stdin must be CLOSED by the caller: an inherited stdin costs the real CLI a
 // 3s "no stdin data received" wait (parity item 10). Record what we got.
 fs.writeFileSync(process.env.FAKE_STDIN_OUT, String(process.stdin.isTTY ? 'tty' : (fs.fstatSync(0).isFile() || fs.fstatSync(0).isCharacterDevice() ? 'closed-or-null' : 'other')))
+// EXIT IN THE FINAL WRITE'S CALLBACK, never right after a write. stdout to a
+// pipe is asynchronous in Node, and process.exit() discards writes still in
+// the internal queue — on a loaded machine the whole envelope vanished and the
+// driver saw "no result envelope on stdout (exit 0)" (run-25's baseline red,
+// the ONLY sandbox suite failure). Writes to one stream flush in order, so the
+// last write's callback proves everything before it landed too.
+const out = (line, code) => process.stdout.write(line + '\\n', () => process.exit(code))
 const s = process.env.FAKE_SCENARIO
 if (s === 'hang') { setTimeout(() => {}, 60000); process.on('SIGTERM', () => process.exit(143)); return }
-if (s === 'success') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{ok:true,cwd:process.cwd()},total_cost_usd:0.01,modelUsage:{}})); process.exit(0) }
-if (s === 'overload') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:529,result:'overloaded'})); process.exit(1) }
-if (s === 'credential') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:401,result:'no'})); process.exit(1) }
-if (s === 'budget') { console.log(JSON.stringify({type:'result',subtype:'error_max_budget_usd',is_error:true,terminal_reason:'budget_exhausted',api_error_status:null,structured_output:null})); process.exit(1) }
+if (s === 'success') { out(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{ok:true,cwd:process.cwd()},total_cost_usd:0.01,modelUsage:{}}), 0); return }
+if (s === 'overload') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:529,result:'overloaded'}), 1); return }
+if (s === 'credential') { out(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:401,result:'no'}), 1); return }
+if (s === 'budget') { out(JSON.stringify({type:'result',subtype:'error_max_budget_usd',is_error:true,terminal_reason:'budget_exhausted',api_error_status:null,structured_output:null}), 1); return }
 if (s === 'unicode') {
   // Emitted one BYTE at a time, so every multi-byte character is guaranteed to
   // straddle a chunk boundary — the condition that silently corrupts a
@@ -326,14 +333,14 @@ if (s === 'unicode') {
   const payload = Buffer.from(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{ok:true,text:'— — — ünïcødé — — —'},modelUsage:{}}), 'utf8')
   let i = 0
   const tick = () => {
-    if (i >= payload.length) { process.stdout.write(Buffer.from([10])); process.exit(0) }
+    if (i >= payload.length) { process.stdout.write(Buffer.from([10]), () => process.exit(0)); return }
     process.stdout.write(payload.subarray(i, i + 1)); i++
     setImmediate(tick)
   }
   tick()
   return
 }
-if (s === 'maxturns') { console.log(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true,terminal_reason:'max_turns',api_error_status:null,structured_output:null})); process.exit(1) }
+if (s === 'maxturns') { out(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true,terminal_reason:'max_turns',api_error_status:null,structured_output:null}), 1); return }
 process.exit(9)
 `)
 fs.chmodSync(fakeCli, 0o755)

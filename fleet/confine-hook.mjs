@@ -51,6 +51,7 @@
 // stablest half of the hook contract — a CLI whose envelope schema moved
 // would silently stop denying, and a boundary that can be disarmed by a
 // version bump is not one.
+import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -184,15 +185,50 @@ if (invokedDirectly) {
       input = JSON.parse(raw)
     } catch {
       // Fail CLOSED: a boundary that allows on unparsable input is disarmed
-      // by whatever breaks the parse.
-      console.error('confine-hook: unreadable PreToolUse input — denying (fail-closed)')
+      // by whatever breaks the parse. Emit the deny decision AND exit 2 so it
+      // blocks by both mechanisms.
+      emit('deny', 'confine-hook: unreadable PreToolUse input — denying (fail-closed)')
       process.exit(2)
     }
     const verdict = decide(input)
     if (verdict.deny) {
-      console.error(verdict.deny)
-      process.exit(2)
+      // Record the denial in the run dir: it is real evidence for the receipt
+      // (what a worker tried to do outside its root) AND the only signal a
+      // confinement probe can read — the decision JSON goes to Claude Code, not
+      // the worker's captured output, so a probe cannot see it otherwise.
+      // Best-effort: a boundary must never fail because its log is unwritable.
+      if (process.env.FLEET_RUN_DIR) {
+        try {
+          fs.appendFileSync(path.join(process.env.FLEET_RUN_DIR, 'confine-denials.jsonl'),
+            JSON.stringify({ ts: Date.now(), tool: input.tool_name, reason: verdict.deny }) + '\n')
+        } catch { /* unwritable log never blocks the deny */ }
+      }
+      emit('deny', verdict.deny)
+      process.exit(0)
     }
+    // AUTHORITATIVELY ALLOW. A silent exit-0 is "no opinion" — the permission
+    // flow then still PROMPTS, which blocks a headless worker forever (the
+    // first self-hosted run parked here: setup's `git worktree add` waited on
+    // an approval nobody could give). An explicit `permissionDecision: allow`
+    // suppresses the prompt under acceptEdits, which is what makes the hook the
+    // boundary rather than merely a veto — allowed inside the roots, denied
+    // outside, no prompt either way.
+    emit('allow', 'confine-hook: within the writable roots')
     process.exit(0)
   })
+}
+
+// The PreToolUse decision contract (code.claude.com/docs/en/hooks): a JSON
+// object on stdout whose `hookSpecificOutput.permissionDecision` is `allow` or
+// `deny` settles the permission question before any prompt. `allow` is what a
+// headless worker needs — acceptEdits alone auto-approves only edits, never the
+// git/test Bash every write-side role runs.
+function emit(permissionDecision, permissionDecisionReason) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision,
+      permissionDecisionReason,
+    },
+  }) + '\n')
 }
