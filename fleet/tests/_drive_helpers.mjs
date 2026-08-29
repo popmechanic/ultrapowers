@@ -308,7 +308,7 @@ export const setupDriveFixture = async () => {
       clock,
       ttlMs: 60_000,
       tickMs: 25,
-      settleMs: 1_200,
+      settleMs: 150,
       heartbeatTimeoutMs: 20_000,
       publishPollMs: 50,
       publishTimeoutMs: 8_000,

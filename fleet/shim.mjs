@@ -71,6 +71,12 @@ export const connectOpenWs = (url, { timeoutMs = CONNECT_TIMEOUT_MS, log = conso
 
 /** Save the store, then wait for the socket's write buffer to drain (or time out). */
 export const flushSynchronizer = async (synchronizer, ws) => {
+  // A request to a peer that cannot answer burns the synchronizer's full
+  // request timeout (TinyBase docs: requestTimeoutSeconds, default 1 s) with
+  // zero chance of delivery — the drive-test timer census counted these in
+  // the dozens per file. Decline to ask a closed socket; the caller's
+  // rescue-reconnect path (deliverAndClose) owns delivery in that state.
+  if (ws.readyState !== WebSocket.OPEN) return
   await synchronizer.save()
   const deadline = Date.now() + FLUSH_TIMEOUT_MS
   while (Date.now() < deadline && ws.bufferedAmount > 0) await new Promise((r) => setTimeout(r, 25))
