@@ -138,7 +138,7 @@ const SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } }, requir
   assert.equal(at('--output-format'), 'json')
   assert.equal(at('--session-id'), sid)
   assert.equal(at('--model'), 'sonnet')
-  assert.equal(at('--permission-mode'), 'acceptEdits')
+  assert.equal(at('--permission-mode'), 'bypassPermissions')
   assert.equal(at('--json-schema'), JSON.stringify(SCHEMA))       // inline JSON: parity R-o1
   assert.equal(at('--append-system-prompt-file'), '/run/roles/implementer.md')  // R-o11a/R-l6
   assert.equal(at('--settings'), '/run/hook.json')

@@ -50,8 +50,8 @@ import path from 'node:path'
 // write" predicate never arises — a hostile `python3 <<'EOF' … open(path,'a')`
 // heredoc, matching no denylist a hook could enumerate, was denied by it
 // (parity R-w3). For the implementer, which needs a broad tool set under
-// acceptEdits, the PreToolUse hook is the boundary and the sandbox is the blast
-// radius; the caller supplies that hook via `settings`.
+// bypassPermissions, the PreToolUse hook is the boundary and the sandbox is
+// the blast radius; the caller supplies that hook via `settings`.
 //
 // The critic's extra three git verbs are LOAD-BEARING, not convenience:
 // waves.js:373-376 — its sha-verified `git checkout --detach` doubles as the
@@ -63,7 +63,14 @@ const READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', 'Bash(git diff *)', 'Bash(git l
 
 export const ROLES = {
   implementer: {
-    permissionMode: 'acceptEdits',
+    // bypassPermissions + the hook + --disallowedTools, all three measured
+    // (2026-08-29): a PreToolUse deny HOLDS under bypass
+    // (probe_bypass_vs_hook.mjs) and --disallowedTools still binds
+    // (probe_disallowed_vs_bypass.mjs) — so no legitimate command can ever
+    // block a headless worker, while every boundary (hook roots, git
+    // push/stash escape hatch) keeps enforcing. acceptEdits was the shipped
+    // posture through run-26; the flip is run-27's measured change (spec §1).
+    permissionMode: 'bypassPermissions',
     // Default tool set (no --allowedTools) minus two verbs that would let a
     // worker escape or publish its own work.
     disallowedTools: ['Bash(git stash *)', 'Bash(git push *)'],
@@ -73,7 +80,7 @@ export const ROLES = {
     // setup / merge / reconcile / resolver: the roles that write to the
     // integration clone. Same tool posture as the implementer plus the two
     // integration verbs.
-    permissionMode: 'acceptEdits',
+    permissionMode: 'bypassPermissions',
     disallowedTools: ['Bash(git stash *)', 'Bash(git push *)'],
     writableRoot: 'integration',
   },
