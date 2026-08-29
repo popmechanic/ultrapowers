@@ -33,6 +33,13 @@
 //           { sha, path, verdict }
 //           sha+path are POINTERS INTO GIT (the authority); `verdict` is a
 //           display hint only — never load-bearing.
+// events:   rowId = `<runId>:<eventId>` (the event's own ULID; APPEND-ONLY)
+//           the flattened scalar view of one events.jsonl record, promoted by
+//           the sandbox shim while the engine runs (#421, fleet/events-bridge
+//           .mjs) so subscribers see the run live. A grow-only SET on the row
+//           axis — "the current phase" is a fold over rows at read time,
+//           never a register — and a VIEW only: events.jsonl on the sandbox
+//           stays the durable evidence (long cells are truncated here).
 //
 // --- THE ROW/CELL AXIS RULE (read before adding any table) ------------------
 //

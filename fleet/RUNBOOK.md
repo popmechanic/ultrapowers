@@ -286,6 +286,14 @@ ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && nohup node fleet/driv
 
 # Watch it (the shim/driver progress log rides stderr into the same file):
 ssh fleet-orchestrator.exe.xyz 'tail -f /tmp/drive-run-<fresh>.out'
+
+# Better (#421): subscribe as a LIVE SYNC PEER instead of tailing a log. The
+# drive mints a read-side observer token into <dbDir>/observer.json; tunnel
+# the ws port, fetch the token, and every worker event / phase / stage pushes
+# to the laptop as it happens (fleet/watch.mjs, read-only by construction):
+ssh -N -L 8180:127.0.0.1:8180 fleet-orchestrator.exe.xyz &
+ssh fleet-orchestrator.exe.xyz 'cat /tmp/fleet-orch-live/observer.json' > /tmp/observer.json
+node fleet/watch.mjs --observer /tmp/observer.json --run run-<fresh>
 ```
 
 Knobs, all optional (defaults = the W2 charter constants):
