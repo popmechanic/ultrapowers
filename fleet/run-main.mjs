@@ -240,7 +240,7 @@ export function writeRoleFiles(rolesDir) {
 }
 
 // ── the PreToolUse settings (spec §4, #402 item 5) ───────────────────────────
-// One settings file, handed to the two acceptEdits roles only: the hook
+// One settings file, handed to the two bypass-mode write roles only: the hook
 // derives its writable roots from the worker's own cwd (always the right
 // clone, by makeCwdFor) plus $FLEET_RUN_DIR, so nothing per-task is generated
 // and nothing can point at the wrong tree. The allowlist roles get no
