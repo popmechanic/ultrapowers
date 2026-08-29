@@ -96,6 +96,13 @@ assert.equal(git(['branch', '--show-current'], c1).trim(), '')
 // An independent .git: N concurrent workers are N OS processes, and worktrees
 // of one repository share an object store and a HEAD-reference namespace.
 assert.ok(fs.existsSync(path.join(c1, '.git')))
+// A clone must be able to COMMIT with no ambient git identity — `git clone`
+// copies no local config, and a worker that cannot commit reports BLOCKED for a
+// reason no reviewer can act on. (This test failed in CI for exactly that
+// reason before cloneAtBase stamped the identity itself.)
+assert.equal(git(['config', 'user.name'], c1).trim(), 'fleet')
+assert.equal(git(['config', 'commit.gpgsign'], c1).trim(), 'false',
+  'a signing prompt in a headless worker blocks until its deadline')
 
 // Two clones at the same BASE do not disturb each other.
 const c2 = cloneAtBase({ repo, dest: path.join(clonesDir, 'task-T2'), base: BASE })
