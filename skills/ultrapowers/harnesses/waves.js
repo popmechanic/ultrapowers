@@ -896,9 +896,16 @@ const isInfraFault = (msg) => msg.startsWith('AGENT_NULL')
 // implementer-side mostCapable.)
 const REVIEWER_MODEL = DEFAULT_TIER.mostCapable
 
-// Returns true for a task result whose worktree branch is ready to merge.
-// headSha is required: downstream steps refuse to operate on a guessed sha.
-const isMergeable = (r) => r && r.status === 'done' && r.branch && r.headSha
+// Returns true for a task result whose work is ready to merge. headSha is
+// required: downstream steps refuse to operate on a guessed sha. The
+// coordinate beside it is EITHER a branch (the runtime's worktree, which the
+// git-merge path merges) OR a patch — the driver's capture of the task's diff
+// against BASE (One Driver Amendment 9), which the fold kernel takes as
+// `--patch` and no branch ever has to exist for. A patch result therefore
+// carries branch '' by design, and the lost-coordinates checks below accept
+// it: with patch input there is no branch to report.
+const hasCoordinates = (r) => r && r.headSha && (r.branch || r.patch)
+const isMergeable = (r) => r && r.status === 'done' && hasCoordinates(r)
 
 // Threaded into implementer/reviewer dispatches so task agents run the project's
 // actual test command instead of guessing ("pnpm check or equivalent"). A task
@@ -1143,7 +1150,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // an opus review on a doomed pipeline. The wave-level lost sweep stays as
   // second-line defense.
   if (impl.status !== 'BLOCKED' && impl.status !== 'NEEDS_CONTEXT' &&
-      (!impl.branch || !impl.headSha)) {
+      !hasCoordinates(impl)) {
     judgmentCalls.push('task ' + task.id + ': reported done without mergeable ' +
       'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
     log('task ' + task.id + ' FAILED: done without mergeable coordinates — review skipped')
@@ -1229,7 +1236,8 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
           ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
       }
       return { task: task.id, baseCorrected, status: 'done', branch: impl.branch,
-               headSha: impl.headSha, reviewVerdict: iter === 1 ? 'clean' : 'fixed',
+               headSha: impl.headSha, patch: impl.patch,
+               reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                notes: minors.map((m) => m.detail)
                  .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
                tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
@@ -1276,7 +1284,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
     // ("HEAD: undefined" → a doomed opus review). Engine-bypass class only —
     // the schema requires branch/headSha.
     if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') &&
-        (!impl.branch || !impl.headSha)) {
+        !hasCoordinates(impl)) {
       judgmentCalls.push('task ' + task.id + ': fix round reported done without mergeable ' +
         'coordinates (branch/headSha) — failed before review; downgraded for dependency blocking')
       log('task ' + task.id + ' FAILED: fix round done without mergeable coordinates — review skipped')
@@ -1439,8 +1447,14 @@ async function contendedMerge(merged, waveIdx) {
 
   // Task-index order, matching the merge contract: completion order is not
   // observable to the engine, and determinism buys reproducible conflicts.
-  const branchArgs = merged
-    .map((r) => ' --branch ' + r.task + '=' + r.branch + ':' + r.headSha).join('')
+  // A result that carries a patch is supplied as `--patch <id>=<file>` (the
+  // kernel derives the task's tree from it over BASE, needing no ref); one
+  // that carries a branch as `--branch`, exactly as before. Per result, so a
+  // wave mixing the two shapes still folds in task-index order.
+  const taskArg = (r) => (r.patch
+    ? (' --patch ' + r.task + '=' + r.patch)
+    : (' --branch ' + r.task + '=' + r.branch + ':' + r.headSha))
+  const branchArgs = merged.map(taskArg).join('')
   // The plan's `Commutes:` declarations, carried to the kernel so a conflict on a
   // path EVERY writer declared can be contract-resolved in process (spec §2b).
   // Read from the wave's LAUNCH tasks, not from the merge results — a result
@@ -1678,7 +1692,12 @@ async function contendedMerge(merged, waveIdx) {
     return finish(null, 'resolver attempts exhausted on ' + entry.path)
   }
 
-  const headArgs = merged.map((r) => ' --task-head ' + r.task + '=' + r.headSha).join('')
+  // Same per-result choice as the fold command: a patch task materializes from
+  // its patch (and contributes no commit parent — there is none), a branch
+  // task from its head.
+  const headArgs = merged.map((r) => (r.patch
+    ? (' --patch ' + r.task + '=' + r.patch)
+    : (' --task-head ' + r.task + '=' + r.headSha))).join('')
   let adopt
   try {
     adopt = await dispatchMerge('adopt',

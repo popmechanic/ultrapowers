@@ -50,8 +50,10 @@ alongside the kernel conflict, not instead of it: one path can carry both a
 `lines` conflict (the edits disagree) and a `delete/modify` conflict (content
 survives a delete), which is what actually happened.
 """
+import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,6 +61,51 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "vendor"))
 import manyana
 
 MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
+
+
+class PatchError(Exception):
+    """A task patch that does not apply against the base (or is not a patch)."""
+
+
+def apply_patch_tree(repo, base_ref, patch_path):
+    """The tree sha of `base_ref` with `patch_path` applied — the patch-input
+    seam (One Driver Amendment 9, 2026-08-29).
+
+    A task's contribution arrives as CONTENT — a `git diff --binary
+    --full-index --no-renames <BASE>` captured in the worker's own tree — not
+    as a ref the kernel must be able to see. Folding is a function of content;
+    this is the only place the adapter turns that content back into something
+    the rest of the pipeline can read (`diff_paths`, `publish`, `ls-tree`
+    all take a tree-ish), and it does so inside a TEMPORARY INDEX: no ref
+    moves, no worktree is touched, and the resulting tree is unreferenced in
+    the object store until the engine adopts a candidate that carries it.
+
+    Deterministic: the same patch over the same base yields the same tree sha
+    every time, which is what lets `rehydrate` re-derive a folded task from
+    the log's recorded patch path and check it against the recorded sha.
+
+    An empty patch is a task that changed nothing (tree == base's tree).
+    Anything else that `git apply` refuses — a corrupt file, a hunk whose
+    preimage is not in the base, a file the base does not have — raises
+    `PatchError` with git's own reason; deliberately NOT `--allow-empty`,
+    which would read a corrupt patch as "no changes".
+    """
+    patch_path = Path(patch_path)
+    patch = patch_path.read_bytes()
+    with tempfile.TemporaryDirectory(prefix="fold-patch-") as tmp:
+        env = {**os.environ, "GIT_INDEX_FILE": str(Path(tmp) / "index")}
+        subprocess.run(["git", "-C", str(repo), "read-tree", base_ref],
+                       check=True, capture_output=True, env=env)
+        if patch.strip():
+            r = subprocess.run(["git", "-C", str(repo), "apply", "--cached",
+                                "--binary", str(patch_path.resolve())],
+                               capture_output=True, env=env)
+            if r.returncode != 0:
+                raise PatchError(r.stderr.decode(errors="replace").strip()
+                                 or "git apply exited %d" % r.returncode)
+        return subprocess.run(["git", "-C", str(repo), "write-tree"],
+                              check=True, capture_output=True,
+                              env=env).stdout.decode().strip()
 
 
 class _Tombstone:
