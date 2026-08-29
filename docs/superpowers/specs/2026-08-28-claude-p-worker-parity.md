@@ -171,6 +171,48 @@ exists. The envelope carries **no retry count**, so a first-attempt 529 and a
 retries-exhausted 529 are indistinguishable from it. That gap is real and belongs in the
 code as a stated assumption.
 
+### Item 7d — two corrections found by BUILDING `runWorker` (2026-08-28, laptop 2.1.251)
+
+Item 7b was written while *specifying* the mapping. These two were found while *running* it —
+`fleet/tests/probe_run_worker_live.mjs`, the live arm of #401 step 1 — and each one is a case
+the unit test against a fake `claude` was green on.
+
+| id | command | observed | verdict |
+|---|---|---|---|
+| **R-p1** | `CLAUDE_CONFIG_DIR=<fresh dir> claude -p hi --output-format json --model haiku` (no token in env) | **exit 1**; `subtype:"success"` ⚠, `is_error:true`, `terminal_reason:"api_error"`, **`api_error_status:null`**, `result:"Not logged in · Please run /login"`, `duration_api_ms:0`, `num_turns:1`, `total_cost_usd:0`, `modelUsage:{}` | **corrects spec §6** |
+| **R-p2** | same, isolating one variable at a time against a control with the ambient config dir | control exit 0 `{"ok":true}`; fresh `CLAUDE_CONFIG_DIR` alone (no other flag) exit 1 `Not logged in` | **a per-run config dir implies a token in the env** |
+
+**R-p1 — `api_error_status: null` does not mean "a limit we set ourselves".** Item 7b's
+discriminator is right about the field and incomplete about the reading. §6's table sends a
+null status down the `is_error` branch to *fail-task*, so a whole wave of workers would each
+burn a process discovering the same dead credential — the exact failure the credential row
+exists to prevent. **The discriminator is two-dimensional:** `terminal_reason` names the
+*layer* that failed, `api_error_status` names whether the request *ever reached the API*. An
+`api_error` carrying no HTTP status never reached it, so the client refused — a config problem
+no retry, no barrier and no stronger model fixes. `fleet/run-worker.mjs`'s `classify()` maps
+`terminal_reason === 'api_error' && api_error_status === null` to **fail-run**.
+
+Note this is the **third** independent sighting of the `subtype: "success"` + `is_error: true`
+trap (after R-o2's nudge and R-7b's invalid model). **Never key on `subtype`.**
+
+**R-p2 — the per-run `CLAUDE_CONFIG_DIR` is not free.** R-o6b and R-o11c passed on the
+orchestrator because auth there is `CLAUDE_CODE_OAUTH_TOKEN`, which no config dir owns. On a
+machine whose credential is bound to the config dir, a fresh one loses it. The design is
+unaffected — workers run on the orchestrator and the laptop is a thin client (Amendment 1) —
+but it becomes a **stated precondition**: the per-run config dir requires the token in the
+worker env, and a driver that provisioned one without it would fail every worker at once
+(now as one `RUN_FATAL`, per R-p1). The live probe skips that arm locally rather than faking it.
+
+**Method note, because it generalises.** Both were invisible to the unit test, which spawns a
+*fake* `claude` that accepts whatever it is handed. A third defect had the same shape and never
+reached the ledger because the live arm caught it in the first minute: `--allowedTools`,
+`--disallowedTools` and `--add-dir` are declared **variadic** (`<tools...>`), so a prompt
+appended as a trailing positional is swallowed as one more value of whichever variadic option
+came last — exit 1, *no envelope at all*, and the driver's own classifier calls it
+`no-envelope` while the real cause never surfaces. The prompt goes where every repro above puts
+it: the value of `-p`. **Two claims, two tests** — the sims stub `agent()` and the unit test
+fakes the binary, so neither can see any of this.
+
 ### Item 8 — subagents inside a worker
 
 | id | ver | command | observed | verdict |
@@ -261,6 +303,8 @@ No other blocker. Everything else is a caveat or a driver-side table.
 ## Count
 
 `claude -p` invocations: **36** (orchestrator 2.1.238: 27 — o1, o2, o2b, o2c, o2d, o12s, o12o, o3, o4, o4b, o5, o6, o6a×3, o6b×3, o7a, o7b, o8, o10a, o10b, o11a, o11b, o11c; laptop 2.1.250: 9 — l1, l2, l3, l4, l5, l6, l7, l8, l9). Budget ≤ 40. Sonnet/opus were used once each; all else haiku.
+
+Item 7d added **4** more on the laptop (2.1.251) while building `runWorker`: p1, p2 and the two control arms of `probe_run_worker_live.mjs` (A conforming, B `--max-turns 1`). These are outside the ≤40 research budget — they are **build** repros, not research ones, and they run from a committed file (`fleet/tests/probe_run_worker_live.mjs`, ~$0.08, ~18 s) rather than by hand.
 
 ## Sources
 

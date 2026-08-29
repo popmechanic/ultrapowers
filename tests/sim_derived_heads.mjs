@@ -23,19 +23,12 @@
 
 import fs from 'node:fs'
 
-const WF_URL = new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url)
-const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
+// #401 step 2: the driver's loader (see fleet/run-waves.mjs). Same note as
+// sim_base_ancestry on `budget` being left undefined.
+import { runWaves } from '../fleet/run-waves.mjs'
 
 function runWorkflow({ agent, args }) {
-  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
-  const phase = () => {}
-  const log = () => {}
-  const budget = { total: null, spent: () => 0, remaining: () => Infinity }
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + SRC + '\n})();'
-  )
-  return factory(agent, parallel, phase, log, args, budget)
+  return runWaves({ agent, args })
 }
 
 function assert(cond, msg) {

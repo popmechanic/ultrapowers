@@ -21,19 +21,14 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 
-const WF_URL = new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url)
-const SRC = fs.readFileSync(WF_URL, 'utf8').replace('export const meta', 'const meta')
+// #401 step 2: the driver's loader, not a fourth copy of it. `budget` is now
+// left undefined rather than handed a live-looking object — the per-run cap is
+// deleted (#400, Amendment 4) and waves.js:1839 reads undefined as
+// "not exhausted", so every checkpoint is a no-op either way.
+import { runWaves } from '../fleet/run-waves.mjs'
 
 export function runWorkflow({ agent, args }) {
-  const parallel = (thunks) => Promise.all(thunks.map((t) => t()))
-  const phase = () => {}
-  const log = () => {}
-  const budget = { total: null, spent: () => 0, remaining: () => Infinity }
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + SRC + '\n})();'
-  )
-  return factory(agent, parallel, phase, log, args, budget)
+  return runWaves({ agent, args })
 }
 
 function assert(cond, msg) {
