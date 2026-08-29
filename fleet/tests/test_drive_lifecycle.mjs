@@ -249,7 +249,7 @@ try {
           clock: clock21,
           invokeRun: async () => {
             t21 += assignment.ttlMs + 1_000 // the claim is now expired on this test's clock
-            await sleep(1_500)              // give the watch loop ticks to observe it
+            await sleep(300)                // give the watch loop (tickMs 25) ticks to observe it
             return { gateGreen: false }
           },
         })
