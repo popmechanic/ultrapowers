@@ -301,6 +301,16 @@ specific operator pre-authorization for the manual-judgment task named by the
 #322 refusal — never a standing default). `node fleet/drive-one.mjs` with no
 arguments prints the usage line.
 
+**`--engine one-driver`** (#402): run the engine on the sandbox as the
+deterministic driver (`node fleet/run-main.mjs`) instead of the `claude` skill
+session. It provisions clones at BASE, captures each task's patch itself, folds
+every wave, confines the implementer with a `PreToolUse` hook, and gates —
+writing the same receipts to the same run directory, so the drive, the gate
+read and the PR are unchanged. Omit the flag for the old `claude` path, which
+stays the fallback until the first self-hosted run passes (spec §10 stage 2).
+The laptop refuses any `--engine` value but `one-driver`; the sandbox treats a
+missing key as the `claude` launch, so old assignments stay valid.
+
 Two things a live run needs now live in `fleet/` proper, so the script above
 needs no exec wrapper of its own:
 
