@@ -520,14 +520,30 @@ recording the reason as liveness — never spend.
 But **there is no long-lived orchestrator process**: `drive.mjs` starts one per
 drive, in-process, so the sweep that would reap a leak dies with the drive that
 caused it. What makes reclamation work anyway is that `--db-dir` is shared
-across runs by default, and persisted, so the dead run's claim row is still
+across runs *by default*, and persisted, so the dead run's claim row is still
 there when the **next** drive's orchestrator loads the store — and its first
-sweep reaps the orphan. So:
+sweep reaps the orphan.
 
-- a **concurrent** drive reaps within a sweep;
-- otherwise the orphan is reclaimed at **the next drive start**, not within one
-  lease period;
-- if no further run is launched, **nothing reaps**.
+**Reclamation is therefore scoped to one `--db-dir`, and that matters**, because
+the knobs above tell you to give concurrent drains **distinct** db-dirs (the W2a
+isolation). A run driven under its own db-dir is invisible to every other run's
+reaper: if it dies, **nothing will ever reclaim its sandbox** except the manual
+`rm` below. That is the price of the isolation, and it is the right trade for a
+concurrent drain you are watching — but **check for orphans by hand after a
+concurrent drain**, because the reaper will not.
+
+So, within one db-dir:
+
+- a **concurrent** drive sharing it reaps within a sweep;
+- otherwise the orphan is reclaimed at **the next drive start** using that
+  db-dir, not within one lease period;
+- if no further run uses that db-dir, **nothing reaps**.
+
+**A finished run is never reaped.** Nothing clears a claim on completion, so
+every successful run leaves one that ages out; the reaper keys on the *run's
+status* as well as the lease, and only a run still `pending`/`claimed`/`running`
+is treated as an orphan. Without that, the first sweep of every new drive would
+try to `rm` every run in the db-dir's history.
 
 So the manual recovery below is still the operator's tool, and the one to reach
 for if a VM must go now:

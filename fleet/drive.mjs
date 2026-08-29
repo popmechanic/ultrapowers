@@ -53,6 +53,45 @@ export const sandboxLogPullCommand = ({ vmName, dest }) =>
  */
 export const isSafeVmName = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)
 
+/**
+ * What to do with a `destroySandbox(target)` the orchestrator's sweep asked
+ * for. PURE, and exported, because it is the decision that stands between a
+ * reaper and someone else's running VM — it should be readable and tested on
+ * its own, not buried in a closure inside `driveOne`.
+ *
+ * `own`    — our sandbox: teardown owns it start to finish (it pulls logs first
+ *            and is idempotent against the `finally` teardown).
+ * `reap`   — another run's leftover; destroy it.
+ * `refuse` — with a reason, recorded in the run's errors.
+ *
+ * @param {object} o
+ * @param {string|undefined} o.target      the claim holder the sweep named
+ * @param {string|null} o.vmName           our provisioned VM, null before step 2
+ * @param {string} o.entryVmName           `fleet-<runId>` — ours from entry, always
+ */
+export const reapDecision = ({ target, vmName, entryVmName }) => {
+  if (target === undefined || target === vmName) return { action: 'own' }
+  // NEVER the VM name this drive is responsible for, even before it exists.
+  // `vmName` is null until provisioning, and the startup sweep runs BEFORE
+  // that: on a re-drive of a runId whose old claim is stale, the reaper would
+  // fire an unawaited `rm fleet-<runId>` ~200ms before we `cp` a fresh VM into
+  // exactly that name — and the rm can land after the cp and destroy the
+  // sandbox we just made, leaving the run waiting on a VM that no longer
+  // exists. `entryVmName` is derived at entry precisely so this check works
+  // during the window when `vmName` is still null.
+  if (target === entryVmName) {
+    return { action: 'refuse', reason: `reap refused for ${target}: this drive owns that VM name` }
+  }
+  // `target` is a claim HOLDER read out of the synced CRDT — sandbox-authored,
+  // unlike the engine-derived `vmName` this module validates at :363 and :585 —
+  // and it is interpolated straight into `ssh exe.dev "rm ${...} --json"`.
+  // Validate before the shell, never after.
+  if (!isSafeVmName(target)) {
+    return { action: 'refuse', reason: `reap refused for ${JSON.stringify(target)}: fails isSafeVmName` }
+  }
+  return { action: 'reap' }
+}
+
 // --- the publish leg (#368) -------------------------------------------------
 // After a run resolves, the orchestrator — not the laptop — pushes the fetched
 // integration branch to GitHub and opens the PR whose body is the gate receipt.
@@ -643,10 +682,19 @@ export const driveOne = async ({
     // foreign one is removed directly, with no log pull, because there is no
     // live drive whose evidence dir it would belong in.
     destroySandbox: (target) => {
-      if (target === undefined || target === vmName) {
+      const decision = reapDecision({ target, vmName, entryVmName })
+      if (decision.action === 'own') {
         void destroyOnce().catch((error) => errors.push(`destroySandbox: ${error?.message ?? error}`))
         return
       }
+      if (decision.action === 'refuse') {
+        errors.push(decision.reason)
+        return
+      }
+      // No `port`: the reverse tunnel for a foreign VM belongs to the drive
+      // process that opened it, which is dead — that is why its VM leaked. The
+      // tunnel died with it, and pkill-ing by a port we do not own would be
+      // reaching into another run's business.
       void destroy({ vmName: target, exec }).catch((error) =>
         errors.push(`reap ${target}: ${error?.message ?? error}`))
     },

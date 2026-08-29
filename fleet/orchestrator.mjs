@@ -51,6 +51,10 @@ const FLUSH_TIMEOUT_MS = 2000
 // a live run its sandbox. One further lease-ish period is the margin.
 export const REAP_GRACE_MS = 10 * 60_000
 
+// A run in one of these has finished, and `driveOne`'s own teardown already
+// destroyed its sandbox. Its claim merely aged out; there is nothing to reclaim.
+export const TERMINAL_RUN_STATUSES = ['gate-green', 'folded', 'parked', 'revoked']
+
 const clone = (value) => structuredClone(value)
 const sameRow = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 
@@ -269,6 +273,30 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
       if (reapedHolders.has(holder)) continue
       if (claimState(claimRow, now) !== 'expired') continue
       if (now < claimRow.leaseExpiresAt + REAP_GRACE_MS) continue
+
+      // AN EXPIRED LEASE IS NOT ENOUGH, and reading it as enough was the
+      // defect. NOTHING clears a claim when a run finishes — `shim.mjs` only
+      // stops its renew timer — so EVERY successfully completed run leaves a
+      // claim that expires `ttlMs` (4h) later and then sits in the shared,
+      // persisted db-dir forever. Reaping on expiry alone therefore means the
+      // next drive tries to `rm` every run in the history of that db-dir: one
+      // failing ssh and one page each, growing without bound, all of them for
+      // VMs that teardown destroyed correctly.
+      //
+      // The run's own status is the discriminator, and it already exists. A run
+      // that reached a TERMINAL status is finished and its sandbox is gone; a
+      // run still `pending`/`claimed`/`running` with a dead lease is the actual
+      // orphan — a drive that died without ever writing a terminal status.
+      const runRow = store.getRow('runs', claimRow.runId)
+      if (!store.hasRow('runs', claimRow.runId)) {
+        // A claim with no runs row: the #190 ghost shape. We cannot tell
+        // whether anything is using that VM, and destroying is irreversible, so
+        // refuse and page ONCE — the same posture the old supervisor took.
+        pageOnce(`reap-no-run:${claimId}`, 'security',
+          `reap refused for ${claimId}: no runs row for ${claimRow.runId} — leaving the sandbox untouched`)
+        continue
+      }
+      if (TERMINAL_RUN_STATUSES.includes(runRow.status)) continue
 
       // The claim row is left exactly as it is: `expired` is reclaimable by
       // anyone, and revoking it would be a destructive second act (revoked
