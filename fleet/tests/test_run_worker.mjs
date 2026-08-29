@@ -32,6 +32,33 @@ import {
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 
+// ── the escalation vocabulary, READ FROM waves.js, never copied ─────────────
+//
+// This module's retry classes reach waves.js's tier ladder as PROSE: `classify`
+// produces a structured verdict, the verdict leaves through a throw, and
+// waves.js:879 decides "stronger model" vs "same tier" by regexing the message
+// text. That coupling is debt (see the issue this test's comment points at) and
+// stage 4 should delete it by having waves.js read `err.workerVerdict.class`.
+//
+// Until then the coupling is REAL, and it must not be able to break silently.
+// A hand-copied regex here would go green forever while waves.js's vocabulary
+// drifted underneath it and tier escalation quietly stopped — the exact failure
+// shape `tests/test_no_prompt_drift.py` exists to prevent for baked prompts.
+// So the pattern is extracted from waves.js's own source at test time: change
+// that line, and this fails loudly.
+const WAVES_SRC = fs.readFileSync(
+  new URL('../../skills/ultrapowers/harnesses/waves.js', import.meta.url), 'utf8')
+const SCHEMA_TRIP = (() => {
+  const m = /const isSchemaTrip = \(msg\) =>\s*\n\s*(\/.+\/[a-z]*)\.test\(msg\)/.exec(WAVES_SRC)
+  assert.ok(m, 'could not find isSchemaTrip in waves.js — the escalation coupling moved; ' +
+    'find it and re-anchor this extraction, or delete the coupling (stage 4)')
+  // eslint-disable-next-line no-eval -- a literal read out of a committed source file
+  return eval(m[1])
+})()
+assert.ok(SCHEMA_TRIP instanceof RegExp)
+assert.ok(SCHEMA_TRIP.test('a schema trip'), 'sanity: the extracted regex behaves like one')
+assert.ok(!SCHEMA_TRIP.test('AGENT_NULL: overloaded'), 'sanity: it does not match everything')
+
 // ── 1. label -> role: the whole taxonomy waves.js emits ──────────────────────
 // Every one of these strings is a real label from a real call site; the line
 // number is where it is constructed.
@@ -181,10 +208,7 @@ assert.equal(classify({ exitCode: 0, envelope: env({ subtype: 'error_during_exec
   const v = classify({ exitCode: 1, envelope: env({ subtype: 'error_max_turns', is_error: true, terminal_reason: 'max_turns', structured_output: null }) })
   assert.equal(v.outcome, 'retry')
   assert.equal(v.class, 'max-turns')
-  // waves.js:879 escalates the tier only when the message matches isSchemaTrip.
-  // Assert against a COPY of that regex, so if waves.js's vocabulary changes
-  // this test says so instead of the escalation quietly stopping.
-  assert.match(v.detail, /schema|structuredoutput|did not conform|required propert|invalid (?:enum|json)/i)
+  assert.match(v.detail, SCHEMA_TRIP, 'a retry class must speak waves.js\'s escalation vocabulary')
 }
 
 // budget: exit 1, api_error_status null (R-o3/R-l9). Per-worker backstop -> the
