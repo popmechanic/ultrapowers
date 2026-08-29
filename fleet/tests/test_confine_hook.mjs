@@ -117,14 +117,36 @@ const run = (input, env = {}) => spawnSync('node', [HOOK], {
   input, encoding: 'utf8', cwd: clone, env: { ...process.env, ...env },
 })
 {
+  // The CLI must AUTHORITATIVELY allow/deny via the PreToolUse decision JSON —
+  // a silent exit-0 leaves the permission flow to prompt, which blocks a
+  // headless worker (the first self-hosted run parked exactly there).
+  const decisionOf = (r) => {
+    try { return JSON.parse(r.stdout).hookSpecificOutput.permissionDecision } catch { return null }
+  }
   const ok = run(JSON.stringify({ tool_name: 'Edit', tool_input: { file_path: 'a.js' }, cwd: clone }))
   assert.equal(ok.status, 0, 'allow exits 0: ' + ok.stderr)
+  assert.equal(decisionOf(ok), 'allow', 'an in-root call is explicitly ALLOWED, not left silent')
+  // A non-write Bash (git worktree add) — the exact call the first run blocked on.
+  const worktree = run(JSON.stringify({ tool_name: 'Bash',
+    tool_input: { command: 'git worktree add .claude/worktrees/wf-x -b b fleet-base' }, cwd: clone }))
+  assert.equal(decisionOf(worktree), 'allow', 'git worktree add is auto-approved headless')
   const deny = run(JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/etc/x' }, cwd: clone }))
-  assert.equal(deny.status, 2, 'deny exits 2')
-  assert.match(deny.stderr, /outside the writable roots/, 'the reason reaches stderr')
+  assert.equal(deny.status, 0, 'deny uses the JSON decision, exit 0')
+  assert.equal(decisionOf(deny), 'deny', 'an out-of-root write is explicitly DENIED')
+  assert.match(JSON.parse(deny.stdout).hookSpecificOutput.permissionDecisionReason, /outside the writable roots/)
   const garbage = run('not json at all')
-  assert.equal(garbage.status, 2, 'unparsable input fails CLOSED')
-  assert.match(garbage.stderr, /fail-closed/)
+  assert.equal(garbage.status, 2, 'unparsable input fails CLOSED (exit 2)')
+  assert.equal(decisionOf(garbage), 'deny', 'and emits a deny decision too')
+
+  // A deny is recorded to <FLEET_RUN_DIR>/confine-denials.jsonl — the probe's
+  // only readable signal (the decision JSON is consumed by Claude Code).
+  const logRun = path.join(tmp, 'logrun')
+  fs.mkdirSync(logRun, { recursive: true })
+  run(JSON.stringify({ tool_name: 'Write', tool_input: { file_path: '/etc/x' }, cwd: clone }),
+    { FLEET_RUN_DIR: logRun })
+  const logged = fs.readFileSync(path.join(logRun, 'confine-denials.jsonl'), 'utf8').trim().split('\n')
+  assert.equal(logged.length, 1, 'the denial is recorded')
+  assert.match(JSON.parse(logged[0]).reason, /outside the writable roots/)
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
