@@ -82,11 +82,21 @@ export const ROLES = {
     allowedTools: READ_ONLY_TOOLS,
     writableRoot: null,
   },
-  critic: {
+  // Amendment 10: the resolver returns hunk resolutions in its SCHEMA and the
+  // driver writes the kernel reply directory — so the role is read-only and
+  // the write-side family shrinks to the reconcile agent alone.
+  resolver: {
     permissionMode: 'dontAsk',
-    allowedTools: READ_ONLY_TOOLS.concat([
-      'Bash(git checkout --detach *)', 'Bash(git rev-parse *)', 'Bash(git merge-base *)',
-    ]),
+    allowedTools: READ_ONLY_TOOLS,
+    writableRoot: null,
+  },
+  critic: {
+    // The three extra git verbs (checkout --detach, rev-parse, merge-base) are
+    // deleted with Amendment 10: the driver performs the detach and derives
+    // the #70 ancestry check from fold receipts, so the critic's allowlist
+    // collapses to the plain read-only set (spec §2 deletion-ledger row).
+    permissionMode: 'dontAsk',
+    allowedTools: READ_ONLY_TOOLS,
     writableRoot: null,
   },
 }
@@ -97,14 +107,19 @@ export const ROLES = {
 // silent fallback to a permissive role. A new dispatch site in waves.js must
 // declare its role here or the driver refuses to start it — which is the point.
 //
-//   impl:<id>                                   :1107  implementer  (isolation)
-//   fix:<id>:<iter>                             :1265  implementer  (isolation)
-//   review:<id>:<iter>[:<pass>]                 :1168  reviewer
-//   integration                                 :2209  critic  (completeness)
-//   setup                                       :1887  writeSide
-//   merge:wave<n>[:fold|:apply<i>:<a>|:adopt]   :1763/:1437  writeSide
-//   reconcile:wave<n>:<a>                       :1786  writeSide
-//   resolve:wave<n>:<i>:<a>                     :1589  writeSide
+// Under the Amendment 10 engine (fleet/run-engine.mjs) the label set shrinks:
+// setup and merge:* are driver code and never dispatch. The rows are kept so a
+// stray old-style label still resolves to a non-permissive role rather than
+// crashing a run mid-wave; `resolve` moves to its own read-only role (the
+// driver writes the reply dir from the resolver's schema reply).
+//
+//   impl:<id>                                   implementer  (isolation)
+//   fix:<id>:<iter>                             implementer  (isolation)
+//   review:<id>:<iter>[:<pass>]                 reviewer
+//   integration                                 critic  (completeness, read-only)
+//   resolve:wave<n>:<i>:<a>                     resolver (read-only)
+//   reconcile:wave<n>:<a>                       writeSide
+//   setup / merge:wave<n>[...]                  writeSide (legacy labels; driver code now)
 export function roleForLabel(label) {
   if (typeof label !== 'string' || !label) {
     throw new Error('runWorker: opts.label is required (it is the worker identity)')
@@ -115,7 +130,8 @@ export function roleForLabel(label) {
   switch (prefix) {
     case 'impl': case 'fix': return 'implementer'
     case 'review': return 'reviewer'
-    case 'merge': case 'reconcile': case 'resolve': return 'writeSide'
+    case 'resolve': return 'resolver'
+    case 'merge': case 'reconcile': return 'writeSide'
     default:
       throw new Error('runWorker: no role declared for label "' + label + '". ' +
         'A new agent() dispatch site must declare its role in roleForLabel — ' +

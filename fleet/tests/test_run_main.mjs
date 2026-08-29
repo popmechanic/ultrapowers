@@ -268,7 +268,7 @@ function freshRepo(name) {
     {
       exec,
       log: () => {},
-      runWavesFn: async ({ args }) => { seenArgs = args; return fakeReport },
+      runEngineFn: async ({ args }) => { seenArgs = args; return fakeReport },
       makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
     },
   )
@@ -307,7 +307,7 @@ function freshRepo(name) {
     { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
     {
       exec, log: () => {},
-      runWavesFn: async () => ({ integrationBranch: 'x', waveMerges: [], tasks: [] }),
+      runEngineFn: async () => ({ integrationBranch: 'x', waveMerges: [], tasks: [] }),
       makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
     },
   )
@@ -327,7 +327,7 @@ function freshRepo(name) {
     { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
     {
       exec, log: () => {},
-      runWavesFn: async () => ({ integrationBranch: 'x', waveMerges: [], tasks: [] }),
+      runEngineFn: async () => ({ integrationBranch: 'x', waveMerges: [], tasks: [] }),
       makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
     },
   )
@@ -344,7 +344,7 @@ function freshRepo(name) {
   const { exec, runDir } = makeExecStub({ repoDir, runId, waves: [] })
   const out = await runMain(
     { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
-    { exec, log: () => {}, runWavesFn: async () => { throw new Error('must not launch') } },
+    { exec, log: () => {}, runEngineFn: async () => { throw new Error('must not launch') } },
   )
   assert.equal(out.code, 1)
   assert.equal(out.verdict, 'empty-plan')
