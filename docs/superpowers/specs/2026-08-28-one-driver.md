@@ -72,9 +72,15 @@ assembles, and `budget` is `undefined` — the Workflow runtime's object, delete
 So the work is:
 
 1. **`runWorker(prompt, opts)`** — that contract, backed by `claude -p`.
-2. **Clones cut at BASE**, replacing `isolation: 'worktree'`. `waves.js:1116` names #314's
-   cause in its own words — *"engine worktrees are cut by the runtime … not by this script"* —
-   so this makes the defect **inexpressible**, and #354 closes as moot.
+2. **Worker trees cut at BASE**, replacing `isolation: 'worktree'`. `waves.js:1116` names
+   #314's cause in its own words — *"engine worktrees are cut by the runtime … not by this
+   script"* — so this makes the defect **inexpressible**, and #354 closes as moot.
+   **Amendment 9:** whether those trees are worktrees or clones is deliberately *not* a
+   design commitment. Stage 1 chose independent clones and thereby broke the fold path,
+   which reads task refs from the integration tree. Once the kernel takes patches (§11),
+   isolation's only job is a stable read-view during a task, and the choice stops mattering.
+   **Isolation and CRDT merging are substitutes:** every unit of isolation bought is a unit
+   of concurrency given up.
 3. Mechanical: the file moves into `fleet/`, baked prompt strings become `roles/*.md`.
 
 The wave scheduler, the bounded fix loop, fold adoption, reconciliation and the completeness
@@ -387,6 +393,13 @@ the receipt.
 **`reported == ledger` degenerates under this design** — both sides come from the driver
 reading the same envelope. Verify at cutover, then delete the row.
 
+**One measurement this release owes, beyond the bar (Amendment 9):** re-run the
+**fold-vs-serialize A/B on the driver**. The standing number — `0.640×` wall, `1.111×` tokens,
+all hard gates green — is from 2026-08-14, on the old engine, at the widths then reachable.
+Width is now measured **flat to 12 concurrent workers with zero failures** (#398), so
+fold-versus-serialize is a different question than it was. Allowing same-file overlap is the
+efficiency thesis of the whole redesign; this is the evidence for it.
+
 **Canaries:**
 
 | # | canary | baseline | bar |
@@ -404,11 +417,18 @@ wrong) or *derivation* (the artifact was right, the body wrong against real code
 **The ordering principle:** *nothing is deleted until the thing replacing it has been redundant
 for three green runs, and no stage tests more than one new idea at a time.*
 
+**Amendment 9 knowingly bends the second half**, on the operator's call: stage 2 carries both
+the patch-input kernel and the first self-hosted run, because otherwise stage 2 ships a
+substrate decision it immediately throws away and the program pays for two cutovers. The
+mitigation is **ordering, not hope** — the kernel change lands and greens against the existing
+sims *before* any sandbox is provisioned, so the run itself still tests one new thing. If that
+sequencing is not held, a failed run cannot say which novelty failed.
+
 | stage | | issue |
 |---|---|---|
 | **0** | the claim-lease reaper + cap deletion, shipped alone — an unrelated billed-VM leak | **#400** |
 | **1** | **the substitution** (§2), local, gated by the three sims. Not parallelised — a mechanical substitution is a task of sequential understanding. Not on the fleet — this stage builds the thing that runs fleet builds | **#401** |
-| **2** | the first self-hosted run: proof and work at once, first entry against §9's live-parity bar. **Until it passes, the old path is untouched and remains the fallback** | **#402** |
+| **2** | **the fold-native substrate (Amendment 9)** — the kernel takes patches against BASE, so no shared refs are needed and fold becomes the only merge path — **landed and green against the existing sims first**; then the first self-hosted run, proof and work at once, first entry against §9's live-parity bar. **Until it passes, the old path is untouched and remains the fallback** | **#402** |
 | **3** | consequences, each driven by the new driver: derivation, admission observation, `ab_runner`, the receipt fields, the client half (#390) | **#403** |
 | **4** | delete the old path, release **0.3.0**, after ≥ 3 green runs | **#403** |
 
@@ -424,9 +444,12 @@ integration point.
 
 ## 11. Out of scope
 
-- **The merge kernel.** Map #360 owns it. `fold_wave.py` and the reconciliation semantics port
-  unchanged; `kernel/vendor/manyana.py` is not touched, and the layering rule holds — Manyana
-  merges values, TinyBase coordinates the index.
+- **The merge kernel's SEMANTICS.** Map #360 owns them. `kernel/vendor/manyana.py` is not
+  touched, and the layering rule holds — Manyana merges values, TinyBase coordinates the
+  index. **Its INPUT SHAPE is in scope (Amendment 9):** the kernel takes patches against BASE
+  rather than `--branch <task>=<branch>:<sha>`, so nothing downstream needs a shared object
+  store or shared refs. Reconciliation semantics are unchanged; only what the adapter reads
+  changes.
 - **The verification periphery.** `gate_check.py`, `ultra_gate.py`, `run_acceptance.sh` and the
   compiler's diagnostic vocabulary move house, not behaviour. The one change — manual acks
   discharged by pre-authorization — happens at the *authoring* layer, leaving the gate's logic

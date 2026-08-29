@@ -85,6 +85,13 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
   and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).
+  **One piece moved out of #360 by One Driver Amendment 9 (2026-08-29): the kernel's INPUT
+  SHAPE** — it takes patches against BASE instead of `--branch <task>=<branch>:<sha>`, so no
+  worker needs shared refs and the worktree-vs-clone question dissolves. Semantics, layering
+  and the sha-pin are untouched and still #360's. **Isolation and CRDT merging are
+  substitutes:** `compile_plan.py` has defaulted to `overlap=fold` since the 2026-08-14 A/B
+  (0.640× wall), so same-file concurrent writes are the shipped default — a substrate that
+  isolates harder than the kernel needs is buying nothing and costing width.
 - **Three layers, three merges — never cross them.** `fleet/`'s store is a TinyBase
   **MergeableStore** (a real CRDT, HLC-stamped, synced through the orchestrator). Merge is
   **per slot** (`table.rowId.cellId`), so *which axis you put concurrency on decides whether
