@@ -29,7 +29,6 @@ import {
   applyReceipt,
   applyReportedTokens,
   applyStamp,
-  readInstalledPluginVersion,
   BASE_REF,
   detectIntegrationBranch,
   findGateReceiptFile,
@@ -1135,84 +1134,13 @@ try {
     )
   }
 
-  // -- V2. #282 image side (distill P5): the INSTALLED plugin must match ------
-  // Both cells the V1 cross-check reads derive from the pushed ref, so a
-  // plugin baked stale into the golden image passes it. The shim also stamps
-  // what `claude plugin list` reports as installed; a disagreement with the
-  // pushed manifest reds `versionStamp` and names the fix.
-  {
-    const runId = 'run-drive-stamp-installed-stale'
-    let sandbox = null
-    const exec = makeExec((assignment) => {
-      setTimeout(() => {
-        sandbox = startStubSandbox({
-          assignment,
-          runId,
-          receiptSha: olderSha,
-          exec,
-          branch: OLDER_BRANCH,
-          receiptPath: 'old.txt',
-          installedPluginVersion: '0.0.0-stale-image',
-        })
-      }, 30)
-    })
-    const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'dbV2'), exec, runId })
-    await sandbox
-    assert.equal(read.o1, true, 'the image-side mismatch is a stamp verdict, not an o1 failure')
-    assert.equal(read.versionStamp, false)
-    assert.equal(detail.installedPluginVersion, '0.0.0-stale-image')
-    assert.ok(
-      detail.errors.some((e) => /installed plugin mismatch: sandbox has ultrapowers 0\.0\.0-stale-image installed/.test(e) && /#282/.test(e)),
-      `expected the installed-plugin mismatch line, got: ${JSON.stringify(detail.errors)}`,
-    )
-  }
-  // A sandbox whose installed plugin matches the pushed manifest stays green,
-  // and an older shim that stamps no installed version is skipped, not red.
-  {
-    const manifest = await sh(`git show HEAD:.claude-plugin/plugin.json`, driveDefaults.repoDir)
-    const pushedVersion = manifest.code === 0 ? JSON.parse(manifest.stdout)?.version : null
-    for (const [runId, installed] of [
-      ['run-drive-stamp-installed-match', pushedVersion],
-      ['run-drive-stamp-installed-absent', null],
-    ]) {
-      if (installed === undefined) continue
-      let sandbox = null
-      const exec = makeExec((assignment) => {
-        setTimeout(() => {
-          sandbox = startStubSandbox({
-            assignment,
-            runId,
-            receiptSha: olderSha,
-            exec,
-            branch: OLDER_BRANCH,
-            receiptPath: 'old.txt',
-            installedPluginVersion: installed,
-          })
-        }, 30)
-      })
-      const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, `db-${runId}`), exec, runId })
-      await sandbox
-      assert.equal(read.versionStamp, true, `${runId}: ${JSON.stringify(detail.errors)}`)
-      assert.equal(detail.installedPluginVersion, installed)
-      assert.ok(!detail.errors.some((e) => /installed plugin mismatch/.test(e)), runId)
-    }
-  }
-  // readInstalledPluginVersion: the `claude plugin list --json` shape observed
-  // on fleet-golden 2026-08-28; anything else reads '' and never throws.
-  {
-    const listing = JSON.stringify([
-      { id: 'ultrapowers@ultrapowers', version: '0.2.23', scope: 'user', enabled: true },
-      { id: 'other@market', version: '9.9.9' },
-    ])
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: listing }) }), '0.2.23')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: '[]' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 1, stdout: 'boom' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: 'not json' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => { throw new Error('no claude') } }), '')
-    const cmds = []
-    await readInstalledPluginVersion({ exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '[]' } } })
-    assert.deepEqual(cmds, ['claude plugin list --json'])
-  }
+  // -- V2 (deleted at 0.3.0, review finding 1): the installed-plugin
+  // cross-check died with the install it checked — no plugin participates in
+  // the run (the checkout IS the engine), and comparing the golden's
+  // bootstrap plugin to the pushed manifest would have gone permanently red
+  // at the first release bump. The stamp (V1, above) is the surviving check.
+  // (readInstalledPluginVersion died at 0.3.0 with the install cross-check —
+  // no plugin participates in the run; review finding 1.)
 
   // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------
   // The cross-check compares against the driver's OWN repo. If that repo cannot

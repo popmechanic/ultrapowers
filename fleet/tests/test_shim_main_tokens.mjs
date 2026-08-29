@@ -14,8 +14,6 @@ import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from '../orchestrator.mjs'
 import { mintToken } from '../tokens.mjs'
 import {
-  readSessionTokens,
-  readSessionTokenSources,
   main as shimMain,
   sandboxIdFor,
 } from '../shim-main.mjs'
@@ -36,71 +34,10 @@ const writeTranscript = (file, outs) => {
   fs.writeFileSync(file, outs.map((o) => line(o)).join('\n') + '\n')
 }
 
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-tok-'))
-const projects = path.join(home, '.claude', 'projects')
-const proj = path.join(projects, '-home-exedev-repo')
-const RUN = '00000000-0000-4000-8000-0000000000aa'
-const WARMUP = '11111111-1111-4111-8111-111111111111'
-
-// --- 1. before anything is written → null (observational distinction) -------
-assert.equal(readSessionTokens(RUN, { home }), null)
-ok('no transcript yet → null')
-
-// --- 2. main transcript only -----------------------------------------------
-writeTranscript(path.join(proj, `${RUN}.jsonl`), [100, 250, 50]) // 400
-assert.equal(readSessionTokens(RUN, { home }), 400)
-ok('main transcript output_tokens summed (400)')
-
-// --- 3. subagent transcripts added ------------------------------------------
-const wf = path.join(proj, RUN, 'subagents', 'workflows', 'wf_abc-1')
-writeTranscript(path.join(wf, 'agent-a1.jsonl'), [1000, 500]) // 1500
-writeTranscript(path.join(wf, 'agent-a2.jsonl'), [700])       //  700
-// a .meta.json sibling must be ignored, not summed
-fs.writeFileSync(path.join(wf, 'agent-a1.meta.json'), JSON.stringify({ note: 'not a transcript' }))
-assert.equal(readSessionTokens(RUN, { home }), 400 + 1500 + 700)
-ok('subagent transcripts included; .meta.json ignored (2600)')
-
-// --- 4. a warm-up session in the SAME project dir is NOT counted -------------
-writeTranscript(path.join(proj, `${WARMUP}.jsonl`), [9999])
-assert.equal(readSessionTokens(RUN, { home }), 2600, 'warm-up session must not leak into the run total')
-ok('cloned warm-up session ignored (still 2600)')
-
-// (engineArgs/STANDING_DIRECTIVE section deleted at 0.3.0 with the claude launch.)
-
-// --- #209: source-shape probe ------------------------------------------------
-// `readSessionTokens` couples to the engine transcript format on two axes (the
-// per-message usage shape and the on-disk layout). A drift in either reads
-// FEWER tokens and never errors — a silent undercount under a spend hard-cap.
-// The probe reports the SHAPE of what was read so the two shapes run-7 says
-// cannot happen on a real engine run are visible rather than invisible.
-const S1 = '22222222-2222-4222-8222-222222222222'
-assert.deepEqual(readSessionTokenSources(S1, { home }), { total: null, mainFound: false, subagentFiles: 0 })
-ok('sources: nothing on disk → total null (observational distinction kept)')
-
-writeTranscript(path.join(proj, `${S1}.jsonl`), [100])
-assert.deepEqual(readSessionTokenSources(S1, { home }), { total: 100, mainFound: true, subagentFiles: 0 })
-ok('sources: main only → mainFound true, zero subagent files (the suspicious shape)')
-
-const wf1 = path.join(proj, S1, 'subagents', 'workflows', 'wf_x-1')
-writeTranscript(path.join(wf1, 'agent-b1.jsonl'), [50, 25])
-assert.deepEqual(readSessionTokenSources(S1, { home }), { total: 175, mainFound: true, subagentFiles: 1 })
-ok('sources: subagent files counted')
-
-// readSessionTokens is unchanged: same totals as the sources probe
-assert.equal(readSessionTokens(S1, { home }), 175)
-ok('readSessionTokens delegates — no behavior change')
-
-// The other suspicious shape: subagent transcripts with NO main transcript.
-const S2 = '33333333-3333-4333-8333-333333333333'
-writeTranscript(path.join(proj, S2, 'subagents', 'workflows', 'wf_y-1', 'agent-c1.jsonl'), [7])
-assert.deepEqual(readSessionTokenSources(S2, { home }), { total: 7, mainFound: false, subagentFiles: 1 })
-ok('sources: subagents without a main transcript → mainFound false')
-
-// An empty session id never reaches the disk at all.
-assert.deepEqual(readSessionTokenSources('', { home }), { total: null, mainFound: false, subagentFiles: 0 })
-ok('sources: empty session id → the null triple')
-
-fs.rmSync(home, { recursive: true, force: true })
+// (Sections 1–2 — the session-transcript readers readSessionTokens /
+// readSessionTokenSources — died at 0.3.0 with the claude engine session that
+// wrote those transcripts. The driver's reader is readRunConfigTokens, pinned
+// in test_shim_main_gate.mjs scenario 17.)
 
 // --- #209: the main()-level sentinel cell ------------------------------------
 // A live orchestrator + a real main(), with the token seams injected so no

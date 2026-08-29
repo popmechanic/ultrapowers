@@ -23,7 +23,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
@@ -212,112 +211,13 @@ const sumTranscriptOutputTokens = (file) => {
   return total
 }
 
-/** `.claude/projects` under the sandbox user's home — where the engine writes transcripts. */
-export const PROJECTS_ROOT = ['.claude', 'projects']
-
-/** The shape a `readSessionTokenSources` read reports when nothing was found. */
-const EMPTY_TOKEN_SOURCES = { total: null, mainFound: false, subagentFiles: 0 }
-
-/**
- * The run's total output-token cost — read from the engine SESSION TRANSCRIPTS,
- * the only place token counts exist (`report.json` carries none, which is why
- * `readReportTokens` is null against today's engine) — plus the SHAPE of what
- * was read (#209).
- *
- * The run is launched with a fixed `--session-id`, so its transcript is a
- * deterministic `{projects}/*​/{sessionId}.jsonl`, and every subagent it spawns
- * (the majority of the spend) nests under
- * `{projects}/*​/{sessionId}/subagents/workflows/*​/agent-*.jsonl`. Summing
- * `output_tokens` across all of them gives the run's true cumulative cost.
- *
- * Keyed by the run-unique session id, so a cloned golden warm-up session
- * sharing the same project directory is never counted.
- *
- * That sum couples to Claude Code's transcript format on two axes — the
- * per-message usage shape and the on-disk layout — and a drift in either reads
- * FEWER tokens while erroring on nothing: a silent undercount underneath a
- * spend hard-cap. Nothing here can detect a drift on its own, so instead the
- * probe reports what the walk actually found:
- *
- * The sum couples to Claude Code's transcript format on two axes — the
- * per-message usage shape and the on-disk layout — and a drift in either reads
- * FEWER tokens while erroring on nothing: a silent undercount underneath a
- * spend hard-cap. Nothing here can detect a drift on its own, so instead the
- * probe reports what the walk actually found:
- *
- *   - `total` — the sum. `null`, not `0`, when no transcript for this session
- *     exists yet, so the §W1d "reported: number|null" distinction survives
- *     before the engine has written anything.
- *   - `mainFound` — at least one `{projects}/*​/{sessionId}.jsonl` existed.
- *   - `subagentFiles` — how many `agent-*.jsonl` files were summed.
- *
- * `main()` flags the two shapes run-7's data says a real engine run cannot
- * produce: a total with no main transcript, or a completed run with zero
- * subagent transcripts (subagents are ~55% of real spend).
- */
-export const readSessionTokenSources = (sessionId, { home = os.homedir() } = {}) => {
-  if (!isNonEmptyString(sessionId)) return { ...EMPTY_TOKEN_SOURCES }
-  const projectsRoot = path.join(home, ...PROJECTS_ROOT)
-  let projectDirs
-  try {
-    projectDirs = fs
-      .readdirSync(projectsRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => path.join(projectsRoot, entry.name))
-  } catch {
-    return { ...EMPTY_TOKEN_SOURCES }
-  }
-
-  const transcripts = []
-  let mainFound = false
-  let subagentFiles = 0
-  for (const dir of projectDirs) {
-    const mainTranscript = path.join(dir, `${sessionId}.jsonl`)
-    if (fs.existsSync(mainTranscript)) {
-      mainFound = true
-      transcripts.push(mainTranscript)
-    }
-
-    const workflowsRoot = path.join(dir, sessionId, 'subagents', 'workflows')
-    let workflowDirs = []
-    try {
-      workflowDirs = fs
-        .readdirSync(workflowsRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => path.join(workflowsRoot, entry.name))
-    } catch {
-      workflowDirs = []
-    }
-    for (const workflowDir of workflowDirs) {
-      let agentFiles = []
-      try {
-        agentFiles = fs
-          .readdirSync(workflowDir)
-          .filter((name) => /^agent-.*\.jsonl$/.test(name))
-          .map((name) => path.join(workflowDir, name))
-      } catch {
-        agentFiles = []
-      }
-      subagentFiles += agentFiles.length
-      transcripts.push(...agentFiles)
-    }
-  }
-
-  if (transcripts.length === 0) return { ...EMPTY_TOKEN_SOURCES }
-  let total = 0
-  for (const file of transcripts) total += sumTranscriptOutputTokens(file)
-  return { total, mainFound, subagentFiles }
-}
+// (The session-transcript spend readers — readSessionTokenSources /
+// readSessionTokens, PROJECTS_ROOT — died at 0.3.0 with the claude engine
+// session that wrote those transcripts; the driver's workers write under the
+// run-owned CLAUDE_CONFIG_DIR, read below.)
 
 /**
- * The run's cumulative output-token total — `readSessionTokenSources().total`,
- * unchanged in every observable way. The spend path only ever wanted the
- * scalar; the shape is for the #209 sentinel.
- */
-export const readSessionTokens = (sessionId, opts) => readSessionTokenSources(sessionId, opts).total
-
-/**
- * The one-driver equivalent of `readSessionTokenSources`: the deterministic
+ * The run's output-token reader: the deterministic
  * driver gives every worker its own `--session-id` under a per-run
  * `CLAUDE_CONFIG_DIR` (`<runDir>/claude`), so the run's transcripts are ALL
  * the `*.jsonl` under that directory's `projects/` — there is no main/subagent
@@ -558,10 +458,9 @@ export const findGateReceiptFile = (repoDir, artifactDir = RUN_ARTIFACT_DIR, { e
  * view, and a `setRow` there drops cells it has not yet received. An empty
  * component is skipped rather than blanking a stamp already in place.
  */
-export const applyStamp = (store, runId, { pluginVersion, engineSha, installedPluginVersion } = {}) => {
+export const applyStamp = (store, runId, { pluginVersion, engineSha } = {}) => {
   if (pluginVersion) store.setCell('runs', runId, 'pluginVersion', pluginVersion)
   if (engineSha) store.setCell('runs', runId, 'engineSha', engineSha)
-  if (installedPluginVersion) store.setCell('runs', runId, 'installedPluginVersion', installedPluginVersion)
 }
 
 export const applyReportedTokens = (store, runId, tokens) => {
@@ -742,21 +641,6 @@ export const readStamp = async ({ repoDir, exec, ref = BASE_REF }) => {
  * construction — same manifest, same sha. Never throws; an unreadable list
  * stamps '' and the driver skips the installed-plugin check.
  */
-/** The plugin whose version is stamped, as `<plugin>@<marketplace>` — the only form the CLI resolves. */
-export const PLUGIN_ID = 'ultrapowers@ultrapowers'
-
-export const readInstalledPluginVersion = async ({ exec, pluginId = PLUGIN_ID }) => {
-  try {
-    const res = await exec('claude plugin list --json')
-    if (res?.code !== 0) return ''
-    const list = JSON.parse(res.stdout ?? '')
-    const entry = Array.isArray(list) ? list.find((p) => p?.id === pluginId) : null
-    return typeof entry?.version === 'string' ? entry.version : ''
-  } catch {
-    return ''
-  }
-}
-
 // --- live sandbox path -----------------------------------------------------
 
 /**
@@ -828,11 +712,6 @@ export const spawnEngineProcess = ({ command, args, cwd, runId }) =>
  *              until something moves it. Running without this checkout tests
  *              the IMAGE, not the base under test — a green read for code the
  *              driver never sent. A failed checkout means fail, now.
- *   plugin     The engine IS the installed plugin, and the golden installs it
- *              by released version — so even with `fleet-base` checked out,
- *              the engine that runs is whatever the image was baked with
- *              (#373). `installPluginFromCheckout` re-installs it from the
- *              checkout; a failed install means fail, now.
  *   runId      The assignment carries it; it becomes ULTRAPOWERS_FLEET_RUN,
  *              without which the engine refuses at preflight (fail-closed).
  *              Absent means fail, now.
@@ -844,23 +723,21 @@ export const spawnEngineProcess = ({ command, args, cwd, runId }) =>
  * The environment is inherited plus `ULTRAPOWERS_FLEET_RUN=<runId>`
  * (`engineProcessEnv`) — the inherited half is where the engine's credential lives
  * (`CLAUDE_CODE_OAUTH_TOKEN`, sourced from the per-run env file `provisionRun`
- * delivers, #213). No credential is read or set here; `claude auth status` is
- * logged before launch so the run's evidence names the credential it rode
- * (`authMethod`), best-effort — a failed status read never blocks the run. The
- * engine itself is unchanged in W1; this only wraps it.
+ * delivers, #213). No credential is read or set here; the credential-evidence
+ * log (`claude auth status`, #213) is the driver's — run-main.mjs emits it
+ * into the run's event log before the engine phase.
  */
 export const invokeEngineRun = async ({
   repoDir,
   planPath,
-  sessionId,
   runId,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
   excludeDirs,
 }) => {
-  // Order, and it is load-bearing: planPath → checkout BASE_REF → install the
-  // plugin FROM that checkout → launch. Each step refuses on failure.
+  // Order, and it is load-bearing: planPath → checkout BASE_REF → launch.
+  // Each step refuses on failure.
   if (!isNonEmptyString(planPath)) {
     log('fleet: run assignment carries no planPath — refusing to launch the engine')
     return { gateGreen: false, error: 'missing planPath' }
@@ -916,9 +793,6 @@ export const main = async ({
   invokeRun,
   readTokens: readTokensOverride,
   readTokensSources: readTokensSourcesOverride,
-  // #282 image side: injectable like `readTokens`, so a test driving `main()`
-  // never consults the host machine's real `claude plugin list`.
-  readInstalledPlugin: readInstalledPluginOverride,
   auxDeliver = deliverAndClose,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
@@ -926,16 +800,10 @@ export const main = async ({
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
 
-  // A run-unique session id forced onto the engine launch (`--session-id`), so
-  // its transcript — and every subagent's under it — lands at a deterministic
-  // path `readSessionTokens` can sum for this run's true output-token cost.
-  // report.json carries no token count, so the transcripts are the only source.
-  const sessionId = randomUUID()
-
-  // The run's cumulative output-token total, from the engine session
-  // transcripts (`readSessionTokens`). Injectable as a seam — like `invokeRun`
-  // and `exec` — so a test can drive `main()` to a spend read without a real
-  // engine writing a real transcript into the user's home.
+  // The run's cumulative output-token total, from the run-owned config dir
+  // (`readRunConfigTokens`). Injectable as a seam — like `invokeRun` and
+  // `exec` — so a test can drive `main()` to a spend read without a real
+  // engine writing real transcripts.
   // One-driver runs write every worker transcript under the run-owned
   // `CLAUDE_CONFIG_DIR` (`<runDir>/claude`, run-main.mjs), so the spend read
   // is keyed by that directory rather than the session id — which no worker
@@ -978,7 +846,6 @@ export const main = async ({
   // is the golden's bootstrap plugin, and `invokeEngineRun` replaces it from
   // the `BASE_REF` checkout before the engine launches (#373). It is read once,
   // after the run, so the cell names the plugin the engine actually ran.
-  const readInstalledPlugin = readInstalledPluginOverride ?? (() => readInstalledPluginVersion({ exec }))
 
   // The run's scope, snapshotted BEFORE the engine launches (#190): every run
   // directory on disk right now predates this run, so none of them is this
@@ -1010,7 +877,7 @@ export const main = async ({
           file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'events.jsonl'),
         })
         try {
-          return await invokeEngineRun({ repoDir, planPath, sessionId, runId, exec, spawnEngine, excludeDirs: preRunDirs })
+          return await invokeEngineRun({ repoDir, planPath, runId, exec, spawnEngine, excludeDirs: preRunDirs })
         } finally {
           promoter.stop()
         }
@@ -1043,11 +910,12 @@ export const main = async ({
   // Writing the stamp and the token total ahead of the branch and the receipts
   // makes the signal mean "everything is published", not "most of it is".
   //
-  // `installedPluginVersion` is read HERE, after the run: `invokeEngineRun`
-  // installed the plugin from the `BASE_REF` checkout before launching, so
-  // this is the post-install `claude plugin list` — the plugin that ran.
-  const installedPluginVersion = await readInstalledPlugin()
-  applyStamp(store, runId, { ...stamp, installedPluginVersion })
+  // (The post-run `claude plugin list` read died at 0.3.0 with the install it
+  // evidenced: no plugin participates in the run — the checkout IS the engine —
+  // and stamping the golden's bootstrap plugin would go permanently red the
+  // moment plugin.json bumps past the image. The stamp is the checkout's own
+  // manifest + sha, written before launch.)
+  applyStamp(store, runId, stamp)
   applyReportedTokens(store, runId, readTokens())
 
   // #209 interim defense: the token total above is only as trustworthy as the

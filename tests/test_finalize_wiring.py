@@ -8,8 +8,11 @@ import pathlib
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 ENGINE = ROOT / "fleet/run-main.mjs"
 
-FINALIZE_NEEDLE = "finalize_report.py"
-GATE_NEEDLE = "ultra_gate.py"
+# Match the exec CALL SITES, not prose: both script names appear first in the
+# module's header comment, so a bare find() would pin the comment and let the
+# real invocations reorder unseen (review finding 4).
+FINALIZE_NEEDLE = "join(scripts, 'finalize_report.py')"
+GATE_NEEDLE = "join(scripts, 'ultra_gate.py')"
 
 
 def test_engine_invokes_finalize_report():

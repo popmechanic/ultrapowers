@@ -46,9 +46,6 @@ const FLAGS = Object.freeze({
   '--repo-dir': 'repoDir',
   '--github-token-path': 'githubTokenPath',
   '--pr-base': 'prBase',
-  // 'one-driver' = the deterministic driver (`node fleet/run-main.mjs`) runs
-  // the engine on the sandbox; omitted = the `claude` skill session (the old
-  // path, the fallback until the first self-hosted run passes — spec §10).
 })
 const NUMERIC = new Set(['port', 'ttlHours', 'sandboxCpu'])
 
@@ -95,7 +92,6 @@ export const parseArgs = (argv) => {
   if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(runId)) {
     throw new Error(`drive-one: runId must be [A-Za-z0-9-] (got ${JSON.stringify(runId)}) — and never reuse one (#211)`)
   }
-  // The shim treats any value but 'one-driver' as the old `claude` launch, so
   return { planPath, runId, ...opts }
 }
 

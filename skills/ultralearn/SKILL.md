@@ -13,6 +13,10 @@ runs inside Claude Code — no API key, no external calls.
 
 1. **Harvest.** Run the harvester to detect real runs and build local bundles:
    `python3 skills/ultralearn/scripts/harvest_runs.py`
+   KNOWN GAP since 0.3.0 (cutover, review finding 5): driver runs make no
+   `Workflow` tool call, so this detector sees only pre-cutover runs — new
+   fleet runs enter the ledger via the events.jsonl raw layer when #415's
+   harvest lands. Historical harvesting is unaffected.
    It scans `~/.claude/projects`, detects runs by an actual `Workflow`
    tool_result (not string mentions), and writes bundles to the gitignored
    cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` + `slice.md`).

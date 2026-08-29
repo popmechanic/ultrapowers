@@ -47,7 +47,7 @@ engine snapshots its saved-workflow registry **once, at session start**. A copy
 that lands on disk before that snapshot is registered this session; a copy
 written *during* the session (`ultra_run.py`'s `install` stage) is only registered
 **next** session. This is exactly why a fresh checkout's first `/ultrapowers`
-could fail with `Workflow "ultrapowers-run" not found` even though the install stage
+(A pre-0.3.0 row about the deleted Workflow-launch failure mode was removed at cutover.)
 had just copied the file: the project `.claude/workflows/` is gitignored and starts
 empty, so at the registry snapshot only the plugin-shipped workflows existed. The
 hook closes that window for normal use; the manual install remains an idempotent

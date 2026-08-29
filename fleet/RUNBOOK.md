@@ -84,7 +84,6 @@ the plugin inside its own sandbox from the sandbox's `fleet-base` checkout —
 ultrapowers@ultrapowers` → `claude plugin install ultrapowers@ultrapowers`,
 ~2 s) after the `fleet-base` checkout and before the engine launches, and
 REFUSES TO LAUNCH if any of the three fails (the run parks with
-`plugin install from checkout failed: …` in shim.log; it never falls through
 to the image's plugin). The `installedPluginVersion` cell the drive's
 `versionStamp` leg reads is stamped from the post-install `claude plugin list`,
 so it names the pushed manifest by construction. Consequences:

@@ -1,37 +1,12 @@
-// fleet/run-waves.mjs — the six injected globals, in one place (#401 step 2).
-//
-// `waves.js` is a function of six globals: agent, parallel, phase, log, args,
-// budget. Step 1 built the only interesting one (`fleet/run-worker.mjs`). This
-// supplies the other five and executes the program — the driver's half of the
-// seam.
-//
-// WHY THIS FILE EXISTS AT ALL, given the sims already ran waves.js: because
-// they each built the globals THEMSELVES, three times, and slightly
-// differently — sim_workflow allowed overrides and left `budget` undefined,
-// sim_base_ancestry and sim_derived_heads passed a live-looking budget object.
-// A loader nobody shares is a loader nothing tests. Now there is one, the sims
-// import it, and what they exercise is the wiring the driver actually ships.
-//
-// SUITE-GATE NOTE. `run_acceptance.sh:108` selects which sims to run by
-// `grep -q 'harnesses/'` over `tests/*.mjs`. Before this change each sim matched
-// via its own `new URL('../skills/ultrapowers/harnesses/waves.js')`; now that
-// reference lives HERE, and the sims match only through the prose comment that
-// names the path. The gate is still armed, but a comment tidy-up in a sim would
-// now silently disarm it. When the harness moves (stage 4), fix the selector to
-// key on something real rather than restoring a comment.
-//
-// WHAT IS NOT HERE, deliberately. #401's third work item — move waves.js into
-// fleet/ and turn its baked prompt strings into roles/*.md — is not done. It is
-// mechanical, but it would gut `tests/test_no_prompt_drift.py`'s pin and the
-// suite-gate's harness leg in the same change that builds the replacement,
-// against spec §10 stage 2: *until the first self-hosted run passes, the old
-// path is untouched and remains the fallback.* So the driver READS waves.js
-// where it already lives. The move belongs to stage 4, with the deletion.
+// fleet/run-waves.mjs — the driver's shared substrate: clones at BASE, the
+// label→cwd routing, the driver-owned patch capture, and the run's event log.
+// (Until 0.3.0 this file also loaded skills/ultrapowers/harnesses/waves.js as
+// the engine program; the Amendment 10 engine, fleet/run-engine.mjs, IS the
+// program now, and the loader lives only in git history.)
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 // Explicit, like every other fleet module (run-worker, tokens, shim-main):
 // the bare `crypto` global only exists on Node ≥19, and a sandbox on an older
 // LTS would die with a ReferenceError at the first event append.

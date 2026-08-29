@@ -1115,21 +1115,10 @@ export const driveOne = async ({
   // The installed half (#282, distill P5): the two cells above both derive
   // from the pushed ref, so a plugin baked STALE into the golden image passes
   // them. The shim also stamps the version `claude plugin list` reports as
-  // installed AFTER the run; since #373 the sandbox installs the plugin from
-  // its own `fleet-base` checkout before launching (and refuses to launch if
-  // that fails), so a disagreement here means that install did not take —
-  // the engine that ran was not the one under test. Absent (older shim,
-  // unreadable list) → skipped.
-  const installedCell = store.getCell('runs', runId, 'installedPluginVersion')
-  const installedPluginVersion = isNonEmptyString(installedCell) ? installedCell : null
-  if (installedPluginVersion !== null && expectedStamp !== null && installedPluginVersion !== expectedStamp.pluginVersion) {
-    errors.push(
-      `installed plugin mismatch: sandbox has ultrapowers ${installedPluginVersion} installed, ` +
-        `pushed base is ${expectedStamp.pluginVersion} — the sandbox's install from its fleet-base ` +
-        `checkout did not take (#373); read the \`claude plugin\` lines in shim.log (#282)`,
-    )
-    versionStamp = false
-  }
+  // (The installed-plugin cross-check died at 0.3.0 with the install it
+  // checked: no plugin participates in the run, and comparing the golden's
+  // bootstrap plugin to the pushed manifest would go permanently red at the
+  // first release bump. versionStamp now attests the checkout stamp alone.)
 
   const reportedCell = store.getCell('runs', runId, 'reportedTokens')
   const spendObservational = {
@@ -1185,7 +1174,6 @@ export const driveOne = async ({
     sandboxStat: null,
     // The ultrapowers version the sandbox reported as INSTALLED (#282 image
     // side), or null when the shim did not stamp one.
-    installedPluginVersion,
     // #368: the PR the orchestrator opened — `{number, url, draft, branch}` —
     // or null, with the reason in `errors` (token missing, push or `gh`
     // failed, nothing fetched). Never a gate-read input: green stays green,

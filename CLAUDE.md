@@ -55,8 +55,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   five other injected globals + clones-at-BASE + `withPatchCapture`), `run-main.mjs` (the
   deterministic engine entry — replaces the LLM `/ultrapowers` §Engine session), and
   `confine-hook.mjs` (the implementer's `PreToolUse` boundary). Live via
-  `drive-one.mjs --engine one-driver`; the `claude` skill path stays the fallback until
-  the first self-hosted run passes (spec §10 stage 2). Own npm deps in
+  `drive-one.mjs` — the ONLY engine since 0.3.0 (runs 26/27 met the pre-registered bar;
+  the `claude` skill path and `waves.js` are deleted, PR #434). Own npm deps in
   `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`. Not plugin
   machinery — changes here never require a plugin release.
 
