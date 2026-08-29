@@ -44,12 +44,26 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 // Until then the coupling is REAL, and it must not be able to break silently.
 // Since Amendment 10 the engine that consumes this vocabulary is
 // fleet/run-engine.mjs, which is ordinary importable code — so the pin holds
-// the classifier the RUNNING engine uses, imported directly, not a regex
-// scraped out of the waves.js fallback's source (the old extraction pinned a
-// path the driver no longer executes).
+// the classifier the RUNNING engine uses, imported directly. But waves.js
+// remains the LIVE Workflow-path fallback until cutover with its own copy of
+// the regex, so a second pin holds the two literals byte-identical: reword
+// either (or classify()'s detail strings) and one path's tier escalation
+// silently stops — the drift class the original source-extraction existed to
+// catch. Delete the cross-pin when waves.js is deleted, not before.
 const SCHEMA_TRIP = { test: (s) => isSchemaTrip(s) }
 assert.ok(isSchemaTrip('a schema trip'), 'sanity: the engine classifier behaves like one')
 assert.ok(!isSchemaTrip('AGENT_NULL: overloaded'), 'sanity: it does not match everything')
+{
+  const rx = /const isSchemaTrip = \(msg\) =>\s*\n\s*(\/.+\/[a-z]*)\.test\(msg\)/
+  const fromWaves = rx.exec(fs.readFileSync(
+    new URL('../../skills/ultrapowers/harnesses/waves.js', import.meta.url), 'utf8'))
+  const fromEngine = rx.exec(fs.readFileSync(
+    new URL('../run-engine.mjs', import.meta.url), 'utf8'))
+  assert.ok(fromWaves, 'could not find isSchemaTrip in waves.js — if waves.js was deleted (cutover), delete this cross-pin too')
+  assert.ok(fromEngine, 'could not find isSchemaTrip in run-engine.mjs — re-anchor this extraction')
+  assert.equal(fromEngine[1], fromWaves[1],
+    'run-engine and the waves.js fallback carry different escalation regexes — keep them identical until cutover deletes waves.js')
+}
 
 // ── 1. label -> role: the whole taxonomy waves.js emits ──────────────────────
 // Every one of these strings is a real label from a real call site; the line

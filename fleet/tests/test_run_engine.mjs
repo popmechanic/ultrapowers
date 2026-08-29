@@ -97,5 +97,17 @@ assert.ok(t3patch.includes('+from T3'), 'wave-2 patch carries its own change')
 assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
   'no setup or merge agent dispatched: ' + dispatched.join(','))
 
+// #366 rule 5: the role-file prose ceiling (spec §4) — ≤ 350 words each, and
+// no ALL-CAPS imperative shouting (a rule that needs shouting belongs in code).
+{
+  const rolesDir = new URL('../roles/', import.meta.url)
+  for (const f of fs.readdirSync(rolesDir)) {
+    const text = fs.readFileSync(new URL(f, rolesDir), 'utf8')
+    const words = text.split(/\s+/).filter(Boolean).length
+    assert.ok(words <= 350, 'role file ' + f + ' is ' + words + ' words (ceiling 350)')
+    assert.ok(!/\b(NEVER|ALWAYS|MUST)\b/.test(text), 'role file ' + f + ' shouts an imperative')
+  }
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

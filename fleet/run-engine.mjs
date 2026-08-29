@@ -383,6 +383,20 @@ export async function runEngine({
   const hasCoordinates = (r) => r && r.headSha && r.patch
   const isMergeable = (r) => r && r.status === 'done' && hasCoordinates(r)
 
+  // Every RETRY dispatch gets a clean tree (review finding 3): waves.js
+  // retries got a fresh worktree per dispatch, but here the retry re-enters
+  // the SAME clone, which the failed attempt may have dirtied or committed to
+  // — the fresh implementer would then be told "your tree is at BASE" over a
+  // tree that is not, duplicate its own work into the cumulative patch, and
+  // trip the #314 guard with a false alarm. Fix rounds are the one deliberate
+  // exception: they BUILD on the prior attempt's tree, so only runTask's
+  // retry lanes call this.
+  const resetTaskClone = async (taskId, sha) => {
+    const cdir = path.join(clonesDir, 'task-' + taskId)
+    await git(['reset', '--hard', '--quiet', sha], cdir)
+    await exec('git', ['clean', '-fdq'], { cwd: cdir })
+  }
+
   // ── per-task pipeline: implement → review → bounded fix loop (ported) ──────
   async function runTaskInner(task, baseShaForTask, siblingsStr, tierOverride) {
     const tierName = (typeof tierOverride === 'string') ? tierOverride : task.tier
@@ -560,6 +574,7 @@ export async function runEngine({
         (capabilityFixable ? ' (schema trip → escalate)' : ' (same tier)') + ': ' + msg)
       log('task ' + task.id + ' agent error — retrying at ' + retryTier)
       try {
+        await resetTaskClone(task.id, baseShaForTask)
         const res = await runTaskInner(task, baseShaForTask, siblingsStr, retryTier)
         judgmentCalls.push('task ' + task.id + ': recovered after ' +
           (capabilityFixable ? 'escalation to ' : 'same-tier retry at ') + retryTier)
@@ -676,9 +691,19 @@ export async function runEngine({
             { label: 'resolve:wave' + waveNumber + ':' + conflict.i + ':' + attempt,
               schema: RESOLVER_SCHEMA })
         } catch (e) {
+          // A run-fatal (credential/config) must surface as the engine crash
+          // it is — swallowing it here would misreport a dead credential as a
+          // merge CONFLICT (review finding 4).
+          if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
           return blocked('resolver dispatch threw on ' + conflict.path + ': ' + String((e && e.message) || e))
         }
-        if (!res) return blocked('resolver dispatch returned no reply on ' + conflict.path)
+        if (!res) {
+          // A null reply is a transient process death (agent()'s documented
+          // condition), not a judgment about the conflict: spend the second
+          // attempt on it rather than blocking the wave on one API blip.
+          if (attempt === 1) { rejection = 'the previous resolver produced no reply (transient death) — resolve afresh'; continue }
+          return blocked('resolver dispatch returned no reply twice on ' + conflict.path)
+        }
         const replyDir = path.join(waveDirOf(waveNumber), 'reply-' + conflict.i + '-' + attempt)
         transcripts.push({ conflict: conflict.i, attempt, path: conflict.path,
           epoch: conflict.epoch, hunksFile: conflict.hunksFile,
@@ -782,6 +807,7 @@ export async function runEngine({
           { label: 'reconcile:wave' + waveNumber + ':' + attempt,
             model: TIER.mostCapable, schema: RECONCILE_SCHEMA })
       } catch (e) {
+        if (String((e && e.message) || e).startsWith('RUN_FATAL')) throw e
         rec = null
       }
       if (!rec || rec.status !== 'FIXED') {
@@ -790,7 +816,21 @@ export async function runEngine({
         break
       }
       await git(['add', '-A'], integ)
-      await git(['commit', '-q', '--allow-empty', '-m',
+      // A FIXED report over an unchanged tree must not move the branch
+      // (review finding 5): there is no fix to adopt, and a flaky suite going
+      // green on re-run would otherwise credit an empty commit. "Changed
+      // nothing" is two comparisons because the index legitimately differs
+      // from HEAD on attempt 1 (it holds the candidate tree from read-tree):
+      // no change vs the CANDIDATE means attempt 1 edited nothing; no change
+      // vs HEAD means a later attempt edited nothing (and git commit would
+      // refuse anyway).
+      const vsCandidate = await exec('git', ['diff', '--cached', '--quiet', candidate], { cwd: integ })
+      const vsHead = await exec('git', ['diff', '--cached', '--quiet', 'HEAD'], { cwd: integ })
+      if (vsCandidate.code === 0 || vsHead.code === 0) {
+        judgmentCalls.push('wave ' + waveNumber + ': reconcile reported FIXED but changed nothing — not committing')
+        break
+      }
+      await git(['commit', '-q', '-m',
         'wave ' + waveNumber + ' reconcile (attempt ' + attempt + ')'], integ)
       suite = await sh(testCmd, integ)
     }
@@ -814,20 +854,27 @@ export async function runEngine({
   }
 
   // ── wave loop (ported: chunking, lost sweep, barrier retry, cascade) ───────
+  // (waves.js pre-registered every phase up front for the Workflow tool's
+  // roadmap API; here phase() appends timestamped events, so an up-front burst
+  // would record the run entering every phase at t=0 — review finding 6. Each
+  // phase is announced once, when it actually starts.)
   const waveLabel = (w) => 'Wave ' + (w + 1)
-  phase('Setup')
-  for (let w = 0; w < WAVES.length; w++) phase(waveLabel(w))
-  phase('Integration Review')
 
   let waveBaseSha = baseSha
   const compositionRows = (waveNumber, tasks) => {
-    const withWrites = tasks.filter((t) => Array.isArray(t.writes))
-    if (withWrites.length !== tasks.length) {
-      judgmentCalls.push('wave ' + waveNumber + ': tasks carry no writes field — composition rows skipped')
-      return
+    // Per-task exclusion, never a wave-wide skip (review finding 10): one task
+    // missing `writes` must not silence a genuine undeclared double-write
+    // between two tasks that DID declare theirs.
+    const declaring = tasks.filter((t) => Array.isArray(t.writes))
+    for (const t of tasks) {
+      if (!Array.isArray(t.writes)) {
+        judgmentCalls.push('wave ' + waveNumber + ': task ' + t.id +
+          ' carries no writes field — excluded from composition rows')
+      }
     }
+    if (declaring.length < 2) return
     const writers = new Map()
-    for (const t of tasks) for (const p of t.writes) writers.set(p, (writers.get(p) || []).concat(t.id))
+    for (const t of declaring) for (const p of t.writes) writers.set(p, (writers.get(p) || []).concat(t.id))
     for (const [p, ids] of writers) {
       if (ids.length < 2) continue
       const undeclared = ids.filter((id) => {
@@ -849,25 +896,54 @@ export async function runEngine({
     // and every task clone of a LATER wave is re-anchored onto that head (the
     // adopt sha exists only in the integration clone's odb, so fetch it from
     // there first). Wave 1 clones are already at BASE from provisioning.
+    //
+    // A re-anchor failure is FAIL-CLOSED (review finding 1): a task dispatched
+    // into a tree still at the old base yields a patch — diffed against the
+    // NEW wave base — whose hunks silently REVERT the prior wave's adopted
+    // work, and nothing downstream can tell. The task is failed before any
+    // dispatch, exactly like lost-coordinates.
     if (patchBase) patchBase.current = waveBaseSha
+    const preFailed = new Set()
     if (w > 0 && waveBaseSha !== baseSha) {
       for (const t of WAVES[w]) {
         const cdir = path.join(clonesDir, 'task-' + t.id)
         try {
           await git(['fetch', '--quiet', '--no-tags', integ, integrationBranch], cdir)
           await git(['checkout', '--quiet', '--detach', waveBaseSha], cdir)
+          // The adopted head may have added dependencies wave 1 installed only
+          // in its own trees — a stale install here fails the wave-2 suite
+          // with a module error looksStructural() would mis-diagnose (review
+          // finding 9).
+          if (bootstrapCmd) {
+            const b = await sh(bootstrapCmd, cdir)
+            if (b.code !== 0) {
+              judgmentCalls.push('task ' + t.id + ': re-anchor bootstrap failed (exit ' + b.code +
+                ') — the suite may be unrunnable in its clone')
+            }
+          }
         } catch (e) {
-          judgmentCalls.push('task ' + t.id + ': could not re-anchor its clone at wave base ' +
-            waveBaseSha + ' — ' + String((e && e.message) || e))
-          log('task ' + t.id + ' re-anchor failed')
+          preFailed.add(t.id)
+          const detail = 'could not re-anchor its clone at wave base ' + waveBaseSha +
+            ' — ' + String((e && e.message) || e)
+          judgmentCalls.push('task ' + t.id + ': ' + detail +
+            ' — failed closed before dispatch (a patch from a mis-anchored tree would silently revert the prior wave)')
+          log('task ' + t.id + ' re-anchor failed — task failed closed')
         }
       }
     }
     const results = []
+    for (const id of preFailed) {
+      const r = { task: id, status: 'failed', reviewVerdict: 'reanchor-failed',
+                  notes: 'clone could not be re-anchored at the wave base — never dispatched',
+                  tier: resolvedModel((WAVES[w].find((t) => t.id === id) || {}).tier || 'standard'),
+                  review: 'lean', fixIterations: 0 }
+      results.push(r); taskResults.push(r)
+    }
     for (let off = 0; off < WAVES[w].length; off += CONCURRENCY) {
       noteFailures()
       const chunk = WAVES[w].slice(off, off + CONCURRENCY)
       const runnable = chunk.filter((t) => {
+        if (preFailed.has(t.id)) return false // already failed closed at re-anchor
         if (blockedByDep.has(t.id)) {
           unfinished.push(t.id + ': blocked — depends on a failed task')
           log('task ' + t.id + ' skipped: upstream dependency failed')
@@ -898,6 +974,7 @@ export async function runEngine({
       const retried = await parallel(pchunk.map((p) => () => (async () => {
         const task = WAVES[w].find((t) => t.id === p.task)
         try {
+          await resetTaskClone(task.id, waveBaseSha)
           const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
           judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
           return res
@@ -972,31 +1049,59 @@ export async function runEngine({
   // suite (per adopted wave) and derives gitVerified below from receipts. ────
   phase('Integration Review')
   const taskList = WAVES.flat().map((t) => t.id + ': ' + (t.title || '')).join('\n')
+  const waveMergedAny = waveMerges.some((m) => m && m.status === 'MERGED')
+  // criticRan gates gitVerified below (review finding 2): waves.js's critic
+  // attestation made a dead critic fail-closed at the gate, and receipts alone
+  // cannot preserve that — clean receipts say the merge is intact, not that
+  // anyone reviewed its completeness.
+  let criticRan = false
   let review
-  try {
-    const cannotVerifyChecklist = cannotVerifyItems.length
-      ? ('\nCANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree):\n' +
-         cannotVerifyItems.map((c) => '- [' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('\n'))
-      : ''
-    review = await agent(
-      roles.critic +
-        (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
-        globalConstraintsBlock + cannotVerifyChecklist +
-        '\n\nTasks:\n' + taskList +
-        '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
-        (baseline.passed === false
-          ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
-          : ''),
-      { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
-  } catch (e) {
-    const msg = String((e && e.message) || e)
-    judgmentCalls.push('integration review failed to run: ' + msg)
-    review = null
-  }
-  if (!review || typeof review !== 'object') {
-    judgmentCalls.push('integration review returned no result — the completeness critic died; its findings are absent (the driver-run suite result and receipts below still stand)')
-    review = { findings: ['integration review did not run — completeness unverified; check the tree before merging'],
+  if (!waveMergedAny) {
+    // Nothing merged: the tree is at BASE, and a critic told it holds "the
+    // final integrated tree" would emit confident findings about the wrong
+    // tree (review finding 8). gitVerified is already false on this path.
+    review = { findings: ['no wave merged — completeness review skipped (the tree is at BASE)'],
                deferredVerification: [] }
+  } else {
+    try {
+      // Checklist hygiene (review finding 8): dedupe (iter-1 and iter-2
+      // reviews repeat items) and drop items from tasks that never merged —
+      // those are already accounted under missingDeliverables, and handing
+      // them to the critic manufactures findings about absent-by-record work.
+      const doneTasks = new Set(taskResults.filter((r) => r.status === 'done').map((r) => r.task))
+      const seenCv = new Set()
+      const checklistItems = cannotVerifyItems.filter((c) => {
+        const key = c.task + '|' + c.requirement
+        if (seenCv.has(key) || !doneTasks.has(c.task)) return false
+        seenCv.add(key)
+        return true
+      })
+      const cannotVerifyChecklist = checklistItems.length
+        ? ('\nCANNOT-VERIFY checklist (escalated by the per-task reviewers — verify each against the integrated tree):\n' +
+           checklistItems.map((c) => '- [' + c.task + '] ' + c.requirement + ' (' + c.why + ')').join('\n'))
+        : ''
+      review = await agent(
+        roles.critic +
+          (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
+          globalConstraintsBlock + cannotVerifyChecklist +
+          '\n\nTasks:\n' + taskList +
+          '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+          (baseline.passed === false
+            ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
+            : ''),
+        { label: 'integration', model: REVIEWER_MODEL, schema: CRITIC_SCHEMA })
+    } catch (e) {
+      const msg = String((e && e.message) || e)
+      judgmentCalls.push('integration review failed to run: ' + msg)
+      review = null
+    }
+    if (review && typeof review === 'object') {
+      criticRan = true
+    } else {
+      judgmentCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
+      review = { findings: ['integration review did not run — completeness unverified; check the tree before merging'],
+                 deferredVerification: [] }
+    }
   }
 
   // Driver detach: releases the integration branch in the clone. Nothing on
@@ -1039,8 +1144,10 @@ export async function runEngine({
     judgmentCalls.push('integration ancestry miss (#70, receipt-based): task ' + m.task +
       ' reported merged but ' + m.headSha + ' — silently dropped; the run is BLOCKED, do not merge')
   }
-  const anyWaveMerged = waveMerges.some((m) => m && m.status === 'MERGED')
-  const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0
+  const anyWaveMerged = waveMergedAny
+  // gitVerified = receipts intact AND the completeness review actually ran
+  // (spec §3.1's redefinition, plus review finding 2's fail-closed condition).
+  const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0 && criticRan
   const deferredVerification = Array.isArray(review.deferredVerification) ? review.deferredVerification : []
 
   if (cannotVerifyItems.length && !anyWaveMerged) {
