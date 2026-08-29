@@ -11,7 +11,7 @@ import path from 'node:path'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { startOrchestrator, FLEET_PATH, REAP_GRACE_MS } from '../orchestrator.mjs'
+import { startOrchestrator, FLEET_PATH, REAP_GRACE_MS, TERMINAL_RUN_STATUSES } from '../orchestrator.mjs'
 import { mintToken } from '../tokens.mjs'
 import { totalSpent, tryClaim, spendRowId } from '../store.mjs'
 
@@ -239,6 +239,9 @@ try {
   const REAPER_TTL = 60_000
   const reaped = tryClaim(undefined, { runId: 'r-live', claimant: 'sb-live', ttlMs: REAPER_TTL, now: T }).row
   orch.store.setRow('claims', 'claim:r-live', reaped)
+  // A runs row in a NON-TERMINAL status: this is the shape of a drive that died
+  // mid-run. Without it the reaper refuses (see 3g).
+  orch.store.setRow('runs', 'r-live', { planPath: 'p.md', sandboxId: 'sb-live', status: 'running', branch: 'b' })
   orch.store.setRow('spend', spendRowId('orch', 900), { runId: 'r-live', tokens: 10_000_000, at: T })
   {
     const before = actionsLog.length
@@ -303,11 +306,52 @@ try {
     assert.deepEqual(pageLog, [], 'nor paged again')
   }
 
+  // 3g. A run that FINISHED is never reaped, however long its lease has been
+  //      expired. Nothing clears a claim on completion — `shim.mjs` only stops
+  //      its renew timer — so every successful run leaves a claim that ages out
+  //      and sits in the shared, persisted db-dir forever. Reaping on expiry
+  //      alone would make the next drive try to `rm` every run in that dir's
+  //      history: one failing ssh and one page each, without bound, for VMs
+  //      teardown destroyed correctly. The run's own status is the
+  //      discriminator, and it already exists.
+  {
+    for (const status of TERMINAL_RUN_STATUSES) {
+      const rid = 'r-done-' + status
+      orch.store.setRow('claims', 'claim:' + rid,
+        tryClaim(undefined, { runId: rid, claimant: 'sb-done-' + status, ttlMs: 1, now: T }).row)
+      orch.store.setRow('runs', rid, { planPath: 'p.md', sandboxId: 'sb-done-' + status, status, branch: 'b' })
+    }
+    actionsLog.length = 0
+    pageLog.length = 0
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 10)
+    assert.deepEqual(actionsLog, [], 'a finished run must never be reaped, however stale its claim')
+    assert.deepEqual(pageLog, [], 'and must raise no page — a completed run is not an incident')
+  }
+
+  // 3h. A claim with NO runs row is refused, not reaped: we cannot tell whether
+  //     anything is using that VM, and destroying is irreversible. Pages once,
+  //     the same posture the old supervisor took for a missing row (#190).
+  {
+    orch.store.setRow('claims', 'claim:r-ghost',
+      tryClaim(undefined, { runId: 'r-ghost', claimant: 'sb-ghost', ttlMs: 1, now: T }).row)
+    actionsLog.length = 0
+    pageLog.length = 0
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 11)
+    assert.deepEqual(actionsLog, [], 'a claim with no runs row must never destroy anything')
+    assert.equal(pageLog.length, 1, 'it pages once')
+    assert.match(pageLog[0][1], /no runs row/)
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 12)
+    assert.equal(pageLog.length, 1, 'and only once, across repeated sweeps')
+  }
+
   // 3e. A REVOKED claim is never reaped. Revocation is an operator act with its
   //     own teardown; the reaper must not second-guess it.
   {
     const revokedClaim = { ...tryClaim(undefined, { runId: 'r-rev', claimant: 'sb-rev', ttlMs: 1, now: T }).row, revoked: true }
     orch.store.setRow('claims', 'claim:r-rev', revokedClaim)
+    // A LIVE runs row, so this passes on the revoked check and not incidentally
+    // on the terminal-status or missing-row checks added above.
+    orch.store.setRow('runs', 'r-rev', { planPath: 'p.md', sandboxId: 'sb-rev', status: 'running', branch: 'b' })
     actionsLog.length = 0
     orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 3)
     assert.deepEqual(actionsLog, [], 'a revoked claim must never be reaped')

@@ -12,6 +12,14 @@
 // A loader nobody shares is a loader nothing tests. Now there is one, the sims
 // import it, and what they exercise is the wiring the driver actually ships.
 //
+// SUITE-GATE NOTE. `run_acceptance.sh:108` selects which sims to run by
+// `grep -q 'harnesses/'` over `tests/*.mjs`. Before this change each sim matched
+// via its own `new URL('../skills/ultrapowers/harnesses/waves.js')`; now that
+// reference lives HERE, and the sims match only through the prose comment that
+// names the path. The gate is still armed, but a comment tidy-up in a sim would
+// now silently disarm it. When the harness moves (stage 4), fix the selector to
+// key on something real rather than restoring a comment.
+//
 // WHAT IS NOT HERE, deliberately. #401's third work item — move waves.js into
 // fleet/ and turn its baked prompt strings into roles/*.md — is not done. It is
 // mechanical, but it would gut `tests/test_no_prompt_drift.py`'s pin and the

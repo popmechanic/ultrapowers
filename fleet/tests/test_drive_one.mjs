@@ -15,6 +15,7 @@ import {
   shellExec,
   usage,
 } from '../drive-one.mjs'
+import { reapDecision } from '../drive.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -91,6 +92,36 @@ const ok = (label) => {
   // loudly rather than ignored: an operator who still passes it must find out,
   // and a flag that parses into nothing is how a deleted subsystem comes back.
   assert.throws(() => parseArgs(['p.md', 'run-43', '--cap-tokens', '250000']), /unknown flag --cap-tokens/)
+}
+
+// --- reapDecision (#400): the guard between a reaper and someone's live VM ---
+{
+  const entryVmName = 'fleet-run-24'
+
+  // Our own sandbox, before and after provisioning: teardown owns it.
+  assert.equal(reapDecision({ target: undefined, vmName: null, entryVmName }).action, 'own')
+  assert.equal(reapDecision({ target: 'fleet-run-24', vmName: 'fleet-run-24', entryVmName }).action, 'own')
+
+  // THE RACE. The startup sweep runs before provisioning, so `vmName` is still
+  // null; on a re-drive of a runId whose old claim is stale, reaping here would
+  // fire an unawaited `rm fleet-run-24` ~200ms before the drive `cp`s a fresh
+  // VM into that exact name — and the rm can land after the cp, destroying the
+  // sandbox we just made. `entryVmName` exists so this check works during that
+  // window.
+  const race = reapDecision({ target: 'fleet-run-24', vmName: null, entryVmName })
+  assert.equal(race.action, 'refuse', 'must never reap the VM name this drive owns, even before it exists')
+  assert.match(race.reason, /this drive owns that VM name/)
+
+  // A holder read out of the synced CRDT is sandbox-authored and reaches
+  // `ssh exe.dev "rm ${...}"`. Validate before the shell, never after.
+  for (const hostile of ['fleet-x; rm -rf /', 'fleet-$(whoami)', '../../etc', '-rf', '', 'a'.repeat(65), null, 42]) {
+    const d = reapDecision({ target: hostile, vmName: 'fleet-run-24', entryVmName })
+    assert.equal(d.action, 'refuse', `must refuse ${JSON.stringify(hostile)}`)
+    assert.match(d.reason, /isSafeVmName/)
+  }
+
+  // A genuine foreign leftover is reaped.
+  assert.equal(reapDecision({ target: 'fleet-run-19', vmName: 'fleet-run-24', entryVmName }).action, 'reap')
   ok('every flag overrides its default; numeric flags coerce')
 }
 

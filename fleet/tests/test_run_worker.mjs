@@ -294,6 +294,21 @@ if (s === 'hang') { setTimeout(() => {}, 60000); process.on('SIGTERM', () => pro
 if (s === 'success') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{ok:true,cwd:process.cwd()},total_cost_usd:0.01,modelUsage:{}})); process.exit(0) }
 if (s === 'overload') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:529,result:'overloaded'})); process.exit(1) }
 if (s === 'credential') { console.log(JSON.stringify({type:'result',subtype:'success',is_error:true,terminal_reason:'api_error',api_error_status:401,result:'no'})); process.exit(1) }
+if (s === 'budget') { console.log(JSON.stringify({type:'result',subtype:'error_max_budget_usd',is_error:true,terminal_reason:'budget_exhausted',api_error_status:null,structured_output:null})); process.exit(1) }
+if (s === 'unicode') {
+  // Emitted one BYTE at a time, so every multi-byte character is guaranteed to
+  // straddle a chunk boundary — the condition that silently corrupts a
+  // Buffer-concatenating reader.
+  const payload = Buffer.from(JSON.stringify({type:'result',subtype:'success',is_error:false,terminal_reason:'completed',api_error_status:null,structured_output:{ok:true,text:'— — — ünïcødé — — —'},modelUsage:{}}), 'utf8')
+  let i = 0
+  const tick = () => {
+    if (i >= payload.length) { process.stdout.write(Buffer.from([10])); process.exit(0) }
+    process.stdout.write(payload.subarray(i, i + 1)); i++
+    setImmediate(tick)
+  }
+  tick()
+  return
+}
 if (s === 'maxturns') { console.log(JSON.stringify({type:'result',subtype:'error_max_turns',is_error:true,terminal_reason:'max_turns',api_error_status:null,structured_output:null})); process.exit(1) }
 process.exit(9)
 `)
@@ -403,6 +418,50 @@ setInterval(() => {}, 1000)
   assert.ok(Date.now() - t0 < 5000, 'the deadline was enforced, not merely requested')
   assert.equal(events.filter((e) => e.kind === 'worker:end').pop().exitCode, 143,
     'SIGKILL is the same class as SIGTERM: killed, no envelope, retryable once')
+}
+
+// A CREDENTIAL FAILURE MUST STOP THE RUN, and a throw alone does not achieve
+// that. waves.js:1014 catches every throw out of agent() by design, and its
+// classifiers recognise only AGENT_NULL (isInfraFault) and schema-shaped text
+// (isSchemaTrip) — so `RUN_FATAL: …` became a same-tier retry and then a failed
+// task: TWO dispatches per task, each learning the same dead credential. The
+// exact burn the credential row exists to prevent, doubled. The driver latches
+// it on its own side and refuses to spawn.
+{
+  const agent = mkAgent('credential')
+  await assert.rejects(() => agent('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }), /RUN_FATAL/)
+  const spawnsBefore = fs.readdirSync(workersDir).length
+  // A DIFFERENT label — i.e. another task in the same wave — must not spawn.
+  await assert.rejects(
+    () => agent('x', { label: 'impl:T2', model: 'sonnet', schema: SCHEMA }),
+    (e) => /RUN_FATAL/.test(e.message) && /refusing to dispatch/.test(e.message))
+  assert.equal(fs.readdirSync(workersDir).length, spawnsBefore,
+    'a refused dispatch must not spawn a process, or write a worker dir')
+  assert.ok(events.some((e) => e.kind === 'run:fatal'), 'the fatal is observable')
+  assert.ok(events.some((e) => e.kind === 'worker:refused' && e.why === 'run-fatal'))
+}
+
+// A tripped per-worker budget must not be paid twice. waves.js retries any
+// non-AGENT_NULL throw once, and for `budget` that means spending the
+// --max-budget-usd backstop a second time to learn the same thing.
+{
+  const agent = mkAgent('budget')
+  await assert.rejects(() => agent('x', { label: 'impl:T3', model: 'sonnet', schema: SCHEMA }),
+    (e) => e.workerVerdict.class === 'budget')
+  const spawnsBefore = fs.readdirSync(workersDir).length
+  await assert.rejects(() => agent('x', { label: 'impl:T3', model: 'sonnet', schema: SCHEMA }),
+    /already exhausted its per-worker budget/)
+  assert.equal(fs.readdirSync(workersDir).length, spawnsBefore, "waves.js's retry must not respawn it")
+}
+
+// stdout is DECODED, not concatenated from Buffers. A multi-byte character
+// split across a chunk boundary decodes to U+FFFD on both sides — and the
+// result is still valid JSON, so lastResult parses it and the corruption is
+// silent, inside structured_output. This repo's prose is full of em-dashes.
+{
+  const out = await mkAgent('unicode')('x', { label: 'impl:T4', model: 'sonnet', schema: SCHEMA })
+  assert.equal(out.text, '— — — ünïcødé — — —', 'no U+FFFD: got ' + JSON.stringify(out.text))
+  assert.ok(!JSON.stringify(out).includes('\ufffd'))
 }
 
 // A cwd that cannot be resolved is a PROGRAMMING error, not a worker outcome:
