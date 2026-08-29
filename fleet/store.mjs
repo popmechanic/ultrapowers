@@ -15,7 +15,8 @@
 // claims:   rowId = `claim:<runId>` (one claim per run)
 //           { runId, holder, leaseExpiresAt, epoch, revoked }
 //           `revoked` is EXPLICIT-ONLY — nothing ever sets it on timeout.
-// budgets:  rowId = scopeId (runId or docketId)  { capTokens }
+// budgets:  DELETED with the per-run cap (#400). The table is gone, not merely
+//           unread: a cap that survives as data is a cap someone re-enables.
 // spend:    rowId = `<writerId>:<seq>` (writer-namespaced, APPEND-ONLY)
 //           { runId, tokens, at }  — totals are always derived by readers.
 // admission:      PLANNED (one-driver stage 3, #403) — rowId = `<writerId>:<seq>`
@@ -137,25 +138,25 @@ export const spendRowId = (writerId, seq) => `${writerId}:${seq}`
 export const totalSpent = (spendRows, runId) =>
   Object.values(spendRows).filter((r) => r.runId === runId).reduce((s, r) => s + r.tokens, 0)
 
-export const remaining = (capTokens, spendRows, runId) => capTokens - totalSpent(spendRows, runId)
-
-// Advisory pre-check (a sandbox asks before spending); authoritative answer is
-// always the post-sync ledger sum — overshoot is detected, not prevented.
-export const mayEnqueueSpend = (capTokens, spendRows, runId, tokens) =>
-  remaining(capTokens, spendRows, runId) >= tokens
+// `remaining` and `mayEnqueueSpend` are DELETED with the per-run token cap
+// (#400, one-driver Amendment 4). The ledger survives — `spend` rows and
+// `totalSpent` are recorded and read, and never enforced against. Nothing in
+// the fleet may park, revoke or destroy on a spend number again; the only
+// reason to destroy a VM is that nothing is using it (the claim-lease reaper,
+// `orchestrator.mjs`).
 
 // --- merge guard -----------------------------------------------------------
 // Row-level write authorization, evaluated by the server against its own
 // synced store. Returns null if allowed, else a reason string.
 //
-// `opts.supervisor` (default false) is the §W1b supervisory exemption: it
-// permits a revoke write on a HELD claim by a non-holder — the orchestrator's
-// §W1c hard action to pull a run out from under a stuck/misbehaving sandbox.
-// It skips ONLY the "held by someone else" rejection, and ONLY for a revoke
-// write (`newRow.revoked === true && !oldRow.revoked`). The un-revoke check
-// remains unconditional — supervisor or not, revoked never comes back.
-export const guardViolation = (table, rowId, newRow, oldRow, writerId, now, opts = {}) => {
-  const { supervisor = false } = opts
+// The §W1b supervisory exemption (`opts.supervisor`) is DELETED with the spend
+// pass that was its only caller (#400). It existed so the orchestrator could
+// revoke a claim held by a sandbox that blew its cap; nothing revokes on spend
+// any more, and the claim-lease reaper deliberately does not revoke at all — it
+// destroys an unused VM and leaves the run reclaimable. So the guard is now
+// exceptionless: no writer may revoke a claim held by someone else, and revoked
+// still never comes back.
+export const guardViolation = (table, rowId, newRow, oldRow, writerId, now) => {
   if (table === 'spend') {
     if (!rowId.startsWith(`${writerId}:`)) return `spend row ${rowId} outside writer namespace ${writerId}`
     if (oldRow) return `spend rows are append-only (${rowId} exists)`
@@ -164,9 +165,7 @@ export const guardViolation = (table, rowId, newRow, oldRow, writerId, now, opts
   if (table === 'claims') {
     if (oldRow?.revoked && !newRow?.revoked) return 'cannot un-revoke'
     const state = claimState(oldRow, now)
-    const isRevokeWrite = newRow?.revoked === true && !oldRow?.revoked
-    const supervisorExempt = supervisor && isRevokeWrite
-    if (state === 'held' && oldRow.holder !== writerId && !supervisorExempt)
+    if (state === 'held' && oldRow.holder !== writerId)
       return `claim held by ${oldRow.holder}, writer is ${writerId}`
     if (newRow && newRow.holder !== writerId && !newRow.revoked) return `writer ${writerId} cannot assign claim to ${newRow.holder}`
     return null

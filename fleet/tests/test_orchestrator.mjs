@@ -11,7 +11,7 @@ import path from 'node:path'
 import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
-import { startOrchestrator, FLEET_PATH } from '../orchestrator.mjs'
+import { startOrchestrator, FLEET_PATH, REAP_GRACE_MS } from '../orchestrator.mjs'
 import { mintToken } from '../tokens.mjs'
 import { totalSpent, tryClaim, spendRowId } from '../store.mjs'
 
@@ -205,244 +205,123 @@ try {
     'the laundered-write sweep must raise exactly one security page — the heartbeat row itself is never a violation',
   )
 
-  // -- 3. spend hard action -------------------------------------------------
-  // Overshoot is detected, never prevented: sb1 spends 120 against a cap of
-  // 100, and the orchestrator pulls the run out from under it.
-  orch.store.setRow('budgets', 'r1', { capTokens: 100 })
+  // -- 3. the claim-lease reaper (#400) -------------------------------------
+  // The spend hard action is DELETED: nothing parks, revokes or destroys on a
+  // spend number any more. What replaces it is out-of-band VM reclamation on a
+  // LIVENESS trigger — the one thing the spend supervisor did that nothing else
+  // does. `destroySandbox` reached this action surface at exactly one site,
+  // inside that spend pass, so deleting it without a replacement would have
+  // left a drive's death leaking a billed VM forever.
+  //
+  // The claim's lease IS the drive's heartbeat: a live drive renews it, so an
+  // expired lease already means "no drive heartbeat for a lease period".
+
+  // 3z. The ledger SURVIVES the cap's deletion. `spend` rows are still written
+  //     by sandboxes, still writer-namespaced and append-only, still folded by
+  //     `totalSpent` at read time. What is gone is anything that ACTS on the
+  //     total. (Section 4 asserts these same rows survive a restart.)
   c1.store.setRow('spend', spendRowId('sb1', 1), { runId: 'r1', tokens: 60, at: T })
   c1.store.setRow('spend', spendRowId('sb1', 2), { runId: 'r1', tokens: 60, at: T })
   await until(
     () => totalSpent(orch.store.getTable('spend'), 'r1') === 120,
     'sb1 spend rows for r1 to reach the supervisor store',
   )
-
-  actionsLog.length = 0
-  pageLog.length = 0
-  parkStatusAtRevoke.length = 0
-  const spendSweep = orch.sweep(T)
-
-  assert.deepEqual(
-    actionsLog,
-    ['revokeAndPark r1 spend-cap-overshoot 120/100', 'destroySandbox sb1'],
-    'the hard actions must fire in order: revoke-and-park the run, then destroy the holding sandbox',
-  )
-  assert.deepEqual(
-    parkStatusAtRevoke,
-    ['parked'],
-    'the run must already show parked in the store by the time actions.revokeAndPark fires — park lands before the destructive actions',
-  )
-  assert.deepEqual(
-    convergeAways(spendSweep),
-    [],
-    'legitimate append-only spend rows inside the writer namespace must not be converged away',
-  )
-  assert.deepEqual(pageLog, [['spend', 'r1 spend-cap-overshoot 120/100']], 'a spend page must be raised, and only that')
-  assert.equal(orch.store.getRow('claims', 'claim:r1').revoked, true, 'the claim must be revoked')
-  assert.equal(orch.store.getRow('runs', 'r1').status, 'parked', 'the run must be parked')
-  assert.equal(
-    orch.store.getRow('runs', 'r1').parkedWhy,
-    'spend-cap-overshoot 120/100',
-    'the park must record why, verbatim',
-  )
-
-  // The revoke is the orchestrator's own write and passes its own guard via the
-  // supervisory exemption — so the NEXT sweep reports zero converge-aways.
-  // Quiescence predicate: poll until the revoke (the writer's own just-written
-  // row) has converged back to client c1, the row's original holder.
-  await until(
-    () => c1.store.getRow('claims', 'claim:r1')?.revoked === true,
-    'the r1 claim revoke to reach client c1',
-  )
-  actionsLog.length = 0
-  pageLog.length = 0
-  const nextSweep = orch.sweep(T)
-  assert.deepEqual(convergeAways(nextSweep), [], 'the supervisor revoke must not be converged away by the next sweep')
-  assert.deepEqual(pageLog, [], 'a clean sweep must raise no pages')
-  assert.deepEqual(actionsLog, [], 'an already-revoked overshoot must not re-fire the hard actions')
-
-  // -- 3b. spend hard action while the run is still 'pending' --------------
-  // A sandbox can burn tokens before ever advancing the run past 'pending'
-  // (e.g. spend racing ahead of the claimed/running transition), and the
-  // overshoot pull must still park the run — the spend-overshoot edge that
-  // makes 'parked' legal from 'pending' in fleet/store.mjs.
-  orch.store.setRow('runs', 'r2', {
-    planPath: 'docs/superpowers/plans/r2.md',
-    sandboxId: 'sb2',
-    status: 'pending',
-    branch: 'claw/r2',
-  })
-  const claimedR2 = tryClaim(undefined, { runId: 'r2', claimant: 'sb2', ttlMs: 60_000, now: T })
-  assert.equal(claimedR2.error, undefined, 'sb2 must be able to take a free claim on r2')
-  c2.store.setRow('claims', 'claim:r2', claimedR2.row)
-  orch.store.setRow('budgets', 'r2', { capTokens: 50 })
-  c2.store.setRow('spend', spendRowId('sb2', 1), { runId: 'r2', tokens: 40, at: T })
-  c2.store.setRow('spend', spendRowId('sb2', 2), { runId: 'r2', tokens: 40, at: T })
-  await until(
-    () =>
-      orch.store.getRow('claims', 'claim:r2')?.holder === 'sb2' &&
-      totalSpent(orch.store.getTable('spend'), 'r2') === 80,
-    'sb2 claim and spend rows for r2 to reach the supervisor store',
-  )
-
-  actionsLog.length = 0
-  pageLog.length = 0
-  parkStatusAtRevoke.length = 0
-  const pendingOvershootSweep = orch.sweep(T)
-
-  assert.deepEqual(
-    actionsLog,
-    ['revokeAndPark r2 spend-cap-overshoot 80/50', 'destroySandbox sb2'],
-    'a pending-run overshoot must still fire the hard actions in order',
-  )
-  assert.deepEqual(
-    parkStatusAtRevoke,
-    ['parked'],
-    'the pending run must already show parked in the store by the time actions.revokeAndPark fires',
-  )
-  assert.deepEqual(
-    convergeAways(pendingOvershootSweep),
-    [],
-    'the legitimate claim, budget, and spend writes for the pending-run overshoot must not be converged away',
-  )
-  assert.deepEqual(
-    pageLog,
-    [['spend', 'r2 spend-cap-overshoot 80/50']],
-    'a spend page must be raised, and only that',
-  )
-  assert.equal(orch.store.getRow('claims', 'claim:r2').revoked, true, "the pending run's claim must be revoked")
-  assert.equal(
-    orch.store.getRow('runs', 'r2').status,
-    'parked',
-    'a run still pending at overshoot time must still end parked',
-  )
-  assert.equal(
-    orch.store.getRow('runs', 'r2').parkedWhy,
-    'spend-cap-overshoot 80/50',
-    'the park reason on a pending-run overshoot must record why, verbatim',
-  )
-
-  // The pending -> parked write is the orchestrator's own supervised action,
-  // so — like the r1 overshoot above — it must pass the guard cleanly on the
-  // NEXT sweep too: zero converge-aways for those writes.
-  // Quiescence predicate, same shape as the r1 case above: poll until the
-  // revoke has converged back to client c2, the r2 claim's original holder.
-  await until(
-    () => c2.store.getRow('claims', 'claim:r2')?.revoked === true,
-    'the r2 claim revoke to reach client c2',
-  )
-  actionsLog.length = 0
-  pageLog.length = 0
-  const nextPendingSweep = orch.sweep(T)
-  assert.deepEqual(
-    convergeAways(nextPendingSweep),
-    [],
-    'the pending-run overshoot writes (claim revoke + pending->parked) must not be converged away by the next sweep',
-  )
-  assert.deepEqual(pageLog, [], 'a clean sweep after the pending-run overshoot must raise no pages')
-  assert.deepEqual(actionsLog, [], 'an already-revoked pending-run overshoot must not re-fire the hard actions')
-
-  // -- 3c. spend hard action refused when the park is illegal ---------------
-  // A run stuck in a terminal state (folded — no legal transitions at all)
-  // cannot be parked. The park-first ordering must refuse to revoke the
-  // claim or fire any destructive action in that case, leaving both the
-  // claim and the sandbox intact for an operator to triage by hand.
-  orch.store.setRow('runs', 'r3', {
-    planPath: 'docs/superpowers/plans/r3.md',
-    sandboxId: 'sb1',
-    status: 'folded',
-    branch: 'claw/r3',
-  })
-  const claimedR3 = tryClaim(undefined, { runId: 'r3', claimant: 'sb1', ttlMs: 60_000, now: T })
-  assert.equal(claimedR3.error, undefined, 'sb1 must be able to take a free claim on r3')
-  c1.store.setRow('claims', 'claim:r3', claimedR3.row)
-  orch.store.setRow('budgets', 'r3', { capTokens: 10 })
-  c1.store.setRow('spend', spendRowId('sb1', 3), { runId: 'r3', tokens: 20, at: T })
-  await until(
-    () =>
-      orch.store.getRow('claims', 'claim:r3')?.holder === 'sb1' &&
-      totalSpent(orch.store.getTable('spend'), 'r3') === 20,
-    'sb1 claim and spend row for r3 to reach the supervisor store',
-  )
-
-  actionsLog.length = 0
-  pageLog.length = 0
-  parkStatusAtRevoke.length = 0
-  const parkIllegalSweep = orch.sweep(T)
-
-  assert.deepEqual(
-    actionsLog,
-    [],
-    'an overshoot whose park is illegal must take no destructive action at all',
-  )
-  assert.deepEqual(
-    parkStatusAtRevoke,
-    [],
-    'actions.revokeAndPark must never fire when the park write is refused',
-  )
-  assert.deepEqual(
-    pageLog,
-    [['security', 'supervisor park refused for r3: illegal transition folded -> parked']],
-    'a park-illegal overshoot must raise exactly one security page naming the refusal',
-  )
-  assert.deepEqual(
-    convergeAways(parkIllegalSweep),
-    [],
-    'the legitimate claim, budget, and spend writes for r3 must not be converged away',
-  )
-  assert.equal(orch.store.getRow('runs', 'r3').status, 'folded', 'a run whose park is illegal must keep its status unchanged')
-  assert.equal(
-    orch.store.getRow('claims', 'claim:r3').revoked,
-    false,
-    'the claim must be left intact when the park is refused',
-  )
-
-  // The park-refusal page must latch too: two more sweeps of the same
-  // still-illegal overshoot must add zero further pages.
-  const pagesAfterR3First = pageLog.length
-  orch.sweep(T)
-  orch.sweep(T)
-  assert.equal(
-    pageLog.length,
-    pagesAfterR3First,
-    'the same park-illegal refusal must page ONCE across repeated sweeps, not per sweep',
-  )
-
-  // --- #190: missing-runs-row overshoot pages, never destroys ------------------
-  // A scope with a budget, a held claim, and overshooting spend — but NO runs
-  // row at all — must page a distinct "missing runs row" refusal and touch
-  // neither the claim nor the sandbox: there is nothing to park, so nothing
-  // downstream of the park may fire either.
   {
-    const pagesBefore = pageLog.length
-    const actionsBefore = actionsLog.length
-    orch.store.setRow('budgets', 'ghost', { capTokens: 10 })
-    orch.store.setRow('claims', 'claim:ghost', {
-      runId: 'ghost',
-      holder: 'sb-ghost',
-      leaseExpiresAt: T + 60_000,
-      epoch: 1,
-      revoked: false,
-    })
-    orch.store.setRow('spend', spendRowId('sb-ghost', 1), { runId: 'ghost', tokens: 20, at: T })
-
+    const before = actionsLog.length
     orch.sweep(T)
-    assert.equal(actionsLog.length, actionsBefore, 'no revoke/destroy without a parkable runs row')
-    const newPages = pageLog.slice(pagesBefore)
-    assert.ok(
-      newPages.some(([cls, text]) => cls === 'security' && /ghost/.test(text) && /missing runs row/.test(text)),
-      `the missing-row refusal must page security, got: ${JSON.stringify(newPages)}`,
-    )
-    assert.equal(
-      orch.store.getRow('claims', 'claim:ghost').revoked,
-      false,
-      'the claim must be left intact when the runs row is missing',
-    )
+    assert.equal(actionsLog.length, before, 'recording spend must take no action at all')
+  }
 
-    // --- the latch: repeated sweeps re-detect the same overshoot silently ----
-    const pagesAfterFirst = pageLog.length
+  // 3a. A LIVE claim is never reaped, however much it has spent.
+  //     This is the assertion that pins the trigger. The spend rows below would
+  //     have blown any cap the old pass could have set; nothing happens, because
+  //     spend is not a reason to destroy a VM.
+  const REAPER_TTL = 60_000
+  const reaped = tryClaim(undefined, { runId: 'r-live', claimant: 'sb-live', ttlMs: REAPER_TTL, now: T }).row
+  orch.store.setRow('claims', 'claim:r-live', reaped)
+  orch.store.setRow('spend', spendRowId('orch', 900), { runId: 'r-live', tokens: 10_000_000, at: T })
+  {
+    const before = actionsLog.length
     orch.sweep(T + 1)
-    orch.sweep(T + 2)
-    assert.equal(pageLog.length, pagesAfterFirst, 'the same missing-row refusal must page ONCE, not per sweep')
+    assert.equal(actionsLog.length, before, 'a live claim must never be reaped, whatever it spent')
+  }
+
+  // 3b. EXPIRED but inside the grace window: still not reaped. The lease
+  //     governs who may RECLAIM (cheap, reversible); destroying a billed VM is
+  //     neither, so a partition that merely delays a renew must not cost a live
+  //     run its sandbox.
+  {
+    const before = actionsLog.length
+    orch.sweep(T + REAPER_TTL + 1)
+    assert.equal(actionsLog.length, before, 'the grace beyond the lease must be real, not decorative')
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS - 1)
+    assert.equal(actionsLog.length, before, 'still inside the grace window')
+  }
+
+  // 3c. Past expiry + grace: the sandbox is destroyed, once, with a liveness
+  //     reason — and the CLAIM IS LEFT INTACT. Reaping a VM does not license
+  //     revoking a claim: `expired` is reclaimable by anyone, `revoked` is
+  //     terminal without an operator reset.
+  {
+    pageLog.length = 0
+    actionsLog.length = 0
+    const descriptions = orch.sweep(T + REAPER_TTL + REAP_GRACE_MS)
+    // BOTH sb-live and sb1 are reaped here, and the second one is the point:
+    // sb1's claim was made back in section 2, by a DIFFERENT run, and its lease
+    // has long expired. That is precisely the cross-run reclamation the design
+    // depends on — there is no long-lived orchestrator process, so a leak is
+    // reclaimed by a LATER drive's sweep reading the shared, persisted store.
+    // If this only ever reaped the current run's own sandbox it would reap
+    // nothing that `drive.mjs`'s own teardown does not already handle.
+    assert.deepEqual(
+      actionsLog.slice().sort(),
+      ['destroySandbox sb-live', 'destroySandbox sb1'].sort(),
+      "every expired holder's sandbox must be destroyed, across runs",
+    )
+    assert.equal(pageLog.length, 2, 'one page per reaped holder')
+    for (const [cls, text] of pageLog) {
+      assert.equal(cls, 'reap', 'the page class names the reason class')
+      assert.match(text, /claim-lease-expired/, 'the recorded reason must be liveness')
+      assert.ok(!/spend/.test(text), 'the reason must never be spend')
+    }
+    assert.ok(
+      descriptions.some((d) => /^reap sb-live /.test(d)),
+      `the sweep must describe the reap, got: ${JSON.stringify(descriptions)}`,
+    )
+    const claim = orch.store.getRow('claims', 'claim:r-live')
+    assert.equal(claim.revoked, false, 'the run must stay reclaimable — reaping a VM is not revoking a claim')
+    assert.equal(claim.holder, 'sb-live', 'the claim row is left exactly as it was')
+  }
+
+  // 3d. Idempotent: one dead drive costs one `rm`, not one per sweep.
+  {
+    actionsLog.length = 0
+    pageLog.length = 0
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 1)
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 2)
+    assert.deepEqual(actionsLog, [], 'an already-reaped holder must not be destroyed again')
+    assert.deepEqual(pageLog, [], 'nor paged again')
+  }
+
+  // 3e. A REVOKED claim is never reaped. Revocation is an operator act with its
+  //     own teardown; the reaper must not second-guess it.
+  {
+    const revokedClaim = { ...tryClaim(undefined, { runId: 'r-rev', claimant: 'sb-rev', ttlMs: 1, now: T }).row, revoked: true }
+    orch.store.setRow('claims', 'claim:r-rev', revokedClaim)
+    actionsLog.length = 0
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 3)
+    assert.deepEqual(actionsLog, [], 'a revoked claim must never be reaped')
+  }
+
+  // 3f. The deleted subsystem stays deleted: a `budgets` row and overshooting
+  //     spend are inert. Nothing reads the table, so nothing can act on it.
+  {
+    orch.store.setRow('budgets', 'r-live', { capTokens: 1 })
+    actionsLog.length = 0
+    pageLog.length = 0
+    orch.sweep(T + REAPER_TTL + REAP_GRACE_MS + 4)
+    assert.deepEqual(actionsLog, [], 'a budgets row must be inert — the cap is deleted, not merely unset')
+    assert.deepEqual(pageLog, [], 'and must raise no page')
   }
 
   // -- 4. persistence -------------------------------------------------------
@@ -466,12 +345,20 @@ try {
   // pre-restart state back into the fresh store (the revoked r1 claim is the
   // last write from the previous run, so its presence means the load landed).
   await until(
-    () => orch.store.getRow('claims', 'claim:r1')?.revoked === true,
+    () => orch.store.getRow('claims', 'claim:r-live')?.holder === 'sb-live',
     'the persisted store to finish loading after restart',
   )
+  // The ledger survives the cap's deletion AND a restart. It is a record now,
+  // never an authority — which is exactly why it still has to persist.
   assert.equal(totalSpent(orch.store.getTable('spend'), 'r1'), 120, 'the spend ledger must survive a restart')
-  assert.equal(orch.store.getRow('claims', 'claim:r1').revoked, true, 'the revoked claim must survive a restart')
-  assert.equal(orch.store.getRow('runs', 'r1').status, 'parked', 'the parked run must survive a restart')
+  assert.equal(
+    orch.store.getRow('claims', 'claim:r-live').revoked,
+    false,
+    'a reaped run must come back RECLAIMABLE, not revoked — this is what makes the reaper safe to run unattended',
+  )
+  // …and the reaper's in-process latch does NOT survive the restart, by design.
+  // A restarted orchestrator may re-issue one `rm` for an already-destroyed VM,
+  // which is a no-op at the provider — the cheap direction of the two.
   assert.deepEqual(
     orch.store.getRow('receipts', 'r1:gate'),
     { sha: 'deadbeef', path: 'docs/gate.md', verdict: 'red' },

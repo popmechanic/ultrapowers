@@ -6,9 +6,13 @@
 //   2. the guard sweep — the server re-evaluates every row that changed since
 //      its last-known-good snapshot against `guardViolation` and converges
 //      unauthorized writes away (delRow-then-setRow of the good row);
-//   3. spend authority — overshoot is DETECTED, never prevented, so the
-//      orchestrator is the thing that pulls a run out from under a sandbox
-//      that blew its cap.
+//   3. out-of-band VM reclamation — the claim-lease reaper, which destroys a
+//      sandbox whose claim lease has expired with no drive heartbeat. The
+//      trigger is LIVENESS, never spend: the right reason to destroy a VM is
+//      "nothing is using it". (The per-run token cap and its spend supervisor
+//      were deleted in #400 / Amendment 4: the cap never fired in twelve runs,
+//      metered dollars when the scarce resource is the rate window, and was
+//      calibrated from size means. The `spend` ledger survives as observation.)
 //
 // It never shells out. Every side effect that leaves this process — revoking
 // and parking a run in the operator's world, destroying a sandbox VM, paging a
@@ -21,7 +25,7 @@ import { createMergeableStore } from 'tinybase'
 import { createWsServer } from 'tinybase/synchronizers/synchronizer-ws-server'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { createSqlite3Persister } from 'tinybase/persisters/persister-sqlite3'
-import { guardViolation, revoke, totalSpent } from './store.mjs'
+import { claimState, guardViolation } from './store.mjs'
 import { mintToken, verifyToken } from './tokens.mjs'
 
 // Every fleet client — sandboxes and the orchestrator's own local client —
@@ -40,6 +44,12 @@ const LOOPBACK_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000
 // Upper bound on how long `stop()` waits for the server client to catch up
 // before writing through anyway. A stalled peer delays shutdown, never blocks it.
 const FLUSH_TIMEOUT_MS = 2000
+
+// How long past a claim's lease expiry the reaper waits before destroying the
+// holder's sandbox. The lease governs RECLAIM (cheap, reversible); destroying a
+// billed VM is neither, so a partition that merely delays a renew must not cost
+// a live run its sandbox. One further lease-ish period is the margin.
+export const REAP_GRACE_MS = 10 * 60_000
 
 const clone = (value) => structuredClone(value)
 const sameRow = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
@@ -172,6 +182,10 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
   // orchestrator's lifetime.
   const pagedRefusals = new Set()
 
+  // Reaped holders, so one dead drive costs one `rm` and not one per sweep.
+  // In-process by design, like `pagedRefusals`: see the reaper's own note.
+  const reapedHolders = new Set()
+
   const convergeAway = (table, rowId, goodRow) => {
     store.delRow(table, rowId)
     if (goodRow !== undefined) store.setRow(table, rowId, goodRow)
@@ -208,77 +222,63 @@ export const startOrchestrator = async ({ port, dbDir, tokenRecords, actions, cl
       actions.page('security', `guard sweep converged away ${convergedAway.length}: ${convergedAway.join('; ')}`)
     }
 
-    // --- spend pass --------------------------------------------------------
-    // Authoritative total is always the post-sync ledger sum. A cap that is
-    // merely reached is fine; only an overshoot is an incident.
-    const spendRows = store.getTable('spend')
-    for (const scopeId of Object.keys(store.getTable('budgets'))) {
-      const capTokens = store.getCell('budgets', scopeId, 'capTokens')
-      if (typeof capTokens !== 'number') continue
-      const spent = totalSpent(spendRows, scopeId)
-      if (spent <= capTokens) continue
+    // --- claim-lease reaper ------------------------------------------------
+    // The one thing the deleted spend supervisor did that nothing else does:
+    // OUT-OF-BAND VM RECLAMATION. `destroySandbox` reached this action surface
+    // at exactly one site — inside that spend pass — while every other destroy
+    // path is `drive.mjs`'s own teardown, running inside the drive process. So
+    // a drive that is killed, crashes, or dies mid-run left a billed VM alive
+    // with nothing left to reclaim it. `provisionRun` issues a bare
+    // `ssh exe.dev "cp <golden> fleet-<runId>"`: there is NO provider-side TTL
+    // (the `ttlMs` nearby is the store-token lease, not a VM lifetime), so
+    // "alive" means alive until someone runs `rm`.
+    //
+    // THE TRIGGER IS LIVENESS, NEVER SPEND. The right reason to destroy a VM is
+    // "nothing is using it", never "it spent too much" — a cap says nothing
+    // about whether the work is still running, and a run that is merely
+    // expensive is the operator's call, not the orchestrator's.
+    //
+    // The predicate is over rows that already exist: a claim's lease IS the
+    // drive's heartbeat (a live drive renews it, `tryRenew`), so an expired
+    // lease already means "no drive heartbeat for a lease period". No new
+    // table, no new timer, no new subsystem.
+    //
+    // WHAT THIS CAN AND CANNOT PROMISE. There is no long-lived orchestrator
+    // process — `drive.mjs` starts one per drive, in-process — so the sweep
+    // that would reap a leak dies with the drive that caused it. What saves the
+    // reclamation is that `dbDir` is SHARED across runs (`/tmp/fleet-orch-live`)
+    // and persisted to SQLite, so the dead run's claim row is still there when
+    // the NEXT drive's orchestrator loads the store, and its first sweep reaps
+    // the orphan. Reclamation is therefore bounded by **the next drive start**,
+    // not by one lease period. A concurrent sibling drive reaps sooner, since
+    // its sweep is already running. If no further run is ever launched, nothing
+    // reaps — which is why `actions.destroySandbox` stays operator-reachable.
+    //
+    // GRACE BEYOND THE LEASE, deliberately. The lease governs who may RECLAIM a
+    // run — a cheap, reversible act. Destroying a VM is neither, so a partition
+    // that merely delays a renew must not cost a live run its sandbox. The
+    // reaper waits a further REAP_GRACE_MS past expiry.
+    //
+    // Idempotence is in-process (`reapedHolders`), the same shape as
+    // `pagedRefusals`. A restarted orchestrator may re-issue one `rm` for an
+    // already-destroyed VM, which is a no-op at the provider — the cheap
+    // direction of the two.
+    for (const [claimId, claimRow] of Object.entries(store.getTable('claims'))) {
+      const holder = claimRow.holder
+      if (!holder || claimRow.revoked) continue
+      if (reapedHolders.has(holder)) continue
+      if (claimState(claimRow, now) !== 'expired') continue
+      if (now < claimRow.leaseExpiresAt + REAP_GRACE_MS) continue
 
-      const claimId = `claim:${scopeId}`
-      const claimRow = store.getRow('claims', claimId)
-      // Nothing to pull the run out from under, or already pulled.
-      if (!claimRow || claimRow.holder === undefined || claimRow.revoked) continue
-
-      const why = `spend-cap-overshoot ${spent}/${capTokens}`
-
-      // The park write is attempted FIRST and gates everything destructive
-      // that follows: revoking the claim and tearing down the sandbox cannot
-      // be undone, so neither happens unless the run can actually land in
-      // 'parked'. A run in a terminal state (folded, say) has no legal path
-      // there — that is an operator triage case, not something the
-      // orchestrator should rip infrastructure out from under — so it pages
-      // and leaves the claim and sandbox exactly as they were.
-      // A missing runs row is an explicit refusal, not a silent skip: it must
-      // page (once) and leave the claim and sandbox untouched — falling
-      // through to revoke + destroy without the park that is supposed to gate
-      // them would be a destructive action with nothing gating it (#190).
-      //
-      // plan-defect: the plan's literal check was `if (!runRow)` after
-      // `store.getRow(...)`, but TinyBase's `getRow` returns `{}` (truthy,
-      // not undefined) for a nonexistent row — so that check never fires and
-      // the missing-row case would silently fall into the park path with an
-      // empty `oldRow`. `hasRow` is the real existence check (same pitfall
-      // already flagged in this file's own test, line ~118).
-      const runRow = store.getRow('runs', scopeId)
-      if (!store.hasRow('runs', scopeId)) {
-        pageOnce(
-          `missing-row:${scopeId}`,
-          'security',
-          `supervisor park refused for ${scopeId}: missing runs row — leaving claim and sandbox untouched`,
-        )
-        continue
-      }
-
-      const parkedRow = { ...runRow, status: 'parked', parkedWhy: why }
-      const parkRefusal = guardViolation('runs', scopeId, parkedRow, runRow, SUPERVISOR_ID, now, { supervisor: true })
-      if (parkRefusal) {
-        pageOnce(`park-refusal:${scopeId}`, 'security', `supervisor park refused for ${scopeId}: ${parkRefusal}`)
-        continue
-      }
-      store.setRow('runs', scopeId, parkedRow)
-
-      const revokedRow = revoke(claimRow)
-      // The orchestrator's own hard action is still put to its own guard —
-      // with the §W1b supervisory exemption, which permits a revoke on a claim
-      // held by someone else and nothing more. If the guard refuses even that
-      // (an un-revoke, say), the write does not happen.
-      const revokeRefusal = guardViolation('claims', claimId, revokedRow, claimRow, SUPERVISOR_ID, now, {
-        supervisor: true,
-      })
-      if (revokeRefusal) {
-        pageOnce(`revoke-refusal:${scopeId}`, 'security', `supervisor revoke refused for ${scopeId}: ${revokeRefusal}`)
-        continue
-      }
-      store.setRow('claims', claimId, revokedRow)
-
-      descriptions.push(`spend-cap-overshoot ${scopeId} ${spent}/${capTokens}`)
-      actions.page('spend', `${scopeId} ${why}`)
-      actions.revokeAndPark(scopeId, why)
-      actions.destroySandbox(claimRow.holder)
+      // The claim row is left exactly as it is: `expired` is reclaimable by
+      // anyone, and revoking it would be a destructive second act (revoked
+      // never comes back without an operator reset) that reaping a VM does not
+      // license. The sandbox goes; the run stays reclaimable.
+      reapedHolders.add(holder)
+      const why = `claim-lease-expired ${claimId} (no drive heartbeat since ${claimRow.leaseExpiresAt})`
+      descriptions.push(`reap ${holder} ${why}`)
+      actions.page('reap', `${holder} ${why}`)
+      actions.destroySandbox(holder)
     }
 
     // Everything standing at the end of a sweep — including the orchestrator's

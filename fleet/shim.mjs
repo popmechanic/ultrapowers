@@ -222,7 +222,9 @@ export const runShim = async ({
   // `readReportTokens()` is the run report's output-token TOTAL: it is
   // CUMULATIVE and rises over the life of the run. The ledger is the opposite
   // shape — `spend` is append-only and readers derive a run's spend by SUMMING
-  // its rows (store.mjs `totalSpent`, feeding `remaining`/`mayEnqueueSpend`).
+  // its rows (store.mjs `totalSpent`). Nothing is enforced against that total —
+  // the per-run cap is deleted (#400) — but the ledger is still the run's spend
+  // record, and a wrong-shaped row makes it a wrong record.
   //
   // So a row must carry the DELTA since the last sample, never the raw
   // reading. Appending raw cumulative readings of 1000, 3000, 7000 would sum

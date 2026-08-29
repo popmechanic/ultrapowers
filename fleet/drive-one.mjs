@@ -24,8 +24,6 @@ export const DEFAULTS = Object.freeze({
   golden: 'fleet-golden',
   port: 8180,
   dbDir: '/tmp/fleet-orch-live',
-  // W2 charter constant (from measured burn); raise only on an explicit operator call.
-  capTokens: 500_000,
   // Store-token lease TTL; 4h covers any single-plan drain (#279).
   ttlHours: 4,
   tokenPath: '/home/exedev/.fleet/claude-oauth-token',
@@ -40,7 +38,6 @@ const FLAGS = Object.freeze({
   '--golden': 'golden',
   '--port': 'port',
   '--db-dir': 'dbDir',
-  '--cap-tokens': 'capTokens',
   '--ttl-hours': 'ttlHours',
   '--evidence-dir': 'evidenceDir',
   '--sandbox-cpu': 'sandboxCpu',
@@ -50,11 +47,11 @@ const FLAGS = Object.freeze({
   '--github-token-path': 'githubTokenPath',
   '--pr-base': 'prBase',
 })
-const NUMERIC = new Set(['port', 'capTokens', 'ttlHours', 'sandboxCpu'])
+const NUMERIC = new Set(['port', 'ttlHours', 'sandboxCpu'])
 
 export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
-  '[--golden VM] [--cap-tokens N] [--ttl-hours N] [--evidence-dir DIR] ' +
+  '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
   '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
   '[--github-token-path FILE] [--pr-base BRANCH] [--allow-unfit-plan]'
 
@@ -131,7 +128,6 @@ export const buildDriveOptions = (
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN: String(readToken(parsed.tokenPath)).trim() },
   runId: parsed.runId,
-  capTokens: parsed.capTokens,
   ttlMs: parsed.ttlHours * 60 * 60 * 1000,
   heartbeatTimeoutMs: 30 * 60_000,
   claimTimeoutMs: 10 * 60_000,

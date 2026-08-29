@@ -39,7 +39,6 @@ const runMain = async ({ runId, auxDeliver, planPath, omitInvokeRun, execOverrid
     actions: { page: () => {}, revokeAndPark: () => {}, destroySandbox: () => {} },
   })
   orch.store.setRow('runs', runId, { planPath: 'p.md', sandboxId: '', status: 'pending', branch: 'fleet-run' })
-  orch.store.setRow('budgets', runId, { capTokens: 1_000_000 })
   const assignmentPath = path.join(tmp, 'fleet-run.json')
   fs.writeFileSync(
     assignmentPath,
