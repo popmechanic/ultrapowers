@@ -85,6 +85,16 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
   and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).
+- **Three layers, three merges — never cross them.** `fleet/`'s store is a TinyBase
+  **MergeableStore** (a real CRDT, HLC-stamped, synced through the orchestrator). Merge is
+  **per slot** (`table.rowId.cellId`), so *which axis you put concurrency on decides whether
+  data survives*: **row axis** = two rowIds, two slots, both survive (a grow-only set;
+  totals are folds at read time — `totalSpent`); **cell axis** = one slot, HLC picks a
+  winner and **discards** the other. The CRDT does not know your number is a sum. So
+  **status is a register (cell), evidence is a set (row), totals are folds** — and file
+  *content* is Manyana's, never either. The full rule, with the worked example and the
+  `reportedTokens` counter-example, is documentation-as-code at the top of `fleet/store.mjs`
+  — **read it before adding a table.**
 
 ## How features are built here
 
@@ -92,7 +102,8 @@ Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans`
 `ultrapowers:ultraplan` markers → plan in `docs/superpowers/plans/` → execute (subagent-driven,
 or `/ultrapowers` itself) → PR. Every spec gets an **adversarial trim review** before operator
 review — a fresh-context subagent proposing the trimmed version (dispatch brief in
-`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec carries a
+`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec (or its
+companion record, where one exists — see `2026-08-28-one-driver-answers.md`) carries a
 `## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
 author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite` (the committed
 suite is the verification).

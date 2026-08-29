@@ -4,6 +4,14 @@
 **Branch:** `one-driver`. **Ticket:** #389. **Sibling intent:** the client half (#390) —
 see `## Out of scope`.
 
+> **SUPERSEDED AS A RUN INPUT (2026-08-28).** The port is a *substitution*, not a rebuild —
+> `waves.js` is already parameterised over its worker dispatcher, so the work is one function
+> and a clone-provisioning change, gated by sims that run locally in seconds. See the
+> one-driver spec **§1a** (the seam) and **§10** (five stages). This document survives as the
+> **record of intent** — its task set names real work and its acceptance statements stand —
+> but it is not compiled, and the bridge that fed it to the old engine is deleted.
+
+
 *This is the first intent document written against the spec's §6 schema. Seven slots, no
 verbatim implementation code, one operator-verifiable acceptance statement per task. Where
 the schema chafed, it is recorded in `## Cadence` rather than silently worked around — that

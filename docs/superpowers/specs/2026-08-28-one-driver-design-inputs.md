@@ -6,8 +6,10 @@ operator's decisions (including Amendment 1), the pre-registered bar, the deleti
 ledger, the rules, and the harness mechanics read from the Claude Code docs. Issues
 sprawl and get forgotten; this file is the version the build must read.
 
-**Consumption contract.** The one-driver spec (`docs/superpowers/specs/<date>-one-driver.md`,
-written after the #243 grilling) MUST carry a `## Design inputs` section that lists every
+**Consumption contract.** The one-driver spec MUST carry a `## Design inputs` section
+— **as of 2026-08-28 it lives in the spec's companion,
+`docs/superpowers/specs/2026-08-28-one-driver-answers.md`, so the spec itself can state the
+design in one voice; the contract is satisfied there and is unchanged** — that lists every
 row of the **deletion ledger** and every row of the **harness mechanics** table below —
 **including the rows Amendments 3, 4 and 5 correct or replace** — and, for each, says one
 of: `adopted` (with the spec section that implements it), `answered` (why not, in one
@@ -528,3 +530,37 @@ constant becomes 8**: the last width with margin.
 implementer runs the test suite, which is CPU-bound in a way `Grep` is not — so this
 measures the dispatch layer's ceiling, not the workload's. Still owed: the same arms with a
 worker that runs `pytest`.
+
+
+## Amendment 8 (2026-08-28) — the seam already exists; the port is a substitution
+
+Found while reviewing the build plan, after the spec was plan-ready. Recorded in full as
+one-driver spec **§1a**; mirrored here because it changes what the build *is*.
+
+**`harnesses/waves.js` is already parameterised over its worker dispatcher.** It is a
+function of six injected globals — `agent, parallel, phase, log, args, budget` — and the
+Workflow tool is only one thing that supplies them. `tests/sim_workflow.mjs` already supplies
+a second set with a stubbed `agent`. **The driver is the third.**
+
+The entire interface is `agent(prompt, opts)` with **four** option keys — `label`, `model`,
+`schema`, and `isolation: 'worktree'` at exactly **two** of the ten call sites — plus one
+return convention: `agent()` returns **`null`**, never throws, on terminal overload.
+
+**Consequences for rows in this file:**
+
+| row | change |
+|---|---|
+| §Eureka half 2, *"move that loop into the driver"* | sharpened: the loop does not move house, it gets a third implementation of a seam it already has. Scheduler, fix loop, fold adoption, reconciliation and the critic are **unchanged** |
+| §Rules 3, *"port, don't rewrite"* | now literally achievable, and measurable: the three sims run the real `waves.js` against an injected dispatcher, so passing them **is** the port's specification |
+| #314 / `baseCorrected` | `waves.js:1116` states the cause in its own words — *"engine worktrees are cut by the runtime (`isolation: 'worktree'`), not by this script."* The driver cutting at BASE is the two-site change that makes it inexpressible |
+| §Route step 4, "build on branch, validate with fleet runs" | **restaged** — spec §10: stage 1 is local and gated by sims, because the thing being built is what runs fleet builds. Using the old engine to build its replacement requires a bridge, and the bridge is a graft |
+| §Amendment 4's plan shape | unchanged as a *design*, but not exercised by the port itself. The port is stage 1; derivation is stage 3 |
+
+**The plan this replaces.** A first build plan decomposed the port into twelve tasks and
+**ten new modules**, driven on the fleet through a bridge that converted the intent document
+into a marked plan the old engine could compile. That is a rewrite wearing a port's clothes,
+forbidden by rule 3 in the same document that cited rule 3 — and it stacked three novelties
+(new artifact, no plan bodies, retiring executor) on the one change that must not go wrong.
+
+**The operator's catch, kept because it generalises:** *things go wrong when one system tries
+to graft onto another.* The bridge was the graft. It is deleted.

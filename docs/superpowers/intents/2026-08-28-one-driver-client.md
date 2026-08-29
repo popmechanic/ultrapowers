@@ -4,6 +4,14 @@
 §8e. **Branch:** `one-driver`. **Ticket:** #390. **Sibling intent:**
 `2026-08-28-one-driver-engine.md` (#389).
 
+> **SUPERSEDED AS A RUN INPUT (2026-08-28).** The port is a *substitution*, not a rebuild —
+> `waves.js` is already parameterised over its worker dispatcher, so the work is one function
+> and a clone-provisioning change, gated by sims that run locally in seconds. See the
+> one-driver spec **§1a** (the seam) and **§10** (five stages). This document survives as the
+> **record of intent** — its task set names real work and its acceptance statements stand —
+> but it is not compiled, and the bridge that fed it to the old engine is deleted.
+
+
 *Same release, same branch, separate signed intent — the two halves share no `Files:` and no
 dependency edges. Operator decisions 4, 5, 6 and 7 of 2026-08-28 (#366 Amendment 7) are what
 put this half inside 0.3.0 rather than beside it.*
