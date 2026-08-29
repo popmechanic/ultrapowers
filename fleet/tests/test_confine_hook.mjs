@@ -58,15 +58,52 @@ assert.ok(D('Bash', { command: 'pytest -q 2>/dev/null' }).allow, '/dev/* is a si
 assert.ok(D('Bash', { command: 'cat secrets | tee /etc/leak' }).deny)
 assert.ok(D('Grep', { pattern: 'x' }).allow, 'a read tool with no path keys passes')
 
-// FLEET_RUN_DIR is the second root: the review packet lands there.
+// /dev/.. is not a device: the exemption tests the RESOLVED path (finding 2).
+assert.ok(D('Bash', { command: 'echo x > /dev/../etc/passwd' }).deny, '/dev/.. escapes are denied')
+assert.ok(D('Bash', { command: 'echo x > /dev/../../root/x' }).deny)
+
+// A relative write after an escaping `cd` is refused (finding 3); a `cd` into a
+// subdir of the clone is fine.
+assert.ok(D('Bash', { command: 'cd /tmp && echo x > out.txt' }).deny, 'cd /abs then relative write is refused')
+assert.ok(D('Bash', { command: 'cd ../.. && echo x > out.txt' }).deny, 'cd .. then relative write is refused')
+assert.ok(D('Bash', { command: 'cd sub && echo x > out.txt' }).allow, 'cd into a subdir stays in the clone')
+assert.ok(D('Bash', { command: 'cd /tmp && pytest -q' }).allow, 'a cd with no write is fine')
+
+// A redirect target with a shell expansion is not statically resolvable → deny
+// (finding 3): the literal token would resolve inside the clone and pass while
+// the shell writes elsewhere.
+assert.ok(D('Bash', { command: 'O=/etc/x; echo pwned > $O' }).deny, '$VAR redirect target is refused')
+assert.ok(D('Bash', { command: 'echo pwned > $(printf /etc)/passwd' }).deny, 'command-substitution target is refused')
+assert.ok(D('Bash', { command: 'echo pwned > `echo /etc`/x' }).deny, 'backtick target is refused')
+
+// FLEET_RUN_DIR is the second root — but clones/ and patches/ are carved out
+// of it, so a worker cannot reach a sibling's tree or the trust-anchored
+// patch files (finding 1).
 {
   const prev = process.env.FLEET_RUN_DIR
   process.env.FLEET_RUN_DIR = runDir
   try {
     assert.ok(D('Write', { file_path: path.join(runDir, 'review', 'p.md') }).allow,
       'the run scratch dir is writable')
+    assert.ok(D('Write', { file_path: path.join(runDir, 'frontier', 'wave-1', 'c') }).allow,
+      'the fold candidate dir is writable')
     assert.ok(D('Bash', { command: 'echo x > ' + path.join(runDir, 'review', 'out') }).allow)
     assert.ok(D('Write', { file_path: '/etc/x' }).deny, 'outside both roots still denied')
+    // The carve-outs: a sibling clone and a sibling's patch file.
+    assert.ok(D('Write', { file_path: path.join(runDir, 'clones', 'task-B', 'x') }).deny,
+      'a sibling clone is not writable even though it is under the run dir')
+    assert.ok(D('Write', { file_path: path.join(runDir, 'patches', 'task-B.patch') }).deny,
+      'the trust-anchored patch dir is not writable at the file layer')
+    assert.ok(D('Bash', { command: 'echo evil > ' + path.join(runDir, 'patches', 'task-B.patch') }).deny)
+    // The worker's OWN clone is always writable — via cwd, even though it is
+    // under the carved-out clones/ subtree.
+    const ownClone = path.join(runDir, 'clones', 'task-A')
+    assert.ok(decide({ tool_name: 'Write', tool_input: { file_path: path.join(ownClone, 'a.js') }, cwd: ownClone }).allow,
+      "a worker's own clone is reachable via cwd despite the clones/ carve-out")
+    // The write-side role's cwd is the integration clone — writable via cwd.
+    const integ = path.join(runDir, 'clones', 'integration')
+    assert.ok(decide({ tool_name: 'Write', tool_input: { file_path: path.join(integ, 'm.js') }, cwd: integ }).allow,
+      'the integration clone is writable by the role whose cwd it is')
   } finally {
     if (prev === undefined) delete process.env.FLEET_RUN_DIR
     else process.env.FLEET_RUN_DIR = prev

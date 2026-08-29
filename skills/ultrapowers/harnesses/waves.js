@@ -931,7 +931,15 @@ const PATCH_PREFIX = (args && typeof args.patchInput === 'string' && args.patchI
 const stripUntrustedPatch = (r) => {
   if (!r) return r
   if (!PATCH_INPUT) { delete r.patch; return r }
-  if (PATCH_PREFIX && r.patch != null && !String(r.patch).startsWith(PATCH_PREFIX)) delete r.patch
+  if (PATCH_PREFIX && r.patch != null) {
+    const p = String(r.patch)
+    // startsWith alone honours `<prefix>/../../etc/x` (a traversal back out of
+    // the anchored dir); this is a Workflow body with no path module, so
+    // reject any `..` segment by string — a driver-captured patch is always
+    // `<patchesDir>/task-<id>.patch`, never contains one.
+    const hasDotDot = p === '..' || p.startsWith('../') || p.endsWith('/..') || p.indexOf('/../') !== -1
+    if (!p.startsWith(PATCH_PREFIX) || hasDotDot) delete r.patch
+  }
   return r
 }
 

@@ -14,11 +14,20 @@
 // (Claude Code invokes PreToolUse hooks in the session's working directory),
 // and under the driver every acceptEdits worker's cwd IS its writable clone —
 // makeCwdFor guarantees it. So root 1 = the hook's own cwd, and root 2 =
-// $FLEET_RUN_DIR (the run scratch tree: review packets, plans — the driver
-// sets it in the worker env). Deriving from cwd means there is no per-task
-// settings file to generate and nothing that can point at the wrong clone; a
-// hook that had to be TOLD its root would be one more model-adjacent
+// $FLEET_RUN_DIR (the run scratch tree: review packets, fold candidates — the
+// driver sets it in the worker env). Deriving from cwd means there is no
+// per-task settings file to generate and nothing that can point at the wrong
+// clone; a hook that had to be TOLD its root would be one more model-adjacent
 // coordinate.
+//
+// TWO SUBTREES ARE CARVED OUT OF ROOT 2: `<runDir>/clones` and
+// `<runDir>/patches`. The run dir CONTAINS every worker's clone and the
+// driver-captured patch files, so a bare "the run dir is writable" would let
+// task A write task B's tree (breaking per-worker isolation) or overwrite
+// B's patch file at the file layer — under withPatchCapture's reply strip and
+// waves.js's PATCH_PREFIX, which guard only the reply channel. A worker still
+// writes its OWN clone freely: that is reached through root 1 (its cwd),
+// which wins before the carve-out is consulted.
 //
 // HONEST LIMIT, from the role table it enforces (run-worker.mjs): the Bash
 // denylist "is incomplete by nature" — a python heredoc, `sed -i`, `cp`,
@@ -46,6 +55,29 @@ import process from 'node:process'
 export const within = (roots, target, cwd) => {
   const t = path.resolve(cwd, target)
   return roots.some((r) => t === r || t.startsWith(r.endsWith('/') ? r : r + '/'))
+}
+
+const isUnder = (root, resolved) => resolved === root || resolved.startsWith(root + path.sep)
+
+// The writable-root test, carve-outs and all. A target is writable iff it is
+// under the worker's OWN tree (cwd), or under the run dir EXCEPT the two
+// subtrees no worker may write: `clones/` (every sibling's tree — writing one
+// breaks per-worker isolation, and the integration clone is reachable via cwd
+// for the write-side role that owns it) and `patches/` (the driver captures
+// these itself; a worker writing a sibling's patch file poisons the trust
+// anchor at the file layer, under it, where withPatchCapture's reply strip
+// and waves.js's PATCH_PREFIX cannot see — the finding that made this
+// function exist). Resolve once, here, so every sink check that follows sees
+// the true path and a `/dev/..` cannot masquerade as a device.
+export function writable(roots, target, cwd, carveOuts) {
+  const t = path.resolve(cwd, target)
+  const cwdRoot = path.resolve(cwd)
+  if (isUnder(cwdRoot, t)) return true
+  for (const r of roots) {
+    if (r === cwdRoot) continue
+    if (isUnder(r, t) && !carveOuts.some((c) => isUnder(c, t))) return true
+  }
+  return false
 }
 
 // The closed denylist. Each entry names the form and how its TARGET token is
@@ -85,23 +117,52 @@ const FILE_KEYS = ['file_path', 'notebook_path', 'path']
 export function decide(input) {
   const cwd = input.cwd || process.cwd()
   const roots = [path.resolve(cwd)]
-  if (process.env.FLEET_RUN_DIR) roots.push(path.resolve(process.env.FLEET_RUN_DIR))
+  const carveOuts = []
+  if (process.env.FLEET_RUN_DIR) {
+    const runRoot = path.resolve(process.env.FLEET_RUN_DIR)
+    roots.push(runRoot)
+    // The two subtrees the run dir root must NOT expose (finding 1): every
+    // sibling's clone and the driver-owned patch files.
+    carveOuts.push(path.join(runRoot, 'clones'), path.join(runRoot, 'patches'))
+  }
   const tool = input.tool_name || ''
   const ti = input.tool_input || {}
+  const rootsMsg = ' outside the writable roots (' + roots.join(', ') +
+    '; not ' + carveOuts.join(', ') + '). Write only inside your working tree.'
 
   if (tool === 'Bash') {
     const cmd = String(ti.command || '')
-    for (const t of bashWriteTargets(cmd)) {
+    // A `cd` to an absolute path or through `..` moves the shell's effective
+    // directory, so a relative write target no longer resolves under the
+    // clone the hook checks it against — deny loudly rather than resolve it
+    // against the wrong base. `cd subdir` (relative, no `..`) stays inside
+    // the clone and is fine; only an escaping `cd` combined with a write is
+    // refused. (A plain `cd /abs` with no write never reaches here.)
+    const escapingCd = /(^|[;&|]|\s)cd\s+(\/|[^;&|]*\.\.)/.test(cmd)
+    for (const raw of bashWriteTargets(cmd)) {
+      const abs = path.resolve(cwd, raw)
       // /dev/* is a sink, not storage: `2>/dev/null` rides half the
-      // legitimate commands a worker runs, and denying it would make the
-      // boundary indistinguishable from breakage.
-      if (t.startsWith('/dev/')) continue
-      // Relative targets resolve under cwd — inside the clone by
-      // construction. Only a resolved-outside path is denied.
-      if (!within(roots, t, cwd)) {
-        return { deny: 'confine-hook: Bash write form targets ' + t +
-          ' outside the writable roots (' + roots.join(', ') + '). ' +
-          'Write only inside your working tree or the run directory.' }
+      // legitimate commands a worker runs. Tested on the RESOLVED path, so
+      // `/dev/../etc/passwd` is not a device and is not exempt (finding 2).
+      if (abs === '/dev' || abs.startsWith('/dev/')) continue
+      if (escapingCd && !path.isAbsolute(raw)) {
+        return { deny: 'confine-hook: a relative write target (' + raw + ') after a `cd` ' +
+          'to an absolute or `..` path is unresolvable — refusing. Use an absolute path ' +
+          'inside your working tree.' }
+      }
+      // A target carrying a shell expansion (`$VAR`, `$(...)`, backticks) is
+      // not statically resolvable — the token the shell writes is not the
+      // token here. `> $O` captured as the literal `$O` would resolve INSIDE
+      // the clone and pass, while the shell writes wherever $O points. Deny
+      // rather than resolve a value we cannot know (finding 3). This still
+      // does not parse shell — an un-enumerated write form is the VM's job —
+      // but it closes the enumerated redirect form the hook DOES claim.
+      if (/[$`]/.test(raw)) {
+        return { deny: 'confine-hook: write target ' + raw + ' contains a shell expansion ' +
+          'that cannot be resolved statically — refusing. Use a literal path.' }
+      }
+      if (!writable(roots, raw, cwd, carveOuts)) {
+        return { deny: 'confine-hook: Bash write form targets ' + raw + rootsMsg }
       }
     }
     return { allow: true }
@@ -109,10 +170,8 @@ export function decide(input) {
 
   for (const k of FILE_KEYS) {
     if (typeof ti[k] === 'string' && ti[k]) {
-      if (!within(roots, ti[k], cwd)) {
-        return { deny: 'confine-hook: ' + tool + ' ' + ti[k] +
-          ' resolves outside the writable roots (' + roots.join(', ') + '). ' +
-          'Write only inside your working tree or the run directory.' }
+      if (!writable(roots, ti[k], cwd, carveOuts)) {
+        return { deny: 'confine-hook: ' + tool + ' ' + ti[k] + rootsMsg }
       }
     }
   }

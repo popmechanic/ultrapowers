@@ -15,7 +15,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
 import {
-  parseArgs, fillTiers, ackDecision, boundedParallel, provisionRunTree,
+  parseArgs, fillTiers, ackDecision, acksOf, boundedParallel, provisionRunTree,
   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
 } from '../run-main.mjs'
@@ -51,13 +51,22 @@ const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', st
 }
 
 // ── ackDecision — the two-move rule, both branches ───────────────────────────
+// acks are NESTED under gateCheck (the real ultra_gate.py shape); a flat
+// {acks} must read as EMPTY, not approve-everything.
 {
-  assert.ok(ackDecision({ acks: [] }).approve, 'no acks approves')
-  assert.ok(ackDecision({ acks: [{ type: 'deferred:runtime' }, { type: 'deferred:external' }] }).approve)
-  const parked = ackDecision({ acks: [{ type: 'deferred:runtime' }, { type: 'coverage' }] })
+  const gr = (acks) => ({ verdict: 'NEEDS_ACK', gateCheck: { acks } })
+  assert.ok(ackDecision(gr([])).approve, 'no acks approves')
+  assert.ok(ackDecision(gr([{ type: 'deferred:runtime' }, { type: 'deferred:external' }])).approve)
+  const parked = ackDecision(gr([{ type: 'deferred:runtime' }, { type: 'coverage' }]))
   assert.ok(!parked.approve, 'a coverage ack parks')
   assert.match(parked.reason, /coverage/)
-  assert.ok(!ackDecision({ acks: [{ type: 'deferred:manual' }] }).approve, 'manual is never pre-authorized')
+  assert.ok(!ackDecision(gr([{ type: 'deferred:manual' }])).approve, 'manual is never pre-authorized')
+  // The bug the review caught: a FLAT top-level acks must NOT be read — it is
+  // a shape the script never writes, so it reads as empty (approve), and a
+  // parking ack placed there must be invisible, never a silent approve-all.
+  assert.deepEqual(acksOf({ acks: [{ type: 'coverage' }] }), [], 'flat acks are not the ack channel')
+  assert.ok(ackDecision({ acks: [{ type: 'coverage' }] }).approve,
+    'a flat coverage ack is invisible — only gateCheck.acks is read')
 }
 
 // ── boundedParallel ──────────────────────────────────────────────────────────
@@ -216,8 +225,13 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
       return { code: 0, stdout: JSON.stringify({ mode: 'suite', stamp: runId, branch: 'ultra/integration-' + runId }), stderr: '' }
     }
     if (script === 'ultra_gate.py') {
+      // The REAL gate-receipt shape (ultra_gate.py:107): acks are NESTED under
+      // gateCheck, never flat at the top. A flat {acks} stub is what let the
+      // two-move-rule bypass through review — the stub must match the script.
       fs.writeFileSync(path.join(runDir, 'gate-receipt.json'), JSON.stringify({
-        verdict: gateExit === 0 ? 'PASS' : 'NEEDS_ACK', checks: [], acks,
+        verdict: gateExit === 0 ? 'PASS' : 'NEEDS_ACK',
+        gateCheck: { verdict: gateExit === 0 ? 'PASS' : 'NEEDS_ACK', checks: [], acks },
+        gateCheckExit: gateExit,
       }))
       return { code: gateExit, stdout: '', stderr: '' }
     }

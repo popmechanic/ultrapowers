@@ -163,8 +163,17 @@ export function fillTiers(argsObj, tier) {
 // Anything else — coverage acks, unknown types — leaves the gate receipt as
 // the terminal artifact. Pre-authorized by the #243 grilling (manual acks
 // pre-authorized, parks → 0) for exactly this closed list, nothing wider.
+//
+// The acks live at `gateCheck.acks`: gate_check.py emits {verdict,checks,acks}
+// and ultra_gate.py embeds that whole object one level down under `gateCheck`
+// (ultra_gate.py:107). Reading a flat `receipt.acks` — which the script never
+// writes — would see [] on EVERY run and approve unconditionally, the exact
+// park-path bypass this function exists to prevent. `acksOf` is the one reader.
+export const acksOf = (gateReceipt) =>
+  (gateReceipt && gateReceipt.gateCheck && gateReceipt.gateCheck.acks) || []
+
 export function ackDecision(gateReceipt) {
-  const acks = (gateReceipt && gateReceipt.acks) || []
+  const acks = acksOf(gateReceipt)
   const bad = acks.filter((a) => a.type !== 'deferred:runtime' && a.type !== 'deferred:external')
   if (bad.length) {
     return { approve: false, reason: 'non-pre-authorized ack(s): ' + bad.map((a) => a.type).join(', ') }
@@ -302,7 +311,12 @@ export async function runMain(parsed, deps = {}) {
     log = console.error,
     env = process.env,
   } = deps
-  const { planPath, runId, repoDir, tier, overlap, testCmd, bootstrapCmd, cli } = parsed
+  const { planPath, runId, tier, overlap, testCmd, bootstrapCmd, cli } = parsed
+  // Absolute, always: patchesDir is derived from repoDir, and waves.js's
+  // PATCH_PREFIX second wall arms only for an absolute patchInput — a relative
+  // --repo would silently disarm it, leaving only withPatchCapture's reply
+  // strip (review finding 4). Resolve here so the invariant is unconditional.
+  const repoDir = path.resolve(parsed.repoDir)
   const stamp = runId
   const py = 'python3'
   const scripts = path.join(repoDir, 'skills/ultrapowers/scripts')
@@ -446,7 +460,7 @@ export async function runMain(parsed, deps = {}) {
     fs.writeFileSync(path.join(runDir, 'standing-approval.json'), JSON.stringify({
       grantedAt: 'launch directive',
       instruction: 'node fleet/run-main.mjs ' + planPath + ' ' + runId + ' (deterministic driver; #243 pre-authorization)',
-      ackList: gr.acks,
+      ackList: acksOf(gr),
     }, null, 2))
     stage('acks', decision.reason)
   }
