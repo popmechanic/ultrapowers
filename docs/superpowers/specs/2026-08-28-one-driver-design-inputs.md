@@ -6,8 +6,10 @@ operator's decisions (including Amendment 1), the pre-registered bar, the deleti
 ledger, the rules, and the harness mechanics read from the Claude Code docs. Issues
 sprawl and get forgotten; this file is the version the build must read.
 
-**Consumption contract.** The one-driver spec (`docs/superpowers/specs/<date>-one-driver.md`,
-written after the #243 grilling) MUST carry a `## Design inputs` section that lists every
+**Consumption contract.** The one-driver spec MUST carry a `## Design inputs` section
+— **as of 2026-08-28 it lives in the spec's companion,
+`docs/superpowers/specs/2026-08-28-one-driver-answers.md`, so the spec itself can state the
+design in one voice; the contract is satisfied there and is unchanged** — that lists every
 row of the **deletion ledger** and every row of the **harness mechanics** table below —
 **including the rows Amendments 3, 4 and 5 correct or replace** — and, for each, says one
 of: `adopted` (with the spec section that implements it), `answered` (why not, in one

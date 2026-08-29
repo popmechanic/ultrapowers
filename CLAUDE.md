@@ -102,7 +102,8 @@ Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans`
 `ultrapowers:ultraplan` markers → plan in `docs/superpowers/plans/` → execute (subagent-driven,
 or `/ultrapowers` itself) → PR. Every spec gets an **adversarial trim review** before operator
 review — a fresh-context subagent proposing the trimmed version (dispatch brief in
-`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec carries a
+`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec (or its
+companion record, where one exists — see `2026-08-28-one-driver-answers.md`) carries a
 `## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
 author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite` (the committed
 suite is the verification).
