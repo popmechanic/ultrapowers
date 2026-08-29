@@ -372,6 +372,39 @@ await assert.rejects(
   assert.equal(end.exitCode, 143)
 }
 
+// A RETRY MUST NOT OVERWRITE THE FAILURE'S EVIDENCE. waves.js's single retry
+// reuses the label, and the first attempt's envelope is the interesting one —
+// an evidence bundle that keeps only the recovery is not an evidence bundle.
+{
+  const before = fs.readdirSync(workersDir)
+  await mkAgent('overload')('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA })
+  const after = fs.readdirSync(workersDir)
+  assert.ok(after.length > before.length, 'a second dispatch of the same label gets its own dir')
+  assert.ok(after.some((d) => /^impl_T1\.\d+$/.test(d)), 'suffixed: ' + after.join(','))
+  // The first dispatch's envelope is still the successful one, untouched.
+  const first = JSON.parse(fs.readFileSync(path.join(workersDir, 'impl_T1', 'envelope.json'), 'utf8'))
+  assert.deepEqual(first.structured_output.ok, true, "the first attempt's envelope survived the retry")
+}
+
+// A SIGTERM the worker IGNORES must still end it. `timeoutMs` is a promise of a
+// wall-clock deadline; without a SIGKILL escalation it is only a promise to
+// ASK, and one worker that traps SIGTERM would hang the wave forever.
+{
+  const stubborn = path.join(tmp, 'stubborn-claude')
+  fs.writeFileSync(stubborn, `#!/usr/bin/env node
+process.on('SIGTERM', () => {})   // trapped and ignored, deliberately
+setInterval(() => {}, 1000)
+`)
+  fs.chmodSync(stubborn, 0o755)
+  const t0 = Date.now()
+  await assert.rejects(
+    () => mkAgent('hang', { cli: stubborn, timeoutMs: 300, graceMs: 300 })('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }),
+    (e) => e.workerVerdict.class === 'sigterm')
+  assert.ok(Date.now() - t0 < 5000, 'the deadline was enforced, not merely requested')
+  assert.equal(events.filter((e) => e.kind === 'worker:end').pop().exitCode, 143,
+    'SIGKILL is the same class as SIGTERM: killed, no envelope, retryable once')
+}
+
 // A cwd that cannot be resolved is a PROGRAMMING error, not a worker outcome:
 // it must fail loudly, never degrade into a null the engine reads as overload.
 await assert.rejects(
