@@ -216,19 +216,44 @@ classes are **0 / 1 / 143** only; classify from the envelope, never the exit cod
 | 0, `is_error: true`, `terminal_reason: aborted_streaming` | SIGINT abort | **`null`** (a documented `agent()` condition) |
 | 1, `api_error_status ∈ {429, 503, 529}` | infrastructure | **`null`** — barrier retry, no fix round |
 | 1, `api_error_status ∈ {401, 403, 404}` | credential / config | **fail the run** |
+| 1, `terminal_reason: api_error`, `api_error_status: null` | the client refused **before reaching the API** | **fail the run** |
 | 1, `api_error_status: null`, `error_max_turns` | no conforming reply in the cap | retry with tier escalation |
 | 1, `api_error_status: null`, `error_max_budget_usd` | per-worker backstop | fail the task, record |
 | **143** | SIGTERM, **no envelope at all** | retryable once, then fail the task |
 
-`api_error_status` is populated for API-layer failures and null for client-side limits — the
-observed discriminator for the infra-vs-task line. **Never key on `subtype`** (an
-invalid-model run returned `subtype: "success"` with `is_error: true`) and **never on
+**The discriminator is two-dimensional:** `terminal_reason` names the *layer* that failed,
+`api_error_status` names whether the request *ever reached the API*. A populated status is an
+API-layer failure; a null status under `terminal_reason: api_error` means the client refused
+before sending anything — a dead credential returns exactly that, with `duration_api_ms: 0`
+and an empty `modelUsage` (**R-p1**, found by building `runWorker`, not by specifying it).
+A null status under any other `terminal_reason` is a limit we set ourselves, and therefore a
+*task* outcome.
+
+The earlier one-dimensional reading — populated = infrastructure, null = client-side limit —
+sent a dead credential down the task-failure path, which would have left **every worker in the
+wave burning a process to discover the same dead credential**. That is the failure the
+credential row exists to prevent, so the row now keys on both fields.
+
+**Never key on `subtype`** (three independent sightings now of `subtype: "success"` with
+`is_error: true`: the in-loop nudge, an invalid model, and a dead credential) and **never on
 `result === null` alone** (true of `max_turns`, `budget_exhausted` *and* aborts).
+
+**One flag-parsing trap, because it is silent:** `--allowedTools`, `--disallowedTools` and
+`--add-dir` are declared variadic, so a prompt passed as a trailing positional is swallowed as
+one more value of whichever came last — exit 1, *no envelope at all*, and this table reads it
+as the unclassifiable no-envelope row while the real cause never surfaces. The prompt is the
+value of `-p`.
 
 Two things remain assumptions and are marked as such in the code: a real 529 has never been
 triggered, and whether `claude -p` inherits the SDK's 2× retry policy is undocumented — the
 envelope carries no retry count, so a first-attempt and a retries-exhausted 529 are
 indistinguishable from it.
+
+One precondition, now stated rather than assumed (**R-p2**): the per-run `CLAUDE_CONFIG_DIR`
+of §5 **loses the credential unless the credential is in the environment**. On the
+orchestrator that is free — auth there is `CLAUDE_CODE_OAUTH_TOKEN`, which no config dir owns
+— so the design is unaffected; but a driver that provisioned a run directory without the token
+in the worker env would fail every worker, and now fails the run on the first one.
 
 Each worker carries a wall-clock deadline per role, set from the first three runs'
 distributions. A failed task never fails the wave silently: it lands in the receipt with its
