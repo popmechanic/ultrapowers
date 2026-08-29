@@ -62,16 +62,18 @@ assert.ok(D('Grep', { pattern: 'x' }).allow, 'a read tool with no path keys pass
 assert.ok(D('Bash', { command: 'echo x > /dev/../etc/passwd' }).deny, '/dev/.. escapes are denied')
 assert.ok(D('Bash', { command: 'echo x > /dev/../../root/x' }).deny)
 
-// A relative write after an escaping `cd` is refused (finding 3); a `cd` into a
-// subdir of the clone is fine.
-assert.ok(D('Bash', { command: 'cd /tmp && echo x > out.txt' }).deny, 'cd /abs then relative write is refused')
-assert.ok(D('Bash', { command: 'cd ../.. && echo x > out.txt' }).deny, 'cd .. then relative write is refused')
-assert.ok(D('Bash', { command: 'cd sub && echo x > out.txt' }).allow, 'cd into a subdir stays in the clone')
-assert.ok(D('Bash', { command: 'cd /tmp && pytest -q' }).allow, 'a cd with no write is fine')
+// A relative redirect after a `cd` out of the clone is the CONCEDED limit (the
+// VM is the backstop): the target resolves under cwd and passes. A heuristic to
+// catch it was bypassable AND false-denied `git commit -m "...cd .."`, so it is
+// not attempted — pinned here so a future reviewer does not re-add it blind.
+assert.ok(D('Bash', { command: 'cd /tmp && echo x > out.txt' }).allow,
+  'cd-escape is the conceded incomplete-parsing class, not a claimed guarantee')
+assert.ok(D('Bash', { command: 'git commit -m "refactor cd .. handling" && echo done > log.txt' }).allow,
+  'a command whose text mentions cd .. must not lose an unrelated in-clone write')
 
-// A redirect target with a shell expansion is not statically resolvable → deny
-// (finding 3): the literal token would resolve inside the clone and pass while
-// the shell writes elsewhere.
+// A redirect target with a shell expansion is not statically resolvable → deny:
+// the literal token would resolve inside the clone and pass while the shell
+// writes elsewhere. This DOES close the enumerated redirect form.
 assert.ok(D('Bash', { command: 'O=/etc/x; echo pwned > $O' }).deny, '$VAR redirect target is refused')
 assert.ok(D('Bash', { command: 'echo pwned > $(printf /etc)/passwd' }).deny, 'command-substitution target is refused')
 assert.ok(D('Bash', { command: 'echo pwned > `echo /etc`/x' }).deny, 'backtick target is refused')

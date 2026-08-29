@@ -320,18 +320,20 @@ export async function runMain(parsed, deps = {}) {
   const stamp = runId
   const py = 'python3'
   const scripts = path.join(repoDir, 'skills/ultrapowers/scripts')
-  const runDir = path.join(repoDir, '.claude/ultrapowers', 'run-' + stamp)
   // ULTRAPOWERS_FLEET_RUN: ultra_run's fleet-run stage (and nothing else here)
   // reads it; setting it from the runId is what makes this entry the engine.
   const pyEnv = { ...env, ULTRAPOWERS_FLEET_RUN: runId }
 
-  // The event log opens BEFORE preflight so a run that dies at compile is
-  // still a run the Experience Compiler can read (#415). ultra_run mkdirs the
-  // same path with exist_ok, so creating it first is safe.
-  fs.mkdirSync(runDir, { recursive: true })
-  const eventLog = makeEventLog({
-    file: path.join(runDir, 'events.jsonl'), runId, base: '', source: 'fleet/run-main.mjs',
-  })
+  // The run dir is NOT reconstructed from repoDir: ultra_run.py writes it under
+  // the git TOPLEVEL (its own `git rev-parse --show-toplevel`), which differs
+  // from repoDir if repoDir is a subdir — and on macOS even the toplevel is
+  // symlink-resolved (/tmp → /private/tmp). Reconstructing it here would then
+  // read a receipt at a path the script never wrote and silently see empty
+  // acks (review LOW note). So the run dir is DERIVED from ultra_run's own
+  // receipt (`argsFile`'s directory) — wherever the script actually wrote.
+  // The event log therefore opens AFTER preflight; a compile-death is still
+  // recorded, by ultra_run's own receipt.json (the record either way).
+  let eventLog = { onEvent: () => {}, log: () => {}, phase: () => {} }
   const stage = (name, detail) => {
     eventLog.onEvent({ kind: 'driver:stage', stage: name, ...(detail ? { detail } : {}) })
     log('run-main: ' + name + (detail ? ' — ' + detail : ''))
@@ -343,7 +345,7 @@ export async function runMain(parsed, deps = {}) {
   }
 
   // 1. Preflight + compile (ultra_run.py, fail-closed; its receipt is the
-  // record either way).
+  // record either way). The receipt is ultra_run's stdout on success.
   stage('preflight')
   const runArgv = [path.join(scripts, 'ultra_run.py'), planPath, '--stamp', stamp]
   if (testCmd) runArgv.push('--test-cmd', testCmd)
@@ -354,8 +356,23 @@ export async function runMain(parsed, deps = {}) {
     return fail('preflight-failed', 'ultra_run.py exited ' + pre.code + ': ' +
       (pre.stderr || pre.stdout).slice(-500))
   }
-  const receipt = readJson(path.join(runDir, 'receipt.json'))
+  let receipt
+  try {
+    receipt = JSON.parse(pre.stdout)
+  } catch (e) {
+    return fail('preflight-unreadable', 'ultra_run.py exited 0 but its receipt is not JSON: ' +
+      String((e && e.message) || e))
+  }
   const argsFilePath = receipt.argsFile
+  if (typeof argsFilePath !== 'string' || !argsFilePath) {
+    return fail('preflight-unreadable', 'ultra_run.py receipt carries no argsFile path')
+  }
+  // The authoritative run dir: where ultra_run put args.json. The event log,
+  // clones, patches, roles and receipts all hang off THIS, never a guess.
+  const runDir = path.dirname(argsFilePath)
+  eventLog = makeEventLog({
+    file: path.join(runDir, 'events.jsonl'), runId, base: '', source: 'fleet/run-main.mjs',
+  })
   const baseBranch = receipt.baseBranch
   const argsObj = readJson(argsFilePath)
   if (!Array.isArray(argsObj.waves) || argsObj.waves.length === 0) {

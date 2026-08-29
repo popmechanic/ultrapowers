@@ -215,10 +215,11 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
         globalConstraints: '', planPath: argv[1],
         pluginRoot: repoDir, runDir, testCmd: 'true',
       }))
-      fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify({
-        ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true',
-      }))
-      return { code: 0, stdout: '{}', stderr: '' }
+      // ultra_run prints the receipt to STDOUT on success (run-main derives the
+      // run dir from receipt.argsFile, never a reconstructed path).
+      const receipt = { ok: true, baseBranch: 'fleet-base', argsFile, testCmd: 'true' }
+      fs.writeFileSync(path.join(runDir, 'receipt.json'), JSON.stringify(receipt))
+      return { code: 0, stdout: JSON.stringify(receipt), stderr: '' }
     }
     if (script === 'finalize_report.py') return { code: 0, stdout: '', stderr: '' }
     if (script === 'ultra_gate.py' && argv.includes('--approve')) {

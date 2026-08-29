@@ -31,8 +31,15 @@
 //
 // HONEST LIMIT, from the role table it enforces (run-worker.mjs): the Bash
 // denylist "is incomplete by nature" — a python heredoc, `sed -i`, `cp`,
-// `dd` all write and match no form here. The hook is the boundary for the
-// enumerable forms; the disposable VM is the blast radius for the rest.
+// `dd` all write and match no form here. So does a RELATIVE redirect after a
+// `cd` out of the clone (`cd /tmp && echo x > out.txt`): the target resolves
+// under the hook's cwd (the clone) and passes, while the shell has moved. A
+// heuristic that tried to catch the `cd` was both bypassable (quoted path,
+// `pushd`, `cd$IFS`, a subshell) and false-denied a legitimate in-clone write
+// whose command text merely mentioned `cd ..` — worse than the hole, so it is
+// not attempted. The hook is the boundary for the enumerable, statically
+// resolvable forms (an absolute or dot-dot target, `tee`/`-o`/`--output`, a
+// shell-expansion target); the disposable VM is the blast radius for the rest.
 // Neither substitutes for the other. Verification is spec §4's sentence:
 // against a NEUTRAL role prompt and a HOSTILE task (a cooperative prompt
 // passes with zero denials because the model simply declines — parity R-w3).
@@ -132,31 +139,18 @@ export function decide(input) {
 
   if (tool === 'Bash') {
     const cmd = String(ti.command || '')
-    // A `cd` to an absolute path or through `..` moves the shell's effective
-    // directory, so a relative write target no longer resolves under the
-    // clone the hook checks it against — deny loudly rather than resolve it
-    // against the wrong base. `cd subdir` (relative, no `..`) stays inside
-    // the clone and is fine; only an escaping `cd` combined with a write is
-    // refused. (A plain `cd /abs` with no write never reaches here.)
-    const escapingCd = /(^|[;&|]|\s)cd\s+(\/|[^;&|]*\.\.)/.test(cmd)
     for (const raw of bashWriteTargets(cmd)) {
       const abs = path.resolve(cwd, raw)
       // /dev/* is a sink, not storage: `2>/dev/null` rides half the
       // legitimate commands a worker runs. Tested on the RESOLVED path, so
-      // `/dev/../etc/passwd` is not a device and is not exempt (finding 2).
+      // `/dev/../etc/passwd` is not a device and is not exempt.
       if (abs === '/dev' || abs.startsWith('/dev/')) continue
-      if (escapingCd && !path.isAbsolute(raw)) {
-        return { deny: 'confine-hook: a relative write target (' + raw + ') after a `cd` ' +
-          'to an absolute or `..` path is unresolvable — refusing. Use an absolute path ' +
-          'inside your working tree.' }
-      }
       // A target carrying a shell expansion (`$VAR`, `$(...)`, backticks) is
       // not statically resolvable — the token the shell writes is not the
       // token here. `> $O` captured as the literal `$O` would resolve INSIDE
       // the clone and pass, while the shell writes wherever $O points. Deny
-      // rather than resolve a value we cannot know (finding 3). This still
-      // does not parse shell — an un-enumerated write form is the VM's job —
-      // but it closes the enumerated redirect form the hook DOES claim.
+      // rather than resolve a value we cannot know. No real path contains `$`
+      // or a backtick, so this never false-denies a literal target.
       if (/[$`]/.test(raw)) {
         return { deny: 'confine-hook: write target ' + raw + ' contains a shell expansion ' +
           'that cannot be resolved statically — refusing. Use a literal path.' }
