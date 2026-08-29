@@ -1,15 +1,9 @@
-// fleet/tests/test_run_waves.mjs — #401 step 2.
+// fleet/tests/test_run_waves.mjs — the driver's shared substrate.
 //
-// Two things are under test and they are different in kind:
-//
-//   the loader        that waves.js runs on the driver's six globals, and that
-//                     `budget` stays undefined (the deleted cap, #400)
-//   clones at BASE    the #314 cure — on REAL git, because the defect was about
-//                     what git actually did, and a mocked git cannot be wrong
-//                     in the way the runtime was
-//
-// The loop-level proof lives in tests/sim_{workflow,base_ancestry,derived_heads}
-// .mjs, which now run through this same loader.
+// Under test: clones at BASE (the #314 cure — on REAL git, because the defect
+// was about what git actually did), the label→cwd routing, the driver-owned
+// patch capture, and the event log. (The waves.js loader half died at 0.3.0;
+// the engine's own loop is covered by fleet/tests/test_run_engine*.mjs.)
 
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -17,54 +11,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { runWaves, loadWavesSource, defaultWavesPath, defaultParallel, cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase, withPatchCapture, makeEventLog, ulid } from '../run-waves.mjs'
+import { cloneAtBase, makeCwdFor, defaultTaskIdOf, patchAgainstBase, withPatchCapture, makeEventLog, ulid } from '../run-waves.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runwaves-'))
 const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-
-// ── 1. the loader ────────────────────────────────────────────────────────────
-{
-  const src = loadWavesSource(defaultWavesPath())
-  assert.ok(src.includes('const meta'), 'the export is stripped so the body can run as a function body')
-  assert.ok(!src.includes('export const meta'))
-  assert.ok(src.includes('agent('), 'the real waves.js was loaded, not a stub')
-}
-
-// The six globals, observed from inside the program. waves.js refuses to launch
-// without args.waves, so the smallest honest probe is a source of our own that
-// simply reports what it was handed.
-{
-  const probe = 'return { agentIs: typeof agent, parallelIs: typeof parallel, ' +
-    'phaseIs: typeof phase, logIs: typeof log, budgetIs: typeof budget, waves: args.waves }'
-  const seen = await runWaves({ agent: () => {}, args: { waves: [['A']] }, source: probe })
-  assert.deepEqual(seen, {
-    agentIs: 'function', parallelIs: 'function', phaseIs: 'function',
-    logIs: 'function',
-    // NOT an object. The per-run token cap is deleted (#400, Amendment 4), and
-    // waves.js:1839 reads `typeof budget === 'undefined'` as "not exhausted" —
-    // so every budget checkpoint is a no-op with no edit to waves.js. Handing
-    // it a live-looking budget object here (as two of the three sims used to)
-    // would quietly re-arm a subsystem the design deleted.
-    budgetIs: 'undefined',
-    waves: [['A']],
-  })
-}
-
-// parallel runs the thunks it is handed, concurrently. The measured width bound
-// of 8 (#398) belongs to the driver's scheduler, not here — this is the
-// Workflow runtime's `parallel`, and nothing more.
-{
-  let live = 0, peak = 0
-  const thunk = () => async () => {
-    live++; peak = Math.max(peak, live)
-    await new Promise((r) => setTimeout(r, 20))
-    live--
-    return 'x'
-  }
-  const out = await defaultParallel([thunk(), thunk(), thunk()])
-  assert.deepEqual(out, ['x', 'x', 'x'])
-  assert.equal(peak, 3, 'parallel must not serialize')
-}
 
 // ── 2. clones at BASE — the #314 cure ────────────────────────────────────────
 // The fixture IS the #314 condition: a repository whose checkout has moved PAST

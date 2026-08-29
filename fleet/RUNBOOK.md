@@ -9,7 +9,7 @@ signature from the tasks that built it (`fleet/preflight.mjs`,
 account and nothing else.
 
 No step here touches `skills/ultrapowers/scripts/`, `skills/ultrapowers/kernel/`,
-or `harnesses/waves.js` — the run engine is unchanged in W1 (spec line 120-122).
+— the run engine is `fleet/run-engine.mjs` (0.3.0, Amendment 10).
 
 ## Golden VM build
 

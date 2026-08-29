@@ -6,35 +6,8 @@
 # Stdout from a SessionStart command hook becomes session context (exit 0).
 set -euo pipefail
 
-# Install the committed harness as a project saved workflow NOW, at session
-# start, so the Workflow engine picks it up when it snapshots its saved-
-# workflow registry (built once per session; a mid-session copy registers
-# only NEXT session). The harness set is fixed — waves.js (`ultrapowers-run`),
-# copied by name; the manifest reader died with the registry probe (One
-# Driver Phase 0, row 5). Guarded so it can NEVER break the hook's real
-# contract — emitting the routing rule below; all output is swallowed.
-(
-  set +eu
-  plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  harnesses="$plugin_root/skills/ultrapowers/harnesses"
-  dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
-  mkdir -p "$dest"
-  f=waves.js
-  if [ -e "$harnesses/$f" ]; then
-    # Skip the copy when the installed copy is byte-identical (the common
-    # no-change session) — avoids an unconditional 74KB write every start.
-    cmp -s "$harnesses/$f" "$dest/$f" 2>/dev/null || cp "$harnesses/$f" "$dest/$f"
-    # GC only once the install landed: remove any other .js in the workflows
-    # dir — stale orphans from older plugin versions (workflow.js from 0.0.6,
-    # probe.js from before Phase 0) would otherwise shadow the harness.
-    if [ -e "$dest/$f" ]; then
-      for existing in "$dest"/*.js; do
-        [ -e "$existing" ] || continue
-        [ "$(basename "$existing")" = "$f" ] || rm -f "$existing"
-      done
-    fi
-  fi
-) >/dev/null 2>&1 || true
+# (The Workflow-harness install step lived here until 0.3.0 — the Amendment 10
+# engine runs waves natively in fleet/run-engine.mjs, and waves.js is deleted.)
 
 cat <<'EOF'
 <ultrapowers-routing>

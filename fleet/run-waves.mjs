@@ -37,56 +37,9 @@ import { fileURLToPath } from 'node:url'
 // LTS would die with a ReferenceError at the first event append.
 import { webcrypto } from 'node:crypto'
 
-// The engine's own concurrency cap is inside waves.js (CONCURRENCY = 16, its
-// chunking constant). The MEASURED wave width for a real sandbox is 8 (#398),
-// and that bound belongs to the driver's scheduler, not to `parallel` — this
-// function runs exactly the thunks it is handed, as the Workflow runtime's did.
-export const defaultParallel = (thunks) => Promise.all(thunks.map((t) => t()))
-
-// waves.js ships as an ES module with `export const meta`, and is executed as a
-// function body — the same transform the Workflow engine applies and the sims
-// have always applied. Kept as one exported function so there is one answer to
-// "how is the program loaded", not three.
-export function loadWavesSource(wavesPath) {
-  return fs.readFileSync(wavesPath, 'utf8').replace('export const meta', 'const meta')
-}
-
-// Resolved from THIS file's location, never the caller's: where waves.js sits
-// is a fact about the repository layout, and a caller-relative default silently
-// resolves to a different (missing) path for every caller in a different
-// directory. Anywhere the layout differs — a sandbox, a provisioned run — the
-// caller passes `wavesPath` explicitly.
-export function defaultWavesPath() {
-  return fileURLToPath(new URL('../skills/ultrapowers/harnesses/waves.js', import.meta.url))
-}
-
-// Execute the program. `agent` is the only global the caller must supply: the
-// driver passes createRunWorker(...), the sims pass a stub, and that difference
-// IS the seam.
-//
-// `budget` defaults to undefined and should stay that way. It was the Workflow
-// runtime's object; the per-run token cap is deleted (#400, Amendment 4), and
-// waves.js:1839 already reads `typeof budget === 'undefined'` as "not
-// exhausted", so every budget checkpoint becomes a no-op with no edit to
-// waves.js. Passing a live-looking budget object here would quietly re-arm a
-// subsystem the design deleted.
-export function runWaves({
-  agent,
-  args,
-  parallel = defaultParallel,
-  phase = () => {},
-  log = () => {},
-  budget = undefined,
-  source,
-  wavesPath,
-}) {
-  const src = source !== undefined ? source : loadWavesSource(wavesPath || defaultWavesPath())
-  const factory = new Function(
-    'agent', 'parallel', 'phase', 'log', 'args', 'budget',
-    '"use strict"; return (async () => {\n' + src + '\n})();'
-  )
-  return factory(agent, parallel, phase, log, args, budget)
-}
+// (The waves.js loader — runWaves/loadWavesSource/defaultWavesPath — lived
+// here until 0.3.0. The Amendment 10 engine, fleet/run-engine.mjs, IS the
+// program now; git history holds the loader and the Function-body transform.)
 
 // ── clones at BASE — the #314 cure (#401 work item 2) ────────────────────────
 //

@@ -370,11 +370,6 @@ export const driveOne = async ({
   claimTimeoutMs = 10 * 60_000,
   progressLog = (line) => console.error(`[drive ${new Date().toISOString()}] ${line}`),
   engineEnv,
-  // 'one-driver' routes the sandbox's engine launch to the deterministic
-  // driver (`node fleet/run-main.mjs`) instead of the `claude` skill session
-  // (#402). Omitted = the old path, which stays the fallback until the first
-  // self-hosted run passes (spec §10 stage 2).
-  engine,
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
@@ -845,7 +840,6 @@ export const driveOne = async ({
       port: effectivePort,
       planPath,
       engineEnv,
-      engine,
       cpu: sandboxCpu,
       memory: sandboxMemory,
       disk: sandboxDisk,

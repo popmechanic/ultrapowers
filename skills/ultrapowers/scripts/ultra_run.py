@@ -20,14 +20,12 @@ import datetime
 import json
 import os
 import re
-import shutil
 import signal
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-HARNESSES = HERE.parent / "harnesses"
 
 
 def detect_test_cmd(root):
@@ -377,18 +375,6 @@ def main(argv=None):
     if a.bootstrap_cmd:
         args_obj["bootstrapCmd"] = a.bootstrap_cmd
     args_file.write_text(json.dumps(args_obj, indent=2))
-
-    wf_dir = root / ".claude/workflows"
-    wf_dir.mkdir(parents=True, exist_ok=True)
-    installed = []
-    for manifest in sorted(HARNESSES.glob("*.harness.json")):
-        fname = json.loads(manifest.read_text())["file"]
-        shutil.copy2(HARNESSES / fname, wf_dir / fname)
-        installed.append(fname)
-    if not stage("install", bool(installed),
-                 success="installed: " + ", ".join(installed),
-                 failure="no harness manifests found under " + str(HARNESSES)):
-        return bail()
 
     r = write_dirty_baseline(root)
     dirt_lines = len([l for l in (root / ".claude/ultrapowers/DIRTY_SNAPSHOT")

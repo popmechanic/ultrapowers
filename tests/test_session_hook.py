@@ -41,23 +41,6 @@ def test_session_start_script_emits_the_routing_rule():
     assert "no approval pause" in out
 
 
-def test_session_start_installs_waves_js_before_registry_snapshot():
-    # The engine snapshots its saved-workflow registry at session start, so the
-    # hook installs the harness THEN (CLAUDE_PROJECT_DIR/.claude/workflows).
-    # The set is fixed — waves.js, copied by name; the manifest reader died with
-    # the registry probe (One Driver Phase 0, row 5).
-    with tempfile.TemporaryDirectory() as proj:
-        p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
-                           capture_output=True, text=True,
-                           env={"CLAUDE_PROJECT_DIR": proj, "PATH": _path()})
-        assert p.returncode == 0, p.stderr
-        installed = pathlib.Path(proj) / ".claude" / "workflows" / "waves.js"
-        assert installed.exists(), "hook did not install waves.js"
-        # meta.name must survive the copy — that is what the engine resolves by.
-        name = re.search(r"meta\s*=\s*\{.*?name:\s*'([^']+)'",
-                         installed.read_text(), re.S)
-        assert name and name.group(1) == "ultrapowers-run"
-
 
 def test_session_start_install_does_not_pollute_routing_context():
     # The hook's stdout becomes session context; the install must be silent so
@@ -100,28 +83,4 @@ def test_session_start_recommends_by_analysis_not_reflex():
     # The old unconditional tag is absent.
     assert "(recommended for marked plans)" not in out
 
-
-def test_session_start_gcs_stale_workflow(tmp_path):
-    # pre-seed an orphan workflow not in the current manifest set; assert it's removed
-    import os
-    wf = tmp_path / ".claude" / "workflows"
-    wf.mkdir(parents=True)
-    (wf / "workflow.js").write_text("// stale 0.0.6 orphan\n")
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
-    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
-                       capture_output=True, text=True, env=env)
-    assert p.returncode == 0, p.stderr
-    assert not (wf / "workflow.js").exists()   # orphan GC'd
-    assert (wf / "waves.js").exists()          # current manifest survives
-
-
-def test_session_start_install_is_idempotent():
-    with tempfile.TemporaryDirectory() as proj:
-        for _ in range(2):
-            p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
-                               capture_output=True, text=True,
-                               env={"CLAUDE_PROJECT_DIR": proj, "PATH": _path()})
-            assert p.returncode == 0, p.stderr
-        installed = pathlib.Path(proj) / ".claude" / "workflows" / "waves.js"
-        assert installed.read_text() == (
-            ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
+# (The waves.js install tests died at 0.3.0 with the install step itself.)

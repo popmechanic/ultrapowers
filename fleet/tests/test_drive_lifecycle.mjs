@@ -32,16 +32,12 @@ import {
   readInstalledPluginVersion,
   BASE_REF,
   detectIntegrationBranch,
-  engineArgs,
-  ENGINE_COMMAND,
-  STANDING_DIRECTIVE,
   findGateReceiptFile,
   findReceiptFiles,
   findRunReportFile,
   invokeEngineRun,
-  INSTALLED_PLUGINS_COMMAND,
+  oneDriverArgs,
   isSafeBranchName,
-  pluginInstallCommands,
   readAssignment,
   readGateGreen,
   readReportTokens,
@@ -612,40 +608,16 @@ try {
         log: rec.log,
       })
 
-      // Exactly these side effects, in exactly this order: check out the pushed
-      // base, install the plugin FROM that checkout (#373 — the three
-      // `pluginInstallCommands`, then the CLI's own record of what it copied
-      // and the `fleet-base` sha it is checked against), read which credential
-      // the engine will ride (`claude auth status`, logged — #213), THEN launch
-      // the engine. A spawn that preceded the checkout would run the golden
-      // image's HEAD and gate it green; one that preceded the install would
-      // run the image's plugin against the pushed base.
-      const install = pluginInstallCommands({ repoDir: engineRepo })
-      assert.deepEqual(
-        rec.calls.slice(0, 7),
-        [
-          `git -C ${engineRepo} checkout -q ${BASE_REF}`,
-          ...install,
-          INSTALLED_PLUGINS_COMMAND,
-          `git -C ${engineRepo} rev-parse ${BASE_REF}`,
-          `${ENGINE_COMMAND} auth status`,
-        ],
-        `expected checkout, plugin install from the checkout, auth status, then spawn, got: ${JSON.stringify(rec.calls)}`,
-      )
-      assert.equal(rec.calls.length, 8, `expected exactly one spawn after the seven reads, got: ${JSON.stringify(rec.calls)}`)
-      const checkoutIdx = 0
-      const authIdx = 6
-      const spawnIdx = rec.calls.findIndex((c) => c.startsWith(`${ENGINE_COMMAND} -p`))
-      assert.equal(spawnIdx, 7, `the engine spawn must be the last side effect, got: ${JSON.stringify(rec.calls)}`)
-      assert.ok(authIdx < spawnIdx && checkoutIdx < spawnIdx)
-      // The credential read is logged for the evidence pull; an unparseable
-      // status (the recorder returns no JSON) degrades to the explicit
-      // "unreadable" line and never blocks the launch.
-      assert.ok(rec.logs.some((l) => l.includes('fleet: engine auth')), `expected an engine-auth log line, got: ${JSON.stringify(rec.logs)}`)
-
-      // The plan the assignment named, verbatim — never the literal `undefined`
-      // a missing assignment field used to produce.
-      assert.equal(rec.calls[spawnIdx], `${ENGINE_COMMAND} ${engineArgs(ENGINE_PLAN).join(' ')}`)
+      // Exactly these side effects, in exactly this order: check out the
+      // pushed base, then spawn the deterministic driver from that checkout.
+      // (The plugin-install/auth-status choreography died at 0.3.0 with the
+      // claude engine leg.) A spawn that preceded the checkout would run the
+      // golden image's HEAD and gate it green.
+      assert.equal(rec.calls[0], `git -C ${engineRepo} checkout -q ${BASE_REF}`)
+      assert.equal(rec.calls.length, 2, `expected checkout then one spawn, got: ${JSON.stringify(rec.calls)}`)
+      const spawnIdx = 1
+      assert.equal(rec.calls[spawnIdx],
+        `node ${oneDriverArgs(engineRepo, ENGINE_PLAN, 'run-lifecycle').join(' ')}`)
       assert.ok(rec.calls[spawnIdx].includes(ENGINE_PLAN), `the spawn must carry the assignment's planPath`)
       assert.ok(!rec.calls[spawnIdx].includes('undefined'))
 
@@ -827,11 +799,11 @@ try {
         })
         assert.deepEqual(outcome, { gateGreen: expectGreen }, label)
 
-        // The engine ran exactly as it does on a clean image — checkout, plugin
-        // install from the checkout (#373), auth status, spawn — so the scope
-        // changed the READ and nothing about the launch.
-        assert.equal(rec.calls.length, 8, `${label}: ${JSON.stringify(rec.calls)}`)
-        assert.ok(rec.calls.some((c) => c.startsWith(`${ENGINE_COMMAND} -p`)), `${label}: the engine was spawned`)
+        // The engine ran exactly as it does on a clean image — checkout,
+        // then the driver spawn — so the scope changed the READ and nothing
+        // about the launch.
+        assert.equal(rec.calls.length, 2, `${label}: ${JSON.stringify(rec.calls)}`)
+        assert.ok(rec.calls.some((c) => c.startsWith('node ')), `${label}: the engine was spawned`)
         // The receipt the verdict came from is the run's OWN, and the stale one
         // is still on disk, untouched — scoping hides it, never deletes it.
         assert.equal(
@@ -920,21 +892,8 @@ try {
     assert.equal(await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'exit 0'], cwd: tmp }), 0)
     assert.equal(await spawnEngineProcess({ command: path.join(tmp, 'no-such-binary'), args: [], cwd: tmp }), 1)
 
-    // The engine argv is a pinned shape — the plan path is one argument of a
-    // single `/ultrapowers <plan>` prompt (followed by the #280 standing
-    // directive), not a bare positional.
-    assert.equal(ENGINE_COMMAND, 'claude')
-    assert.deepEqual(engineArgs('docs/plan.md'),
-      ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
-    // The directive itself is load-bearing prompt text (#280): pin the grammar
-    // hooks SKILL.md Step 5's standing-grant clause reads.
-    for (const literal of ['never end a turn on a question', 'NEEDS_ACK',
-      'reason runtime or external', 'standing-approval.json FIRST',
-      'Type manual is post-merge runbook material', 'BLOCKED',
-      'never end a turn to wait', 'kills the run']) {
-      assert.ok(STANDING_DIRECTIVE.includes(literal),
-        'standing directive lost the literal: ' + literal)
-    }
+    // (The claude argv + #280 standing-directive pins died at 0.3.0; the
+    // driver argv is pinned in scenario 16 of test_shim_main_gate.mjs.)
   }
 
   // -- 20. the gate accepts the delivered token DURING the shim start (#302) -
@@ -1252,7 +1211,7 @@ try {
     assert.equal(await readInstalledPluginVersion({ exec: async () => { throw new Error('no claude') } }), '')
     const cmds = []
     await readInstalledPluginVersion({ exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '[]' } } })
-    assert.deepEqual(cmds, [`${ENGINE_COMMAND} plugin list --json`])
+    assert.deepEqual(cmds, ['claude plugin list --json'])
   }
 
   // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------

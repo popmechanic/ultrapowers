@@ -49,7 +49,6 @@ const FLAGS = Object.freeze({
   // 'one-driver' = the deterministic driver (`node fleet/run-main.mjs`) runs
   // the engine on the sandbox; omitted = the `claude` skill session (the old
   // path, the fallback until the first self-hosted run passes — spec §10).
-  '--engine': 'engine',
 })
 const NUMERIC = new Set(['port', 'ttlHours', 'sandboxCpu'])
 
@@ -57,7 +56,7 @@ export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
   '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
   '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
-  '[--github-token-path FILE] [--pr-base BRANCH] [--engine one-driver] [--allow-unfit-plan]'
+  '[--github-token-path FILE] [--pr-base BRANCH] [--allow-unfit-plan]'
 
 export const parseArgs = (argv) => {
   const positional = []
@@ -97,10 +96,6 @@ export const parseArgs = (argv) => {
     throw new Error(`drive-one: runId must be [A-Za-z0-9-] (got ${JSON.stringify(runId)}) — and never reuse one (#211)`)
   }
   // The shim treats any value but 'one-driver' as the old `claude` launch, so
-  // a typo here would silently run the wrong engine. Refuse it on the laptop.
-  if (opts.engine !== undefined && opts.engine !== 'one-driver') {
-    throw new Error(`drive-one: --engine accepts only 'one-driver' (got ${JSON.stringify(opts.engine)}); omit it for the claude engine`)
-  }
   return { planPath, runId, ...opts }
 }
 
@@ -146,7 +141,6 @@ export const buildDriveOptions = (
   allowUnfitPlan: parsed.allowUnfitPlan,
   githubTokenPath: parsed.githubTokenPath,
   prBase: parsed.prBase,
-  ...(parsed.engine ? { engine: parsed.engine } : {}),
 })
 
 export const main = async (argv = process.argv.slice(2), { drive = driveOne, log = console.log, ...deps } = {}) => {

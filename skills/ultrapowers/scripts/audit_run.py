@@ -31,10 +31,16 @@ FILES_LINE = re.compile(r"^FILES: (.+)$", re.MULTILINE)
 # classifier inherits their stability; an unmatched prompt degrades to
 # "unknown", never to an error.
 ROLE_MARKERS = [
-    ("You are an implementer subagent", "impl"),
+    # 0.3.0: the live prompt sources are fleet/roles/*.md (the Amendment 10
+    # engine); the pre-cutover phrases stay so HISTORICAL transcripts (the
+    # harvest corpus reaches back through the Workflow era) still classify.
+    ("You are an implementer", "impl"),          # covers "…subagent" (old) and "…working in" (roles/)
+    ("You are fixing your own prior implementation", "impl"),   # roles/fix.md
     ("You are an independent reviewer", "review"),
-    ("You are the setup agent", "setup"),
-    ("You are the wave merge agent", "merge"),
+    ("You are the completeness critic", "integration"),         # roles/critic.md
+    ("You are the reconcile agent", "reconcile"),               # roles/reconcile.md
+    ("You are the setup agent", "setup"),        # historical only (driver setup is code now)
+    ("You are the wave merge agent", "merge"),   # historical only
     ("You are the reconciliation agent", "reconcile"),
     # #188: the resolver prompt (references/wave-merge.md RESOLVER_PROMPT,
     # baked into waves.js) opens with this phrase.

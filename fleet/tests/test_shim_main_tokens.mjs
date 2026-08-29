@@ -6,7 +6,6 @@
 //      AND its subagent transcripts, keyed by a run-unique session id — so the
 //      subagent spend (the majority) is counted and cloned golden warm-up
 //      sessions (a different id, same project dir) are NOT.
-//   2. engineArgs threads that session id to `--session-id` so the transcript
 //      path is deterministic, while the bare one-arg form is unchanged.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -17,10 +16,8 @@ import { mintToken } from '../tokens.mjs'
 import {
   readSessionTokens,
   readSessionTokenSources,
-  engineArgs,
   main as shimMain,
   sandboxIdFor,
-  STANDING_DIRECTIVE,
 } from '../shim-main.mjs'
 
 let passed = 0
@@ -68,16 +65,7 @@ writeTranscript(path.join(proj, `${WARMUP}.jsonl`), [9999])
 assert.equal(readSessionTokens(RUN, { home }), 2600, 'warm-up session must not leak into the run total')
 ok('cloned warm-up session ignored (still 2600)')
 
-// --- 5. engineArgs threads the session id; bare form unchanged --------------
-assert.deepEqual(engineArgs('docs/plan.md'), ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
-ok('engineArgs bare form carries the #280 standing directive')
-assert.deepEqual(
-  engineArgs('docs/plan.md', RUN),
-  ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`, '--session-id', RUN],
-)
-ok('engineArgs appends --session-id when given')
-assert.deepEqual(engineArgs('docs/plan.md', ''), ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
-ok('engineArgs ignores an empty session id')
+// (engineArgs/STANDING_DIRECTIVE section deleted at 0.3.0 with the claude launch.)
 
 // --- #209: source-shape probe ------------------------------------------------
 // `readSessionTokens` couples to the engine transcript format on two axes (the

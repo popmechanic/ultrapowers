@@ -19,7 +19,6 @@ import path from 'node:path'
 import {
   readGateGreen,
   GRANTED_ACK_TYPES,
-  STANDING_DIRECTIVE,
   runArtifactDirs,
   findReceiptFiles,
   findGateReceiptFile,
@@ -235,8 +234,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-gate-'))
 }
 
 // --- 14. the directive must instruct saving the approve receipt --------------
-assert.ok(STANDING_DIRECTIVE.includes('approve-receipt.json'), 'directive must instruct saving the approve receipt')
-ok('STANDING_DIRECTIVE instructs saving approve-receipt.json')
+// (STANDING_DIRECTIVE pin deleted at 0.3.0 — the two-move rule is run-main's ackDecision, code not prose.)
 
 // --- 15. GRANTED_ACK_TYPES is exactly the #281 granted class ------------------
 assert.deepEqual([...GRANTED_ACK_TYPES].sort(), ['deferred:external', 'deferred:runtime'])
@@ -298,7 +296,6 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
     repoDir: t16,
     planPath: 'docs/plan.md',
     runId: 'run-24',
-    engine: 'one-driver',
     exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '' } },
     spawnEngine: async (call) => { spawns.push(call); return 1 },
     log: () => {},
@@ -311,20 +308,8 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
   assert.ok(!cmds.some((c) => /plugin/.test(c)), 'no plugin install on the one-driver path')
   assert.ok(cmds.some((c) => /checkout -q fleet-base/.test(c)), 'the BASE_REF checkout still happens first')
   assert.equal(outcome.gateGreen, false, 'a non-zero driver exit is never green')
-  // (c) any other engine value takes the claude path (old assignments stay valid)
-  const spawns2 = []
-  await invokeEngineRun({
-    repoDir: t16,
-    planPath: 'docs/plan.md',
-    runId: 'run-25',
-    engine: undefined,
-    exec: async (cmd) => ({ code: 0, stdout: /plugin list/.test(cmd) ? '[]' : '' }),
-    spawnEngine: async (call) => { spawns2.push(call); return 1 },
-    log: () => {},
-  })
-  assert.equal(spawns2.length, 1)
-  assert.notEqual(spawns2[0].command, 'node', 'absent engine key = the claude launch')
-  ok('one-driver mode: pinned argv, no plugin install, checkout kept, fallback preserved')
+  // ((c) the claude-path fallback died at 0.3.0 — one engine, no mode key.)
+  ok('one-driver mode: pinned argv, no plugin install, checkout kept')
 }
 
 // --- 17. readRunConfigTokens sums every transcript under the run config dir --

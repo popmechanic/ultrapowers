@@ -12,10 +12,17 @@ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 
 # Every engine role prompt must classify; each marker string must exist
 # verbatim in the baked source so classifier and engine cannot drift apart.
+# 0.3.0: the live sources are the engine role files; pre-cutover markers
+# (setup/merge/reconciliation, the old implementer-subagent phrasing) are
+# HISTORICAL — they classify the harvest corpus's old transcripts and have no
+# living source to pin against.
 ENGINE_SOURCES = [
-    (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text(),
-    (ROOT / "skills/ultrapowers/references/wave-merge.md").read_text(),
+    p.read_text() for p in sorted((ROOT / "fleet/roles").glob("*.md"))
 ]
+HISTORICAL_MARKERS = {
+    "You are the setup agent", "You are the wave merge agent",
+    "You are the reconciliation agent", "what plan requirement is unmet?",
+}
 
 IMPL_7 = ("SAFETY: Operate ONLY inside the git worktree assigned to you.\n\n"
           "You are an implementer subagent operating inside a dedicated git worktree.\n\n"
@@ -95,6 +102,8 @@ def test_classifies_task_id_from_real_prompt_shape(tmp_path):
 def test_every_role_marker_exists_in_baked_sources():
     from audit_run import ROLE_MARKERS
     for marker, _role in ROLE_MARKERS:
+        if marker in HISTORICAL_MARKERS:
+            continue  # classifies old-corpus transcripts; no living source
         assert any(marker in src for src in ENGINE_SOURCES), marker
 
 
