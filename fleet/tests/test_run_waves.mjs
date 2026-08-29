@@ -223,13 +223,25 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
   assert.equal(await wrapped('p', { label: 'impl:OTHER', isolation: 'worktree' }), null,
     'a null reply is returned as-is (AGENT_NULL path intact)')
 
-  // Capture failure = honest loss: no patch, a named captureError — the
-  // engine's lost-coordinates guard does the rest.
-  const broken = withPatchCapture({ agent: async () => ({ status: 'DONE', patch: '/lie' }),
+  // Capture failure = honest loss of ALL THREE coordinates: schema-required
+  // model-typed branch/headSha must not survive (they would pass
+  // hasCoordinates and hand the merge fabricated coordinates — worst case a
+  // model-echoed BASE sha folds the task as a no-op and its work silently
+  // vanishes on a green run).
+  const broken = withPatchCapture({
+    agent: async () => ({ status: 'DONE', branch: 'wt-T9', headSha: 'deadbeef', patch: '/lie' }),
     clonesDir: path.join(tmp, 'no-such-clones'), base: BASE, patchesDir })
   const rb = await broken('p', { label: 'impl:T9', isolation: 'worktree' })
   assert.ok(!('patch' in rb), 'no patch on capture failure — the model-typed one is gone too')
+  assert.equal(rb.branch, '', 'model-typed branch cleared on capture failure')
+  assert.equal(rb.headSha, '', 'model-typed headSha cleared — the reply must fail hasCoordinates')
   assert.ok(rb.captureError, 'the failure is named on the reply')
+
+  // A worktree dispatch whose label carries no task id still has its
+  // model-typed patch stripped — the strip precedes every return.
+  const rw = await broken('p', { label: 'weird', isolation: 'worktree' })
+  assert.ok(!('patch' in rw), 'unrecognized worktree label: model-typed patch stripped, not passed through')
+  assert.ok(rw.captureError, 'and the mapping failure is named')
 }
 
 // ── 6. makeEventLog: the run’s record, written while it happens (#414 P1) ────
@@ -254,6 +266,11 @@ assert.equal(defaultTaskIdOf('review:T1:1'), null, 'only impl and fix carry isol
   const again = fs.readFileSync(file, 'utf8').trim().split('\n')
   assert.equal(again.length, 7, 'reopening appends (a new run:open + the line); nothing is overwritten')
   assert.ok(ulid() !== ulid(), 'ids never collide')
+  // Monotonic against a BACKWARDS clock step (NTP on a fresh sandbox): an id
+  // minted at an earlier `now` still sorts after everything already minted.
+  const before = ulid(Date.now() + 5000)
+  const after = ulid(Date.now() - 60000)
+  assert.ok(after > before, 'a backwards clock step cannot mint an id that sorts earlier')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

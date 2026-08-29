@@ -61,6 +61,14 @@ const contendedWave = () => [[
     files: ['src/shared.js', 'src/b.js'] },
 ]]
 
+// One fixture for "two tasks, disjoint files" — scenario 8a (routing away
+// from the contended path without patches) and 12d (routing INTO the fold
+// with them) must test the same wave shape or the premise silently forks.
+const disjointWave = () => [[
+  { id: 'A', title: 'alpha', body: 'edit a', tier: 'standard', files: ['src/a.js'] },
+  { id: 'B', title: 'beta', body: 'edit b', tier: 'standard', files: ['src/b.js'] },
+]]
+
 const argsFor = (waves, extra) => Object.assign(
   { waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim', testCmd: 'pnpm check' },
   PATH_ARGS, extra || {})
@@ -424,10 +432,7 @@ async function scenarioCandidateSuiteFails() {
 // ── Scenario 8: routing — what must NOT take the contended path ──────────────
 async function scenarioRoutingDisjointFiles() {
   const calls = []
-  const waves = [[
-    { id: 'A', title: 'alpha', body: 'edit a', tier: 'standard', files: ['src/a.js'] },
-    { id: 'B', title: 'beta', body: 'edit b', tier: 'standard', files: ['src/b.js'] },
-  ]]
+  const waves = disjointWave()   // shared with 12d — one fixture, one meaning of "disjoint"
   const r = await runWorkflow({ agent: makeAgent(calls), args: argsFor(waves), budget: undefined })
   // Both tasks carry the tagged shape, but they came from DISJOINT dropped pairs:
   // no pairwise `files` intersection, so there is nothing to fold.
@@ -1529,17 +1534,12 @@ async function scenarioPatchWithoutHeadShaIsLost() {
   console.log('scenario 12c patch-without-headsha-is-lost: OK')
 }
 
-// ── Scenarios 12d–12g: the wiring (#402 obligations 1–3) ─────────────────────
+// ── Scenarios 12d–12i: the wiring (#402 obligations 1–3) ─────────────────────
 // An UNCONTENDED wave (disjoint files) still routes to the fold under patch
 // input — the fold is THE merge path; the git-merge agent is never dispatched
 // over empty branch names. And the completeness critic's #70 assertion
 // excludes patch tasks (no task commit exists in the DAG), with the exclusion
 // recorded as a judgment call naming the fold log as provenance.
-const disjointWave = () => [[
-  { id: 'A', title: 'alpha', body: 'edit a', tier: 'standard', files: ['src/a.js'] },
-  { id: 'B', title: 'beta', body: 'edit b', tier: 'standard', files: ['src/b.js'] },
-]]
-
 async function scenarioPatchUncontendedRoutesToFold() {
   const calls = []
   const agent = makeAgent(calls, (label) => {
@@ -1643,9 +1643,52 @@ await scenarioPartialMergeContendedSurvivors()
 await scenarioPatchInputCommands()
 await scenarioPatchAndBranchMixed()
 await scenarioPatchWithoutHeadShaIsLost()
+// Budget exhaustion inside the fold is a DEFERRAL, not a conflict: the
+// operator guidance is "raise the budget and rerun", not a cascade-block.
+async function scenarioPatchBudgetExhaustionDefers() {
+  const calls = []
+  let remaining = 100
+  const agent = makeAgent(calls, (label) => {
+    if (label.startsWith('impl:')) return patchImpl(label.split(':')[1])
+    if (label === 'merge:wave1:fold') { remaining = 0; return { status: 'ERROR', detail: 'budget died mid-fold' } }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave(), { patchInput: true }),
+    budget: { remaining: () => remaining } })
+  eq(r.waveMerges[0].status, 'DEFERRED', '12h: exhaustion mid-fold defers, never conflicts')
+  assert(/patches intact, rerun after raising the budget/.test(r.waveMerges[0].detail || ''),
+    '12h: the deferral carries the rerun guidance (got ' + JSON.stringify(r.waveMerges[0].detail) + ')')
+  assert(!has(calls, 'merge:wave1'), '12h: still no git-merge dispatch')
+  console.log('scenario 12h patch-budget-exhaustion-defers: OK')
+}
+
+// The no-critic predicate survives the mergedShas patch exclusion: an
+// all-patch run whose wave MERGED and whose reviewer raised a cannotVerify
+// item must NOT record "no completeness critic ran" — the critic did run.
+async function scenarioPatchRunKeepsCriticPredicate() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label.startsWith('impl:')) return patchImpl(label.split(':')[1])
+    if (label === 'review:A:1') return { verdict: 'PASS', issues: [],
+      cannotVerify: [{ requirement: 'spans tasks', why: 'cross-task' }] }
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-12i' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent, args: argsFor(contendedWave(), { patchInput: true }), budget: undefined })
+  eq(r.waveMerges[0].status, 'MERGED', '12i: the wave merged')
+  assert(has(calls, 'integration'), '12i: the completeness critic ran')
+  assert(!r.judgmentCalls.some((j) => /no completeness critic ran/.test(j)),
+    '12i: no false "no completeness critic ran" record on a merged all-patch run (got ' +
+    JSON.stringify(r.judgmentCalls) + ')')
+  console.log('scenario 12i patch-run-keeps-critic-predicate: OK')
+}
+
 await scenarioPatchUncontendedRoutesToFold()
 await scenarioPatchFoldFallbackBlocksCleanly()
 await scenarioModelTypedPatchStrippedWithoutDriver()
 await scenarioPatchFixRoundDerivesHead()
+await scenarioPatchBudgetExhaustionDefers()
+await scenarioPatchRunKeepsCriticPredicate()
 
 console.log('ALL SCENARIOS PASSED')

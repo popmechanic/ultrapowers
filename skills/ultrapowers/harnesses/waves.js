@@ -1181,8 +1181,15 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
   // Fix-loop: cap 2 iterations total (initial + 1). One independent review pass
   // per iteration (spec-compliance + code-quality merged). See reviewer-prompts.md.
   for (let iter = 1; iter <= 2; iter++) {
+    // Under patch input impl.branch is '' by design (the tree is detached).
+    // An empty interpolation would hand the reviewer a bare "BRANCH:" against
+    // reviewer-prompts.md's input contract — same defect class as the dead
+    // fix loop (#412 finding 4), one prompt over. The VALUE is engine-authored
+    // (the baked text around it is unchanged), so describe the truth instead.
     const reviewPrompt = fillPaths(GUARD + '\n\n' + REVIEWER_PROMPT) +
-      taskBodyBlock(task) + '\nBRANCH: ' + impl.branch + '\nHEAD: ' + impl.headSha +
+      taskBodyBlock(task) + '\nBRANCH: ' +
+      (impl.branch || '(none — patch input; the work is the worktree HEAD named below)') +
+      '\nHEAD: ' + impl.headSha +
       '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
@@ -1292,7 +1299,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
         (impl.branch || 'HEAD') +
         '); if PRIOR differs from the BASE sha above, report BLOCKED naming both, written exactly as:' +
         ' typed prior sha <typed> != derived branch tip <derived> — never build on either.' +
-        ' Resolve these blocking issues on top of it, commit on YOUR assigned branch, and report YOUR branch and HEAD:\n' +
+        ' Resolve these blocking issues on top of it, commit' +
+        // Patch input assigns no branch (the tree is detached); telling the
+        // agent to report one two sentences after saying none exists is a
+        // contradiction a compliant agent resolves by reporting BLOCKED.
+        (impl.branch ? ' on YOUR assigned branch, and report YOUR branch and HEAD:\n'
+                     : ' in place (detached HEAD — no branch is assigned under patch input), and report branch \'\' and YOUR HEAD:\n') +
         blocking.map((b) => '- ' + b.detail).join('\n'),
       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
     )
@@ -1377,9 +1389,19 @@ const frontierEntry = (waveNumber, fold, transcripts, calls, wallSec, selfChecks
 // headSha,…} and no `files`, so reading `r.files` would find undefined and fail
 // CLOSED — every contended wave silently taking the git-merge path with stubbed
 // tests still green.
+// ONE owner for "is the fold path forbidden, and why": contendedWave consumes
+// it as a boolean, the patch route in mergeWave consumes the reason string.
+// Two hand-copies of these guards is how a third condition (the comment below
+// anticipates one) gets added to one and silently missed by the other — a
+// patch wave then dispatching the fold in a state the non-patch path treats
+// as unsafe.
+const foldForbiddenReason = () =>
+  resume ? 'the resume lane'          // redirect, salvage, any future resume lane
+  : !waveBaseLive ? 'a frozen wave base' // it would rewind the branch
+  : null
+
 const contendedWave = (merged, waveIdx) => {
-  if (resume) return false        // redirect, salvage, any future resume lane
-  if (!waveBaseLive) return false // a frozen wave base would rewind the branch
+  if (foldForbiddenReason() !== null) return false
   const wave = Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : []
   const fileSets = merged.map((r) => {
     const t = wave.find((x) => x && x.id === r.task)
@@ -1801,16 +1823,26 @@ async function mergeWave(results, waveIdx) {
   // told to "merge each reported branch" over empty branch names burns two
   // reconcile attempts on an instruction that cannot be followed (#412 review
   // finding 2), and the reconcile loop below is skipped for the same reason.
-  if (merged.some((r) => r && r.patch)) {
-    if (resume || !waveBaseLive) {
+  if (merged.some((r) => r.patch)) {
+    const noBranches = ' — patch results carry no branches for the git-merge path'
+    const forbidden = foldForbiddenReason()
+    if (forbidden) {
       return { status: 'CONFLICT', detail: 'patch-input wave cannot merge: ' +
-        (resume ? 'the resume lane' : 'a frozen wave base') +
-        ' forbids the fold path, and patch results carry no branches for the git-merge path' }
+        forbidden + ' forbids the fold path' + noBranches }
     }
     const adopted = await contendedMerge(merged, waveIdx)
     if (adopted) return adopted
+    // Budget exhaustion inside the fold is a DEFERRAL, not a conflict — the
+    // branch path reaches the same distinction through the git-merge leg's
+    // reconcile loop, which this route skips. Reporting it as CONFLICT would
+    // cascade-block every later wave and lose the "raise the budget and
+    // rerun" guidance the DEFERRED machinery records.
+    if (budgetExhausted()) {
+      return { status: 'DEFERRED', detail: 'budget exhausted during the fold' + noBranches +
+        ' — patches intact, rerun after raising the budget' }
+    }
     return { status: 'CONFLICT', detail: 'patch-input wave: the fold path fell back ' +
-      '(reason recorded in judgmentCalls) and patch results carry no branches for the git-merge path' }
+      '(reason recorded in judgmentCalls)' + noBranches }
   }
   if (contendedWave(merged, waveIdx)) {
     const adopted = await contendedMerge(merged, waveIdx)
@@ -2345,12 +2377,14 @@ if (review && review.onIntegrationHead === false)
 // cannot-verify items with no usable completeness critic must not be dropped:
 // when no wave merged, the critic has no merge HEAD to review and reports
 // BLOCKED with no findings, so the items surface at the gate as judgment calls
-// instead (#2.2 error handling). The predicate is `mergedShas.length === 0`, not
-// `!waveBaseSha` (#147): waveBaseSha initializes from the hard-gated setup head
-// and only ever advances to a merge head, so it is never falsy and the branch
-// was dead. mergedShas is pushed only on a MERGED wave, making it the correct
-// in-memory no-wave-merged predicate.
-if (cannotVerifyItems.length && mergedShas.length === 0) {
+// instead (#2.2 error handling). The predicate was `mergedShas.length === 0`
+// (#147 — waveBaseSha is never falsy, so that branch was dead), but the patch
+// exclusion above broke it: an all-patch run whose waves all MERGED has an
+// empty mergedShas, and every cannot-verify item would then falsely record
+// "no completeness critic ran" on a run whose critic DID run. So the
+// no-wave-merged fact is read off waveMerges itself.
+const anyWaveMerged = waveMerges.some((m) => m && m.status === 'MERGED')
+if (cannotVerifyItems.length && !anyWaveMerged) {
   for (const c of cannotVerifyItems) {
     judgmentCalls.push('cannot-verify (task ' + c.task + '): ' + c.requirement +
       ' — no completeness critic ran (no merge HEAD); verify manually before the gate')
