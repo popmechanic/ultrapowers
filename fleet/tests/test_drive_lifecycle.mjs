@@ -29,19 +29,14 @@ import {
   applyReceipt,
   applyReportedTokens,
   applyStamp,
-  readInstalledPluginVersion,
   BASE_REF,
   detectIntegrationBranch,
-  engineArgs,
-  ENGINE_COMMAND,
-  STANDING_DIRECTIVE,
   findGateReceiptFile,
   findReceiptFiles,
   findRunReportFile,
   invokeEngineRun,
-  INSTALLED_PLUGINS_COMMAND,
+  oneDriverArgs,
   isSafeBranchName,
-  pluginInstallCommands,
   readAssignment,
   readGateGreen,
   readReportTokens,
@@ -612,40 +607,16 @@ try {
         log: rec.log,
       })
 
-      // Exactly these side effects, in exactly this order: check out the pushed
-      // base, install the plugin FROM that checkout (#373 — the three
-      // `pluginInstallCommands`, then the CLI's own record of what it copied
-      // and the `fleet-base` sha it is checked against), read which credential
-      // the engine will ride (`claude auth status`, logged — #213), THEN launch
-      // the engine. A spawn that preceded the checkout would run the golden
-      // image's HEAD and gate it green; one that preceded the install would
-      // run the image's plugin against the pushed base.
-      const install = pluginInstallCommands({ repoDir: engineRepo })
-      assert.deepEqual(
-        rec.calls.slice(0, 7),
-        [
-          `git -C ${engineRepo} checkout -q ${BASE_REF}`,
-          ...install,
-          INSTALLED_PLUGINS_COMMAND,
-          `git -C ${engineRepo} rev-parse ${BASE_REF}`,
-          `${ENGINE_COMMAND} auth status`,
-        ],
-        `expected checkout, plugin install from the checkout, auth status, then spawn, got: ${JSON.stringify(rec.calls)}`,
-      )
-      assert.equal(rec.calls.length, 8, `expected exactly one spawn after the seven reads, got: ${JSON.stringify(rec.calls)}`)
-      const checkoutIdx = 0
-      const authIdx = 6
-      const spawnIdx = rec.calls.findIndex((c) => c.startsWith(`${ENGINE_COMMAND} -p`))
-      assert.equal(spawnIdx, 7, `the engine spawn must be the last side effect, got: ${JSON.stringify(rec.calls)}`)
-      assert.ok(authIdx < spawnIdx && checkoutIdx < spawnIdx)
-      // The credential read is logged for the evidence pull; an unparseable
-      // status (the recorder returns no JSON) degrades to the explicit
-      // "unreadable" line and never blocks the launch.
-      assert.ok(rec.logs.some((l) => l.includes('fleet: engine auth')), `expected an engine-auth log line, got: ${JSON.stringify(rec.logs)}`)
-
-      // The plan the assignment named, verbatim — never the literal `undefined`
-      // a missing assignment field used to produce.
-      assert.equal(rec.calls[spawnIdx], `${ENGINE_COMMAND} ${engineArgs(ENGINE_PLAN).join(' ')}`)
+      // Exactly these side effects, in exactly this order: check out the
+      // pushed base, then spawn the deterministic driver from that checkout.
+      // (The plugin-install/auth-status choreography died at 0.3.0 with the
+      // claude engine leg.) A spawn that preceded the checkout would run the
+      // golden image's HEAD and gate it green.
+      assert.equal(rec.calls[0], `git -C ${engineRepo} checkout -q ${BASE_REF}`)
+      assert.equal(rec.calls.length, 2, `expected checkout then one spawn, got: ${JSON.stringify(rec.calls)}`)
+      const spawnIdx = 1
+      assert.equal(rec.calls[spawnIdx],
+        `node ${oneDriverArgs(engineRepo, ENGINE_PLAN, 'run-lifecycle').join(' ')}`)
       assert.ok(rec.calls[spawnIdx].includes(ENGINE_PLAN), `the spawn must carry the assignment's planPath`)
       assert.ok(!rec.calls[spawnIdx].includes('undefined'))
 
@@ -827,11 +798,11 @@ try {
         })
         assert.deepEqual(outcome, { gateGreen: expectGreen }, label)
 
-        // The engine ran exactly as it does on a clean image — checkout, plugin
-        // install from the checkout (#373), auth status, spawn — so the scope
-        // changed the READ and nothing about the launch.
-        assert.equal(rec.calls.length, 8, `${label}: ${JSON.stringify(rec.calls)}`)
-        assert.ok(rec.calls.some((c) => c.startsWith(`${ENGINE_COMMAND} -p`)), `${label}: the engine was spawned`)
+        // The engine ran exactly as it does on a clean image — checkout,
+        // then the driver spawn — so the scope changed the READ and nothing
+        // about the launch.
+        assert.equal(rec.calls.length, 2, `${label}: ${JSON.stringify(rec.calls)}`)
+        assert.ok(rec.calls.some((c) => c.startsWith('node ')), `${label}: the engine was spawned`)
         // The receipt the verdict came from is the run's OWN, and the stale one
         // is still on disk, untouched — scoping hides it, never deletes it.
         assert.equal(
@@ -920,21 +891,8 @@ try {
     assert.equal(await spawnEngineProcess({ command: '/bin/sh', args: ['-c', 'exit 0'], cwd: tmp }), 0)
     assert.equal(await spawnEngineProcess({ command: path.join(tmp, 'no-such-binary'), args: [], cwd: tmp }), 1)
 
-    // The engine argv is a pinned shape — the plan path is one argument of a
-    // single `/ultrapowers <plan>` prompt (followed by the #280 standing
-    // directive), not a bare positional.
-    assert.equal(ENGINE_COMMAND, 'claude')
-    assert.deepEqual(engineArgs('docs/plan.md'),
-      ['-p', `/ultrapowers docs/plan.md\n\n${STANDING_DIRECTIVE}`])
-    // The directive itself is load-bearing prompt text (#280): pin the grammar
-    // hooks SKILL.md Step 5's standing-grant clause reads.
-    for (const literal of ['never end a turn on a question', 'NEEDS_ACK',
-      'reason runtime or external', 'standing-approval.json FIRST',
-      'Type manual is post-merge runbook material', 'BLOCKED',
-      'never end a turn to wait', 'kills the run']) {
-      assert.ok(STANDING_DIRECTIVE.includes(literal),
-        'standing directive lost the literal: ' + literal)
-    }
+    // (The claude argv + #280 standing-directive pins died at 0.3.0; the
+    // driver argv is pinned in scenario 16 of test_shim_main_gate.mjs.)
   }
 
   // -- 20. the gate accepts the delivered token DURING the shim start (#302) -
@@ -1176,84 +1134,13 @@ try {
     )
   }
 
-  // -- V2. #282 image side (distill P5): the INSTALLED plugin must match ------
-  // Both cells the V1 cross-check reads derive from the pushed ref, so a
-  // plugin baked stale into the golden image passes it. The shim also stamps
-  // what `claude plugin list` reports as installed; a disagreement with the
-  // pushed manifest reds `versionStamp` and names the fix.
-  {
-    const runId = 'run-drive-stamp-installed-stale'
-    let sandbox = null
-    const exec = makeExec((assignment) => {
-      setTimeout(() => {
-        sandbox = startStubSandbox({
-          assignment,
-          runId,
-          receiptSha: olderSha,
-          exec,
-          branch: OLDER_BRANCH,
-          receiptPath: 'old.txt',
-          installedPluginVersion: '0.0.0-stale-image',
-        })
-      }, 30)
-    })
-    const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'dbV2'), exec, runId })
-    await sandbox
-    assert.equal(read.o1, true, 'the image-side mismatch is a stamp verdict, not an o1 failure')
-    assert.equal(read.versionStamp, false)
-    assert.equal(detail.installedPluginVersion, '0.0.0-stale-image')
-    assert.ok(
-      detail.errors.some((e) => /installed plugin mismatch: sandbox has ultrapowers 0\.0\.0-stale-image installed/.test(e) && /#282/.test(e)),
-      `expected the installed-plugin mismatch line, got: ${JSON.stringify(detail.errors)}`,
-    )
-  }
-  // A sandbox whose installed plugin matches the pushed manifest stays green,
-  // and an older shim that stamps no installed version is skipped, not red.
-  {
-    const manifest = await sh(`git show HEAD:.claude-plugin/plugin.json`, driveDefaults.repoDir)
-    const pushedVersion = manifest.code === 0 ? JSON.parse(manifest.stdout)?.version : null
-    for (const [runId, installed] of [
-      ['run-drive-stamp-installed-match', pushedVersion],
-      ['run-drive-stamp-installed-absent', null],
-    ]) {
-      if (installed === undefined) continue
-      let sandbox = null
-      const exec = makeExec((assignment) => {
-        setTimeout(() => {
-          sandbox = startStubSandbox({
-            assignment,
-            runId,
-            receiptSha: olderSha,
-            exec,
-            branch: OLDER_BRANCH,
-            receiptPath: 'old.txt',
-            installedPluginVersion: installed,
-          })
-        }, 30)
-      })
-      const { read, detail } = await driveOne({ ...driveDefaults, dbDir: path.join(tmp, `db-${runId}`), exec, runId })
-      await sandbox
-      assert.equal(read.versionStamp, true, `${runId}: ${JSON.stringify(detail.errors)}`)
-      assert.equal(detail.installedPluginVersion, installed)
-      assert.ok(!detail.errors.some((e) => /installed plugin mismatch/.test(e)), runId)
-    }
-  }
-  // readInstalledPluginVersion: the `claude plugin list --json` shape observed
-  // on fleet-golden 2026-08-28; anything else reads '' and never throws.
-  {
-    const listing = JSON.stringify([
-      { id: 'ultrapowers@ultrapowers', version: '0.2.23', scope: 'user', enabled: true },
-      { id: 'other@market', version: '9.9.9' },
-    ])
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: listing }) }), '0.2.23')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: '[]' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 1, stdout: 'boom' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => ({ code: 0, stdout: 'not json' }) }), '')
-    assert.equal(await readInstalledPluginVersion({ exec: async () => { throw new Error('no claude') } }), '')
-    const cmds = []
-    await readInstalledPluginVersion({ exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '[]' } } })
-    assert.deepEqual(cmds, [`${ENGINE_COMMAND} plugin list --json`])
-  }
+  // -- V2 (deleted at 0.3.0, review finding 1): the installed-plugin
+  // cross-check died with the install it checked — no plugin participates in
+  // the run (the checkout IS the engine), and comparing the golden's
+  // bootstrap plugin to the pushed manifest would have gone permanently red
+  // at the first release bump. The stamp (V1, above) is the surviving check.
+  // (readInstalledPluginVersion died at 0.3.0 with the install cross-check —
+  // no plugin participates in the run; review finding 1.)
 
   // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------
   // The cross-check compares against the driver's OWN repo. If that repo cannot

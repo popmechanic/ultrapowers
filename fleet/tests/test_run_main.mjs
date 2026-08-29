@@ -236,6 +236,9 @@ function makeExecStub({ repoDir, runId, gateExit = 0, acks = [], waves }) {
       }))
       return { code: gateExit, stdout: '', stderr: '' }
     }
+    if (cmd === 'claude' && argv[0] === 'auth') {
+      return { code: 0, stdout: JSON.stringify({ authMethod: 'oauth', subscriptionType: 'max' }), stderr: '' }
+    }
     throw new Error('exec stub: unexpected ' + cmd + ' ' + argv.join(' '))
   }
   return { exec, calls, runDir }

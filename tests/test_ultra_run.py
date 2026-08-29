@@ -60,10 +60,11 @@ def test_happy_path_receipt(tmp_path):
     receipt = json.loads(r.stdout)
     assert receipt["ok"] is True
     assert all(s["ok"] for s in receipt["stages"])
-    # The surviving stages, in the order spec §Engine lists them (Phase 0).
+    # The surviving stages, in order. ('install' — the Workflow-harness copy —
+    # died at 0.3.0 with waves.js; the engine is fleet/run-engine.mjs, code.)
     assert [s["stage"] for s in receipt["stages"]] == [
         "fleet-run", "git-repo", "worktree-probe", "superpowers-compat",
-        "compile", "test-command", "install", "dirty-baseline", "base-branch"]
+        "compile", "test-command", "dirty-baseline", "base-branch"]
     assert receipt["stages"][0]["detail"] == "fleet run run-test"
     run_dir = repo / ".claude/ultrapowers/run-t1"
     assert (run_dir / "receipt.json").is_file()

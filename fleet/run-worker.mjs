@@ -1,9 +1,9 @@
 // fleet/run-worker.mjs — the third implementation of a seam that already exists.
 //
-// `skills/ultrapowers/harnesses/waves.js` is a function of six injected globals.
-// The Workflow tool supplies one set; `tests/sim_workflow.mjs` supplies a second
-// with a stubbed `agent`. This module supplies the third: `agent(prompt, opts)`
-// backed by one `claude -p` process per call. Spec §2 (#401).
+// The engine (fleet/run-engine.mjs) is parameterised over one seam:
+// `agent(prompt, opts)`. This module supplies the production implementation —
+// one `claude -p` process per call. Spec §2 (#401). (waves.js and its sims,
+// the seam's first two suppliers, are deleted since 0.3.0.)
 //
 // THE WHOLE INTERFACE — four option keys, ten call sites in waves.js:
 //

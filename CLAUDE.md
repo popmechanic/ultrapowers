@@ -30,16 +30,17 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers   # vali
 python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # compile a marked plan to its waves
 ```
 
-- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultraplan`, then `pytest tests/`.
-- The 3 `tests/*.mjs` engine sims are **not** in CI — run them manually: `node tests/<name>.mjs`.
+- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultraplan`, then `pytest tests/` (which bridges every `fleet/tests/test_*.mjs`, the engine sims included).
 
 ## Layout
 
-- `skills/ultrapowers/` — the engine: `SKILL.md` (operator steps), `harnesses/waves.js`
-  (the committed Dynamic Workflow), `scripts/`, `references/` (prompt sources — see Anti-drift).
+- `skills/ultrapowers/` — the operator skill: `SKILL.md` (the thin client — commit
+  the plan, launch the fleet), `scripts/`, `references/`. **The engine lives in
+  `fleet/run-engine.mjs` since 0.3.0** (Amendment 10: models never run git); its
+  judgment prompts are plain files in `fleet/roles/*.md` — one copy, no bake step.
 - `skills/ultraplan/` — plan-authoring markers (`Type`/`Depends-on`/`Interfaces`); pairs with
   `superpowers:writing-plans`. (Also `skills/ultradocket/`.)
-- `hooks/session_start.sh` — injects the plan-routing rule into every session and installs the harnesses.
+- `hooks/session_start.sh` — injects the plan-routing rule into every session.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
 - `docs/superpowers/{specs,intents,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
   **`intents/` is the signed artifact under the post-#243 plan shape** (spec §6: seven slots,
@@ -54,8 +55,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   five other injected globals + clones-at-BASE + `withPatchCapture`), `run-main.mjs` (the
   deterministic engine entry — replaces the LLM `/ultrapowers` §Engine session), and
   `confine-hook.mjs` (the implementer's `PreToolUse` boundary). Live via
-  `drive-one.mjs --engine one-driver`; the `claude` skill path stays the fallback until
-  the first self-hosted run passes (spec §10 stage 2). Own npm deps in
+  `drive-one.mjs` — the ONLY engine since 0.3.0 (runs 26/27 met the pre-registered bar;
+  the `claude` skill path and `waves.js` are deleted, PR #434). Own npm deps in
   `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`. Not plugin
   machinery — changes here never require a plugin release.
 
@@ -144,19 +145,16 @@ suite is the verification).
   disposition; a `sealed` line still parses (frozen vocabulary) but is
   `BLOCKED` at the gate — the sealing subsystem was cut in One Driver Phase 0
   (row 7).
-- **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
-  are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
-  `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
-  execution-handoff rubric is shared between `hooks/session_start.sh` and `ultraplan/SKILL.md`
-  (pinned by `tests/test_recommendation_rubric.py`). Change the source `.md`, re-bake per
-  `references/workflow-template.md`, and keep the pin green — never edit only the baked copy.
-- **The suite-gate runs the `.mjs` harness sims when harness JS changes.** For a
-  `suite`-disposition branch, `run_acceptance.sh --suite-gate --base <ref>` diffs
-  `<ref>...HEAD`; if `skills/ultrapowers/harnesses/*.js` was touched it runs the
-  `tests/*.mjs` that reference `harnesses/` via `node`, gated on exit code **and** a
-  `ALL (SCENARIOS|TESTS) PASSED` sentinel. So a new harness sim MUST print that
-  sentinel on success, and harness JS with no covering sim fails the gate (never a
-  shallow green).
+- **Judgment prompts are data files.** `fleet/roles/*.md` (≤350 words each, pinned by
+  the happy-path engine sim) are read at dispatch by `fleet/run-engine.mjs` — the single
+  copy; the pre-0.3.0 bake/re-bake convention and its drift pin are deleted with
+  `waves.js`. `ultraplan/SKILL.md` still mirrors `references/plan-markers.md`, and the
+  execution-handoff rubric is still shared between `hooks/session_start.sh` and
+  `ultraplan/SKILL.md` (pinned by `tests/test_recommendation_rubric.py`).
+- **Fleet engine sims ride the pytest suite.** `fleet/tests/test_*.mjs` are run by
+  `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 120 s per file); the old
+  `run_acceptance.sh --suite-gate` harness leg is inert since 0.3.0 (its
+  `harnesses/*.js` trigger path no longer exists — the frozen script is untouched).
 - **No direct Anthropic API calls in repo code.** A distributed plugin must need no API key. LLM work
   happens inside Claude Code (the agent loop / `claude -p`), which rides the user's subscription — do
   not add the `anthropic` SDK or `ANTHROPIC_API_KEY` to any shipped or dev script.

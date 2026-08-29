@@ -430,6 +430,18 @@ export async function runMain(parsed, deps = {}) {
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog,
   })
+  // #213 credential evidence (restored after the cutover deleted the shim's
+  // copy — review finding 6): name the credential the workers will ride, in
+  // the run's own event log. Best-effort; an unreadable status never blocks.
+  const auth = await exec(cli, ['auth', 'status'], { env: workerEnv })
+  try {
+    const parsed = JSON.parse(auth.stdout)
+    eventLog.onEvent({ kind: 'driver:auth', authMethod: parsed.authMethod ?? null,
+      apiKeySource: parsed.apiKeySource ?? null, subscriptionType: parsed.subscriptionType ?? null })
+  } catch {
+    eventLog.onEvent({ kind: 'driver:auth', detail: 'auth status unreadable (exit ' + auth.code + ')' })
+  }
+
   const integrationBranch = 'ultra/integration-' + stamp
   const launchArgs = {
     ...argsObj,

@@ -142,7 +142,7 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      Passing `--base` (the ref the plan branched from) arms the JS-behavioral
      guard: when the branch changed `skills/ultrapowers/harnesses/*.js`, the gate
      also runs the harness `.mjs` sims (exit-code + pass-sentinel authority), so a
-     `waves.js`-behavioral plan cannot ride a Python-only green (issue #79). This
+     engine-behavioral plan cannot ride a Python-only green (issue #79; since 0.3.0 the engine sims live in fleet/tests/ and ride the pytest suite itself, so the suite-gate covers them without the deleted harness leg). This
      is the disposition for ultrapowers' own engine/skill/doc work, which authors
      no held-out exam.
    - `waived` → no gate exists; **park for the operator** at the end gate. Never

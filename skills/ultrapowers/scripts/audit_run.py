@@ -26,18 +26,22 @@ TASK_ID = re.compile(r'"id"\s+is\s+"([A-Za-z0-9]+)"')
 # heading (and no wavesPath "id" sentence) still carries the task's declared
 # file scope on one line — the one deterministic key left to join on.
 FILES_LINE = re.compile(r"^FILES: (.+)$", re.MULTILINE)
-# First phrases of the baked prompts (reviewer-prompts.md / wave-merge.md).
-# tests/test_no_prompt_drift.py pins those sources into waves.js, so the
-# classifier inherits their stability; an unmatched prompt degrades to
-# "unknown", never to an error.
+# First phrases of the role prompts (fleet/roles/*.md since 0.3.0; the
+# pre-cutover phrases stay for historical transcripts). An unmatched prompt
+# degrades to "unknown", never to an error.
 ROLE_MARKERS = [
-    ("You are an implementer subagent", "impl"),
+    # 0.3.0: the live prompt sources are fleet/roles/*.md (the Amendment 10
+    # engine); the pre-cutover phrases stay so HISTORICAL transcripts (the
+    # harvest corpus reaches back through the Workflow era) still classify.
+    ("You are an implementer", "impl"),          # covers "…subagent" (old) and "…working in" (roles/)
+    ("You are fixing your own prior implementation", "impl"),   # roles/fix.md
     ("You are an independent reviewer", "review"),
-    ("You are the setup agent", "setup"),
-    ("You are the wave merge agent", "merge"),
+    ("You are the completeness critic", "integration"),         # roles/critic.md
+    ("You are the reconcile agent", "reconcile"),               # roles/reconcile.md
+    ("You are the setup agent", "setup"),        # historical only (driver setup is code now)
+    ("You are the wave merge agent", "merge"),   # historical only
     ("You are the reconciliation agent", "reconcile"),
-    # #188: the resolver prompt (references/wave-merge.md RESOLVER_PROMPT,
-    # baked into waves.js) opens with this phrase.
+    # #188: the resolver prompt (fleet/roles/resolver.md) opens with this phrase.
     ("You are a merge-conflict resolver", "resolver"),
     # Bugfix: this marker previously read "What ..." (capital W); the actual
     # baked completeness-critic prompt (references/wave-merge.md's

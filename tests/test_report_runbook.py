@@ -26,18 +26,19 @@ def test_gate_owns_merge_sha_guard_and_report_format_documents_wavemerges():
 FRONTIER_FIELDS = ("foldLogPath", "conflictsIndex", "selfChecks",
                    "foldCliWallTimeSec", "resolverTranscripts")
 
+# 0.3.0: the emitter is fleet/run-engine.mjs (foldWave's `entry` builder).
 FRONTIER_ENTRY = re.compile(
-    r"const frontierEntry = \([^)]*\) => \(\{(.*?)^\}\)", re.S | re.M)
+    r"const entry = \(\) => \(\{(.*?)\}\)", re.S)
 
 
 def frontier_emitted_fields():
-    wf = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
+    wf = (ROOT / "fleet/run-engine.mjs").read_text()
     m = FRONTIER_ENTRY.search(wf)
-    assert m, ("no `const frontierEntry = (...) => ({ ... })` builder found in "
-               "waves.js — the frontier report section must be assembled in one "
-               "object literal so this pin can read its field names")
-    fields = re.findall(r"^  (\w+):", m.group(1), re.M)
-    assert fields, "frontierEntry builder emitted no fields"
+    assert m, ("no `const entry = () => ({ ... })` builder found in "
+               "run-engine.mjs — the frontier report section must be assembled "
+               "in one object literal so this pin can read its field names")
+    fields = re.findall(r"^\s+(\w+)[,:]", m.group(1), re.M)
+    assert fields, "frontier entry builder emitted no fields"
     return fields
 
 
@@ -45,23 +46,23 @@ def test_report_format_documents_every_frontier_field():
     fields = frontier_emitted_fields()
     missing_floor = set(FRONTIER_FIELDS) - set(fields)
     assert not missing_floor, (
-        "waves.js stopped emitting frontier field(s) " + repr(sorted(missing_floor)) +
+        "run-engine.mjs stopped emitting frontier field(s) " + repr(sorted(missing_floor)) +
         " — the frontier section is the A/B and canary evidence surface")
     doc = REPORT.read_text()
     for f in sorted(set(fields)):
         assert "`" + f + "`" in doc, (
             "report-format.md does not document frontier field '" + f + "' — "
-            "waves.js emits it; update the field-reference table")
+            "run-engine.mjs emits it; update the field-reference table")
 
 
 def test_report_format_documents_every_review_verdict():
-    wf = (ROOT / "skills/ultrapowers/harnesses/waves.js").read_text()
+    wf = (ROOT / "fleet/run-engine.mjs").read_text()
     doc = REPORT.read_text()
     verdicts = set()
     for frag in re.findall(r"reviewVerdict\s*[:=]([^\n]+)", wf):
         verdicts.update(re.findall(r"'([a-z][a-z-]*)'", frag))
-    assert verdicts, "no reviewVerdict literals found in workflow.js"
+    assert verdicts, "no reviewVerdict literals found in run-engine.mjs"
     for v in sorted(verdicts):
         assert "`" + v + "`" in doc, (
             "report-format.md does not document reviewVerdict '" + v + "' — "
-            "workflow.js emits it; update the field-reference table")
+            "run-engine.mjs emits it; update the field-reference table")
