@@ -284,6 +284,15 @@ CLI lives in — `--repo-dir` overrides).
 # human terminal sits blocked for the whole run.
 ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && nohup node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/tmp/drive-run-<fresh>.out 2>&1 &'
 
+# Updating Claude Code on the fleet: NEVER by hand and never on a schedule —
+# version drift is event-driven (sandboxes inherit the golden's binary; the
+# auto-updater is frozen via DISABLE_AUTOUPDATER in the worker env), so the
+# one entry point is the workflow, which updates golden + orchestrator
+# together and runs ONLY the four live parity probes at the moment of change
+# (tests/test_update_cli.py pins the probe list and sentinels):
+#   bash fleet/update-cli.sh [<version>]
+# A red probe prints the rollback for both hosts and refuses the version.
+
 # Watch it (the shim/driver progress log rides stderr into the same file):
 ssh fleet-orchestrator.exe.xyz 'tail -f /tmp/drive-run-<fresh>.out'
 
