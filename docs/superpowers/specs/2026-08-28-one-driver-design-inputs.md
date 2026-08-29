@@ -1,4 +1,4 @@
-# One Driver — design inputs (map #366, frozen 2026-08-28; mirrors Amendments 1–5, children #371/#389/#390)
+# One Driver — design inputs (map #366, frozen 2026-08-28; mirrors Amendments 1–10, children #371/#389/#390)
 
 **What this file is.** The committed, in-repo copy of wayfinder map #366 as it stood
 at the end of the sitting that chartered it — the diagnosis, the two-half eureka, the
@@ -641,3 +641,94 @@ the old engine, at the widths then reachable. Width is now measured **flat to 12
 workers with zero failures** (#398). Fold-versus-serialize is a different question at width 12
 than at width 3, and that A/B is the concrete evidence for whether allowing overlap pays at
 width. `ab_runner` re-armed on the driver is already 0.3.0 scope (§9).
+
+## Amendment 10 (operator, 2026-08-29) — models never run git; drivers never make judgments
+
+**Raised by the operator as an intuition** ("I'm seeing worktrees and hooks, and a lot of
+imperative prose") **against the runs 24/25 evidence, and accepted as the frame for this
+phase: removing complicated imperative scaffolding is a generalized goal.**
+
+### The diagnosis (accepted)
+
+Every park across the first self-hosted runs — and most historical machinery-caused
+redirects — is one defect class: **a model failing at choreography, never at judgment.**
+
+- run-24: setup blocked on a permission prompt while running a *git command*.
+- run-25: setup escaped its clone obeying the prose "from the session repo root"
+  (transcript-verified: `cd /home/exedev/repo && git worktree add …` — the fetch-miss was
+  never a race); an implementer refused a *packet path* the prose forbade it to write.
+- No run has ever parked because a model wrote bad code or reviewed badly.
+
+Why the choreography is prose at all: `waves.js` was written for the Workflow runtime,
+whose **only effector was an agent** — no exec, no filesystem. Every deterministic action
+had to be described in prose to a model who would type it. The clearest tell: on
+fold/apply/adopt legs the engine composes the exact kernel CLI string **in code**, then
+pays an Opus worker to type it and relay the JSON. The one-driver has `execSeam`; the
+compensation is vestige, and the port carried it over intact. Measured surface: 393 prompt
+lines in waves.js, 63 imperative ALL-CAPS spans (each a scar where a model once disobeyed
+and the prose was patched instead of the choice removed), ~10.5k words of role prose of
+which `wave-merge.md`'s 6.5k are almost pure choreography.
+
+### The amendment
+
+**Models never run git; drivers never make judgments.**
+
+- Of the ten dispatch sites, the five choreography sites become driver code: **setup**
+  (branch + baseline exec), **fold / apply / adopt** (kernel CLI exec), **ordinary merge**
+  (git merge + testCmd exec), **critic-detach** (git checkout --detach). The choreography
+  prose (`wave-merge.md`'s setup/merge/adopt/reconcile-sweep contracts, `INTEGRATION_WT`,
+  the sweep rules, most of GUARD) is deleted with them.
+- The five judgment sites keep **only judgment**: implementer (task + test command, edit
+  your tree — the driver captures the diff), reviewer (here is the patch, here is the
+  verdict schema), fix (here are the issues, edit in place), resolver (here are the hunks),
+  critic (read-only completeness). Acquisition choreography — packet paths, fallback
+  chains, anchor-to-BASE rituals — dissolves because the driver hands content in and
+  captures content out.
+- **The fleet engine stops loading `waves.js`** and implements the wave control flow
+  (scheduling, retries, fix loop, escalation — the judgment-flow logic, which is sound)
+  natively in `fleet/`. Stage 4's "move the harness into fleet/" is pulled forward as a
+  rewrite-by-subtraction, not a port. `waves.js` itself is **untouched** and remains the
+  Workflow-path fallback until cutover, exactly as §10 promised.
+
+### The decision method that came out of the same contemplation (recorded as doctrine)
+
+**The fold merges claims; isolation protects attribution.** A concurrent write that is an
+authored claim (owner, declared intent, place in the review chain) is merged — isolation
+there costs width for nothing. A write entering another owner's attribution surface (their
+clone, their patch file) is made inexpressible — "merging" it would launder unreviewed
+bytes into a reviewed identity, and this isolation costs zero width because no legitimate
+task needs it. The tie-breaker is empirical: a denied class that keeps firing with
+legitimate work behind it means the write should be *promoted to a claim* (an owned,
+attributed channel, as the driver-captured patch replaced the model-written packet), never
+that the boundary should soften. 25 runs of denial logs: two harmless /tmp probes, zero
+blocked legitimate work.
+
+### Declined in the same sitting, with reasons
+
+- **Native OS sandbox (Seatbelt/bubblewrap)**: the VM is the sandbox against the outside
+  world; intra-VM worker-vs-worker integrity is the confine-hook's job, the acceptance
+  chain (independent review + integrated suite) is the defense in depth, and a new platform
+  dependency during a subtraction phase buys ~nothing. **The confine-hook stays as-is** —
+  ~200 lines of deterministic code, zero prose, measured to hold under `bypassPermissions`
+  (probe 2026-08-29): the phase enemy is load-bearing prose, and the hook is load moved
+  *off* prose.
+- **Agent SDK**: bills through the API; the engine's economics are the individual
+  subscription via `claude -p` OAuth, and the no-API-key rule stands. Nothing in the
+  simplification needs it.
+- **celld (self-hosted Durable Objects)**: wrong consistency model (single-owner
+  linearization vs. our CRDT row/cell doctrine), can't host the compute half (no git, no
+  subprocesses), and reintroduces a long-lived stateful service where doctrine says nothing
+  outlives a drive. No trigger has fired. Not filed, on the operator's instruction.
+
+### What this overrides, explicitly
+
+- **Spec §10 stage 2** ("port, don't rewrite; the old path is untouched and remains the
+  fallback until the first self-hosted run passes") is **half-lifted, by the operator's
+  sequencing call: simplify first, then validate.** Runs 24/25 already validated the risky
+  halves (worker dispatch, patch capture, fold kernel, gate, publish); what remains
+  unvalidated is exactly the choreography this amendment deletes, and validating prose
+  scheduled for deletion spends a run on evidence with no future. The *untouched-fallback*
+  half of §10 still holds: `waves.js` and the Workflow path are not edited.
+- **The pre-registered cutover bar transfers unchanged** to the simplified engine: run-26
+  is its first run — gate-green, `reported == ledger`, width-2, the orchestrator opens a
+  READY PR.
