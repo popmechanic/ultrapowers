@@ -234,10 +234,11 @@ const GUARD =
   'dedicated integration worktree, which those write-side roles may modify and ' +
   'in which the critic is read-only apart from its sha-verified detach below. ' +
   'The setup role is additionally ' +
-  'authorized to run git worktree add from the session repo root to CREATE that ' +
+  'authorized to run git worktree add from the working directory it started in ' +
+  'to CREATE that ' +
   'integration worktree: it necessarily runs before the worktree exists, and ' +
   'writes only git metadata plus the new worktree directory; creating it is the ' +
-  "setup role's only permitted session-root action. Review roles (the per-task " +
+  "setup role's only permitted action outside that worktree. Review roles (the per-task " +
   'reviewer and the completeness critic) are READ-ONLY: they read the diff or a ' +
   'detached inspection checkout and never write files, create commits, stage ' +
   'changes, check out or switch a branch, or otherwise mutate a working tree — ' +
@@ -246,7 +247,8 @@ const GUARD =
   "run's dedicated integration worktree, which releases the integration branch " +
   'for the gate and never touches the session checkout. The per-task ' +
   "reviewer's sanctioned location is the session launch directory itself, " +
-  'non-isolated and read-only, judging from the pre-baked review packet (or ' +
+  'non-isolated and read-only, judging from the driver-captured patch or the ' +
+  'pre-baked review packet (or ' +
   'the read-only object-store diff fallback) — it claims no worktree of its ' +
   'own. You operate in ' +
   "the workflow's launch working directory, the session repository; never " +
@@ -287,8 +289,8 @@ const IMPLEMENTER_PROMPT = [
   '',
   'Self-verify before reporting:',
   '- Re-read the task. Confirm every stated requirement is addressed.',
-  '- Generate the review packet for your BASE..HEAD first: run bash <pluginRoot>/skills/ultrapowers/scripts/review-package <BASE> <HEAD> <runDir>/review/ (your committed HEAD; the trailing slash makes the last argument a target directory receiving the default-named packet). It writes the commits and the git diff -U10 under the run scratch dir — outside anything git tracks — and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced.',
-  '- Read the packet\'s ## Files changed section (the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, treat it as the task\'s expected footprint, not a fence: a modified path outside it is allowed when the task requires it (sibling-owned paths excepted — see SIBLING FILES) — a plan-mandated gate command or check is forcing context, not a scope violation — but disclose every such path as a concerns entry prefixed out-of-FILES: naming the path and why, and report DONE_WITH_CONCERNS. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
+  '- Generate the review packet for your BASE..HEAD first: run bash <pluginRoot>/skills/ultrapowers/scripts/review-package <BASE> <HEAD> <runDir>/review/ (your committed HEAD; the trailing slash makes the last argument a target directory receiving the default-named packet). It writes the commits and the git diff -U10 under the run scratch dir — outside anything git tracks — and echoes the packet path as its last stdout line. Report that echoed path so the reviewer reads the exact diff you produced. Patch-capture exception: when your inputs carry a PATCH CAPTURE line, skip this step entirely — the driver captures your diff against BASE itself after you finish and the reviewer reads that capture, so no packet exists and you write nothing outside your worktree; report no packet path, and read your footprint with git diff --stat <BASE> HEAD instead.',
+  '- Read your change footprint — the packet\'s ## Files changed section, or the git diff --stat you just ran under a PATCH CAPTURE line (either way the git diff --stat of your BASE..HEAD): verify no unrelated files are modified. If FILES is present, treat it as the task\'s expected footprint, not a fence: a modified path outside it is allowed when the task requires it (sibling-owned paths excepted — see SIBLING FILES) — a plan-mandated gate command or check is forcing context, not a scope violation — but disclose every such path as a concerns entry prefixed out-of-FILES: naming the path and why, and report DONE_WITH_CONCERNS. NEVER delete a file outside FILES — if the task seems to demand it, STOP and report BLOCKED explaining why.',
   '- Confirm no secrets, no commented-out debug code, no TODOs introduced.',
   '',
   'Report your worktree coordinates: include git branch --show-current and git rev-parse HEAD in your response so the merge step can map task branch commit.',
@@ -396,7 +398,8 @@ const SETUP_PROMPT = resume
      'report BLOCKED with the porcelain output — never absorb pre-existing dirt into ' +
      "the run's diff. If " + INTEGRATION_WT + ' does not exist, run ' +
      'git worktree add ' + INTEGRATION_WT + ' ' + integrationBranch + ' from the ' +
-     'session repo root. ' + setupBootstrapLine +
+     'working directory you started in — never any other checkout of this ' +
+     'repository, even if one is reachable. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT +
      ': ' + testInstruction + ' and record whether it passes. ' +
      'Report the branch name, its HEAD sha, and the baseline result in your JSON result.')
@@ -408,7 +411,8 @@ const SETUP_PROMPT = resume
      'refuse, report headSha as the empty string and put BLOCKED: ' +
      INTEGRATION_WT + ' exists — remove it with sweep_worktrees.sh --run wf_' +
      stamp + ' in branch; never report a real branch name or sha for a worktree ' +
-     'you did not create. Otherwise, from the session repo root run: ' +
+     'you did not create. Otherwise, from the working directory you started in ' +
+     '— never any other checkout of this repository, even if one is reachable — run: ' +
      'git worktree add ' + INTEGRATION_WT + ' -b ' + integrationBranch +
      (baseBranch ? (' ' + baseBranch) : '') + '. ' + setupBootstrapLine +
      'Then establish the test baseline inside ' + INTEGRATION_WT + ': ' +

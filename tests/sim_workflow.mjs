@@ -548,13 +548,16 @@ async function scenarioIntegrationWorktree() {
   // GUARD coherence: the SAFETY block must POSITIVELY authorize the two actions
   // the choreography requires, or every agent has to choose between its role
   // prompt and the guard. (a) setup necessarily runs `git worktree add` from the
-  // session repo root, before the worktree exists; (b) the critic's sha-verified
-  // detach happens inside that worktree and is what releases the branch.
+  // working directory it started in (the session repo root under the Workflow
+  // runtime, the integration clone under the driver — the run-25 fetch-miss was
+  // setup escaping its clone to obey a "session repo root" instruction), before
+  // the worktree exists; (b) the critic's sha-verified detach happens inside
+  // that worktree and is what releases the branch.
   assert(prompts['setup'].includes(
-    'git worktree add from the session repo root to CREATE that integration worktree'),
+    'git worktree add from the working directory it started in to CREATE that integration worktree'),
     'intwt/guard: GUARD authorizes setup to create the integration worktree')
-  assert(prompts['setup'].includes('only permitted session-root action'),
-    'intwt/guard: GUARD bounds setup to that single session-root action')
+  assert(prompts['setup'].includes('only permitted action outside that worktree'),
+    'intwt/guard: GUARD bounds setup to that single out-of-worktree action')
   assert(prompts['integration'].includes(
     'the single sanctioned exception is the completeness critic'),
     'intwt/guard: GUARD sanctions the critic detach as the one read-only exception')
