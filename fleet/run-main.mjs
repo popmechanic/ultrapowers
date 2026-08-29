@@ -414,7 +414,13 @@ export async function runMain(parsed, deps = {}) {
   // 4. The engine. CLAUDE_CONFIG_DIR points into the run tree (spec §5) so
   // every transcript is evidence; the credential rides the inherited env
   // (CLAUDE_CODE_OAUTH_TOKEN from the shim's per-run env file) untouched.
-  const workerEnv = { ...env, CLAUDE_CONFIG_DIR: tree.configDir, FLEET_RUN_DIR: runDir }
+  // DISABLE_AUTOUPDATER: headless `-p` sessions check for updates too (docs:
+  // "on startup and periodically"), and #382 measured that the shared cache
+  // prefix is keyed on CLI version — a mid-wave version roll costs every later
+  // worker ~18k tokens. CLI versions move only through fleet/update-cli.sh,
+  // where the parity probes run at the moment of change.
+  const workerEnv = { ...env, CLAUDE_CONFIG_DIR: tree.configDir, FLEET_RUN_DIR: runDir,
+                      DISABLE_AUTOUPDATER: '1' }
   // The live patch base: wave 1 captures against BASE; runEngine advances
   // `current` to each adopted integration head so later waves diff against
   // the tree they actually built on (see run-engine.mjs patchBase).
