@@ -28,6 +28,7 @@ import { pathToFileURL } from 'node:url'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { runShim, connectOpenWs, deliverAndClose } from './shim.mjs'
+import { startEventPromoter } from './events-bridge.mjs'
 
 export const ASSIGNMENT_PATH = '/home/exedev/fleet-run.json'
 export const REPO_DIR = '/home/exedev/repo'
@@ -1166,7 +1167,25 @@ export const main = async ({
     ttlMs,
     invokeRun:
       invokeRun ??
-      (() => invokeEngineRun({ repoDir, planPath, sessionId, runId, engine, exec, spawnEngine, excludeDirs: preRunDirs })),
+      (async () => {
+        // #421: promote the engine's events.jsonl to `events` store rows
+        // while the run executes — the shim already holds the synced store,
+        // so each event reaches every subscriber (orchestrator, laptop watch
+        // client) live instead of surfacing only in the teardown pull. The
+        // promoter tolerates the file not existing (it appears after
+        // preflight) and is stopped — with a final drain — before the engine
+        // outcome is returned, so the terminal events precede the publish
+        // signal the driver waits on.
+        const promoter = startEventPromoter({
+          store, runId,
+          file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'events.jsonl'),
+        })
+        try {
+          return await invokeEngineRun({ repoDir, planPath, sessionId, runId, engine, exec, spawnEngine, excludeDirs: preRunDirs })
+        } finally {
+          promoter.stop()
+        }
+      }),
     readReportTokens: readTokens,
   })
 

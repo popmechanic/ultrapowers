@@ -21,6 +21,7 @@ import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from '.
 import { isSafeBranchName, isSafeRepoPath, isSafeSha, sandboxIdFor, MANIFEST_PATH } from './shim-main.mjs'
 import { claimState, totalSpent } from './store.mjs'
 import { assessHeadlessFitness } from './fitness.mjs'
+import { mintToken } from './tokens.mjs'
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -714,6 +715,30 @@ export const driveOne = async ({
   const { store, sweep, heartbeat, stop } = orchestrator
   const effectivePort = orchestrator.port
   const resolvedWsUrl = wsUrl ?? `ws://${wsHost}:${effectivePort}/${FLEET_PATH}`
+
+  // #421: mint a READ-side observer token and write its coordinates beside the
+  // db, so a watch client (fleet/watch.mjs, tunneled or local) can subscribe
+  // to the same store the sandboxes sync — live push instead of ssh-tailing a
+  // log. Same mint/verify path as sandbox tokens (tokenRecords is read by
+  // reference on every handshake); the TTL is the drive's own, so the token
+  // dies with the run it observes.
+  {
+    const { token: observerToken } = (() => {
+      const minted = mintToken({ sandboxId: 'observer', ttlMs, now: clock() })
+      tokenRecords.push(minted.record)
+      return minted
+    })()
+    try {
+      fs.writeFileSync(path.join(dbDir, 'observer.json'), JSON.stringify({
+        port: effectivePort,
+        path: FLEET_PATH,
+        url: `ws://127.0.0.1:${effectivePort}/${FLEET_PATH}?token=${observerToken}`,
+        expiresAt: clock() + ttlMs,
+      }, null, 2))
+    } catch (error) {
+      console.error(`drive: observer.json not written (${error?.message ?? error}) — watch client unavailable this run`)
+    }
+  }
 
   let sweeping = false
   const runSweep = () => {
