@@ -310,7 +310,7 @@ const REVIEWER_PROMPT = [
   'Attention lens: when GLOBAL CONSTRAINTS are provided, they are binding requirements the spec demands — gate the diff against every one of them. When INTERFACES are provided, confirm the diff produces the named Produces contract with the stated types and uses each Consumes symbol as named, so neighboring tasks that depend on it stay satisfiable.',
   '',
   'Spec compliance:',
-  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written under the run scratch dir <runDir>/review/). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, or its recorded base does not match the BASE in your inputs, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
+  '1. Read the pre-baked review packet at the path the implementer reported (the commits and git diff BASE...HEAD for this task, written under the run scratch dir <runDir>/review/). Do not run git. Guarded fallback: if no packet path was reported, the file is missing, or its recorded HEAD does not match the implementer HEAD, or its recorded base does not match the BASE in your inputs, recover the diff read-only with git diff <BASE> <HEAD> using the BASE and HEAD shas in your inputs — both commits live in the shared object store, so this needs no checkout. Patch-input exception: when your inputs carry a PATCH line, no task commit exists in any shared object store — if the packet is unusable, the guarded fallback is to read the diff directly from the patch file named by PATCH (the driver-captured diff of the task tree against BASE); do not run git to recover it. You run non-isolated on the shared main checkout alongside concurrent reviewers; never check out a branch or detach any tree.',
   '2. Map every acceptance criterion in the task to a concrete line or test in the diff. Flag any criterion with no corresponding evidence as a blocking issue.',
   '3. Flag anything in the diff that is NOT required by the task (scope creep, unrelated refactors, leftover debug code).',
   'When FILES (the task\'s declared file scope) is provided, it is the task\'s expected footprint, not a fence: a deletion of any file that exists at BASE but is not named in FILES is automatically a blocking issue; a modification outside FILES is advisory — report it as a minor issue naming the path, and judge whether the change itself is required by the task under item 3 (a plan-mandated gate command or check the task must satisfy is forcing context, never a scope violation). The out-of-FILES footprint is itself at most a minor finding, disclosed or not; judge the change\'s own content under the other items at its true severity. Sibling-owned paths are never footprint — the SIBLING FILES rule governs them, and creating or modifying one stays blocking.',
@@ -916,8 +916,24 @@ const isMergeable = (r) => r && r.status === 'done' && hasCoordinates(r)
 // the capture comment forbids, and it is stripped before any guard reads it.
 // Otherwise a worker could name any readable file and the kernel would
 // `git apply` unreviewed bytes into the wave candidate (#402 obligation 1).
+//
+// The flag itself is configuration, and configuration can travel without its
+// producer (a launch template could carry `patchInput: true` with no driver
+// wrapping the agent — re-opening the hole verbatim). So the driver passes the
+// PATCHES DIRECTORY it owns as the flag's value: a string arms patch input AND
+// anchors trust to that path prefix, so a reply's patch is honoured only where
+// the driver's own capture writes. Boolean true still arms the flag (the sims
+// use it) but anchors nothing — driver launches pass the directory.
 const PATCH_INPUT = !!(args && args.patchInput)
-const stripUntrustedPatch = (r) => { if (r && !PATCH_INPUT) delete r.patch; return r }
+const PATCH_PREFIX = (args && typeof args.patchInput === 'string' && args.patchInput.charAt(0) === '/')
+  ? (args.patchInput.endsWith('/') ? args.patchInput : args.patchInput + '/')
+  : null
+const stripUntrustedPatch = (r) => {
+  if (!r) return r
+  if (!PATCH_INPUT) { delete r.patch; return r }
+  if (PATCH_PREFIX && r.patch != null && !String(r.patch).startsWith(PATCH_PREFIX)) delete r.patch
+  return r
+}
 
 // Threaded into implementer/reviewer dispatches so task agents run the project's
 // actual test command instead of guessing ("pnpm check or equivalent"). A task
@@ -1190,6 +1206,7 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
       taskBodyBlock(task) + '\nBRANCH: ' +
       (impl.branch || '(none — patch input; the work is the worktree HEAD named below)') +
       '\nHEAD: ' + impl.headSha +
+      (impl.patch ? '\nPATCH: ' + impl.patch : '') +
       '\nBASE: ' + baseSha + filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task)
     const reviewOpts = (pass) => ({
       label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),

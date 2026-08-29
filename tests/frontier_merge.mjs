@@ -1606,6 +1606,32 @@ async function scenarioModelTypedPatchStrippedWithoutDriver() {
   console.log('scenario 12f model-typed-patch-stripped: OK')
 }
 
+// The trust anchor (#402): a driver passes its patches DIRECTORY as the
+// patchInput value, and a reply's patch is honoured only under that prefix.
+// A model-typed path elsewhere — readable, plausible, hostile — is stripped
+// even though patch input is armed.
+async function scenarioPatchOutsideAnchorStripped() {
+  const calls = []
+  const agent = makeAgent(calls, (label) => {
+    if (label === 'impl:A') return patchImpl('A')                    // under the anchor
+    if (label === 'impl:B') return { ...patchImpl('B'), patch: '/etc/hostile.patch' }
+    if (label === 'merge:wave1:fold') return cleanFoldReply()
+    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-12g' }
+    if (label === 'merge:wave1') return { status: 'MERGED', headSha: 'plain-merge:wave1' }
+    return undefined
+  })
+  const r = await runWorkflow({ agent,
+    args: argsFor(contendedWave(), { patchInput: RUN_DIR + '/patches' }), budget: undefined })
+  const a = r.tasks.find((x) => x.task === 'A')
+  const b = r.tasks.find((x) => x.task === 'B')
+  assert(a.status !== 'failed', '12g: a patch under the anchor is honoured')
+  eq(b.status, 'failed', '12g: a patch outside the anchor is stripped → lost coordinates')
+  eq(b.reviewVerdict, 'lost-coordinates', '12g: recorded as lost-coordinates')
+  assert(!calls.some((c) => c.prompt && c.prompt.indexOf('/etc/hostile.patch') !== -1),
+    '12g: the hostile path never reaches a kernel command')
+  console.log('scenario 12g patch-outside-anchor-stripped: OK')
+}
+
 // The fix round under patch input: the prompt derives the prior tip from HEAD
 // (a patch result has no branch — `git rev-parse ''` would make a compliant
 // fix agent report BLOCKED forever), and the fixed task merges.
@@ -1687,6 +1713,7 @@ async function scenarioPatchRunKeepsCriticPredicate() {
 await scenarioPatchUncontendedRoutesToFold()
 await scenarioPatchFoldFallbackBlocksCleanly()
 await scenarioModelTypedPatchStrippedWithoutDriver()
+await scenarioPatchOutsideAnchorStripped()
 await scenarioPatchFixRoundDerivesHead()
 await scenarioPatchBudgetExhaustionDefers()
 await scenarioPatchRunKeepsCriticPredicate()

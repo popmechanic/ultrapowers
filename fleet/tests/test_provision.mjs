@@ -82,6 +82,7 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   assert.equal(payload.wsUrl, 'ws://127.0.0.1:8151/fleet')
   assert.equal(payload.ttlMs, 60000)
   assert.equal(payload.planPath, 'docs/superpowers/plans/2026-08-21-width-w1.md', 'the plan path is delivered to the sandbox')
+  assert.ok(!('engine' in payload), 'no engine key when unset — old assignments stay byte-identical')
 
   // Step 5: base push — via `-c core.sshCommand=` carrying the same flags,
   // since a bare `ssh://` URL gives git no way to pass ssh options.

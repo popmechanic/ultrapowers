@@ -144,6 +144,20 @@ assert.throws(() => parseArgs(['p.md', 'run-1', '--port', '--db-dir', '/x']), /-
 assert.throws(() => parseArgs(['p.md', 'run-1', '--port', 'eighty']), /--port must be a number/)
 ok('unknown flags, missing values and non-numeric numerics refuse')
 
+// --engine: 'one-driver' rides through; anything else refuses on the laptop
+// (the shim would silently take the claude path for a typo).
+{
+  const deps = { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) }
+  assert.equal(parseArgs(['p.md', 'run-1', '--engine', 'one-driver']).engine, 'one-driver')
+  assert.throws(() => parseArgs(['p.md', 'run-1', '--engine', 'onedriver']), /--engine accepts only/)
+  assert.ok(!('engine' in buildDriveOptions(parseArgs(['p.md', 'run-1']), deps)),
+    'no engine key when unset')
+  assert.equal(buildDriveOptions(parseArgs(['p.md', 'run-1', '--engine', 'one-driver']), deps).engine,
+    'one-driver')
+}
+ok('--engine one-driver threads through; a typo refuses')
+
+
 assert.throws(() => parseArgs(['p.md', 'run 1']), /#211/)
 assert.throws(() => parseArgs(['p.md', 'run/1']), /#211/)
 ok('a runId is a clean token — it names the VM and the store row (#211)')
