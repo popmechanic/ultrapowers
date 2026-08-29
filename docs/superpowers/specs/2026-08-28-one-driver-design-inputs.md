@@ -564,3 +564,80 @@ forbidden by rule 3 in the same document that cited rule 3 — and it stacked th
 
 **The operator's catch, kept because it generalises:** *things go wrong when one system tries
 to graft onto another.* The bridge was the graft. It is deleted.
+
+## Amendment 9 (operator, 2026-08-29) — the kernel takes patches; the substrate stops mattering
+
+**Raised by the operator against a defect I shipped**, and it corrects the frame, not just the
+defect.
+
+### What happened
+
+Stage 1 replaced the runtime's `isolation: 'worktree'` with **independent `git clone`s**, on
+the reasoning that N concurrent workers in N worktrees are N writers to one `.git`. A
+fresh-context review found that this breaks the merge, review and critic contracts, which
+read each other's refs. I recorded that as a plumbing defect.
+
+**It is not plumbing. It breaks the CRDT path, which is what this program is for.**
+
+`compile_plan.py` has defaulted to `OVERLAP_DEFAULT = "fold"` since the 2026-08-14 counted
+A/B (**0.640× wall, 1.111× tokens**, all hard gates green): *"two tasks whose declared paths
+merely overlap are NOT ordered; they share a wave and the kernel folds their same-file edits
+at merge time."* `serialize` survives only as the rollback knob. `contendedWave()` routes an
+overlapping wave to the Manyana kernel, invoked as
+`fold --repo . --branch <task>=<branch>:<sha>` **from the integration worktree**.
+
+Independent clones mean those refs do not exist there. Fold fails; the git-merge fallback
+fails for the same reason. **A contended wave — the exact case the CRDT engine exists for —
+fails outright.** So the shipped default was broken, not a future capability missed.
+
+### The frame the operator corrected
+
+**Isolation and CRDT merging are substitutes, not complements.** Every unit of isolation
+bought is a unit of concurrency given up. Git needs isolation because git cannot merge values;
+Manyana can. A design whose thesis is *values merge* should spend as little on isolation as it
+can, and stage 1 spent the maximum available — while writing a comment praising the isolation
+and never asking what it cost.
+
+### The amendment
+
+**The fold kernel takes PATCHES AGAINST BASE, not git refs, and that change happens in the
+cutover (#402) — not in #360.**
+
+Folding is a function of **content**; only the adapter makes it a function of git. With patch
+input:
+
+| | |
+|---|---|
+| shared refs / object store | **not needed** — no shared mutable state anywhere |
+| the substrate choice (worktree vs clone) | **stops mattering**; isolation's only job is a stable read-view *during* a task |
+| the missing task branch (review finding #2) | **evaporates** — there is no branch to report |
+| fold | becomes the **only** merge path, not the contention fallback |
+| the git-merge / reconcile / resolver machinery | becomes **deletable**, on measurement |
+| `Files:` | stops being a scheduling input at all — review scope, not wave shape |
+
+**The prize is not simultaneous editing.** CRDTs give convergence, not coherence: two workers
+can converge on code neither intended and that does not compile. The gain is **not having to
+predict overlap in advance** — wider waves, simpler plans, and no penalty for an imperfect
+`Files:` block, which today either serializes a wave that needed no ordering or misses a race.
+
+### What this overrides, explicitly
+
+- **Spec §11** listed the merge kernel as out of scope — *"`fold_wave.py` and the
+  reconciliation semantics port unchanged; Map #360 owns it."* **Lifted for the input shape
+  only.** `kernel/vendor/manyana.py` stays sha-pinned and unpatched; the layering rule holds
+  (**Manyana merges values, TinyBase coordinates the index**).
+- **Spec §10's one-new-idea-per-stage rule** is knowingly bent. The operator's reason:
+  otherwise #402 ships a substrate decision it then throws away, and the program pays for two
+  cutovers instead of one.
+- **The risk is recorded, not argued away:** this stacks a second novelty on the run that must
+  prove the driver. If that run fails, "which novelty failed" is a question the run cannot
+  answer by itself. The mitigation is ordering — land and green the patch-input kernel against
+  the existing sims *before* the first self-hosted run, so the run tests one new thing.
+
+### And the measurement this exists for
+
+**Re-run the fold-vs-serialize A/B on the driver.** The 0.640× number is from 2026-08-14, on
+the old engine, at the widths then reachable. Width is now measured **flat to 12 concurrent
+workers with zero failures** (#398). Fold-versus-serialize is a different question at width 12
+than at width 3, and that A/B is the concrete evidence for whether allowing overlap pays at
+width. `ab_runner` re-armed on the driver is already 0.3.0 scope (§9).
