@@ -153,7 +153,7 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, engine, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
   // Validate the payload before the first ssh (#190): `JSON.stringify` silently
   // drops `undefined` fields, so an unvalidated caller mistake does not fail
   // here — it fails two stages later, on the sandbox, with a payload missing
@@ -207,7 +207,10 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
 
   // 4. Deliver the token + run assignment. The payload rides a heredoc inside
   //    the single exec(cmd) string, since exec has no separate stdin channel.
-  const payload = { runId, token, wsUrl, ttlMs, planPath }
+  // `engine` rides only when set: JSON.stringify drops undefined, and an
+  // absent key IS the old path — the shim treats anything but 'one-driver'
+  // as the `claude` launch, so old assignments stay valid byte-for-byte.
+  const payload = { runId, token, wsUrl, ttlMs, planPath, ...(isNonEmptyString(engine) ? { engine } : {}) }
   await exec(
     `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
   )

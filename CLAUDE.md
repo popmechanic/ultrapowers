@@ -49,7 +49,13 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   test data by `tests/test_compile_plan.py`.
 - `fleet/` — Width Program W1 (spec `docs/superpowers/specs/2026-08-21-width-program.md`):
   orchestrator (TinyBase ws-server + guard + spend authority), sandbox run shim, exe.dev
-  provisioner, drive-one driver, `RUNBOOK.md` for the live run. Own npm deps in
+  provisioner, drive-one driver, `RUNBOOK.md` for the live run. **One Driver engine
+  (#402):** `run-worker.mjs` (`agent()` backed by one `claude -p`), `run-waves.mjs` (the
+  five other injected globals + clones-at-BASE + `withPatchCapture`), `run-main.mjs` (the
+  deterministic engine entry — replaces the LLM `/ultrapowers` §Engine session), and
+  `confine-hook.mjs` (the implementer's `PreToolUse` boundary). Live via
+  `drive-one.mjs --engine one-driver`; the `claude` skill path stays the fallback until
+  the first self-hosted run passes (spec §10 stage 2). Own npm deps in
   `fleet/package.json`; tests join the suite via `tests/test_fleet_suite.py`. Not plugin
   machinery — changes here never require a plugin release.
 

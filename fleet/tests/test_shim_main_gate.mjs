@@ -26,6 +26,8 @@ import {
   findRunReportFile,
   spawnEngineProcess,
   invokeEngineRun,
+  oneDriverArgs,
+  readRunConfigTokens,
 } from '../shim-main.mjs'
 
 let passed = 0
@@ -276,6 +278,70 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
   )
   fs.rmSync(repo, { recursive: true, force: true })
   ok('discovery scoping excludes pre-run dirs; newest-wins pinned (#190)')
+}
+
+
+// --- 16. the one-driver engine mode (#402) -----------------------------------
+{
+  const t16 = tmp()
+  // (a) the launch argv is pinned, like engineArgs: the driver module from the
+  // checkout, then plan and runId — no directive rides it (ackDecision is code).
+  assert.deepEqual(
+    oneDriverArgs('/repo', 'docs/plan.md', 'run-24'),
+    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'],
+  )
+  // (b) engine: 'one-driver' spawns node with that argv from the checkout and
+  // SKIPS the plugin install (the checkout IS the engine on this path).
+  const cmds = []
+  const spawns = []
+  const outcome = await invokeEngineRun({
+    repoDir: t16,
+    planPath: 'docs/plan.md',
+    runId: 'run-24',
+    engine: 'one-driver',
+    exec: async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '' } },
+    spawnEngine: async (call) => { spawns.push(call); return 1 },
+    log: () => {},
+  })
+  assert.equal(spawns.length, 1)
+  assert.equal(spawns[0].command, 'node')
+  assert.deepEqual(spawns[0].args, oneDriverArgs(t16, 'docs/plan.md', 'run-24'))
+  assert.equal(spawns[0].cwd, t16)
+  assert.equal(spawns[0].runId, 'run-24')
+  assert.ok(!cmds.some((c) => /plugin/.test(c)), 'no plugin install on the one-driver path')
+  assert.ok(cmds.some((c) => /checkout -q fleet-base/.test(c)), 'the BASE_REF checkout still happens first')
+  assert.equal(outcome.gateGreen, false, 'a non-zero driver exit is never green')
+  // (c) any other engine value takes the claude path (old assignments stay valid)
+  const spawns2 = []
+  await invokeEngineRun({
+    repoDir: t16,
+    planPath: 'docs/plan.md',
+    runId: 'run-25',
+    engine: undefined,
+    exec: async (cmd) => ({ code: 0, stdout: /plugin list/.test(cmd) ? '[]' : '' }),
+    spawnEngine: async (call) => { spawns2.push(call); return 1 },
+    log: () => {},
+  })
+  assert.equal(spawns2.length, 1)
+  assert.notEqual(spawns2[0].command, 'node', 'absent engine key = the claude launch')
+  ok('one-driver mode: pinned argv, no plugin install, checkout kept, fallback preserved')
+}
+
+// --- 17. readRunConfigTokens sums every transcript under the run config dir --
+{
+  const t17 = tmp()
+  const configDir = path.join(t17, 'claude')
+  assert.deepEqual(readRunConfigTokens(configDir), { total: null, files: 0 },
+    'absent dir reads null, not 0 — the §W1d number|null shape survives')
+  const proj = path.join(configDir, 'projects', '-repo-x')
+  fs.mkdirSync(proj, { recursive: true })
+  const line = (n) => JSON.stringify({ message: { usage: { output_tokens: n } } }) + '\n'
+  fs.writeFileSync(path.join(proj, 'aaaa.jsonl'), line(10) + line(5))
+  const nested = path.join(proj, 'aaaa', 'subagents')
+  fs.mkdirSync(nested, { recursive: true })
+  fs.writeFileSync(path.join(nested, 'agent-1.jsonl'), line(7))
+  assert.deepEqual(readRunConfigTokens(configDir), { total: 22, files: 2 })
+  ok('readRunConfigTokens: recursive sum keyed by the run-owned dir, null when empty')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

@@ -409,6 +409,11 @@ export function createRunWorker(cfg) {
   const {
     runId, workersDir, cwdFor, promptFileFor, settingsFor, addDirsFor,
     env = process.env, cli = 'claude', timeoutMs = 30 * 60 * 1000, graceMs = 10 * 1000,
+    // Per-role wall-clock deadlines (role -> ms). A read-only reviewer that is
+    // still running at the implementer's deadline is not "thorough", it is
+    // wedged — and one shared deadline sized for the slowest role hides that
+    // for every faster one. Falls back to `timeoutMs` for roles it omits.
+    timeoutMsFor,
     maxTurns, maxBudgetUsd, effortFor, onEvent = () => {}, spawnFn = spawn,
   } = cfg
 
@@ -466,7 +471,9 @@ export function createRunWorker(cfg) {
     onEvent({ kind: 'worker:start', label: opts.label, role, sessionId, cwd, model: opts.model || null })
 
     const { exitCode, stdout, stderr, timedOut } = await runProcess({
-      cli, argv, cwd, env, prompt, timeoutMs, graceMs, spawnFn,
+      cli, argv, cwd, env, prompt,
+      timeoutMs: (timeoutMsFor && timeoutMsFor(role)) || timeoutMs,
+      graceMs, spawnFn,
     })
     const envelope = lastResult(stdout)
     if (dir) {

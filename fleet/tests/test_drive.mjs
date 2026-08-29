@@ -233,11 +233,11 @@ try {
     // transcripts and the gitignored run dirs die with the VM, and every live
     // diagnosis depended on them. The driver pulls them — small artifacts only,
     // never the whole repo — exactly once, and strictly before the `rm`.
-    const pullIdx = exec.cmds.findIndex((c) => c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz 'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects `))
+    const pullIdx = exec.cmds.findIndex((c) => c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz 'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects `))
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     assert.ok(pullIdx >= 0, `expected a sandbox log pull, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(pullIdx < rmIdx, 'sandbox logs are pulled BEFORE the sandbox is destroyed')
-    assert.equal(exec.cmds.filter((c) => /tar czf - shim\.log/.test(c)).length, 1, 'the log pull fires exactly once')
+    assert.equal(exec.cmds.filter((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)).length, 1, 'the log pull fires exactly once')
     const pullCmd = exec.cmds[pullIdx]
     assert.ok(/repo\/\.claude\/ultrapowers\/run-/.test(pullCmd) || /run-\*\//.test(pullCmd), `the pull must include the gitignored run dirs, got: ${pullCmd}`)
     assert.ok(/> \S+\/sandbox-logs\.tgz$/.test(pullCmd), `the pull must land in a sandbox-logs.tgz, got: ${pullCmd}`)
@@ -586,7 +586,7 @@ try {
       }, 30)
     })
     const exec = async (cmd) => {
-      if (/tar czf - shim\.log/.test(cmd)) {
+      if (/tar czf - --exclude=[^ ]* shim\.log/.test(cmd)) {
         inner.cmds.push(cmd)
         throw new Error('ssh: connect to host fleet-run-drive-7b.exe.xyz port 22: Connection timed out')
       }
@@ -602,7 +602,7 @@ try {
     })
     await sandbox
 
-    assert.equal(exec.cmds.filter((c) => /tar czf - shim\.log/.test(c)).length, 1, 'the pull is attempted exactly once')
+    assert.equal(exec.cmds.filter((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)).length, 1, 'the pull is attempted exactly once')
     assert.ok(
       exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
       `the sandbox is destroyed even though the pull failed, got: ${JSON.stringify(exec.cmds)}`,

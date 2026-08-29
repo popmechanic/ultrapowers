@@ -249,7 +249,8 @@ export function defaultTaskIdOf(label) {
 // the unrecognized-label one: a worktree dispatch whose label taskIdOf cannot
 // read must not pass a model-typed patch through the wrapper.
 export function withPatchCapture({ agent, clonesDir, base, patchesDir,
-                                   git = defaultGit, taskIdOf = defaultTaskIdOf }) {
+                                   git = defaultGit, taskIdOf = defaultTaskIdOf,
+                                   onEvent = () => {} }) {
   // ONE label→directory mapping: makeCwdFor already owns it (and its
   // fail-loud missing-clone error). A second copy here is where a clone-
   // naming change would silently make the capture diff a different tree
@@ -257,8 +258,13 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
   const cwdFor = makeCwdFor({ clonesDir, taskIdOf })
   return async (prompt, opts) => {
     const reply = await agent(prompt, opts)
-    if (!reply || !opts || opts.isolation !== 'worktree') return reply
+    if (!reply) return reply
+    // EVERY reply loses any model-typed patch, not only the isolated ones a
+    // capture replaces: a reviewer or merge reply carrying `patch` is the
+    // same unverified coordinate, and the engine-side prefix strip is the
+    // second wall, not the first.
     delete reply.patch
+    if (!opts || opts.isolation !== 'worktree') return reply
     try {
       const cwd = cwdFor(opts)
       const id = taskIdOf(opts.label)
@@ -270,6 +276,10 @@ export function withPatchCapture({ agent, clonesDir, base, patchesDir,
       reply.branch = ''
       reply.headSha = ''
       reply.captureError = String((e && e.message) || e)
+      // The event log is captureError's reader: without this, a systematic
+      // driver-side capture failure reads as N independent worker failures
+      // (lost-coordinates each), and nothing names the common cause.
+      onEvent({ kind: 'capture:error', label: opts.label, detail: reply.captureError })
     }
     return reply
   }
@@ -330,10 +340,12 @@ export function makeEventLog({ file, runId, base, source = 'fleet/run-waves.mjs'
   fs.mkdirSync(path.dirname(file), { recursive: true })
   // ONE stamp site: id and ts come from the same Date.now(), so they can only
   // diverge when the monotonic clamp fires (a backwards clock step) — and then
-  // deliberately: the id stays the sort key, ts stays the wall clock.
+  // deliberately: the id stays the sort key, ts stays the wall clock. The stamp
+  // spreads LAST: an envelope carrying its own `id`/`ts` must not clobber the
+  // ULID, or the readers-order-by-id contract breaks silently.
   const append = (e) => {
     const ts = Date.now()
-    fs.appendFileSync(file, JSON.stringify({ id: ulid(ts), ts, ...e }) + '\n')
+    fs.appendFileSync(file, JSON.stringify({ ...e, id: ulid(ts), ts }) + '\n')
   }
   append({ kind: 'run:open', runId, base, source })
   return {

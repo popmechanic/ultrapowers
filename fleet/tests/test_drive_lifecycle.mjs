@@ -111,7 +111,7 @@ try {
     // every stop reason) — the pull and the destroy both fire even though the
     // sandbox never claimed anything.
     assert.ok(
-      exec.cmds.some((c) => /tar czf - shim\.log/.test(c)),
+      exec.cmds.some((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)),
       `expected the evidence pull even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
     )
     assert.ok(

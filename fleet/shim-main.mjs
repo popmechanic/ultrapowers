@@ -315,6 +315,42 @@ export const readSessionTokenSources = (sessionId, { home = os.homedir() } = {})
  */
 export const readSessionTokens = (sessionId, opts) => readSessionTokenSources(sessionId, opts).total
 
+/**
+ * The one-driver equivalent of `readSessionTokenSources`: the deterministic
+ * driver gives every worker its own `--session-id` under a per-run
+ * `CLAUDE_CONFIG_DIR` (`<runDir>/claude`), so the run's transcripts are ALL
+ * the `*.jsonl` under that directory's `projects/` — there is no main/subagent
+ * split to sentinel on. Summing every file keyed by the run-owned directory
+ * (not by session id) counts exactly this run and nothing else: no other
+ * process writes there.
+ *
+ * `total: null` when the directory or any transcripts are absent — same
+ * "reported: number|null" survival as the session reader, so the §W1d shape
+ * holds before the engine has written anything.
+ */
+export const readRunConfigTokens = (configDir) => {
+  const projectsRoot = path.join(configDir, 'projects')
+  const files = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(p)
+    }
+  }
+  walk(projectsRoot)
+  if (files.length === 0) return { total: null, files: 0 }
+  let total = 0
+  for (const file of files) total += sumTranscriptOutputTokens(file)
+  return { total, files: files.length }
+}
+
 /** Ack types inside the #281 standing grant — everything else parks. */
 export const GRANTED_ACK_TYPES = new Set(['deferred:runtime', 'deferred:external'])
 
@@ -867,6 +903,15 @@ export const engineArgs = (planPath, sessionId) => {
 }
 
 /**
+ * The one-driver launch argv (exported so a test can pin what is spawned,
+ * like `engineArgs`). No directive rides it: the standing directive was
+ * instructions for an LLM session, and this launch has none — the two-move
+ * rule it dictated is `run-main.mjs`'s `ackDecision`, code not prose.
+ */
+export const oneDriverArgs = (repoDir, planPath, runId) =>
+  [path.join(repoDir, 'fleet', 'run-main.mjs'), planPath, runId]
+
+/**
  * The engine's environment: the inherited env (the credential lives there,
  * #213) plus `ULTRAPOWERS_FLEET_RUN=<runId>` — the one signal the skill's
  * §Engine/§Client branch and `ultra_run.py`'s `fleet-run` stage read to know
@@ -930,6 +975,11 @@ export const invokeEngineRun = async ({
   planPath,
   sessionId,
   runId,
+  // 'one-driver' spawns the deterministic driver (`node fleet/run-main.mjs`)
+  // from the BASE_REF checkout instead of the `claude` skill session (#402).
+  // Anything else — including absent, the old assignments' shape — is the
+  // `claude` launch, so the old path stays the fallback (spec §10 stage 2).
+  engine,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
@@ -960,6 +1010,21 @@ export const invokeEngineRun = async ({
   if (checkedOut?.code !== 0) {
     log(`fleet: could not check out ${BASE_REF} — refusing to run against the image's HEAD`)
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
+  }
+
+  // One-driver path (#402): the checkout IS the engine — `run-main.mjs` reads
+  // waves.js and the scripts straight from the tree just checked out, so the
+  // plugin-install dance (#373's cure for the image's stale plugin) has no
+  // stale copy to cure and is skipped. The gate-receipt read is identical:
+  // the driver writes the same receipts to the same run directory.
+  if (engine === 'one-driver') {
+    const code = await spawnEngine({
+      command: 'node',
+      args: oneDriverArgs(repoDir, planPath, runId),
+      cwd: repoDir,
+      runId,
+    })
+    return { gateGreen: code === 0 && readGateGreen(findGateReceiptFile(repoDir, undefined, { excludeDirs })) }
   }
 
   // The engine under test is the checkout, not the image (#373): install the
@@ -1025,6 +1090,9 @@ export const main = async ({
   const { runId, token, wsUrl, ttlMs } = assignment
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
+  // Anything but the literal 'one-driver' — including the old assignments'
+  // absent key — is the `claude` launch (spec §10 stage 2: old path = fallback).
+  const engine = assignment.engine === 'one-driver' ? 'one-driver' : 'claude'
 
   // A run-unique session id forced onto the engine launch (`--session-id`), so
   // its transcript — and every subagent's under it — lands at a deterministic
@@ -1036,14 +1104,25 @@ export const main = async ({
   // transcripts (`readSessionTokens`). Injectable as a seam — like `invokeRun`
   // and `exec` — so a test can drive `main()` to a spend read without a real
   // engine writing a real transcript into the user's home.
-  const readTokens = readTokensOverride ?? (() => readSessionTokens(sessionId))
+  // One-driver runs write every worker transcript under the run-owned
+  // `CLAUDE_CONFIG_DIR` (`<runDir>/claude`, run-main.mjs), so the spend read
+  // is keyed by that directory rather than the session id — which no worker
+  // shares.
+  const oneDriverConfigDir = path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'claude')
+  const readTokens = readTokensOverride ??
+    (engine === 'one-driver'
+      ? () => readRunConfigTokens(oneDriverConfigDir).total
+      : () => readSessionTokens(sessionId))
 
   // The #209 sentinel's source, on the same seam. A test that injects
   // `readTokens` alone is driving the spend path, not the transcript layout —
   // reading the real (empty) sources under it would flag a shape nobody wrote,
   // so an un-overridden `readTokens` override disables the sentinel entirely.
+  // The one-driver path disables it too: its main/subagent split does not
+  // exist, so the two run-7 shapes the sentinel flags cannot occur.
   const readTokensSources =
-    readTokensSourcesOverride ?? (readTokensOverride ? null : () => readSessionTokenSources(sessionId))
+    readTokensSourcesOverride ??
+    ((readTokensOverride || engine === 'one-driver') ? null : () => readSessionTokenSources(sessionId))
 
   // A second, short-lived client alongside `runShim`'s own: `runShim` owns the
   // claim/status/spend protocol and does not expose its store, so the stamp and
@@ -1087,7 +1166,7 @@ export const main = async ({
     ttlMs,
     invokeRun:
       invokeRun ??
-      (() => invokeEngineRun({ repoDir, planPath, sessionId, runId, exec, spawnEngine, excludeDirs: preRunDirs })),
+      (() => invokeEngineRun({ repoDir, planPath, sessionId, runId, engine, exec, spawnEngine, excludeDirs: preRunDirs })),
     readReportTokens: readTokens,
   })
 

@@ -40,7 +40,12 @@ const isNonEmptyString = (value) => typeof value === 'string' && value.length > 
  */
 export const sandboxLogPullCommand = ({ vmName, dest }) =>
   `ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz ` +
-  `'cd /home/exedev && tar czf - shim.log fleet-run.json .claude/projects ` +
+  // --exclude the one-driver run tree's clones/ (run-main.mjs): they are full
+  // repo copies — N tasks + integration, .git included — and "never the repo
+  // itself" is this command's whole rule. Everything else in the run dir
+  // (events.jsonl, patches, workers, receipts, the claude/ transcripts) IS
+  // the evidence.
+  `'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects ` +
   `$(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|repo/|") 2>/dev/null' ` +
   `> ${dest}`
 
@@ -364,6 +369,11 @@ export const driveOne = async ({
   claimTimeoutMs = 10 * 60_000,
   progressLog = (line) => console.error(`[drive ${new Date().toISOString()}] ${line}`),
   engineEnv,
+  // 'one-driver' routes the sandbox's engine launch to the deterministic
+  // driver (`node fleet/run-main.mjs`) instead of the `claude` skill session
+  // (#402). Omitted = the old path, which stays the fallback until the first
+  // self-hosted run passes (spec §10 stage 2).
+  engine,
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
@@ -810,6 +820,7 @@ export const driveOne = async ({
       port: effectivePort,
       planPath,
       engineEnv,
+      engine,
       cpu: sandboxCpu,
       memory: sandboxMemory,
       disk: sandboxDisk,
