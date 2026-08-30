@@ -8,8 +8,8 @@ description: Use together with superpowers:writing-plans on EVERY implementation
 Use **together with** `superpowers:writing-plans`: that skill owns plan structure,
 TDD steps, and granularity. This skill adds the parallel-execution contract so
 `/ultrapowers` compiles the plan by parsing instead of inferring. The two blocks
-below mirror the canonical plan-markers contract (inside the ultrapowers skill)
-verbatim, pinned by an anti-drift test.
+below mirror the canonical marker contract verbatim, pinned by an
+anti-drift test.
 
 **Announce at start:** "I'm also using ultraplan to make this plan parallel-ready."
 
@@ -30,9 +30,9 @@ independence the sequential pen glides over. Five moves:
    `Produces:` the signatures; consumers `Consume:` + `Depends-on:` it and build
    against the contract in parallel.
 3. **Let same-file edits stand.** Coupling is interfaces and existence, not
-   files. The compiler no longer serializes same-file text writes in any form —
-   the fold path owns them and resolves concurrent edits at merge — so a shared
-   hot file is never a reason to reshape a plan. Three old workarounds are
+   files. The compiler never serializes same-file text writes: the fold
+   path resolves concurrent edits at merge, so a shared hot file is never a
+   reason to reshape a plan. Three old workarounds are
    authoring **defects**: splitting a feature or a file to dodge a collision;
    chaining a fan of independent tasks to serialize writers; adding
    `Depends-on` for file overlap alone. Let colliding `Modify` lines collide.
@@ -218,6 +218,8 @@ While writing tasks:
    cites must exist at BASE, be created by a task it `Depends-on`, or be defined
    in `report-format.md`. Run `compile_plan.py --check --renders <plan>` and
    read its `ADVISORY` blast-radius and referent lines before handoff.
+- **Greenfield targets take the Bun + TypeScript defaults** — knobs and
+  rationale in `references/greenfield-stack.md` (#425).
 - **Bodies may sketch routine glue — an ultraplan override.** writing-plans
   demands complete code in every step; here that holds only where the code
   carries information the implementer cannot derive. An `implementation` body
@@ -284,7 +286,7 @@ documentation** — the compiler reads them, so populate them deliberately:
    forwarded as a reviewer lens they can only produce unverifiable process
    findings against every task, since no diff evidences the order work was
    done in. State what must be true of the result (tests present, behavior
-   covered), not the order it was produced in.
+   covered).
 
 2. **`**Interfaces:**`** (per task). `Produces:` names the function names and
    param/return types later tasks rely on; `Consumes:` names the signatures this

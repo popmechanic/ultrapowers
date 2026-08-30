@@ -2,7 +2,8 @@
 """One A/B cell, start to finish (#402 item 6).
 
     python3 evals/ab_runner.py <fixture> --overlap fold|serialize \\
-        [--run-id ID] [--results-dir DIR] [--fixtures-root DIR] [--workspace DIR]
+        [--run-id ID] [--results-dir DIR] [--fixtures-root DIR] [--workspace DIR] \\
+        [--test-cmd CMD] [--bootstrap-cmd CMD]
 
 One invocation = one cell = one row. The A/B protocol is those invocations run
 serially by hand on the operator's laptop; concurrent /ultrapowers runs corrupt
@@ -86,6 +87,16 @@ def _build_parser():
     parser.add_argument("--test-cmd", default="python3 -m pytest",
                         help="suite command the engine runs in the cell "
                              "(default: python3 -m pytest)")
+    # A fixture whose project needs dependencies fetched before anything can
+    # typecheck or run (the Bun cell: `bun install`) has no green baseline
+    # without this — validate_knobs rehearses the bootstrap in its probe
+    # worktree, then runs testCmd there, so an un-bootstrapped probe fails
+    # baseline and the preflight refuses. run-main.mjs already accepts
+    # --bootstrap-cmd and threads it to ultra_run.py; only this hop was
+    # missing. Omitted (None) => not passed, i.e. the pre-existing behaviour.
+    parser.add_argument("--bootstrap-cmd", default=None,
+                        help="dependency-install command rehearsed in knob "
+                             "validation before the baseline (default: none)")
     return parser
 
 
@@ -155,6 +166,8 @@ def main(argv, run=subprocess.run):
     command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
                "--repo", str(cell), "--overlap", args.overlap,
                "--test-cmd", args.test_cmd]
+    if args.bootstrap_cmd:
+        command += ["--bootstrap-cmd", args.bootstrap_cmd]
     # No timeout: a real cell runs for tens of minutes and the operator is
     # watching it. The engine's own per-role deadlines bound the workers.
     result = run(command, cwd=str(REPO_ROOT), env=env)

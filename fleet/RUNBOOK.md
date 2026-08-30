@@ -43,6 +43,26 @@ ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest pytest-xdist && p
 #    per run with ULTRAPOWERS_XDIST=0 in the driver env, or pass an explicit
 #    --test-cmd (e.g. for a target repo whose suite is not parallel-safe).
 
+# Bun for greenfield TypeScript targets (#425). One static binary; the target's
+# own `bun install` then needs no network beyond the registry. The fleet DRIVER
+# stays on node — its spawn/SIGTERM semantics are the measured ones.
+ssh fleet-golden.exe.xyz 'curl -fsSL https://bun.sh/install | bash'
+ssh fleet-golden.exe.xyz 'export PATH="$HOME/.bun/bin:$PATH" && bun --version'
+#    `~/.bun/bin` must be on the PATH the WORKERS inherit, not just this ssh:
+#    a target's `testCmd` (`bunx tsc --noEmit && bun test`) and its
+#    `bootstrapCmd` (`bun install`) run through `bash -lc`, so the entry has to
+#    come from a login-shell file. The installer appends it to `~/.bashrc`,
+#    which exeuntu's stock `~/.profile` sources — make that explicit rather
+#    than assumed, then prove it the way a worker will see it:
+ssh fleet-golden.exe.xyz 'grep -q .bun/bin ~/.profile || echo export PATH=\"\$HOME/.bun/bin:\$PATH\" >> ~/.profile'
+ssh fleet-golden.exe.xyz 'bash -lc "bun --version"'   # non-empty, no PATH edit
+#    Warm Bun's global package cache IN THE IMAGE so it clones with every
+#    sandbox instead of being refetched per run (#425 item 3). With the cache
+#    warm, a target's `bun install` is a hardlink operation: measured 574 ms,
+#    offline, against a cold-cache fetch of the npm registry on every cell.
+ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install && rm -rf node_modules bun.lock"'
+ssh fleet-golden.exe.xyz 'bash -lc "du -sh \$(bun pm cache)"'   # non-empty: the cache survives
+
 # 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
 #    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'

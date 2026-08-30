@@ -509,6 +509,12 @@ export const driveOne = async ({
       errors.push(`headless-fitness: proceeding on operator override — ${summary}`)
       note('headless-fitness: unfit plan allowed by allowUnfitPlan')
     }
+    // #425: advisory notes ride the "Driver notes" channel and never gate a
+    // drive — no throw here, at any `allowUnfitPlan` setting. Fitness is not a
+    // second gate, and a nudge that could stop a run would make it one.
+    for (const n of fitness.notes ?? []) {
+      errors.push(`headless-fitness note (advisory): ${n.task}: ${n.note}`)
+    }
   }
 
   // #282/#190: what the stamp MUST name — resolved at drive start, from the

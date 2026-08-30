@@ -1,0 +1,76 @@
+{
+  "mode": "gate",
+  "stamp": "run-29",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-run-29/report.json",
+  "branch": "ultra/integration-run-29",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:manual",
+        "detail": "fleet/RUNBOOK.md golden-image Bun steps (lines 46-58): `curl -fsSL https://bun.sh/install | bash`, `bun --version`, the `~/.profile` PATH append, and `ssh fleet-golden.exe.xyz 'bash -lc \"bun --version\"'` \u2014 The RUNBOOK is a hand-executed operator record against the golden VM; no sandbox can confirm the installer succeeds on exeuntu or that `~/.bun/bin` actually reaches the worker `bash -lc` shells. The documented commands are present and correct in form, and the patch exceeds the plan's Step 3 by proving the PATH the way a worker sees it. Task 6 already classes this as the live-only remainder."
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "evals/fixtures/bun-greenfield/project \u2014 `bun install && bunx tsc --noEmit && bun test` green at BASE (plan Task 4 Step 5) \u2014 Bun is not installed in this environment and Bash execution of validators is blocked here, so the skeleton cannot be built or run. The static shape is correct: `@types/bun` devDependency with `\"types\": [\"bun\"]` (not the failing `bun-types`), strict/noEmit/bundler resolution, `include: [\"src\", \"tests\"]`, and the extensionless `../src/registry` import that bundler resolution accepts. Only `registry.test.ts` exists at BASE, so the shared-state defect reported above does not affect the BASE baseline. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "Whether `bun test` shares one module registry across test files (determines the severity of the cross-test-file state-leak finding) \u2014 No Bun runtime here to confirm empirically. The finding assumes Bun runs all test files in one process against a process-wide module cache, which makes `src/registry.ts`'s module-level Map shared. If Bun in fact isolates the module registry per test file, that finding drops to a non-issue; if it does not, the fixture's gate is red in every file order. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "End-to-end `python3 evals/ab_runner.py bun-greenfield --overlap fold|serialize --test-cmd 'bunx tsc --noEmit && bun test' --bootstrap-cmd 'bun install'` reaching a green gate (Task 4 Produces, Task 6 step 2) \u2014 Requires a live engine run with Bun installed, network access to the npm registry, and operator Claude auth on the laptop; none are available here. Only the argument-threading half is statically verifiable, and it holds: `evals/ab_runner.py:169-170` appends `--bootstrap-cmd` to the `node run-main.mjs` command, pinned at `tests/test_bun_fixture.py:133-134`. The `.gitignore` guard for treeClean (`node_modules/`, `bun.lock`, `bun.lockb`) is present and exercised without Bun at `tests/test_bun_fixture.py:75`. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "`python3 skills/ultrapowers/scripts/compile_plan.py --check evals/fixtures/bun-greenfield/plan.md` printing PLAN OK, and `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultraplan` \u2014 Bash invocation of both validators was denied in this environment, so they were verified by reading the compiler instead. Static read-through is favourable on every path that could refuse: the acceptance line matches ACCEPT_SUITE (compile_plan.py:548), headings match TASK_HEAD with unique alphanumeric ids, implementation tasks carry canonical single-backtick `Modify:`/`Test:` bullets with no trailing annotations or globs, and the gate task's `**Files:** none` is byte-identical in shape to `evals/fixtures/contend/plan.md`, which compiles today. For validate_skill, the regex at line 31 resolves the bare `references/greenfield-stack.md` mention (SKILL.md:222) against the skill's own directory, where the file exists. The suite run itself is the driver's."
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "                   [ 34%]\\ntests/test_flawed_grammar.py ..                                          [ 35%]\\ntests/test_fleet_readme.py ...                                           [ 35%]\\ntests/test_fleet_suite.py ...........................                    [ 38%]\\ntests/test_fold_wave.py ........................................         [ 42%]\\ntests/test_fold_wave_materialize.py ............                         [ 44%]\\ntests/test_fold_wave_patch.py ...............                            [ 45%]\\ntests/test_frontier_fold.py .............                                [ 47%]\\ntests/test_frontier_kernel.py .....                                      [ 47%]\\ntests/test_frontier_run_eval.py .........                                [ 48%]\\ntests/test_frontier_schedule.py .......                                  [ 49%]\\ntests/test_frontier_track_c.py .................                         [ 51%]\\ntests/test_frontier_weave.py ..................................          [ 55%]\\ntests/test_gate_check.py ..............                                  [ 56%]\\ntests/test_greenfield_stack.py ....                                      [ 57%]\\ntests/test_harvest_runs.py ............................................. [ 62%]\\n...............................................................          [ 69%]\\ntests/test_hunks.py ...................                                  [ 71%]\\ntests/test_judge.py ...                                                  [ 71%]\\ntests/test_kernel_bijection.py .......                                   [ 72%]\\ntests/test_marker_compiler.py .                                          [ 72%]\\ntests/test_marker_contract.py ............                               [ 74%]\\ntests/test_merge_ledger.py .......................                       [ 76%]\\ntests/test_path_variables.py .                                           [ 76%]\\ntests/test_plan_check.py ............                                    [ 78%]\\ntests/test_plans_readme.py ....                                          [ 78%]\\ntests/test_probes_readme.py ...                                          [ 78%]\\ntests/test_product_statement.py ...                                      [ 79%]\\ntests/test_recommendation_rubric.py ..............                       [ 80%]\\ntests/test_rehydrate.py ........                                         [ 81%]\\ntests/test_repo_weave_report_determinism.py ...........                  [ 82%]\\ntests/test_report_runbook.py ...                                         [ 83%]\\ntests/test_resolve_superpowers.py .....                                  [ 83%]\\ntests/test_roles_readme.py ...                                           [ 84%]\\ntests/test_run_acceptance.py ..........................                  [ 86%]\\ntests/test_runbook_bun.py ...                                            [ 87%]\\ntests/test_session_hook.py .....                                         [ 87%]\\ntests/test_skill_budget.py .                                             [ 87%]\\ntests/test_superpowers_compat.py s..                                     [ 88%]\\ntests/test_superpowers_contract.py ....                                  [ 88%]\\ntests/test_ultra_gate.py ................                                [ 90%]\\ntests/test_ultra_run.py ................................................ [ 95%]\\n......                                                                   [ 96%]\\ntests/test_ultra_run_overlap.py ....                                     [ 96%]\\ntests/test_ultraplan_skill.py ...........                                [ 98%]\\ntests/test_update_cli.py ...                                             [ 98%]\\ntests/test_validate_skill.py .........                                   [ 99%]\\ntests/test_version_sync.py .                                             [ 99%]\\ntests/test_webapp_fixture.py ...                                         [100%]\\n\\n================== 898 passed, 1 skipped in 190.37s (0:03:10) ==================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
