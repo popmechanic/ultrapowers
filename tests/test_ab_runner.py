@@ -226,3 +226,30 @@ def test_fixtures_root_is_never_written_into(tmp_path):
     after = sorted((p.relative_to(fixtures), p.read_text())
                    for p in fixtures.rglob("*") if p.is_file())
     assert after == before
+
+
+def test_test_cmd_defaults_and_overrides(tmp_path):
+    """#402 follow-up (run-28 critic finding 1): fixture projects carry no
+    pytest config and run-engine mandates a testCmd, so the runner threads
+    --test-cmd to the engine — default 'python3 -m pytest', overridable."""
+    fixtures = _fixture_tree(tmp_path)
+    record = []
+    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t7",
+               "--results-dir", str(tmp_path / "results"),
+               "--fixtures-root", str(fixtures),
+               "--workspace", str(tmp_path / "ws")],
+              run=_stub_run(record))
+    assert rc == 0
+    node_cmd = next(c for c, kw in record if c[0] == "node")
+    assert node_cmd[node_cmd.index("--test-cmd") + 1] == "python3 -m pytest"
+
+    record2 = []
+    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t8",
+               "--results-dir", str(tmp_path / "results2"),
+               "--fixtures-root", str(fixtures),
+               "--workspace", str(tmp_path / "ws2"),
+               "--test-cmd", "make check"],
+              run=_stub_run(record2))
+    assert rc == 0
+    node_cmd = next(c for c, kw in record2 if c[0] == "node")
+    assert node_cmd[node_cmd.index("--test-cmd") + 1] == "make check"
