@@ -288,10 +288,60 @@ def test_detect_test_cmd_pytest_upgrades_to_xdist(tmp_path, monkeypatch):
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest -n auto", "pytest-ini")
 
 
-def test_xdist_probe_runs_real_python3():
-    """The probe asks the `python3` on PATH — the same interpreter testCmd
-    invokes — not this test process's import machinery."""
-    assert ultra_run._xdist_available() in (True, False)
+def _fake_python3(tmp_path, probe_exit):
+    """A PATH-front `python3` stub: answers the xdist probe with probe_exit,
+    delegates everything else to the real interpreter. Pins that the probe
+    consults the PATH python3 (the interpreter testCmd will invoke), not this
+    process's import machinery."""
+    fb = tmp_path / "fakebin"
+    fb.mkdir(parents=True)
+    stub = fb / "python3"
+    stub.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = "-c" ] && [ "$2" = "import xdist" ]; then exit {probe_exit}; fi\n'
+        f'exec "{sys.executable}" "$@"\n')
+    stub.chmod(0o755)
+    return dict(os.environ, PATH=f"{fb}:{os.environ['PATH']}")
+
+
+def test_xdist_probe_follows_path_python3(tmp_path, monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setenv("PATH", _fake_python3(tmp_path, 0)["PATH"])
+    monkeypatch.delenv("ULTRAPOWERS_XDIST", raising=False)
+    assert ultra_run._xdist_available() is True
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_xdist_probe_fails_closed_on_oserror(monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setattr(ultra_run.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no python3")))
+    assert ultra_run._xdist_available() is False
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_xdist_env_opt_out(monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setenv("ULTRAPOWERS_XDIST", "0")
+    assert ultra_run._xdist_available() is False
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_receipt_carries_xdist_cmd_end_to_end(tmp_path):
+    """#426 wiring pin, not self-fulfilling: a stub python3 forces the probe
+    answer inside the spawned driver, and the receipt must reflect it — both
+    directions."""
+    for probe_exit, expected in ((0, "python3 -m pytest -n auto"),
+                                 (1, "python3 -m pytest")):
+        (tmp_path / f"probe{probe_exit}").mkdir()
+        repo = make_repo(tmp_path / f"probe{probe_exit}")
+        env = _fake_python3(tmp_path / f"bin{probe_exit}", probe_exit)
+        env["ULTRAPOWERS_FLEET_RUN"] = "run-test"
+        env.pop("ULTRAPOWERS_XDIST", None)
+        r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
+               cwd=repo, check=False, env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert json.loads(r.stdout)["testCmd"] == expected
 
 
 @pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])

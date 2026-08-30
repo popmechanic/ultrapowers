@@ -17,26 +17,38 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import functools
 import json
 import os
 import re
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
 
+@functools.lru_cache(maxsize=1)
 def _xdist_available():
     """#426: probe the `python3` on PATH — the interpreter testCmd will invoke,
-    which need not be sys.executable — for pytest-xdist. Fail closed: any
-    probe error means serial pytest, never a broken `-n auto`."""
+    which need not be sys.executable — for pytest-xdist. Runs from a neutral
+    cwd so a target repo vendoring a top-level `xdist/` dir cannot fake the
+    import. `ULTRAPOWERS_XDIST=0` opts out. Fail closed: any probe error
+    means serial pytest, never a broken `-n auto`."""
+    if os.environ.get("ULTRAPOWERS_XDIST") == "0":
+        return False
     try:
         return subprocess.run(["python3", "-c", "import xdist"],
-                              capture_output=True, timeout=30).returncode == 0
+                              capture_output=True, timeout=30,
+                              cwd=tempfile.gettempdir()).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def _pytest_cmd():
+    return "python3 -m pytest -n auto" if _xdist_available() else "python3 -m pytest"
 
 
 def detect_test_cmd(root):
@@ -45,12 +57,11 @@ def detect_test_cmd(root):
     #426 — but the probe is an import check, not a test run). Returns
     (command, rule) or (None, None)."""
     root = Path(root)
-    pytest_cmd = "python3 -m pytest -n auto" if _xdist_available() else "python3 -m pytest"
     if (root / "pytest.ini").is_file():
-        return pytest_cmd, "pytest-ini"
+        return _pytest_cmd(), "pytest-ini"
     pyproject = root / "pyproject.toml"
     if pyproject.is_file() and "[tool.pytest" in pyproject.read_text(errors="ignore"):
-        return pytest_cmd, "pyproject-pytest"
+        return _pytest_cmd(), "pyproject-pytest"
     pkg = root / "package.json"
     if pkg.is_file():
         try:
