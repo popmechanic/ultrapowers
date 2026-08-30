@@ -6,7 +6,7 @@
 
 **Goal:** Extend the seeded `src/registry.ts` skeleton with three exported lookup helpers — `byLabel`, `ids`, and `clear`. Each helper is functionally independent (its own signature, its own test file) but all three genuinely edit `src/registry.ts`. That same-file contention is deliberate and left unserialized: no `Depends-on` marker orders these tasks, so any ordering the executor chooses must merge their concurrent edits to one file. Every helper states an explicit TypeScript signature over the shared exported `Entry` type, so a task that drifts from the seam is a typecheck failure on the merged tree rather than a review opinion.
 
-**Tech Stack:** Bun + TypeScript (strict, ESM). Bootstrap with `bun install` from `project/`. Run the suite with `bunx tsc --noEmit && bun test` from `project/` — the typecheck is half the gate, so a merged tree that compiles to the wrong shape fails loudly.
+**Tech Stack:** Bun + TypeScript (strict, ESM). **Every test file must start with `beforeEach(reset)`, importing `reset` from `../src/registry`** — Bun runs all test files in one process against a shared module registry, so the registry's map persists across files and a suite without this is order-dependent (measured 2026-08-30). Bootstrap with `bun install` from `project/`. Run the suite with `bunx tsc --noEmit && bun test` from `project/` — the typecheck is half the gate, so a merged tree that compiles to the wrong shape fails loudly.
 
 ---
 
@@ -24,6 +24,7 @@
 - Produces: `export const byLabel = (label: string): Entry | undefined` — the first registered entry whose `label` matches exactly, or `undefined`
 
 - [ ] **Step 1: Write failing tests** in `tests/by-label.test.ts`:
+  - Begin the file with `import { beforeEach, expect, test } from \"bun:test\"`, import `reset` alongside the helpers you need from `../src/registry`, and call `beforeEach(reset)` before the first test — the registry's map is shared across test files in Bun, so a file that skips this makes the whole suite order-dependent.
   - `register({ id: "b", label: "Beta" })` then `byLabel("Beta")` returns that entry.
   - `byLabel("Nope")` returns `undefined`.
   - Matching is exact and case-sensitive: `byLabel("beta")` returns `undefined`.
@@ -44,6 +45,7 @@
 - Produces: `export const ids = (): readonly string[]` — every registered id in insertion order
 
 - [ ] **Step 1: Write failing tests** in `tests/ids.test.ts`:
+  - Begin the file with `import { beforeEach, expect, test } from \"bun:test\"`, import `reset` alongside the helpers you need from `../src/registry`, and call `beforeEach(reset)` before the first test — the registry's map is shared across test files in Bun, so a file that skips this makes the whole suite order-dependent.
   - A registry with `c` then `d` registered yields `ids()` equal to `["c", "d"]`.
   - The returned array is a fresh array each call — mutating one call's result does not affect the next.
 - [ ] **Step 2: Implement** `ids` in `src/registry.ts` with the signature above. Do not change the exported `Entry` type or the seeded helpers.
@@ -63,6 +65,7 @@
 - Produces: `export const clear = (): number` — empties the registry and returns how many entries were removed
 
 - [ ] **Step 1: Write failing tests** in `tests/clear.test.ts`:
+  - Begin the file with `import { beforeEach, expect, test } from \"bun:test\"`, import `reset` alongside the helpers you need from `../src/registry`, and call `beforeEach(reset)` before the first test — the registry's map is shared across test files in Bun, so a file that skips this makes the whole suite order-dependent.
   - Registering two entries then `clear()` returns `2` and leaves `size()` at `0`.
   - `clear()` on an empty registry returns `0`.
 - [ ] **Step 2: Implement** `clear` in `src/registry.ts` with the signature above. Do not change the exported `Entry` type or the seeded helpers.

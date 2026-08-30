@@ -19,3 +19,12 @@ def test_runbook_says_bun_is_for_targets_not_the_driver():
     # the driver stays on Node — spawn/SIGTERM semantics are measured there
     lowered = RUNBOOK.lower()
     assert "driver" in lowered and "node" in lowered
+
+
+def test_runbook_warms_the_bun_cache_in_the_image():
+    """#425 item 3: the cache clones with the sandbox, so a target's
+    `bun install` is a hardlink operation rather than a registry fetch on every
+    run (measured 574 ms offline, 2026-08-30). Installing the binary without
+    warming the cache leaves the per-run network cost in place."""
+    assert "bun pm cache" in RUNBOOK
+    assert "bun install" in RUNBOOK

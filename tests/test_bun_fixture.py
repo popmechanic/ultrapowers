@@ -146,3 +146,22 @@ def test_bootstrap_cmd_is_omitted_when_not_asked_for(tmp_path):
                    run=_stub_run(record)) == 0
     node_cmd = next(c for c in record if c[0] == "node")
     assert "--bootstrap-cmd" not in node_cmd
+
+
+def test_shared_module_state_has_a_reset_convention():
+    """Measured 2026-08-30: Bun runs every test file in ONE process against a
+    shared module registry, so `src/registry.ts`'s module-level Map persists
+    across files — a second file's `size()` saw the first file's entry. The
+    seeded skeleton must therefore export `reset`, its own test must use it,
+    and the plan must state the convention in every task body (an isolated
+    implementer cannot discover it). Caught by the run-29 completeness critic."""
+    src = (FX / "project" / "src" / "registry.ts").read_text()
+    assert "export const reset" in src, "the skeleton must expose a reset for test isolation"
+
+    seed_test = (FX / "project" / "tests" / "registry.test.ts").read_text()
+    assert "beforeEach(reset)" in seed_test, "the seeded test must demonstrate the convention"
+
+    plan = (FX / "plan.md").read_text()
+    # once in the stack line + once per implementation task body
+    assert plan.count("beforeEach(reset)") >= 4, (
+        "every task body must state the reset convention — workers see only their own task")
