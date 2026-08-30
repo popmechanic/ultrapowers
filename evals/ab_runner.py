@@ -79,6 +79,13 @@ def _build_parser():
     parser.add_argument("--workspace", default=None,
                         help="where the cell repo is assembled "
                              "(default: a mkdtemp; pass a durable dir to keep it)")
+    # run-28 critic finding 1: fixture projects deliberately carry no pytest
+    # config (fixtures are read-only baselines), so ultra_run's detection
+    # ladder finds nothing and run-engine refuses (testCmd is mandatory, #96).
+    # The runner therefore always threads an explicit --test-cmd.
+    parser.add_argument("--test-cmd", default="python3 -m pytest",
+                        help="suite command the engine runs in the cell "
+                             "(default: python3 -m pytest)")
     return parser
 
 
@@ -146,7 +153,8 @@ def main(argv, run=subprocess.run):
         return 2
 
     command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
-               "--repo", str(cell), "--overlap", args.overlap]
+               "--repo", str(cell), "--overlap", args.overlap,
+               "--test-cmd", args.test_cmd]
     # No timeout: a real cell runs for tens of minutes and the operator is
     # watching it. The engine's own per-role deadlines bound the workers.
     result = run(command, cwd=str(REPO_ROOT), env=env)
