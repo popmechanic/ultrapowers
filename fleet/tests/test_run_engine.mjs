@@ -10,6 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { capWorkerParallelism, SHELL_TIMEOUT_MS } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-sim-'))
 const repo = makeRepo(path.join(tmp, 'repo'))
@@ -107,6 +108,34 @@ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
     assert.ok(words <= 350, 'role file ' + f + ' is ' + words + ' words (ceiling 350)')
     assert.ok(!/\b(NEVER|ALWAYS|MUST)\b/.test(text), 'role file ' + f + ' shouts an imperative')
   }
+}
+
+// ── #436: the two bounds that go live with the golden's parallel pytest ──────
+// Both are pre-golden-rebuild obligations: an unbounded suite exec burns the
+// sandbox lease instead of failing, and `-n auto` per implementer oversubscribes
+// the machine WIDTH times over.
+{
+  // 1. capWorkerParallelism divides the machine among the workers that share it.
+  assert.equal(capWorkerParallelism('python3 -m pytest -n auto', 2, 8), 'python3 -m pytest -n 4',
+    'width 2 on 8 cpus gets 4 workers each')
+  assert.equal(capWorkerParallelism('python3 -m pytest -n auto', 1, 8), 'python3 -m pytest -n 8',
+    'a lone worker keeps the whole machine')
+  // At WIDTH=8 on 8 vCPU the share is 1 — xdist's own overhead is pure loss
+  // there, so the plugin is disabled rather than run with one worker.
+  assert.equal(capWorkerParallelism('python3 -m pytest -n auto', 8, 8), 'python3 -m pytest -p no:xdist',
+    'a share of one disables xdist instead of paying its overhead')
+  // Never rewrites what it does not own.
+  assert.equal(capWorkerParallelism('bunx tsc --noEmit && bun test', 8, 8),
+    'bunx tsc --noEmit && bun test', 'a non-pytest command is untouched')
+  assert.equal(capWorkerParallelism('python3 -m pytest -n 4', 8, 8), 'python3 -m pytest -n 4',
+    'an explicitly pinned -n is the plan author\'s choice, not ours')
+  assert.equal(capWorkerParallelism(undefined, 8, 8), undefined, 'no testCmd stays no testCmd')
+
+  // 2. The engine bounds its own shell execs. SHELL_TIMEOUT_MS is what stops a
+  // wedged suite from consuming the lease and surfacing as an expired claim.
+  assert.equal(typeof SHELL_TIMEOUT_MS, 'number')
+  assert.ok(SHELL_TIMEOUT_MS >= 10 * 60 * 1000 && SHELL_TIMEOUT_MS <= 60 * 60 * 1000,
+    'the suite bound must be minutes-to-an-hour, not unbounded and not a hair trigger')
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
