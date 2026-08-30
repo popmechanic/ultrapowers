@@ -132,3 +132,15 @@ def test_ultraplan_ends_authoring_with_the_check_step():
     assert "compile_plan.py --check" in text
     assert "PLAN OK" in text
     assert "not done until it passes the grammar check" in text
+
+
+def test_shaping_moves_state_the_wave_cost_model():
+    """#444 item 1: the four shaping moves are doctrine without a reason.
+    An author who does not know the tail is serial and paid per wave has no
+    reason to fight for an edge removal — #443 measured 54% of waves are
+    decomposition shape, not dependency floor."""
+    text = ULTRAPLAN.read_text()
+    assert "paid once per wave" in text
+    assert "billed dimension" in text
+    # width is the cheap axis and the skill must say so
+    assert "nearly free up to `WIDTH`" in text

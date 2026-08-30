@@ -51,9 +51,11 @@ independence the sequential pen glides over. Five moves:
 4. **Interrogate every dependency.** For each `Depends-on` you are about to write:
    true data/interface dependency, or just the order you thought of it in? Keep
    the real ones; drop the authoring-order ones.
-5. **Right-size against overhead.** Never split below a real unit of work to
-   inflate width — worktree overhead and the recommender reward only genuine
-   independent mass.
+5. **Right-size against overhead — depth is the billed dimension.** A wave's
+   tasks run concurrently, but its tail — fold, full suite pass, adopt — is
+   serial and paid once per wave regardless of width. Width is
+   nearly free up to `WIDTH`; a dropped `Depends-on` that removes a wave
+   is worth ~90 s. Never split below a real unit of work to inflate width.
 
 **The justification gate.** Move 2 reshapes the architecture, so it must (a) name
 a concrete independence win, and (b) pass *"would a good engineer make this move
@@ -228,15 +230,12 @@ While writing tasks:
   glue in prose. The exception: a task marked `**Review:** adversarial` keeps
   exact code in every step, because its second reviewer audits the diff against
   the plan text.
-- **Shrink budgets are acceptance criteria — stated as deltas.** When a
-  task edits a complexity-ratcheted surface (SKILL.md, gate-spec docs),
-  state the net word delta its own diff implies (`net delta ≤ +N words`,
-  or `≤ −N`) — computable from the task's fenced replacement blocks minus
-  the text they replace, and verified at task end as word-count(file
-  after) − word-count(file before) over the task's own diff. Never state
-  an absolute ceiling: it needs the file's current size plus every
-  sibling task's delta, and a plan-authored number is a second, unpinned
-  copy that drifts — the absolute lives in `tests/test_skill_budget.py`.
+- **Shrink budgets are acceptance criteria — stated as deltas.** When a task
+  edits a complexity-ratcheted surface (SKILL.md, gate-spec docs), state the
+  net word delta its diff implies (`net delta ≤ +N words`, or `≤ −N`),
+  verified at task end as word-count(after) − word-count(before). Never state
+  an absolute ceiling — it drifts against sibling deltas; the absolute lives
+  in `tests/test_skill_budget.py`.
 - **Tier escalation-prone tasks up front.** Large single-file refactors blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark them
   `most-capable` rather than letting the launch guess it.

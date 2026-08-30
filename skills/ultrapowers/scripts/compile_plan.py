@@ -773,6 +773,15 @@ def _late_marker_note(task_id, late_markers):
                 task_id, "; ".join(sorted(set(late_markers))[:3])))
 
 
+# The refusal main() raises at compile time (#440). One constant, two call
+# sites: --check must refuse exactly what the full compile refuses, or its
+# "green here means it launches" promise is false.
+ACCEPTANCE_MISSING_ERROR = (
+    "marked plan has no **Acceptance:** line (sealed or waived). "
+    "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
+    "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
+
+
 def collect_violations(plan_path):
     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
     parse as main() but collects EVERY violation across the whole plan in one
@@ -831,6 +840,11 @@ def collect_violations(plan_path):
         if _files_grammar_exempt(t):
             continue
         violations.extend(_files_violations(t))
+    # #440: scoped to MARKED plans, exactly as main() is — four committed
+    # plans are unmarked and Acceptance-less, and must keep passing.
+    if any(not classify(t)[1] for t in tasks) and \
+            parse_acceptance(plan_text)["mode"] == "missing":
+        violations.append(ACCEPTANCE_MISSING_ERROR)
     return violations
 
 
@@ -1665,9 +1679,7 @@ def main(argv=None):
     global_constraints = parse_global_constraints(plan_text)
     marked = any(not t.get("heuristic") for t in out_tasks)
     if acceptance["mode"] == "missing" and marked:
-        sys.exit("error: marked plan has no **Acceptance:** line (sealed or waived). "
-                 "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
-                 "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
+        sys.exit("error: " + ACCEPTANCE_MISSING_ERROR)
     if acceptance["mode"] == "missing":
         type_conflicts.append({"task": "", "edge": "",
                                "note": "acceptance: missing (unmarked plan — warning only)"})
