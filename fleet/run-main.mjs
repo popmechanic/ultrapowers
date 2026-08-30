@@ -130,16 +130,30 @@ export function parseArgs(argv) {
 
 // argv-based exec seam — never a shell string, because plan paths and branch
 // names ride these calls. Resolves, never rejects; callers branch on code.
-export const execSeam = (cmd, argv, { cwd, env } = {}) =>
+// timeoutMs (#436): opt-in per call. execFile kills the child on expiry and
+// reports `error.killed`, which is otherwise indistinguishable from a plain
+// non-zero exit — so a timed-out command returns `timedOut: true` and a
+// diagnostic on stderr, and the caller can say WHY it failed instead of
+// reporting a wedged suite as a test failure. Omitted = unbounded, which is
+// still right for the short git verbs.
+export const execSeam = (cmd, argv, { cwd, env, timeoutMs } = {}) =>
   new Promise((resolve) => {
     execFile(cmd, argv, {
       cwd,
       env: env || process.env,
       maxBuffer: 1024 * 1024 * 64,
-    }, (error, stdout, stderr) => resolve({
-      code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
-      stdout: String(stdout ?? ''), stderr: String(stderr ?? ''),
-    }))
+      ...(timeoutMs ? { timeout: timeoutMs, killSignal: 'SIGKILL' } : {}),
+    }, (error, stdout, stderr) => {
+      const timedOut = Boolean(error && error.killed && timeoutMs)
+      resolve({
+        code: error ? (typeof error.code === 'number' ? error.code : 1) : 0,
+        stdout: String(stdout ?? ''),
+        stderr: String(stderr ?? '') + (timedOut
+          ? `\n[execSeam] killed after ${Math.round(timeoutMs / 1000)}s timeout (#436)`
+          : ''),
+        timedOut,
+      })
+    })
   })
 
 // ── tier fill (the last LLM judgment, made deterministic) ────────────────────
@@ -459,7 +473,9 @@ export async function runMain(parsed, deps = {}) {
     // dispatched only for judgments. waves.js is no longer loaded here; it
     // remains the Workflow-path fallback, untouched.
     report = await runEngineFn({
-      args: launchArgs,
+      // #436: the engine caps the implementers' suite parallelism by the
+      // number of them that share the machine — it must be told the real one.
+      args: { ...launchArgs, width: WIDTH },
       agent,
       parallel: boundedParallel(WIDTH),
       exec,

@@ -23,6 +23,7 @@
 // unchanged against it. Producers that moved from agents to the driver are
 // noted at the assembly at the bottom.
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -144,6 +145,22 @@ export function loadRoles(rolesDir = defaultRolesDir()) {
 }
 
 // ── prompt input lines (waves.js parity — same vocabulary, plans unchanged) ──
+//
+// capWorkerParallelism (#436): the driver's own suite runs are serialized —
+// one integration clone, one at a time — so `-n auto` is right for them. The
+// implementers are not: up to WIDTH of them run concurrently, each in its own
+// clone, each running the suite through its red/green/clean cycle. `-n auto`
+// sizes to the whole machine per invocation, so WIDTH=8 on an 8-vCPU sandbox
+// peaks around 64 pytest processes plus the workers themselves — thrash, or
+// an OOM-killed xdist worker reported as a spurious red. Divide the machine
+// among the workers that share it instead. Untouched when the plan pinned an
+// explicit -n, and a no-op for every non-pytest stack.
+export const capWorkerParallelism = (cmd, width, cpus) => {
+  if (typeof cmd !== 'string' || !/-n\s+auto\b/.test(cmd)) return cmd
+  const share = Math.max(1, Math.floor((cpus || 1) / Math.max(1, width)))
+  return cmd.replace(/-n\s+auto\b/, share === 1 ? '-p no:xdist' : '-n ' + share)
+}
+
 const testCmdLine = (task, testCmd) => {
   const cmd = (task && typeof task.testCmd === 'string' && task.testCmd.trim()) || testCmd
   return cmd ? ('\nTEST COMMAND: ' + cmd) : ''
@@ -181,7 +198,18 @@ const taskBodyBlock = (task, wavesPath) => {
 // ── small exec adapters ──────────────────────────────────────────────────────
 // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
 // runs argv-form. Both resolve, never reject — callers branch on code.
-const shOf = (exec) => (cmd, cwd, env) => exec('bash', ['-lc', cmd], { cwd, env })
+//
+// SHELL_TIMEOUT_MS (#436): a suite that wedges must not consume the sandbox
+// lease. Nothing else bounds these — ROLE_TIMEOUT_MS covers only agent()
+// subprocesses, and the shim renews the lease on its own interval, so an
+// unbounded `sh` surfaces four hours later as an expired-claim reap rather
+// than a test failure. The value matches ultra_run.py's own baseline bound
+// (timeout=1800) for the same command; xdist adds wedge modes serial pytest
+// lacks (an OOM-killed worker, a stuck execnet gateway), which is what moved
+// this from theoretical to owed before the golden ships parallel pytest.
+export const SHELL_TIMEOUT_MS = 30 * 60 * 1000
+const shOf = (exec) => (cmd, cwd, env) =>
+  exec('bash', ['-lc', cmd], { cwd, env, timeoutMs: SHELL_TIMEOUT_MS })
 const gitOf = (exec) => async (argv, cwd) => {
   const r = await exec('git', argv, { cwd })
   if (r.code !== 0) {
@@ -278,6 +306,15 @@ export async function runEngine({
       })
     : []
   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
+  // #436: the driver's own suite runs stay at full width (serialized, one
+  // integration clone); the concurrent implementers get the machine divided
+  // among them. args.width lets run-main pass its real WIDTH; the default
+  // matches it so a caller that omits it is not silently uncapped.
+  const workerWidth = Number.isInteger(args.width) && args.width > 0 ? args.width : 8
+  const workerTestCmd = capWorkerParallelism(testCmd, workerWidth, os.cpus().length)
+  if (workerTestCmd !== testCmd) {
+    log('run-engine: worker testCmd capped for concurrency (#436) — ' + workerTestCmd)
+  }
   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
   const ACCEPTANCE = (args.acceptance && typeof args.acceptance === 'object') ? args.acceptance : null
   const reviewProfile = (args.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
@@ -421,7 +458,7 @@ export async function runEngine({
         '" — fell back to standard (valid: standard, mostCapable/most-capable)')
     }
 
-    const commonInputs = testCmdLine(task, testCmd) + filesLine(task) + siblingsStr +
+    const commonInputs = testCmdLine(task, workerTestCmd) + filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
     let impl = await agent(
       roles.implementer + '\nBASE: ' + baseShaForTask + commonInputs,
@@ -526,7 +563,7 @@ export async function runEngine({
       // prior work is simply the tree's state; capture stays cumulative
       // against the task BASE by construction (withPatchCapture).
       impl = await agent(
-        roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, testCmd) +
+        roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, workerTestCmd) +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
           '\n\nBlocking issues to resolve:\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
         { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree',
