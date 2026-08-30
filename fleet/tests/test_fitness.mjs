@@ -67,14 +67,14 @@ const manualDocTask = `### Task 4: Owner updates the wiki
 // 2. code tasks and doc tasks WITH a Test: entry pass
 {
   const res = assessHeadlessFitness(plan([codeTask, docWithTestTask]))
-  assert.deepEqual(res, { fit: true, findings: [] })
+  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
   ok('code task and doc-with-test task are fit')
 }
 
 // 3. Type: manual is post-merge runbook material, never waved — not flagged
 {
   const res = assessHeadlessFitness(plan([codeTask, manualDocTask]))
-  assert.deepEqual(res, { fit: true, findings: [] })
+  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
   ok('manual-typed tasks are excluded (they never reach the sandbox waves)')
 }
 
@@ -97,12 +97,12 @@ const manualDocTask = `### Task 4: Owner updates the wiki
 \`\`\`
 `
   const res = assessHeadlessFitness(plan([fenced]))
-  assert.deepEqual(res, { fit: true, findings: [] })
+  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
   ok('fenced example Files blocks are ignored')
 }
 
 // 5. a plan with no tasks at all is fit (nothing to flag)
-assert.deepEqual(assessHeadlessFitness('# empty\n'), { fit: true, findings: [] })
+assert.deepEqual(assessHeadlessFitness('# empty\n'), { fit: true, findings: [], notes: [] })
 ok('an empty plan is fit')
 
 // 6. a fence BODY that quotes a fence marker (the corpus shape: a python block
@@ -177,7 +177,7 @@ echo nested
 \`\`\`
 \`\`\`\`
 `
-  assert.deepEqual(assessHeadlessFitness(plan([nesting])), { fit: true, findings: [] })
+  assert.deepEqual(assessHeadlessFitness(plan([nesting])), { fit: true, findings: [], notes: [] })
   ok('a 4-backtick fence nesting a 3-backtick fence leaks nothing')
 }
 
@@ -202,7 +202,7 @@ still inside the tilde fence
 \`\`\`
 ~~~
 `
-  assert.deepEqual(assessHeadlessFitness(plan([tilde])), { fit: true, findings: [] })
+  assert.deepEqual(assessHeadlessFitness(plan([tilde])), { fit: true, findings: [], notes: [] })
   ok('a tilde fence is not closed by a backtick fence')
 }
 
@@ -225,6 +225,94 @@ still inside the tilde fence
   } else {
     ok('the corpus repro plan is absent from this checkout — skipped')
   }
+}
+
+// #425: a TypeScript plan whose gate never typechecks gets a NUDGE — the
+// whole value of the stack is tsc catching cross-task interface drift, and a
+// plan that skips it silently gives that up. Advisory only: `fit` must not
+// move, because fitness is not a second gate.
+{
+  const plan = [
+    '# P', '',
+    '### Task 1: Add the parser',
+    '**Type:** implementation',
+    '**Depends-on:** none', '',
+    '**Files:**',
+    '- Create: `src/parse.ts`',
+    '- Test: `tests/parse.test.ts`', '',
+    '- [ ] **Step 1: do**', '',
+    '### Task 2: Suite',
+    '**Type:** gate',
+    '**Depends-on:** 1', '',
+    '**Files:**',
+    '- Test: `tests/parse.test.ts`', '',
+    'Run: `bun test`',
+  ].join('\n')
+  const result = assessHeadlessFitness(plan)
+  assert.equal(result.fit, true, 'a nudge must never make a plan unfit')
+  assert.equal(result.findings.length, 0, 'a nudge is not a finding')
+  assert.equal(result.notes.length, 1, `expected one note, got ${JSON.stringify(result.notes)}`)
+  assert.match(result.notes[0].note, /bunx tsc --noEmit && bun test/,
+    'the note must quote the canonical testCmd verbatim')
+  ok('a TypeScript plan whose gate skips the typecheck earns one advisory note')
+}
+
+// A TypeScript plan whose gate DOES typecheck earns no note.
+{
+  const plan = [
+    '# P', '',
+    '### Task 1: Add the parser',
+    '**Type:** implementation',
+    '**Depends-on:** none', '',
+    '**Files:**',
+    '- Create: `src/parse.ts`',
+    '- Test: `tests/parse.test.ts`', '',
+    '- [ ] **Step 1: do**', '',
+    '### Task 2: Suite',
+    '**Type:** gate',
+    '**Depends-on:** 1', '',
+    '**Files:**',
+    '- Test: `tests/parse.test.ts`', '',
+    'Run: `bunx tsc --noEmit && bun test`',
+  ].join('\n')
+  const result = assessHeadlessFitness(plan)
+  assert.equal(result.notes.length, 0, 'a typechecked gate needs no nudge')
+  ok('a typechecking gate suppresses the nudge')
+}
+
+// A plan with no TypeScript files is none of this task's business.
+{
+  const plan = [
+    '# P', '',
+    '### Task 1: Add the parser',
+    '**Type:** implementation',
+    '**Depends-on:** none', '',
+    '**Files:**',
+    '- Create: `src/parse.py`',
+    '- Test: `tests/test_parse.py`', '',
+    '- [ ] **Step 1: do**',
+  ].join('\n')
+  const result = assessHeadlessFitness(plan)
+  assert.equal(result.notes.length, 0, 'a Python plan must never be nudged about tsc')
+  ok('a plan with no TypeScript file entries is never nudged')
+}
+
+// The unfit doc-task class still reports findings AND still carries a notes
+// array — shape stability for drive.mjs, which reads both.
+{
+  const plan = [
+    '# P', '',
+    '### Task 1: Write the note',
+    '**Type:** implementation',
+    '**Depends-on:** none', '',
+    '**Files:**',
+    '- Create: `docs/note.md`', '',
+    '- [ ] **Step 1: do**',
+  ].join('\n')
+  const result = assessHeadlessFitness(plan)
+  assert.equal(result.fit, false)
+  assert.ok(Array.isArray(result.notes), 'notes must always be an array')
+  ok('an unfit plan still carries a notes array')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

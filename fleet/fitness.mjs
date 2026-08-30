@@ -84,24 +84,53 @@ const FILES_ENTRY_RE = /^-\s*(?:Create|Modify|Test|Delete):\s*`([^`]+)`/gm
 const TYPE_RE = /^\*\*Type:\*\*\s*(\S+)/m
 const TEST_ENTRY_RE = /^-\s*Test:\s*`([^`]+)`/m
 
+// #425: TypeScript's value here is `tsc --noEmit` catching cross-task
+// interface drift — the characteristic parallel-implementation failure. A
+// plan that writes .ts files but never typechecks in its gate has given that
+// up, probably without meaning to. Say so; never refuse. This module is not a
+// second gate (see the header), and a nudge that could block would make it
+// one.
+const TS_FILE_RE = /\.tsx?$/
+const TYPECHECK_RE = /tsc\s+--noEmit/
+const GREENFIELD_TEST_CMD = 'bunx tsc --noEmit && bun test'
+
 /**
  * Assess whether a compiled plan is fit to dispatch headlessly: does any task
  * carry a verification surface that can only ever be judged by a human.
  *
+ * Also emits advisory `notes` — things worth saying that are NOT grounds to
+ * refuse a dispatch. `fit` is computed from `findings` alone; a note can
+ * never move it, and `notes` is always an array so callers never branch on
+ * `undefined`.
+ *
  * @param {string} planText
- * @returns {{fit: boolean, findings: Array<{task: string, reason: string}>}}
+ * @returns {{fit: boolean, findings: Array<{task: string, reason: string}>,
+ *            notes: Array<{task: string, note: string}>}}
  */
 export const assessHeadlessFitness = (planText) => {
   const stripped = stripFences(planText ?? '')
   const tasks = splitTasks(stripped)
   const findings = []
+  const notes = []
+  // The one task the nudge attaches to: the first implementation task that
+  // writes TypeScript. Nudging every such task would say the same thing N
+  // times about one plan-level omission.
+  let firstTsTask = null
+  let anyGateTypechecks = false
 
   for (const { label, body } of tasks) {
     const typeMatch = body.match(TYPE_RE)
     const type = typeMatch ? typeMatch[1] : 'implementation'
+
+    const entries = [...body.matchAll(FILES_ENTRY_RE)].map((m) => m[1])
+    if (type === 'gate' && TYPECHECK_RE.test(body)) anyGateTypechecks = true
+    if (type === 'implementation' && firstTsTask === null && entries.some((e) => TS_FILE_RE.test(e))) {
+      firstTsTask = label
+    }
+
     if (type !== 'implementation') continue
 
-    const filesEntries = [...body.matchAll(FILES_ENTRY_RE)].map((m) => m[1])
+    const filesEntries = entries
     if (filesEntries.length === 0) continue
 
     const allMarkdown = filesEntries.every((entry) => entry.endsWith('.md'))
@@ -120,5 +149,16 @@ export const assessHeadlessFitness = (planText) => {
     })
   }
 
-  return { fit: findings.length === 0, findings }
+  if (firstTsTask !== null && !anyGateTypechecks) {
+    notes.push({
+      task: firstTsTask,
+      note:
+        'advisory only (this never blocks a dispatch): this plan writes TypeScript but no gate task ' +
+        `typechecks it. The characteristic parallel-implementation failure is cross-task interface ` +
+        `drift, and \`tsc --noEmit\` is what catches it before the suite runs. Consider making the ` +
+        `gate command \`${GREENFIELD_TEST_CMD}\` (#425).`,
+    })
+  }
+
+  return { fit: findings.length === 0, findings, notes }
 }
