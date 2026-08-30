@@ -14,7 +14,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills/ultrapowers/scripts"
 RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
+import ultra_run  # noqa: E402
 from ultra_run import detect_test_cmd  # noqa: E402
+
+# End-to-end receipt tests spawn the real driver, so the pytest command they
+# see depends on whether pytest-xdist is installed here (#426). Derive the
+# expectation from the same probe; the wiring under test is detect -> receipt.
+PYTEST_CMD = "python3 -m pytest -n auto" if ultra_run._xdist_available() else "python3 -m pytest"
 
 # One Driver Phase 0: the launch pipeline refuses unless the shim's env var is
 # set. Every driver invocation in this file runs as the engine session.
@@ -86,7 +92,7 @@ def test_happy_path_receipt(tmp_path):
     assert not (repo / ".claude/ultrapowers/RUN_LOCK").exists()
     assert "lockId" not in receipt and "probe" not in receipt
     assert receipt["workflowName"] == "ultrapowers-run"
-    assert receipt["testCmd"] == "python3 -m pytest"
+    assert receipt["testCmd"] == PYTEST_CMD
 
 
 def test_dirty_baseline_stage_records_the_preexisting_dirt(tmp_path):
@@ -248,7 +254,10 @@ def test_check_rejects_run_dir(tmp_path):
     assert "--run-dir" in out
 
 
-def test_detect_test_cmd_ladder(tmp_path):
+def test_detect_test_cmd_ladder(tmp_path, monkeypatch):
+    # Pin the xdist probe closed so the ladder assertions are environment-free;
+    # the -n auto upgrade has its own test below.
+    monkeypatch.setattr(ultra_run, "_xdist_available", lambda: False)
     # Miss: empty repo detects nothing.
     assert detect_test_cmd(tmp_path) == (None, None)
     # Each rule, lowest precedence first, then assert higher rules win.
@@ -266,6 +275,73 @@ def test_detect_test_cmd_ladder(tmp_path):
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pyproject-pytest")
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     assert detect_test_cmd(tmp_path) == ("python3 -m pytest", "pytest-ini")
+
+
+def test_detect_test_cmd_pytest_upgrades_to_xdist(tmp_path, monkeypatch):
+    """#426: when pytest-xdist is importable by the python3 that will run the
+    suite, both pytest rules emit `-n auto`; the rule names stay unchanged so
+    receipts remain comparable across environments."""
+    monkeypatch.setattr(ultra_run, "_xdist_available", lambda: True)
+    (tmp_path / "pyproject.toml").write_text("[tool.pytest.ini_options]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest -n auto", "pyproject-pytest")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    assert detect_test_cmd(tmp_path) == ("python3 -m pytest -n auto", "pytest-ini")
+
+
+def _fake_python3(tmp_path, probe_exit):
+    """A PATH-front `python3` stub: answers the xdist probe with probe_exit,
+    delegates everything else to the real interpreter. Pins that the probe
+    consults the PATH python3 (the interpreter testCmd will invoke), not this
+    process's import machinery."""
+    fb = tmp_path / "fakebin"
+    fb.mkdir(parents=True)
+    stub = fb / "python3"
+    stub.write_text(
+        "#!/bin/sh\n"
+        f'if [ "$1" = "-c" ] && [ "$2" = "import xdist" ]; then exit {probe_exit}; fi\n'
+        f'exec "{sys.executable}" "$@"\n')
+    stub.chmod(0o755)
+    return dict(os.environ, PATH=f"{fb}:{os.environ['PATH']}")
+
+
+def test_xdist_probe_follows_path_python3(tmp_path, monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setenv("PATH", _fake_python3(tmp_path, 0)["PATH"])
+    monkeypatch.delenv("ULTRAPOWERS_XDIST", raising=False)
+    assert ultra_run._xdist_available() is True
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_xdist_probe_fails_closed_on_oserror(monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setattr(ultra_run.subprocess, "run",
+                        lambda *a, **k: (_ for _ in ()).throw(OSError("no python3")))
+    assert ultra_run._xdist_available() is False
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_xdist_env_opt_out(monkeypatch):
+    ultra_run._xdist_available.cache_clear()
+    monkeypatch.setenv("ULTRAPOWERS_XDIST", "0")
+    assert ultra_run._xdist_available() is False
+    ultra_run._xdist_available.cache_clear()
+
+
+def test_receipt_carries_xdist_cmd_end_to_end(tmp_path):
+    """#426 wiring pin, not self-fulfilling: a stub python3 forces the probe
+    answer inside the spawned driver, and the receipt must reflect it — both
+    directions."""
+    for probe_exit, expected in ((0, "python3 -m pytest -n auto"),
+                                 (1, "python3 -m pytest")):
+        (tmp_path / f"probe{probe_exit}").mkdir()
+        repo = make_repo(tmp_path / f"probe{probe_exit}")
+        env = _fake_python3(tmp_path / f"bin{probe_exit}", probe_exit)
+        env["ULTRAPOWERS_FLEET_RUN"] = "run-test"
+        env.pop("ULTRAPOWERS_XDIST", None)
+        r = sh([sys.executable, str(RUN), "plan.md", "--stamp", "t1"],
+               cwd=repo, check=False, env=env)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert json.loads(r.stdout)["testCmd"] == expected
 
 
 @pytest.mark.parametrize("lockfile", ["bun.lock", "bun.lockb"])
@@ -301,11 +377,11 @@ def test_preflight_stamps_detected_test_cmd(tmp_path):
     r = run_driver(repo)
     assert r.returncode == 0, r.stdout + r.stderr
     receipt = json.loads(r.stdout)
-    assert receipt["testCmd"] == "python3 -m pytest"
+    assert receipt["testCmd"] == PYTEST_CMD
     assert receipt["testCmdSource"] == "detected:pytest-ini"
     assert "bootstrapCmd" not in receipt
     args = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
-    assert args["testCmd"] == "python3 -m pytest"
+    assert args["testCmd"] == PYTEST_CMD
     assert "bootstrapCmd" not in args
 
 
