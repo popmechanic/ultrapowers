@@ -36,7 +36,10 @@ ssh fleet-golden.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.g
 #    The engine commits inside the sandbox and the suite is pytest, so the
 #    image needs a git identity and pytest (python3 ships with exeuntu):
 ssh fleet-golden.exe.xyz 'git config --global user.name fleet && git config --global user.email fleet@localhost'
-ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest && python3 -m pytest --version'
+ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest pytest-xdist && python3 -m pytest --version'
+#    pytest-xdist halves suite wall inside runs (#426): test-command detection
+#    emits `-n auto` when xdist is importable, serial pytest otherwise — so an
+#    older golden without it degrades gracefully instead of failing.
 
 # 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
 #    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).

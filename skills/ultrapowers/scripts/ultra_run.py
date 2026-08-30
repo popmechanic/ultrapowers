@@ -28,15 +28,29 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 
+def _xdist_available():
+    """#426: probe the `python3` on PATH — the interpreter testCmd will invoke,
+    which need not be sys.executable — for pytest-xdist. Fail closed: any
+    probe error means serial pytest, never a broken `-n auto`."""
+    try:
+        return subprocess.run(["python3", "-c", "import xdist"],
+                              capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def detect_test_cmd(root):
     """Deterministic test-command detection ladder (#96). File presence only,
-    no LLM, no execution. Returns (command, rule) or (None, None)."""
+    no LLM, never runs the suite (the pytest rules probe for pytest-xdist —
+    #426 — but the probe is an import check, not a test run). Returns
+    (command, rule) or (None, None)."""
     root = Path(root)
+    pytest_cmd = "python3 -m pytest -n auto" if _xdist_available() else "python3 -m pytest"
     if (root / "pytest.ini").is_file():
-        return "python3 -m pytest", "pytest-ini"
+        return pytest_cmd, "pytest-ini"
     pyproject = root / "pyproject.toml"
     if pyproject.is_file() and "[tool.pytest" in pyproject.read_text(errors="ignore"):
-        return "python3 -m pytest", "pyproject-pytest"
+        return pytest_cmd, "pyproject-pytest"
     pkg = root / "package.json"
     if pkg.is_file():
         try:
