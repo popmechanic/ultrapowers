@@ -219,3 +219,40 @@ def test_check_accepts_a_commutes_marker_in_the_header(tmp_path):
     proc = run_check(tmp_path, HEADER_COMMUTES)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "PLAN OK" in proc.stdout
+
+
+MARKED_NO_ACCEPTANCE = CANONICAL.replace("**Acceptance:** suite — test\n", "")
+
+UNMARKED_NO_ACCEPTANCE = """# P
+
+### Task 1: A
+
+**Files:**
+- Modify: `src/a.py`
+
+- [ ] **Step 1: do it**
+"""
+
+
+def test_check_refuses_marked_plan_with_no_acceptance_line(tmp_path):
+    """#440: the full compile refuses this at compile_plan.py:1668; --check
+    said PLAN OK, so the plan died at launch instead of at authoring time."""
+    plan = tmp_path / "p.md"
+    plan.write_text(MARKED_NO_ACCEPTANCE)
+    r = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
+                       capture_output=True, text=True)
+    assert r.returncode == 2
+    assert "no **Acceptance:** line" in r.stdout
+    assert "1 violation(s)" in r.stdout
+
+
+def test_check_leaves_unmarked_plans_alone(tmp_path):
+    """Scope guard: four committed plans carry no Acceptance line and no
+    markers. An unscoped gate would start failing them, and
+    test_all_plans_compile.py only covers marked plans."""
+    plan = tmp_path / "p.md"
+    plan.write_text(UNMARKED_NO_ACCEPTANCE)
+    r = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0
+    assert "PLAN OK" in r.stdout

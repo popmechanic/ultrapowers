@@ -82,11 +82,14 @@ def _build_parser():
                              "(default: a mkdtemp; pass a durable dir to keep it)")
     # run-28 critic finding 1: fixture projects deliberately carry no pytest
     # config (fixtures are read-only baselines), so ultra_run's detection
-    # ladder finds nothing and run-engine refuses (testCmd is mandatory, #96).
-    # The runner therefore always threads an explicit --test-cmd.
-    parser.add_argument("--test-cmd", default="python3 -m pytest",
+    # ladder finds nothing for them and run-engine refuses (testCmd is
+    # mandatory, #96) — which is why every documented A/B invocation passes
+    # this explicitly. Omitted (None) => not passed, so the ladder decides
+    # (#442). A hardcoded default silently discarded the ladder's `-n auto`
+    # upgrade on every cell.
+    parser.add_argument("--test-cmd", default=None,
                         help="suite command the engine runs in the cell "
-                             "(default: python3 -m pytest)")
+                             "(default: ultra_run's detection ladder decides)")
     # A fixture whose project needs dependencies fetched before anything can
     # typecheck or run (the Bun cell: `bun install`) has no green baseline
     # without this — validate_knobs rehearses the bootstrap in its probe
@@ -164,8 +167,9 @@ def main(argv, run=subprocess.run):
         return 2
 
     command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
-               "--repo", str(cell), "--overlap", args.overlap,
-               "--test-cmd", args.test_cmd]
+               "--repo", str(cell), "--overlap", args.overlap]
+    if args.test_cmd:
+        command += ["--test-cmd", args.test_cmd]
     if args.bootstrap_cmd:
         command += ["--bootstrap-cmd", args.bootstrap_cmd]
     # No timeout: a real cell runs for tens of minutes and the operator is

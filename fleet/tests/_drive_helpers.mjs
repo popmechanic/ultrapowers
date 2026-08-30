@@ -240,9 +240,6 @@ export const setupDriveFixture = async () => {
       // `readStamp` answer; a scenario that must model a sandbox running code
       // OTHER than the pushed base (a stale golden) supplies a wrong one here.
       stamp: stampOverride = null,
-      // #282 image side (distill P5): the version the sandbox reports as
-      // INSTALLED. Null = the stub stamps none (an older shim).
-      installedPluginVersion: installedOverride = null,
     }) => {
       const sandboxId = sandboxIdFor(runId)
       return (async () => {
@@ -253,10 +250,7 @@ export const setupDriveFixture = async () => {
         const synchronizer = await createWsSynchronizer(store, socket)
         await synchronizer.startSync()
 
-        const stamp = {
-          ...(stampOverride ?? (await readStamp({ repoDir, exec }))),
-          ...(installedOverride ? { installedPluginVersion: installedOverride } : {}),
-        }
+        const stamp = { ...(stampOverride ?? (await readStamp({ repoDir, exec }))) }
         // Stamped before the run so a crashed run still carries its identity, and
         // again after, because `runShim`'s status `setRow` replaces the whole row
         // and can drop cells it has not yet synced.

@@ -23,8 +23,42 @@ def test_runbook_says_bun_is_for_targets_not_the_driver():
 
 def test_runbook_warms_the_bun_cache_in_the_image():
     """#425 item 3: the cache clones with the sandbox, so a target's
-    `bun install` is a hardlink operation rather than a registry fetch on every
-    run (measured 574 ms offline, 2026-08-30). Installing the binary without
-    warming the cache leaves the per-run network cost in place."""
-    assert "bun pm cache" in RUNBOOK
-    assert "bun install" in RUNBOOK
+    `bun install` is a hardlink operation rather than a registry fetch on
+    every run (17 ms offline on the golden, 2026-08-30). `--offline`
+    succeeding IS the proof — it cannot pass by silently reaching the
+    registry."""
+    assert "bun install --offline" in RUNBOOK
+
+
+def test_runbook_installs_xdist_past_pep668():
+    """exeuntu's python3.12 is externally managed: a plain `pip install --user`
+    refuses outright while `pytest --version` still answers from
+    dist-packages — a golden with no xdist and no signal. Verified 2026-08-30."""
+    assert "--break-system-packages" in RUNBOOK
+
+
+def test_runbook_proves_xdist_by_import():
+    """The install's exit code is not the check; the import is."""
+    assert "import xdist" in RUNBOOK
+
+
+def test_runbook_measures_the_bun_cache_by_path():
+    """`du -sh $(bun pm cache)` outside a project dir prints $HOME's size
+    (535M measured) instead of failing — a check that cannot fail."""
+    assert "du -sh ~/.bun/install/cache" in RUNBOOK
+    assert "du -sh \\$(bun pm cache)" not in RUNBOOK
+    assert "du -sh $(bun pm cache)" not in RUNBOOK
+
+
+def test_runbook_documents_build_then_swap():
+    """fleet-golden already exists and every run clones it; and the
+    from-scratch path never recreates ~/.claude/settings.json."""
+    assert "fleet-golden-next" in RUNBOOK
+    assert "settings.json" in RUNBOOK
+
+
+def test_runbook_versionstamp_row_drops_the_dead_installed_check():
+    """The installed-plugin cross-check died at 0.3.0 with the install it
+    checked (44e0d15); drive.mjs:1123-1127 is the source of truth. Stale prose
+    here tells an operator the gate verifies something it does not."""
+    assert "installedPluginVersion" not in RUNBOOK
