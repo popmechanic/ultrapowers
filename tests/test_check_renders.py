@@ -504,3 +504,130 @@ def test_referents_are_silent_on_canonical_fixtures():
         base = ROOT / "evals/fixtures" / name / "project"
         p = check(plan, "--renders", "--base", str(base))
         assert p.returncode == 0 and "ADVISORY referent" not in p.stdout, name
+
+
+# --------------------------------------------------------------------------- #
+# P3 — unverifiable-from-sandbox (#458)                                        #
+# --------------------------------------------------------------------------- #
+HAND_EXECUTED_PLAN = """# P
+
+**Acceptance:** suite — test
+
+### Task 1: Correct the runbook
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `fleet/RUNBOOK.md`
+
+- [ ] **Step 1: fix the install line**
+
+### Task 2: Ordinary code change
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `fleet/run-engine.mjs`
+
+- [ ] **Step 1: do it**
+"""
+
+P3_FILES = {
+    "fleet/RUNBOOK.md": "# runbook\n",
+    "fleet/run-engine.mjs": "export const x = 1\n",
+    "fleet/tests/PROBES.md": "# probes\n",
+}
+
+_UNVERIFIABLE = ("ADVISORY unverifiable-from-sandbox: Task %s edits %s — a "
+                 "hand-executed record. No reviewer can check its claims from a "
+                 "sandbox; carry the evidence (commands and their output) in the "
+                 "task body so review can check correspondence instead of truth.")
+
+
+def test_renders_flag_a_task_editing_a_hand_executed_record(tmp_path):
+    """#458: run-30's three acks were guaranteed by its Task 5's shape before
+    the run started. A sandbox cannot verify a claim about a live VM."""
+    repo = git_repo(tmp_path, P3_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(HAND_EXECUTED_PLAN)
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    assert "PLAN OK" in r.stdout
+    adv = [l for l in r.stdout.splitlines()
+           if l.startswith("ADVISORY unverifiable-from-sandbox")]
+    assert adv == [_UNVERIFIABLE % ("1", "fleet/RUNBOOK.md")]
+    # the ordinary task must not be flagged
+    assert "Task 2" not in r.stdout.split("ADVISORY unverifiable-from-sandbox")[1]
+
+
+def test_renders_advisory_does_not_change_the_frozen_verdict(tmp_path):
+    """The advisory is additive: the verdict, its wording and the exit code are
+    frozen at 0.1.0 and must be byte-identical with and without --renders."""
+    plan = tmp_path / "p.md"
+    plan.write_text(HAND_EXECUTED_PLAN)
+    plain = check(plan)
+    assert plain.returncode == 0
+    assert plain.stdout.strip() == "PLAN OK"
+
+
+def test_unverifiable_advisory_names_every_hand_executed_record_a_task_edits(tmp_path):
+    """One line per offending task, listing its records sorted — not one line
+    per record, and not a bare count."""
+    repo = git_repo(tmp_path, P3_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(HAND_EXECUTED_PLAN.replace(
+        "- Modify: `fleet/RUNBOOK.md`",
+        "- Modify: `fleet/tests/PROBES.md`\n- Modify: `fleet/RUNBOOK.md`"))
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    adv = [l for l in r.stdout.splitlines()
+           if l.startswith("ADVISORY unverifiable-from-sandbox")]
+    assert adv == [_UNVERIFIABLE % ("1", "fleet/RUNBOOK.md, fleet/tests/PROBES.md")]
+
+
+def test_unverifiable_advisory_covers_created_records_not_only_modified(tmp_path):
+    """Writing a hand-executed record from scratch makes the same unverifiable
+    claims as editing one."""
+    repo = git_repo(tmp_path, {"fleet/run-engine.mjs": "export const x = 1\n"})
+    plan = tmp_path / "p.md"
+    plan.write_text(HAND_EXECUTED_PLAN.replace("- Modify: `fleet/RUNBOOK.md`",
+                                               "- Create: `fleet/RUNBOOK.md`"))
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    adv = [l for l in r.stdout.splitlines()
+           if l.startswith("ADVISORY unverifiable-from-sandbox")]
+    assert adv == [_UNVERIFIABLE % ("1", "fleet/RUNBOOK.md")]
+
+
+def test_unverifiable_advisory_is_silent_on_a_task_that_only_reads_one(tmp_path):
+    """Reading a hand-executed record asserts nothing about live infrastructure;
+    only a task that writes one carries unverifiable claims. (`Test:` is this
+    grammar's read label.)"""
+    repo = git_repo(tmp_path, P3_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(HAND_EXECUTED_PLAN.replace("- Modify: `fleet/RUNBOOK.md`",
+                                               "- Test: `fleet/RUNBOOK.md`\n"
+                                               "- Modify: `fleet/other.md`"))
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    assert "unverifiable-from-sandbox" not in r.stdout
+
+
+def test_unverifiable_advisory_is_silent_on_canonical_fixtures():
+    for name in CANONICAL:
+        plan = ROOT / "evals/fixtures" / name / "plan.md"
+        base = ROOT / "evals/fixtures" / name / "project"
+        p = check(plan, "--renders", "--base", str(base))
+        assert p.returncode == 0 and "unverifiable-from-sandbox" not in p.stdout, name
+
+
+def test_hand_executed_records_is_a_tuple_of_paths_present_at_head():
+    """A short explicit list, not a heuristic — and every entry names a file
+    that exists, so the constant cannot rot into a no-op."""
+    assert isinstance(compile_plan.HAND_EXECUTED_RECORDS, tuple)
+    assert "fleet/RUNBOOK.md" in compile_plan.HAND_EXECUTED_RECORDS
+    for rel in compile_plan.HAND_EXECUTED_RECORDS:
+        assert isinstance(rel, str) and not rel.startswith("/"), rel
+        assert (ROOT / rel).is_file(), rel

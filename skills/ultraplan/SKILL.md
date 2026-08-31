@@ -39,11 +39,10 @@ independence the sequential pen glides over. Five moves:
    Two obligations survive: `**Files:**` blocks remain required — they are the
    compiler's contention-detection input — and declare `**Commutes:**` on shared
    append-natured surfaces so the engine can classify that contention and union
-   the additions instead of resolving them. That means registration surfaces
-   (route tables, export lists, manifests) and shared test modules two tasks
-   both append test functions to — both declare `**Commutes:**` on it. Declare
-   only for append-shaped edits; a task that also modifies or deletes existing
-   lines in the file must not declare it. One exception: chain non-text (binary/symlink) same-file pairs with
+   the additions instead of resolving them. Registration surfaces (route
+   tables, export lists, manifests) and shared test modules two tasks both
+   append to qualify; never declare it on a file the task also modifies or
+   deletes existing lines in. One exception: chain non-text (binary/symlink) same-file pairs with
    `Depends-on` — they run in parallel otherwise and always fall back.
    Blast radius follows the contract, not the file: a task that changes a
    declared `Produces:` shape owns every strict-equality pin of it, in any
@@ -69,8 +68,7 @@ correct outcome — small or inherently-linear work should not be reshaped. Gate
 plus valve keep shaping from manufacturing breadth; the recommender routes a
 narrow plan to a sequential executor honestly.
 
-**Author for the resolver.** Because same-file edits fold instead of serializing,
-write tasks that fold cleanly: give each a stable anchor to edit near (a named
+**Author for the resolver.** Write tasks that fold cleanly: give each a stable anchor to edit near (a named
 function, a labeled section), designate an append zone for a list two tasks both
 grow, and prefer additive registration over rewriting a shared block. Resolver
 guidance only — nothing parses it.
@@ -108,10 +106,9 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   dropped, never a compile error. Like every marker it belongs in the
   header block; after `**Files:**` it is discarded and `--check` refuses it.
 
-While marking the plan, decide review depth explicitly: mark
+Decide review depth explicitly: mark
 `**Review:** adversarial` on tasks whose failure is costly or hard to see — the
-fit analysis's risk list below. Everything else stays lean.
-The engine derives nothing: unmarked means lean.
+fit analysis's risk list below.
 
 Placement is enforced: the compiler trusts markers only in the contiguous block
 immediately after the task heading — a later marker is ignored and surfaced as a
@@ -220,6 +217,11 @@ While writing tasks:
    cites must exist at BASE, be created by a task it `Depends-on`, or be defined
    in `report-format.md`. Run `compile_plan.py --check --renders <plan>` and
    read its `ADVISORY` blast-radius and referent lines before handoff.
+- **Claims about the live world carry their evidence.** A task editing a
+  hand-executed record (`fleet/RUNBOOK.md`) or asserting what a live system does
+  is unverifiable from a sandbox — the reviewer defers. Paste the commands and
+  their output into the body so review checks **correspondence** to recorded
+  evidence, not truth it cannot reach. `--check --renders` flags these.
 - **Greenfield targets take the Bun + TypeScript defaults** — knobs and
   rationale in `references/greenfield-stack.md` (#425).
 - **Bodies may sketch routine glue — an ultraplan override.** writing-plans
@@ -250,9 +252,8 @@ lives in the ultrapowers skill's scripts directory):
     python3 $COMPILE_PLAN/compile_plan.py --check <plan.md>
 
 Exit 0 (`PLAN OK`) — hand the plan off. Any violation prints a did-you-mean
-fix; apply it and re-run. The runtime parser accepts exactly this grammar, so a
-plan that skips the check fails at launch — when a fix costs a session, not
-seconds.
+fix; apply it and re-run. The runtime parser accepts exactly this grammar:
+skipping the check moves the fix cost from seconds to a session.
 
 ## Operator smoke — aim the one human check
 
@@ -274,8 +275,8 @@ never parsed, never a merge blocker.
 
 ## Populate the v6 blocks — they are load-bearing here
 
-superpowers v6 adds two plan blocks. In ultrapowers they are **not just
-documentation** — the compiler reads them, so populate them deliberately:
+superpowers v6 adds two plan blocks. The compiler reads them, so populate
+them deliberately:
 
 1. **`## Global Constraints`** (a header section, project-wide). Copy the spec's
    binding, cross-cutting requirements verbatim — version floors, naming/copy

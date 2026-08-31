@@ -177,6 +177,22 @@ const interfacesLine = (task) => {
     (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
     (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
 }
+// #458: the driver runs the suite on the folded tree and the critic was never
+// told. A read-only critic cannot run it — running a PROGRAM is not classified
+// read-only, measured 2026-08-31 (#457) — so it establishes pass/fail by static
+// trace and then defers it as `deferred:runtime`. That deferral is manufactured:
+// the answer already exists in `lastSuite`. Naming the driver's run authoritative
+// is what the contend cell's critic explicitly asked for. Exported for the unit
+// pin on the red branch (as capWorkerParallelism is) — the engine only ever
+// adopts a green tree, so no live run reaches it.
+export const suiteLine = (suite, cmd) => {
+  if (!suite) return ''
+  return '\nSUITE (driver-run, post-fold) — this is the authoritative result; ' +
+    'do not re-derive it by reading tests.' +
+    '\ncommand: ' + (cmd || '(unknown)') +
+    '\npassed: ' + Boolean(suite.passed) +
+    (suite.passed === false ? '\noutput: ' + tail(suite.output, 500) : '')
+}
 const siblingLine = (task, wave) => {
   const sibs = wave
     .filter((t) => t.id !== task.id && Array.isArray(t.files) && t.files.length)
@@ -1123,6 +1139,7 @@ export async function runEngine({
           globalConstraintsBlock + cannotVerifyChecklist +
           '\n\nTasks:\n' + taskList +
           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
+          suiteLine(lastSuite, testCmd) +
           (baseline.passed === false
             ? '\nBaseline: the test suite failed before any task ran — ' + tail(baseline.output, 500)
             : ''),

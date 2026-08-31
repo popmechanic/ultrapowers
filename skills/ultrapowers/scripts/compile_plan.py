@@ -1489,6 +1489,39 @@ def _render_referents(tasks, ctx):
 ADVISORY_RENDERS.append(("referent", _render_referents))
 
 
+# P3 — unverifiable from a sandbox (#458). Documents whose correctness is
+# established by a human running commands against live infrastructure, not by
+# any check in this repo. A task that writes one makes claims no sandbox can
+# verify — run-30 drew three `deferred:*` acks that were guaranteed by its
+# plan's shape before the run started. Extend this tuple when another such
+# record appears; it is deliberately a short explicit list rather than a
+# heuristic, because a heuristic here would flag ordinary docs.
+HAND_EXECUTED_RECORDS = (
+    "fleet/RUNBOOK.md",
+    "fleet/tests/PROBES.md",
+)
+
+
+def _render_unverifiable(tasks, ctx):
+    lines = []
+    for t in tasks:
+        # writes only: reading a hand-executed record asserts nothing about the
+        # live infrastructure it records.
+        hits = sorted((set(t["creates"]) | set(t["modifies"]))
+                      .intersection(HAND_EXECUTED_RECORDS))
+        if not hits:
+            continue
+        lines.append("ADVISORY unverifiable-from-sandbox: Task %s edits %s — a "
+                     "hand-executed record. No reviewer can check its claims from "
+                     "a sandbox; carry the evidence (commands and their output) in "
+                     "the task body so review can check correspondence instead of "
+                     "truth." % (t["id"], ", ".join(hits)))
+    return lines
+
+
+ADVISORY_RENDERS.append(("unverifiable-from-sandbox", _render_unverifiable))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)
