@@ -48,7 +48,7 @@ jobs:
       # worker an impossible budget. The cap that survives is on what an agent
       # is MADE to read — fleet/roles/*.md, 350 words, at the point of use.
       - name: Report skill prose sizes
-        run: wc -w skills/*/SKILL.md
+        run: wc -w skills/*/SKILL.md 2>/dev/null || true
 
       - name: Run tests
         run: python -m pytest tests/ -n auto -v

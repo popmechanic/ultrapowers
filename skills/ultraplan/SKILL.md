@@ -187,9 +187,11 @@ Example analysis lines:
 
 ## Choose the right Type
 
-`implementation` is the default and the only Type that is waved and executed;
-`gate`, `release` and `manual` all leave the wave set and are carried verbatim
-into the post-merge runbook. What each one means is in `plan-markers.md`
+`implementation` is the default and the only Type that is waved and executed.
+The other three leave the wave set **by two different exits**: `release` and
+`manual` are carried verbatim into the post-merge runbook, while `gate` is
+compiled into run configuration — its suite command informs `testCmd` and it is
+rendered in the transparency block. What each one means is in `plan-markers.md`
 §Type semantics; what you have to decide is which one a task is.
 
 Marking a write-nothing verification task `gate` is not optional bookkeeping: a
@@ -233,11 +235,12 @@ While writing tasks:
   exact code in every step, because its second reviewer audits the diff against
   the plan text.
 - **Shrink budgets are acceptance criteria — deltas, and only on prose an agent
-  is made to READ** (`fleet/roles/*.md`, capped at 350 words at dispatch). State
-  the net word delta the diff implies (`net delta ≤ +N words`, or `≤ −N`),
-  verified as word-count(after) − word-count(before). **Never state an absolute
-  ceiling on a stored file** (#492): one stood at a single word of headroom, and
-  a budget a task cannot meet is a demolition order, not a constraint.
+  is made to READ.** That means role and system-prompt files a run loads at
+  dispatch, never a document someone opens when they need it. State the net word
+  delta the diff implies (`net delta ≤ +N words`, or `≤ −N`), verified as
+  word-count(after) − word-count(before). **Never state an absolute ceiling on a
+  stored file** (#492): one stood at a single word of headroom, and a budget a
+  task cannot meet is a demolition order, not a constraint.
 - **Tier escalation-prone tasks up front.** Large single-file refactors blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark them
   `most-capable` rather than letting the launch guess it.

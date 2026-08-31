@@ -455,7 +455,7 @@ The spec is **plan-ready**; these are mirrored here the same sitting, per the ma
 | 2 | **Admission control ships as OBSERVATION ONLY in 0.3.0.** The gate is built in 0.3.1 from the data 0.3.0 collects. The claim-lease VM reaper ships regardless (it is a leak fix) |
 | 3 | **`claude plugin eval` gates the client surface only**, not the engine |
 | 4 | **#390 ships INSIDE 0.3.0**, not beside it |
-| 5 | **The owned authoring skill's ≤ 1,500-word ceiling is a release-refusing bar**, raisable only by stating the new number and its reason in the release commit body (the 0.2.23 practice) |
+| 5 | ~~**The owned authoring skill's ≤ 1,500-word ceiling is a release-refusing bar**, raisable only by stating the new number and its reason in the release commit body (the 0.2.23 practice)~~ — **SUPERSEDED 2026-08-31 by #492.** Every prose ceiling on a *stored* file is deleted, with its measured record: zero observed instances of a cap preventing bloat, three of it causing harm. See §Rule 5's amendment below |
 | 6 | **Superpowers stays installed on the operator's machine**; the residual is one precedence line in `hooks/session_start.sh` |
 | 7 | **`ultradocket`'s sweep is reworked inside 0.3.0** so no tool anywhere still emits the old artifact |
 
@@ -486,8 +486,27 @@ half is narrowed to the artifact its evidence covers.
 **What now carries rule 5's intent** — counts of things a human or an LLM must actually
 hold, plus the rule that names the real enemy:
 
-- **prose ceilings**: engine `SKILL.md` ≤ 400 words · owned authoring skill ≤ 1,500 words ·
+- ~~**prose ceilings**: engine `SKILL.md` ≤ 400 words · owned authoring skill ≤ 1,500 words~~ ·
   intent doc exactly 7 slots, ≤ 8 standing decisions;
+
+  > **SUPERSEDED 2026-08-31 (#492), mirrored here the same sitting as the CLAUDE.md
+  > edit, per this document's own convention.** The word ceilings on stored files are
+  > deleted — `tests/test_skill_budget.py` with them. The record that pays for it:
+  > the `ultrapowers` cap stood at 1000 against a 354-word file and bound nothing for
+  > months; the `ultraplan` cap stood at ONE word of headroom and an implementer,
+  > handed an arithmetically impossible budget, paid it by **deleting a normative
+  > rule** (run-31, #455); and the same number stated in two files contradicted itself
+  > silently from the moment 0.3.1 merged (#491). Zero observed saves, three observed
+  > harms.
+  >
+  > **Rule 5's intent survives, relocated to where it bites: cap what an agent is
+  > MADE to read, not what a file stores.** `fleet/roles/*.md` is capped at 350 words
+  > at the point of dispatch (`fleet/tests/test_run_engine.mjs`) — that is the live
+  > ceiling. A file ceiling on an authoring document measures storage, not attention,
+  > and is satisfiable by moving bytes sideways. The count is not lost, only demoted
+  > from a gate to a reading: CI's `Report skill prose sizes` step and release commit
+  > bodies.
+
 - **scripts ≤ 10**; **guards deleted ≥ 6, each with its licensing number**;
 - **every guard added after go-live owes a deletion in the same PR, and a measured number** —
   which names *accreted guards*, the thing the chartering diagnosis actually indicted
