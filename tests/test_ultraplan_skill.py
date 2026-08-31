@@ -144,3 +144,11 @@ def test_shaping_moves_state_the_wave_cost_model():
     assert "billed dimension" in text
     # width is the cheap axis and the skill must say so
     assert "nearly free up to `WIDTH`" in text
+
+
+def test_authoring_rules_require_evidence_for_live_world_claims():
+    """#458: run-30's acks were guaranteed by its plan's shape. A reviewer can
+    check correspondence to recorded evidence; it cannot check truth."""
+    text = (ROOT / "skills/ultraplan/SKILL.md").read_text()
+    assert "correspondence" in text
+    assert "hand-executed record" in text
