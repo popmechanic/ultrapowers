@@ -10,7 +10,7 @@
       "name": "ultrapowers",
       "source": "./",
       "description": "ultrapowers client — runs on an exe.dev fleet you provision (parallel waves in a sandbox, per-task review, orchestrator-opened PR); no local engine",
-      "version": "0.3.0"
+      "version": "0.3.1"
     }
   ]
 }
