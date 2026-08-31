@@ -65,3 +65,41 @@ def test_fetch_bundles_skips_a_failed_copy(tmp_path, monkeypatch):
     _stub(tmp_path / "bin", "ssh", f"printf '{LISTING}'\n")
     _stub(tmp_path / "bin", "scp", "exit 1\n")
     assert fleet_fetch.fetch_bundles("h", tmp_path / "dest") == []
+
+
+# ---------- #464 item 2: no remote shell, and a tight bundle alphabet ----------
+
+def test_fetch_uses_the_sftp_protocol_so_no_remote_shell_expands_the_path(
+        tmp_path, monkeypatch):
+    # `scp -s` forces SFTP, which does not expand the remote path through a
+    # shell. Without it the remote spec is shell-interpreted on the far side.
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", f"printf '{LISTING}'\n")
+    _stub(tmp_path / "bin", "scp",
+          'printf "%s\\n" "$@" >> "$ARGLOG"; eval "dest=\\${$#}"; printf t > "$dest"\n')
+    monkeypatch.setenv("ARGLOG", str(tmp_path / "argv.txt"))
+    fleet_fetch.fetch_bundles("h", tmp_path / "dest", run_ids=["run-30"])
+    assert "-s" in (tmp_path / "argv.txt").read_text().splitlines()
+
+
+def test_bundle_names_with_shell_metacharacters_are_not_listed(tmp_path, monkeypatch):
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh",
+          "printf 'fleet-run-a;touch$IFS/tmp/x-1\\nfleet-run-`id`-2\\nfleet-run-30-200\\n'\n")
+    assert fleet_fetch.list_remote_bundles("h") == ["fleet-run-30-200"]
+
+
+def test_a_failed_copy_reports_the_skip_on_stderr(tmp_path, monkeypatch, capsys):
+    # Deleting every _warn() must not leave the suite green.
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", f"printf '{LISTING}'\n")
+    _stub(tmp_path / "bin", "scp", "exit 1\n")
+    fleet_fetch.fetch_bundles("h", tmp_path / "dest")
+    assert "skipping" in capsys.readouterr().err
+
+
+def test_a_failed_listing_reports_the_skip_on_stderr(tmp_path, monkeypatch, capsys):
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", "exit 255\n")
+    fleet_fetch.list_remote_bundles("h")
+    assert "skipping" in capsys.readouterr().err

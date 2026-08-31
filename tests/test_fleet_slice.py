@@ -78,3 +78,30 @@ def test_build_slice_with_no_workers_still_carries_the_timeline(tmp_path):
                                  tmp_path / "projects")
     assert "## Event timeline" in md
     assert "runId=run-30" in md
+
+
+# ---------- #464 item 3: a bad transcript skips, never raises ----------
+
+def test_worker_slice_survives_invalid_utf8(tmp_path):
+    # A transcript still streaming to disk can end mid-multibyte; read_text()
+    # is strict UTF-8 and raises UnicodeDecodeError, which is not an OSError.
+    p = tmp_path / "s.jsonl"
+    p.write_bytes(b'{"type":"user","message":{"content":[{"type":"text","text":"hi"}]}}\n\xff\xfe')
+    assert fleet_slice.worker_slice(p) == ""
+
+
+def test_worker_slice_survives_a_non_dict_record(tmp_path):
+    # `_records` drops unparseable lines but keeps a valid JSON scalar/list,
+    # and slice_transcript then calls .get() on it -> AttributeError.
+    p = tmp_path / "s.jsonl"
+    p.write_text('"just a string"\n[1,2,3]\n')
+    assert fleet_slice.worker_slice(p) == ""
+
+
+def test_worker_slice_reports_the_skip_on_stderr(tmp_path, capsys):
+    # The advisory contract is "a skip PLUS a stderr diagnostic" — assert the
+    # diagnostic, so deleting it cannot leave the suite green.
+    p = tmp_path / "s.jsonl"
+    p.write_text('"just a string"\n')
+    fleet_slice.worker_slice(p)
+    assert "cannot read" in capsys.readouterr().err

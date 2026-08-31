@@ -58,9 +58,16 @@ def _read_jsonl(path):
         if not line:
             continue
         try:
-            out.append(json.loads(line))
+            rec = json.loads(line)
         except json.JSONDecodeError:
             continue
+        # A line that parses to a bare string/list is malformed for our readers,
+        # which all do `.get()`. Skip with a diagnostic rather than hand a
+        # non-dict downstream (advisory contract).
+        if not isinstance(rec, dict):
+            _warn(f"{path}: skipping a non-object record")
+            continue
+        out.append(rec)
     return out
 
 
@@ -80,7 +87,12 @@ def discover_run_dirs(path, workdir):
         if not tarfile.is_tarfile(path):
             _warn(f"not a directory or tarball: {path}")
             return []
-        dest = Path(workdir) / path.stem
+        # NOT `path.stem`: fetch_bundles names every bundle's tarball
+        # `sandbox-logs.tgz`, so a stem-keyed destination is the SAME directory
+        # for all of them — each unpack then re-reports every run extracted so
+        # far (8 tarballs -> 36 run dirs), and same-named run dirs overwrite
+        # each other. Key on the bundle directory too.
+        dest = Path(workdir) / f"{path.parent.name}-{path.stem}"
         dest.mkdir(parents=True, exist_ok=True)
         try:
             with tarfile.open(path) as tf:

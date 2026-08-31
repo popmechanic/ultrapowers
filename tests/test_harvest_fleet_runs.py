@@ -230,3 +230,38 @@ def test_main_with_no_runs_found_is_a_clean_zero(tmp_path, capsys):
     rc = hfr.main([str(tmp_path / "empty"), "--cache", str(tmp_path / "cache")])
     assert rc == 0
     assert "0 bundle" in capsys.readouterr().out
+
+
+# ---------- #464 item 1: every bundle tarball is named sandbox-logs.tgz ----------
+
+def test_two_bundles_unpack_to_separate_directories(tmp_path):
+    # fetch_bundles writes <dest>/<bundle>/sandbox-logs.tgz, so `path.stem` is
+    # the SAME string for every bundle. A stem-keyed unpack dir made each
+    # tarball re-report every run extracted before it: 8 tarballs -> 36 dirs.
+    src = tmp_path / "src"
+    a = _make_run_dir(src / "a", "run-30")
+    b = _make_run_dir(src / "b", "run-31")
+    tars = []
+    for i, d in enumerate((a, b)):
+        # the real layout: one directory per bundle, identical file name
+        bundle = tmp_path / "dest" / f"fleet-run-{30 + i}-178813{i}"
+        bundle.mkdir(parents=True)
+        tgz = bundle / "sandbox-logs.tgz"
+        with tarfile.open(tgz, "w:gz") as tf:
+            tf.add(d, arcname=f"repo/.claude/ultrapowers/{d.name}")
+        tars.append(tgz)
+    work = tmp_path / "w"
+    found = []
+    for t in tars:
+        found += hfr.discover_run_dirs(t, work)
+    assert len(found) == 2, f"expected 2 run dirs, got {len(found)}: {found}"
+    assert sorted(p.name for p in found) == ["run-run-30", "run-run-31"]
+
+
+def test_a_non_object_jsonl_record_is_skipped_with_a_diagnostic(tmp_path, capsys):
+    d = _make_run_dir(tmp_path)
+    (d / "confine-denials.jsonl").write_text('"a bare string"\n{"tool":"Bash"}\n')
+    out = hfr.build_fleet_bundle(d, tmp_path / "cache")
+    b = json.loads((out / "bundle.json").read_text())
+    assert b["confineDenials"] == [{"tool": "Bash"}]
+    assert "non-object record" in capsys.readouterr().err

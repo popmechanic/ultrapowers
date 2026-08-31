@@ -13,7 +13,9 @@ from pathlib import Path
 DEFAULT_REMOTE_ROOT = "/tmp/fleet-orch-live-evidence/sandbox-logs"
 
 # group 1 is the run number, so `fleet-run-30-1788131392373` yields `run-30`.
-_BUNDLE = re.compile(r"^fleet-run-(\S+?)-\d+$")
+# `\S` admits `;`, `$` and backticks, which reach a remote shell through an
+# scp path. Bundle names are machine-generated, so spell out the alphabet.
+_BUNDLE = re.compile(r"^fleet-run-([A-Za-z0-9._-]+?)-\d+$")
 
 _CONNECT_TIMEOUT = "ConnectTimeout=20"
 _LIST_TIMEOUT = 60      # seconds; a directory listing is cheap
@@ -58,8 +60,13 @@ def fetch_bundles(host, dest, remote_root=DEFAULT_REMOTE_ROOT, run_ids=None):
             continue
         out_dir = dest / name
         out = out_dir / "sandbox-logs.tgz"
-        cmd = ["scp", "-o", _CONNECT_TIMEOUT,
-               f"{host}:{remote_root}/{name}/sandbox-logs.tgz", str(out)]
+        # `-s` forces the SFTP protocol, which does NOT expand the remote path
+        # through a shell — the injection channel is closed by the protocol
+        # rather than by quoting. shlex.quote stays as defence in depth for a
+        # legacy-SCP fallback.
+        remote = shlex.quote(f"{remote_root}/{name}/sandbox-logs.tgz")
+        cmd = ["scp", "-s", "-o", _CONNECT_TIMEOUT,
+               f"{host}:{remote}", str(out)]
         try:
             out_dir.mkdir(parents=True, exist_ok=True)
             proc = subprocess.run(cmd, capture_output=True, text=True,

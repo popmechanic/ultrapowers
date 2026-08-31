@@ -182,3 +182,56 @@ def test_event_kinds_matches_the_engine_vocabulary():
         "run:open", "engine:log", "engine:phase", "worker:start", "worker:end",
         "worker:refused", "run:fatal", "capture:error", "driver:stage",
         "driver:fail", "driver:auth", "driver:ack-decision", "driver:approved"})
+
+
+# ---------- #464 item 4: a retry reuses its label ----------
+
+def test_a_retried_worker_keeps_both_attempts(tmp_path):
+    # fleet/run-worker.mjs reuses `impl:<id>` on retry; only the on-disk worker
+    # directory is per-dispatch. Keying on the label alone overwrote attempt 1.
+    events = [
+        _ev(1, 0, kind="run:open", runId="run-40", base="", source="s"),
+        _ev(2, 1000, kind="worker:start", label="impl:1", role="implementer",
+            sessionId="sess-a", cwd="/c", model="opus"),
+        _ev(3, 31000, kind="worker:end", label="impl:1", role="implementer",
+            sessionId="sess-a", exitCode=1, timedOut=False, outcome="fail",
+            status=None, meter={"output": 100}),
+        _ev(4, 40000, kind="worker:start", label="impl:1", role="implementer",
+            sessionId="sess-b", cwd="/c", model="opus"),
+        _ev(5, 100000, kind="worker:end", label="impl:1", role="implementer",
+            sessionId="sess-b", exitCode=0, timedOut=False, outcome="ok",
+            status=None, meter={"output": 200}),
+    ]
+    s = fleet_events.summarize_events(fleet_events.read_events(
+        _write_log(tmp_path / "run-run-40", events)))
+    got = [w for w in s["workers"] if w["label"] == "impl:1"]
+    assert len(got) == 2, "the failed first attempt was overwritten"
+    assert [w["attempt"] for w in got] == [0, 1]
+    assert got[0]["sessionId"] == "sess-a" and got[0]["exitCode"] == 1
+    assert got[1]["sessionId"] == "sess-b" and got[1]["exitCode"] == 0
+    assert got[0]["wallSec"] == 30.0
+    assert got[1]["wallSec"] == 60.0
+    assert s["unpaired"] == []
+
+
+def test_an_interrupted_retry_never_yields_a_negative_wallsec(tmp_path):
+    # start1, end1, start2 with no end2: the old label-keyed record mixed
+    # attempt 2's startTs with attempt 1's endTs -> negative wallSec, and
+    # `unpaired` stayed silent because endId was set.
+    events = [
+        _ev(1, 0, kind="run:open", runId="run-41", base="", source="s"),
+        _ev(2, 1000, kind="worker:start", label="impl:1", role="implementer",
+            sessionId="sess-a", cwd="/c", model="opus"),
+        _ev(3, 31000, kind="worker:end", label="impl:1", role="implementer",
+            sessionId="sess-a", exitCode=1, timedOut=False, outcome="fail",
+            status=None, meter={"output": 100}),
+        _ev(4, 40000, kind="worker:start", label="impl:1", role="implementer",
+            sessionId="sess-b", cwd="/c", model="opus"),
+    ]
+    s = fleet_events.summarize_events(fleet_events.read_events(
+        _write_log(tmp_path / "run-run-41", events)))
+    got = [w for w in s["workers"] if w["label"] == "impl:1"]
+    assert len(got) == 2
+    assert all(w["wallSec"] is None or w["wallSec"] >= 0 for w in got)
+    assert got[1]["endId"] is None
+    assert s["unpaired"] == ["impl:1"]

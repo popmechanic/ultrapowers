@@ -41,9 +41,11 @@ runs inside Claude Code — no API key, no external calls.
    — accepted. Promote trigger for a drain detector: a sense pass where
    commissioned reads **miss or misread** drain evidence; record the miss as
    a ledger finding.
-   **Fleet evidence bundles are harvest bundles** (#292): the drive layer is
-   invisible to the detector too, so a fleet run's evidence dir is first-class
-   sense input, read the commissioned way. Layout (per run, under the repo's
+   **Runs 10–23 only — fleet evidence bundles read the commissioned way**
+   (#292). Superseded for any run carrying an `events.jsonl` (24+), which
+   `harvest_fleet_runs.py` above harvests mechanically. For the older runs the
+   drive layer is invisible to the detector too, so the evidence dir is
+   first-class sense input, read the commissioned way. Layout (per run, under the repo's
    `.claude/ultrapowers/fleet-runs-<date>/` or the orchestrator's
    `<dbDir>-evidence/`): `gate-read-<runId>.json` (the §W1d read, verbatim) +
    `gate-read-<runId>.detail.json` (triage detail), `stat-<runId>.json`

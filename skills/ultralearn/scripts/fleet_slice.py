@@ -36,12 +36,18 @@ def worker_slice(transcript_path, budget=WORKER_BUDGET):
     No `terminus` — the approved-tail extension is a Workflow-session concept.
     An unreadable transcript yields "" plus a stderr diagnostic.
     """
+    # Wider than OSError, and `slice_transcript` is INSIDE the guard:
+    #   - `_records` reads strict UTF-8, so a transcript still streaming to disk
+    #     whose tail ends mid-multibyte raises UnicodeDecodeError (a ValueError);
+    #   - `_records` filters unparseable lines but not non-dict values, and
+    #     `slice_transcript` calls `.get()` on each record -> AttributeError.
+    # The advisory contract says skip with a diagnostic, never traceback.
     try:
         records = harvest_runs._records(transcript_path)
-    except OSError as exc:
+        text = harvest_runs.slice_transcript(records)
+    except (OSError, ValueError, AttributeError, TypeError) as exc:
         print(f"fleet_slice: cannot read {transcript_path}: {exc}", file=sys.stderr)
         return ""
-    text = harvest_runs.slice_transcript(records)
     if len(text) <= budget:
         return text
     head = budget * 2 // 3

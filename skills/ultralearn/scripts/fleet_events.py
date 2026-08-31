@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections import Counter, OrderedDict
+from collections import Counter
 from pathlib import Path
 
 # The engine's emitted vocabulary, read off the sources that emit it:
@@ -99,13 +99,24 @@ def summarize_events(events):
     opened_at = _opened_at(events, opened)
     ended_at = events[-1].get("ts") if events else None
 
-    workers = OrderedDict()
+    # A retry REUSES its label (`fleet/run-worker.mjs`: only the on-disk worker
+    # directory is per-dispatch), so one log can carry two start/end pairs under
+    # one label. Keying solely on the label overwrote the first attempt — losing
+    # the failed try, and mixing attempt 2's startTs with attempt 1's endTs into
+    # a NEGATIVE wallSec that `unpaired` did not flag. Keep every attempt.
+    attempts = []                       # every attempt, in first-seen order
+    open_by_label = {}                  # label -> the attempt still accepting events
 
-    def worker(label):
+    def worker(label, new_attempt=False):
         key = str(label)
-        if key not in workers:
-            workers[key] = dict({"label": key}, **{f: None for f in _WORKER_FIELDS})
-        return workers[key]
+        cur = open_by_label.get(key)
+        if cur is None or new_attempt:
+            cur = dict({"label": key, "attempt": len(
+                [a for a in attempts if a["label"] == key])},
+                **{f: None for f in _WORKER_FIELDS})
+            attempts.append(cur)
+            open_by_label[key] = cur
+        return cur
 
     phases, stages, fatals = [], [], []
     auth_method = None
@@ -121,12 +132,14 @@ def summarize_events(events):
             if auth_method is None and e.get("authMethod") is not None:
                 auth_method = e.get("authMethod")
         elif kind == "worker:start":
-            w = worker(e.get("label"))
+            prev = open_by_label.get(str(e.get("label")))
+            w = worker(e.get("label"), new_attempt=prev is not None and prev["startId"])
             w.update(role=e.get("role"), sessionId=e.get("sessionId"),
                      cwd=e.get("cwd"), model=e.get("model"),
                      startId=e.get("id"), startTs=e.get("ts"))
         elif kind == "worker:end":
-            w = worker(e.get("label"))
+            prev = open_by_label.get(str(e.get("label")))
+            w = worker(e.get("label"), new_attempt=prev is not None and prev["endId"])
             w.update(endId=e.get("id"), endTs=e.get("ts"),
                      exitCode=e.get("exitCode"), timedOut=e.get("timedOut"),
                      outcome=e.get("outcome"), status=e.get("status"),
@@ -157,8 +170,8 @@ def summarize_events(events):
         "counts": dict(sorted(counts.items())),
         "phases": phases,
         "stages": stages,
-        "workers": list(workers.values()),
-        "unpaired": [w["label"] for w in workers.values()
+        "workers": attempts,
+        "unpaired": [w["label"] for w in attempts
                      if w["startId"] and not w["endId"]],
         "fatals": fatals,
         "ackDecision": _last(events, ("driver:ack-decision",)),
