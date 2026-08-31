@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
-import { capWorkerParallelism, SHELL_TIMEOUT_MS } from '../run-engine.mjs'
+import { capWorkerParallelism, SHELL_TIMEOUT_MS, CRITIC_SCHEMA, REVIEWER_SCHEMA, SEVERITY } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-sim-'))
 const repo = makeRepo(path.join(tmp, 'repo'))
@@ -77,7 +77,12 @@ assert.equal(report.gitVerified, true, 'receipt-derived gitVerified holds on a c
 assert.deepEqual(report.ancestryMisses, [])
 assert.equal(report.frontier.length, 2, 'one frontier entry per folded wave')
 assert.ok(report.frontier.every((f) => f.foldCliCalls >= 2), 'fold + materialize per wave')
+// #474 — completenessFindings carries typed findings now; a clean critic
+// still yields none, and nothing that is not a typed object can appear here.
 assert.deepEqual(report.completenessFindings, [])
+assert.ok(report.completenessFindings.every(
+  (f) => f && typeof f === 'object' && typeof f.severity === 'string' && typeof f.detail === 'string'),
+  'every completeness finding is a {severity, detail} object')
 assert.deepEqual(report.blockedWaves, [])
 assert.deepEqual(report.unfinished, [])
 
@@ -97,6 +102,31 @@ assert.ok(t3patch.includes('+from T3'), 'wave-2 patch carries its own change')
 // driver code — the dispatch record contains judgments only.
 assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
   'no setup or merge agent dispatched: ' + dispatched.join(','))
+
+// #474 — one severity vocabulary, declared once. Two literal spellings of the
+// pair pass deepEqual and fail reference identity, which is why this is
+// assert.equal (reference identity in node:assert/strict) and not deepEqual.
+{
+  assert.deepEqual(SEVERITY, ['blocking', 'minor'])
+  assert.equal(CRITIC_SCHEMA.properties.findings.items.properties.severity.enum, SEVERITY,
+    'critic severity must be the SAME array object as SEVERITY, not a copy')
+  assert.equal(REVIEWER_SCHEMA.properties.issues.items.properties.severity.enum, SEVERITY,
+    'reviewer severity must be the SAME array object as SEVERITY, not a copy')
+
+  // The critic's findings are typed objects, not bare strings.
+  const finding = CRITIC_SCHEMA.properties.findings.items
+  assert.equal(CRITIC_SCHEMA.properties.findings.type, 'array')
+  assert.equal(finding.type, 'object')
+  assert.deepEqual(finding.required, ['severity', 'detail'])
+  assert.deepEqual(Object.keys(finding.properties).sort(), ['detail', 'severity'])
+  assert.deepEqual(finding.properties.detail, { type: 'string' })
+
+  // The constraint is about the file, not only about the exports: a second
+  // literal spelling anywhere in the engine is the thing being forbidden.
+  const engineSrc = fs.readFileSync(new URL('../run-engine.mjs', import.meta.url), 'utf8')
+  assert.equal((engineSrc.match(/'blocking',\s*'minor'/g) || []).length, 1,
+    'the blocking/minor pair is spelled exactly once in run-engine.mjs (#474)')
+}
 
 // #366 rule 5: the role-file prose ceiling (spec §4) — ≤ 350 words each, and
 // no ALL-CAPS imperative shouting (a rule that needs shouting belongs in code).

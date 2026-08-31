@@ -16,7 +16,13 @@ show:
    integrated tree and report any that fail as findings.
 3. Untested seams: name any cross-task path the suite does not exercise where a
    composition defect could hide.
-4. Report each shortfall as a finding string — specific, with file paths.
+4. Report each shortfall as a finding object: a `severity` and a specific
+   `detail` with file paths. `blocking` means you checked it and it is wrong —
+   a deliverable absent or incoherent with its neighbors, a checklist item that
+   fails against the integrated tree, a defect you can name in a file; it stops
+   the run. `minor` is worth an issue but not worth stopping a merge for.
+   Severity grades the defect, not your confidence: a shortfall you could not
+   execute belongs under `deferredVerification`, not in a blocking finding.
 
 Separately, list under `deferredVerification` any deliverable that is present
 and structurally complete but whose behavior this environment cannot execute —

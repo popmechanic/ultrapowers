@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+import { makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl } from './_engine_helpers.mjs'
 import { suiteLine } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
@@ -139,6 +139,106 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
     'the critic and the report must state the same verdict for the same tree')
   assert.match(criticPrompt, /\nBlocked waves:\n.*TEST_FAILED|candidate suite failed/,
     'the blocked wave is still reported alongside the suite verdict')
+}
+
+// ── 4. no wave merged: the synthesized finding is a typed object (#474) ──────
+// The fix loop exhausts, the wave is skipped, and the critic is never
+// dispatched — the engine synthesizes the finding itself. It used to be a bare
+// string; it is now the same {severity, detail} shape a real critic returns.
+{
+  const repo = makeRepo(path.join(tmp, 'repo4'))
+  const runDir = path.join(tmp, 'run4')
+  const waves = [[
+    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
+      writes: ['one.txt'], commutes: [], body: 'task T1' },
+  ]]
+  const labels = []
+  const stub = (prompt, opts, cwd) => {
+    labels.push(opts.label)
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl' || kind === 'fix') {
+      fs.writeFileSync(path.join(cwd, 'one.txt'), 'still wrong\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'never right' }] }
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected: ' + opts.label)
+  }
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci4' })
+  const report = await run()
+  assert.equal(report.waveMerges[0].status, 'SKIPPED', 'sim precondition: nothing merged')
+  assert.ok(!labels.includes('integration'), 'sim precondition: the critic was never dispatched')
+
+  assert.equal(report.completenessFindings.length, 1)
+  const f = report.completenessFindings[0]
+  assert.deepEqual(Object.keys(f).sort(), ['detail', 'severity'])
+  assert.equal(f.severity, 'blocking')
+  assert.equal(f.detail, 'no wave merged — completeness review skipped (the tree is at BASE)')
+  assert.match(f.detail, /no wave merged/)
+}
+
+// ── 5. the dead critic: the fail-closed finding is typed too (#474) ──────────
+{
+  const repo = makeRepo(path.join(tmp, 'repo5'))
+  const runDir = path.join(tmp, 'run5')
+  const waves = [[
+    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
+      writes: ['one.txt'], commutes: [], body: 'task T1' },
+  ]]
+  const stub = (prompt, opts, cwd) => {
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'one.txt'), 'x\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') throw new Error('sim: the critic died')
+    throw new Error('unexpected: ' + opts.label)
+  }
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci5' })
+  const report = await run()
+  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: the wave did merge')
+  assert.equal(report.gitVerified, false, 'a dead critic withholds gitVerified (fail-closed)')
+
+  assert.equal(report.completenessFindings.length, 1)
+  const f = report.completenessFindings[0]
+  assert.deepEqual(Object.keys(f).sort(), ['detail', 'severity'])
+  assert.equal(f.severity, 'blocking')
+  assert.equal(f.detail,
+    'integration review did not run — completeness unverified; check the tree before merging')
+  assert.match(f.detail, /integration review did not run/)
+}
+
+// ── 6. a live critic's findings pass through unchanged (#474) ────────────────
+// `report.completenessFindings` is `review.findings` verbatim: the shape the
+// schema produced is the shape the report carries, name and position unchanged.
+{
+  const repo = makeRepo(path.join(tmp, 'repo6'))
+  const runDir = path.join(tmp, 'run6')
+  const waves = [[
+    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
+      writes: ['one.txt'], commutes: [], body: 'task T1' },
+  ]]
+  const findings = [
+    { severity: 'blocking', detail: 'fleet/run-engine.mjs: T1 produced no export' },
+    { severity: 'minor', detail: 'fleet/tests/one.txt: a stray trailing newline' },
+  ]
+  const stub = (prompt, opts, cwd) => {
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, 'one.txt'), 'x\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return criticWithFindings(findings)
+    throw new Error('unexpected: ' + opts.label)
+  }
+  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci6' })
+  const report = await run()
+  assert.deepEqual(report.completenessFindings, [
+    { severity: 'blocking', detail: 'fleet/run-engine.mjs: T1 produced no export' },
+    { severity: 'minor', detail: 'fleet/tests/one.txt: a stray trailing newline' },
+  ])
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
