@@ -33,6 +33,10 @@ PROBES=(
   "probe_bypass_vs_hook.mjs:DENY HELD"
   "probe_disallowed_vs_bypass.mjs:VERDICT: BINDS"
   "probe_run_worker_live.mjs:ALL PROBES PASSED"
+  # Permission-boundary semantics (#457): a CLI release can change either of
+  # these silently, and both are load-bearing for the read-only roles.
+  "probe_dontask_readonly_bash.mjs:READ-ONLY BASH REACHABLE"
+  "probe_substitution_in_allowed_tail.mjs:SUBSTITUTION BLOCKED"
 )
 
 echo "== current versions"

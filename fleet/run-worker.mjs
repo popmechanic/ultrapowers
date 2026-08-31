@@ -45,11 +45,24 @@ import path from 'node:path'
 // matters is the writable root, because that is the only thing isolation is
 // about; the tool lists are the mechanism that enforces it.
 //
-// For the allowlist roles (reviewer, critic) THE ALLOWLIST IS THE BOUNDARY:
-// arbitrary Bash is unreachable, so the unspecifiable "does this shell command
-// write" predicate never arises — a hostile `python3 <<'EOF' … open(path,'a')`
-// heredoc, matching no denylist a hook could enumerate, was denied by it
-// (parity R-w3). For the implementer, which needs a broad tool set under
+// For the allowlist roles (reviewer, critic) THE ALLOWLIST IS THE BOUNDARY FOR
+// WRITES: a hostile `python3 <<'EOF' … open(path,'a')` heredoc, matching no
+// denylist a hook could enumerate, was denied by it (parity R-w3), so the
+// unspecifiable "does this shell command write" predicate never arises.
+//
+// PRECISION, measured 2026-08-31 (#457, probe_dontask_readonly_bash.mjs): it is
+// NOT true that arbitrary Bash is unreachable — this comment used to say so.
+// `dontAsk` permits READ-ONLY Bash as a class, outside the allowlist: with
+// Read/Grep/Glob removed and only the three git verbs allowed, a worker still
+// ran `wc -c` and reported the right byte count. What the allowlist closes is
+// the WRITING path, which is the half that matters. Running a PROGRAM
+// (`python3 …`, `pytest`) is not classified read-only and stays denied — which
+// is why reviewers defer suite results (#458) while being able to `cat` a file.
+//
+// The `*` tail is not an execution channel: substitution inside an allowed
+// command's arguments (`git status $(touch X)`) is BLOCKED, measured the same
+// day (probe_substitution_in_allowed_tail.mjs), matching the documented
+// operator parsing for `&&`, `;`, `|`. For the implementer, which needs a broad tool set under
 // bypassPermissions, the PreToolUse hook is the boundary and the sandbox is
 // the blast radius; the caller supplies that hook via `settings`.
 //

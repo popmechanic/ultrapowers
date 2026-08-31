@@ -20,3 +20,11 @@ The current probes:
 - `probe_disallowed_vs_bypass.mjs` — whether `--disallowedTools` still blocks a
   matching call under `bypassPermissions`, which is what the role's git-push
   escape hatch rides on.
+- `probe_dontask_readonly_bash.mjs` — whether `dontAsk` permits read-only Bash
+  outside `--allowedTools`. **Answered 2026-08-31: it does** (#457 gap 2), so a
+  reviewer can `wc`/`cat` a file today; running a PROGRAM is still denied, which
+  is why suite results must be threaded rather than re-run (#458).
+- `probe_substitution_in_allowed_tail.mjs` — whether `$(...)` inside an allowed
+  command's argument tail executes. **Answered 2026-08-31: it does not** (#457
+  gap 1) — the `*` tail is not an execution channel, matching the documented
+  operator parsing for `&&`, `;`, `|`.
