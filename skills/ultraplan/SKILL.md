@@ -3,6 +3,12 @@ name: ultraplan
 description: Use together with superpowers:writing-plans on EVERY implementation plan while this plugin is installed (not only plans already destined for /ultrapowers) — layers the additive parallel-execution markers (Type, Depends-on) and worktree-pure authoring rules so the plan compiles into waves deterministically; marked plans remain fully executable by the sequential executors.
 ---
 
+> **Audience: the authoring agent.** The operator brainstorms and signs; they never
+> write this artifact. Every imperative below addresses the agent doing the authoring —
+> which since #243 derives a plan one wave at a time at execution, rather than a whole
+> task graph up front. The change was **horizon, locus and signing boundary**, never
+> human→machine: an agent authored these before and an agent authors them after.
+
 # Ultraplan — Author Parallel-Ready Plans
 
 Use **together with** `superpowers:writing-plans`: that skill owns plan structure,

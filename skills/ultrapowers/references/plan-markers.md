@@ -1,5 +1,11 @@
 # Plan Markers — the Parallel-Execution Contract
 
+> **Audience: the authoring agent.** The operator brainstorms and signs; they never
+> write this artifact. Every imperative below addresses the agent doing the authoring —
+> which since #243 derives a plan one wave at a time at execution, rather than a whole
+> task graph up front. The change was **horizon, locus and signing boundary**, never
+> human→machine: an agent authored these before and an agent authors them after.
+
 Additive per-task annotations on a `superpowers:writing-plans` document that make
 wave compilation deterministic. Sequential executors (subagent-driven-development,
 executing-plans) ignore them; ultrapowers trusts them. A plan without markers still
