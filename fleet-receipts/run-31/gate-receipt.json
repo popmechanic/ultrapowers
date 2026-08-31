@@ -1,0 +1,76 @@
+{
+  "mode": "gate",
+  "stamp": "run-31",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-run-31/report.json",
+  "branch": "ultra/integration-run-31",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "The driver's post-fold suite result for this run (the input Task 1 exists to supply) \u2014 This critic's own prompt carries no `SUITE (driver-run, post-fold)` section \u2014 run-31 is driven by the pre-fold engine binary, so Task 1's fix cannot reach its own run's critic. I therefore have no independent suite verdict to cross-check the tree against, and every \"tests PASS\" item on the escalated checklist rests on the driver's separate record. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "`python3 skills/ultrapowers/scripts/compile_plan.py --check --renders docs/superpowers/plans/2026-08-30-papercuts-slate.md` (Task 2 Step 5 and operator smoke 1) \u2014 Program execution is denied to this read-only critic (the #457 boundary \u2014 my two attempts to run the compiler were refused by the sandbox). Verified statically only: that plan declares `- Modify: `fleet/RUNBOOK.md`` at :509, which lands in Task 5's `modifies` set and intersects `HAND_EXECUTED_RECORDS`, and the plan sits inside the checkout so `default_base` resolves and renders are not skipped. The advisory should name Task 5 and only Task 5 (no plan in `docs/superpowers/plans/` declares `fleet/tests/PROBES.md`), but the run itself is unexecuted. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "`fleet/tests/test_run_engine_critic_inputs.mjs` completing inside `tests/test_fleet_suite.py`'s 120 s per-file cap \u2014 The file drives two full engine sims over real git clones \u2014 scenario 3 is a two-wave run with a reconcile round-trip and a deliberately red post-fold candidate \u2014 so its wall clock is roughly double the nearest comparable fleet test. Static review is otherwise clean: every import from `_engine_helpers.mjs` (`makeRepo`, `rig`, `passReview`, `cleanCritic`, `doneImpl`) exists, `suiteLine` is exported at `fleet/run-engine.mjs:185`, `rig`'s default `testCmd` is `bash check.sh` matching the `command: bash check.sh` assertion, `lastSuite` is assigned only on `MERGED` (`:1090`) so scenario 3's adopted-tree claim holds, and the final statement is `console.log('ALL TESTS PASSED')`. Only the timing is unobservable from the tree. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "The red-first evidence for all three tasks (plan Step 2 in each) \u2014 A failing-at-BASE run leaves no artifact in the integrated tree. By construction the new tests could not have passed at BASE \u2014 `test_run_engine_critic_inputs.mjs:12` imports `suiteLine`, which does not exist at BASE, and `tests/test_check_renders.py`'s six new tests assert an advisory string absent from BASE's `ADVISORY_RENDERS` \u2014 but that is inference from the diff, not an observed red."
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "Byte-identity of the frozen `--check` verdict and exit code across the whole existing plan corpus, not just the new fixtures \u2014 Structurally sound and statically checked: `_render_unverifiable` only appends to `ADVISORY_RENDERS` (`compile_plan.py:1522`), which `main()` consumes at `:1596-1606` strictly after `rc` is assigned at `:1595`, and none of the exact-stdout pins (`tests/test_check_renders.py:95-96, 172, 320, 337, 498`) uses a plan that writes a hand-executed record \u2014 I confirmed by grep that no file under `evals/fixtures/` mentions `RUNBOOK.md` or `PROBES.md`. Confirming byte-identity across the corpus still needs the runs. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.vrGaJmaRbG/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 16/16 workers\\n16 workers [920 items]\\n\\n........................................................................ [  7%]\\n........................................................................ [ 15%]\\n........................................................................ [ 23%]\\n........................................................................ [ 31%]\\n........................................................................ [ 39%]\\n........................................................................ [ 46%]\\n........................................................................ [ 54%]\\n........................................................................ [ 62%]\\n........................................................................ [ 70%]\\n........................................................................ [ 78%]\\n..s..................................................................... [ 86%]\\n........................................................................ [ 93%]\\n........................................................                 [100%]\\n================== 919 passed, 1 skipped in 89.76s (0:01:29) ===================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
