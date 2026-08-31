@@ -162,5 +162,11 @@ suite is the verification).
 - **The installed plugin lags the repo.** Editing files here does not change the running plugin until
   `/plugin` re-resolves the new version (interactive terminal only) **and** a new session starts. Skill
   text reloads in-session; hook/manifest changes need a new session.
+- **Session handoffs (this machine only).** At session start, read the newest file in
+  `.claude/ultrapowers/handoffs/` — `ls -t | head -1`, or follow the `LATEST.md` pointer —
+  if the directory exists. **Sort by mtime, never by filename**: handoffs are named for the
+  session they are FOR, so `2026-09-04-*.md` can be older than `2026-08-31-*.md`. `.claude/`
+  is in `.git/info/exclude`, so this is a local operator convention — a fresh clone, a fleet
+  sandbox and CI all correctly find nothing (#469).
 - **`superpowers` is a dependency, not vendored.** No local checkout — read its skills from the plugin
   cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).

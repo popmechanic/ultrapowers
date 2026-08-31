@@ -9,15 +9,19 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # fetch-depth stays DEFAULT (1). The shallow clone is deliberate: it is the
+      # real consumer shape #465's depth-1 gate leg exists to predict. Setting
+      # fetch-depth: 0 would make CI and the gate agree by making CI stop testing
+      # the case that broke main.
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
