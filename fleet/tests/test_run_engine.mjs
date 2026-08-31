@@ -110,6 +110,26 @@ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
   }
 }
 
+// The two reviewer rules the run-32 evidence bought. Both are prose an LLM has
+// to follow, so the pin is on the words: a trim that pays for something else
+// must not quietly take these with it.
+{
+  const reviewer = fs.readFileSync(new URL('../roles/reviewer.md', import.meta.url), 'utf8')
+  // #344 — the plan-defect rule was the ONLY rule in the file that never said
+  // "blocking": every other one says it outright. Run-32: 14 of 20 findings
+  // carried the `plan-defect:` prefix, four of the five shipped code defects
+  // among them — five reviewers wrote out the defect AND its one-clause fix,
+  // returned PASS, and it merged.
+  assert.ok(/`plan-defect:`[\s\S]{0,80}blocking[\s\S]{0,80}FILES/.test(reviewer),
+    'reviewer.md rule 6 no longer makes a task-local plan-defect fix blocking (#344)')
+  // #441 — a diff is a result, not a history. Asking six reviewers to evidence
+  // red-then-green ordering produced 25 cannotVerify entries and the single
+  // deferred:manual ack that parked run-32; ordering has no answer here.
+  assert.ok(/red-then-green/.test(reviewer) &&
+    /neither a finding nor a `cannotVerify` entry/.test(reviewer),
+    'reviewer.md rule 7 no longer excuses the reviewer from unobservable ordering (#441)')
+}
+
 // ── #436: the two bounds that go live with the golden's parallel pytest ──────
 // Both are pre-golden-rebuild obligations: an unbounded suite exec burns the
 // sandbox lease instead of failing, and `-n auto` per implementer oversubscribes

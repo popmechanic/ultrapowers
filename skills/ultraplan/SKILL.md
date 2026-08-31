@@ -216,7 +216,7 @@ While writing tasks:
 6. **Name only what exists.** Every path, `report.json` field, or task a body
    cites must exist at BASE, be created by a task it `Depends-on`, or be defined
    in `report-format.md`. Run `compile_plan.py --check --renders <plan>` and
-   read its `ADVISORY` blast-radius and referent lines before handoff.
+   read its `ADVISORY` lines before handoff.
 - **Claims about the live world carry their evidence.** A task editing a
   hand-executed record (`fleet/RUNBOOK.md`) or asserting what a live system does
   is unverifiable from a sandbox — the reviewer defers. Paste the commands and
@@ -283,10 +283,10 @@ them deliberately:
    rules, platform requirements. ultrapowers forwards it to **every reviewer as
    its attention lens**. Process rules — TDD ordering, "write the failing
    test first", commit cadence — are per-task steps, never Global Constraints:
-   forwarded as a reviewer lens they can only produce unverifiable process
-   findings against every task, since no diff evidences the order work was
-   done in. State what must be true of the result (tests present, behavior
-   covered).
+   no diff evidences the order work was done in, so as a lens they yield only
+   unverifiable findings, one per task. State what must be true of the result
+   (tests present, behavior covered); `--check --renders` flags process
+   language here.
 
 2. **`**Interfaces:**`** (per task). `Produces:` names the function names and
    param/return types later tasks rely on; `Consumes:` names the signatures this
