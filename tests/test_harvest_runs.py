@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/ultralearn/scripts"))
 import harvest_runs as h
+harvest_runs = h  # the #415 Task 2 tests below name the module in full
 
 
 def _rec(type_, content):
@@ -1666,3 +1667,80 @@ def test_runs_entries_carry_per_stamp_frontier(tmp_path):
     recs = REAL + [_wf_launch("20260825-000003", run_dir=str(run1))]
     _, bundle = _build(recs, tmp_path)
     assert bundle["runs"][-1]["frontier"] == {"maxLinesByWave": {"1": [4, 9]}}
+
+
+def test_engine_roles_covers_the_one_driver_roles():
+    # fleet/roles/*.md at 0.3.0 plus the labels run-worker.mjs emits.
+    assert {"implementer", "critic", "fix", "reviewer", "reconcile", "resolver"} \
+        <= harvest_runs.ENGINE_ROLES
+
+
+def test_engine_roles_never_drops_a_historical_member():
+    # Removing one reclassifies an already-harvested pre-cutover session
+    # from "engine" to "meta". Additive only.
+    assert {"setup", "merge", "review", "reconcile", "resolver", "integration"} \
+        <= harvest_runs.ENGINE_ROLES
+
+
+def test_classify_session_kind_recognizes_an_implementer_only_run():
+    audit = {"agents": [{"role": "implementer"}, {"role": "reviewer"}]}
+    assert harvest_runs.classify_session_kind(
+        [], audit, None, False, has_registered_launch=False) == "engine"
+
+
+def test_engine_epoch_at_resolves_from_a_bare_timestamp():
+    timeline = [("2026-08-01T00:00:00Z", "0.2.0"), ("2026-08-29T00:00:00Z", "0.3.0")]
+    got = harvest_runs.engine_epoch_at("2026-08-30T12:00:00Z", "home", timeline)
+    assert got == {"epoch": "0.3.0", "asOf": "2026-08-30T12:00:00Z",
+                   "basis": "home-repo-date"}
+
+
+def test_engine_epoch_at_honors_a_foreign_cache_version():
+    got = harvest_runs.engine_epoch_at("2026-08-30T12:00:00Z", "foreign", [],
+                                       cache_version="0.2.26")
+    assert got["epoch"] == "0.2.26"
+    assert got["basis"] == "plugin-cache-path"
+
+
+def test_engine_epoch_at_unknown_timestamp_is_advisory():
+    got = harvest_runs.engine_epoch_at(None, "home", [("2026-08-01T00:00:00Z", "0.2.0")])
+    assert got["epoch"] is None
+    assert got["basis"] == "unknown"
+
+
+def test_collapse_timeline_collapses_adjacent_duplicates():
+    rows = [("2026-06-10T00:00:00Z", "0.3.0"), ("2026-06-10T01:00:00Z", "0.3.0"),
+            ("2026-07-01T00:00:00Z", "0.1.0")]
+    assert harvest_runs.collapse_timeline(rows) == (
+        ("2026-06-10T00:00:00Z", "0.3.0"), ("2026-07-01T00:00:00Z", "0.1.0"))
+
+
+def test_collapse_timeline_keeps_a_version_that_recurs_after_a_reset():
+    # This repo shipped 0.3.0 twice: 2026-06-10, then again at the One Driver
+    # cutover. Uniquifying globally discards the second and dates every
+    # post-cutover run to 0.2.26.
+    rows = [("2026-06-10T00:00:00Z", "0.3.0"), ("2026-07-01T00:00:00Z", "0.1.0"),
+            ("2026-08-28T00:00:00Z", "0.2.26"), ("2026-08-29T00:00:00Z", "0.3.0")]
+    assert harvest_runs.collapse_timeline(rows)[-1] == ("2026-08-29T00:00:00Z", "0.3.0")
+
+
+def test_a_run_today_dates_to_the_head_plugin_version():
+    # Non-self-referential: the expected value comes from git, not from the
+    # function under test. Fails without the collapse fix, returning 0.2.26.
+    #
+    # Needs real history. A depth-1 clone yields a ONE-row timeline dated at
+    # checkout time, which always precedes `now` — so this assertion would hold
+    # there whether or not `collapse_timeline` exists, and a check that cannot
+    # fail is not a check. Skip rather than pretend.
+    import pytest as _pytest
+    if len(harvest_runs._release_timeline()) < 2:
+        _pytest.skip("shallow clone: no plugin.json history to collapse")
+    import json as _json
+    import subprocess as _sp
+    from datetime import datetime as _dt, timezone as _tz
+    root = harvest_runs._repo_root()
+    head = _json.loads(_sp.run(
+        ["git", "-C", str(root), "show", "HEAD:.claude-plugin/plugin.json"],
+        capture_output=True, text=True, check=True).stdout)["version"]
+    now = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert harvest_runs.engine_epoch_at(now, "home")["epoch"] == head

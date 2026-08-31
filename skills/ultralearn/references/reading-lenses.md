@@ -132,3 +132,23 @@ zero (`{"total": 0, ...}`).
 with identifiers and domain specifics stripped — never quote verbatim text from
 a foreign project. For a `home` run, verbatim evidence is allowed and
 `evidenceAbstracted` may be false.
+
+## Reading across the cutover
+
+The corpus now spans two engines: runs before 0.3.0 were the LLM-orchestrator,
+runs from 0.3.0 on are the One Driver fleet. Two disciplines apply whenever a
+reading touches that boundary.
+
+- **A finding class that stops appearing may have been deleted, not fixed.**
+  The pre-0.3.0 corpus was the LLM-orchestrator engine; ten issues were closed
+  on 2026-08-30 as moot-by-cutover — defects in machinery 0.3.0 deleted. A
+  reader comparing eras must make that distinction expressible, or the first
+  pass reads the cutover as an improvement it was not. When a lens wants to
+  claim an improvement across the boundary, it states which of the two it is —
+  the defect was fixed, or the machinery carrying it was **deleted, not
+  fixed** — or it does not make the claim.
+- **Cite event ids.** A fleet bundle carries `events`, and its `slice.md` opens
+  with a ULID-stamped timeline. Any observation about timing, ordering, or a
+  worker's fate cites the ULIDs it rests on, so the operator can check it
+  mechanically against `events.jsonl` (#415's success criterion). An
+  uncited timing claim about a fleet run is unchecked, and reads as such.

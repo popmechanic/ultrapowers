@@ -21,7 +21,11 @@ SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
                   "transcript dir", "recommended", "depends-on")
 SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
 
-ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "resolver", "integration"}
+# One Driver (0.3.0) renamed the cast: `merge` is gone and implementer/critic/
+# fix/reviewer arrived. This set is ADDITIVE ONLY — dropping a member would
+# reclassify an already-harvested pre-cutover session from engine to meta.
+ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "resolver", "integration",
+                "implementer", "critic", "fix", "reviewer"}
 
 # #160(ii): the audit's token unit, named once so cost-lens readers stop
 # comparing it to the Workflow tool's reported total.
@@ -929,14 +933,24 @@ def _release_timeline():
             if ver:
                 rows.append((dt, ver))
         rows.sort()  # oldest-first by ISO date
-        seen, timeline = set(), []
-        for dt, ver in rows:
-            if ver not in seen:           # keep each version's first appearance
-                seen.add(ver)
-                timeline.append((dt, ver))
-        return tuple(timeline)
+        return collapse_timeline(rows)
     except (OSError, subprocess.SubprocessError):
         return ()
+
+
+def collapse_timeline(rows):
+    """Collapse CONSECUTIVE runs of one version, keeping the first of each run.
+
+    Not a global uniquify: this repo shipped 0.3.0 on 2026-06-10 and again at
+    the One Driver cutover on 2026-08-29, and keeping only the first appearance
+    discarded the cutover — dating every post-0.3.0 run to 0.2.26, the wrong
+    era, on the field the ledger uses to tell eras apart."""
+    timeline, last = [], None
+    for dt, ver in rows:
+        if ver != last:
+            timeline.append((dt, ver))
+            last = ver
+    return tuple(timeline)
 
 
 def _run_timestamp(records):
@@ -990,9 +1004,17 @@ def _engine_epoch(records, origin, timeline=None, cache_version=None):
              Home ignores `cache_version` so the home ledger baseline keeps
              its date semantics. Returns {epoch, asOf, basis}; epoch None if
              unknown."""
+    return engine_epoch_at(_run_timestamp(records), origin, timeline, cache_version)
+
+
+def engine_epoch_at(ts, origin, timeline=None, cache_version=None):
+    """`_engine_epoch` resolved from a bare timestamp instead of a transcript.
+
+    A fleet run has no transcript to date itself from; its `run:open` event
+    carries the clock. Same {epoch, asOf, basis} contract — see `_engine_epoch`
+    for the home/foreign semantics."""
     if timeline is None:
         timeline = _release_timeline()
-    ts = _run_timestamp(records)
     if cache_version and origin == "foreign":
         return {"epoch": cache_version, "asOf": ts, "basis": "plugin-cache-path"}
     basis = "home-repo-date" if origin == "home" else "foreign-date-upper-bound"
