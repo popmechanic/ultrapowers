@@ -716,10 +716,11 @@
 **Notes:** PLAN-TOGETHER with #476. One regex runs over the whole raw command, so a `>` inside a heredoc body, a quoted echo, a glob or a backtick reads as a redirect. Verified, not inferred — run-30's reader reproduced the `->`-in-quoted-echo case locally against the shipped hook. `cat > f <<'EOF'` is the most natural way for a model to write a file and is denied whenever the content contains a redirect character. The fix must REDUCE the parse surface (strip heredoc bodies; scope the shell-expansion refusal to the target token), not grow it — the header's own caution about the abandoned `cd` heuristic applies. Needs a COOPERATIVE-task probe asserting zero denials; the existing probe only tests the hostile direction.
 
 ### #466: every run's evidence lands in /tmp — one tmp-reap from losing the corpus
-**State:** accepted
+**State:** executed
 **Score:** 7 — the sense pass that found most of this slate ran off a hand-rescued archive
 **Est-files:** fleet/drive.mjs, fleet/drive-one.mjs, fleet/tests/test_drive.mjs
-**Notes:** The 2026-08-31 pass, the runs-24-32 census, the 2.73x finding on #209 and the denial counts on #476 all trace to tarballs a `/tmp` reap would have taken. `evidenceDir` is already a separate parameter from `dbDir`, so the store need not move — the cheap fix is passing it explicitly. Small blast radius, high consequence-if-wrong.
+**Engine:** inline
+**Notes:** The 2026-08-31 pass, the runs-24-32 census, the 2.73x finding on #209 and the denial counts on #476 all trace to tarballs a `/tmp` reap would have taken. `evidenceDir` is already a separate parameter from `dbDir`, so the store need not move — the cheap fix is passing it explicitly. Small blast radius, high consequence-if-wrong. [BUILT INLINE 2026-08-31 via the sweep's bounded path (no plan doc): PR #483 merged, CI green. The fix was a default, not a feature — evidenceDir already had a flag, a mkdir-on-use and tests. Also caught the downstream half: fleet_fetch's remote root was the pre-#466 path, and the drift would have been SILENT. Off-VM durability filed as #484, now under map #485.]
 
 ### #470: CI actions still target Node 20 — GitHub is force-running them on 24
 **State:** accepted
