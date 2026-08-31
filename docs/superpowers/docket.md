@@ -568,9 +568,11 @@
 
 ### #190: fleet W1 residuals: spend-token source inert, untested invokeRun join, stale-receipt scoping, round advisories
 **State:** parked
-**Score:** 6 — code quality / integration correctness of the spend authority and receipt path (a stale gitignored receipt could green a never-gated run); exec-seam unit-gateable, no live run needed to gate
-**Est-files:** fleet/shim-main.mjs, fleet/orchestrator.mjs, fleet/drive.mjs, fleet/provision.mjs, fleet/tests/test_shim.mjs, fleet/tests/test_orchestrator.mjs, fleet/tests/test_drive.mjs, fleet/tests/test_provision.mjs
-**Notes:** parked at gate 2026-08-25 (operator narrowing): defer: after run-9 / W2 — fleet live-unproven without the Max token (#208); keep 0.2.18 to the distill slate — Item 1 SHIPPED (9d1929b, proven live run-7/8) — retitle/scope to the hardening list before planning. CLUSTER A anchor: build items 2–10 + #211 + #212 + #209-interim + #193 items 6/7 as ONE fleet-hardening plan — every item is a guard/latch/scope/path change pinned via the existing stubbed-exec seam and in-process orchestrator tests. Highest value: missing-runs-row → treat like a refusal (orchestrator.mjs:221-249 falls through to revoke+destroy on a half-written store); park-refusal latch (:226 re-pages every sweep); receipt scoping to the session the shim launched (findGateReceiptFile :435-439 = newest across ALL run dirs — the false-green vector); versionStamp cross-check against the pushed base sha (drive.mjs:407-409); ttl 15m vs publish 30m (drive.mjs:78-87); payload validation (provision.mjs:114-116); main()'s invokeRun binding untested (:785). Do NOT change the store schema or the guard's supervisory-exemption contract (#178). Test-hygiene item is a rider. test_provision.mjs pins full command strings by equality — pins move with any command change. Fleet plans gate NEEDS_ACK (deferred:external) by construction — operator ack at the gate is the licensed path (#204), then a live shakedown once the token file exists.
+**Score:** 8 — verification-first objective; every item is a fail-closed gap on the live drive path; spend-source item already landed (#195)
+**Est-files:** fleet/shim-main.mjs, fleet/orchestrator.mjs, fleet/provision.mjs, fleet/drive.mjs, fleet/tests/*
+**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain; the docket lost track. Parking rather than claiming a `verified` this drain never administered. (drive: fleet sandbox) W2a width-2 entry (2026-08-27, pre-authorized coordinator run). Split across the two concurrent plans: shim items (receipt scoping, newest-wins pin, invokeRun join test) in plan C1; orchestrator/provision/driver items (page latch, missing-runs-row destructive fall-through, payload validation, versionStamp cross-check) in plan C2. Done already on main: spend source (#195), publishTimeoutMs-vs-ttl legibility (#279), test-hygiene item waived as low-value.
+**Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md + docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
+**Engine:** ultrapowers
 
 ### #211: fleet: sandbox host-key reuse hazard — reused runId makes the #196 tunnel (and #197 pull) fail under accept-new
 **State:** parked
@@ -626,11 +628,11 @@
 **Est-files:** fleet/provision.mjs, fleet/drive.mjs, fleet/tests/test_provision.mjs, fleet/tests/test_drive.mjs
 **Notes:** parked at gate 2026-08-25 (operator narrowing): defer: after run-9 / W2 — fleet live-unproven without the Max token (#208); keep 0.2.18 to the distill slate — CLUSTER B second. Build the PASSTHROUGH ONLY: flags appended to `cp` (provision.mjs:91) when given, golden size when absent (exec-seam pinned; test_provision.mjs equality pins move), and --cpu/--memory options on the committed driver CLI (#193 item 6). DEFER 'derive from the compiled plan's widest wave' until ≥1 sized run has sandboxStat evidence (#215) — the engine concurrency claim min(16, CPUs−2) is the issue's assertion, unverified. Sequence: cluster A (CLI) → #215 → #216. Add a `billing usage` quota preflight if cheap, else leave to #193/#217. Live proof BLOCKED on the token file.
 
-### #209: readSessionTokens couples to Claude Code's transcript format (silent-undercount risk) — prefer the engine emitting its own token total
-**State:** parked
-**Score:** 5 — integration correctness of the spend authority (an under-counting cap looks like it works); interim check is cheap, the engine-emit direction rests on an unverified premise
-**Est-files:** fleet/shim-main.mjs, fleet/tests/test_shim_main_tokens.mjs, fleet/drive.mjs
-**Notes:** parked at gate 2026-08-25 (operator narrowing): defer: after run-9 / W2 — fleet live-unproven without the Max token (#208); keep 0.2.18 to the distill slate — Build ONLY the defensive interim in CLUSTER A: readSessionTokens (shim-main.mjs:221-285) returns {total, files, subagentDirs}; the shim flags (spend row + status detail) when a multi-task plan yields zero subagent transcripts or the file count drops between samples; the driver surfaces it in detail.errors so reported==ledger can no longer hide a format shift. PARK the engine-emit direction as a research question — grep finds NO usage/output_tokens/totalTokens anywhere in waves.js or ultra_run.py, so 'the engine already knows the number' is an assumption; whether Workflow-dispatched agents expose usage to the harness is unverified. If yes → small report.json field and readReportTokens (:171, present, null-returning) takes over; if no → the transcript path is the only source and the interim check is the permanent defense.
+### #209: readSessionTokens double-counts — every published spend figure is 2.73x the truth
+**State:** triaged
+**Score:** 8.5 — token efficiency is objective 2, and every spend decision is currently priced off a wrong number
+**Est-files:** fleet/shim-main.mjs, fleet/tests/test_shim_main.mjs
+**Notes:** [HELD at the 2026-08-31 gate — do-not-batch, as its own Notes argue. It changes the meaning of every published spend figure, and `reported == ledger` currently compares one reader against itself, so it needs its own verification rather than a shared portfolio gate.] Re-triaged 2026-08-31 on verified evidence; the prior `queued` entry rode a superseded plan (2026-08-27-fleet-shim-scoping.md). `sumTranscriptOutputTokens` adds `message.usage.output_tokens` for EVERY JSONL record, and Claude Code writes one API response as several records that each repeat the usage object. Run-32: 506,445 published vs 185,432 real; the dedup'd figure matches the worker envelopes to the token. Two consequences beyond the number — `reported == ledger` compares that one reader against ITSELF, so the runs 26/27 bar-clearing evidence proved nothing; and the whole 0.3.0 spend series is incomparable with pre-cutover. The remedy the issue asks for already exists: `events.jsonl` worker:end meters carry the correct value. DO NOT batch into a wide drain — it changes the meaning of every published figure and wants its own verification.
 
 ### #198: engine: ultra_run --validate-knobs first attempt exceeds the engine's own 2-min Bash timeout (self-heals on retry)
 **State:** parked
@@ -680,32 +682,58 @@
 **Est-files:** skills/ultrapowers/viewer/swarm_template.html, skills/ultrapowers/scripts/swarm_watch.py, skills/ultrapowers/scripts/render_viewer.py, tests/test_viewer.py, tests/test_swarm_agents.py, tests/test_swarm_wiring.py
 **Notes:** parked at gate 2026-08-25: needs brainstorm → spec (verdict observables vs viewer honesty contract; rides #222's per-round artifacts); items 1+4 remain a cheap opt-in — Recommend PARK (needs brainstorm → spec). Partially landed since June (9903f1f, cd73986): station→task mapping, role:task labels, per-station [data-state], text wave readout. Missing is presentation. Items 2–3 (review verdicts / fix-round outcomes as events) need either transcript parsing the viewer README 'Observed vs Inferred' contract must declare, or an engine-written per-task verdict file — which rides #222's per-round artifacts, not a viewer PR: a design decision. Brainstorm settles (1) git-observed-only vs declared-inferred vs engine receipts; (2) acceptance form (manual eyeball vs pinned render_viewer/swarm_watch data contracts — viewer .mjs specs are not in CI or the gate). Cheap win WITHOUT the brainstorm if the operator wants it: items 1+4 only as one small suite-gated task (label `T<id> · <title>` — title already in DAG.tasks[].title via render_viewer.py:83; embed task body in build_dag :68-85; pin both in test_viewer.py). Sequence any viewer work after #222.
 
-### #190: fleet W1 residuals: spend-token source inert, untested invokeRun join, stale-receipt scoping, round advisories
-**State:** queued
-**Score:** 8 — verification-first objective; every item is a fail-closed gap on the live drive path; spend-source item already landed (#195)
-**Est-files:** fleet/shim-main.mjs, fleet/orchestrator.mjs, fleet/provision.mjs, fleet/drive.mjs, fleet/tests/*
-**Notes:** W2a width-2 entry (2026-08-27, pre-authorized coordinator run). Split across the two concurrent plans: shim items (receipt scoping, newest-wins pin, invokeRun join test) in plan C1; orchestrator/provision/driver items (page latch, missing-runs-row destructive fall-through, payload validation, versionStamp cross-check) in plan C2. Done already on main: spend source (#195), publishTimeoutMs-vs-ttl legibility (#279), test-hygiene item waived as low-value.
-**Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md + docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
-**Engine:** ultrapowers (fleet sandbox drive)
-
-### #209: readSessionTokens transcript-format coupling (silent-undercount risk) — defensive interim
-**State:** queued
-**Score:** 6.5 — spend-cap integrity; the engine-emits-its-own-total half is engine-lane and stays open
-**Est-files:** fleet/shim-main.mjs, fleet/tests/test_shim_main_tokens.mjs
-**Notes:** W2a entry. Interim sentinel only (per issue: flag a suspicious shape instead of silently returning a small number); rides plan C1. Engine-side token emission needs an operator lane call — issue stays open after the interim lands.
-**Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md
-**Engine:** ultrapowers (fleet sandbox drive)
-
 ### #282: fleet drive papercuts from runs 9/9b
-**State:** queued
+**State:** parked
 **Score:** 6 — items 2/3/4/5 already landed piecemeal (RUNBOOK update-name + knobs, #299/#302 status propagation, #288 progress + #318 parkedPublish); item 1 (version cross-check) rides plan C2
 **Est-files:** fleet/drive.mjs, fleet/tests/test_drive.mjs
-**Notes:** W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
+**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain (fleet drive papercuts landed directly). Parking rather than claiming a verification that did not happen. (drive: fleet sandbox) W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
 **Plan:** docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
-**Engine:** ultrapowers (fleet sandbox drive)
+**Engine:** ultrapowers
 
 ### #331: test-suite subtraction slate — shadow-fold orphan cut + consolidation tail
-**State:** accepted
+**State:** parked
 **Score:** 7 — quality objective (suite legibility + honest coverage); zero-coverage-loss deletion behind the suite gate; operator accepted the FULL slate 2026-08-27
 **Est-files:** evals/frontier/shadow_fold.py (delete), tests/test_shadow_fold.py (delete), tests/test_shadow_octopus.py (delete), tests/test_harvest_runs.py, tests/sim_workflow.mjs, tests/test_compile_plan.py, tests/test_ultra_run.py, tests/test_viewer.py, tests/test_marker_compiler.py, tests/test_ultraplan_skill.py, tests/test_audit_run.py
-**Notes:** from the 2026-08-27 four-auditor sweep (full ranked list in the issue). LOCAL drain, one plan, suite-gated (green before/after, pass count reconciled, wall-clock not regressed). Frozen-periphery dupes are recorded in the issue but OUT of scope. Ride-alongs: two mis-described test fixes, frontier_merge.mjs stale comment, fragile catch-all needles.
+**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain (test-suite subtraction slate drained 2026-08-28). Parking rather than back-dating four lifecycle steps. from the 2026-08-27 four-auditor sweep (full ranked list in the issue). LOCAL drain, one plan, suite-gated (green before/after, pass count reconciled, wall-clock not regressed). Frozen-periphery dupes are recorded in the issue but OUT of scope. Ride-alongs: two mis-described test fixes, frontier_merge.mjs stale comment, fragile catch-all needles.
+
+### #252: ultradocket drain — verify the merge before the docket transition
+**State:** triaged
+**Score:** 8.5 — integration correctness (this quarter's top priority) at the drain's own merge boundary
+**Est-files:** skills/ultradocket/SKILL.md, skills/ultradocket/scripts/docket_lib.py, tests/test_docket_lib.py
+**Notes:** [HELD at the 2026-08-31 gate — CIRCULAR. It rewrites the drain's own merge/transition mechanics (skills/ultradocket/, docket_lib.py), and this drain is that machinery executing. Changing it mid-flight risks the drain mis-recording the very state this ticket exists to protect. Do it FIRST and inline, before the drain starts, or after it lands — never inside it.] Ranked first because it gates the autonomy of the very drain about to run. The 2026-08-25 run committed a `queued -> executed` transition after a `git merge` that had FAILED, so the docket claimed a task executed while the docket line did not contain it. A drain that mis-records its own state cannot be walked away from, which is objective 1. Prose/process today; wants a mechanical merge-then-transition atomicity check. Sharpened by this triage: the docket ALSO did not parse (two duplicate issues, three malformed Engine values) — fixed here, but nothing would have caught it, so a docket-parses assertion belongs in the same plan.
+
+### #476: confine-denials.jsonl records only what the hook refused — under-reported run-32 3 to 20
+**State:** accepted
+**Score:** 7.5 — sensor integrity; this is the instrument that hid #473 for five runs
+**Est-files:** fleet/run-worker.mjs, fleet/run-engine.mjs, skills/ultralearn/references/reading-lenses.md, fleet/tests/test_run_worker.mjs
+**Notes:** PLAN-TOGETHER with #475 — same subsystem, shared root cause: the hook's view of denials is both incomplete and noisy. The ledger is written from inside the hook's own deny path, so it structurally cannot see a reviewer or critic denial (no hook is attached to those roles) — exactly the population whose denials were parking runs. Envelope `permission_denials` is the honest record. #471 made it visible to a READER; the driver's own ledger is still wrong.
+
+### #475: the confine hook false-denies on static parse — 6 of 11 post-cutover denials are artifacts
+**State:** accepted
+**Score:** 7.5 — burns a worker turn each time and teaches workers a false model of their own environment
+**Est-files:** fleet/confine-hook.mjs, fleet/tests/test_confine_hook.mjs, fleet/tests/probe_confine_live.mjs
+**Notes:** PLAN-TOGETHER with #476. One regex runs over the whole raw command, so a `>` inside a heredoc body, a quoted echo, a glob or a backtick reads as a redirect. Verified, not inferred — run-30's reader reproduced the `->`-in-quoted-echo case locally against the shipped hook. `cat > f <<'EOF'` is the most natural way for a model to write a file and is denied whenever the content contains a redirect character. The fix must REDUCE the parse surface (strip heredoc bodies; scope the shell-expansion refusal to the target token), not grow it — the header's own caution about the abandoned `cd` heuristic applies. Needs a COOPERATIVE-task probe asserting zero denials; the existing probe only tests the hostile direction.
+
+### #466: every run's evidence lands in /tmp — one tmp-reap from losing the corpus
+**State:** accepted
+**Score:** 7 — the sense pass that found most of this slate ran off a hand-rescued archive
+**Est-files:** fleet/drive.mjs, fleet/drive-one.mjs, fleet/tests/test_drive.mjs
+**Notes:** The 2026-08-31 pass, the runs-24-32 census, the 2.73x finding on #209 and the denial counts on #476 all trace to tarballs a `/tmp` reap would have taken. `evidenceDir` is already a separate parameter from `dbDir`, so the store need not move — the cheap fix is passing it explicitly. Small blast radius, high consequence-if-wrong.
+
+### #470: CI actions still target Node 20 — GitHub is force-running them on 24
+**State:** accepted
+**Score:** 5 — trivially bounded, live deprecation clock, warning on every run
+**Est-files:** .github/workflows/ci.yml
+**Notes:** The cleanest papercut in the backlog: bump `actions/checkout`, `actions/setup-node`, `actions/setup-python`. Nothing is broken today — GitHub already forces Node 24 — but the clock is real and the noise is on every run including `main`. Touches one file nothing else in the slate touches, so it is free width in a wide wave.
+
+### #469: a session finds the current handoff only if the last session named it
+**State:** accepted
+**Score:** 5 — session continuity; the failure is silent and costs a whole session's context
+**Est-files:** .claude/ultrapowers/handoffs/, hooks/session_start.sh, skills/ultrapowers/references/
+**Notes:** No structural pointer to the current handoff, and filenames sort by INTENDED date rather than write date — verified live this session: files named 2026-09-01..09-04 sit above the real current handoff dated 08-31, and the newest by mtime is not the newest by name. Wants a `CURRENT` pointer or a write-time stamp, not a naming convention nobody can enforce.
+
+### #273: port the spec trim-review trigger into the skill
+**State:** triaged
+**Score:** 4.5 — authoring robustness (this quarter's second priority); small and self-contained
+**Est-files:** skills/ultrapowers/references/, skills/ultraplan/SKILL.md, CLAUDE.md
+**Notes:** [HELD at the 2026-08-31 gate — not struck, deferred. It edits skills/ultraplan/SKILL.md, which sits at 3037 words against a 3038 ceiling. The +25% raise rides the 0.3.1 release, which now lands AFTER this drain, so draining this ticket first would hand its implementer the same arithmetically impossible budget that made run-31's implementer delete a normative rule to pay it. Takes the next gate, once 0.3.1 is out.] The adversarial trim review is a STANDING requirement that lives only in CLAUDE.md, so it fires for this repo and never for a foreign run. Moving it into the skill makes it a property of the tool rather than of this checkout. The ultraplan ceiling moved to 3798 at 0.3.1, so this no longer has to pay by trimming.
