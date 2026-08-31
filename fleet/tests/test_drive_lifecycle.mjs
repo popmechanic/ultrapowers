@@ -1039,6 +1039,27 @@ try {
       0,
       'the parked branch must actually have been fetched',
     )
+    // #497: FETCH_HEAD is NOT durable — it is one file the next fetch
+    // overwrites, and a run whose publish fails is then reachable by nothing.
+    // That is not hypothetical: run-33's work sat unreferenced in the
+    // orchestrator's clone, one `reset --hard` and a gc from gone, and was
+    // recovered only because a human wrote a ref by hand. The fetched tip must
+    // land on a real ref BEFORE the publish leg can fail.
+    assert.equal(
+      (await sh(`git -C "${repoDir}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim(),
+      integrationSha,
+      'the fetched run tip must be pinned by a durable ref (#497)',
+    )
+    // And it must survive what would actually have destroyed it. Nothing here
+    // references the commit except that ref: FETCH_HEAD is expired, every
+    // reflog dropped, and unreachable objects pruned.
+    await sh(`git -C "${repoDir}" reflog expire --expire-unreachable=now --all`)
+    await sh(`git -C "${repoDir}" gc --prune=now --quiet`)
+    assert.equal(
+      (await sh(`git -C "${repoDir}" cat-file -e ${integrationSha}`)).code,
+      0,
+      'the run tip must survive an aggressive gc — the ref is the whole point (#497)',
+    )
     assert.ok(
       !detail.errors.includes('publish timeout'),
       `a parked publish must never read as a publish timeout, got: ${JSON.stringify(detail.errors)}`,
