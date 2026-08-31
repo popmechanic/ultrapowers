@@ -213,3 +213,13 @@ def test_no_notes_emits_no_notes_line():
     e = m.parse_docket(text)[0]
     assert e.notes is None
     assert "**Notes:**" not in m.serialize_docket([e])
+
+
+def test_committed_docket_parses():
+    """Nothing parsed the docket this repo actually ships, so it stopped
+    parsing unnoticed: two duplicate issues and three malformed `Engine`
+    values, fixed by hand in #481. parse_docket raises on both classes —
+    the only thing missing was a caller pointed at the committed file."""
+    m = load()
+    entries = m.parse_docket((ROOT / "docs/superpowers/docket.md").read_text())
+    assert entries, "docs/superpowers/docket.md parsed to zero entries"

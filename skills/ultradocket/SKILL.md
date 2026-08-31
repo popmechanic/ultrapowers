@@ -157,9 +157,16 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    - `waived` → no gate exists; **park for the operator** at the end gate. Never
      auto-merge unverified work.
 4. **Merge or park** — the deterministic step:
-   - **Green gate** → merge the plan branch into the docket integration line;
-     advance the entry `queued → executed` via `docket_lib.transition`; the next
-     plan branches off the new HEAD.
+   - **Green gate** → run `scripts/merge_entry.py --repo <repo> --branch
+     <plan-branch> --docket docs/superpowers/docket.md --issue <n>`. It is the
+     only merge path: one command does the dirty-checkout refusal, the merge,
+     the ancestry verification (`git merge` exit 0 AND `git merge-base
+     --is-ancestor <plan-branch> HEAD` — exit code alone is not authority), and
+     the `queued → executed` transition, and it parks with the reason named on
+     every other outcome. Exit 0 ⇒ merged; 1 ⇒ parked; 2 ⇒ refused before
+     touching git. **Never merge and transition as two steps** (#252: a docket
+     that claimed `executed` after a merge that had failed on a dirty
+     checkout). The next plan branches off the new HEAD.
    - **Red gate or executor failure** → **park**: keep the branch, transition the
      entry to `parked` with a reason (the gate's `redKind` or the failure), and
      skip the plan's collision-dependents (from `compile_docket`'s collision
