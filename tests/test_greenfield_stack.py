@@ -29,9 +29,17 @@ def test_skill_points_at_the_reference():
 
 
 def test_skill_stays_within_its_pinned_ceiling():
-    # the absolute lives in tests/test_skill_budget.py; this asserts the
-    # net-zero obligation was honored rather than the ceiling raised.
-    assert len(SKILL.read_text().split()) <= 3038
+    # DELEGATES to the single source. This used to hard-code 3038 — a second
+    # copy of a number whose home is tests/test_skill_budget.py — and 0.3.1
+    # raised the canonical one to 3798 without moving this one, so the two
+    # contradicted each other until the next word was added. The obligation
+    # this test was written for (#425 greenfield content lands NET-ZERO, paid
+    # by trimming rather than by raising the cap) was discharged when #425
+    # merged and is recorded in git; freezing an absolute here to re-assert it
+    # forever only guaranteed the copies would drift.
+    import test_skill_budget
+    ceiling = test_skill_budget.CEILINGS["skills/ultraplan/SKILL.md"]
+    assert len(SKILL.read_text().split()) <= ceiling
 
 
 def test_types_gotcha_is_recorded():
