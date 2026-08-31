@@ -570,9 +570,9 @@
 **State:** parked
 **Score:** 8 — verification-first objective; every item is a fail-closed gap on the live drive path; spend-source item already landed (#195)
 **Est-files:** fleet/shim-main.mjs, fleet/orchestrator.mjs, fleet/provision.mjs, fleet/drive.mjs, fleet/tests/*
-**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain; the docket lost track. Parking rather than claiming a `verified` this drain never administered. (drive: fleet sandbox) W2a width-2 entry (2026-08-27, pre-authorized coordinator run). Split across the two concurrent plans: shim items (receipt scoping, newest-wins pin, invokeRun join test) in plan C1; orchestrator/provision/driver items (page latch, missing-runs-row destructive fall-through, payload validation, versionStamp cross-check) in plan C2. Done already on main: spend source (#195), publishTimeoutMs-vs-ttl legibility (#279), test-hygiene item waived as low-value.
 **Plan:** docs/superpowers/plans/2026-08-27-fleet-shim-scoping.md + docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
 **Engine:** ultrapowers
+**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain; the docket lost track. Parking rather than claiming a `verified` this drain never administered. (drive: fleet sandbox) W2a width-2 entry (2026-08-27, pre-authorized coordinator run). Split across the two concurrent plans: shim items (receipt scoping, newest-wins pin, invokeRun join test) in plan C1; orchestrator/provision/driver items (page latch, missing-runs-row destructive fall-through, payload validation, versionStamp cross-check) in plan C2. Done already on main: spend source (#195), publishTimeoutMs-vs-ttl legibility (#279), test-hygiene item waived as low-value.
 
 ### #211: fleet: sandbox host-key reuse hazard — reused runId makes the #196 tunnel (and #197 pull) fail under accept-new
 **State:** parked
@@ -686,9 +686,9 @@
 **State:** parked
 **Score:** 6 — items 2/3/4/5 already landed piecemeal (RUNBOOK update-name + knobs, #299/#302 status propagation, #288 progress + #318 parkedPublish); item 1 (version cross-check) rides plan C2
 **Est-files:** fleet/drive.mjs, fleet/tests/test_drive.mjs
-**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain (fleet drive papercuts landed directly). Parking rather than claiming a verification that did not happen. (drive: fleet sandbox) W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
 **Plan:** docs/superpowers/plans/2026-08-27-fleet-orch-hardening.md
 **Engine:** ultrapowers
+**Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain (fleet drive papercuts landed directly). Parking rather than claiming a verification that did not happen. (drive: fleet sandbox) W2a entry. Close on C2 merge with a disposition comment mapping each item to the commit that landed it.
 
 ### #331: test-suite subtraction slate — shadow-fold orphan cut + consolidation tail
 **State:** parked
@@ -697,10 +697,11 @@
 **Notes:** [parked 2026-08-31] Issue CLOSED outside this docket's drain (test-suite subtraction slate drained 2026-08-28). Parking rather than back-dating four lifecycle steps. from the 2026-08-27 four-auditor sweep (full ranked list in the issue). LOCAL drain, one plan, suite-gated (green before/after, pass count reconciled, wall-clock not regressed). Frozen-periphery dupes are recorded in the issue but OUT of scope. Ride-alongs: two mis-described test fixes, frontier_merge.mjs stale comment, fragile catch-all needles.
 
 ### #252: ultradocket drain — verify the merge before the docket transition
-**State:** triaged
+**State:** executed
 **Score:** 8.5 — integration correctness (this quarter's top priority) at the drain's own merge boundary
 **Est-files:** skills/ultradocket/SKILL.md, skills/ultradocket/scripts/docket_lib.py, tests/test_docket_lib.py
-**Notes:** [HELD at the 2026-08-31 gate — CIRCULAR. It rewrites the drain's own merge/transition mechanics (skills/ultradocket/, docket_lib.py), and this drain is that machinery executing. Changing it mid-flight risks the drain mis-recording the very state this ticket exists to protect. Do it FIRST and inline, before the drain starts, or after it lands — never inside it.] Ranked first because it gates the autonomy of the very drain about to run. The 2026-08-25 run committed a `queued -> executed` transition after a `git merge` that had FAILED, so the docket claimed a task executed while the docket line did not contain it. A drain that mis-records its own state cannot be walked away from, which is objective 1. Prose/process today; wants a mechanical merge-then-transition atomicity check. Sharpened by this triage: the docket ALSO did not parse (two duplicate issues, three malformed Engine values) — fixed here, but nothing would have caught it, so a docket-parses assertion belongs in the same plan.
+**Engine:** inline
+**Notes:** [HELD at the 2026-08-31 gate — CIRCULAR. It rewrites the drain's own merge/transition mechanics (skills/ultradocket/, docket_lib.py), and this drain is that machinery executing. Changing it mid-flight risks the drain mis-recording the very state this ticket exists to protect. Do it FIRST and inline, before the drain starts, or after it lands — never inside it.] Ranked first because it gates the autonomy of the very drain about to run. The 2026-08-25 run committed a `queued -> executed` transition after a `git merge` that had FAILED, so the docket claimed a task executed while the docket line did not contain it. A drain that mis-records its own state cannot be walked away from, which is objective 1. Prose/process today; wants a mechanical merge-then-transition atomicity check. Sharpened by this triage: the docket ALSO did not parse (two duplicate issues, three malformed Engine values) — fixed here, but nothing would have caught it, so a docket-parses assertion belongs in the same plan. [BUILT INLINE 2026-08-31, outside the drain, exactly as the hold required: PR #482 merged to main, CI green. Ships scripts/merge_entry.py — merge and transition are now one verified operation — plus test_committed_docket_parses. Item 2 (composer --integration-branch) was moot: the composers were deleted at the 0.3.0 cutover. Awaiting the operator's acceptance for executed -> verified.]
 
 ### #476: confine-denials.jsonl records only what the hook refused — under-reported run-32 3 to 20
 **State:** accepted
@@ -737,3 +738,4 @@
 **Score:** 4.5 — authoring robustness (this quarter's second priority); small and self-contained
 **Est-files:** skills/ultrapowers/references/, skills/ultraplan/SKILL.md, CLAUDE.md
 **Notes:** [HELD at the 2026-08-31 gate — not struck, deferred. It edits skills/ultraplan/SKILL.md, which sits at 3037 words against a 3038 ceiling. The +25% raise rides the 0.3.1 release, which now lands AFTER this drain, so draining this ticket first would hand its implementer the same arithmetically impossible budget that made run-31's implementer delete a normative rule to pay it. Takes the next gate, once 0.3.1 is out.] The adversarial trim review is a STANDING requirement that lives only in CLAUDE.md, so it fires for this repo and never for a foreign run. Moving it into the skill makes it a property of the tool rather than of this checkout. The ultraplan ceiling moved to 3798 at 0.3.1, so this no longer has to pay by trimming.
+
