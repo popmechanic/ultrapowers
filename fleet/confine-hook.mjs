@@ -93,26 +93,108 @@ export function writable(roots, target, cwd, carveOuts) {
 // purpose: this list is closed and documented incomplete; parsing shell for
 // real would be an open-ended promise this boundary explicitly does not make.
 const strip = (tok) => tok.replace(/^['"]|['"]$/g, '')
+// #475 — DATA IS NOT CODE. The denylist below is still naive on purpose; this
+// pass just stops it reading data as code. One walk marks what a shell would
+// treat as DATA — heredoc bodies and quoted spans — so a `>` inside
+// `echo "a -> b"`, a backtick inside a heredoc body, or a glob in a comment is
+// no longer captured as a write target. Six of the eleven post-cutover denials
+// were exactly that, and each one burned a worker turn and taught the worker
+// something false about its own environment.
+//
+// MASK, NEVER DELETE. Indices are preserved and every target is sliced from the
+// ORIGINAL string, so `> "/tmp/f"` is still a denial. Deleting a quoted span
+// would erase the target token with it and turn this false-deny fix into a
+// HOLE — the one outcome that would be worse than the bug.
+const NUL = '\u0000'
+
+export function maskData(command) {
+  const s = String(command)
+  const out = s.split('')
+  const blank = (from, to) => {
+    for (let i = Math.max(0, from); i < Math.min(to, out.length); i++) out[i] = NUL
+  }
+
+  // AN UNBALANCED PARSE IS NOT EVIDENCE ABOUT DATA. Both loops below mask only
+  // when they can prove a region closed; anything unterminated falls back to
+  // the raw text, which is the pre-#475 behaviour — a possible false DENY, never
+  // a miss. The first cut of this function got that backwards and masked to
+  // end-of-string, so `echo $((1 << n))` (an arithmetic shift, not a heredoc)
+  // and `# don't` (an apostrophe in a comment) each swallowed every write target
+  // after them: main denied, the fix allowed. Caught in review before merge.
+
+  // Heredoc bodies. `<<TAG`, `<<-TAG`, `<<'TAG'`: the body runs from the next
+  // line to a line whose trimmed text is TAG. NO TERMINATOR = no evidence this
+  // `<<` introduced a heredoc at all, so nothing is masked.
+  const here = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g
+  for (let m; (m = here.exec(s)); ) {
+    if (s[m.index - 1] === '<' || s[m.index + 2] === '<') continue // `<<<` is a herestring
+    const nl = s.indexOf('\n', m.index + m[0].length)
+    if (nl === -1) continue
+    const tag = m[2]
+    let bodyEnd = -1
+    for (let i = nl + 1; i <= s.length; ) {
+      const eol = s.indexOf('\n', i)
+      if (s.slice(i, eol === -1 ? s.length : eol).trim() === tag) { bodyEnd = i; break }
+      if (eol === -1) break
+      i = eol + 1
+    }
+    if (bodyEnd === -1) continue
+    blank(nl + 1, bodyEnd)
+    here.lastIndex = Math.max(here.lastIndex, bodyEnd)
+  }
+
+  // Quoted spans, over the heredoc-masked text. Masked into a COPY: an
+  // unbalanced quote at end-of-string discards the whole quote pass rather than
+  // blinding the tail. The quote CHARACTERS stay in place, which leaves
+  // `strip()` able to unwrap a quoted target.
+  const partial = out.join('')
+  const quoted = partial.split('')
+  let q = null
+  for (let i = 0; i < partial.length; i++) {
+    const c = partial[i]
+    if (q === null) {
+      if (c === '\\') { i++; continue }
+      if (c === "'" || c === '"') q = c
+    } else if (c === q) {
+      q = null
+    } else {
+      if (q === '"' && c === '\\' && i + 1 < partial.length) { quoted[i] = NUL; quoted[i + 1] = NUL; i++; continue }
+      quoted[i] = NUL
+    }
+  }
+  return q === null ? quoted.join('') : partial
+}
+
 export function bashWriteTargets(command) {
+  const raw = String(command)
+  const masked = maskData(raw)
   const targets = []
   // Redirections: `>`/`>>` (any fd prefix), the target is what follows,
-  // attached or spaced. One regex pass over the raw text so `echo x>/etc/f`
-  // (no space) is seen too.
+  // attached or spaced. Matched on the MASKED text so `echo x>/etc/f` (no
+  // space) is still seen while a quoted `>` is not; sliced from `raw` so the
+  // target is the real path. The capture is the tail of the match, which is
+  // what makes the index arithmetic exact.
   const redir = /\d*>{1,2}\s*([^\s|;&<>]+)/g
-  for (let m; (m = redir.exec(command)); ) targets.push(strip(m[1]))
-  // `tee [flags] <file...>`: every non-flag token after tee until a shell
-  // separator.
-  const toks = command.split(/\s+/).map(strip)
-  for (let i = 0; i < toks.length; i++) {
-    if (toks[i] === 'tee' || toks[i].endsWith('/tee')) {
-      for (let j = i + 1; j < toks.length && !/^[|;&]/.test(toks[j]); j++) {
-        if (!toks[j].startsWith('-')) targets.push(toks[j])
+  for (let m; (m = redir.exec(masked)); ) {
+    const start = m.index + m[0].length - m[1].length
+    targets.push(strip(raw.slice(start, start + m[1].length)))
+  }
+  // `tee [flags] <file...>`, `-o <file>`, `--output[=]<file>`: the token TEXT
+  // is read from the masked copy (so a quoted `tee` is an argument, not the
+  // command) and the target VALUE from the original.
+  const tok = []
+  for (let m, re = /\S+/g; (m = re.exec(masked)); ) {
+    tok.push({ m: strip(m[0]), o: strip(raw.slice(m.index, m.index + m[0].length)) })
+  }
+  for (let i = 0; i < tok.length; i++) {
+    if (tok[i].m === 'tee' || tok[i].m.endsWith('/tee')) {
+      for (let j = i + 1; j < tok.length && !/^[|;&]/.test(tok[j].m); j++) {
+        if (!tok[j].m.startsWith('-')) targets.push(tok[j].o)
       }
     }
-    // `-o <file>` / `--output <file>` / `--output=<file>`
-    if ((toks[i] === '-o' || toks[i] === '--output') && toks[i + 1]) targets.push(toks[i + 1])
-    if (toks[i].startsWith('--output=')) targets.push(strip(toks[i].slice('--output='.length)))
-    if (toks[i].startsWith('-o=')) targets.push(strip(toks[i].slice(3)))
+    if ((tok[i].m === '-o' || tok[i].m === '--output') && tok[i + 1]) targets.push(tok[i + 1].o)
+    if (tok[i].m.startsWith('--output=')) targets.push(strip(tok[i].o.slice('--output='.length)))
+    if (tok[i].m.startsWith('-o=')) targets.push(strip(tok[i].o.slice(3)))
   }
   return targets.filter(Boolean)
 }
@@ -200,7 +282,7 @@ if (invokedDirectly) {
       if (process.env.FLEET_RUN_DIR) {
         try {
           fs.appendFileSync(path.join(process.env.FLEET_RUN_DIR, 'confine-denials.jsonl'),
-            JSON.stringify({ ts: Date.now(), tool: input.tool_name, reason: verdict.deny }) + '\n')
+            JSON.stringify({ ts: Date.now(), source: 'hook', tool: input.tool_name, reason: verdict.deny }) + '\n')
         } catch { /* unwritable log never blocks the deny */ }
       }
       emit('deny', verdict.deny)

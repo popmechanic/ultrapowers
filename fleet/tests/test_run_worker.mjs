@@ -27,7 +27,7 @@ import os from 'node:os'
 import path from 'node:path'
 import {
   ROLES, roleForLabel, sessionIdFor, buildArgs, lastResult, classify, meterOf,
-  createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES,
+  createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
 } from '../run-worker.mjs'
 import { isSchemaTrip } from '../run-engine.mjs'
 
@@ -155,6 +155,60 @@ const SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } }, requir
   assert.equal(at('--permission-mode'), 'dontAsk')
   assert.equal(at('--allowedTools'), ROLES.reviewer.allowedTools.join(','))
   assert.ok(!argv.includes('--disallowedTools'), 'an allowlist role needs no denylist — the allowlist is the boundary')
+}
+
+// ── 4b. #476: the envelope's denials reach the run's denial ledger ───────────
+// `confine-denials.jsonl` was written only from inside the confine hook's deny
+// path, and the hook is attached only to the write-capable roles — so the file
+// could not see a reviewer or critic denial at all. Runs 26-32 recorded
+// 0/3/2/1/3 against the envelopes' 3/11/11/11/20. The driver has the honest
+// record in hand; it now writes it to the same file with a `source` tag.
+{
+  const wd = fs.mkdtempSync(path.join(os.tmpdir(), 'denials-')) + '/workers'
+  fs.mkdirSync(wd, { recursive: true })
+  const ledger = path.join(path.dirname(wd), 'confine-denials.jsonl')
+
+  assert.equal(recordEnvelopeDenials({ workersDir: wd, label: 'review:1:1', role: 'reviewer',
+    envelope: { permission_denials: [] } }), 0)
+  assert.equal(fs.existsSync(ledger), false, 'no denials writes no line')
+
+  const n = recordEnvelopeDenials({
+    workersDir: wd, label: 'review:1:1', role: 'reviewer',
+    envelope: { permission_denials: [{ tool_name: 'Bash' }, { tool_name: 'Read' }] },
+  })
+  assert.equal(n, 2)
+  const rows = fs.readFileSync(ledger, 'utf8').trim().split('\n').map((l) => JSON.parse(l))
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].source, 'envelope', 'the discriminator is what keeps one file readable')
+  assert.equal(rows[0].label, 'review:1:1')
+  assert.equal(rows[0].role, 'reviewer', 'the role the hook could never see')
+  assert.equal(rows[0].tool, 'Bash')
+
+  // Appends, never truncates: a second worker must not erase the first's.
+  recordEnvelopeDenials({ workersDir: wd, label: 'critic:1', role: 'critic',
+    envelope: { permission_denials: [{ tool_name: 'Bash' }] } })
+  assert.equal(fs.readFileSync(ledger, 'utf8').trim().split('\n').length, 3)
+
+  // REVIEW FINDING 4: a denied Write carries its whole `content` in tool_input,
+  // and the harvester reads this file verbatim into bundle.json with no size
+  // budget. Store a summary, not the record.
+  {
+    const big = 'x'.repeat(5000)
+    recordEnvelopeDenials({ workersDir: wd, label: 'impl:T1', role: 'implementer',
+      envelope: { permission_denials: [{ tool_name: 'Write', reason: 'outside root',
+        tool_input: { file_path: '/etc/x', content: big } }] } })
+    const last = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop())
+    assert.equal(last.reason, 'outside root')
+    assert.ok(last.toolInput.length <= 200, 'tool_input is capped, not inlined whole')
+    assert.ok(!last.toolInput.includes(big), 'the payload never reaches the ledger')
+  }
+
+  // A denial ledger must never be able to fail a worker.
+  assert.equal(recordEnvelopeDenials({ workersDir: '/nonexistent/x/workers', label: 'a', role: 'b',
+    envelope: { permission_denials: [{ tool_name: 'Bash' }] } }), 0)
+  assert.equal(recordEnvelopeDenials({ workersDir: wd, envelope: null }), 0)
+  assert.equal(recordEnvelopeDenials({ workersDir: wd, envelope: { permission_denials: 'nope' } }), 0)
+  console.log('ok - #476: envelope denials land in the run ledger, tagged, appended, fail-soft')
 }
 
 // ── 5. lastResult: take the LAST result line ─────────────────────────────────

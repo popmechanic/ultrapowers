@@ -470,6 +470,45 @@ export function meterOf(envelope) {
 // outcome — only for a programming error (an undeclared label, a missing cwd),
 // which must fail loudly rather than degrade into a null the engine would read
 // as an overload.
+// #476 — ONE PLACE TO LOOK. `confine-denials.jsonl` is written from inside the
+// confine hook's own deny path, so it records exactly one thing: denials THAT
+// HOOK issued. The hook is attached only to the write-capable roles, so the
+// file structurally cannot see a reviewer or critic denial — which is precisely
+// the population whose denials were parking runs. Measured across runs 26-32 it
+// carried 0/3/2/1/3 against the envelopes' 3/11/11/11/20.
+//
+// The envelope is the honest record and the driver already has it in hand here.
+// Folding it into the SAME file (with a `source` discriminator, and the hook's
+// own lines now tagged too) keeps one obvious place to look, which is what the
+// ticket asked for — two records, one an undisclosed subset of the other, is
+// how a sensor lies for five runs running.
+//
+// Derived from `workersDir`, never from FLEET_RUN_DIR: that variable is set for
+// the confined roles only, and the roles this exists to see are the ones
+// without it. Best-effort, like the hook's own write — a denial ledger must
+// never be able to fail a worker.
+export function recordEnvelopeDenials({ workersDir, label, role, envelope }) {
+  const denials = envelope && envelope.permission_denials
+  if (!workersDir || !Array.isArray(denials) || denials.length === 0) return 0
+  try {
+    // Store a SUMMARY, not the record. A denied Write carries its `content` and
+    // a denied Bash its whole command in `tool_input`, and the harvester reads
+    // this file verbatim into bundle.json with no size budget — a few large
+    // denied writes would bloat the bundle that feeds every lens.
+    const cap = (v) => (v === undefined || v === null ? null : String(
+      typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 200))
+    const line = (d) => JSON.stringify({
+      ts: Date.now(), source: 'envelope', label: label || null, role: role || null,
+      tool: (d && (d.tool_name || d.tool)) || null,
+      reason: cap(d && (d.reason || d.message)) || cap(d),
+      toolInput: d && d.tool_input ? cap(d.tool_input) : null,
+    })
+    fs.appendFileSync(path.join(path.dirname(workersDir), 'confine-denials.jsonl'),
+      denials.map(line).join('\n') + '\n')
+    return denials.length
+  } catch { return 0 }
+}
+
 export function createRunWorker(cfg) {
   const {
     runId, workersDir, cwdFor, promptFileFor, settingsFor, addDirsFor,
@@ -546,6 +585,7 @@ export function createRunWorker(cfg) {
       if (stderr) fs.writeFileSync(path.join(dir, 'stderr'), String(stderr))
       if (envelope) fs.writeFileSync(path.join(dir, 'envelope.json'), JSON.stringify(envelope, null, 2))
     }
+    recordEnvelopeDenials({ workersDir, label: opts.label, role, envelope })
     const verdict = classify({ exitCode, envelope })
     onEvent({ kind: 'worker:end', label: opts.label, role, sessionId, exitCode, timedOut,
       outcome: verdict.outcome, class: verdict.class, status: verdict.status || null,
