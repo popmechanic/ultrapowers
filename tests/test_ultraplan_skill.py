@@ -26,11 +26,25 @@ def contract_blocks():
 
 
 def test_ultraplan_cites_the_canonical_contract():
-    # The inverse of the prohibition this replaces. `validate_skill.py` resolves
-    # a `skills/<name>/` prefix against the SIBLING skill's directory (#159), so
-    # this path is validated, not dangling — CI proves it on every run by
-    # validating both skill dirs.
-    assert "skills/ultrapowers/references/plan-markers.md" in ULTRAPLAN.read_text()
+    # The inverse of the prohibition this replaces. Two separate things have to
+    # be true and only one of them is validate_skill.py's business:
+    #
+    #  (a) it VALIDATES — `validate_skill.py` resolves a `skills/<name>/` prefix
+    #      against the SIBLING skill's directory (#159), and the ${...} prefix
+    #      does not defeat that match. CI proves it every run.
+    #  (b) it RESOLVES FOR THE AGENT — a bare repo-relative path does not. The
+    #      authoring agent's cwd is the USER's project, not the plugin root, so
+    #      a citation without ${CLAUDE_PLUGIN_ROOT} validates in CI and then
+    #      dangles in the only place that matters. That is the idiom
+    #      dependency-analysis.md and report-format.md already use for paths an
+    #      agent must actually open.
+    text = ULTRAPLAN.read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md" in text
+    bare = text.count("skills/ultrapowers/references/plan-markers.md")
+    rooted = text.count("${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md")
+    assert bare == rooted, (
+        "a citation of plan-markers.md without ${CLAUDE_PLUGIN_ROOT} will not "
+        "resolve from the agent's cwd")
 
 
 def test_the_cited_contract_exists_where_the_skill_says_it_does():

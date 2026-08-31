@@ -14,7 +14,7 @@ description: Use together with superpowers:writing-plans on EVERY implementation
 Use **together with** `superpowers:writing-plans`: that skill owns plan structure,
 TDD steps, and granularity. This skill adds the parallel-execution contract so
 `/ultrapowers` compiles the plan by parsing instead of inferring. The marker
-contract itself is `skills/ultrapowers/references/plan-markers.md` — cited here,
+contract itself is `${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md` — cited here,
 never restated (#492).
 
 **Announce at start:** "I'm also using ultraplan to make this plan parallel-ready."
@@ -93,7 +93,7 @@ separately"), never silently.
 
 ## Add markers to every task
 
-**The canonical contract is `skills/ultrapowers/references/plan-markers.md`** —
+**The canonical contract is `${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md`** —
 syntax, allowed values, precedence, the `Files:` and `Interfaces:` grammars, and
 every rule the compiler enforces. Read it before you mark a plan. It lives beside
 `compile_plan.py`, which is what enforces it, and `tests/test_marker_contract.py`
