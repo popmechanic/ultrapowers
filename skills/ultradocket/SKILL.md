@@ -162,9 +162,10 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
      only merge path: one command does the dirty-checkout refusal, the merge,
      the ancestry verification (`git merge` exit 0 AND `git merge-base
      --is-ancestor <plan-branch> HEAD` — exit code alone is not authority), and
-     the `queued → executed` transition, and it parks with the reason named on
-     every other outcome. Exit 0 ⇒ merged; 1 ⇒ parked; 2 ⇒ refused before
-     touching git. **Never merge and transition as two steps** (#252: a docket
+     the `queued → executed` transition, and it commits the docket write on the
+     integration line; it parks with the reason named on every other outcome.
+     Exit 0 ⇒ merged; 1 ⇒ parked and recorded; 2 ⇒ refused or errored with git
+     and the docket untouched. **Never merge and transition as two steps** (#252: a docket
      that claimed `executed` after a merge that had failed on a dirty
      checkout). The next plan branches off the new HEAD.
    - **Red gate or executor failure** → **park**: keep the branch, transition the
