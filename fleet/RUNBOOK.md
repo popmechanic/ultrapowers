@@ -581,8 +581,12 @@ On every park, triage in this order:
    (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
    apply cleanly to base (PR #317 precedent); reconstruct any
    integration-only fixes from `report.json`.
-3. **Harvest `report.json`'s `completenessFindings` into issues explicitly**
-   — run-14's carried a real socket-leak defect that existed nowhere else.
+3. **Harvest the `minor` group of `report.json`'s `completenessFindings` into
+   issues explicitly** — run-14's carried a real socket-leak defect that
+   existed nowhere else. Only the `minor` group needs this hand step: since
+   #474 a `blocking` finding stops the run at the driver (`criticDecision`
+   refuses before `--approve`, leaving a `critic-block.json` beside the gate
+   receipt), so it is already on the record and needs no manual harvest.
 
 ## Teardown guarantee
 

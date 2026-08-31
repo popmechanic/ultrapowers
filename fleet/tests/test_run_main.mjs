@@ -1,7 +1,8 @@
 // fleet/tests/test_run_main.mjs — the deterministic engine entry (#402).
 //
 // Three layers, three kinds of proof:
-//   the pure pieces      parseArgs / fillTiers / ackDecision / boundedParallel
+//   the pure pieces      parseArgs / fillTiers / ackDecision / criticDecision /
+//                        boundedParallel
 //   the provisioned run  real git: clones at BASE, roles, settings, and the
 //                        composed agent capturing a REAL patch while
 //                        discarding the model-typed coordinates
@@ -15,7 +16,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
 import {
-  parseArgs, fillTiers, ackDecision, acksOf, boundedParallel, provisionRunTree,
+  parseArgs, fillTiers, ackDecision, acksOf, criticDecision, boundedParallel, provisionRunTree,
   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage,
   makeAddDirsFor,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
@@ -68,6 +69,25 @@ const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', st
   assert.deepEqual(acksOf({ acks: [{ type: 'coverage' }] }), [], 'flat acks are not the ack channel')
   assert.ok(ackDecision({ acks: [{ type: 'coverage' }] }).approve,
     'a flat coverage ack is invisible — only gateCheck.acks is read')
+}
+
+// ── criticDecision — the brake #474 added ────────────────────────────────────
+{
+  const rep = (findings) => ({ completenessFindings: findings })
+  assert.ok(criticDecision(rep([])).approve, 'no findings approves')
+  assert.ok(criticDecision(rep([{ severity: 'minor', detail: 'x' }])).approve,
+    'a minor finding is not a brake')
+  const blocked = criticDecision(rep([
+    { severity: 'minor', detail: 'x' },
+    { severity: 'blocking', detail: 'task 2 deliverable absent' },
+  ]))
+  assert.ok(!blocked.approve)
+  assert.equal(blocked.blocking.length, 1)
+  assert.equal(blocked.blocking[0].detail, 'task 2 deliverable absent')
+  assert.match(blocked.reason, /deliverable absent/)
+  assert.ok(criticDecision(rep(['an old bare string finding'])).approve,
+    'pre-#474 evidence carries no severity and cannot block')
+  assert.ok(criticDecision({}).approve, 'a report with no findings field approves')
 }
 
 // ── boundedParallel ──────────────────────────────────────────────────────────
@@ -400,6 +420,102 @@ function freshRepo(name) {
   assert.equal(out.verdict, 'needs-ack')
   assert.ok(!fs.existsSync(path.join(runDir, 'standing-approval.json')))
   assert.ok(!calls.some((c) => c.includes('--approve')), 'a parked run never approves')
+}
+
+// PASS gate + a BLOCKING completeness finding → refused, on the clean path.
+{
+  const repoDir = freshRepo('flow-critic-block')
+  const runId = 'run-94'
+  const { exec, calls, runDir } = makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({
+        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
+        completenessFindings: [
+          { severity: 'minor', detail: 'a nit' },
+          { severity: 'blocking', detail: 'task 2 deliverable absent' },
+        ],
+      }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 1)
+  assert.equal(out.verdict, 'critic-blocking')
+  assert.ok(!calls.some((c) => c.includes('--approve')), 'a refused run never invokes --approve')
+  assert.ok(!fs.existsSync(path.join(runDir, 'approve-receipt.json')),
+    'no approve receipt is written on a refusal')
+  const block = JSON.parse(fs.readFileSync(path.join(runDir, 'critic-block.json'), 'utf8'))
+  assert.equal(block.stamp, runId)
+  assert.equal(block.integrationBranch, 'ultra/integration-' + runId)
+  assert.equal(block.gateVerdict, 'PASS', 'the brake fires on a CLEAN gate — that is the point')
+  assert.equal(block.blocking.length, 1)
+  assert.equal(block.blocking[0].detail, 'task 2 deliverable absent')
+  const ev = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l))
+  const dec = ev.find((e) => e.kind === 'driver:critic-decision')
+  assert.ok(dec, 'the decision is on the event log, like driver:ack-decision')
+  assert.equal(dec.approve, false)
+  assert.match(dec.reason, /deliverable absent/)
+}
+
+// PASS gate + a MINOR finding → approves exactly as it does at BASE.
+{
+  const repoDir = freshRepo('flow-critic-minor')
+  const runId = 'run-95'
+  const { exec, calls, runDir } = makeExecStub({ repoDir, runId, gateExit: 0, waves: WAVES })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({
+        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
+        completenessFindings: [{ severity: 'minor', detail: 'a nit' }],
+      }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 0, out.verdict + ': ' + out.detail)
+  assert.equal(out.verdict, 'approved')
+  assert.ok(fs.existsSync(path.join(runDir, 'approve-receipt.json')))
+  assert.ok(!fs.existsSync(path.join(runDir, 'critic-block.json')))
+  assert.ok(calls.some((c) => c.includes('--approve')))
+  const ev = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8')
+    .trim().split('\n').map((l) => JSON.parse(l))
+  const dec = ev.find((e) => e.kind === 'driver:critic-decision')
+  assert.ok(dec && dec.approve === true, 'an approving decision is recorded too, not only a refusal')
+}
+
+// NEEDS_ACK over a PRE-AUTHORIZED ack + a blocking finding → refused anyway.
+// #243 pre-authorizes "the sandbox could not execute this"; it was never a
+// licence to merge a named defect. The brake outranks the ack path.
+{
+  const repoDir = freshRepo('flow-critic-over-ack')
+  const runId = 'run-96'
+  const { exec, calls, runDir } = makeExecStub({
+    repoDir, runId, gateExit: 2,
+    acks: [{ type: 'deferred:runtime', task: 'T1' }], waves: WAVES,
+  })
+  const out = await runMain(
+    { planPath: 'plan.md', runId, repoDir, tier: 'mostCapable', overlap: null, testCmd: null, bootstrapCmd: null, cli: 'claude' },
+    {
+      exec, log: () => {},
+      runEngineFn: async () => ({
+        integrationBranch: 'ultra/integration-' + runId, waveMerges: [], tasks: [],
+        completenessFindings: [{ severity: 'blocking', detail: 'task 2 deliverable absent' }],
+      }),
+      makeAgent: (opts) => ({ agent: async () => null, patchInput: opts.patchesDir }),
+    },
+  )
+  assert.equal(out.code, 1)
+  assert.equal(out.verdict, 'critic-blocking', 'the brake precedes the ack path, not the other way round')
+  assert.ok(!fs.existsSync(path.join(runDir, 'standing-approval.json')),
+    'the run never reached the pre-authorization record')
+  assert.ok(!calls.some((c) => c.includes('--approve')))
+  const block = JSON.parse(fs.readFileSync(path.join(runDir, 'critic-block.json'), 'utf8'))
+  assert.equal(block.gateVerdict, 'NEEDS_ACK')
+  assert.equal(block.blocking.length, 1)
 }
 
 // Empty waves → refuse before provisioning anything.

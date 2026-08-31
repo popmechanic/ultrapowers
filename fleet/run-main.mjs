@@ -199,6 +199,27 @@ export function ackDecision(gateReceipt) {
   return { approve: true, reason: acks.length + ' deferred runtime/external ack(s) — pre-authorized (#243)' }
 }
 
+// ── the completeness brake (#474) ────────────────────────────────────────────
+// A blocking completeness finding refuses the run before it can be approved.
+// The check sits OUTSIDE the `gate.code === 2` branch on purpose: run-26 is the
+// run that proves a clean `PASS` can carry unrouted findings, so the clean path
+// is exactly the one that needs the brake. A bare-string finding is pre-#474
+// evidence — the critic that wrote it had no way to say "blocking" — so it
+// never blocks; runs 1–32 wrote strings and are still read.
+export function criticDecision(report) {
+  const findings = (report && report.completenessFindings) || []
+  const blocking = findings.filter((f) => f && typeof f === 'object' && f.severity === 'blocking')
+  if (blocking.length) {
+    return {
+      approve: false,
+      reason: blocking.length + ' blocking completeness finding(s): ' +
+        blocking.map((f) => f.detail).join('; '),
+      blocking,
+    }
+  }
+  return { approve: true, reason: findings.length + ' completeness finding(s), none blocking', blocking: [] }
+}
+
 // ── the run tree (spec §5) ───────────────────────────────────────────────────
 // Everything lives under the ultra_run-minted run dir (already self-ignored
 // via the state dir's `.gitignore: *`), so the evidence bundle is ONE tree:
@@ -543,6 +564,24 @@ export async function runMain(parsed, deps = {}) {
     return fail('gate-blocked', 'ultra_gate exited ' + gate.code +
       ' — gate receipt is the terminal artifact')
   }
+  // The completeness brake, BEFORE the ack branch and on the PASS path alike:
+  // it governs both surviving gate paths, and its precedence over the ack path
+  // is deliberate. #243 pre-authorizes "the sandbox could not execute this"; it
+  // was never a licence to merge a named defect. The report is read from
+  // resultPath — the gate receipt does not carry the field.
+  const critic = criticDecision(readJson(resultPath))
+  eventLog.onEvent({ kind: 'driver:critic-decision', approve: critic.approve, reason: critic.reason })
+  if (!critic.approve) {
+    let gateVerdict = gate.code === 0 ? 'PASS' : 'NEEDS_ACK'
+    try {
+      gateVerdict = readJson(path.join(runDir, 'gate-receipt.json')).verdict ?? gateVerdict
+    } catch { /* the receipt is the gate's record, not this refusal's authority */ }
+    fs.writeFileSync(path.join(runDir, 'critic-block.json'), JSON.stringify({
+      stamp, integrationBranch, gateVerdict, blocking: critic.blocking,
+    }, null, 2))
+    return fail('critic-blocking', critic.reason + ' — critic-block.json is the terminal artifact')
+  }
+
   if (gate.code === 2) {
     const gr = readJson(path.join(runDir, 'gate-receipt.json'))
     const decision = ackDecision(gr)

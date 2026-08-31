@@ -140,6 +140,28 @@ export const pullRequestTitle = ({ runId, planText, planPath, parked }) =>
   `${parked ? '[parked] ' : ''}fleet ${runId}: ${planTitleFrom(planText, planPath)}`
 
 /**
+ * One completeness-critic finding, reduced to `{severity, detail}` for the PR
+ * body. Findings are typed `{severity, detail}` since #474, but runs 1–32 wrote
+ * bare strings: a string carries no severity, and `criticDecision` treats it as
+ * non-blocking, so it renders under `minor`. Anything else unreadable degrades
+ * to a rendered line — the disclosure section never throws the whole body away.
+ */
+const normalizeFinding = (finding) => {
+  const text = (v) => {
+    if (typeof v === 'string') return v.trim()
+    if (v === null || v === undefined) return ''
+    try {
+      return typeof v === 'object' ? JSON.stringify(v) : String(v)
+    } catch {
+      return String(v)
+    }
+  }
+  if (typeof finding === 'string') return { severity: 'minor', detail: finding.trim() }
+  const severity = finding?.severity === 'blocking' ? 'blocking' : 'minor'
+  return { severity, detail: text(finding?.detail) || text(finding) || 'unreadable finding' }
+}
+
+/**
  * The PR body: the gate receipt rendered. `receipt` is the parsed
  * `fleet-receipts/<runId>/gate-receipt.json` from the fetched branch (or null
  * when it could not be read — the body says so rather than pretending).
@@ -218,8 +240,26 @@ export const renderPullRequestBody = ({
     lines.push('')
   }
   if (Array.isArray(findings) && findings.length > 0) {
+    const grouped = findings.map(normalizeFinding)
+    const blocking = grouped.filter((f) => f.severity === 'blocking')
+    const minor = grouped.filter((f) => f.severity !== 'blocking')
     lines.push(`## Completeness-critic findings (${findings.length})`)
-    for (const finding of findings) lines.push(`- ${typeof finding === 'string' ? finding : JSON.stringify(finding)}`)
+    lines.push('')
+    lines.push(`### Blocking (${blocking.length})`)
+    if (blocking.length === 0) lines.push('- none')
+    for (const f of blocking) lines.push(`- ${f.detail}`)
+    if (blocking.length > 0) {
+      lines.push('')
+      lines.push(
+        '_These are why the driver did not approve this run. A `PASS` gate receipt beside them is expected rather ' +
+          'than a contradiction: the gate reports what **it** checked, and it never reads `completenessFindings` — ' +
+          'the critic\'s blocking findings ride here, on the PR body._',
+      )
+    }
+    lines.push('')
+    lines.push(`### Minor (${minor.length})`)
+    if (minor.length === 0) lines.push('- none')
+    for (const f of minor) lines.push(`- ${f.detail}`)
     lines.push('')
   }
   lines.push(`## Receipts (${receipts.length})`)

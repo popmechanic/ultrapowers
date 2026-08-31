@@ -227,7 +227,17 @@ try {
       assert.ok(body.includes(leg), `leg rendered: ${leg}`)
     }
     assert.ok(body.includes('## autoResolved: 1'), 'autoResolved rendered when the receipt carries it')
-    assert.ok(body.includes('## Completeness-critic findings (1)\n- socket leak in shim teardown'), 'critic findings rendered')
+    // #474 — the old-evidence regression: a bare string carries no severity,
+    // so it renders under the MINOR group and the renderer never throws on it.
+    const sectionIdx = body.indexOf('## Completeness-critic findings (1)')
+    const blockingIdx = body.indexOf('### Blocking (0)')
+    const minorIdx = body.indexOf('### Minor (1)')
+    const stringIdx = body.indexOf('- socket leak in shim teardown (run-14 precedent)')
+    assert.ok(sectionIdx >= 0, `critic findings section rendered: ${body}`)
+    assert.ok(blockingIdx > sectionIdx, 'the blocking group renders with its own count, even at zero')
+    assert.ok(minorIdx > blockingIdx, 'blocking group before minor group')
+    assert.ok(stringIdx > minorIdx, 'a pre-#474 bare string lands under the minor group')
+    assert.ok(!body.includes('why the driver did not approve'), 'no blocking findings → no refusal sentence')
     assert.ok(body.includes(`- \`${greenReceiptSha}\` \`${greenReceiptPath}\` — PASS, resolved`), 'receipt pointer rendered')
     // Closes: from the plan HEADER only — #318/#319 (bold line) and #320
     // (bare line); the #999 under a `##` section is NOT a close.
@@ -432,6 +442,57 @@ try {
     assert.ok(body.includes('## Driver notes (1)\n- version cross-check unavailable'))
     assert.ok(!body.includes('Closes #'))
     assert.ok(body.endsWith(`\n${TRAILER}\n`))
+
+    // #474 — the findings section is two labelled groups, blocking first,
+    // each carrying its own count; a typed finding renders as plain prose.
+    const withFindings = (findings) =>
+      renderPullRequestBody({
+        runId: 'run-f',
+        planPath: 'p.md',
+        branch: 'b',
+        vmName: 'fleet-run-f',
+        parked: false,
+        receipt: { verdict: 'PASS', gateCheck: { verdict: 'PASS', checks: [], acks: [] }, completenessFindings: findings },
+        receiptSource: null,
+        read: { o1: true, receiptsResolvable: true, leaseContinuity: true, versionStamp: true, spendObservational: { reported: 1, ledger: 1 } },
+        receipts: [],
+        closes: [],
+        errors: [],
+      })
+
+    const mixed = withFindings([
+      { severity: 'minor', detail: 'unused export in fleet/store.mjs' },
+      { severity: 'blocking', detail: 'task 2 deliverable absent from the tree' },
+    ])
+    const blockingHead = mixed.indexOf('### Blocking (1)')
+    const minorHead = mixed.indexOf('### Minor (1)')
+    assert.ok(mixed.includes('## Completeness-critic findings (2)'), `section count: ${mixed}`)
+    assert.ok(blockingHead >= 0 && minorHead >= 0, `both group headings render: ${mixed}`)
+    assert.ok(blockingHead < minorHead, 'the blocking group comes first')
+    for (const detail of ['task 2 deliverable absent from the tree', 'unused export in fleet/store.mjs']) {
+      const line = mixed.split('\n').find((l) => l.includes(detail))
+      assert.equal(line, `- ${detail}`, 'a typed finding renders as plain text, never as JSON')
+      assert.ok(!line.includes('{') && !line.includes('"severity"'), `no raw shape in: ${line}`)
+    }
+    assert.ok(
+      mixed.indexOf('- task 2 deliverable absent from the tree') < minorHead,
+      'the blocking detail sits under the blocking heading',
+    )
+    // The sentence that pays for the gate's silence: a PASS receipt beside a
+    // blocking finding is expected, not a contradiction.
+    assert.ok(mixed.includes('why the driver did not approve'), `refusal sentence: ${mixed}`)
+    assert.ok(/`PASS` gate receipt beside them is expected/.test(mixed), `PASS-is-expected sentence: ${mixed}`)
+    assert.ok(mixed.endsWith(`\n${TRAILER}\n`))
+
+    // A malformed element renders a body rather than throwing.
+    let malformed
+    assert.doesNotThrow(() => {
+      malformed = withFindings([null, 42])
+    }, 'the renderer never throws on a malformed finding')
+    assert.ok(malformed.includes('## Completeness-critic findings (2)'))
+    assert.ok(malformed.includes('### Blocking (0)') && malformed.includes('### Minor (2)'), `groups still render: ${malformed}`)
+    assert.ok(malformed.includes('- 42'), `an unlabelled element still renders: ${malformed}`)
+    assert.ok(malformed.endsWith(`\n${TRAILER}\n`))
   }
 
   console.log('ALL TESTS PASSED')
