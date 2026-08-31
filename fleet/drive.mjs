@@ -1050,8 +1050,16 @@ export const driveOne = async ({
   //                including one from an unrelated branch, so it is only an
   //                existence pre-check: it makes "no such commit" legible as
   //                distinct from the failures below.
-  //   reachable    `merge-base --is-ancestor <sha> FETCH_HEAD` — is the commit
-  //                on the branch this run actually produced.
+  //   reachable    `merge-base --is-ancestor <sha> <fetchedTip>` — is the
+  //                commit on the branch THIS run produced. The operand is the
+  //                tip pinned at fetch time, never `FETCH_HEAD`: this line
+  //                used to name FETCH_HEAD, and stated a guarantee that ref
+  //                could not give it. Concurrent drives share one `repoDir`
+  //                (one default; the RUNBOOK separates ports and db-dirs, not
+  //                repo dirs), so a sibling drive's fetch lands over this
+  //                one's and the check silently answers about the WRONG
+  //                run's branch — a green run then reads
+  //                `receiptsResolvable: false` and strands (#497).
   //   dereferenced `cat-file -e <sha>:<path>` — does the recorded PATH exist in
   //                the tree at that commit. Without it, a pointer into a
   //                gitignored directory (which is where the engine writes its
