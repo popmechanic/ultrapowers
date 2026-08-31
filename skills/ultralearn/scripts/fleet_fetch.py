@@ -10,7 +10,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_REMOTE_ROOT = "/tmp/fleet-orch-live-evidence/sandbox-logs"
+# Must track `DEFAULTS.evidenceDir` in fleet/drive-one.mjs — the same directory
+# named twice, in two languages (#466). Pinned by tests/test_fleet_fetch.py,
+# because the drift is SILENT: `ls` on a missing dir lists nothing, this
+# module is advisory by design, and a sense pass reads zero bundles as "no runs".
+DEFAULT_REMOTE_ROOT = "/home/exedev/fleet-evidence/sandbox-logs"
 
 # group 1 is the run number, so `fleet-run-30-1788131392373` yields `run-30`.
 # `\S` admits `;`, `$` and backticks, which reach a remote shell through an

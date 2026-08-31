@@ -341,7 +341,9 @@ CLI lives in — `--repo-dir` overrides).
 # Detach it from your ssh session: the remote job inherits the channel's stdin,
 # so `ssh -n` alone is not enough — redirect stdin from /dev/null too, or a
 # human terminal sits blocked for the whole run.
-ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && nohup node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/tmp/drive-run-<fresh>.out 2>&1 &'
+# `mkdir -p` first: the redirect below is the SHELL's, evaluated before the driver
+# runs, so it does not benefit from drive.mjs's own mkdir of evidenceDir (#466).
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && nohup node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1 &'
 
 # Updating Claude Code on the fleet: NEVER by hand and never on a schedule —
 # version drift is event-driven (sandboxes inherit the golden's binary; the
@@ -370,7 +372,7 @@ Knobs, all optional (defaults = the W2 charter constants):
 dir; concurrent drains take distinct dirs — that separation is the W2a isolation),
 `--golden fleet-golden`, `--ttl-hours 4` (store-token lease TTL — size to the plan's
 expected wall clock with margin; a short lease expires mid-run and reads as a
-heartbeat timeout, #279), `--evidence-dir DIR`, `--sandbox-cpu N` (widest wave
+heartbeat timeout, #279), `--evidence-dir DIR` (default `/home/exedev/fleet-evidence` — durable, NOT under `/tmp`, #466), `--sandbox-cpu N` (widest wave
 width + 2, clamped to the plan's max) / `--sandbox-memory 16GB` (calibrate from
 `stat-<runId>.json`; golden 8/16 default), `--allow-unfit-plan` (only with a
 specific operator pre-authorization for the manual-judgment task named by the
@@ -413,7 +415,7 @@ needs no exec wrapper of its own:
   transcripts), and the gitignored `repo/.claude/ultrapowers/run-*/` dirs — to
   `<evidenceDir>/sandbox-logs/fleet-<runId>-<stamp>/sandbox-logs.tgz` before
   every `destroySandbox` (normal end of run and the cap-overshoot action alike),
-  where `evidenceDir` defaults to `<dbDir>-evidence`. The pull is best-effort and
+  where `evidenceDir` is `/home/exedev/fleet-evidence` (#466). The pull is best-effort and
   bounded (`logPullTimeoutMs`, default 120 s): a failed pull lands in
   `detail.errors` and teardown proceeds. `detail.sandboxLogs` names the archive,
   or is `null`.
@@ -430,8 +432,8 @@ needs no exec wrapper of its own:
 
   Keep `dbDir` across runs — never `rm` it; a persisted store is test-pinned safe
   (prior-run rows do not perturb a new run's gate read). Evidence lives outside it
-  in `evidenceDir` (default `<dbDir>-evidence`), so a fresh-store experiment never
-  deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
+  in `evidenceDir` (`/home/exedev/fleet-evidence`, #466 — a durable path, not a
+  derivative of `dbDir`), so a fresh-store experiment never deletes evidence. `detail.sandboxStat` is a floor estimate — `stat` samples every
   10 minutes.
 
 `driveOne` requires an explicit `runId` (it refuses to run without one —
