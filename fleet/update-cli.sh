@@ -37,6 +37,11 @@ PROBES=(
   # these silently, and both are load-bearing for the read-only roles.
   "probe_dontask_readonly_bash.mjs:READ-ONLY BASH REACHABLE"
   "probe_substitution_in_allowed_tail.mjs:SUBSTITUTION BLOCKED"
+  # The PATH half of the same question. probe_dontask_readonly_bash tests only
+  # an in-cwd path; this one reproduces the production shape (a read-only role
+  # reading `wavesPath` and `patches/` from a PARENT of its cwd) and pins that
+  # `--add-dir` reaches Bash. A CLI release that changes it re-parks every run.
+  "probe_addcwd_scope.mjs:ALL TESTS PASSED"
 )
 
 echo "== current versions"

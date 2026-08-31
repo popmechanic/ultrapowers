@@ -59,6 +59,35 @@ import path from 'node:path'
 // (`python3 …`, `pytest`) is not classified read-only and stays denied — which
 // is why reviewers defer suite results (#458) while being able to `cat` a file.
 //
+// THE HALF THAT COMMENT LEFT OUT, and it is the half that bit us:
+// **read-only Bash only reaches paths in scope.** probe_dontask_readonly_bash
+// runs `wc -c` on a path INSIDE cwd and passes no `--add-dir`, so it never
+// tested the shape production actually runs. probe_addcwd_scope.mjs isolates
+// the variable (2026-08-31, five arms, live CLI):
+//
+//   A  `wc -c` in cwd,      no --add-dir  -> RAN      (the old probe's shape)
+//   B  `wc -c` out of cwd,  no --add-dir  -> DENIED   (the PRODUCTION shape)
+//   C  `wc -c` out of cwd,  --add-dir     -> RAN      (`--add-dir` reaches Bash)
+//   D  `python3 -c`, not allowlisted      -> DENIED   (exec is not read-only)
+//   E  `python3 -c`, allowlisted          -> RAN      (exec IS grantable, narrowly)
+//
+// A reviewer's cwd is `<runDir>/clones/integration`, and `wavesPath`
+// (launch.json) and `patches/` live in `<runDir>` — a PARENT. So every reviewer
+// read of its OWN inputs was denied, in five consecutive runs, as a PATH-SCOPE
+// denial that looked like a tool-class one. Those denials became `cannotVerify`
+// entries, then deferred acks, then parked runs. The cause was not a boundary
+// decision: `addDirsFor` was never supplied to createRunWorker, so the
+// `--add-dir` push below was dead code. Fixed by composeAgent supplying it.
+//
+// Bodies CANNOT be inlined instead: compile_plan's `--emit-args` requires
+// `--emit-launch` precisely "so wavesPath is always populated" — task bodies
+// ride the launch file by design and never the prompt. Reading it is the
+// contract, so the run dir must be in scope.
+//
+// bypassPermissions does NOT path-gate (arm F), so the write-side roles need no
+// `--add-dir` and are deliberately given none: read reach they do not need is
+// exposure they should not have.
+//
 // The `*` tail is not an execution channel: substitution inside an allowed
 // command's arguments (`git status $(touch X)`) is BLOCKED, measured the same
 // day (probe_substitution_in_allowed_tail.mjs), matching the documented

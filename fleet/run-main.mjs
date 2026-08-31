@@ -273,13 +273,40 @@ export function writeConfineSettings({ runDir, hookPath }) {
   return (role) => (role === 'implementer' || role === 'writeSide') ? settingsPath : undefined
 }
 
+// ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────
+// A read-only worker's cwd is `<runDir>/clones/integration`, but the two things
+// its prompt tells it to read — `wavesPath` (launch.json, where compile_plan
+// puts every task body by design) and `patches/` — live in `<runDir>`, a
+// PARENT. Under `dontAsk`, read-only Bash is permitted as a class but only IN
+// SCOPE, so those reads were denied: five consecutive runs of `cannotVerify`
+// entries that became deferred acks and parked the run. `--add-dir` is what
+// puts a parent in scope, and it reaches Bash, not just the file tools
+// (probe_addcwd_scope.mjs arms B and C).
+//
+// SCOPED, NOT BLANKET. The write-side roles get NOTHING: `bypassPermissions`
+// does not path-gate at all (arm F), so they can already read what they need,
+// and granting read reach they do not need is exposure for no gain. Their
+// boundary is the confine hook, unchanged.
+//
+// The residual, stated rather than hidden: `<runDir>` also contains `clones/`,
+// so a read-only role CAN read a sibling's tree. It cannot write one (the
+// allowlist closes writes), so this is a confidentiality widening, not an
+// integrity one — but it does soften "each reviewer saw one diff in isolation".
+// Closing it properly means giving the reviewer a per-task subset of the launch
+// file in its own cwd, which is new machinery; filed rather than smuggled in.
+export const makeAddDirsFor = ({ runDir }) => (opts, role) =>
+  (role === 'reviewer' || role === 'resolver' || role === 'critic')
+    ? [runDir]
+    : []
+
 // ── agent composition — the one decision, both halves ────────────────────────
-export function composeAgent({ runId, base, clonesDir, patchesDir, workersDir,
+export function composeAgent({ runId, base, runDir, clonesDir, patchesDir, workersDir,
                                promptFileFor, settingsFor, env, cli, eventLog, spawnFn }) {
   const inner = createRunWorker({
     runId,
     workersDir,
     cwdFor: makeCwdFor({ clonesDir }),
+    addDirsFor: makeAddDirsFor({ runDir }),
     promptFileFor,
     settingsFor,
     env,
@@ -440,7 +467,7 @@ export async function runMain(parsed, deps = {}) {
   // the tree they actually built on (see run-engine.mjs patchBase).
   const patchBase = { current: base }
   const { agent, patchInput } = makeAgent({
-    runId, base: () => patchBase.current,
+    runId, base: () => patchBase.current, runDir,
     clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
     promptFileFor, settingsFor, env: workerEnv, cli, eventLog,
   })
