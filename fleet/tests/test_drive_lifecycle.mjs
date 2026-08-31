@@ -1050,13 +1050,28 @@ try {
       integrationSha,
       'the fetched run tip must be pinned by a durable ref (#497)',
     )
-    // And it must survive what would actually have destroyed it. Nothing here
-    // references the commit except that ref: FETCH_HEAD is expired, every
-    // reflog dropped, and unreachable objects pruned.
-    await sh(`git -C "${repoDir}" reflog expire --expire-unreachable=now --all`)
-    await sh(`git -C "${repoDir}" gc --prune=now --quiet`)
+    // And it must survive what would actually have destroyed it: every reflog
+    // expired and unreachable objects pruned, with nothing referencing the
+    // commit except that ref.
+    //
+    // Run it on a COPY. `gc --prune=now` is permanent and `repoDir` is shared
+    // with every scenario after this one (N2, V1, V2, V3…). It happens to be
+    // safe today only because the fixture's deliberately-dangling commit is
+    // held by `git branch fleet-unreachable` — one line away from being tidied
+    // up as redundant, at which point this gc would destroy it and a later,
+    // unrelated scenario would fail with a misleading message. A destructive
+    // assertion should not be one refactor away from breaking its neighbours.
+    const gcProbe = path.join(tmp, 'gc-probe-N1')
+    await sh(`cp -R "${repoDir}" "${gcProbe}"`)
     assert.equal(
-      (await sh(`git -C "${repoDir}" cat-file -e ${integrationSha}`)).code,
+      (await sh(`git -C "${gcProbe}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim(),
+      integrationSha,
+      'the copy must carry the rescue ref, or the gc below proves nothing',
+    )
+    await sh(`git -C "${gcProbe}" reflog expire --expire-unreachable=now --all`)
+    await sh(`git -C "${gcProbe}" gc --prune=now --quiet`)
+    assert.equal(
+      (await sh(`git -C "${gcProbe}" cat-file -e ${integrationSha}`)).code,
       0,
       'the run tip must survive an aggressive gc — the ref is the whole point (#497)',
     )

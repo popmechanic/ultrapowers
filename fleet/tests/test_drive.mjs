@@ -208,8 +208,22 @@ try {
     // against the fetched branch.
     const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ -c core\.sshCommand="[^"]*" fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
     const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}`)
+    // #497 follow-up: the operand is the tip PINNED AT FETCH TIME, never
+    // `FETCH_HEAD`. `repoDir` has one default and the RUNBOOK tells operators
+    // that concurrent drains take distinct ports and db-dirs — never a distinct
+    // repo dir — so two concurrent drives share one `FETCH_HEAD`. Drive B's
+    // fetch lands over drive A's, and A's reachability check then answers a
+    // question about B's branch: a green run reads `receiptsResolvable: false`
+    // and strands. #368 pinned the sha for the PUSH leg for exactly this
+    // reason; this leg was left behind.
+    // The fetched tip IS `receiptsSha` here — line ~145 pins that the receipts
+    // commit advances the integration branch — so the operand is that sha.
     const ancIdx = exec.cmds.findIndex(
-      (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} FETCH_HEAD`,
+      (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} ${receiptsSha}`,
+    )
+    assert.ok(
+      !exec.cmds.some((c) => c.includes('merge-base --is-ancestor') && c.includes('FETCH_HEAD')),
+      `no reachability check may read FETCH_HEAD, got: ${JSON.stringify(exec.cmds.filter((c) => c.includes('merge-base')))}`,
     )
     // The dereference leg: the recorded PATH must exist in the tree at the
     // recorded sha. Reachability alone would happily green a pointer into a

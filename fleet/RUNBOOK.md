@@ -581,7 +581,24 @@ On every park, triage in this order:
    (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
    apply cleanly to base (PR #317 precedent); reconstruct any
    integration-only fixes from `report.json`.
-3. **Harvest the `minor` group of `report.json`'s `completenessFindings` into
+3. **The run's tip is already pinned — do not hand-rescue it.** Every fetched
+   run tip lands on `refs/fleet/<runId>` in the orchestrator's clone the moment
+   the fetch succeeds, before the publish leg can fail (#497). It survives
+   `git reset --hard` (the first step of launching the next run) and `gc`. The
+   drive logs `pinned run tip: refs/fleet/<runId> -> <sha>` when it happens. So
+   a failed publish is recoverable, not fatal:
+
+   ```bash
+   # inspect, or push it yourself with a workflow-scoped credential
+   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && git log --oneline -3 refs/fleet/run-<N>'
+   ```
+
+   **Two cases the pin does NOT cover**, so check before assuming: a run that
+   was never fetched (gate-green but zero receipt rows — the fetch is
+   receipt-gated), and a `runId` git refuses as a ref name (`detail.errors`
+   says so explicitly).
+
+4. **Harvest the `minor` group of `report.json`'s `completenessFindings` into
    issues explicitly** — run-14's carried a real socket-leak defect that
    existed nowhere else. Only the `minor` group needs this hand step: since
    #474 a `blocking` finding stops the run at the driver (`criticDecision`

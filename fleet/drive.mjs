@@ -1115,12 +1115,30 @@ export const driveOne = async ({
           // never fatal — this leg exists to make a LATER failure survivable,
           // so it must not become a new way for the drive to die.
           if (fetchedTip) {
-            if (!isSafeBranchName(runId)) {
-              errors.push(`unsafe runId — refusing to write a rescue ref for ${runId}`)
+            // Two questions, and only one of them is `isSafeBranchName`'s.
+            // It answers "is this safe to interpolate into a shell" — it says
+            // yes to `a..b` and `run-1.`, both of which git then REJECTS as ref
+            // names, so the pin would silently not happen for a runId that is
+            // otherwise entirely legal: the failure this leg exists to prevent.
+            // `check-ref-format` is git's own grammar, so the two agree by
+            // definition instead of by a regex trying to mirror it — a second
+            // copy of a contract is a copy that drifts (#492).
+            const refName = `refs/fleet/${runId}`
+            const shellSafe = isSafeBranchName(runId)
+            const wellFormed = shellSafe && (await exec(`git -C ${repoDir} check-ref-format ${refName}`))?.code === 0
+            if (!wellFormed) {
+              errors.push(`runId ${JSON.stringify(runId)} is not a usable ref name — no rescue ref written; if this run's publish fails its tip is reachable only via FETCH_HEAD (#497)`)
             } else {
-              const pinned = await exec(`git -C ${repoDir} update-ref refs/fleet/${runId} ${fetchedTip}`)
+              const pinned = await exec(`git -C ${repoDir} update-ref ${refName} ${fetchedTip}`)
+              if (pinned?.code === 0) {
+                // Say it out loud. A ref nobody knows about rescues nobody: the
+                // next scope rejection at 3am otherwise prints `push … failed`
+                // and nothing else, and the operator repeats run-33's manual
+                // recovery for work that is already pinned.
+                note(`pinned run tip: ${refName} -> ${fetchedTip} (survives reset/gc, #497)`)
+              }
               if (pinned?.code !== 0) {
-                errors.push(`could not pin refs/fleet/${runId} to ${fetchedTip} (code ${pinned?.code}) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`)
+                errors.push(`could not pin ${refName} to ${fetchedTip} (code ${pinned?.code}) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`)
               }
             }
           }
@@ -1136,7 +1154,18 @@ export const driveOne = async ({
             let reachable = false
             let dereferenced = false
             if (exists) {
-              const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} FETCH_HEAD`)
+              // The operand is the tip PINNED AT FETCH TIME, never `FETCH_HEAD`
+              // (#497 follow-up). `repoDir` has one default and the RUNBOOK
+              // tells operators concurrent drains take distinct ports and
+              // db-dirs — never a distinct repo dir — so two concurrent drives
+              // share one `FETCH_HEAD`. Drive B's fetch lands over drive A's,
+              // and A's reachability check then answers a question about B's
+              // branch: a green run reads `receiptsResolvable: false`, the
+              // publish leg refuses, and the work strands — the exact outcome
+              // #497 is about. `fetchedTip` is already immune, and #368 pinned
+              // it by sha for the PUSH leg for precisely this reason; this leg
+              // was simply left behind.
+              const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} ${fetchedTip}`)
               reachable = ancestry?.code === 0
             }
             if (reachable) {
