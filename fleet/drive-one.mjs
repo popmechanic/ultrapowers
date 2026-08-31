@@ -24,6 +24,13 @@ export const DEFAULTS = Object.freeze({
   golden: 'fleet-golden',
   port: 8180,
   dbDir: '/tmp/fleet-orch-live',
+  // #466: NOT `${dbDir}-evidence`. The store dir is /tmp by design (a fresh-store
+  // experiment should be a wipe), but the evidence bundles are the only durable
+  // record of what each run did — 18 of them, runs 10-32, the whole corpus every
+  // ultralearn sense pass reads. They sat in /tmp for 23 runs and survived on the
+  // orchestrator's uptime alone. Same filesystem as /tmp on that VM, so this
+  // buys protection from reaping, not from losing the VM.
+  evidenceDir: '/home/exedev/fleet-evidence',
   // Store-token lease TTL; 4h covers any single-plan drain (#279).
   ttlHours: 4,
   tokenPath: '/home/exedev/.fleet/claude-oauth-token',
@@ -131,7 +138,7 @@ export const buildDriveOptions = (
   ttlMs: parsed.ttlHours * 60 * 60 * 1000,
   heartbeatTimeoutMs: 30 * 60_000,
   claimTimeoutMs: 10 * 60_000,
-  ...(parsed.evidenceDir ? { evidenceDir: parsed.evidenceDir } : {}),
+  evidenceDir: parsed.evidenceDir,
   ...(parsed.sandboxCpu ? { sandboxCpu: parsed.sandboxCpu } : {}),
   ...(parsed.sandboxMemory ? { sandboxMemory: parsed.sandboxMemory } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,

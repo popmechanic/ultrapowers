@@ -36,11 +36,29 @@ const ok = (label) => {
   assert.equal(p.tokenPath, '/home/exedev/.fleet/claude-oauth-token')
   assert.equal(p.repoDir, REPO_DIR)
   assert.equal(p.allowUnfitPlan, false)
-  assert.equal(p.evidenceDir, undefined)
+  assert.equal(p.evidenceDir, '/home/exedev/fleet-evidence')
   // #368: the GitHub token sits beside the OAuth token; the PR targets main.
   assert.equal(p.githubTokenPath, '/home/exedev/.fleet/github-token')
   assert.equal(p.prBase, 'main')
   ok('defaults match the RUNBOOK heredoc constants')
+}
+
+{
+  // #466: the evidence corpus is the only durable record of what each run did
+  // — 18 bundles, runs 10-32, everything the sense pass reads. It lived in
+  // /tmp for 23 runs on luck alone, because the default DERIVED from dbDir and
+  // the store dir is /tmp by design. Both halves are pinned here: the shipped
+  // default must be unreapable, and it must not be a function of dbDir.
+  assert.ok(
+    DEFAULTS.evidenceDir !== '/tmp' && !DEFAULTS.evidenceDir.startsWith('/tmp/'),
+    `the shipped evidence default is reapable: ${DEFAULTS.evidenceDir}`,
+  )
+  assert.notEqual(
+    DEFAULTS.evidenceDir,
+    `${DEFAULTS.dbDir}-evidence`,
+    'the evidence default must not be derived from dbDir',
+  )
+  ok('#466: the shipped evidence default is durable and independent of dbDir')
 }
 
 {
@@ -179,7 +197,9 @@ ok('usage names the committed entry point')
   assert.equal(o.heartbeatTimeoutMs, 30 * 60_000)
   assert.equal(o.claimTimeoutMs, 10 * 60_000)
   assert.equal(o.allowUnfitPlan, false)
-  assert.equal('evidenceDir' in o, false)
+  // #466: drive-one now ALWAYS supplies evidenceDir, so drive.mjs never falls
+  // back to `${dbDir}-evidence`. That fallback is what put the corpus in /tmp.
+  assert.equal(o.evidenceDir, '/home/exedev/fleet-evidence')
   assert.equal('sandboxCpu' in o, false)
   assert.equal('sandboxMemory' in o, false)
   ok('options reproduce the heredoc shape; token read via the reader, trimmed, engineEnv only')
