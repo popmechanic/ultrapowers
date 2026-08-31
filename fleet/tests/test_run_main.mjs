@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process'
 import {
   parseArgs, fillTiers, ackDecision, acksOf, boundedParallel, provisionRunTree,
   writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage,
+  makeAddDirsFor,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
 } from '../run-main.mjs'
 import { makeEventLog } from '../run-waves.mjs'
@@ -184,6 +185,67 @@ const BASE = git(['rev-parse', 'HEAD'], repo).trim()
   // A non-isolated role passes through untouched apart from the strip.
   const reply2 = await agent('review it', { label: 'review:T1:1', model: 'opus' })
   assert.equal(reply2.patch, undefined, 'a model-typed patch on a non-isolated reply is stripped')
+}
+
+// ── --add-dir scope (measured 2026-08-31, probe_addcwd_scope.mjs) ────────────
+// A read-only worker's cwd is `<runDir>/clones/integration`, but `wavesPath`
+// (launch.json) and `patches/` live in `<runDir>` — a parent. Under `dontAsk`
+// read-only Bash is permitted as a class but only IN SCOPE, so those reads were
+// denied across five consecutive runs and became the `cannotVerify` entries
+// that parked them. `addDirsFor` was never supplied, so `--add-dir` was never
+// emitted at all.
+{
+  const addDirsFor = makeAddDirsFor({ runDir: '/r/run-9' })
+  for (const role of ['reviewer', 'resolver', 'critic']) {
+    assert.deepEqual(addDirsFor({ label: 'review:1:1' }, role), ['/r/run-9'],
+      role + ' must reach the run dir: its prompt sends it to wavesPath and patches/')
+  }
+  // SCOPED, not blanket: bypassPermissions does not path-gate (probe arm F), so
+  // the write-side roles already read what they need. Granting more is exposure
+  // for no gain.
+  for (const role of ['implementer', 'writeSide']) {
+    assert.deepEqual(addDirsFor({ label: 'impl:1' }, role), [],
+      role + ' must get no --add-dir: it does not need one and the hook is its boundary')
+  }
+}
+
+// composeAgent must actually SUPPLY addDirsFor. The defect was that the
+// parameter existed end to end — buildArgs pushes `--add-dir`, createRunWorker
+// forwards addDirsFor — and NOTHING ever passed it, so the push was dead code.
+// Assert on the real argv the CLI would receive, not on the wiring.
+{
+  const runDir = path.join(tmp, 'adddir-run')
+  const tree = provisionRunTree({ repoDir: repo, runDir, base: BASE, taskIds: ['T1'] })
+  const eventLog = makeEventLog({ file: path.join(runDir, 'events.jsonl'), runId: 'run-a', base: BASE })
+  const envelope = JSON.stringify({ type: 'result', subtype: 'success', is_error: false,
+    session_id: 's', structured_output: { ok: true }, usage: {}, total_cost_usd: 0 }) + '\n'
+  const argvSeen = []
+  const spawnFn = (_cli, argv) => {
+    argvSeen.push(argv)
+    const child = new EventEmitter()
+    child.stdout = new EventEmitter(); child.stdout.setEncoding = () => {}
+    child.stderr = new EventEmitter(); child.stderr.setEncoding = () => {}
+    child.kill = () => {}
+    setImmediate(() => { child.stdout.emit('data', envelope); child.emit('close', 0, null) })
+    return child
+  }
+  const { agent } = composeAgent({
+    runId: 'run-a', base: BASE, runDir,
+    clonesDir: tree.clonesDir, patchesDir: tree.patchesDir, workersDir: tree.workersDir,
+    promptFileFor: () => undefined, settingsFor: () => undefined,
+    env: process.env, cli: 'claude', eventLog, spawnFn,
+  })
+
+  await agent('review it', { label: 'review:T1:1', model: 'opus' })
+  const revArgv = argvSeen.at(-1)
+  const at = revArgv.indexOf('--add-dir')
+  assert.ok(at !== -1, 'a reviewer must be dispatched WITH --add-dir (this is the regression)')
+  assert.equal(revArgv[at + 1], runDir, '--add-dir must name this run dir')
+
+  await agent('do the task', { label: 'impl:T1', isolation: 'worktree', model: 'opus' })
+  assert.ok(!argvSeen.at(-1).includes('--add-dir'),
+    'the write-side roles are scoped narrowly: bypassPermissions does not path-gate, ' +
+    'so read reach they do not need is exposure for no gain')
 }
 
 // ── runMain, end to end over stubbed scripts ─────────────────────────────────
