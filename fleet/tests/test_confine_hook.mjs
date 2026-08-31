@@ -187,6 +187,24 @@ const run = (input, env = {}) => spawnSync('node', [HOOK], {
     'a heredoc does not launder the redirect in front of it')
   assert.equal(bash('echo x > $O'), 'deny', 'an unresolvable expansion still denies')
 
+  // REVIEW FINDINGS 1 + 2 (both HIGH, both verified against main before the fix):
+  // an unbalanced parse used to mask to end-of-string, so every write target
+  // after it vanished and the hook ALLOWED what main denied. Masking must only
+  // ever cost a false deny, never a miss.
+  assert.equal(bash('echo $((1 << n))\necho hi > /etc/passwd'), 'deny',
+    'an arithmetic shift is not a heredoc introducer')
+  assert.equal(bash('cat <<< "x"\necho hi > /etc/passwd'), 'deny',
+    'a herestring is not a heredoc introducer')
+  assert.equal(bash(`echo "a << b"\necho hi > /etc/passwd`), 'deny',
+    'a quoted << does not open a body')
+  assert.equal(bash("# don't do that\necho hi > /etc/passwd"), 'deny',
+    'an apostrophe in a comment leaves the quote unbalanced — fall back, do not blind')
+  assert.equal(bash("cat > f.py <<'PY'\nunterminated body, no closing tag\necho hi > /etc/passwd"), 'deny',
+    'an unterminated heredoc is no evidence a heredoc began')
+  // and the real heredoc still works even when an arithmetic shift precedes it
+  assert.equal(bash("echo $((1 << n))\ncat > ok.py <<'PY'\nd = a -> b\nPY"), 'allow',
+    'a false << earlier must not stop a real heredoc from being recognised')
+
   const garbage = run('not json at all')
   assert.equal(garbage.status, 2, 'unparsable input fails CLOSED (exit 2)')
   assert.equal(decisionOf(garbage), 'deny', 'and emits a deny decision too')

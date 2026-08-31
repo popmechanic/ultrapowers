@@ -189,6 +189,20 @@ const SCHEMA = { type: 'object', properties: { ok: { type: 'boolean' } }, requir
     envelope: { permission_denials: [{ tool_name: 'Bash' }] } })
   assert.equal(fs.readFileSync(ledger, 'utf8').trim().split('\n').length, 3)
 
+  // REVIEW FINDING 4: a denied Write carries its whole `content` in tool_input,
+  // and the harvester reads this file verbatim into bundle.json with no size
+  // budget. Store a summary, not the record.
+  {
+    const big = 'x'.repeat(5000)
+    recordEnvelopeDenials({ workersDir: wd, label: 'impl:T1', role: 'implementer',
+      envelope: { permission_denials: [{ tool_name: 'Write', reason: 'outside root',
+        tool_input: { file_path: '/etc/x', content: big } }] } })
+    const last = JSON.parse(fs.readFileSync(ledger, 'utf8').trim().split('\n').pop())
+    assert.equal(last.reason, 'outside root')
+    assert.ok(last.toolInput.length <= 200, 'tool_input is capped, not inlined whole')
+    assert.ok(!last.toolInput.includes(big), 'the payload never reaches the ledger')
+  }
+
   // A denial ledger must never be able to fail a worker.
   assert.equal(recordEnvelopeDenials({ workersDir: '/nonexistent/x/workers', label: 'a', role: 'b',
     envelope: { permission_denials: [{ tool_name: 'Bash' }] } }), 0)

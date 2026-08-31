@@ -491,9 +491,17 @@ export function recordEnvelopeDenials({ workersDir, label, role, envelope }) {
   const denials = envelope && envelope.permission_denials
   if (!workersDir || !Array.isArray(denials) || denials.length === 0) return 0
   try {
+    // Store a SUMMARY, not the record. A denied Write carries its `content` and
+    // a denied Bash its whole command in `tool_input`, and the harvester reads
+    // this file verbatim into bundle.json with no size budget — a few large
+    // denied writes would bloat the bundle that feeds every lens.
+    const cap = (v) => (v === undefined || v === null ? null : String(
+      typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 200))
     const line = (d) => JSON.stringify({
       ts: Date.now(), source: 'envelope', label: label || null, role: role || null,
-      tool: (d && (d.tool_name || d.tool)) || null, reason: d,
+      tool: (d && (d.tool_name || d.tool)) || null,
+      reason: cap(d && (d.reason || d.message)) || cap(d),
+      toolInput: d && d.tool_input ? cap(d.tool_input) : null,
     })
     fs.appendFileSync(path.join(path.dirname(workersDir), 'confine-denials.jsonl'),
       denials.map(line).join('\n') + '\n')

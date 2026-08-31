@@ -114,31 +114,41 @@ export function maskData(command) {
     for (let i = Math.max(0, from); i < Math.min(to, out.length); i++) out[i] = NUL
   }
 
+  // AN UNBALANCED PARSE IS NOT EVIDENCE ABOUT DATA. Both loops below mask only
+  // when they can prove a region closed; anything unterminated falls back to
+  // the raw text, which is the pre-#475 behaviour — a possible false DENY, never
+  // a miss. The first cut of this function got that backwards and masked to
+  // end-of-string, so `echo $((1 << n))` (an arithmetic shift, not a heredoc)
+  // and `# don't` (an apostrophe in a comment) each swallowed every write target
+  // after them: main denied, the fix allowed. Caught in review before merge.
+
   // Heredoc bodies. `<<TAG`, `<<-TAG`, `<<'TAG'`: the body runs from the next
-  // line to a line whose trimmed text is TAG. An UNTERMINATED body masks to the
-  // end — the safe direction, because a redirect target never lives inside a
-  // body, so over-masking here can only hide data, never a target.
+  // line to a line whose trimmed text is TAG. NO TERMINATOR = no evidence this
+  // `<<` introduced a heredoc at all, so nothing is masked.
   const here = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g
   for (let m; (m = here.exec(s)); ) {
+    if (s[m.index - 1] === '<' || s[m.index + 2] === '<') continue // `<<<` is a herestring
     const nl = s.indexOf('\n', m.index + m[0].length)
-    if (nl === -1) break
+    if (nl === -1) continue
     const tag = m[2]
-    let bodyEnd = s.length
+    let bodyEnd = -1
     for (let i = nl + 1; i <= s.length; ) {
       const eol = s.indexOf('\n', i)
-      const line = s.slice(i, eol === -1 ? s.length : eol)
-      if (line.trim() === tag) { bodyEnd = i; break }
+      if (s.slice(i, eol === -1 ? s.length : eol).trim() === tag) { bodyEnd = i; break }
       if (eol === -1) break
       i = eol + 1
     }
+    if (bodyEnd === -1) continue
     blank(nl + 1, bodyEnd)
     here.lastIndex = Math.max(here.lastIndex, bodyEnd)
   }
 
-  // Quoted spans, walked over the heredoc-masked text so a quote inside a body
-  // cannot open one. The quote CHARACTERS stay in place; only their contents are
-  // masked, which leaves `strip()` able to unwrap a quoted target.
+  // Quoted spans, over the heredoc-masked text. Masked into a COPY: an
+  // unbalanced quote at end-of-string discards the whole quote pass rather than
+  // blinding the tail. The quote CHARACTERS stay in place, which leaves
+  // `strip()` able to unwrap a quoted target.
   const partial = out.join('')
+  const quoted = partial.split('')
   let q = null
   for (let i = 0; i < partial.length; i++) {
     const c = partial[i]
@@ -148,11 +158,11 @@ export function maskData(command) {
     } else if (c === q) {
       q = null
     } else {
-      if (q === '"' && c === '\\' && i + 1 < partial.length) { out[i] = NUL; out[i + 1] = NUL; i++; continue }
-      out[i] = NUL
+      if (q === '"' && c === '\\' && i + 1 < partial.length) { quoted[i] = NUL; quoted[i + 1] = NUL; i++; continue }
+      quoted[i] = NUL
     }
   }
-  return out.join('')
+  return q === null ? quoted.join('') : partial
 }
 
 export function bashWriteTargets(command) {
