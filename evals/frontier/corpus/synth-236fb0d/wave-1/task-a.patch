@@ -1,0 +1,524 @@
+diff --git a/skills/ultrapowers/scripts/collect_seal.py b/skills/ultrapowers/scripts/collect_seal.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..0eabae4188a4645086413cc4243eb49a91d506ff
+--- /dev/null
++++ b/skills/ultrapowers/scripts/collect_seal.py
+@@ -0,0 +1,90 @@
++#!/usr/bin/env python3
++"""Deterministic collect step for sealed acceptance.
++
++Hashes a spec file, scans the vault, and reports which collect case holds —
++sealed / failure / pending / none — as one JSON object on stdout. For the
++sealed case it prints the exact Acceptance line the plan must carry, derived
++from manifest.suiteSha256, so the orchestrator appends it verbatim and never
++chooses between the manifest's two hashes (stamping specSha256 was a live
++false-block defect). Detection only: the responses to each case stay in the
++ultraplan SKILL's collect step.
++Spec: docs/superpowers/specs/2026-07-09-sealing-seam-consolidation-design.md
++"""
++import argparse
++import hashlib
++import json
++import pathlib
++import sys
++
++
++def spec_sha256(spec_path):
++    return hashlib.sha256(pathlib.Path(spec_path).read_bytes()).hexdigest()
++
++
++def _read_json(path):
++    try:
++        return json.loads(pathlib.Path(path).read_text())
++    except (OSError, json.JSONDecodeError, ValueError):
++        return None
++
++
++def collect(spec_path, vault):
++    vault = pathlib.Path(vault).expanduser()
++    sha = spec_sha256(spec_path)
++
++    # Case: sealed — a non-pending vault entry's manifest records this spec
++    # hash. pending-* dirs are skipped: manifest-first authoring leaves a
++    # DRAFT manifest (no suiteSha256) in the pending dir, which must never
++    # satisfy the sealed case.
++    if vault.is_dir():
++        for mpath in sorted(vault.glob("*/manifest.json")):
++            if mpath.parent.name.startswith("pending-"):
++                continue
++            m = _read_json(mpath)
++            if not m or m.get("specSha256") != sha:
++                continue
++            seal_id = m.get("sealId") or mpath.parent.name
++            suite_sha = m.get("suiteSha256")
++            if not suite_sha:
++                return {"case": "failure", "specSha256": sha,
++                        "error": f"manifest for seal {seal_id} lacks suiteSha256",
++                        "manifestPath": str(mpath)}
++            return {
++                "case": "sealed",
++                "specSha256": sha,
++                "sealId": seal_id,
++                "suiteSha256": suite_sha,
++                "acceptanceLine":
++                    f"**Acceptance:** sealed {seal_id} (sha256:{suite_sha})",
++                "coverage": m.get("coverage"),
++            }
++
++    # Cases: failure / pending — the per-dispatch pending dir.
++    pending = vault / f"pending-{sha[:12]}"
++    outcome = _read_json(pending / "outcome.json")
++    if outcome is not None:
++        return {"case": "failure", "specSha256": sha,
++                "outcome": outcome, "pendingDir": str(pending)}
++    dispatch = _read_json(pending / "dispatch.json")
++    if dispatch is not None:
++        return {"case": "pending", "specSha256": sha,
++                "dispatch": dispatch, "pendingDir": str(pending)}
++
++    return {"case": "none", "specSha256": sha}
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(
++        description="Report the sealed-acceptance collect case for a spec file.")
++    parser.add_argument("spec", help="path to the approved spec file")
++    parser.add_argument(
++        "--vault",
++        default=str(pathlib.Path.home() / ".ultrapowers" / "acceptance"),
++        help="acceptance vault dir (default: ~/.ultrapowers/acceptance)")
++    args = parser.parse_args(argv)
++    print(json.dumps(collect(args.spec, args.vault), indent=2, sort_keys=True))
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/ultrapowers/scripts/run_acceptance.sh b/skills/ultrapowers/scripts/run_acceptance.sh
+index 4bfe660eefc3284bd59fb75cc4db52d3d42c5da0..f777a16796cd810f26b7e5bcefd1074edf01339a 100755
+--- a/skills/ultrapowers/scripts/run_acceptance.sh
++++ b/skills/ultrapowers/scripts/run_acceptance.sh
+@@ -5,15 +5,16 @@
+ #
+ # Usage: run_acceptance.sh <seal-id> <branch> <expected-sha256>
+ #                          [--vault DIR] [--repo DIR]
+-#    or: run_acceptance.sh --baseline --suite DIR --branch BASE --run CMD
+-#                          [--bootstrap CMD] [--repo DIR]   (seal-time RED proof)
++#    or: run_acceptance.sh --baseline --suite DIR --branch BASE
++#                          (--manifest FILE | --run CMD [--bootstrap CMD])
++#                          [--repo DIR]   (seal-time RED proof)
+ # Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
+ set -uo pipefail
+ 
+ SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
+ VAULT="${HOME}/.ultrapowers/acceptance"
+ REPO="$(pwd)"
+-B_SUITE=""; B_RUN=""; B_BOOT=""
++B_SUITE=""; B_RUN=""; B_BOOT=""; B_MANIFEST=""
+ SG_RUN="python3 -m pytest"
+ SG_BASE=""
+ MODE="sealed"
+@@ -25,13 +26,21 @@ if [ "${1:-}" = "--baseline" ]; then
+       --branch)    BRANCH="$2";  shift 2 ;;
+       --run)       B_RUN="$2";   shift 2 ;;
+       --bootstrap) B_BOOT="$2";  shift 2 ;;
++      --manifest)  B_MANIFEST="$2"; shift 2 ;;
+       --repo)      REPO="$2";    shift 2 ;;
+       *) echo "unknown argument: $1" >&2; exit 2 ;;
+     esac
+   done
+   : "${B_SUITE:?--baseline requires --suite}"
+   : "${BRANCH:?--baseline requires --branch}"
+-  : "${B_RUN:?--baseline requires --run}"
++  if [ -n "$B_MANIFEST" ]; then
++    if [ -n "$B_RUN" ] || [ -n "$B_BOOT" ]; then
++      echo "--manifest is mutually exclusive with --run/--bootstrap" >&2
++      exit 2
++    fi
++  else
++    : "${B_RUN:?--baseline requires --run (or --manifest)}"
++  fi
+ elif [ "${1:-}" = "--suite-gate" ]; then
+   MODE="suite-gate"; SEAL_ID="(suite)"; shift
+   while [ $# -gt 0 ]; do
+@@ -161,6 +170,23 @@ $OUT"
+   return 0
+ }
+ 
++# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
++# A missing/unreadable manifest or empty runCmd yields an empty first line, which
++# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
++read_manifest() {
++  python3 -c '
++import json, sys
++try:
++    m = json.load(open(sys.argv[1]))
++except Exception:
++    m = {}
++print(m.get("runCmd") or "")
++print(m.get("bootstrapCmd") or "")
++print(m.get("framework") or "pytest")
++print(m.get("ranPattern") or "")
++' "$1"
++}
++
+ # ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
+ # After a green pytest suite-gate, if the branch changed harness JS, run the
+ # harness .mjs sims so JS behavior is exit-code-gated too. Sets J_* globals;
+@@ -251,7 +277,36 @@ fi
+ 
+ # ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
+ if [ "$MODE" = baseline ]; then
+-  FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
++  if [ -n "$B_MANIFEST" ]; then
++    # Manifest-proven sealing: the RED proof reads the exact fields the gate
++    # will read, and refuses a draft the gate would misread — framework
++    # defaults to pytest at the gate, so a non-pytest runCmd without an
++    # explicit framework/ranPattern false-reds every green exam.
++    if [ ! -f "$B_MANIFEST" ]; then
++      emit MANIFEST_INCOHERENT false 2 "manifest draft not found: $B_MANIFEST"
++      exit 1
++    fi
++    { IFS= read -r B_RUN
++      IFS= read -r B_BOOT
++      IFS= read -r FRAMEWORK
++      IFS= read -r RAN_PATTERN
++    } < <(read_manifest "$B_MANIFEST")
++    if [ -z "$B_RUN" ]; then
++      emit MANIFEST_INCOHERENT false 2 "manifest draft missing runCmd: $B_MANIFEST"
++      exit 1
++    fi
++    if [ "$FRAMEWORK" = "pytest" ]; then
++      if ! printf '%s' "$B_RUN" | grep -q "pytest"; then
++        emit MANIFEST_INCOHERENT false 2 "framework is 'pytest' (or absent) but runCmd does not invoke pytest — a non-pytest suite must declare framework and ranPattern in the manifest: $B_RUN"
++        exit 1
++      fi
++    elif [ -z "$RAN_PATTERN" ]; then
++      emit MANIFEST_INCOHERENT false 2 "framework '$FRAMEWORK' requires a ranPattern (the no-tests-ran defense has no marker outside pytest)"
++      exit 1
++    fi
++  else
++    FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
++  fi
+   run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
+   if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
+     emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
+@@ -276,22 +331,6 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
+   exit 1
+ fi
+ 
+-# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
+-# A missing/unreadable manifest or empty runCmd yields an empty first line, which
+-# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
+-read_manifest() {
+-  python3 -c '
+-import json, sys
+-try:
+-    m = json.load(open(sys.argv[1]))
+-except Exception:
+-    m = {}
+-print(m.get("runCmd") or "")
+-print(m.get("bootstrapCmd") or "")
+-print(m.get("framework") or "pytest")
+-print(m.get("ranPattern") or "")
+-' "$1"
+-}
+ { IFS= read -r RUN_CMD
+   IFS= read -r BOOTSTRAP_CMD
+   IFS= read -r FRAMEWORK
+@@ -304,6 +343,15 @@ if [ -z "$RUN_CMD" ]; then
+ fi
+ 
+ run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
++# Legacy-seal diagnosis: a pre-consolidation manifest that omits framework/
++# ranPattern for a non-pytest runCmd hits the no-tests-ran refusal with a
++# generic message; name the real cause. Behavior unchanged — still refuses.
++case "$R_OUTPUT" in
++  *"ran no sealed tests"*)
++    if [ "$FRAMEWORK" = "pytest" ] && ! printf '%s' "$RUN_CMD" | grep -q "pytest"; then
++      R_OUTPUT="manifest omits framework/ranPattern for a non-pytest runCmd — re-seal or add the fields (the pytest ran-marker cannot see this runner). $R_OUTPUT"
++    fi ;;
++esac
+ emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"
+ if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then exit 0; fi
+ exit 1
+diff --git a/tests/test_collect_seal.py b/tests/test_collect_seal.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5dfa39687b30c514aa1ad95ae4eaed8e03cec7b
+--- /dev/null
++++ b/tests/test_collect_seal.py
+@@ -0,0 +1,120 @@
++"""collect_seal.py: deterministic collect-case detection. The sealed case's
++Acceptance line is derived from manifest.suiteSha256 — never specSha256
++(hand-copying between the manifest's two hashes was a live 0.0.35 defect:
++SEAL_BROKEN false-blocks in 2 of 10 field runs)."""
++import hashlib
++import json
++import pathlib
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++COLLECT = ROOT / "skills/ultrapowers/scripts/collect_seal.py"
++
++SUITE_SHA = "ab" * 32          # a fake but well-formed sha256
++SEAL_ID = SUITE_SHA[:12]
++
++
++def run_collect(spec, vault):
++    r = subprocess.run(
++        [sys.executable, str(COLLECT), str(spec), "--vault", str(vault)],
++        capture_output=True, text=True)
++    assert r.returncode == 0, r.stderr
++    return json.loads(r.stdout)
++
++
++def write_spec(tmp_path, text="# spec\nthe feature behaves like X\n"):
++    spec = tmp_path / "spec.md"
++    spec.write_text(text)
++    return spec, hashlib.sha256(spec.read_bytes()).hexdigest()
++
++
++def make_sealed(vault, spec_sha, *, suite_sha=SUITE_SHA, extra=None):
++    entry = vault / suite_sha[:12]
++    (entry / "suite").mkdir(parents=True)
++    manifest = {"sealId": suite_sha[:12], "specSha256": spec_sha,
++                "suiteSha256": suite_sha,
++                "runCmd": "python3 -m pytest .ultra-acceptance -q"}
++    manifest.update(extra or {})
++    (entry / "manifest.json").write_text(json.dumps(manifest))
++    return entry
++
++
++def test_sealed_case_line_is_verbatim_and_uses_suite_hash(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    make_sealed(vault, sha)
++    out = run_collect(spec, vault)
++    assert out["case"] == "sealed"
++    assert out["sealId"] == SEAL_ID
++    assert out["suiteSha256"] == SUITE_SHA
++    assert out["acceptanceLine"] == (
++        f"**Acceptance:** sealed {SEAL_ID} (sha256:{SUITE_SHA})")
++
++
++def test_sealed_line_never_carries_the_spec_hash(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    make_sealed(vault, sha)
++    out = run_collect(spec, vault)
++    assert sha not in out["acceptanceLine"], (
++        "the Acceptance line must carry suiteSha256; stamping specSha256 "
++        "is the SEAL_BROKEN false-block defect")
++
++
++def test_coverage_is_passed_through(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    cov = [{"criterion": "X happens", "tests": ["test_x"]}]
++    make_sealed(vault, sha, extra={"coverage": cov})
++    assert run_collect(spec, vault)["coverage"] == cov
++
++
++def test_seal_for_a_different_spec_is_not_a_match(tmp_path):
++    spec, _sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    make_sealed(vault, "0" * 64)          # someone else's seal
++    assert run_collect(spec, vault)["case"] == "none"
++
++
++def test_edited_spec_matches_nothing(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    make_sealed(vault, sha)
++    spec.write_text("# spec\nedited after dispatch\n")
++    assert run_collect(spec, vault)["case"] == "none"
++
++
++def test_pending_draft_manifest_is_not_a_sealed_match(tmp_path):
++    # Manifest-first authoring means pending dirs now hold manifest.json
++    # DRAFTS (no suiteSha256). A draft must never satisfy the sealed case.
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    pending = vault / f"pending-{sha[:12]}"
++    pending.mkdir(parents=True)
++    (pending / "manifest.json").write_text(json.dumps(
++        {"specSha256": sha, "runCmd": "python3 -m pytest .ultra-acceptance -q"}))
++    (pending / "dispatch.json").write_text(json.dumps(
++        {"specPath": str(spec), "specSha256": sha, "dispatchedAt": "t"}))
++    out = run_collect(spec, vault)
++    assert out["case"] == "pending"
++    assert out["dispatch"]["specSha256"] == sha
++
++
++def test_outcome_record_reports_failure_case(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    vault = tmp_path / "vault"
++    pending = vault / f"pending-{sha[:12]}"
++    pending.mkdir(parents=True)
++    record = {"status": "GREEN_AT_BASELINE", "specSha256": sha,
++              "evidence": "all green at base", "createdAt": "t"}
++    (pending / "outcome.json").write_text(json.dumps(record))
++    out = run_collect(spec, vault)
++    assert out["case"] == "failure"
++    assert out["outcome"] == record
++
++
++def test_empty_or_missing_vault_is_none(tmp_path):
++    spec, sha = write_spec(tmp_path)
++    out = run_collect(spec, tmp_path / "no-such-vault")
++    assert out == {"case": "none", "specSha256": sha}
+diff --git a/tests/test_run_acceptance.py b/tests/test_run_acceptance.py
+index 58b8091cf8ddbade39ea373123f77b1ac50c63c1..9dde765767ce32f606760157472a2fdd0805777f 100644
+--- a/tests/test_run_acceptance.py
++++ b/tests/test_run_acceptance.py
+@@ -564,3 +564,149 @@ def test_huge_exam_output_still_emits_json_receipt(tmp_path):
+     obj = json.loads(p.stdout)
+     assert obj["passed"] is True
+     assert len(obj["output"]) <= 8000
++
++
++# --- baseline --manifest: the RED proof reads the fields the gate reads ---
++
++def write_draft(tmp_path, **fields):
++    draft = tmp_path / "draft-manifest.json"
++    draft.write_text(json.dumps(fields))
++    return draft
++
++
++def make_pytest_suite(tmp_path):
++    suite = tmp_path / "suite"
++    suite.mkdir()
++    (suite / "test_exam.py").write_text(
++        "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
++    return suite
++
++
++# A framework-free fake runner: prints a summary line on both outcomes, so
++# ranPattern can detect "tests ran" red or green. Runs from the worktree root.
++SH_RUNNER = (
++    "if grep -q 'return a + b' mod.py; "
++    "then echo 'TESTS RAN: 1 passed'; exit 0; "
++    "else echo 'TESTS RAN: 1 failed'; exit 1; fi\n")
++
++
++def make_sh_suite(tmp_path):
++    suite = tmp_path / "suite"
++    suite.mkdir()
++    (suite / "run.sh").write_text(SH_RUNNER)
++    return suite
++
++
++def baseline_manifest(repo, suite, draft):
++    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
++            "--branch", "main", "--manifest", str(draft),
++            "--repo", str(repo)], check=False)
++    return r.returncode, json.loads(r.stdout)
++
++
++def test_manifest_baseline_proves_red_reading_draft_fields(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 0
++    assert out["status"] == "PROVEN_RED"
++
++
++def test_incoherent_nonpytest_runcmd_without_framework(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "framework" in out["output"]
++
++
++def test_incoherent_nonpytest_framework_without_ranpattern(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
++                        framework="sh")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "ranPattern" in out["output"]
++
++
++def test_incoherent_draft_missing_runcmd(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, framework="pytest")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "runCmd" in out["output"]
++
++
++def test_coherent_nonpytest_manifest_proves_red(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
++                        framework="sh", ranPattern="TESTS RAN")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 0
++    assert out["status"] == "PROVEN_RED"
++    assert out["redKind"] == "assertion"     # the pattern saw the tests run
++
++
++def test_manifest_flag_mutually_exclusive_with_run_flags(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
++    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
++            "--branch", "main", "--manifest", str(draft),
++            "--run", "python3 -m pytest .ultra-acceptance -q",
++            "--repo", str(repo)], check=False)
++    assert r.returncode == 2
++    assert "mutually exclusive" in r.stderr
++
++
++def test_manifest_first_nonpytest_seal_certifies_at_gate(tmp_path):
++    # The end-to-end the field runs needed: author manifest-first, prove RED,
++    # finalize, build the feature, administer at the gate — green, no false-red.
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = tmp_path / "vault" / "pending-x" / "suite"
++    suite.mkdir(parents=True)
++    (suite / "run.sh").write_text(SH_RUNNER)
++    draft = tmp_path / "vault" / "pending-x" / "manifest.json"
++    draft.write_text(json.dumps({
++        "runCmd": "sh .ultra-acceptance/run.sh",
++        "framework": "sh", "ranPattern": "TESTS RAN"}))
++    code, out = baseline_manifest(repo, suite, draft)
++    assert (code, out["status"]) == (0, "PROVEN_RED")
++    # finalize: hash, rename into the vault, complete the manifest
++    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
++    entry = tmp_path / "vault" / digest[:12]
++    (tmp_path / "vault" / "pending-x").rename(entry)
++    manifest = json.loads((entry / "manifest.json").read_text())
++    manifest.update({"sealId": digest[:12], "suiteSha256": digest})
++    (entry / "manifest.json").write_text(json.dumps(manifest))
++    # build the feature and administer
++    (repo / "mod.py").write_text("def add(a, b):\n    return a + b\n")
++    sh(["git", "add", "."], cwd=repo)
++    sh(["git", "commit", "-qm", "feature"], cwd=repo)
++    code, out = administer(tmp_path / "vault", digest[:12], digest, repo)
++    assert code == 0
++    assert out["passed"] is True
++
++
++# --- legacy-seal gate diagnosis ---
++
++def test_legacy_nonpytest_manifest_refusal_names_the_cause(tmp_path):
++    # A pre-consolidation seal: green non-pytest suite, manifest lacking
++    # framework/ranPattern. Still refuses (unchanged), but the message now
++    # names the real cause instead of the generic no-tests-ran text.
++    repo = make_repo(tmp_path, feature_built=True)
++    vault, seal_id, digest = make_vault(
++        tmp_path, run_cmd="sh .ultra-acceptance/run.sh",
++        suite_files={"run.sh": "echo 'TESTS RAN: 1 passed'\nexit 0\n"})
++    code, out = administer(vault, seal_id, digest, repo)
++    assert code == 1
++    assert out["passed"] is False
++    assert "framework/ranPattern" in out["output"]

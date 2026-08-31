@@ -1,0 +1,87 @@
+diff --git a/evals/ab_runner.py b/evals/ab_runner.py
+index 7a3b633498c0474d435bd2268f7d1b54655fbb5d..7877c9d01f83ebf8f77d13e13d988f85164656f6 100644
+--- a/evals/ab_runner.py
++++ b/evals/ab_runner.py
+@@ -82,11 +82,14 @@ def _build_parser():
+                              "(default: a mkdtemp; pass a durable dir to keep it)")
+     # run-28 critic finding 1: fixture projects deliberately carry no pytest
+     # config (fixtures are read-only baselines), so ultra_run's detection
+-    # ladder finds nothing and run-engine refuses (testCmd is mandatory, #96).
+-    # The runner therefore always threads an explicit --test-cmd.
+-    parser.add_argument("--test-cmd", default="python3 -m pytest",
++    # ladder finds nothing for them and run-engine refuses (testCmd is
++    # mandatory, #96) — which is why every documented A/B invocation passes
++    # this explicitly. Omitted (None) => not passed, so the ladder decides
++    # (#442). A hardcoded default silently discarded the ladder's `-n auto`
++    # upgrade on every cell.
++    parser.add_argument("--test-cmd", default=None,
+                         help="suite command the engine runs in the cell "
+-                             "(default: python3 -m pytest)")
++                             "(default: ultra_run's detection ladder decides)")
+     # A fixture whose project needs dependencies fetched before anything can
+     # typecheck or run (the Bun cell: `bun install`) has no green baseline
+     # without this — validate_knobs rehearses the bootstrap in its probe
+@@ -164,8 +167,9 @@ def main(argv, run=subprocess.run):
+         return 2
+ 
+     command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
+-               "--repo", str(cell), "--overlap", args.overlap,
+-               "--test-cmd", args.test_cmd]
++               "--repo", str(cell), "--overlap", args.overlap]
++    if args.test_cmd:
++        command += ["--test-cmd", args.test_cmd]
+     if args.bootstrap_cmd:
+         command += ["--bootstrap-cmd", args.bootstrap_cmd]
+     # No timeout: a real cell runs for tens of minutes and the operator is
+diff --git a/tests/test_ab_runner.py b/tests/test_ab_runner.py
+index 5bede85d65b105d73a9adf6ba4cab88f8dd9d682..8d6cfbffcc2fae8e0b4bb9cff7986bf650ef6eb2 100644
+--- a/tests/test_ab_runner.py
++++ b/tests/test_ab_runner.py
+@@ -228,28 +228,29 @@ def test_fixtures_root_is_never_written_into(tmp_path):
+     assert after == before
+ 
+ 
+-def test_test_cmd_defaults_and_overrides(tmp_path):
+-    """#402 follow-up (run-28 critic finding 1): fixture projects carry no
+-    pytest config and run-engine mandates a testCmd, so the runner threads
+-    --test-cmd to the engine — default 'python3 -m pytest', overridable."""
+-    fixtures = _fixture_tree(tmp_path)
++def test_no_test_cmd_flag_when_operator_passes_none(tmp_path):
++    """#442: the default was a real string, so every cell ran
++    `python3 -m pytest` and ultra_run's detection ladder never spoke — which
++    also discarded the ladder's `-n auto` upgrade on every cell."""
+     record = []
+-    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t7",
++    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t442a",
+                "--results-dir", str(tmp_path / "results"),
+-               "--fixtures-root", str(fixtures),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
+                "--workspace", str(tmp_path / "ws")],
+               run=_stub_run(record))
+     assert rc == 0
+-    node_cmd = next(c for c, kw in record if c[0] == "node")
+-    assert node_cmd[node_cmd.index("--test-cmd") + 1] == "python3 -m pytest"
++    node_cmd = next(c for c, _ in record if c[0] == "node")
++    assert "--test-cmd" not in node_cmd
+ 
+-    record2 = []
+-    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t8",
+-               "--results-dir", str(tmp_path / "results2"),
+-               "--fixtures-root", str(fixtures),
+-               "--workspace", str(tmp_path / "ws2"),
+-               "--test-cmd", "make check"],
+-              run=_stub_run(record2))
++
++def test_explicit_test_cmd_is_still_threaded(tmp_path):
++    record = []
++    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t442b",
++               "--results-dir", str(tmp_path / "results"),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws"),
++               "--test-cmd", "bunx tsc --noEmit && bun test"],
++              run=_stub_run(record))
+     assert rc == 0
+-    node_cmd = next(c for c, kw in record2 if c[0] == "node")
+-    assert node_cmd[node_cmd.index("--test-cmd") + 1] == "make check"
++    node_cmd = next(c for c, _ in record if c[0] == "node")
++    assert node_cmd[node_cmd.index("--test-cmd") + 1] == "bunx tsc --noEmit && bun test"

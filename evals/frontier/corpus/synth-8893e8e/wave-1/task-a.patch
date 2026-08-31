@@ -1,0 +1,358 @@
+diff --git a/skills/ultrapowers/kernel/FOLD_LOG.md b/skills/ultrapowers/kernel/FOLD_LOG.md
+index 7ecaf890d115f598926a96615754436b9b97e3a3..4f62c399903acbb9ac2b37d7461e7a636bc8bb9f 100644
+--- a/skills/ultrapowers/kernel/FOLD_LOG.md
++++ b/skills/ultrapowers/kernel/FOLD_LOG.md
+@@ -51,6 +51,14 @@ The commit every task in the wave branched from. `rehydrate` refuses a log
+ that does not open with it. Otherwise inert: it seeds the engine and is
+ skipped by the event walk.
+ 
++It is also a precondition on every head: `fold` and `resolve` refuse (exit 2,
++nothing written) any task head the base is not an ancestor of. Each task's
++state is published as a two-point diff against the base, so a head cut from a
++stale ref would read as a revert of everything the base gained since — folded,
++that silently reverted 3,472 lines of an integration line on a green suite
++(#246). The engine's fallback, an ordinary three-way merge, handles a stale
++parent correctly; the fold cannot.
++
+ ### `fold` — one per task folded, in task-index order
+ 
+ ```json
+diff --git a/skills/ultrapowers/kernel/fold_wave.py b/skills/ultrapowers/kernel/fold_wave.py
+index 666c59a6d0f33d51cb6ad5dadcc41d046e8d6a8c..06794357567a7fa3e9fe01971708b6bee264cdeb 100644
+--- a/skills/ultrapowers/kernel/fold_wave.py
++++ b/skills/ultrapowers/kernel/fold_wave.py
+@@ -48,7 +48,8 @@ Every invocation is a fresh process: no subcommand carries anything in
+ memory from the last one, per the fold log's self-sufficiency contract.
+ 
+ Exit codes: 0 success, 2 precondition refusal (a pre-existing log, a missing
+-log, a log/list disagreement, a stale resolution), 3 self-check failure
++log, a log/list disagreement, a stale resolution, a task head not descended
++from the base), 3 self-check failure
+ (which includes a kernel recursion limit the fold thread could not absorb —
+ recorded as a named kernel-limit park in the conflicts index, never a crash),
+ 4 a rejected resolver reply. For `materialize` the non-zero codes carry its
+@@ -526,6 +527,41 @@ def _write_kernel_park(wave_dir, index, epoch, park):
+     return entry
+ 
+ 
++def _undescended(repo, base_sha, branches):
++    """The task heads the base is NOT an ancestor of: `[(taskId, headSha)]`.
++
++    `rw.publish` diffs each head two-point against the base, so a head cut
++    from a stale ref (a worktree the implementer never re-anchored) reads as
++    "revert everything the base gained since" — folded, that reverted 3,472
++    lines of an integration line on a green suite (#246). Such a head is the
++    one input the fold cannot interpret; the caller refuses before writing
++    anything, and the engine's fallback (an ordinary three-way merge) handles
++    the stale parent correctly.
++    """
++    stale = []
++    for task_id, _branch_name, head_sha in branches:
++        r = subprocess.run(["git", "-C", str(repo), "merge-base",
++                            "--is-ancestor", base_sha, head_sha],
++                           capture_output=True)
++        if r.returncode != 0:
++            stale.append((task_id, head_sha))
++    return stale
++
++
++def _refuse_undescended(repo, base_sha, branches, wave):
++    """Exit-2 refusal path shared by `fold` and `resolve`: True when refused."""
++    stale = _undescended(repo, base_sha, branches)
++    if not stale:
++        return False
++    print("refusing wave %d: task head(s) not descended from base %s: %s — "
++          "the worktree was cut from a stale ref; rebase or cherry-pick onto "
++          "the base before folding (#246)"
++          % (wave, base_sha[:7],
++             ", ".join("%s=%s" % (t, h[:7]) for t, h in stale)),
++          file=sys.stderr)
++    return True
++
++
+ def _prepare(repo, base_sha, branches):
+     """(base state, published task states, largest folded text file).
+ 
+@@ -580,6 +616,8 @@ def cmd_fold(args):
+     branches = args.branches  # [(taskId, branchName, headSha)], argv order
+     all_ids = [task_id for task_id, _n, _h in branches]
+ 
++    if _refuse_undescended(repo, base_sha, branches, args.wave):
++        return 2
+     base, states, max_lines = _prepare(repo, base_sha, branches)
+     wave_dir.mkdir(parents=True, exist_ok=True)
+     _record_max_lines(wave_dir, max_lines)
+@@ -680,6 +718,8 @@ def cmd_resolve(args):
+         print("log/list disagreement for wave %d: the recorded folds are not a "
+               "prefix of the supplied task list" % args.wave, file=sys.stderr)
+         return 2
++    if _refuse_undescended(repo, base_sha, branches, args.wave):
++        return 2
+ 
+     # The already-folded prefix is the log's own fold events, in order — the
+     # both-sides condition counts every writer that has landed so far.
+diff --git a/skills/ultrapowers/scripts/sweep_worktrees.sh b/skills/ultrapowers/scripts/sweep_worktrees.sh
+index 8373e44aef13107cd5dd05ee00d8d1920ba984b2..ea4b895c64d3c8fe4c53e3d18fee2938dbfa3d9d 100755
+--- a/skills/ultrapowers/scripts/sweep_worktrees.sh
++++ b/skills/ultrapowers/scripts/sweep_worktrees.sh
+@@ -216,6 +216,18 @@ scan_engine_procs() {
+     }'
+ }
+ 
++# ── validate-knobs probe worktrees ─────────────────────────────────────────
++# `ultra_run.py --validate-knobs` cuts a detached probe at
++# .claude/ultrapowers/wt-knob-<pid> and removes it in a `finally` — which a
++# SIGKILL mid-suite skips, and the wf_* globs above never see the leftover
++# (#251). The pid in the name is the liveness test: a live pid is a probe in
++# progress, a dead one is a full checkout nobody will ever remove.
++probe_alive() {
++  local pid="${1##*wt-knob-}"
++  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
++  kill -0 "$pid" 2>/dev/null
++}
++
+ # TERM the given pids, poll up to ~5s for them to exit, KILL survivors.
+ # Reaping never fails the sweep — a pid may vanish between scan and signal.
+ kill_with_grace() {
+@@ -287,6 +299,15 @@ if [ -n "$AUDIT" ]; then
+     if is_locked "$wt"; then lock=", locked — possibly live; verify before removing"; fi
+     echo "orphan worktree: $wt ($(human_kb "$kb"), $((age / 86400))d old${lock})"
+   done
++  for wt in "$ROOT"/.claude/ultrapowers/wt-knob-*; do
++    [ -e "$wt" ] || continue
++    probe_alive "$wt" && continue
++    orphans=$((orphans + 1))
++    kb="$(du -sk "$wt" 2>/dev/null | cut -f1 || true)"
++    case "$kb" in ''|*[!0-9]*) kb=0 ;; esac
++    orphan_kb=$((orphan_kb + kb))
++    echo "orphan probe worktree: $wt ($(human_kb "$kb"), validate-knobs pid ${wt##*wt-knob-} is gone)"
++  done
+   while IFS= read -r br; do
+     [ -n "$br" ] || continue
+     if [ -n "$live" ]; then
+@@ -399,6 +420,23 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
+     echo "warn: could not fully remove $wt — inspect manually" >&2
+   fi
+ done
++# Probe worktrees are the driver's, not a run's: a dead pid is garbage under
++# any scope, a live pid is a validate-knobs still running its suite.
++for wt in "$ROOT"/.claude/ultrapowers/wt-knob-*; do
++  [ -e "$wt" ] || continue
++  if probe_alive "$wt"; then
++    kept_worktrees=$((kept_worktrees + 1))
++    echo "kept (probe pid ${wt##*wt-knob-} is alive): $wt"
++    continue
++  fi
++  if git -C "$ROOT" worktree remove --force --force "$wt" 2>/dev/null; then
++    removed_worktrees=$((removed_worktrees + 1))
++  elif rm -rf "$wt" 2>/dev/null; then
++    removed_worktrees=$((removed_worktrees + 1))
++  else
++    echo "warn: could not fully remove $wt — inspect manually" >&2
++  fi
++done
+ git -C "$ROOT" worktree prune
+ 
+ # ── orphan-process pass ────────────────────────────────────────────────────
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index f8077b837a6d0a798f39eacbf348fe965794f4ea..60fb23405aa2de3d3764b5a8320659e0ab267fb6 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -23,6 +23,7 @@ import json
+ import os
+ import re
+ import shutil
++import signal
+ import subprocess
+ import sys
+ from pathlib import Path
+@@ -229,6 +230,15 @@ def validate_knobs(args_path, root):
+                           "detail": "cannot cut probe worktree: %s"
+                                     % (r.stderr or r.stdout).strip()}))
+         return 1
++    # SIGTERM's default disposition ends the process WITHOUT unwinding, so the
++    # `finally` below never ran when a tool timeout killed a mid-suite probe
++    # and wt-knob-<pid> stayed registered (#251). Turn it into an exception:
++    # `subprocess.run` kills its child on the way out, `finally` removes the
++    # worktree. SIGKILL cannot be caught — sweep_worktrees.sh reaps a probe
++    # whose pid is gone.
++    def _on_term(signum, _frame):
++        raise SystemExit(128 + signum)
++    prev_term = signal.signal(signal.SIGTERM, _on_term)
+     try:
+         result = {"ok": True, "stage": "knob-validate"}
+         bootstrap_red = False
+@@ -261,6 +271,7 @@ def validate_knobs(args_path, root):
+                                       "output": "[baseline timed out after 1800s]"}
+             baseline_red = not result["baseline"]["ok"]
+     finally:
++        signal.signal(signal.SIGTERM, prev_term)
+         rm = sh(["git", "worktree", "remove", "--force", str(probe_wt)],
+                 cwd=root)
+         if rm.returncode != 0:
+diff --git a/tests/test_fold_wave.py b/tests/test_fold_wave.py
+index 2e3da6343098fa7df8eb68f8f750247eb790bc17..908618c84e7de53e1162ad78527f36c19a73fcab 100644
+--- a/tests/test_fold_wave.py
++++ b/tests/test_fold_wave.py
+@@ -1388,3 +1388,69 @@ def test_malformed_commutes_spec_is_an_argument_error(tmp_path):
+     r = do_fold(repo, run_dir, 1, base_sha, specs, extra=["--commutes", "t1"])
+     assert r.returncode == 2
+     assert "--commutes must be" in r.stderr
++
++
++def make_stale_head_repo(tmp_path):
++    """The #246 shape: the run base B1 sits ON TOP of an older commit B0, and
++    one task's worktree was cut from B0 (a stale ref the implementer never
++    re-anchored). Diffed two-point against B1, that head reads as 'revert
++    everything B1 gained' — 3,472 lines on the live drain."""
++    repo = tmp_path / "repo"
++    _init(repo)
++    (repo / "app.py").write_text(BASE_APP)
++    (repo / "other.txt").write_text("hello\n")
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "b0")
++    b0 = _git(repo, "rev-parse", "HEAD")
++
++    _git(repo, "checkout", "-q", "-b", "stale", b0)
++    (repo / "other.txt").write_text("hello from the stale task\n")
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "stale task")
++    stale_sha = _git(repo, "rev-parse", "HEAD")
++
++    _git(repo, "checkout", "-q", b0)
++    (repo / "gained.py").write_text("def gained():\n    return 1\n")
++    (repo / "app.py").write_text(T3_APP)
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "b1 — what the run base gained after b0")
++    base_sha = _git(repo, "rev-parse", "HEAD")
++
++    _git(repo, "checkout", "-q", "-b", "t1", base_sha)
++    (repo / "app.py").write_text(T3_APP.replace("z + 5", "z + 6"))
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "t1")
++    t1_sha = _git(repo, "rev-parse", "HEAD")
++    _git(repo, "checkout", "-q", base_sha)
++    return repo, base_sha, {"t1": t1_sha, "stale": stale_sha}
++
++
++def test_fold_refuses_a_task_head_not_descended_from_the_base(tmp_path):
++    """#246: a head whose parent is not the run base is exactly the input the
++    two-point publish cannot interpret — refuse (exit 2, nothing written) so
++    the merge role reports ERROR and the engine falls back to a 3-way merge,
++    instead of folding a silent revert on a green suite."""
++    repo, base_sha, heads = make_stale_head_repo(tmp_path)
++    run_dir = tmp_path / "run"
++    r = do_fold(repo, run_dir, 1, base_sha,
++                [("t1", "t1", heads["t1"]), ("stale", "stale", heads["stale"])])
++    assert r.returncode == 2, r.stdout + r.stderr
++    assert "stale=" + heads["stale"][:7] in r.stderr
++    assert "not descended from base " + base_sha[:7] in r.stderr
++    assert "t1=" not in r.stderr
++    assert not (run_dir / "frontier" / "wave-1" / "fold_log.jsonl").exists()
++
++
++def test_fold_accepts_every_head_descended_from_the_base(tmp_path):
++    """The guard is ancestry, not identity: a head several commits past the
++    base still folds."""
++    repo, base_sha, heads = make_stale_head_repo(tmp_path)
++    _git(repo, "checkout", "-q", "t1")
++    (repo / "other.txt").write_text("second commit on t1\n")
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "t1 again")
++    t1_head = _git(repo, "rev-parse", "HEAD")
++    _git(repo, "checkout", "-q", base_sha)
++    r = do_fold(repo, tmp_path / "run", 1, base_sha, [("t1", "t1", t1_head)])
++    assert r.returncode == 0, r.stdout + r.stderr
++    assert last_json(r)["clean"] is True
+diff --git a/tests/test_sweep_worktrees.py b/tests/test_sweep_worktrees.py
+index 69af7ac84da318b7add49d595e9130d99b2a86e9..d815bb77d583935a884aeab894c4f3b612629ecf 100644
+--- a/tests/test_sweep_worktrees.py
++++ b/tests/test_sweep_worktrees.py
+@@ -743,3 +743,49 @@ def test_audit_reports_orphan_process_without_reaping(tmp_path):
+         assert proc.poll() is None       # report-only: audit reaps nothing
+     finally:
+         proc.kill()
++
++
++def add_probe_worktree(repo, pid):
++    """A `ultra_run.py --validate-knobs` probe: detached, named by the
++    driver's pid, under .claude/ultrapowers (not .claude/worktrees)."""
++    wt = repo / ".claude" / "ultrapowers" / f"wt-knob-{pid}"
++    wt.parent.mkdir(parents=True, exist_ok=True)
++    git(repo, "worktree", "add", "--detach", str(wt), "HEAD")
++    return wt
++
++
++DEAD_PID = 999999999  # above every platform's pid ceiling: kill -0 always fails
++
++
++def test_audit_reports_a_dead_validate_knobs_probe_and_removes_nothing(tmp_path):
++    """#251: a probe whose driver pid is gone (SIGKILL mid-suite) is a leak the
++    wf_* glob never saw. The audit names it; report-only."""
++    repo = make_repo(tmp_path)
++    wt = add_probe_worktree(repo, DEAD_PID)
++    p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
++                       capture_output=True, text=True)
++    assert p.returncode == 0, p.stderr
++    assert f"orphan probe worktree: {wt}" in p.stdout
++    assert wt.exists()
++    assert "audit: clean" not in p.stdout
++
++
++def test_sweep_reaps_a_dead_probe_and_spares_a_live_one(tmp_path):
++    """A probe named by a live pid is a validate-knobs in progress; one named
++    by a dead pid is garbage regardless of --run scope."""
++    repo = make_repo(tmp_path)
++    dead = add_probe_worktree(repo, DEAD_PID)
++    live_proc = subprocess.Popen(["sleep", "60"])
++    try:
++        live = add_probe_worktree(repo, live_proc.pid)
++        p = subprocess.run(["bash", str(SWEEP), "--all"], cwd=repo,
++                           capture_output=True, text=True)
++        assert p.returncode == 0, p.stderr
++        assert not dead.exists()
++        assert live.exists()
++        assert f"kept (probe pid {live_proc.pid} is alive): {live}" in p.stdout
++        wl = git(repo, "worktree", "list", "--porcelain").stdout
++        assert str(dead) not in wl and str(live) in wl
++    finally:
++        live_proc.kill()
++        live_proc.wait()
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index aaaf8a97fb9d5408781f0dfa4defaed697031794..b0f590f7426f911e43522deb3535208299a94ee3 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -952,3 +952,33 @@ def test_disk_headroom_stage_runs_right_after_compile(tmp_path):
+     names = [s["stage"] for s in json.loads(r.stdout)["stages"]]
+     assert names.index("disk-headroom") == names.index("compile") + 1
+     assert names.index("disk-headroom") < names.index("test-command")
++
++
++def _probe_dirs(repo):
++    return sorted(p.name for p in (repo / ".claude/ultrapowers").glob("wt-knob-*"))
++
++
++def test_validate_knobs_removes_its_probe_worktree_on_sigterm(tmp_path):
++    """#251: a SIGTERM mid-suite (the tool timeout that killed the drain's
++    first --validate-knobs) must still run the probe worktree's removal —
++    the default SIGTERM disposition skips `finally` and leaked wt-knob-<pid>."""
++    repo = make_repo(tmp_path)
++    args_path = repo / "args.json"
++    args_path.write_text(json.dumps({"testCmd": "sleep 30"}))
++    proc = subprocess.Popen([sys.executable, str(RUN), "--validate-knobs",
++                             str(args_path)], cwd=repo,
++                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
++    try:
++        deadline = time.time() + 15
++        while time.time() < deadline and not _probe_dirs(repo):
++            time.sleep(0.1)
++        assert _probe_dirs(repo), "probe worktree never appeared"
++        proc.terminate()
++        proc.wait(timeout=15)
++    finally:
++        if proc.poll() is None:
++            proc.kill()
++    assert proc.returncode != 0
++    assert _probe_dirs(repo) == []
++    wl = sh(["git", "worktree", "list", "--porcelain"], cwd=repo).stdout
++    assert "wt-knob-" not in wl

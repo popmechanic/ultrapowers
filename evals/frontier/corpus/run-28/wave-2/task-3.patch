@@ -1,0 +1,410 @@
+diff --git a/evals/ab_runner.py b/evals/ab_runner.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..70b217370095150b1e1f274f79bdde1857426493
+--- /dev/null
++++ b/evals/ab_runner.py
+@@ -0,0 +1,170 @@
++#!/usr/bin/env python3
++"""One A/B cell, start to finish (#402 item 6).
++
++    python3 evals/ab_runner.py <fixture> --overlap fold|serialize \\
++        [--run-id ID] [--results-dir DIR] [--fixtures-root DIR] [--workspace DIR]
++
++One invocation = one cell = one row. The A/B protocol is those invocations run
++serially by hand on the operator's laptop; concurrent /ultrapowers runs corrupt
++each other's checkouts (CLAUDE.md), and nothing here ever runs in CI.
++
++The four moves, in order:
++
++    build_cell   (ab_lib)   assemble + commit a throwaway repo from the fixture
++    seed_worker_auth (ab_auth)  lift the live token into a COPY of the env
++    node fleet/run-main.mjs <plan.md> <runId> --repo <cell> --overlap <arm>
++    harvest_row  (ab_lib)   one row appended to results/runs.jsonl
++
++The runner PRINTS where the cell repo and its run dir live and copies neither.
++The run dir already holds the events, envelopes and receipts; the old rig
++copied them out only to survive OS temp cleanup, and `--workspace` now lets the
++operator put the cell somewhere durable instead.
++
++Every subprocess goes through the `run` seam — the engine spawn and the
++Keychain probe alike — so the tests can drive the whole path without a real
++`claude` or `node` ever starting. The only exception is the git plumbing inside
++build_cell, which spawns git and nothing else.
++
++The seeded credential rides ONE subprocess env and never touches os.environ,
++this module's messages, or the row.
++"""
++import argparse
++import json
++import os
++import re
++import subprocess
++import sys
++import tempfile
++from datetime import datetime, timezone
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent))
++from ab_auth import seed_worker_auth        # noqa: E402
++from ab_lib import build_cell, harvest_row  # noqa: E402
++
++REPO_ROOT = Path(__file__).resolve().parents[1]
++ENGINE = "fleet/run-main.mjs"
++ARMS = ("fold", "serialize")
++
++# run-main.mjs's own runId shape rule (parseArgs): the runId names the run dir,
++# the integration branch and the worktree glob, so the engine rejects anything
++# outside this alphabet. Checked here too — a refusal before the spawn costs
++# nothing, where the engine's costs a preflight.
++RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]*$")
++
++
++class _Refusal(Exception):
++    """A bad invocation: report it, spawn nothing, exit 2."""
++
++
++class _Parser(argparse.ArgumentParser):
++    """argparse that refuses instead of calling sys.exit, so `main` stays a
++    function returning an int (the tests call it directly)."""
++
++    def error(self, message):
++        raise _Refusal("%s\n%s" % (message, self.format_usage().strip()))
++
++
++def _build_parser():
++    parser = _Parser(prog="ab_runner.py", description=__doc__.splitlines()[0])
++    parser.add_argument("fixture", help="fixture name under --fixtures-root")
++    parser.add_argument("--overlap", required=True, choices=ARMS,
++                        help="the arm this cell runs (the A/B dimension)")
++    parser.add_argument("--run-id", default=None,
++                        help="default: ab-<UTC yyyymmddHHMMSS>")
++    parser.add_argument("--results-dir", default=None,
++                        help="default: evals/results")
++    parser.add_argument("--fixtures-root", default=None,
++                        help="default: evals/fixtures (read-only; test seam)")
++    parser.add_argument("--workspace", default=None,
++                        help="where the cell repo is assembled "
++                             "(default: a mkdtemp; pass a durable dir to keep it)")
++    return parser
++
++
++def _default_run_id():
++    return "ab-" + datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
++
++
++def _engine_ref(run, repo_root):
++    """The engine's own commit, for the row. Empty (None) rather than fatal:
++    a missing ref is a weaker row, not a reason to skip the cell."""
++    result = run(["git", "rev-parse", "--short", "HEAD"], cwd=str(repo_root),
++                 capture_output=True, text=True)
++    ref = (result.stdout or "").strip()
++    return ref if result.returncode == 0 and ref else None
++
++
++def _append_row(results_dir, row):
++    results_dir.mkdir(parents=True, exist_ok=True)
++    # Append-only, one JSON object per line: this file carries the 0.1.0
++    # baseline rows and is never rewritten.
++    with (results_dir / "runs.jsonl").open("a") as handle:
++        handle.write(json.dumps(row) + "\n")
++
++
++def main(argv, run=subprocess.run):
++    """Run one cell; return 0 iff the engine exited 0, 2 on a refusal."""
++    try:
++        args = _build_parser().parse_args(argv)
++        run_id = args.run_id or _default_run_id()
++        if not RUN_ID_RE.match(run_id):
++            raise _Refusal("--run-id must be [A-Za-z0-9-] (got %r)" % run_id)
++        fixtures_root = Path(args.fixtures_root) if args.fixtures_root \
++            else REPO_ROOT / "evals" / "fixtures"
++        fixture_dir = fixtures_root / args.fixture
++        # Refuse before anything is spawned or assembled: an unknown fixture
++        # is a typo, and the operator finds out in a second, not a preflight.
++        if not fixture_dir.is_dir():
++            raise _Refusal("unknown fixture: %s" % fixture_dir)
++        if not (fixture_dir / "plan.md").is_file():
++            raise _Refusal("fixture has no plan.md: %s" % (fixture_dir / "plan.md"))
++        if not (fixture_dir / "project").is_dir():
++            raise _Refusal("fixture has no project/ tree: %s"
++                           % (fixture_dir / "project"))
++    except _Refusal as refusal:
++        print("ab_runner: %s" % refusal, file=sys.stderr)
++        return 2
++
++    results_dir = Path(args.results_dir) if args.results_dir \
++        else REPO_ROOT / "evals" / "results"
++    workspace = Path(args.workspace) if args.workspace \
++        else Path(tempfile.mkdtemp(prefix="ab-cell-"))
++
++    cell = build_cell(args.fixture, REPO_ROOT, workspace,
++                      fixtures_root=fixtures_root)
++    run_dir = cell / ".claude" / "ultrapowers" / ("run-" + run_id)
++    print("ab_runner: cell repo %s" % cell, file=sys.stderr)
++    print("ab_runner: run dir   %s" % run_dir, file=sys.stderr)
++
++    # The seeded env is a COPY that goes to this one subprocess. os.environ is
++    # never touched, and the token is never printed, logged or harvested.
++    try:
++        env = seed_worker_auth(os.environ, run=run)
++    except SystemExit as exit_request:   # ab_auth's own token-free message
++        print("ab_runner: %s" % exit_request, file=sys.stderr)
++        return 2
++
++    command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
++               "--repo", str(cell), "--overlap", args.overlap]
++    # No timeout: a real cell runs for tens of minutes and the operator is
++    # watching it. The engine's own per-role deadlines bound the workers.
++    result = run(command, cwd=str(REPO_ROOT), env=env)
++
++    row = harvest_row(run_dir, {
++        "fixture": args.fixture,
++        "armOverlap": args.overlap,
++        "runId": run_id,
++        "engineRef": _engine_ref(run, REPO_ROOT),
++        "exitCode": result.returncode,
++        "cellDir": str(cell),
++    })
++    # The row is written whatever the engine did: a failed cell is evidence
++    # (verdict + invalid say which), and a missing row is not.
++    _append_row(results_dir, row)
++    print(json.dumps(row))
++    return 0 if result.returncode == 0 else 1
++
++
++if __name__ == "__main__":  # pragma: no cover
++    sys.exit(main(sys.argv[1:]))
+diff --git a/tests/test_ab_runner.py b/tests/test_ab_runner.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..de43b7088448872e45faf24079071dace944e2d1
+--- /dev/null
++++ b/tests/test_ab_runner.py
+@@ -0,0 +1,228 @@
++# tests/test_ab_runner.py
++import json, os, pathlib, sys
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "evals"))
++import ab_runner
++from ab_runner import main
++
++CRED = json.dumps({"claudeAiOauth": {"accessToken": "tok-x"}})
++
++
++def _fixture_tree(tmp_path):
++    fx = tmp_path / "fixtures" / "mini"
++    (fx / "project").mkdir(parents=True)
++    (fx / "project" / "app.py").write_text("x = 1\n")
++    (fx / "plan.md").write_text("# P\n\n### Task 1: A\n")
++    return tmp_path / "fixtures"
++
++
++def _stub_run(record, engine_exit=0):
++    """One stub for every subprocess: answers the Keychain probe with CRED and
++    fabricates a run dir when the engine command appears."""
++    class R:
++        def __init__(self, code, out=""):
++            self.returncode, self.stdout, self.stderr = code, out, ""
++    def run(cmd, **kw):
++        record.append((cmd, kw))
++        if cmd[0] == "security":
++            return R(0, CRED)
++        if cmd[0] == "node":
++            cell = pathlib.Path(cmd[cmd.index("--repo") + 1])
++            # `node fleet/run-main.mjs <plan.md> <runId>`: the runId is the
++            # SECOND positional — cmd[3] — which is where run-main.mjs's
++            # parseArgs reads it from and where ab_runner puts it.
++            run_id = cmd[3]
++            rd = cell / ".claude" / "ultrapowers" / ("run-" + run_id)
++            rd.mkdir(parents=True)
++            (rd / "events.jsonl").write_text(json.dumps(
++                {"ts": "2026-08-30T10:00:00.000Z", "kind": "driver:stage",
++                 "stage": "preflight"}) + "\n" + json.dumps(
++                {"ts": "2026-08-30T10:01:00.000Z", "kind": "worker:end",
++                 "label": "impl:1", "role": "implementer",
++                 "meter": {"input": 1, "output": 7, "cacheRead": 0,
++                           "cacheCreation": 0, "costUsd": 0.0, "models": []}}) + "\n")
++            (rd / "args.json").write_text(json.dumps({"waves": [[{"id": "1"}]]}))
++            return R(engine_exit)
++        return R(0)  # git plumbing inside build_cell runs real; nothing else does
++    return run
++
++
++def test_one_cell_end_to_end_appends_a_row(tmp_path, monkeypatch):
++    record = []
++    results = tmp_path / "results"
++    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t1",
++               "--results-dir", str(results),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run(record))
++    assert rc == 0
++    rows = [json.loads(l) for l in
++            (results / "runs.jsonl").read_text().splitlines()]
++    assert len(rows) == 1
++    row = rows[0]
++    assert (row["fixture"], row["armOverlap"], row["runId"]) == ("mini", "fold", "ab-t1")
++    assert row["engine"] == "one-driver"
++    assert row["outputTokens"] == 7
++    # the engine invocation used the assembled cell and the fold arm:
++    node_cmd = next(c for c, kw in record if c[0] == "node")
++    assert node_cmd[1].endswith("fleet/run-main.mjs")
++    assert "--overlap" in node_cmd and node_cmd[node_cmd.index("--overlap") + 1] == "fold"
++    # the engine env carried the seeded token; the parent env was not mutated:
++    node_kw = next(kw for c, kw in record if c[0] == "node")
++    assert node_kw["env"]["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-x"
++    assert "CLAUDE_CODE_OAUTH_TOKEN" not in os.environ or \
++        os.environ.get("CLAUDE_CODE_OAUTH_TOKEN") != "tok-x"
++
++
++def test_engine_failure_still_appends_a_row_and_exits_nonzero(tmp_path):
++    record = []
++    results = tmp_path / "results"
++    rc = main(["mini", "--overlap", "serialize", "--run-id", "ab-t2",
++               "--results-dir", str(results),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run(record, engine_exit=1))
++    assert rc != 0
++    rows = [json.loads(l) for l in
++            (results / "runs.jsonl").read_text().splitlines()]
++    assert len(rows) == 1 and rows[0]["verdict"] != "approved"
++
++
++def test_unknown_fixture_refuses_before_spawning_anything(tmp_path):
++    record = []
++    rc = main(["nope", "--overlap", "fold",
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws"),
++               "--results-dir", str(tmp_path / "results")],
++              run=_stub_run(record))
++    assert rc != 0
++    assert not any(c[0] == "node" for c, kw in record)
++
++
++def test_overlap_is_mandatory_and_validated(tmp_path):
++    rc = main(["mini", "--overlap", "sideways",
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws"),
++               "--results-dir", str(tmp_path / "results")],
++              run=_stub_run([]))
++    assert rc != 0
++
++
++def test_overlap_omitted_is_refused(tmp_path):
++    record = []
++    rc = main(["mini",
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws"),
++               "--results-dir", str(tmp_path / "results")],
++              run=_stub_run(record))
++    assert rc != 0
++    assert not any(c[0] == "node" for c, kw in record)
++
++
++def test_row_is_appended_never_rewritten(tmp_path):
++    """runs.jsonl is append-only: a second cell leaves the first row byte-identical."""
++    results = tmp_path / "results"
++    results.mkdir()
++    (results / "runs.jsonl").write_text(
++        json.dumps({"fixture": "old", "runId": "ab-0.1.0"}) + "\n")
++    fixtures = _fixture_tree(tmp_path)
++    for run_id, ws in (("ab-t3", "ws3"), ("ab-t4", "ws4")):
++        assert main(["mini", "--overlap", "fold", "--run-id", run_id,
++                     "--results-dir", str(results),
++                     "--fixtures-root", str(fixtures),
++                     "--workspace", str(tmp_path / ws)],
++                    run=_stub_run([])) == 0
++    lines = (results / "runs.jsonl").read_text().splitlines()
++    assert len(lines) == 3
++    assert json.loads(lines[0]) == {"fixture": "old", "runId": "ab-0.1.0"}
++    assert [json.loads(l)["runId"] for l in lines[1:]] == ["ab-t3", "ab-t4"]
++
++
++def test_the_engine_is_pointed_at_the_assembled_cell_not_the_repo(tmp_path):
++    record = []
++    rc = main(["mini", "--overlap", "serialize", "--run-id", "ab-t5",
++               "--results-dir", str(tmp_path / "results"),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run(record))
++    assert rc == 0
++    node_cmd, node_kw = next((c, kw) for c, kw in record if c[0] == "node")
++    cell = tmp_path / "ws" / "mini"
++    assert node_cmd[2:6] == ["plan.md", "ab-t5", "--repo", str(cell)]
++    assert node_kw["cwd"] == str(ROOT)
++    # the cell is a real committed repo carrying the fixture's project tree:
++    assert (cell / "app.py").read_text() == "x = 1\n"
++    assert (cell / "plan.md").is_file()
++    # ...and the row points the operator at it:
++    row = json.loads((tmp_path / "results" / "runs.jsonl").read_text())
++    assert row["cellDir"] == str(cell)
++    assert row["waveShape"] == [["1"]]
++
++
++def test_no_credential_value_reaches_the_row_or_stdout(tmp_path, capsys):
++    rc = main(["mini", "--overlap", "fold", "--run-id", "ab-t6",
++               "--results-dir", str(tmp_path / "results"),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run([]))
++    assert rc == 0
++    captured = capsys.readouterr()
++    assert "tok-x" not in captured.out and "tok-x" not in captured.err
++    assert "tok-x" not in (tmp_path / "results" / "runs.jsonl").read_text()
++    # the row itself is what lands on stdout, one line:
++    printed = [l for l in captured.out.splitlines() if l.startswith("{")]
++    assert len(printed) == 1
++    assert json.loads(printed[0]) == json.loads(
++        (tmp_path / "results" / "runs.jsonl").read_text().splitlines()[0])
++
++
++def test_fixture_without_a_plan_is_refused_before_spawning_anything(tmp_path):
++    record = []
++    fixtures = _fixture_tree(tmp_path)
++    (fixtures / "mini" / "plan.md").unlink()
++    rc = main(["mini", "--overlap", "fold",
++               "--fixtures-root", str(fixtures),
++               "--workspace", str(tmp_path / "ws"),
++               "--results-dir", str(tmp_path / "results")],
++              run=_stub_run(record))
++    assert rc == 2
++    assert not any(c[0] == "node" for c, kw in record)
++    assert not (tmp_path / "results" / "runs.jsonl").exists()
++
++
++def test_default_run_id_is_stamped_and_engine_legal(tmp_path):
++    record = []
++    rc = main(["mini", "--overlap", "fold",
++               "--results-dir", str(tmp_path / "results"),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run(record))
++    assert rc == 0
++    run_id = json.loads((tmp_path / "results" / "runs.jsonl").read_text())["runId"]
++    assert run_id.startswith("ab-") and len(run_id) == len("ab-20260830120000")
++    assert ab_runner.RUN_ID_RE.match(run_id)  # run-main.mjs's own runId shape rule
++
++
++def test_illegal_run_id_is_refused_before_spawning_anything(tmp_path):
++    record = []
++    rc = main(["mini", "--overlap", "fold", "--run-id", "ab/../escape",
++               "--results-dir", str(tmp_path / "results"),
++               "--fixtures-root", str(_fixture_tree(tmp_path)),
++               "--workspace", str(tmp_path / "ws")],
++              run=_stub_run(record))
++    assert rc == 2
++    assert not any(c[0] == "node" for c, kw in record)
++
++
++def test_fixtures_root_is_never_written_into(tmp_path):
++    fixtures = _fixture_tree(tmp_path)
++    before = sorted((p.relative_to(fixtures), p.read_text())
++                    for p in fixtures.rglob("*") if p.is_file())
++    assert main(["mini", "--overlap", "fold", "--run-id", "ab-t7",
++                 "--results-dir", str(tmp_path / "results"),
++                 "--fixtures-root", str(fixtures),
++                 "--workspace", str(tmp_path / "ws")],
++                run=_stub_run([])) == 0
++    after = sorted((p.relative_to(fixtures), p.read_text())
++                   for p in fixtures.rglob("*") if p.is_file())
++    assert after == before

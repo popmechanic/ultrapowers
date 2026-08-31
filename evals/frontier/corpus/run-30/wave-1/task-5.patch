@@ -1,0 +1,143 @@
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index e9cc3768e0ca8becde00658760b036efa641dc3a..0111738c399396c6554c2d685c69ceab3d356250 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -13,6 +13,24 @@ No step here touches `skills/ultrapowers/scripts/`, `skills/ultrapowers/kernel/`
+ 
+ ## Golden VM build
+ 
++**Rebuilding an existing golden: build the replacement, then swap.** Step 1
++below creates `fleet-golden` by name, but that VM already exists and every run
++clones it (`fleet/drive-one.mjs` `DEFAULTS.golden`). Do NOT `rm` it to make
++room — a rebuild that fails partway then leaves no golden and no run can be
++provisioned until it is repaired. Instead:
++
++1. `ssh exe.dev "cp fleet-golden fleet-golden-next --json"` and apply the
++   deltas to the clone. Prefer this to a from-scratch build: the steps below
++   never recreate `~/.claude/settings.json` (`permissions.defaultMode`,
++   `enabledPlugins`, `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`), so a from-scratch
++   golden silently comes up without them. The clone inherits the `fleet` tag,
++   which the orchestrator's tag-scoped key needs in order to `cp` it.
++2. Verify: every check in this section, run against `fleet-golden-next`.
++3. Prove it with a real run: `node fleet/drive-one.mjs … --golden fleet-golden-next`.
++4. Only then `ssh exe.dev "rm fleet-golden"` and
++   `ssh exe.dev "rename fleet-golden-next fleet-golden"`. Renaming keeps the
++   `drive-one` default correct with no code change.
++
+ One hand-maintained golden VM: exeuntu + node + the ultrapowers plugin + a
+ warmed repo clone. **No superpowers, no credentials of any kind** — the golden
+ image holds nothing that could leak if a clone were ever compromised (spec
+@@ -36,7 +54,13 @@ ssh fleet-golden.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.g
+ #    The engine commits inside the sandbox and the suite is pytest, so the
+ #    image needs a git identity and pytest (python3 ships with exeuntu):
+ ssh fleet-golden.exe.xyz 'git config --global user.name fleet && git config --global user.email fleet@localhost'
+-ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest pytest-xdist && python3 -m pytest --version'
++#    `--break-system-packages` is REQUIRED, not optional: exeuntu's python3.12
++#    is PEP 668 externally-managed, so a plain `pip install --user` refuses
++#    outright ("This environment is externally managed") and the golden comes
++#    up without xdist while pytest itself still answers `--version` from
++#    /usr/local/lib/python3.12/dist-packages. Verified 2026-08-30.
++ssh fleet-golden.exe.xyz 'python3 -m pip install --user --break-system-packages pytest pytest-xdist && python3 -m pytest --version'
++ssh fleet-golden.exe.xyz 'python3 -c "import xdist; print(xdist.__version__)"'   # the import is the check, not the install's exit code
+ #    pytest-xdist halves suite wall inside runs (#426): test-command detection
+ #    emits `-n auto` when xdist is importable, serial pytest otherwise — so an
+ #    older golden without it degrades gracefully instead of failing. Opt out
+@@ -58,10 +82,20 @@ ssh fleet-golden.exe.xyz 'grep -q .bun/bin ~/.profile || echo export PATH=\"\$HO
+ ssh fleet-golden.exe.xyz 'bash -lc "bun --version"'   # non-empty, no PATH edit
+ #    Warm Bun's global package cache IN THE IMAGE so it clones with every
+ #    sandbox instead of being refetched per run (#425 item 3). With the cache
+-#    warm, a target's `bun install` is a hardlink operation: measured 574 ms,
+-#    offline, against a cold-cache fetch of the npm registry on every cell.
++#    warm, a target's `bun install` is a hardlink operation: measured 574 ms
++#    laptop-side and 17 ms on the golden with `--offline` (2026-08-30), against
++#    a cold-cache fetch of the npm registry on every cell. `bun install --offline`
++#    succeeding IS the proof the cache is real — it cannot pass by silently
++#    reaching the registry.
+ ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install && rm -rf node_modules bun.lock"'
+-ssh fleet-golden.exe.xyz 'bash -lc "du -sh \$(bun pm cache)"'   # non-empty: the cache survives
++#    Measure the cache by PATH — never with a `du -sh` of `$(bun pm cache)`:
++#    outside a project dir `bun pm cache` exits non-zero with "No package.json
++#    was found", the substitution collapses to empty, and `du -sh` silently
++#    measures `.` instead — printing a healthy-looking 535M for $HOME on a
++#    golden whose cache is cold. A check that cannot fail is not a check
++#    (2026-08-30).
++ssh fleet-golden.exe.xyz 'bash -lc "du -sh ~/.bun/install/cache"'   # tens of MB: the cache survives
++ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install --offline && rm -rf node_modules bun.lock"'
+ 
+ # 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
+ #    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).
+@@ -109,9 +143,10 @@ the plugin inside its own sandbox from the sandbox's `fleet-base` checkout —
+ ultrapowers@ultrapowers` → `claude plugin install ultrapowers@ultrapowers`,
+ ~2 s) after the `fleet-base` checkout and before the engine launches, and
+ REFUSES TO LAUNCH if any of the three fails (the run parks with
+-to the image's plugin). The `installedPluginVersion` cell the drive's
+-`versionStamp` leg reads is stamped from the post-install `claude plugin list`,
+-so it names the pushed manifest by construction. Consequences:
++to the image's plugin). The per-run re-install means the engine under test is the pushed base by
++construction; the drive's `versionStamp` leg attests the checkout stamp
++(`pluginVersion` + `engineSha`), not the installed plugin — that half died at
++0.3.0 (`drive.mjs:1123-1127`). Consequences:
+ 
+ - `claude plugin update` on the golden is no longer how the engine under test is
+   chosen — the base ref you push IS the engine. A branch, or main between
+@@ -480,7 +515,7 @@ byte for byte. Check it against the five pre-registered questions:
+ | `o1` | Did provision → claim → run → gate-green → receipts complete with zero store-caused failures (nothing the guard had to converge away)? |
+ | `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> FETCH_HEAD`), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
+ | `leaseContinuity` | Did the lease renew across the whole run with no false expiry? |
+-| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, do they match what the driver pushed (#282), and does the plugin the sandbox reports as INSTALLED (`claude plugin list --json`, stamped as `installedPluginVersion`) match the pushed manifest? Since #373 the sandbox installs the plugin from its own `fleet-base` checkout before launching, so the installed half agrees by construction; a red here means that install did not take — `detail.errors` says so and shim.log carries the `claude plugin` lines. |
++| `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, and do they match what the driver pushed (#282)? The installed-plugin half died at 0.3.0 with the install it checked (`drive.mjs:1123-1127`): no plugin participates in the run, and comparing the golden's bootstrap plugin to the pushed manifest would go permanently red at the first release bump. versionStamp attests the checkout stamp alone. |
+ | `spendObservational` | `{reported, ledger}` — the run report's own token total vs. the shim's spend-row sum. **Observational at n=1 by construction** (spec §W1d, finding F6): this first run's own numbers are the input, not a pass/fail check yet. |
+ 
+ `o1` through `versionStamp` must all be `true`. A `false` `o1` (or a non-empty
+diff --git a/tests/test_runbook_bun.py b/tests/test_runbook_bun.py
+index 0e73cecf5038a11f1a3e503678a2e6b4ff3fd73f..3e7ec880d50427aac01a4771b89cce68cdc8fa78 100644
+--- a/tests/test_runbook_bun.py
++++ b/tests/test_runbook_bun.py
+@@ -23,8 +23,42 @@ def test_runbook_says_bun_is_for_targets_not_the_driver():
+ 
+ def test_runbook_warms_the_bun_cache_in_the_image():
+     """#425 item 3: the cache clones with the sandbox, so a target's
+-    `bun install` is a hardlink operation rather than a registry fetch on every
+-    run (measured 574 ms offline, 2026-08-30). Installing the binary without
+-    warming the cache leaves the per-run network cost in place."""
+-    assert "bun pm cache" in RUNBOOK
+-    assert "bun install" in RUNBOOK
++    `bun install` is a hardlink operation rather than a registry fetch on
++    every run (17 ms offline on the golden, 2026-08-30). `--offline`
++    succeeding IS the proof — it cannot pass by silently reaching the
++    registry."""
++    assert "bun install --offline" in RUNBOOK
++
++
++def test_runbook_installs_xdist_past_pep668():
++    """exeuntu's python3.12 is externally managed: a plain `pip install --user`
++    refuses outright while `pytest --version` still answers from
++    dist-packages — a golden with no xdist and no signal. Verified 2026-08-30."""
++    assert "--break-system-packages" in RUNBOOK
++
++
++def test_runbook_proves_xdist_by_import():
++    """The install's exit code is not the check; the import is."""
++    assert "import xdist" in RUNBOOK
++
++
++def test_runbook_measures_the_bun_cache_by_path():
++    """`du -sh $(bun pm cache)` outside a project dir prints $HOME's size
++    (535M measured) instead of failing — a check that cannot fail."""
++    assert "du -sh ~/.bun/install/cache" in RUNBOOK
++    assert "du -sh \\$(bun pm cache)" not in RUNBOOK
++    assert "du -sh $(bun pm cache)" not in RUNBOOK
++
++
++def test_runbook_documents_build_then_swap():
++    """fleet-golden already exists and every run clones it; and the
++    from-scratch path never recreates ~/.claude/settings.json."""
++    assert "fleet-golden-next" in RUNBOOK
++    assert "settings.json" in RUNBOOK
++
++
++def test_runbook_versionstamp_row_drops_the_dead_installed_check():
++    """The installed-plugin cross-check died at 0.3.0 with the install it
++    checked (44e0d15); drive.mjs:1123-1127 is the source of truth. Stale prose
++    here tells an operator the gate verifies something it does not."""
++    assert "installedPluginVersion" not in RUNBOOK

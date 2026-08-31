@@ -1,0 +1,242 @@
+diff --git a/fleet/drive.mjs b/fleet/drive.mjs
+index 4edd39fa2576a884d3f30fcd4a10386cf4891b63..156518581d4e9843dd46b9329bb2e05aecb6d6ac 100644
+--- a/fleet/drive.mjs
++++ b/fleet/drive.mjs
+@@ -509,6 +509,12 @@ export const driveOne = async ({
+       errors.push(`headless-fitness: proceeding on operator override — ${summary}`)
+       note('headless-fitness: unfit plan allowed by allowUnfitPlan')
+     }
++    // #425: advisory notes ride the "Driver notes" channel and never gate a
++    // drive — no throw here, at any `allowUnfitPlan` setting. Fitness is not a
++    // second gate, and a nudge that could stop a run would make it one.
++    for (const n of fitness.notes ?? []) {
++      errors.push(`headless-fitness note (advisory): ${n.task}: ${n.note}`)
++    }
+   }
+ 
+   // #282/#190: what the stamp MUST name — resolved at drive start, from the
+diff --git a/fleet/fitness.mjs b/fleet/fitness.mjs
+index 331f6c82e5d4709ad6cc94aedd79f61a637398a1..bc9f500361a3fadd8015c49cc14ad574a7f2b66b 100644
+--- a/fleet/fitness.mjs
++++ b/fleet/fitness.mjs
+@@ -84,24 +84,53 @@ const FILES_ENTRY_RE = /^-\s*(?:Create|Modify|Test|Delete):\s*`([^`]+)`/gm
+ const TYPE_RE = /^\*\*Type:\*\*\s*(\S+)/m
+ const TEST_ENTRY_RE = /^-\s*Test:\s*`([^`]+)`/m
+ 
++// #425: TypeScript's value here is `tsc --noEmit` catching cross-task
++// interface drift — the characteristic parallel-implementation failure. A
++// plan that writes .ts files but never typechecks in its gate has given that
++// up, probably without meaning to. Say so; never refuse. This module is not a
++// second gate (see the header), and a nudge that could block would make it
++// one.
++const TS_FILE_RE = /\.tsx?$/
++const TYPECHECK_RE = /tsc\s+--noEmit/
++const GREENFIELD_TEST_CMD = 'bunx tsc --noEmit && bun test'
++
+ /**
+  * Assess whether a compiled plan is fit to dispatch headlessly: does any task
+  * carry a verification surface that can only ever be judged by a human.
+  *
++ * Also emits advisory `notes` — things worth saying that are NOT grounds to
++ * refuse a dispatch. `fit` is computed from `findings` alone; a note can
++ * never move it, and `notes` is always an array so callers never branch on
++ * `undefined`.
++ *
+  * @param {string} planText
+- * @returns {{fit: boolean, findings: Array<{task: string, reason: string}>}}
++ * @returns {{fit: boolean, findings: Array<{task: string, reason: string}>,
++ *            notes: Array<{task: string, note: string}>}}
+  */
+ export const assessHeadlessFitness = (planText) => {
+   const stripped = stripFences(planText ?? '')
+   const tasks = splitTasks(stripped)
+   const findings = []
++  const notes = []
++  // The one task the nudge attaches to: the first implementation task that
++  // writes TypeScript. Nudging every such task would say the same thing N
++  // times about one plan-level omission.
++  let firstTsTask = null
++  let anyGateTypechecks = false
+ 
+   for (const { label, body } of tasks) {
+     const typeMatch = body.match(TYPE_RE)
+     const type = typeMatch ? typeMatch[1] : 'implementation'
++
++    const entries = [...body.matchAll(FILES_ENTRY_RE)].map((m) => m[1])
++    if (type === 'gate' && TYPECHECK_RE.test(body)) anyGateTypechecks = true
++    if (type === 'implementation' && firstTsTask === null && entries.some((e) => TS_FILE_RE.test(e))) {
++      firstTsTask = label
++    }
++
+     if (type !== 'implementation') continue
+ 
+-    const filesEntries = [...body.matchAll(FILES_ENTRY_RE)].map((m) => m[1])
++    const filesEntries = entries
+     if (filesEntries.length === 0) continue
+ 
+     const allMarkdown = filesEntries.every((entry) => entry.endsWith('.md'))
+@@ -120,5 +149,16 @@ export const assessHeadlessFitness = (planText) => {
+     })
+   }
+ 
+-  return { fit: findings.length === 0, findings }
++  if (firstTsTask !== null && !anyGateTypechecks) {
++    notes.push({
++      task: firstTsTask,
++      note:
++        'advisory only (this never blocks a dispatch): this plan writes TypeScript but no gate task ' +
++        `typechecks it. The characteristic parallel-implementation failure is cross-task interface ` +
++        `drift, and \`tsc --noEmit\` is what catches it before the suite runs. Consider making the ` +
++        `gate command \`${GREENFIELD_TEST_CMD}\` (#425).`,
++    })
++  }
++
++  return { fit: findings.length === 0, findings, notes }
+ }
+diff --git a/fleet/tests/test_fitness.mjs b/fleet/tests/test_fitness.mjs
+index a3d9d77d7665f0ee8e3adda014702494b8123f2c..59a4da7f3d99ee9c45b97bc788a3a309cdd8f4e7 100644
+--- a/fleet/tests/test_fitness.mjs
++++ b/fleet/tests/test_fitness.mjs
+@@ -67,14 +67,14 @@ const manualDocTask = `### Task 4: Owner updates the wiki
+ // 2. code tasks and doc tasks WITH a Test: entry pass
+ {
+   const res = assessHeadlessFitness(plan([codeTask, docWithTestTask]))
+-  assert.deepEqual(res, { fit: true, findings: [] })
++  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
+   ok('code task and doc-with-test task are fit')
+ }
+ 
+ // 3. Type: manual is post-merge runbook material, never waved — not flagged
+ {
+   const res = assessHeadlessFitness(plan([codeTask, manualDocTask]))
+-  assert.deepEqual(res, { fit: true, findings: [] })
++  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
+   ok('manual-typed tasks are excluded (they never reach the sandbox waves)')
+ }
+ 
+@@ -97,12 +97,12 @@ const manualDocTask = `### Task 4: Owner updates the wiki
+ \`\`\`
+ `
+   const res = assessHeadlessFitness(plan([fenced]))
+-  assert.deepEqual(res, { fit: true, findings: [] })
++  assert.deepEqual(res, { fit: true, findings: [], notes: [] })
+   ok('fenced example Files blocks are ignored')
+ }
+ 
+ // 5. a plan with no tasks at all is fit (nothing to flag)
+-assert.deepEqual(assessHeadlessFitness('# empty\n'), { fit: true, findings: [] })
++assert.deepEqual(assessHeadlessFitness('# empty\n'), { fit: true, findings: [], notes: [] })
+ ok('an empty plan is fit')
+ 
+ // 6. a fence BODY that quotes a fence marker (the corpus shape: a python block
+@@ -177,7 +177,7 @@ echo nested
+ \`\`\`
+ \`\`\`\`
+ `
+-  assert.deepEqual(assessHeadlessFitness(plan([nesting])), { fit: true, findings: [] })
++  assert.deepEqual(assessHeadlessFitness(plan([nesting])), { fit: true, findings: [], notes: [] })
+   ok('a 4-backtick fence nesting a 3-backtick fence leaks nothing')
+ }
+ 
+@@ -202,7 +202,7 @@ still inside the tilde fence
+ \`\`\`
+ ~~~
+ `
+-  assert.deepEqual(assessHeadlessFitness(plan([tilde])), { fit: true, findings: [] })
++  assert.deepEqual(assessHeadlessFitness(plan([tilde])), { fit: true, findings: [], notes: [] })
+   ok('a tilde fence is not closed by a backtick fence')
+ }
+ 
+@@ -227,4 +227,92 @@ still inside the tilde fence
+   }
+ }
+ 
++// #425: a TypeScript plan whose gate never typechecks gets a NUDGE — the
++// whole value of the stack is tsc catching cross-task interface drift, and a
++// plan that skips it silently gives that up. Advisory only: `fit` must not
++// move, because fitness is not a second gate.
++{
++  const plan = [
++    '# P', '',
++    '### Task 1: Add the parser',
++    '**Type:** implementation',
++    '**Depends-on:** none', '',
++    '**Files:**',
++    '- Create: `src/parse.ts`',
++    '- Test: `tests/parse.test.ts`', '',
++    '- [ ] **Step 1: do**', '',
++    '### Task 2: Suite',
++    '**Type:** gate',
++    '**Depends-on:** 1', '',
++    '**Files:**',
++    '- Test: `tests/parse.test.ts`', '',
++    'Run: `bun test`',
++  ].join('\n')
++  const result = assessHeadlessFitness(plan)
++  assert.equal(result.fit, true, 'a nudge must never make a plan unfit')
++  assert.equal(result.findings.length, 0, 'a nudge is not a finding')
++  assert.equal(result.notes.length, 1, `expected one note, got ${JSON.stringify(result.notes)}`)
++  assert.match(result.notes[0].note, /bunx tsc --noEmit && bun test/,
++    'the note must quote the canonical testCmd verbatim')
++  ok('a TypeScript plan whose gate skips the typecheck earns one advisory note')
++}
++
++// A TypeScript plan whose gate DOES typecheck earns no note.
++{
++  const plan = [
++    '# P', '',
++    '### Task 1: Add the parser',
++    '**Type:** implementation',
++    '**Depends-on:** none', '',
++    '**Files:**',
++    '- Create: `src/parse.ts`',
++    '- Test: `tests/parse.test.ts`', '',
++    '- [ ] **Step 1: do**', '',
++    '### Task 2: Suite',
++    '**Type:** gate',
++    '**Depends-on:** 1', '',
++    '**Files:**',
++    '- Test: `tests/parse.test.ts`', '',
++    'Run: `bunx tsc --noEmit && bun test`',
++  ].join('\n')
++  const result = assessHeadlessFitness(plan)
++  assert.equal(result.notes.length, 0, 'a typechecked gate needs no nudge')
++  ok('a typechecking gate suppresses the nudge')
++}
++
++// A plan with no TypeScript files is none of this task's business.
++{
++  const plan = [
++    '# P', '',
++    '### Task 1: Add the parser',
++    '**Type:** implementation',
++    '**Depends-on:** none', '',
++    '**Files:**',
++    '- Create: `src/parse.py`',
++    '- Test: `tests/test_parse.py`', '',
++    '- [ ] **Step 1: do**',
++  ].join('\n')
++  const result = assessHeadlessFitness(plan)
++  assert.equal(result.notes.length, 0, 'a Python plan must never be nudged about tsc')
++  ok('a plan with no TypeScript file entries is never nudged')
++}
++
++// The unfit doc-task class still reports findings AND still carries a notes
++// array — shape stability for drive.mjs, which reads both.
++{
++  const plan = [
++    '# P', '',
++    '### Task 1: Write the note',
++    '**Type:** implementation',
++    '**Depends-on:** none', '',
++    '**Files:**',
++    '- Create: `docs/note.md`', '',
++    '- [ ] **Step 1: do**',
++  ].join('\n')
++  const result = assessHeadlessFitness(plan)
++  assert.equal(result.fit, false)
++  assert.ok(Array.isArray(result.notes), 'notes must always be an array')
++  ok('an unfit plan still carries a notes array')
++}
++
+ console.log(`\nALL TESTS PASSED (${passed})`)

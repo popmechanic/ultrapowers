@@ -1,0 +1,39 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index c90f7f0100adb3b1382ef51276156503a80436c7..908a8dd950b2cce0656eeced16d0d9dd67dfd0ea 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -169,7 +169,10 @@ Render the transparency block from Step 2 for the human:
+    near-miss spellings, dropped non-path Files tokens) as *needs attention*, and `kind: "inference"`
+    entries (a write/prose edge that correctly overrode a `Depends-on: none`, an inferred
+    prose-reference edge) as *informational inferences* — the latter are the compiler showing its work,
+-   not problems to fix, so do not surface them as if they were.
++   not problems to fix, so do not surface them as if they were. When the compiler reports
++   `allHeuristic: true` (the plan carries zero `Type:`/`Depends-on:` markers), the render
++   shows **`0 markers — all dispositions inferred`** so the operator knows every disposition
++   was heuristic, not authored.
+ 6. **Acceptance disposition** — render the acceptance disposition: `sealed <seal-id>` or the verbatim waiver reason. The human approves it with the rest of the interpretation.
+ 
+    When the disposition is `sealed`, present the exam's plain-English **coverage summary** (appended to the plan by the ultraplan sealing step) and give the operator this rubric for vouching — it needs **no code-reading**:
+diff --git a/tests/test_orchestrator_markers.py b/tests/test_orchestrator_markers.py
+index 861944618f18f37b42ccaf58c6523b952a9b1ab7..3076ab6b481551fe2a861f94c64ce08a1007229c 100644
+--- a/tests/test_orchestrator_markers.py
++++ b/tests/test_orchestrator_markers.py
+@@ -79,13 +79,8 @@ def test_orchestrator_wires_the_hardening():
+ 
+ def test_step3_render_documents_zero_marker_flag():
+     # The all-heuristic surface ("0 markers — all dispositions inferred") must be
+-    # documented for the operator. THIS task owns skills/ultraplan/SKILL.md (the
+-    # authoring skill), where the flag is described; the orchestrator Step-3
+-    # render lives in skills/ultrapowers/SKILL.md — a SIBLING-owned file this
+-    # task must not modify. Accept the flag documented in either surface so the
+-    # pin is green in isolation and remains green after integration.
+-    texts = [(ROOT / "skills/ultraplan/SKILL.md").read_text()]
+-    orchestrator = ROOT / "skills/ultrapowers/SKILL.md"
+-    if orchestrator.exists():
+-        texts.append(orchestrator.read_text())
+-    assert any("all dispositions inferred" in t or "0 markers" in t for t in texts)
++    # documented in the orchestrator's Step-3 render section so an operator knows
++    # when every disposition was inferred rather than authored.
++    # skills/ultrapowers/SKILL.md owns the Step-3 render; assert it directly.
++    text = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
++    assert "all dispositions inferred" in text or "0 markers" in text

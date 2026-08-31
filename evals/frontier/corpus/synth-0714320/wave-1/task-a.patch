@@ -1,0 +1,79 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 03613cb5a81620ce787cb748c816a72d7d339a40..3faa24ca1c05f82431cb44cd46979305e82ea534 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -153,9 +153,14 @@ plans, but **never** hand-author a body that is a pointer to a plan section —
+   - **`baseBranch`** — the repo's default branch (`git symbolic-ref --short refs/remotes/origin/HEAD | sed 's|^origin/||'` — strip the remote prefix; `origin/main` as a checkout target lands detached,
+     falling back to the current branch). Always set it; it anchors the integration branch and the
+     review diff base.
+-  - **Per-task review depth (`task.review`)** — mark each task `adversarial` (two independent review
+-    passes) or `lean` (one) from its risk and tier: high-stakes or `most-capable` tasks warrant
+-    `adversarial`; routine `cheap` tasks stay `lean`. This is derived from the plan, not asked.
++  - **Per-task review depth (`task.review`)** — mark a task `adversarial` (two
++    independent review passes) only when it is on a **genuine risk surface**
++    (sealed acceptance, or it touches auth / payments / migrations / public-API /
++    data-integrity — read from its `Type` / `Files` / body) **OR** it is a
++    **foundation / data-layer** task (owns the persistence/data layer and/or has
++    downstream dependents — the class that has caught real wiring bugs). Tier alone
++    never triggers it: routine `cheap`/`standard` tasks with no risk signal stay
++    `lean` (one pass). This is derived from the plan, not asked.
+   - **`tierOverrides`** — leave empty unless the human stated a budget *posture* in plain language
+     ("keep this cheap", "be thorough"); translate that, never invent it. Per-task tiers already come
+     from the plan.
+diff --git a/skills/ultrapowers/references/reviewer-prompts.md b/skills/ultrapowers/references/reviewer-prompts.md
+index 626b5d129ceac61d6b8601523d818f8b52726195..bef75b8f480dc5d5e9ec5c488e778038ba18a8e8 100644
+--- a/skills/ultrapowers/references/reviewer-prompts.md
++++ b/skills/ultrapowers/references/reviewer-prompts.md
+@@ -103,12 +103,14 @@ human) cannot run headless, so a first-dispatch `BLOCKED` records the task as
+ **Deliberate divergence from superpowers 5.1.0:** upstream subagent-driven-development
+ mandates two ORDERED review passes (spec compliance first, then code quality) and
+ red-flags merging them. Ultrapowers runs ONE merged spec+quality pass per fix-loop
+-iteration (`lean`), or two independent merged passes (`adversarial`) — a deliberate
+-trade of upstream's ordering for headless wall-clock, not an implementation of it.
+-If upstream's evidence later shows the ordering matters, the adversarial profile is
+-the place to restore it (pass 1 spec-only, pass 2 quality-only).
+-
+-The reviewer always runs at the most-capable tier (`opus`): a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks high-stakes / `most-capable` tasks `adversarial` (two independent passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk/tier, not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
++iteration (`lean`), or two independent **full-spectrum** passes (`adversarial`) whose
++findings are unioned. We deliberately **do not split** the two passes into spec-only +
++quality-only: today both passes check the full spectrum, so the union gives double
++coverage on every defect class; splitting them would give each class a single draw and
++delete the resampling redundancy that is the mechanism's whole value (an adversarial
++audit confirmed the split is a net safety regression, not the upgrade it looks like).
++
++The reviewer runs at the most-capable tier (`opus`) wherever risk is real: a weak reviewer's failure mode is the silent false `PASS`, which is worse than no reviewer. Review *depth* is set **per task**: the orchestrating agent (SKILL.md Step 2) marks only genuine risk/data-layer tasks `adversarial` (two independent full-spectrum passes, findings unioned) and leaves routine tasks `lean` (one pass) — derived from the plan's risk surface, not its tier, and not asked of the human. The run-wide `reviewProfile` is just the default for tasks that don't specify their own `review`.
+ 
+ <!-- BAKE:REVIEWER_PROMPT -->
+ You are an independent reviewer. You receive the original task text and the implementer's diff. You have no access to the Skill tool and must not consult the implementer report when forming your verdict.
+diff --git a/tests/test_review_trigger_prose.py b/tests/test_review_trigger_prose.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2ec8550e66301b0706d1efcee537786db6a2a64a
+--- /dev/null
++++ b/tests/test_review_trigger_prose.py
+@@ -0,0 +1,26 @@
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SKILL = ROOT / "skills/ultrapowers/SKILL.md"
++PROMPTS = ROOT / "skills/ultrapowers/references/reviewer-prompts.md"
++
++
++def test_skill_trigger_is_risk_based_not_tier_alone():
++    src = SKILL.read_text()
++    # The mis-firing proxy must be gone: tier alone must not warrant adversarial.
++    assert "most-capable` tasks warrant\n  `adversarial`" not in src
++    assert "most-capable` tasks warrant `adversarial`" not in src
++    # The narrowed trigger names concrete risk surfaces and the data-layer class.
++    assert "risk surface" in src
++    assert "data-layer" in src
++    assert "auth" in src and "migrations" in src
++
++
++def test_prompts_record_no_split_decision():
++    src = PROMPTS.read_text()
++    # The divergence note must record the decided end-state: keep both passes
++    # full-spectrum; do NOT split into spec-only / quality-only.
++    assert "full-spectrum" in src
++    assert "do not split" in src.lower()
++    # And must NOT still present the split as the intended restoration/upgrade.
++    assert "the place to restore it (pass 1 spec-only, pass 2 quality-only)" not in src

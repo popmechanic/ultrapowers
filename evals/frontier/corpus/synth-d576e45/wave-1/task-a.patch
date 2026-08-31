@@ -1,0 +1,131 @@
+diff --git a/skills/ultrapowers/scripts/check_superpowers_compat.py b/skills/ultrapowers/scripts/check_superpowers_compat.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0feaf7b02ae90036c8b6cd957c32f8e7768a5af3
+--- /dev/null
++++ b/skills/ultrapowers/scripts/check_superpowers_compat.py
+@@ -0,0 +1,57 @@
++"""Runtime superpowers compatibility preflight, invoked by SKILL.md Step 1.
++
++Resolves the active superpowers (enabledPlugins + installed_plugins.json), checks
++the shared contract manifest against each active install, and exits:
++  0          — all contract tokens present (prints an `advisory:` line if the
++               version differs from TESTED_AGAINST), OR superpowers is not
++               installed/resolvable (prints a skip notice).
++  non-zero   — a contract token ultrapowers depends on is missing; prints exactly
++               which token, in which file, and why."""
++import argparse
++import pathlib
++import sys
++
++# Co-located scripts: Python puts this file's dir on sys.path[0] at runtime.
++from resolve_superpowers import resolve_active
++from superpowers_contract import check, TESTED_AGAINST
++
++
++def main(claude_home, project):
++    res = resolve_active(claude_home, project)
++    active = res["active"]
++    if not active:
++        print("superpowers not installed/resolvable — skipping compat check "
++              "(the workflow path does not depend on live superpowers).")
++        return 0
++    if res["ambiguous"]:
++        print(f"note: {len(active)} enabled superpowers installs found — checking each.")
++    broken = []
++    for inst in active:
++        rep = check(inst["installPath"])
++        label = f"{inst['version']} ({inst['marketplace']})"
++        if not rep.ok:
++            broken.append((inst, rep))
++        elif inst["version"] != TESTED_AGAINST:
++            print(f"advisory: validated against superpowers {TESTED_AGAINST}; "
++                  f"you have {label}; all {rep.checked} contract tokens present.")
++    if broken:
++        for inst, rep in broken:
++            print(f"CONTRACT BREAK: superpowers {inst['version']} "
++                  f"({inst['marketplace']}) at {inst['installPath']}")
++            for e in rep.missing:
++                tok = e.get("token") or " | ".join(e.get("any_of", [])) or "(file must exist)"
++                print(f"  - MISSING [{e['rel']}] {tok!r} — {e['why']}")
++        return 1
++    return 0
++
++
++def _cli():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--claude-home", default=str(pathlib.Path.home() / ".claude"))
++    ap.add_argument("--project", default=".")
++    a = ap.parse_args()
++    return main(a.claude_home, a.project)
++
++
++if __name__ == "__main__":
++    sys.exit(_cli())
+diff --git a/tests/test_check_superpowers_compat.py b/tests/test_check_superpowers_compat.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0fd90cc687cb4e4b156cfb5d250573778f582c37
+--- /dev/null
++++ b/tests/test_check_superpowers_compat.py
+@@ -0,0 +1,62 @@
++import json, pathlib, sys
++from collections import defaultdict
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import superpowers_contract as sc  # noqa: E402
++import check_superpowers_compat as ck  # noqa: E402
++
++
++def _full_tree(root):
++    by_file = defaultdict(list)
++    for e in sc.MANIFEST:
++        by_file[e["rel"]].append(e)
++    for rel, entries in by_file.items():
++        p = root / rel
++        p.parent.mkdir(parents=True, exist_ok=True)
++        toks = [e.get("any_of", [e.get("token")])[0] for e in entries if not e.get("exists_only")]
++        p.write_text("\n".join(toks) + "\n")
++
++
++def _home_with(tmp_path, install_path, version):
++    home = tmp_path / "home"
++    (home / "plugins").mkdir(parents=True, exist_ok=True)
++    (home / "settings.json").write_text(json.dumps({"enabledPlugins": {}}))
++    (home / "plugins/installed_plugins.json").write_text(json.dumps(
++        {"plugins": {"superpowers@m": [{"installPath": str(install_path),
++                                        "version": version, "gitCommitSha": "x"}]}}))
++    return home
++
++
++def test_exit_zero_when_all_tokens_present(tmp_path, capsys):
++    sp = tmp_path / "sp"; _full_tree(sp)
++    home = _home_with(tmp_path, sp, sc.TESTED_AGAINST)
++    assert ck.main(home, tmp_path) == 0
++
++
++def test_advisory_on_version_delta_still_exit_zero(tmp_path, capsys):
++    sp = tmp_path / "sp"; _full_tree(sp)
++    home = _home_with(tmp_path, sp, "6.0.99")  # != TESTED_AGAINST
++    rc = ck.main(home, tmp_path)
++    assert rc == 0
++    assert "advisory" in capsys.readouterr().out.lower()
++
++
++def test_nonzero_and_names_missing_token(tmp_path, capsys):
++    sp = tmp_path / "sp"; _full_tree(sp)
++    # break one token: blank the writing-plans file
++    (sp / "skills/writing-plans/SKILL.md").write_text("nothing useful\n")
++    home = _home_with(tmp_path, sp, sc.TESTED_AGAINST)
++    rc = ck.main(home, tmp_path)
++    assert rc != 0
++    assert "### Task N:" in capsys.readouterr().out
++
++
++def test_skip_when_no_superpowers(tmp_path, capsys):
++    home = tmp_path / "home"
++    (home / "plugins").mkdir(parents=True, exist_ok=True)
++    (home / "settings.json").write_text(json.dumps({"enabledPlugins": {}}))
++    (home / "plugins/installed_plugins.json").write_text(json.dumps({"plugins": {}}))
++    rc = ck.main(home, tmp_path)
++    assert rc == 0
++    assert "skip" in capsys.readouterr().out.lower()

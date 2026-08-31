@@ -1,0 +1,71 @@
+diff --git a/skills/ultrapowers/scripts/render_viewer.py b/skills/ultrapowers/scripts/render_viewer.py
+index faa53630291bd45a7e6a3ed22185bd949a10f179..7575933dfa76e46e3351c1f1862dce4e36bb8808 100644
+--- a/skills/ultrapowers/scripts/render_viewer.py
++++ b/skills/ultrapowers/scripts/render_viewer.py
+@@ -37,6 +37,11 @@ SWARM_LAYOUT_PLACEHOLDER = "/*__SWARM_LAYOUT_JS__*/"
+ D3DAG_JS = HERE.parent / "viewer" / "vendor" / "d3-dag.iife.min.js"
+ SWARM_LAYOUT_JS = HERE.parent / "viewer" / "swarm_layout.js"
+ 
++D3ZOOM_PLACEHOLDER = "/*__D3ZOOM_JS__*/"
++SWARM_ZOOM_PLACEHOLDER = "/*__SWARM_ZOOM_JS__*/"
++D3ZOOM_JS = HERE.parent / "viewer" / "vendor" / "d3-zoom.iife.min.js"
++SWARM_ZOOM_JS = HERE.parent / "viewer" / "swarm_zoom.js"
++
+ # Mirror AuditProjection.CAPS in viewer/audit_project.js — keep in sync.
+ AUDIT_CAPS = {"text": 8192, "toolInput": 4096, "toolResult": 8192, "collapsed": 200}
+ 
+@@ -258,15 +263,17 @@ def render(dag, theme_name, out_path, audit_index=None, audit_embed=None, audit_
+     # drawer goes inert through a null AUDIT_INDEX below, never through a missing lib.
+     html = html.replace(AUDIT_JS_PLACEHOLDER,
+                         audit_js if audit_js is not None else AUDIT_JS.read_text())
+-    # d3-dag IIFE and the grid layout adapter are mandatory — the template references
+-    # d3 and SwarmLayout at load; a missing inline would crash the viewer immediately.
+-    for ph in (D3DAG_PLACEHOLDER, SWARM_LAYOUT_PLACEHOLDER):
++    # d3-dag IIFE, d3-zoom IIFE, and the layout/zoom adapters are mandatory — the
++    # template references d3 and SwarmLayout/SwarmZoom at load; a missing inline
++    # would crash the viewer immediately.
++    for ph in (D3DAG_PLACEHOLDER, SWARM_LAYOUT_PLACEHOLDER,
++               D3ZOOM_PLACEHOLDER, SWARM_ZOOM_PLACEHOLDER):
+         if ph not in html:
+             raise SystemExit(f"template placeholder {ph} missing — swarm_template.html was edited?")
+-    # Prepend a semicolon guard: the d3-dag IIFE doesn't end with ';', so without
+-    # it the following '(function ...' would be parsed as a function-call continuation.
+     html = html.replace(D3DAG_PLACEHOLDER, D3DAG_JS.read_text())
++    html = html.replace(D3ZOOM_PLACEHOLDER, ";\n" + D3ZOOM_JS.read_text())
+     html = html.replace(SWARM_LAYOUT_PLACEHOLDER, ";\n" + SWARM_LAYOUT_JS.read_text())
++    html = html.replace(SWARM_ZOOM_PLACEHOLDER, ";\n" + SWARM_ZOOM_JS.read_text())
+     if audit_index is not None:
+         html = html.replace(AUDIT_INDEX_PLACEHOLDER, _js_embed(audit_index))
+     if audit_embed is not None:
+diff --git a/skills/ultrapowers/viewer/swarm_template.html b/skills/ultrapowers/viewer/swarm_template.html
+index 6ad15aef83e4f888d329b47bd7ece4d9eaec6afc..c839550be680c37483484dc7aa5202e9c0494dd0 100644
+--- a/skills/ultrapowers/viewer/swarm_template.html
++++ b/skills/ultrapowers/viewer/swarm_template.html
+@@ -176,7 +176,9 @@ const THEME = /*__THEME_JSON__*/null || {
+ };
+ /*__AUDIT_JS__*/
+ /*__D3DAG_JS__*/
++/*__D3ZOOM_JS__*/
+ /*__SWARM_LAYOUT_JS__*/
++/*__SWARM_ZOOM_JS__*/
+ const AUDIT_INDEX = /*__AUDIT_INDEX__*/null;
+ const AUDIT_EMBED = /*__AUDIT_EMBED__*/null;
+ 
+diff --git a/tests/test_viewer.py b/tests/test_viewer.py
+index 531accf35ab361dfb1fe2ce5055cfc3744bfc863..6705572cadcabe113441e5412d210f5a2e63b06f 100644
+--- a/tests/test_viewer.py
++++ b/tests/test_viewer.py
+@@ -366,3 +366,13 @@ def test_index_unresolved_task_is_null_not_question_mark(tmp_path):
+     html = (out / "swarm.html").read_text()
+     assert '"task": null' in html, "unresolved task must serialize as null"
+     assert '"task": "?"' not in html, "the '?' sentinel must not reach the index"
++
++
++def test_render_inlines_d3zoom_and_swarm_zoom(tmp_path):
++    run([sys.executable, str(SCRIPTS / "render_viewer.py"), str(PLAN), "--out", str(tmp_path)])
++    html = (tmp_path / "swarm.html").read_text()
++    assert "/*__D3ZOOM_JS__*/" not in html, "d3-zoom placeholder not replaced"
++    assert "/*__SWARM_ZOOM_JS__*/" not in html, "swarm_zoom placeholder not replaced"
++    assert "globalThis.SwarmZoom" in html or "root.SwarmZoom" in html, "SwarmZoom not inlined"
++    # d3-zoom merged onto the same global d3 as d3-dag (both present, neither clobbered)
++    assert "globalThis.SwarmLayout" in html or "root.SwarmLayout" in html, "d3-dag/layout still inlined"

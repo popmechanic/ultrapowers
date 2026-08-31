@@ -1,0 +1,45 @@
+diff --git a/docs/superpowers/plans/README.md b/docs/superpowers/plans/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..a6cd902d49e8fd8ad4a5af378e2968aa680b9d1f
+--- /dev/null
++++ b/docs/superpowers/plans/README.md
+@@ -0,0 +1,10 @@
++# plans/ is historical
++
++Since 0.3.0 the per-wave plan is machine-derived and disposable, so the files in
++this directory are **historical** — a record of how past runs were shaped, not
++the input to a new one. The signed artifact that drives a run now lives in
++[`../intents/`](../intents/): you sign an intent, and the compiler derives the
++plan from it wave by wave.
++
++See [`CLAUDE.md`](../../../CLAUDE.md) for the current plan shape and where each
++document in `docs/superpowers/` fits.
+diff --git a/tests/test_plans_readme.py b/tests/test_plans_readme.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6279d7d5a137e322af0197ad4b764a3ade16ef2c
+--- /dev/null
++++ b/tests/test_plans_readme.py
+@@ -0,0 +1,23 @@
++"""The plans/ directory is historical as of 0.3.0 — the signed artifact that
++drives a run is the intent document. Pin the note's presence and key content in
++runtime form so the directory can never again read as the live input."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++README = ROOT / "docs/superpowers/plans/README.md"
++
++
++def test_plans_readme_exists():
++    assert README.is_file(), f"missing {README}"
++
++
++def test_plans_readme_is_non_empty():
++    assert README.read_text().strip(), f"{README} is empty"
++
++
++def test_plans_readme_calls_the_directory_historical():
++    assert "historical" in README.read_text().lower()
++
++
++def test_plans_readme_points_to_intents():
++    assert "intents" in README.read_text()

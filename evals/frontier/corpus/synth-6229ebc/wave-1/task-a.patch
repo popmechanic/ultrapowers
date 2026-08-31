@@ -1,0 +1,165 @@
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index e66a1a24c756833a89eebf542c16944c9c09033c..82df701dbbaa9c208d522f066a199834519d2c06 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -1249,10 +1249,11 @@ def main(argv=None):
+     args = ap.parse_args(argv)
+     emit_launch = args.emit_launch
+     emit_args = args.emit_args
+-    if args.check and (emit_launch is not None or emit_args is not None):
++    if args.check and (emit_launch is not None or emit_args is not None
++                       or args.run_dir is not None):
+         sys.exit("error: --check is mutually exclusive with --emit-launch/"
+-                 "--emit-args (--check only validates grammar; it never emits "
+-                 "launch files)")
++                 "--emit-args/--run-dir (--check only validates grammar; it "
++                 "never emits launch files)")
+     if args.check:
+         violations = collect_violations(args.plan)
+         if violations:
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index bbb5070a3710f9c0a957412644380058b50ab963..21e98cdc4cb7839740fa74597f81e170503e558b 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -33,19 +33,31 @@ RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
+ KEEP_RUNS = 10
+ 
+ 
++def _run_dirs(state_dir):
++    """All state_dir entries matching the strict run-<stamp> pattern, sorted
++    oldest-first (the stamp format sorts lexicographically = chronologically)."""
++    if not state_dir.is_dir():
++        return []
++    return sorted(d for d in state_dir.iterdir()
++                  if d.is_dir() and RUN_DIR_RE.match(d.name))
++
++
++def _doomed(state_dir, keep):
++    runs = _run_dirs(state_dir)
++    return runs[:-keep] if keep else runs
++
++
+ def prune_run_dirs(state_dir, keep=KEEP_RUNS):
+     """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
+     strict run-<stamp> names — everything else under the state dir
+     (scratch/, pending seal dirs, operator files) is not ours to touch.
+-    Stamp format sorts lexicographically = chronologically."""
+-    if not state_dir.is_dir():
+-        return []
+-    runs = sorted(d for d in state_dir.iterdir()
+-                  if d.is_dir() and RUN_DIR_RE.match(d.name))
+-    doomed = runs[:-keep] if keep else runs
++    Stamp format sorts lexicographically = chronologically. Returns only the
++    names actually removed — a failed rmtree (ignore_errors=True swallows
++    the exception) must not be reported as pruned."""
++    doomed = _doomed(state_dir, keep)
+     for d in doomed:
+         shutil.rmtree(d, ignore_errors=True)
+-    return [d.name for d in doomed]
++    return [d.name for d in doomed if not d.exists()]
+ 
+ PROBE = {"name": "ultrapowers-probe",
+          "args": {"ping": "pong",
+@@ -210,15 +222,23 @@ def main(argv=None):
+ 
+     # Scratch hygiene: the state dir self-ignores (content `*`) so every run
+     # dir is structurally invisible to git in any repo, and old run records
+-    # are pruned keep-newest-10 (runs serialize on RUN_LOCK, so no dir here
+-    # is live). Exhaust (<runDir>/review) is deleted earlier, at the SKILL.md
+-    # gate step; this prune is the crash backstop that gives cleanup a
+-    # trigger even when a run died before its gate.
++    # are pruned keep-newest-10 — a live run's stamp is always the newest, so
++    # the keep-10 window always retains it regardless of lock state. Exhaust
++    # (<runDir>/review) is deleted earlier, at the SKILL.md gate step; this
++    # prune is the crash backstop that gives cleanup a trigger even when a
++    # run died before its gate.
+     state_dir.mkdir(parents=True, exist_ok=True)
+     (state_dir / ".gitignore").write_text("*\n")
++    doomed_names = [d.name for d in _doomed(state_dir, KEEP_RUNS)]
+     pruned = prune_run_dirs(state_dir)
+-    stage("scratch-hygiene", True,
+-          "pruned %d old run dir(s)" % len(pruned) if pruned else "nothing to prune")
++    if not doomed_names:
++        detail = "nothing to prune"
++    else:
++        detail = "pruned %d old run dir(s)" % len(pruned)
++        failed = [n for n in doomed_names if n not in pruned]
++        if failed:
++            detail += "; %d removal failed: %s" % (len(failed), ", ".join(failed))
++    stage("scratch-hygiene", True, detail)
+ 
+     run_dir.mkdir(parents=True, exist_ok=True)
+     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
+diff --git a/tests/test_review_package.py b/tests/test_review_package.py
+index 64671e33e0d956d3cd4542f718c341262f673c45..6e7363af5fd6c9032121b467281443103fbfdce7 100644
+--- a/tests/test_review_package.py
++++ b/tests/test_review_package.py
+@@ -141,6 +141,8 @@ def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
+     out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
+     assert out_path.exists()
+     assert out_path.resolve().parent == dest.resolve()
+-    assert out_path.name.startswith("review-") and out_path.name.endswith(".diff")
++    base7 = git(repo, "rev-parse", "--short", base).stdout.strip()
++    head7 = git(repo, "rev-parse", "--short", head).stdout.strip()
++    assert out_path.name == f"review-{base7}..{head7}.diff"
+     body = out_path.read_text()
+     assert "# Review package:" in body and "## Commits" in body
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index 55a6d3b3ec39868c0c9316c6a4f2b2e8e07f1f15..216d19b8ba06383890f5dfe52596d567e402e32e 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -9,6 +9,8 @@ import sys
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
+ RUN = SCRIPTS / "ultra_run.py"
++sys.path.insert(0, str(SCRIPTS))
++from ultra_run import prune_run_dirs  # noqa: E402
+ 
+ PLAN = (
+     "# P\n\n**Acceptance:** waived — test fixture\n\n"
+@@ -263,3 +265,45 @@ def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
+     receipt = json.loads(r.stdout)
+     assert any(s["stage"] == "scratch-hygiene" and s["ok"]
+                for s in receipt["stages"])
++
++
++def test_check_rejects_run_dir(tmp_path):
++    repo = make_repo(tmp_path)
++    r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
++            "--check", "--run-dir", str(tmp_path / "rd")], cwd=repo, check=False)
++    assert r.returncode != 0
++    out = r.stdout + r.stderr
++    assert "--check is mutually exclusive" in out
++    assert "--run-dir" in out
++
++
++def test_prune_run_dirs_keeps_newest_including_a_live_run(tmp_path):
++    # Direct unit test of prune_run_dirs: the driver-level test's "run-t1"
++    # stamp can never match RUN_DIR_RE, so it proves nothing about a real
++    # run dir surviving the prune. Seed 12 stale dirs plus a newest dir
++    # standing in for the current run.
++    state = tmp_path / "state"
++    state.mkdir()
++    stale = [f"run-202601{day:02d}-000000" for day in range(10, 22)]  # 12
++    for name in stale:
++        (state / name).mkdir()
++    current = "run-20260122-000000"          # newest — stands in for a live run
++    (state / current).mkdir()
++    # Decoys the prune must NEVER touch.
++    (state / "scratch").mkdir()
++    (state / "pending-abc123def456").mkdir()
++    (state / "run-keepme").mkdir()
++
++    removed = prune_run_dirs(state, keep=10)
++
++    survivors = sorted(d.name for d in state.iterdir()
++                       if d.name.startswith("run-2026"))
++    assert current in survivors
++    assert len(survivors) == 10
++    expected_pruned = stale[:3]              # the 3 oldest of the 13 stamped dirs
++    assert sorted(removed) == sorted(expected_pruned)
++    for name in expected_pruned:
++        assert not (state / name).exists()
++    assert (state / "scratch").is_dir()
++    assert (state / "pending-abc123def456").is_dir()
++    assert (state / "run-keepme").is_dir()

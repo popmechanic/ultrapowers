@@ -1,0 +1,52 @@
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 241ae70f1b6d511fc4a0436f0c937864e9aa81fd..caeca27d890316c0b60ea834cbea4e97b8b4f840 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -43,6 +43,20 @@ ssh fleet-golden.exe.xyz 'python3 -m pip install --user pytest pytest-xdist && p
+ #    per run with ULTRAPOWERS_XDIST=0 in the driver env, or pass an explicit
+ #    --test-cmd (e.g. for a target repo whose suite is not parallel-safe).
+ 
++# Bun for greenfield TypeScript targets (#425). One static binary; the target's
++# own `bun install` then needs no network beyond the registry. The fleet DRIVER
++# stays on node — its spawn/SIGTERM semantics are the measured ones.
++ssh fleet-golden.exe.xyz 'curl -fsSL https://bun.sh/install | bash'
++ssh fleet-golden.exe.xyz 'export PATH="$HOME/.bun/bin:$PATH" && bun --version'
++#    `~/.bun/bin` must be on the PATH the WORKERS inherit, not just this ssh:
++#    a target's `testCmd` (`bunx tsc --noEmit && bun test`) and its
++#    `bootstrapCmd` (`bun install`) run through `bash -lc`, so the entry has to
++#    come from a login-shell file. The installer appends it to `~/.bashrc`,
++#    which exeuntu's stock `~/.profile` sources — make that explicit rather
++#    than assumed, then prove it the way a worker will see it:
++ssh fleet-golden.exe.xyz 'grep -q .bun/bin ~/.profile || echo export PATH=\"\$HOME/.bun/bin:\$PATH\" >> ~/.profile'
++ssh fleet-golden.exe.xyz 'bash -lc "bun --version"'   # non-empty, no PATH edit
++
+ # 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
+ #    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).
+ ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
+diff --git a/tests/test_runbook_bun.py b/tests/test_runbook_bun.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b856be1e9c562a123c31eeebda9cd090bd193d79
+--- /dev/null
++++ b/tests/test_runbook_bun.py
+@@ -0,0 +1,21 @@
++"""Pin: the golden VM build installs Bun and verifies it (#425). The image is
++hand-built from RUNBOOK steps, so the RUNBOOK is the only executable record —
++a missing line here is a sandbox that cannot run a Bun target."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++RUNBOOK = (ROOT / "fleet/RUNBOOK.md").read_text()
++
++
++def test_runbook_installs_bun_in_the_golden_build():
++    assert "bun.sh/install" in RUNBOOK or "install bun" in RUNBOOK.lower()
++
++
++def test_runbook_verifies_the_install():
++    assert "bun --version" in RUNBOOK
++
++
++def test_runbook_says_bun_is_for_targets_not_the_driver():
++    # the driver stays on Node — spawn/SIGTERM semantics are measured there
++    lowered = RUNBOOK.lower()
++    assert "driver" in lowered and "node" in lowered

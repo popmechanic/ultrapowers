@@ -1,0 +1,1064 @@
+diff --git a/evals/frontier/repo_weave.py b/evals/frontier/repo_weave.py
+index 0f78c7b6c1ec8cd219255d7a4e6546878eb9e66e..a1e4cbadcc44c73f4f1180ec7a33631f6142af11 100644
+--- a/evals/frontier/repo_weave.py
++++ b/evals/frontier/repo_weave.py
+@@ -21,10 +21,19 @@ order-independent sources:
+ * the kernel merge, whose kind is read off `base` alone (`add/add` for a path
+   no base tree carried, `lines` otherwise) — a per-path constant, so it cannot
+   depend on which fold the kernel happened to report the conflict on;
+-* a *presence pairing* — two incompatible records for one path (visible text
+-  and raw bytes; visible text and a delete; bytes and a delete). Each record
+-  flag is monotone across folds, so "both true for the first time" happens on
+-  exactly one fold in every order, and the pairing is reported exactly once.
++* a *presence pairing* — two incompatible records for one path (task-authored
++  text and raw bytes; visible text and a delete; bytes and a delete). Each
++  record flag is monotone across folds, so "both true for the first time"
++  happens on exactly one fold in every order, and the pairing is reported
++  exactly once.
++
++The text side of the text/bytes pairing must be *task-authored*. A path whose
++only text record is the base tree's own, rewritten as binary by a single task,
++is one writer changing the file's type, not a pairing: git reports no conflict
++there, so neither do we, and `manifest` hands the path to the bytes. Authorship
++is recorded on `RepoState.text_pristine` rather than inferred by comparing a
++weave with the base's — see `RepoState.text_authored` for why inference is
++unsound, and order-sensitively so (#132).
+ 
+ Deliberately NOT done: relabelling the kernel's conflict `delete/modify` when a
+ delete record is present. Whether the delete is already folded is fold history,
+@@ -93,12 +102,35 @@ class RepoState:
+     # path -> frozenset of task-written candidates: bytes, and/or TOMBSTONE.
+     # Base bytes are NOT candidates; they survive only while this is empty.
+     raw_candidates: dict = field(default_factory=dict)
++    # Text paths whose weave is still the base tree's own, no folded task
++    # having written them. `snapshot` seeds it with every base text path and
++    # `fold` only ever removes from it, so it shrinks monotonically. It is
++    # carried as this complement rather than as the authored set itself
++    # because the default is then the conservative reading — a state rebuilt
++    # without it reports one collision too many rather than silently handing
++    # an authored weave's path to raw bytes.
++    text_pristine: frozenset = frozenset()
+ 
+     @property
+     def raw_touched(self):
+         """Binary paths some already-folded task wrote or deleted."""
+         return frozenset(self.raw_candidates)
+ 
++    @property
++    def text_authored(self):
++        """Text paths some already-folded task wrote (#132).
++
++        Recorded, never inferred by comparing a weave with `base`'s:
++        `manyana.update_state` returns its input state *unchanged* when the new
++        lines equal the current ones, so a task that really did write the path
++        can carry the base's own weave object — a trailing-newline-only commit,
++        a mode-only commit, an edit-then-revert. Identity (and equality, which
++        sees the same states) therefore under-reports authorship; worse, it
++        under-reports it order-sensitively, because whether the surviving record
++        is still the base object depends on which folds have run.
++        """
++        return frozenset(self.files) - self.text_pristine
++
+ 
+ @dataclass(frozen=True)
+ class TaskState:
+@@ -141,7 +173,8 @@ def snapshot(repo, ref):
+             raw[p] = blob
+         else:
+             files[p] = manyana.initial_state(split_lines(blob.decode()))
+-    return RepoState(files=files, deleted_marks=frozenset(), raw=raw)
++    return RepoState(files=files, deleted_marks=frozenset(), raw=raw,
++                     text_pristine=frozenset(files))
+ 
+ 
+ def task_state_from_contents(base, task_id, contents):
+@@ -240,13 +273,13 @@ def _fold_binary(task, candidates, conflicts):
+         prior.add(item)
+ 
+ 
+-def _pairing_facts(files, candidates, deleted_marks, path):
+-    """(has a text weave, has visible text, has task bytes, is deleted).
++def _pairing_facts(files, pristine, candidates, deleted_marks, path):
++    """(has task-written text, has visible text, has task bytes, is deleted).
+ 
+     Every flag is monotone across folds:
+ 
+-    * a path never leaves `files`, and `deleted_marks`/the candidate sets only
+-      grow;
++    * a path never leaves `files`, `pristine` only shrinks, and
++      `deleted_marks`/the candidate sets only grow;
+     * visible text can only appear. Once a delete is folded, every base line of
+       the path is invisible (the delete weave carries the higher, even count),
+       so any line still visible after that was added by a task — and no other
+@@ -254,30 +287,46 @@ def _pairing_facts(files, candidates, deleted_marks, path):
+       never saw.
+     """
+     marks = candidates.get(path, ())
+-    has_text = path in files
+-    visible = has_text and bool(manyana.current_lines(files[path]))
+-    return (has_text, visible, bool(_byte_candidates(marks)), path in deleted_marks)
++    authored = path in files and path not in pristine
++    visible = path in files and bool(manyana.current_lines(files[path]))
++    return (authored, visible, bool(_byte_candidates(marks)), path in deleted_marks)
+ 
+ 
+-def _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts):
++def _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts):
+     """One conflict per path whose incompatible presence records first pair up.
+ 
+     Each flag is monotone (see `_pairing_facts`), so every not-both -> both
+-    transition happens on exactly one fold whatever the order: a text weave
+-    meeting task-written bytes reports `binary`, and text content surviving a
+-    delete reports `delete/modify`. (bytes-vs-delete is reported by
++    transition happens on exactly one fold whatever the order: a task-written
++    text weave meeting task-written bytes reports `binary`, and text content
++    surviving a delete reports `delete/modify`. (bytes-vs-delete is reported by
+     `_fold_binary`, where both records live in the same candidate set.)
++
++    A lone type change is NOT a pairing: when the only text record is the base
++    tree's own, a byte write is one writer changing the file's type, which git
++    reports clean (#132). That is why the text side keys on authorship rather
++    than on a weave merely being present.
++
++    `base` is accepted for signature symmetry with `_fold_text` and is not
++    consulted here: authorship is read off `RepoState.text_pristine`, never
++    derived by comparing a weave against `base`'s, which under-reports it (see
++    `RepoState.text_authored`).
+     """
++    pristine = frontier.text_pristine - set(task.weaves)
+     touched = set(task.weaves) | set(task.raw) | set(task.deleted)
+     for p in sorted(touched):
+-        was_text, was_visible, had_bytes, was_deleted = _pairing_facts(
+-            frontier.files, frontier.raw_candidates, frontier.deleted_marks, p)
+-        is_text, visible, has_bytes, deleted = _pairing_facts(
+-            files, candidates, deleted_marks, p)
+-        if is_text and has_bytes and not (was_text and had_bytes):
++        was_authored, was_visible, had_bytes, was_deleted = _pairing_facts(
++            frontier.files, frontier.text_pristine, frontier.raw_candidates,
++            frontier.deleted_marks, p)
++        authored, visible, has_bytes, deleted = _pairing_facts(
++            files, pristine, candidates, deleted_marks, p)
++        if authored and has_bytes and not (was_authored and had_bytes):
++            # Which record `manifest` keeps: a text record survives while it
++            # has visible lines OR was never deleted (see `manifest`).
++            winner = ("text wins the manifest" if visible or p not in deleted_marks
++                      else "bytes win the manifest")
+             conflicts.append(Conflict(p, "binary", task.task_id,
+                                       "path %s written as text and as binary "
+-                                      "concurrently; text wins the manifest" % p))
++                                      "concurrently; %s" % (p, winner)))
+         if visible and deleted and not (was_visible and was_deleted):
+             conflicts.append(Conflict(p, "delete/modify", task.task_id,
+                                       "path %s deleted concurrently with text that "
+@@ -290,25 +339,36 @@ def fold(base, frontier, task):
+     files = dict(frontier.files)
+     candidates = {p: set(c) for p, c in frontier.raw_candidates.items()}
+     deleted_marks = frontier.deleted_marks | task.deleted
++    # Every path this task weaves is task-authored from here on, whether or not
++    # the weave changed a line: `update_state` hands back the state it was
++    # given when the lines already match (see `RepoState.text_authored`).
++    text_pristine = frontier.text_pristine - set(task.weaves)
+     conflicts = []
+     _fold_text(base, task, files, conflicts)
+     _fold_binary(task, candidates, conflicts)
+-    _fold_presence(frontier, task, files, candidates, deleted_marks, conflicts)
++    _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts)
+     return (RepoState(files=files,
+                       deleted_marks=deleted_marks,
+                       raw=dict(frontier.raw),
+-                      raw_candidates={p: frozenset(c) for p, c in candidates.items()}),
++                      raw_candidates={p: frozenset(c) for p, c in candidates.items()},
++                      text_pristine=text_pristine),
+             conflicts)
+ 
+ 
+ def manifest(state):
+     """path -> normalized text (str) or raw bytes; deleted files omitted.
+ 
+-    Text wins any text/binary collision (the collision itself is reported as a
+-    conflict by `fold`), so raw bytes never silently shadow a visible weave.
++    Text wins any text/binary collision between writers (the collision itself is
++    reported as a conflict by `fold`), so raw bytes never silently shadow a
++    weave some task wrote. A *lone type change* is not such a collision: when
++    the path's only text record is the base tree's own, the bytes are the sole
++    write, so they take the path and `fold` reports nothing (#132).
+     """
+     out = {}
+     for p, w in state.files.items():
++        if p in state.text_pristine and _byte_candidates(
++                state.raw_candidates.get(p, ())):
++            continue                            # lone type change: bytes take it
+         lines = manyana.current_lines(w)
+         if lines or p not in state.deleted_marks:
+             out[p] = join_lines(lines)
+diff --git a/evals/frontier/run_eval.py b/evals/frontier/run_eval.py
+index c6b7a2de62da3bd468e57d3d796b6b0caaf8e9d7..89e4cb4f7f0304e07c20337922af376459bf9888 100644
+--- a/evals/frontier/run_eval.py
++++ b/evals/frontier/run_eval.py
+@@ -121,9 +121,9 @@ def build_fixture_case(name, compiled, seed):
+             writers.setdefault(path, []).append(task["id"])
+     shared = {p for p, ids in writers.items() if len(ids) > 1}
+ 
+-    base = rw.RepoState(
+-        files={p: manyana.initial_state(shared_base_lines(p)) for p in sorted(shared)},
+-        deleted_marks=frozenset(), raw={})
++    base_files = {p: manyana.initial_state(shared_base_lines(p)) for p in sorted(shared)}
++    base = rw.RepoState(files=base_files, deleted_marks=frozenset(), raw={},
++                        text_pristine=frozenset(base_files))
+ 
+     tasks = []
+     for task in impl:
+@@ -167,9 +167,9 @@ def fixture_cases(seed=42):
+ # --------------------------------------------------------------------------
+ 
+ def _base_from(files):
+-    return rw.RepoState(
+-        files={p: manyana.initial_state(rw.split_lines(c)) for p, c in files.items()},
+-        deleted_marks=frozenset(), raw={})
++    weaves = {p: manyana.initial_state(rw.split_lines(c)) for p, c in files.items()}
++    return rw.RepoState(files=weaves, deleted_marks=frozenset(), raw={},
++                        text_pristine=frozenset(weaves))
+ 
+ 
+ def _trio_fn(index, note):
+@@ -263,7 +263,11 @@ def synthetic_cases():
+ # --------------------------------------------------------------------------
+ 
+ def conflict_keys(conflicts):
+-    return sorted((c.path, c.kind) for c in conflicts)
++    """Order-comparison key: the SET of (path, kind) — Conflict's declared
++    identity (#132). fold's per-call return is untouched; consumers of the
++    per-fold stream (narrations, the arm-B driver) see every conflict.
++    """
++    return sorted(set((c.path, c.kind) for c in conflicts))
+ 
+ 
+ def _makespans(case):
+@@ -928,3 +932,10 @@ def main(argv=None):
+ 
+ if __name__ == "__main__":
+     sys.exit(main())
++
++
++# Public aliases for the shadow-fold front-end (spec 2026-08-11): the replay
++# internals are reused as-is — behavior pinned by the existing sim tests.
++group_chain = _group_chain
++replay_group = _replay_group
++is_ancestor = _is_ancestor
+diff --git a/evals/frontier/shadow_fold.py b/evals/frontier/shadow_fold.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..02d14df3fe071bb4a8e13fcb85a5f416717ebdc9
+--- /dev/null
++++ b/evals/frontier/shadow_fold.py
+@@ -0,0 +1,400 @@
++"""Shadow fold: re-merge a finished ultrapowers run from its finalized report.
++
++A thin front-end to `run_eval`'s existing replay machinery (`group_chain` /
++`replay_group` / `is_ancestor`, promoted to public aliases there) — see
++`docs/superpowers/specs/2026-08-11-frontier-production-test-design.md`
++Components §2 for the authoritative rules this implements. Shadow adds only
++what run_eval's archived-run recovery does not already have: a CLI that reads
++one run's finalized `report.json`, bounds the integration chain from it (tip
++= the last MERGED wave head, floor = the first two-parent merge's merge-base
++within the report-bounded walk, or a named fallback), authenticates every
++sha it is handed, harvests per-task durations from committer timestamps, and
++re-runs the makespan model with those measured durations when the run's plan
++is available. Every unshadowable shape parks or aborts by name — never a
++silent fragment.
++"""
++import argparse
++import datetime
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++ROOT = HERE.parent.parent
++sys.path.insert(0, str(HERE))
++import run_eval  # noqa: E402
++import schedule_model as sm  # noqa: E402
++
++COMPILER = ROOT / "skills" / "ultrapowers" / "scripts" / "compile_plan.py"
++NUL = "\x00"
++FMT_SHA_PARENTS = "%H%x00%P"
++
++NO_REPORT_REASON = "no finalized report (unshadowable)"
++NO_PER_TASK_MERGES_REASON = "no per-task merges (nothing to replay)"
++
++
++class ShadowAbort(Exception):
++    """A sha-resolution or ancestry violation on the selected report."""
++
++
++# --------------------------------------------------------------------------
++# git plumbing (shadow's own — the reused machinery starts one layer up, at
++# group_chain/replay_group, which already own the fold/compare discipline)
++# --------------------------------------------------------------------------
++
++def _rev(repo, *args):
++    return subprocess.run(["git", "-C", str(repo), *args], check=True,
++                          capture_output=True, text=True).stdout.strip()
++
++
++def _resolve(repo, sha):
++    """`git rev-parse --verify <sha>^{commit}` or abort loud, never guess."""
++    probe = subprocess.run(
++        ["git", "-C", str(repo), "rev-parse", "--verify", "-q", "%s^{commit}" % sha],
++        capture_output=True, text=True)
++    if probe.returncode != 0:
++        raise ShadowAbort("%s does not resolve" % sha)
++    return probe.stdout.strip()
++
++
++def _first_parent(repo, sha):
++    probe = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "-q",
++                            "%s^" % sha], capture_output=True, text=True)
++    return probe.stdout.strip() if probe.returncode == 0 else None
++
++
++def _commit_parents(repo, sha):
++    """`(sha, [parents])` for one commit, all parents (not just first)."""
++    out = _rev(repo, "rev-list", "--parents", "-n", "1", sha)
++    parts = out.split()
++    return parts[0], parts[1:]
++
++
++def _committer_time(repo, sha):
++    return int(_rev(repo, "show", "-s", "--format=%ct", sha))
++
++
++def _walk_to_bound(repo, tip, bound):
++    """Rows `(sha, parents)` from `tip` back to `bound` inclusive, tip first."""
++    rows = []
++    cur = tip
++    while True:
++        sha, parents = _commit_parents(repo, cur)
++        rows.append((sha, parents))
++        if sha == bound or not parents:
++            break
++        cur = parents[0]
++    return rows
++
++
++def _find_floor(repo, tip, bound):
++    """The first two-parent merge's merge-base within `[bound, tip]`, tip-first.
++
++    Falls back to `bound` itself (the earliest MERGED wave head's parent) when
++    no two-parent commit appears in the span — the merge-free case.
++    """
++    for sha, parents in _walk_to_bound(repo, tip, bound):
++        if len(parents) == 2:
++            return _rev(repo, "merge-base", parents[0], parents[1]), "merge-base"
++    return bound, "wave-head-parent"
++
++
++def _chain_after(repo, floor, tip):
++    """`[(sha, parents)]`, first-parent, oldest first, strictly after `floor`."""
++    out = _rev(repo, "log", "--first-parent", "--format=" + FMT_SHA_PARENTS,
++              "%s..%s" % (floor, tip))
++    rows = []
++    for line in out.splitlines():
++        if not line.strip():
++            continue
++        sha, parents = line.split(NUL)
++        rows.append((sha, parents.split()))
++    rows.reverse()
++    return rows
++
++
++# --------------------------------------------------------------------------
++# report parsing + authentication
++# --------------------------------------------------------------------------
++
++def _merged_waves(report):
++    waves = [w for w in (report.get("waveMerges") or [])
++             if w.get("status") == "MERGED" and w.get("headSha")]
++    waves.sort(key=lambda w: w.get("wave", 0))
++    return waves
++
++
++def _authenticate(repo, report, merged):
++    """Resolve every task/wave sha; check every task is an ancestor of its
++    wave's head. Raises ShadowAbort on the first violation."""
++    task_heads = {}
++    for t in report.get("tasks") or []:
++        tid, sha = t.get("task"), t.get("headSha")
++        if tid is None or not sha:
++            continue
++        task_heads[tid] = _resolve(repo, sha)
++
++    for w in merged:
++        w["headSha"] = _resolve(repo, w["headSha"])
++
++    for w in merged:
++        for branch in w.get("branches") or []:
++            head = task_heads.get(branch)
++            if head is None:
++                continue
++            if not run_eval.is_ancestor(repo, head, w["headSha"]):
++                raise ShadowAbort(
++                    "%s is not an ancestor of wave %s head %s"
++                    % (head, w.get("wave"), w["headSha"]))
++    return task_heads
++
++
++# --------------------------------------------------------------------------
++# fold + disposition
++# --------------------------------------------------------------------------
++
++def _build_waves(repo, merged, groups, trailing, floor):
++    absorbing = {floor} | {g["base_sha"] for g in groups}
++    group_by_after = {g["after_sha"]: g for g in groups}
++    trailing_refs = {e["ref"] for e in trailing}
++
++    waves_out = []
++    for w in merged:
++        head, branches = w["headSha"], w.get("branches") or []
++        if head in group_by_after:
++            group = group_by_after[head]
++            replay = run_eval.replay_group(repo, group, seed=42)
++            if replay["silent_divergence"]:
++                disposition = "divergent"
++            elif replay["conflicted_paths"]:
++                disposition = "conflicted"
++            else:
++                disposition = "clean"
++            waves_out.append({
++                "wave": w.get("wave"), "disposition": disposition,
++                "endpoints": len(group["tasks"]),
++                "narrations": [c.narration for c in replay["conflicts"]],
++                "k1Identical": replay["k1_identical"],
++                "k2Idempotent": replay["k2_idempotent"],
++                "silentDivergence": sorted(replay["silent_divergence"]),
++                "conflictedPaths": sorted(replay["conflicted_paths"]),
++            })
++        elif head in trailing_refs:
++            waves_out.append({"wave": w.get("wave"), "disposition": "trailing-cut",
++                              "endpoints": len(branches), "narrations": []})
++        elif head in absorbing or run_eval.is_ancestor(repo, head, floor):
++            waves_out.append({"wave": w.get("wave"), "disposition": "absorbed",
++                              "endpoints": len(branches), "narrations": []})
++        else:
++            waves_out.append({
++                "wave": w.get("wave"), "disposition": "excluded",
++                "endpoints": len(branches), "narrations": [],
++                "reason": "wave head not reachable in the bounded chain",
++            })
++    return waves_out
++
++
++# --------------------------------------------------------------------------
++# durations + measured-duration makespan remodel
++# --------------------------------------------------------------------------
++
++def _harvest_durations(repo, merged, task_heads, floor):
++    floor_time = _committer_time(repo, floor)
++    rows = []
++    prior_time = floor_time
++    for w in merged:
++        for branch in w.get("branches") or []:
++            head = task_heads.get(branch)
++            if head is None:
++                continue
++            if run_eval.is_ancestor(repo, head, floor):
++                rows.append({"task": branch, "reason": "at/below walk floor"})
++                continue
++            rows.append({"task": branch,
++                        "seconds": _committer_time(repo, head) - prior_time})
++        prior_time = _committer_time(repo, w["headSha"])
++    return rows
++
++
++def _find_plan_path(run_dir):
++    args_path = run_dir / "args.json"
++    if not args_path.exists():
++        return None
++    try:
++        doc = json.loads(args_path.read_text())
++    except ValueError:
++        return None
++    plan_path = doc.get("planPath")
++    if not plan_path or not Path(plan_path).exists():
++        return None
++    return Path(plan_path)
++
++
++def _remodel(run_dir, durations_out):
++    durations = {row["task"]: float(row["seconds"])
++                for row in durations_out if "seconds" in row}
++    if not durations:
++        return None, "no measured durations available"
++    plan_path = _find_plan_path(run_dir)
++    if plan_path is None:
++        return None, "no plan available in run dir"
++    try:
++        out = subprocess.run([sys.executable, str(COMPILER), str(plan_path)],
++                             capture_output=True, text=True, check=True)
++        compiled = json.loads(out.stdout)
++    except (subprocess.CalledProcessError, ValueError) as exc:
++        return None, "plan could not be compiled: %s" % exc
++    ids = sorted(durations)
++    waves = [[t for t in wave if t in durations] for wave in compiled.get("waves", [])]
++    edges = compiled.get("dag_edges", [])
++    kept = sm.drop_same_file_edges(edges)
++    try:
++        return {
++            "waves": sm.waves_makespan(waves, durations),
++            "frontier": sm.frontier_makespan(ids, edges, durations),
++            "frontier_no_same_file": sm.frontier_makespan(ids, kept, durations),
++            "same_file_edges": len(edges) - len(kept),
++            "durations_modeled": False,
++        }, None
++    except (KeyError, ValueError) as exc:
++        return None, "remodel failed: %s" % exc
++
++
++# --------------------------------------------------------------------------
++# driver
++# --------------------------------------------------------------------------
++
++def _shadow(repo, report, run_dir):
++    merged = _merged_waves(report)
++    task_heads = _authenticate(repo, report, merged)
++
++    if not merged:
++        return {"runDir": str(run_dir), "floor": None, "floorSource": None,
++                "excluded": "no MERGED waves (unshadowable)", "waves": [],
++                "durations": [], "remodel": None,
++                "remodelReason": "no MERGED waves"}
++
++    tip = merged[-1]["headSha"]
++    earliest = merged[0]["headSha"]
++    bound = _first_parent(repo, earliest)
++    if bound is None:
++        floor, floor_source = earliest, "wave-head-parent"
++    else:
++        floor, floor_source = _find_floor(repo, tip, bound)
++
++    excluded, waves_out = None, []
++    if floor_source == "merge-base":
++        chain = _chain_after(repo, floor, tip)
++        groups, trailing = run_eval.group_chain(repo, chain)
++        waves_out = _build_waves(repo, merged, groups, trailing, floor)
++    else:
++        excluded = NO_PER_TASK_MERGES_REASON
++
++    durations_out = _harvest_durations(repo, merged, task_heads, floor)
++    remodel, remodel_reason = _remodel(run_dir, durations_out)
++
++    return {
++        "runDir": str(run_dir),
++        "floor": floor,
++        "floorSource": floor_source,
++        "excluded": excluded,
++        "waves": waves_out,
++        "durations": durations_out,
++        "remodel": remodel,
++        "remodelReason": remodel_reason,
++    }
++
++
++def _stem(run_dir):
++    return "%s-shadow-%s" % (datetime.date.today().isoformat(), run_dir.name)
++
++
++def _render_md(run_dir, payload):
++    lines = ["# Shadow fold — %s" % run_dir.name, ""]
++    if payload.get("excluded"):
++        lines += ["Excluded: %s" % payload["excluded"], ""]
++    lines += ["Floor: `%s` (%s)" % (payload.get("floor"), payload.get("floorSource")), ""]
++    lines += ["## Waves", "", "| wave | disposition | endpoints |", "| --- | --- | --- |"]
++    for w in payload["waves"]:
++        lines.append("| %s | %s | %s |" % (w["wave"], w["disposition"], w["endpoints"]))
++    lines.append("")
++    lines += ["## Narrations", ""]
++    any_narration = False
++    for w in payload["waves"]:
++        for n in w.get("narrations") or []:
++            any_narration = True
++            lines += ["**wave %s**" % w["wave"], "", "```", n, "```", ""]
++    if not any_narration:
++        lines += ["none", ""]
++    lines += ["## Durations", "", "| task | seconds | reason |", "| --- | --- | --- |"]
++    for row in payload["durations"]:
++        lines.append("| %s | %s | %s |"
++                     % (row["task"], row.get("seconds", ""), row.get("reason", "")))
++    lines.append("")
++    lines += ["## Remodel", ""]
++    if payload.get("remodel"):
++        r = payload["remodel"]
++        lines.append("waves=%.1f frontier=%.1f frontier_no_same_file=%.1f same_file_edges=%d"
++                     % (r["waves"], r["frontier"], r["frontier_no_same_file"],
++                        r["same_file_edges"]))
++    else:
++        lines.append("not modeled: %s" % payload.get("remodelReason"))
++    lines.append("")
++    return "\n".join(lines)
++
++
++def _write_park(out_dir, run_dir, reason):
++    payload = {"parked": reason}
++    stem = _stem(run_dir)
++    (out_dir / (stem + ".json")).write_text(
++        json.dumps(payload, indent=2, sort_keys=True) + "\n")
++    (out_dir / (stem + ".md")).write_text(
++        "# Shadow fold — %s\n\nParked: %s\n" % (run_dir.name, reason))
++
++
++def _write_report(out_dir, run_dir, payload):
++    stem = _stem(run_dir)
++    (out_dir / (stem + ".json")).write_text(
++        json.dumps(payload, indent=2, sort_keys=True) + "\n")
++    (out_dir / (stem + ".md")).write_text(_render_md(run_dir, payload))
++
++
++def main(argv=None):
++    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
++    parser.add_argument("run_dir", help="a .claude/ultrapowers/run-<stamp>/ directory")
++    parser.add_argument("--repo", default=".", help="repository the run was merged into")
++    parser.add_argument("--report", default=None,
++                        help="override the report path (default: <run-dir>/report.json)")
++    parser.add_argument("--out", default=str(HERE / "results"),
++                        help="directory receiving the shadow .md/.json")
++    args = parser.parse_args(argv)
++
++    run_dir = Path(args.run_dir)
++    repo = Path(args.repo)
++    out_dir = Path(args.out)
++    out_dir.mkdir(parents=True, exist_ok=True)
++
++    report_path = Path(args.report) if args.report else (run_dir / "report.json")
++    if not report_path.exists():
++        _write_park(out_dir, run_dir, NO_REPORT_REASON)
++        return 0
++
++    try:
++        report = json.loads(report_path.read_text())
++    except (OSError, ValueError) as exc:
++        _write_park(out_dir, run_dir, "report.json unreadable: %s" % exc)
++        return 0
++
++    try:
++        payload = _shadow(repo, report, run_dir)
++    except ShadowAbort as exc:
++        print(str(exc), file=sys.stderr)
++        return 1
++
++    _write_report(out_dir, run_dir, payload)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/tests/test_frontier_weave.py b/tests/test_frontier_weave.py
+index 6984974c1f598184f417351ed0576e8a0db83869..25a692057a36587bb8eaf238ec7a0f42694b4cfc 100644
+--- a/tests/test_frontier_weave.py
++++ b/tests/test_frontier_weave.py
+@@ -19,7 +19,8 @@ def make_base(contents):
+             raw[p] = c
+         else:
+             files[p] = manyana.initial_state(rw.split_lines(c))
+-    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw)
++    return rw.RepoState(files=files, deleted_marks=frozenset(), raw=raw,
++                        text_pristine=frozenset(files))
+ 
+ 
+ BASE = make_base({
+@@ -37,11 +38,15 @@ def fold_in_order(base, tasks, order):
+ 
+ 
+ def conflict_keys(conflicts):
+-    return sorted((c.path, c.kind) for c in conflicts)
++    """Order-comparison key: the SET of (path, kind) — Conflict's declared
++    identity (#132). fold's per-call return is untouched; consumers of the
++    per-fold stream (narrations, the arm-B driver) see every conflict.
++    """
++    return sorted(set((c.path, c.kind) for c in conflicts))
+ 
+ 
+ def assert_order_independent(base, tasks, expected_manifest=None, expected_conflicts=None):
+-    """Fold `tasks` in EVERY order; manifest and conflict multiset must agree.
++    """Fold `tasks` in EVERY order; manifest and conflict set must agree.
+ 
+     Returns the single (manifest, conflict-keys) outcome so callers can assert
+     further on it. This is the K1 gate the module exists to measure: a rule that
+@@ -318,7 +323,12 @@ def test_binary_conflict_count_is_distinct_candidates_minus_one():
+              for i, b in enumerate((b"\x00\x09", b"\x00\x08", b"\x00\x07"))]
+     assert_order_independent(base, tasks,
+                              expected_manifest={"img.bin": b"\x00\x07"},
+-                             expected_conflicts=[("img.bin", "binary")] * 2)
++                             expected_conflicts=[("img.bin", "binary")])
++    # The count invariant (len(candidates) - 1) is order-independent by
++    # construction; pin it on ONE canonical order, since the set-based helper
++    # above can no longer see it (#132 keeps this pin).
++    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
++    assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
+ 
+ 
+ def test_base_binary_bytes_persist_until_a_task_writes_the_path():
+@@ -470,9 +480,15 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
+              rw.task_state_from_contents(base, "tdel", {"calc.py": None})]
+     manifest, _ = assert_order_independent(
+         base, tasks,
+-        expected_conflicts=[("calc.py", "delete/modify"),
+-                            ("calc.py", "lines"), ("calc.py", "lines")])
++        expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
+     assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
++    # Three writers of one path: two kernel conflicts (each arrival after the
++    # first disagrees with the accumulated weave) plus the delete/modify
++    # pairing. That count holds in all six orders; pin it on ONE canonical
++    # order, since the set-based helper above can no longer see it (#132).
++    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
++    assert sorted((c.path, c.kind) for c in conflicts) == [
++        ("calc.py", "delete/modify"), ("calc.py", "lines"), ("calc.py", "lines")]
+ 
+ 
+ def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
+diff --git a/tests/test_repo_weave_report_determinism.py b/tests/test_repo_weave_report_determinism.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3cac1d9e5adaca7a6924cfa2d5f51888cd75793f
+--- /dev/null
++++ b/tests/test_repo_weave_report_determinism.py
+@@ -0,0 +1,232 @@
++"""#132 regressions. The merge itself was always order-independent (manifests
++and conflict SETS: 0/400 fuzz divergence); only the reporting shape flipped:
++the multiset at 3+ writers x 2+ regions (12/400) and, pre-`_text_kind`, the
++delete/modify kind label (29/500). Fix = the issue's recorded candidates:
++set-based comparison + presentation nits. Seed sets are the contract."""
++import random
++import sys
++from itertools import permutations
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++sys.path.insert(0, str(ROOT / "tests"))
++import repo_weave as rw
++from test_frontier_weave import (make_base, fold_in_order, conflict_keys,
++                                 assert_order_independent)
++
++
++def _region_fn(name, body_note):
++    return ["def %s(x):" % name, "    # %s" % body_note, "    return x", ""]
++
++
++def _multiset_case(seed):
++    """3 text writers, each editing 2 distinct regions of one path."""
++    rng = random.Random(seed)
++    regions = [_region_fn("fn_%d" % i, "base") for i in range(6)]
++    base = make_base({"hot.py": "\n".join(sum(regions, []))})
++    tasks = []
++    for t in range(3):
++        picks = rng.sample(range(6), 2)
++        edited = [list(r) for r in regions]
++        for i in picks:
++            edited[i] = _region_fn("fn_%d" % i, "edit by t%d" % t)
++        tasks.append(rw.task_state_from_contents(
++            base, "t%d" % t, {"hot.py": "\n".join(sum(edited, []))}))
++    return base, tasks
++
++
++def test_multiset_seed_set_is_order_independent_under_set_comparison():
++    # The 12/400 class: any seed must yield ONE outcome under set comparison.
++    for seed in range(400):
++        base, tasks = _multiset_case(seed)
++        assert_order_independent(base, tasks)
++
++
++def test_delete_modify_kind_labels_are_order_independent():
++    # The 29/500 class: {delete, editA, editB} on one path. Expected to pass
++    # against the committed base-derived _text_kind; a failure here means a
++    # frontier-derived relabel crept back in (the order-sensitive move the
++    # repo_weave docstring warns against).
++    lines = ["def keep(x):", "    return x", "", "def gone(y):", "    return y", ""]
++    for seed in range(500):
++        rng = random.Random(seed)
++        base = make_base({"mix.py": "\n".join(lines)})
++        edit_a = list(lines); edit_a[1] = "    return x + %d" % rng.randrange(9)
++        edit_b = list(lines); edit_b[4] = "    return y * %d" % rng.randrange(9)
++        tasks = [rw.task_state_from_contents(base, "del", {"mix.py": None}),
++                 rw.task_state_from_contents(base, "ta", {"mix.py": "\n".join(edit_a)}),
++                 rw.task_state_from_contents(base, "tb", {"mix.py": "\n".join(edit_b)})]
++        assert_order_independent(base, tasks)
++
++
++def test_lone_type_change_reports_no_conflict():
++    # Presentation nit 1: a single task rewriting a base TEXT file as binary is
++    # a type change by one writer — git reports no conflict, neither do we.
++    base = make_base({"doc.txt": "hello\n"})
++    t = rw.task_state_from_contents(base, "t1", {"doc.txt": b"\x00\x01"})
++    frontier, conflicts = rw.fold(base, base, t)
++    assert conflicts == []
++    assert rw.manifest(frontier)["doc.txt"] == b"\x00\x01"
++
++
++def test_concurrent_text_edit_and_binary_write_still_conflicts():
++    # The genuine two-writer collision keeps its conflict.
++    base = make_base({"doc.txt": "hello\n"})
++    t_text = rw.task_state_from_contents(base, "t1", {"doc.txt": "hello world\n"})
++    t_bin = rw.task_state_from_contents(base, "t2", {"doc.txt": b"\x00\x01"})
++    _, keys = assert_order_independent(base, [t_text, t_bin])
++    assert ("doc.txt", "binary") in keys
++
++
++def test_binary_narration_names_the_actual_manifest_winner():
++    # Presentation nit 2: when the text side is a folded whole-file delete,
++    # bytes win the manifest — the narration must not claim text wins.
++    base = make_base({"doc.txt": "hello\n"})
++    t_del = rw.task_state_from_contents(base, "t1", {"doc.txt": None})
++    t_bin = rw.task_state_from_contents(base, "t2", {"doc.txt": b"\x00\x01"})
++    for order in ([0, 1], [1, 0]):
++        frontier, conflicts = fold_in_order(base, [t_del, t_bin], order)
++        manifest = rw.manifest(frontier)
++        for c in conflicts:
++            if c.kind == "binary" and "text wins" in c.narration:
++                assert isinstance(manifest.get("doc.txt"), str), \
++                    "narration claims text wins but bytes won: %r" % c.narration
++
++
++# --- the two fixes the prior attempt's review demanded ---------------------
++#
++# 1. Authorship is recorded, never inferred from the weave object: a task whose
++#    text write normalizes to the base's own lines (a trailing-newline-only or
++#    edit-then-revert commit) carries the base's weave object unchanged
++#    (`manyana.update_state` returns its input when the lines already match).
++# 2. The binary narration names the actual manifest winner in BOTH directions:
++#    `manifest` keeps a text record when `lines or p not in deleted_marks`, so
++#    an empty-but-not-deleted weave still wins.
++
++
++def _noop_write_tasks(base):
++    """A no-op text write (trailing newline only) racing a byte write."""
++    return [rw.task_state_from_contents(base, "t-text", {"p.txt": "l1\nl2"}),
++            rw.task_state_from_contents(base, "t-bin", {"p.txt": b"\x00\x01"})]
++
++
++def test_noop_text_write_is_recorded_as_authorship():
++    """The weave object itself is indistinguishable from the base's."""
++    base = make_base({"p.txt": "l1\nl2\n"})
++    t_text, _ = _noop_write_tasks(base)
++    assert t_text.weaves["p.txt"] == base.files["p.txt"]      # no content change
++    assert "p.txt" in t_text.weaves                           # still an authorship
++    frontier, _ = rw.fold(base, base, t_text)
++    assert "p.txt" in frontier.text_authored
++    assert "p.txt" not in base.text_authored
++
++
++def test_noop_text_write_racing_a_binary_write_is_order_independent():
++    """K1 over both legs: the manifest AND the conflict set.
++
++    Inferring authorship from `files[p] is base.files.get(p)` diverges here —
++    [text, bin] keeps the text and reports ('p.txt', 'binary'); [bin, text]
++    drops the text record and reports nothing.
++    """
++    base = make_base({"p.txt": "l1\nl2\n"})
++    manifest, keys = assert_order_independent(
++        base, _noop_write_tasks(base),
++        expected_manifest={"p.txt": "l1\nl2\n"},
++        expected_conflicts=[("p.txt", "binary")])
++    assert isinstance(manifest["p.txt"], str)
++
++
++def _assert_narration_matches_its_own_fold(base, tasks):
++    """Every binary narration's winner claim, checked against the manifest of
++    the very fold that emitted it, in every order. Both directions: a
++    "text wins" claim must find text, a "bytes win" claim must find bytes."""
++    for order in permutations(range(len(tasks))):
++        frontier = base
++        for i in order:
++            frontier, cs = rw.fold(base, frontier, tasks[i])
++            manifest = rw.manifest(frontier)
++            for c in cs:
++                # The presence pairing is the one that names a winner;
++                # `_fold_binary`'s byte-vs-byte narrations name none.
++                if "written as text and as binary" not in c.narration:
++                    continue
++                got = manifest.get(c.path)
++                if "text wins" in c.narration:
++                    assert isinstance(got, str), \
++                        "claims text wins, manifest has %r: %r" % (got, c.narration)
++                elif "bytes win" in c.narration:
++                    assert isinstance(got, bytes), \
++                        "claims bytes win, manifest has %r: %r" % (got, c.narration)
++                else:
++                    raise AssertionError("narration names no winner: %r" % c.narration)
++
++
++def test_binary_narration_bytes_win_direction():
++    """Folded whole-file delete + byte write: bytes win, and it must say so."""
++    base = make_base({"doc.txt": "hello\n"})
++    tasks = [rw.task_state_from_contents(base, "t-del", {"doc.txt": None}),
++             rw.task_state_from_contents(base, "t-bin", {"doc.txt": b"\x00\x01"})]
++    manifest, keys = assert_order_independent(
++        base, tasks, expected_manifest={"doc.txt": b"\x00\x01"},
++        expected_conflicts=[("doc.txt", "binary")])
++    _assert_narration_matches_its_own_fold(base, tasks)
++
++
++def test_binary_narration_text_wins_on_an_emptied_but_undeleted_path():
++    """The mirror the prior regression left half-verified: an EMPTY weave that
++    was never deleted still wins the manifest (`lines or p not in
++    deleted_marks`), so the narration may not hand it to the bytes."""
++    base = make_base({"t.txt": "l1\nl2\n"})
++    tasks = [rw.task_state_from_contents(base, "t1", {"t.txt": ""}),
++             rw.task_state_from_contents(base, "t2", {"t.txt": b"\x00\x01"})]
++    manifest, keys = assert_order_independent(
++        base, tasks, expected_manifest={"t.txt": ""},
++        expected_conflicts=[("t.txt", "binary")])
++    _assert_narration_matches_its_own_fold(base, tasks)
++
++
++def _mixed_tasks(rng, base, ntasks):
++    """Text edits, NO-OP text writes, byte writes and deletes over a base-text,
++    a base-binary and a new path."""
++    per_task = []
++    for i in range(ntasks):
++        contents = {}
++        for p in ("p.txt", "b.bin", "c.new"):
++            r = rng.random()
++            if r < 0.2:
++                continue
++            if r < 0.4:
++                contents[p] = None
++            elif r < 0.6:
++                contents[p] = bytes([0, rng.randint(1, 3)])
++            elif r < 0.8:
++                contents[p] = "l1\nX%d\nl2\n" % rng.randint(1, 3)
++            else:
++                contents[p] = "l1\nl2"           # no-op on p.txt, an add elsewhere
++        per_task.append(contents)
++    return [rw.task_state_from_contents(base, "t%d" % i, c)
++            for i, c in enumerate(per_task)]
++
++
++def test_randomized_mixes_including_noop_text_writes_are_order_independent():
++    """The hole the committed fuzz never reached: it always writes content that
++    differs from the base, so no task ever carries the base's own weave."""
++    rng = random.Random(132)
++    base = make_base({"p.txt": "l1\nl2\n", "b.bin": b"\x00\x01"})
++    seen = set()
++    for _ in range(300):
++        tasks = _mixed_tasks(rng, base, rng.randint(2, 3))
++        _, keys = assert_order_independent(base, tasks)
++        seen.update(k for _, k in keys)
++    assert {"binary", "delete/modify", "lines", "add/add"} <= seen
++
++
++def test_randomized_mixes_narrate_the_winner_they_actually_produce():
++    """The reviewer's sweep, kept: no fold may claim a winner its own manifest
++    contradicts."""
++    rng = random.Random(1320)
++    base = make_base({"p.txt": "l1\nl2\n", "b.bin": b"\x00\x01"})
++    for _ in range(300):
++        tasks = _mixed_tasks(rng, base, rng.randint(2, 3))
++        _assert_narration_matches_its_own_fold(base, tasks)
+diff --git a/tests/test_shadow_fold.py b/tests/test_shadow_fold.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8da4f1a0ddaf9c8a9d7daf6c6abff4e138bacbce
+--- /dev/null
++++ b/tests/test_shadow_fold.py
+@@ -0,0 +1,103 @@
++"""Shadow-fold: bound the chain, hand it to run_eval's inherited replay
++machinery, compare against the shipped trees, park every unshadowable shape
++by name (spec 2026-08-11 component 2)."""
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++SCRIPT = ROOT / "evals/frontier/shadow_fold.py"
++
++
++def git(cwd, *args):
++    return subprocess.run(["git", *args], cwd=cwd, check=True,
++                          capture_output=True, text=True).stdout.strip()
++
++
++def _commit_all(repo, msg):
++    git(repo, "add", "-A"); git(repo, "commit", "-qm", msg)
++    return git(repo, "rev-parse", "HEAD")
++
++
++def make_run(tmp_path):
++    """fork -> recon (pre-first-merge) -> wave-1 merge(t1)+merge(t2) -> FF t3."""
++    repo = tmp_path / "repo"; repo.mkdir()
++    git(repo, "init", "-qb", "main")
++    git(repo, "config", "user.email", "s@t"); git(repo, "config", "user.name", "s")
++    (repo / "a.py").write_text("A = 1\n"); (repo / "b.py").write_text("B = 1\n")
++    fork = _commit_all(repo, "fork")
++    git(repo, "checkout", "-qb", "integ")
++    (repo / "note.md").write_text("recon\n"); recon = _commit_all(repo, "recon")
++    heads = {}
++    for tid, path, text in (("t1", "a.py", "A = 2\n"), ("t2", "b.py", "B = 2\n")):
++        git(repo, "checkout", "-qb", tid, recon if tid == "t1" else recon)
++        (repo / path).write_text(text); heads[tid] = _commit_all(repo, tid)
++        git(repo, "checkout", "-q", "integ")
++        git(repo, "merge", "-q", "--no-ff", tid, "-m", "merge %s" % tid)
++    wave1 = git(repo, "rev-parse", "HEAD")
++    (repo / "a.py").write_text("A = 3\n"); heads["t3"] = _commit_all(repo, "t3")
++    wave2 = heads["t3"]                                    # FF single-task wave
++    run_dir = tmp_path / "run-shadowtest"; run_dir.mkdir()
++    (run_dir / "report.json").write_text(json.dumps({"waveMerges": [
++        {"wave": 1, "status": "MERGED", "headSha": wave1, "branches": ["t1", "t2"]},
++        {"wave": 2, "status": "MERGED", "headSha": wave2, "branches": ["t3"]}],
++        "tasks": [{"task": t, "headSha": h} for t, h in heads.items()]}))
++    return repo, run_dir
++
++
++def run_shadow(repo, run_dir, out, extra=()):
++    return subprocess.run([sys.executable, str(SCRIPT), str(run_dir),
++                           "--repo", str(repo), "--out", str(out), *extra],
++                          capture_output=True, text=True)
++
++
++def test_merge_wave_folds_clean_and_ff_wave_takes_inherited_disposition(tmp_path):
++    repo, run_dir = make_run(tmp_path)
++    p = run_shadow(repo, run_dir, tmp_path / "out")
++    assert p.returncode == 0, p.stderr
++    payload = json.loads(next((tmp_path / "out").glob("*-shadow-*.json")).read_text())
++    w1 = next(w for w in payload["waves"] if w["wave"] == 1)
++    assert w1["disposition"] == "clean" and w1["endpoints"] == 2
++    w2 = next(w for w in payload["waves"] if w["wave"] == 2)
++    assert w2["disposition"] in ("absorbed", "trailing-cut")
++    assert payload["floorSource"] == "merge-base"          # not the FF fallback
++
++
++def test_no_report_parks_by_name(tmp_path):
++    repo, run_dir = make_run(tmp_path)
++    (run_dir / "report.json").unlink()
++    p = run_shadow(repo, run_dir, tmp_path / "out")
++    assert p.returncode == 0
++    payload = json.loads(next((tmp_path / "out").glob("*-shadow-*.json")).read_text())
++    assert payload["parked"] == "no finalized report (unshadowable)"
++
++
++def test_fabricated_task_sha_aborts_loud(tmp_path):
++    repo, run_dir = make_run(tmp_path)
++    doc = json.loads((run_dir / "report.json").read_text())
++    doc["tasks"][0]["headSha"] = doc["tasks"][0]["headSha"][:7] + "0" * 33
++    (run_dir / "report.json").write_text(json.dumps(doc))
++    p = run_shadow(repo, run_dir, tmp_path / "out")
++    assert p.returncode != 0
++    assert "does not resolve" in (p.stderr + p.stdout)
++
++
++def test_non_merged_wave_entries_are_not_consumed(tmp_path):
++    repo, run_dir = make_run(tmp_path)
++    doc = json.loads((run_dir / "report.json").read_text())
++    doc["waveMerges"][1]["status"] = "FAILED"
++    (run_dir / "report.json").write_text(json.dumps(doc))
++    p = run_shadow(repo, run_dir, tmp_path / "out")
++    assert p.returncode == 0, p.stderr
++    payload = json.loads(next((tmp_path / "out").glob("*-shadow-*.json")).read_text())
++    assert [w["wave"] for w in payload["waves"]] == [1]
++
++
++def test_durations_present_or_named_unavailable(tmp_path):
++    repo, run_dir = make_run(tmp_path)
++    p = run_shadow(repo, run_dir, tmp_path / "out")
++    assert p.returncode == 0, p.stderr
++    payload = json.loads(next((tmp_path / "out").glob("*-shadow-*.json")).read_text())
++    for row in payload["durations"]:
++        assert ("seconds" in row and row["seconds"] >= 0) or row.get("reason")

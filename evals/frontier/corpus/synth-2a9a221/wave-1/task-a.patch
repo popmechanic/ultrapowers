@@ -1,0 +1,14 @@
+diff --git a/tests/test_review_package.py b/tests/test_review_package.py
+index 64671e33e0d956d3cd4542f718c341262f673c45..6e7363af5fd6c9032121b467281443103fbfdce7 100644
+--- a/tests/test_review_package.py
++++ b/tests/test_review_package.py
+@@ -141,6 +141,8 @@ def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
+     out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
+     assert out_path.exists()
+     assert out_path.resolve().parent == dest.resolve()
+-    assert out_path.name.startswith("review-") and out_path.name.endswith(".diff")
++    base7 = git(repo, "rev-parse", "--short", base).stdout.strip()
++    head7 = git(repo, "rev-parse", "--short", head).stdout.strip()
++    assert out_path.name == f"review-{base7}..{head7}.diff"
+     body = out_path.read_text()
+     assert "# Review package:" in body and "## Commits" in body

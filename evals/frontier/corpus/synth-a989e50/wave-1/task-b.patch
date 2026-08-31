@@ -1,0 +1,145 @@
+diff --git a/skills/ultrapowers/viewer/swarm_layout.js b/skills/ultrapowers/viewer/swarm_layout.js
+index 8c3e42b3aea55aefd40f0a85c58650e317e76daf..c0d7df1edc2323b893dcc0dc9afa281013781d67 100644
+--- a/skills/ultrapowers/viewer/swarm_layout.js
++++ b/skills/ultrapowers/viewer/swarm_layout.js
+@@ -60,7 +60,66 @@
+     return { nodes: nodes, edges: outEdges, width: width, height: height, sinkId: SINK };
+   }
+ 
+-  var api = { computeGrid: computeGrid, SINK: SINK };
++  // Meso git-graph topology for ONE task, assembled from observed data: the
++  // integration trunk, the branch fork, real commit nodes, review gate(s), and
++  // the two-parent merge. sha/subject are real; the impl/fix tint is inferred
++  // (a second impl agent on a task is a fix round — the engine re-dispatches the
++  // implementer prompt, so there is no distinct "fix" role). Geometry only.
++  var M_MARGIN = 60, M_ROW = 64, M_LANE = 120, M_GATE_DX = 26;
++
++  function buildMeso(meso) {
++    var commits = (meso.commits || []).map(function (c) {
++      return { sha: c.sha, subject: c.subject, role: "impl", x: 0, y: 0 };
++    });
++    var agents = meso.agents || [];
++    var nImpl = agents.filter(function (a) { return a.role === "impl"; }).length;
++    var nReview = agents.filter(function (a) { return a.role === "review"; }).length;
++    var fixIters = Math.max(0, nImpl - 1);
++
++    var trunkX = M_MARGIN, branchX = M_MARGIN + M_LANE;
++    var forkY = M_MARGIN;
++
++    // tint the LAST fixIters commits as fix (keep >=1 impl)
++    var fixCount = Math.min(fixIters, Math.max(0, commits.length - 1));
++    var firstFix = commits.length - fixCount;
++    for (var i = 0; i < commits.length; i++)
++      commits[i].role = (i >= firstFix) ? "fix" : "impl";
++
++    // lay rows top->down: impl commits, then gate row, then fix commits
++    var row = 1;
++    for (var j = 0; j < firstFix; j++) {
++      commits[j].x = branchX; commits[j].y = forkY + row * M_ROW; row++;
++    }
++    var gates = [];
++    if (nReview > 0) {
++      var kind = (meso.reviewDepth === "lean") ? "lean"
++        : (meso.reviewDepth === "adversarial") ? "adversarial"
++        : (nReview >= 2 ? "adversarial" : "lean");
++      var gy = forkY + row * M_ROW; row++;
++      if (kind === "adversarial") {
++        gates.push({ lane: 0, kind: kind, x: branchX - M_GATE_DX, y: gy });
++        gates.push({ lane: 1, kind: kind, x: branchX + M_GATE_DX, y: gy });
++      } else {
++        gates.push({ lane: 0, kind: kind, x: branchX, y: gy });
++      }
++    }
++    for (var k = firstFix; k < commits.length; k++) {
++      commits[k].x = branchX; commits[k].y = forkY + row * M_ROW; row++;
++    }
++
++    var lastY = forkY + Math.max(1, row) * M_ROW;
++    var merge = meso.merged ? { x: trunkX, y: lastY + M_ROW } : null;
++    var bottomY = merge ? merge.y : lastY;
++    return {
++      trunk: { x: trunkX, y0: forkY, y1: bottomY },
++      fork: { x: branchX, y: forkY },
++      merge: merge, branchX: branchX, commits: commits, gates: gates,
++      width: branchX + M_LANE,
++      height: bottomY + M_MARGIN,
++    };
++  }
++
++  var api = { computeGrid: computeGrid, buildMeso: buildMeso, SINK: SINK };
+   root.SwarmLayout = api;
+   if (typeof module !== "undefined" && module.exports) module.exports = api;
+ })(typeof globalThis !== "undefined" ? globalThis : this);
+diff --git a/tests/swarm_meso_spec.mjs b/tests/swarm_meso_spec.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf436aeba05ec36f671132ebda60b1b3c01c59b8
+--- /dev/null
++++ b/tests/swarm_meso_spec.mjs
+@@ -0,0 +1,43 @@
++import { createRequire } from "node:module";
++const require = createRequire(import.meta.url);
++const L = require("../skills/ultrapowers/viewer/swarm_layout.js");
++
++let failed = 0;
++const ok = (c, m) => { if (!c) { failed++; console.error("FAIL", m); } };
++const finite = o => Number.isFinite(o.x) && Number.isFinite(o.y);
++
++// A — lean review, no fix, merged
++const a = L.buildMeso({
++  commits: [{ sha: "aaa", subject: "test: red" }, { sha: "bbb", subject: "feat: green" }],
++  agents: [{ role: "impl" }, { role: "review" }],
++  merged: true,
++});
++ok(a.commits.length === 2 && a.commits.every(c => c.role === "impl"), "A: 2 impl commits, none fix");
++ok(a.gates.length === 1 && a.gates[0].kind === "lean", "A: one lean gate");
++ok(a.merge && finite(a.merge), "A: merge node present (merged)");
++ok(finite(a.fork) && a.fork.y < a.commits[0].y, "A: fork above first commit");
++ok(a.commits[0].y < a.commits[1].y, "A: commits ordered top->down");
++ok(a.commits[1].y < a.merge.y, "A: merge below the last commit");
++ok([a.fork, ...a.commits, ...a.gates, a.merge].every(finite), "A: all coords finite");
++ok(a.width > 0 && a.height > 0, "A: positive bounds");
++
++// B — adversarial review + a fix round, not merged
++const b = L.buildMeso({
++  commits: [{ sha: "1", subject: "red" }, { sha: "2", subject: "green" }, { sha: "3", subject: "fix" }],
++  agents: [{ role: "impl" }, { role: "review" }, { role: "review" }, { role: "impl" }],
++  merged: false,
++});
++ok(b.commits.filter(c => c.role === "fix").length === 1, "B: last commit tinted fix");
++ok(b.commits[2].role === "fix" && b.commits[0].role === "impl", "B: fix is the LAST commit");
++ok(b.gates.length === 2 && b.gates.every(g => g.kind === "adversarial"), "B: two adversarial gates");
++ok(b.gates[0].lane !== b.gates[1].lane, "B: adversarial gates on different lanes");
++ok(b.merge === null, "B: no merge node (unmerged)");
++
++// C — explicit reviewDepth override + zero commits edge case
++const c = L.buildMeso({ commits: [], agents: [{ role: "impl" }], merged: false, reviewDepth: "lean" });
++ok(Array.isArray(c.commits) && c.commits.length === 0, "C: no commits ok");
++ok(c.gates.length === 0, "C: no review agent => no gate even with reviewDepth hint");
++ok(c.width > 0 && c.height > 0 && finite(c.fork), "C: still a valid box");
++
++console.log(failed === 0 ? "ALL TESTS PASSED" : `${failed} FAILED`);
++process.exit(failed === 0 ? 0 : 1);
+diff --git a/tests/test_swarm_meso.py b/tests/test_swarm_meso.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..da92309698c8142f176deef363c77757069a6644
+--- /dev/null
++++ b/tests/test_swarm_meso.py
+@@ -0,0 +1,18 @@
++"""Run the JS meso-assembly spec (tests/swarm_meso_spec.mjs). Requires node; skips without it."""
++import pathlib
++import shutil
++import subprocess
++
++import pytest
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SPEC = ROOT / "tests/swarm_meso_spec.mjs"
++
++
++def test_swarm_meso_js():
++    node = shutil.which("node")
++    if node is None:
++        pytest.skip("node not available")
++    p = subprocess.run([node, str(SPEC)], capture_output=True, text=True)
++    assert p.returncode == 0, p.stdout + p.stderr
++    assert "ALL TESTS PASSED" in p.stdout, p.stdout + p.stderr

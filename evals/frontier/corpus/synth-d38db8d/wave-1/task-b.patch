@@ -1,0 +1,311 @@
+diff --git a/skills/ultrapowers/harnesses/waves.js b/skills/ultrapowers/harnesses/waves.js
+index 20095e0cf73bc87a551d038e653d1a7310b05399..72c0a1708a2f2fad44902418932b4bfc619887f1 100644
+--- a/skills/ultrapowers/harnesses/waves.js
++++ b/skills/ultrapowers/harnesses/waves.js
+@@ -1389,6 +1389,13 @@ const contendingTasksBlock = (waveTasks) => {
+       : '')
+ }
+ 
++// The tasks of wave `waveIdx` that actually merged — one join, used by the
++// contended-merge routing and the composition rows alike (#186: it was
++// written twice, and two copies is where one drifts).
++const mergedWaveTasks = (waveIdx, merged) =>
++  (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
++    .filter((t) => t && merged.some((r) => r.task === t.id))
++
+ // Returns the adoption result (MERGE_SCHEMA shape) when the candidate was
+ // adopted, or null to fall the wave back to the git-merge path. Fallback is live
+ // strictly before adoption: the fold consumes task branches but never destroys
+@@ -1399,8 +1406,7 @@ async function contendedMerge(merged, waveIdx, slotsLine) {
+   // ENGINE-AUTHORED wave base: waveBaseSha advances only AFTER a merge, so at
+   // dispatch time it is exactly the previous integration head.
+   const prevHead = waveBaseSha
+-  const waveTasks = (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
+-    .filter((t) => t && merged.some((r) => r.task === t.id))
++  const waveTasks = mergedWaveTasks(waveIdx, merged)
+   const transcripts = []
+   let fold = null
+   // The fold-CLI invocations this wave drove, the wall clock they reported, and
+@@ -1756,9 +1762,7 @@ async function mergeWave(results, waveIdx) {
+   // and git-merge paths alike — the composition is real either way, and two call
+   // sites is where one of them drifts. Scoped to the tasks that actually merged:
+   // a task that never landed wrote nothing and cannot contend.
+-  compositionRows(waveIdx + 1,
+-    (Array.isArray(WAVES[waveIdx]) ? WAVES[waveIdx] : [])
+-      .filter((t) => t && merged.some((r) => r.task === t.id)))
++  compositionRows(waveIdx + 1, mergedWaveTasks(waveIdx, merged))
+   if (contendedWave(merged, waveIdx)) {
+     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
+     // Fallback (null) drops through to the git-merge path below with the branch
+diff --git a/tests/frontier_merge.mjs b/tests/frontier_merge.mjs
+index a10a7fca772fc41bb532b4ed7d941000ef3737ca..ef29fc8f7a0783296d81089c4162bab000458837 100644
+--- a/tests/frontier_merge.mjs
++++ b/tests/frontier_merge.mjs
+@@ -1189,6 +1189,29 @@ async function scenarioCommutesArgsOnCommands() {
+   console.log('scenario 11b commutes-args-on-commands: OK')
+ }
+ 
++// ── 11e: autoResolved is a SUM, not last-value-wins ─────────────────────────
++// 11a/11b each carry the count on ONE leg, so `+=` → `=` in addWall stays green
++// there. Here the fold leg reports 1 and the resolve leg 2: frontier must be 3.
++async function scenarioAutoResolvedSumsAcrossLegs() {
++  const calls = []
++  const open = [openEntry(1, 'shared.py', 2)]
++  const agent = makeAgent(calls, (label) => {
++    if (label === 'merge:wave1:fold') return Object.assign(conflictFoldReply(open, []), { autoResolved: 1 })
++    if (label === 'resolve:wave1:1:1') return { status: 'RESOLVED', notes: 'unioned' }
++    if (label === 'merge:wave1:apply1:1') {
++      return { status: 'FOLDED', complete: true, selfChecks: 'ok', autoResolved: 2,
++               open: [], remaining: [] }
++    }
++    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-sum' }
++    return undefined
++  })
++  const r = await runWorkflow({ agent, args: argsFor(commutesWave()), budget: undefined })
++  eq(r.waveMerges[0].headSha, 'cand-sum', 'sum: the wave adopted its folded candidate')
++  eq(r.frontier[0].autoResolved, 3,
++     'sum: autoResolved is 1 (fold) + 2 (resolve) = 3 — a last-value-wins accumulator reads 2')
++  console.log('scenario 11e auto-resolved-sums-across-legs: OK')
++}
++
+ // ── 11c: a composition-unpinned row for an undeclared multi-writer path ─────
+ async function scenarioCompositionUnpinnedRow() {
+   const calls = []
+@@ -1272,6 +1295,101 @@ await scenarioBudgetExhaustedMidWorkList()
+ await scenarioAutoResolvedFoldCompletes()
+ await scenarioCommutesArgsOnCommands()
+ await scenarioCompositionUnpinnedRow()
++// ── 11f–11i: composition rows — the four negative paths ─────────────────────
++// (f) one writer per path → no row (delete the `ids.length < 2` guard: green today)
++// (g) every writer declared → no row (delete the `undeclared.length` guard: green today)
++// (h) mixed writes (one task carries `writes`, one does not) → ONE skip note, no row
++// (i) partially-merged wave (a writer failed) → the failed writer is excluded, no row
++async function scenarioCompositionSingleWriterNoRow() {
++  const calls = []
++  const agent = makeAgent(calls)
++  const waves = [[
++    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['a.py'], writes: ['a.py'], commutes: [] },
++    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['b.py'], writes: ['b.py'], commutes: [] },
++  ]]
++  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
++  eq(r.waveMerges[0].status, 'MERGED', 'single-writer: the wave merged')
++  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
++    'single-writer: a path with one writer is never a composition row' +
++    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
++  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
++    'single-writer: a wave whose tasks all carry writes is never skipped')
++  console.log('scenario 11f composition-single-writer-no-row: OK')
++}
++
++async function scenarioCompositionAllDeclaredNoRow() {
++  const calls = []
++  const agent = makeAgent(calls, (label) => {
++    if (label === 'merge:wave1:fold') return cleanFoldReply()
++    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-all' }
++    return undefined
++  })
++  const waves = [[
++    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
++    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: ['shared.py'] },
++  ]]
++  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
++  eq(r.waveMerges[0].headSha, 'cand-all', 'all-declared: the contended wave adopted its candidate')
++  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
++    'all-declared: every writer declared the path — no unpinned composition' +
++    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
++  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
++    'all-declared: the no-row outcome comes from the declared-commutes path, never the skip path')
++  console.log('scenario 11g composition-all-declared-no-row: OK')
++}
++
++async function scenarioCompositionMixedWritesSkipNote() {
++  const calls = []
++  const agent = makeAgent(calls, (label) => {
++    if (label === 'merge:wave1:fold') return cleanFoldReply()
++    if (label === 'merge:wave1:adopt') return { status: 'MERGED', headSha: 'cand-mixed' }
++    return undefined
++  })
++  const waves = [[
++    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
++    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'] },   // no writes field
++  ]]
++  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
++  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
++    'mixed-writes: no row is guessed when any task lacks writes' +
++    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
++  const notes = r.judgmentCalls.filter((j) => /composition rows skipped/.test(j))
++  eq(notes, ['wave 1: tasks carry no writes field — composition rows skipped'],
++     'mixed-writes: exactly one skip note, naming the wave')
++  console.log('scenario 11h composition-mixed-writes-skip-note: OK')
++}
++
++async function scenarioCompositionPartiallyMergedExcludesFailedWriter() {
++  const calls = []
++  const agent = makeAgent(calls, (label) => {
++    if (label === 'impl:t2' || label === 'fix:t2') {
++      return { status: 'BLOCKED', summary: 'cannot', branch: 'wt-t2', headSha: 'sha-t2' }
++    }
++    return undefined
++  })
++  // both tasks WRITE shared.py and neither declares it — but t2 never merges,
++  // so the merged wave has one writer and no composition exists to pin.
++  const waves = [[
++    { id: 't1', title: 'one', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
++    { id: 't2', title: 'two', body: 'b', tier: 'cheap', files: ['shared.py'], writes: ['shared.py'], commutes: [] },
++  ]]
++  const r = await runWorkflow({ agent, args: argsFor(waves), budget: undefined })
++  eq(r.tasks.find((t) => t.task === 't2').status, 'failed', 'partial: t2 failed')
++  eq(r.waveMerges[0].status, 'MERGED', 'partial: the wave merged t1 alone')
++  assert(!has(calls, 'merge:wave1:fold'), 'partial: one mergeable task is not a contended wave')
++  assert(!r.judgmentCalls.some((j) => j.startsWith('composition-unpinned:')),
++    'partial: the failed writer is excluded from the row derivation' +
++    ' (got ' + JSON.stringify(r.judgmentCalls) + ')')
++  assert(!r.judgmentCalls.some((j) => /composition rows skipped/.test(j)),
++    'partial: the merged task carries writes — never skipped')
++  console.log('scenario 11i composition-partially-merged-excludes-failed-writer: OK')
++}
++
+ await scenarioWritesAbsentSkipsCompositionRows()
++await scenarioAutoResolvedSumsAcrossLegs()
++await scenarioCompositionSingleWriterNoRow()
++await scenarioCompositionAllDeclaredNoRow()
++await scenarioCompositionMixedWritesSkipNote()
++await scenarioCompositionPartiallyMergedExcludesFailedWriter()
+ 
+ console.log('ALL SCENARIOS PASSED')
+diff --git a/tests/test_compile_plan.py b/tests/test_compile_plan.py
+index a020745d293c49e80ab0ad703630230f1794420a..a1c2bf06f2149da6dce56633b7d8582454f8e474 100644
+--- a/tests/test_compile_plan.py
++++ b/tests/test_compile_plan.py
+@@ -1166,6 +1166,16 @@ def compile_plan_text(plan_md):
+         pathlib.Path(p).unlink(missing_ok=True)
+ 
+ 
++def _serialize_text(plan_md):
++    import tempfile, os
++    fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
++    pathlib.Path(p).write_text(plan_md)
++    try:
++        return compile_plan_serialize(pathlib.Path(p))
++    finally:
++        pathlib.Path(p).unlink(missing_ok=True)
++
++
+ def compile_raw_text(plan_md):
+     import tempfile, os
+     fd, p = tempfile.mkstemp(suffix=".md"); os.close(fd)
+@@ -2363,7 +2373,7 @@ def test_catch_all_label_is_a_violation_with_did_you_mean(tmp_path):
+ """)
+     proc = compile_plan_raw(plan)
+     assert proc.returncode != 0
+-    assert "unknown Files label" in proc.stderr and "Modify" in proc.stderr
++    assert "Task 1: unknown Files label 'catch-all' for `src/` — use Modify" in proc.stderr
+ 
+ 
+ def test_undeclared_dependency_suppression_set_is_write_after_create_and_write_after_write():
+@@ -2480,4 +2490,103 @@ def test_emit_launch_task_dicts_carry_writes_and_commutes(tmp_path):
+     payload = json.loads(launch.read_text())
+     t1 = payload["tasks"][0]
+     assert t1["writes"] == ["a.py"]
+-    assert t1["commutes"] == ["a.py"]
+\ No newline at end of file
++    assert t1["commutes"] == ["a.py"]
++
++def test_uppercase_extension_path_stays_in_write_set():
++    # Orphaned by the tier-test deletion (was a Fable-review HIGH regression
++    # pin): `Config.YAML` is a file, not a Mixed.Case attribute — two tasks
++    # modifying it overlap, and both carry it in `writes`. Bare (no `/`) on
++    # purpose: a slash would satisfy _is_pathlike before the extension rule runs.
++    plan = PLAN_HEADER + """### Task 1: A
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `Config.YAML`
++
++- [ ] **Step 1: do it**
++
++### Task 2: B
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `Config.YAML`
++
++- [ ] **Step 1: do it**
++"""
++    out = compile_plan_text(plan)
++    assert [t["writes"] for t in out["tasks"]] == [["Config.YAML"], ["Config.YAML"]]
++    ser = _serialize_text(plan)
++    assert [(e["from"], e["to"], e["why"]) for e in ser["dag_edges"]] == [("1", "2", "write-after-write")]
++
++
++def test_line_range_suffix_is_stripped_from_write_set():
++    # `src/existing.py:123-145` and `src/existing.py:200-210` are ONE file:
++    # the suffix is stripped, so the write sets match and the pair overlaps.
++    plan = PLAN_HEADER + """### Task 1: A
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/existing.py:123-145`
++
++- [ ] **Step 1: do it**
++
++### Task 2: B
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/existing.py:200-210`
++
++- [ ] **Step 1: do it**
++"""
++    out = compile_plan_text(plan)
++    assert [t["writes"] for t in out["tasks"]] == [["src/existing.py"], ["src/existing.py"]]
++    assert [e["files"] for w in out["launch_waves"] for e in w] == [["src/existing.py"], ["src/existing.py"]]
++    ser = _serialize_text(plan)
++    assert [(e["from"], e["to"], e["why"]) for e in ser["dag_edges"]] == [("1", "2", "write-after-write")]
++
++
++def test_interface_edge_with_file_overlap_suppresses_undeclared_finding():
++    # Behavioral twin of the source-grep suppression-set test. The overlap
++    # that suppresses is write-after-create (an existence edge recorded
++    # BEFORE the interface tier): the pair is already ordered, so the tier
++    # promotes the label to `interface` and raises NO undeclared-dependency
++    # finding. (The docket imagined `--overlap serialize`'s write-after-write
++    # as the suppressor; it cannot be — that tier runs AFTER the interface
++    # tier, so a serialize compile of a Modify/Modify pair still raises the
++    # finding. Verified by probe at planning; pinned here as it really is.)
++    plan = PLAN_HEADER + """### Task 1: A
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Create: `src/schema.py`
++
++**Interfaces:**
++- Produces: `User`
++
++- [ ] **Step 1: do it**
++
++### Task 2: B
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/schema.py`
++
++**Interfaces:**
++- Consumes: `User`
++
++- [ ] **Step 1: do it**
++"""
++    for out in (compile_plan_text(plan), _serialize_text(plan)):
++        assert [(e["from"], e["to"], e["why"]) for e in out["dag_edges"]] == [("1", "2", "interface")]
++        assert [c["kind"] for c in out["marker_conflicts"]] == ["inference"]
++    # the no-overlap twin DOES raise it, in both modes
++    twin = plan.replace("- Modify: `src/schema.py`", "- Modify: `src/other.py`")
++    for out in (compile_plan_text(twin), _serialize_text(twin)):
++        assert [(e["from"], e["to"], e["why"]) for e in out["dag_edges"]] == [("1", "2", "interface")]
++        assert sorted(c["kind"] for c in out["marker_conflicts"]) == ["inference", "undeclared-dependency"]

@@ -1,0 +1,54 @@
+diff --git a/fleet/roles/README.md b/fleet/roles/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..60de98804423640f089dee468e5471f48867d0f1
+--- /dev/null
++++ b/fleet/roles/README.md
+@@ -0,0 +1,21 @@
++# Role prompts
++
++These files are the engine's judgment roles — the prompts handed to a model
++when it is asked to decide something. `fleet/run-engine.mjs` reads them at
++dispatch, one file per role:
++
++- `implementer.md` — write the task in an isolated tree
++- `reviewer.md` — judge a task's diff against its text
++- `fix.md` — act on a review's findings
++- `resolver.md` — settle a conflicted merge
++- `reconcile.md` — repair a wave that landed inconsistent
++- `critic.md` — read the finished run for what the plan missed
++
++There is no bake step: this directory is the single copy, so editing a file
++here changes what the next dispatch sends. Each prompt is capped at 350 words
++by a pinning test in `fleet/tests/test_run_engine.mjs`, which also rejects
++shouted imperatives — a rule that needs shouting belongs in code.
++
++Choreography stays out. Git operations and kernel invocations are driver code
++in `run-engine.mjs`; the prompts describe judgment only, and models never run
++git themselves (#366 Amendment 10).
+diff --git a/tests/test_roles_readme.py b/tests/test_roles_readme.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..79898223192905e44811870bde10ec3193038cd3
+--- /dev/null
++++ b/tests/test_roles_readme.py
+@@ -0,0 +1,21 @@
++"""Pin: fleet/roles/README.md exists as the note on the judgment-role prompts,
++and names the two things that make the directory make sense — the engine that
++reads it at dispatch, and the amendment that keeps choreography out of it."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++README = ROOT / "fleet" / "roles" / "README.md"
++
++
++def test_roles_readme_exists():
++    assert README.is_file()
++
++
++def test_roles_readme_is_non_empty():
++    assert README.read_text().strip()
++
++
++def test_roles_readme_names_the_engine_and_the_amendment():
++    text = README.read_text()
++    assert "run-engine.mjs" in text
++    assert "Amendment 10" in text

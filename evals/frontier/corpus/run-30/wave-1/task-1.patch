@@ -1,0 +1,88 @@
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 4335a176131f6af3ae28703b10040ebcf6b4870f..7b68c49df6ab92cfd49752af3015d4dca5112cd8 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -773,6 +773,15 @@ def _late_marker_note(task_id, late_markers):
+                 task_id, "; ".join(sorted(set(late_markers))[:3])))
+ 
+ 
++# The refusal main() raises at compile time (#440). One constant, two call
++# sites: --check must refuse exactly what the full compile refuses, or its
++# "green here means it launches" promise is false.
++ACCEPTANCE_MISSING_ERROR = (
++    "marked plan has no **Acceptance:** line (sealed or waived). "
++    "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
++    "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
++
++
+ def collect_violations(plan_path):
+     """Authoring-time grammar check (#85, the --check CLI mode). Runs the same
+     parse as main() but collects EVERY violation across the whole plan in one
+@@ -831,6 +840,11 @@ def collect_violations(plan_path):
+         if _files_grammar_exempt(t):
+             continue
+         violations.extend(_files_violations(t))
++    # #440: scoped to MARKED plans, exactly as main() is — four committed
++    # plans are unmarked and Acceptance-less, and must keep passing.
++    if any(not classify(t)[1] for t in tasks) and \
++            parse_acceptance(plan_text)["mode"] == "missing":
++        violations.append(ACCEPTANCE_MISSING_ERROR)
+     return violations
+ 
+ 
+@@ -1665,9 +1679,7 @@ def main(argv=None):
+     global_constraints = parse_global_constraints(plan_text)
+     marked = any(not t.get("heuristic") for t in out_tasks)
+     if acceptance["mode"] == "missing" and marked:
+-        sys.exit("error: marked plan has no **Acceptance:** line (sealed or waived). "
+-                 "Seal the exam (ultraplan sealing step) or record an explicit waiver. "
+-                 "See docs/superpowers/specs/2026-06-12-sealed-acceptance-design.md")
++        sys.exit("error: " + ACCEPTANCE_MISSING_ERROR)
+     if acceptance["mode"] == "missing":
+         type_conflicts.append({"task": "", "edge": "",
+                                "note": "acceptance: missing (unmarked plan — warning only)"})
+diff --git a/tests/test_plan_check.py b/tests/test_plan_check.py
+index ad3375a55b70e80d0bb35e2e3671747cacb8502c..16c5c64708f51121dad730ffc2d3d8b268d11def 100644
+--- a/tests/test_plan_check.py
++++ b/tests/test_plan_check.py
+@@ -219,3 +219,40 @@ def test_check_accepts_a_commutes_marker_in_the_header(tmp_path):
+     proc = run_check(tmp_path, HEADER_COMMUTES)
+     assert proc.returncode == 0, proc.stdout + proc.stderr
+     assert "PLAN OK" in proc.stdout
++
++
++MARKED_NO_ACCEPTANCE = CANONICAL.replace("**Acceptance:** suite — test\n", "")
++
++UNMARKED_NO_ACCEPTANCE = """# P
++
++### Task 1: A
++
++**Files:**
++- Modify: `src/a.py`
++
++- [ ] **Step 1: do it**
++"""
++
++
++def test_check_refuses_marked_plan_with_no_acceptance_line(tmp_path):
++    """#440: the full compile refuses this at compile_plan.py:1668; --check
++    said PLAN OK, so the plan died at launch instead of at authoring time."""
++    plan = tmp_path / "p.md"
++    plan.write_text(MARKED_NO_ACCEPTANCE)
++    r = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
++                       capture_output=True, text=True)
++    assert r.returncode == 2
++    assert "no **Acceptance:** line" in r.stdout
++    assert "1 violation(s)" in r.stdout
++
++
++def test_check_leaves_unmarked_plans_alone(tmp_path):
++    """Scope guard: four committed plans carry no Acceptance line and no
++    markers. An unscoped gate would start failing them, and
++    test_all_plans_compile.py only covers marked plans."""
++    plan = tmp_path / "p.md"
++    plan.write_text(UNMARKED_NO_ACCEPTANCE)
++    r = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
++                       capture_output=True, text=True)
++    assert r.returncode == 0
++    assert "PLAN OK" in r.stdout

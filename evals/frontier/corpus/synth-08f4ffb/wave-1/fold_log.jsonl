@@ -1,0 +1,3 @@
+{"type": "base", "sha": "0a993ac589ac6598318fd2a22122c8178dc49305"}
+{"type": "fold", "task": "a", "headSha": "2f3218a4d19d3255b90befd891016a3e6722ac8f", "patch": "task-a.patch"}
+{"type": "fold", "task": "b", "headSha": "fb0fef746c1c4e160f97831b5c9296af2c9f8b89", "patch": "task-b.patch"}

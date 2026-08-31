@@ -1,0 +1,266 @@
+diff --git a/fleet/roles/critic.md b/fleet/roles/critic.md
+index 4c491bcef918d20be0be1fd2cbd41a385d6916b9..052278e27986838ddca060440606e0346bdc9ed2 100644
+--- a/fleet/roles/critic.md
++++ b/fleet/roles/critic.md
+@@ -16,7 +16,13 @@ show:
+    integrated tree and report any that fail as findings.
+ 3. Untested seams: name any cross-task path the suite does not exercise where a
+    composition defect could hide.
+-4. Report each shortfall as a finding string — specific, with file paths.
++4. Report each shortfall as a finding object: a `severity` and a specific
++   `detail` with file paths. `blocking` means you checked it and it is wrong —
++   a deliverable absent or incoherent with its neighbors, a checklist item that
++   fails against the integrated tree, a defect you can name in a file; it stops
++   the run. `minor` is worth an issue but not worth stopping a merge for.
++   Severity grades the defect, not your confidence: a shortfall you could not
++   execute belongs under `deferredVerification`, not in a blocking finding.
+ 
+ Separately, list under `deferredVerification` any deliverable that is present
+ and structurally complete but whose behavior this environment cannot execute —
+diff --git a/fleet/run-engine.mjs b/fleet/run-engine.mjs
+index 14045c4879c4988c9c521814a1ed1ba826bf284b..ea823990af62f693512954aa111bb29e44dec9fa 100644
+--- a/fleet/run-engine.mjs
++++ b/fleet/run-engine.mjs
+@@ -77,6 +77,10 @@ export const IMPLEMENTER_SCHEMA = {
+     startHead: { type: 'string' },
+   },
+ }
++// One severity vocabulary for the whole run (#474): the per-task reviewer and
++// the completeness critic grade defects on the same two-word scale, and the
++// pair is spelled here exactly once. Both schemas point at THIS array.
++export const SEVERITY = Object.freeze(['blocking', 'minor'])
+ export const REVIEWER_SCHEMA = {
+   type: 'object',
+   required: ['verdict', 'issues'],
+@@ -84,7 +88,7 @@ export const REVIEWER_SCHEMA = {
+     verdict: { enum: ['PASS', 'FIX_REQUIRED'] },
+     issues: { type: 'array', items: { type: 'object',
+       required: ['severity', 'detail'], properties: {
+-        severity: { enum: ['blocking', 'minor'] },
++        severity: { enum: SEVERITY },
+         detail: { type: 'string' } } } },
+     cannotVerify: { type: 'array', items: { type: 'object',
+       required: ['requirement', 'why'], properties: {
+@@ -125,7 +129,10 @@ export const CRITIC_SCHEMA = {
+   type: 'object',
+   required: ['findings'],
+   properties: {
+-    findings: { type: 'array', items: { type: 'string' } },
++    findings: { type: 'array', items: { type: 'object',
++      required: ['severity', 'detail'], properties: {
++        severity: { enum: SEVERITY },
++        detail: { type: 'string' } } } },
+     deferredVerification: { type: 'array', items: { type: 'object',
+       required: ['deliverable', 'reason'], properties: {
+         deliverable: { type: 'string' },
+@@ -1179,7 +1186,8 @@ export async function runEngine({
+     // Nothing merged: the tree is at BASE, and a critic told it holds "the
+     // final integrated tree" would emit confident findings about the wrong
+     // tree (review finding 8). gitVerified is already false on this path.
+-    review = { findings: ['no wave merged — completeness review skipped (the tree is at BASE)'],
++    review = { findings: [{ severity: 'blocking',
++                           detail: 'no wave merged — completeness review skipped (the tree is at BASE)' }],
+                deferredVerification: [] }
+   } else {
+     try {
+@@ -1219,7 +1227,8 @@ export async function runEngine({
+       criticRan = true
+     } else {
+       judgmentCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
+-      review = { findings: ['integration review did not run — completeness unverified; check the tree before merging'],
++      review = { findings: [{ severity: 'blocking',
++                             detail: 'integration review did not run — completeness unverified; check the tree before merging' }],
+                  deferredVerification: [] }
+     }
+   }
+diff --git a/fleet/tests/_engine_helpers.mjs b/fleet/tests/_engine_helpers.mjs
+index 6d1c1fdd3a87fe5db87e8c76f784cf9e9141fc1d..f929b25244dfd2657c99e4ed236e5ac1d1d30763 100644
+--- a/fleet/tests/_engine_helpers.mjs
++++ b/fleet/tests/_engine_helpers.mjs
+@@ -85,6 +85,9 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
+ // Common canned judgments.
+ export const passReview = () => ({ verdict: 'PASS', issues: [] })
+ export const cleanCritic = () => ({ findings: [], deferredVerification: [] })
++// #474 — a critic that found something. `findings` are {severity, detail}
++// objects; the shape lives here once so consumers cannot drift apart.
++export const criticWithFindings = (findings) => ({ findings, deferredVerification: [] })
+ export const doneImpl = (cwd) => ({
+   status: 'DONE', summary: 'sim work done', startHead: gitSync(['rev-parse', 'HEAD'], cwd),
+ })
+diff --git a/fleet/tests/test_run_engine.mjs b/fleet/tests/test_run_engine.mjs
+index 54351fbc987f4262324f3ae3b9b54ee5a95cac5c..2bb04a5fd6dd5e029a01648042992e46bfff43e8 100644
+--- a/fleet/tests/test_run_engine.mjs
++++ b/fleet/tests/test_run_engine.mjs
+@@ -10,7 +10,7 @@ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+ import { makeRepo, rig, gitSync, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
+-import { capWorkerParallelism, SHELL_TIMEOUT_MS } from '../run-engine.mjs'
++import { capWorkerParallelism, SHELL_TIMEOUT_MS, CRITIC_SCHEMA, REVIEWER_SCHEMA, SEVERITY } from '../run-engine.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-sim-'))
+ const repo = makeRepo(path.join(tmp, 'repo'))
+@@ -77,7 +77,12 @@ assert.equal(report.gitVerified, true, 'receipt-derived gitVerified holds on a c
+ assert.deepEqual(report.ancestryMisses, [])
+ assert.equal(report.frontier.length, 2, 'one frontier entry per folded wave')
+ assert.ok(report.frontier.every((f) => f.foldCliCalls >= 2), 'fold + materialize per wave')
++// #474 — completenessFindings carries typed findings now; a clean critic
++// still yields none, and nothing that is not a typed object can appear here.
+ assert.deepEqual(report.completenessFindings, [])
++assert.ok(report.completenessFindings.every(
++  (f) => f && typeof f === 'object' && typeof f.severity === 'string' && typeof f.detail === 'string'),
++  'every completeness finding is a {severity, detail} object')
+ assert.deepEqual(report.blockedWaves, [])
+ assert.deepEqual(report.unfinished, [])
+ 
+@@ -98,6 +103,31 @@ assert.ok(t3patch.includes('+from T3'), 'wave-2 patch carries its own change')
+ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
+   'no setup or merge agent dispatched: ' + dispatched.join(','))
+ 
++// #474 — one severity vocabulary, declared once. Two literal spellings of the
++// pair pass deepEqual and fail reference identity, which is why this is
++// assert.equal (reference identity in node:assert/strict) and not deepEqual.
++{
++  assert.deepEqual(SEVERITY, ['blocking', 'minor'])
++  assert.equal(CRITIC_SCHEMA.properties.findings.items.properties.severity.enum, SEVERITY,
++    'critic severity must be the SAME array object as SEVERITY, not a copy')
++  assert.equal(REVIEWER_SCHEMA.properties.issues.items.properties.severity.enum, SEVERITY,
++    'reviewer severity must be the SAME array object as SEVERITY, not a copy')
++
++  // The critic's findings are typed objects, not bare strings.
++  const finding = CRITIC_SCHEMA.properties.findings.items
++  assert.equal(CRITIC_SCHEMA.properties.findings.type, 'array')
++  assert.equal(finding.type, 'object')
++  assert.deepEqual(finding.required, ['severity', 'detail'])
++  assert.deepEqual(Object.keys(finding.properties).sort(), ['detail', 'severity'])
++  assert.deepEqual(finding.properties.detail, { type: 'string' })
++
++  // The constraint is about the file, not only about the exports: a second
++  // literal spelling anywhere in the engine is the thing being forbidden.
++  const engineSrc = fs.readFileSync(new URL('../run-engine.mjs', import.meta.url), 'utf8')
++  assert.equal((engineSrc.match(/'blocking',\s*'minor'/g) || []).length, 1,
++    'the blocking/minor pair is spelled exactly once in run-engine.mjs (#474)')
++}
++
+ // #366 rule 5: the role-file prose ceiling (spec §4) — ≤ 350 words each, and
+ // no ALL-CAPS imperative shouting (a rule that needs shouting belongs in code).
+ {
+diff --git a/fleet/tests/test_run_engine_critic_inputs.mjs b/fleet/tests/test_run_engine_critic_inputs.mjs
+index aa92c0fef44d4ce21331f312c66bc91937a25609..9932d22170c31e4e6e770b0abbbbb6cca845c2bf 100644
+--- a/fleet/tests/test_run_engine_critic_inputs.mjs
++++ b/fleet/tests/test_run_engine_critic_inputs.mjs
+@@ -8,7 +8,7 @@ import assert from 'node:assert/strict'
+ import fs from 'node:fs'
+ import os from 'node:os'
+ import path from 'node:path'
+-import { makeRepo, rig, passReview, cleanCritic, doneImpl } from './_engine_helpers.mjs'
++import { makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl } from './_engine_helpers.mjs'
+ import { suiteLine } from '../run-engine.mjs'
+ 
+ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
+@@ -141,5 +141,105 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
+     'the blocked wave is still reported alongside the suite verdict')
+ }
+ 
++// ── 4. no wave merged: the synthesized finding is a typed object (#474) ──────
++// The fix loop exhausts, the wave is skipped, and the critic is never
++// dispatched — the engine synthesizes the finding itself. It used to be a bare
++// string; it is now the same {severity, detail} shape a real critic returns.
++{
++  const repo = makeRepo(path.join(tmp, 'repo4'))
++  const runDir = path.join(tmp, 'run4')
++  const waves = [[
++    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
++      writes: ['one.txt'], commutes: [], body: 'task T1' },
++  ]]
++  const labels = []
++  const stub = (prompt, opts, cwd) => {
++    labels.push(opts.label)
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl' || kind === 'fix') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'still wrong\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'never right' }] }
++    if (opts.label === 'integration') return cleanCritic()
++    throw new Error('unexpected: ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci4' })
++  const report = await run()
++  assert.equal(report.waveMerges[0].status, 'SKIPPED', 'sim precondition: nothing merged')
++  assert.ok(!labels.includes('integration'), 'sim precondition: the critic was never dispatched')
++
++  assert.equal(report.completenessFindings.length, 1)
++  const f = report.completenessFindings[0]
++  assert.deepEqual(Object.keys(f).sort(), ['detail', 'severity'])
++  assert.equal(f.severity, 'blocking')
++  assert.equal(f.detail, 'no wave merged — completeness review skipped (the tree is at BASE)')
++  assert.match(f.detail, /no wave merged/)
++}
++
++// ── 5. the dead critic: the fail-closed finding is typed too (#474) ──────────
++{
++  const repo = makeRepo(path.join(tmp, 'repo5'))
++  const runDir = path.join(tmp, 'run5')
++  const waves = [[
++    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
++      writes: ['one.txt'], commutes: [], body: 'task T1' },
++  ]]
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'x\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') throw new Error('sim: the critic died')
++    throw new Error('unexpected: ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci5' })
++  const report = await run()
++  assert.equal(report.waveMerges[0].status, 'MERGED', 'sim precondition: the wave did merge')
++  assert.equal(report.gitVerified, false, 'a dead critic withholds gitVerified (fail-closed)')
++
++  assert.equal(report.completenessFindings.length, 1)
++  const f = report.completenessFindings[0]
++  assert.deepEqual(Object.keys(f).sort(), ['detail', 'severity'])
++  assert.equal(f.severity, 'blocking')
++  assert.equal(f.detail,
++    'integration review did not run — completeness unverified; check the tree before merging')
++  assert.match(f.detail, /integration review did not run/)
++}
++
++// ── 6. a live critic's findings pass through unchanged (#474) ────────────────
++// `report.completenessFindings` is `review.findings` verbatim: the shape the
++// schema produced is the shape the report carries, name and position unchanged.
++{
++  const repo = makeRepo(path.join(tmp, 'repo6'))
++  const runDir = path.join(tmp, 'run6')
++  const waves = [[
++    { id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
++      writes: ['one.txt'], commutes: [], body: 'task T1' },
++  ]]
++  const findings = [
++    { severity: 'blocking', detail: 'fleet/run-engine.mjs: T1 produced no export' },
++    { severity: 'minor', detail: 'fleet/tests/one.txt: a stray trailing newline' },
++  ]
++  const stub = (prompt, opts, cwd) => {
++    const kind = opts.label.split(':')[0]
++    if (kind === 'impl') {
++      fs.writeFileSync(path.join(cwd, 'one.txt'), 'x\n')
++      return doneImpl(cwd)
++    }
++    if (kind === 'review') return passReview()
++    if (opts.label === 'integration') return criticWithFindings(findings)
++    throw new Error('unexpected: ' + opts.label)
++  }
++  const { run } = rig({ repo, runDir, waves, stub, stamp: 'ci6' })
++  const report = await run()
++  assert.deepEqual(report.completenessFindings, [
++    { severity: 'blocking', detail: 'fleet/run-engine.mjs: T1 produced no export' },
++    { severity: 'minor', detail: 'fleet/tests/one.txt: a stray trailing newline' },
++  ])
++}
++
+ fs.rmSync(tmp, { recursive: true, force: true })
+ console.log('ALL TESTS PASSED')

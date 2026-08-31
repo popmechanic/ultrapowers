@@ -1,0 +1,55 @@
+diff --git a/fleet/tests/PROBES.md b/fleet/tests/PROBES.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..3bef4961461ca46edcd35547af55df7832f0a98e
+--- /dev/null
++++ b/fleet/tests/PROBES.md
+@@ -0,0 +1,22 @@
++# fleet/tests probes
++
++A `probe_*.mjs` file is a live measurement, not a test. Each one spends real
++tokens against a real `claude -p`, so it is deliberately NOT named `test_*.mjs`:
++`tests/test_fleet_suite.py` globs `test_*.mjs`, and CI has no credentials. The
++naming is the whole mechanism — CI and the suite never run these. Run them by
++hand where a credential lives (the orchestrator, or a sandbox with
++`CLAUDE_CODE_OAUTH_TOKEN` exported):
++
++    CLAUDE_CODE_OAUTH_TOKEN=… node fleet/tests/probe_confine_live.mjs
++
++The current probes:
++
++- `probe_confine_live.mjs` — that Claude Code actually invokes the implementer's
++  PreToolUse hook and honours its exit-2 denial, against a hostile task.
++- `probe_run_worker_live.mjs` — that `runWorker` behaves like `agent()` against
++  the real CLI: a conforming reply, a `--max-turns 1` failure, a per-run config dir.
++- `probe_bypass_vs_hook.mjs` — whether a PreToolUse `deny` still blocks a tool
++  call under `--permission-mode bypassPermissions`.
++- `probe_disallowed_vs_bypass.mjs` — whether `--disallowedTools` still blocks a
++  matching call under `bypassPermissions`, which is what the role's git-push
++  escape hatch rides on.
+diff --git a/tests/test_probes_readme.py b/tests/test_probes_readme.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9cf4a92ccd562bb5bcd74325aabc7b9362e8ec64
+--- /dev/null
++++ b/tests/test_probes_readme.py
+@@ -0,0 +1,21 @@
++"""Pin: fleet/tests/PROBES.md exists as the note explaining the `probe_*.mjs`
++convention — probes spend real tokens against a real `claude -p`, so they are
++deliberately not named `test_*.mjs` and never run in CI or the suite."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++PROBES = ROOT / "fleet" / "tests" / "PROBES.md"
++
++
++def test_probes_note_exists():
++    assert PROBES.is_file()
++
++
++def test_probes_note_is_non_empty():
++    assert PROBES.read_text().strip()
++
++
++def test_probes_note_names_the_bypass_probe_and_the_live_cli():
++    text = PROBES.read_text()
++    assert "probe_bypass_vs_hook.mjs" in text
++    assert "claude -p" in text

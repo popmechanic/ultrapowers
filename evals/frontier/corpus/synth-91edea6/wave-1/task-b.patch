@@ -1,0 +1,141 @@
+diff --git a/hooks/session_start.sh b/hooks/session_start.sh
+index 3c119022c3335510286fd44bcedbe7a1bd52d824..a156e5a90700c42016886e3cce98a7d67a2e8bd1 100755
+--- a/hooks/session_start.sh
++++ b/hooks/session_start.sh
+@@ -22,10 +22,20 @@ set -euo pipefail
+   harnesses="$plugin_root/skills/ultrapowers/harnesses"
+   dest="${CLAUDE_PROJECT_DIR:-$PWD}/.claude/workflows"
+   mkdir -p "$dest"
++  installed_set=""
+   for m in "$harnesses"/*.harness.json; do
+     [ -e "$m" ] || continue
+     f="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['file'])" "$m")"
+     [ -n "$f" ] && [ -e "$harnesses/$f" ] && cp "$harnesses/$f" "$dest/$f"
++    [ -n "$f" ] && installed_set="$installed_set $f"
++  done
++  # GC: remove any .js files in the workflows dir that are not in the current
++  # manifest set — stale orphans from older plugin versions (e.g. workflow.js
++  # from 0.0.6) would otherwise accumulate and shadow the current harnesses.
++  for existing in "$dest"/*.js; do
++    [ -e "$existing" ] || continue
++    base="$(basename "$existing")"
++    case " $installed_set " in *" $base "*) : ;; *) rm -f "$existing" ;; esac
+   done
+ ) >/dev/null 2>&1 || true
+ 
+diff --git a/skills/ultrapowers/harnesses/probe.js b/skills/ultrapowers/harnesses/probe.js
+index 205929b30b10671ecc3e558a01b07e1bf35381a7..28d2a9ace4fe5f665d049b465572d960c9a78ae9 100644
+--- a/skills/ultrapowers/harnesses/probe.js
++++ b/skills/ultrapowers/harnesses/probe.js
+@@ -22,6 +22,10 @@ if (!A || A.ping !== 'pong') {
+ return {
+   ok: true,
+   echo: A.ping,
++  // Echo back a representative slice of the waves payload so a by-name launch
++  // verifies real arg delivery (not just the tiny ping field) — [fb8635c59d4fea1c].
++  echoWaves: (A && Array.isArray(A.waves)) ? A.waves.length : 0,
++  echoFirstId: (A && A.waves && A.waves[0] && A.waves[0].id) || null,
+   // True on engines that still expose the meta binding to the script body;
+   // false where meta is extracted at parse time. Informational either way.
+   metaExposed: typeof meta !== 'undefined',
+diff --git a/skills/ultrapowers/scripts/check_engine_skew.sh b/skills/ultrapowers/scripts/check_engine_skew.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..962540a274be0eb8d0c323561ca85624693752ed
+--- /dev/null
++++ b/skills/ultrapowers/scripts/check_engine_skew.sh
+@@ -0,0 +1,25 @@
++#!/usr/bin/env bash
++# Self-host preflight: compare the installed (cached) engine to the repo engine.
++# When /ultrapowers self-hosts in the ultrapowers repo, the cache can lag repo
++# main and the run would exercise the wrong engine ([ae56a1205e971b82]).
++#
++# Usage: check_engine_skew.sh <cached_dir> <repo_dir>
++#   cached_dir: root of the installed plugin cache (e.g. ~/.claude/plugins/cache/.../ultrapowers/<ver>)
++#   repo_dir:   root of the repository being developed (e.g. the session repo)
++# Exit 0 + "IN_SYNC" stdout when the two harnesses/waves.js hash-match.
++# Exit 1 + "SKEW" on stderr when they differ or either file is missing.
++set -eu
++cached="${1:?usage: check_engine_skew.sh <cached_dir> <repo_dir>}"
++repo="${2:?usage: check_engine_skew.sh <cached_dir> <repo_dir>}"
++cf="$cached/skills/ultrapowers/harnesses/waves.js"
++rf="$repo/skills/ultrapowers/harnesses/waves.js"
++if [ ! -f "$cf" ] || [ ! -f "$rf" ]; then
++  echo "SKEW: missing engine file (cached=$cf exists=$([ -f "$cf" ] && echo yes || echo no), repo=$rf exists=$([ -f "$rf" ] && echo yes || echo no))" >&2
++  exit 1
++fi
++if [ "$(shasum -a 256 "$cf" | cut -d' ' -f1)" = "$(shasum -a 256 "$rf" | cut -d' ' -f1)" ]; then
++  echo "IN_SYNC"
++  exit 0
++fi
++echo "SKEW: cached engine differs from repo engine — install the repo engine into .claude/workflows/ before launch" >&2
++exit 1
+diff --git a/tests/test_engine_skew.py b/tests/test_engine_skew.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ab313c3873e71d3a3fe51614780ca2db6682952
+--- /dev/null
++++ b/tests/test_engine_skew.py
+@@ -0,0 +1,27 @@
++"""Tests for check_engine_skew.sh — the launch-safety preflight that detects when
++the installed (cached) engine differs from the repo engine, preventing stale-engine runs."""
++import subprocess
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SKEW = ROOT / "skills/ultrapowers/scripts/check_engine_skew.sh"
++
++
++def _engine(d, body):
++    (d / "skills/ultrapowers/harnesses").mkdir(parents=True, exist_ok=True)
++    (d / "skills/ultrapowers/harnesses/waves.js").write_text(body)
++    return d
++
++
++def test_in_sync_when_engines_match(tmp_path):
++    a = _engine(tmp_path / "cache", "WAVES_V1")
++    b = _engine(tmp_path / "repo", "WAVES_V1")
++    p = subprocess.run(["bash", str(SKEW), str(a), str(b)], capture_output=True, text=True)
++    assert p.returncode == 0 and "IN_SYNC" in p.stdout
++
++
++def test_skew_when_engines_differ(tmp_path):
++    a = _engine(tmp_path / "cache", "OLD")
++    b = _engine(tmp_path / "repo", "NEW")
++    p = subprocess.run(["bash", str(SKEW), str(a), str(b)], capture_output=True, text=True)
++    assert p.returncode != 0 and "SKEW" in (p.stdout + p.stderr)
+diff --git a/tests/test_probe.py b/tests/test_probe.py
+index b2619b6722c30bd0a419dea44ba3805a19fb4e32..67550be252478638e44774be5791694a81861dca 100644
+--- a/tests/test_probe.py
++++ b/tests/test_probe.py
+@@ -34,3 +34,10 @@ def test_probe_executes_and_echoes():
+                        capture_output=True, text=True)
+     assert p.returncode == 0, p.stderr
+     assert '"ok":true' in p.stdout.replace(" ", "")
++
++
++def test_probe_echoes_representative_payload():
++    # the probe must echo back a non-tiny waves payload, not just ping=pong,
++    # so a by-name launch's arg delivery is actually verified ([fb8635c59d4fea1c])
++    src = (ROOT / "skills/ultrapowers/harnesses/probe.js").read_text()
++    assert "waves" in src and "echo" in src.lower()
+diff --git a/tests/test_session_hook.py b/tests/test_session_hook.py
+index 993b283af0d926528d922d9eec4b8a5b2911610c..16393d6bcabc22aa0aad44eaa029270b098054ff 100644
+--- a/tests/test_session_hook.py
++++ b/tests/test_session_hook.py
+@@ -105,3 +105,17 @@ def test_session_start_recommends_by_analysis_not_reflex():
+     assert "risk override" in out
+     # The old unconditional tag is absent.
+     assert "(recommended for marked plans)" not in out
++
++
++def test_session_start_gcs_stale_workflow(tmp_path):
++    # pre-seed an orphan workflow not in the current manifest set; assert it's removed
++    import os
++    wf = tmp_path / ".claude" / "workflows"
++    wf.mkdir(parents=True)
++    (wf / "workflow.js").write_text("// stale 0.0.6 orphan\n")
++    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
++    p = subprocess.run(["bash", str(ROOT / "hooks/session_start.sh")],
++                       capture_output=True, text=True, env=env)
++    assert p.returncode == 0, p.stderr
++    assert not (wf / "workflow.js").exists()   # orphan GC'd
++    assert (wf / "waves.js").exists()          # current manifest survives

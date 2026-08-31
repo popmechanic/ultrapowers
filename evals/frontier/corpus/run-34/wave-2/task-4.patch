@@ -1,0 +1,695 @@
+diff --git a/evals/frontier/arm_git.py b/evals/frontier/arm_git.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a3fc8adfd9b8bb9f43fb2722ab78199486a33dab
+--- /dev/null
++++ b/evals/frontier/arm_git.py
+@@ -0,0 +1,198 @@
++"""Arm G: the same wave, folded by plain git instead of by the kernel.
++
++Spec: `docs/superpowers/specs/2026-08-31-fold-corpus-validation.md`
++(Deliverable C). The comparator needs a second, independent answer for the
++same fold, and the only credible one is git's: replay the wave's recorded
++tasks as ordinary commits over the wave base and merge them sequentially.
++
++    scratch clone at <base_sha>
++      task i:  git apply --index <patch_i>  ; git commit      -> commit_i
++      integration: git merge -s ort -X no-renames commit_1 ... commit_n
++
++`-X no-renames` is not incidental. The kernel's own patches are captured with
++`--no-renames`, so a rename-detecting merge would be answering a different
++question than the arm it is being compared against.
++
++**Conflicts do not stop the arm.** Stopping at the first conflict would leave
++every later path unanswered, and an unanswered path is class 2 — a divergence
++the comparator would then report against a fold that never diverged. So each
++conflicted path is recorded `"contended"` (its content is excluded from
++comparison by construction) and the merge is *completed* so the wave can carry
++on: with the weave's own content when the weave is clean there, and with
++`--ours` when it is not, since that path is class-5 material either way.
++
++Offline and deterministic: git only, a fixed identity and clock, and every
++byte written under the caller's `work` directory.
++"""
++import json
++import os
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++
++HERE = Path(__file__).resolve().parent
++sys.path.insert(0, str(HERE))
++import classify  # noqa: E402
++import corpuslib  # noqa: E402
++
++_FIXED_DATE = "2026-08-31T00:00:00+00:00"
++
++
++def _env():
++    """A git environment with no identity, config or clock of its own."""
++    return dict(os.environ,
++                GIT_AUTHOR_NAME="fold corpus arm G",
++                GIT_AUTHOR_EMAIL="armg@example.invalid",
++                GIT_COMMITTER_NAME="fold corpus arm G",
++                GIT_COMMITTER_EMAIL="armg@example.invalid",
++                GIT_AUTHOR_DATE=_FIXED_DATE,
++                GIT_COMMITTER_DATE=_FIXED_DATE,
++                GIT_CONFIG_GLOBAL=os.devnull,
++                GIT_CONFIG_SYSTEM=os.devnull,
++                TZ="UTC")
++
++
++def _run(cwd, *args, text=True):
++    return subprocess.run(["git", "-C", str(cwd), *args],
++                          capture_output=True, text=text, env=_env())
++
++
++def _git(cwd, *args, text=True):
++    result = _run(cwd, *args, text=text)
++    if result.returncode != 0:
++        err = result.stderr if text else result.stderr.decode(errors="replace")
++        raise RuntimeError("git %s failed: %s" % (" ".join(args), err.strip()))
++    return result.stdout
++
++
++def _clone(repo: Path, base_sha: str, work: Path) -> Path:
++    """A scratch clone of `repo`, detached at `base_sha`.
++
++    `--shared` so the clone sees every object the source has, not only what its
++    refs reach — a corpus base sha may sit on an archived integration line.
++    """
++    work.mkdir(parents=True, exist_ok=True)
++    clone = work / "arm-git"
++    _git(work, "clone", "--quiet", "--shared", "--no-checkout", str(repo), str(clone))
++    _git(clone, "checkout", "--quiet", "--detach", base_sha)
++    return clone
++
++
++def _tasks(entry):
++    """`[(taskId, patch path)]` in fold-log order; branch-mode tasks are refused."""
++    out = []
++    log = Path(entry.wave_dir) / "fold_log.jsonl"
++    for line in log.read_text().splitlines():
++        if not line.strip():
++            continue
++        event = json.loads(line)
++        if event.get("type") != "fold":
++            continue
++        if not event.get("patch"):
++            raise ValueError("arm G replays patch tasks; task %r in %s wave %d has no patch"
++                             % (event.get("task"), entry.run_id, entry.wave))
++        out.append((event["task"], Path(entry.wave_dir) / event["patch"]))
++    return out
++
++
++def _unmerged(clone):
++    """The conflicted paths of the merge in progress, deduplicated, sorted."""
++    out = _git(clone, "diff", "--name-only", "--diff-filter=U", "-z")
++    return sorted({name for name in out.split("\0") if name})
++
++
++def _complete_conflict(clone, path, weave):
++    """Stage a conflicted path so the merge can be committed and the wave go on."""
++    answer = weave.per_path.get(path) if weave is not None else None
++    if answer is not None and answer.status == "clean":
++        if answer.content is None:                  # the weave's clean answer is a deletion
++            _run(clone, "rm", "--quiet", "-f", "--", path)
++            return
++        (Path(clone) / path).parent.mkdir(parents=True, exist_ok=True)
++        (Path(clone) / path).write_bytes(answer.content)
++    else:
++        # Not clean on the weave arm either: class-5 material, whose content is
++        # excluded from comparison. `--ours` keeps the integration line's side.
++        _run(clone, "checkout", "--ours", "--", path)
++    added = _run(clone, "add", "--", path)
++    if added.returncode != 0:                       # e.g. a modify/delete conflict
++        _run(clone, "rm", "--quiet", "-f", "--", path)
++
++
++def _read_tree(clone, paths):
++    """`{path: PathAnswer}` for `paths`, read out of the clone's HEAD tree."""
++    present = {name for name in
++               _git(clone, "ls-tree", "-r", "--name-only", "-z", "HEAD").split("\0") if name}
++    answers = {}
++    for path in paths:
++        if path not in present:
++            # Touched by the wave and absent from the result: a deletion that
++            # survived. `None` content is what the weave arm reports too.
++            answers[path] = corpuslib.PathAnswer("clean", None)
++            continue
++        content = _git(clone, "cat-file", "blob", "HEAD:%s" % path, text=False)
++        answers[path] = corpuslib.PathAnswer("binary" if b"\x00" in content else "clean", content)
++    return answers
++
++
++def git_answer(repo, entry, weave, work=None):
++    """Replay one corpus wave through plain git; return its `ArmResult`.
++
++    `weave` is the other arm's answer, consulted only to complete conflicts —
++    the arm never copies a clean path's content from it, so the two answers
++    stay independent everywhere the comparator compares them.
++
++    `work` is where the scratch clone is built; a temporary directory is used
++    and removed when it is omitted. `complete` is False when a patch would not
++    apply or a merge failed for a reason that was not a conflict; the arm still
++    returns every answer it did reach.
++    """
++    if work is None:
++        with tempfile.TemporaryDirectory(prefix="arm-git-") as tmp:
++            return git_answer(repo, entry, weave, work=Path(tmp))
++
++    tasks = _tasks(entry)
++    clone = _clone(Path(repo), entry.base_sha, Path(work))
++    touched, complete = [], True
++    for _, patch in tasks:
++        for path in classify.patch_paths(patch.read_text(errors="replace")):
++            if path not in touched:
++                touched.append(path)
++
++    commits = []
++    for task_id, patch in tasks:
++        _git(clone, "checkout", "--quiet", "--detach", entry.base_sha)
++        applied = _run(clone, "apply", "--index", "--whitespace=nowarn", str(patch))
++        if applied.returncode != 0:
++            complete = False        # recorded, never silent: `complete` is the signal
++            continue
++        _git(clone, "commit", "--quiet", "--allow-empty", "-m", "task %s" % task_id)
++        commits.append((task_id, _git(clone, "rev-parse", "HEAD").strip()))
++
++    contended = set()
++    _git(clone, "checkout", "--quiet", "--detach", entry.base_sha)
++    for _, sha in commits:
++        merged = _run(clone, "merge", "-s", "ort", "-X", "no-renames", "--no-edit", sha)
++        if merged.returncode == 0:
++            continue
++        conflicted = _unmerged(clone)
++        if not conflicted:          # failed for something other than a conflict
++            _run(clone, "merge", "--abort")
++            complete = False
++            break
++        contended.update(conflicted)
++        for path in conflicted:
++            _complete_conflict(clone, path, weave)
++        _git(clone, "commit", "--quiet", "--no-edit")
++
++    answers = _read_tree(clone, touched)
++    for path in contended:
++        prior = answers.get(path)
++        content = prior.content if prior is not None else None
++        # A binary path stays binary: its content is excluded from comparison
++        # whether or not the merge stopped on it.
++        if prior is not None and prior.status == "binary":
++            continue
++        answers[path] = corpuslib.PathAnswer("contended", content)
++    return corpuslib.ArmResult(answers, complete)
+diff --git a/evals/frontier/classify.py b/evals/frontier/classify.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe29aaf8e557261064a47955fdbcd352889991e9
+--- /dev/null
++++ b/evals/frontier/classify.py
+@@ -0,0 +1,243 @@
++"""The five-class comparator and the two ride-along predicates.
++
++Spec: `docs/superpowers/specs/2026-08-31-fold-corpus-validation.md`
++(Deliverable C). This module is the verdict core: given the weave arm's answer
++and the git arm's answer for the same fold, it says — per path — which of the
++five comparison classes the pair landed in.
++
++    1  both arms clean, byte-identical content        the fold agreed
++    2  both arms clean, content differs               divergence
++    3  weave clean, git contended                     the weave resolved more
++    4  weave contended, git clean                     the weave resolved less
++    5  both arms contended                            both stopped
++    binary  either arm called the path binary         excluded from comparison
++
++Class 2 is the only class that carries a judgement: `mechanically_explained`
++is True when the two contents are the same multiset of lines in a different
++order — the shape an auto-unioned same-anchor append produces against git's
++own ordering — and False when the contents genuinely disagree. Every other
++class carries `None`, because there is no content pair to explain. A path only
++one arm answered for is class 2 and never explained: a missing answer is a
++defect signal, not an agreement. So is a path one arm kept and the other
++deleted — a clean answer with `None` content — which is class 2, unexplained,
++because absence is not a reordering of any file's lines.
++
++The two ride-alongs are pure functions over the corpus's own patch text —
++exact unified-diff hunk parsing, no git calls, no repository:
++
++* `xaxbx_flag` — does any hunk touching a path lean on context that is not
++  unique in the base file? That is the XaXbX shape, where a rename-blind
++  three-way merge can splice a hunk against the wrong occurrence.
++* `deletion_adjacency` — did one task delete base lines within `k` of another
++  task's hunk span on the same file? That is the neighbourhood where a
++  deletion silently swallows a neighbour's edit.
++"""
++import json
++import re
++from collections import Counter
++from pathlib import Path
++
++HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
++DIFF_GIT_RE = re.compile(r"^diff --git a/(.+?) b/(.+)$")
++
++
++# --------------------------------------------------------------------------
++# the comparator
++# --------------------------------------------------------------------------
++
++def _lines(b):
++    return b.split(b"\n")
++
++
++def classify(weave, git):
++    out = []
++    for path in sorted(set(weave.per_path) | set(git.per_path)):
++        w, g = weave.per_path.get(path), git.per_path.get(path)
++        if (w and w.status == "binary") or (g and g.status == "binary"):
++            out.append({"path": path, "cls": "binary", "mechanically_explained": None, "xaxbx": False})
++            continue
++        if w is None or g is None:  # one arm never produced an answer: a defect signal, never silent
++            out.append({"path": path, "cls": 2, "mechanically_explained": False, "xaxbx": False})
++            continue
++        wc, gc = w.status == "contended", g.status == "contended"
++        if wc and gc:
++            cls, expl = 5, None
++        elif not wc and gc:
++            cls, expl = 3, None
++        elif wc and not gc:
++            cls, expl = 4, None
++        elif w.content == g.content:
++            cls, expl = 1, None
++        elif w.content is None or g.content is None:
++            # One arm kept the path the other deleted (a clean answer with no
++            # content is how both arms report a deletion that survived). Absence
++            # is not a line multiset, and it is not a reordering of a present
++            # file either — not even of an empty one — so this divergence is
++            # class 2 and never mechanically explained.
++            cls, expl = 2, False
++        else:
++            cls = 2
++            expl = sorted(_lines(w.content)) == sorted(_lines(g.content))  # line-multiset equality
++        out.append({"path": path, "cls": cls, "mechanically_explained": expl, "xaxbx": False})
++    return out
++
++
++# --------------------------------------------------------------------------
++# reading a wave's patches back out of the corpus
++# --------------------------------------------------------------------------
++
++def task_patches(entry):
++    """`[(taskId, patch text)]` for one wave, in the fold log's recorded order.
++
++    The fold log is the authority for what folded (`FOLD_LOG.md`), so it — not
++    the index's task list — is what the ride-alongs read. Patch names are
++    corpus-relative, resolved against the entry's own `wave_dir`. Fold events
++    with no `patch` field are branch-mode tasks, which carry no patch text to
++    parse; they are skipped here and refused outright by `arm_git.git_answer`.
++    """
++    out = []
++    log = Path(entry.wave_dir) / "fold_log.jsonl"
++    for line in log.read_text().splitlines():
++        if not line.strip():
++            continue
++        event = json.loads(line)
++        if event.get("type") == "fold" and event.get("patch"):
++            patch = Path(entry.wave_dir) / event["patch"]
++            out.append((event["task"], patch.read_text(errors="replace")))
++    return out
++
++
++# --------------------------------------------------------------------------
++# unified-diff parsing (exact hunk headers; no git)
++# --------------------------------------------------------------------------
++
++def _strip_prefix(name):
++    """`a/x` / `b/x` -> `x`; a bare name is returned as-is."""
++    name = name.split("\t", 1)[0]
++    return name[2:] if name[:2] in ("a/", "b/") else name
++
++
++def parse_hunks(patch_text):
++    """`{path: [hunk]}`, each hunk `{"base_start", "base_end", "deleted", "kept"}`.
++
++    `base_start`/`base_end` are the inclusive base-file span the hunk header
++    declares (for a zero-length span — a pure insertion, `@@ -0,0 ...` — the
++    end is the start). `deleted` is the base line numbers the hunk removes;
++    `kept` is every context and added line body, which is what the XaXbX
++    predicate looks up in the base.
++
++    Binary diffs (`GIT binary patch`) carry no hunks and appear here with an
++    empty list, so a binary path is still named — see `patch_paths`.
++    """
++    out = {}
++    path = None
++    minus_name = None
++    hunk = None
++    old_left = new_left = 0
++    base_line = 0
++    for line in patch_text.split("\n"):
++        m = DIFF_GIT_RE.match(line)
++        if m:
++            path, hunk = _strip_prefix("b/" + m.group(2)), None
++            out.setdefault(path, [])
++            continue
++        if line.startswith("--- "):
++            minus_name, hunk = line[4:], None
++            continue
++        if line.startswith("+++ "):
++            name = line[4:]
++            path = _strip_prefix(minus_name if name.startswith("/dev/null") else name)
++            out.setdefault(path, [])
++            hunk = None
++            continue
++        m = HUNK_RE.match(line)
++        if m and path is not None:
++            start = int(m.group(1))
++            old_left = 1 if m.group(2) is None else int(m.group(2))
++            new_left = 1 if m.group(4) is None else int(m.group(4))
++            hunk = {"base_start": start,
++                    "base_end": start + old_left - 1 if old_left else start,
++                    "deleted": [], "kept": []}
++            out.setdefault(path, []).append(hunk)
++            base_line = start
++            continue
++        if hunk is None:
++            continue
++        if old_left <= 0 and new_left <= 0:      # the hunk body ended
++            hunk = None
++            continue
++        if line.startswith("\\"):                # "\ No newline at end of file"
++            continue
++        if line.startswith("-"):
++            hunk["deleted"].append(base_line)
++            base_line += 1
++            old_left -= 1
++        elif line.startswith("+"):
++            hunk["kept"].append(line[1:])
++            new_left -= 1
++        elif line.startswith(" ") or line == "":  # a blank context line may be bare
++            hunk["kept"].append(line[1:])
++            base_line += 1
++            old_left -= 1
++            new_left -= 1
++        else:
++            hunk = None
++    return out
++
++
++def patch_paths(patch_text):
++    """Every path the patch touches, in first-seen order — text and binary alike."""
++    return list(parse_hunks(patch_text))
++
++
++# --------------------------------------------------------------------------
++# the ride-along predicates
++# --------------------------------------------------------------------------
++
++def xaxbx_flag(base_text, patch_texts, path):
++    """True iff a hunk targeting `path` leans on a line that is not unique in the base.
++
++    Every context line and every added line of every hunk targeting `path` is
++    collected; the flag is True as soon as one of them occurs twice or more
++    among `base_text`'s lines. That non-uniqueness is what lets a three-way
++    merge anchor a hunk at the wrong occurrence.
++    """
++    counts = Counter(base_text.splitlines())
++    for text in patch_texts:
++        for hunk in parse_hunks(text).get(path, []):
++            for line in hunk["kept"]:
++                if counts[line] >= 2:
++                    return True
++    return False
++
++
++def deletion_adjacency(entry, k=3):
++    """Ordered task pairs on a shared path where one deletes near the other's hunk.
++
++    One row per ordered `(path, task_del, task_near)` that qualifies:
++    `task_del` removed a base line lying within `[start - k, end + k]` of some
++    hunk span of `task_near` on the same file. `deleted_line` is the lowest
++    such base line. Rows come out in recorded task order, then path order.
++    """
++    patches = task_patches(entry)
++    hunks = {task_id: parse_hunks(text) for task_id, text in patches}
++    order = [task_id for task_id, _ in patches]
++    rows = []
++    for task_del in order:
++        for task_near in order:
++            if task_del == task_near:
++                continue
++            for path, mine in sorted(hunks[task_del].items()):
++                theirs = hunks[task_near].get(path)
++                if not theirs:
++                    continue
++                hit = None
++                for hunk in mine:
++                    for line in hunk["deleted"]:
++                        if any(other["base_start"] - k <= line <= other["base_end"] + k
++                               for other in theirs):
++                            hit = line if hit is None else min(hit, line)
++                if hit is not None:
++                    rows.append({"path": path, "task_del": task_del,
++                                 "task_near": task_near, "deleted_line": hit})
++    return rows
+diff --git a/tests/test_classify.py b/tests/test_classify.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7da0553a775d47aae2b4ea6d6019be5f661dca81
+--- /dev/null
++++ b/tests/test_classify.py
+@@ -0,0 +1,236 @@
++"""The verdict core: Arm G, the five-class comparator, and the ride-alongs.
++
++Everything here is over `evals/frontier/classify.py` and
++`evals/frontier/arm_git.py` (spec
++`docs/superpowers/specs/2026-08-31-fold-corpus-validation.md`, Deliverable C).
++The comparator is a pure function of two `ArmResult`s, so the class table is
++pinned against hand-built arms — no fold, no git, no ambiguity about which arm
++said what. The rest runs against `make_fixture_corpus`'s four seeded waves,
++which carry one known instance of each thing the ride-alongs look for.
++
++Offline and deterministic: the only subprocess is git, over a scratch clone of
++the fixture repo built under the test's own `tmp_path`.
++"""
++import subprocess
++import sys
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++import arm_git  # noqa: E402
++import classify  # noqa: E402
++import corpuslib  # noqa: E402
++
++
++@pytest.fixture(scope="module")
++def fixture_corpus(tmp_path_factory):
++    """One build of the fixture corpus, shared read-only by the wave tests."""
++    dest = tmp_path_factory.mktemp("classify-corpus")
++    repo, corpus = corpuslib.make_fixture_corpus(dest)
++    entries = corpuslib.load_corpus_index(corpus)
++    return repo, corpus, {e.wave: e for e in entries}
++
++
++def _patch_texts(entry):
++    return [text for _, text in classify.task_patches(entry)]
++
++
++# --------------------------------------------------------------------------
++# The five classes — the table the spec's GO/NO verdict is read off
++# --------------------------------------------------------------------------
++
++def test_five_classes_from_handbuilt_arms():
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    weave = corpuslib.ArmResult({"one": W("clean", b"x\ny\n"), "two": W("clean", b"y\nx\n"),
++                                 "thr": W("clean", b"a\n"), "fou": W("contended"), "fiv": W("contended"),
++                                 "bin": W("binary")}, True)
++    git = corpuslib.ArmResult({"one": W("clean", b"x\ny\n"), "two": W("clean", b"x\ny\n"),
++                               "thr": W("contended"), "fou": W("clean", b"b\n"), "fiv": W("contended"),
++                               "bin": W("binary")}, True)
++    got = {v["path"]: v["cls"] for v in classify.classify(weave, git)}
++    assert got == {"one": 1, "two": 2, "thr": 3, "fou": 4, "fiv": 5, "bin": "binary"}
++    two = [v for v in classify.classify(weave, git) if v["path"] == "two"][0]
++    assert two["mechanically_explained"] is True     # same line multiset, reordered
++
++
++def test_class2_unexplained_when_content_differs():
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    weave = corpuslib.ArmResult({"p": W("clean", b"x\n")}, True)
++    git = corpuslib.ArmResult({"p": W("clean", b"z\n")}, True)
++    assert classify.classify(weave, git)[0]["mechanically_explained"] is False
++
++
++def test_kept_vs_deleted_is_unexplained_class2():
++    """The delete-vs-keep divergence — a clean answer whose content is None.
++
++    `arm_git._read_tree` reports `PathAnswer("clean", None)` for a path the wave
++    touched and the merge result does not carry, so this pair reaches the
++    comparator whenever one arm keeps a file the other deletes. It is the
++    highest-signal class-2 row there is; it must land in the table rather than
++    raise out of it.
++    """
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    weave = corpuslib.ArmResult({"p": W("clean", b"line\n")}, True)
++    git = corpuslib.ArmResult({"p": W("clean", None)}, True)
++    assert classify.classify(weave, git) == [
++        {"path": "p", "cls": 2, "mechanically_explained": False, "xaxbx": False},
++    ]
++    # and symmetrically, with the arms the other way round
++    assert classify.classify(git, weave) == [
++        {"path": "p", "cls": 2, "mechanically_explained": False, "xaxbx": False},
++    ]
++
++
++def test_deleted_on_both_arms_is_class_one():
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    both = lambda: corpuslib.ArmResult({"p": W("clean", None)}, True)
++    v = classify.classify(both(), both())[0]
++    assert v["cls"] == 1 and v["mechanically_explained"] is None
++
++
++def test_deleted_is_not_explained_by_an_empty_file():
++    """Absence is not a reordering of emptiness — never `mechanically_explained`."""
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    weave = corpuslib.ArmResult({"p": W("clean", None)}, True)
++    git = corpuslib.ArmResult({"p": W("clean", b"")}, True)
++    v = classify.classify(weave, git)[0]
++    assert v["cls"] == 2 and v["mechanically_explained"] is False
++
++
++def test_path_in_one_arm_only_is_unexplained_class2():
++    weave = corpuslib.ArmResult({"p": corpuslib.PathAnswer("clean", b"x\n")}, True)
++    git = corpuslib.ArmResult({}, True)
++    v = classify.classify(weave, git)[0]
++    assert v["cls"] == 2 and v["mechanically_explained"] is False
++
++
++def test_row_shape_is_the_four_declared_keys_sorted_by_path():
++    W = lambda s, c=None: corpuslib.PathAnswer(s, c)
++    weave = corpuslib.ArmResult({"z": W("clean", b"q\n"), "a": W("binary")}, True)
++    git = corpuslib.ArmResult({"z": W("clean", b"q\n"), "a": W("binary")}, True)
++    assert classify.classify(weave, git) == [
++        {"path": "a", "cls": "binary", "mechanically_explained": None, "xaxbx": False},
++        {"path": "z", "cls": 1, "mechanically_explained": None, "xaxbx": False},
++    ]
++
++
++# --------------------------------------------------------------------------
++# Arm G over the fixture waves
++# --------------------------------------------------------------------------
++
++W1_A = corpuslib.A_TXT.replace("a four\n", "a four (task 1a)\n").encode()
++W1_B = corpuslib.B_TXT.replace("b two\n", "b two (task 1b)\n").encode()
++# Wave 2's weave answer is the kernel's own auto-union, as its `resolve` event
++# recorded it: both appends kept, left before right.
++W2_UNION = b"c one\nc two\nc anchor\nc left addition\nc right addition\nc three\nc four\n"
++
++
++def test_git_answer_disjoint_wave_is_class_one_everywhere(fixture_corpus, tmp_path):
++    repo, _, entries = fixture_corpus
++    weave = corpuslib.ArmResult({"a.txt": corpuslib.PathAnswer("clean", W1_A),
++                                 "b.txt": corpuslib.PathAnswer("clean", W1_B)}, True)
++    git = arm_git.git_answer(repo, entries[1], weave, work=tmp_path)
++    assert git.complete is True
++    assert {p: a.status for p, a in git.per_path.items()} == {"a.txt": "clean", "b.txt": "clean"}
++    assert git.per_path["a.txt"].content == W1_A
++    assert git.per_path["b.txt"].content == W1_B
++    assert [(v["path"], v["cls"]) for v in classify.classify(weave, git)] == [("a.txt", 1), ("b.txt", 1)]
++
++
++def test_git_answer_same_anchor_wave_conflicts_where_the_weave_unioned(fixture_corpus, tmp_path):
++    repo, _, entries = fixture_corpus
++    weave = corpuslib.ArmResult({"c.txt": corpuslib.PathAnswer("clean", W2_UNION)}, True)
++    git = arm_git.git_answer(repo, entries[2], weave, work=tmp_path)
++    assert git.complete is True
++    assert git.per_path["c.txt"].status == "contended"
++    assert [(v["path"], v["cls"]) for v in classify.classify(weave, git)] == [("c.txt", 3)]
++    # the conflict was completed with the weave's own content, so the arm still
++    # finishes the wave rather than stopping at the first conflict
++    assert git.per_path["c.txt"].content == W2_UNION
++
++
++def test_git_answer_binary_path_is_reported_binary(fixture_corpus, tmp_path):
++    repo, _, entries = fixture_corpus
++    weave = corpuslib.ArmResult({}, True)
++    git = arm_git.git_answer(repo, entries[4], weave, work=tmp_path)
++    assert git.complete is True
++    assert git.per_path["bin.dat"].status == "binary"
++    assert git.per_path["b.txt"].status == "clean"
++
++
++def test_git_answer_class_five_wave_is_contended_on_both_arms(fixture_corpus, tmp_path):
++    repo, _, entries = fixture_corpus
++    weave = corpuslib.ArmResult({"d.txt": corpuslib.PathAnswer("contended")}, True)
++    git = arm_git.git_answer(repo, entries[3], weave, work=tmp_path)
++    assert git.per_path["d.txt"].status == "contended"
++    assert [(v["path"], v["cls"]) for v in classify.classify(weave, git)] == [("d.txt", 5)]
++
++
++# --------------------------------------------------------------------------
++# The ride-along predicates
++# --------------------------------------------------------------------------
++
++def test_xaxbx_true_on_the_class_five_seed(fixture_corpus):
++    _, _, entries = fixture_corpus
++    assert classify.xaxbx_flag(corpuslib.D_TXT, _patch_texts(entries[3]), "d.txt") is True
++
++
++def test_xaxbx_false_on_the_disjoint_wave(fixture_corpus):
++    _, _, entries = fixture_corpus
++    texts = _patch_texts(entries[1])
++    assert classify.xaxbx_flag(corpuslib.A_TXT, texts, "a.txt") is False
++    assert classify.xaxbx_flag(corpuslib.B_TXT, texts, "b.txt") is False
++
++
++def test_deletion_adjacency_names_the_pair_and_the_file(fixture_corpus):
++    _, _, entries = fixture_corpus
++    assert classify.deletion_adjacency(entries[4]) == [
++        {"path": "b.txt", "task_del": "4a", "task_near": "4b", "deleted_line": 5},
++    ]
++
++
++def test_deletion_adjacency_empty_on_the_disjoint_wave(fixture_corpus):
++    _, _, entries = fixture_corpus
++    assert classify.deletion_adjacency(entries[1]) == []
++
++
++def test_deletion_adjacency_reports_the_lowest_line_in_the_window(fixture_corpus):
++    _, _, entries = fixture_corpus
++    # 4a deletes base lines 5 and 6; 4b's hunk spans base lines 6..10. At k=0
++    # only line 6 is inside the span, so widening the window is what pulls the
++    # reported line down to 5.
++    assert classify.deletion_adjacency(entries[4], k=0) == [
++        {"path": "b.txt", "task_del": "4a", "task_near": "4b", "deleted_line": 6},
++    ]
++    assert classify.deletion_adjacency(entries[4], k=1) == [
++        {"path": "b.txt", "task_del": "4a", "task_near": "4b", "deleted_line": 5},
++    ]
++
++
++def _hand_wave(tmp_path, patches):
++    """A one-wave corpus entry written by hand — patch text, nothing folded."""
++    wave = tmp_path / "hand" / "wave-1"
++    wave.mkdir(parents=True)
++    log = ['{"type": "base", "sha": "%s"}' % ("0" * 40)]
++    for task_id, text in patches:
++        (wave / ("task-%s.patch" % task_id)).write_text(text)
++        log.append('{"type": "fold", "task": "%s", "headSha": "%s", "patch": "task-%s.patch"}'
++                   % (task_id, "1" * 40, task_id))
++    (wave / "fold_log.jsonl").write_text("".join(line + "\n" for line in log))
++    return corpuslib.CorpusEntry("hand", 1, "0" * 40, "patch", wave,
++                                 tasks=[t for t, _ in patches])
++
++
++def test_deletion_adjacency_window_excludes_a_distant_deletion(tmp_path):
++    # `x` deletes base line 2; `y`'s hunk spans base lines 20..22. Nothing is
++    # adjacent at k=3, and the row only appears once k reaches the gap.
++    far = _hand_wave(tmp_path, [
++        ("x", "--- a/f.txt\n+++ b/f.txt\n@@ -1,3 +1,2 @@\n a\n-b\n c\n"),
++        ("y", "--- a/f.txt\n+++ b/f.txt\n@@ -20,3 +20,4 @@\n t\n+new\n u\n v\n"),
++    ])
++    assert classify.deletion_adjacency(far) == []
++    assert classify.deletion_adjacency(far, k=18) == [
++        {"path": "f.txt", "task_del": "x", "task_near": "y", "deleted_line": 2},
++    ]

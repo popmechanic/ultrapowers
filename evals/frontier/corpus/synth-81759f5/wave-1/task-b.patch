@@ -1,0 +1,176 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 665190a8d585cd71b1d2b2e9c0a07a0d7221efc2..5ce5f14414075868e2de069c6e4e46077cadcf12 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -177,6 +177,11 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
+ - **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement first.
+ - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
+ 
++Whatever the verdict, delete the run's review exhaust now —
++`rm -rf .claude/ultrapowers/run-<stamp>/review` — the packets are regenerable
++from the BASE/HEAD shas recorded in the report; the run's records
++(transcripts, receipts, launch/args) stay for the viewer and later harvests.
++
+ Render the report per `references/report-format.md` plus the **post-merge runbook**
+ (`release`/`manual` tasks, verbatim), then present:
+ 
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 9c2ffe2700f6c50d465d39ce17a9f81f41ff6cd8..e66a1a24c756833a89eebf542c16944c9c09033c 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -24,6 +24,10 @@ import re
+ import sys
+ from pathlib import Path
+ 
++# scripts -> ultrapowers -> skills -> plugin root; identical to ultra_run.py's
++# PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
++PLUGIN_ROOT = Path(__file__).resolve().parents[3]
++
+ TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
+ FENCE = re.compile(r"^(`{3,}|~{3,})")
+ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+@@ -1238,6 +1242,10 @@ def main(argv=None):
+                          "every violation with a did-you-mean fix and exit 2, "
+                          "or print 'PLAN OK' and exit 0 — never emits waves. "
+                          "Mutually exclusive with --emit-launch/--emit-args.")
++    ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
++                    help="absolute per-run directory; stamped into the args "
++                         "skeleton as runDir (with pluginRoot) so the engine "
++                         "routes all scratch there")
+     args = ap.parse_args(argv)
+     emit_launch = args.emit_launch
+     emit_args = args.emit_args
+@@ -1257,6 +1265,9 @@ def main(argv=None):
+     if emit_args is not None and emit_launch is None:
+         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
+                  "ride via the launch file, so wavesPath is always populated)")
++    if args.run_dir is not None and emit_args is None:
++        sys.exit("error: --run-dir requires --emit-args (the keys ride the "
++                 "launch-args skeleton)")
+     plan_text = args.plan.read_text()
+     # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
+     # named diagnostic, not the generic 'no headings found'.)
+@@ -1485,6 +1496,9 @@ def main(argv=None):
+             "globalConstraints": global_constraints,
+             "planPath": str(args.plan.resolve()),
+         }
++        if args.run_dir is not None:
++            args_payload["pluginRoot"] = str(PLUGIN_ROOT)
++            args_payload["runDir"] = str(args.run_dir.resolve())
+         emit_args.parent.mkdir(parents=True, exist_ok=True)
+         emit_args.write_text(json.dumps(args_payload, indent=2))
+         result["args_file"] = str(emit_args)
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index 7052fc154a69f8c796b9ac100f5ab2b578d46e99..bbb5070a3710f9c0a957412644380058b50ab963 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -19,6 +19,7 @@ from __future__ import annotations
+ import argparse
+ import datetime
+ import json
++import re
+ import shutil
+ import subprocess
+ import sys
+@@ -28,6 +29,24 @@ HERE = Path(__file__).resolve().parent
+ HARNESSES = HERE.parent / "harnesses"
+ PLUGIN_ROOT = HERE.parents[2]
+ 
++RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
++KEEP_RUNS = 10
++
++
++def prune_run_dirs(state_dir, keep=KEEP_RUNS):
++    """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
++    strict run-<stamp> names — everything else under the state dir
++    (scratch/, pending seal dirs, operator files) is not ours to touch.
++    Stamp format sorts lexicographically = chronologically."""
++    if not state_dir.is_dir():
++        return []
++    runs = sorted(d for d in state_dir.iterdir()
++                  if d.is_dir() and RUN_DIR_RE.match(d.name))
++    doomed = runs[:-keep] if keep else runs
++    for d in doomed:
++        shutil.rmtree(d, ignore_errors=True)
++    return [d.name for d in doomed]
++
+ PROBE = {"name": "ultrapowers-probe",
+          "args": {"ping": "pong",
+                   "waves": [{"id": "probe-1", "title": "probe", "body": "b"}]},
+@@ -189,10 +208,23 @@ def main(argv=None):
+     if not stage("superpowers-compat", r.returncode == 0, r.stdout + r.stderr):
+         return bail()
+ 
++    # Scratch hygiene: the state dir self-ignores (content `*`) so every run
++    # dir is structurally invisible to git in any repo, and old run records
++    # are pruned keep-newest-10 (runs serialize on RUN_LOCK, so no dir here
++    # is live). Exhaust (<runDir>/review) is deleted earlier, at the SKILL.md
++    # gate step; this prune is the crash backstop that gives cleanup a
++    # trigger even when a run died before its gate.
++    state_dir.mkdir(parents=True, exist_ok=True)
++    (state_dir / ".gitignore").write_text("*\n")
++    pruned = prune_run_dirs(state_dir)
++    stage("scratch-hygiene", True,
++          "pruned %d old run dir(s)" % len(pruned) if pruned else "nothing to prune")
++
+     run_dir.mkdir(parents=True, exist_ok=True)
+     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
+     r = sh([sys.executable, str(HERE / "compile_plan.py"), str(a.plan),
+-            "--emit-launch", str(launch), "--emit-args", str(args_file)],
++            "--emit-launch", str(launch), "--emit-args", str(args_file),
++            "--run-dir", str(run_dir.resolve())],
+            cwd=root)
+     if not stage("compile", r.returncode == 0, r.stderr or r.stdout):
+         return bail()
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index f5d1efa946b5b243c6f4c26312187da2b3c45847..55a6d3b3ec39868c0c9316c6a4f2b2e8e07f1f15 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -219,3 +219,47 @@ def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
+     verdict = json.loads(r.stdout)
+     assert verdict["ok"] is False
+     assert "not a JSON object" in verdict["detail"]
++
++
++def test_args_skeleton_carries_plugin_root_and_run_dir(tmp_path):
++    repo = make_repo(tmp_path)
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    skel = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
++    assert skel["pluginRoot"] == str(ROOT)
++    assert skel["runDir"] == str((repo / ".claude/ultrapowers/run-t1").resolve())
++
++
++def test_run_dir_requires_emit_args(tmp_path):
++    repo = make_repo(tmp_path)
++    r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
++            "--run-dir", str(tmp_path / "rd")], cwd=repo, check=False)
++    assert r.returncode != 0
++    assert "--run-dir requires --emit-args" in (r.stdout + r.stderr)
++
++
++def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
++    repo = make_repo(tmp_path)
++    state = repo / ".claude/ultrapowers"
++    state.mkdir(parents=True)
++    # 12 stale stamp-format run dirs; the 2 oldest must be pruned (keep 10).
++    for day in range(10, 22):
++        (state / f"run-202601{day:02d}-000000").mkdir()
++    # Decoys that the prune must NEVER touch: non-matching names.
++    (state / "scratch").mkdir()
++    (state / "pending-abc123def456").mkdir()
++    (state / "run-keepme").mkdir()          # prefix collides, format does not
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    survivors = sorted(d.name for d in state.iterdir()
++                       if d.name.startswith("run-2026"))
++    assert len(survivors) == 10
++    assert survivors[0] == "run-20260112-000000"   # the 2 oldest are gone
++    assert (state / "scratch").is_dir()
++    assert (state / "pending-abc123def456").is_dir()
++    assert (state / "run-keepme").is_dir()
++    assert (state / "run-t1").is_dir()             # the current run, untouched
++    assert (state / ".gitignore").read_text() == "*\n"
++    receipt = json.loads(r.stdout)
++    assert any(s["stage"] == "scratch-hygiene" and s["ok"]
++               for s in receipt["stages"])

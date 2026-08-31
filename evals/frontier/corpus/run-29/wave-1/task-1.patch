@@ -1,0 +1,155 @@
+diff --git a/skills/ultraplan/SKILL.md b/skills/ultraplan/SKILL.md
+index 876cfe1fcd55d2d7bce4e1d27459f009ddd5c788..886d51bc4ea61a7378e7d4331904ac94eace8fc2 100644
+--- a/skills/ultraplan/SKILL.md
++++ b/skills/ultraplan/SKILL.md
+@@ -8,8 +8,8 @@ description: Use together with superpowers:writing-plans on EVERY implementation
+ Use **together with** `superpowers:writing-plans`: that skill owns plan structure,
+ TDD steps, and granularity. This skill adds the parallel-execution contract so
+ `/ultrapowers` compiles the plan by parsing instead of inferring. The two blocks
+-below mirror the canonical plan-markers contract (inside the ultrapowers skill)
+-verbatim, pinned by an anti-drift test.
++below mirror the canonical marker contract verbatim, pinned by an
++anti-drift test.
+ 
+ **Announce at start:** "I'm also using ultraplan to make this plan parallel-ready."
+ 
+@@ -30,9 +30,9 @@ independence the sequential pen glides over. Five moves:
+    `Produces:` the signatures; consumers `Consume:` + `Depends-on:` it and build
+    against the contract in parallel.
+ 3. **Let same-file edits stand.** Coupling is interfaces and existence, not
+-   files. The compiler no longer serializes same-file text writes in any form —
+-   the fold path owns them and resolves concurrent edits at merge — so a shared
+-   hot file is never a reason to reshape a plan. Three old workarounds are
++   files. The compiler never serializes same-file text writes: the fold
++   path resolves concurrent edits at merge, so a shared hot file is never a
++   reason to reshape a plan. Three old workarounds are
+    authoring **defects**: splitting a feature or a file to dodge a collision;
+    chaining a fan of independent tasks to serialize writers; adding
+    `Depends-on` for file overlap alone. Let colliding `Modify` lines collide.
+@@ -218,6 +218,8 @@ While writing tasks:
+    cites must exist at BASE, be created by a task it `Depends-on`, or be defined
+    in `report-format.md`. Run `compile_plan.py --check --renders <plan>` and
+    read its `ADVISORY` blast-radius and referent lines before handoff.
++- **Greenfield targets take the Bun + TypeScript defaults** — knobs and
++  rationale in `references/greenfield-stack.md` (#425).
+ - **Bodies may sketch routine glue — an ultraplan override.** writing-plans
+   demands complete code in every step; here that holds only where the code
+   carries information the implementer cannot derive. An `implementation` body
+@@ -284,7 +286,7 @@ documentation** — the compiler reads them, so populate them deliberately:
+    forwarded as a reviewer lens they can only produce unverifiable process
+    findings against every task, since no diff evidences the order work was
+    done in. State what must be true of the result (tests present, behavior
+-   covered), not the order it was produced in.
++   covered).
+ 
+ 2. **`**Interfaces:**`** (per task). `Produces:` names the function names and
+    param/return types later tasks rely on; `Consumes:` names the signatures this
+diff --git a/skills/ultraplan/references/greenfield-stack.md b/skills/ultraplan/references/greenfield-stack.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..5d02ac94e4111ac6fe992b9726a8a1725bab9fc0
+--- /dev/null
++++ b/skills/ultraplan/references/greenfield-stack.md
+@@ -0,0 +1,56 @@
++# Greenfield stack — Bun + TypeScript authoring defaults
++
++Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
++a greenfield plan hands the engine, and the one tsconfig detail that costs an
++author an hour when it is guessed wrong.
++
++## When it applies
++
++Greenfield **target apps** only — a codebase the plan itself brings into
++existence. It is never a restriction on an existing repo (whose stack is
++already chosen and whose suite already runs), never on ultrapowers' own suite
++(pytest), and never on the fleet driver (Node — its spawn/SIGTERM semantics are
++what the driver measures, so it stays where it is).
++
++## The two knobs, verbatim
++
++- **testCmd:** bunx tsc --noEmit && bun test
++- **bootstrapCmd:** bun install
++
++Write both exactly as above. Bare `tsc` requires a global TypeScript install;
++`bunx tsc` resolves the project's own devDependency — which is what keeps a
++fresh clone's bootstrap to a single `bun install` with nothing but Bun present.
++
++## Why it earns the restriction
++
++`Consumes:`/`Produces:` stop being prose a reviewer has to eyeball. Running
++`tsc --noEmit` over the integrated tree catches cross-task interface drift
++deterministically, and interface drift is *the* characteristic failure of
++parallel implementation: each task is green alone and the seam between them is
++not. `bun test` is fast enough that an implementer can afford the whole suite
++on every iteration, so a task never trades coverage for turnaround.
++
++## The tsconfig gotcha
++
++Take the Bun types from the `@types/bun` devDependency and name them in
++tsconfig:
++
++```json
++{ "compilerOptions": { "types": ["bun"] } }
++```
++
++The older `bun-types` package name fails with
++`TS2688: Cannot find type definition file for 'bun-types'`.
++
++## The engine boundary
++
++The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing
++about Bun. This page is **authoring guidance**: it changes what a plan writes
++down, never how a run executes.
++
++## The baseline rule
++
++Any Bun fixture or greenfield plan run on the fleet must start from a tree that
++is **green at BASE**. A tree whose tests do not exist yet cannot pass knob
++validation, so a greenfield plan driven through `/ultrapowers` starts from a
++seeded, passing skeleton — see the Bun eval fixture for the shape.
+diff --git a/tests/test_greenfield_stack.py b/tests/test_greenfield_stack.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..517a89d64508b4220b99cf543952694cecd2747c
+--- /dev/null
++++ b/tests/test_greenfield_stack.py
+@@ -0,0 +1,41 @@
++"""Pin: the greenfield stack defaults exist as authoring guidance, SKILL.md
++points at them, and the two canonical knob strings are stated verbatim (#425).
++The strings are quoted by fleet/fitness.mjs's nudge and by the Bun eval
++fixture; this is the one place they are defined."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++REF = ROOT / "skills/ultraplan/references/greenfield-stack.md"
++SKILL = ROOT / "skills/ultraplan/SKILL.md"
++
++TEST_CMD = "bunx tsc --noEmit && bun test"
++BOOTSTRAP_CMD = "bun install"
++
++
++def test_reference_exists_and_states_the_canonical_knobs():
++    assert REF.is_file()
++    text = REF.read_text()
++    assert TEST_CMD in text
++    assert BOOTSTRAP_CMD in text
++    # bare `tsc` needs a global install; the deviation from #425's prose is
++    # deliberate and must stay documented where an author will see it.
++    assert "bunx" in text
++    # the engine boundary is the point of the whole restriction
++    assert "engine" in text.lower()
++
++
++def test_skill_points_at_the_reference():
++    assert "references/greenfield-stack.md" in SKILL.read_text()
++
++
++def test_skill_stays_within_its_pinned_ceiling():
++    # the absolute lives in tests/test_skill_budget.py; this asserts the
++    # net-zero obligation was honored rather than the ceiling raised.
++    assert len(SKILL.read_text().split()) <= 3038
++
++
++def test_types_gotcha_is_recorded():
++    # @types/bun + "types": ["bun"]; `bun-types` fails TS2688. An author who
++    # hits this loses an hour, so the reference must name it.
++    text = REF.read_text()
++    assert "@types/bun" in text

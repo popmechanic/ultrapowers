@@ -1,0 +1,55 @@
+diff --git a/skills/ultrapowers/scripts/serve_viewer.py b/skills/ultrapowers/scripts/serve_viewer.py
+index 23735073bb973b1d9b108446d1cb867d329d971a..cf8335123b887cadaf740536a7660f1969f51cfe 100644
+--- a/skills/ultrapowers/scripts/serve_viewer.py
++++ b/skills/ultrapowers/scripts/serve_viewer.py
+@@ -31,6 +31,14 @@ def free_port():
+         return s.getsockname()[1]
+ 
+ 
++def build_watch_cmd(python, watch_script, repo, branch, out, transcripts):
++    cmd = [python, str(watch_script), "--repo", repo, "--out", str(out),
++           "--integration", branch]
++    if transcripts:
++        cmd += ["--transcripts", transcripts]
++    return cmd
++
++
+ def stop(out_dir):
+     pidpath = pathlib.Path(out_dir) / PIDFILE
+     if not pidpath.exists():
+@@ -76,7 +84,7 @@ def main():
+     if args.watch:
+         repo, branch = args.watch
+         w = subprocess.Popen(
+-            [sys.executable, str(WATCH), "--repo", repo, "--out", str(out), "--integration", branch],
++            build_watch_cmd(sys.executable, WATCH, repo, branch, out, args.transcripts),
+             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+         pids.append(w.pid)
+ 
+diff --git a/tests/test_serve_viewer.py b/tests/test_serve_viewer.py
+index 0ccd5c77a4a155b95525e5a33668fa61e3e5b0b1..b8798649dd262b8f19ae92b22d9b28164de306ba 100644
+--- a/tests/test_serve_viewer.py
++++ b/tests/test_serve_viewer.py
+@@ -73,6 +73,22 @@ def test_transcripts_read_only(tmp_path):
+         _serve(["--stop", str(out)])
+ 
+ 
++def test_build_watch_cmd_threads_transcripts():
++    import importlib.util
++    spec = importlib.util.spec_from_file_location("serve_viewer", SERVE)
++    mod = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(mod)
++    cmd = mod.build_watch_cmd("python3", "/w/swarm_watch.py", "/repo",
++                              "ultra/integration-x", "/out", "/run/transcripts")
++    assert "--transcripts" in cmd
++    assert cmd[cmd.index("--transcripts") + 1] == "/run/transcripts"
++    assert "--integration" in cmd and "ultra/integration-x" in cmd
++    # no transcripts -> no flag (back-compat with --watch-only callers)
++    cmd2 = mod.build_watch_cmd("python3", "/w/swarm_watch.py", "/repo",
++                               "ultra/integration-x", "/out", None)
++    assert "--transcripts" not in cmd2
++
++
+ def test_watch_writes_status(tmp_path):
+     repo = tmp_path / "repo"
+     repo.mkdir()

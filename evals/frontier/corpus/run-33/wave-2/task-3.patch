@@ -1,0 +1,187 @@
+diff --git a/fleet/RUNBOOK.md b/fleet/RUNBOOK.md
+index 3b417d72eed80f1d66cf0d69f5d372635b6500e7..1a224fe640b06c67a4946875cbd5f277345c947a 100644
+--- a/fleet/RUNBOOK.md
++++ b/fleet/RUNBOOK.md
+@@ -581,8 +581,12 @@ On every park, triage in this order:
+    (`sandbox-logs.tgz`: `repo/.claude/ultrapowers/run-*/review/*.diff`)
+    apply cleanly to base (PR #317 precedent); reconstruct any
+    integration-only fixes from `report.json`.
+-3. **Harvest `report.json`'s `completenessFindings` into issues explicitly**
+-   — run-14's carried a real socket-leak defect that existed nowhere else.
++3. **Harvest the `minor` group of `report.json`'s `completenessFindings` into
++   issues explicitly** — run-14's carried a real socket-leak defect that
++   existed nowhere else. Only the `minor` group needs this hand step: since
++   #474 a `blocking` finding stops the run at the driver (`criticDecision`
++   refuses before `--approve`, leaving a `critic-block.json` beside the gate
++   receipt), so it is already on the record and needs no manual harvest.
+ 
+ ## Teardown guarantee
+ 
+diff --git a/fleet/drive.mjs b/fleet/drive.mjs
+index 156518581d4e9843dd46b9329bb2e05aecb6d6ac..c744d9f5f57f533246cf6e01218c705be28aea9a 100644
+--- a/fleet/drive.mjs
++++ b/fleet/drive.mjs
+@@ -139,6 +139,28 @@ export const planTitleFrom = (planText, planPath) => {
+ export const pullRequestTitle = ({ runId, planText, planPath, parked }) =>
+   `${parked ? '[parked] ' : ''}fleet ${runId}: ${planTitleFrom(planText, planPath)}`
+ 
++/**
++ * One completeness-critic finding, reduced to `{severity, detail}` for the PR
++ * body. Findings are typed `{severity, detail}` since #474, but runs 1–32 wrote
++ * bare strings: a string carries no severity, and `criticDecision` treats it as
++ * non-blocking, so it renders under `minor`. Anything else unreadable degrades
++ * to a rendered line — the disclosure section never throws the whole body away.
++ */
++const normalizeFinding = (finding) => {
++  const text = (v) => {
++    if (typeof v === 'string') return v.trim()
++    if (v === null || v === undefined) return ''
++    try {
++      return typeof v === 'object' ? JSON.stringify(v) : String(v)
++    } catch {
++      return String(v)
++    }
++  }
++  if (typeof finding === 'string') return { severity: 'minor', detail: finding.trim() }
++  const severity = finding?.severity === 'blocking' ? 'blocking' : 'minor'
++  return { severity, detail: text(finding?.detail) || text(finding) || 'unreadable finding' }
++}
++
+ /**
+  * The PR body: the gate receipt rendered. `receipt` is the parsed
+  * `fleet-receipts/<runId>/gate-receipt.json` from the fetched branch (or null
+@@ -218,8 +240,26 @@ export const renderPullRequestBody = ({
+     lines.push('')
+   }
+   if (Array.isArray(findings) && findings.length > 0) {
++    const grouped = findings.map(normalizeFinding)
++    const blocking = grouped.filter((f) => f.severity === 'blocking')
++    const minor = grouped.filter((f) => f.severity !== 'blocking')
+     lines.push(`## Completeness-critic findings (${findings.length})`)
+-    for (const finding of findings) lines.push(`- ${typeof finding === 'string' ? finding : JSON.stringify(finding)}`)
++    lines.push('')
++    lines.push(`### Blocking (${blocking.length})`)
++    if (blocking.length === 0) lines.push('- none')
++    for (const f of blocking) lines.push(`- ${f.detail}`)
++    if (blocking.length > 0) {
++      lines.push('')
++      lines.push(
++        '_These are why the driver did not approve this run. A `PASS` gate receipt beside them is expected rather ' +
++          'than a contradiction: the gate reports what **it** checked, and it never reads `completenessFindings` — ' +
++          'the critic\'s blocking findings ride here, on the PR body._',
++      )
++    }
++    lines.push('')
++    lines.push(`### Minor (${minor.length})`)
++    if (minor.length === 0) lines.push('- none')
++    for (const f of minor) lines.push(`- ${f.detail}`)
+     lines.push('')
+   }
+   lines.push(`## Receipts (${receipts.length})`)
+diff --git a/fleet/tests/test_drive_pr.mjs b/fleet/tests/test_drive_pr.mjs
+index 261cfa7a765eab95d0e0d3196acc017f49c3cd30..2b9f88baf4d299110e7b6c10a329395e03ce5aa6 100644
+--- a/fleet/tests/test_drive_pr.mjs
++++ b/fleet/tests/test_drive_pr.mjs
+@@ -227,7 +227,17 @@ try {
+       assert.ok(body.includes(leg), `leg rendered: ${leg}`)
+     }
+     assert.ok(body.includes('## autoResolved: 1'), 'autoResolved rendered when the receipt carries it')
+-    assert.ok(body.includes('## Completeness-critic findings (1)\n- socket leak in shim teardown'), 'critic findings rendered')
++    // #474 — the old-evidence regression: a bare string carries no severity,
++    // so it renders under the MINOR group and the renderer never throws on it.
++    const sectionIdx = body.indexOf('## Completeness-critic findings (1)')
++    const blockingIdx = body.indexOf('### Blocking (0)')
++    const minorIdx = body.indexOf('### Minor (1)')
++    const stringIdx = body.indexOf('- socket leak in shim teardown (run-14 precedent)')
++    assert.ok(sectionIdx >= 0, `critic findings section rendered: ${body}`)
++    assert.ok(blockingIdx > sectionIdx, 'the blocking group renders with its own count, even at zero')
++    assert.ok(minorIdx > blockingIdx, 'blocking group before minor group')
++    assert.ok(stringIdx > minorIdx, 'a pre-#474 bare string lands under the minor group')
++    assert.ok(!body.includes('why the driver did not approve'), 'no blocking findings → no refusal sentence')
+     assert.ok(body.includes(`- \`${greenReceiptSha}\` \`${greenReceiptPath}\` — PASS, resolved`), 'receipt pointer rendered')
+     // Closes: from the plan HEADER only — #318/#319 (bold line) and #320
+     // (bare line); the #999 under a `##` section is NOT a close.
+@@ -432,6 +442,57 @@ try {
+     assert.ok(body.includes('## Driver notes (1)\n- version cross-check unavailable'))
+     assert.ok(!body.includes('Closes #'))
+     assert.ok(body.endsWith(`\n${TRAILER}\n`))
++
++    // #474 — the findings section is two labelled groups, blocking first,
++    // each carrying its own count; a typed finding renders as plain prose.
++    const withFindings = (findings) =>
++      renderPullRequestBody({
++        runId: 'run-f',
++        planPath: 'p.md',
++        branch: 'b',
++        vmName: 'fleet-run-f',
++        parked: false,
++        receipt: { verdict: 'PASS', gateCheck: { verdict: 'PASS', checks: [], acks: [] }, completenessFindings: findings },
++        receiptSource: null,
++        read: { o1: true, receiptsResolvable: true, leaseContinuity: true, versionStamp: true, spendObservational: { reported: 1, ledger: 1 } },
++        receipts: [],
++        closes: [],
++        errors: [],
++      })
++
++    const mixed = withFindings([
++      { severity: 'minor', detail: 'unused export in fleet/store.mjs' },
++      { severity: 'blocking', detail: 'task 2 deliverable absent from the tree' },
++    ])
++    const blockingHead = mixed.indexOf('### Blocking (1)')
++    const minorHead = mixed.indexOf('### Minor (1)')
++    assert.ok(mixed.includes('## Completeness-critic findings (2)'), `section count: ${mixed}`)
++    assert.ok(blockingHead >= 0 && minorHead >= 0, `both group headings render: ${mixed}`)
++    assert.ok(blockingHead < minorHead, 'the blocking group comes first')
++    for (const detail of ['task 2 deliverable absent from the tree', 'unused export in fleet/store.mjs']) {
++      const line = mixed.split('\n').find((l) => l.includes(detail))
++      assert.equal(line, `- ${detail}`, 'a typed finding renders as plain text, never as JSON')
++      assert.ok(!line.includes('{') && !line.includes('"severity"'), `no raw shape in: ${line}`)
++    }
++    assert.ok(
++      mixed.indexOf('- task 2 deliverable absent from the tree') < minorHead,
++      'the blocking detail sits under the blocking heading',
++    )
++    // The sentence that pays for the gate's silence: a PASS receipt beside a
++    // blocking finding is expected, not a contradiction.
++    assert.ok(mixed.includes('why the driver did not approve'), `refusal sentence: ${mixed}`)
++    assert.ok(/`PASS` gate receipt beside them is expected/.test(mixed), `PASS-is-expected sentence: ${mixed}`)
++    assert.ok(mixed.endsWith(`\n${TRAILER}\n`))
++
++    // A malformed element renders a body rather than throwing.
++    let malformed
++    assert.doesNotThrow(() => {
++      malformed = withFindings([null, 42])
++    }, 'the renderer never throws on a malformed finding')
++    assert.ok(malformed.includes('## Completeness-critic findings (2)'))
++    assert.ok(malformed.includes('### Blocking (0)') && malformed.includes('### Minor (2)'), `groups still render: ${malformed}`)
++    assert.ok(malformed.includes('- 42'), `an unlabelled element still renders: ${malformed}`)
++    assert.ok(malformed.endsWith(`\n${TRAILER}\n`))
+   }
+ 
+   console.log('ALL TESTS PASSED')
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 4fcb6d31c1a1262c54d0989d1f8f6c7bb8d37ad2..7be5ba0e8be8a13a44cb457f39c875bb9bb3ea0d 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -52,7 +52,11 @@ The workflow produces a single structured report object that the main agent pres
+         "why":  { "type": "string" } } } },
+     "judgmentCalls": { "type": "array", "items": { "type": "string" } },
+     "unfinished": { "type": "array", "items": { "type": "string" } },
+-    "completenessFindings": { "type": "array", "items": { "type": "string" } } } }
++    "completenessFindings": { "type": "array", "items": { "type": "object",
++      "required": ["severity", "detail"],
++      "properties": {
++        "severity": { "type": "string", "enum": ["blocking", "minor"] },
++        "detail": { "type": "string" } } } } } }
+ ```
+ 
+ ### Field reference
+@@ -88,7 +92,7 @@ The workflow produces a single structured report object that the main agent pres
+ | `deferredVerification` | no | Deliverables the completeness critic found present and structurally complete but whose behavior the sandbox could not execute, each tagged with a `reason` — `browser` (live UI), `runtime` (target runtime the sandbox can't run: boot, device, deploy target), `external` (unreachable service/credential/network), `manual` (human judgment: aesthetic, product-fit). Gating rule: a non-empty `runtime` or `external` group is a structural false-green and routes into the **same** acknowledgement disposition as `coverage.complete: false`; `browser`/`manual` remain a verify-then-approve checklist. Empty when the critic flagged none |
+ | `judgmentCalls` | no | Non-obvious autonomous decisions, each one of four kinds (the kind is carried in the entry's string prefix): **autonomy** — a defensible call, FYI, asks nothing (tier-escalation recovery, fell-back-to-default review depth/tier, convergent output, worktree provisioned off BASE and reset before work (#314)); **degradation** — verify the affected slice (budget-deferred, integration-review-deferred, agent-error, startHead not reported so BASE anchoring unverified (#314)); **disagreement** — look before approving (reviewer verdict/severity mismatch, reviewer returned no verdict, lost-coordinates, merge reported MERGED without headSha, suite-acceptance failed, disclosed plan-defect divergence (a plan-defect:-prefixed concern)); **binding** — likely a plan typo (endpoint not in run, dependent before prerequisite, endpoints share a wave). New cases slot into an existing kind rather than lengthening this reference. |
+ | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
+-| `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). The critic's prompt also carries the CANNOT-VERIFY checklist the per-task reviewers escalated; its findings include each item it confirmed or refuted against the integrated tree (#2.2). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). |
++| `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic derives its own detach target — `git rev-parse HEAD` inside the integration worktree — then runs `git checkout --detach` and re-confirms `git rev-parse HEAD` still matches; the model-recorded merge sha (`waveMerges[last].headSha`), when non-empty, is cross-checked context, not authority, and a mismatch against the derived tip also blocks. If it cannot (an unresolvable branch/HEAD, or the detach itself fails — e.g. a dirty/conflicted integration worktree) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). The critic's prompt also carries the CANNOT-VERIFY checklist the per-task reviewers escalated; its findings include each item it confirmed or refuted against the integrated tree (#2.2). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). Each finding is an object `{severity, detail}` (#474): **`blocking`** means the critic found a named defect that must not be merged as-is — an unmet plan requirement, a missing deliverable, a claim the integrated tree contradicts; **`minor`** means everything the operator should see but that does not stop the run. The consumer is `fleet/run-main.mjs`'s `criticDecision`, **not** `gate_check.py`, which still never reads this field: a run carrying any `blocking` finding is refused by the driver before `ultra_gate.py --approve` is ever invoked. So a refused run leaves a `PASS` or `NEEDS_ACK` gate receipt beside a `critic-block.json` — the gate is honest about what *it* checked, and the blocking finding is what it does not read; the two are not in contradiction. Elements from runs before #474 are bare strings: they carry no severity, and every consumer (`criticDecision`, the driver's PR body) reads them as `minor`. |
+ 
+ ### `waveMerges[].status` values
+ 

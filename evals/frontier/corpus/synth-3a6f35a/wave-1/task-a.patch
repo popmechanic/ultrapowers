@@ -1,0 +1,374 @@
+diff --git a/skills/ultrapowers/references/dependency-analysis.md b/skills/ultrapowers/references/dependency-analysis.md
+index 36b8f6f3f12985563e96826da195dfe3c18168fb..d917f32aed8ce1c980a2badaaae589afc4630169 100644
+--- a/skills/ultrapowers/references/dependency-analysis.md
++++ b/skills/ultrapowers/references/dependency-analysis.md
+@@ -15,7 +15,7 @@ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
+ Parse each task to extract two file sets:
+ 
+ - **writes** = `Create:` paths ∪ `Modify:` paths (files the task changes on disk).
+-- **reads** = `Test:` paths. Two effects: a task that `Test:`s a path another task writes depends on the writer (`why: "read-after-write"`), AND `Test:` paths count toward the write-after-write overlap — upstream TDD tasks WRITE their test files, so two tasks sharing any path (written or tested) serialize in document order unless an explicit or semantic edge orders them. Under `--overlap fold` an *eligible* pair sharing only a `Test:` path is scheduled concurrently and folded at merge time instead of serialized; the runtime fold predicate, not this static rule, is authoritative there.
++- **reads** = `Test:` paths. Two effects: a task that `Test:`s a path another task writes depends on the writer (`why: "read-after-write"`), AND `Test:` paths count toward the write-after-write overlap — upstream TDD tasks WRITE their test files, so two tasks sharing any path (written or tested) serialize in document order unless an explicit or semantic edge orders them. Under `--overlap fold` an *eligible* pair sharing only a `Test:` path is scheduled concurrently and folded at merge time instead of serialized; the runtime fold predicate, not this static rule, is authoritative there. Eligibility itself comes from the `--repo-root <path>` pre-filter: a `Test:` path resolved against the root and existing there keeps the pair serialized when it is non-text, over `RESOLVER_LINE_CAP` lines (counted via the kernel's `split_lines`), or a symlink; without `--repo-root` every pair is eligible (the pre-filter is inert, a documented property) and the runtime materialization guard is the sole authority.
+ 
+ Extract each task's verbatim body **fence-aware**: a heading inside a ``` code fence
+ is content, not a section boundary — plans routinely embed whole markdown documents
+@@ -68,7 +68,7 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A 
+    `**Depends-on:** none` asserts the author expects no incoming edges; if another rule still finds one, the conflicting edge wins — explicit text edges included (the conflict entry's `edge` field carries the literal `why` label) and the disagreement is surfaced in the
+    transparency block under `marker_conflicts`.
+ 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
+-3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Under the default `--overlap serialize`, concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet). Under `--overlap fold` this tier does not create the edge for an *eligible* pair — the two tasks share a wave and the engine folds their same-file edits at merge time, with the runtime fold predicate authoritative; the drop happens at construction (the pair is recorded in `dropped_pairs`, both orderings) so the `ambiguous-files` and catch-all tiers below still read a truthful adjacency. A pair is droppable only where this tier would have created a NEW edge: forward document order, no edge already recorded for the pair (a `marker`, `text`, `interface`, or semantic edge keeps it serialized), and not cycle-blocked. Every other `why` label survives fold untouched.
++3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Under the default `--overlap serialize`, concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet). Under `--overlap fold` this tier does not create the edge for an *eligible* pair — the two tasks share a wave and the engine folds their same-file edits at merge time, with the runtime fold predicate authoritative; the drop happens at construction (the pair is recorded in `dropped_pairs`, both orderings) so the `ambiguous-files` and catch-all tiers below still read a truthful adjacency. A pair is droppable only where this tier would have created a NEW edge: forward document order, no edge already recorded for the pair (a `marker`, `text`, `interface`, or semantic edge keeps it serialized), and not cycle-blocked. Every other `why` label survives fold untouched. Eligibility is decided by the `--repo-root <path>` pre-filter (hermetic, memoised per path): a pair keeps its edge when any path in its overlap set, resolved against the root and existing there, is non-text, over `RESOLVER_LINE_CAP` lines (via the kernel's `split_lines`), or a symlink (`Path.is_symlink()`; gitlinks are left to the runtime guard). Without `--repo-root` the pre-filter is inert — every pair is eligible. Each ineligible path is recorded once in `marker_conflicts` as a `kind: "inference"` entry (`task: ""`, `edge: "<path>"`) — no new diagnostic vocabulary, the same bucket `Depends-on: none overridden` uses.
+ 4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections. Plural conjunction/comma lists — `depends on Tasks 1 and 3` or `after Tasks 1, 2 and 3` — parse into one text edge per listed id (`why: "text"`); each parsed id that falls outside the implementation set surfaces as a dropped-ghost conflict. A plural `Tasks` mention that does not form a parseable id list (e.g. `after Tasks above`) still surfaces as a conflict so ordering intent is never silently lost.
+ 5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
+ 6. **Prose-reference:** B's fence-stripped prose contains a backticked reference to a path in A's `Create:` set — the exact path, its basename, or (for stems of 3+ characters) its module stem used as an attribute (`schema.User` referencing `apistub/schema.py`). Edge A → B (`why: "prose-reference"`). Because prose matching is fuzzier than `Files:` matching, these edges are cycle-guarded like the document-order heuristics, and each newly inferred edge is surfaced in `marker_conflicts` so the Step-3 gate shows the inference. Motivating failure: eval run mixed-B-2 (2026-06-13) — a task spec said "returns a `schema.User`" while declaring `Depends-on: none`, waved parallel to the schema task, and its failure cascade-blocked the rest of the diamond.
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index d3537070e863882ae31d314a7d297475e7f82d69..72fd004d005ca28d2efcb97801a6a98a5c9a1783 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -33,6 +33,16 @@ from pathlib import Path
+ # PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
+ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+ 
++# scripts -> ultrapowers -> kernel: a plain Python import (no subprocess),
++# reusing the fold engine's line-counting bijection and resolver cap so the
++# --repo-root pre-filter (below) agrees byte-for-byte with the runtime fold
++# predicate on what counts as an oversized file.
++_KERNEL_DIR = Path(__file__).resolve().parent.parent / "kernel"
++if str(_KERNEL_DIR) not in sys.path:
++    sys.path.insert(0, str(_KERNEL_DIR))
++from frontier_fold import RESOLVER_LINE_CAP  # noqa: E402
++from repo_weave import split_lines  # noqa: E402
++
+ TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
+ FENCE = re.compile(r"^(`{3,}|~{3,})")
+ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+@@ -924,7 +934,53 @@ OVERLAP_MODES = ("serialize", "fold")
+ OVERLAP_DEFAULT = "serialize"
+ 
+ 
+-def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
++class _PathEligibility(dict):
++    """dict[path] -> (eligible: bool, reason: str | None), resolved against
++    `root` and computed lazily on first access, memoised thereafter (one
++    filesystem probe per path, however many pairs share it).
++
++    Order of checks: symlink first (`Path.is_symlink()` — never read a
++    broken link's bytes; gitlinks are left to the runtime guard, keeping this
++    compiler subprocess-free); a path that does not exist under `root` is
++    eligible (nothing to inspect — a soon-to-be-created path never forces
++    serialization); otherwise a null byte marks the file non-text, else the
++    bytes are decoded utf-8 with errors="replace" and counted via the
++    kernel's `split_lines` (never `str.splitlines()` — they differ by one on
++    every trailing-newline file) against `RESOLVER_LINE_CAP`.
++    """
++
++    def __init__(self, root):
++        super().__init__()
++        self._root = root
++
++    def __missing__(self, path):
++        full = self._root / path
++        if full.is_symlink():
++            result = (False, "symlink")
++        elif not full.exists():
++            result = (True, None)
++        else:
++            data = full.read_bytes()
++            if b"\x00" in data:
++                result = (False, "non-text (contains a null byte)")
++            else:
++                text = data.decode("utf-8", errors="replace")
++                n = len(split_lines(text))
++                if n > RESOLVER_LINE_CAP:
++                    result = (False, "over RESOLVER_LINE_CAP (%d > %d lines)"
++                              % (n, RESOLVER_LINE_CAP))
++                else:
++                    result = (True, None)
++        self[path] = result
++        return result
++
++
++def _path_eligibility(root):
++    """Factory: a fresh, per-compile memo of `_PathEligibility` over `root`."""
++    return _PathEligibility(root)
++
++
++def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, repo_root=None):
+     """Returns (edges, conflicts, dropped_pairs).
+ 
+     `dropped_pairs` holds BOTH orderings of every pair whose
+@@ -993,17 +1049,36 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
+             stack.extend(adj.get(n, []))
+         return False
+ 
++    # Hermetic, memoised per path over the whole compile (spec §1): built once,
++    # consulted by every pair's fold_eligible() call below. `None` when no
++    # `--repo-root` was given — the pre-filter is then INERT and every pair is
++    # eligible (documented property; the runtime materialization guard remains
++    # authoritative for everything a static pre-filter cannot see).
++    path_eligibility = _path_eligibility(repo_root) if repo_root is not None else None
++
+     def fold_eligible(a, b):
+         """Whether the fold path may take this overlapping pair.
+ 
+-        The eligibility PRE-FILTER — every path in the pair's overlap set,
+-        resolved against a repo root, must pass the kernel's dispatch
+-        predicate — arrives with the `--repo-root` plumbing (spec §1). Until
+-        then the hook is unconditional: with no root to probe, every pair is
+-        eligible, and `dispatchable()` plus the runtime materialization guard
+-        remain authoritative for everything a static pre-filter cannot see.
++        A pair keeps its serializing edge (returns False) when any path in
++        its overlap set — `writes ∪ reads`, both sides — resolved against
++        `repo_root` and existing there, is non-text, over
++        `RESOLVER_LINE_CAP`, or a symlink. Every ineligible path found is
++        recorded once in `marker_conflicts` (task "", the `type_conflicts`
++        `task:""` precedent), regardless of how many pairs share it —
++        `add_conflict`'s `(task, edge)` dedupe keys on the path alone.
+         """
+-        return True
++        if path_eligibility is None:
++            return True
++        overlap = ((set(a["writes"]) | set(a["reads"]))
++                   | (set(b["writes"]) | set(b["reads"])))
++        result = True
++        for path in sorted(overlap):
++            elig, reason = path_eligibility[path]
++            if not elig:
++                add_conflict("", path, reason + " — pairs kept serialized",
++                              kind="inference")
++                result = False
++        return result
+ 
+     # Tier 1: Explicit — marker edges
+     for t in impl:
+@@ -1338,6 +1413,16 @@ def main(argv=None):
+                     help="absolute per-run directory; stamped into the args "
+                          "skeleton as runDir (with pluginRoot) so the engine "
+                          "routes all scratch there")
++    ap.add_argument("--repo-root", type=Path, default=None, dest="repo_root",
++                    metavar="PATH",
++                    help="repo root the `--overlap fold` eligibility "
++                         "pre-filter probes: a pair keeps its serializing "
++                         "edge when a path in its overlap set, resolved "
++                         "against PATH and existing there, is non-text, "
++                         "over RESOLVER_LINE_CAP lines, or a symlink. "
++                         "Without --repo-root the pre-filter is inert and "
++                         "every pair is eligible; ignored under "
++                         "--overlap serialize.")
+     args = ap.parse_args(argv)
+     emit_launch = args.emit_launch
+     emit_args = args.emit_args
+@@ -1479,7 +1564,8 @@ def main(argv=None):
+         print("compile_plan: no implementation tasks — nothing to wave "
+               "(plan is gates/release/manual only); the runbook and gates "
+               "still apply.", file=sys.stderr)
+-    edges, conflicts, dropped_pairs = build_edges(impl, overlap_mode=args.overlap)
++    edges, conflicts, dropped_pairs = build_edges(
++        impl, overlap_mode=args.overlap, repo_root=args.repo_root)
+     waves = layer(impl, edges)
+ 
+     mode, degrade = "parallel", None
+diff --git a/tests/test_compile_prefilter.py b/tests/test_compile_prefilter.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e235ff0d5070c61ac0d793e0bf8ecd63739f765
+--- /dev/null
++++ b/tests/test_compile_prefilter.py
+@@ -0,0 +1,199 @@
++"""`--repo-root` eligibility pre-filter for `--overlap fold` (frontier mode,
++spec docs/superpowers/specs/2026-08-12-frontier-mode-in-engine-design.md §1).
++
++Task 5 built the `fold` knob with an unconditional `fold_eligible()` hook
++(every pair eligible). This task makes the hook real: a pair KEEPS its
++serializing `write-after-write` edge when any path in its overlap set
++(`writes ∪ reads`, both sides), resolved against `--repo-root` and existing
++there, is non-text, over `RESOLVER_LINE_CAP` lines (counted via the kernel's
++`split_lines` — never `str.splitlines()`, which disagrees by one on every
++trailing-newline file), or a symlink. Without `--repo-root` the pre-filter is
++inert and every pair is eligible (documented property) — the compiler stays
++subprocess-free; gitlinks are left to the runtime guard.
++
++Every test compiles a plan written inline here (marker grammar per
++`references/plan-markers.md`) under its own `tmp_path`, so nothing is shared
++on disk between tests. Helper pattern copied from `test_compile_overlap.py`
++(Task 5) rather than imported across test files.
++"""
++import json
++import pathlib
++import subprocess
++import sys
++
++import pytest
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++from compile_plan import RESOLVER_LINE_CAP  # noqa: E402
++
++
++def _run(plan_path, *extra):
++    p = subprocess.run([sys.executable, str(COMPILER), *extra, str(plan_path)],
++                       capture_output=True, text=True)
++    assert p.returncode == 0, p.stderr
++    return p
++
++
++def compile_plan(plan_path, *extra):
++    return json.loads(_run(plan_path, *extra).stdout)
++
++
++def _write(tmp_path, name, text):
++    p = tmp_path / name
++    p.write_text(text)
++    return p
++
++
++def _edges(out, why):
++    return sorted((e["from"], e["to"]) for e in out["dag_edges"] if e["why"] == why)
++
++
++def _task(tid, title, files, deps=None):
++    head = "### Task %s: %s\n\n**Type:** implementation\n" % (tid, title)
++    if deps:
++        head += "**Depends-on:** %s\n" % ", ".join(deps)
++    return (head + "\n**Files:**\n" + "".join("- %s\n" % f for f in files)
++            + "\n- [ ] **Step 1:** do the work\n\n")
++
++
++_HEADER = "# Plan: repo-root pre-filter\n\n**Acceptance:** waived — inline test plan\n\n"
++
++
++def _inference_conflicts(out):
++    return [c for c in out["marker_conflicts"] if c["kind"] == "inference"]
++
++
++# --------------------------------------------------------------- fixtures ---
++def _big_py_plan(tmp_path, root):
++    """t1,t2 both Modify big.py (over cap); t3,t4 both Modify ok.py (small)."""
++    (root / "big.py").write_text(
++        "\n".join("line %d" % i for i in range(RESOLVER_LINE_CAP + 50)))
++    (root / "ok.py").write_text("\n".join("line %d" % i for i in range(10)))
++    return _write(tmp_path, "plan.md", _HEADER + (
++        _task("A", "writer A", ["Modify: `big.py`"])
++        + _task("B", "writer B", ["Modify: `big.py`"])
++        + _task("C", "writer C", ["Modify: `ok.py`"])
++        + _task("D", "writer D", ["Modify: `ok.py`"])))
++
++
++# ----------------------------------------------------------------- tests ---
++def test_prefilter_keeps_edges_for_ineligible_paths_with_inference_records(tmp_path):
++    root = tmp_path / "repo"
++    root.mkdir()
++    plan = _big_py_plan(tmp_path, root)
++
++    out = compile_plan(plan, "--overlap", "fold", "--repo-root", str(root))
++    # t1-t2 (big.py, over cap) keeps its serializing edge.
++    assert _edges(out, "write-after-write") == [("A", "B")]
++    # t3-t4 (ok.py, small) drops and shares a wave.
++    assert ("C", "D") not in _edges(out, "write-after-write")
++    waves_flat = {tid: i for i, w in enumerate(out["waves"]) for tid in w}
++    assert waves_flat["C"] == waves_flat["D"]
++
++    # Exactly one inference record for the one ineligible path, memoised
++    # per path (task "", edge "big.py" — the type_conflicts task:"" precedent).
++    inference = _inference_conflicts(out)
++    assert len(inference) == 1
++    assert inference[0]["task"] == ""
++    assert inference[0]["edge"] == "big.py"
++    assert "pairs kept serialized" in inference[0]["note"]
++
++
++def test_prefilter_covers_reads_paths(tmp_path):
++    root = tmp_path / "repo"
++    (root / "tests").mkdir(parents=True)
++    (root / "tests" / "big_test.py").write_text(
++        "\n".join("line %d" % i for i in range(RESOLVER_LINE_CAP + 50)))
++
++    plan = _write(tmp_path, "plan.md", _HEADER + (
++        _task("A", "alpha", ["Modify: `src/a.py`", "Test: `tests/big_test.py`"])
++        + _task("B", "beta", ["Modify: `src/b.py`", "Test: `tests/big_test.py`"])))
++
++    out = compile_plan(plan, "--overlap", "fold", "--repo-root", str(root))
++    # Disjoint writes (src/a.py vs src/b.py) — only the shared, over-cap
++    # `Test:` path forces the pair to stay serialized: the full overlap set
++    # is `writes ∪ reads`, not `writes ∩ writes`.
++    assert _edges(out, "write-after-write") == [("A", "B")]
++    inference = _inference_conflicts(out)
++    assert len(inference) == 1
++    assert inference[0]["edge"] == "tests/big_test.py"
++
++
++def test_binary_and_symlink_paths_keep_edges(tmp_path):
++    root = tmp_path / "repo"
++    root.mkdir()
++    (root / "bin.dat").write_bytes(b"\x00\x01\x02binary")
++    (root / "target.py").write_text("hello\n")
++    (root / "link.py").symlink_to(root / "target.py")
++
++    plan = _write(tmp_path, "plan.md", _HEADER + (
++        _task("A", "writer A", ["Modify: `bin.dat`"])
++        + _task("B", "writer B", ["Modify: `bin.dat`"])
++        + _task("C", "writer C", ["Modify: `link.py`"])
++        + _task("D", "writer D", ["Modify: `link.py`"])))
++
++    out = compile_plan(plan, "--overlap", "fold", "--repo-root", str(root))
++    assert _edges(out, "write-after-write") == [("A", "B"), ("C", "D")]
++    edges = {c["edge"] for c in _inference_conflicts(out)}
++    assert edges == {"bin.dat", "link.py"}
++
++
++def test_exact_cap_boundary_counts_via_split_lines(tmp_path):
++    root = tmp_path / "repo"
++    root.mkdir()
++    # Exactly RESOLVER_LINE_CAP lines via split_lines (no trailing newline —
++    # split_lines and str.splitlines() agree here): ELIGIBLE.
++    (root / "at_cap.py").write_text(
++        "\n".join("x" for _ in range(RESOLVER_LINE_CAP)))
++    # The same content PLUS a trailing newline: split_lines (content.split("\n"))
++    # counts one more line (RESOLVER_LINE_CAP + 1, over cap — INELIGIBLE),
++    # while str.splitlines() would silently drop the trailing empty entry and
++    # report exactly RESOLVER_LINE_CAP (still eligible) — the split disagrees
++    # by one, which is exactly the bug this pins.
++    (root / "over_by_newline.py").write_text(
++        "\n".join("x" for _ in range(RESOLVER_LINE_CAP)) + "\n")
++
++    plan = _write(tmp_path, "plan.md", _HEADER + (
++        _task("A", "writer A", ["Modify: `at_cap.py`"])
++        + _task("B", "writer B", ["Modify: `at_cap.py`"])
++        + _task("C", "writer C", ["Modify: `over_by_newline.py`"])
++        + _task("D", "writer D", ["Modify: `over_by_newline.py`"])))
++
++    out = compile_plan(plan, "--overlap", "fold", "--repo-root", str(root))
++    # at_cap.py: exactly at the cap -> eligible -> edge drops.
++    assert ("A", "B") not in _edges(out, "write-after-write")
++    # over_by_newline.py: one line over via split_lines -> ineligible -> kept.
++    assert ("C", "D") in _edges(out, "write-after-write")
++    edges = {c["edge"] for c in _inference_conflicts(out)}
++    assert edges == {"over_by_newline.py"}
++
++
++def test_without_repo_root_prefilter_is_inert(tmp_path):
++    root = tmp_path / "repo"
++    root.mkdir()
++    plan = _big_py_plan(tmp_path, root)
++
++    # Same plan, same on-disk files, compiled WITHOUT --repo-root: every pair
++    # is eligible (documented property — the runtime predicate is
++    # authoritative there), so BOTH overlapping pairs drop.
++    out = compile_plan(plan, "--overlap", "fold")
++    assert _edges(out, "write-after-write") == []
++    assert _inference_conflicts(out) == []
++
++
++def test_serialize_mode_untouched_by_prefilter_flags(tmp_path):
++    root = tmp_path / "repo"
++    root.mkdir()
++    plan = _big_py_plan(tmp_path, root)
++
++    # The pre-filter only ever runs in fold mode: --overlap serialize with a
++    # --repo-root supplied is byte-identical to plain serialize (no --overlap
++    # at all), and to serialize with no root.
++    default = _run(plan)
++    explicit = _run(plan, "--overlap", "serialize")
++    with_root = _run(plan, "--overlap", "serialize", "--repo-root", str(root))
++    assert explicit.stdout == default.stdout
++    assert with_root.stdout == default.stdout

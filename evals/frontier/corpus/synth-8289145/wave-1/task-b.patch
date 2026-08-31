@@ -1,0 +1,248 @@
+diff --git a/evals/frontier/run_eval.py b/evals/frontier/run_eval.py
+index 109de5ab8b3e6e2ee8bb5a6c6aae4608a508bdc9..8248a731555a58aa09132ecf2c6c983714a88816 100644
+--- a/evals/frontier/run_eval.py
++++ b/evals/frontier/run_eval.py
+@@ -76,9 +76,9 @@ FMT_SHA_PARENTS_SUBJECT = "%H%x00%P%x00%s"
+ # compilation + synthetic-diff construction (track a)
+ # --------------------------------------------------------------------------
+ 
+-def compile_fixture(name):
++def compile_fixture(name, overlap="serialize"):
+     plan = ROOT / "evals" / "fixtures" / name / "plan.md"
+-    out = subprocess.run([sys.executable, str(COMPILER), str(plan)],
++    out = subprocess.run([sys.executable, str(COMPILER), "--overlap", overlap, str(plan)],
+                          capture_output=True, text=True, check=True)
+     return json.loads(out.stdout)
+ 
+diff --git a/evals/frontier/shadow_fold.py b/evals/frontier/shadow_fold.py
+index 47981992de5cb09e9ef0c96c5f64040c7dfa5644..692bac0bf9cab9d81430681a391d3f4b74b35096 100644
+--- a/evals/frontier/shadow_fold.py
++++ b/evals/frontier/shadow_fold.py
+@@ -32,6 +32,12 @@ FMT_SHA_PARENTS = "%H%x00%P"
+ 
+ NO_REPORT_REASON = "no finalized report (unshadowable)"
+ NO_PER_TASK_MERGES_REASON = "no per-task merges (nothing to replay)"
++# An octopus adoption commit (>=3 parents) is not a per-task 2-parent merge:
++# nothing about it can be decomposed into the group/trailing/absorbed dispatch
++# below, so it is excluded by name rather than mis-classified as "absorbed".
++OCTOPUS_PARENTS_FLOOR = 3
++OCTOPUS_REASON_FMT = ("octopus adoption commit (%d parents) — fold log is "
++                     "the replay record")
+ 
+ 
+ class ShadowAbort(Exception):
+@@ -75,6 +81,12 @@ def _committer_time(repo, sha):
+     return int(_rev(repo, "show", "-s", "--format=%ct", sha))
+ 
+ 
++def _octopus_reason(repo, sha):
++    """`OCTOPUS_REASON_FMT % N` when `sha` has >= 3 parents, else None."""
++    n = len(_commit_parents(repo, sha)[1])
++    return OCTOPUS_REASON_FMT % n if n >= OCTOPUS_PARENTS_FLOOR else None
++
++
+ def _walk_to_bound(repo, tip, bound):
+     """Rows `(sha, parents)` from `tip` back to `bound` inclusive, tip first."""
+     rows = []
+@@ -181,6 +193,14 @@ def _build_waves(repo, merged, groups, trailing, floor):
+     waves_out = []
+     for w in merged:
+         head, branches = w["headSha"], w.get("branches") or []
++        octopus = _octopus_reason(repo, head)
++        if octopus is not None:
++            waves_out.append({
++                "wave": w.get("wave"), "disposition": "excluded",
++                "endpoints": len(branches), "narrations": [],
++                "reason": octopus,
++            })
++            continue
+         if head in group_by_after:
+             group = group_by_after[head]
+             replay = run_eval.replay_group(repo, group, seed=42)
+@@ -259,7 +279,8 @@ def _remodel(run_dir, durations_out):
+     if plan_path is None:
+         return None, "no plan available in run dir"
+     try:
+-        out = subprocess.run([sys.executable, str(COMPILER), str(plan_path)],
++        out = subprocess.run([sys.executable, str(COMPILER), "--overlap", "serialize",
++                              str(plan_path)],
+                              capture_output=True, text=True, check=True)
+         compiled = json.loads(out.stdout)
+     except (subprocess.CalledProcessError, ValueError) as exc:
+@@ -308,7 +329,15 @@ def _shadow(repo, report, run_dir):
+         groups, trailing = run_eval.group_chain(repo, chain)
+         waves_out = _build_waves(repo, merged, groups, trailing, floor)
+     else:
++        # No 2-parent merge anywhere in the bounded chain — merge-free by
++        # default, UNLESS any merged wave head is itself an octopus adoption
++        # commit, in which case that (not "no per-task merges") is why.
+         excluded = NO_PER_TASK_MERGES_REASON
++        for w in merged:
++            octopus = _octopus_reason(repo, w["headSha"])
++            if octopus is not None:
++                excluded = octopus
++                break
+ 
+     durations_out = _harvest_durations(repo, merged, task_heads, floor)
+     remodel, remodel_reason = _remodel(run_dir, durations_out)
+diff --git a/evals/run_frontier_cell.py b/evals/run_frontier_cell.py
+index 7111568b58589b8aa62f5b5a9614a234a8a53f25..fd90fed995b5f26ad0f6a56f708fdf5d8872bce1 100644
+--- a/evals/run_frontier_cell.py
++++ b/evals/run_frontier_cell.py
+@@ -467,7 +467,10 @@ def run_gate(engine_wt, workdir, plan, branch=RESULT_BRANCH):
+ # The run                                                                      #
+ # --------------------------------------------------------------------------- #
+ def compile_in(compiler, plan_path, launch_path=None):
+-    cmd = [sys.executable, str(compiler), str(plan_path)]
++    # Pre-drop edge set (--overlap serialize): keeps same_file_edges non-circular
++    # for the schedule/model code that drops them itself (schedule_model.py's
++    # SAME_FILE_WHYS), rather than letting the compiler drop them first.
++    cmd = [sys.executable, str(compiler), "--overlap", "serialize", str(plan_path)]
+     if launch_path is not None:
+         cmd += ["--emit-launch", str(launch_path)]
+     res = subprocess.run(cmd, capture_output=True, text=True)
+diff --git a/tests/test_frontier_run_eval.py b/tests/test_frontier_run_eval.py
+index d774c941853590a8ad19ee99a68123dbdc2f6fef..7ee1dc85d6d998816e6f3646c281e25624f9e54f 100644
+--- a/tests/test_frontier_run_eval.py
++++ b/tests/test_frontier_run_eval.py
+@@ -95,6 +95,27 @@ def test_k4_not_evaluated_when_no_contiguity_checks(tmp_path, monkeypatch):
+     assert "PASS" not in k4_line
+ 
+ 
++def _some_wave_has_two_tasks_with_intersecting_files(waves):
++    """True if any wave holds two tasks whose declared `files` intersect —
++    the shape `--overlap fold` is supposed to produce: a same-file pair
++    keeps no serializing edge and instead shares a wave."""
++    for wave in waves:
++        for i, t1 in enumerate(wave):
++            for t2 in wave[i + 1:]:
++                if set(t1["files"]) & set(t2["files"]):
++                    return True
++    return False
++
++
++def test_contend_fixture_contention_under_both_compiles():
++    ser = run_eval.compile_fixture("contend")                       # now --overlap serialize
++    waw = [e for e in ser["dag_edges"] if e["why"] == "write-after-write"]
++    assert ser["mode"] == "parallel" and len(waw) >= 2
++    fold = run_eval.compile_fixture("contend", overlap="fold")      # new kwarg
++    assert not [e for e in fold["dag_edges"] if e["why"] == "write-after-write"]
++    assert _some_wave_has_two_tasks_with_intersecting_files(fold["launch_waves"])
++
++
+ def test_k3_line_labels_real_run_fidelity_not_bisection(tmp_path):
+     run_eval.run_tracks(["a", "b"], tmp_path, seed=42)
+     rollup = (tmp_path / "rollup.md").read_text()
+diff --git a/tests/test_shadow_octopus.py b/tests/test_shadow_octopus.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..cd6c830c653ef858ff8cba533b6f56bd48d4d68f
+--- /dev/null
++++ b/tests/test_shadow_octopus.py
+@@ -0,0 +1,107 @@
++"""Shadow's two-leg octopus probe: per-wave excluded row + whole-run reason.
++
++Commit graphs are built with `git commit-tree` over a single empty tree — the
++probe reads only parent counts and the merge-base plumbing shadow already
++uses, never file contents, so an empty tree is a faithful, cheap stand-in for
++a real integration chain shaped the same way.
++"""
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parent.parent
++sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++import shadow_fold as sf
++
++
++def _git(repo, *args, input_text=None):
++    return subprocess.run(["git", "-C", str(repo)] + list(args), check=True,
++                          capture_output=True, text=True,
++                          input=input_text).stdout.strip()
++
++
++def make_repo(tmp_path):
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    subprocess.run(["git", "init", "-q", str(repo)], check=True)
++    subprocess.run(["git", "-C", str(repo), "config", "user.email", "a@b.c"], check=True)
++    subprocess.run(["git", "-C", str(repo), "config", "user.name", "test"], check=True)
++    return repo
++
++
++def empty_tree(repo):
++    return _git(repo, "mktree", input_text="")
++
++
++def commit(repo, tree, parents, msg):
++    args = ["commit-tree", tree]
++    for p in parents:
++        args += ["-p", p]
++    args += ["-m", msg]
++    return _git(repo, *args)
++
++
++def _report(waves):
++    """`waveMerges` for the given `[(wave_n, headSha, branches)]` rows, all MERGED."""
++    return {"waveMerges": [{"wave": n, "status": "MERGED", "headSha": sha,
++                            "branches": list(branches)}
++                           for n, sha, branches in waves]}
++
++
++def test_mixed_run_contended_wave_first_gets_per_wave_excluded_row(tmp_path):
++    # chain: base -> octopus O (3 parents) -> ordinary 2-parent merge M.
++    repo = make_repo(tmp_path)
++    tree = empty_tree(repo)
++    root = commit(repo, tree, [], "root")
++    b2 = commit(repo, tree, [root], "b2")
++    b3 = commit(repo, tree, [root], "b3")
++    O = commit(repo, tree, [root, b2, b3], "octopus O")
++    b4 = commit(repo, tree, [O], "b4")
++    M = commit(repo, tree, [O, b4], "merge M")
++
++    report = _report([(1, O, ["t1", "t2", "t3"]), (2, M, ["t4"])])
++    payload = sf._shadow(repo, report, tmp_path)
++
++    assert payload["floorSource"] == "merge-base"
++    waves = {w["wave"]: w for w in payload["waves"]}
++    assert waves[1]["disposition"] == "excluded"
++    assert "octopus" in waves[1]["reason"]
++    assert waves[1]["disposition"] != "absorbed"
++    # M's wave shadows normally — not excluded, not absorbed.
++    assert waves[2]["disposition"] not in ("excluded", "absorbed")
++
++
++def test_modal_shape_octopus_plus_fastforward_uses_octopus_whole_run_reason(tmp_path):
++    # chain: base -> octopus O -> single-parent (fast-forwarded) head H.
++    repo = make_repo(tmp_path)
++    tree = empty_tree(repo)
++    root = commit(repo, tree, [], "root")
++    b2 = commit(repo, tree, [root], "b2")
++    b3 = commit(repo, tree, [root], "b3")
++    O = commit(repo, tree, [root, b2, b3], "octopus O")
++    H = commit(repo, tree, [O], "fast-forward H")
++
++    report = _report([(1, O, ["t1", "t2", "t3"]), (2, H, ["t4"])])
++    payload = sf._shadow(repo, report, tmp_path)
++
++    # no 2-parent merge anywhere -> no-floor branch.
++    assert payload["floorSource"] != "merge-base"
++    assert payload["waves"] == []
++    assert "octopus" in payload["excluded"]
++    assert payload["excluded"] != sf.NO_PER_TASK_MERGES_REASON
++
++
++def test_merge_free_run_keeps_existing_name(tmp_path):
++    # chain of single-parent commits only.
++    repo = make_repo(tmp_path)
++    tree = empty_tree(repo)
++    root = commit(repo, tree, [], "root")
++    c2 = commit(repo, tree, [root], "c2")
++    c3 = commit(repo, tree, [c2], "c3")
++
++    report = _report([(1, c2, ["t1"]), (2, c3, ["t2"])])
++    payload = sf._shadow(repo, report, tmp_path)
++
++    assert payload["floorSource"] != "merge-base"
++    assert payload["waves"] == []
++    assert payload["excluded"] == sf.NO_PER_TASK_MERGES_REASON

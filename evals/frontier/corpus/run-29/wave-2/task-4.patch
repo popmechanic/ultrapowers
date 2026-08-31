@@ -1,0 +1,342 @@
+diff --git a/evals/ab_runner.py b/evals/ab_runner.py
+index 4fcd672001291d3dcafd1cdaa9781da941891635..7a3b633498c0474d435bd2268f7d1b54655fbb5d 100644
+--- a/evals/ab_runner.py
++++ b/evals/ab_runner.py
+@@ -2,7 +2,8 @@
+ """One A/B cell, start to finish (#402 item 6).
+ 
+     python3 evals/ab_runner.py <fixture> --overlap fold|serialize \\
+-        [--run-id ID] [--results-dir DIR] [--fixtures-root DIR] [--workspace DIR]
++        [--run-id ID] [--results-dir DIR] [--fixtures-root DIR] [--workspace DIR] \\
++        [--test-cmd CMD] [--bootstrap-cmd CMD]
+ 
+ One invocation = one cell = one row. The A/B protocol is those invocations run
+ serially by hand on the operator's laptop; concurrent /ultrapowers runs corrupt
+@@ -86,6 +87,16 @@ def _build_parser():
+     parser.add_argument("--test-cmd", default="python3 -m pytest",
+                         help="suite command the engine runs in the cell "
+                              "(default: python3 -m pytest)")
++    # A fixture whose project needs dependencies fetched before anything can
++    # typecheck or run (the Bun cell: `bun install`) has no green baseline
++    # without this — validate_knobs rehearses the bootstrap in its probe
++    # worktree, then runs testCmd there, so an un-bootstrapped probe fails
++    # baseline and the preflight refuses. run-main.mjs already accepts
++    # --bootstrap-cmd and threads it to ultra_run.py; only this hop was
++    # missing. Omitted (None) => not passed, i.e. the pre-existing behaviour.
++    parser.add_argument("--bootstrap-cmd", default=None,
++                        help="dependency-install command rehearsed in knob "
++                             "validation before the baseline (default: none)")
+     return parser
+ 
+ 
+@@ -155,6 +166,8 @@ def main(argv, run=subprocess.run):
+     command = ["node", str(REPO_ROOT / ENGINE), "plan.md", run_id,
+                "--repo", str(cell), "--overlap", args.overlap,
+                "--test-cmd", args.test_cmd]
++    if args.bootstrap_cmd:
++        command += ["--bootstrap-cmd", args.bootstrap_cmd]
+     # No timeout: a real cell runs for tens of minutes and the operator is
+     # watching it. The engine's own per-role deadlines bound the workers.
+     result = run(command, cwd=str(REPO_ROOT), env=env)
+diff --git a/evals/fixtures/bun-greenfield/plan.md b/evals/fixtures/bun-greenfield/plan.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..50cde33d6848ecb832ee3ceeea210ac732794b14
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/plan.md
+@@ -0,0 +1,77 @@
++# Registry Helpers Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
++
++**Acceptance:** suite — the committed Bun suite is the verification.
++
++**Goal:** Extend the seeded `src/registry.ts` skeleton with three exported lookup helpers — `byLabel`, `ids`, and `clear`. Each helper is functionally independent (its own signature, its own test file) but all three genuinely edit `src/registry.ts`. That same-file contention is deliberate and left unserialized: no `Depends-on` marker orders these tasks, so any ordering the executor chooses must merge their concurrent edits to one file. Every helper states an explicit TypeScript signature over the shared exported `Entry` type, so a task that drifts from the seam is a typecheck failure on the merged tree rather than a review opinion.
++
++**Tech Stack:** Bun + TypeScript (strict, ESM). Bootstrap with `bun install` from `project/`. Run the suite with `bunx tsc --noEmit && bun test` from `project/` — the typecheck is half the gate, so a merged tree that compiles to the wrong shape fails loudly.
++
++---
++
++### Task 1: byLabel helper
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/registry.ts`
++- Test: `tests/by-label.test.ts`
++
++**Interfaces:**
++- Consumes: the seeded `Entry` type, `register`, and the module-level `entries` map in `src/registry.ts`
++- Produces: `export const byLabel = (label: string): Entry | undefined` — the first registered entry whose `label` matches exactly, or `undefined`
++
++- [ ] **Step 1: Write failing tests** in `tests/by-label.test.ts`:
++  - `register({ id: "b", label: "Beta" })` then `byLabel("Beta")` returns that entry.
++  - `byLabel("Nope")` returns `undefined`.
++  - Matching is exact and case-sensitive: `byLabel("beta")` returns `undefined`.
++- [ ] **Step 2: Implement** `byLabel` in `src/registry.ts` with the signature above, iterating the existing `entries` map. Do not change the exported `Entry` type or the seeded helpers.
++- [ ] **Step 3: Run** `bunx tsc --noEmit && bun test` from `project/` and confirm green.
++
++### Task 2: ids helper
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/registry.ts`
++- Test: `tests/ids.test.ts`
++
++**Interfaces:**
++- Consumes: the seeded `Entry` type, `register`, and the module-level `entries` map in `src/registry.ts`
++- Produces: `export const ids = (): readonly string[]` — every registered id in insertion order
++
++- [ ] **Step 1: Write failing tests** in `tests/ids.test.ts`:
++  - A registry with `c` then `d` registered yields `ids()` equal to `["c", "d"]`.
++  - The returned array is a fresh array each call — mutating one call's result does not affect the next.
++- [ ] **Step 2: Implement** `ids` in `src/registry.ts` with the signature above. Do not change the exported `Entry` type or the seeded helpers.
++- [ ] **Step 3: Run** `bunx tsc --noEmit && bun test` from `project/` and confirm green.
++
++### Task 3: clear helper
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Modify: `src/registry.ts`
++- Test: `tests/clear.test.ts`
++
++**Interfaces:**
++- Consumes: the seeded `Entry` type, `register`, `size`, and the module-level `entries` map in `src/registry.ts`
++- Produces: `export const clear = (): number` — empties the registry and returns how many entries were removed
++
++- [ ] **Step 1: Write failing tests** in `tests/clear.test.ts`:
++  - Registering two entries then `clear()` returns `2` and leaves `size()` at `0`.
++  - `clear()` on an empty registry returns `0`.
++- [ ] **Step 2: Implement** `clear` in `src/registry.ts` with the signature above. Do not change the exported `Entry` type or the seeded helpers.
++- [ ] **Step 3: Run** `bunx tsc --noEmit && bun test` from `project/` and confirm green.
++
++### Task 4: Full-suite verification
++
++**Type:** gate
++
++**Files:** none
++
++- [ ] Run: `bunx tsc --noEmit && bun test` from `project/` and confirm the typecheck is silent and every test passes, including the seeded `tests/registry.test.ts`.
+diff --git a/evals/fixtures/bun-greenfield/project/.gitignore b/evals/fixtures/bun-greenfield/project/.gitignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..b6e4df5d5e49bd6e607f054ded2cc88175e194f1
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/project/.gitignore
+@@ -0,0 +1,3 @@
++node_modules/
++bun.lock
++bun.lockb
+diff --git a/evals/fixtures/bun-greenfield/project/package.json b/evals/fixtures/bun-greenfield/project/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..542b3ac8bb4c72338cbbfee8c52e8aad93a98046
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/project/package.json
+@@ -0,0 +1,6 @@
++{
++  "name": "bun-greenfield-fixture",
++  "private": true,
++  "type": "module",
++  "devDependencies": { "typescript": "^5.6.0", "@types/bun": "latest" }
++}
+diff --git a/evals/fixtures/bun-greenfield/project/src/registry.ts b/evals/fixtures/bun-greenfield/project/src/registry.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ba5289e2ed1aa2fbab7c527473d87801bdd5d337
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/project/src/registry.ts
+@@ -0,0 +1,7 @@
++export type Entry = { readonly id: string; readonly label: string }
++
++const entries = new Map<string, Entry>()
++
++export const register = (entry: Entry): void => { entries.set(entry.id, entry) }
++export const lookup = (id: string): Entry | undefined => entries.get(id)
++export const size = (): number => entries.size
+diff --git a/evals/fixtures/bun-greenfield/project/tests/registry.test.ts b/evals/fixtures/bun-greenfield/project/tests/registry.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f8f4167590676bab06a9ae8b3c0e5a033a33a2d
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/project/tests/registry.test.ts
+@@ -0,0 +1,8 @@
++import { expect, test } from "bun:test"
++import { register, lookup, size } from "../src/registry"
++
++test("registers and looks up an entry", () => {
++  register({ id: "a", label: "Alpha" })
++  expect(lookup("a")?.label).toBe("Alpha")
++  expect(size()).toBe(1)
++})
+diff --git a/evals/fixtures/bun-greenfield/project/tsconfig.json b/evals/fixtures/bun-greenfield/project/tsconfig.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..d33144f1e1b7e9b174940041bfbf9a7ff1a6c3d0
+--- /dev/null
++++ b/evals/fixtures/bun-greenfield/project/tsconfig.json
+@@ -0,0 +1,11 @@
++{
++  "compilerOptions": {
++    "strict": true,
++    "noEmit": true,
++    "target": "ESNext",
++    "module": "ESNext",
++    "moduleResolution": "bundler",
++    "types": ["bun"]
++  },
++  "include": ["src", "tests"]
++}
+diff --git a/tests/test_bun_fixture.py b/tests/test_bun_fixture.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5f4bbe6d49bd7f28a3cd4771c3aa4cb9f0f3a68
+--- /dev/null
++++ b/tests/test_bun_fixture.py
+@@ -0,0 +1,148 @@
++"""Pin: the Bun A/B fixture is additive, compiles, and — the webapp lesson —
++is GREEN AT BASE so knob validation can pass. Existing fixtures are untouched
++baselines; this one joins them as a new cell (#425, #402)."""
++import json
++import pathlib
++import subprocess
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++FX = ROOT / "evals/fixtures/bun-greenfield"
++COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
++TEST_CMD = "bunx tsc --noEmit && bun test"
++
++
++def test_fixture_has_the_standard_layout():
++    assert (FX / "plan.md").is_file()
++    assert (FX / "project" / "package.json").is_file()
++
++
++def test_project_is_green_at_base_by_construction():
++    """A greenfield tree with no tests cannot pass knob validation (webapp).
++    This fixture seeds a passing test and a typecheckable module."""
++    tests = list((FX / "project" / "tests").glob("*.test.ts"))
++    assert tests, "the seeded skeleton must ship at least one passing test"
++    srcs = list((FX / "project" / "src").glob("*.ts"))
++    assert srcs, "the seeded skeleton must ship at least one module to typecheck"
++
++
++def test_tsconfig_uses_the_working_types_package():
++    cfg = (FX / "project" / "tsconfig.json").read_text()
++    assert '"bun"' in cfg          # `bun-types` fails TS2688
++    pkg = json.loads((FX / "project" / "package.json").read_text())
++    assert "@types/bun" in pkg.get("devDependencies", {})
++
++
++def test_plan_compiles_and_states_the_canonical_gate():
++    result = subprocess.run([sys.executable, str(COMPILER), "--check",
++                             str(FX / "plan.md")], capture_output=True, text=True)
++    assert result.returncode == 0, result.stdout + result.stderr
++    assert TEST_CMD in (FX / "plan.md").read_text()
++
++
++def test_plan_has_contention_for_the_ab_arms():
++    """The A/B dimension needs same-file concurrent writers; without them both
++    arms compile to the same shape and the cell measures only latency."""
++    text = (FX / "plan.md").read_text()
++    assert text.count("src/registry.ts") >= 2
++
++
++def test_existing_fixtures_are_untouched():
++    for name in ("wide", "chained", "contend", "contend-big", "contend-prod", "mixed"):
++        assert (ROOT / "evals/fixtures" / name / "plan.md").is_file()
++
++
++# --- The two run-29 review findings, pinned so neither can regress ---------
++
++sys.path.insert(0, str(ROOT / "evals"))
++BOOTSTRAP_CMD = "bun install"
++
++
++def test_project_ships_a_gitignore_for_the_bootstrap_artifacts():
++    """`bun install` writes `node_modules/` and `bun.lock` at the cell root.
++    validate_knobs rehearses the bootstrap in a probe worktree and then asserts
++    `git status --porcelain` is empty (treeClean); untracked install output
++    sets bootstrap_red -> ok:false -> exit 1 -> failed preflight. The sibling
++    JS fixture ships exactly this guard (evals/fixtures/jsdeps/project/
++    .gitignore)."""
++    ignore = FX / "project" / ".gitignore"
++    assert ignore.is_file(), "no .gitignore: `bun install` can never be treeClean"
++    lines = {l.strip() for l in ignore.read_text().splitlines()}
++    assert "node_modules/" in lines
++    assert "bun.lock" in lines
++
++
++def test_an_assembled_cell_stays_clean_after_a_simulated_bun_install(tmp_path):
++    """The treeClean check itself, reproduced without Bun present: assemble the
++    real fixture into a cell, create what `bun install` creates, and confirm
++    `git status --porcelain` is still empty — which is what validate_knobs
++    asserts before it will let the run proceed."""
++    from ab_lib import build_cell
++
++    cell = build_cell("bun-greenfield", ROOT, tmp_path)
++    (cell / "node_modules" / "typescript").mkdir(parents=True)
++    (cell / "node_modules" / "typescript" / "index.js").write_text("//\n")
++    (cell / "bun.lock").write_text("{}\n")
++    dirt = subprocess.run(["git", "status", "--porcelain"], cwd=cell,
++                          capture_output=True, text=True).stdout
++    assert dirt == "", "bootstrap output would set bootstrap_red:\n" + dirt
++
++
++def _stub_run(record):
++    """Every subprocess in one stub: the Keychain probe answers with a token,
++    the engine spawn fabricates the run dir harvest_row reads."""
++    class R:
++        def __init__(self, code, out=""):
++            self.returncode, self.stdout, self.stderr = code, out, ""
++
++    def run(cmd, **kw):
++        record.append(cmd)
++        if cmd[0] == "security":
++            return R(0, json.dumps({"claudeAiOauth": {"accessToken": "tok-x"}}))
++        if cmd[0] == "node":
++            cell = pathlib.Path(cmd[cmd.index("--repo") + 1])
++            rd = cell / ".claude" / "ultrapowers" / ("run-" + cmd[3])
++            rd.mkdir(parents=True)
++            (rd / "events.jsonl").write_text(json.dumps(
++                {"ts": "2026-08-30T10:00:00.000Z", "kind": "driver:stage",
++                 "stage": "preflight"}) + "\n")
++            (rd / "args.json").write_text(json.dumps({"waves": [[{"id": "1"}]]}))
++            return R(0)
++        return R(0)   # build_cell's git plumbing runs for real
++    return run
++
++
++def test_the_produces_command_line_runs_and_threads_both_knobs(tmp_path):
++    """The task's Produces contract, verbatim. `--bootstrap-cmd` was missing
++    from ab_runner's parser, so _Parser.error turned it into a _Refusal and the
++    documented invocation exited 2 without spawning anything. Dropping the flag
++    instead is not a workaround: with no bootstrap the probe has no
++    node_modules, `@types/bun` is absent, `"types": ["bun"]` fails TS2688 and
++    the baseline goes red (exit 3). Both knobs must reach run-main.mjs, which
++    has accepted --bootstrap-cmd all along."""
++    from ab_runner import main as ab_main
++
++    record = []
++    rc = ab_main(["bun-greenfield", "--overlap", "fold", "--run-id", "ab-bun1",
++                  "--test-cmd", TEST_CMD, "--bootstrap-cmd", BOOTSTRAP_CMD,
++                  "--results-dir", str(tmp_path / "results"),
++                  "--workspace", str(tmp_path / "ws")],
++                 run=_stub_run(record))
++    assert rc == 0, "the documented invocation must not refuse"
++    node_cmd = next(c for c in record if c[0] == "node")
++    assert node_cmd[node_cmd.index("--test-cmd") + 1] == TEST_CMD
++    assert node_cmd[node_cmd.index("--bootstrap-cmd") + 1] == BOOTSTRAP_CMD
++
++
++def test_bootstrap_cmd_is_omitted_when_not_asked_for(tmp_path):
++    """Additive only: fixtures that need no install keep the old command."""
++    from ab_runner import main as ab_main
++
++    record = []
++    assert ab_main(["bun-greenfield", "--overlap", "serialize",
++                    "--run-id", "ab-bun2", "--test-cmd", TEST_CMD,
++                    "--results-dir", str(tmp_path / "results"),
++                    "--workspace", str(tmp_path / "ws")],
++                   run=_stub_run(record)) == 0
++    node_cmd = next(c for c in record if c[0] == "node")
++    assert "--bootstrap-cmd" not in node_cmd

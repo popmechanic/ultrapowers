@@ -1,0 +1,137 @@
+diff --git a/skills/ultrapowers/scripts/warm_cache.sh b/skills/ultrapowers/scripts/warm_cache.sh
+index f623f667479882e9ca9f1f05396180618f122f4a..8cd06786af8c63e30d0f16d6fc04f2795e5ebb70 100755
+--- a/skills/ultrapowers/scripts/warm_cache.sh
++++ b/skills/ultrapowers/scripts/warm_cache.sh
+@@ -16,6 +16,19 @@
+ set -euo pipefail
+ 
+ CACHE="${CLAUDE_PLUGIN_DATA:-$HOME/.ultrapowers/cache}/deps"
++MAX_AGE_DAYS="${ULTRAPOWERS_CACHE_MAX_AGE_DAYS:-30}"
++
++prune_stale_entries() {
++  # Evict entries idle longer than MAX_AGE_DAYS. Entry mtime tracks last use
++  # (restore HITs touch the entry), so hot entries never age out; entries whose
++  # lockfile changed go permanently unreachable and are what this reclaims.
++  # Also sweeps .tmp.* orphans from crashed populates. 0 (or a non-numeric
++  # override) disables. Best-effort: a prune failure never fails the command.
++  [ "$MAX_AGE_DAYS" -gt 0 ] 2>/dev/null || return 0
++  [ -d "$CACHE" ] || return 0
++  find "$CACHE" -mindepth 1 -maxdepth 1 -type d -mtime "+$MAX_AGE_DAYS" \
++    -exec rm -rf {} + 2>/dev/null || true
++}
+ 
+ usage() {
+   echo "usage: warm_cache.sh restore  <lockfile> <target_dir>   (exit 0=HIT, 3=MISS)" >&2
+@@ -58,6 +71,8 @@ cmd_restore() {
+     echo "warm_cache: MISS $hash (no entry) — caller should run a real install" >&2
+     exit 3
+   fi
++  # Mark the entry as live so idle-age pruning never evicts a hot entry.
++  touch "$entry" 2>/dev/null || true
+   clone_tree "$entry" "$target_dir"
+   echo "warm_cache: HIT $hash -> $target_dir"
+   exit 0
+@@ -71,6 +86,10 @@ cmd_populate() {
+   hash="$(hash_lockfile "$lockfile")"
+   entry="$CACHE/$hash"
+   mkdir -p "$CACHE"
++  # Refresh a same-key entry's mtime BEFORE pruning so an old-but-live entry is
++  # kept, not deleted and re-cloned.
++  [ ! -d "$entry" ] || touch "$entry" 2>/dev/null || true
++  prune_stale_entries
+   if [ -d "$entry" ]; then
+     echo "warm_cache: already cached $hash (no-op)"
+     exit 0
+diff --git a/tests/test_warm_cache.py b/tests/test_warm_cache.py
+index 99c7479da8d1ab1737db5372be3c8a4a13508c16..77cbc87a178e8b38c129d3fad7d3e3b315fd4e77 100644
+--- a/tests/test_warm_cache.py
++++ b/tests/test_warm_cache.py
+@@ -5,6 +5,7 @@ with exit 3, and populate is atomic + idempotent."""
+ import os
+ import pathlib
+ import subprocess
++import time
+ 
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ WARM = ROOT / "skills/ultrapowers/scripts/warm_cache.sh"
+@@ -112,6 +113,80 @@ def test_no_args_prints_usage(tmp_path):
+     assert "usage" in p.stderr.lower()
+ 
+ 
++def deps_dir(tmp_path):
++    return tmp_path / "plugindata" / "deps"
++
++
++def backdate(path, days):
++    t = time.time() - days * 86400
++    os.utime(path, (t, t))
++
++
++def test_populate_prunes_entries_idle_beyond_max_age(tmp_path):
++    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
++    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
++    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
++    (entry_a,) = deps_dir(tmp_path).iterdir()
++    backdate(entry_a, 40)
++    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
++    p = run(tmp_path, "populate", str(lock_b), str(src))
++    assert p.returncode == 0, p.stderr
++    assert not entry_a.exists()
++    t = tmp_path / "w" / "node_modules"; t.parent.mkdir(parents=True)
++    assert run(tmp_path, "restore", str(lock_a), str(t)).returncode == 3
++    assert run(tmp_path, "restore", str(lock_b), str(t)).returncode == 0
++
++
++def test_populate_keeps_entries_within_max_age(tmp_path):
++    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
++    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
++    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
++    (entry_a,) = deps_dir(tmp_path).iterdir()
++    backdate(entry_a, 10)
++    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
++    assert run(tmp_path, "populate", str(lock_b), str(src)).returncode == 0
++    t = tmp_path / "w" / "node_modules"; t.parent.mkdir(parents=True)
++    assert run(tmp_path, "restore", str(lock_a), str(t)).returncode == 0
++
++
++def test_restore_hit_refreshes_entry_age(tmp_path):
++    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
++    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
++    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
++    (entry_a,) = deps_dir(tmp_path).iterdir()
++    backdate(entry_a, 40)
++    t1 = tmp_path / "w1" / "node_modules"; t1.parent.mkdir(parents=True)
++    assert run(tmp_path, "restore", str(lock_a), str(t1)).returncode == 0
++    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
++    assert run(tmp_path, "populate", str(lock_b), str(src)).returncode == 0
++    assert entry_a.exists()
++    t2 = tmp_path / "w2" / "node_modules"; t2.parent.mkdir(parents=True)
++    assert run(tmp_path, "restore", str(lock_a), str(t2)).returncode == 0
++
++
++def test_max_age_zero_disables_pruning(tmp_path):
++    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
++    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
++    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
++    (entry_a,) = deps_dir(tmp_path).iterdir()
++    backdate(entry_a, 40)
++    lock_b = make_lockfile(tmp_path, "b.lock", "dep-b@2.0.0\n")
++    p = run(tmp_path, "populate", str(lock_b), str(src),
++            env_extra={"ULTRAPOWERS_CACHE_MAX_AGE_DAYS": "0"})
++    assert p.returncode == 0, p.stderr
++    assert entry_a.exists()
++
++
++def test_populate_sweeps_orphaned_tmp_dirs(tmp_path):
++    lock_a = make_lockfile(tmp_path, "a.lock", "dep-a@1.0.0\n")
++    src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})
++    orphan = deps_dir(tmp_path) / ".tmp.abc123"
++    orphan.mkdir(parents=True)
++    backdate(orphan, 40)
++    assert run(tmp_path, "populate", str(lock_a), str(src)).returncode == 0
++    assert not orphan.exists()
++
++
+ def test_restore_falls_back_when_hardlink_fails_cross_device(tmp_path):
+     lock = make_lockfile(tmp_path, "bun.lock", "dep-a@1.0.0\n")
+     src = make_deps_dir(tmp_path, "node_modules", {"dep-a/index.js": "A\n"})

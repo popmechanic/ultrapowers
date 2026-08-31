@@ -1,0 +1,448 @@
+diff --git a/skills/ultralearn/scripts/harvest_runs.py b/skills/ultralearn/scripts/harvest_runs.py
+index 98a4294620f392c9f9f81172d6f6f9bbbafa176d..025b8742865d95f9a5f487157b687f468277d050 100644
+--- a/skills/ultralearn/scripts/harvest_runs.py
++++ b/skills/ultralearn/scripts/harvest_runs.py
+@@ -17,6 +17,9 @@ import audit_run  # noqa: E402  (provides audit())
+ 
+ SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
+                   "transcript dir", "recommended", "depends-on")
++SLICE_TURN_MAX = 4000  # chars; a pasted-file user turn beyond this is elided
++
++ENGINE_ROLES = {"setup", "merge", "review", "reconcile", "integration"}
+ 
+ 
+ def _block_text(block):
+@@ -70,6 +73,8 @@ def slice_transcript(records):
+         if not txt:
+             continue
+         if rtype == "user" and b.get("type") == "text":
++            if len(txt) > SLICE_TURN_MAX:
++                txt = txt[:SLICE_TURN_MAX] + f"\n…[truncated {len(txt) - SLICE_TURN_MAX} chars]"
+             lines.append(f"**user:** {txt}")
+         elif any(k in txt.lower() for k in SLICE_KEYWORDS):
+             lines.append(f"**{rtype}:** {txt}")
+@@ -297,6 +302,23 @@ def _engine_epoch(records, origin, timeline=None):
+     return {"epoch": epoch, "asOf": ts, "basis": basis}
+ 
+ 
++def classify_session_kind(records, audit, gate_report, planning_found):
++    """Distinguish a real /ultrapowers engine run from a non-engine Workflow
++    session (research fan-out, issue drafting) that merely used the Workflow
++    tool. Engine signals: a recognized engine role among the audited agents, OR
++    a real integration branch in the gate report, OR a captured plan. A session
++    with none of these is 'meta' (e.g. [c9b028bf4da18d99]: ~200 role:unknown
++    agents, planningFound=false, no integration branch)."""
++    roles = {a.get("role", "").split(":", 1)[0] for a in (audit or {}).get("agents", [])}
++    if roles & ENGINE_ROLES:
++        return "engine"
++    if gate_report and isinstance(gate_report.get("integrationBranch"), str):
++        return "engine"
++    if planning_found:
++        return "engine"
++    return "meta"
++
++
+ def build_bundle(session_path, project_slug, cache_dir, home_slug):
+     try:
+         records = _records(session_path)
+@@ -308,18 +330,26 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
+     run_id = hashlib.sha256(f"{project_slug}/{session_id}".encode()).hexdigest()[:16]
+     tdir = _transcript_dir(records)
+     origin = classify_origin(project_slug, home_slug)
++    plan_path = _plan_path(records)
++    gate_report = _gate_report(records)
++    audit = audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"}
++    planning_found = stitch_planning(plan_path, Path(session_path).parent.parent,
++                                     records)["planningFound"]
++    session_kind = classify_session_kind(records, audit, gate_report, planning_found)
++    if session_kind != "engine":
++        return None
+     bundle = {
+         "runId": run_id,
+         "sessionId": session_id,
+         "projectSlug": project_slug,
+         "origin": origin,
++        "sessionKind": session_kind,
+         "engineVersion": _engine_epoch(records, origin),
+-        "planPath": _plan_path(records),
++        "planPath": plan_path,
+         "transcriptDir": tdir,
+-        "gateReport": _gate_report(records),
+-        "audit": audit_run.audit(tdir) if tdir else {"agents": [], "note": "no transcript dir"},
+-        "planningFound": stitch_planning(_plan_path(records),
+-                                         Path(session_path).parent.parent, records)["planningFound"],
++        "gateReport": gate_report,
++        "audit": audit,
++        "planningFound": planning_found,
+     }
+     out = Path(cache_dir) / "runs" / run_id
+     out.mkdir(parents=True, exist_ok=True)
+@@ -343,27 +373,38 @@ def _save_watermark(cache_dir, seen):
+     (Path(cache_dir) / "watermark.json").write_text(json.dumps(sorted(seen)))
+ 
+ 
+-def harvest(projects_root, cache_dir, home_slug):
++def harvest(projects_root, cache_dir, home_slug, *, project=None, session=None):
+     projects_root, cache_dir = Path(projects_root), Path(cache_dir)
+     seen = _load_watermark(cache_dir)
+     new_bundles = []
++    seen_tdirs: set = set()
+     if not projects_root.is_dir():
+         print(f"ultralearn: no projects root at {projects_root}", file=sys.stderr)
+         return []
+     for proj in sorted(projects_root.iterdir()):
+         if not proj.is_dir():
+             continue
+-        for session in sorted(proj.glob("*.jsonl")):
+-            key = f"{proj.name}/{session.stem}"
++        if project and proj.name != project:
++            continue
++        for sess in sorted(proj.glob("*.jsonl")):
++            if session and sess.stem != session:
++                continue
++            key = f"{proj.name}/{sess.stem}"
+             if key in seen:
+                 continue
+             try:
+-                bundle = build_bundle(session, proj.name, cache_dir, home_slug)
++                bundle = build_bundle(sess, proj.name, cache_dir, home_slug)
+             except Exception as exc:  # advisory: never crash a sweep
+                 print(f"ultralearn: skipped {key}: {exc}", file=sys.stderr)
+                 bundle = None
+             seen.add(key)
+             if bundle is not None:
++                bdata = json.loads((bundle / "bundle.json").read_text())
++                tdir_val = bdata.get("transcriptDir")
++                if tdir_val and tdir_val in seen_tdirs:
++                    continue  # same run, already emitted
++                if tdir_val:
++                    seen_tdirs.add(tdir_val)
+                 new_bundles.append(bundle)
+     _save_watermark(cache_dir, seen)
+     return new_bundles
+@@ -375,9 +416,25 @@ def _default_home_slug():
+ 
+ def main(argv=None):
+     argv = argv or sys.argv[1:]
+-    projects = Path(argv[0]) if argv else Path.home() / ".claude/projects"
++    projects = None
++    project_filter = None
++    session_filter = None
++    i = 0
++    while i < len(argv):
++        a = argv[i]
++        if a == "--project" and i + 1 < len(argv):
++            project_filter = argv[i + 1]; i += 2
++        elif a == "--session" and i + 1 < len(argv):
++            session_filter = argv[i + 1]; i += 2
++        elif not a.startswith("--"):
++            projects = Path(a); i += 1
++        else:
++            i += 1
++    if projects is None:
++        projects = Path.home() / ".claude/projects"
+     cache = Path.home() / ".claude/ultralearn"
+-    bundles = harvest(projects, cache, _default_home_slug())
++    bundles = harvest(projects, cache, _default_home_slug(),
++                      project=project_filter, session=session_filter)
+     print(f"ultralearn: {len(bundles)} new run bundle(s) under {cache}/runs")
+     for b in bundles:
+         print(f"  - {b}")
+diff --git a/skills/ultraplan/SKILL.md b/skills/ultraplan/SKILL.md
+index 66f4def2cddf4bf38085343e3ad2b28bcf4064b9..e8bbf4f88fbe3bc1c83b14c3d6a3597f9d21e55b 100644
+--- a/skills/ultraplan/SKILL.md
++++ b/skills/ultraplan/SKILL.md
+@@ -160,6 +160,11 @@ Example analysis lines:
+ - `manual` — requires a human or another machine (credentials, hardware, owner
+   action). Excluded from the waves; carried verbatim into the post-merge runbook.
+ 
++A task with no `writes` whose steps are build/verification-only (no implementation
++verb in its prose) compiles to `gate`, not `implementation` — otherwise its empty
++Files block would draw an ambiguous-files fan-in from every upstream task and force
++a serial tail. If a verification task is genuinely empty-Files, mark it `gate`.
++
+ ## Authoring rules (the worktree-pure contract)
+ 
+ Every `implementation` task must be a pure diff against the integration branch.
+diff --git a/skills/ultrapowers/references/plan-markers.md b/skills/ultrapowers/references/plan-markers.md
+index ad8abab76596165ad5f3c39bed391c41dc169872..45ed5e2e1c81b52dbec1127cb78e5fbbf05ff97f 100644
+--- a/skills/ultrapowers/references/plan-markers.md
++++ b/skills/ultrapowers/references/plan-markers.md
+@@ -115,7 +115,7 @@ the branch merges" — it does not recognize provider CLIs or other deploy idiom
+ name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
+ write paths plus any test-runner/lint/git-status mention in the prose" (an existence
+ check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
+-the phrase "on the deployment". All such classifications arrive flagged for
++the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — otherwise the empty Files block would draw an ambiguous-files fan-in from every upstream task and force a serial tail. All such classifications arrive flagged for
+ re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
+ precisely so the orchestrating agent re-judges them against the full contract above.
+ 
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 22bba688f47d175c55c38edd66f6fb0bfdeda772..e2d96ae04f697750c66b639bed7dd1f232cf622b 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -32,7 +32,7 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+ # all count, so a near-miss never silently degrades to prose.
+ MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on)\s*(?:\*\*)?\s*:", re.I)
+ MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
+-FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
++FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
+ # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
+ # block would otherwise drop silently — losing a write path and with it the
+ # overlap edge that prevents a same-wave write race.
+@@ -66,6 +66,8 @@ def _is_pathlike(tok):
+         return False
+     if "/" in t:
+         return True                       # a relative/absolute path
++    if t.startswith(".") and len(t) > 1 and " " not in t:
++        return True                       # dotfile: .gitignore, .dockerignore, .gitattributes
+     if EXT_RE.search(t):
+         return True                       # a filename with a lowercase extension
+     # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
+@@ -102,6 +104,29 @@ MANUAL_EV = re.compile(
+     r"(the owner runs|cannot be done from this machine|on the deployment)", re.I)
+ GATE_EV = re.compile(
+     r"(pytest|npm test|bun test|cargo test|go test|ruff|eslint|git status|git log)", re.I)
++# Implementation verbs beyond build/QA. A task that writes nothing AND whose
++# fence-stripped prose carries none of these is pure verification — the
++# EMPTY_WRITES_GATE rule below treats it as a gate.
++IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\b", re.I)
++# Positive build/verification/QA evidence. The EMPTY_WRITES_GATE rule fires only
++# when this matches, so a prose-only task with no writes AND no build/QA steps
++# (e.g. a reference-notes task) is NOT swept into the gate bucket — it stays
++# `implementation` for the orchestrator to re-judge. GATE_EV already covers the
++# explicit test-runner/lint/git-status idioms; this adds the build/QA verbs those
++# miss ("run the full build and the QA acceptance check").
++BUILDQA_EV = re.compile(
++    r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
++
++
++def _has_implementation_prose(prose):
++    """True when the prose contains an implementation verb beyond build/QA.
++
++    The prose is already fence-stripped (parse_task strips fenced lines), so a
++    verb inside a fenced example never counts. Conservative by design: any
++    genuine implementation verb keeps an empty-writes task as `implementation`;
++    prose that only describes running build/test/QA returns False so
++    EMPTY_WRITES_GATE can reclassify it as a gate."""
++    return bool(IMPL_PROSE_EV.search(prose))
+ 
+ 
+ def _fence_aware_lines(text):
+@@ -326,6 +351,11 @@ def parse_task(t):
+                 in_files = False
+             f = FILE_LINE.match(s) if in_files else None
+             if in_files and not f and re.match(r"^[-*+]\s", s):
++                # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
++                # (common on gates/verification tasks) — not a near-miss. Skip it
++                # so it never surfaces a phantom conflict ([76c7ef053adbf62e]).
++                if s.lstrip("-*+ ").strip().lower() == "none":
++                    continue
+                 # TOTAL rule: ANY bullet inside an open Files block that is not a
+                 # checkbox and fails FILE_LINE is a near-miss — colon-less
+                 # natural English, unknown labels (Read:/Delete:), wrong case or
+@@ -372,9 +402,12 @@ def parse_task(t):
+                     files_entries_seen = True
+                 if f.group(1) == "Create":
+                     creates.extend(paths)
+-                elif f.group(1) == "Modify":
++                elif f.group(1) in ("Modify", "Test fixture(s)", "Fixture(s)"):
++                    # A declared test fixture is a file the task OWNS and writes
++                    # (test data committed alongside the code) — treat it as a
++                    # write so two tasks touching the same fixture serialize.
+                     modifies.extend(paths)
+-                elif f.group(1) == "Test":
++                else:  # Test — the suite the task reads/runs, not a write
+                     reads.extend(paths)
+             elif s and not s.startswith("-"):
+                 in_files = False
+@@ -427,6 +460,15 @@ def classify(t):
+         return "manual", True
+     if not t["writes"] and GATE_EV.search(prose):
+         return "gate", True
++    # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
++    # build/verification (positive build/QA evidence, no implementation prose) is
++    # a gate, not implementation — otherwise it draws an ambiguous-files fan-in
++    # from every upstream task and forces a serial tail ([c171bd23cbab3265]). The
++    # build/QA-evidence guard keeps a prose-only task (no writes, no build/QA
++    # steps) classified `implementation` rather than swept into the gate bucket.
++    if (not t["writes"] and BUILDQA_EV.search(prose)
++            and not _has_implementation_prose(prose)):
++        return "gate", True
+     return "implementation", True
+ 
+ 
+diff --git a/tests/test_compile_plan.py b/tests/test_compile_plan.py
+index c5740214d6a917c0dc8b608423caedbade1601cc..f461e6893433b63ef5ded7e6297d8c7396ea137b 100644
+--- a/tests/test_compile_plan.py
++++ b/tests/test_compile_plan.py
+@@ -1809,3 +1809,69 @@ def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
+     assert not any(c.get("kind") == "undeclared-dependency"
+                    for c in out["marker_conflicts"])
+     assert out["waves"] == [["1"], ["2"]]
++
++
++# ---------------------------------------------------------------------------
++# Task 2: Files-label coverage (fixtures / bulleted None / dotfiles) +
++# empty-writes build/QA -> gate classification (issue #65 family)
++# ---------------------------------------------------------------------------
++
++def test_files_parser_accepts_fixture_label_none_and_dotfiles():
++    # Title line first so compile_plan_text's waiver injection (after line 0)
++    # lands at plan level, not inside Task 1's marker header block.
++    plan = '''# Plan: fixture/dotfile coverage
++
++### Task 1: Build
++**Type:** implementation
++
++**Files:**
++- Modify: `.gitignore`
++- Test fixture(s): `evals/fixtures/x/plan.md`
++
++- [ ] step
++'''
++    out = compile_plan_text(plan)
++    t1 = {t["id"]: t for t in out["tasks"]}["1"]
++    assert ".gitignore" in t1["writes"]
++    assert "evals/fixtures/x/plan.md" in (t1["writes"] + t1.get("reads", []))
++    assert not any("ignored" in c["note"] or "near" in c["note"].lower()
++                   for c in out["marker_conflicts"] if c.get("task") == "1")
++
++
++def test_bulleted_none_in_files_is_not_a_conflict():
++    plan = '''# Plan: bulleted none
++
++### Task 1: Verify
++**Type:** gate
++
++**Files:**
++- None
++
++- [ ] run pytest
++'''
++    out = compile_plan_text(plan)
++    assert not any(c.get("task") == "1" for c in out["marker_conflicts"])
++
++
++def test_empty_writes_buildqa_task_classifies_as_gate():
++    plan = '''# Plan: empty-writes build/QA gate
++
++### Task 1: Build the bundle
++**Type:** implementation
++
++**Files:**
++- Create: `src/a.py`
++
++- [ ] write code
++
++### Task 2: Final verification
++**Files:**
++- None
++
++- [ ] Run the full build and the QA acceptance check.
++'''
++    out = compile_plan_text(plan)
++    t2 = {t["id"]: t for t in out["tasks"]}["2"]
++    assert t2["disposition"] == "gate"
++    assert "2" in out["gates"]
++    assert "2" not in [e["to"] for e in out["dag_edges"] if e.get("why", "").startswith("ambiguous")]
+diff --git a/tests/test_harvest_runs.py b/tests/test_harvest_runs.py
+index f912c0190ac764ca549272e849e11164202f2aa9..4707cf3d462c6ad5b3681cb59e3d2ae7877d3a3c 100644
+--- a/tests/test_harvest_runs.py
++++ b/tests/test_harvest_runs.py
+@@ -203,3 +203,79 @@ def test_build_bundle_includes_engine_version(tmp_path):
+     assert "engineVersion" in bundle
+     assert set(bundle["engineVersion"]) == {"epoch", "asOf", "basis"}
+     assert bundle["engineVersion"]["basis"] == "foreign-date-upper-bound"
++
++
++# --- P3: engine-fingerprint, dedup, provenance, truncation, targeting ---
++def _agent_file(d, n, first_user_text):
++    """An agent-*.jsonl whose first user turn drives audit_run.classify's role."""
++    d.mkdir(parents=True, exist_ok=True)
++    rec = {"type": "user", "message": {"role": "user",
++           "content": [{"type": "text", "text": first_user_text}]}}
++    (d / f"agent-{n}.jsonl").write_text(json.dumps(rec) + "\n")
++
++
++def _run_session(tdir, *, with_integration):
++    """A session that passes is_real_run: a Workflow tool_use + a tool_result
++    naming the transcript dir (and optionally an integrationBranch)."""
++    tr = f"Transcript dir: {tdir}"
++    if with_integration:
++        tr += '\nresult {"integrationBranch":"ultra/x","waveMerges":[]}'
++    return [
++        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
++                            "input": {"name": "ultrapowers-run"}}]),
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text", "text": tr}]}]),
++    ]
++
++
++def test_non_engine_workflow_session_is_not_an_engine_run(tmp_path):
++    # all agents role:unknown, no integration branch, no planning -> meta, dropped
++    tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_meta"
++    _agent_file(tdir, 1, "Search the web for X and draft an issue.")
++    _agent_file(tdir, 2, "Summarize the findings.")
++    session = tmp_path / "s.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=False)) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
++    assert out is None
++
++
++def test_real_engine_session_is_kept_and_tagged(tmp_path):
++    tdir = tmp_path / "projects" / "p" / "subagents" / "workflows" / "wf_real"
++    _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
++    _agent_file(tdir, 2, "You are the wave merge agent, operating on the session repo main checkout.")
++    session = tmp_path / "s.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache", "-Users-x-home")
++    assert out is not None
++    bundle = json.loads((out / "bundle.json").read_text())
++    assert bundle["sessionKind"] == "engine"
++
++
++def test_same_run_double_emitted_is_deduped(tmp_path):
++    proj = tmp_path / "projects" / "-Users-x-proj"
++    tdir = tmp_path / "projects" / "-Users-x-proj" / "subagents" / "workflows" / "wf_dup"
++    _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
++    for stem in ("s1", "s2"):
++        (proj / f"{stem}.jsonl").parent.mkdir(parents=True, exist_ok=True)
++        (proj / f"{stem}.jsonl").write_text(
++            "\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
++    bundles = h.harvest(tmp_path / "projects", tmp_path / "cache", "-Users-x-home")
++    assert len(bundles) == 1  # one transcriptDir -> one bundle
++
++
++def test_slice_truncates_oversized_user_turn():
++    recs = [_rec("user", [{"type": "text", "text": "X" * 40000}]),
++            _rec("user", [{"type": "text", "text": "build the thing"}])]
++    out = h.slice_transcript(recs)
++    assert "build the thing" in out
++    assert "X" * 40000 not in out and len(out) < 40000
++
++
++def test_harvest_targets_a_single_project(tmp_path):
++    for slug in ("-Users-x-aaa", "-Users-x-bbb"):
++        tdir = tmp_path / "projects" / slug / "subagents" / "workflows" / f"wf_{slug[-3:]}"
++        _agent_file(tdir, 1, "You are the setup agent on the session repo main checkout.")
++        sess = tmp_path / "projects" / slug / "s.jsonl"
++        sess.write_text("\n".join(json.dumps(r) for r in _run_session(tdir, with_integration=True)) + "\n")
++    bundles = h.harvest(tmp_path / "projects", tmp_path / "cache", "-Users-x-home", project="-Users-x-aaa")
++    slugs = {json.loads((b / "bundle.json").read_text())["projectSlug"] for b in bundles}
++    assert slugs == {"-Users-x-aaa"}
+diff --git a/tests/test_marker_contract.py b/tests/test_marker_contract.py
+index 2f9d0c4e4b5712e298e2f41fa978e45cd2ca8560..1535783c1757b2dcbf8b4652d959ce28ea436c6d 100644
+--- a/tests/test_marker_contract.py
++++ b/tests/test_marker_contract.py
+@@ -92,3 +92,11 @@ def test_contract_documents_compiler_manual_and_gate_heuristics():
+     # heuristic itself omits; pin that claim specifically.
+     assert "on the deployment" in doc, (
+         "plan-markers.md no longer discloses the 'on the deployment' manual pattern")
++
++
++def test_contract_documents_empty_writes_gate_rule():
++    src = (ROOT / "skills/ultrapowers/scripts/compile_plan.py").read_text()
++    doc = (ROOT / "skills/ultrapowers/references/plan-markers.md").read_text()
++    # the empty-writes build/QA -> gate rule must be disclosed in the contract doc
++    assert "empty" in doc.lower() and "writes" in doc.lower() and "gate" in doc.lower()
++    assert "EMPTY_WRITES_GATE" in src  # the rule's named marker in the compiler

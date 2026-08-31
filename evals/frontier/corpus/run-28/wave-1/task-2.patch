@@ -1,0 +1,163 @@
+diff --git a/evals/ab_auth.py b/evals/ab_auth.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1192b6da3b717766881733d79d5b012ad71afe5d
+--- /dev/null
++++ b/evals/ab_auth.py
+@@ -0,0 +1,57 @@
++#!/usr/bin/env python3
++"""Credential seeding for local A/B cells (#402 item 6).
++
++The engine (fleet/run-main.mjs) gives every worker a throwaway per-run
++CLAUDE_CONFIG_DIR and lets the credential ride the inherited env as
++CLAUDE_CODE_OAUTH_TOKEN. Locally that env var does not exist — the operator's
++live credential sits in the macOS Keychain (or ~/.claude/.credentials.json on
++Linux, where that file IS the live store). This module extracts the live
++access token at cell start. Lineage: seed_credentials in the deleted rig
++(git show 44e0d15^:evals/ab_runner.py) — same Keychain-then-file chain, same
++GUI-prompt timeout; the difference is the destination (env var, not a copied
++credentials file) because the engine owns the config dir now.
++
++Access tokens expire: a cell that fails auth mid-run is rerun after the
++operator refreshes (open claude interactively once). Loud over stale.
++The token value itself must never appear in any message this module emits.
++"""
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++
++def seed_worker_auth(base_env, run=subprocess.run, home=None):
++    """Return a copy of base_env with CLAUDE_CODE_OAUTH_TOKEN set from the
++    live credential store, or SystemExit with a token-free message."""
++    home = Path(home) if home is not None else Path.home()
++    cred_text = ""
++    try:
++        # timeout: a locked keychain / untrusting ACL raises a GUI prompt;
++        # over SSH that blocks forever and the file fallback is never reached.
++        kc = run(["security", "find-generic-password",
++                  "-s", "Claude Code-credentials", "-w"],
++                 capture_output=True, text=True, timeout=10)
++        cred_text = kc.stdout.strip() if kc.returncode == 0 else ""
++    except (OSError, subprocess.TimeoutExpired):
++        cred_text = ""
++    if not cred_text:
++        cred_file = home / ".claude" / ".credentials.json"
++        cred_text = cred_file.read_text() if cred_file.is_file() else ""
++    token = ""
++    if cred_text:
++        try:
++            token = (json.loads(cred_text).get("claudeAiOauth") or {}) \
++                .get("accessToken") or ""
++        except json.JSONDecodeError:
++            sys.exit("ab_auth: credential store present but unparseable — "
++                     "not JSON. Open claude interactively once to refresh, "
++                     "then rerun the cell.")
++    if not token:
++        sys.exit("ab_auth: no live credential found — Keychain item "
++                 "'Claude Code-credentials' and %s both came up empty. "
++                 "Open claude interactively once, then rerun the cell."
++                 % (home / ".claude" / ".credentials.json"))
++    env = dict(base_env)
++    env["CLAUDE_CODE_OAUTH_TOKEN"] = token
++    return env
+diff --git a/tests/test_ab_auth.py b/tests/test_ab_auth.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..acda58dbb033d645ae00d3dadd903709709000aa
+--- /dev/null
++++ b/tests/test_ab_auth.py
+@@ -0,0 +1,94 @@
++"""ab_auth: live-credential seeding for local A/B cells. Never runs `security`
++or `claude` for real -- every test injects a stub through the `run` seam."""
++import json, pathlib, subprocess, sys
++import pytest
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "evals"))
++from ab_auth import seed_worker_auth
++
++CRED = {"claudeAiOauth": {"accessToken": "tok-live-123", "refreshToken": "r"}}
++
++
++class _Result:
++    def __init__(self, code, out):
++        self.returncode, self.stdout = code, out
++
++
++def test_keychain_token_lands_in_env_only():
++    calls = []
++    def fake_run(cmd, **kw):
++        calls.append((cmd, kw))
++        return _Result(0, json.dumps(CRED))
++    env = seed_worker_auth({"PATH": "/bin"}, run=fake_run,
++                           home=pathlib.Path("/nonexistent"))
++    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-live-123"
++    assert env["PATH"] == "/bin"
++    assert calls and calls[0][0][0] == "security"       # Keychain first
++    assert calls[0][0] == ["security", "find-generic-password",
++                           "-s", "Claude Code-credentials", "-w"]
++    # timeout guards the GUI-prompt hang (deleted rig, #107 lineage)
++    assert calls[0][1]["timeout"] == 10
++    # the token is the only key the seam adds
++    assert set(env) == {"PATH", "CLAUDE_CODE_OAUTH_TOKEN"}
++
++
++def test_file_fallback_when_keychain_empty(tmp_path):
++    (tmp_path / ".claude").mkdir()
++    (tmp_path / ".claude" / ".credentials.json").write_text(json.dumps(CRED))
++    env = seed_worker_auth({}, run=lambda *a, **k: _Result(1, ""),
++                           home=tmp_path)
++    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-live-123"
++
++
++def test_oserror_falls_through_to_file(tmp_path):
++    (tmp_path / ".claude").mkdir()
++    (tmp_path / ".claude" / ".credentials.json").write_text(json.dumps(CRED))
++    def raising_run(*a, **k):
++        raise OSError("no security binary")
++    env = seed_worker_auth({}, run=raising_run, home=tmp_path)
++    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-live-123"
++
++
++def test_timeout_falls_through_to_file(tmp_path):
++    """A locked keychain raises a GUI prompt; over SSH that hangs until the
++    timeout fires -- the file fallback must still be reached."""
++    (tmp_path / ".claude").mkdir()
++    (tmp_path / ".claude" / ".credentials.json").write_text(json.dumps(CRED))
++    def timing_out_run(*a, **k):
++        raise subprocess.TimeoutExpired(cmd="security", timeout=10)
++    env = seed_worker_auth({}, run=timing_out_run, home=tmp_path)
++    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "tok-live-123"
++
++
++def test_no_credentials_exits_loud_without_leaking(tmp_path, capsys):
++    with pytest.raises(SystemExit) as excinfo:
++        seed_worker_auth({}, run=lambda *a, **k: _Result(1, ""), home=tmp_path)
++    err = capsys.readouterr().err + str(capsys.readouterr().out)
++    assert "tok-" not in err
++    # the message is the only place a token could surface, and it is loud
++    message = str(excinfo.value)
++    assert "tok-" not in message
++    assert "no live credential found" in message
++    assert str(tmp_path / ".claude" / ".credentials.json") in message
++
++
++def test_malformed_credential_json_exits_loud(tmp_path):
++    with pytest.raises(SystemExit) as excinfo:
++        seed_worker_auth({}, run=lambda *a, **k: _Result(0, "not json"),
++                         home=tmp_path)
++    assert "unparseable" in str(excinfo.value)
++
++
++def test_credential_without_token_exits_loud(tmp_path):
++    """Well-formed JSON with no accessToken is as unusable as no file."""
++    with pytest.raises(SystemExit) as excinfo:
++        seed_worker_auth({}, run=lambda *a, **k: _Result(0, json.dumps(
++            {"claudeAiOauth": {"refreshToken": "r"}})), home=tmp_path)
++    assert "no live credential found" in str(excinfo.value)
++
++
++def test_input_env_is_not_mutated():
++    base = {"A": "1"}
++    seed_worker_auth(base, run=lambda *a, **k: _Result(0, json.dumps(CRED)),
++                     home=pathlib.Path("/nonexistent"))
++    assert base == {"A": "1"}

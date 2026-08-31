@@ -1,0 +1,214 @@
+diff --git a/skills/ultraplan/SKILL.md b/skills/ultraplan/SKILL.md
+index 66f4def2cddf4bf38085343e3ad2b28bcf4064b9..e8bbf4f88fbe3bc1c83b14c3d6a3597f9d21e55b 100644
+--- a/skills/ultraplan/SKILL.md
++++ b/skills/ultraplan/SKILL.md
+@@ -160,6 +160,11 @@ Example analysis lines:
+ - `manual` — requires a human or another machine (credentials, hardware, owner
+   action). Excluded from the waves; carried verbatim into the post-merge runbook.
+ 
++A task with no `writes` whose steps are build/verification-only (no implementation
++verb in its prose) compiles to `gate`, not `implementation` — otherwise its empty
++Files block would draw an ambiguous-files fan-in from every upstream task and force
++a serial tail. If a verification task is genuinely empty-Files, mark it `gate`.
++
+ ## Authoring rules (the worktree-pure contract)
+ 
+ Every `implementation` task must be a pure diff against the integration branch.
+diff --git a/skills/ultrapowers/references/plan-markers.md b/skills/ultrapowers/references/plan-markers.md
+index ad8abab76596165ad5f3c39bed391c41dc169872..45ed5e2e1c81b52dbec1127cb78e5fbbf05ff97f 100644
+--- a/skills/ultrapowers/references/plan-markers.md
++++ b/skills/ultrapowers/references/plan-markers.md
+@@ -115,7 +115,7 @@ the branch merges" — it does not recognize provider CLIs or other deploy idiom
+ name. The gate and manual heuristics are likewise regex subsets: gate fires on "no
+ write paths plus any test-runner/lint/git-status mention in the prose" (an existence
+ check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
+-the phrase "on the deployment". All such classifications arrive flagged for
++the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — otherwise the empty Files block would draw an ambiguous-files fan-in from every upstream task and force a serial tail. All such classifications arrive flagged for
+ re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
+ precisely so the orchestrating agent re-judges them against the full contract above.
+ 
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 22bba688f47d175c55c38edd66f6fb0bfdeda772..e2d96ae04f697750c66b639bed7dd1f232cf622b 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -32,7 +32,7 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+ # all count, so a near-miss never silently degrades to prose.
+ MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on)\s*(?:\*\*)?\s*:", re.I)
+ MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
+-FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test):\s*(.+)$")
++FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
+ # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
+ # block would otherwise drop silently — losing a write path and with it the
+ # overlap edge that prevents a same-wave write race.
+@@ -66,6 +66,8 @@ def _is_pathlike(tok):
+         return False
+     if "/" in t:
+         return True                       # a relative/absolute path
++    if t.startswith(".") and len(t) > 1 and " " not in t:
++        return True                       # dotfile: .gitignore, .dockerignore, .gitattributes
+     if EXT_RE.search(t):
+         return True                       # a filename with a lowercase extension
+     # A bare extensionless filename by convention is Capitalized or ALL-CAPS with
+@@ -102,6 +104,29 @@ MANUAL_EV = re.compile(
+     r"(the owner runs|cannot be done from this machine|on the deployment)", re.I)
+ GATE_EV = re.compile(
+     r"(pytest|npm test|bun test|cargo test|go test|ruff|eslint|git status|git log)", re.I)
++# Implementation verbs beyond build/QA. A task that writes nothing AND whose
++# fence-stripped prose carries none of these is pure verification — the
++# EMPTY_WRITES_GATE rule below treats it as a gate.
++IMPL_PROSE_EV = re.compile(r"\b(implement|add|create|write|refactor|fix|modify)\b", re.I)
++# Positive build/verification/QA evidence. The EMPTY_WRITES_GATE rule fires only
++# when this matches, so a prose-only task with no writes AND no build/QA steps
++# (e.g. a reference-notes task) is NOT swept into the gate bucket — it stays
++# `implementation` for the orchestrator to re-judge. GATE_EV already covers the
++# explicit test-runner/lint/git-status idioms; this adds the build/QA verbs those
++# miss ("run the full build and the QA acceptance check").
++BUILDQA_EV = re.compile(
++    r"\b(build|rebuild|compile|verif\w*|acceptance|qa|smoke|sanity|lint)\b", re.I)
++
++
++def _has_implementation_prose(prose):
++    """True when the prose contains an implementation verb beyond build/QA.
++
++    The prose is already fence-stripped (parse_task strips fenced lines), so a
++    verb inside a fenced example never counts. Conservative by design: any
++    genuine implementation verb keeps an empty-writes task as `implementation`;
++    prose that only describes running build/test/QA returns False so
++    EMPTY_WRITES_GATE can reclassify it as a gate."""
++    return bool(IMPL_PROSE_EV.search(prose))
+ 
+ 
+ def _fence_aware_lines(text):
+@@ -326,6 +351,11 @@ def parse_task(t):
+                 in_files = False
+             f = FILE_LINE.match(s) if in_files else None
+             if in_files and not f and re.match(r"^[-*+]\s", s):
++                # A bare bulleted `- None` is an EXPLICIT empty-Files declaration
++                # (common on gates/verification tasks) — not a near-miss. Skip it
++                # so it never surfaces a phantom conflict ([76c7ef053adbf62e]).
++                if s.lstrip("-*+ ").strip().lower() == "none":
++                    continue
+                 # TOTAL rule: ANY bullet inside an open Files block that is not a
+                 # checkbox and fails FILE_LINE is a near-miss — colon-less
+                 # natural English, unknown labels (Read:/Delete:), wrong case or
+@@ -372,9 +402,12 @@ def parse_task(t):
+                     files_entries_seen = True
+                 if f.group(1) == "Create":
+                     creates.extend(paths)
+-                elif f.group(1) == "Modify":
++                elif f.group(1) in ("Modify", "Test fixture(s)", "Fixture(s)"):
++                    # A declared test fixture is a file the task OWNS and writes
++                    # (test data committed alongside the code) — treat it as a
++                    # write so two tasks touching the same fixture serialize.
+                     modifies.extend(paths)
+-                elif f.group(1) == "Test":
++                else:  # Test — the suite the task reads/runs, not a write
+                     reads.extend(paths)
+             elif s and not s.startswith("-"):
+                 in_files = False
+@@ -427,6 +460,15 @@ def classify(t):
+         return "manual", True
+     if not t["writes"] and GATE_EV.search(prose):
+         return "gate", True
++    # EMPTY_WRITES_GATE: a task that writes nothing and whose only steps are
++    # build/verification (positive build/QA evidence, no implementation prose) is
++    # a gate, not implementation — otherwise it draws an ambiguous-files fan-in
++    # from every upstream task and forces a serial tail ([c171bd23cbab3265]). The
++    # build/QA-evidence guard keeps a prose-only task (no writes, no build/QA
++    # steps) classified `implementation` rather than swept into the gate bucket.
++    if (not t["writes"] and BUILDQA_EV.search(prose)
++            and not _has_implementation_prose(prose)):
++        return "gate", True
+     return "implementation", True
+ 
+ 
+diff --git a/tests/test_compile_plan.py b/tests/test_compile_plan.py
+index c5740214d6a917c0dc8b608423caedbade1601cc..f461e6893433b63ef5ded7e6297d8c7396ea137b 100644
+--- a/tests/test_compile_plan.py
++++ b/tests/test_compile_plan.py
+@@ -1809,3 +1809,69 @@ def test_interface_edge_covered_by_marker_emits_no_finding(tmp_path):
+     assert not any(c.get("kind") == "undeclared-dependency"
+                    for c in out["marker_conflicts"])
+     assert out["waves"] == [["1"], ["2"]]
++
++
++# ---------------------------------------------------------------------------
++# Task 2: Files-label coverage (fixtures / bulleted None / dotfiles) +
++# empty-writes build/QA -> gate classification (issue #65 family)
++# ---------------------------------------------------------------------------
++
++def test_files_parser_accepts_fixture_label_none_and_dotfiles():
++    # Title line first so compile_plan_text's waiver injection (after line 0)
++    # lands at plan level, not inside Task 1's marker header block.
++    plan = '''# Plan: fixture/dotfile coverage
++
++### Task 1: Build
++**Type:** implementation
++
++**Files:**
++- Modify: `.gitignore`
++- Test fixture(s): `evals/fixtures/x/plan.md`
++
++- [ ] step
++'''
++    out = compile_plan_text(plan)
++    t1 = {t["id"]: t for t in out["tasks"]}["1"]
++    assert ".gitignore" in t1["writes"]
++    assert "evals/fixtures/x/plan.md" in (t1["writes"] + t1.get("reads", []))
++    assert not any("ignored" in c["note"] or "near" in c["note"].lower()
++                   for c in out["marker_conflicts"] if c.get("task") == "1")
++
++
++def test_bulleted_none_in_files_is_not_a_conflict():
++    plan = '''# Plan: bulleted none
++
++### Task 1: Verify
++**Type:** gate
++
++**Files:**
++- None
++
++- [ ] run pytest
++'''
++    out = compile_plan_text(plan)
++    assert not any(c.get("task") == "1" for c in out["marker_conflicts"])
++
++
++def test_empty_writes_buildqa_task_classifies_as_gate():
++    plan = '''# Plan: empty-writes build/QA gate
++
++### Task 1: Build the bundle
++**Type:** implementation
++
++**Files:**
++- Create: `src/a.py`
++
++- [ ] write code
++
++### Task 2: Final verification
++**Files:**
++- None
++
++- [ ] Run the full build and the QA acceptance check.
++'''
++    out = compile_plan_text(plan)
++    t2 = {t["id"]: t for t in out["tasks"]}["2"]
++    assert t2["disposition"] == "gate"
++    assert "2" in out["gates"]
++    assert "2" not in [e["to"] for e in out["dag_edges"] if e.get("why", "").startswith("ambiguous")]
+diff --git a/tests/test_marker_contract.py b/tests/test_marker_contract.py
+index 2f9d0c4e4b5712e298e2f41fa978e45cd2ca8560..1535783c1757b2dcbf8b4652d959ce28ea436c6d 100644
+--- a/tests/test_marker_contract.py
++++ b/tests/test_marker_contract.py
+@@ -92,3 +92,11 @@ def test_contract_documents_compiler_manual_and_gate_heuristics():
+     # heuristic itself omits; pin that claim specifically.
+     assert "on the deployment" in doc, (
+         "plan-markers.md no longer discloses the 'on the deployment' manual pattern")
++
++
++def test_contract_documents_empty_writes_gate_rule():
++    src = (ROOT / "skills/ultrapowers/scripts/compile_plan.py").read_text()
++    doc = (ROOT / "skills/ultrapowers/references/plan-markers.md").read_text()
++    # the empty-writes build/QA -> gate rule must be disclosed in the contract doc
++    assert "empty" in doc.lower() and "writes" in doc.lower() and "gate" in doc.lower()
++    assert "EMPTY_WRITES_GATE" in src  # the rule's named marker in the compiler

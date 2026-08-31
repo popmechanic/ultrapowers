@@ -1,0 +1,302 @@
+diff --git a/skills/ultrapowers/scripts/run_acceptance.sh b/skills/ultrapowers/scripts/run_acceptance.sh
+index 4bfe660eefc3284bd59fb75cc4db52d3d42c5da0..f777a16796cd810f26b7e5bcefd1074edf01339a 100755
+--- a/skills/ultrapowers/scripts/run_acceptance.sh
++++ b/skills/ultrapowers/scripts/run_acceptance.sh
+@@ -5,15 +5,16 @@
+ #
+ # Usage: run_acceptance.sh <seal-id> <branch> <expected-sha256>
+ #                          [--vault DIR] [--repo DIR]
+-#    or: run_acceptance.sh --baseline --suite DIR --branch BASE --run CMD
+-#                          [--bootstrap CMD] [--repo DIR]   (seal-time RED proof)
++#    or: run_acceptance.sh --baseline --suite DIR --branch BASE
++#                          (--manifest FILE | --run CMD [--bootstrap CMD])
++#                          [--repo DIR]   (seal-time RED proof)
+ # Spec: docs/superpowers/specs/2026-06-15-sealed-acceptance-env-bootstrap-design.md
+ set -uo pipefail
+ 
+ SEAL_ID="(baseline)"; BRANCH=""; EXPECTED=""
+ VAULT="${HOME}/.ultrapowers/acceptance"
+ REPO="$(pwd)"
+-B_SUITE=""; B_RUN=""; B_BOOT=""
++B_SUITE=""; B_RUN=""; B_BOOT=""; B_MANIFEST=""
+ SG_RUN="python3 -m pytest"
+ SG_BASE=""
+ MODE="sealed"
+@@ -25,13 +26,21 @@ if [ "${1:-}" = "--baseline" ]; then
+       --branch)    BRANCH="$2";  shift 2 ;;
+       --run)       B_RUN="$2";   shift 2 ;;
+       --bootstrap) B_BOOT="$2";  shift 2 ;;
++      --manifest)  B_MANIFEST="$2"; shift 2 ;;
+       --repo)      REPO="$2";    shift 2 ;;
+       *) echo "unknown argument: $1" >&2; exit 2 ;;
+     esac
+   done
+   : "${B_SUITE:?--baseline requires --suite}"
+   : "${BRANCH:?--baseline requires --branch}"
+-  : "${B_RUN:?--baseline requires --run}"
++  if [ -n "$B_MANIFEST" ]; then
++    if [ -n "$B_RUN" ] || [ -n "$B_BOOT" ]; then
++      echo "--manifest is mutually exclusive with --run/--bootstrap" >&2
++      exit 2
++    fi
++  else
++    : "${B_RUN:?--baseline requires --run (or --manifest)}"
++  fi
+ elif [ "${1:-}" = "--suite-gate" ]; then
+   MODE="suite-gate"; SEAL_ID="(suite)"; shift
+   while [ $# -gt 0 ]; do
+@@ -161,6 +170,23 @@ $OUT"
+   return 0
+ }
+ 
++# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
++# A missing/unreadable manifest or empty runCmd yields an empty first line, which
++# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
++read_manifest() {
++  python3 -c '
++import json, sys
++try:
++    m = json.load(open(sys.argv[1]))
++except Exception:
++    m = {}
++print(m.get("runCmd") or "")
++print(m.get("bootstrapCmd") or "")
++print(m.get("framework") or "pytest")
++print(m.get("ranPattern") or "")
++' "$1"
++}
++
+ # ── Harness JS-behavioral sims (issue #79) ────────────────────────────────────
+ # After a green pytest suite-gate, if the branch changed harness JS, run the
+ # harness .mjs sims so JS behavior is exit-code-gated too. Sets J_* globals;
+@@ -251,7 +277,36 @@ fi
+ 
+ # ── Baseline mode (seal-time RED proof through the exact gate execution core) ──
+ if [ "$MODE" = baseline ]; then
+-  FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
++  if [ -n "$B_MANIFEST" ]; then
++    # Manifest-proven sealing: the RED proof reads the exact fields the gate
++    # will read, and refuses a draft the gate would misread — framework
++    # defaults to pytest at the gate, so a non-pytest runCmd without an
++    # explicit framework/ranPattern false-reds every green exam.
++    if [ ! -f "$B_MANIFEST" ]; then
++      emit MANIFEST_INCOHERENT false 2 "manifest draft not found: $B_MANIFEST"
++      exit 1
++    fi
++    { IFS= read -r B_RUN
++      IFS= read -r B_BOOT
++      IFS= read -r FRAMEWORK
++      IFS= read -r RAN_PATTERN
++    } < <(read_manifest "$B_MANIFEST")
++    if [ -z "$B_RUN" ]; then
++      emit MANIFEST_INCOHERENT false 2 "manifest draft missing runCmd: $B_MANIFEST"
++      exit 1
++    fi
++    if [ "$FRAMEWORK" = "pytest" ]; then
++      if ! printf '%s' "$B_RUN" | grep -q "pytest"; then
++        emit MANIFEST_INCOHERENT false 2 "framework is 'pytest' (or absent) but runCmd does not invoke pytest — a non-pytest suite must declare framework and ranPattern in the manifest: $B_RUN"
++        exit 1
++      fi
++    elif [ -z "$RAN_PATTERN" ]; then
++      emit MANIFEST_INCOHERENT false 2 "framework '$FRAMEWORK' requires a ranPattern (the no-tests-ran defense has no marker outside pytest)"
++      exit 1
++    fi
++  else
++    FRAMEWORK="${FRAMEWORK:-pytest}"; RAN_PATTERN="${RAN_PATTERN:-}"
++  fi
+   run_exam "$B_SUITE" "$BRANCH" "$B_RUN" "$B_BOOT"
+   if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = false ]; then
+     emit PROVEN_RED false "$R_CODE" "$R_OUTPUT" "$R_REDKIND"; exit 0
+@@ -276,22 +331,6 @@ if [ "$ACTUAL" != "$EXPECTED" ]; then
+   exit 1
+ fi
+ 
+-# Read all four manifest fields in ONE python3 pass (was four json.load spawns).
+-# A missing/unreadable manifest or empty runCmd yields an empty first line, which
+-# the runCmd guard below converts to a clean ERROR — never a crash, never a false-green.
+-read_manifest() {
+-  python3 -c '
+-import json, sys
+-try:
+-    m = json.load(open(sys.argv[1]))
+-except Exception:
+-    m = {}
+-print(m.get("runCmd") or "")
+-print(m.get("bootstrapCmd") or "")
+-print(m.get("framework") or "pytest")
+-print(m.get("ranPattern") or "")
+-' "$1"
+-}
+ { IFS= read -r RUN_CMD
+   IFS= read -r BOOTSTRAP_CMD
+   IFS= read -r FRAMEWORK
+@@ -304,6 +343,15 @@ if [ -z "$RUN_CMD" ]; then
+ fi
+ 
+ run_exam "$SUITE" "$BRANCH" "$RUN_CMD" "$BOOTSTRAP_CMD"
++# Legacy-seal diagnosis: a pre-consolidation manifest that omits framework/
++# ranPattern for a non-pytest runCmd hits the no-tests-ran refusal with a
++# generic message; name the real cause. Behavior unchanged — still refuses.
++case "$R_OUTPUT" in
++  *"ran no sealed tests"*)
++    if [ "$FRAMEWORK" = "pytest" ] && ! printf '%s' "$RUN_CMD" | grep -q "pytest"; then
++      R_OUTPUT="manifest omits framework/ranPattern for a non-pytest runCmd — re-seal or add the fields (the pytest ran-marker cannot see this runner). $R_OUTPUT"
++    fi ;;
++esac
+ emit "$R_STATUS" "$R_PASSED" "$R_CODE" "$R_OUTPUT" "$R_REDKIND"
+ if [ "$R_STATUS" = OK ] && [ "$R_PASSED" = true ]; then exit 0; fi
+ exit 1
+diff --git a/tests/test_run_acceptance.py b/tests/test_run_acceptance.py
+index 58b8091cf8ddbade39ea373123f77b1ac50c63c1..9dde765767ce32f606760157472a2fdd0805777f 100644
+--- a/tests/test_run_acceptance.py
++++ b/tests/test_run_acceptance.py
+@@ -564,3 +564,149 @@ def test_huge_exam_output_still_emits_json_receipt(tmp_path):
+     obj = json.loads(p.stdout)
+     assert obj["passed"] is True
+     assert len(obj["output"]) <= 8000
++
++
++# --- baseline --manifest: the RED proof reads the fields the gate reads ---
++
++def write_draft(tmp_path, **fields):
++    draft = tmp_path / "draft-manifest.json"
++    draft.write_text(json.dumps(fields))
++    return draft
++
++
++def make_pytest_suite(tmp_path):
++    suite = tmp_path / "suite"
++    suite.mkdir()
++    (suite / "test_exam.py").write_text(
++        "from mod import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n")
++    return suite
++
++
++# A framework-free fake runner: prints a summary line on both outcomes, so
++# ranPattern can detect "tests ran" red or green. Runs from the worktree root.
++SH_RUNNER = (
++    "if grep -q 'return a + b' mod.py; "
++    "then echo 'TESTS RAN: 1 passed'; exit 0; "
++    "else echo 'TESTS RAN: 1 failed'; exit 1; fi\n")
++
++
++def make_sh_suite(tmp_path):
++    suite = tmp_path / "suite"
++    suite.mkdir()
++    (suite / "run.sh").write_text(SH_RUNNER)
++    return suite
++
++
++def baseline_manifest(repo, suite, draft):
++    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
++            "--branch", "main", "--manifest", str(draft),
++            "--repo", str(repo)], check=False)
++    return r.returncode, json.loads(r.stdout)
++
++
++def test_manifest_baseline_proves_red_reading_draft_fields(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 0
++    assert out["status"] == "PROVEN_RED"
++
++
++def test_incoherent_nonpytest_runcmd_without_framework(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "framework" in out["output"]
++
++
++def test_incoherent_nonpytest_framework_without_ranpattern(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
++                        framework="sh")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "ranPattern" in out["output"]
++
++
++def test_incoherent_draft_missing_runcmd(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, framework="pytest")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 1
++    assert out["status"] == "MANIFEST_INCOHERENT"
++    assert "runCmd" in out["output"]
++
++
++def test_coherent_nonpytest_manifest_proves_red(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_sh_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="sh .ultra-acceptance/run.sh",
++                        framework="sh", ranPattern="TESTS RAN")
++    code, out = baseline_manifest(repo, suite, draft)
++    assert code == 0
++    assert out["status"] == "PROVEN_RED"
++    assert out["redKind"] == "assertion"     # the pattern saw the tests run
++
++
++def test_manifest_flag_mutually_exclusive_with_run_flags(tmp_path):
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = make_pytest_suite(tmp_path)
++    draft = write_draft(tmp_path, runCmd="python3 -m pytest .ultra-acceptance -q")
++    r = sh(["bash", str(RUN), "--baseline", "--suite", str(suite),
++            "--branch", "main", "--manifest", str(draft),
++            "--run", "python3 -m pytest .ultra-acceptance -q",
++            "--repo", str(repo)], check=False)
++    assert r.returncode == 2
++    assert "mutually exclusive" in r.stderr
++
++
++def test_manifest_first_nonpytest_seal_certifies_at_gate(tmp_path):
++    # The end-to-end the field runs needed: author manifest-first, prove RED,
++    # finalize, build the feature, administer at the gate — green, no false-red.
++    repo = make_repo(tmp_path, feature_built=False)
++    suite = tmp_path / "vault" / "pending-x" / "suite"
++    suite.mkdir(parents=True)
++    (suite / "run.sh").write_text(SH_RUNNER)
++    draft = tmp_path / "vault" / "pending-x" / "manifest.json"
++    draft.write_text(json.dumps({
++        "runCmd": "sh .ultra-acceptance/run.sh",
++        "framework": "sh", "ranPattern": "TESTS RAN"}))
++    code, out = baseline_manifest(repo, suite, draft)
++    assert (code, out["status"]) == (0, "PROVEN_RED")
++    # finalize: hash, rename into the vault, complete the manifest
++    digest = sh([sys.executable, str(HASH), str(suite)]).stdout.strip()
++    entry = tmp_path / "vault" / digest[:12]
++    (tmp_path / "vault" / "pending-x").rename(entry)
++    manifest = json.loads((entry / "manifest.json").read_text())
++    manifest.update({"sealId": digest[:12], "suiteSha256": digest})
++    (entry / "manifest.json").write_text(json.dumps(manifest))
++    # build the feature and administer
++    (repo / "mod.py").write_text("def add(a, b):\n    return a + b\n")
++    sh(["git", "add", "."], cwd=repo)
++    sh(["git", "commit", "-qm", "feature"], cwd=repo)
++    code, out = administer(tmp_path / "vault", digest[:12], digest, repo)
++    assert code == 0
++    assert out["passed"] is True
++
++
++# --- legacy-seal gate diagnosis ---
++
++def test_legacy_nonpytest_manifest_refusal_names_the_cause(tmp_path):
++    # A pre-consolidation seal: green non-pytest suite, manifest lacking
++    # framework/ranPattern. Still refuses (unchanged), but the message now
++    # names the real cause instead of the generic no-tests-ran text.
++    repo = make_repo(tmp_path, feature_built=True)
++    vault, seal_id, digest = make_vault(
++        tmp_path, run_cmd="sh .ultra-acceptance/run.sh",
++        suite_files={"run.sh": "echo 'TESTS RAN: 1 passed'\nexit 0\n"})
++    code, out = administer(vault, seal_id, digest, repo)
++    assert code == 1
++    assert out["passed"] is False
++    assert "framework/ranPattern" in out["output"]

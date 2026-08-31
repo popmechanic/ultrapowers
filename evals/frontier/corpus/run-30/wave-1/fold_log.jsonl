@@ -1,0 +1,6 @@
+{"type": "base", "sha": "3fa493659de304851c5b46bfdeff7d712aba709d"}
+{"type": "fold", "task": "1", "headSha": "69ab3234cb02b1e49a9d09d83e5b7f23f612fb6d", "patch": "task-1.patch"}
+{"type": "fold", "task": "2", "headSha": "8d2c412d99cbda70916b813eff10ac37e3afb9d0", "patch": "task-2.patch"}
+{"type": "fold", "task": "3", "headSha": "79f16b9ae312645b8e62bc3bac1a78cd63a52244", "patch": "task-3.patch"}
+{"type": "fold", "task": "4", "headSha": "69c80342048d0a43e866ce8343dfecf6922bb965", "patch": "task-4.patch"}
+{"type": "fold", "task": "5", "headSha": "a95e948e958aa3b8ace49632aa7a45f7f3c3523e", "patch": "task-5.patch"}

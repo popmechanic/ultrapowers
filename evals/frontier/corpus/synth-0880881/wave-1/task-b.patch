@@ -1,0 +1,151 @@
+diff --git a/skills/ultrapowers/scripts/resolve_superpowers.py b/skills/ultrapowers/scripts/resolve_superpowers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..217fa7b69bb94cdec525ed962d411d7df23a56b6
+--- /dev/null
++++ b/skills/ultrapowers/scripts/resolve_superpowers.py
+@@ -0,0 +1,59 @@
++"""Resolve the ACTIVE superpowers install(s) from the settings cascade plus
++installed_plugins.json. Read-only: never mutates plugin config. The old check
++listed one hard-coded cache directory and so read a DISABLED install's version;
++this reads `enabledPlugins` (the authoritative active signal) instead."""
++import argparse
++import json
++import pathlib
++
++
++def _load(path):
++    try:
++        return json.loads(pathlib.Path(path).read_text())
++    except Exception:
++        return {}
++
++
++def _enabled_map(claude_home, project):
++    """Merge enabledPlugins across the settings cascade; later files win."""
++    home = pathlib.Path(claude_home)
++    proj = pathlib.Path(project)
++    merged = {}
++    for p in (home / "settings.json",
++              proj / ".claude/settings.json",
++              proj / ".claude/settings.local.json"):
++        merged.update(_load(p).get("enabledPlugins", {}))
++    return merged
++
++
++def resolve_active(claude_home, project):
++    enabled = _enabled_map(claude_home, project)
++    installed = _load(pathlib.Path(claude_home) / "plugins/installed_plugins.json").get("plugins", {})
++    active = []
++    for key, entries in installed.items():
++        name = key.split("@", 1)[0]
++        if name != "superpowers":
++            continue
++        if enabled.get(key) is False:  # explicit false disables; absent => enabled
++            continue
++        marketplace = key.split("@", 1)[1] if "@" in key else None
++        for e in (entries if isinstance(entries, list) else [entries]):
++            active.append({
++                "marketplace": marketplace,
++                "installPath": e.get("installPath"),
++                "version": e.get("version"),
++                "gitCommitSha": e.get("gitCommitSha"),
++            })
++    return {"active": active, "ambiguous": len(active) > 1}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--claude-home", default=str(pathlib.Path.home() / ".claude"))
++    ap.add_argument("--project", default=".")
++    a = ap.parse_args()
++    print(json.dumps(resolve_active(a.claude_home, a.project), indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/test_resolve_superpowers.py b/tests/test_resolve_superpowers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..63de7931d9b403e9bdc0d778d9f4463ee4a21be8
+--- /dev/null
++++ b/tests/test_resolve_superpowers.py
+@@ -0,0 +1,80 @@
++import json, pathlib, sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import resolve_superpowers as rs  # noqa: E402
++
++
++def _write(p, obj):
++    p.parent.mkdir(parents=True, exist_ok=True)
++    p.write_text(json.dumps(obj))
++
++
++def _setup(tmp_path, enabled, installed, project_enabled=None):
++    home = tmp_path / "home"
++    _write(home / "settings.json", {"enabledPlugins": enabled})
++    _write(home / "plugins/installed_plugins.json", {"version": 1, "plugins": installed})
++    project = tmp_path / "proj"
++    if project_enabled is not None:
++        _write(project / ".claude/settings.json", {"enabledPlugins": project_enabled})
++    (project / ".claude").mkdir(parents=True, exist_ok=True)
++    return home, project
++
++
++def _install(path, version, sha):
++    return [{"installPath": path, "version": version, "gitCommitSha": sha}]
++
++
++def test_picks_enabled_excludes_disabled(tmp_path):
++    home, project = _setup(
++        tmp_path,
++        enabled={"superpowers@claude-plugins-official": False},
++        installed={
++            "superpowers@claude-plugins-official": _install("/c/6.0.3", "6.0.3", "aaa"),
++            "superpowers@superpowers-marketplace": _install("/m/6.0.0", "6.0.0", "bbb"),
++        },
++    )
++    res = rs.resolve_active(home, project)
++    assert res["ambiguous"] is False
++    assert [a["version"] for a in res["active"]] == ["6.0.0"]
++    assert res["active"][0]["marketplace"] == "superpowers-marketplace"
++
++
++def test_absent_entry_is_enabled_by_default(tmp_path):
++    home, project = _setup(
++        tmp_path, enabled={},
++        installed={"superpowers@m": _install("/m/6.0.0", "6.0.0", "bbb")},
++    )
++    res = rs.resolve_active(home, project)
++    assert [a["version"] for a in res["active"]] == ["6.0.0"]
++
++
++def test_project_settings_override_user(tmp_path):
++    # user enables official; project disables it -> excluded.
++    home, project = _setup(
++        tmp_path,
++        enabled={"superpowers@official": True},
++        installed={"superpowers@official": _install("/c/6.0.3", "6.0.3", "aaa")},
++        project_enabled={"superpowers@official": False},
++    )
++    res = rs.resolve_active(home, project)
++    assert res["active"] == []
++
++
++def test_multiple_enabled_flags_ambiguous(tmp_path):
++    home, project = _setup(
++        tmp_path, enabled={},
++        installed={
++            "superpowers@a": _install("/a/6.0.0", "6.0.0", "x"),
++            "superpowers@b": _install("/b/6.0.3", "6.0.3", "y"),
++        },
++    )
++    res = rs.resolve_active(home, project)
++    assert res["ambiguous"] is True
++    assert len(res["active"]) == 2
++
++
++def test_none_installed(tmp_path):
++    home, project = _setup(tmp_path, enabled={}, installed={"frontend-design@x": _install("/f", "1", "z")})
++    res = rs.resolve_active(home, project)
++    assert res == {"active": [], "ambiguous": False}

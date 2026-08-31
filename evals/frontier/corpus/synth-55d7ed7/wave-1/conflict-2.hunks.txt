@@ -1,0 +1,200 @@
+HUNK h1 lines 328-340
+--- context (read-only)
+      (repo / "img.bin").write_bytes(b"\x00\x09")
+      git("add", "-A")
+      git("commit", "-qm", "task")
+  
+      base = rw.snapshot(repo, base_sha)
+      assert sorted(base.files) == ["gone.txt", "keep.txt"]
+      assert base.raw == {"img.bin": b"\x00\x01\x02"}
+      assert base.deleted_marks == frozenset()
+  
+      task = rw.publish(base, repo, base_sha, "HEAD", "t1")
+      assert task.deleted == frozenset({"gone.txt"})
+      assert task.raw == {"img.bin": b"\x00\x09"}
+  
+      frontier, conflicts = rw.fold(base, base, task)
+      assert conflicts == []
+      assert rw.manifest(frontier) == {"keep.txt": "k\n", "img.bin": b"\x00\x09"}
+  
+  
+  # --- binary folding is a commutative candidate-set union (K1) --------------
+  
+  
+  def test_three_tasks_one_binary_two_identical_bytes_one_divergent():
+      base = make_base({"img.bin": b"\x00\x01"})
+      tasks = [rw.task_state_from_contents(base, "t1", {"img.bin": b"\x00\x05"}),
+               rw.task_state_from_contents(base, "t2", {"img.bin": b"\x00\x05"}),
+               rw.task_state_from_contents(base, "t3", {"img.bin": b"\x00\x07"})]
+      # Two distinct candidates -> exactly one conflict, in all six orders.
+      assert_order_independent(base, tasks,
+                               expected_manifest={"img.bin": b"\x00\x05"},
+                               expected_conflicts=[("img.bin", "binary")])
+  
+  
+  def test_binary_conflict_count_is_distinct_candidates_minus_one():
+      base = make_base({"img.bin": b"\x00\x01"})
+      tasks = [rw.task_state_from_contents(base, "t%d" % i, {"img.bin": b})
+               for i, b in enumerate((b"\x00\x09", b"\x00\x08", b"\x00\x07"))]
+      assert_order_independent(base, tasks,
+                               expected_manifest={"img.bin": b"\x00\x07"},
+                               expected_conflicts=[("img.bin", "binary")])
+      # The count invariant (len(candidates) - 1) is order-independent by
+--- conflict
+<<<<<<< begin added b
+    # construction; pin it on ONE canonical order (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
+======= begin added frontier
+    # construction; pin it on ONE canonical order, since the set-based helper
+    # above can no longer see it (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert [(c.path, c.kind) for c in conflicts] == [("img.bin", "binary")] * 2
+======= begin added both
+
+
+>>>>>>> end conflict
+--- context (read-only)
+  def test_base_binary_bytes_persist_until_a_task_writes_the_path():
+      base = make_base({"img.bin": b"\x00\x01", "other.py": "V = 1\n"})
+      t = rw.task_state_from_contents(base, "t1", {"other.py": "V = 2\n"})
+      frontier, conflicts = rw.fold(base, base, t)
+      assert conflicts == []
+      assert rw.manifest(frontier) == {"img.bin": b"\x00\x01", "other.py": "V = 2\n"}
+  
+  
+  def test_text_add_vs_binary_add_same_path_text_wins():
+      t_text = rw.task_state_from_contents(BASE, "t-text", {"new.dat": "hello\n"})
+      t_bin = rw.task_state_from_contents(BASE, "t-bin", {"new.dat": b"\x00\xff"})
+      manifest, _ = assert_order_independent(
+          BASE, [t_text, t_bin], expected_conflicts=[("new.dat", "binary")])
+      assert manifest["new.dat"] == "hello\n"      # text side wins the manifest
+      assert "calc.py" in manifest                # untouched files still present
+  
+  
+  def test_text_and_binary_on_a_base_binary_path_pair_once():
+      base = make_base({"img.bin": b"\x00\x01"})
+      t_text = rw.task_state_from_contents(base, "t-text", {"img.bin": "now text\n"})
+      t_bin = rw.task_state_from_contents(base, "t-bin", {"img.bin": b"\x00\x02"})
+      manifest, _ = assert_order_independent(
+          base, [t_text, t_bin], expected_conflicts=[("img.bin", "binary")])
+      assert manifest["img.bin"] == "now text\n"
+  
+  
+  def test_two_text_writers_and_one_binary_writer_pair_once():
+      t_a = rw.task_state_from_contents(BASE, "ta", {"mix.dat": "a\n"})
+      t_b = rw.task_state_from_contents(BASE, "tb", {"mix.dat": "b\n"})
+      t_bin = rw.task_state_from_contents(BASE, "tbin", {"mix.dat": b"\x00\x01"})
+      # One text/binary pairing + one text add/add, whatever the order.
+      assert_order_independent(BASE, [t_a, t_b, t_bin],
+                               expected_conflicts=[("mix.dat", "add/add"),
+                                                   ("mix.dat", "binary")])
+  
+  
+  def test_binary_delete_vs_binary_rewrite_bytes_win():
+      base = make_base({"img.bin": b"\x00\x01"})
+      t_del = rw.task_state_from_contents(base, "t-del", {"img.bin": None})
+      t_mod = rw.task_state_from_contents(base, "t-mod", {"img.bin": b"\x00\x02"})
+
+HUNK h2 lines 494-511
+--- context (read-only)
+              for p in ("a.txt", "b.bin", "c.new"):
+                  r = rng.random()
+                  if r < 0.25:
+                      continue
+                  if r < 0.5:
+                      contents[p] = None
+                  elif r < 0.75:
+                      contents[p] = bytes([0, rng.randint(1, 4)])
+                  elif p not in text_writer:
+                      text_writer[p] = i
+                      contents[p] = "l1\nX%d\nl3\n" % rng.randint(1, 3)
+              per_task.append(contents)
+          tasks = [rw.task_state_from_contents(base, "t%d" % i, c)
+                   for i, c in enumerate(per_task)]
+          _, keys = assert_order_independent(base, tasks)
+          seen_kinds.update(k for _, k in keys)
+      # The sweep must actually exercise the rules, not just fold clean.
+      assert {"binary", "delete/modify"} <= seen_kinds
+  
+  
+  # --- text conflict kinds are order-independent too (K1) --------------------
+  
+  
+  def test_two_text_writers_and_a_deleter_is_order_independent():
+      """The kind of a kernel conflict may not depend on when the delete arrives.
+  
+      Classifying it `delete/modify` whenever a delete has already been folded
+      made this same task set produce [delete/modify, lines] in one order and
+      [delete/modify, delete/modify] in another. The conflict SET is what must
+      agree order to order (#132); the two same-kind `lines` reports from t1 and
+      t2 collapse under set comparison, so the count is pinned separately below.
+      """
+      base = make_base({"calc.py": "l1\nl2\nl3\nl4\n"})
+      tasks = [rw.task_state_from_contents(base, "t1", {"calc.py": "l1\nl2-x\nl3\nl4\n"}),
+               rw.task_state_from_contents(base, "t2", {"calc.py": "l1\nl2-y\nl3\nl4\n"}),
+               rw.task_state_from_contents(base, "tdel", {"calc.py": None})]
+      manifest, _ = assert_order_independent(
+          base, tasks,
+          expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
+      assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
+--- conflict
+<<<<<<< begin added b
+    # The per-writer `lines` count is order-independent by construction; pin it
+    # on ONE canonical order (#132 keeps this pin).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert conflict_keys(conflicts) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
+    assert sum(1 for c in conflicts if c.kind == "lines") == 2
+======= begin added frontier
+    # Three writers of one path: two kernel conflicts (each arrival after the
+    # first disagrees with the accumulated weave) plus the delete/modify
+    # pairing. That count holds in all six orders; pin it on ONE canonical
+    # order, since the set-based helper above can no longer see it (#132).
+    _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+    assert sorted((c.path, c.kind) for c in conflicts) == [
+        ("calc.py", "delete/modify"), ("calc.py", "lines"), ("calc.py", "lines")]
+======= begin added both
+
+
+>>>>>>> end conflict
+--- context (read-only)
+  def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
+      """Same flip on the tombstone route: add/add must not become delete/modify."""
+      ta = rw.task_state_from_contents(BASE, "ta", {"new.py": "x = 1\n"})
+      tb = rw.task_state_from_contents(BASE, "tb", {"new.py": "x = 2\n"})
+      t_del = rw.task_state_from_contents(BASE, "t-del", {"new.py": None})
+      manifest, _ = assert_order_independent(
+          BASE, [ta, tb, t_del],
+          expected_conflicts=[("new.py", "add/add"), ("new.py", "delete/modify")])
+      assert manifest["new.py"] == "x = 1\nx = 2\n"
+  
+  
+  def test_delete_and_line_removal_only_leave_nothing_and_report_nothing():
+      """A modifier that only removes lines merges cleanly with a whole-file delete.
+  
+      Nothing survives, so there is no delete/modify survivor to report — in
+      either order.
+      """
+      base = make_base({"a.py": "l1\nl2\nl3\n"})
+      t_trim = rw.task_state_from_contents(base, "t-trim", {"a.py": "l1\nl3\n"})
+      t_del = rw.task_state_from_contents(base, "t-del", {"a.py": None})
+      assert_order_independent(base, [t_trim, t_del],
+                               expected_manifest={}, expected_conflicts=[])
+  
+  
+  def test_randomized_text_and_delete_mixes_are_order_independent():
+      """Seeded sweep with CONCURRENT text writers plus deleters on one path.
+  
+      The narrower binary sweep above allows at most one text writer per path,
+      which is exactly the shape that hid the order-sensitive text kind.
+      """
+      rng = random.Random(42)
+      base = make_base({"a.txt": "l1\nl2\nl3\nl4\n", "b.bin": b"\x00\x01"})
+      seen_kinds = set()
+      for _ in range(120):
+          per_task = []
+          for _i in range(rng.randint(2, 4)):
+              contents = {}
+              for p in ("a.txt", "b.bin", "c.new"):
+                  r = rng.random()
+                  if r < 0.3:

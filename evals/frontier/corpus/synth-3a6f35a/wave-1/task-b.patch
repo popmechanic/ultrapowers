@@ -1,0 +1,187 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index e4f353e7508b80e7b587054e739721ab39b07eb3..621a56a671041e7bc261f2ffd849f348a0105c43 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -28,9 +28,15 @@ Step 6 — do not analyze dependencies.
+ **Run the pre-launch driver:**
+ 
+ ```bash
+-python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --stamp <stamp>
++python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --stamp <stamp> [--overlap serialize|fold]
+ ```
+ 
++`--overlap` forwards to the compiler's own `--overlap` knob (default
++`serialize`; `fold` lets eligible overlapping-file tasks share a wave instead
++of serializing — see `references/dependency-analysis.md`); omit it to take
++the compiler's default. `--repo-root` is stamped onto the compile call
++unconditionally — it needs no operator input.
++
+ One call runs every deterministic stage fail-closed — git-repo check,
+ worktree-capability probe, self-host engine skew, superpowers compatibility,
+ compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock,
+@@ -104,7 +110,10 @@ classification is auditable at the gate:
+ 
+ 1. **Waves** — task IDs per wave, in order.
+ 2. **Dependency `edges`** — those that shaped the ordering.
+-3. **Mode** — `parallel`/`sequential` (with the degrade reason).
++3. **Mode** — `parallel`/`sequential` (with the degrade reason). Under
++   `--overlap fold`, an eligible fully-overlapping wave renders `parallel`
++   instead of degrading — the compiler's full-pair-iteration predicate, not
++   this render step, decides which.
+ 4. **Derived knobs** — `testCmd`, plan-authored review depth, tier overrides.
+ 5. **Dispositions** — release/manual → runbook, gates → run config. Render the two
+    `marker_conflicts` buckets **separately by `kind`:** `kind: "conflict"` as
+@@ -159,7 +168,8 @@ Your `tier` fills ride inside `argsFile.waves` — merge only run-wide knobs.
+ always pass it, or blocking is silently disabled. The headless workflow creates
+ the branch in a dedicated integration worktree — no engine agent ever mutates
+ the session checkout — runs/merges/reconciles each wave (16-agent cap), then
+-reviews completeness (`references/wave-merge.md`).
++reviews completeness (`references/wave-merge.md`). Contended-wave fold state
++and replay contract: `kernel/FOLD_LOG.md`.
+ 
+ **Viewer offer (interactive runs only).** One-line opt-in *"Want to watch
+ live?"* — on yes:
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index 6847b101006ab7537e8340f17a926440bb4b87cf..16abf2efa7f982871d0efbd03b2c27794ef4e195 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -113,6 +113,27 @@ LLM_DERIVES = [
+ VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
+ VALID_REVIEWS = {"lean", "adversarial"}
+ 
++OVERLAP_CHOICES = ("serialize", "fold")
++
++
++def compile_argv(plan, run_dir, root, overlap=None):
++    """Build the compile_plan.py argv (everything after the script path)
++    for a launch. Pure — no I/O — so this seam is testable without a real
++    repo or a real compile_plan.py subprocess.
++
++    `--repo-root <root>` is ALWAYS stamped from the driver's own repo root
++    (the compiler's eligibility pre-filter is inert without it — never off
++    by omission). `--overlap <mode>` is added only when the caller passed
++    one explicitly; absent, the compiler's own OVERLAP_DEFAULT governs."""
++    argv = [str(plan),
++            "--emit-launch", str(run_dir / "launch.json"),
++            "--emit-args", str(run_dir / "args.json"),
++            "--run-dir", str(run_dir.resolve())]
++    if overlap is not None:
++        argv += ["--overlap", overlap]
++    argv += ["--repo-root", str(root)]
++    return argv
++
+ 
+ def sh(cmd, cwd=None):
+     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+@@ -257,6 +278,10 @@ def main(argv=None):
+     ap.add_argument("--bootstrap-cmd", default=None,
+                     help="per-worktree dependency install; stamped into the "
+                          "receipt so the gate provisions its acceptance worktree")
++    ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
++                    help="scheduling knob forwarded to compile_plan.py's "
++                         "--overlap; omit to use the compiler's own default "
++                         "(serialize)")
+     a = ap.parse_args(argv)
+ 
+     if a.validate_knobs is not None:
+@@ -353,9 +378,8 @@ def main(argv=None):
+ 
+     run_dir.mkdir(parents=True, exist_ok=True)
+     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
+-    r = sh([sys.executable, str(HERE / "compile_plan.py"), str(a.plan),
+-            "--emit-launch", str(launch), "--emit-args", str(args_file),
+-            "--run-dir", str(run_dir.resolve())],
++    r = sh([sys.executable, str(HERE / "compile_plan.py")]
++           + compile_argv(a.plan, run_dir, root, a.overlap),
+            cwd=root)
+     compile_obj, summary = None, ""
+     if r.returncode == 0:
+diff --git a/skills/ultrapowers/scripts/validate_skill.py b/skills/ultrapowers/scripts/validate_skill.py
+index 8d2edf3830a2878eb15d8a0341c3f6c0cf0ec3db..bc346320f71dc94c45b1744f5316653390ee03e4 100644
+--- a/skills/ultrapowers/scripts/validate_skill.py
++++ b/skills/ultrapowers/scripts/validate_skill.py
+@@ -23,7 +23,7 @@ def validate(skill_dir: pathlib.Path):
+         errors.append("frontmatter: missing or trivial 'description'")
+     if len(desc) > 1024:
+         errors.append("frontmatter: 'description' exceeds 1024 chars")
+-    for sub, ref in re.findall(r"\b(references|scripts)/([A-Za-z0-9_\-./]+\.\w+)", body):
++    for sub, ref in re.findall(r"\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):
+         if not (skill_dir / sub / ref).exists():
+             errors.append(f"missing referenced file: {sub}/{ref}")
+     return errors
+diff --git a/tests/test_ultra_run_overlap.py b/tests/test_ultra_run_overlap.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f47ceba245bd1ea6e2b60526d167804ff981a6ee
+--- /dev/null
++++ b/tests/test_ultra_run_overlap.py
+@@ -0,0 +1,70 @@
++"""ultra_run.py: --overlap forwarding + --repo-root stamping (Task 7).
++
++The compile-argv seam is a pure helper (no I/O, no subprocess) so it can be
++tested without a real repo or a real compile_plan.py invocation. The other
++two tests prove the validate_skill.py link-check regex extension is live and
++that SKILL.md documents the new kernel link target."""
++import pathlib
++import sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++SCRIPTS = ROOT / "skills/ultrapowers/scripts"
++sys.path.insert(0, str(SCRIPTS))
++from ultra_run import compile_argv  # noqa: E402
++import validate_skill  # noqa: E402
++
++
++def test_ultra_run_builds_compile_argv_with_overlap_and_repo_root(tmp_path):
++    plan = tmp_path / "plan.md"
++    run_dir = tmp_path / "run-t1"
++    root = tmp_path / "repo"
++
++    # No overlap passed -> the flag is absent entirely; the compiler's own
++    # OVERLAP_DEFAULT governs, never re-stated here.
++    argv_default = compile_argv(plan, run_dir, root, None)
++    assert "--overlap" not in argv_default
++    assert "--repo-root" in argv_default
++    i = argv_default.index("--repo-root")
++    assert argv_default[i + 1] == str(root)
++
++    # overlap="fold" -> both --overlap fold and --repo-root <root> present.
++    argv_fold = compile_argv(plan, run_dir, root, "fold")
++    assert "--overlap" in argv_fold
++    j = argv_fold.index("--overlap")
++    assert argv_fold[j + 1] == "fold"
++    assert "--repo-root" in argv_fold
++    k = argv_fold.index("--repo-root")
++    assert argv_fold[k + 1] == str(root)
++
++    # --repo-root is ALWAYS present, even for the explicit "serialize" arm.
++    argv_serialize = compile_argv(plan, run_dir, root, "serialize")
++    assert "--overlap" in argv_serialize
++    assert "--repo-root" in argv_serialize
++
++
++def test_validate_skill_checks_kernel_links(tmp_path):
++    def make_skill(has_target):
++        d = tmp_path / ("present" if has_target else "absent")
++        d.mkdir()
++        (d / "SKILL.md").write_text(
++            "---\nname: t\ndescription: a description over twenty characters "
++            "long\n---\n\nSee kernel/FOLD_LOG.md for the fold-log schema.\n"
++        )
++        if has_target:
++            (d / "kernel").mkdir()
++            (d / "kernel" / "FOLD_LOG.md").write_text("# schema\n")
++        return d
++
++    present = make_skill(True)
++    absent = make_skill(False)
++
++    errs_present = validate_skill.validate(present)
++    assert not any("kernel/FOLD_LOG.md" in e for e in errs_present)
++
++    errs_absent = validate_skill.validate(absent)
++    assert any("kernel/FOLD_LOG.md" in e for e in errs_absent)
++
++
++def test_skill_md_references_fold_log():
++    text = (ROOT / "skills/ultrapowers/SKILL.md").read_text()
++    assert "kernel/FOLD_LOG.md" in text

@@ -1,0 +1,2720 @@
+diff --git a/.claude-plugin/marketplace.json b/.claude-plugin/marketplace.json
+index db1540c6eff18c273d327d0dbdf3763408a86c64..c786dc251f9db1be7f670ff08a7ccac8ee8374bf 100644
+--- a/.claude-plugin/marketplace.json
++++ b/.claude-plugin/marketplace.json
+@@ -10,7 +10,7 @@
+       "name": "ultrapowers",
+       "source": "./",
+       "description": "committed parallel workflow executor for Superpowers plans (/ultrapowers)",
+-      "version": "0.2.1"
++      "version": "0.2.12"
+     }
+   ]
+ }
+diff --git a/.claude-plugin/plugin.json b/.claude-plugin/plugin.json
+index fa22fe50d1b7540baa118b4b45b7be2eadb2d82a..df2519274405afc790a6888d7d8f42d5e32229fa 100644
+--- a/.claude-plugin/plugin.json
++++ b/.claude-plugin/plugin.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ultrapowers",
+-  "version": "0.2.1",
++  "version": "0.2.12",
+   "description": "Autonomous, parallel, worktree-isolated execution of Superpowers plans via a committed Dynamic Workflow. Pairs with superpowers; invoke as /ultrapowers <plan-path> instead of subagent-driven-development.",
+   "author": {
+     "name": "Marcus Estes",
+diff --git a/docs/superpowers/docket.md b/docs/superpowers/docket.md
+index 86e828070fcba810b0220e6b9b2af29fb1e8f04b..86875b6851ce3ea6c2caaee97099c14f2391fd9d 100644
+--- a/docs/superpowers/docket.md
++++ b/docs/superpowers/docket.md
+@@ -421,49 +421,49 @@
+ **Notes:** Triage 2026-08-14. Source: .claude/ultrapowers/run-20260814-101750/report.json completenessFindings (the s5 shakedown), surfaced by the sense pass - none were dispositioned at the delegated gate; filed as gh #147. (i) waves.js:2007 stamps gate-facing tests.passed unconditionally; delivered scenario (tests/sim_workflow.mjs:2874-2913) does not assert the 'must NOT carry a trusted green' property => #123 item 4d closure is PARTIAL. (ii) critic BLOCKED fail-safe now fires on 'no wave-<n> slot readable' (occurs whenever wave 1 blocks) and drops escalated CANNOT-VERIFY items; uncovered. (iii) critic prompt trailing sentence re-elevates the recorded merge sha the same change demoted to a cross-check (benign, unpinned). (iv) tests/test_finalize_wiring.py self-check proves the presence pin only, never the ordering pin. All surfaces harness/references/tests - NOT frozen periphery. Distill note recorded: completenessFindings had no forced disposition slot under standing delegation. GATE: accepted under the operator's kickoff delegation for this cycle. || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-shakedown-critic-residuals.md, adversarial trim review adopted (item 1 ANSWERED-not-built: tests.passed is triage context, gate exit code is authority; item 2 trimmed to dead-predicate fix at waves.js:1944; trimmed version graded down). Engine=ultrapowers via risk override (critic/merge-path integrity). Compile: waves [[1,3],[2]], WaW 1->2 line-cap-serialized.
+ 
+ ### #148: Engine treats infra-killed agents as review failures — park-and-retry for API-overload agent death + mergeWave null-guard
+-**State:** queued
++**State:** verified
+ **Score:** 8.5 — integration correctness at the merge boundary (quarterly #1): sev-2 whole-run abort class + sev-3 cascade that converts committed work into failures
+ **Est-files:** skills/ultrapowers/harnesses/waves.js, tests/sim_workflow.mjs
+ **Plan:** docs/superpowers/plans/2026-08-14-infra-death-park-retry.md
+ **Engine:** ultrapowers
+-**Notes:** Triage 2026-08-14 (post-distill). Both seams grounded at HEAD 10eae33. (1) Infra-death conflated with review failure: runTask catch emits status:failed/reviewVerdict:agent-error (waves.js:976-978) after one immediate same-tier retry (954-967) that re-runs the whole pipeline incl. a possibly-committed implementer; reviewer dispatches (~1073-1086) have NO null guard (null reply → TypeError → catch path); noteFailures cascade-blocks transitive dependents (1673-1686, 1735-1742). (2) mergeWave git-merge/reconcile dispatches catch throws only (1469-1492) but agent() RETURNS null on terminal Overloaded (engine's own comment 1288-1291) → TypeError at merge.status (1478); mergeWave unwrapped at call site (1815) → whole-run abort losing every merged wave. Fix shape: (a) null-guard the two git-merge-path dispatches, synthesizing CONFLICT like the contended path's proven guards (1292/1399/1417/1443); (b) park-for-delayed-retry with backoff for infra-death instead of failed so the DAG holds. (b) needs planning: wave-barrier/budget interaction, and terminal parked MUST surface via EXISTING report vocabulary — frozen gate_check.py consumes report fields (120-140), no vocabulary change. This is waves.js CODE, not baked prompts (no re-bake), but keep edits clear of pinned prompt constants. Harness JS ⇒ sim_workflow.mjs scenarios (null merge reply; null reviewer reply; park + delayed recovery; terminal park → dependents blocked) printing ALL SCENARIOS PASSED (sentinel exists :3031; agent() mocked per scenario). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-infra-death-park-retry.md rev 2, trim review adopted (AGENT_NULL-prefix classifier only; fix-round null site covered; retry pass position/budget/parallelism pinned; WaW weakening documented-accepted; grade flat). Engine=ultrapowers via risk override (hard-to-verify failure routing; both tasks adversarial). Compile: waves [[1,2]], fold-eligible same-file pair.
++**Notes:** Triage 2026-08-14 (post-distill). Both seams grounded at HEAD 10eae33. (1) Infra-death conflated with review failure: runTask catch emits status:failed/reviewVerdict:agent-error (waves.js:976-978) after one immediate same-tier retry (954-967) that re-runs the whole pipeline incl. a possibly-committed implementer; reviewer dispatches (~1073-1086) have NO null guard (null reply → TypeError → catch path); noteFailures cascade-blocks transitive dependents (1673-1686, 1735-1742). (2) mergeWave git-merge/reconcile dispatches catch throws only (1469-1492) but agent() RETURNS null on terminal Overloaded (engine's own comment 1288-1291) → TypeError at merge.status (1478); mergeWave unwrapped at call site (1815) → whole-run abort losing every merged wave. Fix shape: (a) null-guard the two git-merge-path dispatches, synthesizing CONFLICT like the contended path's proven guards (1292/1399/1417/1443); (b) park-for-delayed-retry with backoff for infra-death instead of failed so the DAG holds. (b) needs planning: wave-barrier/budget interaction, and terminal parked MUST surface via EXISTING report vocabulary — frozen gate_check.py consumes report fields (120-140), no vocabulary change. This is waves.js CODE, not baked prompts (no re-bake), but keep edits clear of pinned prompt constants. Harness JS ⇒ sim_workflow.mjs scenarios (null merge reply; null reviewer reply; park + delayed recovery; terminal park → dependents blocked) printing ALL SCENARIOS PASSED (sentinel exists :3031; agent() mocked per scenario). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-infra-death-park-retry.md rev 2, trim review adopted (AGENT_NULL-prefix classifier only; fix-round null site covered; retry pass position/budget/parallelism pinned; WaW weakening documented-accepted; grade flat). Engine=ultrapowers via risk override (hard-to-verify failure routing; both tasks adversarial). Compile: waves [[1,2]], fold-eligible same-file pair. || DRAIN 2026-08-14 (docket-20260814-154105): e148 wf_cc877cf0-725, 11 agents/838k/43min, 2/2 clean 0 fix-iter, waves [[1],[2]] line-cap WaW; gate green (942 + sims sentinel), merged 9b800d2. Residuals for end gate: barrier-retry bypasses chunkLost sweep (unreachable today), 2 stale comments (waves.js:964-965,1049-1052), 2 deferredVerification:runtime premises (agent-null-not-throw, parallel-order). No fix round -> #146 deferred:runtime still open.
+ 
+ ### #149: Residual manifest at finishing — every report.json finding dispositioned before a run or drain closes
+-**State:** queued
++**State:** verified
+ **Score:** 8 — verification-boundary honesty (north star): the run's own self-reported gaps currently survive only in orchestrator memory
+ **Est-files:** skills/ultrapowers/references/report-format.md, skills/ultrapowers/SKILL.md, skills/ultrapowers/references/finishing-notes.md, skills/ultradocket/SKILL.md, tests/test_report_runbook.py
+ **Plan:** docs/superpowers/plans/2026-08-14-residual-manifest.md
+ **Engine:** subagent-driven
+-**Notes:** Triage 2026-08-14 (post-distill). Grounded hole: report.json emits completenessFindings/judgmentCalls/deferredVerification (report-format.md:42/48/50) but only deferredVerification has any consumer (gate_check.py:140 NEEDS_ACK path + finishing-notes checklist :61); SKILL.md:244-248 documents the orchestrator-memory dependence (resume gates: "carry prior items forward yourself"); the ultradocket end gate derives no residual list from report.json. Fix shape: finishing/release/drain-close derives a residual manifest in which every finding lands in {fixed|acked|filed|waived-with-reason}; mechanize the resume-gate union the same way. MUST NOT touch frozen gate scripts (gate_check.py, ultra_gate.py, run_lock.sh) — enforcement lives in the finishing/close prose or a NEW non-frozen script; do NOT extend gate_check NEEDS_ACK machinery. Keep the test_report_runbook.py pin green; report-format.md is NOT a bake source (no re-bake); no harness JS (no .mjs sim). Ceremony caution: one derivation step, not a new gate. Plan-together candidate: #147's residue named this as its deferred structural fix — the report-format.md:79 gitVerified doc-sweep item can ride the same contract edit; ultrapowers finishing + ultradocket end-gate can be one plan sharing that edit. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-residual-manifest.md rev 2, trim review adopted (content-hash ids; single contract home finishing-notes.md; one vocabulary; --gate-acks prefill; check-at-close-only; gitVerified absorption DROPPED as unrelated; grade up-honest). Engine=subagent-driven (T=3, width 2, low risk -> else branch). Compile: waves [[1],[2,3]]; plan-embedded script+tests proven runnable (9 passed). SKILL shrink budgets stated as hard criteria.
++**Notes:** Triage 2026-08-14 (post-distill). Grounded hole: report.json emits completenessFindings/judgmentCalls/deferredVerification (report-format.md:42/48/50) but only deferredVerification has any consumer (gate_check.py:140 NEEDS_ACK path + finishing-notes checklist :61); SKILL.md:244-248 documents the orchestrator-memory dependence (resume gates: "carry prior items forward yourself"); the ultradocket end gate derives no residual list from report.json. Fix shape: finishing/release/drain-close derives a residual manifest in which every finding lands in {fixed|acked|filed|waived-with-reason}; mechanize the resume-gate union the same way. MUST NOT touch frozen gate scripts (gate_check.py, ultra_gate.py, run_lock.sh) — enforcement lives in the finishing/close prose or a NEW non-frozen script; do NOT extend gate_check NEEDS_ACK machinery. Keep the test_report_runbook.py pin green; report-format.md is NOT a bake source (no re-bake); no harness JS (no .mjs sim). Ceremony caution: one derivation step, not a new gate. Plan-together candidate: #147's residue named this as its deferred structural fix — the report-format.md:79 gitVerified doc-sweep item can ride the same contract edit; ultrapowers finishing + ultradocket end-gate can be one plan sharing that edit. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-residual-manifest.md rev 2, trim review adopted (content-hash ids; single contract home finishing-notes.md; one vocabulary; --gate-acks prefill; check-at-close-only; gitVerified absorption DROPPED as unrelated; grade up-honest). Engine=subagent-driven (T=3, width 2, low risk -> else branch). Compile: waves [[1],[2,3]]; plan-embedded script+tests proven runnable (9 passed). SKILL shrink budgets stated as hard criteria. || DRAIN 2026-08-14 (docket-20260814-154105): PARKED by the review-by-exception lane (first firing). All 3 tasks executed clean on branch ultra/docket-e149 (1ad0c86 script+9tests, 22e9256 contract home, 9ed521d SKILL wiring; suite 953) but the Task-1 adversarial review returned 2 Important + 1 Important test-gap (0 Critical), parking per posture: (I1) derive accepts any readable JSON and emits vacuous-green empty manifest - silent total evaporation via one wrong argument (residual_manifest.py:59-63,:100; plan-inherited); (I2) --gate-acks pre-fill over-matches - deliverable-only prefix ignores the why, acks unrecorded items (:83-96 vs gate_check detail shape; plan-inherited); (T1) filed:-bare/waived:-bare red states unpinned (DISPOSITION regex relaxation would go green). 4 Minor noted. SALVAGE SHAPE: fix I1 (die when no family key present), I2 (match deliverable+why prefix), T1 (red-state pins) on the branch, re-review, re-gate. Branch kept; full review in end-gate evidence. || SALVAGE 2026-08-14 (operator-authorized at end gate): fix r1 89b789a (die-on-non-report, why-in-prefix ack, red-state pins; 959) + r2 1958c75 (exact-match ack detail incl. STRUCTURAL_SUFFIX byte-copy; 961); re-review CLOSED (cross-ack repro inert, coercion byte-identical both sides). Gate green (961) vs main, merged b1e7745, verified. Un-park state-set recorded here since docket_lib has no parked->queued path.
+ 
+ ### #150: Harvester precision v3 — dedupe double-counted audits, slice through the approval exchange, drain-administered gate terminus
+-**State:** queued
++**State:** verified
+ **Score:** 6.5 — sensor precision protecting the measurement loop every distill trusts; three successor modes to #126, each at the 2-3-run recurrence bar
+ **Est-files:** skills/ultralearn/scripts/harvest_runs.py, skills/ultrapowers/scripts/audit_run.py, skills/ultradocket/scripts/record_wf_run.py, skills/ultradocket/SKILL.md, tests/test_harvest_runs.py, tests/test_audit_run.py, tests/test_record_wf_run.py
+ **Plan:** docs/superpowers/plans/2026-08-14-harvester-precision-v3.md
+ **Engine:** ultrapowers
+-**Notes:** Triage 2026-08-14 (post-distill). Sensor-side only; harvester is advisory-by-contract (soft-fail). (a) LOAD-BEARING: audit double-count — _transcript_dirs collects every "Transcript dir:" tool_result with no dedupe (harvest_runs.py:315-336) and _merge_audits bare-extends agents across dirs (:494-496), so a crash-resume that reprints a dir double-audits it; fix = per-agent transcript-identity dedupe (audit_run.py agent entries carry NO identity field today :117-118 — additive field in non-frozen audit_run.py + dedupe in harvest_runs.py; dir-level path dedupe alone may miss the overlapping-dirs variant). (b) Slice truncation: _last_artifact_record_index cuts at the last qualifying artifact (:123-152, drop at :164-166), so the operator's approval exchange is always excluded — boundary rule (how far past the cutoff) is a planning decision. (c) Drain-administered gate terminus: gate-receipt.json is written ONLY by frozen ultra_gate.py (:249) and the drain skips Step-5 by design (ultradocket SKILL.md:132-133) → no receipt in runDir → terminus "unknown"; fix = NEW drain-side evidence stamp from ultradocket tooling (record_wf_run.py writes run ids only) + teardown-surviving mirror; location/format are planning decisions; mirror AROUND the frozen files, never in them. (a) ships alone if (b)/(c) design stalls. pytest fixtures (test_harvest_runs.py has receipt-fixture patterns to extend); no .mjs sims, no re-bake. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-harvester-precision-v3.md rev 2, trim review adopted (dir-level dedupe only, audit_run untouched; no cap/sentinel; mirror-only stamp as record_wf_run subcommand; writer=schema authority; grade flat-after-trims). Engine=ultrapowers (T=4, widest wave 3, low risk; task 4 adversarial by declared judgment). Compile: waves [[1,2,3],[4]], edge 3->4 marker; task-4 fixtures invoke the task-3 writer.
++**Notes:** Triage 2026-08-14 (post-distill). Sensor-side only; harvester is advisory-by-contract (soft-fail). (a) LOAD-BEARING: audit double-count — _transcript_dirs collects every "Transcript dir:" tool_result with no dedupe (harvest_runs.py:315-336) and _merge_audits bare-extends agents across dirs (:494-496), so a crash-resume that reprints a dir double-audits it; fix = per-agent transcript-identity dedupe (audit_run.py agent entries carry NO identity field today :117-118 — additive field in non-frozen audit_run.py + dedupe in harvest_runs.py; dir-level path dedupe alone may miss the overlapping-dirs variant). (b) Slice truncation: _last_artifact_record_index cuts at the last qualifying artifact (:123-152, drop at :164-166), so the operator's approval exchange is always excluded — boundary rule (how far past the cutoff) is a planning decision. (c) Drain-administered gate terminus: gate-receipt.json is written ONLY by frozen ultra_gate.py (:249) and the drain skips Step-5 by design (ultradocket SKILL.md:132-133) → no receipt in runDir → terminus "unknown"; fix = NEW drain-side evidence stamp from ultradocket tooling (record_wf_run.py writes run ids only) + teardown-surviving mirror; location/format are planning decisions; mirror AROUND the frozen files, never in them. (a) ships alone if (b)/(c) design stalls. pytest fixtures (test_harvest_runs.py has receipt-fixture patterns to extend); no .mjs sims, no re-bake. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-harvester-precision-v3.md rev 2, trim review adopted (dir-level dedupe only, audit_run untouched; no cap/sentinel; mirror-only stamp as record_wf_run subcommand; writer=schema authority; grade flat-after-trims). Engine=ultrapowers (T=4, widest wave 3, low risk; task 4 adversarial by declared judgment). Compile: waves [[1,2,3],[4]], edge 3->4 marker; task-4 fixtures invoke the task-3 writer. || DRAIN 2026-08-14: SKIPPED (collision-dependent of parked #149 - shared ultradocket SKILL.md); stays queued for the next drain after #149 salvage. || DRAIN-B 2026-08-14: e150 wf_e970a0a9-8ad, 15 agents/1.08M/48min, 4/4 clean 0 fix-iter, waves [[1,3],[2],[4]] (line-cap WaW on harvest_runs.py pair, canary n=6); gate green (982), merged. Residual manifest DERIVED per the new #149 contract (15 rows; headline: mode-c approved-upgrade likely inert in production — pre-merge stamp + pinned-sha base never ancestor; branch-name base form is the only tested spelling); drain stamps recorded via the new subcommand for e148/e151/e150 (branch-name bases). Residual rows to disposition at the 2nd end gate; candidate consolidated follow-up issue: approved-upgrade join (+head-sha fallback field), falsy-root guard asymmetry + vacuous-approved guard, NUL ValueError except, exit-1 test, singular transcriptDir ordering, filename-hyphen doc note.
+ 
+ ### #151: Disk headroom — between-wave sweep of merged-task worktrees (structural) + preflight free-disk check (the cycle's one additive guard)
+-**State:** queued
++**State:** verified
+ **Score:** 8 — disk-exhaustion family 3rd/4th occurrence (sev-2 twice); ENOSPC mid-merge masquerades as a merge CONFLICT and corrupts the integration signal
+ **Est-files:** skills/ultrapowers/harnesses/waves.js, skills/ultrapowers/references/wave-merge.md, skills/ultrapowers/scripts/ultra_run.py, tests/test_ultra_run.py, skills/ultrapowers/scripts/sweep_worktrees.sh, tests/test_sweep_worktrees.py, tests/sim_workflow.mjs
+ **Plan:** docs/superpowers/plans/2026-08-14-disk-headroom.md
+ **Engine:** ultrapowers
+-**Notes:** Triage 2026-08-14 (post-distill). Two independent halves, good wave parallelism, no shared interface. (1) STRUCTURAL between-wave sweep of just-merged tasks' worktrees at the wave barrier — grounded: no sweep exists in the wave loop today (waves.js:366-377 keeps worktrees as evidence until the approve-time #108 sweep); waves.js has no shell access (zero child_process hits), so the sweep is a prompt-step (edit references/wave-merge.md + re-bake per workflow-template.md, drift pin green) or a small dispatched cleanup agent; MUST target only just-merged worktrees — sweep_worktrees.sh --run is too blunt (:258-284 keeps unmerged BRANCHES, not worktrees; a naive --run sweep destroys blocked/parked evidence); resume/redirect must tolerate already-swept merged worktrees; branches untouched, so the frozen approve-path sweep stays idempotent with NO ultra_gate.py edit. (2) Preflight free-disk headroom check in ultra_run.py vs rough per-task estimate × wave width, warn-or-block with conservative warn default — THE CYCLE'S ONE ADDITIVE GUARD, already charged at distill; no other new guards this cycle. Obligations: harness JS ⇒ .mjs sim + ALL SCENARIOS PASSED sentinel; wave-merge.md re-bake; pytest coverage in test_ultra_run.py (+ test_sweep_worktrees.py if the script gains a precise mode). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-disk-headroom.md rev 2, trim review adopted (branch-name trust model corrected: regex narrowing + porcelain identity check; bea1875 reversal acknowledged, BOTH pins replaced incl. test_no_prompt_drift.py:118; env knob deleted; min(2GiB,estimate) floor; contended path declared best-effort-excluded; grade up-earned). Engine=ultrapowers via risk override (model-typed input driving forced deletion; task 1 adversarial). Compile: waves [[1,2]], disjoint files. Preflight stage = the cycle ONE additive guard.
++**Notes:** Triage 2026-08-14 (post-distill). Two independent halves, good wave parallelism, no shared interface. (1) STRUCTURAL between-wave sweep of just-merged tasks' worktrees at the wave barrier — grounded: no sweep exists in the wave loop today (waves.js:366-377 keeps worktrees as evidence until the approve-time #108 sweep); waves.js has no shell access (zero child_process hits), so the sweep is a prompt-step (edit references/wave-merge.md + re-bake per workflow-template.md, drift pin green) or a small dispatched cleanup agent; MUST target only just-merged worktrees — sweep_worktrees.sh --run is too blunt (:258-284 keeps unmerged BRANCHES, not worktrees; a naive --run sweep destroys blocked/parked evidence); resume/redirect must tolerate already-swept merged worktrees; branches untouched, so the frozen approve-path sweep stays idempotent with NO ultra_gate.py edit. (2) Preflight free-disk headroom check in ultra_run.py vs rough per-task estimate × wave width, warn-or-block with conservative warn default — THE CYCLE'S ONE ADDITIVE GUARD, already charged at distill; no other new guards this cycle. Obligations: harness JS ⇒ .mjs sim + ALL SCENARIOS PASSED sentinel; wave-merge.md re-bake; pytest coverage in test_ultra_run.py (+ test_sweep_worktrees.py if the script gains a precise mode). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: spec docs/superpowers/specs/2026-08-14-disk-headroom.md rev 2, trim review adopted (branch-name trust model corrected: regex narrowing + porcelain identity check; bea1875 reversal acknowledged, BOTH pins replaced incl. test_no_prompt_drift.py:118; env knob deleted; min(2GiB,estimate) floor; contended path declared best-effort-excluded; grade up-earned). Engine=ultrapowers via risk override (model-typed input driving forced deletion; task 1 adversarial). Compile: waves [[1,2]], disjoint files. Preflight stage = the cycle ONE additive guard. || DRAIN 2026-08-14 (docket-20260814-154105): e151 wf_fa74a18c-615, 9 agents/699k/23min, 2/2 clean 0 fix-iter, wave [[1,2]] parallel disjoint; FIRST RUN ON THE #148-PATCHED ENGINE (clean). Gate green (951 + 4 sims sentinel), merged. Residuals for end gate: sweep-line paths repo-relative vs agent cwd = integration worktree (prompt absolute-path clause is the only guard; silent-no-op risk, fails safe - consider absolute paths follow-up); multi-entry SWEEP PATHS list + outside-fillPaths placement unpinned by sims; disclosed task-local sim-regex narrowing (unsatisfiable plan assertion). No fix round.
+ 
+ ### #152: Retire audit_run misrankCandidates — deletion candidate, zero actioned flags in ~156 runs
+-**State:** queued
++**State:** verified
+ **Score:** 7 — simplicity objective via subtraction doctrine; dead diagnostic that missed both target classes and false-fired on planned-tier intent
+ **Est-files:** skills/ultrapowers/scripts/audit_run.py, tests/test_audit_run.py, tests/test_audit_refactor.py, skills/ultrapowers/references/report-format.md
+ **Plan:** docs/superpowers/plans/2026-08-14-retire-misrank-candidates.md
+ **Engine:** inline
+-**Notes:** Triage 2026-08-14 (post-distill). CONSUMER GREP COMPLETE AT TRIAGE (repo-wide): key produced only in audit_run.py (:111 empty shape, :124-129 compute, :144 return, :176-191 render, docstring :7, thrash comment :51); test consumers = test_audit_run.py:57-70 (two tests) + test_audit_refactor.py:13 key-set assertion; prose consumer = report-format.md:117 (verified NOT pinned by test_report_runbook.py); harvest_runs.py imports audit() but _merge_audits (:487-508) rebuilds from agents/totals/note only — misrankCandidates never reached the ledger; render_viewer.py/swarm_watch.py/viewer//tests/*.mjs/evals/ zero hits. escalatedTasks/thrashCandidates are separate paths (:134-145, main :193-202) and STAY. Deletion lands behind the suite gate per subtraction doctrine (tests updated in the same change, never narrative-merged); reverses the 2026-06-25 tier-floor spec :92 keep-verdict — plan cites the observed miss record as the reversal basis. Historical plans/specs mentioning misrank are records, not consumers — leave them. No frozen surfaces, no sims, no re-bake. Inline-sized; could ride as a tail task. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: no separate spec (fully-mapped deletion; the issue is the spec — #124 precedent). Engine=inline (T=1, no width, low risk). Plan compiles PLAN OK; key-set assertion becomes the deletion pin; statistics import removed if orphaned.
++**Notes:** Triage 2026-08-14 (post-distill). CONSUMER GREP COMPLETE AT TRIAGE (repo-wide): key produced only in audit_run.py (:111 empty shape, :124-129 compute, :144 return, :176-191 render, docstring :7, thrash comment :51); test consumers = test_audit_run.py:57-70 (two tests) + test_audit_refactor.py:13 key-set assertion; prose consumer = report-format.md:117 (verified NOT pinned by test_report_runbook.py); harvest_runs.py imports audit() but _merge_audits (:487-508) rebuilds from agents/totals/note only — misrankCandidates never reached the ledger; render_viewer.py/swarm_watch.py/viewer//tests/*.mjs/evals/ zero hits. escalatedTasks/thrashCandidates are separate paths (:134-145, main :193-202) and STAY. Deletion lands behind the suite gate per subtraction doctrine (tests updated in the same change, never narrative-merged); reverses the 2026-06-25 tier-floor spec :92 keep-verdict — plan cites the observed miss record as the reversal basis. Historical plans/specs mentioning misrank are records, not consumers — leave them. No frozen surfaces, no sims, no re-bake. Inline-sized; could ride as a tail task. || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: no separate spec (fully-mapped deletion; the issue is the spec — #124 precedent). Engine=inline (T=1, no width, low risk). Plan compiles PLAN OK; key-set assertion becomes the deletion pin; statistics import removed if orphaned. || DRAIN 2026-08-14: SKIPPED (collision-dependent of parked #149 - shared report-format.md); stays queued for the next drain after #149 salvage. || DRAIN-B 2026-08-14: unblocked by #149 salvage; inline on ultra/docket-e152 per plan (pin red->green, -53/+7 lines, statistics import orphan removed), suite 966, gate green (sims correctly skipped), merged.
+ 
+ ### #153: redirect_args integrationBranch derivation can never fire — gate receipt says branch, derivation reads integrationBranch (#127 follow-up)
+-**State:** queued
++**State:** verified
+ **Score:** 8.5 — deterministic dead path at the redirect lane (4 sessions observed, not flaky); smallest fix on the slate; closes the recurring first-call-stumble family
+ **Est-files:** skills/ultrapowers/scripts/redirect_args.py, tests/test_redirect_args.py
+ **Plan:** docs/superpowers/plans/2026-08-14-redirect-args-branch-fallback.md
+ **Engine:** inline
+-**Notes:** Triage 2026-08-14 (post-distill). Grounded at HEAD: ultra_gate.py stores the branch under key "branch" (:192 set, :249 write; no integrationBranch key ever written) while redirect_args.py:64 reads "integrationBranch"; compile-emitted args.json carries no integrationBranch either (compile_plan.py args_payload ~:1691-1704) — so every flag-less redirect_args call dies on the fail-loud path by construction. Fix is ONE LINE in redirect_args.py ONLY (accept "branch" as receipt fallback; keep integrationBranch precedence for legacy/hand-built receipts) + a regression test using a REAL-shaped gate-receipt fixture ("branch" key, no "integrationBranch") — the existing fixture at test_redirect_args.py:23-24 uses the unrealistic key, which is exactly how this passed green; keep it as legacy-key coverage. Writer side is FROZEN — never rename the key in ultra_gate.py; hold the reader-side one-line scope at planning per operator directive. Pure Python + pytest; no harness JS, no sims, no re-bake. Evidence: home run b457d1f9 transcript lines 294-298 (distill 2026-08-14). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: no separate spec (deterministic one-line schema-mismatch fix; the issue is the spec — #124 precedent). Engine=inline (T=1, no width, low risk). Plan compiles PLAN OK; legacy-key precedence pinned alongside the real-shaped fixture.
++**Notes:** Triage 2026-08-14 (post-distill). Grounded at HEAD: ultra_gate.py stores the branch under key "branch" (:192 set, :249 write; no integrationBranch key ever written) while redirect_args.py:64 reads "integrationBranch"; compile-emitted args.json carries no integrationBranch either (compile_plan.py args_payload ~:1691-1704) — so every flag-less redirect_args call dies on the fail-loud path by construction. Fix is ONE LINE in redirect_args.py ONLY (accept "branch" as receipt fallback; keep integrationBranch precedence for legacy/hand-built receipts) + a regression test using a REAL-shaped gate-receipt fixture ("branch" key, no "integrationBranch") — the existing fixture at test_redirect_args.py:23-24 uses the unrealistic key, which is exactly how this passed green; keep it as legacy-key coverage. Writer side is FROZEN — never rename the key in ultra_gate.py; hold the reader-side one-line scope at planning per operator directive. Pure Python + pytest; no harness JS, no sims, no re-bake. Evidence: home run b457d1f9 transcript lines 294-298 (distill 2026-08-14). || GATE 2026-08-14 (post-distill): accepted, full slate, no budget ceiling (operator gate decision via AskUserQuestion this session). || SWEEP 2026-08-14: no separate spec (deterministic one-line schema-mismatch fix; the issue is the spec — #124 precedent). Engine=inline (T=1, no width, low risk). Plan compiles PLAN OK; legacy-key precedence pinned alongside the real-shaped fixture. || DRAIN 2026-08-14 (docket-20260814-154105): inline on ultra/docket-e153, TDD per plan (expected red/green split confirmed), suite 944 (+2 tests), gate green (sims correctly skipped - no harness JS), merged 99c6e55.
+diff --git a/skills/ultradocket/SKILL.md b/skills/ultradocket/SKILL.md
+index 0183ecef4c9dd44ae34914703b8f166c6850aa72..d26b2cac50bb42966b3985cb0c6a35db9689bc7a 100644
+--- a/skills/ultradocket/SKILL.md
++++ b/skills/ultradocket/SKILL.md
+@@ -150,6 +150,18 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
+      no held-out exam.
+    - `waived` → no gate exists; **park for the operator** at the end gate. Never
+      auto-merge unverified work.
++
++   Immediately after each drain-administered gate for a **waves-engine
++   (`ultrapowers`) entry**, mirror the outcome to a teardown-surviving stamp
++   record: `python3 skills/ultradocket/scripts/record_wf_run.py stamp <stamp>
++   <entry> --verdict <verdict> --exit-code <exit> --branch <branch> --base
++   <docket-integration-line-HEAD>` (same `<stamp>` as the step-2 run-ID
++   record; `<verdict>`/`<exit>` are the gate runner's own JSON verdict and
++   exit code — the stamp is evidence for the ultralearn sensor, never
++   authority). A re-gate after a fix round re-records the same
++   `<stamp>`/`<entry>` and overwrites — last write wins; the final verdict is
++   the record. Subagent/inline entries record no stamp: they have no engine
++   runDir or registry stamp for the harvester to key on.
+ 4. **Merge or park** — the deterministic step:
+    - **Green gate** → merge the plan branch into the docket integration line;
+      advance the entry `queued → executed` via `docket_lib.transition`; the next
+@@ -208,8 +220,13 @@ exam and the single end gate.
+ 
+ When the queue drains or the budget ceiling hits, present **one** pre-merge
+ portfolio gate. Per entry: exam evidence (raw runner JSON), engine, cost,
+-disposition (`executed`/merged or `parked` + reason), branch, and the review
+-posture used (suite-gate authority, or the escalated tasks named); plus portfolio
++disposition (`executed`/merged or `parked` + reason), branch, the review
++posture used (suite-gate authority, or the escalated tasks named), and the
++entry's residual manifest (`<runDir>/residual-manifest.md`, derived per the
++ultrapowers `references/finishing-notes.md` §Residual manifest; drain close
++runs `residual_manifest.py --check` per entry — exit 2 surfaces its
++undispositioned rows in this evidence block; an entry with no gate report
++derives a zero-row manifest, which passes vacuously); plus portfolio
+ totals and the could-have-parallelized projection. Then the operator disposes of
+ the portfolio: merge the docket integration line to base, or open per-issue PRs
+ (mind the GitHub closing-keyword gotcha in PR bodies). Accepting the portfolio
+diff --git a/skills/ultradocket/scripts/record_wf_run.py b/skills/ultradocket/scripts/record_wf_run.py
+index a57051ce17b8d552d9b63e3a4278dead396d9e10..15354f1f424bd73e96138ecb1f8579a2d727d419 100644
+--- a/skills/ultradocket/scripts/record_wf_run.py
++++ b/skills/ultradocket/scripts/record_wf_run.py
+@@ -1,32 +1,60 @@
+ #!/usr/bin/env python3
+-"""Record a drain-launched workflow run ID where the frozen gate already looks (#122).
++"""Record drain-launched workflow evidence under .claude/ultrapowers/ (#122, #150).
+ 
++Two modes:
++
++run-id (legacy, unchanged): `record_wf_run.py <stamp> <wf_runId>`.
+ The Step-5 gate driver records wf run IDs into run-<stamp>/wf-runs.json; the
+ drain bypasses that driver by design, so teardown/approve reported an empty
+-sweep set. This helper writes the same file, importing the FROZEN reader for
++sweep set. This mode writes the same file, importing the FROZEN reader for
+ shape fidelity (a bare sorted JSON array of run-id strings — drift impossible
+-by construction). Usage: record_wf_run.py <stamp> <wf_runId>
++by construction).
++
++stamp (#150 mode c): `record_wf_run.py stamp <stamp> <entry> --verdict <v>
++--exit-code <n> --branch <b> --base <ref>` mirrors a drain-administered gate
++outcome to `<repo-root>/.claude/ultrapowers/receipts/<stamp>-<entry>.json` —
++a teardown-surviving, gitignored record the ultralearn harvester reads when
++the runDir itself is gone. Mirror-only (no runDir copy — the motivating mode
++is precisely a deleted runDir). Verdict authority remains the gate's exit
++code; the stamp is evidence for the sensor, never authority. Re-recording
++the same <stamp>/<entry> overwrites: last write wins, the final verdict is
++the record. THIS SCRIPT IS THE SCHEMA AUTHORITY for the stamp record — the
++harvester's tests generate fixtures by invoking this writer, so writer and
++reader cannot drift apart silently.
+ """
++import argparse
+ import json
+ import subprocess
+ import sys
++from datetime import datetime, timezone
+ from pathlib import Path
+ 
+ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+ from ultra_gate import load_wf_runs  # frozen module: imported, never edited
+ 
++USAGE = ("usage: record_wf_run.py <stamp> <wf_runId>\n"
++         "       record_wf_run.py stamp <stamp> <entry> --verdict <v> "
++         "--exit-code <n> --branch <b> --base <ref>")
+ 
+-def main():
+-    if len(sys.argv) != 3:
+-        print("usage: record_wf_run.py <stamp> <wf_runId>", file=sys.stderr)
+-        return 2
+-    stamp, run_id = sys.argv[1], sys.argv[2]
++
++def _repo_root():
+     top = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True)
+     if top.returncode != 0:
++        return None
++    return Path(top.stdout.strip())
++
++
++def _run_id_mode(argv):
++    if len(argv) != 2:
++        print(USAGE, file=sys.stderr)
++        return 2
++    stamp, run_id = argv
++    root = _repo_root()
++    if root is None:
+         print("record_wf_run: not inside a git repository", file=sys.stderr)
+         return 1
+-    run_dir = Path(top.stdout.strip()) / ".claude/ultrapowers" / ("run-" + stamp)
++    run_dir = root / ".claude/ultrapowers" / ("run-" + stamp)
+     ids, unreadable = load_wf_runs(run_dir)
+     if unreadable:
+         print("record_wf_run: existing wf-runs.json is unreadable — refusing to "
+@@ -39,5 +67,50 @@ def main():
+     return 0
+ 
+ 
++def _stamp_mode(argv):
++    parser = argparse.ArgumentParser(
++        prog="record_wf_run.py stamp",
++        description="Mirror a drain-administered gate outcome to a "
++                    "teardown-surviving stamp record (#150 mode c).")
++    parser.add_argument("stamp")
++    parser.add_argument("entry")
++    parser.add_argument("--verdict", required=True)
++    parser.add_argument("--exit-code", required=True, type=int, dest="exit_code")
++    parser.add_argument("--branch", required=True)
++    parser.add_argument("--base", required=True)
++    args = parser.parse_args(argv)  # argparse exits 2 on a usage error
++    if "/" in args.stamp or "/" in args.entry:
++        print("record_wf_run: <stamp> and <entry> must not contain '/'",
++              file=sys.stderr)
++        return 2
++    root = _repo_root()
++    if root is None:
++        print("record_wf_run: not inside a git repository", file=sys.stderr)
++        return 1
++    receipts = root / ".claude/ultrapowers/receipts"
++    receipts.mkdir(parents=True, exist_ok=True)
++    record = {
++        "mode": "drain-stamp",
++        "stamp": args.stamp,
++        "entry": args.entry,
++        "verdict": args.verdict,
++        "gateExit": args.exit_code,
++        "branch": args.branch,
++        "base": args.base,
++        "recordedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
++    }
++    path = receipts / ("%s-%s.json" % (args.stamp, args.entry))
++    path.write_text(json.dumps(record, indent=2))  # last write wins by design
++    print("record_wf_run: stamp record written to %s" % path)
++    return 0
++
++
++def main():
++    argv = sys.argv[1:]
++    if argv and argv[0] == "stamp":
++        return _stamp_mode(argv[1:])
++    return _run_id_mode(argv)
++
++
+ if __name__ == "__main__":
+     sys.exit(main())
+diff --git a/skills/ultralearn/scripts/harvest_runs.py b/skills/ultralearn/scripts/harvest_runs.py
+index 9fe1a3abf3453c8b7f9ccd582623616e94cc1aa3..9ce1cf4de312980d0412b6a3cb690942bad1ce45 100644
+--- a/skills/ultralearn/scripts/harvest_runs.py
++++ b/skills/ultralearn/scripts/harvest_runs.py
+@@ -152,14 +152,23 @@ def _last_artifact_record_index(records, registry):
+     return cutoff if cutoff is not None else window_start
+ 
+ 
+-def slice_transcript(records):
++def slice_transcript(records, terminus=None):
+     # Slice envelope (Task 3, registry-keyed — spec §5): the run ends at the
+     # last qualifying artifact of the LAST registered launch; anything after
+     # is a post-run tangent, never wave-relevant. No qualifying artifact at
+     # all (e.g. planning-only, or a pre-registry session with no Workflow
+     # tool_result) keeps the full head, unchanged from pre-Task-3 behavior.
++    # #150 mode (b): when the caller's derived terminus is "approved", the
++    # approval exchange — plain operator text AFTER the final artifact — is
++    # exactly what the NEEDS_ACK lens needs, so the slice extends past the
++    # artifact cut to the transcript end. The tail rides the same per-record
++    # filter below (user text kept, keyword-less noise dropped), and since
++    # approval is terminal it is naturally a handful of records: no cap, no
++    # sentinel. Any other terminus (or the default None) keeps the cut.
+     registry = session_registry(records)
+     cutoff = _last_artifact_record_index(records, registry)
++    if terminus == "approved":
++        cutoff = None
+     lines = []
+     for idx, r, b in _iter_blocks_indexed(records):
+         if cutoff is not None and idx > cutoff:
+@@ -317,7 +326,12 @@ def _transcript_dirs(records):
+     holds agent transcripts, in transcript order — a session may launch
+     several workflows (multiple /ultrapowers launches, or a zero-agent probe
+     before the real run) and each agent-bearing dir is its own run's evidence.
+-    Fallback: [candidates[-1]] when NONE qualify, preserving the old
++    Candidates are deduped on their RESOLVED REAL paths (#150 mode a): a
++    crash-resume session prints the same dir twice (sometimes via a symlink
++    alias), and pre-dedupe each mention was audited separately — the verbatim
++    agent-block duplication that overstated audit totals by a full salvage
++    run's weight. First occurrence wins; transcript order is preserved.
++    Fallback: the LAST unique candidate when NONE qualify, preserving the old
+     single-dir last-resort behavior (e.g. a dir that no longer exists on
+     disk when the harvester runs later)."""
+     candidates = []
+@@ -332,8 +346,18 @@ def _transcript_dirs(records):
+                 candidates.append(tail)
+     if not candidates:
+         return []
+-    qualifying = [c for c in candidates if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
+-    return qualifying if qualifying else [candidates[-1]]
++    seen_real, unique = set(), []
++    for c in candidates:
++        try:
++            key = str(Path(c).resolve())
++        except OSError:
++            key = c  # unresolvable path: dedupe on the literal string, soft
++        if key in seen_real:
++            continue
++        seen_real.add(key)
++        unique.append(c)
++    qualifying = [c for c in unique if Path(c).is_dir() and any(Path(c).glob("agent-*.jsonl"))]
++    return qualifying if qualifying else [unique[-1]]
+ 
+ 
+ _GIT_TIMEOUT = 5  # seconds; an ancestry check must never hang a harvest sweep
+@@ -424,22 +448,110 @@ def _git_ancestry_approved(run_dir, receipt):
+         return False
+ 
+ 
+-def _stamp_terminus(run_dir, stamp_reports):
+-    """Per-stamp terminus (#126 Task 2): the disk receipt's own verdict,
+-    upgraded to `approved` when git ancestry proves the run's head landed on
+-    its base branch. Structured only, no transcript scanning: the
+-    merge-evidence prose matcher (`_merge_evidence_after`) and the
+-    approve-marker/stamp-interleave tracking it replaced are deleted
+-    outright — the git check subsumes both. `stamp_reports` is this stamp's
+-    own disk-sourced gate_reports entries; no disk receipt at all means
+-    nothing to read a verdict OR a head sha from -> `unknown`."""
+-    if not stamp_reports:
+-        return "unknown"
+-    receipt = stamp_reports[-1]["receipt"]
+-    verdict = receipt.get("verdict", "unknown")
+-    if run_dir and _git_ancestry_approved(run_dir, receipt):
+-        return "approved"
+-    return verdict
++_RUN_DIR_SUFFIX = re.compile(r"/\.claude/ultrapowers/run-[^/]+$")
++
++
++def _repo_root_from_run_dir(run_dir):
++    """Repo root derived from the registry-recorded runDir PATH STRING (#150
++    mode c): strip the `.claude/ultrapowers/run-<stamp>` suffix. Pure string
++    work — a drain-gated run's runDir is typically torn down by the time the
++    harvester runs, so the runDir is never touched on disk. None when the
++    string does not carry the engine suffix."""
++    if not isinstance(run_dir, str):
++        return None
++    m = _RUN_DIR_SUFFIX.search(run_dir)
++    return run_dir[:m.start()] if m else None
++
++
++def _drain_stamp_receipts(run_dir, stamp):
++    """Mode (c) mirror lookup (#150): the `<stamp>-*.json` glob under
++    `<repo-root>/.claude/ultrapowers/receipts/`, repo root from
++    `_repo_root_from_run_dir` — one record per drain-gated docket entry,
++    written by the drain's record helper's `stamp` subcommand (the schema
++    authority). Entries are labeled by the LOCATING stamp, filename-sorted
++    for determinism. Soft-fails: no derivable root, a missing receipts dir,
++    or unreadable/malformed JSON is skipped, never raised; only dicts
++    carrying a `verdict` qualify."""
++    root = _repo_root_from_run_dir(run_dir)
++    if root is None:
++        return []
++    entries = []
++    try:
++        files = sorted((Path(root) / ".claude/ultrapowers/receipts").glob(stamp + "-*.json"))
++    except OSError:
++        return []
++    for f in files:
++        try:
++            obj = json.loads(f.read_text())
++        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
++            continue
++        if isinstance(obj, dict) and "verdict" in obj:
++            entries.append({"receipt": obj, "stamp": stamp, "source": "stamp"})
++    return entries
++
++
++def _drain_ancestry_approved(run_dir, receipt):
++    """Approved-upgrade for a drain-stamp record (#150 mode c): merged IS
++    approved, same rule as the receipt path. head = the record's own
++    `branch`, base = its `base` — both carried in the record, so no runDir
++    file read is ever needed; repo root comes from the runDir PATH STRING.
++    Fails soft to False on any unresolvable repo, ref, or git invocation."""
++    repo_root = _repo_root_from_run_dir(run_dir)
++    if not repo_root:
++        return False
++    head = receipt.get("branch")
++    base = receipt.get("base")
++    if not (isinstance(head, str) and head.strip()
++            and isinstance(base, str) and base.strip()):
++        return False
++    try:
++        res = subprocess.run(
++            ["git", "-C", repo_root, "merge-base", "--is-ancestor",
++             head.strip(), base.strip()],
++            capture_output=True, text=True, timeout=_GIT_TIMEOUT)
++        return res.returncode == 0
++    except (OSError, subprocess.SubprocessError):
++        return False
++
++
++def _drain_stamp_terminus(run_dir, drain_receipts):
++    """Terminus from mode-(c) drain-stamp records (#150): each entry's
++    verdict upgrades to `approved` when its recorded branch landed on its
++    recorded base. All entries approved -> approved; else the last
++    (filename-sorted) non-approved entry's verdict — the aggregate-terminus
++    rule applied at the entry level."""
++    resolved = []
++    for e in drain_receipts:
++        receipt = e["receipt"]
++        verdict = receipt.get("verdict", "unknown")
++        if _drain_ancestry_approved(run_dir, receipt):
++            verdict = "approved"
++        resolved.append(verdict)
++    non_approved = [v for v in resolved if v != "approved"]
++    return "approved" if not non_approved else non_approved[-1]
++
++
++def _stamp_terminus(run_dir, stamp_reports, drain_receipts=()):
++    """Per-stamp terminus (#126 Task 2, generalized receipt-or-stamp by #150
++    mode c): the disk receipt's own verdict, upgraded to `approved` when git
++    ancestry proves the run's head landed on its base branch. Structured
++    only, no transcript scanning: the merge-evidence prose matcher
++    (`_merge_evidence_after`) and the approve-marker/stamp-interleave
++    tracking it replaced are deleted outright — the git check subsumes both.
++    `stamp_reports` is this stamp's own disk-sourced gate_reports entries and
++    always takes precedence; `drain_receipts` (the #150 stamp mirror) is
++    consulted only when no disk receipt exists — the drain skips Step-5 and
++    tears the runDir down, so for those runs the mirror is the only gate
++    evidence left. Neither present -> `unknown`."""
++    if stamp_reports:
++        receipt = stamp_reports[-1]["receipt"]
++        verdict = receipt.get("verdict", "unknown")
++        if run_dir and _git_ancestry_approved(run_dir, receipt):
++            return "approved"
++        return verdict
++    if drain_receipts:
++        return _drain_stamp_terminus(run_dir, drain_receipts)
++    return "unknown"
+ 
+ 
+ def _runs_for_bundle(registry, gate_reports):
+@@ -453,11 +565,15 @@ def _runs_for_bundle(registry, gate_reports):
+     for stamp in registry["stamps"]:
+         stamp_reports = by_stamp.get(stamp, [])
+         run_dir = registry["runDirsByStamp"].get(stamp)
++        # #150 mode (c): the stamp mirror is consulted only when no disk
++        # gate receipt exists for this stamp — it never enters gateReports
++        # (which stay disk-sourced only), it only informs terminus.
++        drain_receipts = [] if stamp_reports else _drain_stamp_receipts(run_dir, stamp)
+         runs.append({
+             "stamp": stamp,
+             "planPath": registry["planPathsByStamp"].get(stamp),
+             "gateReports": stamp_reports,
+-            "terminus": _stamp_terminus(run_dir, stamp_reports),
++            "terminus": _stamp_terminus(run_dir, stamp_reports, drain_receipts),
+         })
+     return runs
+ 
+@@ -683,7 +799,7 @@ def build_bundle(session_path, project_slug, cache_dir, home_slug):
+     out = Path(cache_dir) / "runs" / run_id
+     out.mkdir(parents=True, exist_ok=True)
+     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
+-    (out / "slice.md").write_text(slice_transcript(records))
++    (out / "slice.md").write_text(slice_transcript(records, terminus))
+     return out
+ 
+ 
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 785ed1b25621b6fb46cd2a4b63c72d01719655ff..3ee494a7e46787b46f2bc91f087507f435489818 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -241,11 +241,10 @@ Whatever the verdict, delete the run's review exhaust now —
+ from the BASE/HEAD shas recorded in the report; the run's records
+ (transcripts, receipts, launch/args) stay for the viewer and later harvests.
+ 
+-**Resume gates carry the union.** A Salvage/Redirect relaunch produces a fresh
+-report, so at any gate reached via relaunch, present the **union** of
+-`deferredVerification` items across every gate report this integration branch
+-has produced — carry prior items forward yourself; an item leaves the ack list
+-only by explicit operator disposition, never as a relaunch side effect.
++**Resume gates derive the union.** At any gate reached via relaunch, derive and
++render the manifest (`residual_manifest.py` over every gate report this
++integration branch has produced) — render only; `--check` runs solely at run
++close.
+ 
+ Render the report per `references/report-format.md` plus the **post-merge runbook**
+ (`release`/`manual` tasks, verbatim), then present:
+@@ -269,9 +268,12 @@ Render the report per `references/report-format.md` plus the **post-merge runboo
+   When work spanned **multiple
+   phases or runs**, run one **holistic cross-phase** review of the fully-integrated
+   tree against the *combined* plan and gate on it **before the final PR**
+-  (single-run pipelines already got it at Step 4), then apply the two
+-  `references/finishing-notes.md` checks and proceed to
+-  `superpowers:finishing-a-development-branch`, carrying the runbook.
++  (single-run pipelines already got it at Step 4). Then (every run) derive
++  `<runDir>/residual-manifest.md` from every round's gate report and disposition
++  every row (`residual_manifest.py --check` green), apply the
++  `references/finishing-notes.md` checks, and proceed to
++  `superpowers:finishing-a-development-branch`, carrying the runbook and
++  manifest.
+ - **Salvage** — offer whenever the report has `failed` tasks or dep-blocked
+   `unfinished` entries. Build the new `waves` mechanically: every `failed` task
+   plus every dep-/cascade-blocked `unfinished` task, in Step-2 order with their
+@@ -347,4 +349,5 @@ cycle or an inability to create the integration branch.
+   acceptance runner the gate driver administers.
+ - `scripts/compile_plan.py` — the plan compiler (`--emit-launch`/`--emit-args`).
+ - `scripts/sweep_worktrees.sh`, `scripts/run_lock.sh` — sweep (`--run` /
+-  `--all` / report-only `--audit`) and run lock.
++  `--all` / report-only `--audit`; also reaps processes still running out of
++  removed or already-deleted engine worktrees) and run lock.
+diff --git a/skills/ultrapowers/harnesses/waves.harness.json b/skills/ultrapowers/harnesses/waves.harness.json
+index 0a58d855a8fb67c3d7eebe06e556880af336a956..859c79a3d5c506b415d9df7bb3c583747a090e19 100644
+--- a/skills/ultrapowers/harnesses/waves.harness.json
++++ b/skills/ultrapowers/harnesses/waves.harness.json
+@@ -3,7 +3,7 @@
+   "file": "waves.js",
+   "purpose": "plan -> parallel waves -> independent review -> merge",
+   "writeSide": true,
+-  "version": "0.0.11",
++  "version": "0.0.12",
+   "fixtures": "tests/test_workflow_sim.py",
+   "driftTest": "tests/test_no_prompt_drift.py"
+ }
+diff --git a/skills/ultrapowers/harnesses/waves.js b/skills/ultrapowers/harnesses/waves.js
+index 43d4be6aa9961676850d06196e7953b9230f6b0b..e8e230564163c6423091156e58edb9810fc18888 100644
+--- a/skills/ultrapowers/harnesses/waves.js
++++ b/skills/ultrapowers/harnesses/waves.js
+@@ -435,7 +435,19 @@ const MERGE_PROMPT =
+   'mkdir -p <runDir>/heads, then for each task branch you merged run git ' +
+   'rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+-  'by hand.'
++  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
++  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
++  'dispatch names the just-merged worktree paths, derived by the engine from ' +
++  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
++  'nothing. For each listed path, run git worktree list --porcelain and ' +
++  'confirm the path appears there with its checked-out branch being one you ' +
++  'merged in this wave; only after that per-path check passes, remove it ' +
++  'with git worktree remove --force <path>, using the absolute worktree ' +
++  'path the porcelain output printed. A listed path absent from the ' +
++  'porcelain output was already swept — skip it silently. A path that is ' +
++  'present but fails the branch check must not be removed: skip it and name ' +
++  'it in your reply detail. Never delete any branch — branches carry the ' +
++  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
+ 
+ const RECONCILE_PROMPT =
+   'You are the reconciliation agent for ' + integrationBranch + ', operating ONLY ' +
+@@ -450,7 +462,19 @@ const RECONCILE_PROMPT =
+   'then for each task branch you merged run git rev-parse <branch> > ' +
+   '<runDir>/heads/task-<taskId>, then git rev-parse HEAD > ' +
+   '<runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha ' +
+-  'by hand.'
++  'by hand. After the heads are recorded and only if you are reporting MERGED, ' +
++  "sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this " +
++  'dispatch names the just-merged worktree paths, derived by the engine from ' +
++  'the merged branch names; if no SWEEP PATHS line is appended, sweep ' +
++  'nothing. For each listed path, run git worktree list --porcelain and ' +
++  'confirm the path appears there with its checked-out branch being one you ' +
++  'merged in this wave; only after that per-path check passes, remove it ' +
++  'with git worktree remove --force <path>, using the absolute worktree ' +
++  'path the porcelain output printed. A listed path absent from the ' +
++  'porcelain output was already swept — skip it silently. A path that is ' +
++  'present but fails the branch check must not be removed: skip it and name ' +
++  'it in your reply detail. Never delete any branch — branches carry the ' +
++  'merged commits, and the deterministic Step-5 sweep owns branch cleanup.'
+ 
+ // The prompt constants above cannot know which tasks a given wave merged, so each
+ // dispatch appends the concrete slot names built from the ids/wave number in scope
+@@ -465,6 +489,24 @@ const headsSlotsLine = (mergedResults, waveNumber) => {
+   return 'For this wave that means slots: ' + list + '.'
+ }
+ 
++// #151: the wave-barrier sweep line. The engine never sees the runtime
++// wf_<runId>, so worktree paths can only derive from the implementers'
++// SELF-REPORTED branch names — model-typed input feeding
++// `git worktree remove --force`. Derivation is therefore narrowed by shape:
++// a branch matching worktree-wf_<x>-<n> maps to .claude/worktrees/wf_<x>-<n>
++// (the same prefix-strip mapping sweep_worktrees.sh owns); a malformed name
++// contributes nothing, silently. Only THIS wave's merged results are listed:
++// blocked/parked/failed worktrees stay for evidence, and the frozen Step-5
++// sweep stays idempotent over paths already removed here. The prompt-side
++// `git worktree list --porcelain` identity check is the second defense.
++const SWEEP_BRANCH_RE = /^worktree-wf_.+-[0-9]+$/
++const sweepPathsLine = (mergedResults) => {
++  const paths = mergedResults
++    .filter((r) => SWEEP_BRANCH_RE.test(r.branch || ''))
++    .map((r) => '.claude/worktrees/' + r.branch.slice('worktree-'.length))
++  return paths.length ? ('SWEEP PATHS for this wave: ' + paths.join(', ') + '.') : ''
++}
++
+ // ── Contended (frontier) merge contract — baked from references/wave-merge.md
+ // (BAKE:CONTENDED_MERGE_PROMPT). Built per-dispatch because the wave base is
+ // ENGINE-AUTHORED: waveBaseSha advances only AFTER a merge, so at dispatch time
+@@ -825,6 +867,14 @@ const isSchemaTrip = (msg) =>
+ // edge), which no model capability fixes. Diagnose it; do NOT fail-fast.
+ const looksStructural = (msg) =>
+   /cannot find module|module not found|no module named|importerror|cannot import|is not defined/i.test(msg)
++// Infra-death: the agent PROCESS died (terminal Overloaded), not a judgment
++// about the work. The ONLY trustworthy signal is the engine-minted AGENT_NULL
++// marker — one prefix test, the same unforgeable-marker discipline as
++// isSchemaTrip's engine-shape regex. Never free-text match Overloaded/529:
++// agent() returns null rather than throwing overload-worded errors, so a text
++// matcher could only ever match agent-authored or incidental error text and
++// misclassify a genuine failure into the park lane.
++const isInfraFault = (msg) => msg.startsWith('AGENT_NULL')
+ // Review / completeness roles always run at the strongest model, unconditionally —
+ // a weak reviewer's failure mode is the silent false PASS, so it must never be
+ // downgradable. (Reconcile is a fixer, not a reviewer, so it tracks the
+@@ -951,6 +1001,23 @@ async function runTask(task, baseSha, siblings) {
+     return await runTaskInner(task, baseSha, siblings)
+   } catch (e) {
+     const msg = String((e && e.message) || e)
++    // Infra-death (engine-minted AGENT_NULL: the agent PROCESS died — terminal
++    // Overloaded), not a judgment about the work: an immediate retry would
++    // dispatch straight back into the same overload storm. Park a transient
++    // marker instead; the wave barrier retries it exactly once after the storm
++    // has had the remainder of the wave's own runtime to clear (this runtime
++    // has no wall clock or timers — barrier position IS the backoff). The
++    // marker is replaced in place before the merge set is computed, so its
++    // status can never reach report.json. All other fault classes keep the
++    // immediate retry below, byte-for-byte.
++    if (isInfraFault(msg)) {
++      judgmentCalls.push('task ' + task.id + ': infra-death (' + msg +
++        ') — parked for one barrier retry (no immediate retry into the live storm)')
++      log('task ' + task.id + ' infra-death — parked for barrier retry')
++      return { task: task.id, status: 'parked-infra', reviewVerdict: 'agent-error',
++               notes: msg, tier: resolvedModel(task.tier || 'standard'),
++               review: taskReviewProfile(task), fixIterations: 0 }
++    }
+     // Default the one retry to the SAME tier; escalate one rung ONLY for a
+     // capability-fixable schema trip. Never escalate an Overloaded/null fault.
+     const capabilityFixable = isSchemaTrip(msg)
+@@ -1070,7 +1137,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
+     let issues, verdicts
+     if (taskReviewProfile(task) === 'adversarial') {
+       const r1 = await agent(reviewPrompt, reviewOpts(1))
++      // agent() RETURNS null (not throws) on terminal Overloaded — mint the
++      // engine AGENT_NULL marker BEFORE any property access, so a dead reviewer
++      // routes to the infra-death park lane instead of a TypeError at r1.issues.
++      if (r1 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
+       const r2 = await agent(reviewPrompt, reviewOpts(2))
++      if (r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
+       issues = (r1.issues || []).concat(r2.issues || [])
+       verdicts = [r1.verdict, r2.verdict]
+       for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
+@@ -1078,6 +1150,8 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
+       }
+     } else {
+       const review = await agent(reviewPrompt, reviewOpts())
++      // Same marker as the adversarial branch: null means the process died.
++      if (review === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
+       issues = review.issues || []
+       verdicts = [review.verdict]
+       for (const cv of (review.cannotVerify || [])) {
+@@ -1150,6 +1224,12 @@ async function runTaskInner(task, baseSha, siblings, tierOverride) {
+         blocking.map((b) => '- ' + b.detail).join('\n'),
+       { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree', model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA }
+     )
++    // agent() RETURNS null (not throws) on terminal Overloaded — same class as
++    // the initial implementer dispatch above. Without this, a null fix reply
++    // passes noteConcerns harmlessly and TypeErrors at impl.status with a
++    // message no classifier matches — a mid-storm fix-round death would
++    // silently keep the storm-retry behavior instead of parking.
++    if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
+     noteConcerns(impl)
+     // Same fail-fast as the initial dispatch: a fix result claiming DONE
+     // without mergeable coordinates must not reach the iter-2 reviewer
+@@ -1459,6 +1539,7 @@ async function mergeWave(results, waveIdx) {
+   // #114: the concrete heads/ slots THIS wave must write. Engine-authored, so it
+   // rides inside fillPaths() with the prompt; the ids come from control flow.
+   const slotsLine = headsSlotsLine(merged, waveIdx + 1)
++  const sweepLine = sweepPathsLine(merged)
+   if (contendedWave(merged, waveIdx)) {
+     const adopted = await contendedMerge(merged, waveIdx, slotsLine)
+     // Fallback (null) drops through to the git-merge path below with the branch
+@@ -1469,12 +1550,20 @@ async function mergeWave(results, waveIdx) {
+   try {
+     merge = await agent(
+       fillPaths(GUARD + '\n\n' + MERGE_PROMPT + ' ' + slotsLine) +
++        (sweepLine ? '\n' + sweepLine : '') +
+         '\nMerge in this order:\n' + branchList,
+       { label: 'merge:wave' + (waveIdx + 1), model: TIER.cheap, schema: MERGE_SCHEMA }
+     )
+   } catch (e) {
+     merge = { status: 'CONFLICT', detail: 'merge agent error: ' + String((e && e.message) || e) }
+   }
++  // agent() RETURNS null (not throws) on terminal Overloaded/skip. The contended
++  // path already null-guards its fold/resolve/adopt dispatches — the asymmetry
++  // here was the defect (#148 §1): a null reply reached merge.status, and the
++  // TypeError aborted the whole run (mergeWave is unwrapped at its call site).
++  // Normalize exactly like the catch branch so a dead merge agent routes into
++  // the existing reconcile/DEFERRED machinery.
++  if (!merge) merge = { status: 'CONFLICT', detail: 'merge agent died (null reply — terminal overload); task branches intact' }
+   for (let attempt = 1; merge.status !== 'MERGED' && attempt <= 2; attempt++) {
+     if (budgetExhausted()) {
+       return { status: 'DEFERRED', detail: 'budget exhausted before reconciliation attempt ' +
+@@ -1484,12 +1573,17 @@ async function mergeWave(results, waveIdx) {
+     try {
+       merge = await agent(
+         fillPaths(GUARD + '\n\n' + RECONCILE_PROMPT + ' ' + slotsLine) +
++          (sweepLine ? '\n' + sweepLine : '') +
+           '\nFailure:\n' + (merge.detail || ''),
+         { label: 'reconcile:wave' + (waveIdx + 1) + ':' + attempt, model: TIER.mostCapable, schema: MERGE_SCHEMA }
+       )
+     } catch (e) {
+       merge = { status: 'CONFLICT', detail: 'reconcile agent error: ' + String((e && e.message) || e) }
+     }
++    // Same normalization as the merge dispatch above: a dead reconcile agent
++    // becomes CONFLICT, and the loop's attempt cap (2) terminates — the run
++    // survives with the wave blocked and every task branch intact.
++    if (!merge) merge = { status: 'CONFLICT', detail: 'reconcile agent died (null reply — terminal overload); task branches intact' }
+   }
+   return merge
+ }
+@@ -1761,6 +1855,68 @@ for (let w = 0; w < WAVES.length; w++) {
+     noteFailures()
+   }
+ 
++  // ── Infra-death barrier retry pass (#148 §3) ────────────────────────────────
++  // Tasks parked on an AGENT_NULL infra-death get exactly ONE retry here, at
++  // the wave barrier (runTaskInner, same tier, fresh worktree — the proven
++  // self-heal semantics). Chunked through parallel() at the same CONCURRENCY
++  // cap as task dispatch, so the wave's tail is one task-duration, not N.
++  // Marker replacement is IN-PLACE in BOTH results and taskResults (the
++  // chunkLost precedent below) so the transient status never reaches
++  // report.json. Budget-checkpointed like every dispatch site: exhaustion
++  // routes parked tasks to the deferred/unfinished lane — never 'failed' — so
++  // a budget event cannot cascade-block dependents the way a failure would.
++  const parkedInfra = results.filter((r) => r && r.status === 'parked-infra')
++  for (let off = 0; off < parkedInfra.length; off += CONCURRENCY) {
++    if (budgetExhausted()) {
++      for (const p of parkedInfra.slice(off)) {
++        unfinished.push(p.task + ': deferred (budget exhausted before infra-death barrier retry)')
++        const ri = results.indexOf(p); if (ri !== -1) results.splice(ri, 1)
++        const ti = taskResults.indexOf(p); if (ti !== -1) taskResults.splice(ti, 1)
++        log('task ' + p.task + ' infra-death retry deferred: budget exhausted')
++      }
++      if (!budgetDeferred) {
++        budgetDeferred = true
++        judgmentCalls.push(BUDGET_DEFERRED_NOTE)
++      }
++      break
++    }
++    const pchunk = parkedInfra.slice(off, off + CONCURRENCY)
++    log('wave ' + (w + 1) + ' barrier: retrying ' + pchunk.length + ' infra-parked task(s)')
++    const retried = await parallel(pchunk.map((p) => () => (async () => {
++      const task = WAVES[w].find((t) => t.id === p.task)
++      try {
++        const res = await runTaskInner(task, waveBaseSha, siblingLine(task, WAVES[w]))
++        judgmentCalls.push('task ' + task.id + ': parked on infra-death, recovered at the barrier retry')
++        return res
++      } catch (e2) {
++        const msg2 = String((e2 && e2.message) || e2)
++        judgmentCalls.push('task ' + task.id + ': barrier retry after infra-death failed — ' + msg2)
++        log('task ' + task.id + ' FAILED after infra-death barrier retry: ' + msg2)
++        return { task: task.id, status: 'failed', reviewVerdict: 'agent-error',
++                 notes: msg2, tier: p.tier, review: p.review, fixIterations: 0 }
++      }
++    })()))
++    for (let k = 0; k < pchunk.length; k++) {
++      const p = pchunk[k], res = retried[k]
++      const ri = results.indexOf(p); if (ri !== -1) results[ri] = res
++      const ti = taskResults.indexOf(p); if (ti !== -1) taskResults[ti] = res
++      if (res.status === 'failed') {
++        // Documented WaW weakening (accepted trade, #148 §3): a same-wave
++        // dependent may have dispatched while its parent was parked (parked is
++        // neither failed nor done at chunk time). Disclose it when the retry
++        // then failed — the drain-administered suite gate is the backstop for
++        // any resulting integration gap.
++        for (const [a, b] of EDGES) {
++          if (a === p.task && results.some((r2) => r2 && r2.task === b)) {
++            judgmentCalls.push('task ' + b + ': ran while same-wave dependency ' + a +
++              ' was parked and the barrier retry then failed — WaW ordering weakened; the suite gate is the backstop')
++          }
++        }
++      }
++    }
++    noteFailures()
++  }
++
+   // When every task in the wave is dep-blocked/failed (no mergeable branches),
+   // skip the merge — but when NO edges were supplied (not even an empty array)
+   // and tasks actually ran, cascade conservatively so later waves don't build
+diff --git a/skills/ultrapowers/references/finishing-notes.md b/skills/ultrapowers/references/finishing-notes.md
+index 100d99a1f84a2e6c08dc51463db76e7704fa1f9b..2f3349c1e927f3a19a272803fe5717af3865e71d 100644
+--- a/skills/ultrapowers/references/finishing-notes.md
++++ b/skills/ultrapowers/references/finishing-notes.md
+@@ -58,17 +58,62 @@ work that actually spanned multiple phases or runs. Do not hand off to
+ `finishing-a-development-branch` until the holistic review is clean or its
+ findings are explicitly dispositioned.
+ 
+-## Deferred-verification checklist
+-
+-The gate report's `deferredVerification` array is a post-merge obligation
+-list, not a footnote. After the merge lands, walk it item by item: attempt
+-closure where tooling exists (run the runtime path, drive the browser flow,
+-hit the deployed service), and report per-item status in the finishing
+-summary — `closed` (verified, say how), `still-open` (say what blocks it),
+-or `needs-human` (say exactly what the operator must do). The checklist
+-authorizes no new autonomous actions — anything beyond already-authorized
+-tooling stays `needs-human`. An item nobody closes survives in the summary
+-by name; it must never silently evaporate between the gate and the handoff.
++## Residual manifest
++
++The gate report's three finding families — `completenessFindings`,
++`judgmentCalls`, `deferredVerification` — feed one derived obligation list
++at finishing: the residual manifest. Derivation and disposition are
++required at run close and at drain-entry close; the finishing summary
++attaches the manifest. Derive it from **all** of this run's gate reports
++(resume/redirect rounds each pass theirs — the union is computed, never
++remembered):
++
++```bash
++python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/residual_manifest.py \
++  <report.json> [more-reports...] [--gate-acks <runDir>/standing-approval.json] \
++  > <runDir>/residual-manifest.md
++```
++
++Canonical location: `<runDir>/residual-manifest.md`, beside report.json.
++One row per distinct finding, content-addressed — id
++`<family>-<12-hex sha256 of the normalized text>`, so the same finding gets
++the same id in every round and the union dedupes on id; byte-identical
++duplicates within one report tiebreak `-2`, `-3`, … Each row is exactly:
++
++```
++- <id> [<family>] <text> — disposition: <value>
++```
++
++Anything else in the file is commentary. With `--gate-acks`,
++`deferredVerification` rows carrying a recorded gate ack are emitted
++pre-dispositioned `acked` — derivation from a durable record, never
++auto-judgment. Every other row derives with an empty disposition slot for
++the orchestrator or operator to fill with one of:
++
++- `fixed` — verified closed (say how in the row text).
++- `acked` — operator acknowledged; the required action is named in the row
++  text. Anything beyond already-authorized tooling lands here — the
++  manifest authorizes no new autonomous actions.
++- `filed:<ref>` — stays open under a tracking reference.
++- `waived:<reason>` — stays open with the reason stated.
++
++(Supersedes the old per-item `closed | still-open | needs-human` triple:
++`closed → fixed`; `still-open → filed:<ref>` or `waived:<reason>` — staying
++open with neither a ref nor a reason is exactly the evaporation this
++manifest exists to kill; `needs-human → acked`.)
++
++The close check — exit-code authority for the close ceremony, touching no
++frozen gate script:
++
++```bash
++python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/residual_manifest.py \
++  --check <runDir>/residual-manifest.md
++```
++
++Exit 0 iff every row is dispositioned (a zero-row manifest passes,
++vacuously); exit 2 names the undispositioned rows. Resume gates derive and
++render the union only — `--check` runs solely at run close and drain-entry
++close.
+ 
+ ## Shipped SHA ≠ gate-verified SHA — re-verify, mandatorily
+ 
+diff --git a/skills/ultrapowers/references/report-format.md b/skills/ultrapowers/references/report-format.md
+index 0817679e66d1fbb3b23c0b2f18a75272523e0071..4f2b02979465edf6b1e9f5d837394b578f105a97 100644
+--- a/skills/ultrapowers/references/report-format.md
++++ b/skills/ultrapowers/references/report-format.md
+@@ -82,6 +82,8 @@ The workflow produces a single structured report object that the main agent pres
+ | `unfinished` | yes | Tasks or follow-ups that were deferred or blocked (empty array if none). Budget-deferred tasks appear here as `"<id>: deferred (budget exhausted ...)"` strings; dep-blocked tasks appear as `"<id>: blocked — ..."` strings; cascade-blocked tasks (behind a failed merge) appear as `"<id>: cascade-blocked by wave N"` strings |
+ | `completenessFindings` | no | Gaps found by the completeness critic — unmet plan requirements, unverified claims, untested code paths. Before producing any finding the critic detaches to the run's merge HEAD (`waveBaseSha` = `waveMerges[last].headSha`) and confirms `git rev-parse HEAD` matches it; if it cannot (detach fails, `rev-parse` mismatch, or no merge headSha was recorded) it reports **BLOCKED** and produces no findings. A BLOCKED critic is **not** a clean review — the gate must not treat empty findings from a BLOCKED critic as a pass (#29). The critic is a read-only review role: it never writes files or commits (#32). The critic's prompt also carries the CANNOT-VERIFY checklist the per-task reviewers escalated; its findings include each item it confirmed or refuted against the integrated tree (#2.2). For a multi-phase or multi-run pipeline, the **holistic cross-phase review** run at the finishing handoff (one completeness critic over the fully-integrated tree against the *combined* plan, gated before the final PR) records its findings here too — cross-phase integration gaps land in `completenessFindings` alongside the single-run critic's, so the gate surfaces them under unfinished before the PR is opened (#69). |
+ 
++The three finding-family arrays — `completenessFindings`, `judgmentCalls`, `deferredVerification` — feed the residual manifest at finishing (derive + disposition contract: `finishing-notes.md` §Residual manifest).
++
+ ### `waveMerges[].status` values
+ 
+ - `MERGED` — wave integrated successfully; `headSha` carries the new integration-branch HEAD.
+@@ -105,7 +107,7 @@ When the workflow completes, the main agent renders the report as a concise huma
+ 7. **Test result** — pass or fail, the command run, and any relevant output excerpt. When `coverage.complete` is false, show a ⚠ "green suite but `tasks_merged`/`tasks_planned` tasks merged" beside the result: a passing suite over an incomplete merge is a false-green (only existing tests can fail), and the unmerged tasks' deliverables are itemized in `missingDeliverables` under unfinished.
+ 8. **Judgment calls** — render entries grouped by kind, leading with `disagreement` and `binding`, then `degradation`, folding `autonomy` last, so the human can prioritize high-signal items (likely issues) before low-signal FYIs; within disagreement, cluster plan-defect: entries together so all plan divergences read as one group.
+ 9. **Unfinished / completeness findings** — anything deferred, plus the critic's unmet-requirement/unverified-claim/untested-path findings; empty means nothing was left behind. Surface `gitVerified` here: a false value means the completeness review is unverified (the critic could not confirm it was on the integration tree, #29) and the gate must treat it as `BLOCKED`.
+-9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist. Omit the section when the array is empty. After merge, finishing consumes this array as a per-item checklist — see finishing-notes.md §Deferred-verification checklist.
++9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist. Omit the section when the array is empty. After merge, finishing consumes this array via the residual manifest — see finishing-notes.md §Residual manifest.
+ 10. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
+    rendered verbatim in document order. Sourced from the Step-2 dispositions (the
+    main agent carries it), **not** from the workflow return — the schema above is
+@@ -114,7 +116,7 @@ When the workflow completes, the main agent renders the report as a concise huma
+    `references/finishing-notes.md`: detect allowed merge methods (recommend squash
+    when accumulated merge commits would block rebase) and warn when the integration
+    base is far ahead of the deploy target.
+-11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, and any tier-misrank candidates (implementers above 1.5x the median turns of same-model peers). Advisory only: it informs the next run's tier assignments and never gates this one.
++11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, plus escalated-task and thrash signals. Advisory only: it informs the next run's tier assignments and never gates this one.
+ 12. **Live viewer (optional):** if the launch-time live viewer is still serving, point the human at its `http://localhost:<port>/swarm.html` — live station state, the cross-agent feed, and click-to-zoom into any agent's transcript. Otherwise offer to open one: `python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/serve_viewer.py <plan-path> --transcripts <transcript-dir>`. One line, opt-in, read-only; skip in headless runs.
+ 
+ This pre-merge review is the **second and final gate** (after plan approval; the Step-3 wave plan
+diff --git a/skills/ultrapowers/references/wave-merge.md b/skills/ultrapowers/references/wave-merge.md
+index 55d9f787fffab24290ea061a31cc51c8d83cf5fc..128871ef15d184e585b91666f8debbee873ec18d 100644
+--- a/skills/ultrapowers/references/wave-merge.md
++++ b/skills/ultrapowers/references/wave-merge.md
+@@ -54,7 +54,7 @@ Each worktree is checked out on a runtime-assigned branch named:
+ worktree-wf_<runId>-<n>
+ ```
+ 
+-Branches are locked while their worktree exists (worktrees and branches stay until the deterministic Step-5 sweep removes them; the merge agent itself never removes worktrees or deletes branches). When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree and its branch persist after merge — they are removed by the deterministic `sweep_worktrees.sh` at the Step-5 gate, not by the merge agent. Failed/blocked branches and their worktrees are likewise left for inspection until the orchestrating agent sweeps them after the pre-merge gate.
++Branches are locked while their worktree exists, and no engine role ever deletes a branch — branches carry the commits until the deterministic Step-5 sweep removes them. When a task agent finishes with no file changes, its worktree is auto-removed and no branch is reported. When changes exist, the worktree persists through review and merge; at the wave barrier the merge agent (or, when the wave's final MERGED came from reconciliation, the reconciliation agent) removes the just-merged worktrees named on its dispatch's SWEEP PATHS line — after confirming each path via `git worktree list --porcelain` — so a wide plan no longer accumulates every merged checkout to end-of-run (#151, reversing bea1875's prompt subtraction; disk exhaustion mid-merge misreports as CONFLICT). The SWEEP PATHS line is engine-derived from the self-reported branch names by shape (`worktree-wf_<x>-<n>` → `.claude/worktrees/wf_<x>-<n>`, the same mapping `sweep_worktrees.sh` owns); a malformed name contributes nothing, silently. Contended-wave adoptions are best-effort-excluded: they report MERGED through the contended STEP prompt, which carries no sweep step, so their consumed worktrees wait for the Step-5 sweep. Failed/blocked/parked branches and their worktrees are never swept mid-run — they are left for inspection until the orchestrating agent sweeps them after the pre-merge gate — and the Step-5 `sweep_worktrees.sh` remains idempotent over worktrees already removed at a wave barrier (`[ -e "$wt" ] || continue`).
+ 
+ Each implementer agent is responsible for self-reporting its branch name and HEAD sha at the end of its run. This self-report is the only mechanism by which the merge step learns the task-to-branch mapping — the script cannot inspect the filesystem to discover branches.
+ 
+@@ -88,7 +88,7 @@ The merge agent:
+ The canonical prompt wording:
+ 
+ <!-- BAKE:MERGE_PROMPT -->
+-You are the wave merge agent, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand.
++You are the wave merge agent, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. Merge each reported branch in the given task-index order (deterministic, so conflicts are reproducible). After all merges succeed, {{TEST_INSTRUCTION}}. Report MERGED with the final HEAD sha, or CONFLICT / TEST_FAILED with the conflict diff or failing output. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand. After the heads are recorded and only if you are reporting MERGED, sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this dispatch names the just-merged worktree paths, derived by the engine from the merged branch names; if no SWEEP PATHS line is appended, sweep nothing. For each listed path, run git worktree list --porcelain and confirm the path appears there with its checked-out branch being one you merged in this wave; only after that per-path check passes, remove it with git worktree remove --force <path>, using the absolute worktree path the porcelain output printed. A listed path absent from the porcelain output was already swept — skip it silently. A path that is present but fails the branch check must not be removed: skip it and name it in your reply detail. Never delete any branch — branches carry the merged commits, and the deterministic Step-5 sweep owns branch cleanup.
+ <!-- /BAKE -->
+ 
+ A wave that produces **no mergeable branches** (every task failed, dep-blocked, or deferred, or reported done without mergeable coordinates) skips its merge entirely: `waveMerges` records `status: 'SKIPPED'`, the integration branch and review base are untouched, and later waves still run when dependency edges were supplied (they decide what downstream work is blocked) or when nothing in the wave actually ran. When `args.edges` was NOT supplied and tasks did run, the workflow cannot know what depends on the lost work — it records the `SKIPPED` merge plus a `blockedWaves` entry ('no mergeable branches and no dependency edges supplied — cascading conservatively') and cascade-blocks later waves.
+@@ -233,7 +233,7 @@ On a merge conflict or a failed post-merge test, the controller dispatches a sin
+ The canonical prompt wording:
+ 
+ <!-- BAKE:RECONCILE_PROMPT -->
+-You are the reconciliation agent for {{INTEGRATION_BRANCH}}, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand.
++You are the reconciliation agent for {{INTEGRATION_BRANCH}}, operating ONLY inside the dedicated integration worktree at {{INTEGRATION_WT}} — never the session main checkout. cd into it; echo git rev-parse HEAD and git branch --show-current; if the branch is not the integration branch you were asked to operate on, report BLOCKED and merge nothing — do not detach or move any other checkout. You are given a merge conflict diff or failing test output. Resolve it on the integration branch, then {{TEST_INSTRUCTION}}. Report MERGED on success, or CONFLICT / TEST_FAILED with detail if you cannot resolve it. Before you report, record heads mechanically: run mkdir -p <runDir>/heads, then for each task branch you merged run git rev-parse <branch> > <runDir>/heads/task-<taskId>, then git rev-parse HEAD > <runDir>/heads/wave-<waveNumber>. Shell redirection only — never type a sha by hand. After the heads are recorded and only if you are reporting MERGED, sweep this wave's consumed worktrees: a SWEEP PATHS line appended to this dispatch names the just-merged worktree paths, derived by the engine from the merged branch names; if no SWEEP PATHS line is appended, sweep nothing. For each listed path, run git worktree list --porcelain and confirm the path appears there with its checked-out branch being one you merged in this wave; only after that per-path check passes, remove it with git worktree remove --force <path>, using the absolute worktree path the porcelain output printed. A listed path absent from the porcelain output was already swept — skip it silently. A path that is present but fails the branch check must not be removed: skip it and name it in your reply detail. Never delete any branch — branches carry the merged commits, and the deterministic Step-5 sweep owns branch cleanup.
+ <!-- /BAKE -->
+ 
+ Caps and failure handling:
+diff --git a/skills/ultrapowers/scripts/audit_run.py b/skills/ultrapowers/scripts/audit_run.py
+index 8f279add72ef8ba3eee7d99553ba5a50c62abe2a..004b18cded83a8372168717c980837f55473c80b 100644
+--- a/skills/ultrapowers/scripts/audit_run.py
++++ b/skills/ultrapowers/scripts/audit_run.py
+@@ -4,9 +4,7 @@
+ Reads the engine's per-run transcript directory (the "Transcript dir:" path
+ printed at Workflow launch), classifies each agent-*.jsonl by role from the
+ stable baked-prompt phrases, sums assistant turns and output tokens, and
+-prints a markdown effort table plus tier-misrank candidates: implementers
+-above 1.5x the median turns of SAME-MODEL peers (transcripts carry resolved
+-model strings, not tier names — grouping by model is exact).
++prints a markdown effort table plus escalated-task and thrash signals.
+ 
+ ADVISORY BY CONTRACT: a missing directory, no agent files, or a drifted
+ layout prints one diagnostic and exits 0 — this script must never block the
+@@ -16,7 +14,6 @@ from __future__ import annotations
+ 
+ import json
+ import re
+-import statistics
+ import sys
+ from pathlib import Path
+ 
+@@ -47,8 +44,7 @@ ROLE_MARKERS = [
+     ("You are a read-only preflight agent", "waves-file-check"),
+ ]
+ 
+-# Absolute thrash heuristic (no same-model-peer requirement, unlike the relative
+-# misrank detector): an implementer doing many turns for little output. Tuned so
++# Absolute thrash heuristic: an implementer doing many turns for little output. Tuned so
+ # healthy implementers (~90 tokens/turn) are not flagged; a genuine thrasher
+ # (<40 tokens/turn over >=30 turns) is.
+ THRASH_MIN_TURNS = 30
+@@ -108,7 +104,7 @@ def audit(transcript_dir):
+     files = sorted(d.glob("agent-*.jsonl")) if d.is_dir() else []
+     if not files:
+         return {"agents": [], "totals": {"turns": 0, "outputTokens": 0},
+-                "misrankCandidates": [], "escalatedTasks": [], "thrashCandidates": [],
++                "escalatedTasks": [], "thrashCandidates": [],
+                 "note": f"no agent-*.jsonl under {transcript_dir}"}
+     agents = []
+     for f in files:
+@@ -117,16 +113,6 @@ def audit(transcript_dir):
+         agents.append({"role": role, "model": model, "turns": turns,
+                        "outputTokens": out_tokens})
+     agents.sort(key=lambda a: -a["turns"])
+-    impls = [a for a in agents if a["role"].startswith("impl")]
+-    by_model = {}
+-    for a in impls:
+-        by_model.setdefault(a["model"], []).append(a)
+-    misrank = []
+-    for group in by_model.values():
+-        if len(group) < 2:
+-            continue
+-        med = statistics.median(a["turns"] for a in group)
+-        misrank.extend(a for a in group if med and a["turns"] > 1.5 * med)
+     totals = {"turns": sum(a["turns"] for a in agents),
+               "outputTokens": sum(a["outputTokens"] for a in agents)}
+     # escalatedTasks: a task with more than one implementer transcript — the
+@@ -141,7 +127,7 @@ def audit(transcript_dir):
+               if a["role"].startswith("impl")
+               and a["turns"] >= THRASH_MIN_TURNS
+               and (a["outputTokens"] / a["turns"] if a["turns"] else 0) < THRASH_MAX_PER_TURN]
+-    return {"agents": agents, "totals": totals, "misrankCandidates": misrank,
++    return {"agents": agents, "totals": totals,
+             "escalatedTasks": escalated, "thrashCandidates": thrash}
+ 
+ 
+@@ -173,23 +159,6 @@ def main(argv=None):
+     if unknown:
+         print(f"\n{unknown} agent file(s) unclassified — baked-prompt phrases may have drifted.")
+ 
+-    impls = [r for r in rows if r[0].startswith("impl:")]
+-    by_model = {}
+-    for r in impls:
+-        by_model.setdefault(r[1], []).append(r)
+-    flagged = []
+-    for group in by_model.values():
+-        if len(group) < 2:
+-            continue  # single-sample noise: never flag a lone task
+-        med = statistics.median(r[2] for r in group)
+-        flagged.extend(r for r in group if med and r[2] > 1.5 * med)
+-    if flagged:
+-        print("\n**Tier-misrank candidates** (turns > 1.5x median of same-model implementers):")
+-        for role, model, turns, _ in sorted(flagged, key=lambda r: -r[2]):
+-            print(f"- {role} on {model}: {turns} turns — consider a higher tier for tasks like this")
+-    else:
+-        print("\nNo tier-misrank candidates (no implementer exceeded 1.5x its same-model median).")
+-
+     # Peer-free signals (reuse audit(); the duplicate read is advisory and cheap).
+     data = audit(root)
+     if data.get("escalatedTasks"):
+diff --git a/skills/ultrapowers/scripts/redirect_args.py b/skills/ultrapowers/scripts/redirect_args.py
+index 6c57330f6e77d45458b11c85098fb0cece24394f..5b8982ca44154ffe92cb2d5bc0eea3c8f764191a 100644
+--- a/skills/ultrapowers/scripts/redirect_args.py
++++ b/skills/ultrapowers/scripts/redirect_args.py
+@@ -61,7 +61,10 @@ def main():
+         gr_path = os.path.join(os.path.dirname(os.path.abspath(a.receipt)),
+                                "gate-receipt.json")
+         if os.path.isfile(gr_path):
+-            branch = (load_json(gr_path, "gate receipt") or {}).get("integrationBranch")
++            gr = load_json(gr_path, "gate receipt") or {}
++            # #153: real receipts (ultra_gate.py) store the branch under
++            # "branch"; hand-built/legacy fixtures use "integrationBranch".
++            branch = gr.get("integrationBranch") or gr.get("branch")
+     if not branch:
+         die("no integration branch: pass --integration-branch or provide "
+             "gate-receipt.json next to the receipt")
+diff --git a/skills/ultrapowers/scripts/residual_manifest.py b/skills/ultrapowers/scripts/residual_manifest.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..f3f445c4743f842f33769617e310efc9ad8c0a3f
+--- /dev/null
++++ b/skills/ultrapowers/scripts/residual_manifest.py
+@@ -0,0 +1,219 @@
++#!/usr/bin/env python3
++"""Derive and check the residual manifest at finishing (issue #149).
++
++report.json emits three finding families -- completenessFindings,
++judgmentCalls, deferredVerification -- but whether they survive to
++release/close used to depend on orchestrator memory. Derive mode unions all
++three families across every report passed (resume/redirect rounds each pass
++their report) into one manifest row per distinct finding, content-addressed
++so the same finding gets the same id in every round. Check mode is the
++mechanical close check: exit 0 iff every row is dispositioned.
++
++Modes:
++  derive: residual_manifest.py <report.json> [more-reports...]
++              [--gate-acks <standing-approval.json>]  > residual-manifest.md
++  check:  residual_manifest.py --check <manifest.md>
++
++Row grammar (one line per row, exactly; anything else is commentary):
++  - <id> [<family>] <text> — disposition: <value>
++with <id> = <family>-<12-hex sha256 of the normalized text> (byte-identical
++duplicates within one report tiebreak -2, -3, ...) and <value> one of
++fixed | acked | filed:<ref> | waived:<reason>.
++
++Canonical manifest location: <runDir>/residual-manifest.md, beside
++report.json. NON-FROZEN and advisory-by-construction: a layer above the
++gate, at the ceremony the gate feeds -- it extends no frozen gate script.
++"""
++import argparse
++import hashlib
++import json
++import re
++import sys
++
++FAMILIES = ("completenessFindings", "judgmentCalls", "deferredVerification")
++
++# Keys that identify a report result even when all three finding families
++# are absent (a genuine report may legally emit zero findings).
++REPORT_MARKERS = ("tasks", "waveMerges", "coverage", "tests")
++
++# The constant suffix gate_check.py (FROZEN) appends to the recorded ack
++# detail for runtime/external deferredVerification items -- copied exactly.
++STRUCTURAL_SUFFIX = (" [structural false-green: sandbox could not "
++                     "execute it against the target]")
++
++ROW = re.compile(r"^- (?P<id>[A-Za-z]+-[0-9a-f]{12}(?:-\d+)?) "
++                 r"\[(?P<family>[A-Za-z]+)\] "
++                 r"(?P<text>.*) — disposition:(?P<value>.*)$")
++DISPOSITION = re.compile(r"^(?:fixed|acked|filed:\S+|waived:\S.*)$")
++
++
++def die(msg):
++    print("residual_manifest: " + msg, file=sys.stderr)
++    sys.exit(1)
++
++
++def load_json(path, what):
++    try:
++        with open(path) as f:
++            return json.load(f)
++    except (OSError, json.JSONDecodeError, TypeError) as e:
++        die("unreadable %s %r (%s)" % (what, path, e))
++
++
++def load_result(path):
++    """Accept the saved Workflow envelope (gate fields live under result.*)
++    or a bare result object. Die (exit 1) on anything that is not
++    recognizably a report -- a silent {} fallback would emit a vacuous-green
++    empty manifest for the wrong file."""
++    data = load_json(path, "report")
++    if isinstance(data, dict) and "result" in data:
++        if not isinstance(data["result"], dict):
++            die("not a report: %r has a non-dict result envelope" % path)
++        result = data["result"]
++    elif isinstance(data, dict):
++        result = data
++    else:
++        die("not a report: %r is not a JSON object" % path)
++    if (not any(k in result for k in FAMILIES)
++            and not any(k in result for k in REPORT_MARKERS)):
++        die("not a report: %r has none of the finding families (%s) "
++            "and no report markers (%s)"
++            % (path, ", ".join(FAMILIES), ", ".join(REPORT_MARKERS)))
++    return result
++
++
++def normalize(text):
++    return " ".join(str(text).split())
++
++
++def finding_text(family, item):
++    if family == "deferredVerification" and isinstance(item, dict):
++        head = "%s (%s)" % (item.get("deliverable", "?"),
++                            item.get("reason", "unknown"))
++        why = normalize(item.get("why", "") or "")
++        return normalize(head) + ((" — " + why) if why else "")
++    return normalize(item)
++
++
++def acked_by_record(item, ack_list):
++    """Pre-fill from durable records only: a standing-approval.json ackList
++    entry (gate_check.py ack shape: type "deferred:<reason>", detail
++    "<deliverable> — <why>" plus, for runtime/external, STRUCTURAL_SUFFIX)
++    matching this deferredVerification item. Exact match only -- a prefix
++    match would let an ack for one item cross-ack another whose why is a
++    string-prefix of it."""
++    if not (isinstance(item, dict) and ack_list):
++        return False
++    deliverable = str(item.get("deliverable", "?"))
++    reason = str(item.get("reason", "unknown"))
++    # gate_check.py records str(d.get("why", "")): absent -> "", None ->
++    # "None" -- replicate its coercion exactly.
++    prefix = deliverable + " — " + str(item.get("why", ""))
++    for ack in ack_list:
++        if not (isinstance(ack, dict)
++                and str(ack.get("type", "")) == "deferred:" + reason):
++            continue
++        detail = str(ack.get("detail", ""))
++        if detail == prefix or detail == prefix + STRUCTURAL_SUFFIX:
++            return True
++    return False
++
++
++def derive(report_paths, ack_list):
++    rows = {}  # id -> (family, text, disposition-suffix); insertion-ordered
++    for path in report_paths:
++        result = load_result(path)
++        seen = {}  # per-report tiebreak counters for byte-identical dupes
++        for family in FAMILIES:
++            items = result.get(family) or []
++            if not isinstance(items, list):
++                continue
++            for item in items:
++                text = finding_text(family, item)
++                if not text:
++                    continue
++                digest = hashlib.sha256(
++                    text.encode("utf-8")).hexdigest()[:12]
++                base = family + "-" + digest
++                n = seen.get(base, 0) + 1
++                seen[base] = n
++                rid = base if n == 1 else "%s-%d" % (base, n)
++                if rid in rows:
++                    continue  # the union dedupes on content id
++                disp = (" acked" if family == "deferredVerification"
++                        and acked_by_record(item, ack_list) else "")
++                rows[rid] = (family, text, disp)
++    return rows
++
++
++def emit(rows, sources):
++    lines = ["# Residual manifest", "",
++             "<!-- derived from: " + ", ".join(sources) + " -->",
++             "<!-- disposition one of: fixed | acked | filed:<ref> | "
++             "waived:<reason> -->", ""]
++    if not rows:
++        lines.append("No residual findings.")
++    for rid, (family, text, disp) in rows.items():
++        lines.append("- %s [%s] %s — disposition:%s"
++                     % (rid, family, text, disp))
++    print("\n".join(lines))
++
++
++def check(path):
++    try:
++        with open(path) as f:
++            lines = f.read().splitlines()
++    except OSError as e:
++        die("unreadable manifest %r (%s)" % (path, e))
++    bad, total = [], 0
++    for line in lines:
++        m = ROW.match(line)
++        if not m:
++            continue  # commentary
++        total += 1
++        value = m.group("value").strip()
++        if not DISPOSITION.match(value):
++            bad.append(m.group("id") +
++                       ("" if not value
++                        else " (invalid disposition %r)" % value))
++    if bad:
++        print("residual_manifest: NOT CLEAN — %d undispositioned row(s):"
++              % len(bad), file=sys.stderr)
++        for b in bad:
++            print("  " + b, file=sys.stderr)
++        return 2
++    print("residual_manifest: CLEAN — %d row(s) dispositioned%s"
++          % (total, " (zero rows: vacuous pass)" if total == 0 else ""))
++    return 0
++
++
++def main():
++    ap = argparse.ArgumentParser(
++        description=__doc__,
++        formatter_class=argparse.RawDescriptionHelpFormatter)
++    ap.add_argument("reports", nargs="*",
++                    help="report.json files to union (derive mode)")
++    ap.add_argument("--gate-acks", default=None, metavar="STANDING_APPROVAL",
++                    help="standing-approval.json whose recorded ackList "
++                         "pre-dispositions matching deferredVerification "
++                         "rows as acked")
++    ap.add_argument("--check", default=None, metavar="MANIFEST",
++                    help="check mode: exit 0 iff every row is dispositioned")
++    a = ap.parse_args()
++
++    if a.check:
++        if a.reports or a.gate_acks:
++            die("--check takes a manifest only (no reports, no --gate-acks)")
++        return check(a.check)
++    if not a.reports:
++        die("derive mode needs at least one report.json "
++            "(or --check <manifest>)")
++    ack_list = []
++    if a.gate_acks:
++        ack_list = load_json(a.gate_acks, "gate-acks").get("ackList") or []
++    emit(derive(a.reports, ack_list), a.reports)
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/skills/ultrapowers/scripts/sweep_worktrees.sh b/skills/ultrapowers/scripts/sweep_worktrees.sh
+index bc8865867e52b47706ecd256b37a90c16a690f8a..4c6d33841cd6952d9b4f5c4c492a82a1655c7b01 100755
+--- a/skills/ultrapowers/scripts/sweep_worktrees.sh
++++ b/skills/ultrapowers/scripts/sweep_worktrees.sh
+@@ -15,6 +15,12 @@
+ # reported; pass --force to remove them too (and force-delete unmerged branches,
+ # as before).
+ #
++# Before removing a worktree the sweep TERM/KILLs processes still running out
++# of it, and afterwards reaps orphaned processes whose command line references
++# an engine worktree path that no longer exists (dev servers the engine's
++# mid-run wave-merge sweep left behind). Kept worktrees' processes are never
++# touched. See "process reaping" below.
++#
+ # Pass --run <runId> to scope removal to a single run's worktrees and branches
+ # (.claude/worktrees/wf_<runId>-* and worktree-wf_<runId>-*).  When --run is
+ # not given, RUNID env var is consulted, then the RUN_LOCK file; if none is
+@@ -148,6 +154,103 @@ mtime_of() {
+   printf '%s' "$m"
+ }
+ 
++# ── process reaping ────────────────────────────────────────────────────────
++# Removing a worktree directory does not stop processes still running out of
++# it: dev servers spawned by task test suites (wrangler/miniflare workerd and
++# kin) reparent to PID 1 when their task's agent exits and pin the deleted
++# files and RAM for days (Julian 2026-08-14: 221 orphaned workerd processes
++# across 3 runs, several GB held via deleted-but-open files). Recurred, so the
++# sweep reaps: TERM, a short grace, then KILL.
++#
++# Matching is by COMMAND LINE (`ps -A -o pid=,command=` — POSIX, identical on
++# macOS and Linux): it catches executables and script args under the worktree
++# path, including processes whose directory is ALREADY deleted, since the dead
++# path survives in the command string. It cannot see a process whose cwd alone
++# is inside the worktree (the command shows no path); lsof could, but is far
++# too slow to run per sweep. The needle rides in the awk ENVIRONMENT, not its
++# argv, so the scan's own transient processes never match themselves.
++
++# The sweep may legally run from INSIDE a worktree being removed — the copy of
++# this script in that worktree has the worktree path on its own command line.
++# Exclude this process and its whole ancestor chain so the sweep never reaps
++# itself or the harness shell that launched it.
++self_and_ancestors() {
++  local pid=$$ out="" i=0
++  while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null && [ "$i" -lt 20 ]; do
++    out="$out $pid"
++    i=$((i + 1))
++    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" || break
++  done
++  printf '%s ' "$out"
++}
++SELF_TREE="$(self_and_ancestors)"
++
++# PIDs whose command line contains $1 at a path boundary (next char is /,
++# space, or end — so sweeping wf_1 can never match a live wf_12).
++pids_matching() {
++  ps -A -o pid=,command= | NEEDLE="$1" awk '
++    {
++      needle = ENVIRON["NEEDLE"]
++      i = index($0, needle)
++      if (i == 0) next
++      c = substr($0, i + length(needle), 1)
++      if (c != "" && c != "/" && c != " ") next
++      print $1
++    }'
++}
++
++# Emit "pid<TAB>worktree-path" for every process referencing an engine
++# worktree path under this repo (the wf_ dir name contains no / or space,
++# so it ends at the first of either).
++scan_engine_procs() {
++  ps -A -o pid=,command= | NEEDLE="$ROOT/.claude/worktrees/" awk '
++    {
++      needle = ENVIRON["NEEDLE"]
++      i = index($0, needle)
++      if (i == 0) next
++      rest = substr($0, i + length(needle))
++      if (substr(rest, 1, 3) != "wf_") next
++      split(rest, parts, /[\/ ]/)
++      print $1 "\t" needle parts[1]
++    }'
++}
++
++# TERM the given pids, poll up to ~5s for them to exit, KILL survivors.
++# Reaping never fails the sweep — a pid may vanish between scan and signal.
++kill_with_grace() {
++  [ $# -gt 0 ] || return 0
++  kill -TERM "$@" 2>/dev/null || true
++  local i pid alive=""
++  for i in 1 2 3 4 5 6 7 8 9 10; do
++    alive=""
++    for pid in "$@"; do
++      if kill -0 "$pid" 2>/dev/null; then alive="$alive $pid"; fi
++    done
++    [ -z "$alive" ] && return 0
++    sleep 0.5
++  done
++  # alive is a space-separated pid list
++  # shellcheck disable=SC2086
++  kill -KILL $alive 2>/dev/null || true
++}
++
++# Reap every process still running out of worktree path $1 (called only for
++# worktrees this sweep is actually about to remove — kept/locked ones are
++# possibly-live state and their processes are left alone).
++reap_under() {
++  local wt="$1" pid pids="" n
++  for pid in $(pids_matching "$wt"); do
++    case "$SELF_TREE" in *" $pid "*) continue ;; esac
++    pids="$pids $pid"
++  done
++  [ -n "$pids" ] || return 0
++  # shellcheck disable=SC2086
++  n="$(echo $pids | wc -w | tr -d ' ')"
++  echo "reaped: $n process(es) still running out of $wt"
++  # shellcheck disable=SC2086
++  kill_with_grace $pids
++}
++
+ # ── audit mode (report-only janitor) ───────────────────────────────────────
+ # "Kept for inspection" degrades to kept-forever unless something re-surfaces
+ # it (Findings 2+3, vibes.diy 2026-07-31). Flags engine worktrees and
+@@ -200,6 +303,15 @@ if [ -n "$AUDIT" ]; then
+     fi
+     echo "stale branch: $br ($state, last commit $((age / 86400))d ago)"
+   done < <(git -C "$ROOT" branch --list "worktree-wf_*" --format='%(refname:short)')
++  # Report-only: a process referencing a DELETED engine worktree path is a
++  # leak by definition (its files are gone; no live run can be using it).
++  # The audit names it; only a sweep reaps it.
++  while IFS=$(printf '\t') read -r pid wtpath; do
++    [ -n "$pid" ] || continue
++    case "$SELF_TREE" in *" $pid "*) continue ;; esac
++    [ -e "$wtpath" ] && continue
++    echo "orphan process: pid $pid still running out of deleted $wtpath — a sweep will reap it"
++  done < <(scan_engine_procs)
+   if [ "$orphans" -eq 0 ] && [ "$stale" -eq 0 ]; then
+     echo "audit: clean (no orphan worktrees or stale branches older than ${AGE_HOURS}h${live:+; live run ${live} exempt})"
+   elif [ -n "$live" ]; then
+@@ -271,6 +383,10 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
+   case "$(pwd -P)/" in
+     "$wt"/*) echo "note: removing your current directory ($wt) — cd \"$ROOT\" afterwards" >&2 ;;
+   esac
++  # Kill what still runs out of this worktree BEFORE removing it — otherwise
++  # the processes outlive the directory and pin its deleted files (the leak
++  # the orphan pass below exists to mop up after the fact).
++  reap_under "$wt"
+   # --force --force also removes locked worktrees; a stale directory git no
+   # longer recognizes falls through to rm -rf. The sweep never aborts mid-loop.
+   # Increment only on a successful removal so the summary is accurate.
+@@ -284,6 +400,27 @@ for wt in "$ROOT"/.claude/worktrees/wf_${WT_SUFFIX}; do
+ done
+ git -C "$ROOT" worktree prune
+ 
++# ── orphan-process pass ────────────────────────────────────────────────────
++# The engine's wave-merge removes consumed worktrees MID-RUN without killing
++# what they spawned; the deleted path survives in each process's command line.
++# A process referencing an engine worktree path that no longer exists on disk
++# is garbage regardless of --run scope (its files are deleted; no live run can
++# be using it) — reap repo-wide. Worktrees that still exist (kept, locked,
++# out-of-scope) may be live state: their processes are left alone.
++orphan_pids=""
++while IFS=$(printf '\t') read -r pid wtpath; do
++  [ -n "$pid" ] || continue
++  case "$SELF_TREE" in *" $pid "*) continue ;; esac
++  case " $orphan_pids " in *" $pid "*) continue ;; esac
++  [ -e "$wtpath" ] && continue
++  orphan_pids="$orphan_pids $pid"
++  echo "orphan process: pid $pid still running out of deleted $wtpath — reaping"
++done < <(scan_engine_procs)
++if [ -n "$orphan_pids" ]; then
++  # shellcheck disable=SC2086
++  kill_with_grace $orphan_pids
++fi
++
+ deleted=0
+ kept=0
+ while IFS= read -r br; do
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index 16abf2efa7f982871d0efbd03b2c27794ef4e195..d190f894a9739699938f3e53006d0cef2fbd3db0 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -34,6 +34,14 @@ PLUGIN_ROOT = HERE.parents[2]
+ RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
+ KEEP_RUNS = 10
+ 
++# #151 disk-headroom guard: per-concurrent-worktree footprint envelope and
++# the absolute block floor. Hardcoded by design — the env knob was deleted
++# at trim review (a tuning surface on an advisory warn is machinery not yet
++# earned by field data).
++GIB = 1024 ** 3
++HEADROOM_PER_TASK = int(1.5 * GIB)
++HEADROOM_FLOOR = 2 * GIB
++
+ 
+ def _run_dirs(state_dir):
+     """All state_dir entries matching the strict run-<stamp> pattern, sorted
+@@ -393,6 +401,37 @@ def main(argv=None):
+         return bail()
+     receipt["compile"] = compile_obj
+ 
++    # Disk headroom (#151): the cycle's one budgeted additive guard, placed
++    # after compile (it needs compile_obj["waves"] for the widest-wave width)
++    # and before anything expensive. The widest wave bounds peak concurrent
++    # worktree footprint. Advisory by default — warn stays ok:true with a
++    # verdict-stating detail (#97; warn shape per the worktree-audit stage) —
++    # because a tight-but-sufficient host must not false-block. Block only
++    # when free < min(2 GiB, estimate): the floor never exceeds what the run
++    # actually needs, so a narrow run on a small host is never refused by a
++    # floor larger than its own estimate.
++    widest = max((len(w) for w in (compile_obj.get("waves") or [])), default=0)
++    estimate = widest * HEADROOM_PER_TASK
++    free = shutil.disk_usage(root).free
++    floor = min(HEADROOM_FLOOR, estimate)
++
++    def _gib(n):
++        return "%.1f GiB" % (n / GIB)
++
++    headroom = ("free %s vs estimate %s (widest wave %d x 1.5 GiB)"
++                % (_gib(free), _gib(estimate), widest))
++    if free < floor:
++        stage("disk-headroom", False,
++              failure="BLOCKED: " + headroom + " — free is below the "
++                      "min(2 GiB, estimate) floor; free disk space and relaunch")
++        return bail()
++    if free < estimate:
++        stage("disk-headroom", True,
++              success="WARN: " + headroom + " — the run may exhaust disk "
++                      "mid-merge; consider freeing space (advisory)")
++    else:
++        stage("disk-headroom", True, success="ok: " + headroom)
++
+     # An explicitly-passed knob is judged on its stripped value: a whitespace
+     # command would be stamped verbatim and eval to a false green at the gate,
+     # and an empty one would silently fall through to detection (#105). Both
+diff --git a/tests/sim_workflow.mjs b/tests/sim_workflow.mjs
+index 93b4634f4887abd34e6c756c07659c3f8f736baa..50eaf56013020454236e023aea83451c67fc59d9 100644
+--- a/tests/sim_workflow.mjs
++++ b/tests/sim_workflow.mjs
+@@ -150,13 +150,92 @@ async function scenarioHappy() {
+   assert(r.waveMerges.length === 2 && r.waveMerges.every((m) => m.status === 'MERGED' && m.headSha),
+     'happy: per-wave merge outcomes recorded (status + headSha)')
+   eq(r.waveMerges.map((m) => m.wave), [1, 2], 'happy: waveMerges numbered in order')
+-  assert(!/git worktree remove/.test(mergePrompt), 'happy: merge prompt no longer instructs cleanup (deterministic Step-5 sweep handles it)')
++  // #151 (reverses bea1875): the merge prompt now CARRIES the wave-barrier
++  // cleanup step; the deterministic Step-5 sweep stays the idempotent
++  // backstop. The stub branches (wt-A…) are malformed under the sweep
++  // regex, so no appended SWEEP PATHS line may appear — malformed names
++  // contribute nothing, silently. (The baked step itself REFERS to "a SWEEP
++  // PATHS line", so the pin matches the appended line's exact prefix, not the
++  // bare phrase.)
++  assert(/git worktree remove --force/.test(mergePrompt), 'happy: merge prompt carries the wave-barrier cleanup step (#151)')
++  assert(!/SWEEP PATHS for this wave:/.test(mergePrompt), 'happy: malformed stub branches derive no sweep paths')
+   assert(/git branch --show-current/.test(mergePrompt), 'happy: merge prompt asserts the integration HEAD before merging')
+   // acceptance-absent: no acceptance arg supplied → report.acceptance must be null
+   eq(r.acceptance, null, 'happy: acceptance is null when not supplied (acceptance-absent)')
+   console.log('scenario happy: OK')
+ }
+ 
++// ── Scenario: wave-barrier sweep (#151, reverses bea1875) ────────────────────
++// The merge AND reconcile dispatches carry the baked cleanup step plus a
++// SWEEP PATHS line listing exactly the just-merged tasks' worktree paths,
++// derived by regex from self-reported branch names: a malformed branch
++// contributes nothing, a non-merged task's path is never listed, a later
++// wave never re-lists an earlier wave's paths, and the step itself carries
++// the missing-path skip clause (resume tolerance).
++async function scenarioWaveBarrierSweep() {
++  const prompts = {}
++  const agent = async (prompt, opts) => {
++    const label = opts.label || ''
++    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
++    if (label.startsWith('impl:') || label.startsWith('fix:')) {
++      const id = taskIdFromLabel(label)
++      // A and C: well-formed runtime branch names; M: malformed (regex miss);
++      // B: well-formed, but its review fails it out of the merge set.
++      const branch = id === 'M' ? 'wt-M' : 'worktree-wf_run9-' + { A: 1, B: 2, C: 4 }[id]
++      return { status: 'DONE', summary: 's', branch, headSha: 'sha-' + id, commit: 'c-' + id }
++    }
++    if (label.startsWith('review:')) {
++      const id = taskIdFromLabel(label)
++      if (id === 'B') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'never green' }] }
++      return { verdict: 'PASS', issues: [] }
++    }
++    if (label === 'merge:wave1') {
++      prompts['merge:wave1'] = prompt
++      return { status: 'CONFLICT', detail: 'conflict in a.txt' } // force a reconcile dispatch
++    }
++    if (label.startsWith('reconcile:wave1')) {
++      prompts['reconcile'] = prompt
++      return { status: 'MERGED', headSha: 'm1' }
++    }
++    if (label.startsWith('merge:')) { prompts['merge:wave2'] = prompt; return { status: 'MERGED', headSha: 'm2' } }
++    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
++    throw new Error('unexpected agent label: ' + label)
++  }
++  const waves = [
++    [{ id: 'A', title: 'a', body: 'do a', tier: 'cheap' },
++     { id: 'B', title: 'b', body: 'do b', tier: 'cheap' },
++     { id: 'M', title: 'm', body: 'do m', tier: 'cheap' }],
++    [{ id: 'C', title: 'c', body: 'do c', tier: 'cheap' }],
++  ]
++  const r = await runWorkflow({ agent,
++    args: { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 's', edges: [] },
++    budget: undefined })
++  const w1 = prompts['merge:wave1']
++  // Exactly the just-merged, well-formed path: B failed out (never merged),
++  // M is malformed (contributes nothing, silently). The trailing period pins
++  // the list as exactly one entry.
++  assert(w1.includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
++    'sweep: wave-1 SWEEP PATHS lists exactly the merged well-formed path')
++  assert(!w1.includes('wf_run9-2'), 'sweep: failed task B is never listed')
++  assert(!w1.includes('.claude/worktrees/wt-M'), 'sweep: malformed branch contributes no path')
++  // The baked step rides BOTH prompts: identity check, forced removal, resume
++  // tolerance (missing path = silent skip), branch preservation.
++  for (const [name, p] of [['merge', w1], ['reconcile', prompts['reconcile']]]) {
++    assert(/git worktree list --porcelain/.test(p), 'sweep: ' + name + ' prompt carries the per-path identity check')
++    assert(/git worktree remove --force/.test(p), 'sweep: ' + name + ' prompt carries the removal command')
++    assert(/skip it silently/.test(p), 'sweep: ' + name + ' prompt tolerates an already-swept path (resume)')
++    assert(/Never delete any branch/.test(p), 'sweep: ' + name + ' prompt forbids branch deletion')
++  }
++  assert(prompts['reconcile'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-1.'),
++    'sweep: reconcile dispatch carries the same SWEEP PATHS line')
++  // Wave 2 lists only ITS OWN merged path — never a prior wave's.
++  assert(prompts['merge:wave2'].includes('SWEEP PATHS for this wave: .claude/worktrees/wf_run9-4.'),
++    'sweep: wave-2 lists exactly its own merged path')
++  assert(!prompts['merge:wave2'].includes('wf_run9-1'), 'sweep: wave-2 never re-lists wave-1 paths')
++  assert(r.tasks.find((t) => t.task === 'A').status === 'done', 'sweep: run completes')
++  console.log('scenario wave-barrier-sweep: OK')
++}
++
+ // ── Scenario 2: fix-loop — A needs one fix round, then passes (cap 2) ─────────
+ async function scenarioFixLoop() {
+   const reviewCalls = {}
+@@ -1974,6 +2053,7 @@ async function scenarioAcceptanceWaived() {
+ }
+ 
+ await scenarioHappy()
++await scenarioWaveBarrierSweep()
+ await scenarioFixLoop()
+ await scenarioFixLoopExhausted()
+ await scenarioBlockedCascade()
+@@ -3023,9 +3103,189 @@ async function scenarioEarlyExhaustStampsCommand() {
+   console.log('scenario early-exhaust-stamps-command: OK')
+ }
+ 
++// ── Scenario: null MERGE reply → synthesized CONFLICT → reconcile engages ─────
++// agent() returns null (not throws) on terminal Overloaded; the merge dispatch
++// must normalize it like its catch branch instead of TypeError-ing at
++// merge.status and aborting the whole run (#148 §1).
++async function scenarioMergeNullContained() {
++  let reconciled = false
++  const waves = [[{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }]]
++  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label.startsWith('merge:')) return null // terminal Overloaded: null reply, no throw
++      if (label.startsWith('reconcile:')) { reconciled = true; return { status: 'MERGED', headSha: 'm1' } }
++      return undefined
++    }),
++    args, budget: undefined,
++  })
++  assert(reconciled, 'mergeNull: a null merge reply degrades to CONFLICT and reconcile dispatches')
++  eq(r.waveMerges[0] && r.waveMerges[0].status, 'MERGED', 'mergeNull: reconcile recovered the wave')
++  assert(r.tasks.length === 1 && r.blockedWaves.length === 0, 'mergeNull: run completed normally — no TypeError abort')
++  console.log('scenario merge-null-contained: OK')
++}
++
++// ── Scenario: null RECONCILE reply → synthesized CONFLICT → attempt cap ends it ─
++// Both reconcile attempts die; the existing attempt cap (2) must terminate the
++// loop with the wave blocked and the run alive — never a TypeError (#148 §1).
++async function scenarioReconcileNullContained() {
++  const waves = [
++    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
++    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
++  ]
++  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim' }
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label === 'merge:wave1') return { status: 'CONFLICT', detail: 'clash' }
++      if (label.startsWith('reconcile:')) return null // dead reconcile agent, both attempts
++      return undefined
++    }),
++    args, budget: undefined,
++  })
++  eq(r.blockedWaves.length, 1, 'reconcileNull: wave 1 blocked after both null reconciles (attempt cap 2)')
++  assert(r.blockedWaves[0] && /null reply/.test(r.blockedWaves[0].detail),
++    'reconcileNull: block detail names the null reply, not a TypeError')
++  assert(r.unfinished.some((u) => /B: cascade-blocked/.test(u)),
++    'reconcileNull: wave 2 cascade-blocked, run still returned a report')
++  console.log('scenario reconcile-null-contained: OK')
++}
++
++// ── Scenario: dead reviewer → park → barrier retry succeeds (#148 §2–§3) ──────
++// review:A:1 returns null once (terminal Overloaded). The task must PARK — not
++// burn its retry immediately into the storm — then recover at the wave barrier.
++// Zero failed tasks; the transient 'parked-infra' marker never reaches the report.
++async function scenarioInfraDeathParkRecovers() {
++  let reviewACalls = 0
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label === 'review:A:1') {
++        reviewACalls++
++        if (reviewACalls === 1) return null // dead reviewer: null reply, no throw
++      }
++      return undefined
++    }),
++    args: baseArgs, budget: undefined,
++  })
++  const a = r.tasks.find((t) => t.task === 'A')
++  assert(a && a.status === 'done', 'infraPark: A recovered at the barrier retry and is done')
++  assert(r.tasks.every((t) => t.status !== 'failed'), 'infraPark: zero failed tasks recorded')
++  assert(r.waveMerges[0] && r.waveMerges[0].status === 'MERGED', 'infraPark: wave 1 merged after recovery')
++  assert(r.judgmentCalls.some((j) => /task A: infra-death/.test(j)),
++    'infraPark: park recorded as a judgment call')
++  assert(r.judgmentCalls.some((j) => /recovered at the barrier retry/.test(j)),
++    'infraPark: recovery recorded as a judgment call')
++  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
++    'infraPark: the immediate same-tier retry lane must NOT fire for an infra-death')
++  assert(!JSON.stringify(r).includes('parked-infra'),
++    'infraPark: the transient marker never appears anywhere in the report')
++  console.log('scenario infra-death-park-recovers: OK')
++}
++
++// ── Scenario: park retry dies again → failed, dependents blocked (#148 §3) ────
++// review:A:1 returns null EVERY time: the initial pipeline parks, the barrier
++// retry dies the same way → today's terminal semantics: status failed with
++// reviewVerdict agent-error, and the dependent is blocked before dispatch.
++async function scenarioInfraDeathRetryDies() {
++  const waves = [
++    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
++    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
++  ]
++  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
++    edges: [['A', 'B']] }
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label === 'review:A:1') return null // dead reviewer, every attempt
++      return undefined
++    }),
++    args, budget: undefined,
++  })
++  const a = r.tasks.find((t) => t.task === 'A')
++  assert(a !== undefined, 'infraRetryDies: A appears in tasks')
++  eq(a.status, 'failed', 'infraRetryDies: A failed after the barrier retry died')
++  eq(a.reviewVerdict, 'agent-error', 'infraRetryDies: terminal verdict is agent-error, exactly as today')
++  assert(r.judgmentCalls.some((j) => /barrier retry after infra-death failed/.test(j)),
++    'infraRetryDies: the dead retry recorded as a judgment call')
++  assert(r.unfinished.some((u) => /^B: blocked — depends on a failed task/.test(u)),
++    'infraRetryDies: dependent B blocked before dispatch')
++  assert(!JSON.stringify(r).includes('parked-infra'),
++    'infraRetryDies: the transient marker never appears anywhere in the report')
++  console.log('scenario infra-death-retry-dies: OK')
++}
++
++// ── Scenario: null fix-round reply → AGENT_NULL → park lane (#148 §2, sim 5) ──
++// Without the fix-round AGENT_NULL throw, a null fix reply TypeErrors at
++// impl.status with a message no classifier matches, silently keeping the
++// storm-retry behavior. It must mint the marker and park instead.
++async function scenarioFixRoundNullParks() {
++  let reviewACalls = 0
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label === 'review:A:1') {
++        reviewACalls++
++        // First review demands a fix; the post-park retry's review passes.
++        if (reviewACalls === 1) {
++          return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'needs work' }] }
++        }
++        return undefined
++      }
++      if (label === 'fix:A:1') return null // dead fix-round implementer
++      return undefined
++    }),
++    args: baseArgs, budget: undefined,
++  })
++  const a = r.tasks.find((t) => t.task === 'A')
++  assert(a && a.status === 'done', 'fixNull: A parked on the dead fix round, then recovered at the barrier')
++  assert(r.judgmentCalls.some((j) => /AGENT_NULL: fix-round implementer agent returned null/.test(j)),
++    'fixNull: classified by the engine-minted AGENT_NULL marker, not a raw TypeError')
++  assert(!r.judgmentCalls.some((j) => /retrying once at/.test(j)),
++    'fixNull: routed to the park lane, never the immediate storm retry')
++  assert(!JSON.stringify(r).includes('parked-infra'),
++    'fixNull: the transient marker never appears anywhere in the report')
++  console.log('scenario fix-round-null-parks: OK')
++}
++
++// ── Scenario: budget exhausted before the barrier retry → deferred lane (#148 §3) ─
++// The retry pass is budget-checkpointed like every dispatch site. Exhaustion
++// routes the parked task to deferred/unfinished — never 'failed' — so a budget
++// event does not cascade-block dependents as a failure would.
++async function scenarioInfraParkBudgetDefers() {
++  let reviewDied = false
++  const waves = [
++    [{ id: 'A', title: 'task A', body: 'do A', tier: 'cheap' }],
++    [{ id: 'B', title: 'task B', body: 'do B', tier: 'cheap' }],
++  ]
++  const args = { ...LAUNCH_ARGS, waves, integrationBranch: 'ultra/integration-sim', stamp: 'sim',
++    edges: [['A', 'B']] }
++  const budget = { total: 100, remaining: () => (reviewDied ? 0 : 50) }
++  const r = await runWorkflow({
++    agent: makeAgent((label) => {
++      if (label === 'review:A:1') { reviewDied = true; return null } // park A, then budget hits 0
++      return undefined
++    }),
++    args, budget,
++  })
++  assert(r.unfinished.some((u) => /^A: deferred \(budget exhausted before infra-death barrier retry\)/.test(u)),
++    'parkBudget: parked task routed to the deferred/unfinished lane')
++  assert(!r.tasks.some((t) => t.task === 'A'), 'parkBudget: no task record for A — deferred, not failed')
++  assert(!r.unfinished.some((u) => /blocked — depends on a failed task/.test(u)),
++    'parkBudget: budget deferral never cascade-blocks dependents as a failure')
++  assert(r.unfinished.some((u) => /^B: deferred \(budget exhausted\)/.test(u)),
++    'parkBudget: dependent B lands in the budget lane too, not the blocked lane')
++  assert(r.judgmentCalls.some((j) => /budget exhausted/.test(j)), 'parkBudget: cause in judgmentCalls')
++  assert(!JSON.stringify(r).includes('parked-infra'),
++    'parkBudget: the transient marker never appears anywhere in the report')
++  console.log('scenario infra-park-budget-defers: OK')
++}
++
+ await scenarioTestCmdMissing()
+ await scenarioMechanicalTestsCommandNoField()
+ await scenarioCriticCommandIgnored()
+ await scenarioEarlyExhaustStampsCommand()
++await scenarioMergeNullContained()
++await scenarioReconcileNullContained()
++await scenarioInfraDeathParkRecovers()
++await scenarioInfraDeathRetryDies()
++await scenarioFixRoundNullParks()
++await scenarioInfraParkBudgetDefers()
+ 
+ console.log('ALL SCENARIOS PASSED')
+diff --git a/tests/test_audit_refactor.py b/tests/test_audit_refactor.py
+index 4bbe8393b3081f1c3ad688dea3b3c6ddbb396e42..f6467e892335e5f9bfde7ac05781e8c6d5974219 100644
+--- a/tests/test_audit_refactor.py
++++ b/tests/test_audit_refactor.py
+@@ -10,7 +10,8 @@ FIX = Path(__file__).resolve().parents[1] / "tests/fixtures/ultralearn/audit"
+ def test_audit_returns_structured_dict():
+     out = audit_run.audit(FIX)
+     assert isinstance(out, dict)
+-    assert set(out) >= {"agents", "totals", "misrankCandidates"}
++    assert set(out) >= {"agents", "totals", "escalatedTasks", "thrashCandidates"}
++    assert "misrankCandidates" not in out   # retired by #152 — deletion pin
+     assert isinstance(out["agents"], list) and len(out["agents"]) == 1
+     a = out["agents"][0]
+     assert set(a) >= {"role", "model", "turns", "outputTokens"}
+diff --git a/tests/test_audit_run.py b/tests/test_audit_run.py
+index 6b2379192c8bc90b1d30f47eb6e97615b63bf0ad..2ad1d34882d0eec35db0b627afdb69cc9f2f982b 100644
+--- a/tests/test_audit_run.py
++++ b/tests/test_audit_run.py
+@@ -54,22 +54,6 @@ def test_classifies_roles_and_sums_effort(tmp_path):
+     assert "| merge | test-model | 1 | 10 |" in p.stdout
+ 
+ 
+-def test_flags_misrank_candidate_above_1_5x_same_model_median(tmp_path):
+-    agent_file(tmp_path, "a1", IMPL_1, "model-x", turns=10)
+-    agent_file(tmp_path, "a2", IMPL_9, "model-x", turns=10)
+-    agent_file(tmp_path, "a3", IMPL_7, "model-x", turns=40)   # 4x the median
+-    p = run_audit(tmp_path)
+-    assert "Tier-misrank candidates" in p.stdout
+-    assert "impl:7" in p.stdout.split("Tier-misrank candidates")[1]
+-
+-
+-def test_no_flagging_under_two_same_model_samples(tmp_path):
+-    agent_file(tmp_path, "a1", IMPL_7, "model-x", turns=40)
+-    agent_file(tmp_path, "a2", IMPL_9, "model-y", turns=10)
+-    p = run_audit(tmp_path)
+-    assert "No tier-misrank candidates" in p.stdout
+-
+-
+ def test_missing_dir_is_advisory_exit_zero(tmp_path):
+     p = run_audit(tmp_path / "does-not-exist")
+     assert p.returncode == 0
+diff --git a/tests/test_harvest_runs.py b/tests/test_harvest_runs.py
+index 4595a59d0ccf29bbc40518e8201ab195f99ee087..0e24e0ae7e85994417d416fff2b48432f4a45033 100644
+--- a/tests/test_harvest_runs.py
++++ b/tests/test_harvest_runs.py
+@@ -1069,3 +1069,232 @@ def test_slice_labels_tool_results_as_tool_result_never_user():
+     out = h.slice_transcript(recs)
+     assert "**user:**" not in out
+     assert "**tool_result:** <class 'dict'> ['tasks', 'waves']" in out
++
++
++# --- #150 mode (a): dir-level audit dedupe on resolved real paths — a
++# crash-resume session prints the same "Transcript dir:" twice (sometimes
++# via a symlink alias); pre-#150 each mention was audited separately and
++# _merge_audits bare-extended the duplicate agent blocks.
++
++def test_transcript_dirs_dedupes_repeated_and_symlinked_dir(tmp_path):
++    real = tmp_path / "wf_real"
++    real.mkdir()
++    (real / "agent-1.jsonl").write_text("{}\n")
++    alias = tmp_path / "wf_alias"
++    alias.symlink_to(real)
++    recs = [
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": f"Transcript dir: {real}"}]}]),
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": f"Transcript dir: {real}"}]}]),   # verbatim repeat
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": f"Transcript dir: {alias}"}]}]),  # symlink alias, same real path
++    ]
++    assert h._transcript_dirs(recs) == [str(real)]
++
++
++def test_build_bundle_audits_repeated_transcript_dir_once(tmp_path):
++    # End-to-end: the crash-resume shape. One agent file (1 assistant turn,
++    # 7 output tokens); the dir is printed twice. Pre-#150 the bundle audit
++    # carried 2 agents and totals {"turns": 2, "outputTokens": 14}.
++    tdir = tmp_path / "wf_resume"
++    tdir.mkdir()
++    agent_user = {"type": "user", "message": {"role": "user", "content": [
++        {"type": "text",
++         "text": "You are the setup agent on the session repo main checkout."}]}}
++    agent_turn = {"type": "assistant", "message": {
++        "role": "assistant", "model": "m1",
++        "usage": {"output_tokens": 7}, "content": []}}
++    (tdir / "agent-1.jsonl").write_text(
++        json.dumps(agent_user) + "\n" + json.dumps(agent_turn) + "\n")
++    recs = [
++        _rec("assistant", [{"type": "tool_use", "name": "Workflow",
++                            "input": {"name": "ultrapowers-run"}}]),
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": f"Transcript dir: {tdir}"}]}]),
++        # crash-resume: the SAME dir printed again by the resumed session
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": f"Transcript dir: {tdir}"}]}]),
++    ]
++    session = tmp_path / "sess.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
++                         "-Users-x-home")
++    assert out is not None
++    bundle = json.loads((out / "bundle.json").read_text())
++    assert len(bundle["audit"]["agents"]) == 1
++    assert bundle["audit"]["totals"] == {"turns": 1, "outputTokens": 7}
++
++
++# --- #150 mode (b): an `approved` terminus extends the slice past the
++# artifact cut to the transcript end — the approval exchange (plain user
++# text after the final artifact) is exactly what the NEEDS_ACK lens needs.
++# The tail still rides the same per-record filter (user text kept, keyword-
++# less tool noise dropped). Non-approved termini keep today's cut.
++
++def _approval_tail_recs():
++    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
++    return [
++        _wf_launch("S1"),
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": ok}]}]),                                   # last artifact: the cut
++        _rec("assistant", [{"type": "text",
++            "text": "Gate is green. Merge to main and close out?"}]),
++        _rec("user", [{"type": "text", "text": "yes - approved, merge it"}]),
++        _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++            "text": "irrelevant tool noise about lunch"}]}]),
++    ]
++
++
++def test_slice_approved_terminus_extends_past_artifact_cut():
++    out = h.slice_transcript(_approval_tail_recs(), terminus="approved")
++    assert "yes - approved, merge it" in out       # operator text in the tail survives
++    assert "Gate is green" in out                  # keyword ("gate") line survives
++    assert "lunch" not in out                      # keyword-less tool noise still dropped
++
++
++def test_slice_non_approved_terminus_keeps_artifact_cut():
++    recs = _approval_tail_recs()
++    for terminus in ("NEEDS_ACK", "BLOCKED", "unknown", None):
++        out = h.slice_transcript(recs, terminus=terminus)
++        assert "yes - approved, merge it" not in out
++    # and the one-argument call (default) is unchanged behavior
++    assert "yes - approved, merge it" not in h.slice_transcript(recs)
++
++
++def test_build_bundle_approved_slice_keeps_post_artifact_approval_exchange(tmp_path):
++    # End-to-end: a merged (git-ancestry-approved) run's slice.md includes
++    # the post-artifact operator turn.
++    root = tmp_path / "repo"
++    head_sha = _merged_feature_repo(root)
++    run_dir = root / ".claude/ultrapowers/run-S1"
++    run_dir.mkdir(parents=True)
++    (run_dir / "report.json").write_text(
++        json.dumps({"waveMerges": [{"headSha": head_sha}]}))
++    (run_dir / "gate-receipt.json").write_text(json.dumps(_real_receipt("PASS", 0)))
++    ok = json.dumps({"mode": "approve", "lockReleased": True, "stamp": "S1"})
++    recs = (REAL
++            + [_wf_launch("S1", run_dir=str(run_dir)),
++               _rec("user", [{"type": "tool_result", "content": [{"type": "text",
++                   "text": ok}]}]),
++               _rec("user", [{"type": "text", "text": "ship it - thanks"}])])
++    session = tmp_path / "sess.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
++                         "-Users-marcusestes-Websites-ultrapowers")
++    bundle = json.loads((out / "bundle.json").read_text())
++    assert bundle["terminus"] == "approved"
++    assert "ship it - thanks" in (out / "slice.md").read_text()
++
++
++# --- #150 mode (c), reader side: drain-administered gate terminus via the
++# stamp mirror. Fixtures are GENERATED BY INVOKING THE WRITER (the drain's
++# record helper's `stamp` subcommand) — the writer is the schema authority,
++# so these fixtures cannot drift from what the drain actually writes.
++
++RECORD_WF_RUN = Path(__file__).resolve().parents[1] / \
++    "skills/ultradocket/scripts/record_wf_run.py"
++
++
++def _write_stamp_record(repo, stamp, entry, verdict, exit_code, branch, base):
++    r = subprocess.run(
++        [sys.executable, str(RECORD_WF_RUN), "stamp", stamp, entry,
++         "--verdict", verdict, "--exit-code", str(exit_code),
++         "--branch", branch, "--base", base],
++        cwd=str(repo), capture_output=True, text=True)
++    assert r.returncode == 0, r.stderr
++
++
++def test_repo_root_from_run_dir_is_pure_string_derivation():
++    assert h._repo_root_from_run_dir(
++        "/x/repo/.claude/ultrapowers/run-20260814-120000") == "/x/repo"
++    assert h._repo_root_from_run_dir("/x/repo/elsewhere/run-1") is None
++    assert h._repo_root_from_run_dir("/x/repo") is None
++    assert h._repo_root_from_run_dir(None) is None
++
++
++def test_drain_stamp_gives_terminus_when_run_dir_deleted(tmp_path):
++    # The 0.1.15 mode: the drain gated the entry (PASS via the frozen
++    # runner's exit code) and the runDir was torn down; only the stamp
++    # mirror survives. Pre-#150 this run read terminus "unknown".
++    repo = tmp_path / "repo"
++    _init_git_repo(repo)
++    _write_stamp_record(repo, "20260814-120000", "146", "PASS", 0,
++                        "ultra/entry-146", "ultra/docket-20260814-120000")
++    run_dir = repo / ".claude/ultrapowers/run-20260814-120000"  # never exists on disk
++    recs = REAL + [_wf_launch("20260814-120000", run_dir=str(run_dir))]
++    session = tmp_path / "sess.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
++                         "-Users-marcusestes-Websites-ultrapowers")
++    bundle = json.loads((out / "bundle.json").read_text())
++    assert bundle["gateReports"] == []            # no disk gate receipt existed
++    assert bundle["runs"][0]["terminus"] == "PASS"
++    assert bundle["terminus"] == "PASS"
++
++
++def test_drain_stamp_ancestry_upgrades_to_approved(tmp_path):
++    # Same upgrade rule as the receipt path — merged IS approved. The stamp
++    # record carries head (branch) and base itself, so no runDir file read
++    # is ever needed.
++    repo = tmp_path / "repo"
++    _init_git_repo(repo)
++    _git(["checkout", "-q", "-b", "ultra/docket-D"], repo)
++    _git(["checkout", "-q", "-b", "ultra/entry-146"], repo)
++    (repo / "f.txt").write_text("entry\n")
++    _git(["commit", "-q", "-am", "entry work"], repo)
++    _git(["checkout", "-q", "ultra/docket-D"], repo)
++    _git(["merge", "-q", "--no-ff", "-m", "merge entry", "ultra/entry-146"], repo)
++    _write_stamp_record(repo, "20260814-130000", "146", "PASS", 0,
++                        "ultra/entry-146", "ultra/docket-D")
++    run_dir = repo / ".claude/ultrapowers/run-20260814-130000"  # deleted
++    recs = REAL + [_wf_launch("20260814-130000", run_dir=str(run_dir))]
++    session = tmp_path / "sess.jsonl"
++    session.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
++    out = h.build_bundle(session, "-Users-x-proj", tmp_path / "cache",
++                         "-Users-marcusestes-Websites-ultrapowers")
++    bundle = json.loads((out / "bundle.json").read_text())
++    assert bundle["runs"][0]["terminus"] == "approved"
++    assert bundle["terminus"] == "approved"
++    assert bundle["truncated"] is False
++
++
++def test_drain_stamp_multi_entry_last_non_approved_wins(tmp_path):
++    # One drain stamp covers several docket entries (one record each). All
++    # approved -> approved; else the last (filename-sorted) non-approved
++    # entry's verdict — mirroring the aggregate-terminus rule.
++    repo = tmp_path / "repo"
++    _init_git_repo(repo)
++    _write_stamp_record(repo, "S", "124", "PASS", 0, "b1", "base")
++    _write_stamp_record(repo, "S", "147", "BLOCKED", 1, "b2", "base")
++    run_dir = str(repo / ".claude/ultrapowers/run-S")
++    drain = h._drain_stamp_receipts(run_dir, "S")
++    assert [e["receipt"]["entry"] for e in drain] == ["124", "147"]
++    assert all(e["source"] == "stamp" and e["stamp"] == "S" for e in drain)
++    assert h._stamp_terminus(run_dir, [], drain) == "BLOCKED"
++
++
++def test_disk_gate_receipt_takes_precedence_over_drain_stamp(tmp_path):
++    # A live disk gate receipt always outranks the mirror.
++    repo = tmp_path / "repo"
++    _init_git_repo(repo)
++    run_dir = repo / ".claude/ultrapowers/run-S9"
++    run_dir.mkdir(parents=True)
++    (run_dir / "gate-receipt.json").write_text(json.dumps(
++        {"mode": "gate", "verdict": "NEEDS_ACK", "stamp": "S9"}))
++    _write_stamp_record(repo, "S9", "146", "PASS", 0, "b", "base")
++    stamp_reports = h._disk_receipts_for({"S9": str(run_dir)}, ["S9"])
++    drain = h._drain_stamp_receipts(str(run_dir), "S9")
++    assert h._stamp_terminus(str(run_dir), stamp_reports, drain) == "NEEDS_ACK"
++
++
++def test_drain_stamp_receipts_fail_soft(tmp_path):
++    assert h._drain_stamp_receipts(None, "S") == []
++    assert h._drain_stamp_receipts("/no/engine/suffix", "S") == []
++    repo = tmp_path / "repo"                      # no git needed: pure paths
++    receipts = repo / ".claude/ultrapowers/receipts"
++    receipts.mkdir(parents=True)
++    (receipts / "S-bad.json").write_text("{corrupt")
++    (receipts / "S-noverdict.json").write_text(json.dumps({"mode": "drain-stamp"}))
++    run_dir = str(repo / ".claude/ultrapowers/run-S")
++    assert h._drain_stamp_receipts(run_dir, "S") == []
+diff --git a/tests/test_no_prompt_drift.py b/tests/test_no_prompt_drift.py
+index 9d1c58220efc94102d34eee93dce9acf2ef3ac35..72361b1b024e837ecdd81a02c690270abe2a21bd 100644
+--- a/tests/test_no_prompt_drift.py
++++ b/tests/test_no_prompt_drift.py
+@@ -114,13 +114,20 @@ def test_schema_block_is_baked(name):
+         "Re-bake per references/workflow-template.md.\nexpected (normalized):\n" + expected)
+ 
+ 
+-# ── merge/reconcile HEAD-assert + cleanup-out-of-prompt ───────────────────────
+-def test_merge_prompt_does_not_instruct_cleanup():
++# ── merge/reconcile HEAD-assert + wave-barrier sweep (#151, reverses bea1875) ─
++def test_merge_prompt_sweeps_worktrees_but_never_branches():
+     wf = normalize(WORKFLOW.read_text())
+-    # the merge agent must NOT be told to remove worktrees or delete branches —
+-    # cleanup is the deterministic sweep at the Step-5 gate, not a merge-prompt step
+-    for forbidden in ("worktree remove", "git branch d", "delete the branch", "clean up the merged branches"):
+-        assert normalize(forbidden) not in wf, f"merge prompt still instructs cleanup: {forbidden!r}"
++    # #151 reverses bea1875's subtraction: the wave-barrier sweep step is IN
++    # the merge/reconcile prompts again, identity-checked and worktree-only.
++    # Branch deletion stays forbidden — branches carry the merged commits
++    # until the deterministic Step-5 sweep.
++    for required in ("git worktree list --porcelain",
++                     "git worktree remove --force",
++                     "never delete any branch"):
++        assert normalize(required) in wf, f"merge prompt lost the sweep step: {required!r}"
++    for forbidden in ("git branch d", "delete the branch",
++                      "clean up the merged branches"):
++        assert normalize(forbidden) not in wf, f"merge prompt instructs branch deletion: {forbidden!r}"
+ 
+ 
+ def test_merge_prompt_asserts_head():
+diff --git a/tests/test_record_wf_run.py b/tests/test_record_wf_run.py
+index ab3f85fb5d0bcc1af5167cc3ada2406872caa556..9f31e1cda78bc90d028e940dfd79241854699136 100644
+--- a/tests/test_record_wf_run.py
++++ b/tests/test_record_wf_run.py
+@@ -47,3 +47,69 @@ def test_record_refuses_unreadable_existing_file(tmp_path):
+     r = record(repo, "d3", "wf_ddd-4")
+     assert r.returncode == 1 and "unreadable" in r.stderr.lower()
+     assert (run_dir / "wf-runs.json").read_text() == "{corrupt"  # never clobbered
++
++
++# --- #150 mode (c), writer side: the `stamp` subcommand mirrors a drain-
++# administered gate outcome to a teardown-surviving record. THIS WRITER IS
++# THE SCHEMA AUTHORITY — the harvester's tests invoke it to generate their
++# fixtures, so the assertions here pin the exact record shape.
++
++def stamp_record(repo, stamp, entry, verdict="PASS", exit_code=0,
++                 branch="ultra/entry-x", base="ultra/docket-x"):
++    return subprocess.run(
++        [sys.executable, str(SCRIPT), "stamp", stamp, entry,
++         "--verdict", verdict, "--exit-code", str(exit_code),
++         "--branch", branch, "--base", base],
++        cwd=repo, capture_output=True, text=True)
++
++
++def test_stamp_mode_writes_mirror_record(tmp_path):
++    repo = make_repo(tmp_path)
++    r = stamp_record(repo, "20260814-120000", "146", verdict="PASS", exit_code=0)
++    assert r.returncode == 0, r.stderr
++    path = repo / ".claude/ultrapowers/receipts/20260814-120000-146.json"
++    obj = json.loads(path.read_text())
++    assert obj["mode"] == "drain-stamp"
++    assert obj["stamp"] == "20260814-120000" and obj["entry"] == "146"
++    assert obj["verdict"] == "PASS" and obj["gateExit"] == 0
++    assert obj["branch"] == "ultra/entry-x" and obj["base"] == "ultra/docket-x"
++    assert isinstance(obj["recordedAt"], str) and obj["recordedAt"]
++    assert set(obj) == {"mode", "stamp", "entry", "verdict", "gateExit",
++                        "branch", "base", "recordedAt"}
++
++
++def test_stamp_mode_re_record_overwrites_last_write_wins(tmp_path):
++    # A re-gate after a fix round replaces the file — the final verdict is
++    # the record.
++    repo = make_repo(tmp_path)
++    assert stamp_record(repo, "20260814-120000", "146",
++                        verdict="BLOCKED", exit_code=1).returncode == 0
++    assert stamp_record(repo, "20260814-120000", "146",
++                        verdict="PASS", exit_code=0).returncode == 0
++    path = repo / ".claude/ultrapowers/receipts/20260814-120000-146.json"
++    obj = json.loads(path.read_text())
++    assert obj["verdict"] == "PASS" and obj["gateExit"] == 0
++
++
++def test_stamp_mode_leaves_run_id_mode_untouched(tmp_path):
++    # Both modes on one stamp: the stamp record never touches wf-runs.json,
++    # and the legacy run-id mode round-trips through the frozen reader
++    # exactly as before.
++    repo = make_repo(tmp_path)
++    assert record(repo, "d9", "wf_zzz-9").returncode == 0
++    assert stamp_record(repo, "d9", "146").returncode == 0
++    ids, unreadable = load_wf_runs(repo / ".claude/ultrapowers/run-d9")
++    assert ids == ["wf_zzz-9"] and not unreadable
++
++
++def test_stamp_mode_rejects_path_separator_in_names(tmp_path):
++    repo = make_repo(tmp_path)
++    assert stamp_record(repo, "20260814-120000", "a/b").returncode == 2
++    assert stamp_record(repo, "a/b", "146").returncode == 2
++
++
++def test_stamp_mode_missing_required_flag_exits_2(tmp_path):
++    repo = make_repo(tmp_path)
++    r = subprocess.run([sys.executable, str(SCRIPT), "stamp", "s", "e"],
++                       cwd=repo, capture_output=True, text=True)
++    assert r.returncode == 2
+diff --git a/tests/test_redirect_args.py b/tests/test_redirect_args.py
+index d9a74f37090882d623a9da477f14de3e3d2b7006..171c588c11a0be0f5346087db33b45b95889d458 100644
+--- a/tests/test_redirect_args.py
++++ b/tests/test_redirect_args.py
+@@ -208,3 +208,29 @@ def test_no_heads_dir_is_a_noop(tmp_path):
+     r = run_helper(run, [{"task": "1", "instruction": "fix"}])
+     assert r.returncode == 0, r.stderr
+     assert not (run / "heads").exists()  # nothing spuriously created
++
++
++def test_real_shaped_gate_receipt_branch_key_derived(tmp_path):
++    # #153: real receipts (written by ultra_gate.py) store the integration
++    # branch under "branch"; the fallback must accept it. The default
++    # make_run fixture's "integrationBranch" key is the legacy/hand-built
++    # shape and stays covered by the tests above.
++    run = make_run(tmp_path)
++    (run / "gate-receipt.json").write_text(json.dumps(
++        {"mode": "gate", "verdict": "BLOCKED", "branch": "ultra/int-real"}))
++    r = run_helper(run, [{"task": "1", "instruction": "x"}])
++    assert r.returncode == 0, r.stderr
++    out_args = json.loads(Path(r.stdout.strip()).read_text())
++    assert out_args["integrationBranch"] == "ultra/int-real"
++
++
++def test_legacy_integrationbranch_key_wins_over_branch(tmp_path):
++    # Precedence inside the receipt fallback: legacy integrationBranch first,
++    # then branch — hand-built fixtures keep working unchanged.
++    run = make_run(tmp_path)
++    (run / "gate-receipt.json").write_text(json.dumps(
++        {"branch": "ultra/int-real", "integrationBranch": "ultra/int-legacy"}))
++    r = run_helper(run, [{"task": "1", "instruction": "x"}])
++    assert r.returncode == 0, r.stderr
++    out_args = json.loads(Path(r.stdout.strip()).read_text())
++    assert out_args["integrationBranch"] == "ultra/int-legacy"
+diff --git a/tests/test_residual_manifest.py b/tests/test_residual_manifest.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..47a96c19a737aa2b7ec0455104d37187ca816023
+--- /dev/null
++++ b/tests/test_residual_manifest.py
+@@ -0,0 +1,256 @@
++# tests/test_residual_manifest.py
++import hashlib
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++SCRIPT = (Path(__file__).resolve().parents[1] /
++          "skills/ultrapowers/scripts/residual_manifest.py")
++
++CF = "Task 2 endpoint lacks a timeout test"
++JC = "degradation: task 3 budget-deferred (budget exhausted at wave 2)"
++DV_BROWSER = {"deliverable": "viewer/swarm.html", "reason": "browser",
++              "why": "live UI flow"}
++DV_RUNTIME = {"deliverable": "deploy hook", "reason": "runtime",
++              "why": "needs prod boot"}
++
++
++def rid(family, text):
++    norm = " ".join(text.split())
++    return family + "-" + hashlib.sha256(norm.encode("utf-8")).hexdigest()[:12]
++
++
++def report(**over):
++    result = {"integrationBranch": "ultra/int-1", "waves": [["1"]],
++              "tasks": [{"task": "1", "status": "done"}],
++              "tests": {"passed": True}, "unfinished": [],
++              "completenessFindings": [CF], "judgmentCalls": [JC],
++              "deferredVerification": [DV_BROWSER, DV_RUNTIME]}
++    result.update(over)
++    return {"summary": "workflow envelope", "result": result}
++
++
++def write(tmp_path, name, obj):
++    p = tmp_path / name
++    p.write_text(json.dumps(obj))
++    return p
++
++
++def run(*argv):
++    return subprocess.run([sys.executable, str(SCRIPT), *map(str, argv)],
++                          capture_output=True, text=True)
++
++
++def manifest_rows(stdout):
++    return [l for l in stdout.splitlines() if l.startswith("- ")]
++
++
++def test_derive_emits_exact_rows_for_all_three_families(tmp_path):
++    rp = write(tmp_path, "report.json", report())
++    r = run(rp)
++    assert r.returncode == 0, r.stderr
++    dv_browser_text = "viewer/swarm.html (browser) — live UI flow"
++    dv_runtime_text = "deploy hook (runtime) — needs prod boot"
++    assert manifest_rows(r.stdout) == [
++        "- %s [completenessFindings] %s — disposition:"
++        % (rid("completenessFindings", CF), CF),
++        "- %s [judgmentCalls] %s — disposition:"
++        % (rid("judgmentCalls", JC), JC),
++        "- %s [deferredVerification] %s — disposition:"
++        % (rid("deferredVerification", dv_browser_text), dv_browser_text),
++        "- %s [deferredVerification] %s — disposition:"
++        % (rid("deferredVerification", dv_runtime_text), dv_runtime_text),
++    ]
++
++
++def test_multi_report_union_dedupes_by_content_id(tmp_path):
++    r1 = write(tmp_path, "r1.json", report())
++    r2 = write(tmp_path, "r2.json",
++               report(completenessFindings=[CF, "second-round-only finding"]))
++    rows_single = manifest_rows(run(r1).stdout)
++    rows_union = manifest_rows(run(r1, r2).stdout)
++    # the same finding in two rounds -> ONE row with the SAME id
++    assert len(rows_union) == len(rows_single) + 1
++    assert set(rows_single) < set(rows_union)
++    assert any("second-round-only finding" in row for row in rows_union)
++
++
++def test_byte_identical_duplicates_within_one_report_get_tiebreak_ids(tmp_path):
++    rp = write(tmp_path, "r.json", report(judgmentCalls=[JC, JC, JC]))
++    rows = manifest_rows(run(rp).stdout)
++    base = rid("judgmentCalls", JC)
++    ids = [row.split()[1] for row in rows if "[judgmentCalls]" in row]
++    assert ids == [base, base + "-2", base + "-3"]
++
++
++def test_gate_acks_prefills_only_recorded_items(tmp_path):
++    rp = write(tmp_path, "r.json", report())
++    sa = write(tmp_path, "standing-approval.json", {
++        "grantedAt": "turn-3",
++        "instruction": "approve if clean apart from the usual runtime acks",
++        "ackList": [{"type": "deferred:runtime",
++                     "detail": "deploy hook — needs prod boot "
++                               "[structural false-green: sandbox could not "
++                               "execute it against the target]"}]})
++    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
++    runtime = [x for x in rows if "deploy hook (runtime)" in x]
++    browser = [x for x in rows if "viewer/swarm.html (browser)" in x]
++    assert runtime and runtime[0].endswith("— disposition: acked")
++    assert browser and browser[0].endswith("— disposition:")
++
++
++def test_gate_acks_prefill_is_item_specific_on_why(tmp_path):
++    # same deliverable+reason, different why: a recorded ack for one must
++    # not pre-fill the other
++    dv_other = {"deliverable": "deploy hook", "reason": "runtime",
++                "why": "needs secrets rotation"}
++    rp = write(tmp_path, "r.json",
++               report(deferredVerification=[DV_RUNTIME, dv_other]))
++    sa = write(tmp_path, "standing-approval.json", {
++        "ackList": [{"type": "deferred:runtime",
++                     "detail": "deploy hook — needs prod boot "
++                               "[structural false-green: sandbox could not "
++                               "execute it against the target]"}]})
++    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
++    boot = [x for x in rows if "needs prod boot" in x]
++    other = [x for x in rows if "needs secrets rotation" in x]
++    assert boot and boot[0].endswith("— disposition: acked")
++    assert other and other[0].endswith("— disposition:")
++
++
++def test_gate_acks_prefill_exact_no_prefix_nested_why_cross_ack(tmp_path):
++    # one deliverable+reason, two whys where one is a string-prefix of the
++    # other; only the superset recorded -> exactly one row acked
++    dv_super = {"deliverable": "deploy hook", "reason": "runtime",
++                "why": "needs prod boot plus secrets rotation"}
++    rp = write(tmp_path, "r.json",
++               report(deferredVerification=[DV_RUNTIME, dv_super]))
++    sa = write(tmp_path, "standing-approval.json", {
++        "ackList": [{"type": "deferred:runtime",
++                     "detail": "deploy hook — needs prod boot plus secrets "
++                               "rotation [structural false-green: sandbox "
++                               "could not execute it against the target]"}]})
++    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
++    acked = [x for x in rows if x.endswith("— disposition: acked")]
++    assert len(acked) == 1, rows
++    assert "needs prod boot plus secrets rotation" in acked[0]
++    boot = [x for x in rows if "(runtime) — needs prod boot —" in x]
++    assert boot and boot[0].endswith("— disposition:")
++
++
++def test_gate_acks_prefill_matches_none_why_via_str_coercion(tmp_path):
++    # gate_check.py records detail via str(): why=None -> "None"; the
++    # pre-fill must replicate that coercion and still match
++    dv_none = {"deliverable": "deploy hook", "reason": "runtime",
++               "why": None}
++    rp = write(tmp_path, "r.json", report(deferredVerification=[dv_none]))
++    sa = write(tmp_path, "standing-approval.json", {
++        "ackList": [{"type": "deferred:runtime",
++                     "detail": "deploy hook — None [structural false-green: "
++                               "sandbox could not execute it against the "
++                               "target]"}]})
++    rows = manifest_rows(run(rp, "--gate-acks", sa).stdout)
++    hook = [x for x in rows if "deploy hook (runtime)" in x]
++    assert hook and hook[0].endswith("— disposition: acked")
++
++
++def test_derive_dies_on_standing_approval_shaped_json(tmp_path):
++    # a readable JSON dict that is NOT a report (no family keys, no report
++    # markers) must die exit 1 naming the path, never emit a vacuous-green
++    # empty manifest
++    sa = write(tmp_path, "standing-approval.json", {
++        "grantedAt": "turn-3",
++        "instruction": "approve if clean apart from the usual runtime acks",
++        "ackList": [{"type": "deferred:runtime",
++                     "detail": "deploy hook — needs prod boot"}]})
++    r = run(sa)
++    assert r.returncode == 1
++    assert str(sa) in r.stderr
++
++
++def test_derive_dies_on_json_list(tmp_path):
++    p = write(tmp_path, "list.json", [{"tasks": []}])
++    r = run(p)
++    assert r.returncode == 1
++    assert str(p) in r.stderr
++
++
++def test_derive_dies_on_non_dict_envelope_result(tmp_path):
++    p = write(tmp_path, "env.json", {"summary": "s", "result": "oops"})
++    r = run(p)
++    assert r.returncode == 1
++    assert str(p) in r.stderr
++
++
++def test_derive_accepts_marker_report_with_zero_family_keys(tmp_path):
++    # a genuine report that omits all three families still derives (zero rows)
++    result = {"integrationBranch": "ultra/int-1", "waves": [["1"]],
++              "tasks": [{"task": "1", "status": "done"}],
++              "tests": {"passed": True}, "unfinished": []}
++    rp = write(tmp_path, "r.json", {"summary": "workflow envelope",
++                                    "result": result})
++    r = run(rp)
++    assert r.returncode == 0, r.stderr
++    assert manifest_rows(r.stdout) == []
++
++
++def test_bare_result_object_accepted(tmp_path):
++    rp = write(tmp_path, "r.json", report()["result"])
++    r = run(rp)
++    assert r.returncode == 0
++    assert len(manifest_rows(r.stdout)) == 4
++
++
++def test_check_green_on_fully_dispositioned_manifest(tmp_path):
++    rp = write(tmp_path, "r.json", report())
++    values = iter(["fixed", "filed:#152", "acked",
++                   "waived:sandbox cannot reach prod"])
++    dispositioned = []
++    for line in run(rp).stdout.splitlines():
++        if line.startswith("- ") and line.endswith("disposition:"):
++            line = line + " " + next(values)
++        dispositioned.append(line)
++    m = tmp_path / "residual-manifest.md"
++    m.write_text("\n".join(dispositioned) + "\nfree commentary, ignored\n")
++    r = run("--check", m)
++    assert r.returncode == 0, r.stderr
++
++
++def test_check_zero_row_manifest_passes_vacuously(tmp_path):
++    m = tmp_path / "residual-manifest.md"
++    m.write_text("# Residual manifest\n\nNo residual findings.\n")
++    assert run("--check", m).returncode == 0
++
++
++def test_check_red_names_undispositioned_and_invalid_rows(tmp_path):
++    rp = write(tmp_path, "r.json", report())
++    rows = manifest_rows(run(rp).stdout)
++    fixed, empty, invalid = rows[0] + " fixed", rows[1], rows[2] + " done"
++    m = tmp_path / "residual-manifest.md"
++    m.write_text("\n".join([fixed, empty, invalid]) + "\n")
++    r = run("--check", m)
++    assert r.returncode == 2
++    assert empty.split()[1] in r.stderr
++    assert invalid.split()[1] in r.stderr
++    assert fixed.split()[1] not in r.stderr
++
++
++def test_check_red_pins_malformed_disposition_values(tmp_path):
++    # each of these must stay red (exit 2): bare filed:, bare waived:,
++    # waived: with trailing space only, wrong-case Fixed, freeform prose
++    rp = write(tmp_path, "r.json", report())
++    row = manifest_rows(run(rp).stdout)[0]
++    for value in ("filed:", "waived:", "waived: ", "Fixed",
++                  "acked because reasons"):
++        m = tmp_path / "residual-manifest.md"
++        m.write_text(row + " " + value + "\n")
++        r = run("--check", m)
++        assert r.returncode == 2, (value, r.stdout, r.stderr)
++        assert row.split()[1] in r.stderr, value
++
++
++def test_derive_without_reports_exits_1():
++    r = run()
++    assert r.returncode == 1
++    assert "derive mode needs" in r.stderr
+diff --git a/tests/test_sweep_worktrees.py b/tests/test_sweep_worktrees.py
+index 08e1e05c3f7c1f88c912e9b334b9564ca1b7fde8..69af7ac84da318b7add49d595e9130d99b2a86e9 100644
+--- a/tests/test_sweep_worktrees.py
++++ b/tests/test_sweep_worktrees.py
+@@ -644,3 +644,102 @@ def test_age_hours_magnitude_bound(tmp_path):
+                        cwd=repo, capture_output=True, text=True)
+     assert p.returncode == 0, p.stderr
+     assert "999999" in p.stdout + p.stderr
++
++
++# ── process reaping ────────────────────────────────────────────────────────
++# Removing a worktree directory does not stop processes still running out of
++# it (Julian 2026-08-14: 221 orphaned workerd dev servers pinned several GB of
++# deleted-but-open files for days, across 3 runs). The sweep must reap them.
++
++def spawn_sleeper(dirpath):
++    """Start a long-lived process whose COMMAND LINE carries dirpath — the
++    signature the sweep matches on (a dev server running a script from
++    node_modules inside a worktree looks exactly like this). A copied system
++    binary would be cleaner still, but macOS kills copies of signed platform
++    binaries on exec, so the path rides in the interpreter's argv instead."""
++    import sys
++    dirpath.mkdir(parents=True, exist_ok=True)
++    script = dirpath / "sleeper.py"
++    ready = dirpath / "ready"
++    # The ready-file handshake lets callers delete dirpath afterwards without
++    # racing the interpreter's read of its own script.
++    script.write_text("import pathlib, time\n"
++                      "pathlib.Path(__file__).with_name('ready').touch()\n"
++                      "time.sleep(300)\n")
++    proc = subprocess.Popen([sys.executable, str(script)],
++                            stdout=subprocess.DEVNULL,
++                            stderr=subprocess.DEVNULL)
++    for _ in range(200):
++        if ready.exists():
++            break
++        time.sleep(0.05)
++    else:
++        raise RuntimeError("sleeper never came up")
++    return proc
++
++
++def test_sweep_reaps_processes_still_running_out_of_a_worktree(tmp_path):
++    repo = make_repo(tmp_path)
++    wt, _ = add_engine_worktree(repo, "proc-1", "p.txt", merge=True)
++    proc = spawn_sleeper(wt)
++    try:
++        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
++                           capture_output=True, text=True)
++        assert p.returncode == 0, p.stderr
++        assert not wt.exists()
++        assert "reaped:" in p.stdout
++        proc.wait(timeout=10)            # raises TimeoutExpired if it survived
++    finally:
++        if proc.poll() is None:
++            proc.kill()
++
++
++def test_sweep_reaps_orphans_of_already_deleted_worktrees(tmp_path):
++    """The engine's wave-merge removes consumed worktrees mid-run without
++    killing their processes; the deleted path survives in the command line,
++    so the end-of-run sweep can still reap them — regardless of scope."""
++    import shutil
++    repo = make_repo(tmp_path)
++    gone = repo / ".claude" / "worktrees" / "wf_gone-1"
++    proc = spawn_sleeper(gone)
++    shutil.rmtree(gone)                  # simulate the engine's earlier removal
++    try:
++        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
++                           capture_output=True, text=True)
++        assert p.returncode == 0, p.stderr
++        assert "orphan process" in p.stdout
++        proc.wait(timeout=10)
++    finally:
++        if proc.poll() is None:
++            proc.kill()
++
++
++def test_sweep_leaves_processes_of_kept_locked_worktrees_alone(tmp_path):
++    repo = make_repo(tmp_path)
++    wt, _ = add_engine_worktree(repo, "live-1", "l.txt", merge=True)
++    git(repo, "worktree", "lock", str(wt))
++    proc = spawn_sleeper(wt)
++    try:
++        p = subprocess.run(["bash", str(SWEEP)], cwd=repo,
++                           capture_output=True, text=True)
++        assert p.returncode == 0, p.stderr
++        assert wt.exists()               # locked => kept
++        assert proc.poll() is None       # possibly-live state: NOT killed
++    finally:
++        proc.kill()
++
++
++def test_audit_reports_orphan_process_without_reaping(tmp_path):
++    import shutil
++    repo = make_repo(tmp_path)
++    gone = repo / ".claude" / "worktrees" / "wf_gone-2"
++    proc = spawn_sleeper(gone)
++    shutil.rmtree(gone)
++    try:
++        p = subprocess.run(["bash", str(SWEEP), "--audit"], cwd=repo,
++                           capture_output=True, text=True)
++        assert p.returncode == 0, p.stderr
++        assert "orphan process" in p.stdout
++        assert proc.poll() is None       # report-only: audit reaps nothing
++    finally:
++        proc.kill()
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index a4da60faa4c59b9f6bc1b3b3e7ed56b68a9d4448..88cc22e83216f0d4bd7aa4b794e7c0a4e1c9f871 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -59,7 +59,8 @@ def test_happy_path_receipt(tmp_path):
+     assert all(s["ok"] for s in receipt["stages"])
+     stage_names = [s["stage"] for s in receipt["stages"]]
+     for expected in ("git-repo", "worktree-probe", "engine-skew",
+-                     "superpowers-compat", "compile", "test-command", "install",
++                     "superpowers-compat", "compile", "disk-headroom",
++                     "test-command", "install",
+                      "lock", "dirty-baseline"):
+         assert expected in stage_names
+     run_dir = repo / ".claude/ultrapowers/run-t1"
+@@ -799,3 +800,128 @@ def test_explicit_empty_test_cmd_fails_the_stage(tmp_path, cmd):
+     assert receipt["stages"][-1]["ok"] is False
+     assert "--test-cmd" in receipt["stages"][-1]["detail"]
+     assert "testCmd" not in receipt
++
++
++# --- #151: disk-headroom preflight stage (the cycle's one budgeted guard) ---
++# free vs estimate = widest_wave_width x 1.5 GiB (hardcoded, no env knob).
++# warn stays ok:true (advisory; a tight-but-sufficient host must not
++# false-block); block only when free < min(2 GiB, estimate), so a narrow
++# run on a small host is never refused by a floor larger than its own need.
++
++GIB = 1024 ** 3
++
++# Two INDEPENDENT tasks -> one wave of width 2 -> estimate 3.0 GiB, floor 2 GiB.
++WIDE_PLAN = (
++    "# P\n\n**Acceptance:** waived — test fixture\n\n"
++    "### Task 1: A\n\n**Type:** implementation\n**Depends-on:** none\n\n"
++    "**Files:**\n- Create: `a.py`\n\n- [ ] **Step 1: do**\n\n"
++    "### Task 2: B\n\n**Type:** implementation\n**Depends-on:** none\n\n"
++    "**Files:**\n- Create: `b.py`\n\n- [ ] **Step 1: do**\n"
++)
++
++
++def make_wide_repo(tmp_path):
++    repo = make_repo(tmp_path)
++    (repo / "plan.md").write_text(WIDE_PLAN)
++    sh(["git", "add", "plan.md"], cwd=repo)
++    sh(["git", "commit", "-qm", "wide plan"], cwd=repo)
++    return repo
++
++
++def run_main_with_free(repo, monkeypatch, capsys, free_bytes):
++    """Drive ultra_run.main in-process with shutil.disk_usage faked."""
++    import ultra_run
++
++    class Usage:
++        def __init__(self, free):
++            self.free = free
++
++    monkeypatch.setattr(ultra_run.shutil, "disk_usage",
++                        lambda path: Usage(free_bytes))
++    rc = ultra_run.main(["plan.md", "--stamp", "t1", "--repo", str(repo)])
++    return rc, json.loads(capsys.readouterr().out)
++
++
++def headroom_stage(receipt):
++    return next(s for s in receipt["stages"] if s["stage"] == "disk-headroom")
++
++
++def test_disk_headroom_ok_at_estimate_boundary(tmp_path, monkeypatch, capsys):
++    # free == estimate -> ok (Free >= estimate is the ok branch).
++    repo = make_wide_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 3 * GIB)
++    assert rc == 0
++    s = headroom_stage(receipt)
++    assert s["ok"] is True
++    assert s["detail"].startswith("ok: ")
++    assert "free 3.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
++
++
++def test_disk_headroom_warns_below_estimate_above_floor(tmp_path, monkeypatch, capsys):
++    repo = make_wide_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(2.5 * GIB))
++    assert rc == 0                                   # advisory: never blocks here
++    s = headroom_stage(receipt)
++    assert s["ok"] is True                           # warn-as-ok:true (worktree-audit shape)
++    assert s["detail"].startswith("WARN: ")
++    assert "free 2.5 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
++
++
++def test_disk_headroom_warn_not_block_at_floor_boundary(tmp_path, monkeypatch, capsys):
++    # free == floor (2 GiB) -> still WARN; block is strictly free < floor.
++    repo = make_wide_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 2 * GIB)
++    assert rc == 0
++    s = headroom_stage(receipt)
++    assert s["ok"] is True
++    assert s["detail"].startswith("WARN: ")
++
++
++def test_disk_headroom_blocks_below_floor(tmp_path, monkeypatch, capsys):
++    repo = make_wide_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, 1 * GIB)
++    assert rc != 0
++    assert receipt["ok"] is False
++    s = headroom_stage(receipt)
++    assert s["ok"] is False
++    assert s["detail"].startswith("BLOCKED: ")
++    assert "free 1.0 GiB vs estimate 3.0 GiB (widest wave 2 x 1.5 GiB)" in s["detail"]
++    assert "min(2 GiB, estimate)" in s["detail"]
++    # Blocked BEFORE anything expensive: no later stage ran.
++    names = [x["stage"] for x in receipt["stages"]]
++    assert "test-command" not in names and "lock" not in names
++
++
++def test_disk_headroom_min_floor_narrow_run_not_blocked_by_flat_floor(
++        tmp_path, monkeypatch, capsys):
++    # The default PLAN chains 1 -> 2: widest wave 1 -> estimate 1.5 GiB,
++    # floor min(2 GiB, 1.5 GiB) = 1.5 GiB. free 1.7 GiB >= estimate -> ok.
++    # A flat 2 GiB floor would have false-blocked this narrow run.
++    repo = make_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.7 * GIB))
++    assert rc == 0
++    s = headroom_stage(receipt)
++    assert s["ok"] is True
++    assert s["detail"].startswith("ok: ")
++    assert "widest wave 1" in s["detail"]
++
++
++def test_disk_headroom_min_floor_narrow_run_blocks_below_own_estimate(
++        tmp_path, monkeypatch, capsys):
++    # Same narrow plan, free 1.4 GiB < floor (= estimate 1.5 GiB) -> block.
++    repo = make_repo(tmp_path)
++    rc, receipt = run_main_with_free(repo, monkeypatch, capsys, int(1.4 * GIB))
++    assert rc != 0
++    s = headroom_stage(receipt)
++    assert s["ok"] is False
++    assert s["detail"].startswith("BLOCKED: ")
++
++
++def test_disk_headroom_stage_runs_right_after_compile(tmp_path):
++    # Real disk_usage (dev/CI hosts have headroom); ordering is the contract.
++    repo = make_repo(tmp_path)
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    names = [s["stage"] for s in json.loads(r.stdout)["stages"]]
++    assert names.index("disk-headroom") == names.index("compile") + 1
++    assert names.index("disk-headroom") < names.index("test-command")

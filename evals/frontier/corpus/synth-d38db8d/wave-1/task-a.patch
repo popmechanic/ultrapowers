@@ -1,0 +1,150 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d2e633f753bda8ed7685b3dc1a8cd9ff753bc40e..92b4125b17c824357085264a8befa288c9c8cefd 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -96,8 +96,8 @@ suite is the verification; no held-out exam unless the operator asks to seal).
+   expected `−3 prose-reference` + degrade-deletion mode flips — plus that
+   deletion's one downstream wave-shape promotion, on a single plan whose
+   deleted edge was gating — and no other delta, against the pre-registered
+-  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is opt-in ("seal this plan"); `suite` is the
+-  default disposition.
++  97-plan census) plus the T15 rig re-run (Task 12). Sealed acceptance is
++  opt-in ("seal this plan"); `suite` is the default disposition.
+ - **Prompts are baked; edit the source, not the copy.** The engine prompts in `harnesses/waves.js`
+   are baked from `references/reviewer-prompts.md` + `references/wave-merge.md` and pinned by
+   `tests/test_no_prompt_drift.py`. `ultraplan/SKILL.md` mirrors `references/plan-markers.md`, and the
+diff --git a/docs/superpowers/docket.md b/docs/superpowers/docket.md
+index 05c3c4455c9e56ff67cca932c624863a39c29da1..c8cbe1ca51588d937b0af5825216ddf7948d3759 100644
+--- a/docs/superpowers/docket.md
++++ b/docs/superpowers/docket.md
+@@ -593,7 +593,7 @@
+ **Notes:** ABSORBS #188 (strict subset — its body says so): FIRST task = ('You are a merge-conflict resolver','resolver') in audit_run.py ROLE_MARKERS (:29-42; note the file is under ultrapowers/scripts) + 'resolver' in harvest_runs.py ENGINE_ROLES (:23) + one classify test; `close #188` in that commit. Reader-side only, fixture-first: (1) audit_run.py wallSecByTask keyed by (stamp,task,attempt), emit liveWallSec excluding mechanically-dead attempts; impl:? (34/56) is a TASK_ID regex miss (:20-23,:70-75) — look at a transcript before design; (2) relaunch round attribution via transcript-dir order joined to wf-runs.json ids — the harvester reads NO wf-runs.json today and wf-runs.json is SORTED, never assume launch order; (3) _frontier_max_lines (:712) reads one fold_stats.json per wave → record every one present (verify the writer's layout first; if the kernel must emit per-call stats that is engine + .mjs scope — file separately); (4) terminus/planningFound from the in-session approve exchange (extend _stamp_terminus fallback before 'unknown'). #150 v3 / #160 v4 already shipped persisted-first terminus. Don't touch record_wf_run's stamp schema unless a field is needed. Parallelizable with #222 (disjoint files); benefits from #222's per-round artifacts but does not require them. Add counters #206's charter trigger (b) needs (ambiguity-fork / deferred-property / underspecification rates) only if cheap.
+ 
+ ### #185: Doc/vocab alignment after Phase-2 tier deletion (0.2.17)
+-**State:** queued
++**State:** executed
+ **Score:** 6 — authoring robustness (dependency-analysis.md is what plan authors/ultraplan read and it still teaches three deleted tiers + a retired flag); simplicity
+ **Est-files:** skills/ultrapowers/references/dependency-analysis.md, skills/ultrapowers/references/design-rationale.md, skills/ultrapowers/SKILL.md, evals/frontier/schedule_model.py, evals/frontier/results/2026-08-20-phase2-migration.md, CLAUDE.md
+ **Plan:** docs/superpowers/plans/2026-08-25-phase2-doc-vocab-alignment.md
+diff --git a/evals/frontier/results/2026-08-20-phase2-migration.md b/evals/frontier/results/2026-08-20-phase2-migration.md
+index fcb3a6c78bf07694916f694d6e8b3466814fe3ff..c36adc74dcf7a81023a689cc27e360ede3356084 100644
+--- a/evals/frontier/results/2026-08-20-phase2-migration.md
++++ b/evals/frontier/results/2026-08-20-phase2-migration.md
+@@ -74,6 +74,7 @@ vocabulary, per the deletion.
+ | label | fold Δ | serialize Δ |
+ | --- | --- | --- |
+ | marker | 0 | 0 |
++| text | 0 | 0 |
+ | interface | 0 | 0 |
+ | write-after-create | 0 | 0 |
+ | write-after-write | n/a (tier absent under fold in both) | 0 |
+diff --git a/evals/frontier/schedule_model.py b/evals/frontier/schedule_model.py
+index cc8d0753ca83022f94f070a82dbb683671f98310..48fc691011defe86838db992e705958ba1ad99ce 100644
+--- a/evals/frontier/schedule_model.py
++++ b/evals/frontier/schedule_model.py
+@@ -6,6 +6,9 @@ from pathlib import Path
+ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "ultrapowers" / "kernel"))
+ from frontier_fold import sampled_orders, fold_all  # noqa: E402  (promoted to the kernel; modeling-only module imports back)
+ 
++# `ambiguous-files` is a RETIRED compiler label (Phase 2, 0.2.17) kept here
++# only because tests/test_frontier_cell.py and tests/test_frontier_schedule.py
++# build synthetic edges with it — the model drops it as same-file, harmlessly.
+ SAME_FILE_WHYS = frozenset({"write-after-create", "write-after-write",
+                             "ambiguous-files"})
+ 
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 2ced695c8af55b75aa0ab4cb582a25cc9d07cdaf..b98aa1a59a02e0f7862521301c15bee90ee72e02 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -35,8 +35,6 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
+ `fold` — eligible overlapping-file tasks share a wave and fold at merge
+ time; `serialize` reproduces the pre-0.2.0 behavior — see
+ `references/dependency-analysis.md`). Omit it for the compiler's default.
+-`--repo-root` is always stamped onto the compile call — no operator input
+-needed.
+ 
+ One call runs every deterministic stage fail-closed — git-repo check,
+ worktree-capability probe, self-host engine skew, superpowers compatibility,
+diff --git a/skills/ultrapowers/references/dependency-analysis.md b/skills/ultrapowers/references/dependency-analysis.md
+index 685d2bdc5eb47db338e6706cb5e57da80c023439..57533b1e16d7f80314040f97497b380a8ccf3bfe 100644
+--- a/skills/ultrapowers/references/dependency-analysis.md
++++ b/skills/ultrapowers/references/dependency-analysis.md
+@@ -6,7 +6,7 @@ An approved `superpowers:writing-plans` plan document — headed `# <Feature> Im
+ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
+ 
+ - A short title, optionally followed by a description paragraph (the upstream template goes straight to `**Files:**`; real plans often add one).
+-- A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels. Paths may carry the upstream line-range suffix (`existing.py:123-145`); the compiler strips the suffix, so two tasks editing different ranges of one file still overlap and serialize.
++- A `**Files:**` block listing paths under `Create:`, `Modify:`, and optionally `Test:` sub-labels. Paths may carry the upstream line-range suffix (`existing.py:123-145`); the compiler strips the suffix, so two tasks editing different ranges of one file still overlap.
+ - One or more checkbox steps (`- [ ] …`) describing what the task does.
+ - Optionally, the parallel-execution markers from `plan-markers.md`: `**Type:**` and
+   `**Depends-on:**` lines forming the contiguous block immediately after the task
+@@ -15,7 +15,7 @@ with a numbered list of Tasks each titled `### Task N: <name>` and containing:
+ Parse each task to extract two file sets:
+ 
+ - **writes** = `Create:` paths ∪ `Modify:` paths (files the task changes on disk).
+-- **reads** = `Test:` paths. Two effects: a task that `Test:`s a path another task writes depends on the writer (`why: "read-after-write"`), AND `Test:` paths count toward the write-after-write overlap — upstream TDD tasks WRITE their test files, so two tasks sharing any path (written or tested) serialize in document order unless an explicit or semantic edge orders them. Under `--overlap fold` an *eligible* pair sharing only a `Test:` path is scheduled concurrently and folded at merge time instead of serialized; the runtime fold predicate, not this static rule, is authoritative there. Eligibility itself comes from the `--repo-root <path>` pre-filter: a `Test:` path resolved against the root and existing there keeps the pair serialized when it is non-text or a symlink (size is not a term — the kernel folds on a 1 GiB-stack thread, so the resolver line cap retired); without `--repo-root` every pair is eligible (the pre-filter is inert, a documented property) and the runtime materialization guard is the sole authority.
++- **reads** = `Test:` paths. They count toward the same-file overlap set — upstream TDD tasks WRITE their test files — so two tasks sharing any path (written or tested) form an overlapping pair. Under `--overlap serialize` the pair serializes in document order unless an explicit or semantic edge already orders it; under the default `--overlap fold` the pair shares a wave and the engine folds the edits at merge time. There is no static eligibility pre-filter: the runtime materialization guard is the sole authority on whether a pair folds or falls back.
+ 
+ Extract each task's verbatim body **fence-aware**: a heading inside a ``` code fence
+ is content, not a section boundary — plans routinely embed whole markdown documents
+@@ -68,17 +68,15 @@ For every ordered pair of tasks (A, B) where A ≠ B, add a directed edge **A 
+    `**Depends-on:** none` asserts the author expects no incoming edges; if another rule still finds one, the conflicting edge wins — explicit text edges included (the conflict entry's `edge` field carries the literal `why` label) and the disagreement is surfaced in the
+    transparency block under `marker_conflicts`.
+ 2. **Write-after-create:** B's `Modify:` set contains a path that appears in A's `Create:` set. B cannot modify a file that does not exist yet.
+-3. **Write-after-write (same file):** A's `writes` set and B's `writes` set share at least one path. Under `--overlap serialize`, concurrent writes to the same file are never safe; serialize them in document order (A before B if A appears first in the plan). The overlap set is `writes ∪ Test:` paths on both sides (see the reads bullet). Under `--overlap fold` this tier does not create the edge for an *eligible* pair — the two tasks share a wave and the engine folds their same-file edits at merge time, with the runtime fold predicate authoritative; the drop happens at construction (the pair is recorded in `dropped_pairs`, both orderings) so the `ambiguous-files` and catch-all tiers below still read a truthful adjacency. A pair is droppable only where this tier would have created a NEW edge: forward document order, no edge already recorded for the pair (a `marker`, `text`, `interface`, or semantic edge keeps it serialized), and not cycle-blocked. Every other `why` label survives fold untouched. Eligibility is decided by the `--repo-root <path>` pre-filter (hermetic, memoised per path): a pair keeps its edge when any path in its overlap set, resolved against the root and existing there, is non-text or a symlink (`Path.is_symlink()`; gitlinks are left to the runtime guard). Size is not a term: the retired resolver line cap was there only because the kernel's merge walk blew the main thread's stack, and it now folds on a 1 GiB-stack thread. Without `--repo-root` the pre-filter is inert — every pair is eligible. Each ineligible path is recorded once in `marker_conflicts` as a `kind: "inference"` entry (`task: ""`, `edge: "<path>"`) — no new diagnostic vocabulary, the same bucket `Depends-on: none overridden` uses.
++3. **Write-after-write (same file, `--overlap serialize` only):** A's `writes` set and B's `writes` set share at least one path (the overlap set is `writes ∪ Test:` paths on both sides — see the reads bullet). Under `--overlap serialize` concurrent writes to one file are never safe, so the pair serializes in document order (A before B if A appears first in the plan). Under `--overlap fold` — the default since 0.2.0 — this tier creates no edge: the two tasks share a wave and the engine folds their same-file edits at merge time, with the runtime fold predicate authoritative; the pair is recorded in `dropped_pairs` (both orderings). A pair is droppable only where this tier would have created a NEW edge: forward document order, no edge already recorded for the pair (a `marker`, `text`, `interface`, or `write-after-create` edge keeps it serialized), and not cycle-blocked. Every other `why` label survives fold untouched.
+ 4. **Explicit text dependency:** B's task body contains a phrase matching `depends on Task A`, `after Task A`, or `requires Task A` (case-insensitive, where A is the task NUMBER exactly as written in the heading — matched against fence-stripped prose only; fenced examples never create edges). Task titles and phase-level prose are NOT matched — convert them to `**Depends-on:**` markers on the downstream task (ultraplan authoring rule 2). Precisely: the task's own heading line is excluded from the scan, but prose sections that sit between task headings fold into the PRECEDING task's body and ARE scanned — keep ordering prose out of interstitial sections. Plural conjunction/comma lists — `depends on Tasks 1 and 3` or `after Tasks 1, 2 and 3` — parse into one text edge per listed id (`why: "text"`); each parsed id that falls outside the implementation set surfaces as a dropped-ghost conflict. A plural `Tasks` mention that does not form a parseable id list (e.g. `after Tasks above`) still surfaces as a conflict so ordering intent is never silently lost.
+-5. **Read-after-write:** A's `writes` set shares a path with B's `reads` set → edge A → B. Like write-after-create, this applies regardless of document order.
+-6. **Prose-reference:** B's fence-stripped prose contains a backticked reference to a path in A's `Create:` set — the exact path, its basename, or (for stems of 3+ characters) its module stem used as an attribute (`schema.User` referencing `apistub/schema.py`). Edge A → B (`why: "prose-reference"`). Because prose matching is fuzzier than `Files:` matching, these edges are cycle-guarded like the document-order heuristics, and each newly inferred edge is surfaced in `marker_conflicts` so the Step-3 gate shows the inference. Motivating failure: eval run mixed-B-2 (2026-06-13) — a task spec said "returns a `schema.User`" while declaring `Depends-on: none`, waved parallel to the schema task, and its failure cascade-blocked the rest of the diamond.
+-7. **Interface (Consumes/Produces):** B's `**Interfaces:**` block `Consumes:` a symbol that A's `**Interfaces:**` block `Produces:`. Matching is **exact normalized-token equality** — each entry is reduced to its leading symbol token and compared by string equality; there is **no** substring or fuzzy matching (a false edge would silently re-order waves). Edge A → B (`why: "interface"`), producer → consumer. Order-independent in direction but cycle-guarded like prose-reference. A `Consumes` entry with no matching `Produces` anywhere is **not** an error. Every interface edge that is **not** already covered by a `**Depends-on:**` marker or a file-overlap edge (write-after-create / write-after-write / read-after-write) is surfaced in `marker_conflicts` as a loud **undeclared-dependency** finding (`kind: "undeclared-dependency"`) — the plan still compiles and runs, and the author is told their `Depends-on` was wrong. Motivating case: the `flawed` eval fixture — Task 4's store `Consumes: User` which Task 1 `Produces: User`, while Task 4 declares `Depends-on: none`; the interface edge orders Task 4 after Task 1 and the omission is reported.
++5. **Interface (Consumes/Produces):** B's `**Interfaces:**` block `Consumes:` a symbol that A's `**Interfaces:**` block `Produces:`. Matching is **exact normalized-token equality** — each entry is reduced to its leading symbol token and compared by string equality; there is **no** substring or fuzzy matching (a false edge would silently re-order waves). Edge A → B (`why: "interface"`), producer → consumer. Order-independent in direction but cycle-guarded, so an explicit or semantic edge in the opposite direction wins. A `Consumes` entry with no matching `Produces` anywhere is **not** an error. Every interface edge that is **not** already covered by a `**Depends-on:**` marker or a file-overlap edge (write-after-create; write-after-write under `--overlap serialize`) is surfaced in `marker_conflicts` as a loud **undeclared-dependency** finding (`kind: "undeclared-dependency"`) — the plan still compiles and runs, and the author is told their `Depends-on` was wrong. Motivating case: the `flawed` eval fixture — Task 4's store `Consumes: User` which Task 1 `Produces: User`, while Task 4 declares `Depends-on: none`; the interface edge orders Task 4 after Task 1 and the omission is reported.
+ 
+ Collect all edges into an adjacency list. Each node is identified by its task number (T1, T2, …, TN).
+ 
+-Edge `why` labels emitted by the compiler: `marker`, `write-after-create`, `write-after-write`, `read-after-write`, `interface`, `prose-reference`, `text`, `ambiguous-files`.
++Edge `why` labels emitted by the compiler: `marker`, `text`, `interface`, `write-after-create` — plus `write-after-write` under `--overlap serialize` only.
+ 
+-Precedence: document-order heuristics (write-after-write, ambiguous-files) yield to any opposing PATH — reachability through ALL earlier-recorded edges, not just a direct reverse edge (a reverse path always contains at least one explicit or semantic edge, since heuristics never create cycles). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing. `interface` and `prose-reference` both sit between the semantic rules and the document-order heuristics: order-independent in direction (producer → consumer; creator → referencer) but cycle-guarded, so an explicit or semantic edge in the opposite direction always wins. `interface` is recorded before `prose-reference`, so when both would order the same pair the explicit Interfaces signal wins the `why` label.
++Precedence: the document-order heuristic (`write-after-write`, serialize mode only) yields to any opposing PATH — reachability through ALL earlier-recorded edges, not just a direct reverse edge (a reverse path always contains at least one explicit or semantic edge, since the heuristic never creates cycles). A cycle that survives this precedence is a genuine plan contradiction — surfaced as a loud error, never resolved by guessing. `interface` sits between the semantic rules and the document-order heuristic: order-independent in direction (producer → consumer) but cycle-guarded, so an explicit or semantic edge in the opposite direction always wins.
+ 
+ ---
+ 
+@@ -99,7 +97,7 @@ Each wave is a set of tasks that can execute in parallel — their dependencies
+ 
+ Apply these rules before finalizing the DAG:
+ 
+-- **Ambiguous Files block:** if an `implementation` task's `**Files:**` block is missing, empty, or contains glob patterns that cannot be resolved statically, treat that task as depending on all tasks that precede it in the document. (Gates and release/manual tasks have already left the set during classification — this default applies only to tasks classified `implementation`.) Place it in its own wave after those tasks. The compiler implements this mechanically: an `implementation` task with no parsed `Create:`/`Modify:`/`Test:` paths, or with glob characters in any path, gets `ambiguous-files` edges from every preceding implementation task AND into every following one (minus any edge the reachability yield suppresses) — serializing it into its own wave at its document position.
++- **Files-less or glob `Files:` blocks refuse:** a marked `implementation` task with no parsed `Create:`/`Modify:`/`Test:` path, or with glob characters in any path, is a compile-time refusal — `compile_plan.py --check` names the task and the fix — never a guessed ordering. (Gates and release/manual tasks have already left the set during classification.)
+ 
+ The remaining two defaults are hand-derivation guidance only — the compiler is static and does not inspect the repo; apply them when reviewing heuristic-flagged output:
+ 
+@@ -155,7 +153,7 @@ marker_conflicts: []        # each entry carries kind: "conflict" (needs a human
+                             # Interfaces Consumes/Produces edge the author's Depends-on
+                             # omitted — fix at authoring), or kind: "inference" (a benign
+                             # edge the compiler inferred — e.g. a file edge overriding
+-                            # "Depends-on: none", or a prose-reference edge). Render the
++                            # "Depends-on: none", or an interface edge). Render the
+                             # three buckets separately.
+ inlined_notes:
+   - "port table from the preamble → T3, T4 bodies"
+diff --git a/skills/ultrapowers/references/design-rationale.md b/skills/ultrapowers/references/design-rationale.md
+index abec2321c3dbe6788ca08057d61fa6f284dc85d9..be113983dc428c1d640231b20f00eccecacdd319 100644
+--- a/skills/ultrapowers/references/design-rationale.md
++++ b/skills/ultrapowers/references/design-rationale.md
+@@ -164,10 +164,12 @@ waiver-with-reason.
+ 
+ Eval run mixed-B-2 (2026-06-13): a task spec said "returns a `schema.User`" while
+ declaring `Depends-on: none`, was waved parallel to the schema task, and its
+-failure cascade-blocked the rest of the diamond. That is the motivating failure
+-behind the compiler's **prose-reference edge**
+-(`references/dependency-analysis.md`) — an undeclared dependency expressed only in
+-prose is serialized instead of cascading at runtime — and behind the **Salvage**
++failure cascade-blocked the rest of the diamond. A prose-only reference like that is no longer inferred: the prose-reference tier
++that once serialized it was deleted in Phase 2 (0.2.17), so the guard is authoring —
++declare the `**Interfaces:**` `Consumes`/`Produces` pair or the `**Depends-on:**`
++marker (`references/dependency-analysis.md`), and the compiler's loud
++`undeclared-dependency` finding catches a declared-but-unlinked pair at the Step-3
++render. The same run motivated the **Salvage**
+ path, which pulls a failed/blocked branch's already-correct work in rather than
+ reimplementing it. The same run motivated the FILES and SIBLING-FILES scope rules
+ baked into the implementer/reviewer prompts (`references/reviewer-prompts.md`):

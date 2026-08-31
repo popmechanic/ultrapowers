@@ -1,0 +1,694 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 5fb53a25c98e1ff9dab3970f688d112947ed4fac..0645e4ea2c9b27eed16db12883883141f5116428 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -33,8 +33,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_run.py <plan> --s
+ 
+ One call runs every deterministic stage fail-closed — git-repo check,
+ worktree-capability probe, self-host engine skew, superpowers compatibility,
+-compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock +
+-checkout snapshot, and `baseBranch` derivation — and writes the receipt to
++compile (`--emit-launch`/`--emit-args`), committed-workflow install, run lock,
++dirty-baseline stage, and `baseBranch` derivation — and writes the receipt to
+ `.claude/ultrapowers/run-<stamp>/receipt.json`. **Exit 0** → read the receipt and
+ continue. **Non-zero** → the last stage names the failure:
+ 
+@@ -192,12 +192,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/ultra_gate.py \
+   --stamp <stamp> --result <saved-result.json>
+ ```
+ 
+-Its first act is to restore the session checkout the run started from — the
+-pre-launch snapshot, not a bare `git checkout <baseBranch>` (which would strand
+-the gate on the integration branch). With integration in its dedicated
+-worktree the engine never moved the checkout, so this restore is normally a
+-no-op — it remains the fail-safe against operator-caused drift. It then
+-runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
++It runs `gate_check.py` (clean-tree blocks only on dirt **new** since the snapshot;
+ pre-existing operator files pass with a note), and administers acceptance per the
+ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report's
+ `tests.passed` is triage context; the **exit code is the authority**:
+diff --git a/skills/ultrapowers/references/design-rationale.md b/skills/ultrapowers/references/design-rationale.md
+index c49a19932a4e370961206502ea3a6026bf36534b..abec2321c3dbe6788ca08057d61fa6f284dc85d9 100644
+--- a/skills/ultrapowers/references/design-rationale.md
++++ b/skills/ultrapowers/references/design-rationale.md
+@@ -97,24 +97,39 @@ the payload round-trip failure above (Step 6).
+ 
+ ---
+ 
+-## § Step 5 — Checkout drift (#29 / #32) and the critic-wrong-tree class
+-
+-The workflow's setup agent checks out the integration branch in the session
+-repository and nothing switches it back. Skipping the restore (or using a bare
+-`git checkout <baseBranch>`) makes every `git log`/`git merge` at this gate
+-silently target the integration branch, so the work *looks* prematurely merged
+-when it is not. A misbehaving review role cannot police itself and the engine has
+-no shell, so the clean-tree / head-match / gitVerified checks live at the gate,
+-where the main session does have one (now mechanized in `gate_check.py`, whose
+-exit code is the authority and which emits each literal):
++## § Step 5 — Verdict independence from checkout position (#84)
++
++The workflow's setup agent checks out the integration branch in a **dedicated
++worktree**, never in the session repository. The verdict is then independent of
++the session checkout's position on both of the legs that could otherwise read
++it. The integrity checks below derive from ref-resolved `HEAD` — the report's
++recorded merge sha and the completeness critic's own `git rev-parse HEAD`, both
++verified mechanically — not from where the session happens to sit. And
++acceptance is administered in a **fresh detached worktree** of the branch
++(`run_acceptance.sh` does this for the sealed exam and the suite gate alike —
++see § Step 5 — Why sealed exams are administered at the gate), so the other
++place the checkout position could bite is closed too. Neither leg alone
++establishes position-independence: head-match without the detached suite-gate
++would still run the tests in whatever tree the operator left behind.
++
++So the engine never moves the operator's checkout, and (as of #84) no longer
++moves it *back* either. That asymmetry is intentional — not restoring is the
++safe direction — because a restore is not a free undo: it acts on whatever
++checkout it finds, including one the operator deliberately moved. The 0.0.35
++field incident is exactly that case, and it is the argument. The restore did not
++fail; it **succeeded**, and in succeeding it wiped an operator's uncommitted
++edit — the only data destruction in the ledger's history caused by the engine
++itself. With the verdict already position-independent, restoring buys the checks
++nothing and risks destroying work the operator meant to keep.
++
++The gate mechanizes three integrity checks (now in `gate_check.py`, whose exit
++code is the authority and which emits each literal):
+ 
+ - `git status --porcelain` MUST be empty. A non-empty result means a role wrote
+-  outside the worktree discipline (as in #32) — that work is unreviewed by
+-  construction. Surface it as BLOCKED; never silently `git reset` it away
+-  (silently moving trees is the very behavior #29 punished).
++  outside the worktree discipline — that work is unreviewed by construction.
++  Surface it as BLOCKED; never silently reset it away.
+ - The integration branch HEAD MUST equal the report's last merge headSha. A
+-  mismatch means the tree on disk is not the one the run produced (checkout
+-  drift, #29).
++  mismatch means the tree on disk is not the one the run produced.
+ - The report's `gitVerified` MUST be true — the completeness critic confirmed,
+   via its own `git rev-parse HEAD`, that it reviewed the recorded merge HEAD. A
+   false `gitVerified` means the completeness review is unverified.
+diff --git a/skills/ultrapowers/scripts/run_lock.sh b/skills/ultrapowers/scripts/run_lock.sh
+index b829b0f7a5d5ea7f67abec505a951454b6296d47..15bda133ce5d9b34b0588227223d00b661ae0892 100755
+--- a/skills/ultrapowers/scripts/run_lock.sh
++++ b/skills/ultrapowers/scripts/run_lock.sh
+@@ -10,20 +10,20 @@
+ #                    exit non-zero with a refusal if a DIFFERENT id holds it
+ #   check    <id>  — exit 0 iff RUN_LOCK holds <id>; non-zero otherwise
+ #   release  <id>  — remove RUN_LOCK iff it holds <id> (no-op if mismatch)
+-#   snapshot       — record current branch + HEAD sha to CHECKOUT_SNAPSHOT,
+-#                    and the porcelain dirty set to DIRTY_SNAPSHOT (the gate
+-#                    blocks only on dirt that appears AFTER this)
+-#   restore        — checkout the branch/sha recorded in CHECKOUT_SNAPSHOT
+ #
+-# Advisory: never force-moves a tree.  All operations are idempotent and silent
+-# on success so the caller can chain them with &&.
++# This script never moves a checkout.  The snapshot/restore family it used to
++# carry was retired in #104: since #84 the engine integrates in a dedicated
++# worktree and the gate resolves branch refs, so the session checkout is never
++# moved and needs no restoring.  The launch-time dirty baseline the gate still
++# reads (DIRTY_SNAPSHOT) is written by ultra_run.py's dirty-baseline stage.
++#
++# Advisory: all operations are idempotent and silent on success so the caller
++# can chain them with &&.
+ set -eu
+ 
+ ROOT="$(git rev-parse --show-toplevel)"
+ DIR="$ROOT/.claude/ultrapowers"
+ LOCK="$DIR/RUN_LOCK"
+-SNAP="$DIR/CHECKOUT_SNAPSHOT"
+-DIRTY="$DIR/DIRTY_SNAPSHOT"
+ mkdir -p "$DIR"
+ 
+ cmd="${1:-}"
+@@ -48,39 +48,8 @@ case "$cmd" in
+     fi
+     ;;
+ 
+-  snapshot)
+-    branch="$(git -C "$ROOT" branch --show-current)"
+-    sha="$(git -C "$ROOT" rev-parse HEAD)"
+-    printf '%s\t%s' "$branch" "$sha" > "$SNAP"
+-    git -C "$ROOT" status --porcelain > "$DIRTY"
+-    ;;
+-
+-  restore)
+-    if [ ! -f "$SNAP" ]; then
+-      echo "run_lock.sh restore: no snapshot to restore (run 'snapshot' first)" >&2
+-      exit 1
+-    fi
+-    b="$(cut -f1 "$SNAP")"
+-    h="$(cut -f2 "$SNAP")"
+-    if [ -n "$b" ]; then
+-      git -C "$ROOT" checkout "$b"
+-      cur="$(git -C "$ROOT" branch --show-current)"
+-      if [ "$cur" != "$b" ]; then
+-        echo "run_lock.sh restore: expected to land on branch '$b' but HEAD is '${cur:-<detached>}' — refusing to gate the wrong tree (#68)." >&2
+-        exit 1
+-      fi
+-    else
+-      git -C "$ROOT" checkout "$h"
+-      cur="$(git -C "$ROOT" rev-parse HEAD)"
+-      if [ "$cur" != "$h" ]; then
+-        echo "run_lock.sh restore: expected detached HEAD at '$h' but HEAD is '$cur' — refusing to gate the wrong tree (#68)." >&2
+-        exit 1
+-      fi
+-    fi
+-    ;;
+-
+   *)
+-    echo "usage: run_lock.sh acquire|check|release <id> | snapshot | restore" >&2
++    echo "usage: run_lock.sh acquire|check|release <id>" >&2
+     exit 2
+     ;;
+ esac
+diff --git a/skills/ultrapowers/scripts/ultra_gate.py b/skills/ultrapowers/scripts/ultra_gate.py
+index a652b93da71b213fd1c1823c610b07677696a8bb..3ed7401ffdbe9b10545fdb2c16220d1bfa95937e 100755
+--- a/skills/ultrapowers/scripts/ultra_gate.py
++++ b/skills/ultrapowers/scripts/ultra_gate.py
+@@ -1,12 +1,15 @@
+ #!/usr/bin/env python3
+ """Deterministic gate driver for /ultrapowers (SKILL.md Step 5 mechanics).
+ 
+-Gate mode (--result): restore the pre-launch checkout, unwrap the Workflow
+-tool envelope (gate fields live under result.* — report-format.md), save the
+-report verbatim, run gate_check.py, then administer acceptance per the
+-disposition recorded in the ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK /
+-1 BLOCKED; a failed acceptance always forces 1. The driver never decides —
+-the orchestrator renders the receipt and owns Approve/Salvage/Redirect.
++Gate mode (--result): unwrap the Workflow tool envelope (gate fields live
++under result.* — report-format.md), save the report verbatim, run
++gate_check.py, then administer acceptance per the disposition recorded in the
++ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a failed acceptance
++always forces 1. The driver never decides — the orchestrator renders the
++receipt and owns Approve/Salvage/Redirect. Gate mode moves no checkout: the
++verdict is checkout-position-independent (head-match resolves branch refs and
++the suite-gate runs in its own detached worktree), so wherever the operator
++has parked, the gate reads the same tree and leaves them there (#104).
+ 
+ --approve: checkout the integration branch, sweep every recorded wf run id
+ plus wf_<stamp> (wf-runs.json ∪ --wf-run), release the lock; a sweep that
+@@ -169,10 +172,6 @@ def main(argv=None):
+     if a.result is None:
+         return blocked(receipt, "--result <workflow result JSON> is required")
+ 
+-    r = sh(lock + ["restore"], cwd=root)
+-    if r.returncode != 0:
+-        return blocked(receipt, "checkout restore failed: " + r.stderr)
+-
+     try:
+         payload = json.loads(a.result.read_text())
+     except Exception as e:
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index d6efb2079940d9475d65dabd0144742f46c1c224..6847b101006ab7537e8340f17a926440bb4b87cf 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -3,8 +3,8 @@
+ 
+ One invocation runs every deterministic pre-launch stage in order, fail-closed:
+ git-repo check, worktree-capability probe, self-host engine skew, superpowers
+-compatibility, plan compile, committed-workflow install, run lock + checkout
+-snapshot, and deterministic knob derivation (baseBranch from the launched
++compatibility, plan compile, committed-workflow install, run lock + dirty
++baseline, and deterministic knob derivation (baseBranch from the launched
+ checkout, probe payload).
+ 
+ The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
+@@ -118,6 +118,24 @@ def sh(cmd, cwd=None):
+     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+ 
+ 
++def write_dirty_baseline(root):
++    """Record the launch-time dirty set to `.claude/ultrapowers/DIRTY_SNAPSHOT`
++    — `git status --porcelain` redirected to the file, nothing else.
++
++    This is gate_check.py's new-vs-pre-existing partition key: dirt listed here
++    predates the run and is the operator's, so the gate notes it instead of
++    accusing a role. #104 retired the snapshot/restore family that used to
++    write it, so the driver writes it directly; the checkout-position half
++    (CHECKOUT_SNAPSHOT) died with the family. Returns the CompletedProcess so
++    the caller can stage on its exit code (fail-closed: a git that could not
++    report status leaves an empty baseline, i.e. strict)."""
++    dest = Path(root) / ".claude/ultrapowers/DIRTY_SNAPSHOT"
++    dest.parent.mkdir(parents=True, exist_ok=True)
++    with dest.open("w") as fh:
++        return subprocess.run(["git", "status", "--porcelain"], cwd=root,
++                              stdout=fh, stderr=subprocess.PIPE, text=True)
++
++
+ def validate_knobs(args_path, root):
+     """Pre-launch knob validation, fail-closed (#89): every wave entry's
+     tier/review must be a value the engine accepts, and a bootstrapCmd must
+@@ -395,9 +413,12 @@ def main(argv=None):
+                  success="lock acquired: " + stamp,
+                  failure=r.stderr or r.stdout):
+         return bail()
+-    r = sh(["bash", str(HERE / "run_lock.sh"), "snapshot"], cwd=root)
+-    if not stage("snapshot", r.returncode == 0,
+-                 success="checkout snapshot recorded",
++    r = write_dirty_baseline(root)
++    dirt_lines = len([l for l in (root / ".claude/ultrapowers/DIRTY_SNAPSHOT")
++                      .read_text().splitlines() if l.strip()])
++    if not stage("dirty-baseline", r.returncode == 0,
++                 success="dirty baseline recorded: %d pre-existing line(s)"
++                         % dirt_lines,
+                  failure=r.stderr):
+         return bail()
+ 
+diff --git a/tests/test_gate_check.py b/tests/test_gate_check.py
+index 45dc2aa8ad30a76eaa4723dac60e235f1ca36583..bd78e1f8b7d9a8bf108def1e6b0169a2bd15b647 100644
+--- a/tests/test_gate_check.py
++++ b/tests/test_gate_check.py
+@@ -1,6 +1,12 @@
+ """gate_check.py: the deterministic pre-merge gate checks (SKILL.md Step 5).
+ Every check is exercised against a throwaway git repo; git is ground truth,
+-so a corrupted report can only yield BLOCKED, never a false PASS."""
++so a corrupted report can only yield BLOCKED, never a false PASS.
++
++The clean-tree check's new-vs-pre-existing baseline is seeded by the driver's
++own writer (`ultra_run.write_dirty_baseline`) — #104 retired the
++`run_lock.sh snapshot` subcommand that used to write it, but the
++launch-over-operator-dirt workflow it protects is unchanged, so these tests
++are re-plumbed rather than deleted."""
+ import json
+ import pathlib
+ import subprocess
+@@ -9,6 +15,8 @@ import sys
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
+ GATE = SCRIPTS / "gate_check.py"
++sys.path.insert(0, str(SCRIPTS))
++from ultra_run import write_dirty_baseline  # noqa: E402
+ 
+ 
+ def sh(cmd, cwd=None, check=True):
+@@ -155,10 +163,11 @@ def test_malformed_report_blocks(tmp_path):
+ 
+ def test_preexisting_dirt_passes_with_note(tmp_path):
+     """Dirt recorded in DIRTY_SNAPSHOT predates the run — the gate must not
+-    block on it or accuse a role (2026-07-03 distill: stash-dance class)."""
++    block on it or accuse a role (2026-07-03 distill: stash-dance class).
++    Seeded by the driver's writer, the baseline's only writer since #104."""
+     repo, head = make_repo(tmp_path)
+     (repo / "operator-notes.md").write_text("deliberately uncommitted\n")
+-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
++    write_dirty_baseline(repo)
+     report = tmp_path / "report.json"
+     report.write_text(json.dumps(good_report(head)))
+     r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+@@ -173,8 +182,8 @@ def test_preexisting_dirt_passes_with_note(tmp_path):
+ 
+ def test_new_dirt_still_blocks(tmp_path):
+     repo, head = make_repo(tmp_path)
+-    sh(["bash", str(SCRIPTS / "run_lock.sh"), "snapshot"], cwd=repo)
+-    (repo / "smuggled.py").write_text("appeared after snapshot\n")
++    write_dirty_baseline(repo)
++    (repo / "smuggled.py").write_text("appeared after the dirty baseline\n")
+     report = tmp_path / "report.json"
+     report.write_text(json.dumps(good_report(head)))
+     r = sh([sys.executable, str(GATE), "--run-id", "wf_test",
+@@ -187,9 +196,9 @@ def test_new_dirt_still_blocks(tmp_path):
+     assert r.returncode == 1
+ 
+ 
+-def test_no_snapshot_falls_back_strict(tmp_path):
+-    """Runs launched before Task 2 have no DIRTY_SNAPSHOT: every dirt line
+-    blocks, exactly the old behavior (fail-closed)."""
++def test_no_baseline_falls_back_strict(tmp_path):
++    """No DIRTY_SNAPSHOT means no recorded pre-launch dirt: every dirt line
++    blocks (fail-closed)."""
+     repo, head = make_repo(tmp_path)
+     (repo / "any.txt").write_text("dirt\n")
+     report = tmp_path / "report.json"
+diff --git a/tests/test_run_lock.py b/tests/test_run_lock.py
+index 3204fadacc56976d3be06d03017d29e7f3804a1d..5fc3b1f0fa7c1440c0ffc302d6ef5405b2150c2e 100644
+--- a/tests/test_run_lock.py
++++ b/tests/test_run_lock.py
+@@ -1,6 +1,11 @@
+-"""Tests for run_lock.sh — acquire/check/release/snapshot/restore primitives.
++"""Tests for run_lock.sh — the acquire/check/release lock primitives.
+ 
+ Mirrors the subprocess + temp-git-repo idiom used by test_sweep_worktrees.py.
++
++The snapshot/restore family was retired in #104: since #84 the engine never
++touches the session checkout, so there is nothing to snapshot or restore. The
++lock proper is untouched by that subtraction — the pins below hold it intact
++and hold the retired subcommands retired.
+ """
+ import subprocess
+ import pathlib
+@@ -41,17 +46,6 @@ def test_acquire_then_conflicting_acquire_refuses(tmp_path):
+     assert _run(repo, "acquire", "BBB").returncode == 0
+ 
+ 
+-def test_snapshot_restore_returns_to_original_branch(tmp_path):
+-    repo = _repo(tmp_path)
+-    _git(repo, "checkout", "-b", "feature")
+-    assert _run(repo, "snapshot").returncode == 0
+-    _git(repo, "checkout", "-b", "ultra/integration")
+-    assert _run(repo, "restore").returncode == 0
+-    cur = subprocess.run(["git", "-C", str(repo), "branch", "--show-current"],
+-                         capture_output=True, text=True).stdout.strip()
+-    assert cur == "feature"
+-
+-
+ def test_acquire_is_idempotent_for_same_runid(tmp_path):
+     """Acquiring the same runId twice should succeed (no self-lock)."""
+     repo = _repo(tmp_path)
+@@ -86,12 +80,6 @@ def test_release_does_not_remove_lock_held_by_other(tmp_path):
+     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text().strip() == "AAA"
+ 
+ 
+-def test_restore_fails_gracefully_when_no_snapshot(tmp_path):
+-    repo = _repo(tmp_path)
+-    p = _run(repo, "restore")
+-    assert p.returncode != 0
+-
+-
+ def test_unknown_command_exits_nonzero(tmp_path):
+     repo = _repo(tmp_path)
+     p = _run(repo, "frobnicate")
+@@ -103,47 +91,34 @@ def _branch(repo):
+                           capture_output=True, text=True).stdout.strip()
+ 
+ 
+-def test_restore_detects_wrong_branch(tmp_path):
+-    """The post-restore guard fires when the checkout lands off the recorded branch.
+-
+-    We reproduce a wrong-tree landing by corrupting the snapshot's branch field to
+-    a commit-ish that is not a branch (the HEAD sha): `git checkout` then detaches
+-    instead of landing on the recorded branch, so `branch --show-current` != recorded.
+-    The guard must refuse (non-zero) with a loud warning rather than gate the wrong tree.
+-    """
++def test_snapshot_and_restore_are_retired(tmp_path):
++    """#104: both subcommands are gone, so both hit the usage branch (exit 2).
++    A deletion, not a deprecation — no flag, no shim, no silent no-op."""
+     repo = _repo(tmp_path)
+-    assert _run(repo, "snapshot").returncode == 0
+-    sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"],
+-                         capture_output=True, text=True).stdout.strip()
+-    snap = repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT"
+-    snap.write_text(f"{sha}\t{sha}")   # branch field is a sha ⇒ checkout detaches
+-    p = _run(repo, "restore")
+-    assert p.returncode != 0
+-    assert "#68" in (p.stdout + p.stderr)
+-
+-
+-def test_restore_multi_run_per_session(tmp_path):
+-    """Two snapshot→wander→restore cycles in one repo each land back on the recorded
+-    branch and exit 0 — the multi-run/self-host/Salvage path single-run does not exercise."""
++    for retired in ("snapshot", "restore"):
++        p = _run(repo, retired)
++        assert p.returncode == 2, retired
++        assert "usage" in (p.stdout + p.stderr).lower()
++    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
++    assert not (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").exists()
++
++
++def test_usage_line_advertises_only_the_lock(tmp_path):
++    """The usage line is the script's own contract statement — it must not
++    keep offering a family that no longer exists."""
+     repo = _repo(tmp_path)
+-    # cycle 1
+-    assert _run(repo, "snapshot").returncode == 0
+-    _git(repo, "checkout", "-b", "ultra/run-1")
+-    assert _run(repo, "restore").returncode == 0
+-    assert _branch(repo) == "main"
+-    # cycle 2
+-    assert _run(repo, "snapshot").returncode == 0
+-    _git(repo, "checkout", "-b", "ultra/run-2")
+-    assert _run(repo, "restore").returncode == 0
+-    assert _branch(repo) == "main"
+-
+-
+-def test_restore_still_lands_on_main(tmp_path):
+-    """Regression guard for the preserved branch-first semantics: a normal restore
+-    lands back on `main` as a branch and exits 0."""
++    p = _run(repo, "frobnicate")
++    msg = p.stdout + p.stderr
++    assert "acquire|check|release" in msg
++    assert "snapshot" not in msg and "restore" not in msg
++
++
++def test_retired_subcommands_never_move_the_checkout(tmp_path):
++    """The family's one recorded action was destructive (0.0.35 incident).
++    Invoking the retired names must leave the tree exactly where it was."""
+     repo = _repo(tmp_path)
+-    assert _run(repo, "snapshot").returncode == 0
+-    _git(repo, "checkout", "-b", "_tmp")
+-    p = _run(repo, "restore")
+-    assert p.returncode == 0
+-    assert _branch(repo) == "main"
++    _git(repo, "checkout", "-b", "feature")
++    _run(repo, "snapshot")
++    _git(repo, "checkout", "-b", "ultra/integration")
++    _run(repo, "restore")
++    assert _branch(repo) == "ultra/integration"
+diff --git a/tests/test_run_lock_snapshot.py b/tests/test_run_lock_snapshot.py
+deleted file mode 100644
+index fa86203452c97279a19e3073a04c1aaa63f6a0e0..0000000000000000000000000000000000000000
+--- a/tests/test_run_lock_snapshot.py
++++ /dev/null
+@@ -1,51 +0,0 @@
+-"""run_lock.sh snapshot: records the porcelain dirty set alongside the
+-branch/sha snapshot, so the gate can block on NEW dirt only."""
+-import pathlib
+-import subprocess
+-
+-ROOT = pathlib.Path(__file__).resolve().parents[1]
+-LOCK = ROOT / "skills/ultrapowers/scripts/run_lock.sh"
+-
+-
+-def sh(cmd, cwd=None, check=True):
+-    return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+-
+-
+-def make_repo(tmp_path):
+-    repo = tmp_path / "repo"
+-    repo.mkdir()
+-    sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+-    sh(["git", "config", "user.email", "t@t"], cwd=repo)
+-    sh(["git", "config", "user.name", "t"], cwd=repo)
+-    (repo / ".gitignore").write_text(".claude/\n")
+-    (repo / "f.txt").write_text("base\n")
+-    sh(["git", "add", "."], cwd=repo)
+-    sh(["git", "commit", "-qm", "base"], cwd=repo)
+-    return repo
+-
+-
+-def test_snapshot_records_empty_dirty_set_when_clean(tmp_path):
+-    repo = make_repo(tmp_path)
+-    sh(["bash", str(LOCK), "snapshot"], cwd=repo)
+-    dirty = repo / ".claude/ultrapowers/DIRTY_SNAPSHOT"
+-    assert dirty.is_file()
+-    assert dirty.read_text().strip() == ""
+-
+-
+-def test_snapshot_records_preexisting_dirt(tmp_path):
+-    repo = make_repo(tmp_path)
+-    (repo / "f.txt").write_text("modified\n")          # tracked, modified
+-    (repo / "notes.md").write_text("operator file\n")  # untracked
+-    sh(["bash", str(LOCK), "snapshot"], cwd=repo)
+-    recorded = (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").read_text()
+-    assert " M f.txt" in recorded
+-    assert "?? notes.md" in recorded
+-
+-
+-def test_restore_still_works_after_snapshot(tmp_path):
+-    repo = make_repo(tmp_path)
+-    sh(["bash", str(LOCK), "snapshot"], cwd=repo)
+-    sh(["git", "checkout", "-qb", "other"], cwd=repo)
+-    sh(["bash", str(LOCK), "restore"], cwd=repo)
+-    cur = sh(["git", "branch", "--show-current"], cwd=repo).stdout.strip()
+-    assert cur == "main"
+diff --git a/tests/test_ultra_gate.py b/tests/test_ultra_gate.py
+index 52e0086dcb924ade392ea077ee6982eeb82edc2e..6a2e1ef3b2b8a0e7555b984a469a9c97bde67027 100644
+--- a/tests/test_ultra_gate.py
++++ b/tests/test_ultra_gate.py
+@@ -18,15 +18,21 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ SCRIPTS = ROOT / "skills/ultrapowers/scripts"
+ sys.path.insert(0, str(SCRIPTS))
+ import ultra_gate  # noqa: E402
++from ultra_run import write_dirty_baseline  # noqa: E402
+ 
+ 
+ def sh(cmd, cwd=None, check=True):
+     return subprocess.run(cmd, cwd=cwd, check=check, capture_output=True, text=True)
+ 
+ 
+-def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None):
++def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None,
++              seed_dirty_baseline=True):
+     """Throwaway repo + a scripts dir where run_acceptance.sh is a stub that
+-    records its argv and exits 0. Returns (repo, scripts_dir, head)."""
++    records its argv and exits 0. Returns (repo, scripts_dir, head).
++
++    `seed_dirty_baseline=False` reproduces a launch whose DIRTY_SNAPSHOT was
++    never written — post-#104 that is an ordinary state the gate must survive,
++    not the BLOCKED path the deleted restore step used to produce."""
+     repo = tmp_path / "repo"
+     repo.mkdir()
+     sh(["git", "init", "-q", "-b", "main"], cwd=repo)
+@@ -54,7 +60,8 @@ def make_repo(tmp_path, acceptance_mode="waived", receipt_extra=None):
+ 
+     # the pre-launch state ultra_run would have left behind
+     sh(["bash", str(scripts / "run_lock.sh"), "acquire", "t1"], cwd=repo)
+-    sh(["bash", str(scripts / "run_lock.sh"), "snapshot"], cwd=repo)
++    if seed_dirty_baseline:
++        write_dirty_baseline(repo)
+     run_dir = repo / ".claude/ultrapowers/run-t1"
+     run_dir.mkdir(parents=True)
+     acceptance = {"waived": {"mode": "waived", "reason": "test"},
+@@ -110,6 +117,38 @@ def test_bare_report_also_accepted(tmp_path):
+     assert json.loads(r.stdout)["verdict"] == "PASS"
+ 
+ 
++def test_gate_passes_with_no_snapshot_file_present(tmp_path):
++    """#104: gate mode's first act is the result unwrap. With no snapshot file
++    on disk the gate reaches a real verdict — the old restore-first step turned
++    exactly this state into a BLOCKED with no bearing on the work reviewed."""
++    repo, scripts, head = make_repo(tmp_path, seed_dirty_baseline=False)
++    assert not (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").exists()
++    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
++    result = tmp_path / "result.json"
++    result.write_text(json.dumps(good_report(head)))
++    r = run_gate(repo, scripts, result)
++    out = json.loads(r.stdout)
++    assert r.returncode == 0, r.stdout + r.stderr
++    assert out["verdict"] == "PASS"
++
++
++def test_gate_leaves_the_session_checkout_where_it_found_it(tmp_path):
++    """The property the retired family claimed to protect, now held by the
++    gate being checkout-position-independent (#84): head-match resolves the
++    branch ref, so the gate reads the same tree from wherever the operator
++    parked and never moves them."""
++    repo, scripts, head = make_repo(tmp_path)
++    sh(["git", "checkout", "-qb", "operator-side-quest"], cwd=repo)
++    before = sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
++    result = tmp_path / "result.json"
++    result.write_text(json.dumps(good_report(head)))
++    r = run_gate(repo, scripts, result)
++    assert json.loads(r.stdout)["verdict"] == "PASS", r.stdout
++    assert sh(["git", "branch", "--show-current"],
++              cwd=repo).stdout.strip() == "operator-side-quest"
++    assert sh(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip() == before
++
++
+ def test_sealed_acceptance_dispatch(tmp_path):
+     """Sealed disposition invokes run_acceptance.sh with sealId, branch, hash."""
+     repo, scripts, head = make_repo(tmp_path, acceptance_mode="sealed")
+@@ -193,9 +232,10 @@ def test_approve_checks_out_branch_and_releases(tmp_path):
+ 
+ 
+ # ── #96: suite acceptance derives its inputs from the receipt ────────────
+-# These stub at the ultra_gate.sh boundary ONLY (git rev-parse, run_lock
+-# restore, gate_check and run_acceptance are all subprocesses through sh()),
+-# so the exact argv handed to run_acceptance.sh is observable.
++# These stub at the ultra_gate.sh boundary ONLY (git rev-parse, gate_check
++# and run_acceptance are all subprocesses through sh()), so the exact argv
++# handed to run_acceptance.sh is observable — and so is the full call list,
++# which #104 uses to pin that no run_lock.sh restore is issued at all.
+ 
+ 
+ class FakeProc:
+@@ -203,10 +243,11 @@ class FakeProc:
+         self.returncode, self.stdout, self.stderr = code, out, err
+ 
+ 
+-def _run_gate(root, monkeypatch, receipt_extra):
++def _run_gate(root, monkeypatch, receipt_extra, calls=None):
+     """Drive ultra_gate.main in gate mode against a synthesized run_dir whose
+     receipt carries acceptance.mode 'suite' plus receipt_extra. Returns
+-    (exit_code, gate_receipt_dict_or_None, run_acceptance_argv_or_None)."""
++    (exit_code, gate_receipt_dict_or_None, run_acceptance_argv_or_None); pass
++    `calls` to also collect every subprocess argv the driver issued."""
+     root.mkdir(parents=True, exist_ok=True)
+     run_dir = root / ".claude/ultrapowers/run-t1"
+     run_dir.mkdir(parents=True)
+@@ -218,7 +259,7 @@ def _run_gate(root, monkeypatch, receipt_extra):
+         "integrationBranch": "ultra/x",
+         "tests": {"command": "IGNORED PROSE (553 passed)", "passed": True,
+                   "output": "ok"}}}))
+-    calls = []
++    calls = [] if calls is None else calls
+ 
+     def fake_sh(cmd, cwd=None):
+         calls.append([str(c) for c in cmd])
+@@ -246,6 +287,17 @@ def _run_gate(root, monkeypatch, receipt_extra):
+     return code, gate_receipt, (ra[0] if ra else None)
+ 
+ 
++def test_gate_issues_no_run_lock_restore(tmp_path, monkeypatch):
++    """#104: the restore call is deleted, not made conditional. No subprocess
++    the gate issues may name `restore` — the family is gone from this path."""
++    calls = []
++    code, receipt, _ = _run_gate(tmp_path / "a", monkeypatch,
++                                 {"testCmd": "make check"}, calls=calls)
++    assert code == 0 and receipt["verdict"] == "PASS"
++    assert calls, "sanity: the driver issued subprocesses"
++    assert not [c for c in calls if "restore" in " ".join(c)]
++
++
+ def test_suite_acceptance_command_comes_from_receipt(tmp_path, monkeypatch):
+     code, receipt, ra = _run_gate(tmp_path / "a", monkeypatch,
+                                   {"testCmd": "make check"})
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index 36ce9beb1eabdb15828117100260d5e942c14616..ef2b25aa8626d625fa499cab6c8bb07d50136225 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -60,7 +60,7 @@ def test_happy_path_receipt(tmp_path):
+     stage_names = [s["stage"] for s in receipt["stages"]]
+     for expected in ("git-repo", "worktree-probe", "engine-skew",
+                      "superpowers-compat", "compile", "test-command", "install",
+-                     "lock", "snapshot"):
++                     "lock", "dirty-baseline"):
+         assert expected in stage_names
+     run_dir = repo / ".claude/ultrapowers/run-t1"
+     assert (run_dir / "receipt.json").is_file()
+@@ -75,15 +75,46 @@ def test_happy_path_receipt(tmp_path):
+     assert entries and all(t["tier"] is None for t in entries)
+     assert all(t["review"] in ("lean", "adversarial") for t in entries)
+     assert any("waves[][].tier" in d for d in receipt["llmDerives"])
+-    # lock + snapshot actually happened, with the dirty set recorded
++    # lock + dirty-baseline actually happened, with the dirty set recorded
+     assert (repo / ".claude/ultrapowers/RUN_LOCK").read_text() == "t1"
+     assert (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").is_file()
++    # the checkout-position half of the retired family records nothing (#104)
++    assert not (repo / ".claude/ultrapowers/CHECKOUT_SNAPSHOT").exists()
+     # probe contract pre-computed for the orchestrator
+     assert receipt["probe"]["assert"] == {"echoWaves": 1, "echoFirstId": "probe-1"}
+     assert receipt["workflowName"] == "ultrapowers-run"
+     assert receipt["testCmd"] == "python3 -m pytest"
+ 
+ 
++def test_dirty_baseline_stage_records_the_preexisting_dirt(tmp_path):
++    """#104 relocation: the driver writes DIRTY_SNAPSHOT itself. Its content is
++    `git status --porcelain` at launch — the exact partition key gate_check
++    uses to tell operator dirt from dirt a role smuggled in mid-run."""
++    repo = make_repo(tmp_path)
++    (repo / "pytest.ini").write_text("[pytest]\n# operator edit\n")  # tracked
++    (repo / "operator-notes.md").write_text("deliberately uncommitted\n")
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    receipt = json.loads(r.stdout)
++    stage = [s for s in receipt["stages"] if s["stage"] == "dirty-baseline"][0]
++    assert stage["ok"] is True
++    recorded = (repo / ".claude/ultrapowers/DIRTY_SNAPSHOT").read_text()
++    porcelain = sh(["git", "status", "--porcelain"], cwd=repo).stdout
++    assert recorded == porcelain
++    assert " M pytest.ini" in recorded
++    assert "?? operator-notes.md" in recorded
++
++
++def test_dirty_baseline_is_empty_on_a_clean_launch(tmp_path):
++    """A clean tree records an empty baseline — not a missing file, which
++    gate_check would read as 'nothing pre-existed' by a different route."""
++    repo = make_repo(tmp_path)
++    assert run_driver(repo).returncode == 0
++    dirty = repo / ".claude/ultrapowers/DIRTY_SNAPSHOT"
++    assert dirty.is_file()
++    assert dirty.read_text() == ""
++
++
+ def test_not_a_git_repo_fails_first_stage(tmp_path):
+     bare = tmp_path / "not-a-repo"
+     bare.mkdir()

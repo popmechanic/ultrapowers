@@ -1,0 +1,340 @@
+diff --git a/skills/ultrapowers/SKILL.md b/skills/ultrapowers/SKILL.md
+index 665190a8d585cd71b1d2b2e9c0a07a0d7221efc2..5ce5f14414075868e2de069c6e4e46077cadcf12 100644
+--- a/skills/ultrapowers/SKILL.md
++++ b/skills/ultrapowers/SKILL.md
+@@ -177,6 +177,11 @@ compiled disposition — sealed exam, suite gate, or verbatim waiver. The report
+ - **2 (NEEDS_ACK)** → present the acks for explicit operator acknowledgement first.
+ - **1 (BLOCKED)** → present the failing checks; do **NOT** Approve.
+ 
++Whatever the verdict, delete the run's review exhaust now —
++`rm -rf .claude/ultrapowers/run-<stamp>/review` — the packets are regenerable
++from the BASE/HEAD shas recorded in the report; the run's records
++(transcripts, receipts, launch/args) stay for the viewer and later harvests.
++
+ Render the report per `references/report-format.md` plus the **post-merge runbook**
+ (`release`/`manual` tasks, verbatim), then present:
+ 
+diff --git a/skills/ultrapowers/scripts/compile_plan.py b/skills/ultrapowers/scripts/compile_plan.py
+index 9c2ffe2700f6c50d465d39ce17a9f81f41ff6cd8..e66a1a24c756833a89eebf542c16944c9c09033c 100644
+--- a/skills/ultrapowers/scripts/compile_plan.py
++++ b/skills/ultrapowers/scripts/compile_plan.py
+@@ -24,6 +24,10 @@ import re
+ import sys
+ from pathlib import Path
+ 
++# scripts -> ultrapowers -> skills -> plugin root; identical to ultra_run.py's
++# PLUGIN_ROOT (HERE.parents[2] from the scripts dir).
++PLUGIN_ROOT = Path(__file__).resolve().parents[3]
++
+ TASK_HEAD = re.compile(r"^### Task ([A-Za-z0-9]+):\s*(.*)$")
+ FENCE = re.compile(r"^(`{3,}|~{3,})")
+ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
+@@ -1238,6 +1242,10 @@ def main(argv=None):
+                          "every violation with a did-you-mean fix and exit 2, "
+                          "or print 'PLAN OK' and exit 0 — never emits waves. "
+                          "Mutually exclusive with --emit-launch/--emit-args.")
++    ap.add_argument("--run-dir", type=Path, default=None, dest="run_dir",
++                    help="absolute per-run directory; stamped into the args "
++                         "skeleton as runDir (with pluginRoot) so the engine "
++                         "routes all scratch there")
+     args = ap.parse_args(argv)
+     emit_launch = args.emit_launch
+     emit_args = args.emit_args
+@@ -1257,6 +1265,9 @@ def main(argv=None):
+     if emit_args is not None and emit_launch is None:
+         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
+                  "ride via the launch file, so wavesPath is always populated)")
++    if args.run_dir is not None and emit_args is None:
++        sys.exit("error: --run-dir requires --emit-args (the keys ride the "
++                 "launch-args skeleton)")
+     plan_text = args.plan.read_text()
+     # (Runs BEFORE the no-tasks bail so an all-wrong-level plan gets the
+     # named diagnostic, not the generic 'no headings found'.)
+@@ -1485,6 +1496,9 @@ def main(argv=None):
+             "globalConstraints": global_constraints,
+             "planPath": str(args.plan.resolve()),
+         }
++        if args.run_dir is not None:
++            args_payload["pluginRoot"] = str(PLUGIN_ROOT)
++            args_payload["runDir"] = str(args.run_dir.resolve())
+         emit_args.parent.mkdir(parents=True, exist_ok=True)
+         emit_args.write_text(json.dumps(args_payload, indent=2))
+         result["args_file"] = str(emit_args)
+diff --git a/skills/ultrapowers/scripts/review-package b/skills/ultrapowers/scripts/review-package
+index aa7e9064560ab3986f1929be44286a8ae5176a14..fa96ede2ab71da8ada934cd9e28c620750a48db2 100755
+--- a/skills/ultrapowers/scripts/review-package
++++ b/skills/ultrapowers/scripts/review-package
+@@ -5,14 +5,20 @@
+ #
+ # Usage: review-package BASE HEAD [OUTFILE]
+ #
+-# Default OUTFILE: <main-repo-root>/.superpowers/ultra/review-<base7>..<head7>.diff.
++# Default OUTFILE: <main-repo-root>/.claude/ultrapowers/scratch/review-<base7>..<head7>.diff.
++# An OUTFILE ending in a trailing slash (/) is treated as a target directory
++# (created if absent) that receives that same default-named packet.
++#
+ # Unlike v6's per-worktree `git rev-parse --git-path sdd`, ultrapowers' implementer
+ # and reviewer run in DIFFERENT linked worktrees, so the packet must live somewhere
+ # both can see. We derive it from the RESOLVED PARENT of --git-common-dir (the main
+-# repo root, identical for every linked worktree) and write under .superpowers/ —
+-# already gitignored — so the scratch stays SHARED across worktrees yet escapes the
+-# protected .git/ that superpowers fled in v6.0.3. Do NOT switch to a worktree-relative
+-# .superpowers/ off the CWD: that would hand each worktree a different dir and break sharing.
++# repo root, identical for every linked worktree) and write under
++# .claude/ultrapowers/scratch/ — whose parent .gitignore (content `*`) self-ignores
++# the whole engine-scratch tree — so the scratch stays SHARED across worktrees, is
++# structurally invisible to git in ANY repo, yet escapes the protected .git/ that
++# superpowers fled in v6.0.3. Do NOT switch to a worktree-relative
++# .claude/ultrapowers/ off the CWD: that would hand each worktree a different dir
++# and break sharing.
+ #
+ # Echoes the final output path on stdout so callers learn where it wrote.
+ set -euo pipefail
+@@ -28,15 +34,39 @@ head=$2
+ git rev-parse --verify --quiet "$base" >/dev/null || { echo "bad BASE: $base" >&2; exit 2; }
+ git rev-parse --verify --quiet "$head" >/dev/null || { echo "bad HEAD: $head" >&2; exit 2; }
+ 
+-if [ $# -eq 3 ]; then
+-  out=$3
+-else
++default_dir() {
++  # Default scratch: <main-repo-root>/.claude/ultrapowers/scratch — derived from
++  # the RESOLVED PARENT of --git-common-dir (identical for every linked
++  # worktree, so implementer and reviewer worktrees see one shared path). The
++  # parent .gitignore self-ignores (content `*`), so engine scratch is
++  # structurally invisible to git status/add in ANY repo — the property the
++  # old .superpowers/ location only had when superpowers' own scripts had run.
+   common=$(git rev-parse --git-common-dir)
+   common=$(cd "$common" && pwd)          # absolutize (handles the bare ".git" case)
+-  dir="$(dirname "$common")/.superpowers/ultra"   # main repo root, shared by every worktree
+-  mkdir -p "$dir"
+-  dir=$(cd "$dir" && pwd)   # absolute, so the echoed path works from any cwd
+-  out="$dir/review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
++  local root parent
++  root="$(dirname "$common")"
++  parent="$root/.claude/ultrapowers"
++  mkdir -p "$parent/scratch"
++  printf '*\n' > "$parent/.gitignore"
++  ( cd "$parent/scratch" && pwd )
++}
++
++default_name() {
++  echo "review-$(git rev-parse --short "$base")..$(git rev-parse --short "$head").diff"
++}
++
++if [ $# -eq 3 ]; then
++  case $3 in
++    */)
++      mkdir -p "$3"
++      out="$(cd "$3" && pwd)/$(default_name)"
++      ;;
++    *)
++      out=$3
++      ;;
++  esac
++else
++  out="$(default_dir)/$(default_name)"
+ fi
+ 
+ {
+diff --git a/skills/ultrapowers/scripts/ultra_run.py b/skills/ultrapowers/scripts/ultra_run.py
+index 7052fc154a69f8c796b9ac100f5ab2b578d46e99..bbb5070a3710f9c0a957412644380058b50ab963 100755
+--- a/skills/ultrapowers/scripts/ultra_run.py
++++ b/skills/ultrapowers/scripts/ultra_run.py
+@@ -19,6 +19,7 @@ from __future__ import annotations
+ import argparse
+ import datetime
+ import json
++import re
+ import shutil
+ import subprocess
+ import sys
+@@ -28,6 +29,24 @@ HERE = Path(__file__).resolve().parent
+ HARNESSES = HERE.parent / "harnesses"
+ PLUGIN_ROOT = HERE.parents[2]
+ 
++RUN_DIR_RE = re.compile(r"^run-\d{8}-\d{6}$")
++KEEP_RUNS = 10
++
++
++def prune_run_dirs(state_dir, keep=KEEP_RUNS):
++    """Keep the newest `keep` run dirs; delete older ones. Matches ONLY
++    strict run-<stamp> names — everything else under the state dir
++    (scratch/, pending seal dirs, operator files) is not ours to touch.
++    Stamp format sorts lexicographically = chronologically."""
++    if not state_dir.is_dir():
++        return []
++    runs = sorted(d for d in state_dir.iterdir()
++                  if d.is_dir() and RUN_DIR_RE.match(d.name))
++    doomed = runs[:-keep] if keep else runs
++    for d in doomed:
++        shutil.rmtree(d, ignore_errors=True)
++    return [d.name for d in doomed]
++
+ PROBE = {"name": "ultrapowers-probe",
+          "args": {"ping": "pong",
+                   "waves": [{"id": "probe-1", "title": "probe", "body": "b"}]},
+@@ -189,10 +208,23 @@ def main(argv=None):
+     if not stage("superpowers-compat", r.returncode == 0, r.stdout + r.stderr):
+         return bail()
+ 
++    # Scratch hygiene: the state dir self-ignores (content `*`) so every run
++    # dir is structurally invisible to git in any repo, and old run records
++    # are pruned keep-newest-10 (runs serialize on RUN_LOCK, so no dir here
++    # is live). Exhaust (<runDir>/review) is deleted earlier, at the SKILL.md
++    # gate step; this prune is the crash backstop that gives cleanup a
++    # trigger even when a run died before its gate.
++    state_dir.mkdir(parents=True, exist_ok=True)
++    (state_dir / ".gitignore").write_text("*\n")
++    pruned = prune_run_dirs(state_dir)
++    stage("scratch-hygiene", True,
++          "pruned %d old run dir(s)" % len(pruned) if pruned else "nothing to prune")
++
+     run_dir.mkdir(parents=True, exist_ok=True)
+     launch, args_file = run_dir / "launch.json", run_dir / "args.json"
+     r = sh([sys.executable, str(HERE / "compile_plan.py"), str(a.plan),
+-            "--emit-launch", str(launch), "--emit-args", str(args_file)],
++            "--emit-launch", str(launch), "--emit-args", str(args_file),
++            "--run-dir", str(run_dir.resolve())],
+            cwd=root)
+     if not stage("compile", r.returncode == 0, r.stderr or r.stdout):
+         return bail()
+diff --git a/tests/test_review_package.py b/tests/test_review_package.py
+index 7d208ff3e038da01acdded5e45ac3c88e63e12ee..64671e33e0d956d3cd4542f718c341262f673c45 100644
+--- a/tests/test_review_package.py
++++ b/tests/test_review_package.py
+@@ -1,8 +1,9 @@
+ """End-to-end test for the review-package script — the pre-baked review packet
+ (spec §2.1). A REAL temp repo with two commits touching one file; asserts the
+-packet is written to the SHARED scratch dir under `.superpowers/ultra` (outside
+-`.git/`, yet resolving identically from every linked worktree), is echoed on
+-stdout, and carries the commit subjects, the ## Diff header, and a +/- diff hunk."""
++packet is written to the SHARED scratch dir under `.claude/ultrapowers/scratch`
++(outside `.git/`, yet resolving identically from every linked worktree), is
++echoed on stdout, and carries the commit subjects, the ## Diff header, and a
+++/- diff hunk."""
+ import pathlib
+ import subprocess
+ 
+@@ -37,7 +38,7 @@ def run_script(repo, *args):
+                           capture_output=True, text=True)
+ 
+ 
+-def test_review_package_writes_to_shared_superpowers_dir_and_echoes_path(tmp_path):
++def test_review_package_writes_to_shared_scratch_dir_and_echoes_path(tmp_path):
+     repo, base, head = make_repo(tmp_path)
+     p = run_script(repo, base, head)
+     assert p.returncode == 0, p.stderr
+@@ -48,8 +49,9 @@ def test_review_package_writes_to_shared_superpowers_dir_and_echoes_path(tmp_pat
+     if not common.is_absolute():
+         common = (repo / common)
+     # The scratch dir is derived from the RESOLVED PARENT of --git-common-dir
+-    # (the main repo root, shared by every linked worktree), under .superpowers/.
+-    expected_dir = (common.resolve().parent / ".superpowers" / "ultra")
++    # (the main repo root, shared by every linked worktree), under
++    # .claude/ultrapowers/scratch.
++    expected_dir = (common.resolve().parent / ".claude" / "ultrapowers" / "scratch")
+     assert out_path.resolve().parent == expected_dir.resolve()
+     # It must escape the protected .git/ entirely.
+     assert ".git" not in out_path.resolve().parts, out_path
+@@ -81,10 +83,11 @@ def test_packet_dir_shared_across_worktrees(tmp_path):
+ 
+     main_path = pathlib.Path(p_main.stdout.strip().splitlines()[-1]).resolve()
+     wt_path = pathlib.Path(p_wt.stdout.strip().splitlines()[-1]).resolve()
+-    # Both runs land in the SAME shared .superpowers/ultra directory.
++    # Both runs land in the SAME shared .claude/ultrapowers/scratch directory.
+     assert main_path.parent == wt_path.parent, (main_path, wt_path)
+-    assert main_path.parent.name == "ultra"
+-    assert main_path.parent.parent.name == ".superpowers"
++    assert main_path.parent.name == "scratch"
++    assert main_path.parent.parent.name == "ultrapowers"
++    assert main_path.parent.parent.parent.name == ".claude"
+     assert ".git" not in main_path.parts, main_path
+     assert ".git" not in wt_path.parts, wt_path
+ 
+@@ -111,3 +114,33 @@ def test_review_package_rejects_bad_rev(tmp_path):
+     p = run_script(repo, base, "nope-not-a-rev")
+     assert p.returncode == 2
+     assert "HEAD" in p.stderr
++
++
++def test_default_lands_in_claude_ultrapowers_scratch(tmp_path):
++    repo, base, head = make_repo(tmp_path)
++    p = run_script(repo, base, head)
++    assert p.returncode == 0, p.stderr
++    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
++    assert out_path.exists()
++    expected_dir = (repo / ".claude" / "ultrapowers" / "scratch").resolve()
++    assert out_path.resolve().parent == expected_dir
++    # The parent self-ignore makes the scratch invisible to git in ANY repo.
++    ignore = repo / ".claude" / "ultrapowers" / ".gitignore"
++    assert ignore.read_text() == "*\n"
++    status = git(repo, "status", "--porcelain").stdout
++    assert status == "", f"engine scratch visible to git: {status}"
++    # The old location is never created.
++    assert not (repo / ".superpowers").exists()
++
++
++def test_outfile_trailing_slash_is_a_target_directory(tmp_path):
++    repo, base, head = make_repo(tmp_path)
++    dest = tmp_path / "exhaust" / "review"
++    p = run_script(repo, base, head, str(dest) + "/")
++    assert p.returncode == 0, p.stderr
++    out_path = pathlib.Path(p.stdout.strip().splitlines()[-1])
++    assert out_path.exists()
++    assert out_path.resolve().parent == dest.resolve()
++    assert out_path.name.startswith("review-") and out_path.name.endswith(".diff")
++    body = out_path.read_text()
++    assert "# Review package:" in body and "## Commits" in body
+diff --git a/tests/test_ultra_run.py b/tests/test_ultra_run.py
+index f5d1efa946b5b243c6f4c26312187da2b3c45847..55a6d3b3ec39868c0c9316c6a4f2b2e8e07f1f15 100644
+--- a/tests/test_ultra_run.py
++++ b/tests/test_ultra_run.py
+@@ -219,3 +219,47 @@ def test_validate_knobs_rejects_a_non_object_args_file_with_a_verdict(tmp_path):
+     verdict = json.loads(r.stdout)
+     assert verdict["ok"] is False
+     assert "not a JSON object" in verdict["detail"]
++
++
++def test_args_skeleton_carries_plugin_root_and_run_dir(tmp_path):
++    repo = make_repo(tmp_path)
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    skel = json.loads((repo / ".claude/ultrapowers/run-t1/args.json").read_text())
++    assert skel["pluginRoot"] == str(ROOT)
++    assert skel["runDir"] == str((repo / ".claude/ultrapowers/run-t1").resolve())
++
++
++def test_run_dir_requires_emit_args(tmp_path):
++    repo = make_repo(tmp_path)
++    r = sh([sys.executable, str(SCRIPTS / "compile_plan.py"), "plan.md",
++            "--run-dir", str(tmp_path / "rd")], cwd=repo, check=False)
++    assert r.returncode != 0
++    assert "--run-dir requires --emit-args" in (r.stdout + r.stderr)
++
++
++def test_state_dir_self_ignores_and_prunes_old_runs(tmp_path):
++    repo = make_repo(tmp_path)
++    state = repo / ".claude/ultrapowers"
++    state.mkdir(parents=True)
++    # 12 stale stamp-format run dirs; the 2 oldest must be pruned (keep 10).
++    for day in range(10, 22):
++        (state / f"run-202601{day:02d}-000000").mkdir()
++    # Decoys that the prune must NEVER touch: non-matching names.
++    (state / "scratch").mkdir()
++    (state / "pending-abc123def456").mkdir()
++    (state / "run-keepme").mkdir()          # prefix collides, format does not
++    r = run_driver(repo)
++    assert r.returncode == 0, r.stdout + r.stderr
++    survivors = sorted(d.name for d in state.iterdir()
++                       if d.name.startswith("run-2026"))
++    assert len(survivors) == 10
++    assert survivors[0] == "run-20260112-000000"   # the 2 oldest are gone
++    assert (state / "scratch").is_dir()
++    assert (state / "pending-abc123def456").is_dir()
++    assert (state / "run-keepme").is_dir()
++    assert (state / "run-t1").is_dir()             # the current run, untouched
++    assert (state / ".gitignore").read_text() == "*\n"
++    receipt = json.loads(r.stdout)
++    assert any(s["stage"] == "scratch-hygiene" and s["ok"]
++               for s in receipt["stages"])

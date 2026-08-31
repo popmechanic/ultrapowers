@@ -1,0 +1,797 @@
+[
+  {
+    "runId": "20260827-200331",
+    "wave": 1,
+    "baseSha": "b444092a883e27fcf59b25a0caf65f677ee47c12",
+    "mode": "branch",
+    "tasks": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "20260828114629",
+    "wave": 1,
+    "baseSha": "b655325b2697af4a72b86fe8f76265c3dab0c346",
+    "mode": "branch",
+    "tasks": [
+      "1",
+      "2",
+      "3"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "p0b-20260828-103837",
+    "wave": 1,
+    "baseSha": "76393055b3fa2cc9a540aed4b4f4faa7c07abd1f",
+    "mode": "branch",
+    "tasks": [
+      "4",
+      "5",
+      "6"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-10",
+    "wave": 0,
+    "baseSha": "",
+    "mode": "",
+    "tasks": [],
+    "skipped": "no fold logs",
+    "commutes": {}
+  },
+  {
+    "runId": "run-11",
+    "wave": 0,
+    "baseSha": "",
+    "mode": "",
+    "tasks": [],
+    "skipped": "no fold logs",
+    "commutes": {}
+  },
+  {
+    "runId": "run-12",
+    "wave": 0,
+    "baseSha": "",
+    "mode": "",
+    "tasks": [],
+    "skipped": "no fold logs",
+    "commutes": {}
+  },
+  {
+    "runId": "run-13",
+    "wave": 0,
+    "baseSha": "",
+    "mode": "",
+    "tasks": [],
+    "skipped": "no fold logs",
+    "commutes": {}
+  },
+  {
+    "runId": "run-23",
+    "wave": 1,
+    "baseSha": "2b2ae540d5a6cca18c7e45c9eaf60acf1e31fa3b",
+    "mode": "branch",
+    "tasks": [
+      "1",
+      "2"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-24",
+    "wave": 0,
+    "baseSha": "",
+    "mode": "",
+    "tasks": [],
+    "skipped": "no fold logs",
+    "commutes": {}
+  },
+  {
+    "runId": "run-25",
+    "wave": 1,
+    "baseSha": "d89b23d3c3f59938a5d7e1033d9f2bdab43631ad",
+    "mode": "patch",
+    "tasks": [
+      "2"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-26",
+    "wave": 1,
+    "baseSha": "f69e0dc7675dd9285392219eda0a976de471a91b",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-27",
+    "wave": 1,
+    "baseSha": "96fa5e92aabbf710eada33da669a198c0bde6503",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-28",
+    "wave": 1,
+    "baseSha": "90d3c77e79ff8b14b78b6483e2d572541acd6436",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-28",
+    "wave": 2,
+    "baseSha": "6fbf3fa3fa6f104b13bdedc63d4e7964cf2f17a8",
+    "mode": "patch",
+    "tasks": [
+      "3"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-29",
+    "wave": 1,
+    "baseSha": "552ecf09203ed7645859d283628f70334153b8ac",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "3"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-29",
+    "wave": 2,
+    "baseSha": "c720ad9dc78104d5f3a4538efa3445ee8509732c",
+    "mode": "patch",
+    "tasks": [
+      "2",
+      "4"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-30",
+    "wave": 1,
+    "baseSha": "3fa493659de304851c5b46bfdeff7d712aba709d",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-31",
+    "wave": 1,
+    "baseSha": "364cc7f5efe09d252bd019eb1f30f185b70ef161",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2",
+      "3"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-32",
+    "wave": 1,
+    "baseSha": "32468b2e83b54b0bbee14ee02847109b528f337a",
+    "mode": "patch",
+    "tasks": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-32",
+    "wave": 2,
+    "baseSha": "bf38ed9a943246aa4cdfb805d243151c477efd1e",
+    "mode": "patch",
+    "tasks": [
+      "5"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-32",
+    "wave": 3,
+    "baseSha": "3d9424c68d840bc27217bad55ad1814beee33433",
+    "mode": "patch",
+    "tasks": [
+      "6"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-33",
+    "wave": 1,
+    "baseSha": "b8538130e8f442bd15ebe4fabcd6fe85ca660c32",
+    "mode": "patch",
+    "tasks": [
+      "1"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-33",
+    "wave": 2,
+    "baseSha": "7d374f3015d3b18eb5efaa1d7eee38f40e338619",
+    "mode": "patch",
+    "tasks": [
+      "2",
+      "3"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-34",
+    "wave": 1,
+    "baseSha": "677baf1122a6a9a7b65f9b90c7ca2a89fba08b70",
+    "mode": "patch",
+    "tasks": [
+      "1"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-34",
+    "wave": 2,
+    "baseSha": "0cf6c753a9ba08784177bf0e4d81ac59d03b7682",
+    "mode": "patch",
+    "tasks": [
+      "2",
+      "3",
+      "4"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "run-34",
+    "wave": 3,
+    "baseSha": "5d75900958f909ef0683e4286c26a06b45b2637c",
+    "mode": "patch",
+    "tasks": [
+      "5"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "w2-entry-slate-20260827",
+    "wave": 1,
+    "baseSha": "0025bb49898c616a8540ecad244eaa77b898d81f",
+    "mode": "branch",
+    "tasks": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-8893e8e",
+    "wave": 1,
+    "baseSha": "8690d74e1539461841550cc5fc46f7bc0d675894",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-448681b",
+    "wave": 1,
+    "baseSha": "8690d74e1539461841550cc5fc46f7bc0d675894",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-d38db8d",
+    "wave": 1,
+    "baseSha": "bea579711d7d4a50de38c2cd20b0088c5522807a",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-715e70b",
+    "wave": 1,
+    "baseSha": "db44907684b7938e1b1ed2e656a9c6e855346a20",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-b1e7745",
+    "wave": 1,
+    "baseSha": "99c6e55e761204c8e2beefbbb764ac76219fe697",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-bd42de4",
+    "wave": 1,
+    "baseSha": "6ff79216ebb18e3a0791e6982e117ff5cd9e25f1",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-f1ed13d",
+    "wave": 1,
+    "baseSha": "6ff79216ebb18e3a0791e6982e117ff5cd9e25f1",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-3a6f35a",
+    "wave": 1,
+    "baseSha": "8289145746b23aabc08a93a15026a467b14870a7",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-8289145",
+    "wave": 1,
+    "baseSha": "975f090146ff5e8b2b129e721a2470ffef2aa99d",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-975f090",
+    "wave": 1,
+    "baseSha": "03ff1bc9c1dbf008801a2067f8c6f0304dc56373",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-b6cdc8b",
+    "wave": 1,
+    "baseSha": "03ff1bc9c1dbf008801a2067f8c6f0304dc56373",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-55d7ed7",
+    "wave": 1,
+    "baseSha": "1d3471f9df8a187071b5a6b533e085beb5f8c3b9",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-28c1239",
+    "wave": 1,
+    "baseSha": "ae20fb8cfab970a21587b9e00af535a3a46c4857",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-6229ebc",
+    "wave": 1,
+    "baseSha": "767fb9ca16636ac5bdbd76ee7946b6ef2188b269",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-2a9a221",
+    "wave": 1,
+    "baseSha": "767fb9ca16636ac5bdbd76ee7946b6ef2188b269",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-767fb9c",
+    "wave": 1,
+    "baseSha": "a1c1cbb65f64b3c0800b58f0b02bdf63fe5e782f",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-81759f5",
+    "wave": 1,
+    "baseSha": "a1c1cbb65f64b3c0800b58f0b02bdf63fe5e782f",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-fdc1e7f",
+    "wave": 1,
+    "baseSha": "af12246e16f3505bd6e20dbdd5f0e493dea745e1",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-236fb0d",
+    "wave": 1,
+    "baseSha": "af12246e16f3505bd6e20dbdd5f0e493dea745e1",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-e1256d8",
+    "wave": 1,
+    "baseSha": "af12246e16f3505bd6e20dbdd5f0e493dea745e1",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-6500839",
+    "wave": 1,
+    "baseSha": "f1a6b01de7f83686b6c5dacd9cf982dde8056d80",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-0959a0f",
+    "wave": 1,
+    "baseSha": "50ef9514597a63363d17c379939c1312de7cb6b2",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-0714320",
+    "wave": 1,
+    "baseSha": "e336959df1df714af120c8a60f4e21f140844d06",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-d576e45",
+    "wave": 1,
+    "baseSha": "08f4ffb0f781f01b9a18c6486236407b8b7ca6f0",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-08f4ffb",
+    "wave": 1,
+    "baseSha": "0a993ac589ac6598318fd2a22122c8178dc49305",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-0880881",
+    "wave": 1,
+    "baseSha": "0a993ac589ac6598318fd2a22122c8178dc49305",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-00daa71",
+    "wave": 1,
+    "baseSha": "559c94d3985d20429322a2f830196462d979a331",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-eb0998e",
+    "wave": 1,
+    "baseSha": "5b8abae1c8b2f3bd05c1d9e8e7b74282512a02ec",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-5b8abae",
+    "wave": 1,
+    "baseSha": "22343f7a4c43f3ff41a55cf45dd18042aeb4988b",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-22343f7",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-ed89824",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-66c0548",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-91edea6",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-d012eaa",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-40123f0",
+    "wave": 1,
+    "baseSha": "e85ff96c80e42c640578fd02fe9f9ed8e3389da8",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-c64731c",
+    "wave": 1,
+    "baseSha": "007c2ee0ec71d14f0156f468b5a0007ab8427737",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-1e29ebb",
+    "wave": 1,
+    "baseSha": "521d770757ac611e4c423e2a7028c21baf851c53",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-521d770",
+    "wave": 1,
+    "baseSha": "8185ac90563eac53c059ee92cd7e23592d49a23b",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-a989e50",
+    "wave": 1,
+    "baseSha": "8185ac90563eac53c059ee92cd7e23592d49a23b",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  },
+  {
+    "runId": "synth-a49e543",
+    "wave": 1,
+    "baseSha": "8185ac90563eac53c059ee92cd7e23592d49a23b",
+    "mode": "patch",
+    "tasks": [
+      "a",
+      "b"
+    ],
+    "skipped": null,
+    "commutes": {}
+  }
+]

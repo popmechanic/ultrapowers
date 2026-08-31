@@ -1,0 +1,818 @@
+diff --git a/skills/ultrapowers/kernel/FOLD_LOG.md b/skills/ultrapowers/kernel/FOLD_LOG.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..563f99720268ad566db5177a148fcf87af29fd98
+--- /dev/null
++++ b/skills/ultrapowers/kernel/FOLD_LOG.md
+@@ -0,0 +1,86 @@
++# The fold log
++
++One JSONL file per wave, written by the frontier CLI and read back by
++`frontier_fold.rehydrate(repo, log_path)`.
++
++```
++<runDir>/frontier/wave-<n>/fold_log.jsonl
++```
++
++`<n>` is **1-based**, matching the `heads/` slot convention. Everything else
++the wave records lives beside it in the same directory.
++
++## Self-sufficiency contract
++
++**The log plus the repository are the whole record.** Each CLI invocation in a
++wave is its own process and carries nothing in memory from the last one, so
++every invocation begins by rehydrating:
++
++```python
++engine = frontier_fold.rehydrate(repo, run_dir / "frontier" / "wave-1" / "fold_log.jsonl")
++```
++
++`rehydrate` reconstructs the engine's `frontier`, its event list, its epoch
++clock and its touched-path map — not merely the manifest. `fold` events
++re-publish their task from the recorded `headSha`, which is a pure function of
++git objects, so nothing about a task's contents is duplicated into the log.
++
++Snapshot scoping is an ordering contract: derive **every** fold event's touched
++set first (`git diff` base..head), union them, build the scoped base from that
++union, **then** walk the events. A per-task streaming scope would misclassify a
++path that a later task also touches as an `add/add` instead of a `modify`.
++
++## Events
++
++Exactly three types. One JSON object per line, in the order they happened.
++
++### `base` — first line, exactly once
++
++```json
++{"type": "base", "sha": "<wave base sha>"}
++```
++
++The commit every task in the wave branched from. `rehydrate` refuses a log
++that does not open with it. Otherwise inert: it seeds the engine and is
++skipped by the event walk.
++
++### `fold` — one per task folded, in task-index order
++
++```json
++{"type": "fold", "task": "<task id>", "headSha": "<the task branch head>"}
++```
++
++`headSha` is what makes the log self-sufficient: the task's `TaskState` is
++re-derived with `publish(base, repo, baseSha, headSha)` rather than stored.
++Task-index order (not completion order) is what the CLI writes — completion
++order is not observable to the engine, and K1 order-independence is exactly
++what the self-checks assert, so determinism costs nothing.
++
++### `resolve` — one per applied resolution
++
++```json
++{"type": "resolve", "path": "<path>", "epoch": 3, "lines": ["...", "..."]}
++```
++
++`lines` is the whole file, split by the kernel's own `split_lines` — so a file
++with a final newline carries a trailing `""` entry, and the file materializes
++byte-identical. `epoch` is the event count at which the narration was read.
++
++**Validity is never re-checked on rehydration.** Live, `apply_resolution`
++refuses a resolution whose path was touched by a fold at or after its epoch,
++and the caller re-narrates. Recorded, that same resolution re-applies
++**unconditionally**: the log records what actually applied, and re-deciding it
++would silently drop a resolution the run really made. Rehydration appends
++resolve events to the engine's event list, so the epoch clock reconstructs
++exactly — a manifest-only comparison cannot see a desynced clock.
++
++## One fact, one record
++
++The fold log records what the merge state *did*. It is not the wave's
++scratchpad:
++
++- **conflicts and parks** — the narration files and every `dispatchable()`
++  verdict, including park reasons — live in the conflicts index beside the log;
++- **fallbacks** live in the engine's own run records.
++
++Nothing is written to two places.
+diff --git a/skills/ultrapowers/kernel/frontier_fold.py b/skills/ultrapowers/kernel/frontier_fold.py
+index 8407a52282a97709b3be2507c4bc7d1a363c0d0f..3ef816f9393056a0d54f8ced4fcb814f5ad21fed 100644
+--- a/skills/ultrapowers/kernel/frontier_fold.py
++++ b/skills/ultrapowers/kernel/frontier_fold.py
+@@ -3,14 +3,19 @@
+ 2026-08-11, component 3). Pure state machine: no subprocesses, no kit
+ plumbing. The cell driver owns dispatch; this module owns merge state.
+ 
+-Invariants it enforces (each pinned by tests/test_frontier_fold.py):
++Invariants it enforces (pinned by tests/test_frontier_fold.py and
++tests/test_rehydrate.py):
+ * the event log is the durable record: replay(base, tasks, events)
+-  reproduces the manifest deterministically;
++  reproduces the manifest deterministically, and rehydrate(repo, log)
++  rebuilds the whole engine — epoch, touched map, events, manifest — from
++  git plus the log alone (schema in kernel/FOLD_LOG.md);
+ * application validity: a resolution computed from a narration applies only
+-  if no intervening fold touched its path since the narration's epoch;
++  if no intervening fold touched its path since the narration's epoch —
++  live only; recorded resolutions re-apply unconditionally;
+ * the dispatch predicate: only annotated-block narrations, <= 400 visible
+   lines, are resolver-eligible — everything else parks with a named reason.
+ """
++import json
+ import random
+ import sys
+ from itertools import permutations
+@@ -51,23 +56,17 @@ def fold_all(fold_fn, base, tasks, order):
+     return frontier, conflicts
+ 
+ 
+-def _visible(lines):
+-    """A resolver's `resolvedFileLines` -> the weave's visible-line list.
++def _resolved_state(frontier, path, lines):
++    """Whole-file-in / whole-file-out: replace `path`'s visible lines.
+ 
+-    The contract says "no trailing-newline entries", but a whole-file reply
+-    built by splitting text on "\\n" carries one anyway. Normalizing through
+-    `repo_weave`'s own text convention (`split_lines` drops exactly one
+-    trailing newline) makes both spellings mean the same file and keeps a
+-    genuinely blank final line expressible as two trailing entries.
++    `lines` are already the kernel's own line list — the resolver's reply
++    bytes are split by `rw.split_lines`, so exactly one normalization exists
++    on that path and none is repeated here (`_visible` was the identity under
++    the bijection and is deleted; spec 2026-08-12 §2).
+     """
+-    return rw.split_lines("\n".join(lines))
+-
+-
+-def _resolved_state(frontier, path, lines):
+-    """Whole-file-in / whole-file-out: replace `path`'s visible lines."""
+     files = dict(frontier.files)
+     prior = files.get(path, manyana.initial_state([]))
+-    files[path] = manyana.update_state(prior, _visible(lines))
++    files[path] = manyana.update_state(prior, list(lines))
+     return rw.RepoState(files=files,
+                         deleted_marks=frontier.deleted_marks,
+                         raw=dict(frontier.raw),
+@@ -116,20 +115,74 @@ class FrontierEngine:
+         return rw.manifest(self.frontier)
+ 
+ 
+-def replay(base, tasks_by_id, events):
+-    """Re-run the exact recorded sequence; the return must equal the live
+-    manifest (G2's event-log leg).
++def _apply_events(eng, states, events):
++    """Walk a recorded event list into `eng` — the only event walk there is.
++    `rehydrate` (from git) and `replay` (from memory) differ only in how they
++    build `eng` and `states`, so the two cannot drift.
+ 
+-    Validity is not re-checked: the log records what actually applied, and
+-    re-deciding it here would let replay diverge from the run it replays.
++    Validity is never re-checked: the log records what actually applied, and
++    re-running `apply_resolution`'s staleness check would silently drop a
++    recorded resolution. Resolve events ARE appended to the engine's event
++    list, so the epoch clock reconstructs exactly. `base` events are inert.
+     """
+-    eng = FrontierEngine(base)
+     for e in events:
+-        if e["type"] == "fold":
+-            eng.fold(tasks_by_id[e["task"]])
+-        else:
++        kind = e["type"]
++        if kind == "base":
++            continue
++        if kind == "fold":
++            eng.fold(states[e["task"]])
++        elif kind == "resolve":
+             eng.frontier = _resolved_state(eng.frontier, e["path"], e["lines"])
+-    return eng.manifest()
++            eng.events.append({"type": "resolve", "path": e["path"],
++                               "epoch": e["epoch"], "lines": list(e["lines"])})
++        else:
++            raise ValueError("unknown fold-log event type: %r" % (kind,))
++    return eng
++
++
++def _union_touched(repo, base_sha, heads):
++    """The union of every head's touched paths, derived BEFORE any fold.
++
++    The ordering contract (spec 2026-08-12 §2): a per-task streaming scope
++    would misclassify a path another task later touches as an add/add instead
++    of a modify, because `task_state_from_contents` branches on membership in
++    the base.
++    """
++    touched = set()
++    for head in heads:
++        touched.update(rw.diff_paths(repo, base_sha, head))
++    return touched
++
++
++def rehydrate(repo, log_path):
++    """Rebuild a live FrontierEngine from git + the fold log.
++
++    `fold` events re-publish their task from its recorded `headSha` (a pure
++    function of git objects) and re-fold it, which also reconstructs the
++    touched-path map; `resolve` events re-apply their recorded lines
++    unconditionally. The log plus the repo are the whole record — the wave's
++    CLI invocations carry nothing in memory between them.
++    """
++    log_path = Path(log_path)
++    events = [json.loads(line)
++              for line in rw.split_lines(log_path.read_text()) if line.strip()]
++    if not events or events[0].get("type") != "base":
++        raise ValueError("fold log %s does not open with a base event" % log_path)
++    base_sha = events[0]["sha"]
++    task_heads = [(e["task"], e["headSha"]) for e in events if e["type"] == "fold"]
++    base = rw.snapshot_scoped(repo, base_sha,
++                              _union_touched(repo, base_sha,
++                                             [h for _, h in task_heads]))
++    states = {tid: rw.publish(base, repo, base_sha, head, task_id=tid)
++              for tid, head in task_heads}
++    return _apply_events(FrontierEngine(base), states, events)
++
++
++def replay(base, tasks_by_id, events):
++    """Re-run the exact recorded sequence from in-memory inputs; the return
++    must equal the live manifest (G2's event-log leg). A thin wrapper over the
++    same event walk `rehydrate` uses."""
++    return _apply_events(FrontierEngine(base), tasks_by_id, events).manifest()
+ 
+ 
+ def raw_shuffle_outcomes(base, tasks, sample_seed):
+@@ -147,13 +200,13 @@ def dispatchable(conflict, manifest):
+     """(ok, park_reason). Resolver-eligible iff the narration carries
+     manyana's annotated conflict block AND the file is text under the cap."""
+     if not any(line.startswith(rw.MARKERS)
+-               for line in conflict.narration.splitlines()):
++               for line in rw.split_lines(conflict.narration)):
+         return False, "no annotated narration for %s (%s)" % (conflict.path,
+                                                               conflict.kind)
+     body = manifest.get(conflict.path)
+     if not isinstance(body, str):
+         return False, "non-text manifest content for %s" % conflict.path
+-    if len(body.splitlines()) > RESOLVER_LINE_CAP:
++    if len(rw.split_lines(body)) > RESOLVER_LINE_CAP:
+         return False, "%s exceeds %d visible lines" % (conflict.path,
+                                                        RESOLVER_LINE_CAP)
+     return True, ""
+diff --git a/skills/ultrapowers/kernel/repo_weave.py b/skills/ultrapowers/kernel/repo_weave.py
+index ff4f579f9447972f3cfab86dd7043f53fc7a9fd2..dfc6aab0962f4005ce7cce5759ab9a5d86483a7f 100644
+--- a/skills/ultrapowers/kernel/repo_weave.py
++++ b/skills/ultrapowers/kernel/repo_weave.py
+@@ -73,17 +73,26 @@ TOMBSTONE = _Tombstone()
+ 
+ 
+ def split_lines(content):
+-    """Text content -> lines, dropping exactly one trailing newline."""
+-    if content == "":
+-        return []
+-    if content.endswith("\n"):
+-        content = content[:-1]
++    """Bijection between byte strings and line lists for EXISTING files:
++    the empty file is [""], and [] is not in the range — [] denotes absence
++    (deletion mark / never-existed) and stays constructible only at the
++    absence sites (`task_state_from_contents`'s delete mark, the shared empty
++    ancestor for concurrent adds, `_resolved_state`'s default prior state).
++
++    `join_lines(split_lines(c)) == c` for every c, so a folded file with no
++    final newline materializes byte-identical instead of being silently
++    rewritten — and an emptied file ([""] -> "") stops colliding with a
++    deleted one ([] -> omitted from the manifest).
++    """
+     return content.split("\n")
+ 
+ 
+ def join_lines(lines):
+-    """Lines -> text, one trailing newline for non-empty files."""
+-    return "\n".join(lines) + "\n" if lines else ""
++    """Lines -> text. The inverse of `split_lines` on its range; `[]` is not
++    in that range, and the manifest never joins it (absent paths are
++    omitted), so no caller depends on `join_lines([]) == ""` meaning a file.
++    """
++    return "\n".join(lines)
+ 
+ 
+ def is_binary(data):
+@@ -147,9 +156,15 @@ def _git(repo, *args):
+                           check=True, capture_output=True).stdout
+ 
+ 
+-def snapshot(repo, ref):
+-    """Read the tree at `ref` into a RepoState."""
+-    names = _git(repo, "ls-tree", "-r", "-z", "--name-only", ref).decode()
++def _read_tree(repo, ref, pathspecs):
++    """The tree at `ref`, whole (`pathspecs is None`) or scoped, as a RepoState."""
++    args = ["ls-tree", "-r", "-z", "--name-only", ref]
++    if pathspecs is not None:
++        # --literal-pathspecs: a repo path may legally begin with ":", which
++        # git otherwise reads as pathspec magic and drops silently (exit 0,
++        # no output) — the path would then be misread as an add/add.
++        args = ["--literal-pathspecs"] + args + ["--", *pathspecs]
++    names = _git(repo, *args).decode()
+     files, raw = {}, {}
+     for p in filter(None, names.split("\0")):
+         blob = _git(repo, "show", f"{ref}:{p}")
+@@ -160,6 +175,25 @@ def snapshot(repo, ref):
+     return RepoState(files=files, deleted_marks=frozenset(), raw=raw)
+ 
+ 
++def snapshot(repo, ref):
++    """Read the tree at `ref` into a RepoState."""
++    return _read_tree(repo, ref, None)
++
++
++def snapshot_scoped(repo, ref, paths):
++    """Read only `paths` from the tree at `ref` into a RepoState.
++
++    Paths absent at `ref` (a task's adds) are simply not in the result, which
++    is what makes `task_state_from_contents` classify them as adds. Whole-tree
++    `snapshot` charges one subprocess per file in the repo; a wave only ever
++    needs the union of its tasks' touched paths, derived BEFORE any fold.
++    """
++    paths = sorted(paths)
++    if not paths:
++        return RepoState(files={}, deleted_marks=frozenset(), raw={})
++    return _read_tree(repo, ref, paths)
++
++
+ def task_state_from_contents(base, task_id, contents):
+     """Pure/no-git TaskState builder: path -> str (text), None (delete), bytes."""
+     weaves, raw, deleted = {}, {}, set()
+@@ -178,12 +212,24 @@ def task_state_from_contents(base, task_id, contents):
+     return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted), raw=raw)
+ 
+ 
+-def publish(base, repo, base_ref, ref, task_id):
+-    """Derive a TaskState from the git diff base_ref..ref."""
++def _diff_entries(repo, base_ref, ref):
++    """[(status, path)] for the diff base_ref..ref."""
+     out = _git(repo, "diff", "--name-status", "-z", "--no-renames", base_ref, ref).decode()
+     parts = [x for x in out.split("\0") if x]
++    return list(zip(parts[0::2], parts[1::2]))
++
++
++def diff_paths(repo, base_ref, ref):
++    """The paths base_ref..ref touches — the task's touched set. Shares one
++    parse with `publish`, so a scoped base can never miss a path a fold
++    then writes."""
++    return [p for _, p in _diff_entries(repo, base_ref, ref)]
++
++
++def publish(base, repo, base_ref, ref, task_id):
++    """Derive a TaskState from the git diff base_ref..ref."""
+     contents = {}
+-    for status, p in zip(parts[0::2], parts[1::2]):
++    for status, p in _diff_entries(repo, base_ref, ref):
+         if status.startswith("D"):
+             contents[p] = None
+         else:
+@@ -267,8 +313,7 @@ def _base_text_untouched(base, files, deleted_marks, path):
+     folded state string is the same in every order.
+ 
+     A delete counts as touching the text side even when the weave is unchanged:
+-    an empty base file's delete weave equals the base's own state, but the file
+-    was removed, and only `deleted_marks` records that.
++    the file was removed, and only `deleted_marks` records that.
+     """
+     return (path in files and files[path] == base.files.get(path)
+             and path not in deleted_marks)
+@@ -380,7 +425,13 @@ def fold(base, frontier, task):
+ 
+ 
+ def manifest(state):
+-    """path -> normalized text (str) or raw bytes; deleted files omitted.
++    """path -> text (str) or raw bytes; deleted files omitted.
++
++    Text is `join_lines` of the visible lines — the exact bytes of the folded
++    file, final newline or not (`split_lines`/`join_lines` are inverses). The
++    `lines or ...` predicate is the `[]`-as-absence rule: a path whose visible
++    lines are `[]` AND which carries a delete mark is gone, while an emptied
++    file is `[""]` and materializes as `""`.
+ 
+     Text wins any text/binary collision that reaches this point, so raw bytes
+     never silently shadow a visible weave — and every such collision was
+diff --git a/tests/test_frontier_fold.py b/tests/test_frontier_fold.py
+index 683ce51cd8010aa77bdfdef685d65618a84f6fdd..a545605c073445d1ac082a8097a1caeaf3875dca 100644
+--- a/tests/test_frontier_fold.py
++++ b/tests/test_frontier_fold.py
+@@ -59,13 +59,16 @@ def test_valid_resolution_applies_and_replays():
+     eng = ff.FrontierEngine(base)
+     eng.fold(t1)
+     epoch = eng.epoch()
+-    lines = ["def a(x):", "    return x + 1", "", "def b(y):", "    return y", ""]
++    # A resolver reply is whole-file bytes split by the kernel's own
++    # convention, so a final newline is the trailing "" entry and the file
++    # materializes byte-identical.
++    text = "def a(x):\n    return x + 1\n\ndef b(y):\n    return y\n"
++    lines = rw.split_lines(text)
+     assert eng.apply_resolution("cli.py", epoch, lines) is True
+     assert eng.events[-1]["type"] == "resolve"
+     replayed = ff.replay(base, {"t1": t1}, eng.events)
+     assert replayed == eng.manifest()
+-    assert eng.manifest()["cli.py"] == "\n".join(lines[:-1]) + "\n" or \
+-           eng.manifest()["cli.py"] == "\n".join(lines)
++    assert eng.manifest()["cli.py"] == text
+ 
+ 
+ def test_raw_shuffle_outcomes_is_a_singleton_on_clean_tasks():
+@@ -113,10 +116,11 @@ def test_re_narration_after_a_stale_rejection_applies():
+     eng.fold(t1)
+     stale = eng.epoch()
+     eng.fold(t2)
+-    lines = ["def a(x):", "    return 0", "", "def b(y):", "    return y * 2"]
++    text = "def a(x):\n    return 0\n\ndef b(y):\n    return y * 2\n"
++    lines = rw.split_lines(text)
+     assert eng.apply_resolution("cli.py", stale, lines) is False
+     assert eng.apply_resolution("cli.py", eng.epoch(), lines) is True
+-    assert eng.manifest()["cli.py"] == "\n".join(lines) + "\n"
++    assert eng.manifest()["cli.py"] == text
+ 
+ 
+ def test_resolution_on_an_untouched_path_applies():
+@@ -124,7 +128,8 @@ def test_resolution_on_an_untouched_path_applies():
+     base = make_base({"cli.py": "x = 1\n", "other.py": "y = 1\n"})
+     eng = ff.FrontierEngine(base)
+     eng.fold(rw.task_state_from_contents(base, "t1", {"cli.py": "x = 2\n"}))
+-    assert eng.apply_resolution("other.py", eng.epoch(), ["y = 2"]) is True
++    assert eng.apply_resolution("other.py", eng.epoch(),
++                                rw.split_lines("y = 2\n")) is True
+     assert eng.manifest()["other.py"] == "y = 2\n"
+ 
+ 
+diff --git a/tests/test_frontier_weave.py b/tests/test_frontier_weave.py
+index f2bb377fee8a0cdd6d0c4a7b76101ab9fbbe85d0..d78741385a9d52cace24106544f6a313f2e6653e 100644
+--- a/tests/test_frontier_weave.py
++++ b/tests/test_frontier_weave.py
+@@ -248,18 +248,22 @@ def test_manifest_presence_rules():
+     # never relabelled to delete/modify — that would depend on the delete being
+     # folded first (see test_two_text_writers_and_a_deleter_is_order_independent).
+     assert conflict_keys(cs2) == [("calc.py", "delete/modify"), ("calc.py", "lines")]
+-    assert rw.manifest(survivor)["calc.py"] == "    logged = 1\n"
++    # The delete removes every base line INCLUDING the file's final-newline
++    # line, so the survivor is exactly the one line the modify added.
++    assert rw.manifest(survivor)["calc.py"] == "    logged = 1"
+ 
+ 
+ def test_text_normalization_and_binary_detection():
+-    assert rw.split_lines("") == []
+-    assert rw.split_lines("\n") == [""]
++    # The line convention is a bijection over files that EXIST; `[]` is
++    # reserved for absence. Fully pinned in tests/test_kernel_bijection.py.
++    assert rw.split_lines("") == [""]
++    assert rw.split_lines("\n") == ["", ""]
+     assert rw.split_lines("a") == ["a"]
+-    assert rw.split_lines("a\n") == ["a"]
+-    assert rw.split_lines("a\n\n") == ["a", ""]
+-    assert rw.join_lines([]) == ""
+-    assert rw.join_lines([""]) == "\n"
+-    assert rw.join_lines(["a", "b"]) == "a\nb\n"
++    assert rw.split_lines("a\n") == ["a", ""]
++    assert rw.split_lines("a\n\n") == ["a", "", ""]
++    assert rw.join_lines([""]) == ""
++    assert rw.join_lines(["a", "b"]) == "a\nb"
++    assert rw.join_lines(["a", "b", ""]) == "a\nb\n"
+     assert rw.is_binary(b"") is False
+     assert rw.is_binary("héllo".encode("utf-8")) is False
+     assert rw.is_binary(b"a\x00b") is True
+@@ -482,7 +486,8 @@ def test_two_text_writers_and_a_deleter_is_order_independent():
+     manifest, _ = assert_order_independent(
+         base, tasks,
+         expected_conflicts=[("calc.py", "delete/modify"), ("calc.py", "lines")])
+-    assert manifest["calc.py"] == "l2-x\nl2-y\n"   # both edits survive the delete
++    # Both edits survive the delete; the base's final-newline line does not.
++    assert manifest["calc.py"] == "l2-x\nl2-y"
+     # The per-writer `lines` count is order-independent by construction; pin it
+     # on ONE canonical order (#132 keeps this pin).
+     _, conflicts = fold_in_order(base, tasks, [0, 1, 2])
+@@ -498,7 +503,8 @@ def test_two_text_adds_and_a_delete_of_a_new_path_is_order_independent():
+     manifest, _ = assert_order_independent(
+         BASE, [ta, tb, t_del],
+         expected_conflicts=[("new.py", "add/add"), ("new.py", "delete/modify")])
+-    assert manifest["new.py"] == "x = 1\nx = 2\n"
++    # Each add carries its own final-newline line, and the weave keeps both.
++    assert manifest["new.py"] == "x = 1\n\nx = 2\n"
+ 
+ 
+ def test_delete_and_line_removal_only_leave_nothing_and_report_nothing():
+diff --git a/tests/test_kernel_bijection.py b/tests/test_kernel_bijection.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3e1a061b6c8ceb6c37f1ff7d25f36a8f2865c316
+--- /dev/null
++++ b/tests/test_kernel_bijection.py
+@@ -0,0 +1,84 @@
++"""The kernel's line convention is a bijection over files that EXIST:
++`split_lines`/`join_lines` invert each other, the empty file is `[""]`, and
++`[]` is reserved for absence (deletion mark / never-existed) so an emptied
++file and a deleted one stop colliding. Every line count rides `split_lines`.
++"""
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
++sys.path.insert(0, str(KERNEL))
++sys.path.insert(0, str(KERNEL / "vendor"))
++import manyana
++import repo_weave as rw
++import frontier_fold as ff
++
++
++def test_split_join_is_a_bijection_on_trailing_and_no_trailing_newline():
++    assert rw.split_lines("a\nb\n") == ["a", "b", ""]
++    assert rw.split_lines("a\nb") == ["a", "b"]
++    assert rw.join_lines(["a", "b", ""]) == "a\nb\n"
++    assert rw.join_lines(["a", "b"]) == "a\nb"
++
++
++def test_empty_file_is_single_empty_line_and_join_inverts():
++    assert rw.split_lines("") == [""]
++    assert rw.join_lines([""]) == ""
++
++
++def test_split_lines_never_yields_empty_list():
++    # [] denotes absence; split_lines can never produce it.
++    for content in ("", "\n", "x", "x\n", "\n\n"):
++        assert rw.split_lines(content) != []
++
++
++def test_round_trip_is_byte_identical_on_every_spelling():
++    for content in ("", "\n", "x", "x\n", "x\n\n", "a\nb", "a\nb\n", "\na"):
++        assert rw.join_lines(rw.split_lines(content)) == content
++
++
++def test_deleted_path_stays_omitted_and_emptied_file_materializes_empty():
++    # deletion mark ([]) and truncation-to-empty ([""]) no longer collide:
++    # a state whose visible lines are [] and is marked deleted is omitted;
++    # a state whose visible lines are [""] survives as the empty file.
++    files = {"gone.txt": manyana.update_state(manyana.initial_state(["x"]), []),
++             "empty.txt": manyana.update_state(manyana.initial_state(["x"]), [""])}
++    state = rw.RepoState(files=files, deleted_marks=frozenset({"gone.txt"}),
++                         raw={}, raw_candidates={})
++    m = rw.manifest(state)
++    assert "gone.txt" not in m
++    assert m["empty.txt"] == ""
++
++
++def test_a_folded_file_with_no_final_newline_materializes_byte_identical():
++    """The blind spot the bijection closes: the old convention rewrote a
++    final-newline-less file by appending one, and both self-checks compared
++    manifests built through that same normalization."""
++    base = rw.RepoState(
++        files={"cli.py": manyana.initial_state(rw.split_lines("a = 1\nb = 2"))},
++        deleted_marks=frozenset(), raw={})
++    task = rw.task_state_from_contents(base, "t1", {"cli.py": "a = 9\nb = 2"})
++    frontier, conflicts = rw.fold(base, base, task)
++    assert conflicts == []
++    assert rw.manifest(frontier)["cli.py"] == "a = 9\nb = 2"
++
++
++def test_dispatchable_counts_via_split_lines_exact_cap_boundary():
++    # a body of exactly RESOLVER_LINE_CAP visible lines (per split_lines) is
++    # dispatchable; one more is not. splitlines() would disagree by one on
++    # the trailing-newline spelling — the kernel's own convention decides.
++    cap = ff.RESOLVER_LINE_CAP
++    body_at_cap = "\n".join("l%d" % i for i in range(cap - 1)) + "\n"
++    assert len(rw.split_lines(body_at_cap)) == cap
++    body_over = body_at_cap + "x\n"
++    assert len(rw.split_lines(body_over)) == cap + 1
++    assert len(body_at_cap.splitlines()) == cap - 1      # the disagreement
++
++    narration = rw.MARKERS[0] + " frontier\nadded x\n" + rw.MARKERS[2] + " t1\n"
++    ok, _ = ff.dispatchable(rw.Conflict("f.py", "lines", "t1", narration),
++                            {"f.py": body_at_cap})
++    assert ok
++    ok, reason = ff.dispatchable(rw.Conflict("f.py", "lines", "t1", narration),
++                                 {"f.py": body_over})
++    assert not ok and "visible lines" in reason
+diff --git a/tests/test_rehydrate.py b/tests/test_rehydrate.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b041f7781dbfcad086425e7da834af587dbfa199
+--- /dev/null
++++ b/tests/test_rehydrate.py
+@@ -0,0 +1,191 @@
++"""`rehydrate(repo, log_path)`: a live FrontierEngine rebuilt from git plus
++the fold log alone. The log + the repo are the whole record — no in-memory
++carry-over — so every wave-scoped CLI invocation can rebuild the engine it
++left behind. Recorded resolutions re-apply UNCONDITIONALLY: the log records
++what actually applied, and re-deciding it would silently drop a resolution.
++"""
++import json
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
++sys.path.insert(0, str(KERNEL))
++sys.path.insert(0, str(KERNEL / "vendor"))
++import repo_weave as rw
++import frontier_fold as ff
++
++BASE_TEXT = "def a(x):\n    return x\n\ndef b(y):\n    return y\n"
++T1_TEXT = "def a(x):\n    return x + 1\n\ndef b(y):\n    return y\n"
++T2_TEXT = "def a(x):\n    return x\n\ndef b(y):\n    return y * 2\n"
++RESOLVED_TEXT = "def a(x):\n    return 0\n\ndef b(y):\n    return y\n"
++
++
++def _git(repo, *args):
++    return subprocess.run(["git", "-C", str(repo), *args], check=True,
++                          capture_output=True, text=True).stdout.strip()
++
++
++def make_repo(tmp_path):
++    """A base commit plus two task branches, each editing `cli.py`."""
++    repo = tmp_path / "repo"
++    repo.mkdir()
++    _git(repo, "init", "-q")
++    _git(repo, "config", "user.email", "t@example.com")
++    _git(repo, "config", "user.name", "T")
++    (repo / "cli.py").write_text(BASE_TEXT)
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "base")
++    base_sha = _git(repo, "rev-parse", "HEAD")
++    heads = {}
++    for tid, text in (("t1", T1_TEXT), ("t2", T2_TEXT)):
++        _git(repo, "checkout", "-q", "-b", tid, base_sha)
++        (repo / "cli.py").write_text(text)
++        _git(repo, "add", "-A")
++        _git(repo, "commit", "-qm", tid)
++        heads[tid] = _git(repo, "rev-parse", "HEAD")
++    _git(repo, "checkout", "-q", base_sha)
++    return repo, base_sha, heads
++
++
++def write_log(path, events):
++    path.write_text("".join(json.dumps(e) + "\n" for e in events))
++    return path
++
++
++def drive_live(tmp_path):
++    """Fold t1, resolve `cli.py` at its epoch, fold t2 — recording the log."""
++    repo, base_sha, heads = make_repo(tmp_path)
++    order = [("t1", heads["t1"]), ("t2", heads["t2"])]
++    touched = ff._union_touched(repo, base_sha, [h for _, h in order])
++    base = rw.snapshot_scoped(repo, base_sha, touched)
++    eng = ff.FrontierEngine(base)
++    tasks, log = {}, [{"type": "base", "sha": base_sha}]
++    tasks["t1"] = rw.publish(base, repo, base_sha, heads["t1"], task_id="t1")
++    eng.fold(tasks["t1"])
++    log.append({"type": "fold", "task": "t1", "headSha": heads["t1"]})
++    epoch = eng.epoch()
++    lines = rw.split_lines(RESOLVED_TEXT)
++    assert eng.apply_resolution("cli.py", epoch, lines) is True
++    log.append({"type": "resolve", "path": "cli.py", "epoch": epoch,
++                "lines": lines})
++    tasks["t2"] = rw.publish(base, repo, base_sha, heads["t2"], task_id="t2")
++    eng.fold(tasks["t2"])
++    log.append({"type": "fold", "task": "t2", "headSha": heads["t2"]})
++    return {"repo": repo, "base_sha": base_sha, "heads": heads, "base": base,
++            "tasks": tasks, "engine": eng, "log": log}
++
++
++def test_union_touched_and_scoped_base_read_only_the_touched_paths(tmp_path):
++    """The ordering contract: union every task's touched set FIRST, then
++    snapshot only those paths — a per-task streaming scope would misclassify
++    a path another task later touches as an add/add instead of a modify."""
++    repo, base_sha, heads = make_repo(tmp_path)
++    assert ff._union_touched(repo, base_sha, list(heads.values())) == {"cli.py"}
++    base = rw.snapshot_scoped(repo, base_sha, {"cli.py"})
++    assert set(base.files) == {"cli.py"}
++    assert rw.manifest(base) == {"cli.py": BASE_TEXT}
++    # a path no task touched is simply absent from the scoped base
++    assert rw.snapshot_scoped(repo, base_sha, {"nope.py"}).files == {}
++    assert rw.snapshot_scoped(repo, base_sha, set()).files == {}
++
++
++def test_scoped_base_treats_pathspecs_literally(tmp_path):
++    """A scoped base passes paths to git as pathspecs, and a leading ":" is
++    pathspec MAGIC: without --literal-pathspecs git drops such a path silently
++    (exit 0, no output), which would misclassify a modify as an add/add."""
++    repo = tmp_path / "magic"
++    repo.mkdir()
++    _git(repo, "init", "-q")
++    _git(repo, "config", "user.email", "t@example.com")
++    _git(repo, "config", "user.name", "T")
++    (repo / ":x.py").write_text("magic = 1\n")
++    _git(repo, "add", "-A")
++    _git(repo, "commit", "-qm", "base")
++    sha = _git(repo, "rev-parse", "HEAD")
++    assert rw.manifest(rw.snapshot_scoped(repo, sha, {":x.py"})) == {":x.py": "magic = 1\n"}
++
++
++def test_rehydrate_reconstructs_epoch_and_touched_map(tmp_path):
++    live = drive_live(tmp_path)
++    log_path = write_log(tmp_path / "fold_log.jsonl", live["log"])
++    eng = ff.rehydrate(live["repo"], log_path)
++    # Epoch equality is the point: replay() historically skipped appending
++    # resolve events and desynced the clock, which the manifest cannot see.
++    assert eng.epoch() == live["engine"].epoch() == 3
++    assert eng._touched_at == live["engine"]._touched_at
++    assert eng.events == live["engine"].events
++    assert eng.manifest() == live["engine"].manifest()
++
++
++def test_rehydrate_in_a_fresh_process_needs_only_the_repo_and_the_log(tmp_path):
++    live = drive_live(tmp_path)
++    log_path = write_log(tmp_path / "fold_log.jsonl", live["log"])
++    prog = (
++        "import json, sys\n"
++        "sys.path.insert(0, %r)\n"
++        "import frontier_fold as ff\n"
++        "eng = ff.rehydrate(%r, %r)\n"
++        "print(json.dumps({'epoch': eng.epoch(), 'touched': eng._touched_at,\n"
++        "                  'manifest': eng.manifest()}))\n"
++        % (str(KERNEL), str(live["repo"]), str(log_path)))
++    out = subprocess.run([sys.executable, "-c", prog], check=True,
++                         capture_output=True, text=True).stdout
++    payload = json.loads(out.strip().splitlines()[-1])
++    assert payload["epoch"] == live["engine"].epoch()
++    assert payload["touched"] == live["engine"]._touched_at
++    assert payload["manifest"] == live["engine"].manifest()
++
++
++def test_rehydrate_applies_recorded_resolve_unconditionally(tmp_path):
++    """A recorded resolve whose epoch would FAIL apply_resolution's staleness
++    check must still apply during rehydration."""
++    repo, base_sha, heads = make_repo(tmp_path)
++    lines = rw.split_lines(RESOLVED_TEXT)
++    folds = [{"type": "base", "sha": base_sha},
++             {"type": "fold", "task": "t1", "headSha": heads["t1"]},
++             {"type": "fold", "task": "t2", "headSha": heads["t2"]}]
++    stale = {"type": "resolve", "path": "cli.py", "epoch": 1, "lines": lines}
++
++    # the live guard really would reject this resolve: the t2 fold at event
++    # index 1 touched cli.py at or after the narration's epoch of 1.
++    guarded = ff.rehydrate(repo, write_log(tmp_path / "folds.jsonl", folds))
++    assert guarded.apply_resolution("cli.py", 1, lines) is False
++
++    eng = ff.rehydrate(repo, write_log(tmp_path / "log.jsonl", folds + [stale]))
++    assert eng.manifest()["cli.py"] == RESOLVED_TEXT
++    assert eng.events[-1] == stale
++
++
++def test_rehydrate_rejects_a_log_that_does_not_open_with_base(tmp_path):
++    repo, base_sha, heads = make_repo(tmp_path)
++    bad = write_log(tmp_path / "bad.jsonl",
++                    [{"type": "fold", "task": "t1", "headSha": heads["t1"]}])
++    try:
++        ff.rehydrate(repo, bad)
++    except ValueError as e:
++        assert "base" in str(e)
++    else:
++        raise AssertionError("a log with no base event must not rehydrate")
++
++
++def test_replay_is_a_thin_wrapper_and_matches_rehydrate(tmp_path):
++    live = drive_live(tmp_path)
++    log_path = write_log(tmp_path / "fold_log.jsonl", live["log"])
++    rehydrated = ff.rehydrate(live["repo"], log_path)
++    events = live["engine"].events
++    assert ff.replay(live["base"], live["tasks"], events) == rehydrated.manifest()
++    # base events are inert: a log-shaped event list replays identically.
++    with_base = [{"type": "base", "sha": live["base_sha"]}] + events
++    assert ff.replay(live["base"], live["tasks"], with_base) == rehydrated.manifest()
++
++
++def test_replay_keeps_the_clock_it_used_to_desync(tmp_path):
++    """The shared event walk appends resolve events, so a replayed engine's
++    epoch matches the run it replays instead of drifting behind it."""
++    live = drive_live(tmp_path)
++    eng = ff.FrontierEngine(live["base"])
++    ff._apply_events(eng, live["tasks"], live["engine"].events)
++    assert eng.epoch() == live["engine"].epoch()
++    assert eng._touched_at == live["engine"]._touched_at
+diff --git a/tests/test_repo_weave_report_determinism.py b/tests/test_repo_weave_report_determinism.py
+index d7272889c10f5c3a5aa4c67aff018546101a7e76..46f6e64a3338c528d9c3c0256816c05bac286401 100644
+--- a/tests/test_repo_weave_report_determinism.py
++++ b/tests/test_repo_weave_report_determinism.py
+@@ -92,9 +92,10 @@ def test_concurrent_text_edit_and_binary_write_still_conflicts():
+ # base's own state object. Authorship inferred from object identity therefore
+ # reads these as "task-authored" in one fold order and "still base's" in
+ # another — the exact K1 break this module exists to measure. Content decides.
++# Under the line bijection a stripped final newline is a genuine edit (it
++# removes the trailing "" line), so only a byte-identical rewrite is a no-op.
+ NOOP_TEXT_WRITES = {
+     "byte-identical rewrite": "l1\nl2\n",   # e.g. a mode-only commit
+-    "trailing-newline-only": "l1\nl2",      # split_lines drops the newline
+ }
+ 
+ 
+@@ -112,11 +113,23 @@ def test_noop_text_write_beside_binary_write_is_a_lone_type_change():
+         assert keys == [], label
+ 
+ 
++def test_trailing_newline_only_rewrite_is_a_real_text_write():
++    # The bijection's point, at the reporting layer: dropping a file's final
++    # newline is an edit, so the pair is two writers and keeps its conflict.
++    # The old convention swallowed it into a lone type change.
++    base = make_base({"p.txt": "l1\nl2\n"})
++    t_text = rw.task_state_from_contents(base, "t-text", {"p.txt": "l1\nl2"})
++    t_bin = rw.task_state_from_contents(base, "t-bin", {"p.txt": b"\x00\x01"})
++    manifest, keys = assert_order_independent(base, [t_text, t_bin])
++    assert keys == [("p.txt", "binary")]
++    assert manifest == {"p.txt": "l1\nl2"}
++
++
+ def test_noop_text_write_does_not_mask_a_real_concurrent_text_writer():
+     # The no-op writer must not suppress a genuine collision: a second task
+     # that really edits the text keeps the binary conflict, in every order.
+     base = make_base({"p.txt": "l1\nl2\n"})
+-    tasks = [rw.task_state_from_contents(base, "t-noop", {"p.txt": "l1\nl2"}),
++    tasks = [rw.task_state_from_contents(base, "t-noop", {"p.txt": "l1\nl2\n"}),
+              rw.task_state_from_contents(base, "t-edit", {"p.txt": "l1\nl2-x\n"}),
+              rw.task_state_from_contents(base, "t-bin", {"p.txt": b"\x00\x01"})]
+     manifest, keys = assert_order_independent(base, tasks)

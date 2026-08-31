@@ -1,0 +1,104 @@
+diff --git a/skills/ultralearn/SKILL.md b/skills/ultralearn/SKILL.md
+index c2e78c75b4ef1f9b54697ea9a8f2a03a57972636..0107c45f6c7c3827836d5a50d2cb7065c584fd4a 100644
+--- a/skills/ultralearn/SKILL.md
++++ b/skills/ultralearn/SKILL.md
+@@ -13,13 +13,21 @@ runs inside Claude Code — no API key, no external calls.
+ 
+ 1. **Harvest.** Run the harvester to detect real runs and build local bundles:
+    `python3 skills/ultralearn/scripts/harvest_runs.py`
+-   KNOWN GAP since 0.3.0 (cutover, review finding 5): driver runs make no
+-   `Workflow` tool call, so this detector sees only pre-cutover runs — new
+-   fleet runs enter the ledger via the events.jsonl raw layer when #415's
+-   harvest lands. Historical harvesting is unaffected.
+-   It scans `~/.claude/projects`, detects runs by an actual `Workflow`
+-   tool_result (not string mentions), and writes bundles to the gitignored
+-   cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` + `slice.md`).
++   **Fleet runs (0.3.0 and later) come from their event log**, not from
++   `~/.claude/projects` — the driver makes no `Workflow` tool call and runs in
++   a sandbox, so the detector below cannot see them:
++   `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --remote fleet-orchestrator.exe.xyz`
++   pulls each evidence tarball, or pass an unpacked run directory as a
++   positional argument. It writes the same `bundle.json` + `slice.md` into the
++   same cache, keyed by the fleet `runId` (`run-30`), so step 2 and step 3 are
++   unchanged. `--run run-30` restricts the pull; `--force` rebuilds a cached
++   bundle. A fleet run directory is one holding an `events.jsonl`; runs 10–23
++   predate it and remain the Workflow-era harvester's (21–23) or the
++   commissioned read's.
++   The Workflow-era detector scans `~/.claude/projects`, detects runs by an
++   actual `Workflow` tool_result (not string mentions), and writes bundles to
++   the gitignored cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` +
++   `slice.md`).
+    Incremental: a watermark means re-runs only process new sessions.
+    Sequential-engine drains (subagent-driven, inline) make no `Workflow`
+    calls and are **invisible to this detector by design** — "0 new" there is
+diff --git a/skills/ultralearn/references/reading-lenses.md b/skills/ultralearn/references/reading-lenses.md
+index 3810cb32b2268d3551ac8b2239fc8b266800e792..b54da79ff77f6b456cb66cfc11815b9e0354c3bc 100644
+--- a/skills/ultralearn/references/reading-lenses.md
++++ b/skills/ultralearn/references/reading-lenses.md
+@@ -132,3 +132,23 @@ zero (`{"total": 0, ...}`).
+ with identifiers and domain specifics stripped — never quote verbatim text from
+ a foreign project. For a `home` run, verbatim evidence is allowed and
+ `evidenceAbstracted` may be false.
++
++## Reading across the cutover
++
++The corpus now spans two engines: runs before 0.3.0 were the LLM-orchestrator,
++runs from 0.3.0 on are the One Driver fleet. Two disciplines apply whenever a
++reading touches that boundary.
++
++- **A finding class that stops appearing may have been deleted, not fixed.**
++  The pre-0.3.0 corpus was the LLM-orchestrator engine; ten issues were closed
++  on 2026-08-30 as moot-by-cutover — defects in machinery 0.3.0 deleted. A
++  reader comparing eras must make that distinction expressible, or the first
++  pass reads the cutover as an improvement it was not. When a lens wants to
++  claim an improvement across the boundary, it states which of the two it is —
++  the defect was fixed, or the machinery carrying it was **deleted, not
++  fixed** — or it does not make the claim.
++- **Cite event ids.** A fleet bundle carries `events`, and its `slice.md` opens
++  with a ULID-stamped timeline. Any observation about timing, ordering, or a
++  worker's fate cites the ULIDs it rests on, so the operator can check it
++  mechanically against `events.jsonl` (#415's success criterion). An
++  uncited timing claim about a fleet run is unchecked, and reads as such.
+diff --git a/tests/test_ultralearn_docs.py b/tests/test_ultralearn_docs.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..50f281725b2c510273b0338b1d3122f40f002367
+--- /dev/null
++++ b/tests/test_ultralearn_docs.py
+@@ -0,0 +1,37 @@
++import re
++import subprocess
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++SKILL = ROOT / "skills/ultralearn/SKILL.md"
++LENSES = ROOT / "skills/ultralearn/references/reading-lenses.md"
++HARVEST = ROOT / "skills/ultralearn/scripts/harvest_fleet_runs.py"
++
++
++def test_the_known_gap_paragraph_is_gone():
++    assert "KNOWN GAP since 0.3.0" not in SKILL.read_text()
++
++
++def test_skill_names_the_fleet_harvester_and_its_corpus():
++    text = SKILL.read_text()
++    assert "harvest_fleet_runs.py" in text
++    assert "events.jsonl" in text
++
++
++def test_every_flag_the_skill_advertises_exists():
++    help_text = subprocess.run(
++        [sys.executable, str(HARVEST), "--help"],
++        capture_output=True, text=True, check=True).stdout
++    advertised = set(re.findall(r"`?(--[a-z][a-z-]+)", SKILL.read_text()))
++    for flag in advertised & {"--remote", "--run", "--cache", "--force",
++                              "--origin", "--engine-version", "--slice-budget",
++                              "--remote-root"}:
++        assert flag in help_text, f"SKILL.md advertises {flag}, the CLI has no such flag"
++
++
++def test_lenses_carry_the_cutover_disciplines():
++    text = LENSES.read_text()
++    assert "## Reading across the cutover" in text
++    assert "deleted, not fixed" in text
++    assert "ULID" in text

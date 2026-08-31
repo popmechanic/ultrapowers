@@ -1,0 +1,77 @@
+diff --git a/skills/ultrapowers/harnesses/waves.js b/skills/ultrapowers/harnesses/waves.js
+index 5e0270a5f616cee33aea6eac5bb050311f22a5b9..7d0bceb2437482ae60a8a5cd12cca70b11a7b80f 100644
+--- a/skills/ultrapowers/harnesses/waves.js
++++ b/skills/ultrapowers/harnesses/waves.js
+@@ -1233,10 +1233,17 @@ for (const wm of waveMerges) if (wm && wm.status === 'MERGED') for (const b of (
+ const tasksPlanned = WAVES.flat().length
+ const coverage = { tasks_merged: mergedBranches.size, tasks_planned: tasksPlanned,
+                    complete: mergedBranches.size >= tasksPlanned }
+-const blockedIds = new Set(unfinished.map((u) => (typeof u === 'string' ? u : u && u.task)).filter(Boolean))
+-const missingDeliverables = taskResults
+-  .filter((t) => t.status === 'failed' || blockedIds.has(t.task))
+-  .map((t) => ({ task: t.task, files: (WAVES.flat().find((w) => w.id === t.task) || {}).files || [] }))
++// Build the missing-id set from BOTH sources and look up files from WAVES, not
++// from taskResults: a cascade-blocked task that never ran is absent from
++// taskResults, and `unfinished` carries bare ids only inside strings like
++// "C: cascade-blocked by wave 2" — so parse the leading id out of each string.
++const failedIds = taskResults.filter((t) => t.status === 'failed').map((t) => t.task)
++const blockedIds = unfinished
++  .map((u) => (typeof u === 'string' ? u.split(/[:\s]/)[0] : (u && u.task)))
++  .filter(Boolean) // "C: cascade-blocked …" -> "C"
++const missingIds = [...new Set([...failedIds, ...blockedIds])]
++const missingDeliverables = missingIds
++  .map((id) => ({ task: id, files: ((WAVES.flat().find((w) => w.id === id) || {}).files) || [] }))
+   .filter((m) => m.files.length)
+ 
+ // ── Structured return value (matches references/report-format.md) ─────────────
+diff --git a/tests/sim_workflow.mjs b/tests/sim_workflow.mjs
+index d66c98098e87e5a44fe7299f88a8865bc7393cd7..7a228eb9c48f7e383b81e908cdc207b9c7b2501e 100644
+--- a/tests/sim_workflow.mjs
++++ b/tests/sim_workflow.mjs
+@@ -2198,6 +2198,38 @@ async function scenarioCoverageAndMissingDeliverables() {
+   console.log('scenario coverage-and-missing-deliverables: OK')
+ }
+ 
++// ── Scenario: cascade-blocked task surfaces in missingDeliverables ────────────
++// B fails at impl; C depends_on B (edges [['B','C']]) so C is cascade-blocked,
++// lands in `unfinished` as a STRING ("C: blocked — depends on a failed task"),
++// and is NEVER dispatched (so C is absent from taskResults). A missingDeliverables
++// computation that filters taskResults alone can never see C; the fix must build
++// the missing-id set from BOTH the failed taskResults AND the bare ids parsed out
++// of the `unfinished` strings, looking files up from WAVES.
++async function scenarioMissingDeliverablesCascade() {
++  const WAVES = [[{ id: 'B', title: 'b', body: 'b', files: ['b.py'] }],
++                 [{ id: 'C', title: 'c', body: 'c', files: ['c.py'] }]]
++  const agent = async (prompt, opts) => {
++    const label = opts.label || ''
++    if (label === 'setup') return { branch: 'ultra/integration-sim', headSha: 'int0' }
++    if (label === 'impl:B') throw new Error('persistent agent error')
++    if (label.startsWith('review:')) return { verdict: 'PASS', issues: [] }
++    if (label.startsWith('merge:')) return { status: 'SKIPPED', branches: [] }
++    if (label === 'integration') return { command: 'pytest', testsPassed: true, output: 'ok', findings: [] }
++    throw new Error('unexpected agent label: ' + label)
++  }
++  const r = await runWorkflow({ agent, args: { ...baseArgs, waves: WAVES, dependencyEdges: [], edges: [['B', 'C']] }, budget: undefined })
++  // C was cascade-blocked, never dispatched: it is absent from taskResults but
++  // present in `unfinished` as a string whose bare id is "C".
++  assert(!r.tasks.some(t => t.task === 'C'), 'cascade: C was never dispatched (absent from taskResults)')
++  assert(r.unfinished.some(u => typeof u === 'string' && u.split(/[:\s]/)[0] === 'C'),
++         'cascade: C landed in unfinished as a string')
++  assert(r.missingDeliverables.some(m => m.task === 'C' && m.files.includes('c.py')),
++         'missingDeliverables: cascade-blocked C\'s c.py surfaced via the blocked-id path')
++  assert(r.missingDeliverables.some(m => m.task === 'B' && m.files.includes('b.py')),
++         'missingDeliverables: failed B\'s b.py also present')
++  console.log('scenario missing-deliverables-cascade: OK')
++}
++
+ // ── Scenario: git-verified ground truth + visual-eyeball channel (#29 hard gate) ─
+ // The completeness critic confirms (via its own `git rev-parse HEAD`) that it
+ // reviewed the recorded merge HEAD and reports it as `onIntegrationHead`; the
+@@ -2248,6 +2280,7 @@ async function scenarioGitUnverifiedJudgmentCall() {
+ await scenarioEscalateRecovers()
+ await scenarioEscalateBounded()
+ await scenarioCoverageAndMissingDeliverables()
++await scenarioMissingDeliverablesCascade()
+ await scenarioGitVerifiedAndVisualEyeball()
+ await scenarioGitUnverifiedJudgmentCall()
+ console.log('ALL SCENARIOS PASSED')

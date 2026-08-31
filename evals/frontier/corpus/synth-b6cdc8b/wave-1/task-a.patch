@@ -1,0 +1,2469 @@
+diff --git a/evals/frontier/frontier_fold.py b/evals/frontier/frontier_fold.py
+deleted file mode 100644
+index 91daa0ceaf3f4e082e18959e8c2257b92467ee09..0000000000000000000000000000000000000000
+--- a/evals/frontier/frontier_fold.py
++++ /dev/null
+@@ -1,132 +0,0 @@
+-#!/usr/bin/env python3
+-"""Fold-on-completion engine for the frontier production test (spec
+-2026-08-11, component 3). Pure state machine: no subprocesses, no kit
+-plumbing. The cell driver owns dispatch; this module owns merge state.
+-
+-Invariants it enforces (each pinned by tests/test_frontier_fold.py):
+-* the event log is the durable record: replay(base, tasks, events)
+-  reproduces the manifest deterministically;
+-* application validity: a resolution computed from a narration applies only
+-  if no intervening fold touched its path since the narration's epoch;
+-* the dispatch predicate: only annotated-block narrations, <= 400 visible
+-  lines, are resolver-eligible — everything else parks with a named reason.
+-"""
+-import sys
+-from pathlib import Path
+-
+-_HERE = Path(__file__).resolve().parent
+-sys.path.insert(0, str(_HERE))
+-sys.path.insert(0, str(_HERE / "vendor"))
+-import manyana
+-import repo_weave as rw
+-import schedule_model as sm
+-
+-RESOLVER_LINE_CAP = 400
+-
+-
+-def _visible(lines):
+-    """A resolver's `resolvedFileLines` -> the weave's visible-line list.
+-
+-    The contract says "no trailing-newline entries", but a whole-file reply
+-    built by splitting text on "\\n" carries one anyway. Normalizing through
+-    `repo_weave`'s own text convention (`split_lines` drops exactly one
+-    trailing newline) makes both spellings mean the same file and keeps a
+-    genuinely blank final line expressible as two trailing entries.
+-    """
+-    return rw.split_lines("\n".join(lines))
+-
+-
+-def _resolved_state(frontier, path, lines):
+-    """Whole-file-in / whole-file-out: replace `path`'s visible lines."""
+-    files = dict(frontier.files)
+-    prior = files.get(path, manyana.initial_state([]))
+-    files[path] = manyana.update_state(prior, _visible(lines))
+-    return rw.RepoState(files=files,
+-                        deleted_marks=frontier.deleted_marks,
+-                        raw=dict(frontier.raw),
+-                        raw_candidates=dict(frontier.raw_candidates))
+-
+-
+-class FrontierEngine:
+-    """Folds tasks into a frontier as they complete, recording every step."""
+-
+-    def __init__(self, base):
+-        self.base = base
+-        self.frontier = base
+-        self.events = []            # [{"type": "fold", "task": id} |
+-                                    #  {"type": "resolve", "path": p,
+-                                    #   "epoch": n, "lines": [...]}]
+-        self._touched_at = {}       # path -> last event index that folded it
+-
+-    def epoch(self):
+-        """The event count. Capture it BEFORE reading a narration."""
+-        return len(self.events)
+-
+-    def fold(self, task):
+-        """Fold one completed task; returns its per-fold pre-dedupe stream."""
+-        self.frontier, conflicts = rw.fold(self.base, self.frontier, task)
+-        idx = len(self.events)
+-        self.events.append({"type": "fold", "task": task.task_id})
+-        for p in set(task.weaves) | set(task.raw) | set(task.deleted):
+-            self._touched_at[p] = idx
+-        return conflicts
+-
+-    def apply_resolution(self, path, epoch, lines):
+-        """Apply a resolution narrated at `epoch`; False = stale, re-narrate.
+-
+-        Only folds invalidate: a resolution is dispatched serially (at most
+-        one in flight), so no other resolution can have landed on the path
+-        between this narration and its application.
+-        """
+-        if self._touched_at.get(path, -1) >= epoch:
+-            return False            # an intervening fold touched the path
+-        self.frontier = _resolved_state(self.frontier, path, lines)
+-        self.events.append({"type": "resolve", "path": path,
+-                            "epoch": epoch, "lines": list(lines)})
+-        return True
+-
+-    def manifest(self):
+-        return rw.manifest(self.frontier)
+-
+-
+-def replay(base, tasks_by_id, events):
+-    """Re-run the exact recorded sequence; the return must equal the live
+-    manifest (G2's event-log leg).
+-
+-    Validity is not re-checked: the log records what actually applied, and
+-    re-deciding it here would let replay diverge from the run it replays.
+-    """
+-    eng = FrontierEngine(base)
+-    for e in events:
+-        if e["type"] == "fold":
+-            eng.fold(tasks_by_id[e["task"]])
+-        else:
+-            eng.frontier = _resolved_state(eng.frontier, e["path"], e["lines"])
+-    return eng.manifest()
+-
+-
+-def raw_shuffle_outcomes(base, tasks, sample_seed):
+-    """Live-K1 leg 1: shuffled raw folds (resolutions excluded) must be
+-    outcome-identical to each other; set-based conflict keys per #132."""
+-    outcomes = set()
+-    for order in sm.sampled_orders(len(tasks), seed=sample_seed):
+-        frontier, conflicts = sm.fold_all(rw.fold, base, tasks, order)
+-        outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
+-                      tuple(sorted({(c.path, c.kind) for c in conflicts}))))
+-    return outcomes
+-
+-
+-def dispatchable(conflict, manifest):
+-    """(ok, park_reason). Resolver-eligible iff the narration carries
+-    manyana's annotated conflict block AND the file is text under the cap."""
+-    if not any(line.startswith(rw.MARKERS)
+-               for line in conflict.narration.splitlines()):
+-        return False, "no annotated narration for %s (%s)" % (conflict.path,
+-                                                              conflict.kind)
+-    body = manifest.get(conflict.path)
+-    if not isinstance(body, str):
+-        return False, "non-text manifest content for %s" % conflict.path
+-    if len(body.splitlines()) > RESOLVER_LINE_CAP:
+-        return False, "%s exceeds %d visible lines" % (conflict.path,
+-                                                       RESOLVER_LINE_CAP)
+-    return True, ""
+diff --git a/evals/frontier/repo_weave.py b/evals/frontier/repo_weave.py
+deleted file mode 100644
+index ff4f579f9447972f3cfab86dd7043f53fc7a9fd2..0000000000000000000000000000000000000000
+--- a/evals/frontier/repo_weave.py
++++ /dev/null
+@@ -1,419 +0,0 @@
+-"""Repo-level weave layer over the vendored manyana kernel (frontier probe).
+-
+-Lifts the line-level weave kernel to whole repositories: `snapshot` reads a git
+-tree into a `RepoState`, `publish` turns a task branch into a `TaskState`, and
+-`fold` merges a task into a frontier state, reporting `Conflict`s. `fold` is
+-functional (never mutates its inputs) and order-independent (K1), which is what
+-lets the probe replay every permutation of a task set and compare outcomes.
+-
+-Text paths get order-independence from the kernel's weave. Binary paths get it
+-from a *candidate set*: every task that writes a binary path contributes its
+-bytes (and every task that deletes one contributes a tombstone) to a per-path
+-set. Set union is commutative, so the final state cannot depend on fold order;
+-a conflict is reported on the fold that introduces a new distinct candidate
+-beyond the path's first, which makes the conflict count `len(candidates) - 1`
+-in every order. The surviving bytes are the lexicographically smallest
+-candidate — an arbitrary but deterministic tiebreak.
+-
+-Conflict *kinds* obey the same discipline. Each conflict comes from one of two
+-order-independent sources:
+-
+-* the kernel merge, whose kind is read off `base` alone (`add/add` for a path
+-  no base tree carried, `lines` otherwise) — a per-path constant, so it cannot
+-  depend on which fold the kernel happened to report the conflict on;
+-* a *presence pairing* — two incompatible records for one path (task-touched
+-  text and raw bytes; visible text and a delete; bytes and a delete). Each
+-  pairing's conjunction is monotone across folds, so "both true for the first
+-  time" happens on exactly one fold in every order, and the pairing is reported
+-  exactly once.
+-
+-The text side of the text/bytes pairing must be *task-touched*. A path whose
+-text side still records exactly what `base` carried, rewritten as binary, is a
+-type change by one writer: git reports no conflict there, so neither do we, and
+-the superseded base record leaves `files` (`_drop_superseded_text`, run by
+-`fold` between the merge and the reporting pass). "Still what base carried" is
+-decided by weave-state *content* plus the delete marks — never by object
+-identity, which is not a function of the merge result at all: `update_state`
+-returns its input state unchanged when the new lines equal the current ones, so
+-a task that did text-write a path can carry the base's own state object, and
+-which object `files[p]` ends up holding then depends on fold order. Content
+-does not: weave merge is an idempotent, commutative, associative join, so
+-`files[p]` is the same string in every order, and `base` is its bottom element
+-— once a task moves a path off `base`, no later fold moves it back. That makes
+-"still base's own" *anti*-monotone and the pairing conjunction monotone (#132).
+-
+-Deliberately NOT done: relabelling the kernel's conflict `delete/modify` when a
+-delete record is present. Whether the delete is already folded is fold history,
+-and folding the same tasks in another order moves that relabelling to a
+-different conflict (or none). The delete/modify pairing is therefore reported
+-alongside the kernel conflict, not instead of it: one path can carry both a
+-`lines` conflict (the edits disagree) and a `delete/modify` conflict (content
+-survives a delete), which is what actually happened.
+-"""
+-import subprocess
+-import sys
+-from dataclasses import dataclass, field
+-from pathlib import Path
+-
+-sys.path.insert(0, str(Path(__file__).resolve().parent / "vendor"))
+-import manyana
+-
+-MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
+-
+-
+-class _Tombstone:
+-    """Sentinel candidate: some task deleted this binary path."""
+-    __slots__ = ()
+-
+-    def __repr__(self):
+-        return "<deleted>"
+-
+-
+-TOMBSTONE = _Tombstone()
+-
+-
+-def split_lines(content):
+-    """Text content -> lines, dropping exactly one trailing newline."""
+-    if content == "":
+-        return []
+-    if content.endswith("\n"):
+-        content = content[:-1]
+-    return content.split("\n")
+-
+-
+-def join_lines(lines):
+-    """Lines -> text, one trailing newline for non-empty files."""
+-    return "\n".join(lines) + "\n" if lines else ""
+-
+-
+-def is_binary(data):
+-    if b"\x00" in data:
+-        return True
+-    try:
+-        data.decode("utf-8")
+-        return False
+-    except UnicodeDecodeError:
+-        return True
+-
+-
+-def _byte_candidates(candidates):
+-    """The bytes written for a path, tombstone excluded."""
+-    return [c for c in candidates if c is not TOMBSTONE]
+-
+-
+-@dataclass(frozen=True)
+-class RepoState:
+-    files: dict           # path -> weave state (text files)
+-    deleted_marks: frozenset
+-    raw: dict             # path -> bytes as of the base tree (binary files)
+-    # path -> frozenset of task-written candidates: bytes, and/or TOMBSTONE.
+-    # Base bytes are NOT candidates; they survive only while this is empty.
+-    raw_candidates: dict = field(default_factory=dict)
+-
+-    @property
+-    def raw_touched(self):
+-        """Binary paths some already-folded task wrote or deleted."""
+-        return frozenset(self.raw_candidates)
+-
+-
+-@dataclass(frozen=True)
+-class TaskState:
+-    task_id: str
+-    weaves: dict
+-    deleted: frozenset
+-    raw: dict
+-
+-
+-@dataclass(frozen=True, eq=False)
+-class Conflict:
+-    path: str
+-    kind: str      # lines | add/add | delete/modify | binary
+-    task_id: str
+-    narration: str
+-
+-    # Identity is (path, kind): narration and the reporting task_id vary with
+-    # fold order, so including them would break order-independent comparison.
+-    def __eq__(self, other):
+-        if not isinstance(other, Conflict):
+-            return NotImplemented
+-        return (self.path, self.kind) == (other.path, other.kind)
+-
+-    def __hash__(self):
+-        return hash((self.path, self.kind))
+-
+-
+-def _git(repo, *args):
+-    return subprocess.run(["git", "-C", str(repo), *args],
+-                          check=True, capture_output=True).stdout
+-
+-
+-def snapshot(repo, ref):
+-    """Read the tree at `ref` into a RepoState."""
+-    names = _git(repo, "ls-tree", "-r", "-z", "--name-only", ref).decode()
+-    files, raw = {}, {}
+-    for p in filter(None, names.split("\0")):
+-        blob = _git(repo, "show", f"{ref}:{p}")
+-        if is_binary(blob):
+-            raw[p] = blob
+-        else:
+-            files[p] = manyana.initial_state(split_lines(blob.decode()))
+-    return RepoState(files=files, deleted_marks=frozenset(), raw=raw)
+-
+-
+-def task_state_from_contents(base, task_id, contents):
+-    """Pure/no-git TaskState builder: path -> str (text), None (delete), bytes."""
+-    weaves, raw, deleted = {}, {}, set()
+-    for p, c in contents.items():
+-        if c is None:
+-            deleted.add(p)
+-            if p in base.files:
+-                weaves[p] = manyana.update_state(base.files[p], [])
+-        elif isinstance(c, bytes):
+-            raw[p] = c
+-        elif p in base.files:
+-            weaves[p] = manyana.update_state(base.files[p], split_lines(c))
+-        else:
+-            # Weave over the empty base so concurrent adds share an ancestor.
+-            weaves[p] = manyana.update_state(manyana.initial_state([]), split_lines(c))
+-    return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted), raw=raw)
+-
+-
+-def publish(base, repo, base_ref, ref, task_id):
+-    """Derive a TaskState from the git diff base_ref..ref."""
+-    out = _git(repo, "diff", "--name-status", "-z", "--no-renames", base_ref, ref).decode()
+-    parts = [x for x in out.split("\0") if x]
+-    contents = {}
+-    for status, p in zip(parts[0::2], parts[1::2]):
+-        if status.startswith("D"):
+-            contents[p] = None
+-        else:
+-            blob = _git(repo, "show", f"{ref}:{p}")
+-            contents[p] = blob if is_binary(blob) else blob.decode()
+-    return task_state_from_contents(base, task_id, contents)
+-
+-
+-def _relabel(annotated, task_id):
+-    """Rewrite kernel conflict markers to name the frontier and the task."""
+-    out = []
+-    for line in annotated:
+-        if line.startswith(MARKERS):
+-            line = line.replace("left", "frontier").replace("right", task_id)
+-        out.append(line)
+-    return "\n".join(out)
+-
+-
+-def _text_kind(base, path):
+-    """Kind for a kernel-reported conflict: a per-path constant.
+-
+-    Read off `base` only. Deriving it from the frontier instead — "delete/modify
+-    if some already-folded task deleted the path" — is order-sensitive: the
+-    same task set relabels a different conflict depending on when the deleting
+-    task arrives. Delete-vs-content is reported by `_fold_presence`, which sees
+-    it exactly once whatever the order.
+-    """
+-    if path not in base.files and path not in base.raw:
+-        return "add/add"
+-    return "lines"
+-
+-
+-def _fold_text(base, task, files, conflicts):
+-    """Fold the task's text weaves into `files`, appending any conflicts."""
+-    for p in sorted(task.weaves):
+-        w = task.weaves[p]
+-        if p in files:
+-            merged, annotated = manyana.merge_states(files[p], w)
+-            files[p] = merged
+-            if annotated != manyana.current_lines(merged):
+-                conflicts.append(Conflict(p, _text_kind(base, p), task.task_id,
+-                                          _relabel(annotated, task.task_id)))
+-        else:
+-            files[p] = w
+-
+-
+-def _fold_binary(task, candidates, conflicts):
+-    """Union the task's binary candidates into `candidates`.
+-
+-    One conflict per candidate that is new *and* not the path's first, so the
+-    per-path total is `len(candidates) - 1` no matter what order tasks arrive
+-    in. A tombstone counts as a candidate; any pairing of a tombstone with
+-    bytes is reported as delete/modify, every other pairing as binary.
+-    """
+-    arrivals = [(p, task.raw[p]) for p in sorted(task.raw)]
+-    arrivals += [(p, TOMBSTONE) for p in sorted(task.deleted) if p not in task.weaves]
+-    for p, item in arrivals:
+-        prior = candidates.setdefault(p, set())
+-        if item in prior:
+-            continue
+-        if prior:
+-            if item is TOMBSTONE:
+-                kind, why = "delete/modify", "deleted here, rewritten concurrently"
+-            elif _byte_candidates(prior):
+-                kind, why = "binary", "divergent bytes written concurrently"
+-            else:
+-                kind, why = "delete/modify", "rewritten here, deleted concurrently"
+-            conflicts.append(Conflict(p, kind, task.task_id,
+-                                      "binary path %s: %s (by %s)" % (p, why, task.task_id)))
+-        prior.add(item)
+-
+-
+-def _base_text_untouched(base, files, deleted_marks, path):
+-    """True iff `path`'s text side still records exactly what `base` carried.
+-
+-    Decided by weave-state *content* and the delete marks, never by object
+-    identity: `manyana.update_state` returns its input state unchanged when the
+-    new lines equal the current ones, so `files[path] is base.files[path]`
+-    holds for genuine text writers too, and which object survives a merge is
+-    fold-order-dependent. Content is not — the weave merge is a join, so the
+-    folded state string is the same in every order.
+-
+-    A delete counts as touching the text side even when the weave is unchanged:
+-    an empty base file's delete weave equals the base's own state, but the file
+-    was removed, and only `deleted_marks` records that.
+-    """
+-    return (path in files and files[path] == base.files.get(path)
+-            and path not in deleted_marks)
+-
+-
+-def _pairing_facts(base, files, candidates, deleted_marks, path):
+-    """(text side task-touched, has visible text, has task bytes, is deleted).
+-
+-    The flags the pairings key on are monotone across folds:
+-
+-    * `deleted_marks` and the candidate sets only grow;
+-    * `text_touched` only appears. A path leaves `files` only through
+-      `_drop_superseded_text`, and only while its text side is still base's
+-      own — i.e. only while `text_touched` is already False. Once a task moves
+-      the path off base, the join can never move it back, so `text_touched`
+-      stays True and the record stays;
+-    * visible text can only appear once a delete is folded: every base line of
+-      the path is then invisible (the delete weave carries the higher, even
+-      count), so any line still visible after that was added by a task — and no
+-      other task, all of which branch from `base`, can carry a delete for a
+-      line it never saw.
+-    """
+-    marks = candidates.get(path, ())
+-    has_text = path in files
+-    visible = has_text and bool(manyana.current_lines(files[path]))
+-    text_touched = has_text and not _base_text_untouched(
+-        base, files, deleted_marks, path)
+-    return (text_touched, visible, bool(_byte_candidates(marks)), path in deleted_marks)
+-
+-
+-def _drop_superseded_text(base, task, files, candidates, deleted_marks):
+-    """Type change by a single writer: retire the superseded base record.
+-
+-    A path whose text side is still exactly base's (`_base_text_untouched`) and
+-    which some task has rewritten as bytes has had its *type* changed by one
+-    writer. The bytes are the merge result, so the superseded record leaves
+-    `files` — exactly as a base-*binary* path that never grew a text weave
+-    carries none, and exactly what git does with a lone type change.
+-
+-    A merge decision, not a report: `fold` runs it after the text and binary
+-    folds and before `_fold_presence`, so the reporting pass never mutates the
+-    merge result. Its predicate is a function of the folded content alone, so
+-    the drop happens on the same paths in every fold order.
+-    """
+-    for p in sorted(set(task.weaves) | set(task.raw) | set(task.deleted)):
+-        if (_base_text_untouched(base, files, deleted_marks, p)
+-                and _byte_candidates(candidates.get(p, ()))):
+-            del files[p]
+-
+-
+-def _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts):
+-    """One conflict per path whose incompatible presence records first pair up.
+-
+-    Each pairing's conjunction is monotone (see `_pairing_facts`), so every
+-    not-both -> both transition happens on exactly one fold whatever the order:
+-    a task-touched text side meeting task-written bytes reports `binary`, and
+-    text content surviving a delete reports `delete/modify`. (bytes-vs-delete
+-    is reported by `_fold_binary`, where both records live in the same
+-    candidate set.)
+-
+-    A lone type change is NOT a pairing: when the text side still records
+-    base's own content, a byte write is one writer changing the file's type
+-    (#132). `_drop_superseded_text` has already retired such a record, so
+-    `text_touched` is what remains — the flag states the requirement rather
+-    than leaning on the call order.
+-
+-    Pure with respect to the merge result: reads `files`/`candidates`, writes
+-    only `conflicts`.
+-    """
+-    touched = set(task.weaves) | set(task.raw) | set(task.deleted)
+-    for p in sorted(touched):
+-        was_text, was_visible, had_bytes, was_deleted = _pairing_facts(
+-            base, frontier.files, frontier.raw_candidates,
+-            frontier.deleted_marks, p)
+-        is_text, visible, has_bytes, deleted = _pairing_facts(
+-            base, files, candidates, deleted_marks, p)
+-        if is_text and has_bytes and not (was_text and had_bytes):
+-            # `manifest` keeps the text record when its lines are visible OR
+-            # the path carries no delete mark; naming the other side there
+-            # would contradict the very state this fold returns.
+-            text_wins = visible or p not in deleted_marks
+-            conflicts.append(Conflict(p, "binary", task.task_id,
+-                                      "path %s written as text and as binary "
+-                                      "concurrently; %s the manifest"
+-                                      % (p, "text wins" if text_wins
+-                                         else "bytes win")))
+-        if visible and deleted and not (was_visible and was_deleted):
+-            conflicts.append(Conflict(p, "delete/modify", task.task_id,
+-                                      "path %s deleted concurrently with text that "
+-                                      "survives the delete; the text wins the "
+-                                      "manifest" % p))
+-
+-
+-def fold(base, frontier, task):
+-    """Merge `task` into `frontier`; returns (new RepoState, [Conflict])."""
+-    files = dict(frontier.files)
+-    candidates = {p: set(c) for p, c in frontier.raw_candidates.items()}
+-    deleted_marks = frontier.deleted_marks | task.deleted
+-    conflicts = []
+-    _fold_text(base, task, files, conflicts)
+-    _fold_binary(task, candidates, conflicts)
+-    _drop_superseded_text(base, task, files, candidates, deleted_marks)
+-    _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts)
+-    return (RepoState(files=files,
+-                      deleted_marks=deleted_marks,
+-                      raw=dict(frontier.raw),
+-                      raw_candidates={p: frozenset(c) for p, c in candidates.items()}),
+-            conflicts)
+-
+-
+-def manifest(state):
+-    """path -> normalized text (str) or raw bytes; deleted files omitted.
+-
+-    Text wins any text/binary collision that reaches this point, so raw bytes
+-    never silently shadow a visible weave — and every such collision was
+-    reported as a conflict by `fold`. A *lone type change* never reaches this
+-    point: `fold` retires the superseded base record (`_drop_superseded_text`)
+-    rather than reporting it, so those paths arrive here carrying bytes only
+-    (#132).
+-    """
+-    out = {}
+-    for p, w in state.files.items():
+-        lines = manyana.current_lines(w)
+-        if lines or p not in state.deleted_marks:
+-            out[p] = join_lines(lines)
+-    for p in set(state.raw) | set(state.raw_candidates):
+-        if p in out:
+-            continue
+-        written = _byte_candidates(state.raw_candidates.get(p, ()))
+-        if written:
+-            out[p] = min(written)               # bytes outlive a tombstone
+-        elif TOMBSTONE in state.raw_candidates.get(p, ()):
+-            continue                            # tombstone only: deleted
+-        elif p in state.raw and p not in state.deleted_marks:
+-            out[p] = state.raw[p]               # untouched base bytes
+-    return out
+-
+-
+-def materialize(state, dest):
+-    """Failure-artifact dump only — never on a comparison path."""
+-    dest = Path(dest)
+-    for p, content in manifest(state).items():
+-        target = dest / p
+-        target.parent.mkdir(parents=True, exist_ok=True)
+-        if isinstance(content, bytes):
+-            target.write_bytes(content)
+-        else:
+-            target.write_text(content, encoding="utf-8")
+diff --git a/evals/frontier/run_eval.py b/evals/frontier/run_eval.py
+index 7a4c9c2df7e5ae1d116f62508e8bd161029e15e5..109de5ab8b3e6e2ee8bb5a6c6aae4608a508bdc9 100644
+--- a/evals/frontier/run_eval.py
++++ b/evals/frontier/run_eval.py
+@@ -43,11 +43,13 @@ from pathlib import Path
+ 
+ HERE = Path(__file__).resolve().parent
+ ROOT = HERE.parent.parent
++KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
+ sys.path.insert(0, str(HERE))
++sys.path.insert(0, str(KERNEL))
+ import repo_weave as rw  # noqa: E402
+ import schedule_model as sm  # noqa: E402
+ 
+-sys.path.insert(0, str(HERE / "vendor"))
++sys.path.insert(0, str(KERNEL / "vendor"))
+ import manyana  # noqa: E402
+ 
+ FIXTURES = ["wide", "chained", "mixed", "flawed", "degrade", "webapp", "contend"]
+diff --git a/evals/frontier/schedule_model.py b/evals/frontier/schedule_model.py
+index 3b77a7097ec0938c0dd0cc34805b389b7bdc0544..cc8d0753ca83022f94f070a82dbb683671f98310 100644
+--- a/evals/frontier/schedule_model.py
++++ b/evals/frontier/schedule_model.py
+@@ -1,7 +1,10 @@
+ """Closed-form scheduling model + generic fold replay + structural bisection."""
+ import math
+-import random
+-from itertools import permutations
++import sys
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "skills" / "ultrapowers" / "kernel"))
++from frontier_fold import sampled_orders, fold_all  # noqa: E402  (promoted to the kernel; modeling-only module imports back)
+ 
+ SAME_FILE_WHYS = frozenset({"write-after-create", "write-after-write",
+                             "ambiguous-files"})
+@@ -31,26 +34,6 @@ def drop_same_file_edges(edges):
+     return [e for e in edges if e["why"] not in SAME_FILE_WHYS]
+ 
+ 
+-def fold_all(fold_fn, base, tasks, order):
+-    frontier, conflicts = base, []
+-    for i in order:
+-        frontier, cs = fold_fn(base, frontier, tasks[i])
+-        conflicts.extend(cs)
+-    return frontier, conflicts
+-
+-
+-def sampled_orders(n, seed=42):
+-    if n <= 4:
+-        return [list(p) for p in permutations(range(n))]
+-    rng = random.Random(seed)
+-    orders = [list(range(n))]
+-    while len(orders) < 20:
+-        o = list(range(n))
+-        rng.shuffle(o)
+-        orders.append(o)
+-    return orders
+-
+-
+ def bisect_single(tasks, is_red):
+     lo, hi = 0, len(tasks)
+     probes = 0
+diff --git a/evals/frontier/vendor/PROVENANCE.md b/evals/frontier/vendor/PROVENANCE.md
+deleted file mode 100644
+index c58a4e1bd942bdd5760431029d1c1e18650cf632..0000000000000000000000000000000000000000
+--- a/evals/frontier/vendor/PROVENANCE.md
++++ /dev/null
+@@ -1,18 +0,0 @@
+-# Vendored: manyana
+-
+-- Upstream: https://github.com/bramcohen/manyana
+-- Upstream commit: bd77d480e7649f239c42d10a5e64565ee064dd08
+-- License: public domain (upstream README)
+-- Local patch (exactly one, for Python < 3.12 compatibility — upstream line 123
+-  uses PEP 701 nested same-quote f-string syntax):
+-
+-    -        result.append(f'{depth} {['<', '>'][anchored_right]} {count} {line}')
+-    +        arrow = ('<', '>')[anchored_right]
+-    +        result.append(f'{depth} {arrow} {count} {line}')
+-
+-- sha256 of the patched file (pinned by tests/test_frontier_kernel.py):
+-  3c8ba319bb286aac0ca8f2d7ac355e2610eafa290d2f1e46c7eb5ff562220004
+-
+-Re-vendoring procedure: fetch upstream, re-apply the patch hunk above, re-run
+-`python3 evals/frontier/vendor/manyana.py` (all tests must pass), update the
+-sha256 in BOTH this file and tests/test_frontier_kernel.py in the same commit.
+diff --git a/evals/frontier/vendor/manyana.py b/evals/frontier/vendor/manyana.py
+deleted file mode 100644
+index 0e0367d23d19cdf87a047bd7f5cd814698f75fc4..0000000000000000000000000000000000000000
+--- a/evals/frontier/vendor/manyana.py
++++ /dev/null
+@@ -1,550 +0,0 @@
+-# Code for eventually consistent merging and UX for it
+-# external API is initial_state, current_lines, update_state, and merge_states
+-
+-# Adding blame to this would be straightforward by attaching a list of
+-#   commit ids which caused each increment to the count
+-# Cherry-picking could be supported with UX selecting ranges of lines (probably including invisible dangling deletes
+-#   which happened just outside them). That results in a state only representing some lines. Lines which are
+-#   dependent but not part of the cherry can be given count 0.
+-
+-# state is enough information about the history of a file for future merges
+-# state size is linear on the history
+-
+-# returns state string
+-def initial_state(lines):
+-    return serialize_state([(line, i, False, 1) for i, line in enumerate(lines)])
+-
+-# reconstructs [line]
+-def current_lines(raw_state):
+-    state = deserialize_state(raw_state)
+-    return [line for (line, depth, anchored_right, count) in state if count % 2]
+-
+-# Called at commit time
+-# returns state_string
+-def update_state(raw_state, lines):
+-    state = deserialize_state(raw_state)
+-    if not state:
+-        return initial_state(lines)
+-    current_visible_lines = [line for (line, depth, anchored_right, count) in state if count % 2]
+-    if current_visible_lines == lines:
+-        return raw_state
+-    # Ideally matching would bias towards living lines
+-    deletions, insertions = get_deletions_and_insertions([x[0] for x in state], lines)
+-    for deletion in deletions:
+-        if state[deletion][3] % 2:
+-            state[deletion][3] += 1
+-    deleted_set = set(deletions)
+-    for i in range(len(state)):
+-        if i not in deleted_set and state[i][3] % 2 == 0:
+-            state[i][3] += 1
+-    result = []
+-    pos_in_insertions = 0
+-    for pos in range(len(state)+1):
+-        if pos_in_insertions < len(insertions) and insertions[pos_in_insertions][0] == pos:
+-            if pos == len(state):
+-                up = True
+-            elif pos == 0:
+-                up = False
+-            else:
+-                up = state[pos-1][1] > state[pos][1]
+-            newlines = insertions[pos_in_insertions][1]
+-            if up:
+-                result.append((newlines[0], state[pos-1][1]+1, False, 1))
+-            else:
+-                result.append((newlines[0], state[pos][1]+1, True, 1))
+-            for line in newlines[1:]:
+-                result.append((line, result[-1][1]+1, False, 1))
+-            pos_in_insertions += 1
+-        if pos < len(state):
+-            result.append(state[pos])
+-    return serialize_state(result)
+-
+-# Called when doing a merge
+-# returns (state_string, file_with_conflict_annotations)
+-# calling current_lines(state_string) will always give the same values as in the
+-#   file_with_conflict_annotations but without the conflict annotations
+-def merge_states(state1, state2):
+-    tree1 = state_to_tree(deserialize_state(state1))
+-    tree2 = state_to_tree(deserialize_state(state2))
+-    status_lines = []
+-    merge_trees(status_lines, tree1, tree2, False)
+-    result_lines = []
+-    begin = 0
+-    for i in range(len(status_lines)+1):
+-        if i == len(status_lines) or (status_lines[i][4] and
+-                status_lines[i][5] and status_lines[i][0].strip()):
+-            found_add = False
+-            hit_left = False
+-            hit_right = False
+-            for j in range(begin, i):
+-                line, depth, anchored_right, count, on_left, on_right = status_lines[j]
+-                in_child = count % 2
+-                if on_left != on_right:
+-                    if in_child == on_left:
+-                        hit_left = True
+-                    else:
+-                        hit_right = True
+-                if in_child and on_left != on_right:
+-                    found_add = True
+-            if hit_left and hit_right and found_add:
+-                for j in range(begin, i):
+-                    line, depth, anchored_right, count, on_left, on_right = status_lines[j]
+-                    in_child = count % 2
+-                    if on_left or on_right:
+-                        result_lines.append((line, conflict_code(in_child, on_left, on_right)))
+-            else:
+-                for j in range(begin, i):
+-                    line, depth, anchored_right, count, on_left, on_right = status_lines[j]
+-                    if count % 2:
+-                        result_lines.append((line, PEACE))
+-            if i < len(status_lines):
+-                result_lines.append((status_lines[i][0], PEACE))
+-            begin = i + 1
+-    return (serialize_state([x[:4] for x in status_lines]), show_conflicts(result_lines))
+-
+-from difflib import SequenceMatcher
+-
+-# returns ([deleted_line_number], [(insert_position, [inserted_line])])
+-def get_deletions_and_insertions(lines1, lines2):
+-    deletions = []
+-    insertions = []
+-    for (tag, l1_begin, l1_end, l2_begin, l2_end) in SequenceMatcher(None, lines1, lines2).get_opcodes():
+-        if tag in ('delete', 'replace'):
+-            for i in range(l1_begin, l1_end):
+-                deletions.append(i)
+-        if tag in ('insert', 'replace'):
+-            insertions.append((l1_begin, lines2[l2_begin:l2_end]))
+-    return (deletions, insertions)
+-
+-# state format is [(line, depth, anchored_right, count)]
+-def serialize_state(state):
+-    result = []
+-    for (line, depth, anchored_right, count) in state:
+-        arrow = ('<', '>')[anchored_right]
+-        result.append(f'{depth} {arrow} {count} {line}')
+-    return '\n'.join(result)
+-
+-def deserialize_state(mystr):
+-    result = []
+-    if mystr == '':
+-        return []
+-    for line in mystr.split('\n'):
+-        vals = line.split(' ')
+-        result.append([' '.join(vals[3:]), int(vals[0]), vals[1] == '>', int(vals[2])])
+-    return result
+-
+-CONFLICT_ADDED_LEFT = 0
+-CONFLICT_ADDED_RIGHT = 1
+-CONFLICT_ADDED_BOTH = 2
+-CONFLICT_DELETED_LEFT = 3
+-CONFLICT_DELETED_RIGHT = 4
+-PEACE = 5
+-
+-conflict_strings = ['added left', 'added right', 'added both',
+-        'deleted left', 'deleted right', 'deleted both']
+-
+-END = '>>>>>>> end conflict'
+-
+-def show_conflicts(result_lines):
+-    final_result = []
+-    last_state = PEACE
+-    for line, new_state in result_lines:
+-        if new_state == PEACE:
+-            if last_state != PEACE:
+-                final_result.append(END)
+-        elif last_state == PEACE:
+-            final_result.append('<<<<<<< begin ' + conflict_strings[new_state])
+-        elif last_state != new_state:
+-            final_result.append('======= begin ' + conflict_strings[new_state])
+-        final_result.append(line)
+-        last_state = new_state
+-    if last_state != PEACE:
+-        final_result.append(END)
+-    return final_result
+-
+-def conflict_code(in_child, on_left, on_right):
+-    assert on_left or on_right
+-    if in_child:
+-        if on_left and on_right:
+-            return CONFLICT_ADDED_BOTH
+-        elif on_left:
+-            return CONFLICT_ADDED_LEFT
+-        else:
+-            return CONFLICT_ADDED_RIGHT
+-    else:
+-        if on_right:
+-            return CONFLICT_DELETED_LEFT
+-        else:
+-            return CONFLICT_DELETED_RIGHT
+-
+-def state_to_tree(state):
+-    root_children_above = []
+-    children_above = [[] for i in range(len(state))]
+-    last_by_depth = [None] * len(state)
+-    for i in range(len(state)):
+-        line, depth, anchored_right, count = state[i]
+-        if not anchored_right:
+-            if depth == 0:
+-                root_children_above.append(i)
+-            else:
+-                children_above[last_by_depth[depth-1]].append(i)
+-        last_by_depth[depth] = i
+-    children_below = [[] for i in range(len(state))]
+-    last_by_depth = [None] * len(state)
+-    for i in range(len(state)-1,-1,-1):
+-        line, depth, anchored_right, count = state[i]
+-        if anchored_right:
+-            children_below[last_by_depth[depth-1]].append(i)
+-        last_by_depth[depth] = i
+-    for cb in children_below:
+-        cb.reverse()
+-    return (None, -1, [], [pull_out_tree(i, state, children_above, children_below) for i in root_children_above], -1)
+-
+-def pull_out_tree(pos, state, children_above, children_below):
+-    line, depth, archored_right, count = state[pos]
+-    return (line, count, [pull_out_tree(x, state, children_above, children_below) for x in children_below[pos]],
+-        [pull_out_tree(x, state, children_above, children_below) for x in children_above[pos]], depth)
+-
+-# format of tree is (line, count, [low_trees], [high_trees], depth)
+-# line is None for the root
+-# lines in output are of format (line, depth, anchored_right, count, on_left, on_right)
+-# state format is [(line, depth, anchored_right, count)]
+-def merge_trees(output, tree1, tree2, anchored_right):
+-    line1, count1, lowtrees1, hightrees1, depth1 = tree1
+-    line2, count2, lowtrees2, hightrees2, depth2 = tree2
+-    assert line1 == line2
+-    assert depth1 == depth2
+-    merge_tree_lists(output, lowtrees1, lowtrees2, True)
+-    if line1 is not None:
+-        output.append((line1, depth1, anchored_right, max(count1, count2), count1 % 2, count2 % 2))
+-    merge_tree_lists(output, hightrees1, hightrees2, False)
+-
+-def merge_tree_lists(output, left_trees, right_trees, anchored_right):
+-    pos1 = 0
+-    pos2 = 0
+-    while pos1 < len(left_trees) or pos2 < len(right_trees):
+-        if pos2 == len(right_trees):
+-            insert_tree(output, left_trees[pos1], False, anchored_right)
+-            pos1 += 1
+-        elif pos1 == len(left_trees):
+-            insert_tree(output, right_trees[pos2], True, anchored_right)
+-            pos2 += 1
+-        elif left_trees[pos1][0] == right_trees[pos2][0]:
+-            merge_trees(output, left_trees[pos1], right_trees[pos2], anchored_right)
+-            pos1 += 1
+-            pos2 += 1
+-        elif left_trees[pos1][0] < right_trees[pos2][0]:
+-            insert_tree(output, left_trees[pos1], False, anchored_right)
+-            pos1 += 1
+-        else:
+-            insert_tree(output, right_trees[pos2], True, anchored_right)
+-            pos2 += 1
+-
+-def insert_tree(output, tree, from_right, anchored_right):
+-    line, count, lowtrees, hightrees, depth = tree
+-    for new_tree in lowtrees:
+-        insert_tree(output, new_tree, from_right, True)
+-    output.append((line, depth, anchored_right, count, not from_right, from_right))
+-    for new_tree in hightrees:
+-        insert_tree(output, new_tree, from_right, False)
+-
+-def test_initial():
+-    assert initial_state([]) == ''
+-    assert current_lines('') == []
+-    v1 = initial_state(['line 1', 'line 4'])
+-    v2 = initial_state(['line 2', 'line 3'])
+-    state1, output1 = merge_states(v1, v2)
+-    state2, output2 = merge_states(v2, v1)
+-    assert state1 == state2
+-    assert current_lines(state1) == ['line 1', 'line 4', 'line 2', 'line 3']
+-
+-def swap_left_right(s):
+-    s = s.replace('left', 'swap')
+-    s = s.replace('right', 'left')
+-    s = s.replace('swap', 'right')
+-    return s
+-
+-def check_merges(thing1, thing2, expected_result, expected_conflicts = None):
+-    state1, conflicts1 = merge_states(thing1, thing2)
+-    state2, conflicts2 = merge_states(thing2, thing1)
+-    assert state1 == state2
+-    if expected_conflicts is None:
+-        assert conflicts1 == conflicts2 == expected_result
+-    else:
+-        assert conflicts1 == expected_conflicts
+-        assert conflicts2 == [swap_left_right(x) for x in expected_conflicts]
+-    assert current_lines(state1) == expected_result
+-
+-SAL = '<<<<<<< begin added left'
+-SAR = '<<<<<<< begin added right'
+-SAB = '<<<<<<< begin added both'
+-SDL = '<<<<<<< begin deleted left'
+-SDR = '<<<<<<< begin deleted right'
+-SDB = '<<<<<<< begin deleted both'
+-MAL = '======= begin added left'
+-MAR = '======= begin added right'
+-MAB = '======= begin added both'
+-MDL = '======= begin deleted left'
+-MDR = '======= begin deleted right'
+-MDB = '======= begin deleted both'
+-
+-def test_bottom_and_top():
+-    initial = initial_state(['A'])
+-    insert_below = update_state(initial, ['B', 'A'])
+-    replace_below = update_state(insert_below, ['B'])
+-    insert_above = update_state(initial, ['A', 'B'])
+-    replace_above = update_state(insert_above, ['B'])
+-    delete = update_state(initial, [])
+-    check_merges(initial, initial, ['A'])
+-    check_merges(initial, insert_below, ['B', 'A'])
+-    check_merges(initial, replace_below, ['B'])
+-    check_merges(initial, insert_above, ['A', 'B'])
+-    check_merges(initial, replace_above, ['B'])
+-    check_merges(initial, delete, [])
+-    check_merges(insert_below, insert_below, ['B', 'A'])
+-    check_merges(insert_below, replace_below, ['B'])
+-    check_merges(insert_below, insert_above, ['B', 'A', 'B'])
+-    check_merges(insert_below, replace_above, ['B', 'B'], [SAL, 'B', MDR, 'A', MAR, 'B', END])
+-    check_merges(insert_below, delete, ['B'], [SAL, 'B', MDR, 'A', END])
+-    check_merges(replace_below, replace_below, ['B'])
+-    check_merges(replace_below, insert_above, ['B', 'B'], [SAL, 'B', MDL, 'A', MAR, 'B', END])
+-    check_merges(replace_below, replace_above, ['B', 'B'], [SAL, 'B', MAR, 'B', END])
+-    check_merges(replace_below, delete, ['B'])
+-    check_merges(insert_above, insert_above, ['A', 'B'])
+-    check_merges(insert_above, replace_above, ['B'])
+-    check_merges(insert_above, delete, ['B'], [SDR, 'A', MAL, 'B', END])
+-    check_merges(replace_above, replace_above, ['B'])
+-    check_merges(replace_above, delete, ['B'])
+-    check_merges(delete, delete, [])
+-
+-def test_bottom():
+-    initial = initial_state(['A', 'X'])
+-    insert_below = update_state(initial, ['B', 'A', 'X'])
+-    replace_below = update_state(insert_below, ['B', 'X'])
+-    insert_above = update_state(initial, ['A', 'B', 'X'])
+-    replace_above = update_state(insert_above, ['B', 'X'])
+-    delete = update_state(initial, ['X'])
+-    check_merges(initial, initial, ['A', 'X'])
+-    check_merges(initial, insert_below, ['B', 'A', 'X'])
+-    check_merges(initial, replace_below, ['B', 'X'])
+-    check_merges(initial, insert_above, ['A', 'B', 'X'])
+-    check_merges(initial, replace_above, ['B', 'X'])
+-    check_merges(initial, delete, ['X'])
+-    check_merges(insert_below, insert_below, ['B', 'A', 'X'])
+-    check_merges(insert_below, replace_below, ['B', 'X'])
+-    check_merges(insert_below, insert_above, ['B', 'A', 'B', 'X'])
+-    check_merges(insert_below, replace_above, ['B', 'B', 'X'], [SAL, 'B', MDR, 'A', MAR, 'B', END, 'X'])
+-    check_merges(insert_below, delete, ['B', 'X'], [SAL, 'B', MDR, 'A', END, 'X'])
+-    check_merges(replace_below, replace_below, ['B', 'X'])
+-    check_merges(replace_below, insert_above, ['B', 'B', 'X'], [SAL, 'B', MDL, 'A', MAR, 'B', END, 'X'])
+-    check_merges(replace_below, replace_above, ['B', 'B', 'X'], [SAL, 'B', MAR, 'B', END, 'X'])
+-    check_merges(replace_below, delete, ['B', 'X'])
+-    check_merges(insert_above, insert_above, ['A', 'B', 'X'])
+-    check_merges(insert_above, replace_above, ['B', 'X'])
+-    check_merges(insert_above, delete, ['B', 'X'], [SDR, 'A', MAL, 'B', END, 'X'])
+-    check_merges(replace_above, replace_above, ['B', 'X'])
+-    check_merges(replace_above, delete, ['B', 'X'])
+-    check_merges(delete, delete, ['X'])
+-
+-def test_top():
+-    initial = initial_state(['X', 'A'])
+-    insert_below = update_state(initial, ['X', 'B', 'A'])
+-    replace_below = update_state(insert_below, ['X', 'B'])
+-    insert_above = update_state(initial, ['X', 'A', 'B'])
+-    replace_above = update_state(insert_above, ['X', 'B'])
+-    delete = update_state(initial, ['X'])
+-    check_merges(initial, initial, ['X', 'A'])
+-    check_merges(initial, insert_below, ['X', 'B', 'A'])
+-    check_merges(initial, replace_below, ['X', 'B'])
+-    check_merges(initial, insert_above, ['X', 'A', 'B'])
+-    check_merges(initial, replace_above, ['X', 'B'])
+-    check_merges(initial, delete, ['X'])
+-    check_merges(insert_below, insert_below, ['X', 'B', 'A'])
+-    check_merges(insert_below, replace_below, ['X', 'B'])
+-    check_merges(insert_below, insert_above, ['X', 'B', 'A', 'B'])
+-    check_merges(insert_below, replace_above, ['X', 'B', 'B'], ['X', SAL, 'B', MDR, 'A', MAR, 'B', END])
+-    check_merges(insert_below, delete, ['X', 'B'], ['X', SAL, 'B', MDR, 'A', END])
+-    check_merges(replace_below, replace_below, ['X', 'B'])
+-    check_merges(replace_below, insert_above, ['X', 'B', 'B'], ['X', SAL, 'B', MDL, 'A', MAR, 'B', END])
+-    check_merges(replace_below, replace_above, ['X', 'B', 'B'], ['X', SAL, 'B', MAR, 'B', END])
+-    check_merges(replace_below, delete, ['X', 'B'])
+-    check_merges(insert_above, insert_above, ['X', 'A', 'B'])
+-    check_merges(insert_above, replace_above, ['X', 'B'])
+-    check_merges(insert_above, delete, ['X', 'B'], ['X', SDR, 'A', MAL, 'B', END])
+-    check_merges(replace_above, replace_above, ['X', 'B'])
+-    check_merges(replace_above, delete, ['X', 'B'])
+-    check_merges(delete, delete, ['X'])
+-
+-def test_generation_counting():
+-    count0 = initial_state([])
+-    count1 = update_state(count0, ['A'])
+-    count2 = update_state(count1, [])
+-    count3 = update_state(count2, ['A'])
+-    count4 = update_state(count3, [])
+-    check_merges(count0, count1, ['A'])
+-    check_merges(count0, count2, [])
+-    check_merges(count0, count3, ['A'])
+-    check_merges(count0, count4, [])
+-    check_merges(count1, count1, ['A'])
+-    check_merges(count1, count2, [])
+-    check_merges(count1, count3, ['A'])
+-
+-    check_merges(count1, count4, [])
+-    check_merges(count2, count2, [])
+-    check_merges(count2, count3, ['A'])
+-    check_merges(count2, count4, [])
+-    check_merges(count3, count3, ['A'])
+-    check_merges(count3, count4, [])
+-    check_merges(count4, count4, [])
+-
+-def test_noop_duplicate_lines_preserves_hidden_history():
+-    state = initial_state(['A', 'A'])
+-    state = update_state(state, ['A'])
+-    assert update_state(state, ['A']) == state
+-
+-def test_insertions_single(a, b, c, d):
+-    state1, junk1 = merge_states(a, b)
+-    state2, junk2 = merge_states(c, d)
+-    state3, junk3 = merge_states(state1, state2)
+-    assert current_lines(state3) == ['A', 'B', 'C', 'D']
+-
+-from itertools import permutations
+-
+-def test_insertions():
+-    mylist = [initial_state([x]) for x in ('A', 'B', 'C', 'D')]
+-    for perm in permutations(mylist):
+-        test_insertions_single(*perm)
+-
+-def test_insertions_below_single(a, b, c, d):
+-    state1, junk1 = merge_states(a, b)
+-    state2, junk2 = merge_states(c, d)
+-    state3, junk3 = merge_states(state1, state2)
+-    assert current_lines(state3) == ['A', 'B', 'C', 'D', 'X']
+-
+-def test_insertions_below():
+-    initial = initial_state(['X'])
+-    mylist = [update_state(initial, [x, 'X']) for x in ('A', 'B', 'C', 'D')]
+-    for perm in permutations(mylist):
+-        test_insertions_below_single(*perm)
+-
+-def test_space_separated_insert_insert():
+-    initial = initial_state([''])
+-    insert_left = update_state(initial, ['A', ''])
+-    insert_right = update_state(initial, ['', 'B'])
+-    check_merges(insert_left, insert_right, ['A', '', 'B'], [SAL, 'A', MAB, '', MAR, 'B', END])
+-
+-def test_space_separated_insert_delete():
+-    initial = initial_state(['', 'B'])
+-    insert_left = update_state(initial, ['A', '', 'B'])
+-    delete_right = update_state(initial, [''])
+-    check_merges(insert_left, delete_right, ['A', ''], [SAL, 'A', MAB, '', MDR, 'B', END])
+-
+-def test_space_separated_delete_insert():
+-    initial = initial_state(['A', ''])
+-    delete_left = update_state(initial, [''])
+-    insert_right = update_state(initial, ['A', '', 'B'])
+-    check_merges(delete_left, insert_right, ['', 'B'], [SDL, 'A', MAB, '', MAR, 'B', END])
+-
+-def test_space_separated_delete_delete():
+-    initial = initial_state(['A', '', 'B'])
+-    delete_left = update_state(initial, ['', 'B'])
+-    delete_right = update_state(initial, ['A', ''])
+-    check_merges(delete_left, delete_right, [''])
+-
+-def test_deleted_both():
+-    initial = initial_state(['', 'X', ''])
+-    left = update_state(initial, ['A', '', ''])
+-    right = update_state(initial, ['', '', 'B'])
+-    check_merges(left, right, ['A', '', '', 'B'], [SAL, 'A', MAB, '', '', MAR, 'B', END])
+-
+-def test_deleted_both2():
+-    initial = initial_state(['A'])
+-    left = update_state(initial, ['X', 'A'])
+-    left = update_state(left, ['X'])
+-    right = update_state(initial, ['A', 'Y'])
+-    right = update_state(initial, ['Y'])
+-    check_merges(left, right, ['X', 'Y'], [SAL, 'X', MAR, 'Y', END])
+-
+-def test_update_insert_multiple():
+-    initial = initial_state(['A', 'B'])
+-    updated = update_state(initial, ['A', 'X', 'Y', 'B'])
+-    assert current_lines(updated) == ['A', 'X', 'Y', 'B']
+-
+-def test_insert_low_tree():
+-    initial = initial_state(['A'])
+-    updated = update_state(initial, ['Y', 'A'])
+-    updated = update_state(updated, ['X', 'Y', 'A'])
+-    right = update_state(initial, ['A', 'B'])
+-    check_merges(updated, right, ['X', 'Y', 'A', 'B'])
+-
+-def check_associative(a, b, c):
+-    ab, _ = merge_states(a, b)
+-    ab_c, _ = merge_states(ab, c)
+-    bc, _ = merge_states(b, c)
+-    a_bc, _ = merge_states(a, bc)
+-    assert ab_c == a_bc
+-    assert current_lines(ab_c) == current_lines(a_bc)
+-
+-def test_associativity():
+-    s = initial_state(['A', 'B'])
+-    a = update_state(s, ['A', 'X', 'B'])
+-    b = update_state(s, ['A', 'Y', 'B'])
+-    c = update_state(s, ['A', 'B', 'Z'])
+-    check_associative(a, b, c)
+-    a = update_state(s, ['B'])
+-    b = update_state(s, ['A'])
+-    c = update_state(s, ['A', 'B', 'C'])
+-    check_associative(a, b, c)
+-    a = update_state(update_state(s, []), ['A', 'B'])
+-    b = update_state(s, [])
+-    c = update_state(s, [])
+-    check_associative(a, b, c)
+-    a = initial_state(['P'])
+-    b = initial_state(['Q'])
+-    c = initial_state(['R'])
+-    check_associative(a, b, c)
+-    s = initial_state(['M'])
+-    left = update_state(s, ['M', 'L'])
+-    right = update_state(s, ['R', 'M'])
+-    merged, _ = merge_states(left, right)
+-    check_associative(left, right, merged)
+-    check_associative(merged, left, update_state(s, []))
+-
+-def check_idempotent(state):
+-    merged, _ = merge_states(state, state)
+-    assert merged == state
+-
+-def test_idempotency():
+-    check_idempotent(initial_state([]))
+-    check_idempotent(initial_state(['A', 'B', 'C']))
+-    state = initial_state(['A', 'B'])
+-    check_idempotent(state)
+-    state = update_state(state, ['A', 'X', 'B'])
+-    check_idempotent(state)
+-    state = update_state(state, ['A', 'B'])
+-    check_idempotent(state)
+-    state = update_state(state, ['A', 'X', 'B'])
+-    check_idempotent(state)
+-    left = update_state(initial_state(['M']), ['M', 'L'])
+-    right = update_state(initial_state(['M']), ['R', 'M'])
+-    merged, _ = merge_states(left, right)
+-    check_idempotent(merged)
+-
+-if __name__ == '__main__':
+-    import inspect, traceback
+-    passes = 0
+-    failures = 0
+-    for name, func in list(globals().items()):
+-        if name.startswith('test') and callable(func) and not inspect.signature(func).parameters:
+-            try:
+-                func()
+-                print("PASS:", name)
+-                passes += 1
+-            except Exception:
+-                print("FAIL:", name)
+-                traceback.print_exc()
+-                print()
+-                failures += 1
+-    print(f"{passes} tests passed, {failures} tests failed")
+-    if failures:
+-        raise SystemExit(1)
+diff --git a/evals/run_frontier_cell.py b/evals/run_frontier_cell.py
+index 014c91c2cf9c97b4f1e70027a849530f7b6295da..7111568b58589b8aa62f5b5a9614a234a8a53f25 100644
+--- a/evals/run_frontier_cell.py
++++ b/evals/run_frontier_cell.py
+@@ -32,6 +32,7 @@ from pathlib import Path
+ ROOT = Path(__file__).resolve().parents[1]
+ sys.path.insert(0, str(ROOT / "evals"))
+ sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
+ import ab_runner as ab                                          # noqa: E402
+ import frontier_fold as ff                                      # noqa: E402
+ import repo_weave as rw                                         # noqa: E402
+diff --git a/skills/ultrapowers/kernel/__init__.py b/skills/ultrapowers/kernel/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/skills/ultrapowers/kernel/frontier_fold.py b/skills/ultrapowers/kernel/frontier_fold.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8407a52282a97709b3be2507c4bc7d1a363c0d0f
+--- /dev/null
++++ b/skills/ultrapowers/kernel/frontier_fold.py
+@@ -0,0 +1,159 @@
++#!/usr/bin/env python3
++"""Fold-on-completion engine for the frontier production test (spec
++2026-08-11, component 3). Pure state machine: no subprocesses, no kit
++plumbing. The cell driver owns dispatch; this module owns merge state.
++
++Invariants it enforces (each pinned by tests/test_frontier_fold.py):
++* the event log is the durable record: replay(base, tasks, events)
++  reproduces the manifest deterministically;
++* application validity: a resolution computed from a narration applies only
++  if no intervening fold touched its path since the narration's epoch;
++* the dispatch predicate: only annotated-block narrations, <= 400 visible
++  lines, are resolver-eligible — everything else parks with a named reason.
++"""
++import random
++import sys
++from itertools import permutations
++from pathlib import Path
++
++_HERE = Path(__file__).resolve().parent
++sys.path.insert(0, str(_HERE))
++sys.path.insert(0, str(_HERE / "vendor"))
++import manyana
++import repo_weave as rw
++
++RESOLVER_LINE_CAP = 400
++
++
++def sampled_orders(n, seed=42):
++    """All permutations of range(n) up to 4 elements; 20 seeded samples (the
++    identity order plus 19 shuffles) above that. Moved from the eval-only
++    schedule_model module: this is a generic fold-order sampler, not modeling
++    logic, so the kernel owns it and schedule_model imports it back."""
++    if n <= 4:
++        return [list(p) for p in permutations(range(n))]
++    rng = random.Random(seed)
++    orders = [list(range(n))]
++    while len(orders) < 20:
++        o = list(range(n))
++        rng.shuffle(o)
++        orders.append(o)
++    return orders
++
++
++def fold_all(fold_fn, base, tasks, order):
++    """Fold `tasks` (indexed by `order`) into `base` via `fold_fn`, threading
++    the accumulating frontier and collecting every conflict along the way."""
++    frontier, conflicts = base, []
++    for i in order:
++        frontier, cs = fold_fn(base, frontier, tasks[i])
++        conflicts.extend(cs)
++    return frontier, conflicts
++
++
++def _visible(lines):
++    """A resolver's `resolvedFileLines` -> the weave's visible-line list.
++
++    The contract says "no trailing-newline entries", but a whole-file reply
++    built by splitting text on "\\n" carries one anyway. Normalizing through
++    `repo_weave`'s own text convention (`split_lines` drops exactly one
++    trailing newline) makes both spellings mean the same file and keeps a
++    genuinely blank final line expressible as two trailing entries.
++    """
++    return rw.split_lines("\n".join(lines))
++
++
++def _resolved_state(frontier, path, lines):
++    """Whole-file-in / whole-file-out: replace `path`'s visible lines."""
++    files = dict(frontier.files)
++    prior = files.get(path, manyana.initial_state([]))
++    files[path] = manyana.update_state(prior, _visible(lines))
++    return rw.RepoState(files=files,
++                        deleted_marks=frontier.deleted_marks,
++                        raw=dict(frontier.raw),
++                        raw_candidates=dict(frontier.raw_candidates))
++
++
++class FrontierEngine:
++    """Folds tasks into a frontier as they complete, recording every step."""
++
++    def __init__(self, base):
++        self.base = base
++        self.frontier = base
++        self.events = []            # [{"type": "fold", "task": id} |
++                                    #  {"type": "resolve", "path": p,
++                                    #   "epoch": n, "lines": [...]}]
++        self._touched_at = {}       # path -> last event index that folded it
++
++    def epoch(self):
++        """The event count. Capture it BEFORE reading a narration."""
++        return len(self.events)
++
++    def fold(self, task):
++        """Fold one completed task; returns its per-fold pre-dedupe stream."""
++        self.frontier, conflicts = rw.fold(self.base, self.frontier, task)
++        idx = len(self.events)
++        self.events.append({"type": "fold", "task": task.task_id})
++        for p in set(task.weaves) | set(task.raw) | set(task.deleted):
++            self._touched_at[p] = idx
++        return conflicts
++
++    def apply_resolution(self, path, epoch, lines):
++        """Apply a resolution narrated at `epoch`; False = stale, re-narrate.
++
++        Only folds invalidate: a resolution is dispatched serially (at most
++        one in flight), so no other resolution can have landed on the path
++        between this narration and its application.
++        """
++        if self._touched_at.get(path, -1) >= epoch:
++            return False            # an intervening fold touched the path
++        self.frontier = _resolved_state(self.frontier, path, lines)
++        self.events.append({"type": "resolve", "path": path,
++                            "epoch": epoch, "lines": list(lines)})
++        return True
++
++    def manifest(self):
++        return rw.manifest(self.frontier)
++
++
++def replay(base, tasks_by_id, events):
++    """Re-run the exact recorded sequence; the return must equal the live
++    manifest (G2's event-log leg).
++
++    Validity is not re-checked: the log records what actually applied, and
++    re-deciding it here would let replay diverge from the run it replays.
++    """
++    eng = FrontierEngine(base)
++    for e in events:
++        if e["type"] == "fold":
++            eng.fold(tasks_by_id[e["task"]])
++        else:
++            eng.frontier = _resolved_state(eng.frontier, e["path"], e["lines"])
++    return eng.manifest()
++
++
++def raw_shuffle_outcomes(base, tasks, sample_seed):
++    """Live-K1 leg 1: shuffled raw folds (resolutions excluded) must be
++    outcome-identical to each other; set-based conflict keys per #132."""
++    outcomes = set()
++    for order in sampled_orders(len(tasks), seed=sample_seed):
++        frontier, conflicts = fold_all(rw.fold, base, tasks, order)
++        outcomes.add((tuple(sorted(rw.manifest(frontier).items())),
++                      tuple(sorted({(c.path, c.kind) for c in conflicts}))))
++    return outcomes
++
++
++def dispatchable(conflict, manifest):
++    """(ok, park_reason). Resolver-eligible iff the narration carries
++    manyana's annotated conflict block AND the file is text under the cap."""
++    if not any(line.startswith(rw.MARKERS)
++               for line in conflict.narration.splitlines()):
++        return False, "no annotated narration for %s (%s)" % (conflict.path,
++                                                              conflict.kind)
++    body = manifest.get(conflict.path)
++    if not isinstance(body, str):
++        return False, "non-text manifest content for %s" % conflict.path
++    if len(body.splitlines()) > RESOLVER_LINE_CAP:
++        return False, "%s exceeds %d visible lines" % (conflict.path,
++                                                       RESOLVER_LINE_CAP)
++    return True, ""
+diff --git a/skills/ultrapowers/kernel/repo_weave.py b/skills/ultrapowers/kernel/repo_weave.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ff4f579f9447972f3cfab86dd7043f53fc7a9fd2
+--- /dev/null
++++ b/skills/ultrapowers/kernel/repo_weave.py
+@@ -0,0 +1,419 @@
++"""Repo-level weave layer over the vendored manyana kernel (frontier probe).
++
++Lifts the line-level weave kernel to whole repositories: `snapshot` reads a git
++tree into a `RepoState`, `publish` turns a task branch into a `TaskState`, and
++`fold` merges a task into a frontier state, reporting `Conflict`s. `fold` is
++functional (never mutates its inputs) and order-independent (K1), which is what
++lets the probe replay every permutation of a task set and compare outcomes.
++
++Text paths get order-independence from the kernel's weave. Binary paths get it
++from a *candidate set*: every task that writes a binary path contributes its
++bytes (and every task that deletes one contributes a tombstone) to a per-path
++set. Set union is commutative, so the final state cannot depend on fold order;
++a conflict is reported on the fold that introduces a new distinct candidate
++beyond the path's first, which makes the conflict count `len(candidates) - 1`
++in every order. The surviving bytes are the lexicographically smallest
++candidate — an arbitrary but deterministic tiebreak.
++
++Conflict *kinds* obey the same discipline. Each conflict comes from one of two
++order-independent sources:
++
++* the kernel merge, whose kind is read off `base` alone (`add/add` for a path
++  no base tree carried, `lines` otherwise) — a per-path constant, so it cannot
++  depend on which fold the kernel happened to report the conflict on;
++* a *presence pairing* — two incompatible records for one path (task-touched
++  text and raw bytes; visible text and a delete; bytes and a delete). Each
++  pairing's conjunction is monotone across folds, so "both true for the first
++  time" happens on exactly one fold in every order, and the pairing is reported
++  exactly once.
++
++The text side of the text/bytes pairing must be *task-touched*. A path whose
++text side still records exactly what `base` carried, rewritten as binary, is a
++type change by one writer: git reports no conflict there, so neither do we, and
++the superseded base record leaves `files` (`_drop_superseded_text`, run by
++`fold` between the merge and the reporting pass). "Still what base carried" is
++decided by weave-state *content* plus the delete marks — never by object
++identity, which is not a function of the merge result at all: `update_state`
++returns its input state unchanged when the new lines equal the current ones, so
++a task that did text-write a path can carry the base's own state object, and
++which object `files[p]` ends up holding then depends on fold order. Content
++does not: weave merge is an idempotent, commutative, associative join, so
++`files[p]` is the same string in every order, and `base` is its bottom element
++— once a task moves a path off `base`, no later fold moves it back. That makes
++"still base's own" *anti*-monotone and the pairing conjunction monotone (#132).
++
++Deliberately NOT done: relabelling the kernel's conflict `delete/modify` when a
++delete record is present. Whether the delete is already folded is fold history,
++and folding the same tasks in another order moves that relabelling to a
++different conflict (or none). The delete/modify pairing is therefore reported
++alongside the kernel conflict, not instead of it: one path can carry both a
++`lines` conflict (the edits disagree) and a `delete/modify` conflict (content
++survives a delete), which is what actually happened.
++"""
++import subprocess
++import sys
++from dataclasses import dataclass, field
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parent / "vendor"))
++import manyana
++
++MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
++
++
++class _Tombstone:
++    """Sentinel candidate: some task deleted this binary path."""
++    __slots__ = ()
++
++    def __repr__(self):
++        return "<deleted>"
++
++
++TOMBSTONE = _Tombstone()
++
++
++def split_lines(content):
++    """Text content -> lines, dropping exactly one trailing newline."""
++    if content == "":
++        return []
++    if content.endswith("\n"):
++        content = content[:-1]
++    return content.split("\n")
++
++
++def join_lines(lines):
++    """Lines -> text, one trailing newline for non-empty files."""
++    return "\n".join(lines) + "\n" if lines else ""
++
++
++def is_binary(data):
++    if b"\x00" in data:
++        return True
++    try:
++        data.decode("utf-8")
++        return False
++    except UnicodeDecodeError:
++        return True
++
++
++def _byte_candidates(candidates):
++    """The bytes written for a path, tombstone excluded."""
++    return [c for c in candidates if c is not TOMBSTONE]
++
++
++@dataclass(frozen=True)
++class RepoState:
++    files: dict           # path -> weave state (text files)
++    deleted_marks: frozenset
++    raw: dict             # path -> bytes as of the base tree (binary files)
++    # path -> frozenset of task-written candidates: bytes, and/or TOMBSTONE.
++    # Base bytes are NOT candidates; they survive only while this is empty.
++    raw_candidates: dict = field(default_factory=dict)
++
++    @property
++    def raw_touched(self):
++        """Binary paths some already-folded task wrote or deleted."""
++        return frozenset(self.raw_candidates)
++
++
++@dataclass(frozen=True)
++class TaskState:
++    task_id: str
++    weaves: dict
++    deleted: frozenset
++    raw: dict
++
++
++@dataclass(frozen=True, eq=False)
++class Conflict:
++    path: str
++    kind: str      # lines | add/add | delete/modify | binary
++    task_id: str
++    narration: str
++
++    # Identity is (path, kind): narration and the reporting task_id vary with
++    # fold order, so including them would break order-independent comparison.
++    def __eq__(self, other):
++        if not isinstance(other, Conflict):
++            return NotImplemented
++        return (self.path, self.kind) == (other.path, other.kind)
++
++    def __hash__(self):
++        return hash((self.path, self.kind))
++
++
++def _git(repo, *args):
++    return subprocess.run(["git", "-C", str(repo), *args],
++                          check=True, capture_output=True).stdout
++
++
++def snapshot(repo, ref):
++    """Read the tree at `ref` into a RepoState."""
++    names = _git(repo, "ls-tree", "-r", "-z", "--name-only", ref).decode()
++    files, raw = {}, {}
++    for p in filter(None, names.split("\0")):
++        blob = _git(repo, "show", f"{ref}:{p}")
++        if is_binary(blob):
++            raw[p] = blob
++        else:
++            files[p] = manyana.initial_state(split_lines(blob.decode()))
++    return RepoState(files=files, deleted_marks=frozenset(), raw=raw)
++
++
++def task_state_from_contents(base, task_id, contents):
++    """Pure/no-git TaskState builder: path -> str (text), None (delete), bytes."""
++    weaves, raw, deleted = {}, {}, set()
++    for p, c in contents.items():
++        if c is None:
++            deleted.add(p)
++            if p in base.files:
++                weaves[p] = manyana.update_state(base.files[p], [])
++        elif isinstance(c, bytes):
++            raw[p] = c
++        elif p in base.files:
++            weaves[p] = manyana.update_state(base.files[p], split_lines(c))
++        else:
++            # Weave over the empty base so concurrent adds share an ancestor.
++            weaves[p] = manyana.update_state(manyana.initial_state([]), split_lines(c))
++    return TaskState(task_id=task_id, weaves=weaves, deleted=frozenset(deleted), raw=raw)
++
++
++def publish(base, repo, base_ref, ref, task_id):
++    """Derive a TaskState from the git diff base_ref..ref."""
++    out = _git(repo, "diff", "--name-status", "-z", "--no-renames", base_ref, ref).decode()
++    parts = [x for x in out.split("\0") if x]
++    contents = {}
++    for status, p in zip(parts[0::2], parts[1::2]):
++        if status.startswith("D"):
++            contents[p] = None
++        else:
++            blob = _git(repo, "show", f"{ref}:{p}")
++            contents[p] = blob if is_binary(blob) else blob.decode()
++    return task_state_from_contents(base, task_id, contents)
++
++
++def _relabel(annotated, task_id):
++    """Rewrite kernel conflict markers to name the frontier and the task."""
++    out = []
++    for line in annotated:
++        if line.startswith(MARKERS):
++            line = line.replace("left", "frontier").replace("right", task_id)
++        out.append(line)
++    return "\n".join(out)
++
++
++def _text_kind(base, path):
++    """Kind for a kernel-reported conflict: a per-path constant.
++
++    Read off `base` only. Deriving it from the frontier instead — "delete/modify
++    if some already-folded task deleted the path" — is order-sensitive: the
++    same task set relabels a different conflict depending on when the deleting
++    task arrives. Delete-vs-content is reported by `_fold_presence`, which sees
++    it exactly once whatever the order.
++    """
++    if path not in base.files and path not in base.raw:
++        return "add/add"
++    return "lines"
++
++
++def _fold_text(base, task, files, conflicts):
++    """Fold the task's text weaves into `files`, appending any conflicts."""
++    for p in sorted(task.weaves):
++        w = task.weaves[p]
++        if p in files:
++            merged, annotated = manyana.merge_states(files[p], w)
++            files[p] = merged
++            if annotated != manyana.current_lines(merged):
++                conflicts.append(Conflict(p, _text_kind(base, p), task.task_id,
++                                          _relabel(annotated, task.task_id)))
++        else:
++            files[p] = w
++
++
++def _fold_binary(task, candidates, conflicts):
++    """Union the task's binary candidates into `candidates`.
++
++    One conflict per candidate that is new *and* not the path's first, so the
++    per-path total is `len(candidates) - 1` no matter what order tasks arrive
++    in. A tombstone counts as a candidate; any pairing of a tombstone with
++    bytes is reported as delete/modify, every other pairing as binary.
++    """
++    arrivals = [(p, task.raw[p]) for p in sorted(task.raw)]
++    arrivals += [(p, TOMBSTONE) for p in sorted(task.deleted) if p not in task.weaves]
++    for p, item in arrivals:
++        prior = candidates.setdefault(p, set())
++        if item in prior:
++            continue
++        if prior:
++            if item is TOMBSTONE:
++                kind, why = "delete/modify", "deleted here, rewritten concurrently"
++            elif _byte_candidates(prior):
++                kind, why = "binary", "divergent bytes written concurrently"
++            else:
++                kind, why = "delete/modify", "rewritten here, deleted concurrently"
++            conflicts.append(Conflict(p, kind, task.task_id,
++                                      "binary path %s: %s (by %s)" % (p, why, task.task_id)))
++        prior.add(item)
++
++
++def _base_text_untouched(base, files, deleted_marks, path):
++    """True iff `path`'s text side still records exactly what `base` carried.
++
++    Decided by weave-state *content* and the delete marks, never by object
++    identity: `manyana.update_state` returns its input state unchanged when the
++    new lines equal the current ones, so `files[path] is base.files[path]`
++    holds for genuine text writers too, and which object survives a merge is
++    fold-order-dependent. Content is not — the weave merge is a join, so the
++    folded state string is the same in every order.
++
++    A delete counts as touching the text side even when the weave is unchanged:
++    an empty base file's delete weave equals the base's own state, but the file
++    was removed, and only `deleted_marks` records that.
++    """
++    return (path in files and files[path] == base.files.get(path)
++            and path not in deleted_marks)
++
++
++def _pairing_facts(base, files, candidates, deleted_marks, path):
++    """(text side task-touched, has visible text, has task bytes, is deleted).
++
++    The flags the pairings key on are monotone across folds:
++
++    * `deleted_marks` and the candidate sets only grow;
++    * `text_touched` only appears. A path leaves `files` only through
++      `_drop_superseded_text`, and only while its text side is still base's
++      own — i.e. only while `text_touched` is already False. Once a task moves
++      the path off base, the join can never move it back, so `text_touched`
++      stays True and the record stays;
++    * visible text can only appear once a delete is folded: every base line of
++      the path is then invisible (the delete weave carries the higher, even
++      count), so any line still visible after that was added by a task — and no
++      other task, all of which branch from `base`, can carry a delete for a
++      line it never saw.
++    """
++    marks = candidates.get(path, ())
++    has_text = path in files
++    visible = has_text and bool(manyana.current_lines(files[path]))
++    text_touched = has_text and not _base_text_untouched(
++        base, files, deleted_marks, path)
++    return (text_touched, visible, bool(_byte_candidates(marks)), path in deleted_marks)
++
++
++def _drop_superseded_text(base, task, files, candidates, deleted_marks):
++    """Type change by a single writer: retire the superseded base record.
++
++    A path whose text side is still exactly base's (`_base_text_untouched`) and
++    which some task has rewritten as bytes has had its *type* changed by one
++    writer. The bytes are the merge result, so the superseded record leaves
++    `files` — exactly as a base-*binary* path that never grew a text weave
++    carries none, and exactly what git does with a lone type change.
++
++    A merge decision, not a report: `fold` runs it after the text and binary
++    folds and before `_fold_presence`, so the reporting pass never mutates the
++    merge result. Its predicate is a function of the folded content alone, so
++    the drop happens on the same paths in every fold order.
++    """
++    for p in sorted(set(task.weaves) | set(task.raw) | set(task.deleted)):
++        if (_base_text_untouched(base, files, deleted_marks, p)
++                and _byte_candidates(candidates.get(p, ()))):
++            del files[p]
++
++
++def _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts):
++    """One conflict per path whose incompatible presence records first pair up.
++
++    Each pairing's conjunction is monotone (see `_pairing_facts`), so every
++    not-both -> both transition happens on exactly one fold whatever the order:
++    a task-touched text side meeting task-written bytes reports `binary`, and
++    text content surviving a delete reports `delete/modify`. (bytes-vs-delete
++    is reported by `_fold_binary`, where both records live in the same
++    candidate set.)
++
++    A lone type change is NOT a pairing: when the text side still records
++    base's own content, a byte write is one writer changing the file's type
++    (#132). `_drop_superseded_text` has already retired such a record, so
++    `text_touched` is what remains — the flag states the requirement rather
++    than leaning on the call order.
++
++    Pure with respect to the merge result: reads `files`/`candidates`, writes
++    only `conflicts`.
++    """
++    touched = set(task.weaves) | set(task.raw) | set(task.deleted)
++    for p in sorted(touched):
++        was_text, was_visible, had_bytes, was_deleted = _pairing_facts(
++            base, frontier.files, frontier.raw_candidates,
++            frontier.deleted_marks, p)
++        is_text, visible, has_bytes, deleted = _pairing_facts(
++            base, files, candidates, deleted_marks, p)
++        if is_text and has_bytes and not (was_text and had_bytes):
++            # `manifest` keeps the text record when its lines are visible OR
++            # the path carries no delete mark; naming the other side there
++            # would contradict the very state this fold returns.
++            text_wins = visible or p not in deleted_marks
++            conflicts.append(Conflict(p, "binary", task.task_id,
++                                      "path %s written as text and as binary "
++                                      "concurrently; %s the manifest"
++                                      % (p, "text wins" if text_wins
++                                         else "bytes win")))
++        if visible and deleted and not (was_visible and was_deleted):
++            conflicts.append(Conflict(p, "delete/modify", task.task_id,
++                                      "path %s deleted concurrently with text that "
++                                      "survives the delete; the text wins the "
++                                      "manifest" % p))
++
++
++def fold(base, frontier, task):
++    """Merge `task` into `frontier`; returns (new RepoState, [Conflict])."""
++    files = dict(frontier.files)
++    candidates = {p: set(c) for p, c in frontier.raw_candidates.items()}
++    deleted_marks = frontier.deleted_marks | task.deleted
++    conflicts = []
++    _fold_text(base, task, files, conflicts)
++    _fold_binary(task, candidates, conflicts)
++    _drop_superseded_text(base, task, files, candidates, deleted_marks)
++    _fold_presence(base, frontier, task, files, candidates, deleted_marks, conflicts)
++    return (RepoState(files=files,
++                      deleted_marks=deleted_marks,
++                      raw=dict(frontier.raw),
++                      raw_candidates={p: frozenset(c) for p, c in candidates.items()}),
++            conflicts)
++
++
++def manifest(state):
++    """path -> normalized text (str) or raw bytes; deleted files omitted.
++
++    Text wins any text/binary collision that reaches this point, so raw bytes
++    never silently shadow a visible weave — and every such collision was
++    reported as a conflict by `fold`. A *lone type change* never reaches this
++    point: `fold` retires the superseded base record (`_drop_superseded_text`)
++    rather than reporting it, so those paths arrive here carrying bytes only
++    (#132).
++    """
++    out = {}
++    for p, w in state.files.items():
++        lines = manyana.current_lines(w)
++        if lines or p not in state.deleted_marks:
++            out[p] = join_lines(lines)
++    for p in set(state.raw) | set(state.raw_candidates):
++        if p in out:
++            continue
++        written = _byte_candidates(state.raw_candidates.get(p, ()))
++        if written:
++            out[p] = min(written)               # bytes outlive a tombstone
++        elif TOMBSTONE in state.raw_candidates.get(p, ()):
++            continue                            # tombstone only: deleted
++        elif p in state.raw and p not in state.deleted_marks:
++            out[p] = state.raw[p]               # untouched base bytes
++    return out
++
++
++def materialize(state, dest):
++    """Failure-artifact dump only — never on a comparison path."""
++    dest = Path(dest)
++    for p, content in manifest(state).items():
++        target = dest / p
++        target.parent.mkdir(parents=True, exist_ok=True)
++        if isinstance(content, bytes):
++            target.write_bytes(content)
++        else:
++            target.write_text(content, encoding="utf-8")
+diff --git a/skills/ultrapowers/kernel/vendor/PROVENANCE.md b/skills/ultrapowers/kernel/vendor/PROVENANCE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..c58a4e1bd942bdd5760431029d1c1e18650cf632
+--- /dev/null
++++ b/skills/ultrapowers/kernel/vendor/PROVENANCE.md
+@@ -0,0 +1,18 @@
++# Vendored: manyana
++
++- Upstream: https://github.com/bramcohen/manyana
++- Upstream commit: bd77d480e7649f239c42d10a5e64565ee064dd08
++- License: public domain (upstream README)
++- Local patch (exactly one, for Python < 3.12 compatibility — upstream line 123
++  uses PEP 701 nested same-quote f-string syntax):
++
++    -        result.append(f'{depth} {['<', '>'][anchored_right]} {count} {line}')
++    +        arrow = ('<', '>')[anchored_right]
++    +        result.append(f'{depth} {arrow} {count} {line}')
++
++- sha256 of the patched file (pinned by tests/test_frontier_kernel.py):
++  3c8ba319bb286aac0ca8f2d7ac355e2610eafa290d2f1e46c7eb5ff562220004
++
++Re-vendoring procedure: fetch upstream, re-apply the patch hunk above, re-run
++`python3 evals/frontier/vendor/manyana.py` (all tests must pass), update the
++sha256 in BOTH this file and tests/test_frontier_kernel.py in the same commit.
+diff --git a/skills/ultrapowers/kernel/vendor/manyana.py b/skills/ultrapowers/kernel/vendor/manyana.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e0367d23d19cdf87a047bd7f5cd814698f75fc4
+--- /dev/null
++++ b/skills/ultrapowers/kernel/vendor/manyana.py
+@@ -0,0 +1,550 @@
++# Code for eventually consistent merging and UX for it
++# external API is initial_state, current_lines, update_state, and merge_states
++
++# Adding blame to this would be straightforward by attaching a list of
++#   commit ids which caused each increment to the count
++# Cherry-picking could be supported with UX selecting ranges of lines (probably including invisible dangling deletes
++#   which happened just outside them). That results in a state only representing some lines. Lines which are
++#   dependent but not part of the cherry can be given count 0.
++
++# state is enough information about the history of a file for future merges
++# state size is linear on the history
++
++# returns state string
++def initial_state(lines):
++    return serialize_state([(line, i, False, 1) for i, line in enumerate(lines)])
++
++# reconstructs [line]
++def current_lines(raw_state):
++    state = deserialize_state(raw_state)
++    return [line for (line, depth, anchored_right, count) in state if count % 2]
++
++# Called at commit time
++# returns state_string
++def update_state(raw_state, lines):
++    state = deserialize_state(raw_state)
++    if not state:
++        return initial_state(lines)
++    current_visible_lines = [line for (line, depth, anchored_right, count) in state if count % 2]
++    if current_visible_lines == lines:
++        return raw_state
++    # Ideally matching would bias towards living lines
++    deletions, insertions = get_deletions_and_insertions([x[0] for x in state], lines)
++    for deletion in deletions:
++        if state[deletion][3] % 2:
++            state[deletion][3] += 1
++    deleted_set = set(deletions)
++    for i in range(len(state)):
++        if i not in deleted_set and state[i][3] % 2 == 0:
++            state[i][3] += 1
++    result = []
++    pos_in_insertions = 0
++    for pos in range(len(state)+1):
++        if pos_in_insertions < len(insertions) and insertions[pos_in_insertions][0] == pos:
++            if pos == len(state):
++                up = True
++            elif pos == 0:
++                up = False
++            else:
++                up = state[pos-1][1] > state[pos][1]
++            newlines = insertions[pos_in_insertions][1]
++            if up:
++                result.append((newlines[0], state[pos-1][1]+1, False, 1))
++            else:
++                result.append((newlines[0], state[pos][1]+1, True, 1))
++            for line in newlines[1:]:
++                result.append((line, result[-1][1]+1, False, 1))
++            pos_in_insertions += 1
++        if pos < len(state):
++            result.append(state[pos])
++    return serialize_state(result)
++
++# Called when doing a merge
++# returns (state_string, file_with_conflict_annotations)
++# calling current_lines(state_string) will always give the same values as in the
++#   file_with_conflict_annotations but without the conflict annotations
++def merge_states(state1, state2):
++    tree1 = state_to_tree(deserialize_state(state1))
++    tree2 = state_to_tree(deserialize_state(state2))
++    status_lines = []
++    merge_trees(status_lines, tree1, tree2, False)
++    result_lines = []
++    begin = 0
++    for i in range(len(status_lines)+1):
++        if i == len(status_lines) or (status_lines[i][4] and
++                status_lines[i][5] and status_lines[i][0].strip()):
++            found_add = False
++            hit_left = False
++            hit_right = False
++            for j in range(begin, i):
++                line, depth, anchored_right, count, on_left, on_right = status_lines[j]
++                in_child = count % 2
++                if on_left != on_right:
++                    if in_child == on_left:
++                        hit_left = True
++                    else:
++                        hit_right = True
++                if in_child and on_left != on_right:
++                    found_add = True
++            if hit_left and hit_right and found_add:
++                for j in range(begin, i):
++                    line, depth, anchored_right, count, on_left, on_right = status_lines[j]
++                    in_child = count % 2
++                    if on_left or on_right:
++                        result_lines.append((line, conflict_code(in_child, on_left, on_right)))
++            else:
++                for j in range(begin, i):
++                    line, depth, anchored_right, count, on_left, on_right = status_lines[j]
++                    if count % 2:
++                        result_lines.append((line, PEACE))
++            if i < len(status_lines):
++                result_lines.append((status_lines[i][0], PEACE))
++            begin = i + 1
++    return (serialize_state([x[:4] for x in status_lines]), show_conflicts(result_lines))
++
++from difflib import SequenceMatcher
++
++# returns ([deleted_line_number], [(insert_position, [inserted_line])])
++def get_deletions_and_insertions(lines1, lines2):
++    deletions = []
++    insertions = []
++    for (tag, l1_begin, l1_end, l2_begin, l2_end) in SequenceMatcher(None, lines1, lines2).get_opcodes():
++        if tag in ('delete', 'replace'):
++            for i in range(l1_begin, l1_end):
++                deletions.append(i)
++        if tag in ('insert', 'replace'):
++            insertions.append((l1_begin, lines2[l2_begin:l2_end]))
++    return (deletions, insertions)
++
++# state format is [(line, depth, anchored_right, count)]
++def serialize_state(state):
++    result = []
++    for (line, depth, anchored_right, count) in state:
++        arrow = ('<', '>')[anchored_right]
++        result.append(f'{depth} {arrow} {count} {line}')
++    return '\n'.join(result)
++
++def deserialize_state(mystr):
++    result = []
++    if mystr == '':
++        return []
++    for line in mystr.split('\n'):
++        vals = line.split(' ')
++        result.append([' '.join(vals[3:]), int(vals[0]), vals[1] == '>', int(vals[2])])
++    return result
++
++CONFLICT_ADDED_LEFT = 0
++CONFLICT_ADDED_RIGHT = 1
++CONFLICT_ADDED_BOTH = 2
++CONFLICT_DELETED_LEFT = 3
++CONFLICT_DELETED_RIGHT = 4
++PEACE = 5
++
++conflict_strings = ['added left', 'added right', 'added both',
++        'deleted left', 'deleted right', 'deleted both']
++
++END = '>>>>>>> end conflict'
++
++def show_conflicts(result_lines):
++    final_result = []
++    last_state = PEACE
++    for line, new_state in result_lines:
++        if new_state == PEACE:
++            if last_state != PEACE:
++                final_result.append(END)
++        elif last_state == PEACE:
++            final_result.append('<<<<<<< begin ' + conflict_strings[new_state])
++        elif last_state != new_state:
++            final_result.append('======= begin ' + conflict_strings[new_state])
++        final_result.append(line)
++        last_state = new_state
++    if last_state != PEACE:
++        final_result.append(END)
++    return final_result
++
++def conflict_code(in_child, on_left, on_right):
++    assert on_left or on_right
++    if in_child:
++        if on_left and on_right:
++            return CONFLICT_ADDED_BOTH
++        elif on_left:
++            return CONFLICT_ADDED_LEFT
++        else:
++            return CONFLICT_ADDED_RIGHT
++    else:
++        if on_right:
++            return CONFLICT_DELETED_LEFT
++        else:
++            return CONFLICT_DELETED_RIGHT
++
++def state_to_tree(state):
++    root_children_above = []
++    children_above = [[] for i in range(len(state))]
++    last_by_depth = [None] * len(state)
++    for i in range(len(state)):
++        line, depth, anchored_right, count = state[i]
++        if not anchored_right:
++            if depth == 0:
++                root_children_above.append(i)
++            else:
++                children_above[last_by_depth[depth-1]].append(i)
++        last_by_depth[depth] = i
++    children_below = [[] for i in range(len(state))]
++    last_by_depth = [None] * len(state)
++    for i in range(len(state)-1,-1,-1):
++        line, depth, anchored_right, count = state[i]
++        if anchored_right:
++            children_below[last_by_depth[depth-1]].append(i)
++        last_by_depth[depth] = i
++    for cb in children_below:
++        cb.reverse()
++    return (None, -1, [], [pull_out_tree(i, state, children_above, children_below) for i in root_children_above], -1)
++
++def pull_out_tree(pos, state, children_above, children_below):
++    line, depth, archored_right, count = state[pos]
++    return (line, count, [pull_out_tree(x, state, children_above, children_below) for x in children_below[pos]],
++        [pull_out_tree(x, state, children_above, children_below) for x in children_above[pos]], depth)
++
++# format of tree is (line, count, [low_trees], [high_trees], depth)
++# line is None for the root
++# lines in output are of format (line, depth, anchored_right, count, on_left, on_right)
++# state format is [(line, depth, anchored_right, count)]
++def merge_trees(output, tree1, tree2, anchored_right):
++    line1, count1, lowtrees1, hightrees1, depth1 = tree1
++    line2, count2, lowtrees2, hightrees2, depth2 = tree2
++    assert line1 == line2
++    assert depth1 == depth2
++    merge_tree_lists(output, lowtrees1, lowtrees2, True)
++    if line1 is not None:
++        output.append((line1, depth1, anchored_right, max(count1, count2), count1 % 2, count2 % 2))
++    merge_tree_lists(output, hightrees1, hightrees2, False)
++
++def merge_tree_lists(output, left_trees, right_trees, anchored_right):
++    pos1 = 0
++    pos2 = 0
++    while pos1 < len(left_trees) or pos2 < len(right_trees):
++        if pos2 == len(right_trees):
++            insert_tree(output, left_trees[pos1], False, anchored_right)
++            pos1 += 1
++        elif pos1 == len(left_trees):
++            insert_tree(output, right_trees[pos2], True, anchored_right)
++            pos2 += 1
++        elif left_trees[pos1][0] == right_trees[pos2][0]:
++            merge_trees(output, left_trees[pos1], right_trees[pos2], anchored_right)
++            pos1 += 1
++            pos2 += 1
++        elif left_trees[pos1][0] < right_trees[pos2][0]:
++            insert_tree(output, left_trees[pos1], False, anchored_right)
++            pos1 += 1
++        else:
++            insert_tree(output, right_trees[pos2], True, anchored_right)
++            pos2 += 1
++
++def insert_tree(output, tree, from_right, anchored_right):
++    line, count, lowtrees, hightrees, depth = tree
++    for new_tree in lowtrees:
++        insert_tree(output, new_tree, from_right, True)
++    output.append((line, depth, anchored_right, count, not from_right, from_right))
++    for new_tree in hightrees:
++        insert_tree(output, new_tree, from_right, False)
++
++def test_initial():
++    assert initial_state([]) == ''
++    assert current_lines('') == []
++    v1 = initial_state(['line 1', 'line 4'])
++    v2 = initial_state(['line 2', 'line 3'])
++    state1, output1 = merge_states(v1, v2)
++    state2, output2 = merge_states(v2, v1)
++    assert state1 == state2
++    assert current_lines(state1) == ['line 1', 'line 4', 'line 2', 'line 3']
++
++def swap_left_right(s):
++    s = s.replace('left', 'swap')
++    s = s.replace('right', 'left')
++    s = s.replace('swap', 'right')
++    return s
++
++def check_merges(thing1, thing2, expected_result, expected_conflicts = None):
++    state1, conflicts1 = merge_states(thing1, thing2)
++    state2, conflicts2 = merge_states(thing2, thing1)
++    assert state1 == state2
++    if expected_conflicts is None:
++        assert conflicts1 == conflicts2 == expected_result
++    else:
++        assert conflicts1 == expected_conflicts
++        assert conflicts2 == [swap_left_right(x) for x in expected_conflicts]
++    assert current_lines(state1) == expected_result
++
++SAL = '<<<<<<< begin added left'
++SAR = '<<<<<<< begin added right'
++SAB = '<<<<<<< begin added both'
++SDL = '<<<<<<< begin deleted left'
++SDR = '<<<<<<< begin deleted right'
++SDB = '<<<<<<< begin deleted both'
++MAL = '======= begin added left'
++MAR = '======= begin added right'
++MAB = '======= begin added both'
++MDL = '======= begin deleted left'
++MDR = '======= begin deleted right'
++MDB = '======= begin deleted both'
++
++def test_bottom_and_top():
++    initial = initial_state(['A'])
++    insert_below = update_state(initial, ['B', 'A'])
++    replace_below = update_state(insert_below, ['B'])
++    insert_above = update_state(initial, ['A', 'B'])
++    replace_above = update_state(insert_above, ['B'])
++    delete = update_state(initial, [])
++    check_merges(initial, initial, ['A'])
++    check_merges(initial, insert_below, ['B', 'A'])
++    check_merges(initial, replace_below, ['B'])
++    check_merges(initial, insert_above, ['A', 'B'])
++    check_merges(initial, replace_above, ['B'])
++    check_merges(initial, delete, [])
++    check_merges(insert_below, insert_below, ['B', 'A'])
++    check_merges(insert_below, replace_below, ['B'])
++    check_merges(insert_below, insert_above, ['B', 'A', 'B'])
++    check_merges(insert_below, replace_above, ['B', 'B'], [SAL, 'B', MDR, 'A', MAR, 'B', END])
++    check_merges(insert_below, delete, ['B'], [SAL, 'B', MDR, 'A', END])
++    check_merges(replace_below, replace_below, ['B'])
++    check_merges(replace_below, insert_above, ['B', 'B'], [SAL, 'B', MDL, 'A', MAR, 'B', END])
++    check_merges(replace_below, replace_above, ['B', 'B'], [SAL, 'B', MAR, 'B', END])
++    check_merges(replace_below, delete, ['B'])
++    check_merges(insert_above, insert_above, ['A', 'B'])
++    check_merges(insert_above, replace_above, ['B'])
++    check_merges(insert_above, delete, ['B'], [SDR, 'A', MAL, 'B', END])
++    check_merges(replace_above, replace_above, ['B'])
++    check_merges(replace_above, delete, ['B'])
++    check_merges(delete, delete, [])
++
++def test_bottom():
++    initial = initial_state(['A', 'X'])
++    insert_below = update_state(initial, ['B', 'A', 'X'])
++    replace_below = update_state(insert_below, ['B', 'X'])
++    insert_above = update_state(initial, ['A', 'B', 'X'])
++    replace_above = update_state(insert_above, ['B', 'X'])
++    delete = update_state(initial, ['X'])
++    check_merges(initial, initial, ['A', 'X'])
++    check_merges(initial, insert_below, ['B', 'A', 'X'])
++    check_merges(initial, replace_below, ['B', 'X'])
++    check_merges(initial, insert_above, ['A', 'B', 'X'])
++    check_merges(initial, replace_above, ['B', 'X'])
++    check_merges(initial, delete, ['X'])
++    check_merges(insert_below, insert_below, ['B', 'A', 'X'])
++    check_merges(insert_below, replace_below, ['B', 'X'])
++    check_merges(insert_below, insert_above, ['B', 'A', 'B', 'X'])
++    check_merges(insert_below, replace_above, ['B', 'B', 'X'], [SAL, 'B', MDR, 'A', MAR, 'B', END, 'X'])
++    check_merges(insert_below, delete, ['B', 'X'], [SAL, 'B', MDR, 'A', END, 'X'])
++    check_merges(replace_below, replace_below, ['B', 'X'])
++    check_merges(replace_below, insert_above, ['B', 'B', 'X'], [SAL, 'B', MDL, 'A', MAR, 'B', END, 'X'])
++    check_merges(replace_below, replace_above, ['B', 'B', 'X'], [SAL, 'B', MAR, 'B', END, 'X'])
++    check_merges(replace_below, delete, ['B', 'X'])
++    check_merges(insert_above, insert_above, ['A', 'B', 'X'])
++    check_merges(insert_above, replace_above, ['B', 'X'])
++    check_merges(insert_above, delete, ['B', 'X'], [SDR, 'A', MAL, 'B', END, 'X'])
++    check_merges(replace_above, replace_above, ['B', 'X'])
++    check_merges(replace_above, delete, ['B', 'X'])
++    check_merges(delete, delete, ['X'])
++
++def test_top():
++    initial = initial_state(['X', 'A'])
++    insert_below = update_state(initial, ['X', 'B', 'A'])
++    replace_below = update_state(insert_below, ['X', 'B'])
++    insert_above = update_state(initial, ['X', 'A', 'B'])
++    replace_above = update_state(insert_above, ['X', 'B'])
++    delete = update_state(initial, ['X'])
++    check_merges(initial, initial, ['X', 'A'])
++    check_merges(initial, insert_below, ['X', 'B', 'A'])
++    check_merges(initial, replace_below, ['X', 'B'])
++    check_merges(initial, insert_above, ['X', 'A', 'B'])
++    check_merges(initial, replace_above, ['X', 'B'])
++    check_merges(initial, delete, ['X'])
++    check_merges(insert_below, insert_below, ['X', 'B', 'A'])
++    check_merges(insert_below, replace_below, ['X', 'B'])
++    check_merges(insert_below, insert_above, ['X', 'B', 'A', 'B'])
++    check_merges(insert_below, replace_above, ['X', 'B', 'B'], ['X', SAL, 'B', MDR, 'A', MAR, 'B', END])
++    check_merges(insert_below, delete, ['X', 'B'], ['X', SAL, 'B', MDR, 'A', END])
++    check_merges(replace_below, replace_below, ['X', 'B'])
++    check_merges(replace_below, insert_above, ['X', 'B', 'B'], ['X', SAL, 'B', MDL, 'A', MAR, 'B', END])
++    check_merges(replace_below, replace_above, ['X', 'B', 'B'], ['X', SAL, 'B', MAR, 'B', END])
++    check_merges(replace_below, delete, ['X', 'B'])
++    check_merges(insert_above, insert_above, ['X', 'A', 'B'])
++    check_merges(insert_above, replace_above, ['X', 'B'])
++    check_merges(insert_above, delete, ['X', 'B'], ['X', SDR, 'A', MAL, 'B', END])
++    check_merges(replace_above, replace_above, ['X', 'B'])
++    check_merges(replace_above, delete, ['X', 'B'])
++    check_merges(delete, delete, ['X'])
++
++def test_generation_counting():
++    count0 = initial_state([])
++    count1 = update_state(count0, ['A'])
++    count2 = update_state(count1, [])
++    count3 = update_state(count2, ['A'])
++    count4 = update_state(count3, [])
++    check_merges(count0, count1, ['A'])
++    check_merges(count0, count2, [])
++    check_merges(count0, count3, ['A'])
++    check_merges(count0, count4, [])
++    check_merges(count1, count1, ['A'])
++    check_merges(count1, count2, [])
++    check_merges(count1, count3, ['A'])
++
++    check_merges(count1, count4, [])
++    check_merges(count2, count2, [])
++    check_merges(count2, count3, ['A'])
++    check_merges(count2, count4, [])
++    check_merges(count3, count3, ['A'])
++    check_merges(count3, count4, [])
++    check_merges(count4, count4, [])
++
++def test_noop_duplicate_lines_preserves_hidden_history():
++    state = initial_state(['A', 'A'])
++    state = update_state(state, ['A'])
++    assert update_state(state, ['A']) == state
++
++def test_insertions_single(a, b, c, d):
++    state1, junk1 = merge_states(a, b)
++    state2, junk2 = merge_states(c, d)
++    state3, junk3 = merge_states(state1, state2)
++    assert current_lines(state3) == ['A', 'B', 'C', 'D']
++
++from itertools import permutations
++
++def test_insertions():
++    mylist = [initial_state([x]) for x in ('A', 'B', 'C', 'D')]
++    for perm in permutations(mylist):
++        test_insertions_single(*perm)
++
++def test_insertions_below_single(a, b, c, d):
++    state1, junk1 = merge_states(a, b)
++    state2, junk2 = merge_states(c, d)
++    state3, junk3 = merge_states(state1, state2)
++    assert current_lines(state3) == ['A', 'B', 'C', 'D', 'X']
++
++def test_insertions_below():
++    initial = initial_state(['X'])
++    mylist = [update_state(initial, [x, 'X']) for x in ('A', 'B', 'C', 'D')]
++    for perm in permutations(mylist):
++        test_insertions_below_single(*perm)
++
++def test_space_separated_insert_insert():
++    initial = initial_state([''])
++    insert_left = update_state(initial, ['A', ''])
++    insert_right = update_state(initial, ['', 'B'])
++    check_merges(insert_left, insert_right, ['A', '', 'B'], [SAL, 'A', MAB, '', MAR, 'B', END])
++
++def test_space_separated_insert_delete():
++    initial = initial_state(['', 'B'])
++    insert_left = update_state(initial, ['A', '', 'B'])
++    delete_right = update_state(initial, [''])
++    check_merges(insert_left, delete_right, ['A', ''], [SAL, 'A', MAB, '', MDR, 'B', END])
++
++def test_space_separated_delete_insert():
++    initial = initial_state(['A', ''])
++    delete_left = update_state(initial, [''])
++    insert_right = update_state(initial, ['A', '', 'B'])
++    check_merges(delete_left, insert_right, ['', 'B'], [SDL, 'A', MAB, '', MAR, 'B', END])
++
++def test_space_separated_delete_delete():
++    initial = initial_state(['A', '', 'B'])
++    delete_left = update_state(initial, ['', 'B'])
++    delete_right = update_state(initial, ['A', ''])
++    check_merges(delete_left, delete_right, [''])
++
++def test_deleted_both():
++    initial = initial_state(['', 'X', ''])
++    left = update_state(initial, ['A', '', ''])
++    right = update_state(initial, ['', '', 'B'])
++    check_merges(left, right, ['A', '', '', 'B'], [SAL, 'A', MAB, '', '', MAR, 'B', END])
++
++def test_deleted_both2():
++    initial = initial_state(['A'])
++    left = update_state(initial, ['X', 'A'])
++    left = update_state(left, ['X'])
++    right = update_state(initial, ['A', 'Y'])
++    right = update_state(initial, ['Y'])
++    check_merges(left, right, ['X', 'Y'], [SAL, 'X', MAR, 'Y', END])
++
++def test_update_insert_multiple():
++    initial = initial_state(['A', 'B'])
++    updated = update_state(initial, ['A', 'X', 'Y', 'B'])
++    assert current_lines(updated) == ['A', 'X', 'Y', 'B']
++
++def test_insert_low_tree():
++    initial = initial_state(['A'])
++    updated = update_state(initial, ['Y', 'A'])
++    updated = update_state(updated, ['X', 'Y', 'A'])
++    right = update_state(initial, ['A', 'B'])
++    check_merges(updated, right, ['X', 'Y', 'A', 'B'])
++
++def check_associative(a, b, c):
++    ab, _ = merge_states(a, b)
++    ab_c, _ = merge_states(ab, c)
++    bc, _ = merge_states(b, c)
++    a_bc, _ = merge_states(a, bc)
++    assert ab_c == a_bc
++    assert current_lines(ab_c) == current_lines(a_bc)
++
++def test_associativity():
++    s = initial_state(['A', 'B'])
++    a = update_state(s, ['A', 'X', 'B'])
++    b = update_state(s, ['A', 'Y', 'B'])
++    c = update_state(s, ['A', 'B', 'Z'])
++    check_associative(a, b, c)
++    a = update_state(s, ['B'])
++    b = update_state(s, ['A'])
++    c = update_state(s, ['A', 'B', 'C'])
++    check_associative(a, b, c)
++    a = update_state(update_state(s, []), ['A', 'B'])
++    b = update_state(s, [])
++    c = update_state(s, [])
++    check_associative(a, b, c)
++    a = initial_state(['P'])
++    b = initial_state(['Q'])
++    c = initial_state(['R'])
++    check_associative(a, b, c)
++    s = initial_state(['M'])
++    left = update_state(s, ['M', 'L'])
++    right = update_state(s, ['R', 'M'])
++    merged, _ = merge_states(left, right)
++    check_associative(left, right, merged)
++    check_associative(merged, left, update_state(s, []))
++
++def check_idempotent(state):
++    merged, _ = merge_states(state, state)
++    assert merged == state
++
++def test_idempotency():
++    check_idempotent(initial_state([]))
++    check_idempotent(initial_state(['A', 'B', 'C']))
++    state = initial_state(['A', 'B'])
++    check_idempotent(state)
++    state = update_state(state, ['A', 'X', 'B'])
++    check_idempotent(state)
++    state = update_state(state, ['A', 'B'])
++    check_idempotent(state)
++    state = update_state(state, ['A', 'X', 'B'])
++    check_idempotent(state)
++    left = update_state(initial_state(['M']), ['M', 'L'])
++    right = update_state(initial_state(['M']), ['R', 'M'])
++    merged, _ = merge_states(left, right)
++    check_idempotent(merged)
++
++if __name__ == '__main__':
++    import inspect, traceback
++    passes = 0
++    failures = 0
++    for name, func in list(globals().items()):
++        if name.startswith('test') and callable(func) and not inspect.signature(func).parameters:
++            try:
++                func()
++                print("PASS:", name)
++                passes += 1
++            except Exception:
++                print("FAIL:", name)
++                traceback.print_exc()
++                print()
++                failures += 1
++    print(f"{passes} tests passed, {failures} tests failed")
++    if failures:
++        raise SystemExit(1)
+diff --git a/tests/test_frontier_cell.py b/tests/test_frontier_cell.py
+index 0b899f72ef4df04e8800e48ced584a143e97d4e9..ba782c191c1111fcf3f0493fd40c9892c93190d7 100644
+--- a/tests/test_frontier_cell.py
++++ b/tests/test_frontier_cell.py
+@@ -8,6 +8,7 @@ from pathlib import Path
+ ROOT = Path(__file__).resolve().parents[1]
+ sys.path.insert(0, str(ROOT / "evals"))
+ sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
+ sys.path.insert(0, str(ROOT / "tests"))
+ import run_frontier_cell as fc
+ import frontier_fold as ff
+diff --git a/tests/test_frontier_fold.py b/tests/test_frontier_fold.py
+index 874c9d301c3652cc145b34a03e04dc97d626e212..683ce51cd8010aa77bdfdef685d65618a84f6fdd 100644
+--- a/tests/test_frontier_fold.py
++++ b/tests/test_frontier_fold.py
+@@ -6,7 +6,7 @@ import sys
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
+ sys.path.insert(0, str(ROOT / "tests"))
+ import repo_weave as rw
+ import frontier_fold as ff
+diff --git a/tests/test_frontier_kernel.py b/tests/test_frontier_kernel.py
+index a3bb3bab56d4d092529ce6202197a123f73147c6..c37c7d315b974876209067d5f47d3d166a3717eb 100644
+--- a/tests/test_frontier_kernel.py
++++ b/tests/test_frontier_kernel.py
+@@ -7,7 +7,7 @@ from contextlib import redirect_stdout
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parent.parent
+-VENDOR = ROOT / "evals" / "frontier" / "vendor"
++VENDOR = ROOT / "skills" / "ultrapowers" / "kernel" / "vendor"
+ sys.path.insert(0, str(VENDOR))
+ import manyana
+ 
+@@ -18,7 +18,7 @@ def test_vendor_pin():
+     data = (VENDOR / "manyana.py").read_bytes()
+     assert hashlib.sha256(data).hexdigest() == PATCHED_SHA256, (
+         "vendored manyana.py changed without updating the pin; "
+-        "see evals/frontier/vendor/PROVENANCE.md for the re-vendor procedure"
++        "see skills/ultrapowers/kernel/vendor/PROVENANCE.md for the re-vendor procedure"
+     )
+ 
+ 
+diff --git a/tests/test_frontier_weave.py b/tests/test_frontier_weave.py
+index a667573fc7b224a1e6b37847747b7b7864847c2d..f2bb377fee8a0cdd6d0c4a7b76101ab9fbbe85d0 100644
+--- a/tests/test_frontier_weave.py
++++ b/tests/test_frontier_weave.py
+@@ -5,10 +5,11 @@ from itertools import permutations
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parent.parent
+-sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++KERNEL = ROOT / "skills" / "ultrapowers" / "kernel"
++sys.path.insert(0, str(KERNEL))
+ import repo_weave as rw
+ 
+-sys.path.insert(0, str(ROOT / "evals" / "frontier" / "vendor"))
++sys.path.insert(0, str(KERNEL / "vendor"))
+ import manyana
+ 
+ 
+diff --git a/tests/test_repo_weave_report_determinism.py b/tests/test_repo_weave_report_determinism.py
+index effcfc241d769a37741b69cbd7bfdd142d1a3497..d7272889c10f5c3a5aa4c67aff018546101a7e76 100644
+--- a/tests/test_repo_weave_report_determinism.py
++++ b/tests/test_repo_weave_report_determinism.py
+@@ -9,7 +9,7 @@ import sys
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parents[1]
+-sys.path.insert(0, str(ROOT / "evals" / "frontier"))
++sys.path.insert(0, str(ROOT / "skills" / "ultrapowers" / "kernel"))
+ sys.path.insert(0, str(ROOT / "tests"))
+ import repo_weave as rw
+ from test_frontier_weave import (make_base, fold_in_order, conflict_keys,

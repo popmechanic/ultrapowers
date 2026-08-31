@@ -1,0 +1,1084 @@
+diff --git a/evals/fixtures/contend-prod/acceptance/test_acceptance_contend_prod.py b/evals/fixtures/contend-prod/acceptance/test_acceptance_contend_prod.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b61843bc40a7b7f4cd6c3d9d4a22b3b3a6665a6f
+--- /dev/null
++++ b/evals/fixtures/contend-prod/acceptance/test_acceptance_contend_prod.py
+@@ -0,0 +1,323 @@
++"""Held-out acceptance tests for the contend-prod fixture. Never shown to
++executors. Black-box over the four features' documented behaviors plus the
++composed registry (app/registry.py's DEFAULT_CONFIG + wiring section after
++all four tasks land).
++
++Runs against a fully-implemented eventboard: `app.registry.bootstrap`,
++`app.validation`, `app.export`, `app.ratelimit`, `app.audit`.
++"""
++import pytest
++
++
++# ---------------------------------------------------------------------------
++# Task 1: input-validation layer
++# ---------------------------------------------------------------------------
++
++def test_validation_rejects_missing_required_fields_in_order():
++    from app.validation import ValidationError, validate_fields
++    with pytest.raises(ValidationError, match="missing field: name"):
++        validate_fields({"amount": 1}, required_fields=["name", "amount"], max_amount=100)
++    with pytest.raises(ValidationError, match="missing field: name"):
++        validate_fields({}, required_fields=["name", "amount"], max_amount=100)
++
++
++def test_validation_amount_type_and_bool_edge_case():
++    from app.validation import ValidationError, validate_fields
++    with pytest.raises(ValidationError, match="numeric"):
++        validate_fields({"name": "a", "amount": "3"}, required_fields=["name", "amount"], max_amount=100)
++    with pytest.raises(ValidationError, match="numeric"):
++        validate_fields({"name": "a", "amount": True}, required_fields=["name", "amount"], max_amount=100)
++
++
++def test_validation_amount_bounds_inclusive():
++    from app.validation import ValidationError, validate_fields
++    with pytest.raises(ValidationError, match="non-negative"):
++        validate_fields({"name": "a", "amount": -1}, required_fields=["name", "amount"], max_amount=100)
++    ok = validate_fields({"name": "a", "amount": 0}, required_fields=["name", "amount"], max_amount=100)
++    assert ok["amount"] == 0
++    with pytest.raises(ValidationError, match="max_amount"):
++        validate_fields({"name": "a", "amount": 101}, required_fields=["name", "amount"], max_amount=100)
++    ok = validate_fields({"name": "a", "amount": 100}, required_fields=["name", "amount"], max_amount=100)
++    assert ok["amount"] == 100
++
++
++def test_validation_name_non_empty_and_stripped():
++    from app.validation import ValidationError, validate_fields
++    for bad in ("", "   ", 42):
++        with pytest.raises(ValidationError, match="non-empty string"):
++            validate_fields({"name": bad, "amount": 1}, required_fields=["name", "amount"], max_amount=100)
++    ok = validate_fields({"name": "  ada  ", "amount": 1}, required_fields=["name", "amount"], max_amount=100)
++    assert ok["name"] == "ada"
++
++
++def test_validation_preserves_extra_fields_and_does_not_mutate_input():
++    from app.validation import validate_fields
++    fields = {"name": "ada", "amount": 1, "category": "x"}
++    result = validate_fields(fields, required_fields=["name", "amount"], max_amount=100)
++    assert result == {"name": "ada", "amount": 1, "category": "x"}
++    assert fields["name"] == "ada"  # input untouched
++
++
++def test_validation_wired_into_post_records():
++    from app.registry import bootstrap
++    from app.validation import ValidationError
++    from app import ratelimit
++    ratelimit.reset()
++    app = bootstrap()
++    with pytest.raises(ValidationError):
++        app.call("POST", "/records", amount=1)
++    ratelimit.reset()
++    record = app.call("POST", "/records", name="  padded  ", amount=1)
++    assert record["name"] == "padded"
++
++
++# ---------------------------------------------------------------------------
++# Task 2: export/report formatter
++# ---------------------------------------------------------------------------
++
++def test_export_csv_empty_and_header_row():
++    from app.export import to_csv
++    assert to_csv([]) == ""
++    rows = [{"name": "ada", "amount": 3}, {"name": "bob", "amount": 5}]
++    out = to_csv(rows)
++    lines = out.split("\n")
++    assert lines[0] == "amount,name"
++    assert lines[1:] == ["3,ada", "5,bob"]
++
++
++def test_export_csv_handles_missing_fields_and_int_formatting():
++    from app.export import to_csv
++    rows = [{"name": "ada", "amount": 3}, {"name": "bob"}]
++    out = to_csv(rows)
++    lines = out.split("\n")
++    assert lines[0] == "amount,name"
++    assert lines[1] == "3,ada"
++    assert lines[2] == ",bob"
++
++
++def test_export_json_round_trips_and_sorts_keys():
++    import json
++    from app.export import to_json
++    assert to_json([]) == "[]"
++    rows = [{"b": 1, "a": 2}]
++    out = to_json(rows)
++    assert out == '[{"a": 2, "b": 1}]'
++    assert json.loads(out) == rows
++
++
++def test_export_render_dispatches_and_rejects_unknown_format():
++    from app.export import render, to_csv, to_json
++    rows = [{"name": "ada", "amount": 3}]
++    assert render(rows, "csv") == to_csv(rows)
++    assert render(rows, "json") == to_json(rows)
++    with pytest.raises(ValueError, match="xml"):
++        render(rows, "xml")
++
++
++def test_export_wired_to_the_export_route():
++    from app.registry import bootstrap
++    from app import ratelimit
++    ratelimit.reset()
++    app = bootstrap()
++    app.call("POST", "/records", name="a", amount=3, category="food")
++    ratelimit.reset()
++    app.call("POST", "/records", name="b", amount=5, category="fun")
++    csv_out = app.call("GET", "/export")
++    json_out = app.call("GET", "/export", fmt="json")
++    assert csv_out.startswith("amount,category,id,name")
++    assert json_out.startswith("[")
++    with pytest.raises(ValueError):
++        app.call("GET", "/export", fmt="xml")
++
++
++# ---------------------------------------------------------------------------
++# Task 3: rate-limit/quota module
++# ---------------------------------------------------------------------------
++
++def test_ratelimit_per_key_counters_independent():
++    from app.ratelimit import check_and_increment, reset, RateLimitExceededError
++    reset()
++    assert check_and_increment("a", 2) == 1
++    assert check_and_increment("b", 2) == 1
++    assert check_and_increment("a", 2) == 2
++    with pytest.raises(RateLimitExceededError):
++        check_and_increment("a", 2)
++    assert check_and_increment("b", 2) == 2  # b unaffected by a's exhaustion
++
++
++def test_ratelimit_reset_clears_all_keys():
++    from app.ratelimit import check_and_increment, reset
++    reset()
++    check_and_increment("a", 1)
++    check_and_increment("b", 1)
++    reset()
++    assert check_and_increment("a", 1) == 1
++    assert check_and_increment("b", 1) == 1
++
++
++def test_ratelimit_dispatch_hook_ignores_reads():
++    from app.ratelimit import dispatch_hook, reset
++    reset()
++    config = {"rate_limit_max_per_window": 1}
++    for _ in range(5):
++        dispatch_hook(None, config, "GET", "/records", {})
++    # a GET never consumed the "anonymous" write quota
++    dispatch_hook(None, config, "POST", "/records", {})
++    with pytest.raises(Exception):
++        dispatch_hook(None, config, "POST", "/records", {})
++
++
++def test_ratelimit_dispatch_hook_keys_on_actor():
++    from app.ratelimit import dispatch_hook, reset, RateLimitExceededError
++    reset()
++    config = {"rate_limit_max_per_window": 1}
++    dispatch_hook(None, config, "POST", "/records", {"actor": "alice"})
++    with pytest.raises(RateLimitExceededError):
++        dispatch_hook(None, config, "POST", "/records", {"actor": "alice"})
++    # a different actor is unaffected
++    dispatch_hook(None, config, "POST", "/records", {"actor": "bob"})
++
++
++def test_ratelimit_wired_into_post_records_end_to_end():
++    from app.registry import bootstrap
++    from app import ratelimit
++    from app.ratelimit import RateLimitExceededError
++    ratelimit.reset()
++    app = bootstrap({"rate_limit_max_per_window": 3})
++    for _ in range(3):
++        app.call("POST", "/records", name="x", amount=1, actor="alice")
++    with pytest.raises(RateLimitExceededError):
++        app.call("POST", "/records", name="x", amount=1, actor="alice")
++    # a different actor still has quota
++    app.call("POST", "/records", name="x", amount=1, actor="bob")
++
++
++# ---------------------------------------------------------------------------
++# Task 4: audit log
++# ---------------------------------------------------------------------------
++
++def test_audit_records_append_in_order():
++    from app.audit import clear, entries, record
++    clear()
++    record("GET", "/records", "alice", 500)
++    record("POST", "/records", "bob", 500)
++    assert entries() == [
++        {"method": "GET", "path": "/records", "actor": "alice"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++
++
++def test_audit_entries_returns_a_copy():
++    from app.audit import clear, entries, record
++    clear()
++    record("GET", "/records", "alice", 500)
++    snapshot = entries()
++    snapshot.append({"method": "X", "path": "Y", "actor": "Z"})
++    assert entries() == [{"method": "GET", "path": "/records", "actor": "alice"}]
++
++
++def test_audit_cap_drops_oldest_and_holds_at_all_times():
++    from app.audit import clear, entries, record
++    clear()
++    for i in range(5):
++        record("GET", "/records", "actor%d" % i, 2)
++        assert len(entries()) <= 2
++    assert entries() == [
++        {"method": "GET", "path": "/records", "actor": "actor3"},
++        {"method": "GET", "path": "/records", "actor": "actor4"},
++    ]
++
++
++def test_audit_dispatch_hook_defaults_actor_and_excludes_record_fields():
++    from app.audit import clear, entries, dispatch_hook
++    clear()
++    config = {"audit_log_max_entries": 500}
++    dispatch_hook(None, config, "GET", "/records", {})
++    dispatch_hook(None, config, "POST", "/records", {"actor": "bob", "name": "x"})
++    assert entries() == [
++        {"method": "GET", "path": "/records", "actor": "anonymous"},
++        {"method": "POST", "path": "/records", "actor": "bob"},
++    ]
++
++
++def test_audit_dispatch_hook_fires_for_every_method():
++    from app.audit import clear, entries, dispatch_hook
++    clear()
++    config = {"audit_log_max_entries": 500}
++    dispatch_hook(None, config, "DELETE", "/records/{id}", {})
++    dispatch_hook(None, config, "PUT", "/records/{id}", {})
++    assert [e["method"] for e in entries()] == ["DELETE", "PUT"]
++
++
++# ---------------------------------------------------------------------------
++# Composed registry: config defaults + wiring, all four features present
++# ---------------------------------------------------------------------------
++
++def test_default_config_carries_all_four_feature_blocks():
++    from app.registry import DEFAULT_CONFIG
++    assert DEFAULT_CONFIG["validation_required_fields"] == ["name", "amount"]
++    assert DEFAULT_CONFIG["validation_max_amount"] == 100000
++    assert DEFAULT_CONFIG["export_default_format"] == "csv"
++    assert set(DEFAULT_CONFIG["export_formats_enabled"]) == {"csv", "json"}
++    assert DEFAULT_CONFIG["rate_limit_max_per_window"] == 5
++    assert DEFAULT_CONFIG["rate_limit_window_seconds"] == 60
++    assert DEFAULT_CONFIG["audit_log_enabled"] is True
++    assert DEFAULT_CONFIG["audit_log_max_entries"] == 500
++    # base config keys still present and untouched
++    assert DEFAULT_CONFIG["app_name"] == "eventboard"
++    assert DEFAULT_CONFIG["max_records"] == 10000
++    assert DEFAULT_CONFIG["default_category"] == "uncategorized"
++
++
++def test_all_four_hooks_are_registered_exactly_once():
++    from app import registry, validation, export, ratelimit, audit
++    assert registry.PRE_CREATE_HOOKS.count(validation.pre_create_hook) == 1
++    assert registry.DISPATCH_HOOKS.count(ratelimit.dispatch_hook) == 1
++    assert registry.DISPATCH_HOOKS.count(audit.dispatch_hook) == 1
++    assert registry.EXPORT_FORMATS["csv"] is export.to_csv
++    assert registry.EXPORT_FORMATS["json"] is export.to_json
++
++
++def test_full_flow_create_export_over_quota_and_audit_agree():
++    """One end-to-end composed scenario touching all four features on a
++    single bootstrap: valid creates succeed and are exported and audited,
++    an invalid create is rejected by validation but still consumes quota
++    and is still audited (DISPATCH_HOOKS run before the router dispatches,
++    ahead of PRE_CREATE_HOOKS validation).
++
++    Asserts only facts that hold under EVERY legal wiring order: the plan
++    leaves the relative append order of the two DISPATCH_HOOKS (rate limit
++    and audit) unpinned, so a call that a dispatch hook *rejects* may or may
++    not have been audited first."""
++    from app.registry import bootstrap
++    from app.validation import ValidationError
++    from app.ratelimit import RateLimitExceededError
++    from app import ratelimit, audit
++
++    ratelimit.reset()
++    audit.clear()
++    app = bootstrap({"rate_limit_max_per_window": 2})
++
++    r1 = app.call("POST", "/records", name="ada", amount=3, actor="ada", category="food")
++    assert r1["id"] == 1
++
++    with pytest.raises(ValidationError):
++        app.call("POST", "/records", amount=1, actor="ada")  # 2nd call for "ada": consumes quota, fails validation
++
++    with pytest.raises(RateLimitExceededError):
++        app.call("POST", "/records", name="ada2", amount=1, actor="ada")  # 3rd call: over quota
++
++    exported = app.call("GET", "/export")
++    assert exported == "actor,amount,category,id,name\nada,3,food,1,ada"
++
++    # The first two calls for "ada" are both within quota, so no dispatch hook
++    # can short-circuit them and both are audited whichever hook runs first.
++    # The 3rd (over-quota) call is deliberately not pinned: whether the audit
++    # hook sees it depends on the unpinned hook order.
++    ada_entries = [e for e in audit.entries() if e["actor"] == "ada"]
++    assert ada_entries[:2] == [
++        {"method": "POST", "path": "/records", "actor": "ada"},
++        {"method": "POST", "path": "/records", "actor": "ada"},
++    ]
++    assert 2 <= len(ada_entries) <= 3
++    assert all(e["method"] == "POST" and e["path"] == "/records" for e in ada_entries)
+diff --git a/evals/fixtures/contend-prod/plan.md b/evals/fixtures/contend-prod/plan.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea0fe8244930ac25e03e0e54d8f79edd69c787e9
+--- /dev/null
++++ b/evals/fixtures/contend-prod/plan.md
+@@ -0,0 +1,204 @@
++# Eventboard Contended Features Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. This plan may also be executed by `/ultrapowers`.
++
++**Acceptance:** sealed 4d131df61152 (sha256:4d131df611521b11c39a23f2cb5eb5d379d7c0f3c3c7896d835397d78f860c6c)
++
++**Goal:** Add four independent features to the `eventboard` service — input validation, an export formatter, a rate-limit/quota guard, and an audit log. Each feature is its own new module with its own test suite, but all four genuinely extend `app/registry.py`: a two-key config block in `DEFAULT_CONFIG`, and a registration line in the "feature wiring" section at the bottom of the file (an import plus one append/update call). No feature edits `bootstrap()`'s body or any other feature's module. That same-file contention on `registry.py` is deliberate and left unserialized: no `Depends-on` marker orders these tasks, so any ordering the executor chooses must merge their concurrent edits to one file.
++
++**Tech Stack:** Python 3.11 + pytest. Run the suite with `python3 -m pytest tests/ -q` from the repo root (`project/`).
++
++**Reading `app/registry.py` first:** every task below assumes you've read the module docstring at the top of `app/registry.py` — it documents the four hook lists (`PRE_CREATE_HOOKS`, `POST_CREATE_HOOKS`, `DISPATCH_HOOKS`, `EXPORT_FORMATS`) and their exact call signatures. `DISPATCH_HOOKS` run for **every** `App.call(...)`, in append order, before the router dispatches — including calls that will later fail validation, and including calls made with no `actor` kwarg (hooks that read `kwargs.get("actor", "anonymous")` see `"anonymous"`).
++
++---
++
++### Task 1: Input-validation layer
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Create: `app/validation.py`
++- Modify: `app/registry.py`
++- Test: `tests/test_validation.py`
++
++- [ ] **Step 1: Write failing tests** in `tests/test_validation.py` for `app/validation.py`:
++  - `ValidationError` is an `Exception` subclass.
++  - `validate_fields(fields, required_fields, max_amount)`:
++    - raises `ValidationError("missing field: name")` when `fields` has no `"name"` key and `"name"` is in `required_fields` — check the message names the field.
++    - raises `ValidationError("missing field: amount")` the same way for a missing `"amount"`, and when BOTH are missing, the error names `"name"` first (required_fields order).
++    - raises `ValidationError` containing `"numeric"` when `amount` is a string (e.g. `"3"`).
++    - raises `ValidationError` containing `"numeric"` when `amount` is a `bool` (`True`/`False` are not valid amounts even though `isinstance(True, int)` is `True` in Python — this is the edge case the check must not miss).
++    - raises `ValidationError` containing `"non-negative"` when `amount` is `-1`.
++    - accepts `amount == 0` (boundary: zero is valid, not "negative").
++    - raises `ValidationError` containing `"max_amount"` when `amount` is one more than `max_amount`; accepts `amount == max_amount` exactly (boundary).
++    - raises `ValidationError` containing `"non-empty string"` when `name` is `""`, when `name` is `"   "` (whitespace-only), and when `name` is not a string (e.g. `42`).
++    - on success, returns a **new** dict (the input dict is unmodified) whose `"name"` is stripped of leading/trailing whitespace, and every other key/value from the input is preserved unchanged.
++    - a `fields` dict with EXTRA keys beyond `required_fields` passes validation untouched (validation is additive, not a schema whitelist).
++  - `pre_create_hook(store, config, fields)` calls `validate_fields` using `config["validation_required_fields"]` and `config["validation_max_amount"]` — assert it raises/passes consistently with direct `validate_fields` calls using a `config` dict shaped like `{"validation_required_fields": [...], "validation_max_amount": ...}` (the `store` argument is unused by this hook; pass `None`).
++  - That's 10 assertions across the cases above; write one test function per bullet (or group tightly related boundary pairs into one function) rather than one giant test.
++
++- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_validation.py -v` → FAIL (`app/validation.py` doesn't exist).
++
++- [ ] **Step 3: Implement `app/validation.py`** — `ValidationError`, `validate_fields`, `pre_create_hook`, per Step 1's contract exactly (check `required_fields` presence first, in order; only validate `amount`/`name` when the key is present in `fields`, since `required_fields` may not include them for a differently-configured caller).
++
++- [ ] **Step 4: Wire the registry** — in `app/registry.py`:
++  - add two keys to `DEFAULT_CONFIG`, near its existing keys (do not reorder or reformat the existing lines): `"validation_required_fields": ["name", "amount"]` and `"validation_max_amount": 100000`.
++  - in the "feature wiring" section at the bottom of the file, add:
++    ```python
++    from app import validation  # noqa: E402
++    PRE_CREATE_HOOKS.append(validation.pre_create_hook)
++    ```
++
++- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_validation.py tests/ -v` → PASS, including the pre-existing `tests/test_registry.py`.
++
++- [ ] **Step 6: Commit.**
++
++```bash
++git add app/validation.py app/registry.py tests/test_validation.py
++git commit -m "feat(eventboard): input-validation layer on record creation"
++```
++
++---
++
++### Task 2: Export/report formatter
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Create: `app/export.py`
++- Modify: `app/registry.py`
++- Test: `tests/test_export.py`
++
++- [ ] **Step 1: Write failing tests** in `tests/test_export.py` for `app/export.py`:
++  - `to_csv([])` returns `""` (empty list, no header row either — an empty export has no columns to name).
++  - `to_csv(records)` emits a header row of every field name that appears across ALL records, **sorted alphabetically**, then one row per record in input order, with a missing field on a given record rendered as an empty cell (records need not share every field).
++  - `to_csv` renders non-string values (`int`, `float`) via plain `str()` — assert an integer amount round-trips as its decimal digits with no `.0` suffix.
++  - `to_json([])` returns `"[]"`.
++  - `to_json(records)` round-trips through `json.loads` back to the same list of dicts, and its keys are sorted (`sort_keys=True` — assert the raw string, not just the parsed value, so key ordering is actually pinned).
++  - `FORMATS` is a dict with exactly the keys `"csv"` and `"json"` mapping to `to_csv`/`to_json`.
++  - `render(records, "csv")` and `render(records, "json")` delegate to the matching function (equality-check the output against calling `to_csv`/`to_json` directly).
++  - `render(records, "xml")` raises `ValueError` whose message contains `"xml"`.
++  - That's 8 cases; add a 9th and 10th covering a single-record list for both formats (the degenerate n=1 case, which the header-row logic in `to_csv` handles differently from n=0 and n>=2).
++
++- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_export.py -v` → FAIL.
++
++- [ ] **Step 3: Implement `app/export.py`** — `to_csv`, `to_json`, `FORMATS`, `render`, per Step 1's contract exactly.
++
++- [ ] **Step 4: Wire the registry** — in `app/registry.py`:
++  - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"export_default_format": "csv"` and `"export_formats_enabled": ["csv", "json"]`.
++  - in the "feature wiring" section, add:
++    ```python
++    from app import export  # noqa: E402
++    EXPORT_FORMATS.update(export.FORMATS)
++    ```
++  - **Do not** add a route or touch `bootstrap()` — `GET /export` is already registered and already calls `_export`, which reads `EXPORT_FORMATS` and `config["export_default_format"]`/`config["export_formats_enabled"]`; your registration line is the only thing `/export` is waiting on.
++
++- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_export.py tests/ -v` → PASS. Also confirm end-to-end: `bootstrap().call("GET", "/export")` on an app with two created records returns the same string as `export.to_csv` on those records.
++
++- [ ] **Step 6: Commit.**
++
++```bash
++git add app/export.py app/registry.py tests/test_export.py
++git commit -m "feat(eventboard): CSV/JSON export formatter, wired to the pre-existing /export route"
++```
++
++---
++
++### Task 3: Rate-limit/quota module
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Create: `app/ratelimit.py`
++- Modify: `app/registry.py`
++- Test: `tests/test_ratelimit.py`
++
++- [ ] **Step 1: Write failing tests** in `tests/test_ratelimit.py` for `app/ratelimit.py`. Call `reset()` at the start of every test (module-global counters — tests must not leak into each other):
++  - `RateLimitExceededError` is an `Exception` subclass.
++  - `check_and_increment("k", 3)` returns `1`, `2`, `3` on the first three calls for key `"k"`, then raises `RateLimitExceededError` on the fourth — assert the message contains both the key and the limit.
++  - the counter is **per key**: exhausting `"a"`'s quota does not affect `"b"`'s (interleave calls to two keys and assert neither raises before its own limit).
++  - `reset()` clears ALL keys' counters, not just one.
++  - `dispatch_hook(store, config, "GET", "/records", {})` never raises and never increments (rate limiting applies to writes, not reads) — assert this by calling it `max_per_window + 5` times with the same config and confirming no error, then confirm a subsequent `POST` still starts counting from zero relative to its own key... actually assert this directly: call `dispatch_hook` with `"GET"` many times, then call `check_and_increment` on the same key used internally and confirm it starts at `1` (GET calls never touched the counter).
++  - `dispatch_hook(store, config, "POST", "/records", kwargs)` reads its key from `kwargs.get("actor", "anonymous")` — two calls with no `"actor"` key share the `"anonymous"` counter; a call with `actor="x"` uses a separate counter from `"anonymous"`.
++  - `dispatch_hook` reads its limit from `config["rate_limit_max_per_window"]` — a `config` with limit `1` raises on the second same-key `POST`, a `config` with limit `2` does not.
++  - That's 8 cases across the calls above (some bullets are 2 assertions) — write enough test functions to cover each named behavior separately; do not collapse them into one mega-test, since a fold conflict resolution needs to see which individual case broke.
++
++- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_ratelimit.py -v` → FAIL.
++
++- [ ] **Step 3: Implement `app/ratelimit.py`** — `RateLimitExceededError`, `_counts` (module-global dict), `reset`, `check_and_increment`, `dispatch_hook`, per Step 1's contract exactly (`dispatch_hook` is a no-op for any method other than `"POST"`).
++
++- [ ] **Step 4: Wire the registry** — in `app/registry.py`:
++  - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"rate_limit_max_per_window": 5` and `"rate_limit_window_seconds": 60` (the seconds value is recorded for a future wall-clock window and is not read by any code in this plan — `dispatch_hook` counts calls, not time, per its module docstring).
++  - in the "feature wiring" section, add:
++    ```python
++    from app import ratelimit  # noqa: E402
++    DISPATCH_HOOKS.append(ratelimit.dispatch_hook)
++    ```
++
++- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_ratelimit.py tests/ -v` → PASS.
++
++- [ ] **Step 6: Commit.**
++
++```bash
++git add app/ratelimit.py app/registry.py tests/test_ratelimit.py
++git commit -m "feat(eventboard): per-actor rate-limit/quota guard on POST /records"
++```
++
++---
++
++### Task 4: Audit log
++
++**Type:** implementation
++**Depends-on:** none
++
++**Files:**
++- Create: `app/audit.py`
++- Modify: `app/registry.py`
++- Test: `tests/test_audit.py`
++
++- [ ] **Step 1: Write failing tests** in `tests/test_audit.py` for `app/audit.py`. Call `clear()` at the start of every test (module-global log — tests must not leak into each other):
++  - `entries()` on a fresh (cleared) log returns `[]`.
++  - `record("GET", "/records", "alice", 500)` appends exactly one entry `{"method": "GET", "path": "/records", "actor": "alice"}` to `entries()`.
++  - `entries()` returns entries in call order (append three distinct records, assert the returned list order).
++  - `entries()` returns a **copy** — mutating the returned list does not affect a later `entries()` call.
++  - the cap: `max_entries=3` and four `record(...)` calls leaves exactly 3 entries, and they are the **last** 3 (oldest dropped first) — assert both the length and which entries survived.
++  - the cap is checked/enforced on every call, not just at the end — a sequence of 5 calls with `max_entries=2` never has `entries()` exceed length 2 at any point (call `record` one at a time and assert length `<= 2` after each).
++  - `dispatch_hook(store, config, "GET", "/records", {})` appends an entry with `actor == "anonymous"` (no `"actor"` kwarg given) and `method == "GET"`, `path == "/records"`.
++  - `dispatch_hook(store, config, "POST", "/records", {"actor": "bob", "name": "x"})` appends an entry with `actor == "bob"` — the log entry has exactly the three keys `method`/`path`/`actor`, never the record fields (`"name"` must not leak into the audit entry).
++  - `dispatch_hook` reads its cap from `config["audit_log_max_entries"]` — a `config` with cap `1` and two calls to `dispatch_hook` leaves exactly 1 entry.
++  - `dispatch_hook` fires for **every** method, not just `POST`/`GET` — call it once with `"DELETE"` and once with `"PUT"` and assert both appended (unlike rate limiting, the audit log does not special-case the method).
++  - That's 10 cases; one test function per bullet.
++
++- [ ] **Step 2: Run to verify failure** — `python3 -m pytest tests/test_audit.py -v` → FAIL.
++
++- [ ] **Step 3: Implement `app/audit.py`** — `_log` (module-global list), `clear`, `entries`, `record`, `dispatch_hook`, per Step 1's contract exactly.
++
++- [ ] **Step 4: Wire the registry** — in `app/registry.py`:
++  - add two keys to `DEFAULT_CONFIG`, near its existing keys: `"audit_log_enabled": True` (recorded for a future on/off switch and not read by any code in this plan — `dispatch_hook` always logs, per its module docstring) and `"audit_log_max_entries": 500`.
++  - in the "feature wiring" section, add:
++    ```python
++    from app import audit  # noqa: E402
++    DISPATCH_HOOKS.append(audit.dispatch_hook)
++    ```
++
++- [ ] **Step 5: Run to verify pass** — `python3 -m pytest tests/test_audit.py tests/ -v` → PASS.
++
++- [ ] **Step 6: Commit.**
++
++```bash
++git add app/audit.py app/registry.py tests/test_audit.py
++git commit -m "feat(eventboard): audit log of every dispatched call"
++```
++
++---
++
++### Task 5: Full-suite verification
++
++**Type:** gate
++
++**Files:** none
++
++- [ ] Run `python3 -m pytest tests/ -q` from the repo root (`project/`) and confirm every test passes, including the pre-existing smoke tests in `tests/test_router.py`, `tests/test_storage.py`, `tests/test_report.py`, and `tests/test_registry.py`. `app/registry.py` should now carry all four features' config blocks and all four wiring lines with no other lines disturbed.
+diff --git a/evals/fixtures/contend-prod/project/README.md b/evals/fixtures/contend-prod/project/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d7b9758f328eccbde49ddb13f381f54f8e7204f
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/README.md
+@@ -0,0 +1,41 @@
++# eventboard
++
++A tiny, HTTP-less request-routed event-tracking service used as a plan
++fixture. There is no real network layer: `App.call(method, path, **kwargs)`
++plays the role an HTTP request would, dispatching through `app/router.py`
++to a handler backed by `app/storage.py`'s in-memory record store.
++
++## Layout
++
++- `app/router.py` — method+path dispatch table.
++- `app/storage.py` — in-memory CRUD record store.
++- `app/report.py` — plain-text totals-by-category summary renderer.
++- `app/registry.py` — config defaults, plugin/hook registration, and
++  `bootstrap()`, which assembles a fresh `App`. This is the shared hot
++  file every feature below extends.
++
++## Base routes
++
++- `POST /records` — create a record from keyword fields; `category`
++  defaults to `config["default_category"]`.
++- `GET /records/{id}` — fetch one record.
++- `DELETE /records/{id}` — delete one record.
++- `GET /records` — list records, optionally filtered by keyword equality.
++- `GET /report` — render the base plain-text report.
++
++## Run the suite
++
++```bash
++python3 -m pytest tests/ -q
++```
++
++## Extending `app/registry.py`
++
++A feature never edits `bootstrap()`'s body. It:
++
++1. adds its own two-key config block to `DEFAULT_CONFIG`;
++2. imports its module in the "feature wiring" section at the bottom of
++   the file and registers into exactly one of `PRE_CREATE_HOOKS`,
++   `POST_CREATE_HOOKS`, `DISPATCH_HOOKS`, or `EXPORT_FORMATS`.
++
++See `app/registry.py`'s module docstring for each hook's exact signature.
+diff --git a/evals/fixtures/contend-prod/project/app/__init__.py b/evals/fixtures/contend-prod/project/app/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0259947d6199747dc41b206e0846585bf420dce4
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/app/__init__.py
+@@ -0,0 +1,9 @@
++"""eventboard: a tiny HTTP-less request-routed event-tracking service.
++
++Package layout:
++  router.py    - method+path dispatch table
++  storage.py   - in-memory record store
++  report.py    - plain-text summary renderer
++  registry.py  - config defaults, plugin registration, app bootstrap (the
++                 fixture's shared hot file: every feature extends it)
++"""
+diff --git a/evals/fixtures/contend-prod/project/app/registry.py b/evals/fixtures/contend-prod/project/app/registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..31f70772a39db398462e48ed1553c4c593eef61b
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/app/registry.py
+@@ -0,0 +1,147 @@
++"""Central registry: route table, plugin registration, and config defaults.
++
++This module is the app's single assembly point: `bootstrap()` builds a
++fresh Router + Store, wires the base CRUD/report routes, and returns an
++App. It is also this fixture's deliberate contention point — four
++independent feature tasks each extend it, and none of them depends on any
++other:
++
++  - a config block: two new keys added to DEFAULT_CONFIG, near its
++    existing neighbors;
++  - a hook or format registration in the "feature wiring" section below,
++    which runs once at import time.
++
++Hooks are the extension seam so features never need to edit bootstrap()'s
++body: they append callables to one of the module-level hook lists instead.
++No feature task adds a new route — every route this app will ever serve is
++already registered below; a feature either intercepts an existing route's
++dispatch (a hook) or fills in a lookup table an existing route already
++reads (EXPORT_FORMATS for /export).
++
++  PRE_CREATE_HOOKS   fn(store, config, fields) -> fields
++                     Runs in append order before a record is created. May
++                     raise to reject the create. May transform `fields`
++                     (e.g. strip/normalize a value) by returning a new dict.
++
++  POST_CREATE_HOOKS  fn(store, config, record) -> None
++                     Runs in append order after a record is created and
++                     assigned an id. Return value ignored.
++
++  DISPATCH_HOOKS     fn(store, config, method, path, kwargs) -> None
++                     Runs in append order before EVERY dispatch (not just
++                     creates). May raise to reject the call before the
++                     router sees it. Return value ignored.
++
++  EXPORT_FORMATS     name -> fn(records) -> str
++                     Consulted by the pre-wired /export route; not a hook
++                     list, a lookup table a feature fills in.
++"""
++from app.router import Router
++from app.storage import Store
++from app import report
++
++
++DEFAULT_CONFIG = {
++    "app_name": "eventboard",
++    "max_records": 10000,
++    "default_category": "uncategorized",
++    # --- feature config blocks land below, one per feature task ---
++}
++
++
++PRE_CREATE_HOOKS = []
++POST_CREATE_HOOKS = []
++DISPATCH_HOOKS = []
++EXPORT_FORMATS = {}
++
++PLUGINS = {}
++
++
++def register_plugin(name, fn):
++    """Register a named plugin callable. Raises ValueError if the name is
++    already taken — plugin names are a flat global namespace."""
++    if name in PLUGINS:
++        raise ValueError("plugin already registered: %s" % name)
++    PLUGINS[name] = fn
++    return fn
++
++
++class App:
++    """The assembled app: a router bound to a store and merged config."""
++
++    def __init__(self, router, store, config):
++        self.router = router
++        self.store = store
++        self.config = config
++
++    def call(self, method, path, **kwargs):
++        for hook in DISPATCH_HOOKS:
++            hook(self.store, self.config, method, path, kwargs)
++        return self.router.dispatch(method, path, **kwargs)
++
++
++def _create_record(store, config, fields):
++    for hook in PRE_CREATE_HOOKS:
++        fields = hook(store, config, fields)
++    fields = dict(fields)
++    fields.setdefault("category", config["default_category"])
++    record = store.create(fields)
++    for hook in POST_CREATE_HOOKS:
++        hook(store, config, record)
++    return record
++
++
++def _get_record(store, config, id):
++    return store.get(id)
++
++
++def _delete_record(store, config, id):
++    return store.delete(id)
++
++
++def _list_records(store, config, **predicate):
++    return store.filter(**predicate)
++
++
++def _report(store, config):
++    return report.render_report(store.all())
++
++
++def _export(store, config, fmt=None):
++    fmt = fmt or config.get("export_default_format", "csv")
++    enabled = config.get("export_formats_enabled", list(EXPORT_FORMATS))
++    if fmt not in enabled or fmt not in EXPORT_FORMATS:
++        raise ValueError("unknown export format: %s" % fmt)
++    return EXPORT_FORMATS[fmt](store.all())
++
++
++def bootstrap(config=None):
++    """Assemble a fresh App: DEFAULT_CONFIG overridden by `config`, a new
++    Store, and a Router with the base routes registered. Every bootstrap()
++    call gets its own Router/Store; the hook lists above are shared module
++    state (features register into them once, at import time)."""
++    merged = dict(DEFAULT_CONFIG)
++    if config:
++        merged.update(config)
++    store = Store()
++    router = Router()
++    router.register("POST", "/records",
++                     lambda **kw: _create_record(store, merged, kw))
++    router.register("GET", "/records/{id}",
++                     lambda id: _get_record(store, merged, id))
++    router.register("DELETE", "/records/{id}",
++                     lambda id: _delete_record(store, merged, id))
++    router.register("GET", "/records",
++                     lambda **kw: _list_records(store, merged, **kw))
++    router.register("GET", "/report",
++                     lambda: _report(store, merged))
++    router.register("GET", "/export",
++                     lambda fmt=None: _export(store, merged, fmt))
++    return App(router, store, merged)
++
++
++# --- feature wiring -------------------------------------------------------
++# Each feature task imports its module here and registers it into exactly
++# one of the hook lists / EXPORT_FORMATS above. This section only ever
++# grows by appending a new import + a new registration line; no existing
++# line is edited by a later feature.
+diff --git a/evals/fixtures/contend-prod/project/app/report.py b/evals/fixtures/contend-prod/project/app/report.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..64c0ec4c55067fff5b34bf8453a4bec0a96dc90c
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/app/report.py
+@@ -0,0 +1,20 @@
++"""Base report renderer: a plain-text totals-by-category summary.
++
++This is the pre-existing renderer every record report is built from; the
++export feature (Task 2) adds machine-readable formats alongside it rather
++than replacing it.
++"""
++
++
++def totals_by_category(records):
++    totals = {}
++    for r in records:
++        cat = r.get("category", "uncategorized")
++        totals[cat] = totals.get(cat, 0) + r.get("amount", 0)
++    return totals
++
++
++def render_report(records):
++    totals = totals_by_category(records)
++    lines = ["%s: %s" % (cat, totals[cat]) for cat in sorted(totals)]
++    return "\n".join(lines)
+diff --git a/evals/fixtures/contend-prod/project/app/router.py b/evals/fixtures/contend-prod/project/app/router.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..51565ea51be8488c9c65ac7a7f1f22e0a58c4b0f
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/app/router.py
+@@ -0,0 +1,37 @@
++"""Minimal HTTP-less request router.
++
++A route is a (method, path) pair mapped to a handler callable. There is no
++real HTTP layer here — `dispatch` is called directly with keyword arguments
++that stand in for parsed path params / query params / body fields.
++"""
++
++
++class RouteNotFoundError(Exception):
++    pass
++
++
++class RouteAlreadyRegisteredError(Exception):
++    pass
++
++
++class Router:
++    def __init__(self):
++        self._routes = {}
++
++    def register(self, method, path, handler):
++        key = (method.upper(), path)
++        if key in self._routes:
++            raise RouteAlreadyRegisteredError("%s %s" % key)
++        self._routes[key] = handler
++        return handler
++
++    def dispatch(self, method, path, **kwargs):
++        key = (method.upper(), path)
++        handler = self._routes.get(key)
++        if handler is None:
++            raise RouteNotFoundError("%s %s" % key)
++        return handler(**kwargs)
++
++    def routes(self):
++        """Sorted (method, path) pairs currently registered."""
++        return sorted(self._routes.keys())
+diff --git a/evals/fixtures/contend-prod/project/app/storage.py b/evals/fixtures/contend-prod/project/app/storage.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..95a10a1f6be459b6894fe86ed8c129cded2e3a81
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/app/storage.py
+@@ -0,0 +1,47 @@
++"""In-memory record store: CRUD plus simple equality filtering.
++
++Records are plain dicts; the store assigns and owns the "id" key. All
++returned dicts are copies so callers can't mutate the store's internal
++state by editing a returned record.
++"""
++
++
++class NotFoundError(Exception):
++    pass
++
++
++class Store:
++    def __init__(self):
++        self._records = {}
++        self._next_id = 1
++
++    def create(self, fields):
++        rid = self._next_id
++        self._next_id += 1
++        record = dict(fields)
++        record["id"] = rid
++        self._records[rid] = record
++        return dict(record)
++
++    def get(self, rid):
++        if rid not in self._records:
++            raise NotFoundError(rid)
++        return dict(self._records[rid])
++
++    def delete(self, rid):
++        if rid not in self._records:
++            raise NotFoundError(rid)
++        del self._records[rid]
++        return {"deleted": rid}
++
++    def all(self):
++        return [dict(r) for r in self._records.values()]
++
++    def filter(self, **predicate):
++        if not predicate:
++            return self.all()
++        return [dict(r) for r in self._records.values()
++                if all(r.get(k) == v for k, v in predicate.items())]
++
++    def count(self):
++        return len(self._records)
+diff --git a/evals/fixtures/contend-prod/project/tests/test_registry.py b/evals/fixtures/contend-prod/project/tests/test_registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5d6e34c1ebfa986d3673cd7760e22f683c285190
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/tests/test_registry.py
+@@ -0,0 +1,49 @@
++"""Pre-existing smoke tests for the base registry/bootstrap wiring."""
++import pytest
++
++from app.registry import bootstrap, DEFAULT_CONFIG
++
++
++def test_bootstrap_returns_working_app_with_default_config():
++    app = bootstrap()
++    assert app.config["app_name"] == DEFAULT_CONFIG["app_name"]
++
++
++def test_bootstrap_merges_config_overrides():
++    app = bootstrap({"app_name": "custom"})
++    assert app.config["app_name"] == "custom"
++    assert app.config["max_records"] == DEFAULT_CONFIG["max_records"]
++
++
++def test_base_crud_and_report_routes_are_wired():
++    app = bootstrap()
++    created = app.call("POST", "/records", name="coffee", amount=3)
++    assert created["id"] == 1
++    assert created["category"] == "uncategorized"
++    assert app.call("GET", "/records/{id}", id=created["id"]) == created
++    assert app.call("GET", "/records") == [created]
++    assert app.call("GET", "/report") == "uncategorized: 3"
++    assert app.call("DELETE", "/records/{id}", id=created["id"]) == {"deleted": 1}
++    assert app.call("GET", "/records") == []
++
++
++def test_export_route_rejects_a_format_it_does_not_know():
++    """`_export` raises ValueError for a format that is neither enabled in
++    config nor present in EXPORT_FORMATS.
++
++    This holds both while EXPORT_FORMATS is empty and after a feature fills
++    it in, so it stays green as the app grows. Do NOT assert that the
++    *default* format fails: EXPORT_FORMATS is a lookup table a feature is
++    expected to populate, and pinning "/export is broken" would turn that
++    feature landing into a smoke-test failure."""
++    app = bootstrap()
++    with pytest.raises(ValueError):
++        app.call("GET", "/export", fmt="xml")
++
++
++def test_two_bootstraps_do_not_share_store_state():
++    a = bootstrap()
++    b = bootstrap()
++    a.call("POST", "/records", name="x", amount=1)
++    assert a.call("GET", "/records") != []
++    assert b.call("GET", "/records") == []
+diff --git a/evals/fixtures/contend-prod/project/tests/test_report.py b/evals/fixtures/contend-prod/project/tests/test_report.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5f47f9110fb71eb65b9ea4acbe2c67aa631769d0
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/tests/test_report.py
+@@ -0,0 +1,25 @@
++"""Pre-existing smoke tests for the base report renderer."""
++from app.report import render_report, totals_by_category
++
++
++def test_totals_by_category_sums_amounts():
++    records = [
++        {"category": "food", "amount": 3},
++        {"category": "food", "amount": 2},
++        {"category": "fun", "amount": 5},
++    ]
++    assert totals_by_category(records) == {"food": 5, "fun": 5}
++
++
++def test_totals_by_category_defaults_missing_category():
++    records = [{"amount": 1}]
++    assert totals_by_category(records) == {"uncategorized": 1}
++
++
++def test_render_report_is_sorted_by_category():
++    records = [{"category": "b", "amount": 1}, {"category": "a", "amount": 2}]
++    assert render_report(records) == "a: 2\nb: 1"
++
++
++def test_render_report_empty():
++    assert render_report([]) == ""
+diff --git a/evals/fixtures/contend-prod/project/tests/test_router.py b/evals/fixtures/contend-prod/project/tests/test_router.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9dfbfe1265b47fb251ab2918b83913e4c0b2a951
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/tests/test_router.py
+@@ -0,0 +1,37 @@
++"""Pre-existing smoke tests for the base router."""
++import pytest
++
++from app.router import Router, RouteNotFoundError, RouteAlreadyRegisteredError
++
++
++def test_register_and_dispatch_with_kwargs():
++    r = Router()
++    r.register("GET", "/ping", lambda name: "pong %s" % name)
++    assert r.dispatch("GET", "/ping", name="a") == "pong a"
++
++
++def test_method_is_case_insensitive_on_register_and_dispatch():
++    r = Router()
++    r.register("get", "/x", lambda: "ok")
++    assert r.dispatch("GET", "/x") == "ok"
++    assert r.dispatch("get", "/x") == "ok"
++
++
++def test_dispatch_unknown_route_raises():
++    r = Router()
++    with pytest.raises(RouteNotFoundError):
++        r.dispatch("GET", "/missing")
++
++
++def test_duplicate_register_raises():
++    r = Router()
++    r.register("GET", "/x", lambda: "ok")
++    with pytest.raises(RouteAlreadyRegisteredError):
++        r.register("GET", "/x", lambda: "again")
++
++
++def test_routes_lists_sorted_method_path_pairs():
++    r = Router()
++    r.register("GET", "/b", lambda: None)
++    r.register("POST", "/a", lambda: None)
++    assert r.routes() == [("GET", "/b"), ("POST", "/a")]
+diff --git a/evals/fixtures/contend-prod/project/tests/test_storage.py b/evals/fixtures/contend-prod/project/tests/test_storage.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5d661d2d67cee4d015ce076a7d6ead8bea225ca
+--- /dev/null
++++ b/evals/fixtures/contend-prod/project/tests/test_storage.py
+@@ -0,0 +1,60 @@
++"""Pre-existing smoke tests for the base in-memory store."""
++import pytest
++
++from app.storage import Store, NotFoundError
++
++
++def test_create_assigns_incrementing_ids():
++    s = Store()
++    a = s.create({"name": "a"})
++    b = s.create({"name": "b"})
++    assert a["id"] == 1 and b["id"] == 2
++
++
++def test_create_returns_a_copy_not_the_live_record():
++    s = Store()
++    r = s.create({"name": "a"})
++    r["name"] = "mutated"
++    assert s.get(r["id"])["name"] == "a"
++
++
++def test_get_missing_raises_not_found():
++    s = Store()
++    with pytest.raises(NotFoundError):
++        s.get(999)
++
++
++def test_delete_removes_and_returns_marker():
++    s = Store()
++    r = s.create({"name": "a"})
++    assert s.delete(r["id"]) == {"deleted": r["id"]}
++    with pytest.raises(NotFoundError):
++        s.get(r["id"])
++
++
++def test_delete_missing_raises_not_found():
++    s = Store()
++    with pytest.raises(NotFoundError):
++        s.delete(999)
++
++
++def test_all_and_filter():
++    s = Store()
++    s.create({"name": "a", "category": "x"})
++    s.create({"name": "b", "category": "y"})
++    assert len(s.all()) == 2
++    assert [r["name"] for r in s.filter(category="y")] == ["b"]
++    assert s.filter(category="none") == []
++
++
++def test_filter_with_no_predicate_returns_all():
++    s = Store()
++    s.create({"name": "a"})
++    assert s.filter() == s.all()
++
++
++def test_count():
++    s = Store()
++    assert s.count() == 0
++    s.create({"name": "a"})
++    assert s.count() == 1
+diff --git a/tests/test_fixture_seals.py b/tests/test_fixture_seals.py
+index 87e4c47076e1a0ce3f65aecfbe2840bb4c759505..fb6ef0be87708a76e95923fab25b99ab3c0dfd06 100644
+--- a/tests/test_fixture_seals.py
++++ b/tests/test_fixture_seals.py
+@@ -7,7 +7,7 @@ import sys
+ 
+ ROOT = pathlib.Path(__file__).resolve().parents[1]
+ HASH = ROOT / "skills/ultrapowers/scripts/seal_hash.py"
+-FIXTURES = ["wide", "chained", "mixed", "degrade", "contend"]
++FIXTURES = ["wide", "chained", "mixed", "degrade", "contend", "contend-prod"]
+ LINE = re.compile(r"\*\*Acceptance:\*\* sealed ([0-9a-f]{12}) \(sha256:([0-9a-f]{64})\)")
+ 
+ 

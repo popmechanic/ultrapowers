@@ -1,0 +1,407 @@
+diff --git a/skills/ultrapowers/scripts/resolve_superpowers.py b/skills/ultrapowers/scripts/resolve_superpowers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..217fa7b69bb94cdec525ed962d411d7df23a56b6
+--- /dev/null
++++ b/skills/ultrapowers/scripts/resolve_superpowers.py
+@@ -0,0 +1,59 @@
++"""Resolve the ACTIVE superpowers install(s) from the settings cascade plus
++installed_plugins.json. Read-only: never mutates plugin config. The old check
++listed one hard-coded cache directory and so read a DISABLED install's version;
++this reads `enabledPlugins` (the authoritative active signal) instead."""
++import argparse
++import json
++import pathlib
++
++
++def _load(path):
++    try:
++        return json.loads(pathlib.Path(path).read_text())
++    except Exception:
++        return {}
++
++
++def _enabled_map(claude_home, project):
++    """Merge enabledPlugins across the settings cascade; later files win."""
++    home = pathlib.Path(claude_home)
++    proj = pathlib.Path(project)
++    merged = {}
++    for p in (home / "settings.json",
++              proj / ".claude/settings.json",
++              proj / ".claude/settings.local.json"):
++        merged.update(_load(p).get("enabledPlugins", {}))
++    return merged
++
++
++def resolve_active(claude_home, project):
++    enabled = _enabled_map(claude_home, project)
++    installed = _load(pathlib.Path(claude_home) / "plugins/installed_plugins.json").get("plugins", {})
++    active = []
++    for key, entries in installed.items():
++        name = key.split("@", 1)[0]
++        if name != "superpowers":
++            continue
++        if enabled.get(key) is False:  # explicit false disables; absent => enabled
++            continue
++        marketplace = key.split("@", 1)[1] if "@" in key else None
++        for e in (entries if isinstance(entries, list) else [entries]):
++            active.append({
++                "marketplace": marketplace,
++                "installPath": e.get("installPath"),
++                "version": e.get("version"),
++                "gitCommitSha": e.get("gitCommitSha"),
++            })
++    return {"active": active, "ambiguous": len(active) > 1}
++
++
++def main():
++    ap = argparse.ArgumentParser()
++    ap.add_argument("--claude-home", default=str(pathlib.Path.home() / ".claude"))
++    ap.add_argument("--project", default=".")
++    a = ap.parse_args()
++    print(json.dumps(resolve_active(a.claude_home, a.project), indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/skills/ultrapowers/scripts/superpowers_contract.py b/skills/ultrapowers/scripts/superpowers_contract.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c59f73dc7754ee790c9c864f11f8996e4c740eb
+--- /dev/null
++++ b/skills/ultrapowers/scripts/superpowers_contract.py
+@@ -0,0 +1,133 @@
++"""Single source of truth for the superpowers contract tokens ultrapowers depends
++on. Imported by both the runtime preflight (check_superpowers_compat.py) and the
++pytest tripwire (test_superpowers_compat.py), so there is exactly one token list.
++
++Each MANIFEST entry names a file (relative to a superpowers install root), the
++literal token that must be present in it (or `any_of` alternatives, or
++`exists_only` for a file whose mere presence is the contract), and WHY ultrapowers
++depends on it. To re-verify against a newer superpowers release, run the live
++tripwire (tests/test_superpowers_compat.py) against it, then bump TESTED_AGAINST."""
++from dataclasses import dataclass, field
++import pathlib
++
++TESTED_AGAINST = "6.0.3"  # latest released superpowers whose contract we verified
++
++MANIFEST = [
++    # writing-plans template shape — compile_plan.py + Step-1 shape check parse these
++    {"rel": "skills/writing-plans/SKILL.md", "token": "Implementation Plan",
++     "why": "Step-1 heading convenience match"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "### Task N:",
++     "why": "compile_plan.py + Step-1 shape check parse the task heading"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "### Task N: [Component Name]",
++     "why": "dependency-analysis.md's contiguous-header-block rule assumes heading↔Files adjacency"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "**Files:**",
++     "why": "the Files block is the writes/reads source for the DAG"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "- [ ]",
++     "why": "checkbox step syntax the compiler/executors track"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "- Create:",
++     "why": "writes-set parse"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "- Modify:",
++     "why": "writes-set parse"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "- Test:",
++     "why": "reads-set parse"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": ":123-145",
++     "why": "line-range file-reference form the parser tolerates"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "## Global Constraints",
++     "why": "forwarded to every reviewer as the attention lens"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "**Interfaces:**",
++     "why": "Consumes/Produces drive undeclared-dependency detection"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "**Tech Stack:**",
++     "why": "Step 2 derives testCmd from it"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "Two execution options",
++     "why": "ultraplan overlays a third option on exactly two"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "batch execution with checkpoints",
++     "why": "ultraplan's Inline option calls this wording stale on purpose"},
++    {"rel": "skills/writing-plans/SKILL.md", "token": "## Self-Review",
++     "why": "ultraplan's self-review additions extend this section"},
++    # subagent-driven-development — Step 6 fallback + re-bake sources
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "Continuous execution",
++     "why": "plan-markers Executor variance + Step 6 rely on the no-pause posture"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "without stopping",
++     "why": "continuous-execution posture"},
++    {"rel": "skills/subagent-driven-development/SKILL.md",
++     "token": "Do not pause to check in with your human partner between tasks",
++     "why": "exact sentence plan-markers.md quotes"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "without explicit user consent",
++     "why": "Step 6 fallback relies on the main/master consent red flag"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "spec compliance",
++     "why": "unified task-reviewer design is built on this verdict"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "any_of": ["code quality", "task quality"],
++     "why": "unified task-reviewer quality verdict"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "superpowers:using-git-worktrees",
++     "why": "Step 6 hands a clean checkout expecting self-isolation"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "Model Selection",
++     "why": "reviewer-prompts.md re-bakes the model-tier scheme from here"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "re-dispatch with a more capable model",
++     "why": "reviewer-prompts.md headless-downgrade note paraphrases the BLOCKED ladder"},
++    {"rel": "skills/subagent-driven-development/SKILL.md", "token": "address them before review",
++     "why": "reviewer-prompts.md paraphrases DONE_WITH_CONCERNS handling"},
++    {"rel": "skills/subagent-driven-development/implementer-prompt.md",
++     "token": "DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT",
++     "why": "IMPLEMENTER_SCHEMA enum + headless-downgrade notes built on these four"},
++    {"rel": "skills/subagent-driven-development/task-reviewer-prompt.md", "exists_only": True,
++     "why": "reviewer-prompts.md names it as a re-bake source"},
++    # requesting-code-review template
++    {"rel": "skills/requesting-code-review/code-reviewer.md", "token": "**Architecture:**",
++     "why": "reviewer-prompts.md deliberate-drop note names it"},
++    {"rel": "skills/requesting-code-review/code-reviewer.md", "token": "**Production readiness:**",
++     "why": "reviewer-prompts.md deliberate-drop note names it"},
++    {"rel": "skills/requesting-code-review/code-reviewer.md", "token": "Type safety where applicable?",
++     "why": "reviewer-prompts.md deliberate-drop ledger names it"},
++    {"rel": "skills/requesting-code-review/code-reviewer.md", "token": "Edge cases handled?",
++     "why": "reviewer-prompts.md deliberate-drop ledger names it"},
++    {"rel": "skills/requesting-code-review/code-reviewer.md", "token": "Integration tests where they matter?",
++     "why": "reviewer-prompts.md deliberate-drop ledger names it"},
++    # other handoff skills ultrapowers gates on
++    {"rel": "skills/finishing-a-development-branch/SKILL.md",
++     "token": "Cannot proceed with merge/PR until tests pass",
++     "why": "Step 5 gates the Approve path on this precondition"},
++    {"rel": "skills/verification-before-completion/SKILL.md", "token": "Evidence before claims",
++     "why": "wave-merge.md + reviewer-prompts.md cite it as the critic's source"},
++    {"rel": "skills/executing-plans/SKILL.md", "token": "execute all tasks",
++     "why": "plan-markers Executor variance + ultraplan's Inline option assume continuous execution"},
++]
++
++
++@dataclass
++class Report:
++    ok: bool
++    missing: list = field(default_factory=list)
++    checked: int = 0
++
++
++def check(superpowers_root):
++    """Return a Report of which MANIFEST tokens are absent from the given
++    superpowers install root. An absent file counts every one of its entries as
++    missing (no partial-tree skip).
++
++    Matching is plain substring containment (`token in file_text`): the contract
++    only asks whether the literal token appears ANYWHERE in the target file, which
++    is how the consuming parsers actually find it. Real upstream SKILL.md files
++    carry these tokens mid-line (e.g. "### Task N:" lives inside the heading
++    "### Task N: [Component Name]", "- Test:" inside "- Test: `path`"), so a
++    line-anchored match that required each token to TERMINATE a line would falsely
++    report most of them missing against a perfectly healthy install.
++
++    Note the deliberate consequence: a token that is a substring of another token
++    in the same file (e.g. "### Task N:" within "### Task N: [Component Name]") is
++    satisfied whenever the longer one is present — correct here, because in real
++    upstream files the two are the same occurrence."""
++    root = pathlib.Path(superpowers_root)
++    missing = []
++    for entry in MANIFEST:
++        path = root / entry["rel"]
++        if not path.exists():
++            missing.append(entry)
++            continue
++        if entry.get("exists_only"):
++            continue
++        text = path.read_text()
++        tokens = entry.get("any_of", [entry.get("token")])
++        if not any(tok in text for tok in tokens):
++            missing.append(entry)
++    return Report(ok=not missing, missing=missing, checked=len(MANIFEST))
+diff --git a/tests/test_resolve_superpowers.py b/tests/test_resolve_superpowers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..63de7931d9b403e9bdc0d778d9f4463ee4a21be8
+--- /dev/null
++++ b/tests/test_resolve_superpowers.py
+@@ -0,0 +1,80 @@
++import json, pathlib, sys
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import resolve_superpowers as rs  # noqa: E402
++
++
++def _write(p, obj):
++    p.parent.mkdir(parents=True, exist_ok=True)
++    p.write_text(json.dumps(obj))
++
++
++def _setup(tmp_path, enabled, installed, project_enabled=None):
++    home = tmp_path / "home"
++    _write(home / "settings.json", {"enabledPlugins": enabled})
++    _write(home / "plugins/installed_plugins.json", {"version": 1, "plugins": installed})
++    project = tmp_path / "proj"
++    if project_enabled is not None:
++        _write(project / ".claude/settings.json", {"enabledPlugins": project_enabled})
++    (project / ".claude").mkdir(parents=True, exist_ok=True)
++    return home, project
++
++
++def _install(path, version, sha):
++    return [{"installPath": path, "version": version, "gitCommitSha": sha}]
++
++
++def test_picks_enabled_excludes_disabled(tmp_path):
++    home, project = _setup(
++        tmp_path,
++        enabled={"superpowers@claude-plugins-official": False},
++        installed={
++            "superpowers@claude-plugins-official": _install("/c/6.0.3", "6.0.3", "aaa"),
++            "superpowers@superpowers-marketplace": _install("/m/6.0.0", "6.0.0", "bbb"),
++        },
++    )
++    res = rs.resolve_active(home, project)
++    assert res["ambiguous"] is False
++    assert [a["version"] for a in res["active"]] == ["6.0.0"]
++    assert res["active"][0]["marketplace"] == "superpowers-marketplace"
++
++
++def test_absent_entry_is_enabled_by_default(tmp_path):
++    home, project = _setup(
++        tmp_path, enabled={},
++        installed={"superpowers@m": _install("/m/6.0.0", "6.0.0", "bbb")},
++    )
++    res = rs.resolve_active(home, project)
++    assert [a["version"] for a in res["active"]] == ["6.0.0"]
++
++
++def test_project_settings_override_user(tmp_path):
++    # user enables official; project disables it -> excluded.
++    home, project = _setup(
++        tmp_path,
++        enabled={"superpowers@official": True},
++        installed={"superpowers@official": _install("/c/6.0.3", "6.0.3", "aaa")},
++        project_enabled={"superpowers@official": False},
++    )
++    res = rs.resolve_active(home, project)
++    assert res["active"] == []
++
++
++def test_multiple_enabled_flags_ambiguous(tmp_path):
++    home, project = _setup(
++        tmp_path, enabled={},
++        installed={
++            "superpowers@a": _install("/a/6.0.0", "6.0.0", "x"),
++            "superpowers@b": _install("/b/6.0.3", "6.0.3", "y"),
++        },
++    )
++    res = rs.resolve_active(home, project)
++    assert res["ambiguous"] is True
++    assert len(res["active"]) == 2
++
++
++def test_none_installed(tmp_path):
++    home, project = _setup(tmp_path, enabled={}, installed={"frontend-design@x": _install("/f", "1", "z")})
++    res = rs.resolve_active(home, project)
++    assert res == {"active": [], "ambiguous": False}
+diff --git a/tests/test_superpowers_contract.py b/tests/test_superpowers_contract.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..51649359fe27b3d112ea1dac183df0216bcb0628
+--- /dev/null
++++ b/tests/test_superpowers_contract.py
+@@ -0,0 +1,111 @@
++import pathlib, sys
++from collections import defaultdict
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
++import superpowers_contract as sc  # noqa: E402
++
++
++def _synthesize(root, omit_index=None):
++    """Write a full superpowers tree under `root` that satisfies every MANIFEST
++    entry (derived from MANIFEST itself, so it never drifts). When omit_index is
++    set, the token for MANIFEST[omit_index] is left out of its file."""
++    by_file = defaultdict(list)
++    for i, e in enumerate(sc.MANIFEST):
++        by_file[e["rel"]].append((i, e))
++    for rel, entries in by_file.items():
++        p = root / rel
++        p.parent.mkdir(parents=True, exist_ok=True)
++        chunks = []
++        for i, e in entries:
++            if i == omit_index or e.get("exists_only"):
++                continue
++            tok = e.get("any_of", [e.get("token")])[0]
++            chunks.append(tok)
++        p.write_text("\n".join(chunks) + "\n")
++
++
++def _cleanly_omittable_index():
++    """First MANIFEST index whose token is NOT a substring of any sibling token
++    sharing its file — i.e. one that can be made genuinely absent by omitting only
++    its own line.
++
++    A prefix entry is NOT cleanly omittable: "### Task N:" is a substring of
++    "### Task N: [Component Name]" (same file), so under correct substring matching
++    dropping its own line still leaves it present inside the longer heading. That
++    prefix relationship is real, not synthetic — in upstream writing-plans/SKILL.md
++    the ONLY occurrence of "### Task N:" is inside "### Task N: [Component Name]".
++    A checker that could report "### Task N:" missing in isolation would have to be
++    line-anchored, which is exactly the bug that falsely flagged ~17 mid-line
++    tokens as missing against real 6.0.0 / 6.0.3 installs."""
++    for i, e in enumerate(sc.MANIFEST):
++        tok = e.get("token")
++        if not tok:
++            continue
++        sibling_tokens = [
++            t
++            for j, o in enumerate(sc.MANIFEST)
++            if j != i and o["rel"] == e["rel"]
++            for t in o.get("any_of", [o.get("token")])
++            if t
++        ]
++        if not any(tok in st for st in sibling_tokens):
++            return i, tok
++    raise AssertionError("no cleanly omittable MANIFEST entry found")
++
++
++def test_check_passes_on_full_tree(tmp_path):
++    _synthesize(tmp_path)
++    rep = sc.check(tmp_path)
++    assert rep.ok is True
++    assert rep.missing == []
++    assert rep.checked == len(sc.MANIFEST)
++
++
++def test_check_reports_exact_missing_token(tmp_path):
++    # Drop a single uniquely-identifiable token and confirm check() names exactly
++    # that entry. We pick a token that is not a substring of any sibling token in
++    # the same file (see _cleanly_omittable_index) so the omission is genuinely
++    # detectable under plain substring matching.
++    idx, tok = _cleanly_omittable_index()
++    _synthesize(tmp_path, omit_index=idx)
++    rep = sc.check(tmp_path)
++    assert rep.ok is False
++    assert [m.get("token") for m in rep.missing] == [tok]
++
++
++def test_check_matches_tokens_embedded_mid_line(tmp_path):
++    """Regression for the line-anchoring bug. Real upstream SKILL.md files carry
++    contract tokens mid-line (the token does not terminate its line). Write every
++    token wrapped in surrounding prose and assert check() still finds them all.
++
++    A line-anchored implementation (requiring `token + "\\n"`) reports ~17 of these
++    as falsely MISSING; correct plain-substring matching reports zero missing."""
++    by_file = defaultdict(list)
++    for e in sc.MANIFEST:
++        by_file[e["rel"]].append(e)
++    for rel, entries in by_file.items():
++        p = tmp_path / rel
++        p.parent.mkdir(parents=True, exist_ok=True)
++        lines = []
++        for e in entries:
++            if e.get("exists_only"):
++                continue
++            tok = e.get("any_of", [e.get("token")])[0]
++            # trailing content guarantees the token never terminates its line
++            lines.append(f"leading prose {tok} and trailing prose")
++        p.write_text("\n".join(lines) + "\n")
++    rep = sc.check(tmp_path)
++    assert rep.ok is True, [m.get("token") or m.get("any_of") for m in rep.missing]
++    assert rep.missing == []
++
++
++def test_check_reports_absent_file_as_missing(tmp_path):
++    # Empty tree → every entry missing (no partial-tree skip after the GA-flip).
++    rep = sc.check(tmp_path)
++    assert rep.ok is False
++    assert len(rep.missing) == len(sc.MANIFEST)
++
++
++def test_tested_against_is_pinned():
++    assert sc.TESTED_AGAINST == "6.0.3"

@@ -1,0 +1,26 @@
+diff --git a/skills/ultrapowers/harnesses/waves.js b/skills/ultrapowers/harnesses/waves.js
+index 72c0a1708a2f2fad44902418932b4bfc619887f1..c7eaa501321a7495c60c38ce8a57967c538e4ba9 100644
+--- a/skills/ultrapowers/harnesses/waves.js
++++ b/skills/ultrapowers/harnesses/waves.js
+@@ -265,7 +265,7 @@ const IMPLEMENTER_PROMPT = [
+   '',
+   'Inputs you receive:',
+   '- TASK: the full, verbatim task text — do not paraphrase or reinterpret it',
+-  '- WORKTREE_PATH: absolute path to your isolated worktree',
++  "- WORKTREE_PATH: the directory you start in IS your isolated worktree — run pwd first and treat that path as the ONLY absolute prefix you may write under. The session repository (the primary checkout the plan's paths were written against — a valid, writable path on the same disk) is forbidden even for appending a test: prefer relative paths, and if a command of yours would name any other checkout, stop and report BLOCKED instead.",
+   '- BRANCH: the branch you must work on (already checked out for you)',
+   '- BASE: sha of the integration-branch HEAD your work builds on',
+   '- FILES: the task\'s declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)',
+diff --git a/skills/ultrapowers/references/reviewer-prompts.md b/skills/ultrapowers/references/reviewer-prompts.md
+index 31e3b0b82ddde7a091fcdbe449d6b7267dc75196..353ba00392a27ce87c9bf1d129878bd8bc559833 100644
+--- a/skills/ultrapowers/references/reviewer-prompts.md
++++ b/skills/ultrapowers/references/reviewer-prompts.md
+@@ -31,7 +31,7 @@ You are an implementer subagent operating inside a dedicated git worktree. You h
+ 
+ **Inputs you receive:**
+ - `TASK`: the full, verbatim task text — do not paraphrase or reinterpret it
+-- `WORKTREE_PATH`: absolute path to your isolated worktree
++- `WORKTREE_PATH`: the directory you start in IS your isolated worktree — run `pwd` first and treat that path as the ONLY absolute prefix you may write under. The session repository (the primary checkout the plan's paths were written against — a valid, writable path on the same disk) is forbidden even for appending a test: prefer relative paths, and if a command of yours would name any other checkout, stop and report `BLOCKED` instead.
+ - `BRANCH`: the branch you must work on (already checked out for you)
+ - `BASE`: sha of the integration-branch HEAD your work builds on
+ - `FILES`: the task's declared file scope — the Create/Modify/Test paths the plan assigns to this task (may be absent)

@@ -1,0 +1,52 @@
+diff --git a/fleet/tests/README.md b/fleet/tests/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..a58dfd94e9cfa11e01ad905b786e3d36b98b5e0c
+--- /dev/null
++++ b/fleet/tests/README.md
+@@ -0,0 +1,19 @@
++# fleet/tests
++
++These are the fleet engine's own tests — `.mjs` suites run under `node` and
++joined into the Python suite through `tests/test_fleet_suite.py`.
++
++Main areas under test:
++
++- `test_run_worker.mjs` — the worker dispatcher: launching one implementer,
++  handing it its task, and reaping the result.
++- `test_run_waves.mjs` — the waves loader and patch capture: reading the wave
++  plan and turning each finished clone into a diff against its base.
++- `test_run_main.mjs` — the deterministic engine entry: argument handling and
++  the top-level run control flow.
++- `test_confine_hook.mjs` — the implementer confinement boundary: which tool
++  calls a task's clone is allowed to make.
++- `test_drive_one.mjs` — the drive CLI: driving a single task end to end from
++  the command line.
++- `test_shim*.mjs` — the shim: transport, gating, publishing, and token
++  accounting between the plugin client and the fleet.
+diff --git a/tests/test_fleet_readme.py b/tests/test_fleet_readme.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e63f31ce3d79b7a0c02b7de54b0e8fe21a65cc91
+--- /dev/null
++++ b/tests/test_fleet_readme.py
+@@ -0,0 +1,21 @@
++"""Pin: fleet/tests/README.md exists as the index of the fleet engine's test
++suite, and names the two boundaries that are easiest to lose track of — the
++deterministic engine entry and the implementer confinement hook."""
++import pathlib
++
++ROOT = pathlib.Path(__file__).resolve().parents[1]
++README = ROOT / "fleet" / "tests" / "README.md"
++
++
++def test_fleet_tests_readme_exists():
++    assert README.is_file()
++
++
++def test_fleet_tests_readme_is_non_empty():
++    assert README.read_text().strip()
++
++
++def test_fleet_tests_readme_names_the_engine_entry_and_confinement_tests():
++    text = README.read_text()
++    assert "test_run_main.mjs" in text
++    assert "test_confine_hook.mjs" in text

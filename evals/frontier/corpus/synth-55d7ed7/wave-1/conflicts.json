@@ -1,0 +1,32 @@
+[
+  {
+    "i": 1,
+    "path": "evals/frontier/repo_weave.py",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "conflict-1.hunks.txt",
+    "hunkCount": 8
+  },
+  {
+    "i": 2,
+    "path": "tests/test_frontier_weave.py",
+    "kind": "lines",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "conflict-2.hunks.txt",
+    "hunkCount": 2
+  },
+  {
+    "i": 3,
+    "path": "tests/test_repo_weave_report_determinism.py",
+    "kind": "add/add",
+    "dispatchable": true,
+    "reason": "",
+    "epoch": 2,
+    "hunksFile": "conflict-3.hunks.txt",
+    "hunkCount": 1
+  }
+]
