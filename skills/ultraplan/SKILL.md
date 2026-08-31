@@ -13,9 +13,9 @@ description: Use together with superpowers:writing-plans on EVERY implementation
 
 Use **together with** `superpowers:writing-plans`: that skill owns plan structure,
 TDD steps, and granularity. This skill adds the parallel-execution contract so
-`/ultrapowers` compiles the plan by parsing instead of inferring. The two blocks
-below mirror the canonical marker contract verbatim, pinned by an
-anti-drift test.
+`/ultrapowers` compiles the plan by parsing instead of inferring. The marker
+contract itself is `${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md` — cited here,
+never restated (#492).
 
 **Announce at start:** "I'm also using ultraplan to make this plan parallel-ready."
 
@@ -93,28 +93,26 @@ separately"), never silently.
 
 ## Add markers to every task
 
-Markers are bold-labeled lines placed immediately after the task heading, before the
-`**Files:**` block:
+**The canonical contract is `${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md`** —
+syntax, allowed values, precedence, the `Files:` and `Interfaces:` grammars, and
+every rule the compiler enforces. Read it before you mark a plan. It lives beside
+`compile_plan.py`, which is what enforces it, and `tests/test_marker_contract.py`
+pins the two together. This section names the markers and the *authoring
+judgment* each one asks of you; it does not restate their semantics, because a
+second copy of a contract is a copy that drifts.
 
-- `**Type:**` — one of `implementation` (the default when absent), `gate`,
-  `release`, or `manual`.
-- `**Depends-on:**` — comma-separated task IDs from the plan's own numbering
-  (`2`, `A3`, `C4b`), or `none`.
-- `**Review:**` — optional; one of `adversarial` or `lean`. Names the tasks that
-  earn a second independent review pass. Unmarked tasks are `lean`. An invalid
-  or duplicate value is a compile error.
-- `**Commutes:**` — optional; comma-separated backticked paths, each of which
-  must also appear in this task's own `**Files:**` block. It asserts that this
-  task's edits to those files are order-insensitive additive registrations, so
-  the engine may union them instead of resolving them. Declare it only when
-  true — review audits the claim the way it audits a test contract. A path
-  outside the task's own `**Files:**` block is surfaced as a marker conflict and
-  dropped, never a compile error. Like every marker it belongs in the
-  header block; after `**Files:**` it is discarded and `--check` refuses it.
+Four markers, in the contiguous block immediately after the task heading and
+before `**Files:**`:
 
-Decide review depth explicitly: mark
-`**Review:** adversarial` on tasks whose failure is costly or hard to see — the
-fit analysis's risk list below.
+- `**Type:**` — the task's disposition. The judgment is below, under *Choose the
+  right Type*.
+- `**Depends-on:**` — task IDs, or `none`. **Additive**: inferred edges still
+  apply, so `none` is a claim about what you expect, not a suppression.
+- `**Review:**` — optional. Mark `adversarial` on tasks whose failure is costly
+  or hard to see — the fit analysis's risk list below. Unmarked is `lean`.
+- `**Commutes:**` — optional. **Declare it only when true**: it tells the engine
+  it may union your edits instead of resolving them, and review audits the claim
+  the way it audits a test contract.
 
 Placement is enforced: the compiler trusts markers only in the contiguous block
 immediately after the task heading — a later marker is ignored and surfaced as a
@@ -189,14 +187,12 @@ Example analysis lines:
 
 ## Choose the right Type
 
-- `implementation` — a worktree-pure diff. Waved and executed.
-- `gate` — verification only (suite, lint, status checks); writes nothing. Compiled
-  into run configuration: its suite command informs `testCmd`, its expectations are
-  listed in the wave-plan transparency render. Never executed as a task.
-- `release` — publish ritual: version bumps, pushes, marketplace re-pins, deploys.
-  Excluded from the waves; carried verbatim into the post-merge runbook.
-- `manual` — requires a human or another machine (credentials, hardware, owner
-  action). Excluded from the waves; carried verbatim into the post-merge runbook.
+`implementation` is the default and the only Type that is waved and executed.
+The other three leave the wave set **by two different exits**: `release` and
+`manual` are carried verbatim into the post-merge runbook, while `gate` is
+compiled into run configuration — its suite command informs `testCmd` and it is
+rendered in the transparency block. What each one means is in `plan-markers.md`
+§Type semantics; what you have to decide is which one a task is.
 
 Marking a write-nothing verification task `gate` is not optional bookkeeping: a
 **marked** `implementation` task whose `**Files:**` block declares no path at all
@@ -238,12 +234,13 @@ While writing tasks:
   glue in prose. The exception: a task marked `**Review:** adversarial` keeps
   exact code in every step, because its second reviewer audits the diff against
   the plan text.
-- **Shrink budgets are acceptance criteria — stated as deltas.** When a task
-  edits a complexity-ratcheted surface (SKILL.md, gate-spec docs), state the
-  net word delta its diff implies (`net delta ≤ +N words`, or `≤ −N`),
-  verified at task end as word-count(after) − word-count(before). Never state
-  an absolute ceiling — it drifts against sibling deltas; the absolute lives
-  in `tests/test_skill_budget.py`.
+- **Shrink budgets are acceptance criteria — deltas, and only on prose an agent
+  is made to READ.** That means role and system-prompt files a run loads at
+  dispatch, never a document someone opens when they need it. State the net word
+  delta the diff implies (`net delta ≤ +N words`, or `≤ −N`), verified as
+  word-count(after) − word-count(before). **Never state an absolute ceiling on a
+  stored file** (#492): one stood at a single word of headroom, and a budget a
+  task cannot meet is a demolition order, not a constraint.
 - **Tier escalation-prone tasks up front.** Large single-file refactors blow the
   StructuredOutput retry cap at lower tiers and pay the task twice — mark them
   `most-capable` rather than letting the launch guess it.

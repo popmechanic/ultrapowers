@@ -81,8 +81,15 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   The cutover shipped: the engine is `fleet/run-engine.mjs`, there is no LLM orchestrator and
   no Workflow tool, and `waves.js` + 118 tests were deleted (`44e0d15`) only after runs 26/27
   came back green. Read it as history, not as direction. Two of its rules outlive it and are
-  enforced elsewhere: **surface ceilings go on prose, never on code** (`tests/test_skill_budget.py`;
-  raised only in a `chore(release)` commit body naming what pays for it), and **deletion is owed
+  enforced elsewhere: **cap what an agent is MADE to read, never what a file stores** — the live
+  ceiling is 350 words on `fleet/roles/*.md`, at the point of dispatch (`fleet/tests/test_run_engine.mjs`);
+  the SKILL.md word ceilings and `tests/test_skill_budget.py` are **deleted at #492** (three
+  observed harms, zero observed saves — the count is now reported by CI's *Report skill prose
+  sizes* step and by release commit bodies, and gates nothing). **Do not read that as the
+  surviving ceiling being healthy: `reviewer.md` is at 349/350** — one word, the exact state
+  #492 deleted the others for, and with no raise protocol since it is a literal in a test
+  rather than a ratchet (**#496**). A budget a task cannot meet is a demolition order.
+  Also standing: **deletion is owed
   per guard** — ballast goes behind a measurement gate, never on an incident narrative. Its
   design inputs, incl. Amendments 4–6 (sign intent, derive the plan, no verbatim implementation
   code, per-run token cap deleted) and #382's measured cache rows, remain the standing record in

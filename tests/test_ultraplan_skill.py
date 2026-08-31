@@ -1,6 +1,14 @@
-"""The ultraplan authoring skill must mirror the canonical marker contract
-(plan-markers.md BAKE blocks) verbatim — same anti-drift discipline as
-test_no_prompt_drift.py uses for workflow.js."""
+"""The ultraplan authoring skill CITES the canonical marker contract
+(skills/ultrapowers/references/plan-markers.md) instead of mirroring it.
+
+#492: the mirror existed because the SKILL was believed unable to reference
+across skill directories. It could — `validate_skill.py` has resolved a
+`skills/<name>/references/<file>` prefix against the sibling skill's directory
+since #159; only this file's own prohibition test enforced the ban, and its
+comment stated a rationale the validator had already outgrown. A citation
+cannot drift from its source, so the two anti-drift pins it replaces are gone.
+What is still pinned here is the CONTRACT's own content and the SKILL's
+authoring judgment, which is ultraplan's and is not in the contract."""
 import pathlib
 import re
 
@@ -11,34 +19,38 @@ ULTRAPLAN = ROOT / "skills/ultraplan/SKILL.md"
 MARKER = re.compile(r"<!-- BAKE:(\w+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
 
 
-def normalize(s: str) -> str:
-    s = s.lower()
-    s = re.sub(r"'s\b", "", s)
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    return s.strip()
-
-
 def contract_blocks():
     blocks = {name: body for name, body in MARKER.findall(CONTRACT.read_text())}
     assert blocks, "no <!-- BAKE:NAME --> markers found in plan-markers.md"
     return blocks
 
 
-def test_ultraplan_mirrors_the_canonical_contract():
-    blocks = contract_blocks()
-    skill = normalize(ULTRAPLAN.read_text())
-    for name in ("MARKER_SYNTAX", "TYPE_SEMANTICS"):
-        expected = normalize(blocks[name])
-        assert expected, "empty contract block " + name
-        assert expected in skill, (
-            "drift: BAKE:" + name + " in plan-markers.md is not mirrored in "
-            "skills/ultraplan/SKILL.md — copy the block content verbatim.")
+def test_ultraplan_cites_the_canonical_contract():
+    # The inverse of the prohibition this replaces. Two separate things have to
+    # be true and only one of them is validate_skill.py's business:
+    #
+    #  (a) it VALIDATES — `validate_skill.py` resolves a `skills/<name>/` prefix
+    #      against the SIBLING skill's directory (#159), and the ${...} prefix
+    #      does not defeat that match. CI proves it every run.
+    #  (b) it RESOLVES FOR THE AGENT — a bare repo-relative path does not. The
+    #      authoring agent's cwd is the USER's project, not the plugin root, so
+    #      a citation without ${CLAUDE_PLUGIN_ROOT} validates in CI and then
+    #      dangles in the only place that matters. That is the idiom
+    #      dependency-analysis.md and report-format.md already use for paths an
+    #      agent must actually open.
+    text = ULTRAPLAN.read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md" in text
+    bare = text.count("skills/ultrapowers/references/plan-markers.md")
+    rooted = text.count("${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/references/plan-markers.md")
+    assert bare == rooted, (
+        "a citation of plan-markers.md without ${CLAUDE_PLUGIN_ROOT} will not "
+        "resolve from the agent's cwd")
 
 
-def test_ultraplan_does_not_cross_reference_other_skill_dirs():
-    # validate_skill.py resolves `references/...` mentions against the skill's
-    # OWN directory; a literal cross-skill path would fail validation or dangle.
-    assert "references/plan-markers.md" not in ULTRAPLAN.read_text()
+def test_the_cited_contract_exists_where_the_skill_says_it_does():
+    # The citation is only as good as the file. If plan-markers.md ever moves,
+    # this fails here rather than silently in an authoring session.
+    assert CONTRACT.is_file()
 
 
 def test_ultraplan_pairs_with_writing_plans():
@@ -72,16 +84,17 @@ def test_ultraplan_handoff_analyzes_before_recommending():
         assert lane in text
 
 
-def test_ultraplan_mirrors_the_review_marker_line():
-    # BAKE:MARKER_SYNTAX now includes **Review:** — the existing whole-block
-    # mirror pin above already enforces this verbatim, but pin the marker
-    # itself directly too so a future BAKE-block edit can't silently drop it.
+def test_ultraplan_names_every_marker_the_contract_defines():
+    # The SKILL no longer restates marker semantics, but it must still NAME each
+    # marker — an author who never learns a marker exists will not go read its
+    # contract. The contract half of the pin stays: a BAKE-block edit that drops
+    # **Review:** is still caught.
     blocks = contract_blocks()
     assert "**Review:**" in blocks["MARKER_SYNTAX"]
-    text = normalize(ULTRAPLAN.read_text())
-    assert normalize("**Review:**") in text
-    assert "adversarial" in text
-    assert "lean" in text
+    text = ULTRAPLAN.read_text()
+    for marker in ("**Type:**", "**Depends-on:**", "**Review:**", "**Commutes:**"):
+        assert marker in text, "ultraplan does not name the " + marker + " marker"
+    assert "adversarial" in text and "lean" in text
 
 
 def test_ultraplan_carries_the_commutes_and_resolver_doctrine():

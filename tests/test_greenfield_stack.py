@@ -28,18 +28,27 @@ def test_skill_points_at_the_reference():
     assert "references/greenfield-stack.md" in SKILL.read_text()
 
 
-def test_skill_stays_within_its_pinned_ceiling():
-    # DELEGATES to the single source. This used to hard-code 3038 — a second
-    # copy of a number whose home is tests/test_skill_budget.py — and 0.3.1
-    # raised the canonical one to 3798 without moving this one, so the two
-    # contradicted each other until the next word was added. The obligation
-    # this test was written for (#425 greenfield content lands NET-ZERO, paid
-    # by trimming rather than by raising the cap) was discharged when #425
-    # merged and is recorded in git; freezing an absolute here to re-assert it
-    # forever only guaranteed the copies would drift.
-    import test_skill_budget
-    ceiling = test_skill_budget.CEILINGS["skills/ultraplan/SKILL.md"]
-    assert len(SKILL.read_text().split()) <= ceiling
+# The word-ceiling test that stood here is DELETED (#492), along with
+# tests/test_skill_budget.py, which owned the number it delegated to.
+#
+# The record the deletion is paid with: zero observed instances of a cap
+# preventing bloat, three of it causing harm — a 1000 cap on a 354-word file
+# that bound nothing for months; a cap at ONE word of headroom that made an
+# implementer delete a normative rule to pay an arithmetically impossible
+# budget (run-31, #455); and the same number stated in two files, contradicting
+# itself silently from the moment 0.3.1 merged (the defect this very test was
+# rewritten to fix, #491).
+#
+# The replacement, named so it does not grow back: CAP WHAT IS READ, NOT WHAT
+# IS STORED. `fleet/run-engine.mjs:142` loads `fleet/roles/*.md` at dispatch —
+# the only prose an agent is MADE to read, already capped at 350 words AT THE
+# POINT OF USE (fleet/tests/test_run_engine.mjs). A file ceiling on an
+# authoring document measures storage, not attention, and is satisfiable by
+# moving bytes sideways.
+#
+# The count is not lost, only demoted from a gate to a reading: CI's "Report
+# skill prose sizes" step prints it on every run, and a release commit body
+# records it where the ratchet already lived (#366 Amendment 7).
 
 
 def test_types_gotcha_is_recorded():
