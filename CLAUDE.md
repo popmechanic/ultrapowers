@@ -169,11 +169,15 @@ suite is the verification).
 - **The installed plugin lags the repo.** Editing files here does not change the running plugin until
   `/plugin` re-resolves the new version (interactive terminal only) **and** a new session starts. Skill
   text reloads in-session; hook/manifest changes need a new session.
-- **Session handoffs (this machine only).** At session start, read the newest file in
-  `.claude/ultrapowers/handoffs/` — `ls -t | head -1`, or follow the `LATEST.md` pointer —
-  if the directory exists. **Sort by mtime, never by filename**: handoffs are named for the
-  session they are FOR, so `2026-09-04-*.md` can be older than `2026-08-31-*.md`. `.claude/`
-  is in `.git/info/exclude`, so this is a local operator convention — a fresh clone, a fleet
-  sandbox and CI all correctly find nothing (#469).
+- **Session handoffs are OPT-IN — never read one unless the operator asks.** A session
+  starts from the operator's intention, not from the last session's agenda. Reading a handoff
+  unprompted makes every session a continuation and quietly hands the previous session's
+  priorities the authority to set this one's; the operator said so directly on 2026-08-31,
+  reversing the auto-discovery rule that stood here (#469). When they *do* ask to resume, the
+  notes are in `.claude/ultrapowers/handoffs/` — **sort by mtime, never by filename**, since
+  handoffs are named for the session they are FOR (`2026-09-04-*.md` can be older than
+  `2026-08-31-*.md`). Treat any handoff as *what was true when it was written*: verify before
+  acting on it, and expect a stale one, since nothing prunes them. `.claude/` is in
+  `.git/info/exclude`, so a fresh clone, a fleet sandbox and CI all correctly find nothing.
 - **`superpowers` is a dependency, not vendored.** No local checkout — read its skills from the plugin
   cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).
