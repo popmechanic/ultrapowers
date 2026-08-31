@@ -48,8 +48,13 @@ Entry format (parsed by `scripts/docket_lib.py` — the single source of truth):
 **Est-files:** services/billing/*, lib/webhooks.py
 **Notes:** triage rationale — durable, survives transitions (e.g. "already fixed in main, verify & close")
 **Plan:** docs/superpowers/plans/2026-06-14-stripe-webhook-retry.md
-**Seal:** a1b2c3d4e5f6
 ```
+
+`docket_lib` still parses a `**Seal:**` field and `compile_docket` still
+validates it, because the disposition vocabulary is frozen — but **do not write
+one.** The sealing subsystem was cut in One Driver Phase 0; a `sealed` plan
+parses and is then `BLOCKED` at the gate. `suite` is the default and the right
+choice for this repo's own work. Deleting the residual machinery is #386.
 
 Lifecycle: `triaged → accepted → planned → queued → executed → verified`; any
 non-terminal state → `parked`. Transitions go through `docket_lib.transition`,
@@ -125,11 +130,14 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
 1. **Branch** off the current docket integration line HEAD.
 2. **Dispatch by the entry's recorded `Engine`**, auto-advancing any
    human-in-the-loop checkpoint (see "The exam-gated auto-approve" below):
-   - `ultrapowers` → commit the plan on the docket line and `drive-one` it on the
-     orchestrator (`fleet/RUNBOOK.md` §Live W1 run; the sandbox session runs the
-     `/ultrapowers` §Engine, gate included); the orchestrator's PR/receipt is the
-     gate. For such an entry step 3 reads that gate receipt instead of
-     administering a second gate, and step 4 merges or parks on its verdict.
+   - `ultrapowers` → commit the plan on the docket line, then
+     `node fleet/drive-one.mjs <plan.md> <runId>` on the orchestrator
+     (`fleet/RUNBOOK.md` §Live W1 run). Since 0.3.0 the sandbox runs
+     `fleet/run-main.mjs` — a deterministic driver, gate included. There is no
+     LLM engine session to invoke and no `--engine` flag to pass; One Driver is
+     the only path. The orchestrator's PR/receipt is the gate, so step 3 reads
+     that receipt instead of administering a second gate, and step 4 merges or
+     parks on its verdict.
    - `subagent-driven` → invoke `superpowers:subagent-driven-development` against
      the per-plan branch.
    - `inline` → invoke `superpowers:executing-plans` against the per-plan branch.
@@ -139,12 +147,13 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
    the current checkout) and is exit-code authority:
    - `suite` → `run_acceptance.sh --suite-gate --branch <branch> --base <docket-integration-line-HEAD>`
      — the committed suite (`python3 -m pytest`) run on the branch; exit 0 ⇒ pass.
-     Passing `--base` (the ref the plan branched from) arms the JS-behavioral
-     guard: when the branch changed `skills/ultrapowers/harnesses/*.js`, the gate
-     also runs the harness `.mjs` sims (exit-code + pass-sentinel authority), so a
-     engine-behavioral plan cannot ride a Python-only green (issue #79; since 0.3.0 the engine sims live in fleet/tests/ and ride the pytest suite itself, so the suite-gate covers them without the deleted harness leg). This
-     is the disposition for ultrapowers' own engine/skill/doc work, which authors
-     no held-out exam.
+     This is the disposition for ultrapowers' own engine/skill/doc work, which
+     authors no held-out exam. `--base` (the ref the plan branched from) is still
+     passed, but its JS-behavioral leg is **inert since 0.3.0**: it triggered on
+     `skills/ultrapowers/harnesses/*.js`, a path that no longer exists. The
+     concern it protected (issue #79 — an engine-behavioral plan riding a
+     Python-only green) is now covered by construction, because the engine sims
+     live in `fleet/tests/` and ride the pytest suite itself.
    - `waived` → no gate exists; **park for the operator** at the end gate. Never
      auto-merge unverified work.
 4. **Merge or park** — the deterministic step:
@@ -195,7 +204,8 @@ deterministic side:
 
 The drain widens the set of trusted write-side executors to include the
 committed superpowers executors (`subagent-driven-development`,
-`executing-plans`) alongside the `waves` registry harness. Those are fixed,
+`executing-plans`) alongside the fleet driver (`fleet/run-main.mjs`; the
+`waves` registry harness it replaced was deleted at 0.3.0). Those are fixed,
 audited skills — not orchestration improvised at runtime — and the safety
 guarantee holds regardless of which one wrote a branch: nothing reaches the
 docket integration line, or `main`, without clearing the deterministic suite
