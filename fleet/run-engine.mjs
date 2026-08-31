@@ -1123,13 +1123,19 @@ export async function runEngine({
   if (args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
       lastSuite && lastSuite.passed) {
     phase('Depth-1 Leg')
-    const shallowDir = path.join(runDir, 'shallow')
+    // Under clonesDir on purpose: it is a full repo copy (plus whatever
+    // bootstrapCmd installs), and drive.mjs's evidence pull excludes exactly
+    // `run-*/clones` from the tarball — "never the repo itself" is that
+    // command's whole rule. A sibling directory would ride home in every bundle.
+    const shallowDir = path.join(clonesDir, 'shallow')
     fs.rmSync(shallowDir, { recursive: true, force: true })
     // `file://` is load-bearing: git IGNORES --depth on a plain local path clone
     // (it hardlinks the whole object store), so a path form would silently
-    // certify a second full clone and always agree.
+    // certify a second full clone and always agree. The path is resolved because
+    // a `file://` URL is only a URL when it is absolute (repoDir is resolved for
+    // the same reason); clonesDir arrives from the caller unnormalized.
     const cl = await exec('git', ['clone', '--quiet', '--depth', '1', '--branch',
-      integrationBranch, 'file://' + integ, shallowDir], { cwd: runDir })
+      integrationBranch, 'file://' + path.resolve(integ), shallowDir], { cwd: runDir })
     if (cl.code !== 0) {
       judgmentCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
         tail(cl.stderr || cl.stdout, 300) + ') — the shallow-clone class is unchecked this run')

@@ -85,7 +85,8 @@ function twoCommitRepo(dir, checkScript) {
     'a green leg is silent on the judgment record')
 }
 
-// ── 3. the leg is a real depth-1 clone, not a second full one ───────────────
+// ── 3. the leg is a real depth-1 clone, not a second full one — and it sits
+// under clones/, the one path drive.mjs's evidence pull excludes ─────────────
 // `git clone --depth` is IGNORED on a plain local path (it hardlinks the whole
 // object store), so the `file://` form is load-bearing: without it the leg
 // would certify a full clone and always agree with `tests`.
@@ -96,7 +97,7 @@ function twoCommitRepo(dir, checkScript) {
   const { run } = rig({ repo, runDir, waves: wavesFor('T3'), stub: stubFor('T3'),
                         stamp: 'shallowtree' })
   await run()
-  const shallow = path.join(runDir, 'shallow')
+  const shallow = path.join(runDir, 'clones', 'shallow')
   assert.ok(fs.existsSync(path.join(shallow, '.git', 'shallow')),
     'the leg cloned with a shallow boundary')
   assert.equal(gitSync(['rev-list', '--count', 'HEAD'], shallow), '1',
@@ -117,7 +118,7 @@ function twoCommitRepo(dir, checkScript) {
   // which is what an engine WITHOUT the leg returns — a check that cannot fail.
   assert.strictEqual(report.shallowSuite, null, 'shallowLeg:false skips the leg')
   assert.deepEqual(report.deferredVerification, [])
-  assert.ok(!fs.existsSync(path.join(runDir, 'shallow')), 'and clones nothing')
+  assert.ok(!fs.existsSync(path.join(runDir, 'clones', 'shallow')), 'and clones nothing')
 }
 
 console.log('ALL TESTS PASSED')
