@@ -213,9 +213,11 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
     out = Path(cache_dir).expanduser() / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
+    # #415: the worker's verdict is its envelope, not a transcript turn — pass
+    # the run dir's `workers/` so each slice section carries it.
     (out / "slice.md").write_text(fleet_slice.build_slice(
         fleet_events.render_timeline(events), summary.get("workers") or [],
-        projects_root, budget))
+        projects_root, budget, workers_root=run_dir / "workers"))
     return out
 
 

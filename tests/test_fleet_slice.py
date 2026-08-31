@@ -105,3 +105,170 @@ def test_worker_slice_reports_the_skip_on_stderr(tmp_path, capsys):
     p.write_text('"just a string"\n')
     fleet_slice.worker_slice(p)
     assert "cannot read" in capsys.readouterr().err
+
+
+# ---------- #415: a worker slice must carry the worker's own output ----------
+#
+# `worker_slice` delegated to `harvest_runs.slice_transcript`, whose
+# `SLICE_KEYWORDS` filter was written for the single LLM-orchestrator
+# transcript. Against a WORKER transcript it selects almost at random: across
+# fleet runs 24-32 the nine slices carried 0,6,0,0,1,0,1,0,0 assistant blocks
+# for 77 workers. Every implementer's reasoning and every reviewer's verdict
+# was dropped. The verdict itself does not live in a text block at all — it is
+# the worker's structured envelope — so the repair is two-sided: keep assistant
+# turns, and append `envelope.json`.
+
+def _write_envelope(workers_root, dirname, payload):
+    d = workers_root / dirname
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / "envelope.json"
+    p.write_text(json.dumps(payload))
+    return p
+
+
+def test_worker_slice_keeps_assistant_turns_without_a_keyword(tmp_path):
+    # The defect, minimally: assistant prose carrying none of SLICE_KEYWORDS.
+    p = _write_transcript(tmp_path / "projects", "slug", "s", [
+        ("user", "implement task 3"),
+        ("assistant", "The plan's fixture omits a trailing newline; I added one."),
+    ])
+    out = fleet_slice.worker_slice(p, budget=4000)
+    assert "trailing newline" in out
+    assert "**assistant:**" in out
+
+
+def test_worker_slice_still_keeps_user_turns_and_keyworded_tool_results(tmp_path):
+    # Regression guard: the repair is additive, it does not drop what worked.
+    root = tmp_path / "projects"
+    d = root / "slug"
+    d.mkdir(parents=True)
+    p = d / "s.jsonl"
+    p.write_text("\n".join([
+        json.dumps({"type": "user", "message": {"content": [
+            {"type": "text", "text": "your brief mentions the gate"}]}}),
+        json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "text": "wave 1 complete"}]}}),
+        json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "text": "total 4\ndrwxr-xr-x 2 x x"}]}}),
+    ]) + "\n")
+    out = fleet_slice.worker_slice(p, budget=4000)
+    assert "your brief mentions the gate" in out
+    assert "**tool_result:** wave 1 complete" in out
+    assert "drwxr-xr-x" not in out
+
+
+def test_build_slice_appends_the_worker_envelope(tmp_path):
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    _write_envelope(workers_root, "impl_1", {
+        "session_id": "sess-1",
+        "structured_output": {"verdict": "PASS", "concerns": ["fixture drift"]},
+        "permission_denials": [{"tool": "Bash", "command": "wc -l x"}],
+        "stop_reason": "tool_use", "num_turns": 15, "is_error": False,
+    })
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root, workers_root=workers_root)
+    assert "fixture drift" in md
+    assert "PASS" in md
+
+
+def test_build_slice_envelope_carries_permission_denials(tmp_path):
+    # run-32: confine-denials.jsonl recorded 3 denials; the 14 envelopes
+    # recorded 20. The denial ledger under-reports, so the envelope's copy is
+    # the one a friction lens must see.
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    _write_envelope(workers_root, "review_1_1", {
+        "session_id": "sess-1",
+        "permission_denials": [{"tool": "Bash", "command": "wc -l tests/x.py"},
+                               {"tool": "Bash", "command": "wc -c tests/y.py"}],
+    })
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "review:1:1", "role": "reviewer", "sessionId": "sess-1"}],
+        root, workers_root=workers_root)
+    assert "permission_denials" in md
+    assert "wc -c tests/y.py" in md
+
+
+def test_build_slice_envelope_prefers_structured_output_over_result(tmp_path):
+    # `result` and `structured_output` are near-duplicates (run-32: 107,745
+    # chars combined, ~half of it redundant). Carry one.
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    _write_envelope(workers_root, "impl_1", {
+        "session_id": "sess-1",
+        "result": "RESULTCOPY",
+        "structured_output": {"verdict": "STRUCTUREDCOPY"},
+    })
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root, workers_root=workers_root)
+    assert "STRUCTUREDCOPY" in md
+    assert "RESULTCOPY" not in md
+
+
+def test_build_slice_envelope_falls_back_to_result(tmp_path):
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    _write_envelope(workers_root, "impl_1",
+                    {"session_id": "sess-1", "result": "RESULTCOPY"})
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root, workers_root=workers_root)
+    assert "RESULTCOPY" in md
+
+
+def test_build_slice_envelope_is_budgeted(tmp_path):
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    _write_envelope(workers_root, "integration", {
+        "session_id": "sess-1",
+        "structured_output": {"head": "HEADMARK", "pad": "z" * 60000,
+                              "tail": "TAILMARK"},
+    })
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "integration", "role": "critic", "sessionId": "sess-1"}],
+        root, workers_root=workers_root, envelope_budget=1200)
+    assert "HEADMARK" in md
+    assert "…[elided " in md
+    assert len(md) < 4000
+
+
+def test_build_slice_without_workers_root_is_unchanged(tmp_path):
+    # The parameter is optional: every existing caller and test still works.
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root)
+    assert "## impl:1 (implementer, session sess-1)" in md
+    assert "envelope" not in md
+
+
+def test_build_slice_missing_envelope_is_advisory(tmp_path):
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    md = fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root, workers_root=tmp_path / "nothing-here")
+    assert "## impl:1 (implementer, session sess-1)" in md
+    assert "brief" in md
+
+
+def test_build_slice_unreadable_envelope_reports_on_stderr(tmp_path, capsys):
+    root = tmp_path / "projects"
+    _write_transcript(root, "-clones-task-1", "sess-1", [("user", "brief")])
+    workers_root = tmp_path / "workers"
+    d = workers_root / "impl_1"
+    d.mkdir(parents=True)
+    (d / "envelope.json").write_text("{not json")
+    fleet_slice.build_slice(
+        "tl", [{"label": "impl:1", "role": "implementer", "sessionId": "sess-1"}],
+        root, workers_root=workers_root)
+    assert "envelope" in capsys.readouterr().err
