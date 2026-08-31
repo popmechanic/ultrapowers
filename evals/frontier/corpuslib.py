@@ -171,6 +171,10 @@ SCENARIOS = {
         "4b": {"b.txt": B_TXT.replace("b eight\n", "b eight\nb eight and a half\n"),
                "bin.dat": BIN_DAT[:4] + b"\x00\xffPATCHED" + BIN_DAT[12:]},
     },
+    5: {  # agreed whole-file deletion: both arms report ("clean", None) -> class 1
+        "5a": {"a.txt": None},
+        "5b": {"b.txt": B_TXT.replace("b three\n", "b three (task 5b)\n")},
+    },
 }
 # Wave 3's dict is written as bare file bodies above for readability; normalize.
 SCENARIOS[3] = {tid: {"d.txt": body} for tid, body in SCENARIOS[3].items()}

@@ -36,6 +36,7 @@ FOLD_WAVE = KERNEL / "fold_wave.py"
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(KERNEL))
 sys.path.insert(0, str(KERNEL / "vendor"))
+import classify as classify_mod  # noqa: E402
 import fold_wave  # noqa: E402
 import frontier_fold as ff  # noqa: E402
 import repo_weave as rw  # noqa: E402
@@ -162,6 +163,17 @@ def weave_answer(repo, entry):
             per_path[path] = PathAnswer("binary")
         else:
             per_path[path] = PathAnswer("clean", content.encode())
+
+    # A path a task deleted is absent from the manifest by design
+    # (`repo_weave` keeps no tombstone-only paths), while Arm G reports a
+    # deletion as `("clean", None)`. Emit the same shape for every
+    # wave-touched path the manifest dropped, or an agreed whole-file
+    # deletion reads as an unexplained class 2 (run-34 critic, blocking).
+    touched = set()
+    for _task_id, text in classify_mod.task_patches(entry):
+        touched.update(classify_mod.patch_paths(text))
+    for path in sorted(touched - set(per_path)):
+        per_path[path] = PathAnswer("clean", None)
     return ArmResult(per_path=per_path, complete=complete)
 
 

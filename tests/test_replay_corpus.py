@@ -12,6 +12,7 @@ Offline and deterministic: no network, no model calls, and every byte written
 under the test's own `tmp_path`.
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -28,10 +29,11 @@ REPLAYER = ROOT / "evals" / "frontier" / "replay_corpus.py"
 
 # The fixture corpus's whole class table: wave 1 puts two disjoint files in
 # class 1, wave 2's declared-commutative same-anchor appends land class 3,
-# wave 3's rewrite-inside-a-rewrite lands class 5, and wave 4 adds one more
-# class-1 path plus the binary exclusion. No class 2 anywhere: the fixture
-# corpus is the agreeing case.
-FIXTURE_COUNTS = {1: 3, 2: 0, 3: 1, 4: 0, 5: 1, "binary": 1}
+# wave 3's rewrite-inside-a-rewrite lands class 5, wave 4 adds one more
+# class-1 path plus the binary exclusion, and wave 5's agreed whole-file
+# deletion plus its sibling edit land two more class 1. No class 2 anywhere:
+# the fixture corpus is the agreeing case.
+FIXTURE_COUNTS = {1: 5, 2: 0, 3: 1, 4: 0, 5: 1, "binary": 1}
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +65,7 @@ def test_replay_over_fixture_corpus(replayed):
 def test_class_table_is_exact(replayed):
     _repo, _corpus, results = replayed
     assert results["counts"] == FIXTURE_COUNTS
-    assert results["replayed"] == 4
+    assert results["replayed"] == 5
     assert results["class2"] == []
     assert results["unexplained_class2"] == 0
 
@@ -72,11 +74,13 @@ def test_per_run_and_per_entry_breakdown(replayed):
     _repo, _corpus, results = replayed
     assert results["per_run"] == {corpuslib.FIXTURE_RUN_ID: FIXTURE_COUNTS}
     assert [(e["run"], e["wave"]) for e in results["entries"]] == [
-        (corpuslib.FIXTURE_RUN_ID, w) for w in (1, 2, 3, 4)]
+        (corpuslib.FIXTURE_RUN_ID, w) for w in (1, 2, 3, 4, 5)]
     assert results["entries"][0]["counts"] == {1: 2, 2: 0, 3: 0, 4: 0, 5: 0,
                                                "binary": 0}
     assert results["entries"][3]["counts"] == {1: 1, 2: 0, 3: 0, 4: 0, 5: 0,
                                                "binary": 1}
+    assert results["entries"][4]["counts"] == {1: 2, 2: 0, 3: 0, 4: 0, 5: 0,
+                                               "binary": 0}
 
 
 def test_ride_alongs_ride_along(replayed):
@@ -98,7 +102,7 @@ def test_ride_alongs_ride_along(replayed):
 
 def test_determinism_recheck_reported_per_fold(replayed):
     _repo, _corpus, results = replayed
-    assert results["determinism"] == {"checked": 4, "divergences": []}
+    assert results["determinism"] == {"checked": 5, "divergences": []}
 
 
 # --------------------------------------------------------------------------
@@ -117,7 +121,7 @@ def test_unresolvable_base_sha_is_a_named_skip(replayed, tmp_path):
                 entry.wave_dir, target_is_directory=True)
 
     results = replay_corpus.replay(repo, tmp_path)
-    assert results["replayed"] == 3
+    assert results["replayed"] == 4
     assert len(results["skipped"]) == 1
     skip = results["skipped"][0]
     assert (skip["run"], skip["wave"]) == (corpuslib.FIXTURE_RUN_ID, 2)
@@ -179,7 +183,7 @@ def test_replay_survives_a_path_the_weave_never_reached(replayed, monkeypatch):
     results = replay_corpus.replay(repo, corpus)
 
     assert results["skipped"] == []
-    assert results["replayed"] == 4
+    assert results["replayed"] == 5
     orphans = [row for row in results["class2"] if row["path"] == "never-reached.txt"]
     assert len(orphans) == 1
     assert orphans[0] == {"run": corpuslib.FIXTURE_RUN_ID, "wave": 1,
@@ -195,6 +199,20 @@ def test_replay_survives_a_path_the_weave_never_reached(replayed, monkeypatch):
 # --------------------------------------------------------------------------
 # the verdict rule, exactly as pre-registered
 # --------------------------------------------------------------------------
+
+def test_replay_accepts_relative_paths(replayed, monkeypatch):
+    """The plan's own Task-8 command passes `--repo . --corpus <rel>`; both
+    must resolve before Arm W chdirs and Arm G clones from a temp dir, or
+    every entry skips and the run reports 0 replayed (run-34 critic,
+    blocking)."""
+    repo, corpus, absolute_results = replayed
+    monkeypatch.chdir(Path(repo).parent)
+    results = replay_corpus.replay(Path(repo).name,
+                                   os.path.relpath(corpus, Path(repo).parent))
+    assert results["skipped"] == []
+    assert results["replayed"] == absolute_results["replayed"]
+    assert results["counts"] == absolute_results["counts"]
+
 
 def test_verdict_rule():
     assert replay_corpus.verdict(50, []) == "GO"

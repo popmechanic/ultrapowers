@@ -57,7 +57,7 @@ def test_load_refuses_missing_index(tmp_path):
 def test_fixture_corpus_shape(tmp_path):
     repo, corpus = corpuslib.make_fixture_corpus(tmp_path)
     entries = corpuslib.load_corpus_index(corpus)
-    assert len(entries) == 4 and all(e.mode == "patch" for e in entries)
+    assert len(entries) == 5 and all(e.mode == "patch" for e in entries)
     for e in entries:
         log = (e.wave_dir / "fold_log.jsonl").read_text().splitlines()
         first = json.loads(log[0])
@@ -106,7 +106,7 @@ def test_answer_shapes_are_plain_dataclasses():
 
 def test_fixture_layout_and_index(fixture_corpus):
     repo, corpus, by_wave = fixture_corpus
-    assert sorted(by_wave) == [1, 2, 3, 4]
+    assert sorted(by_wave) == [1, 2, 3, 4, 5]
     base_sha = by_wave[1].base_sha
     for wave, entry in sorted(by_wave.items()):
         assert entry.run_id == corpuslib.FIXTURE_RUN_ID

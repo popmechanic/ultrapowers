@@ -187,7 +187,11 @@ def replay(repo: Path, corpus_root: Path) -> dict:
     Raises `FileNotFoundError` when the root carries no `corpus-index.json` —
     that is not a corpus, and the CLI turns it into a one-line refusal.
     """
-    repo, corpus_root = Path(repo), Path(corpus_root)
+    # Resolve both up front: Arm W chdirs into each wave dir and Arm G runs
+    # `git -C <tempdir> clone <repo>`, so a relative `--repo`/`--corpus`
+    # (the plan's own Task-8 command) would skip 100% of entries
+    # (run-34 critic, blocking).
+    repo, corpus_root = Path(repo).resolve(), Path(corpus_root).resolve()
     entries = corpuslib.load_corpus_index(corpus_root)
 
     rows, skipped = [], []

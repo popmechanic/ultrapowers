@@ -89,6 +89,21 @@ def test_contending_wave_answers_contended(fixture_corpus):
     assert w.complete is False
 
 
+def test_deleted_path_is_answered_clean_none(fixture_corpus):
+    """A whole-file deletion is absent from the weave manifest by design;
+    the arm must still answer it — as `("clean", None)`, Arm G's shape for
+    the same event — or an agreed deletion reads as an unexplained class 2
+    (run-34 critic, blocking)."""
+    repo, _corpus, entries = fixture_corpus
+    w = arm_weave.weave_answer(repo, entries[5])
+
+    assert w.complete is True
+    assert sorted(w.per_path) == ["a.txt", "b.txt"]
+    assert w.per_path["a.txt"].status == "clean"
+    assert w.per_path["a.txt"].content is None
+    assert w.per_path["b.txt"].content == corpuslib.SCENARIOS[5]["5b"]["b.txt"].encode()
+
+
 def test_binary_path_is_answered_binary(fixture_corpus):
     repo, _corpus, entries = fixture_corpus
     w = arm_weave.weave_answer(repo, entries[4])
@@ -110,7 +125,7 @@ def test_binary_path_is_answered_binary(fixture_corpus):
 def test_integrity_check_clean_on_every_entry(fixture_corpus):
     repo, _corpus, entries = fixture_corpus
     assert {w: arm_weave.integrity_check(repo, e) for w, e in entries.items()} == {
-        1: [], 2: [], 3: [], 4: []}
+        1: [], 2: [], 3: [], 4: [], 5: []}
 
 
 def test_integrity_check_flags_a_mutated_patch(fixture_corpus, tmp_path):
@@ -151,7 +166,8 @@ def test_determinism_check_matches_every_entry(fixture_corpus):
         1: {"matches": True, "divergence": None},
         2: {"matches": True, "divergence": None},
         3: {"matches": True, "divergence": None},
-        4: {"matches": True, "divergence": None}}
+        4: {"matches": True, "divergence": None},
+        5: {"matches": True, "divergence": None}}
 
 
 def test_determinism_check_reports_a_conflict_set_mismatch(fixture_corpus, tmp_path):
