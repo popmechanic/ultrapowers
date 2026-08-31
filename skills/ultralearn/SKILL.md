@@ -13,13 +13,21 @@ runs inside Claude Code — no API key, no external calls.
 
 1. **Harvest.** Run the harvester to detect real runs and build local bundles:
    `python3 skills/ultralearn/scripts/harvest_runs.py`
-   KNOWN GAP since 0.3.0 (cutover, review finding 5): driver runs make no
-   `Workflow` tool call, so this detector sees only pre-cutover runs — new
-   fleet runs enter the ledger via the events.jsonl raw layer when #415's
-   harvest lands. Historical harvesting is unaffected.
-   It scans `~/.claude/projects`, detects runs by an actual `Workflow`
-   tool_result (not string mentions), and writes bundles to the gitignored
-   cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` + `slice.md`).
+   **Fleet runs (0.3.0 and later) come from their event log**, not from
+   `~/.claude/projects` — the driver makes no `Workflow` tool call and runs in
+   a sandbox, so the detector below cannot see them:
+   `python3 skills/ultralearn/scripts/harvest_fleet_runs.py --remote fleet-orchestrator.exe.xyz`
+   pulls each evidence tarball, or pass an unpacked run directory as a
+   positional argument. It writes the same `bundle.json` + `slice.md` into the
+   same cache, keyed by the fleet `runId` (`run-30`), so step 2 and step 3 are
+   unchanged. `--run run-30` restricts the pull; `--force` rebuilds a cached
+   bundle. A fleet run directory is one holding an `events.jsonl`; runs 10–23
+   predate it and remain the Workflow-era harvester's (21–23) or the
+   commissioned read's.
+   The Workflow-era detector scans `~/.claude/projects`, detects runs by an
+   actual `Workflow` tool_result (not string mentions), and writes bundles to
+   the gitignored cache `~/.claude/ultralearn/runs/<runId>/` (`bundle.json` +
+   `slice.md`).
    Incremental: a watermark means re-runs only process new sessions.
    Sequential-engine drains (subagent-driven, inline) make no `Workflow`
    calls and are **invisible to this detector by design** — "0 new" there is
