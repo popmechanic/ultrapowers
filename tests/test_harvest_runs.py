@@ -1726,7 +1726,15 @@ def test_collapse_timeline_keeps_a_version_that_recurs_after_a_reset():
 
 def test_a_run_today_dates_to_the_head_plugin_version():
     # Non-self-referential: the expected value comes from git, not from the
-    # function under test. Fails today, returning 0.2.26.
+    # function under test. Fails without the collapse fix, returning 0.2.26.
+    #
+    # Needs real history. A depth-1 clone yields a ONE-row timeline dated at
+    # checkout time, which always precedes `now` — so this assertion would hold
+    # there whether or not `collapse_timeline` exists, and a check that cannot
+    # fail is not a check. Skip rather than pretend.
+    import pytest as _pytest
+    if len(harvest_runs._release_timeline()) < 2:
+        _pytest.skip("shallow clone: no plugin.json history to collapse")
     import json as _json
     import subprocess as _sp
     from datetime import datetime as _dt, timezone as _tz

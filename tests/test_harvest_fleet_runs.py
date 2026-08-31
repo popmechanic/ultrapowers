@@ -121,7 +121,16 @@ def test_bundle_carries_the_lookup_fields_merge_ledger_reads(tmp_path):
     assert b["sessionKind"] == "engine"
 
 
-def test_bundle_dates_itself_from_the_event_log_when_no_version_is_given(tmp_path):
+def test_bundle_dates_itself_from_the_event_log_when_no_version_is_given(tmp_path, monkeypatch):
+    # Hermetic on purpose. `engine_epoch_at` falls back to `_release_timeline()`,
+    # which is real git history — and in a depth-1 CI clone git reports the
+    # boundary commit as introducing every file, so the timeline collapses to a
+    # single entry dated at checkout time, AFTER T0. The walk then breaks on its
+    # first row and returns epoch None. Pin the timeline instead of asking the
+    # clone what its history was.
+    monkeypatch.setattr(hfr.harvest_runs, "_release_timeline",
+                        lambda: (("2026-08-28T10:52:30-07:00", "0.2.26"),
+                                 ("2026-08-29T14:03:52-07:00", "0.3.0")))
     _, b = _bundle(tmp_path)
     assert b["engineVersion"]["basis"] == "home-repo-date"
     assert b["engineVersion"]["asOf"].startswith("2026-")
