@@ -77,6 +77,10 @@ export const IMPLEMENTER_SCHEMA = {
     startHead: { type: 'string' },
   },
 }
+// One severity vocabulary for the whole run (#474): the per-task reviewer and
+// the completeness critic grade defects on the same two-word scale, and the
+// pair is spelled here exactly once. Both schemas point at THIS array.
+export const SEVERITY = Object.freeze(['blocking', 'minor'])
 export const REVIEWER_SCHEMA = {
   type: 'object',
   required: ['verdict', 'issues'],
@@ -84,7 +88,7 @@ export const REVIEWER_SCHEMA = {
     verdict: { enum: ['PASS', 'FIX_REQUIRED'] },
     issues: { type: 'array', items: { type: 'object',
       required: ['severity', 'detail'], properties: {
-        severity: { enum: ['blocking', 'minor'] },
+        severity: { enum: SEVERITY },
         detail: { type: 'string' } } } },
     cannotVerify: { type: 'array', items: { type: 'object',
       required: ['requirement', 'why'], properties: {
@@ -125,7 +129,10 @@ export const CRITIC_SCHEMA = {
   type: 'object',
   required: ['findings'],
   properties: {
-    findings: { type: 'array', items: { type: 'string' } },
+    findings: { type: 'array', items: { type: 'object',
+      required: ['severity', 'detail'], properties: {
+        severity: { enum: SEVERITY },
+        detail: { type: 'string' } } } },
     deferredVerification: { type: 'array', items: { type: 'object',
       required: ['deliverable', 'reason'], properties: {
         deliverable: { type: 'string' },
@@ -1179,7 +1186,8 @@ export async function runEngine({
     // Nothing merged: the tree is at BASE, and a critic told it holds "the
     // final integrated tree" would emit confident findings about the wrong
     // tree (review finding 8). gitVerified is already false on this path.
-    review = { findings: ['no wave merged — completeness review skipped (the tree is at BASE)'],
+    review = { findings: [{ severity: 'blocking',
+                           detail: 'no wave merged — completeness review skipped (the tree is at BASE)' }],
                deferredVerification: [] }
   } else {
     try {
@@ -1219,7 +1227,8 @@ export async function runEngine({
       criticRan = true
     } else {
       judgmentCalls.push('integration review returned no result — the completeness critic died; gitVerified is withheld (fail-closed, as the old attestation path was)')
-      review = { findings: ['integration review did not run — completeness unverified; check the tree before merging'],
+      review = { findings: [{ severity: 'blocking',
+                             detail: 'integration review did not run — completeness unverified; check the tree before merging' }],
                  deferredVerification: [] }
     }
   }

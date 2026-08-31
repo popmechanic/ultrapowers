@@ -85,6 +85,9 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
 // Common canned judgments.
 export const passReview = () => ({ verdict: 'PASS', issues: [] })
 export const cleanCritic = () => ({ findings: [], deferredVerification: [] })
+// #474 — a critic that found something. `findings` are {severity, detail}
+// objects; the shape lives here once so consumers cannot drift apart.
+export const criticWithFindings = (findings) => ({ findings, deferredVerification: [] })
 export const doneImpl = (cwd) => ({
   status: 'DONE', summary: 'sim work done', startHead: gitSync(['rev-parse', 'HEAD'], cwd),
 })
