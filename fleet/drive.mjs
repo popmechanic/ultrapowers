@@ -1099,6 +1099,31 @@ export const driveOne = async ({
           const tipSha = String(tip?.stdout ?? '').trim()
           if (tip?.code === 0 && isSafeSha(tipSha)) fetchedTip = tipSha
           else errors.push(`rev-parse FETCH_HEAD after fetching ${runBranch} failed (code ${tip?.code}) — nothing to push`)
+          // #497: pin the tip to a REAL ref, here, before any later leg can
+          // fail. `FETCH_HEAD` is one file the next fetch overwrites, so a run
+          // whose publish fails is left reachable by nothing at all. That is
+          // not hypothetical: run-33 finished green, its push was refused
+          // (the orchestrator's token has no `workflow` scope and main's
+          // ci.yml had moved under it), and its work sat unreferenced in this
+          // clone — one `reset --hard`, which is the FIRST step of launching
+          // the next run, and a gc from gone. It survived because a human
+          // wrote this ref by hand.
+          //
+          // Deliberately not a branch: `refs/fleet/<runId>` keeps `git branch`
+          // clean and cannot be checked out by accident, while still being a
+          // real ref that gc honours. Failure to write it is recorded and
+          // never fatal — this leg exists to make a LATER failure survivable,
+          // so it must not become a new way for the drive to die.
+          if (fetchedTip) {
+            if (!isSafeBranchName(runId)) {
+              errors.push(`unsafe runId — refusing to write a rescue ref for ${runId}`)
+            } else {
+              const pinned = await exec(`git -C ${repoDir} update-ref refs/fleet/${runId} ${fetchedTip}`)
+              if (pinned?.code !== 0) {
+                errors.push(`could not pin refs/fleet/${runId} to ${fetchedTip} (code ${pinned?.code}) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`)
+              }
+            }
+          }
           for (const receipt of receipts) {
             if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
               errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
