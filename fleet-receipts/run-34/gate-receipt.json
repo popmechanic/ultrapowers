@@ -1,0 +1,68 @@
+{
+  "mode": "gate",
+  "stamp": "run-34",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-run-34/report.json",
+  "branch": "ultra/integration-run-34",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "Real-corpus extraction (plan Task 8, step 2): `corpus_extract.py --evidence ~/fleet-evidence-archive/sandbox-logs --out evals/frontier/corpus` over runs 10-33 (~64 fold rows, 43 patch-input) \u2014 The rescued archive is uncommitted and outside this tree; per-run quirks (branch-input runs 14-23, multiple run dirs per bundle, real in-tarball member layout) are only exercisable against it. The extractor is structurally complete and its synthetic-tarball tests pass. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:manual",
+        "detail": "The GO/NO verdict run and its artifacts: `evals/frontier/corpus/` (committed corpus subset) and `evals/frontier/results/<date>-fold-corpus-validation.md` \u2014 Plan Tasks 7 and 8 are declared manual, laptop-only, post-merge; neither artifact is expected in this tree. Flagged so the gate acknowledges the verdict is still unproduced \u2014 and note the two blocking findings above would corrupt it (spurious NO on any wave with a file deletion) and prevent it (relative `--repo`/`--corpus` skip every entry) if that run were made against this tree as documented."
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "Operator smoke commands (plan lines 342-349) and any direct execution of the replayer CLI or pytest by this reviewer \u2014 Bash execution was denied in this environment partway through the review, so all conclusions here are static reads of the integrated tree. The authoritative suite result (`python3 -m pytest -n auto`, passed) comes from the driver; it does not cover the relative-path or file-deletion paths named in the blocking findings, since no test exercises either. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.UPjoE2TTJ1/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 8/8 workers\\n8 workers [1086 items]\\n\\n........................................................................ [  6%]\\n........................................................................ [ 13%]\\n........................................................................ [ 19%]\\n........................................................................ [ 26%]\\n........................................................................ [ 33%]\\n........................................................................ [ 39%]\\n........................................................................ [ 46%]\\n........................................................................ [ 53%]\\n........................................................................ [ 59%]\\n........................................................................ [ 66%]\\n........................................................................ [ 72%]\\n........................................................................ [ 79%]\\n.......s................................................................ [ 86%]\\n........................................................................ [ 92%]\\n........................................................................ [ 99%]\\n......                                                                   [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n============ 1085 passed, 1 skipped, 3 warnings in 81.73s (0:01:21) ============\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
