@@ -40,5 +40,15 @@ jobs:
       - name: Validate ultradocket skill
         run: python skills/ultrapowers/scripts/validate_skill.py skills/ultradocket
 
+      # Reported, never gated (#492). The word CEILINGS these numbers used to
+      # feed are deleted: a cap on a stored file measures storage, not
+      # attention, and one at a single word of headroom made an implementer
+      # delete a normative rule to pay it. Accretion stays visible here and in
+      # release commit bodies; what is gone is the assert that could hand a
+      # worker an impossible budget. The cap that survives is on what an agent
+      # is MADE to read — fleet/roles/*.md, 350 words, at the point of use.
+      - name: Report skill prose sizes
+        run: wc -w skills/*/SKILL.md
+
       - name: Run tests
         run: python -m pytest tests/ -n auto -v
