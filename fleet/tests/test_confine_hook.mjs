@@ -31,6 +31,34 @@ assert.ok(!within([clone], clone + '-evil/x', clone))
 assert.ok(!within([clone], clone + '/../outside', clone))
 
 // ── bashWriteTargets — the closed denylist's parse ───────────────────────────
+
+// #475 — DATA IS NOT CODE. Six of eleven post-cutover denials were the scan
+// reading a redirect character out of a heredoc body, a quoted string or a
+// glob. Each of these is legitimate in-clone work that used to be denied.
+assert.deepEqual(bashWriteTargets(`echo "a -> b"`), [],
+  'a quoted arrow is text, not a redirect (run-30, reproduced against the shipped hook)')
+assert.deepEqual(bashWriteTargets("cat > f.py <<'PY'\nx = {}\nd = a -> b\nprint(1 > 0)\nPY"), ['f.py'],
+  'the heredoc BODY is data; only the real redirect target survives')
+assert.deepEqual(bashWriteTargets("cat > f.md <<'EOF'\nrun `ls` and see /*/ globs\nEOF"), ['f.md'],
+  'backticks and globs inside a heredoc body are not write targets')
+assert.deepEqual(bashWriteTargets(`echo 'cost > budget'`), [],
+  'single-quoted text is data too')
+
+// THE OTHER DIRECTION — the fix must not buy quiet by going blind. Masking
+// preserves indices and the target is sliced from the ORIGINAL, so a
+// legitimately quoted target is still found. Deleting the span instead would
+// erase the target and turn a false-deny fix into a HOLE.
+assert.deepEqual(bashWriteTargets('echo hi > "/tmp/f"'), ['/tmp/f'],
+  'a QUOTED target is still a target')
+assert.deepEqual(bashWriteTargets("echo hi > '/tmp/f'"), ['/tmp/f'])
+assert.deepEqual(bashWriteTargets('echo hi | tee "/etc/x"'), ['/etc/x'],
+  'a quoted tee target is still a target')
+assert.deepEqual(bashWriteTargets("cat > /tmp/out <<'EOF'\nbody\nEOF"), ['/tmp/out'],
+  'a heredoc does not launder the redirect in front of it')
+assert.deepEqual(bashWriteTargets('echo x > $O'), ['$O'],
+  'an unresolvable expansion in a real target still reaches the deny path')
+assert.deepEqual(bashWriteTargets("echo 'quoted' > /etc/f"), ['/etc/f'],
+  'a quoted ARGUMENT does not hide the redirect that follows it')
 assert.deepEqual(bashWriteTargets('echo hi > out.txt'), ['out.txt'])
 assert.deepEqual(bashWriteTargets('echo hi >> /etc/motd'), ['/etc/motd'])
 assert.deepEqual(bashWriteTargets('echo x>/etc/f'), ['/etc/f'], 'no-space redirection is seen')
@@ -142,6 +170,23 @@ const run = (input, env = {}) => spawnSync('node', [HOOK], {
   assert.equal(deny.status, 0, 'deny uses the JSON decision, exit 0')
   assert.equal(decisionOf(deny), 'deny', 'an out-of-root write is explicitly DENIED')
   assert.match(JSON.parse(deny.stdout).hookSpecificOutput.permissionDecisionReason, /outside the writable roots/)
+  // #475 THE COOPERATIVE MIRROR. probe_confine_live.mjs proves the boundary
+  // holds against a HOSTILE task; nothing proved the shipped hook lets ordinary
+  // work through, so six false denials rode five runs unseen. These are the
+  // reproduced cases, against the real binary rather than the parser.
+  const bash = (command) => decisionOf(run(JSON.stringify({
+    tool_name: 'Bash', tool_input: { command }, cwd: clone })))
+  assert.equal(bash(`echo "a -> b"`), 'allow', 'a quoted arrow is not a redirect (run-30)')
+  assert.equal(bash("cat > notes.py <<'PY'\nd = a -> b\nassert 1 > 0\nPY"), 'allow',
+    'a heredoc body containing redirect characters is data (run-32, 3 of 6 implementers)')
+  assert.equal(bash("cat > r.md <<'EOF'\nsee `ls` and /*/ globs\nEOF"), 'allow',
+    'backticks and globs inside a heredoc body are data (run-28, run-32)')
+  // ...and the boundary is unchanged by all of that.
+  assert.equal(bash('echo hi > "/tmp/escape"'), 'deny', 'a QUOTED out-of-root target still denies')
+  assert.equal(bash("cat > /tmp/escape <<'EOF'\nbody\nEOF"), 'deny',
+    'a heredoc does not launder the redirect in front of it')
+  assert.equal(bash('echo x > $O'), 'deny', 'an unresolvable expansion still denies')
+
   const garbage = run('not json at all')
   assert.equal(garbage.status, 2, 'unparsable input fails CLOSED (exit 2)')
   assert.equal(decisionOf(garbage), 'deny', 'and emits a deny decision too')
