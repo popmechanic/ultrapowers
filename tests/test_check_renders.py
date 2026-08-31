@@ -631,3 +631,131 @@ def test_hand_executed_records_is_a_tuple_of_paths_present_at_head():
     for rel in compile_plan.HAND_EXECUTED_RECORDS:
         assert isinstance(rel, str) and not rel.startswith("/"), rel
         assert (ROOT / rel).is_file(), rel
+
+
+# --------------------------------------------------------------------------- #
+# P4 — process rules in `## Global Constraints` (#441)                         #
+# --------------------------------------------------------------------------- #
+PROCESS_RULE_PLAN = """# P
+
+**Acceptance:** suite — test
+
+## Global Constraints
+
+- Every test must have been observed to fail before its implementation exists.
+- Every new module ships with a test that asserts observable behavior.
+
+### Task 1: A
+
+**Type:** implementation
+**Depends-on:** none
+
+**Files:**
+- Modify: `src/a.py`
+
+- [ ] **Step 1: do it**
+"""
+
+P4_FILES = {"src/a.py": "x = 1\n"}
+
+
+def process_lines(stdout):
+    return [l for l in stdout.splitlines() if l.startswith("ADVISORY process-rule")]
+
+
+def test_process_rule_advisory_flags_an_ordering_rule_in_global_constraints(tmp_path):
+    """#441: the engine forwards this section to every reviewer as its attention
+    lens, and a diff cannot show the order its lines came to exist in. Run-32 put
+    exactly this sentence here and drew 25 cannotVerify entries plus the single
+    deferred:manual ack that parked the run."""
+    repo = git_repo(tmp_path, P4_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(PROCESS_RULE_PLAN)
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    assert "PLAN OK" in r.stdout
+    adv = process_lines(r.stdout)
+    assert len(adv) == 1, adv
+    assert '"Every test must have been observed to fail' in adv[0]
+    assert "(observed-to-fail)" in adv[0]
+    # the fix is named, not just the defect
+    assert "the task's own steps" in adv[0]
+    assert "deferred:manual" in adv[0]
+    # the bullet marker is not part of the quoted sentence
+    assert '"- Every' not in adv[0]
+
+
+def test_process_rule_advisory_is_silent_on_result_claims(tmp_path):
+    """A result-claim is exactly what belongs in this section; only ordering and
+    process language trips the render."""
+    repo = git_repo(tmp_path, P4_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(PROCESS_RULE_PLAN.replace(
+        "- Every test must have been observed to fail before its implementation exists.\n", ""))
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    assert process_lines(r.stdout) == []
+
+
+def test_process_rule_advisory_flags_each_offending_line_once(tmp_path):
+    """One line per offending constraint, not one per matching phrase — a
+    sentence naming two process rules is still one authoring fix."""
+    repo = git_repo(tmp_path, P4_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(PROCESS_RULE_PLAN.replace(
+        "- Every new module ships with a test that asserts observable behavior.",
+        "- Follow TDD: write the failing test first, red-then-green, every task."))
+    r = check(plan, "--renders", "--base", str(repo))
+    adv = process_lines(r.stdout)
+    assert len(adv) == 2, adv
+    # The label is the first phrase in registry order that matches the line, so
+    # a sentence naming three of them still reports one — the author's fix is
+    # the same either way.
+    assert "(red-then-green)" in adv[1]
+
+
+def test_process_rule_advisory_only_reads_the_global_constraints_section(tmp_path):
+    """Ordering language inside a task's own steps is where it BELONGS (ultraplan:
+    result-claims in constraints, ordering in per-task steps) — the render must
+    not flag the thing it is telling authors to do."""
+    repo = git_repo(tmp_path, P4_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(PROCESS_RULE_PLAN.replace(
+        "- Every test must have been observed to fail before its implementation exists.\n", ""
+    ).replace("- [ ] **Step 1: do it**",
+              "- [ ] **Step 1: write the failing test first, and watch it fail**\n"
+              "- [ ] **Step 2: make it pass**"))
+    r = check(plan, "--renders", "--base", str(repo))
+    assert r.returncode == 0
+    assert process_lines(r.stdout) == []
+
+
+def test_process_rule_advisory_does_not_change_the_frozen_verdict(tmp_path):
+    """Additive: the frozen `--check` output is byte-identical without --renders,
+    and the exit code is untouched with them."""
+    repo = git_repo(tmp_path, P4_FILES)
+    plan = tmp_path / "p.md"
+    plan.write_text(PROCESS_RULE_PLAN)
+    plain = check(plan)
+    assert plain.returncode == 0 and plain.stdout.strip() == "PLAN OK"
+    assert check(plan, "--renders", "--base", str(repo)).returncode == 0
+
+
+def test_process_rule_advisory_is_silent_on_canonical_fixtures():
+    for name in CANONICAL:
+        plan = ROOT / "evals/fixtures" / name / "plan.md"
+        base = ROOT / "evals/fixtures" / name / "project"
+        p = check(plan, "--renders", "--base", str(base))
+        assert p.returncode == 0 and "process-rule" not in p.stdout, name
+
+
+def test_process_rule_phrases_is_an_explicit_list_of_compiled_patterns():
+    """A short explicit list like HAND_EXECUTED_RECORDS, never a heuristic: a
+    heuristic over this section would flag ordinary result-claims."""
+    assert isinstance(compile_plan.PROCESS_RULE_PHRASES, tuple)
+    labels = [label for _, label in compile_plan.PROCESS_RULE_PHRASES]
+    assert len(labels) == len(set(labels))
+    for pattern, label in compile_plan.PROCESS_RULE_PHRASES:
+        assert hasattr(pattern, "search"), label
+        assert isinstance(label, str) and label
+    assert "red-then-green" in labels

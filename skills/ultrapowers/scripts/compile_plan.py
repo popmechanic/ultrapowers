@@ -1522,6 +1522,64 @@ def _render_unverifiable(tasks, ctx):
 ADVISORY_RENDERS.append(("unverifiable-from-sandbox", _render_unverifiable))
 
 
+# P4 — process rules in `## Global Constraints` (#441). The engine forwards
+# this section verbatim to every reviewer as its attention lens
+# (`fleet/run-engine.mjs`'s globalConstraintsBlock), and a reviewer's only
+# evidence is a diff — which cannot show the order in which its lines came to
+# exist. A rule about HOW the work was produced therefore has no answer there,
+# and honest reviewers escalate it: run-32 put "every test must have been
+# observed to fail before its implementation exists" in this section and drew
+# 25 `cannotVerify` entries plus the single `deferred:manual` ack that was the
+# sole reason the run parked instead of auto-approving.
+#
+# ultraplan already carries the prose half ("State what must be true of the
+# result… not the order it was produced in"); this is the machine half. Like
+# HAND_EXECUTED_RECORDS it is a short explicit phrase list, never a heuristic —
+# an ordinary result-claim ("every new module has a test") must not trip it.
+PROCESS_RULE_PHRASES = (
+    (re.compile(r"\bred[-\s]then[-\s]green\b", re.I), "red-then-green"),
+    (re.compile(r"\bfailing tests?\s+(?:first|before)\b", re.I), "failing-test-first"),
+    (re.compile(r"\b(?:writ\w+)\s+(?:the\s+|a\s+)?tests?\s+first\b", re.I), "tests-first"),
+    (re.compile(r"\bobserved to fail\b", re.I), "observed-to-fail"),
+    (re.compile(r"\bbefore\s+(?:its|the|any)\s+implementation\b", re.I), "before-implementation"),
+    (re.compile(r"\btest[-\s]driven\b", re.I), "test-driven"),
+    (re.compile(r"\bTDD\b", re.I), "tdd"),
+    (re.compile(r"\bcommit\s+(?:cadence|order|sequence)\b", re.I), "commit-cadence"),
+    (re.compile(r"\bin\s+(?:this|the following)\s+order\b", re.I), "explicit-ordering"),
+)
+PROCESS_RULE_CLIP = 90
+
+
+def _clip(s, n=PROCESS_RULE_CLIP):
+    # A constraints section is a bullet list; quote the sentence, not its marker.
+    s = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", " ".join(s.split()))
+    return s if len(s) <= n else s[:n - 1].rstrip() + "\u2026"
+
+
+def _render_process_rules(tasks, ctx):
+    body = parse_global_constraints(ctx["plan_path"].read_text())
+    lines = []
+    for raw in body.splitlines():
+        text = raw.strip()
+        if not text:
+            continue
+        for pattern, label in PROCESS_RULE_PHRASES:
+            if pattern.search(text):
+                lines.append(
+                    'ADVISORY process-rule: `## Global Constraints` says "%s" '
+                    "(%s) \u2014 a rule about how the work was produced, which no "
+                    "reviewer can check against a diff. State the result here and "
+                    "put the ordering in the task's own steps; left in this "
+                    "section it becomes a cannotVerify entry per task and a "
+                    "deferred:manual ack that parks the run."
+                    % (_clip(text), label))
+                break
+    return lines
+
+
+ADVISORY_RENDERS.append(("process-rule", _render_process_rules))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("plan", type=Path)

@@ -1098,6 +1098,66 @@ export async function runEngine({
     break
   }
 
+  // ── the depth-1 leg (#465) ────────────────────────────────────────────────
+  // The gate is the operator's single pre-merge checkpoint, and until this leg
+  // it certified against a clone the merge target does not match: the sandbox
+  // clone carries full history, `actions/checkout@v4` defaults to fetch-depth
+  // 1, and git reports a shallow boundary commit as INTRODUCING EVERY FILE —
+  // so `git log -- <path>` returns the tip commit for any path that exists.
+  // Run-32 gated green (7/7 checks, 979 tests) and CI went red on exactly that;
+  // a human diagnosed and patched it, which is the work the single-gate promise
+  // is supposed to absorb. The class is wider than the instance: any test
+  // coupled to repository state — history, tags, remotes, tree cleanliness —
+  // passes here and fails on main.
+  //
+  // Cost is one suite pass (~90 s at 16 vCPU), paid only when there is a green
+  // adopted tree to re-certify. A red leg becomes a `deferred:manual` item, not
+  // a failed `tests` field: the driver's full-clone run really did pass, and a
+  // depth-1 degradation can legitimately be correct behaviour in a consumer
+  // clone (#465's own reading of `_release_timeline` returning None there). Which
+  // it is, is a human judgment — so it reaches the gate as the one ack type that
+  // is NOT pre-authorized (run-main's ackDecision), and the run parks on real
+  // evidence instead of surprising the operator after the merge.
+  let shallowSuite = null
+  let shallowDeferred = null
+  if (args.shallowLeg !== false && waveMerges.some((m) => m && m.status === 'MERGED') &&
+      lastSuite && lastSuite.passed) {
+    phase('Depth-1 Leg')
+    const shallowDir = path.join(runDir, 'shallow')
+    fs.rmSync(shallowDir, { recursive: true, force: true })
+    // `file://` is load-bearing: git IGNORES --depth on a plain local path clone
+    // (it hardlinks the whole object store), so a path form would silently
+    // certify a second full clone and always agree.
+    const cl = await exec('git', ['clone', '--quiet', '--depth', '1', '--branch',
+      integrationBranch, 'file://' + integ, shallowDir], { cwd: runDir })
+    if (cl.code !== 0) {
+      judgmentCalls.push('depth-1 leg: cloning ' + integrationBranch + ' at depth 1 failed (' +
+        tail(cl.stderr || cl.stdout, 300) + ') — the shallow-clone class is unchecked this run')
+    } else {
+      if (bootstrapCmd) {
+        const b = await sh(bootstrapCmd, shallowDir)
+        if (b.code !== 0) {
+          judgmentCalls.push('depth-1 leg: bootstrap failed in the shallow clone (exit ' + b.code +
+            ') — a red leg below may be a missing dependency rather than a history coupling')
+        }
+      }
+      const s = await sh(testCmd, shallowDir)
+      shallowSuite = { depth: 1, command: testCmd, passed: s.code === 0,
+                       output: tail(s.stdout + s.stderr, 2000) }
+      log('depth-1 leg: ' + (shallowSuite.passed ? 'green' : 'RED'))
+      if (!shallowSuite.passed) {
+        const why = 'the suite passed on the full clone and failed on a depth-1 clone of ' +
+          integrationBranch + ' — CI checks out at fetch-depth 1, so the merge target will not ' +
+          'reproduce this run\'s green. Either a test is coupled to repository history (fix the ' +
+          'test) or the degradation is correct for a shallow consumer (ack it): ' +
+          tail(shallowSuite.output, 800)
+        judgmentCalls.push('depth-1 leg: ' + why)
+        shallowDeferred = { deliverable: 'depth-1 clone of ' + integrationBranch,
+                            reason: 'manual', why }
+      }
+    }
+  }
+
   // ── completeness critic — read-only judgment; the driver already ran the
   // suite (per adopted wave) and derives gitVerified below from receipts. ────
   phase('Integration Review')
@@ -1202,7 +1262,9 @@ export async function runEngine({
   // gitVerified = receipts intact AND the completeness review actually ran
   // (spec §3.1's redefinition, plus review finding 2's fail-closed condition).
   const gitVerified = anyWaveMerged && tipMatches && ancestryMisses.length === 0 && criticRan
-  const deferredVerification = Array.isArray(review.deferredVerification) ? review.deferredVerification : []
+  const deferredVerification = (Array.isArray(review.deferredVerification)
+    ? review.deferredVerification : [])
+    .concat(shallowDeferred ? [shallowDeferred] : [])
 
   if (cannotVerifyItems.length && !anyWaveMerged) {
     for (const c of cannotVerifyItems) {
@@ -1250,6 +1312,7 @@ export async function runEngine({
     dependencyEdges,
     tasks: taskResults,
     tests,
+    shallowSuite,
     acceptance,
     baseline,
     waveMerges,

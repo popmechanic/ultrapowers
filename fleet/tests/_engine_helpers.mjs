@@ -50,7 +50,10 @@ export function provision({ repo, runDir, taskIds }) {
 // and returns the canned judgment reply; withPatchCapture then captures the
 // real diff, exactly as in production.
 export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash check.sh',
-                      acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim' }) {
+                      acceptance = { mode: 'suite', reason: 'sim' }, stamp = 'sim',
+                      // Extra runEngine args merged last (the depth-1 leg's
+                      // shallowLeg knob, and whatever the next one is).
+                      extraArgs = {} }) {
   const taskIds = waves.flat().map((t) => t.id)
   const { base, clonesDir, patchesDir, integ } = provision({ repo, runDir, taskIds })
   const patchBase = { current: base }
@@ -67,6 +70,7 @@ export function rig({ repo, runDir, waves, edges = [], stub, testCmd = 'bash che
       integrationBranch: 'ultra/integration-' + stamp,
       dependencyEdges: edges.map(([a, b]) => a + ' -> ' + b),
       patchInput: patchesDir,
+      ...extraArgs,
     },
     agent,
     parallel: (thunks) => Promise.all(thunks.map((t) => t())),
