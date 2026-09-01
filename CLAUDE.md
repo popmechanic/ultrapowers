@@ -2,10 +2,12 @@
 
 ## Purpose & vision
 
-ultrapowers is an alternative execution engine for **superpowers**, the popular
-Claude Code skill for software-engineering automation. Where superpowers runs an
-approved plan sequentially, ultrapowers offers a parallel path: it compiles the plan
-into dependency-ordered waves and executes them on Claude Code's native
+ultrapowers authors a plan and then executes it in parallel. It started as an
+alternative execution engine for **superpowers**, the popular Claude Code skill for
+software-engineering automation, and since #390 it owns the authoring end too
+(`ultrawrite`). Where a sequential executor works a plan one task at a time,
+ultrapowers compiles it into dependency-ordered waves and executes them on Claude
+Code's native
 [Workflows](https://code.claude.com/docs/en/workflows) feature, which orchestrates
 parallelized subagents at scale across isolated git worktrees.
 
@@ -17,10 +19,8 @@ ambitious work approachable for less-technical operators: ultrapowers is built f
 large, complex tasks that reward parallelism and independent verification.
 
 This file is for agents **developing the plugin**; end-user docs are in `README.md`.
-ultrapowers extends (does not fork) superpowers — **LIFTED by the operator 2026-08-28**
-(#243 grilling; #366 Amendment 5). The new posture — one owned authoring skill, the
-practice-skill dependencies dropped rather than vendored — lands with **#390**; until it
-does, this rule still describes the code but no longer describes the decision.
+The plugin owns plan authoring via `ultrawrite` since #390; superpowers is an optional
+companion, not a dependency.
 
 ## Commands
 
@@ -30,7 +30,7 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers   # vali
 python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # compile a marked plan to its waves
 ```
 
-- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultraplan`, then `pytest tests/` (which bridges every `fleet/tests/test_*.mjs`, the engine sims included).
+- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultrawrite`, then `pytest tests/` (which bridges every `fleet/tests/test_*.mjs`, the engine sims included).
 
 ## Layout
 
@@ -38,8 +38,9 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   the plan, launch the fleet), `scripts/`, `references/`. **The engine lives in
   `fleet/run-engine.mjs` since 0.3.0** (Amendment 10: models never run git); its
   judgment prompts are plain files in `fleet/roles/*.md` — one copy, no bake step.
-- `skills/ultraplan/` — plan-authoring markers (`Type`/`Depends-on`/`Interfaces`); pairs with
-  `superpowers:writing-plans`. (Also `skills/ultradocket/`.)
+- `skills/ultrawrite/` — the owned plan-authoring skill (the claims-v1 grammar: six body
+  slots, contracts signed and edges derived); it replaced the superpowers authoring
+  invocation at #390. (Also `skills/ultradocket/`.)
 - `hooks/session_start.sh` — injects the plan-routing rule into every session.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
 - `docs/superpowers/{specs,intents,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
@@ -65,8 +66,8 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - **Brainstorm vs wayfind:** multi-session + foggy + many open decisions → chart a
   wayfinder map (decision tickets labeled `wayfinder:*`); a single effort you can spec
   in one sitting → `superpowers:brainstorming` as usual. Layering: wayfinder charts
-  programs; superpowers owns every effort underneath — a map's destination is a spec
-  that feeds writing-plans + ultraplan + /ultrapowers unchanged.
+  programs; a map's destination is a spec that feeds ultrawrite + /ultrapowers
+  unchanged.
 - **Ticket ownership = label:** `wayfinder:grilling|research|prototype` tickets run their
   named mattpocock method — no superpowers ceremony fires (they produce decisions, not
   code); `wayfinder:task` and any code-producing work drops into the normal superpowers
@@ -120,9 +121,9 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 
 ## How features are built here
 
-Brainstorm → spec in `docs/superpowers/specs/` → `superpowers:writing-plans` +
-`ultrapowers:ultraplan` markers → plan in `docs/superpowers/plans/` → execute (subagent-driven,
-or `/ultrapowers` itself) → PR. Every spec gets an **adversarial trim review** before operator
+Brainstorm → spec in `docs/superpowers/specs/` → `ultrapowers:ultrawrite` → plan in
+`docs/superpowers/plans/` → execute (subagent-driven, or `/ultrapowers` itself) → PR.
+Every spec gets an **adversarial trim review** before operator
 review — a fresh-context subagent proposing the trimmed version (dispatch brief in
 `skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec (or its
 companion record, where one exists — see `2026-08-28-one-driver-answers.md`) carries a
@@ -157,9 +158,10 @@ fails to parse — caught live on sitting 2's drain plan).
 - **Judgment prompts are data files.** `fleet/roles/*.md` (≤350 words each, pinned by
   the happy-path engine sim) are read at dispatch by `fleet/run-engine.mjs` — the single
   copy; the pre-0.3.0 bake/re-bake convention and its drift pin are deleted with
-  `waves.js`. `ultraplan/SKILL.md` still mirrors `references/plan-markers.md`, and the
-  execution-handoff rubric is still shared between `hooks/session_start.sh` and
-  `ultraplan/SKILL.md` (pinned by `tests/test_recommendation_rubric.py`).
+  `waves.js`. `references/plan-markers.md` is the runtime half only (its authoring rules
+  were deleted at #390), and the execution-handoff rubric is still shared between
+  `hooks/session_start.sh` and `ultrawrite/SKILL.md` (pinned by
+  `tests/test_recommendation_rubric.py`).
 - **Fleet engine sims ride the pytest suite.** `fleet/tests/test_*.mjs` are run by
   `tests/test_fleet_suite.py` (sentinel `ALL TESTS PASSED`, 120 s per file); the old
   `run_acceptance.sh --suite-gate` harness leg is inert since 0.3.0 (its
@@ -180,5 +182,7 @@ fails to parse — caught live on sitting 2's drain plan).
   `2026-08-31-*.md`). Treat any handoff as *what was true when it was written*: verify before
   acting on it, and expect a stale one, since nothing prunes them. `.claude/` is in
   `.git/info/exclude`, so a fresh clone, a fleet sandbox and CI all correctly find nothing.
-- **`superpowers` is a dependency, not vendored.** No local checkout — read its skills from the plugin
-  cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).
+- **`superpowers` is an optional companion, not a dependency (#390).** Plan authoring is
+  `ultrawrite`'s; brainstorming and the practice skills are still worth reaching for when the
+  operator has them installed. There is no local checkout and nothing is vendored — read those
+  skills from the plugin cache (`~/.claude/plugins/cache/.../superpowers/<ver>/`).
