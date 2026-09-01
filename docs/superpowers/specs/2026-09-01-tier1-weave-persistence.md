@@ -42,14 +42,16 @@ the sole durable record; blobs never enter it; `FOLD_LOG.md`'s self-sufficiency 
    `frontier/weave/weave-events.jsonl` beside the manifest (`FOLD_LOG.md` pins exactly
    three log event types; non-merge facts ride sidecars, per the `fold_stats.json`
    precedent).
-4. **The live invariant + the data it collects:** whenever a fold seeds, the engine's
-   existing replay self-check extends with one assertion — the seeded result's visible
-   tree equals the fresh-derivation tree. On mismatch: **use the fresh result** (the
-   fold log's authority is never forked), and record a `divergence` sidecar event carrying
-   both visible-tree shas. Divergences are the measured corpus for the later-tier
-   authority decision; zero divergences proves the seed is pure plumbing. K1
-   order-independence is untouched either way — permutations run over one shared base,
-   seeded or not.
+4. **The live invariant + the data it collects — shadow form (plan refinement of the
+   reviewed draft; same pick, less plumbing):** the live fold path is byte-for-byte
+   unchanged — fresh derivation drives every wave, so `rehydrate`, mid-wave `resolve`
+   epochs, and the replay self-check need no fallback machinery at all. When the manifest
+   offers a seed, the fold ALSO runs seeded **in memory, as a shadow**, and compares
+   visible trees (and, on non-clean folds, conflict path sets). Identical → `seeded`
+   sidecar event; different → `divergence` event carrying both visible-tree shas.
+   Divergences are the measured corpus for the later-tier authority decision; zero
+   divergences proves the seed pure plumbing before it ever drives a merge. K1
+   order-independence is untouched — permutations run over one shared base.
 5. **Scope: within-run.** The weave dir lives in the run dir (rides the evidence pull).
    Cross-run reuse — publishing blobs to the orchestrator store under the layering rule —
    is a §5 operator decision, not designed here.
