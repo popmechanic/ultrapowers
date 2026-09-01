@@ -1,4 +1,4 @@
-// fleet/tests/test_race.mjs — #511 attempt racing v1, the launch verb.
+// fleet/tests/test_race.mjs — #511 attempt racing v1: the launch and judge verbs.
 //
 // A race is K whole runs of one committed plan, driven concurrently from one
 // process. What has to be true before any of that is worth measuring: the
@@ -7,24 +7,39 @@
 // per-run options come off `drive-one.mjs`'s seam rather than a second
 // hand-typed copy of the drive constants.
 //
-// No live drive, no network, no git remote: `driveOne` and every git
-// subprocess are injected, as in test_drive_one.mjs.
+// The judge half: the ordered rubric decides mechanically over pre-existing
+// per-run artifacts (gate-read, its detail, the run's own store), it names WHICH
+// stage decided — the #511 dial that keeps n=1 from being over-read as "the
+// rubric is good" — and it appends its verdict to the manifest without touching
+// the dials that were pre-registered before any result existed.
+//
+// No live drive, no network, no git remote: `driveOne`, every git subprocess and
+// the sqlite store read are injected, as in test_drive_one.mjs.
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { REPO_DIR, buildDriveOptions, parseArgs } from '../drive-one.mjs'
 import {
   DIALS,
+  STAGES,
   allocateRuns,
+  gateReadPath,
+  judgeRace,
   launchRace,
   main,
+  parseJudgeArgs,
   parseLaunchArgs,
   raceManifestPath,
   readRaceManifest,
   runIdFor,
+  scorecardLine,
   usage,
 } from '../race.mjs'
+
+const RACE_MJS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'race.mjs')
 
 let passed = 0
 const ok = (label) => {
@@ -396,6 +411,379 @@ const makeDeps = ({ drive, narrate } = {}) => {
   assert.throws(() => parseLaunchArgs(['p.md']), /expected exactly <plan\.md> <runId>/)
   assert.throws(() => parseLaunchArgs(['p.md', 'race 99']), /#211/)
   ok('--k and --race-dir are race flags; every other flag is drive-one passthrough')
+}
+
+// ===========================================================================
+// The judge verb — `race.mjs judge <raceId> [--force]`
+// ===========================================================================
+//
+// Read-only over artifacts the drives already wrote. The rubric is ordered and
+// mechanical, so what these legs pin is not "the winner looked best" but that
+// each stage is reached only when the one above it tied, and that the verdict
+// says WHICH stage decided (spec §Measurement: never read "zero ties" as
+// rubric quality — name the stage).
+
+// A trimmed MergeableStore shape, as test_status.mjs uses: [tables, values],
+// every node [value, hlc, hash]. The judge reads it through `runEvents`.
+const stamped = (v) => [v, 'P0Q-hlc', 12345]
+
+// A run's store: two ordinary events, `fixRounds` events carrying the engine's
+// `fix:<taskId>:<iter>` worker label, and one decoy from a DIFFERENT run in the
+// same store — the per-run count must not absorb a sibling's fix rounds.
+const storeFor = (runId, fixRounds) => {
+  const events = {
+    [`${runId}:01AAA`]: stamped({ kind: stamped('engine:phase'), phase: stamped('Wave 1'), ts: stamped(1), runId: stamped(runId) }),
+    [`${runId}:01AAB`]: stamped({ kind: stamped('worker:start'), label: stamped('impl:1'), ts: stamped(2), runId: stamped(runId) }),
+    'other-run:01AAZ': stamped({ kind: stamped('worker:start'), label: stamped('fix:9:1'), ts: stamped(9), runId: stamped('other-run') }),
+  }
+  for (let i = 0; i < fixRounds; i += 1) {
+    events[`${runId}:01AB${i}`] =
+      stamped({ kind: stamped('worker:start'), label: stamped(`fix:${i + 1}:1`), ts: stamped(3 + i), runId: stamped(runId) })
+  }
+  return [[{ events: stamped(events), runs: stamped({}) }, {}], 'hlc', 0]
+}
+
+const prFor = (runId, number) => ({
+  number,
+  url: `https://github.com/acme/fleet/pull/${number}`,
+  draft: false,
+  branch: `ultra/integration-${runId}`,
+})
+
+// Stage a whole race from the real launch verb, then lay down exactly the
+// per-run artifacts the spec names. A `null` spec means that drive never wrote
+// a gate read at all — the not-terminal case the judge refuses over.
+let raceSeq = 0
+const stageRace = async (specs) => {
+  raceSeq += 1
+  const raceId = `race-2${raceSeq}0`
+  const evidenceDir = scratch(`ev-judge-${raceSeq}`)
+  const { deps } = makeDeps()
+  const { manifest } = await launchRace(
+    [
+      'docs/plan.md',
+      raceId,
+      '--k',
+      String(specs.length),
+      '--evidence-dir',
+      evidenceDir,
+      '--race-dir',
+      path.join(TMP, `rd-${raceSeq}`),
+    ],
+    deps,
+  )
+  const stores = {}
+  manifest.runs.forEach((run, i) => {
+    const spec = specs[i]
+    if (spec === null) return
+    // `read` is EXACTLY drive.mjs's gate read; `detail` is its sibling triage file.
+    fs.writeFileSync(
+      path.join(evidenceDir, `gate-read-${run.runId}.json`),
+      `${JSON.stringify(
+        {
+          o1: spec.status === 'gate-green',
+          spendObservational: { reported: spec.reported ?? null, ledger: spec.ledger ?? null },
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    fs.writeFileSync(
+      path.join(evidenceDir, `gate-read-${run.runId}.detail.json`),
+      `${JSON.stringify(
+        {
+          runId: run.runId,
+          status: spec.status,
+          elapsedMs: spec.elapsedMs ?? 60_000,
+          pullRequest: prFor(run.runId, 100 + i),
+        },
+        null,
+        2,
+      )}\n`,
+    )
+    stores[path.join(run.dbDir, 'fleet.db')] = storeFor(run.runId, spec.fixRounds)
+  })
+  const judgeDeps = {
+    readStoreJson: (dbPath) => {
+      if (!(dbPath in stores)) throw new Error(`test: no store fixture for ${dbPath}`)
+      return stores[dbPath]
+    },
+  }
+  return { raceId, evidenceDir, manifest, judgeDeps, args: [raceId, '--evidence-dir', evidenceDir] }
+}
+
+// --- (j) refusal until every run is terminal; --force scores the reporters ---
+
+{
+  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 510_000 },
+    null, // the race process died mid-drive: no gate read will ever appear
+    { status: 'gate-green', fixRounds: 1, ledger: 400_000, reported: 410_000 },
+  ])
+  const missing = `${raceId}-b`
+
+  assert.throws(
+    () => judgeRace(args, judgeDeps),
+    (error) => {
+      assert.match(error.message, /refuses/)
+      assert.ok(error.message.includes(missing), error.message)
+      assert.ok(error.message.includes(gateReadPath(evidenceDir, missing)), error.message)
+      assert.match(error.message, /--force/)
+      return true
+    },
+  )
+  // A refused judge writes nothing: no verdict may reach the manifest.
+  assert.equal(readRaceManifest(evidenceDir, raceId).verdict, undefined)
+
+  const verdict = judgeRace([...args, '--force'], judgeDeps)
+  // The absentee is scored, and it is an automatic loss — it can never win.
+  assert.deepEqual(verdict.scorecard[missing], {
+    runId: missing,
+    status: 'no-record',
+    fixRounds: null,
+    tokens: null,
+    tokenSource: null,
+    elapsedMs: null,
+    pr: null,
+    outcome: 'loser',
+  })
+  assert.equal(verdict.winner, `${raceId}-c`)
+  assert.equal(verdict.decidingStage, STAGES.tokens)
+  assert.deepEqual(Object.keys(verdict.scorecard), [`${raceId}-a`, missing, `${raceId}-c`])
+  ok('(j) judge refuses while a gate-read is missing; --force scores reporters and marks the rest no-record losses')
+}
+
+// --- (k) stage 1: the gate-green filter beats everything else ---------------
+
+{
+  // The green run is the WORST on both later stages: only the filter can pick it.
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'parked', fixRounds: 0, ledger: 100_000, reported: 100_000 },
+    { status: 'gate-green', fixRounds: 4, ledger: 900_000, reported: 900_000 },
+    { status: 'unknown', fixRounds: 0, ledger: 100_000, reported: 100_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, `${raceId}-b`)
+  assert.equal(verdict.decidingStage, STAGES.filter)
+  assert.match(STAGES.filter, /gate-green/)
+  assert.deepEqual(Object.values(verdict.scorecard).map((e) => e.outcome), ['loser', 'winner', 'loser'])
+  ok('(k) the sole gate-green run beats parked and failed drives; decidingStage is the filter')
+}
+
+// --- (l) stage 2: fewest fix: events, only among the greens -----------------
+
+{
+  // b wins on tokens by a mile and loses anyway: stage 2 is reached first.
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 0, ledger: 800_000, reported: 800_000 },
+    { status: 'gate-green', fixRounds: 2, ledger: 100_000, reported: 100_000 },
+    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, `${raceId}-a`)
+  assert.equal(verdict.decidingStage, STAGES.fixRounds)
+  assert.match(STAGES.fixRounds, /fix rounds/)
+  // The count is per-run: the decoy `fix:9:1` event of `other-run` never lands.
+  assert.equal(verdict.scorecard[`${raceId}-a`].fixRounds, 0)
+  assert.equal(verdict.scorecard[`${raceId}-b`].fixRounds, 2)
+  ok('(l) among greens the fewest fix:-labeled events wins; decidingStage names the fix-round stage')
+}
+
+// --- (m) stage 3: fewest tokens, and the like-with-like ledger fallback -----
+
+{
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 1, ledger: 700_000, reported: 10 },
+    { status: 'gate-green', fixRounds: 1, ledger: 300_000, reported: 999_999 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, `${raceId}-b`)
+  assert.equal(verdict.decidingStage, STAGES.tokens)
+  assert.match(STAGES.tokens, /tokens/)
+  assert.equal(verdict.scorecard[`${raceId}-a`].tokens, 700_000)
+  assert.equal(verdict.scorecard[`${raceId}-a`].tokenSource, 'ledger')
+  assert.equal(verdict.scorecard[`${raceId}-b`].tokens, 300_000)
+  ok('(m) among fix-round ties the fewest spendObservational.ledger tokens wins')
+}
+
+{
+  // One null ledger: comparing 300_000 against nothing is not a comparison, so
+  // the WHOLE field falls back to `reported` — which reverses the winner.
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 1, ledger: null, reported: 200_000 },
+    { status: 'gate-green', fixRounds: 1, ledger: 300_000, reported: 900_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, `${raceId}-a`)
+  assert.equal(verdict.decidingStage, STAGES.tokens)
+  assert.deepEqual(
+    Object.values(verdict.scorecard).map((e) => [e.tokens, e.tokenSource]),
+    [[200_000, 'reported'], [900_000, 'reported']],
+  )
+  ok('(m) one null ledger falls the whole field back to reported tokens, flagged in every scorecard entry')
+}
+
+// --- (n) stage 4: lexicographic runId, stated as the tie-break --------------
+
+{
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 500_000 },
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 500_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, `${raceId}-a`)
+  assert.ok(`${raceId}-a` < `${raceId}-b`, 'the tie-break is lexicographic, not positional')
+  assert.equal(verdict.decidingStage, STAGES.tieBreak)
+  assert.match(STAGES.tieBreak, /lexicographic/)
+  ok('(n) a full tie is broken by lexicographic runId, and the verdict says so')
+}
+
+// --- (o) zero greens: the race FAILED, no winner, K PRs to close ------------
+
+{
+  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
+    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
+    { status: 'running', fixRounds: 3, ledger: 2_000, reported: 2_000 },
+    { status: 'unknown', fixRounds: 1, ledger: 3_000, reported: 3_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.equal(verdict.winner, null)
+  assert.equal(verdict.decidingStage, STAGES.failed)
+  assert.match(STAGES.failed, /FAILED/)
+  assert.deepEqual(Object.values(verdict.scorecard).map((e) => e.outcome), ['loser', 'loser', 'loser'])
+
+  const { deps, lines } = makeDeps()
+  await main(['judge', ...args], { ...deps, ...judgeDeps })
+  const printed = lines.join('\n')
+  assert.match(printed, /FAILED/)
+  assert.match(printed, /merge nothing/)
+  for (const run of readRaceManifest(evidenceDir, raceId).runs) {
+    assert.ok(printed.includes(`ultra/integration-${run.runId}`), `the operator needs every PR branch: ${printed}`)
+  }
+  ok('(o) zero greens is a FAILED race: no winner, and all K PR branches are printed for the operator to close')
+}
+
+// --- (p) the verdict is APPENDED: the pre-registered dials stay byte-identical
+
+{
+  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 0, ledger: 100_000, reported: 100_000 },
+    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
+  ])
+  const file = raceManifestPath(evidenceDir, raceId)
+  const before = fs.readFileSync(file, 'utf8')
+  const beforeManifest = JSON.parse(before)
+
+  const verdict = judgeRace(args, judgeDeps)
+
+  const after = fs.readFileSync(file, 'utf8')
+  const afterManifest = JSON.parse(after)
+  // Byte-identical, not merely deep-equal: the dials block IS the pre-registration.
+  // The one byte the append may add to it is JSON's own key separator; every
+  // other byte of the block has to survive the rewrite untouched.
+  const dialsBytes = (text, end) => text.slice(text.indexOf('"dials"'), text.indexOf(end)).replace(/,$/, '')
+  assert.equal(dialsBytes(after, '\n  "verdict"'), dialsBytes(before, '\n}\n'))
+  assert.ok(before.includes(dialsBytes(after, '\n  "verdict"')), 'the dials block must be a verbatim substring of both')
+  assert.deepEqual(afterManifest.dials, JSON.parse(JSON.stringify(DIALS)))
+  // ...and nothing else the launch pre-registered moved either.
+  const { verdict: appended, ...rest } = afterManifest
+  assert.deepEqual(rest, beforeManifest)
+  assert.deepEqual(appended, verdict)
+  assert.deepEqual(Object.keys(verdict), ['winner', 'decidingStage', 'scorecard'])
+  ok('(p) the verdict is appended to race-<raceId>.json and every pre-registered dial stays byte-identical')
+}
+
+// --- (q) the scorecard is keyed by runId and names status/fix rounds/tokens --
+
+{
+  const { raceId, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 2, ledger: 640_000, reported: 650_000, elapsedMs: 3_960_000 },
+    { status: 'parked', fixRounds: 5, ledger: 120_000, reported: 130_000, elapsedMs: 1_800_000 },
+  ])
+  const verdict = judgeRace(args, judgeDeps)
+  assert.deepEqual(verdict.scorecard, {
+    [`${raceId}-a`]: {
+      runId: `${raceId}-a`,
+      status: 'gate-green',
+      fixRounds: 2,
+      tokens: 640_000,
+      tokenSource: 'ledger',
+      elapsedMs: 3_960_000,
+      pr: prFor(`${raceId}-a`, 100),
+      outcome: 'winner',
+    },
+    [`${raceId}-b`]: {
+      runId: `${raceId}-b`,
+      status: 'parked',
+      fixRounds: 5,
+      tokens: 120_000,
+      tokenSource: 'ledger',
+      elapsedMs: 1_800_000,
+      pr: prFor(`${raceId}-b`, 101),
+      outcome: 'loser',
+    },
+  })
+  assert.equal(
+    scorecardLine(verdict.scorecard[`${raceId}-a`]),
+    `${raceId}-a: winner status=gate-green fix-rounds=2 tokens=640000 (ledger) pr=#100 ultra/integration-${raceId}-a`,
+  )
+  ok('(q) the scorecard is keyed by runId; each entry names its drive status, fix rounds and tokens')
+}
+
+// --- (r) the CLI entry: the printout the operator actually adopts from ------
+
+{
+  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
+    { status: 'gate-green', fixRounds: 1, ledger: 700_000, reported: 700_000, elapsedMs: 4_020_000 },
+    { status: 'gate-green', fixRounds: 0, ledger: 800_000, reported: 800_000, elapsedMs: 3_600_000 },
+    { status: 'parked', fixRounds: 0, ledger: 10_000, reported: 10_000, elapsedMs: 600_000 },
+  ])
+  const { deps, lines } = makeDeps()
+  const { verdict } = await main(['judge', ...args], { ...deps, ...judgeDeps })
+  assert.equal(verdict.winner, `${raceId}-b`)
+  assert.equal(verdict.decidingStage, STAGES.fixRounds)
+
+  assert.equal(lines[0], `race ${raceId}: winner ${raceId}-b — decided by ${STAGES.fixRounds}`)
+  assert.deepEqual(lines.slice(1, 4), Object.values(verdict.scorecard).map(scorecardLine))
+  assert.equal(lines.at(-1), `verdict appended to ${raceManifestPath(evidenceDir, raceId)}`)
+  // Every contestant gets a line, winner and losers alike.
+  for (const runId of Object.keys(verdict.scorecard)) {
+    assert.ok(lines.some((line) => line.startsWith(`${runId}:`)), `${runId} has no scorecard line`)
+  }
+  assert.ok(!lines.join('\n').includes('fake-token'), 'the token must never be printed')
+  ok('(r) `judge <raceId>` prints the winner, the deciding stage and every runId’s scorecard line')
+}
+
+// --- (r2) the refusal is a non-zero exit of the real process, not a log line -
+
+{
+  const { raceId, evidenceDir } = await stageRace([
+    { status: 'gate-green', fixRounds: 0, ledger: 100_000, reported: 100_000 },
+    null,
+  ])
+  // No injection at all here: fixtures on disk, no drive, no network, no git,
+  // and the refusal lands before any store read, so nothing calls sqlite3.
+  const proc = spawnSync('node', [RACE_MJS, 'judge', raceId, '--evidence-dir', evidenceDir], { encoding: 'utf8' })
+  assert.equal(proc.status, 1, proc.stdout + proc.stderr)
+  assert.match(proc.stderr, /refuses/)
+  assert.ok(proc.stderr.includes(`${raceId}-b`), proc.stderr)
+  assert.equal(readRaceManifest(evidenceDir, raceId).verdict, undefined)
+  ok('(r2) the CLI exits non-zero on a missing gate-read, naming the run that never reported')
+}
+
+// --- judge-arg parsing ------------------------------------------------------
+
+{
+  const parsed = parseJudgeArgs(['race-99', '--force', '--evidence-dir', '/tmp/ev'])
+  assert.deepEqual(parsed, { raceId: 'race-99', force: true, evidenceDir: '/tmp/ev' })
+  assert.equal(parseJudgeArgs(['race-99']).force, false)
+  assert.equal(parseJudgeArgs(['race-99']).evidenceDir, '/home/exedev/fleet-evidence')
+  assert.throws(() => parseJudgeArgs([]), /expects exactly <raceId>/)
+  assert.throws(() => parseJudgeArgs(['race-99', 'race-98']), /expects exactly <raceId>/)
+  assert.throws(() => parseJudgeArgs(['race-99', '--bogus', 'x']), /unknown flag --bogus/)
+  assert.throws(() => parseJudgeArgs(['race-99', '--evidence-dir']), /--evidence-dir needs a value/)
+  assert.match(usage(), /judge <raceId> \[--force\]/)
+  ok('judge takes exactly <raceId> plus --force/--evidence-dir; anything else refuses with the usage line')
 }
 
 fs.rmSync(TMP, { recursive: true, force: true })

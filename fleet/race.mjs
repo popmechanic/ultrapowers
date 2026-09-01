@@ -2,6 +2,7 @@
 // fleet/race.mjs — #511 attempt racing v1: one committed plan, K whole runs.
 //
 //   node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]
+//   node fleet/race.mjs judge  <raceId> [--force] [--evidence-dir DIR]
 //
 // Racing is COMPOSITION, not modification: no engine file changes. The launch
 // verb allocates K non-colliding run identities, clones the checkout K times at
@@ -19,10 +20,11 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { driveOne } from './drive.mjs'
-import { buildDriveOptions, parseArgs } from './drive-one.mjs'
+import { DEFAULTS, buildDriveOptions, parseArgs } from './drive-one.mjs'
+import { runEvents } from './status.mjs'
 
 // K = 3 for the first race (#511 operator decision); the suffix alphabet is
 // the only ceiling on K.
@@ -48,7 +50,8 @@ export const DIALS = Object.freeze({
 })
 
 export const usage = () =>
-  'usage: node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]'
+  'usage: node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]\n' +
+  '       node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]'
 
 // Every git call the race makes (rev-parse, clone, checkout) goes through this
 // one seam, so the tests need no remote, no clone and no checkout.
@@ -188,6 +191,191 @@ export const launchRace = async (
   return { manifest, results }
 }
 
+// ===========================================================================
+// judge — the mechanical comparator
+// ===========================================================================
+//
+// Read-only over artifacts the K drives already wrote; it never calls `gh`,
+// never merges and never closes. Its one write is the verdict appended to the
+// manifest. Adoption stays the operator's, driven by the printout.
+//
+// TERMINAL means the run's `gate-read-<runId>.json` exists: green, parked and
+// failed drives all write it unconditionally, so its absence means no record
+// will ever appear for that run (spec review finding 7). `--force` is the
+// crashed-launch escape.
+
+// The ordered rubric, named. Which stage decided is a pre-registered dial —
+// the verdict says it out loud precisely so a race with zero ties is not
+// misread as evidence the rubric is good (§Measurement, n=1 honesty).
+export const STAGES = Object.freeze({
+  filter: 'stage 1 — drive status gate-green filter',
+  fixRounds: 'stage 2 — fewest fix rounds',
+  tokens: 'stage 3 — fewest tokens',
+  tieBreak: 'stage 4 — lexicographic runId',
+  failed: 'no run reached gate-green — race FAILED',
+})
+
+export const gateReadPath = (evidenceDir, runId) => path.join(evidenceDir, `gate-read-${runId}.json`)
+export const gateDetailPath = (evidenceDir, runId) => path.join(evidenceDir, `gate-read-${runId}.detail.json`)
+
+const readJsonIfPresent = (file) => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null)
+
+// The sqlite hop is a seam for the same reason status.mjs makes it one: the
+// suite has no store to open. Same table, same query.
+export const sqliteStoreJson = (dbPath) => {
+  const proc = spawnSync('sqlite3', [dbPath, 'SELECT store FROM tinybase LIMIT 1'], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (proc.status !== 0) {
+    throw new Error(`race: cannot read store at ${dbPath}: ${(proc.stderr || `sqlite3 exit ${proc.status}`).trim()}`)
+  }
+  return JSON.parse(proc.stdout)
+}
+
+// The engine labels every fix-round implementer `fix:<taskId>:<iter>`, and
+// nothing else in the event stream carries that prefix. Counting labelled
+// events rather than distinct rounds is deliberate: the measure is comparative
+// and every run emits the same events per round, so the order it induces IS
+// the fix-round order.
+export const FIX_LABEL_PREFIX = 'fix:'
+export const countFixRounds = (storeJson, runId) =>
+  runEvents(storeJson, runId).filter((row) => String(row.label ?? '').startsWith(FIX_LABEL_PREFIX)).length
+
+export const parseJudgeArgs = (argv) => {
+  const positional = []
+  let force = false
+  let evidenceDir = DEFAULTS.evidenceDir
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]
+    if (arg === '--force') {
+      force = true
+      continue
+    }
+    if (arg === '--evidence-dir') {
+      const value = argv[i + 1]
+      if (value === undefined || value.startsWith('--')) {
+        throw new Error(`race: judge: --evidence-dir needs a value\n${usage()}`)
+      }
+      evidenceDir = value
+      i += 1
+      continue
+    }
+    if (arg.startsWith('--')) throw new Error(`race: judge: unknown flag ${arg}\n${usage()}`)
+    positional.push(arg)
+  }
+  const [raceId, ...extra] = positional
+  if (!raceId || extra.length) throw new Error(`race: judge expects exactly <raceId>\n${usage()}`)
+  return { raceId, force, evidenceDir }
+}
+
+const noRecordEntry = (runId) => ({
+  runId,
+  status: 'no-record',
+  fixRounds: null,
+  tokens: null,
+  tokenSource: null,
+  elapsedMs: null,
+  pr: null,
+  outcome: 'loser',
+})
+
+// A missing number sorts as the worst, never the best: an unmeasurable
+// contestant must not win a stage by being unmeasurable.
+const worstIfNull = (n) => (typeof n === 'number' ? n : Infinity)
+
+export const scorecardLine = (entry) =>
+  `${entry.runId}: ${entry.outcome} status=${entry.status} fix-rounds=${entry.fixRounds ?? 'n/a'} ` +
+  `tokens=${entry.tokens ?? 'n/a'} (${entry.tokenSource ?? 'n/a'}) ` +
+  `pr=${entry.pr ? `#${entry.pr.number} ${entry.pr.branch}` : '(none)'}`
+
+// APPENDED, never rewritten: the manifest round-trips through JSON in the same
+// two-space form it was written in and gains exactly one key, so the
+// pre-registered `dials` block comes back out byte-identical.
+const appendVerdict = (evidenceDir, raceId, manifest, verdict) => {
+  manifest.verdict = verdict
+  fs.writeFileSync(raceManifestPath(evidenceDir, raceId), `${JSON.stringify(manifest, null, 2)}\n`)
+  return verdict
+}
+
+export const judgeRace = (argv, { readStoreJson = sqliteStoreJson } = {}) => {
+  const { raceId, force, evidenceDir } = parseJudgeArgs(argv)
+  const manifest = readRaceManifest(evidenceDir, raceId)
+
+  const contestants = manifest.runs.map((run) => ({
+    run,
+    read: readJsonIfPresent(gateReadPath(evidenceDir, run.runId)),
+    detail: readJsonIfPresent(gateDetailPath(evidenceDir, run.runId)) ?? {},
+  }))
+  const absent = contestants.filter((c) => c.read === null)
+  const reporters = contestants.filter((c) => c.read !== null)
+
+  if (absent.length > 0 && !force) {
+    throw new Error(
+      `race: judge ${raceId} refuses — not terminal: ` +
+        absent.map((c) => `${c.run.runId} (no ${gateReadPath(evidenceDir, c.run.runId)})`).join(', ') +
+        '\nwait for the gate read, or pass --force to score the runs that reported and mark the rest no-record',
+    )
+  }
+
+  // Like with like (rubric stage 3): the ledger is the meter, but one null
+  // ledger among the reporters would compare a real number against nothing, so
+  // the WHOLE field falls back to `reported` and every entry says which meter
+  // it used. Absentees sit outside this — they have no gate read at all.
+  const tokenSource = reporters.every((c) => typeof c.read?.spendObservational?.ledger === 'number')
+    ? 'ledger'
+    : 'reported'
+
+  const scorecard = {}
+  for (const { run, read, detail } of contestants) {
+    if (read === null) {
+      scorecard[run.runId] = noRecordEntry(run.runId)
+      continue
+    }
+    const tokens = read?.spendObservational?.[tokenSource]
+    scorecard[run.runId] = {
+      runId: run.runId,
+      status: detail.status ?? 'unknown',
+      fixRounds: countFixRounds(readStoreJson(path.join(run.dbDir, 'fleet.db')), run.runId),
+      tokens: typeof tokens === 'number' ? tokens : null,
+      tokenSource,
+      elapsedMs: typeof detail.elapsedMs === 'number' ? detail.elapsedMs : null,
+      pr: detail.pullRequest ?? null,
+      outcome: 'loser',
+    }
+  }
+
+  const entries = Object.values(scorecard)
+  // Stage 1 is a hard cut, not a sort. It already subsumes "gate PASS and no
+  // blocking critic finding": a blocking critic decision refuses approval
+  // before the shim can green the run (spec review findings 1 and 15).
+  let pool = entries.filter((entry) => entry.status === 'gate-green')
+  if (pool.length === 0) {
+    // Merge nothing. Evidence still harvests; the operator closes the K PRs.
+    return appendVerdict(evidenceDir, raceId, manifest, { winner: null, decidingStage: STAGES.failed, scorecard })
+  }
+
+  // The deciding stage is the first one that narrows the field to one — the
+  // later stages are never even consulted once it has.
+  let decidingStage = pool.length === 1 ? STAGES.filter : null
+  for (const [stage, measure] of [
+    [STAGES.fixRounds, (entry) => worstIfNull(entry.fixRounds)],
+    [STAGES.tokens, (entry) => worstIfNull(entry.tokens)],
+  ]) {
+    if (decidingStage) break
+    const best = Math.min(...pool.map(measure))
+    pool = pool.filter((entry) => measure(entry) === best)
+    if (pool.length === 1) decidingStage = stage
+  }
+  if (!decidingStage) {
+    pool = [pool.slice().sort((a, b) => a.runId.localeCompare(b.runId))[0]]
+    decidingStage = STAGES.tieBreak
+  }
+
+  pool[0].outcome = 'winner'
+  return appendVerdict(evidenceDir, raceId, manifest, { winner: pool[0].runId, decidingStage, scorecard })
+}
+
 export const main = async (argv = process.argv.slice(2), deps = {}) => {
   const [verb, ...rest] = argv
   const { log = console.log } = deps
@@ -200,6 +388,26 @@ export const main = async (argv = process.argv.slice(2), deps = {}) => {
       log(`${run.runId}: port=${run.port} db=${run.dbDir} repo=${run.repoDir} report=${results[i]?.reportPath ?? '(none)'}`)
     })
     return { manifest, results }
+  }
+  if (verb === 'judge') {
+    const { raceId, evidenceDir } = parseJudgeArgs(rest)
+    const verdict = judgeRace(rest, deps)
+    const entries = Object.values(verdict.scorecard)
+    if (verdict.winner) {
+      log(`race ${raceId}: winner ${verdict.winner} \u2014 decided by ${verdict.decidingStage}`)
+    } else {
+      log(`race ${raceId}: ${verdict.decidingStage}; merge nothing`)
+    }
+    for (const entry of entries) log(scorecardLine(entry))
+    if (!verdict.winner) {
+      // The judge never calls `gh`: this printout IS the adoption instruction.
+      log(
+        'close these PRs by hand: ' +
+          entries.map((e) => (e.pr ? `${e.runId} #${e.pr.number} ${e.pr.branch}` : `${e.runId} (no PR)`)).join(', '),
+      )
+    }
+    log(`verdict appended to ${raceManifestPath(evidenceDir, raceId)}`)
+    return { manifest: readRaceManifest(evidenceDir, raceId), verdict }
   }
   throw new Error(`race: unknown verb ${verb ?? '(none given)'}\n${usage()}`)
 }
