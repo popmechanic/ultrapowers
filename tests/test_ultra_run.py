@@ -67,9 +67,11 @@ def test_happy_path_receipt(tmp_path):
     assert receipt["ok"] is True
     assert all(s["ok"] for s in receipt["stages"])
     # The surviving stages, in order. ('install' — the Workflow-harness copy —
-    # died at 0.3.0 with waves.js; the engine is fleet/run-engine.mjs, code.)
+    # died at 0.3.0 with waves.js; the engine is fleet/run-engine.mjs, code.
+    # 'superpowers-compat' died at #390: the driver depends on no superpowers
+    # install, so there is no contract left to check.)
     assert [s["stage"] for s in receipt["stages"]] == [
-        "fleet-run", "git-repo", "worktree-probe", "superpowers-compat",
+        "fleet-run", "git-repo", "worktree-probe",
         "compile", "test-command", "dirty-baseline", "base-branch"]
     assert receipt["stages"][0]["detail"] == "fleet run run-test"
     run_dir = repo / ".claude/ultrapowers/run-t1"
@@ -712,3 +714,8 @@ def test_unset_fleet_run_refuses_before_any_other_stage(tmp_path, value):
     assert "`/ultrapowers` runs only inside a fleet sandbox" in detail
     assert "launch `drive-one` on the orchestrator" in detail
     assert not (repo / ".claude/ultrapowers/run-t1").exists()
+
+
+def test_driver_carries_no_superpowers_coupling():
+    # #390: the driver never resolves, checks, or invokes superpowers again.
+    assert "superpowers" not in RUN.read_text()

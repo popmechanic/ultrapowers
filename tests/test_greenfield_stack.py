@@ -5,8 +5,8 @@ fixture; this is the one place they are defined."""
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-REF = ROOT / "skills/ultraplan/references/greenfield-stack.md"
-SKILL = ROOT / "skills/ultraplan/SKILL.md"
+REF = ROOT / "skills/ultrawrite/references/greenfield-stack.md"
+SKILL = ROOT / "skills/ultrawrite/SKILL.md"
 
 TEST_CMD = "bunx tsc --noEmit && bun test"
 BOOTSTRAP_CMD = "bun install"

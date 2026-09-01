@@ -3,9 +3,8 @@
 
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 fleet-run (the sandbox env contract), git-repo check, worktree-capability
-probe, superpowers compatibility, plan compile, test-command derivation,
-committed-workflow install, dirty baseline, and baseBranch from the launched
-checkout.
+probe, plan compile, test-command derivation, committed-workflow install,
+dirty baseline, and baseBranch from the launched checkout.
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
 contract: the orchestrator reads it instead of re-deriving the choreography
@@ -343,13 +342,9 @@ def main(argv=None):
                  failure=r.stderr):
         return bail()
 
-    # Superpowers compatibility: non-zero means a contract token is missing —
-    # the orchestrator surfaces the human gate; the driver just fails closed.
-    r = sh([sys.executable, str(HERE / "check_superpowers_compat.py")], cwd=root)
-    if not stage("superpowers-compat", r.returncode == 0,
-                 success="contract verified against the enabled superpowers",
-                 failure=r.stdout + r.stderr):
-        return bail()
+    # (The external-plugin compatibility stage lived here until #390 — this
+    # plugin owns its authoring skill now, so there is no outside contract
+    # left to check and no resolver to run.)
 
     # The state dir self-ignores (content `*`) so every run dir is structurally
     # invisible to git in any repo — gate_check's clean-tree check depends on

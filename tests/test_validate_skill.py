@@ -15,9 +15,22 @@ def test_ultrapowers_skill_validates():
     code, out = run(ROOT / "skills/ultrapowers")
     assert code == 0, out
 
-def test_ultraplan_skill_validates():
-    code, out = run(ROOT / "skills/ultraplan")
+def test_ultrawrite_skill_validates():
+    code, out = run(ROOT / "skills/ultrawrite")
     assert code == 0, out
+
+
+def test_ci_validates_every_shipped_skill():
+    # A skill dropped from CI is a skill whose references rot unnoticed; #390
+    # retired ultraplan and added ultrawrite, so derive the list, never type it.
+    ci = (ROOT / ".github/workflows/ci.yml").read_text()
+    shipped = sorted(d.name for d in (ROOT / "skills").iterdir()
+                     if (d / "SKILL.md").is_file())
+    assert shipped == ["ultradocket", "ultralearn", "ultrapowers", "ultrawrite"]
+    for name in shipped:
+        assert f"validate_skill.py skills/{name}\n" in ci, \
+            f".github/workflows/ci.yml does not validate skills/{name}"
+    assert "ultraplan" not in ci
 
 def test_missing_description_fails(tmp_path):
     (tmp_path / "SKILL.md").write_text("---\nname: x\n---\nbody\n")

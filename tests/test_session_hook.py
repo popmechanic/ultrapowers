@@ -1,6 +1,6 @@
 """The SessionStart routing hook: the deterministic half of plan routing.
 
-The ultraplan skill description makes layering-onto-writing-plans LIKELY; the
+The ultrawrite skill description makes authoring-with-ultrawrite LIKELY; the
 hook makes it RELIABLE by injecting the rule into every session's context.
 These tests pin the hook config shape, the script's output, and the sharpened
 trigger description so none of the three legs regresses silently."""
@@ -29,8 +29,11 @@ def test_session_start_script_emits_the_routing_rule():
                        capture_output=True, text=True)
     assert p.returncode == 0, p.stderr
     out = p.stdout
-    assert "ultrapowers:ultraplan" in out
-    assert "superpowers:writing-plans" in out
+    assert "ultrapowers:ultrawrite" in out
+    # #390 cutover: ultrawrite OWNS plan bodies, so rule 1 names it alone — the
+    # writing-plans co-invocation sentence (and the ultraplan skill) are gone.
+    assert "ultraplan" not in out
+    assert "superpowers:writing-plans" not in out
     assert "/ultrapowers <plan-path>" in out
     assert "subagent-driven-development" in out   # the three-option handoff
     assert "executing-plans" in out
@@ -60,12 +63,13 @@ def _path():
     return os.environ.get("PATH", "/usr/bin:/bin:/usr/local/bin")
 
 
-def test_ultraplan_description_triggers_on_every_plan():
+def test_ultrawrite_description_triggers_on_every_plan():
     # The description is the probabilistic trigger: it must fire at the
     # plan-writing MOMENT, not only when /ultrapowers was already chosen.
-    frontmatter = (ROOT / "skills/ultraplan/SKILL.md").read_text().split("---")[1]
-    assert "EVERY implementation plan" in frontmatter
-    assert "superpowers:writing-plans" in frontmatter
+    frontmatter = (ROOT / "skills/ultrawrite/SKILL.md").read_text().split("---")[1]
+    assert "ANY implementation plan" in frontmatter
+    # The external dependency is named as RETIRED, never as a co-invocation.
+    assert "superpowers:writing-plans" not in frontmatter
 
 
 def test_session_start_recommends_by_analysis_not_reflex():

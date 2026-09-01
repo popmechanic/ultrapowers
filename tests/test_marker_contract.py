@@ -1,7 +1,8 @@
 """plan-markers.md is the single source of truth for the parallel-execution
 marker contract. These tests pin its vocabulary and the fixture that exercises
 every marker shape. Sibling test files keep the consumers (compiler reference,
-authoring skill, orchestrator, report format) from drifting."""
+orchestrator, report format) from drifting. Since #390 this file carries the
+RUNTIME half only; authoring lives in skills/ultrawrite/SKILL.md."""
 import pathlib
 import re
 
@@ -29,8 +30,8 @@ def test_contract_defines_both_markers_and_all_types():
 
 def test_contract_review_marker_lives_in_marker_syntax_block():
     # The Review marker (#87) is documented as an extension of the existing
-    # MARKER_SYNTAX block, not a new BAKE block — that keeps the existing
-    # mirror pin (test_ultraplan_mirrors_the_canonical_contract) authoritative.
+    # MARKER_SYNTAX block, not a new BAKE block — with the ultraplan mirror
+    # retired (#390), this block IS the authoritative statement of the marker.
     blocks = contract_blocks()
     syntax = blocks["MARKER_SYNTAX"]
     assert "**Review:**" in syntax
@@ -40,8 +41,8 @@ def test_contract_review_marker_lives_in_marker_syntax_block():
 
 def test_contract_commutes_marker_lives_in_marker_syntax_block():
     # `**Commutes:**` is documented as an extension of the existing
-    # MARKER_SYNTAX block (same discipline as **Review:**), so the mirror pin
-    # in test_ultraplan_skill.py carries it into the authoring skill too.
+    # MARKER_SYNTAX block (same discipline as **Review:**) — one block the
+    # compiler's own vocabulary is read against, not a second source of truth.
     blocks = contract_blocks()
     syntax = blocks["MARKER_SYNTAX"]
     assert "**Commutes:**" in syntax
@@ -99,10 +100,32 @@ def test_fixture_covers_every_marker_shape():
     assert "Modify: `a.txt`" in p
 
 
-def test_contract_defines_executor_variance():
+# #390 cutover: plan-markers.md is now the RUNTIME half only. The authoring
+# half moved to skills/ultrawrite/SKILL.md, so the sections that addressed the
+# plan author must be gone from this file — not merely reworded.
+DELETED_AUTHORING_SECTIONS = (
+    "## Executor variance",
+    "## Authoring rules that complement the markers",
+)
+
+
+def test_contract_no_longer_carries_the_authoring_half():
     text = CONTRACT.read_text()
-    assert "## Executor variance" in text
-    assert "sequential executor" in text.lower()
+    for heading in DELETED_AUTHORING_SECTIONS:
+        assert heading not in text, \
+            f"plan-markers.md still carries the authoring-half section {heading!r}"
+    # The retired authoring skill is not named anywhere in the runtime contract.
+    assert "ultraplan" not in text
+
+
+def test_contract_keeps_the_runtime_half_intact():
+    text = CONTRACT.read_text()
+    for heading in ("## The worktree-pure task contract", "## Marker syntax",
+                    "## Type semantics (dispositions)",
+                    "## Classification heuristics (unmarked plans)",
+                    "## Compile-time obligations", "## Files grammar",
+                    "## Interfaces grammar"):
+        assert heading in text, f"plan-markers.md lost runtime section {heading!r}"
 
 
 RELEASE_PATTERNS = ("git push", "git checkout main", "git merge", "ssh", "scp",

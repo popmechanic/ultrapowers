@@ -4,12 +4,12 @@
     "name": "Marcus Estes",
     "email": "marcus@vibes.diy"
   },
-  "description": "ultrapowers: autonomous parallel execution for Superpowers plans, on an exe.dev fleet you provision.",
+  "description": "ultrapowers: authors plans with ultrawrite and executes them autonomously in parallel, on an exe.dev fleet you provision.",
   "plugins": [
     {
       "name": "ultrapowers",
       "source": "./",
-      "description": "ultrapowers client — runs on an exe.dev fleet you provision (parallel waves in a sandbox, per-task review, orchestrator-opened PR); no local engine",
+      "description": "ultrapowers client — owns plan authoring (ultrawrite) and runs on an exe.dev fleet you provision (parallel waves in a sandbox, per-task review, orchestrator-opened PR); no local engine",
       "version": "0.3.1"
     }
   ]

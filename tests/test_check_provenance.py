@@ -218,3 +218,17 @@ def test_missing_plan_file_is_a_usage_error(tmp_path):
     proc = _run(tmp_path / "nope.md", gh)
     assert proc.returncode == 1
     assert "no such plan" in proc.stderr
+
+
+def test_claim_that_is_only_its_provenance_tag_refuses(tmp_path):
+    # A Claim whose whole operator sentence is the tag that closes it strips to
+    # "", and `"" in body` is always True — so before the guard this signed off
+    # vacuously against a #489 that resolves. An empty sentence quotes nothing.
+    plan = _plan(tmp_path, _task("1", "(quoted from #489)", "#489"))
+    gh, _ = _fake_gh(tmp_path)
+    proc = _run(plan, gh)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "empty operator sentence" in proc.stdout
+    assert proc.stdout == (
+        "provenance: task 1 claim quotes #489 with an empty operator "
+        "sentence — the Claim is nothing but its provenance tag\n")

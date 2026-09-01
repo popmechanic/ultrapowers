@@ -6,7 +6,7 @@ _  _ _    ___ ____ ____ ___  ____ _ _ _ ____ ____ ____
 
 **Give your Superpowers Ultrapowers.**
 
-Ultrapowers is an extension to [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow. Use ultrapowers to hand Claude Code a big, ambitious plan and get back finished, reviewed work — without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
+Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, reviewed work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
 
 ## Ambition is expensive
 
@@ -24,10 +24,10 @@ max out your subscription-subsidized tokens, and the work still isn't finished.
 ultrapowers makes ambition affordable by using your frontier model only where it changes the
 outcome.
 
-- **Your frontier model plans.** It thinks hard, once, and writes a detailed plan — exact steps, often
-  the actual code.
-- **Cheaper models build.** A plan that complete makes each task closer to transcription than
-  invention, so a cheaper model does it well.
+- **Your frontier model plans.** It thinks hard, once, and writes each task as a contract — what
+  the task must be true of, and the proof that decides it — never a script of steps to retype.
+- **Cheaper models build.** A contract that exact leaves the builder no invention to do about
+  *what* to deliver, so a cheaper model does it well.
 - **Your frontier model checks the work.** Quality is the one place it never cuts corners.
 - **Each task stays out of your main session.** You don't re-pay for one giant, ballooning
   transcript.
@@ -51,24 +51,28 @@ end, on the finished result, instead of signing off on code you can't (or don't 
 **3. Faster finishes.** (Sometimes.) When the plan allows, independent work runs at the same time instead of one
 piece after another, so big work lands sooner. That's the cherry, not the headline.
 
-## New to Superpowers?
+## Where Superpowers fits
 
 [Superpowers](https://github.com/obra/superpowers) is a popular Claude Code skill that gives Claude a disciplined way to build software:
 brainstorm the idea, write a plan, execute it, review it. It's excellent — but it builds one task
 at a time, and it keeps you in the loop the whole way.
 
-ultrapowers plugs into that workflow at the "execution plan" and "execute the plan" step. You still brainstorm and write the spec with Superpowers. ultrapowers takes the approved plan from there and runs it for you. Same discipline,
+Superpowers is an optional companion, not a requirement: brainstorming and its practice skills pair
+well with ultrapowers, but plan authoring is ultrapowers' own — the `ultrawrite` skill writes the
+plan. Bring a spec (however you arrived at it) and ultrapowers takes it from there. Same discipline,
 less babysitting.
 
-## What it adds to Superpowers
+## What it adds
 
 - **It recommends the right tool for the job — even when that's not ultrapowers.** Hand it a plan
-  and it sizes up the work. If plain Superpowers would do the job better, it says so. Honesty is a
-  feature.
+  and it sizes up the work. If a lighter, sequential path would do the job better, it says so.
+  Honesty is a feature.
 - **It shapes plans to run side by side.** When you plan with it, it structures the work so
   independent pieces can run at once later.
 - **It runs the build between two checkpoints, not twenty.** You approve the plan. It does the work.
   You approve the finished result. No signing off on every step in between.
+- **The plan is still readable by anything else.** A claims-v1 plan has no steps to follow, but a
+  sequential executor can implement task-by-task from contract plus proof.
 
 ## When to use it — and when not
 
@@ -76,7 +80,7 @@ Reach for ultrapowers on big, ambitious plans with independent pieces — the ki
 work and independent review pay off.
 
 Skip it for small or tightly-connected plans, where the work has to happen in order anyway. There,
-plain Superpowers is the better tool — and ultrapowers will tell you so rather than spin up
+a plain sequential run is the better tool — and ultrapowers will tell you so rather than spin up
 machinery you don't need.
 
 In field use the human surface compresses to exactly the designed touchpoints:
@@ -188,8 +192,8 @@ Install it from inside Claude Code:
 /plugin install ultrapowers@ultrapowers
 ```
 
-**Superpowers is required.** Install it alongside ultrapowers — ultrapowers hands the brainstorming,
-planning, and wrap-up back to Superpowers' own skills.
+**Superpowers is optional.** ultrapowers authors and runs plans on its own. Install Superpowers
+alongside it if you want its brainstorming and practice skills as companions.
 
 **Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. Claude Code's Workflows feature runs inside the sandbox, never on your machine, so the plugin works from any Claude Code surface that can commit a plan.
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SessionStart hook: inject the plan-routing rule so every session knows to
-# layer ultraplan onto writing-plans and to offer /ultrapowers at the handoff.
-# Without this, the routing depends on the model noticing the ultraplan skill
-# description at exactly the plan-writing moment — probabilistic, not reliable.
+# author implementation plans with ultrawrite and to offer /ultrapowers at the
+# handoff. Without this, the routing depends on the model noticing the ultrawrite
+# skill description at exactly the plan-writing moment — probabilistic, not reliable.
 # Stdout from a SessionStart command hook becomes session context (exit 0).
 set -euo pipefail
 
@@ -13,10 +13,12 @@ cat <<'EOF'
 <ultrapowers-routing>
 The ultrapowers plugin is installed. Two standing rules:
 
-1. Whenever you invoke superpowers:writing-plans — for ANY implementation
-   plan — also invoke ultrapowers:ultraplan and follow both. ultraplan layers
-   additive Type/Depends-on markers and worktree-pure authoring rules; the
-   plan remains fully executable by the sequential superpowers executors.
+1. For ANY implementation plan, invoke ultrapowers:ultrawrite and follow it.
+   ultrawrite is this plugin's owned authoring skill: it elicits the operator's
+   claim, shapes the decomposition into signed contracts, runs the proof gate,
+   and emits a claims-v1 plan that /ultrapowers compiles into waves. A
+   claims-v1 plan has no steps, but a sequential executor can still implement
+   it task-by-task from contract plus proof.
 
 2. At a marked plan's execution handoff, do NOT default to ultrapowers. First run
    the execution-fit analysis, then offer THREE options, parallel first, tagging

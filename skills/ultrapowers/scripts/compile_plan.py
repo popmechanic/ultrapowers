@@ -1196,6 +1196,118 @@ def collect_violations(plan_path):
     return violations
 
 
+# ---------------------------------------------------------------------------
+# The claims-v1 ADVISORY channel (spec 2026-08-31 §1.5, §3). Everything the
+# compiler NOTICES about a claims-v1 plan but will not act on: a body slot
+# phrased as an order (the text tier is off under claims-v1), a Consumes that
+# pairs with no sibling Produces, the Context word count, and a same-file pair
+# it cannot classify without a tree. Every line starts `ADVISORY grammar: ` and
+# rides the `--check` tail AFTER the frozen verdict. Nothing here refuses — at
+# any word count — and nothing here touches the exit code.
+# ---------------------------------------------------------------------------
+ORDERING_PHRASE_RE = re.compile(r"\bafter Task\s+\w+")
+# The lead word of a Consumes/Produces value, bullet and backticks stripped —
+# just enough to recognize the placeholders (`none`, `nothing (first task)`)
+# the unmatched-Consumes advisory must stay silent about.
+_INTERFACE_LEAD_RE = re.compile(r"^\s*(?:[-*+]\s*)?`?([A-Za-z][\w.-]*)")
+
+
+def _slot_prose(text):
+    """Slot text with fenced lines dropped — the same fence-aware rule the
+    legacy prose scan uses, so a fenced example never draws an advisory."""
+    return "\n".join(l for l, fenced in _fence_aware_lines(text) if not fenced)
+
+
+def _is_placeholder_interface(value):
+    """True for an explicitly empty Interfaces value (`none`, `nothing`)."""
+    m = _INTERFACE_LEAD_RE.match(value)
+    return bool(m) and m.group(1).lower() in PLACEHOLDER_TOKENS
+
+
+def claims_advisories(tasks, tree_root=None):
+    """Every `ADVISORY grammar:` line the parsed claims-v1 `tasks` draw.
+
+    Pure and total: it reads the parsed tasks (and, for the same-file tier,
+    whether a tree root was provided at all) and returns lines. `tasks` that
+    carry no claims overlay — every legacy task — contribute nothing."""
+    tasks = [t for t in tasks if t.get("claims")]
+    produced = {t["id"]: {tok for pr in t["interfaces"]["produces"]
+                          if (tok := _interface_token(pr))} for t in tasks}
+    lines = []
+    for t in tasks:
+        claims = t["claims"]
+        # Ordering phrasing: under claims-v1 the sentence reads as an order and
+        # is not one, because the text tier is off. Advisory, not a refusal —
+        # the prose may be describing the world rather than sequencing it.
+        for slot in CLAIMS_SLOTS:
+            body = _slot_prose(claims.get(slot.lower().replace("-", "_"), ""))
+            for m in ORDERING_PHRASE_RE.finditer(body):
+                lines.append(
+                    "ADVISORY grammar: ordering phrasing in a body slot never "
+                    "orders — task %s, %s: %r; ordering is derived from "
+                    "Interfaces and Files, so this sentence orders nothing"
+                    % (t["id"], slot, m.group(0)))
+        # A Consumes with no sibling Produces draws no interface edge, so
+        # nothing orders the task against a producer. Free prose and a typo'd
+        # symbol are the same finding: neither pairs.
+        siblings = set()
+        for other in tasks:
+            if other["id"] != t["id"]:
+                siblings |= produced[other["id"]]
+        for entry in t["interfaces"]["consumes"]:
+            value = entry.strip()
+            if not value or _is_placeholder_interface(value):
+                continue
+            token = _interface_token(entry)
+            if token and token in siblings:
+                continue
+            lines.append(
+                "ADVISORY grammar: Consumes pairs with no sibling Produces — "
+                "task %s: %s — %s, so no interface edge orders this task"
+                % (t["id"], value,
+                   "no sibling Produces `%s`" % token if token else
+                   "the value is prose, which never tokens into a symbol"))
+        # The word count is a MEASUREMENT, never a threshold (spec §1.5).
+        lines.append("ADVISORY grammar: Context is %d words — task %s"
+                     % (len(_slot_prose(claims.get("context", "")).split()),
+                        t["id"]))
+    # Same-file pairs the compiler cannot classify: without a tree it cannot
+    # tell a mergeable text file from a non-text one it would have to order.
+    if tree_root is None:
+        for i, a in enumerate(tasks):
+            for b in tasks[i + 1:]:
+                shared = sorted((set(a["writes"]) | set(a["reads"]))
+                                & (set(b["writes"]) | set(b["reads"])))
+                if not shared:
+                    continue
+                lines.append(
+                    "ADVISORY grammar: same-file pair not classifiable without "
+                    "a tree — tasks %s and %s both name %s; pass --base so the "
+                    "compiler can tell a mergeable text file from a non-text "
+                    "one it must order"
+                    % (a["id"], b["id"], ", ".join("`%s`" % p for p in shared)))
+    return lines
+
+
+def collect_advisories(plan_path, tree_root=None):
+    """The `--check` advisory tail for a claims-v1 plan; [] for a legacy plan
+    and for one the check's structural net already rejected (the same
+    early-abort guards render_advisories uses — a parse the check could not
+    trust is not one to advise over)."""
+    plan_text = Path(plan_path).read_text()
+    if plan_grammar(plan_text) != CLAIMS_GRAMMAR:
+        return []
+    if _malformed_task_headings(plan_text):
+        return []
+    raw = split_tasks(plan_text)
+    ids = [t["id"] for t in raw]
+    if not raw or len(set(ids)) != len(ids):
+        return []
+    return claims_advisories(
+        [parse_task(t, raise_on_marker_error=False, grammar=CLAIMS_GRAMMAR)
+         for t in raw], tree_root)
+
+
 # Deterministic, meaningful per-wave label. compile_plan is the single source: the
 # engine reads these via args.waveLabels (so the live /workflows tree is labeled
 # without orchestrator judgment) AND the swarm viewer reads them from build_dag.
@@ -1279,14 +1391,51 @@ def derive_wave_label(tasks):
 OVERLAP_MODES = ("serialize", "fold")
 OVERLAP_DEFAULT = "fold"
 
+# The one same-file tier claims-v1 can justify (spec 2026-08-31 §3 edge-tier
+# table). `fold` leaves a mere same-file overlap unordered because the kernel
+# merges the two edits line-wise at merge time — an argument that holds for
+# TEXT and for nothing else. A non-text file (a raster asset, a compiled blob,
+# a symlink whose content is a target rather than lines) has no line-wise
+# merge, so two tasks naming one must be ordered. Classifying it needs a tree
+# to read, and the compiler is handed one only when the caller provides it; with
+# no tree root nothing is ordered and the advisory channel says exactly why.
+_BINARY_SNIFF_BYTES = 8192
 
-def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
+
+def is_binary(tree_root, rel_path):
+    """True when `rel_path` under `tree_root` is not a line-wise mergeable text
+    file: a symlink, or a file whose first 8 KB carry a NUL byte. A path that
+    cannot be read — absent, a directory, permission-denied — is False: a file
+    that is not there is one a task is about to create, and presuming text is
+    the fold-preserving direction."""
+    p = Path(tree_root) / rel_path
+    try:
+        if p.is_symlink():
+            return True
+        with open(p, "rb") as fh:
+            return b"\x00" in fh.read(_BINARY_SNIFF_BYTES)
+    except OSError:
+        return False
+
+
+def build_edges(impl, overlap_mode=OVERLAP_DEFAULT, grammar=LEGACY_GRAMMAR,
+                tree_root=None):
     """Returns (edges, conflicts).
 
     Edges are DECLARED-ordering only: marker, text, interface, and the one
     existence edge write-after-create. Mere same-file overlap orders nothing —
     unless `overlap_mode == "serialize"`, the rollback knob, which re-adds the
     document-order `write-after-write` tier and only that tier.
+
+    `grammar` selects the plan's declared grammar (plan_grammar). Under the
+    default "legacy" every tier below is exactly what it has always been. Under
+    "claims-v1" (spec 2026-08-31 §3 edge-tier table) three things differ, and
+    nothing else: the TEXT tier is off (a body slot's prose orders nothing —
+    the advisory channel says so out loud), the `undeclared-dependency`
+    cross-check is retired (see its own comment), and a same-file pair whose
+    shared path is NON-TEXT under `tree_root` is ordered, since no kernel fold
+    can merge it. `tree_root` is the tree the non-text classifier reads; None
+    (the default) leaves the pair unordered and draws an advisory instead.
     """
     if overlap_mode not in OVERLAP_MODES:
         raise ValueError("unknown overlap mode: %r" % (overlap_mode,))
@@ -1364,37 +1513,42 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
                     "Depends-on: " + d + " names a task outside the implementation set "
                     "(unknown id or gate/release/manual) — edge dropped")
 
-    # Tier 1: Explicit — text edges (moved up from bottom to enforce precedence).
-    # Scans fence-stripped prose so a fenced example saying "runs after Task A"
-    # does not fabricate a real dependency edge.
-    for b in impl:
-        for m in TEXT_DEP.finditer(b["prose"]):
-            if m.group(1) != b["id"]:
-                if m.group(1) in ids:
-                    add(m.group(1), b["id"], "text")
-                else:
-                    # Same surfacing as marker edges: a text dependency on a task
-                    # outside the implementation set (gate/release/manual/unknown)
-                    # drops, but loudly, instead of silently no-opping in add().
-                    # add_conflict dedupes so two prose matches on the same ghost
-                    # task (e.g. "after Task A" and "after Task A is green") yield
-                    # one entry, not two byte-identical ones.
-                    add_conflict(
-                        b["id"], m.group(1) + " -> " + b["id"] + " (text)",
-                        "text dependency names a task outside the implementation set "
-                        "(unknown id or gate/release/manual) — edge dropped")
-        for m in TEXT_DEP_LIST.finditer(b["prose"]):
-            for ref in LIST_SPLIT.split(m.group(1)):
-                ref = ref.strip()
-                if not ref or ref == b["id"]:
-                    continue
-                if ref in ids:
-                    add(ref, b["id"], "text")
-                else:
-                    add_conflict(
-                        b["id"], ref + " -> " + b["id"] + " (text)",
-                        "text dependency names a task outside the implementation set "
-                        "(unknown id or gate/release/manual) — edge dropped")
+    # Tier 1: Explicit — text edges, LEGACY ONLY. Under claims-v1 ordering
+    # is derived from Interfaces and Files and never from prose (spec §3),
+    # so this tier does not run at all — a Context slot that says "after
+    # Task 1 completes" draws an `ADVISORY grammar:` line instead of a
+    # silent edge the grammar never signed.
+    # (Moved up from the bottom to enforce precedence; scans fence-stripped
+    # prose so a fenced example saying "runs after Task A" fabricates nothing.)
+    if grammar != CLAIMS_GRAMMAR:
+        for b in impl:
+            for m in TEXT_DEP.finditer(b["prose"]):
+                if m.group(1) != b["id"]:
+                    if m.group(1) in ids:
+                        add(m.group(1), b["id"], "text")
+                    else:
+                        # Same surfacing as marker edges: a text dependency on a task
+                        # outside the implementation set (gate/release/manual/unknown)
+                        # drops, but loudly, instead of silently no-opping in add().
+                        # add_conflict dedupes so two prose matches on the same ghost
+                        # task (e.g. "after Task A" and "after Task A is green") yield
+                        # one entry, not two byte-identical ones.
+                        add_conflict(
+                            b["id"], m.group(1) + " -> " + b["id"] + " (text)",
+                            "text dependency names a task outside the implementation set "
+                            "(unknown id or gate/release/manual) — edge dropped")
+            for m in TEXT_DEP_LIST.finditer(b["prose"]):
+                for ref in LIST_SPLIT.split(m.group(1)):
+                    ref = ref.strip()
+                    if not ref or ref == b["id"]:
+                        continue
+                    if ref in ids:
+                        add(ref, b["id"], "text")
+                    else:
+                        add_conflict(
+                            b["id"], ref + " -> " + b["id"] + " (text)",
+                            "text dependency names a task outside the implementation set "
+                            "(unknown id or gate/release/manual) — edge dropped")
 
     # Tier 2: Semantic, order-independent — write-after-create. The ONE
     # existence edge: a task cannot modify a file another task has yet to
@@ -1446,7 +1600,13 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
             else:
                 add(a["id"], b["id"], "interface")
                 added = True
-            if not declared and not file_overlap:
+            # RETIRED under claims-v1 (spec §3 edge-tier table, amended
+            # after run-43). `declared` reads b's **Depends-on:**, which
+            # the grammar zeroes — so this fired on the canonical happy
+            # path, telling the author to add a marker claims-v1 refuses
+            # outright. The legacy conflict is untouched.
+            if (not declared and not file_overlap
+                    and grammar != CLAIMS_GRAMMAR):
                 shared = sorted(b_consumes & produced[a["id"]])
                 add_conflict(
                     b["id"],
@@ -1458,6 +1618,24 @@ def build_edges(impl, overlap_mode=OVERLAP_DEFAULT):
                     + " and shares no file with it — add the marker"
                     + ("" if added else " (edge already present)"),
                     kind="undeclared-dependency")
+
+    # Tier 2b (claims-v1 ONLY): non-text same-file overlap. `fold` leaves a
+    # same-file pair unordered because the kernel merges the two edits line-wise
+    # — which it cannot do for a raster asset, a compiled blob, or a symlink. So
+    # when a tree root is provided and some shared path is non-text there, the
+    # pair is ordered in document order, cycle-guarded like every derived tier.
+    if grammar == CLAIMS_GRAMMAR and tree_root is not None:
+        for a in impl:
+            for b in impl:
+                if a["id"] == b["id"] or a["order"] >= b["order"]:
+                    continue
+                shared = ((set(a["writes"]) | set(a["reads"]))
+                          & (set(b["writes"]) | set(b["reads"])))
+                if not any(is_binary(tree_root, p) for p in sorted(shared)):
+                    continue
+                if (a["id"], b["id"]) in seen or would_cycle(a["id"], b["id"]):
+                    continue
+                add(a["id"], b["id"], "non-text-overlap")
 
     # Tier 3 (`--overlap serialize` ONLY — the rollback knob): document-order
     # `write-after-write`. The overlap set is (writes union reads) on both
@@ -1626,7 +1804,12 @@ def render_advisories(plan_path, base, exclude=()):
                 % Path(plan_path).resolve().parent]
     if not _git(base, "rev-parse", "--show-toplevel").strip():
         return ["ADVISORY renders skipped: %s is not a git checkout" % base]
-    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw]
+    # Grammar-aware, like the compile and `--check` call sites: a claims-v1
+    # body is six SLOTS, not legacy prose, and its two unsigned tiers are
+    # zeroed. Parsing it as legacy here made the renders read slot bodies
+    # under a grammar the plan is not written in.
+    tasks = [parse_task(t, raise_on_marker_error=False,
+                        grammar=plan_grammar(plan_text)) for t in raw]
     exclude = tuple(exclude)
     ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
            "tracked": _git_tracked(base, exclude), "task_ids": set(ids),
@@ -1967,9 +2150,13 @@ def main(argv=None):
                          "referent-existence). Advisory: never changes the exit "
                          "code; prints nothing when there is nothing to say.")
     ap.add_argument("--base", type=Path, default=None,
-                    help="with --renders only: the tree the renders resolve "
-                         "against (default: the git toplevel of the plan's "
-                         "directory)")
+                    help="the tree file-level questions resolve against. With "
+                         "--check it requires --renders and is what the renders "
+                         "resolve against (default: the git toplevel of the "
+                         "plan's directory); on a plain compile it is the tree "
+                         "the claims-v1 non-text same-file classifier reads. "
+                         "Unset, a claims-v1 same-file pair is left unordered "
+                         "and draws an advisory instead.")
     ap.add_argument("--exclude", action="append", default=[], metavar="PATH",
                     help="with --renders only, repeatable: a BASE-relative "
                          "tracked path the renders must not see (the eval "
@@ -1986,7 +2173,10 @@ def main(argv=None):
     if args.renders and not args.check:
         sys.exit("error: --renders requires --check (renders are the check's "
                  "advisory tail; plain compile never prints them)")
-    if args.base is not None and not args.renders:
+    # --base is the check's render tree AND the plain compile's claims-v1
+    # non-text classifier root; inside --check it still requires --renders,
+    # which is the only thing that reads it there.
+    if args.base is not None and args.check and not args.renders:
         sys.exit("error: --base requires --renders")
     if args.exclude and not args.renders:
         sys.exit("error: --exclude requires --renders")
@@ -2000,16 +2190,20 @@ def main(argv=None):
         else:
             print("PLAN OK")
             rc = 0
+        # Advisory tail: after the frozen verdict, separated by one blank line,
+        # ONLY when there is something to say. rc is untouched by either half.
+        # The claims-v1 `ADVISORY grammar:` lines ride unconditionally (they
+        # are the grammar's own channel and empty for every legacy plan); the
+        # #345 renders ride behind --renders.
+        lines = collect_advisories(args.plan, args.base)
         if args.renders:
-            # Advisory tail (#345): after the frozen verdict, separated by one
-            # blank line, ONLY when there is something to say. rc is untouched.
-            lines = render_advisories(args.plan,
-                                      args.base if args.base is not None
-                                      else default_base(args.plan),
-                                      exclude=tuple(args.exclude))
-            if lines:
-                print()
-                print("\n".join(lines))
+            lines = lines + render_advisories(args.plan,
+                                              args.base if args.base is not None
+                                              else default_base(args.plan),
+                                              exclude=tuple(args.exclude))
+        if lines:
+            print()
+            print("\n".join(lines))
         return rc
     if emit_args is not None and emit_launch is None:
         sys.exit("error: --emit-args requires --emit-launch (task bodies must "
@@ -2153,7 +2347,8 @@ def main(argv=None):
         print("compile_plan: no implementation tasks — nothing to wave "
               "(plan is gates/release/manual only); the runbook and gates "
               "still apply.", file=sys.stderr)
-    edges, conflicts = build_edges(impl, overlap_mode=args.overlap)
+    edges, conflicts = build_edges(impl, overlap_mode=args.overlap,
+                                   grammar=grammar, tree_root=args.base)
     waves = layer(impl, edges)
 
     mode, degrade = "parallel", None
