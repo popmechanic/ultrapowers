@@ -97,7 +97,7 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`.
 - **Retired map — #238 *The Authoring Frontier* (destination reached 2026-09-01):** #239
   answered yes (six-slot claims-v1 grammar), #390 shipped it at 0.3.2 (`ultrawrite`;
-  ultraplan + the writing-plans dependency deleted). Read as history.
+  the prior authoring skill + the writing-plans dependency deleted). Read as history.
 - **Open maps:** #525 *The Verification Frontier* (review finds truth it cannot enforce —
   three generations of blocking-findings-that-could-not-block; tickets #518/#447/#519/#232,
   experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
