@@ -141,7 +141,7 @@ run as three agents at once; a task that needs them waits one wave and starts th
 Pick any one of those circles. Up close, it isn't a dot — it's a task with a life of its own.
 
 <p align="center">
-  <img src="docs/assets/task.gif" width="720" alt="One task's git history: it forks a worktree branch off the integration trunk, an agent adds commits, an independent review plus a sealed exam gate it, a fix round follows if the review asks, and it merges back onto the integration branch with two parents.">
+  <img src="docs/assets/task.gif" width="720" alt="One task's git history: it forks a worktree branch off the integration trunk, an agent adds commits, an independent review gates it, a fix round follows if the review asks, and it merges back onto the integration branch with two parents.">
 </p>
 
 It **forks its own git worktree** — a second, complete checkout of the repository that shares its
@@ -195,7 +195,7 @@ Install it from inside Claude Code:
 **Superpowers is optional.** ultrapowers authors and runs plans on its own. Install Superpowers
 alongside it if you want its brainstorming and practice skills as companions.
 
-**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. Claude Code's Workflows feature runs inside the sandbox, never on your machine, so the plugin works from any Claude Code surface that can commit a plan.
+**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can commit a plan.
 
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)

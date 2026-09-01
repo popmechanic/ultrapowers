@@ -1,8 +1,8 @@
 # Ultrapowers — Report Format
 
-The workflow produces a single structured report object that the main agent presents at the pre-merge human gate.
+The engine (`fleet/run-engine.mjs`) returns a single structured report object; `fleet/run-main.mjs` saves it bare to `<runDir>/workflow-result.json` and hands that path to `ultra_gate.py --result`, and the gate receipt is what the PR carries.
 
-**Where the report lives:** the Workflow tool wraps this object in its own envelope — top-level keys like `summary`, `agentCount`, `logs`, and `result`. **Everything documented below lives under `result`.** The envelope's top level never carries gate fields; a reader probing `gitVerified` or `waveMerges` there sees only nulls. Always parse `result.*`.
+**Where the report lives:** the object below IS the file since 0.3.0. `ultra_gate.py` still accepts the pre-0.3.0 Workflow-tool envelope (`{..., result: <report>}`) for legacy bundles, so a reader of an old bundle looks under `result.*`; a reader of a live run reads the top level.
 
 ## Schema
 
@@ -119,13 +119,13 @@ When the workflow completes, the main agent renders the report as a concise huma
 9. **Unfinished / completeness findings** — anything deferred, plus the critic's unmet-requirement/unverified-claim/untested-path findings; empty means nothing was left behind. Surface `gitVerified` here: a false value means the completeness review is unverified (the critic could not confirm it was on the integration tree, #29) and the gate must treat it as `BLOCKED`.
 9a. **Deferred verification — confirm before trusting green** — render `deferredVerification` grouped by `reason`, applying the taxonomy and gating rule from the field reference above: `runtime`/`external` groups require the explicit operator acknowledgement; `browser`/`manual` remain a verify-then-approve checklist. Omit the section when the array is empty.
 10. **Post-merge runbook** — the `release`/`manual` tasks excluded at compile time,
-   rendered verbatim in document order. Sourced from the Step-2 dispositions (the
-   main agent carries it), **not** from the workflow return — the schema above is
-   unchanged. Empty runbook means the whole plan was waveable. Before handing off
-   to `finishing-a-development-branch`, apply the checks in
-   `references/finishing-notes.md`: detect allowed merge methods (recommend squash
-   when accumulated merge commits would block rebase) and warn when the integration
-   base is far ahead of the deploy target.
+   rendered verbatim in document order. Sourced from the compiler's
+   `post_merge_runbook` (`compile_plan.py` output), **not** from the engine's report —
+   the schema above is unchanged. Empty runbook means the whole plan was waveable.
+   Since 0.3.0 no engine surface renders it: the orchestrator's PR body carries the
+   gate receipt only, so the operator reads any `release`/`manual` tasks from the
+   compiled plan. The merge-method and deploy-target checks in
+   `references/finishing-notes.md` are the operator's, at the PR.
 11. **Effort audit (optional):** the per-agent markdown table from `scripts/audit_run.py` — role, model, turns, output tokens, plus escalated-task and thrash signals. Advisory only: it informs the next run's tier assignments and never gates this one.
 
 This pre-merge review is the **second and final gate** (after plan approval; the wave plan

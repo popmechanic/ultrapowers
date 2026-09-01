@@ -1,11 +1,12 @@
 # Plan Markers — the Parallel-Execution Contract
 
-> **Audience: the compiler and the orchestrating agent.** This is the RUNTIME half —
+> **Audience: the compiler and the engine (`fleet/run-engine.mjs`).** This is the RUNTIME half —
 > what a marked plan means once `compile_plan.py` reads it. The authoring half moved to
 > `skills/ultrawrite/SKILL.md` (#390); nothing below tells anyone how to write a plan.
 
-Additive per-task annotations on a `superpowers:writing-plans` document that make
-wave compilation deterministic. Sequential executors (subagent-driven-development,
+Additive per-task annotations on a legacy-grammar plan document that make wave
+compilation deterministic (claims-v1 plans from `ultrawrite` carry the same `Files:` and
+`Interfaces:` contracts inside their six slots and refuse `Depends-on`/`Commutes`). Sequential executors (subagent-driven-development,
 executing-plans) ignore them; ultrapowers trusts them. A plan without markers still
 runs — `dependency-analysis.md` falls back to the classification heuristics below.
 
@@ -28,6 +29,7 @@ correctly as long as the contract is what gets tested.
 ## Marker syntax
 
 <!-- BAKE:MARKER_SYNTAX -->
+<!-- The BAKE fences are section anchors read by tests/test_marker_contract.py; no bake step exists since 0.3.0. -->
 Markers are bold-labeled lines placed immediately after the task heading, before the
 `**Files:**` block:
 
@@ -118,25 +120,25 @@ name. The gate and manual heuristics are likewise regex subsets: gate fires on "
 write paths plus any test-runner/lint/git-status mention in the prose" (an existence
 check, not a proof that every step is read-only), and on the Files axis it is broader than the contract: a `Test:`-only Files block counts as 'no writes', and manual additionally fires on
 the phrase "on the deployment". The gate heuristic also has a build/QA arm: a task whose `writes` set is empty and whose steps are build/verification-only (no implementation verb in its prose) is classified `gate`, not `implementation` — an empty-Files task has no contention surface to schedule against, so calling it implementation would only obscure the plan. All such classifications arrive flagged for
-re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output
-precisely so the orchestrating agent re-judges them against the full contract above.
+re-judgment. Heuristic classifications are flagged `"heuristic": true` in its output so
+the flag is visible in the compiled output and the run receipt (since 0.3.0 nothing
+re-judges them at run time — a claims-v1 plan carries an explicit `Type:` per task).
 
 ## Compile-time obligations
 
-Whatever the classification source (marker or heuristic), the compiling agent MUST
-(the mechanical obligations — task splitting, fence-aware extraction, classification,
-edges, runbook collection — are implemented by `scripts/compile_plan.py`; preamble
-inlining and ordering-prose supersession remain the orchestrating agent's judgment,
-recorded in the transparency block):
+Whatever the classification source (marker or heuristic), the compiler
+(`scripts/compile_plan.py`) implements the mechanical obligations — task splitting,
+fence-aware extraction, classification, edges, runbook collection. The pre-0.3.0
+orchestrating agent's judgment calls (preamble inlining, ordering-prose supersession)
+have no actor in the engine and are not performed; the obligations that survive:
 
-- record every non-`implementation` disposition in the Step-3 transparency block —
-  the rendered **interpretation** of the plan (not just the wave grouping) is the
-  human's audit surface, and it reappears with the final report;
+- every non-`implementation` disposition is recorded in the compiled output (the
+  run's `args.json`) — the rendered **interpretation** of the plan, not just the wave
+  grouping, is the operator's audit surface;
 - collect `release` and `manual` tasks, verbatim and in document order, into the
-  **post-merge runbook**, rendered with the final report; on approval the
-  orchestrating agent carries it through the finishing-a-development-branch
-  handoff and presents it as the follow-up list (the upstream skill accepts no
-  checklist input);
+  **post-merge runbook** (`post_merge_runbook` in the compiled output); since 0.3.0
+  no engine surface renders it, so the operator reads it from the compiled plan
+  as the follow-up list after the PR merges;
 - inline preamble coordination notes into the bodies of the tasks they affect —
   task agents see only their own `body`;
 - convert global ordering prose ("execute phases in order") into edges only where it

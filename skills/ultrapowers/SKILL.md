@@ -1,6 +1,6 @@
 ---
 name: ultrapowers
-description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved Superpowers plan built autonomously in parallel waves — on the exe.dev fleet, never on this machine.
+description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved plan built autonomously in parallel waves — on the exe.dev fleet, never on this machine.
 argument-hint: <plan-path>
 allowed-tools: Skill Read Grep Glob Bash
 ---

@@ -7,7 +7,7 @@
 // make a judgment — implement, review, fix, resolve, reconcile, attest — with
 // the driver handing content in and capturing content out.
 //
-// waves.js is NOT edited and remains the Workflow-path fallback until cutover;
+// waves.js was deleted at 0.3.0 (PR #434) once runs 26/27 passed the bar;
 // the judgment-flow semantics here (single retry with tier escalation on a
 // schema trip, the infra-death barrier retry, the fix-loop cap of 2, the
 // fail-closed lost-coordinates sweep, dependency cascade-blocking) are ported

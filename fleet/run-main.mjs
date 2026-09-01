@@ -519,8 +519,7 @@ export async function runMain(parsed, deps = {}) {
   try {
     // Amendment 10: the native engine (fleet/run-engine.mjs) — every git verb
     // and kernel invocation is driver code through `exec`; agents are
-    // dispatched only for judgments. waves.js is no longer loaded here; it
-    // remains the Workflow-path fallback, untouched.
+    // dispatched only for judgments. waves.js was deleted at 0.3.0 (PR #434).
     report = await runEngineFn({
       // #436: the engine caps the implementers' suite parallelism by the
       // number of them that share the machine — it must be told the real one.

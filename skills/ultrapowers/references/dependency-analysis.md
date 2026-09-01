@@ -51,7 +51,7 @@ implementation, in that precedence). The dispositions:
   so the human sees what the engine's per-wave merge tests and completeness critic
   now cover. Never executed as a task.
 - **release** / **manual** — leaves the task set. Collect verbatim, in document
-  order, into the **post-merge runbook** (rendered with the final report; carried by the orchestrating agent through the finishing-a-development-branch handoff (the upstream skill accepts no checklist input)). Never run headless,
+  order, into the **post-merge runbook** (`post_merge_runbook` in the compiled output; since 0.3.0 no engine surface renders it — the operator reads it from the compiled plan after the PR merges). Never run headless,
   never silently dropped.
 
 While classifying, also:

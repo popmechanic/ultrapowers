@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Post-run effort audit for ultrapowers workflow transcripts (issue #20).
+"""Post-run effort audit for ultrapowers run transcripts (issue #20).
 
-Reads the engine's per-run transcript directory (the "Transcript dir:" path
-printed at Workflow launch), classifies each agent-*.jsonl by role from the
-stable baked-prompt phrases, sums assistant turns and output tokens, and
+Reads the engine's per-run transcript directory (the run dir the shim prints
+at launch), classifies each agent-*.jsonl by role from stable phrases in the
+role prompts (fleet/roles/*.md), sums assistant turns and output tokens, and
 prints a markdown effort table plus escalated-task and thrash signals.
 
 ADVISORY BY CONTRACT: a missing directory, no agent files, or a drifted
@@ -44,8 +44,8 @@ ROLE_MARKERS = [
     # #188: the resolver prompt (fleet/roles/resolver.md) opens with this phrase.
     ("You are a merge-conflict resolver", "resolver"),
     # Bugfix: this marker previously read "What ..." (capital W); the actual
-    # baked completeness-critic prompt (references/wave-merge.md's
-    # COMPLETENESS_PROMPT block, baked into waves.js's completenessPrompt())
+    # completeness-critic prompt (fleet/roles/critic.md; before 0.3.0 the
+    # deleted references/wave-merge.md block baked into waves.js)
     # reads lowercase "what plan requirement is unmet?" — the capitalized form
     # never matched, so every completeness-critic transcript classified
     # "unknown". Corrected case only; role name and marker phrase unchanged.
@@ -227,7 +227,7 @@ def main(argv=None):
 
     unknown = sum(1 for r in rows if r[0] == "unknown")
     if unknown:
-        print(f"\n{unknown} agent file(s) unclassified — baked-prompt phrases may have drifted.")
+        print(f"\n{unknown} agent file(s) unclassified — role-prompt phrases (fleet/roles/*.md) may have drifted.")
 
     # Peer-free signals (reuse audit(); the duplicate read is advisory and cheap).
     data = audit(root)

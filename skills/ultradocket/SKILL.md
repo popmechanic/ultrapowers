@@ -6,7 +6,7 @@ description: Use when the operator has a backlog rather than a single idea — t
 # Ultradocket
 
 The docket is the portfolio layer above single-plan execution. It never
-authors plans — superpowers does, interactively, with the operator. The
+authors plans — `ultrapowers:ultrawrite` does, interactively, with the operator. The
 docket decides *which* issues are worth planning, holds their state between
 sessions, and reasons about the approved plans *as a set*.
 
@@ -19,9 +19,7 @@ It is a versioned doc the operator edits freely.
 
 ## Mode: triage (bare `/ultradocket`)
 
-A READ-ONLY discovery pass — it mutates nothing, so it is an improvised
-dynamic workflow per the harness read/write boundary, never a committed
-harness. Fan out over `gh issue list` and the repository. **Skip every issue
+A READ-ONLY discovery pass — it mutates nothing. Fan out over `gh issue list` and the repository. **Skip every issue
 carrying a `wayfinder:*` label** — those are wayfinder decision tickets
 (questions resolved by a decision, worked through their map), not build
 issues; sweeping one into an implementation plan builds an answer to an

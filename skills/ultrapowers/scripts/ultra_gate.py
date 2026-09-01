@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Deterministic gate driver for /ultrapowers (SKILL.md §Engine).
+"""Deterministic gate driver for /ultrapowers (run on the sandbox by fleet/run-main.mjs).
 
-Gate mode (--result): unwrap the Workflow tool envelope (gate fields live
-under result.* — report-format.md), save the report verbatim, run
+Gate mode (--result): read the engine's report (bare since 0.3.0; the
+pre-0.3.0 Workflow-tool envelope with the report under result.* is still
+accepted — report-format.md), save the report verbatim, run
 gate_check.py, then administer acceptance per the disposition recorded in the
 ultra_run receipt. Exit 0 PASS / 2 NEEDS_ACK / 1 BLOCKED; a failed acceptance
 always forces 1. The driver never decides — the orchestrator renders the
@@ -30,7 +31,7 @@ def sh(cmd, cwd=None):
 
 
 def unwrap(payload):
-    """Accept the Workflow envelope ({... result: {report}}) or a bare report."""
+    """Accept a bare report (0.3.0+) or the legacy Workflow envelope ({... result: {report}})."""
     if isinstance(payload, dict):
         inner = payload.get("result")
         if isinstance(inner, dict) and "integrationBranch" in inner:

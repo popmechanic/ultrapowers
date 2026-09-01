@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Deterministic pre-launch driver for /ultrapowers (SKILL.md §Engine).
+"""Deterministic pre-launch driver for /ultrapowers (run on the sandbox by fleet/run-main.mjs).
 
 One invocation runs every deterministic pre-launch stage in order, fail-closed:
 fleet-run (the sandbox env contract), git-repo check, worktree-capability
-probe, plan compile, test-command derivation, committed-workflow install,
-dirty baseline, and baseBranch from the launched checkout.
+probe, plan compile, test-command derivation, dirty baseline, and baseBranch
+from the launched checkout.
 
 The receipt (stdout + .claude/ultrapowers/run-<stamp>/receipt.json) is the
-contract: the orchestrator reads it instead of re-deriving the choreography
-from prose. Exit 0 iff every stage passed; otherwise the last receipt stage
-names what failed. The driver never launches the workflow — only the
-orchestrator can call tools; `llmDerives` names exactly what it still owns.
+contract: the engine (fleet/run-main.mjs) reads it instead of re-deriving the
+choreography. Exit 0 iff every stage passed; otherwise the last receipt stage
+names what failed. The driver never dispatches an agent; `llmDerives` names
+what is left to judgment.
 """
 from __future__ import annotations
 
