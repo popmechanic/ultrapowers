@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { makeRepo, rig, passReview, cleanCritic, criticWithFindings, doneImpl } from './_engine_helpers.mjs'
-import { suiteLine } from '../run-engine.mjs'
+import { suiteLine, contractsBlock } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
 
@@ -239,6 +239,85 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-critic-'))
     { severity: 'blocking', detail: 'fleet/run-engine.mjs: T1 produced no export' },
     { severity: 'minor', detail: 'fleet/tests/one.txt: a stray trailing newline' },
   ])
+}
+
+// ── 7. the contracts block (2026-09-01): the critic gets the signed bodies ────
+// The per-task reviewers each read a full six-slot body; the critic read ids
+// and titles. Post-Manyana the composition question — Produces on one task
+// and Consumes on another lining up, a Context literal implemented once, every
+// Proof leg owning a test — is per-slot work only the integrated view can do,
+// so the critic prompt carries every body and the compiler-derived edges.
+{
+  const repo = makeRepo(path.join(tmp, 'repo7'))
+  const runDir = path.join(tmp, 'run7')
+  const t1Body = '**Claim:** the reader exists (elicited)\n**Interfaces:**\n- Produces: `readX(dir) -> manifest`\n**Proof:**\n- Legs: (a) readX returns the manifest'
+  const t2Body = '**Claim:** the judge names a winner (elicited)\n**Interfaces:**\n- Consumes: `readX(dir) -> manifest`\n**Context:** manifest schema literal\n**Proof:**\n- Legs: (a) judge reads via readX'
+  const waves = [
+    [{ id: 'T1', title: 'one', files: ['one.txt'], tier: 'standard', review: 'lean',
+       writes: ['one.txt'], commutes: [], body: t1Body,
+       interfaces: { consumes: [], produces: ['`readX(dir) -> manifest`'] } }],
+    [{ id: 'T2', title: 'two', files: ['two.txt'], tier: 'standard', review: 'lean',
+       writes: ['two.txt'], commutes: [], body: t2Body,
+       interfaces: { consumes: ['`readX(dir) -> manifest`'], produces: [] } }],
+  ]
+  const prompts = []
+  const stub = (prompt, opts, cwd) => {
+    prompts.push({ label: opts.label, prompt })
+    const kind = opts.label.split(':')[0]
+    if (kind === 'impl') {
+      fs.writeFileSync(path.join(cwd, opts.label.split(':')[1] === 'T1' ? 'one.txt' : 'two.txt'), 'x\n')
+      return doneImpl(cwd)
+    }
+    if (kind === 'review') return passReview()
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected: ' + opts.label)
+  }
+  const { run } = rig({ repo, runDir, waves, edges: [['T1', 'T2']], stub, stamp: 'ci7' })
+  const report = await run()
+  assert.equal(report.coverage.complete, true, 'sim precondition: both waves merged')
+
+  const criticPrompt = prompts.find((p) => p.label === 'integration').prompt
+  assert.match(criticPrompt, /\n\nCONTRACTS \(/, 'the critic prompt carries no CONTRACTS block')
+  assert.ok(criticPrompt.includes('### Task T1: one\n' + t1Body), 'T1\'s signed body is not in the critic prompt verbatim')
+  assert.ok(criticPrompt.includes('### Task T2: two\n' + t2Body), 'T2\'s signed body is not in the critic prompt verbatim')
+  assert.match(criticPrompt, /DEPENDENCY EDGES \(derived by the compiler/, 'the derived edges are not named')
+  assert.ok(criticPrompt.includes('\n- T1 -> T2'), 'the T1 -> T2 edge is not listed')
+  assert.match(criticPrompt, /Stale-if and Authorized-by are not yours to judge/,
+    'the block does not scope the slots the critic is NOT asked to judge')
+  // Order: the block sits between the task list and the blocked-waves record,
+  // so every pre-existing section stays where scenario 1 pinned it.
+  const iTasks = criticPrompt.indexOf('\n\nTasks:\n')
+  const iContracts = criticPrompt.indexOf('\n\nCONTRACTS (')
+  const iBlocked = criticPrompt.indexOf('\nBlocked waves:\n')
+  const iSuite = criticPrompt.indexOf('\nSUITE (driver-run, post-fold)')
+  assert.ok(iTasks >= 0 && iContracts > iTasks && iBlocked > iContracts && iSuite > iBlocked,
+    'CONTRACTS must follow the task list and precede blocked waves and the suite section')
+  // The per-task reviewer's body and the critic's body are the same text: one
+  // contract, two readers — a drift here would grade the tree against a
+  // different plan than the diff was graded against.
+  const reviewT2 = prompts.find((p) => p.label === 'review:T2:1').prompt
+  assert.ok(reviewT2.includes(t2Body), 'sim precondition: the reviewer saw T2\'s body')
+}
+
+// ── 8. the wavesPath branch and the empty cases, as a pure function ──────────
+// A live run may carry bodies only in launch.json (taskBodyBlock's pointer
+// path); the critic is pointed at the same file rather than left with titles.
+{
+  const out = contractsBlock([[{ id: 'T9', title: 'nine' }]], [], '/run/launch.json')
+  assert.match(out, /### Task T9: nine\n\(body: in \/run\/launch\.json, the "tasks" entry whose "id" is "T9"\)/,
+    'a body-less task must point the critic at wavesPath')
+  assert.ok(!/DEPENDENCY EDGES/.test(out), 'no edges renders no edge section')
+  assert.equal(contractsBlock([], [['a', 'b']], undefined), '', 'no tasks renders nothing')
+  assert.match(contractsBlock([[{ id: 'A', body: 'body A' }]], [['A', 'B'], ['bad'], null], undefined),
+    /DEPENDENCY EDGES[\s\S]*\n- A -> B$/, 'malformed edges are skipped, well-formed ones listed')
+  // The role file says the same thing the block says about scope — the critic
+  // reads both, and they must not disagree about which slots are its to judge.
+  const role = fs.readFileSync(new URL('../roles/critic.md', import.meta.url), 'utf8')
+  assert.match(role, /Stale-if and Authorized-by are not yours to judge/,
+    'critic.md no longer scopes the two slots the contracts block excludes')
+  for (const slot of ['Claim', 'Interfaces', 'Context', 'Proof']) {
+    assert.ok(role.includes(slot + ':'), 'critic.md carries no per-slot check for ' + slot)
+  }
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })

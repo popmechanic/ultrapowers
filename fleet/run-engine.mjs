@@ -252,6 +252,38 @@ const taskBodyBlock = (task, wavesPath) => {
   }
   return '\nTASK:\n' + (typeof task.body === 'string' ? task.body : '')
 }
+// The critic's contracts block (2026-09-01). Until now the completeness critic
+// was handed task ids and titles and a pointer to the plan, while the per-task
+// reviewers each got a full six-slot body — the one agent that reads the
+// integrated tree got the least of the contract. Post-Manyana the fold settles
+// the MERGE question (two edits to one file combine); it cannot see the
+// COMPOSITION question (Produces on one task and Consumes on another agreeing
+// in name, type and behaviour; two tasks carrying one Context literal; every
+// Proof leg having a test). Those are per-slot checks, so the critic gets every
+// signed body — inline when the task carries it, else the wavesPath pointer the
+// implementer and reviewer already follow — plus the compiler-derived edges,
+// which name the pairs to verify. Exported for the unit pin, as suiteLine is.
+export const contractsBlock = (waves, edges, wavesPath) => {
+  const tasks = (Array.isArray(waves) ? waves : []).flat()
+  if (tasks.length === 0) return ''
+  let out = '\n\nCONTRACTS (each task\'s signed body — hold the integrated tree to its ' +
+    'Claim, Interfaces, Context and Proof; Stale-if and Authorized-by are not yours to judge):'
+  for (const t of tasks) {
+    const body = (typeof t.body === 'string' && t.body.trim() !== '') ? t.body.trim() : null
+    out += '\n\n### Task ' + t.id + (t.title ? (': ' + t.title) : '')
+    if (body) out += '\n' + body
+    else if (wavesPath) {
+      out += '\n(body: in ' + wavesPath + ', the "tasks" entry whose "id" is "' + t.id + '")'
+    }
+  }
+  const pairs = (Array.isArray(edges) ? edges : []).filter((e) => Array.isArray(e) && e.length === 2)
+  if (pairs.length) {
+    out += '\n\nDEPENDENCY EDGES (derived by the compiler from Interfaces and Files — ' +
+      'each names a produced/consumed pair or a shared file to verify in the tree):\n' +
+      pairs.map((e) => '- ' + e[0] + ' -> ' + e[1]).join('\n')
+  }
+  return out
+}
 
 // ── small exec adapters ──────────────────────────────────────────────────────
 // Shell strings (testCmd, bootstrapCmd) run through `bash -lc`; git always
@@ -1236,6 +1268,7 @@ export async function runEngine({
           (planPath ? ('\nPLAN: read the original plan document at ' + planPath + ' first.') : '') +
           globalConstraintsBlock + cannotVerifyChecklist +
           '\n\nTasks:\n' + taskList +
+          contractsBlock(WAVES, EDGES, wavesPath) +
           '\nBlocked waves:\n' + JSON.stringify(blockedWaves) +
           suiteLine(lastSuite, testCmd) +
           (baseline.passed === false
