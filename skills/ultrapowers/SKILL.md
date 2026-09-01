@@ -27,7 +27,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    reused):
 
    ```bash
-   ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && nohup node fleet/drive-one.mjs <plan-path> run-<N> </dev/null >/tmp/drive-run-<N>.out 2>&1 &'
+   ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan-path> run-<N> </dev/null >/tmp/drive-run-<N>.out 2>&1'
    ```
 
 3. **Watch** live as a sync peer (`fleet/watch.mjs` — RUNBOOK §Watch), or tail

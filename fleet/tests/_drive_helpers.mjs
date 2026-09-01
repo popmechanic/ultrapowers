@@ -182,12 +182,24 @@ export const setupDriveFixture = async () => {
     // (or whatever `gh` is overridden to), and the env the driver handed it is
     // recorded in `exec.calls` so a spec can prove the token rode the env and
     // never the command line. Every other git command runs for real.
-    const makeExec = (onShimStart, { gh = GH_PR_CREATE_OK } = {}) => {
+    // #385-1: `stderr` is an OPTIONAL knob — `(cmd) => string`, the text that
+    // command printed on stderr, empty for the ones that print nothing. The
+    // driver's four diagnostic lines join stdout and stderr through
+    // `execDiagnostic`, and no stubbed answer here has ever carried a stderr,
+    // so those lines were pinned by nothing: a refused ssh or `gh` reports its
+    // reason on stderr and nowhere else. Absent — every existing call — the
+    // decoration is a no-op and every answer below stays byte-identical.
+    const makeExec = (onShimStart, { gh = GH_PR_CREATE_OK, stderr = null } = {}) => {
       const cmds = []
       const calls = []
-      const exec = async (cmd, opts) => {
-        cmds.push(cmd)
-        calls.push({ cmd, env: opts?.env ?? null })
+      const withStderr = (cmd, result) => {
+        const text = stderr ? stderr(cmd) : ''
+        // Appended, never replaced: a command answered by the real `sh` keeps
+        // what it actually printed, and nothing is mutated in place — `gh` is
+        // handed a shared object.
+        return text ? { ...result, stderr: `${result?.stderr ?? ''}${text}` } : result
+      }
+      const dispatch = async (cmd, opts) => {
         if (cmd.startsWith('ssh ')) {
           const payload = cmd.match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
           if (payload) exec.delivered = JSON.parse(payload[1])
@@ -200,6 +212,11 @@ export const setupDriveFixture = async () => {
         if (/ gh pr create /.test(cmd)) return typeof gh === 'function' ? gh(cmd, opts) : gh
         if (cmd.startsWith('git ')) return sh(cmd)
         return { code: 0, stdout: '' }
+      }
+      const exec = async (cmd, opts) => {
+        cmds.push(cmd)
+        calls.push({ cmd, env: opts?.env ?? null })
+        return withStderr(cmd, await dispatch(cmd, opts))
       }
       exec.cmds = cmds
       exec.calls = calls

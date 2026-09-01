@@ -243,11 +243,12 @@ through N=3 concurrent drains** — six gate-green runs in one window, batch wal
 0.26× of serial-equivalent at N=3, zero 429s, no per-drain degradation. Serial-
 by-default is retired for independent plans; the ceiling is somewhere above
 N=3 and still unmeasured. Concurrent-launch shape (each drive needs its own
-`--port` and `--db-dir`, and each `nohup` its own subshell with the cwd set —
-a chained `nohup ... &` after the first loses the `cd`):
+`--port` and `--db-dir`, and each launch its own subshell with the cwd set — a
+chain of them after the first loses the `cd`; `setsid -f` rather than
+`nohup ... &` for the same reason as the single run below):
 
 ```bash
-ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && nohup node fleet/drive-one.mjs <plan.md> run-$r --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1 &); done; exit'
+ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan.md> run-$r --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1); done; exit'
 ```
 
 Note the operator runs multiple subscriber accounts in rotation (#513): a
@@ -357,10 +358,22 @@ CLI lives in — `--repo-dir` overrides).
 #
 # Detach it from your ssh session: the remote job inherits the channel's stdin,
 # so `ssh -n` alone is not enough — redirect stdin from /dev/null too, or a
-# human terminal sits blocked for the whole run.
+# human terminal sits blocked for the whole run. And the redirects alone are not
+# enough either: measured 2026-09-01 with a 45 s child, `nohup … </dev/null >f
+# 2>&1 &` held the client for the child's whole 47 s (so did `& disown` and
+# `& exit 0`), while a NEW SESSION released it in 2 s. `setsid -f` is that new
+# session in one greppable token (`/bin/setsid` is on the golden), and it
+# backgrounds by itself — no trailing `&` (#524).
+# tests/test_launch_snippet_detaches.py pins this shape on every launch line here.
 # `mkdir -p` first: the redirect below is the SHELL's, evaluated before the driver
 # runs, so it does not benefit from drive.mjs's own mkdir of evidenceDir (#466).
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && nohup node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1 &'
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
+
+# Race the plan instead (#511, operator asks for it by name): K whole runs of
+# one plan, driven concurrently from this single process — so it detaches the
+# same way, and the raceId is a fresh `run-N` whose attempts become run-<N>-a/b/c.
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/race.mjs launch docs/superpowers/plans/<the-approved-plan>.md run-<fresh> --k 3 </dev/null >/home/exedev/fleet-evidence/race-run-<fresh>.out 2>&1'
+# Then read it: `node fleet/race.mjs judge run-<fresh>` (RUNBOOK evidence dir).
 
 # Updating Claude Code on the fleet: NEVER by hand and never on a schedule —
 # version drift is event-driven (sandboxes inherit the golden's binary; the
@@ -606,9 +619,27 @@ On every park, triage in this order:
    a failed publish is recoverable, not fatal:
 
    ```bash
-   # inspect, or push it yourself with a workflow-scoped credential
-   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && git log --oneline -3 refs/fleet/run-<N>'
+   # 1. the run tip is already pinned on the orchestrator (#497) — confirm it
+   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && git rev-parse refs/fleet/run-<N>'
+   #    expect the sha the drive logged as `pinned run tip: … -> <sha>`
+   # 2. fetch that pinned ref to your laptop over ssh
+   git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/repo refs/fleet/run-<N>:refs/heads/ultra/integration-run-<N>
+   # 3. push it with an operator credential — the drive's token could not
+   git push origin ultra/integration-run-<N>
+   # 4. open the PR by hand, carrying this gate receipt as the body
+   gh pr create --draft --head ultra/integration-run-<N> --title '[parked] fleet run-<N>' --body-file pr-body-run-<N>.md
    ```
+
+   Since #524 you do not have to fill those in by hand. When the publish leg
+   itself fails, the drive re-renders the card it already wrote and leaves
+   these same four commands in it, under a `## Rescue` heading, with this run's
+   real ref, sha, branch and host substituted — read it at
+   `<evidenceDir>/pr-body-run-<N>.md` (`/home/exedev/fleet-evidence/` unless
+   `--evidence-dir` moved it) and paste from there. Note where it is NOT: a
+   failed publish means no PR was opened, so no card on GitHub carries the
+   block — step 4 above is what puts that body on GitHub, and the PR it opens
+   is the one that carries it. When the drive never got as far as writing a
+   card at all (no fetched tip, no token), this block is the rescue.
 
    **Two cases the pin does NOT cover**, so check before assuming: a run that
    was never fetched (gate-green but zero receipt rows — the fetch is

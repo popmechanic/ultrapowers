@@ -146,6 +146,9 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  *   must see (e.g. `CLAUDE_CODE_OAUTH_TOKEN` for Max-subscription auth, #213).
  *   Delivered per run as a sourced env file on the sandbox — never baked into
  *   the golden image, never on a process argv. Omit for none.
+ * @param {'fold'|'serialize'} [opts.overlap] - the engine's overlap mode
+ *   (#514). Rides the assignment only when set; absent leaves the payload
+ *   byte-identical to a pre-#514 one.
  * @param {number} [opts.cpu] - number of vCPUs for the cloned sandbox.
  * @param {string} [opts.memory] - memory size for the cloned sandbox (e.g. '8GB').
  * @param {string} [opts.disk] - disk size for the cloned sandbox (e.g. '30GB').
@@ -153,7 +156,7 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, engine, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, engine, overlap, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
   // Validate the payload before the first ssh (#190): `JSON.stringify` silently
   // drops `undefined` fields, so an unvalidated caller mistake does not fail
   // here — it fails two stages later, on the sandbox, with a payload missing
@@ -210,7 +213,14 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   // `engine` rides only when set: JSON.stringify drops undefined, and an
   // absent key IS the old path — the shim treats anything but 'one-driver'
   // as the `claude` launch, so old assignments stay valid byte-for-byte.
-  const payload = { runId, token, wsUrl, ttlMs, planPath, ...(isNonEmptyString(engine) ? { engine } : {}) }
+  // `overlap` (#514) rides on the same terms, and for the same reason: an
+  // absent key IS the old path — the shim launches the engine with the
+  // three-argument argv it always did, so old assignments stay byte-identical.
+  const payload = {
+    runId, token, wsUrl, ttlMs, planPath,
+    ...(isNonEmptyString(engine) ? { engine } : {}),
+    ...(isNonEmptyString(overlap) ? { overlap } : {}),
+  }
   await exec(
     `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
   )

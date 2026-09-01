@@ -684,8 +684,15 @@ export const shellExec = (cmd) =>
  * instructions for an LLM session, and this launch has none — the two-move
  * rule it dictated is `run-main.mjs`'s `ackDecision`, code not prose.
  */
-export const oneDriverArgs = (repoDir, planPath, runId) =>
-  [path.join(repoDir, 'fleet', 'run-main.mjs'), planPath, runId]
+export const oneDriverArgs = (repoDir, planPath, runId, overlap) => [
+  path.join(repoDir, 'fleet', 'run-main.mjs'),
+  planPath,
+  runId,
+  // #514: the run assignment's optional overlap mode, in `run-main.mjs`'s own
+  // flag spelling. Absent → exactly the three-entry argv that shipped before,
+  // so an assignment written by a pre-#514 driver launches identically.
+  ...(overlap ? ['--overlap', overlap] : []),
+]
 
 /**
  * The engine's environment: the inherited env (the credential lives there,
@@ -744,6 +751,7 @@ export const invokeEngineRun = async ({
   repoDir,
   planPath,
   runId,
+  overlap,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
   log = console.error,
@@ -782,7 +790,7 @@ export const invokeEngineRun = async ({
   // checked out; the gate-receipt read is unchanged.
   const code = await spawnEngine({
     command: 'node',
-    args: oneDriverArgs(repoDir, planPath, runId),
+    args: oneDriverArgs(repoDir, planPath, runId, overlap),
     cwd: repoDir,
     runId,
   })
@@ -809,7 +817,7 @@ export const main = async ({
   auxDeliver = deliverAndClose,
 } = {}) => {
   const assignment = readAssignment(assignmentPath)
-  const { runId, token, wsUrl, ttlMs } = assignment
+  const { runId, token, wsUrl, ttlMs, overlap } = assignment
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
 
@@ -890,7 +898,7 @@ export const main = async ({
           file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'events.jsonl'),
         })
         try {
-          return await invokeEngineRun({ repoDir, planPath, runId, exec, spawnEngine, excludeDirs: preRunDirs })
+          return await invokeEngineRun({ repoDir, planPath, runId, overlap, exec, spawnEngine, excludeDirs: preRunDirs })
         } finally {
           promoter.stop()
         }

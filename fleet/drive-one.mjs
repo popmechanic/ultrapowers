@@ -53,14 +53,25 @@ const FLAGS = Object.freeze({
   '--repo-dir': 'repoDir',
   '--github-token-path': 'githubTokenPath',
   '--pr-base': 'prBase',
+  // #514: the fold-versus-serialize A/B knob. Deliberately absent from
+  // DEFAULTS — an unset flag must leave NO `overlap` key anywhere along
+  // the chain, so the fleet default stays whatever the compiler's own
+  // default is (Amendment 9: fold is the only merge path; serialize is
+  // the rollback arm, never a standing default).
+  '--overlap': 'overlap',
 })
 const NUMERIC = new Set(['port', 'ttlHours', 'sandboxCpu'])
+// The modes `fleet/run-main.mjs` forwards to `ultra_run.py --overlap`,
+// whose argparse `choices` are these two lowercase spellings. Checked HERE
+// so a typo costs a usage line instead of a cloned sandbox that dies two
+// hops away on an argparse error nobody reads.
+const OVERLAP_MODES = Object.freeze(['fold', 'serialize'])
 
 export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
   '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
   '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
-  '[--github-token-path FILE] [--pr-base BRANCH] [--allow-unfit-plan]'
+  '[--github-token-path FILE] [--pr-base BRANCH] [--overlap fold|serialize] [--allow-unfit-plan]'
 
 export const parseArgs = (argv) => {
   const positional = []
@@ -82,6 +93,10 @@ export const parseArgs = (argv) => {
         const n = Number(value)
         if (!Number.isFinite(n)) throw new Error(`drive-one: ${arg} must be a number, got ${value}`)
         opts[key] = n
+      } else if (key === 'overlap' && !OVERLAP_MODES.includes(value)) {
+        throw new Error(
+          `drive-one: ${arg} must be one of ${OVERLAP_MODES.join('|')}, got ${JSON.stringify(value)}\n${usage()}`
+        )
       } else {
         opts[key] = value
       }
@@ -141,6 +156,7 @@ export const buildDriveOptions = (
   evidenceDir: parsed.evidenceDir,
   ...(parsed.sandboxCpu ? { sandboxCpu: parsed.sandboxCpu } : {}),
   ...(parsed.sandboxMemory ? { sandboxMemory: parsed.sandboxMemory } : {}),
+  ...(parsed.overlap ? { overlap: parsed.overlap } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,
   githubTokenPath: parsed.githubTokenPath,
   prBase: parsed.prBase,

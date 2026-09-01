@@ -3,21 +3,34 @@ marker contract. These tests pin its vocabulary and the fixture that exercises
 every marker shape. Sibling test files keep the consumers (compiler reference,
 orchestrator, report format) from drifting. Since #390 this file carries the
 RUNTIME half only; authoring lives in skills/ultrawrite/SKILL.md."""
+import os
 import pathlib
-import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-CONTRACT = ROOT / "skills/ultrapowers/references/plan-markers.md"
+# Overridable so a test can point this contract at a mutated copy of the doc
+# and watch the assertions below go red.
+CONTRACT = pathlib.Path(os.environ.get(
+    "PLAN_MARKERS_MD", ROOT / "skills/ultrapowers/references/plan-markers.md"))
 FIXTURE = ROOT / "tests/fixtures/marked-plan.md"
 
-MARKER = re.compile(r"<!-- BAKE:(\w+) -->(.*?)<!-- /BAKE -->", re.DOTALL)
+MARKER_SYNTAX = "## Marker syntax"
+TYPE_SEMANTICS = "## Type semantics (dispositions)"
 TYPES = ("implementation", "gate", "release", "manual")
 
 
-def contract_blocks():
-    blocks = {name: body for name, body in MARKER.findall(CONTRACT.read_text())}
-    assert blocks, "no <!-- BAKE:NAME --> markers found in plan-markers.md"
-    return blocks
+def contract_sections():
+    """plan-markers.md split by `## ` heading — each section runs from its
+    heading to the next `## ` line. The sections are the anchors; the doc
+    carries no comment fences to anchor on (0.3.0 deleted the bake step)."""
+    sections, heading = {}, None
+    for line in CONTRACT.read_text().splitlines(keepends=True):
+        if line.startswith("## "):
+            heading = line.strip()
+            sections[heading] = []
+        if heading is not None:
+            sections[heading].append(line)
+    assert sections, "no `## ` sections found in plan-markers.md"
+    return {name: "".join(body) for name, body in sections.items()}
 
 
 def test_contract_defines_both_markers_and_all_types():
@@ -28,23 +41,21 @@ def test_contract_defines_both_markers_and_all_types():
         assert t in text, f"type '{t}' missing from the contract"
 
 
-def test_contract_review_marker_lives_in_marker_syntax_block():
-    # The Review marker (#87) is documented as an extension of the existing
-    # MARKER_SYNTAX block, not a new BAKE block — with the ultraplan mirror
-    # retired (#390), this block IS the authoritative statement of the marker.
-    blocks = contract_blocks()
-    syntax = blocks["MARKER_SYNTAX"]
+def test_contract_review_marker_lives_in_marker_syntax_section():
+    # The Review marker (#87) is documented inside the existing `## Marker
+    # syntax` section, not under a section of its own — with the ultraplan
+    # mirror retired (#390), this section IS the authoritative statement.
+    syntax = contract_sections()[MARKER_SYNTAX]
     assert "**Review:**" in syntax
     assert "adversarial" in syntax
     assert "lean" in syntax
 
 
-def test_contract_commutes_marker_lives_in_marker_syntax_block():
-    # `**Commutes:**` is documented as an extension of the existing
-    # MARKER_SYNTAX block (same discipline as **Review:**) — one block the
-    # compiler's own vocabulary is read against, not a second source of truth.
-    blocks = contract_blocks()
-    syntax = blocks["MARKER_SYNTAX"]
+def test_contract_commutes_marker_lives_in_marker_syntax_section():
+    # `**Commutes:**` is documented inside the same `## Marker syntax` section
+    # (same discipline as **Review:**) — one section the compiler's own
+    # vocabulary is read against, not a second source of truth.
+    syntax = contract_sections()[MARKER_SYNTAX]
     assert "**Commutes:**" in syntax
     assert "own `**Files:**`" in syntax          # the own-Files validation rule
     assert "marker conflict" in syntax           # a stray path is never a compile error
@@ -73,10 +84,13 @@ def test_contract_documents_review_marker_semantics():
     assert "compile error" in text.lower() or "compile-time" in text.lower()
 
 
-def test_contract_has_bake_blocks_for_mirroring():
-    blocks = contract_blocks()
-    for name in ("MARKER_SYNTAX", "TYPE_SEMANTICS"):
-        assert name in blocks, "missing BAKE marker for " + name
+def test_contract_has_the_two_marker_sections_this_file_reads_by_heading():
+    sections = contract_sections()
+    for heading in (MARKER_SYNTAX, TYPE_SEMANTICS):
+        assert heading in sections, "plan-markers.md lost section " + heading
+    for t in TYPES:
+        assert t in sections[TYPE_SEMANTICS], (
+            f"type '{t}' missing from the {TYPE_SEMANTICS!r} section")
 
 
 def test_contract_states_the_invariants():
