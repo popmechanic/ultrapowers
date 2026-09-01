@@ -36,9 +36,16 @@ export const MAX_K = SUFFIXES.length
 // spec's §Measurement list, written down before any result is visible so the
 // dials cannot be chosen to fit what came back.
 export const DIALS = Object.freeze({
+  // Tokens are OUTPUT tokens per distinct assistant message (the reader was
+  // fixed at 1f17c57 — it had counted every streamed content block, ~2.4x high;
+  // the pre-fix figures were run-44 728k, run-45 588k, run-47 583k). Wall is
+  // the drive's elapsedMs. run-47 is the single-attempt control for the first
+  // race: the same #511 plan, one attempt, before the reviewer pair went
+  // concurrent — so its wall is an upper bound for a K=1 arm, not a like-for-like.
   baseline: Object.freeze({
-    'run-44': Object.freeze({ wallMinutes: 66, tokens: 728_000, fixRounds: 0 }),
-    'run-45': Object.freeze({ wallMinutes: 67, tokens: 588_000, fixRounds: 1, planTracedDefects: 2 }),
+    'run-44': Object.freeze({ wallMinutes: 79, tokens: 287_692, fixRounds: 0 }),
+    'run-45': Object.freeze({ wallMinutes: 62, tokens: 232_635, fixRounds: 1, planTracedDefects: 2 }),
+    'run-47': Object.freeze({ wallMinutes: 79, tokens: 239_564, fixRounds: 1, planTracedDefects: 1 }),
   }),
   // Fixed here so the wall is computed the way it was pre-registered.
   raceWall: 'manifest launchedAt -> max over runs of the per-run elapsedMs end',
