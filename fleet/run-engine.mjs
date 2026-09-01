@@ -184,6 +184,14 @@ const interfacesLine = (task) => {
     (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
     (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
 }
+// Round-1 minor findings, rendered for the round-2 reviewers (see the review
+// loop). Exported for the unit pin, as suiteLine is.
+export const priorAdvisoriesBlock = (minors) => {
+  if (!Array.isArray(minors) || minors.length === 0) return ''
+  return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
+    'recorded in the run report — do not re-report them; raise one again only if the fix ' +
+    'round made it blocking):\n' + minors.map((m) => '- ' + m.detail).join('\n')
+}
 // #458: the driver runs the suite on the folded tree and the critic was never
 // told. A read-only critic cannot run it — running a PROGRAM is not classified
 // read-only, measured 2026-08-31 (#457) — so it establishes pass/fail by static
@@ -585,24 +593,32 @@ export async function runEngine({
                tier: economics.tier, review: economics.review, fixIterations: 0 }
     }
 
+    // Round-1 advisories, carried into round 2 (2026-09-01, run-47 read): the
+    // reviewers re-found the same minor findings every round (three of six
+    // named one argv double-parse), spending review turns on items already in
+    // the run report that no fix round is asked to act on. Round 2 is told what
+    // round 1 already recorded; the report keeps the union, not round 2 alone.
+    const priorMinors = []
     for (let iter = 1; iter <= 2; iter++) {
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
-        globalConstraintsBlock + interfacesLine(task)
+        globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors)
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
       let issues, verdicts
       if (taskReviewProfile(task) === 'adversarial') {
-        // Sequential on purpose (waves.js parity): each task pipeline stays
-        // single-agent so peak concurrency equals wave width.
-        const r1 = await agent(reviewPrompt, reviewOpts(1))
-        if (r1 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
-        const r2 = await agent(reviewPrompt, reviewOpts(2))
-        if (r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
+        // Concurrent (2026-09-01): the pair reads the same patch with the same
+        // prompt and neither depends on the other, so they run side by side —
+        // run-47 spent 26 of 79 minutes in six serial reviewer calls. The
+        // pre-0.3.0 rule that a task pipeline stays single-agent (so peak
+        // concurrency equals wave width) is retired here: the bound it
+        // protected was the Workflow tool's, not the API's (#454 measured it).
+        const [r1, r2] = await Promise.all([agent(reviewPrompt, reviewOpts(1)), agent(reviewPrompt, reviewOpts(2))])
+        if (r1 === null || r2 === null) throw new Error('AGENT_NULL: reviewer agent returned null (terminal Overloaded or skipped)')
         issues = (r1.issues || []).concat(r2.issues || [])
         verdicts = [r1.verdict, r2.verdict]
         for (const cv of (r1.cannotVerify || []).concat(r2.cannotVerify || [])) {
@@ -632,6 +648,9 @@ export async function runEngine({
       }
       const blocking = issues.filter((i) => i.severity === 'blocking')
       const minors = issues.filter((i) => i.severity === 'minor')
+      for (const m of minors) {
+        if (!priorMinors.some((p) => p.detail === m.detail)) priorMinors.push(m)
+      }
       if (blocking.length === 0) {
         if (verdicts.indexOf('FIX_REQUIRED') !== -1) {
           judgmentCalls.push('task ' + task.id +
@@ -640,7 +659,7 @@ export async function runEngine({
         return { task: task.id, baseCorrected, status: 'done', branch: '',
                  headSha: impl.headSha, patch: impl.patch,
                  reviewVerdict: iter === 1 ? 'clean' : 'fixed',
-                 notes: minors.map((m) => m.detail)
+                 notes: priorMinors.map((m) => m.detail)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
                  tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
       }
