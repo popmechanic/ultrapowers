@@ -1,0 +1,68 @@
+{
+  "mode": "gate",
+  "stamp": "run-47",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-run-47/report.json",
+  "branch": "ultra/integration-run-47",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs:225-234 \u2014 sqliteStoreJson, the judge's live store reader \u2014 Every judge test injects `readStoreJson` (test_race.mjs:507-511), as the global constraint requires (no sqlite in the suite), so the real `sqlite3 <dbDir>/fleet.db 'SELECT store FROM tinybase LIMIT 1'` spawn never executes. Statically verified: query string and options are identical to status.mjs:79-80, and the path is right \u2014 orchestrator.mjs:161 opens `path.join(dbDir, safeName(pathId) + '.db')` with FLEET_PATH='fleet' (orchestrator.mjs:33), i.e. exactly `<dbDir>/fleet.db`. Only a real race's judge exercises it. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs:58-67,162-173 \u2014 gitExec and the clone/checkout/set-url sequence \u2014 All git subprocesses are injected (test_race.mjs:88-93), per the no-git-remote constraint. The suite asserts the recorded call sequence and replays it to assert the resulting origin config (test_race.mjs:239-263), which is the strongest check available without a live clone, but `git clone --no-hardlinks`, `checkout --detach <sha>` and `remote set-url origin <url>` are never actually run. One edge the static reading surfaces: if the launch checkout is itself on a detached HEAD whose commit is unreachable from any branch, the local clone would not carry it and the `checkout --detach` would fail \u2014 loudly, and before the manifest is written, so it is a clean refusal rather than a defect. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/race.mjs:181-190 \u2014 a live race: K concurrent driveOne calls against detached-HEAD clones with re-pointed origins, through to the publish leg and a judge over real artifacts \u2014 Needs sandbox VMs, a GitHub remote and real OAuth/GH tokens; the suite stubs driveOne entirely. Static reading supports every leg \u2014 drive.mjs:393 defaults baseRef to 'HEAD' (fine detached), drive.mjs:492 resolves a relative planPath against each run's own repoDir, provision.mjs:224 pushes fleet-base to the per-VM ssh remote (not origin) so K siblings cannot collide on that ref, vmName is `fleet-<runId>` (provision.mjs:170) so VM names are distinct, and every drive.mjs write into the shared evidenceDir is runId- or vmName-qualified (gate-read-, stat-, pr-body-, sandbox-logs/<vmName>-<ts>/). RUNBOOK:250 precedents three concurrent drive-one processes, but never three that each also own a fresh clone with a rewritten origin. The first real race is the only confirmation, and it is also what populates the pre-registered dials (fleet/race.mjs:38-50). [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.1rI0awmbgJ/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 8/8 workers\\n8 workers [1272 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 11%]\\n........................................................................ [ 16%]\\n........................................................................ [ 22%]\\n........................................................................ [ 28%]\\n........................................................................ [ 33%]\\n........................................................................ [ 39%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 56%]\\n........................................................................ [ 62%]\\n........................................................................ [ 67%]\\n........................................................................ [ 73%]\\n........................................................................ [ 79%]\\n........................................................................ [ 84%]\\n........................................................................ [ 90%]\\n........................................................................ [ 96%]\\n................................................                         [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1272 passed, 5 warnings in 147.21s (0:02:27) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
