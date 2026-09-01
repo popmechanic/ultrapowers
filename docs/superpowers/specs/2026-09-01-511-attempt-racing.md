@@ -22,6 +22,12 @@
 - **First target:** a boring claims-v1 plan authored with ultrawrite from the
   remaining #524 papercuts. Single-novelty rule: the race is the novelty; the
   plan must not be.
+- **Control: operator-only, explicit.** A race starts only when the operator
+  asks for one by name ("race this plan"; K optional, default 3). No
+  automation: the routing rubric does not offer racing, no risk tier triggers
+  it, and an unattended-session authorization must name racing explicitly to
+  include it. Automation criteria are a post-measurement question, decided
+  after the first races are read — not designed here.
 
 ## New machinery
 
