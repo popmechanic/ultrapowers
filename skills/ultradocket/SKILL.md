@@ -75,8 +75,8 @@ One iteration:
 2. **Pre-seed** a standard `superpowers:brainstorming` session with the issue
    body, the triage notes, and the matched line(s) of `docs/objectives.md`. A
    well-defined issue is half a spec, so the interview is short.
-3. **Plan** through the normal pipeline: brainstorm → `superpowers:writing-plans`
-   + `ultrapowers:ultraplan` → operator approval.
+3. **Plan** through the normal pipeline: brainstorm → `ultrapowers:ultrawrite`
+   (the one owned authoring skill since #390) → operator approval.
    **Per-plan approval is the default contract**: the sweep pauses at each
    plan for the operator's signature before advancing — plan approval is the
    operator's control point, and they should never have to interrupt mid-sweep
@@ -90,7 +90,7 @@ One iteration:
    equivalent) — verified by the pipeline's existing `compile_plan.py --check`
    step; a bare `suite.` parses as `missing` and reds the drain.
 4. **Choose the engine.** Apply the **shared execution-fit rubric** — the same
-   one the routing hook and ultraplan use (pinned by
+   one the routing hook and ultrawrite use (pinned by
    `tests/test_recommendation_rubric.py`) — to the finished marked plan, and
    record the chosen engine. Do **not** restate the rubric's branch clauses
    here; reference it. The value is one of `ultrapowers | subagent-driven |

@@ -715,9 +715,10 @@ def test_process_rule_advisory_flags_each_offending_line_once(tmp_path):
 
 
 def test_process_rule_advisory_only_reads_the_global_constraints_section(tmp_path):
-    """Ordering language inside a task's own steps is where it BELONGS (ultraplan:
-    result-claims in constraints, ordering in per-task steps) — the render must
-    not flag the thing it is telling authors to do."""
+    """Ordering language inside a legacy task's own steps is where it BELONGS
+    (result-claims in constraints, ordering in per-task steps — the legacy-grammar
+    rule; claims-v1 has no steps and advises on ordering phrasing separately) —
+    the render must not flag the thing it is telling authors to do."""
     repo = git_repo(tmp_path, P4_FILES)
     plan = tmp_path / "p.md"
     plan.write_text(PROCESS_RULE_PLAN.replace(

@@ -60,10 +60,11 @@ Eval run mixed-B-2 (2026-06-13): a task spec said "returns a `schema.User`" whil
 declaring `Depends-on: none`, was waved parallel to the schema task, and its
 failure cascade-blocked the rest of the diamond. A prose-only reference like that is no longer inferred: the prose-reference tier
 that once serialized it was deleted in Phase 2 (0.2.17), so the guard is authoring —
-declare the `**Interfaces:**` `Consumes`/`Produces` pair or the `**Depends-on:**`
-marker (`references/dependency-analysis.md`), and the compiler's loud
-`undeclared-dependency` finding catches a declared-but-unlinked pair at the Step-3
-render. The same run motivated the FILES and SIBLING-FILES scope rules
+declare the `**Interfaces:**` `Consumes`/`Produces` pair, which is the edge's only
+source under the claims grammar (#390 retired the `**Depends-on:**` marker and, with
+it, the `undeclared-dependency` cross-check there — its remedy became unsayable; the
+surviving warning is the unmatched-`Consumes` `ADVISORY`). Legacy-grammar plans keep
+both the marker and the cross-check. The same run motivated the FILES and SIBLING-FILES scope rules
 carried by the implementer/reviewer role prompts (`fleet/roles/*.md` since 0.3.0):
 the implementer's final commit deleted a sibling-owned file its task never named,
 and the reviewer treated it as an ordinary judgment call.

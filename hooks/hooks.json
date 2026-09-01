@@ -1,5 +1,5 @@
 {
-  "description": "Inject the ultraplan/ultrapowers plan-routing rule at session start so plan authoring reliably layers ultraplan onto superpowers:writing-plans and the execution handoff offers /ultrapowers first.",
+  "description": "Inject the ultrapowers plan-routing rule at session start so plan authoring reliably reaches the owned authoring skill (ultrawrite, #390) and the execution handoff offers /ultrapowers first.",
   "hooks": {
     "SessionStart": [
       {

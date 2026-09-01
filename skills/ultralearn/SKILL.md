@@ -80,7 +80,7 @@ runs inside Claude Code — no API key, no external calls.
 Read the accumulated `ledger.jsonl`, cluster recurring/co-occurring findings
 across runs, rank by frequency × severity × novelty, and draft improvement
 proposals — each mapped to a real surface (`references/*.md`, the routing hook,
-ultraplan, `report-format.md`/`SKILL.md`, `README`). Draft each proposal against
+ultrawrite, `report-format.md`/`SKILL.md`, `README`). Draft each proposal against
 `references/distilling-proposals.md`, which is **structural-first**: *make the
 defect inexpressible, not detected*. A guard is a standing tax collected from
 every future run; a representation change is paid once — so before drafting
