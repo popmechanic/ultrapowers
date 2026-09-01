@@ -284,8 +284,7 @@ the telemetry in hand.
 
 1. **The cutover PR:** `ultrawrite`; `claims-v1` mode + checks (§4); extractor + gate
    dispatch + verdict record; provenance script; fixtures + tests; §7 deletions;
-   routing re-point; CLAUDE.md/README/marketplace wording; release (minor bump —
-   architectural).
+   routing re-point; CLAUDE.md/README/marketplace wording; release (patch bump — operator call, 2026-08-31).
 2. **First run:** author #489 under the new grammar; fleet-run; read §8's dials.
    (Run-43 may opportunistically discharge #360's owed weave-bundle smoke — recorded
    on #360.)
