@@ -86,9 +86,14 @@ def list_remote_bundles(host, remote_root=DEFAULT_REMOTE_ROOT):
 def fetch_bundles(host, dest, remote_root=DEFAULT_REMOTE_ROOT, run_ids=None):
     """scp each matching bundle's `sandbox-logs.tgz` into
     `dest/<bundle-name>/sandbox-logs.tgz`, returning the local paths copied.
-    `run_ids` filters on the `run-<n>` id; a failed copy is skipped."""
+    `run_ids` filters on the `run-<n>` id; a failed copy is skipped.
+
+    Raises `FailedLookup` when the listing itself could not be made — the
+    harvest layer catches it and counts a failed input (run-45 critic finding:
+    calling the advisory wrapper here made that handler unreachable, so a dead
+    host was silent on the harvest path)."""
     return _copy_bundles(host, dest, remote_root,
-                         list_remote_bundles(host, remote_root), run_ids)
+                         lookup_remote_bundles(host, remote_root), run_ids)
 
 
 def _copy_bundles(host, dest, remote_root, names, run_ids=None):

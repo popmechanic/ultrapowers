@@ -479,3 +479,22 @@ def test_a_run_that_carries_findings_is_never_reported_looked_empty(tmp_path, ca
 
     assert rc == 0
     assert _lines(capsys.readouterr().err, "LOOKED-EMPTY:") == []
+
+
+def test_remote_harvest_of_an_unreachable_host_fails_loud(tmp_path, monkeypatch, capsys):
+    # run-45 critic finding, closed: with fetch_bundles now raising, a dead
+    # host on the harvest path is a counted failure — exit 2 (every input
+    # failed) and a FAILED-LOOKUP line — never a quiet "0 failed" success.
+    import os as _os
+    import stat as _stat
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "ssh"
+    stub.write_text("#!/bin/sh\nexit 255\n")
+    stub.chmod(stub.stat().st_mode | _stat.S_IEXEC | _stat.S_IXGRP | _stat.S_IXOTH)
+    monkeypatch.setenv("PATH", f"{bin_dir}{_os.pathsep}{_os.environ['PATH']}")
+    rc = hfr.main([
+        "--remote", "no-such-host", "--cache", str(tmp_path / "cache")])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "FAILED-LOOKUP:" in err and "no-such-host" in err

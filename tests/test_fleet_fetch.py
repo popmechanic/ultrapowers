@@ -210,3 +210,26 @@ def test_lookup_remote_bundles_returns_empty_for_a_readable_empty_root(tmp_path,
     root = tmp_path / "evidence"
     root.mkdir()
     assert fleet_fetch.lookup_remote_bundles("h", str(root)) == []
+
+
+def test_fetch_bundles_raises_rather_than_silently_fetching_nothing(tmp_path, monkeypatch):
+    # run-45 critic finding: fetch_bundles called the ADVISORY wrapper, which
+    # made harvest's `except FailedLookup` unreachable — a dead host fetched
+    # zero bundles silently. The fetch path must raise so the harvest layer
+    # can count a failed input.
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", "exit 255\n")
+    with pytest.raises(fleet_fetch.FailedLookup):
+        fleet_fetch.fetch_bundles("h", tmp_path / "dest")
+
+
+def test_unreachable_host_and_missing_root_carry_distinct_causes(tmp_path, monkeypatch):
+    # Pin the 255-vs-other split (run-45 reviewer: the branch was deletable
+    # with every exam still green). Two different failures, two messages.
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", "exit 255\n")
+    with pytest.raises(fleet_fetch.FailedLookup, match="host unreachable"):
+        fleet_fetch.lookup_remote_bundles("h")
+    _stub(tmp_path / "bin", "ssh", "exit 2\n")
+    with pytest.raises(fleet_fetch.FailedLookup, match="missing or unreadable"):
+        fleet_fetch.lookup_remote_bundles("h")
