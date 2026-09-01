@@ -11,8 +11,12 @@ engine_epoch_at) and writes the SAME bundle shape into the SAME cache, because
 the bundle is the interface: merge_ledger.bundle_lookups and the five lenses
 then work untouched.
 
-Read-only and advisory: malformed or missing input is skipped with a
-diagnostic, never raised.
+Read-only, and loud about its inputs (#489). Evidence that cannot be read at
+all is a FAILED-LOOKUP naming the run — the harvest keeps going, so N runs with
+M unreadable inputs yield N-M bundles and M `FAILED-LOOKUP:` lines, and only a
+harvest where nothing at all landed exits 2. Evidence that reads fine but
+carries nothing to learn from is a LOOKED-EMPTY and still bundles. The two are
+different facts; spelled as one silent skip they read identically downstream.
 """
 from __future__ import annotations
 
@@ -25,6 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _outcome import (FailedLookup, report_failed_lookup,  # noqa: E402
+                      report_looked_empty)
 import fleet_events            # noqa: E402
 import fleet_fetch             # noqa: E402
 import fleet_slice             # noqa: E402
@@ -78,15 +84,17 @@ def discover_run_dirs(path, workdir):
     tarball (unpacked under `workdir`). A run dir is exactly a directory
     holding an `events.jsonl` — pre-#421 runs (10-23) have none and are
     correctly invisible here; harvest_runs.py still owns 21-23.
+
+    Raises `FailedLookup` when the path could not be read at all; returns an
+    empty list when it read fine and simply holds no fleet runs. The caller
+    decides what a failure costs — this only refuses to confuse the two.
     """
     path = Path(path)
     if not path.exists():
-        _warn(f"no such path: {path}")
-        return []
+        raise FailedLookup(f"no such evidence path: {path}")
     if path.is_file():
         if not tarfile.is_tarfile(path):
-            _warn(f"not a directory or tarball: {path}")
-            return []
+            raise FailedLookup(f"not a fleet run directory or tarball: {path}")
         # NOT `path.stem`: fetch_bundles names every bundle's tarball
         # `sandbox-logs.tgz`, so a stem-keyed destination is the SAME directory
         # for all of them — each unpack then re-reports every run extracted so
@@ -100,9 +108,12 @@ def discover_run_dirs(path, workdir):
                 members = [m for m in tf.getmembers()
                            if not m.name.startswith("/") and ".." not in Path(m.name).parts]
                 tf.extractall(dest, members=members)
-        except (OSError, tarfile.TarError) as exc:
-            _warn(f"cannot unpack {path}: {exc}")
-            return []
+        # EOFError, not just TarError: a tarball truncated mid-transfer opens
+        # cleanly (`is_tarfile` only reads the first header) and dies in the
+        # gzip stream during extraction. Uncaught, one bad bundle killed the
+        # whole harvest.
+        except (OSError, EOFError, tarfile.TarError) as exc:
+            raise FailedLookup(f"cannot unpack {path}: {exc}") from exc
         return discover_run_dirs(dest, workdir)
     if (path / "events.jsonl").is_file():
         return [path]
@@ -156,16 +167,36 @@ def _trim_report(report):
     return out
 
 
+def _carries_a_finding(bundle):
+    """Whether the bundle holds anything a lens could learn from.
+
+    The four evidence payloads a run contributes beyond its own timeline:
+    worker meters, the suite report, the gate receipt, confine denials. A
+    bundle with none of them is real and readable — it just found nothing —
+    so it is written and reported LOOKED-EMPTY, never refused."""
+    return bool(bundle["audit"]["agents"]) or bundle["report"] is not None \
+        or bundle["gateReport"] is not None or bool(bundle["confineDenials"])
+
+
 def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None,
                        budget=fleet_slice.WORKER_BUDGET):
     """Write <cache_dir>/runs/<runId>/{bundle.json,slice.md}. Returns the
-    directory, or None when the run dir carries no usable event log."""
+    directory, or None when the run dir carries no usable event log — in which
+    case nothing is written and the refusal is a `FAILED-LOOKUP:` naming the
+    run."""
     run_dir = Path(run_dir)
     events = fleet_events.read_events(run_dir)
+    # Zero events after parse is the #471 shape: a bundle that could not have
+    # carried a finding in the first place. Refuse it before the cache sees it
+    # — a structurally empty bundle passes shape-only smoke forever.
+    if not events:
+        report_failed_lookup(f"{run_dir}: bundle would carry zero events — refused")
+        return None
     summary = fleet_events.summarize_events(events)
     run_id = summary.get("runId")
     if not run_id:
-        _warn(f"{run_dir}: no run:open event — not a fleet run directory")
+        report_failed_lookup(
+            f"{run_dir}: no run:open event — not a fleet run directory")
         return None
 
     gate_report = _read_json(run_dir / "gate-receipt.json") \
@@ -210,6 +241,10 @@ def build_fleet_bundle(run_dir, cache_dir, *, origin="home", engine_version=None
         "confineDenials": _read_jsonl(run_dir / "confine-denials.jsonl"),
     }
 
+    if not _carries_a_finding(bundle):
+        report_looked_empty(f"{run_id}: bundle carries no worker, report, "
+                            f"gate receipt, or confine-denial evidence")
+
     out = Path(cache_dir).expanduser() / "runs" / run_id
     out.mkdir(parents=True, exist_ok=True)
     (out / "bundle.json").write_text(json.dumps(bundle, indent=2))
@@ -239,17 +274,32 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     cache = Path(args.cache).expanduser()
+    built = skipped = failed = 0
     with tempfile.TemporaryDirectory(prefix="ultralearn-fleet-") as tmp:
         paths = [Path(p) for p in args.paths]
         if args.remote:
-            paths += fleet_fetch.fetch_bundles(
-                args.remote, Path(tmp) / "remote",
-                remote_root=args.remote_root, run_ids=args.run_ids)
+            try:
+                paths += fleet_fetch.fetch_bundles(
+                    args.remote, Path(tmp) / "remote",
+                    remote_root=args.remote_root, run_ids=args.run_ids)
+            except FailedLookup as exc:
+                report_failed_lookup(str(exc))
+                failed += 1
+
         run_dirs = []
         for p in paths:
-            run_dirs += discover_run_dirs(p, Path(tmp) / "unpack")
+            # One unreadable input costs exactly itself: name it and keep
+            # going, so N inputs with M failures still harvest N-M.
+            try:
+                found = discover_run_dirs(p, Path(tmp) / "unpack")
+            except FailedLookup as exc:
+                report_failed_lookup(str(exc))
+                failed += 1
+                continue
+            if not found:
+                report_looked_empty(f"{p}: no fleet run directories")
+            run_dirs += found
 
-        built, skipped = 0, 0
         for d in run_dirs:
             run_id = fleet_events.summarize_events(
                 fleet_events.read_events(d)).get("runId")
@@ -260,10 +310,16 @@ def main(argv=None):
                                   engine_version=args.engine_version,
                                   budget=args.slice_budget):
                 built += 1
+            else:
+                failed += 1
 
     print(f"{built} bundle(s) written to {cache}/runs "
-          f"({skipped} already cached, {len(run_dirs)} run dir(s) seen)")
-    return 0
+          f"({skipped} already cached, {len(run_dirs)} run dir(s) seen, "
+          f"{failed} failed)")
+    # Exit 2 only when every input failed. A bundle that landed — or one that
+    # was already cached — means the harvest did its job for that run, and a
+    # partial failure must not look like a dead harvest to a caller.
+    return 2 if failed and not built and not skipped else 0
 
 
 if __name__ == "__main__":

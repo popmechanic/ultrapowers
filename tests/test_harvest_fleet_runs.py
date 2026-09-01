@@ -1,7 +1,10 @@
 import json
+import os
 import sys
 import tarfile
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/ultralearn/scripts"))
 import harvest_fleet_runs as hfr  # noqa: E402
@@ -65,6 +68,51 @@ def _tarball(tmp_path, run_dir):
     return tgz
 
 
+def _lines(err, prefix):
+    """The machine-greppable outcome lines, in order — the whole point of the
+    #489 prefixes is that they can be selected rather than read."""
+    return [ln for ln in err.splitlines() if ln.startswith(prefix)]
+
+
+def _bundle_tarball(dest_root, bundle_name, run_dir):
+    """The orchestrator's on-disk layout: one directory per evidence bundle,
+    the tarball inside it always named `sandbox-logs.tgz`."""
+    d = dest_root / bundle_name
+    d.mkdir(parents=True)
+    tgz = d / "sandbox-logs.tgz"
+    with tarfile.open(tgz, "w:gz") as tf:
+        tf.add(run_dir, arcname=f"repo/.claude/ultrapowers/{run_dir.name}")
+    return tgz
+
+
+def _corrupt_tarball(dest_root, bundle_name, run_dir):
+    """A `sandbox-logs.tgz` whose gzip stream stops mid-member — what a
+    truncated scp actually leaves behind. Padded with incompressible bytes so
+    the first tar header still reads: the file opens and fails on *extract*,
+    which is the path a plain `is_tarfile` check walks straight past."""
+    (run_dir / "pad.bin").write_bytes(os.urandom(1 << 17))
+    tgz = _bundle_tarball(dest_root, bundle_name, run_dir)
+    raw = tgz.read_bytes()
+    tgz.write_bytes(raw[:len(raw) * 2 // 5])
+    (run_dir / "pad.bin").unlink()
+    assert tarfile.is_tarfile(tgz), "corrupt fixture must still open"
+    return tgz
+
+
+def _make_quiet_run_dir(root, run_id="run-40"):
+    """Readable, real events, nothing for a lens to find: no workers, no
+    report, no gate receipt, no confine denials."""
+    d = root / f"run-{run_id}"
+    d.mkdir(parents=True)
+    events = [
+        _ev(1, 0, kind="run:open", runId=run_id, base="", source="fleet/run-main.mjs"),
+        _ev(2, 1000, kind="engine:phase", phase="Wave 1"),
+        _ev(3, 2000, kind="engine:log", detail="no tasks dispatched"),
+    ]
+    (d / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events) + "\n")
+    return d
+
+
 # ---------- discovery ----------
 
 def test_discover_finds_a_bare_run_dir(tmp_path):
@@ -92,8 +140,12 @@ def test_discover_skips_a_dir_with_no_event_log(tmp_path):
     assert hfr.discover_run_dirs(tmp_path, tmp_path / "w") == []
 
 
-def test_discover_of_a_missing_path_is_advisory(tmp_path):
-    assert hfr.discover_run_dirs(tmp_path / "gone", tmp_path / "w") == []
+def test_discover_of_a_missing_path_is_a_failed_lookup(tmp_path):
+    # #489: "could not look" is not "looked and found nothing". A path that is
+    # not there was never looked at, so it raises rather than reading as empty.
+    with pytest.raises(hfr.FailedLookup) as exc:
+        hfr.discover_run_dirs(tmp_path / "gone", tmp_path / "w")
+    assert str(exc.value) == f"no such evidence path: {tmp_path / 'gone'}"
 
 
 # ---------- bundle assembly ----------
@@ -227,9 +279,16 @@ def test_main_is_incremental_and_force_overrides(tmp_path, capsys):
 
 
 def test_main_with_no_runs_found_is_a_clean_zero(tmp_path, capsys):
+    # A real tree that holds no fleet runs: the lookup succeeded and found
+    # nothing. LOOKED-EMPTY, exit 0 — the opposite of a missing path.
+    (tmp_path / "empty").mkdir()
     rc = hfr.main([str(tmp_path / "empty"), "--cache", str(tmp_path / "cache")])
     assert rc == 0
-    assert "0 bundle" in capsys.readouterr().out
+    cap = capsys.readouterr()
+    assert "0 bundle" in cap.out
+    assert _lines(cap.err, "LOOKED-EMPTY:") == [
+        f"LOOKED-EMPTY: {tmp_path / 'empty'}: no fleet run directories"]
+    assert _lines(cap.err, "FAILED-LOOKUP:") == []
 
 
 # ---------- #464 item 1: every bundle tarball is named sandbox-logs.tgz ----------
@@ -265,3 +324,158 @@ def test_a_non_object_jsonl_record_is_skipped_with_a_diagnostic(tmp_path, capsys
     b = json.loads((out / "bundle.json").read_text())
     assert b["confineDenials"] == [{"tool": "Bash"}]
     assert "non-object record" in capsys.readouterr().err
+
+
+# ---------- #489: fail loud at the input layer ----------
+
+def test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land(tmp_path, capsys):
+    # The N−M contract: two inputs, one unreadable, one bundle lands and the
+    # corrupt run is named. Partial failure never aborts the remainder.
+    src, dest, cache = tmp_path / "src", tmp_path / "dest", tmp_path / "cache"
+    good = _bundle_tarball(dest, "fleet-run-30-1788130000",
+                           _make_run_dir(src, "run-30"))
+    bad = _corrupt_tarball(dest, "fleet-run-31-1788130001",
+                           _make_run_dir(src, "run-31"))
+
+    rc = hfr.main([str(good), str(bad), "--cache", str(cache)])
+
+    assert rc == 0
+    cap = capsys.readouterr()
+    failed = _lines(cap.err, "FAILED-LOOKUP:")
+    assert len(failed) == 1, failed
+    assert failed[0].startswith(f"FAILED-LOOKUP: cannot unpack {bad}: ")
+    assert "run-31" in failed[0]
+    assert (cache / "runs" / "run-30" / "bundle.json").exists()
+    assert not (cache / "runs" / "run-31").exists()
+    assert "1 bundle" in cap.out
+
+
+def test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line(tmp_path, capsys):
+    src, dest, cache = tmp_path / "src", tmp_path / "dest", tmp_path / "cache"
+    good = _bundle_tarball(dest, "fleet-run-30-1788130000",
+                           _make_run_dir(src, "run-30"))
+    bad = dest / "fleet-run-31-1788130001" / "sandbox-logs.tgz"
+    bad.parent.mkdir(parents=True)
+    bad.write_bytes(b"this is not a tarball at all" * 64)
+
+    rc = hfr.main([str(good), str(bad), "--cache", str(cache)])
+
+    assert rc == 0
+    cap = capsys.readouterr()
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [
+        f"FAILED-LOOKUP: not a fleet run directory or tarball: {bad}"]
+    assert (cache / "runs" / "run-30" / "bundle.json").exists()
+
+
+def test_every_input_failing_exits_two(tmp_path, capsys):
+    src, dest, cache = tmp_path / "src", tmp_path / "dest", tmp_path / "cache"
+    a = _corrupt_tarball(dest, "fleet-run-30-1788130000",
+                         _make_run_dir(src, "run-30"))
+    b = dest / "fleet-run-31-1788130001" / "sandbox-logs.tgz"
+    b.parent.mkdir(parents=True)
+    b.write_bytes(b"garbage" * 64)
+
+    rc = hfr.main([str(a), str(b), "--cache", str(cache)])
+
+    assert rc == 2
+    cap = capsys.readouterr()
+    assert len(_lines(cap.err, "FAILED-LOOKUP:")) == 2
+    assert not (cache / "runs").exists()
+    assert "0 bundle" in cap.out
+
+
+def test_main_on_a_missing_path_exits_two_naming_the_path(tmp_path, capsys):
+    rc = hfr.main([str(tmp_path / "gone"), "--cache", str(tmp_path / "cache")])
+    assert rc == 2
+    assert _lines(capsys.readouterr().err, "FAILED-LOOKUP:") == [
+        f"FAILED-LOOKUP: no such evidence path: {tmp_path / 'gone'}"]
+
+
+def test_a_failure_beside_an_already_cached_run_is_not_a_total_failure(tmp_path, capsys):
+    # Exit 2 means *every* input failed. A run that was already harvested is a
+    # successful lookup, so the run beside it failing is still exit 0.
+    src, cache = tmp_path / "src", tmp_path / "cache"
+    _make_run_dir(src, "run-30")
+    hfr.main([str(src), "--cache", str(cache)])
+    capsys.readouterr()
+
+    rc = hfr.main([str(src), str(tmp_path / "gone"), "--cache", str(cache)])
+
+    assert rc == 0
+    cap = capsys.readouterr()
+    assert len(_lines(cap.err, "FAILED-LOOKUP:")) == 1
+    assert "0 bundle" in cap.out
+
+
+# ---------- #489: no structurally empty bundle is ever written ----------
+
+def test_build_refuses_a_zero_event_run_dir(tmp_path, capsys):
+    d = _make_run_dir(tmp_path, "run-30")
+    (d / "events.jsonl").write_text("\n   \n")
+
+    assert hfr.build_fleet_bundle(d, tmp_path / "cache") is None
+
+    assert not (tmp_path / "cache").exists()
+    assert _lines(capsys.readouterr().err, "FAILED-LOOKUP:") == [
+        f"FAILED-LOOKUP: {d}: bundle would carry zero events — refused"]
+
+
+def test_a_zero_event_bundle_is_refused_and_absent_from_the_cache(tmp_path, capsys):
+    src, cache = tmp_path / "src", tmp_path / "cache"
+    d = _make_run_dir(src, "run-30")
+    (d / "events.jsonl").write_text("")
+
+    rc = hfr.main([str(src), "--cache", str(cache)])
+
+    assert rc == 2
+    cap = capsys.readouterr()
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [
+        f"FAILED-LOOKUP: {d}: bundle would carry zero events — refused"]
+    assert not (cache / "runs").exists()
+    assert "0 bundle" in cap.out
+
+
+def test_a_zero_event_run_beside_a_healthy_one_refuses_only_itself(tmp_path, capsys):
+    src, cache = tmp_path / "src", tmp_path / "cache"
+    _make_run_dir(src, "run-30")
+    empty = _make_run_dir(src, "run-31")
+    (empty / "events.jsonl").write_text("")
+
+    rc = hfr.main([str(src), "--cache", str(cache)])
+
+    assert rc == 0
+    cap = capsys.readouterr()
+    assert _lines(cap.err, "FAILED-LOOKUP:") == [
+        f"FAILED-LOOKUP: {empty}: bundle would carry zero events — refused"]
+    assert (cache / "runs" / "run-30" / "bundle.json").exists()
+    assert sorted(p.name for p in (cache / "runs").iterdir()) == ["run-30"]
+
+
+# ---------- #489: looked-and-found-nothing stays a healthy bundle ----------
+
+def test_a_run_with_events_but_no_findings_still_bundles_and_looks_empty(tmp_path, capsys):
+    src, cache = tmp_path / "src", tmp_path / "cache"
+    _make_quiet_run_dir(src, "run-40")
+
+    rc = hfr.main([str(src), "--cache", str(cache)])
+
+    assert rc == 0
+    cap = capsys.readouterr()
+    out = cache / "runs" / "run-40"
+    assert json.loads((out / "bundle.json").read_text())["runId"] == "run-40"
+    assert (out / "slice.md").exists()
+    assert _lines(cap.err, "LOOKED-EMPTY:") == [
+        "LOOKED-EMPTY: run-40: bundle carries no worker, report, gate receipt, "
+        "or confine-denial evidence"]
+    assert _lines(cap.err, "FAILED-LOOKUP:") == []
+    assert "1 bundle" in cap.out
+
+
+def test_a_run_that_carries_findings_is_never_reported_looked_empty(tmp_path, capsys):
+    src, cache = tmp_path / "src", tmp_path / "cache"
+    _make_run_dir(src, "run-30")
+
+    rc = hfr.main([str(src), "--cache", str(cache)])
+
+    assert rc == 0
+    assert _lines(capsys.readouterr().err, "LOOKED-EMPTY:") == []

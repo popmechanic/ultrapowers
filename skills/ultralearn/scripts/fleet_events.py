@@ -14,6 +14,9 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
+
 # The engine's emitted vocabulary, read off the sources that emit it:
 # fleet/run-worker.mjs:468-552, fleet/run-main.mjs:358-548,
 # fleet/run-waves.mjs:215-293. An unlisted kind still parses and still renders
@@ -45,6 +48,7 @@ def read_events(run_dir):
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
+        swallow("event log unreadable; the run keeps its other fields", exc)
         _warn("unreadable event log %s (%s)" % (path, exc))
         return []
     records = []
@@ -54,6 +58,8 @@ def read_events(run_dir):
         try:
             record = json.loads(line)
         except json.JSONDecodeError as exc:
+            swallow("malformed event line skipped; the rest of the log still "
+                    "parses", exc)
             _warn("skipping %s:%d — %s" % (path, lineno, exc))
             continue
         if not isinstance(record, dict):

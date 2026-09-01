@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """ultralearn harvester — detect real ultrapowers runs across projects and
 build per-run bundles into a local cache. Read-only and advisory: malformed or
-missing input is skipped with a diagnostic, never raised."""
+missing input is skipped, and every skip is a marked `swallow(...)` rather than
+a silence. The one exception is the input layer: a session transcript that
+cannot be read at all is a `FailedLookup`, which the sweep reports as
+`FAILED-LOOKUP:` and continues past — N runs with M unreadable inputs still
+yield N-M bundles."""
 from __future__ import annotations
 
 import copy
@@ -16,6 +20,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 import audit_run  # noqa: E402  (provides audit())
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _outcome import FailedLookup, report_failed_lookup, swallow  # noqa: E402
 
 SLICE_KEYWORDS = ("wave", "integrationbranch", "/ultrapowers", "gate",
                   "transcript dir", "recommended", "depends-on")
@@ -119,7 +125,9 @@ def _last_launch_tool_use_index(records, stamp):
         if isinstance(args, str):
             try:
                 args = json.loads(args)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                swallow("launch args are not JSON; this tool_use registers "
+                        "no runDir", exc)
                 args = None
         if isinstance(args, dict):
             run_dir = args.get("runDir")
@@ -150,12 +158,16 @@ def _approve_receipt_seen(records, stamp):
         obj = None
         try:
             obj = json.loads(txt)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            swallow("tool_result is not bare JSON; retry on its embedded "
+                    "JSON span", exc)
             m = _JSON_SPAN.search(txt)
             if m:
                 try:
                     obj = json.loads(m.group(0))
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as span_exc:
+                    swallow("embedded JSON span is malformed; this tool_result "
+                            "carries no receipt", span_exc)
                     obj = None
         if (isinstance(obj, dict) and obj.get("mode") == "approve"
                 and obj.get("stamp") == stamp and obj.get("lockReleased") is True):
@@ -283,7 +295,9 @@ def _plan_path(records):
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
+                    swallow("launch args are not JSON; this Workflow record "
+                            "yields no planPath", exc)
                     args = None
             if isinstance(args, dict):
                 pp = args.get("planPath")
@@ -332,7 +346,9 @@ def session_registry(records):
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
+                    swallow("launch args are not JSON; this Workflow record "
+                            "registers no stamp", exc)
                     args = None
             if isinstance(args, dict):
                 run_dir = args.get("runDir")
@@ -370,7 +386,9 @@ def _records(session_path):
             continue
         try:
             out.append(json.loads(line))
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            swallow("unparseable transcript line skipped; the session still "
+                    "reads", exc)
             continue
     return out
 
@@ -397,7 +415,9 @@ def _disk_receipts_for(run_dirs_by_stamp, stamps):
         f = Path(run_dir) / "gate-receipt.json"
         try:
             obj = json.loads(f.read_text())
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            swallow("gate receipt unreadable; the other stamps still report "
+                    "theirs", exc)
             continue
         if isinstance(obj, dict) and "verdict" in obj:
             entries.append({"receipt": obj, "stamp": stamp, "source": "disk"})
@@ -433,7 +453,9 @@ def _transcript_dirs(records):
     for c in candidates:
         try:
             key = str(Path(c).resolve())
-        except (OSError, ValueError):  # ValueError: embedded NUL (#156 item 4)
+        except (OSError, ValueError) as exc:  # ValueError: embedded NUL (#156 item 4)
+            swallow("unresolvable candidate path; dedupe on the literal "
+                    "string", exc)
             key = c  # unresolvable path: dedupe on the literal string, soft
         if key in seen_real:
             continue
@@ -447,12 +469,16 @@ def _transcript_dirs(records):
     last_key = None
     try:
         last_key = str(Path(candidates[-1]).resolve())
-    except (OSError, ValueError):
+    except (OSError, ValueError) as exc:
+        swallow("unresolvable candidate path; fall back to the literal "
+                "string", exc)
         last_key = candidates[-1]
     for c in unique:
         try:
             key = str(Path(c).resolve())
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            swallow("unresolvable candidate path; dedupe on the literal "
+                    "string", exc)
             key = c
         if key == last_key:
             return [c]
@@ -468,7 +494,8 @@ def _nearest_git_root(path):
     "repo root = nearest .git-bearing ancestor of runDir")."""
     try:
         p = Path(path).resolve()
-    except OSError:
+    except OSError as exc:
+        swallow("path will not resolve; there is no git root to name", exc)
         return None
     for candidate in (p, *p.parents):
         if (candidate / ".git").exists():
@@ -484,7 +511,9 @@ def _stamp_head_sha(run_dir, receipt):
     file."""
     try:
         obj = json.loads((Path(run_dir) / "report.json").read_text())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        swallow("report.json unreadable; the head sha falls back to the gate "
+                "receipt", exc)
         obj = None
     if isinstance(obj, dict):
         wave_merges = obj.get("waveMerges")
@@ -504,7 +533,9 @@ def _stamp_base_branch(run_dir, repo_root):
     refs/remotes/origin/HEAD`), else `main`."""
     try:
         obj = json.loads((Path(run_dir) / "receipt.json").read_text())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        swallow("receipt.json unreadable; base falls back to the repo "
+                "default branch", exc)
         obj = None
     if isinstance(obj, dict):
         base = obj.get("baseBranch")
@@ -516,8 +547,8 @@ def _stamp_base_branch(run_dir, repo_root):
             capture_output=True, text=True, timeout=_GIT_TIMEOUT)
         if res.returncode == 0 and res.stdout.strip():
             return res.stdout.strip().rsplit("/", 1)[-1]
-    except (OSError, subprocess.SubprocessError):
-        pass
+    except (OSError, subprocess.SubprocessError) as exc:
+        swallow("git cannot name the default branch; fall back to 'main'", exc)
     return "main"
 
 
@@ -543,7 +574,8 @@ def _git_ancestry_approved(run_dir, receipt):
             ["git", "-C", str(repo_root), "merge-base", "--is-ancestor", head, base],
             capture_output=True, text=True, timeout=_GIT_TIMEOUT)
         return res.returncode == 0
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        swallow("git cannot decide ancestry; treat the head as unmerged", exc)
         return False
 
 
@@ -577,12 +609,15 @@ def _drain_stamp_receipts(run_dir, stamp):
     entries = []
     try:
         files = sorted((Path(root) / ".claude/ultrapowers/receipts").glob(stamp + "-*.json"))
-    except OSError:
+    except OSError as exc:
+        swallow("receipts dir unreadable; this stamp reports no receipts", exc)
         return []
     for f in files:
         try:
             obj = json.loads(f.read_text())
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            swallow("unreadable receipt skipped; the stamp's other receipts "
+                    "still count", exc)
             continue
         if isinstance(obj, dict) and "verdict" in obj:
             entries.append({"receipt": obj, "stamp": stamp, "source": "stamp"})
@@ -612,7 +647,8 @@ def _drain_ancestry_approved(run_dir, receipt):
                 ["git", "-C", repo_root, "merge-base", "--is-ancestor",
                  head.strip(), base.strip()],
                 capture_output=True, text=True, timeout=_GIT_TIMEOUT)
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            swallow("git cannot decide ancestry for this row; skip the row", exc)
             continue
         if res.returncode == 0:
             return True
@@ -785,7 +821,8 @@ def _frontier_max_lines(run_dir):
             continue
         try:
             obj = json.loads((wave_dir / "fold_stats.json").read_text())
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            swallow("fold stats unreadable; this wave contributes no row", exc)
             continue
         max_lines = obj.get("maxLines") if isinstance(obj, dict) else None
         if isinstance(max_lines, list):
@@ -802,7 +839,8 @@ def _read_launch(run_dir):
         return None
     try:
         obj = json.loads((Path(run_dir) / "launch.json").read_text())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        swallow("launch.json unreadable; the run reports no wave plan", exc)
         return None
     if not isinstance(obj, dict):
         return None
@@ -820,7 +858,9 @@ def _launch_files_by_task(run_dir):
         return {}
     try:
         obj = json.loads((Path(run_dir) / "launch.json").read_text())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        swallow("launch.json unreadable; there are no task file lists to "
+                "join on", exc)
         return {}
     tasks = obj.get("tasks") if isinstance(obj, dict) else None
     items = (tasks.values() if isinstance(tasks, dict)
@@ -839,7 +879,8 @@ def _wf_run_ids(run_dir):
         return []
     try:
         obj = json.loads((Path(run_dir) / "wf-runs.json").read_text())
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        swallow("wf-runs.json unreadable; the run reports no workflow ids", exc)
         return []
     return [x for x in obj if isinstance(x, str)] if isinstance(obj, list) else []
 
@@ -855,7 +896,8 @@ def _plan_word_count(plan_path, run_dir):
         return None
     try:
         text = (repo_root / plan_path).read_text()
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError) as exc:
+        swallow("plan file unreadable; the run reports no plan text", exc)
         return None
     return len(text.split())
 
@@ -898,7 +940,8 @@ def _to_dt(s):
         return None
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except ValueError:
+    except ValueError as exc:
+        swallow("timestamp will not parse; the row has no comparable date", exc)
         return None
 
 
@@ -928,13 +971,17 @@ def _release_timeline():
                 continue
             try:
                 ver = json.loads(show.stdout).get("version")
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                swallow("plugin.json is not JSON at this commit; the row has "
+                        "no version", exc)
                 ver = None
             if ver:
                 rows.append((dt, ver))
         rows.sort()  # oldest-first by ISO date
         return collapse_timeline(rows)
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        swallow("git will not walk the version history; report an empty "
+                "timeline", exc)
         return ()
 
 
@@ -1060,8 +1107,9 @@ def classify_session_kind(records, audit, gate_report, planning_found, has_regis
 def build_bundle(session_path, project_slug, cache_dir, home_slug):
     try:
         records = _records(session_path)
-    except OSError:
-        return None
+    except OSError as exc:
+        raise FailedLookup(
+            f"unreadable session transcript {session_path}: {exc}") from exc
     if not is_real_run(records):
         return None
     session_id = Path(session_path).stem
@@ -1164,7 +1212,9 @@ def _load_watermark(cache_dir):
     if wm.exists():
         try:
             return set(json.loads(wm.read_text()))
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError) as exc:
+            swallow("watermark unreadable; the sweep re-harvests rather than "
+                    "skips", exc)
             return set()
     return set()
 
@@ -1195,7 +1245,14 @@ def harvest(projects_root, cache_dir, home_slug, *, project=None, session=None):
                 continue
             try:
                 bundle = build_bundle(sess, proj.name, cache_dir, home_slug)
+            except FailedLookup as exc:
+                report_failed_lookup(f"{key}: {exc}")
+                swallow("input-layer failure named above; the other sessions "
+                        "still harvest", exc)
+                bundle = None
             except Exception as exc:  # advisory: never crash a sweep
+                swallow("unexpected error building this bundle; the sweep "
+                        "continues", exc)
                 print(f"ultralearn: skipped {key}: {exc}", file=sys.stderr)
                 bundle = None
             seen.add(key)

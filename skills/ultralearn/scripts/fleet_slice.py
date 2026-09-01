@@ -11,6 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harvest_runs  # noqa: E402  (provides _records()/_iter_blocks_indexed())
+from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
 
 # A run's 14 worker transcripts sliced whole totalled 564,293 chars on run-30
 # (~140k tokens) — past what one reader carries, and there are eight runs. At
@@ -46,10 +47,10 @@ def _elide(text, budget):
 def find_transcript(projects_root, session_id):
     """First `<projects_root>/*/<session_id>.jsonl`, else None."""
     try:
-        return next(Path(projects_root).glob(f"*/{session_id}.jsonl"))
-    except StopIteration:
-        return None
+        return next(Path(projects_root).glob(f"*/{session_id}.jsonl"), None)
     except OSError as exc:
+        swallow("transcript search failed; this worker's slice carries no "
+                "transcript", exc)
         print(f"fleet_slice: cannot search {projects_root}: {exc}", file=sys.stderr)
         return None
 
@@ -68,6 +69,7 @@ def find_envelope(workers_root, session_id, label=None):
     try:
         candidates = sorted(root.glob("*/envelope.json"))
     except OSError as exc:
+        swallow("envelope search failed; the slice renders without envelopes", exc)
         print(f"fleet_slice: cannot search {root} for envelopes: {exc}",
               file=sys.stderr)
         return None
@@ -76,6 +78,8 @@ def find_envelope(workers_root, session_id, label=None):
         try:
             payload = json.loads(path.read_text())
         except (OSError, ValueError) as exc:
+            swallow("unreadable envelope skipped; the other workers' "
+                    "envelopes still render", exc)
             print(f"fleet_slice: cannot read envelope {path}: {exc}",
                   file=sys.stderr)
             continue
@@ -173,6 +177,8 @@ def worker_slice(transcript_path, budget=WORKER_BUDGET):
         records = harvest_runs._records(transcript_path)
         text = _worker_lines(records)
     except (OSError, ValueError, AttributeError, TypeError) as exc:
+        swallow("unreadable transcript yields an empty slice, never a "
+                "traceback", exc)
         print(f"fleet_slice: cannot read {transcript_path}: {exc}", file=sys.stderr)
         return ""
     return _elide(text, budget)

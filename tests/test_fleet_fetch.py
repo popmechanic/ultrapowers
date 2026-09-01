@@ -3,6 +3,8 @@ import stat
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills/ultralearn/scripts"))
 import fleet_fetch  # noqa: E402
 
@@ -119,3 +121,92 @@ def test_default_remote_root_tracks_the_drivers_shipped_evidence_dir():
     assert fleet_fetch.DEFAULT_REMOTE_ROOT == f"{m.group(1)}/sandbox-logs", (
         f"fetcher default {fleet_fetch.DEFAULT_REMOTE_ROOT!r} does not match the "
         f"driver's evidenceDir {m.group(1)!r}")
+
+
+# ---------- #489 task 2: "asked and got nothing" is not "couldn't ask" ----------
+#
+# The listing stays advisory per item, but the top-level lookup does not: a dead
+# host and an absent remote root are failures (exit 2, `FAILED-LOOKUP:`), while a
+# root that is present and holds no bundles is a real answer (exit 0,
+# `LOOKED-EMPTY:`). Two exit codes and two prefixes, not two identical silences.
+
+# An `ssh host "ls -1 <root>"` stub that runs its remote command locally, so the
+# missing/empty/populated root cases exercise the real `ls` exit codes. No test
+# here opens a connection; each one owns its tmp_path.
+_SSH_RUNS_THE_COMMAND_LOCALLY = 'eval "cmd=\\${$#}"; eval "$cmd"\n'
+
+
+def _local_ssh(tmp_path, monkeypatch):
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", _SSH_RUNS_THE_COMMAND_LOCALLY)
+
+
+def _copying_scp(tmp_path, monkeypatch):
+    _stub(tmp_path / "bin", "scp", 'eval "dest=\\${$#}"; printf tarball > "$dest"\n')
+
+
+def test_cli_on_an_unreachable_remote_exits_2_and_names_the_host(tmp_path, monkeypatch, capsys):
+    _path_with(monkeypatch, tmp_path / "bin")
+    _stub(tmp_path / "bin", "ssh", "exit 255\n")  # ssh's own "could not connect"
+    code = fleet_fetch.main(["dead-host", "--dest", str(tmp_path / "dest"),
+                             "--remote-root", "/srv/evidence"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert err.startswith("FAILED-LOOKUP: ")
+    assert "dead-host" in err
+    assert "LOOKED-EMPTY:" not in err
+
+
+def test_cli_on_a_missing_remote_root_exits_2_and_names_the_root(tmp_path, monkeypatch, capsys):
+    # Reachable host, absent root: a different code path from the dead host —
+    # the connection succeeds and the remote `ls` is what fails.
+    _local_ssh(tmp_path, monkeypatch)
+    root = tmp_path / "no-such-root"
+    code = fleet_fetch.main(["h", "--dest", str(tmp_path / "dest"),
+                             "--remote-root", str(root)])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert err.startswith("FAILED-LOOKUP: ")
+    assert str(root) in err
+    assert "LOOKED-EMPTY:" not in err
+
+
+def test_cli_on_a_present_but_empty_root_exits_0_and_names_the_root(tmp_path, monkeypatch, capsys):
+    _local_ssh(tmp_path, monkeypatch)
+    root = tmp_path / "evidence"
+    root.mkdir()
+    code = fleet_fetch.main(["h", "--dest", str(tmp_path / "dest"),
+                             "--remote-root", str(root)])
+    out, err = capsys.readouterr()
+    assert code == 0
+    assert err == f"LOOKED-EMPTY: h:{root}\n"
+    assert out == ""
+
+
+def test_cli_on_a_root_with_bundles_copies_them_and_exits_0(tmp_path, monkeypatch, capsys):
+    _local_ssh(tmp_path, monkeypatch)
+    _copying_scp(tmp_path, monkeypatch)
+    root = tmp_path / "evidence"
+    for name in ("fleet-run-24-100", "fleet-run-30-200"):
+        (root / name).mkdir(parents=True)
+        (root / name / "sandbox-logs.tgz").write_text("tarball")
+    dest = tmp_path / "dest"
+    code = fleet_fetch.main(["h", "--dest", str(dest), "--remote-root", str(root)])
+    out, err = capsys.readouterr()
+    assert code == 0
+    assert out == (f"{dest}/fleet-run-24-100/sandbox-logs.tgz\n"
+                   f"{dest}/fleet-run-30-200/sandbox-logs.tgz\n")
+    assert "FAILED-LOOKUP:" not in err and "LOOKED-EMPTY:" not in err
+
+
+def test_lookup_remote_bundles_raises_rather_than_returning_empty(tmp_path, monkeypatch):
+    _local_ssh(tmp_path, monkeypatch)
+    with pytest.raises(fleet_fetch.FailedLookup):
+        fleet_fetch.lookup_remote_bundles("h", str(tmp_path / "no-such-root"))
+
+
+def test_lookup_remote_bundles_returns_empty_for_a_readable_empty_root(tmp_path, monkeypatch):
+    _local_ssh(tmp_path, monkeypatch)
+    root = tmp_path / "evidence"
+    root.mkdir()
+    assert fleet_fetch.lookup_remote_bundles("h", str(root)) == []
