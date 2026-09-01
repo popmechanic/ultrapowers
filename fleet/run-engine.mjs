@@ -849,10 +849,21 @@ export async function runEngine({
       return blocked('materialize refused: ' + ((m && (m.park || m.fallback)) || tail(mat.stderr, 300)))
     }
     const candidate = m.candidateSha
+    // The adopt leg's last kernel call (Tier 1, spec 2026-09-01 §2.1): the
+    // weave dir is a sidecar seeded from the head that was ACTUALLY adopted,
+    // so it runs after the branch moved and never before. Its refusal costs
+    // the next wave its seed and nothing else — a judgment-call note, never a
+    // wave status, and never a touch on the fold log.
+    const emitWeave = async (headSha) => {
+      const r = await runCli(['emit-weave', ...common, '--adopt-head', headSha])
+      if (r.code !== 0) judgmentCalls.push('wave ' + waveNumber +
+        ': emit-weave failed (exit ' + r.code + ') — weave persistence skipped, fold unaffected')
+    }
     await git(['read-tree', '-u', '--reset', candidate + '^{tree}'], integ)
     let suite = await sh(testCmd, integ)
     if (suite.code === 0) {
       await git(['reset', '--hard', candidate], integ)
+      await emitWeave(candidate)
       frontier.push(entry())
       return { status: 'MERGED', headSha: candidate,
                suite: { passed: true, output: tail(suite.stdout + suite.stderr) } }
@@ -899,6 +910,7 @@ export async function runEngine({
       // The reconcile commits sit on top of prevHead carrying the candidate
       // tree + fixes: reset --hard is unnecessary (the commit already moved
       // the branch), but assert the tree is clean before declaring MERGED.
+      await emitWeave(headSha)
       frontier.push(entry())
       judgmentCalls.push('wave ' + waveNumber + ': candidate adopted after reconcile (' +
         candidate + ' + fixes → ' + headSha + ')')
