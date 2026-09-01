@@ -1,0 +1,48 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "77be908e83749725611b9ab40fdaec8874fa2706ac139e8b690f55f2286f76f3",
+   "verdict": "pass",
+   "reason": "round 2: leg (b) gained the stdout-to-file redirect after round-1 found a snippet could green every leg while leaving stdout on the channel; universal over both files with a count floor"
+  },
+  "2": {
+   "hash": "cd1f6ce9bcd9489edb4954e23602b627f47e87847d28fe945a1ea607a35b038b",
+   "verdict": "pass",
+   "reason": "round 1: advisory content and pair order (a), symlink (b), text negative (c), rc parity (d), pre-existing no-tree advisory kept (e), canonical fixture silent (f)"
+  },
+  "3": {
+   "hash": "0d8f728da2b9ad9f33b2445bf33bef64e2fc674119ef3c111f5a2b9e698fe3cc",
+   "verdict": "pass",
+   "reason": "round 1: both error triggers plus the four required tokens inside the fenced block; parked-without-error and green negatives; renderer called directly, the claim's layer"
+  },
+  "4": {
+   "hash": "dd4e8f8e0a9a0c343ab99610a45fecd17fe167e5a925a95d6c5a30d1ab44d120",
+   "verdict": "pass",
+   "reason": "round 2: end-to-end legs (g)/(h) added after round-1 found the drive-to-renderer wiring and the Driver-notes line unproven"
+  },
+  "5": {
+   "hash": "cfb6eab0dc16a69f826ac9b21456371c0700d70858a39479cb2977d99788ef95",
+   "verdict": "pass",
+   "reason": "round 1: all four execDiagnostic sites with token-scrub on push/gh, guard-miss throw with zero commands, opt-in knob leaves the fixture default unchanged"
+  },
+  "6": {
+   "hash": "91e69081bfda215726b9a8a9eed9fd0311a71bb2d624245abf52eeb7698fd649",
+   "verdict": "pass",
+   "reason": "round 2: Machine loosened to the three named files with the 13-series placement pinned by leg (g) and check-attr tightened to the plan path, after round-1 found the routing clause unproven"
+  },
+  "7": {
+   "hash": "042a88687874f59f21402fabe52f36cb47ae3cb1326dc4ff27af6666c7174ad2",
+   "verdict": "pass",
+   "reason": "round 2: leg (c) gained the accepted `fold` value plus case-variant and missing-value refusals after round-1 found the validation clause under-proved"
+  },
+  "8": {
+   "hash": "dad0aa557b0ae9a7290ea13a919f73f1f8abe30a36cb784ec5d118501de93cc3",
+   "verdict": "pass",
+   "reason": "round 2: leg (d) runs the real contract suite with a negative control and (c) gained a def-test floor, after round-1 found the sectioner clause unproven and the leg vacuous under deletion"
+  }
+ },
+ "tally": {
+  "dispatched": 12,
+  "rejected": 4
+ }
+}
