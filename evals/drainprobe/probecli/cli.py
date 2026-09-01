@@ -7,16 +7,34 @@ A deliberate clone of evals/fixtures/contend's clitool, importable as
 import argparse
 
 ROWS = [("ada", 3), ("bob", 5), ("eve", 1)]
+def clamp(rows, limit):
+    """Return at most `limit` rows; `None` means no limit."""
+    if limit is None:
+        return list(rows)
+    if limit < 0:
+        raise ValueError("limit must be >= 0")
+    return list(rows)[:limit]
 
 
+def render(row, fmt):
+    """Render one (name, count) row in the requested output format."""
+    name, count = row
+    if fmt == "csv":
+        return "%s,%d" % (name, count)
+    return "%s %d" % (name, count)
 def build_parser():
     parser = argparse.ArgumentParser(prog="report")
+    parser.add_argument("--verbose", action="store_true", default=False)
+    parser.add_argument("--format", choices=["plain", "csv"], default="plain")
+    parser.add_argument("--limit", type=int, default=None)
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    rows = list(ROWS)
-    for name, count in rows:
-        print("%s %d" % (name, count))
+    rows = clamp(ROWS, args.limit)
+    if args.verbose:
+        print("rows: %d" % len(rows))
+    for row in rows:
+        print(render(row, args.format))
     return 0
