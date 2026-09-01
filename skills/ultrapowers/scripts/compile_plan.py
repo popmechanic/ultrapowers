@@ -398,8 +398,12 @@ def parse_claims_body(body, task_id):
         if re.match(r"^machine\s*:", line.strip(), re.I):
             break
         operator_lines.append(line)
-    m = next((m for m in (CLAIM_PROVENANCE_RE.search(l.strip())
-                          for l in operator_lines) if m), None)
+    # Search whitespace-normalized operator text, not per-line: a tag the
+    # author's editor wrapped — `(quoted\nfrom #NNN)` — is still a tag
+    # (2026-09-01 papercut: it silently vanished, and only check_provenance's
+    # quote count betrayed it).
+    normalized = re.sub(r"\s+", " ", " ".join(operator_lines)).strip()
+    m = CLAIM_PROVENANCE_RE.search(normalized)
     if m:
         provenance = ("elicited" if m.group(2) is None
                       else "quoted:#" + m.group(2))
@@ -974,6 +978,16 @@ PLACEHOLDER_TOKENS = frozenset({"nothing", "none", "n/a", "na"})
 _BARE_SYMBOL_LEAD = re.compile(r"([A-Za-z_][\w.\-]*)\s*(?:$|\(|->|=)")
 
 
+# Declaration keywords that LEAD a signature without being the symbol —
+# `class FailedLookup(RuntimeError)` names FailedLookup, not `class`. Without
+# this skip, two unrelated `class X` / `class Y` contracts pair on the keyword
+# into a FALSE edge (silent and permanent), and the P1 blast-radius advisory
+# matches every file containing the keyword (2026-09-01 papercut: 67 files).
+_DECL_KEYWORDS = frozenset((
+    "class", "def", "async", "function", "const", "let", "var",
+    "interface", "type", "struct", "enum", "export", "abstract", "static"))
+
+
 def _interface_token(entry):
     s = entry.strip()
     if not s:
@@ -982,7 +996,12 @@ def _interface_token(entry):
         m = re.match(r"`([^`]+)`", s)
         if not m:
             return ""  # a lone opening backtick with no close — not a symbol
-        token = re.split(r"[(\s:]", m.group(1), 1)[0].strip("`").strip()
+        words = m.group(1).split()
+        while words and words[0].lower() in _DECL_KEYWORDS:
+            words = words[1:]
+        if not words:
+            return ""  # keywords all the way down — not a symbol
+        token = re.split(r"[(\s:]", " ".join(words), 1)[0].strip("`").strip()
     else:
         m = _BARE_SYMBOL_LEAD.match(s)
         if not m:

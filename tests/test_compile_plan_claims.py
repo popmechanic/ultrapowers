@@ -405,3 +405,28 @@ def test_legacy_wide_fixture_is_pinned():
 def test_legacy_chained_fixture_is_pinned():
     out = _compile(ROOT / "evals/fixtures/chained/plan.md")
     assert {k: out[k] for k in CHAINED} == CHAINED
+
+
+def test_a_provenance_tag_split_by_a_line_wrap_is_still_recognized():
+    # Papercut (2026-09-01 night): the TAG ITSELF wrapped — `(quoted\nfrom
+    # #489)` — matched no single line, so it silently vanished (caught only by
+    # a count discrepancy in check_provenance's summary). The search now runs
+    # over whitespace-normalized operator text.
+    wrapped_tag = ("**Claim:** An operator can ask for a widget of a given "
+                   "size and get one. (quoted\nfrom #489)\n"
+                   "Machine: `make_widget(3)` returns a `Widget`.")
+    got = parse_claims_body(_body(_plan(wrapped_tag, *SLOTS[1:])), "1")
+    assert got["claim_provenance"] == "quoted:#489"
+
+
+def test_interface_tokens_skip_language_keywords():
+    # Papercut: `Produces: class FailedLookup(RuntimeError)` tokenized to
+    # `class`, so two unrelated `class X` / `class Y` contracts would pair
+    # into a FALSE edge (silent and permanent) and blast-radius advisories
+    # matched every file containing the keyword.
+    from compile_plan import _interface_token
+    assert _interface_token("`class FailedLookup(RuntimeeError)`".replace("ee", "e")) == "FailedLookup"
+    assert _interface_token("`def helper(x: int) -> str`") == "helper"
+    assert _interface_token("`interface Widget`") == "Widget"
+    assert _interface_token("`const catalog: Catalog`") == "catalog"
+    assert _interface_token("`class`") == ""

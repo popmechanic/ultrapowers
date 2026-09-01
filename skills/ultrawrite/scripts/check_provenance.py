@@ -85,6 +85,14 @@ def check_plan(md_text, gh):
     for task in split_tasks(md_text):
         claims = parse_claims_body(task["body"], task["id"])
         provenance = claims["claim_provenance"] or ""
+        if claims.get("claim") and not provenance:
+            # Defense in depth (2026-09-01): a tag mangled past recognition
+            # made a claim invisible here — counted N-1 quotes, exited 0. The
+            # first layer must not bless what it cannot classify; the
+            # compiler's own refusal stays as the second wall.
+            failures.append(
+                "provenance: task %s claim carries no recognizable provenance "
+                "tag — `(elicited)` or `(quoted from #NNN)`" % task["id"])
         if provenance.startswith("quoted:#"):
             quotes += 1
             number = provenance.split("#", 1)[1]

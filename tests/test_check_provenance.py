@@ -232,3 +232,16 @@ def test_claim_that_is_only_its_provenance_tag_refuses(tmp_path):
     assert proc.stdout == (
         "provenance: task 1 claim quotes #489 with an empty operator "
         "sentence — the Claim is nothing but its provenance tag\n")
+
+
+def test_a_claim_with_no_recognizable_tag_is_a_provenance_failure(tmp_path):
+    # Defense in depth (2026-09-01 papercut): a tag mangled past recognition —
+    # here wrapped so badly the parser sees none — made a claim invisible to
+    # this script, which counted N-1 quotes and exited 0. The layer that runs
+    # FIRST must not bless a claim it could not classify; the compiler's own
+    # refusal stays as the second wall.
+    plan = _plan(tmp_path, _task("1", QUOTED, "#489"))
+    gh, _log = _fake_gh(tmp_path)
+    proc = _run(plan, gh)
+    assert proc.returncode == 2
+    assert "no recognizable provenance tag" in proc.stderr + proc.stdout
