@@ -14,9 +14,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 from compile_plan import (  # noqa: E402
+    gate_input_hash,
     parse_claims_body,
     plan_grammar,
     split_tasks,
+    verdicts_path,
 )
 
 CLAIMS_FIXTURE = ROOT / "evals/fixtures/claims/plan.md"
@@ -94,6 +96,23 @@ def _write(tmp_path, text, name="plan.md"):
     p = tmp_path / name
     p.write_text(text)
     return p
+
+
+def _sign(plan):
+    """Stamp an all-pass gate-verdict record beside a claims-v1 plan.
+
+    Under claims-v1 the gate's verdict is an artifact the compiler refuses to
+    compile without (spec §4.5, tests/test_gate_verdicts.py) — so a plan that is
+    expected to COMPILE carries one, keyed on its live (Claim, Proof) hashes."""
+    record = {"tasks": {}, "tally": {"dispatched": 0, "rejected": 0}}
+    for t in split_tasks(plan.read_text()):
+        claims = parse_claims_body(t["body"], t["id"])
+        record["tasks"][t["id"]] = {
+            "hash": gate_input_hash(claims["claim"], claims["proof"]),
+            "verdict": "pass", "reason": "layer match"}
+        record["tally"]["dispatched"] += 1
+    verdicts_path(plan).write_text(json.dumps(record, indent=2) + "\n")
+    return plan
 
 
 def _run(path, *extra):
@@ -214,7 +233,7 @@ def test_a_tag_only_in_the_machine_restatement_is_not_provenance(tmp_path):
 
 
 def test_a_well_formed_claims_plan_compiles(tmp_path):
-    out = _compile(_write(tmp_path, GOOD_PLAN))
+    out = _compile(_sign(_write(tmp_path, GOOD_PLAN)))
     assert out["waves"] == [["1"]]
     assert out["tasks"] == [{
         "id": "1", "title": "Sample", "disposition": "implementation",
@@ -222,7 +241,7 @@ def test_a_well_formed_claims_plan_compiles(tmp_path):
         "interfaces": {"consumes": ["nothing"],
                        "produces": ["`make_widget(n: int) -> Widget`"]},
     }]
-    rc, lines = _check_lines(_write(tmp_path, GOOD_PLAN))
+    rc, lines = _check_lines(_sign(_write(tmp_path, GOOD_PLAN)))
     assert rc == 0 and lines[0] == "PLAN OK"
 
 
@@ -296,7 +315,7 @@ def test_every_stale_if_predicate_form_is_accepted(tmp_path):
     got = parse_claims_body(_body(text), "1")
     assert got["violations"] == []
     assert got["stale_if_entries"] == list(entries)
-    assert _compile(_write(tmp_path, text))["waves"] == [["1"]]
+    assert _compile(_sign(_write(tmp_path, text)))["waves"] == [["1"]]
 
 
 def test_a_proof_test_path_that_is_also_an_impl_path_is_refused(tmp_path):

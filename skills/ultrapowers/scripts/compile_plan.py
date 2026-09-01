@@ -27,6 +27,7 @@ the agent per dependency-analysis.md.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -465,6 +466,86 @@ def _apply_claims_grammar(t):
              depends_on=[], depends_none=False,
              commutes=[], commutes_conflicts=[])
     return t
+
+
+# The proof gate's verdict is an ARTIFACT, not a memory (spec §4.5): the gate
+# writes `<plan-stem>.gate-verdicts.json` beside the plan and claims-v1 refuses
+# to compile a plan whose record is missing, stale, or failing. The compiler
+# only ever READS this file — `tally` is the production canary (§8) and belongs
+# to the gate tooling alone.
+GATE_VERDICTS_SUFFIX = ".gate-verdicts.json"
+GATE_VERDICT_VALUES = ("pass", "fail")
+
+
+def verdicts_path(plan_path):
+    """The gate-verdict artifact sibling to a plan: `<stem>.gate-verdicts.json`."""
+    p = Path(plan_path)
+    return p.with_name(p.stem + GATE_VERDICTS_SUFFIX)
+
+
+def gate_input_hash(claim, proof):
+    """The signed pair's identity: sha256 of Claim, NUL, Proof.
+
+    NUL separates because it is the one byte no slot can carry, so no edit that
+    merely moves text across the boundary can collide."""
+    return hashlib.sha256(
+        (claim + "\x00" + proof).encode("utf-8")).hexdigest()
+
+
+def gate_verdict_violations(plan_path, tasks):
+    """Every gate-verdict refusal a claims-v1 plan earns, `grammar:`-namespaced.
+
+    Keyed on the LIVE hash of each task's (Claim, Proof) pair, so an edited
+    claim or proof goes stale and re-dispatches rather than riding an old
+    verdict. Legacy plans never reach here."""
+    path = verdicts_path(plan_path)
+    if not path.exists():
+        return ["grammar: gate verdicts missing — expected `%s` beside the "
+                "plan; the proof gate's verdict is an artifact, not a memory "
+                "(spec \u00a74.5). Run the gate and commit its record."
+                % path.name]
+    try:
+        record = json.loads(path.read_text())
+        entries = record["tasks"]
+        if not isinstance(entries, dict):
+            raise TypeError("tasks")
+    except (ValueError, TypeError, KeyError) as exc:
+        return ["grammar: gate verdicts unreadable — `%s`: %s; the record is "
+                '{"tasks": {id: {"hash", "verdict", "reason"}}, "tally": '
+                '{"dispatched", "rejected"}}' % (path.name, exc)]
+
+    violations = []
+    for t in tasks:
+        claims = t.get("claims")
+        if claims is None:
+            continue
+        entry = entries.get(t["id"])
+        if not isinstance(entry, dict):
+            violations.append(
+                "grammar: gate verdict missing for task %s — `%s` carries no "
+                "entry for it; every task is dispatched to the gate."
+                % (t["id"], path.name))
+            continue
+        live = gate_input_hash(claims["claim"], claims["proof"])
+        if entry.get("hash") != live:
+            violations.append(
+                "grammar: gate verdict stale for task %s — the record signs "
+                "%s, the plan's Claim/Proof pair hashes to %s; re-dispatch the "
+                "task to the gate."
+                % (t["id"], entry.get("hash"), live))
+            continue
+        verdict = entry.get("verdict")
+        if verdict == "fail":
+            violations.append(
+                "grammar: gate verdict fail for task %s — %s"
+                % (t["id"], entry.get("reason") or "no reason recorded"))
+        elif verdict != "pass":
+            violations.append(
+                "grammar: gate verdict unreadable for task %s — verdict %r is "
+                "not one of %s" % (t["id"], verdict,
+                                   ", ".join(GATE_VERDICT_VALUES)))
+    return violations
+
 
 
 def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
@@ -1084,6 +1165,11 @@ def collect_violations(plan_path):
     # grammar and so never enters the slot parser at all).
     for t in tasks:
         violations.extend(t.get("grammar_violations", []))
+    # ... and the gate-verdict record, which is a grammar refusal on the same
+    # footing (spec §4.5): both channels close on it, so an author never
+    # discovers at dispatch that the gate was never run.
+    if grammar == CLAIMS_GRAMMAR:
+        violations.extend(gate_verdict_violations(plan_path, tasks))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
     # A **Commutes:** after the header block is discarded by the runtime
@@ -2002,6 +2088,8 @@ def main(argv=None):
     # the Files gate is — a body the compiler cannot read is a body whose
     # ordering it must not guess at. Empty for every legacy plan.
     grammar_violations = [v for t in tasks for v in t.get("grammar_violations", [])]
+    if grammar == CLAIMS_GRAMMAR:
+        grammar_violations.extend(gate_verdict_violations(args.plan, tasks))
     if grammar_violations:
         print("compile_plan: claims-v1 grammar violation(s) — refusing to "
               "compile:\n" + "\n".join(grammar_violations), file=sys.stderr)
