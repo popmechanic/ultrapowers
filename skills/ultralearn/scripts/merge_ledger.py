@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _outcome import swallow  # noqa: E402  (marks every deliberate skip)
 
 LENSES = ["friction", "routing", "operator", "cost", "frontier"]
 
@@ -44,7 +48,9 @@ def _read_jsonl(path):
         if line:
             try:
                 out.append(json.loads(line))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                swallow("malformed ledger line skipped; the rest of the "
+                        "ledger still reads", exc)
                 continue
     return out
 
@@ -156,7 +162,8 @@ def bundle_lookups(cache_dir):
             try:
                 cache[key] = json.loads(
                     (cache_dir / "runs" / key / "bundle.json").read_text())
-            except (OSError, json.JSONDecodeError):
+            except (OSError, json.JSONDecodeError) as exc:
+                swallow("bundle unreadable; origin falls closed to 'foreign'", exc)
                 cache[key] = {}
         return cache[key]
 
