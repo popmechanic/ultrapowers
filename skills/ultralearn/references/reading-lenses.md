@@ -29,8 +29,10 @@ the five lenses below and return findings as a JSON array. Return raw data only.
    because they carry the hook's own reason text and survive a worker that dies
    before writing an envelope.
 2. **routing** — was ultrapowers the right call; did the routing recommendation
-   match how the run actually went; were Type/Depends-on markers and wave shape
-   good, or did poor marking cause serialization or conflicts.
+   match how the run actually went; was the task shaping good — legacy plans:
+   Type/Depends-on markers and wave shape; claims-grammar plans: the
+   Interfaces/Files contracts the edges derive from — or did poor
+   shaping cause serialization or conflicts.
 3. **operator** — the human's qualitative arc: confusion, surprise,
    trust/distrust, what they said at planning and at the gate, where they spent
    attention versus where the design intended. Watch specifically for a
@@ -86,11 +88,13 @@ the five lenses below and return findings as a JSON array. Return raw data only.
 
 - **same-file authoring cost** — tag by prefixing the finding title with
   `authoring-cost-samefile:` (lens: routing). The question: during PLANNING —
-  brainstorm→spec→ultraplan authoring, wherever the bundle's planning turns
+  brainstorm→spec→plan authoring (ultrawrite since #390; ultraplan in older
+  bundles), wherever the bundle's planning turns
   show it, not just execution — do tasks get contorted to AVOID same-file
   edits? Signals: a feature split across modules unnaturally, a chain of
   dependent tasks where a fan of independent ones was natural, an interface
-  file invented mainly to separate two writers, or a `Depends-on` marker added
+  file invented mainly to separate two writers, or (legacy plans) a
+  `Depends-on` marker added
   solely because of file overlap rather than a real logical dependency. Emit a
   finding only on affirmative evidence (silence is not a finding), keep a
   verbatim evidence pointer for home runs, and note the strength (explicit
@@ -133,7 +137,7 @@ zero (`{"total": 0, ...}`).
 - `evidenceAbstracted` (boolean) — see the foreign rule below.
 - `implication` (string) — what it suggests changing.
 - `surface` (string) — the repo area a fix would touch (e.g. references/*.md,
-  the routing hook, ultraplan, report-format.md, SKILL.md, README).
+  the routing hook, ultrawrite, report-format.md, SKILL.md, README).
 - `redirectRounds` (object — required on the redirect-round count finding
   only) — `{total, infra, finding, plan, elective}`, non-negative integers.
 - `implementationTasks` (integer — required on the redirect-round count

@@ -3,8 +3,11 @@ driver-captured patch at PATCH — the implementer's complete change, diffed
 against BASE. Do not run git, read any implementer report, or modify anything;
 output only your verdict.
 
-1. Map every acceptance criterion to a concrete line or test in the diff. A
-   criterion with no evidence is blocking.
+1. Map everything the task requires to a concrete line or test in the diff — its
+   acceptance criteria, or, when the task body carries the six-slot claims
+   grammar (Claim / Authorized-by / Interfaces / Context / Proof / Stale-if),
+   the Claim and every exam the Proof slot names. A requirement with no
+   evidence is blocking.
 2. Flag work the task does not require: scope creep, unrelated refactors,
    leftover debug code.
 3. FILES is the expected footprint, not a fence: modifying a path outside it is
