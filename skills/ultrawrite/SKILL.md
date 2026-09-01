@@ -160,7 +160,9 @@ Every `implementation` task is a pure diff against the integration branch:
 6. **Isolate `CLAUDE_CONFIG_DIR`** in any task that spawns the agent CLI, or it writes
    false memories into the host project.
 7. **Greenfield targets take the Bun + TypeScript defaults** — `bun install` to
-   bootstrap, `bunx tsc --noEmit && bun test` as the suite.
+   bootstrap, `bunx tsc --noEmit && bun test` as the suite. Both knobs verbatim,
+   the `@types/bun` tsconfig gotcha, and where the restriction stops:
+   `references/greenfield-stack.md`.
 
 ## Decomposition judgment
 

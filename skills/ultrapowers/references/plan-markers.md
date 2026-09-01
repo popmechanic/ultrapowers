@@ -1,10 +1,8 @@
 # Plan Markers — the Parallel-Execution Contract
 
-> **Audience: the authoring agent.** The operator brainstorms and signs; they never
-> write this artifact. Every imperative below addresses the agent doing the authoring —
-> which since #243 derives a plan one wave at a time at execution, rather than a whole
-> task graph up front. The change was **horizon, locus and signing boundary**, never
-> human→machine: an agent authored these before and an agent authors them after.
+> **Audience: the compiler and the orchestrating agent.** This is the RUNTIME half —
+> what a marked plan means once `compile_plan.py` reads it. The authoring half moved to
+> `skills/ultrawrite/SKILL.md` (#390); nothing below tells anyone how to write a plan.
 
 Additive per-task annotations on a `superpowers:writing-plans` document that make
 wave compilation deterministic. Sequential executors (subagent-driven-development,
@@ -74,11 +72,8 @@ disagreement is surfaced in the transparency block under `marker_conflicts`, nev
 silently dropped.
 
 A dependency that lives **only** inside a test's `import` of a sibling task's symbol is
-invisible to the compiler by design — it infers edges from markers, `Files:` paths, and
-`Interfaces:` symbols, never from source or test *file contents*. An explicit
-`**Depends-on:**` on the importing task is now the **only** thing that orders a `Test:`
-against a file a sibling creates; declare it, or the two run in parallel off a base where
-the imported sibling does not yet exist and the wave cascade-blocks.
+invisible to the compiler by design: it infers edges from markers, `Files:` paths, and
+`Interfaces:` symbols, never from source or test *file contents*.
 
 Markers are honored only in the **header block** — the contiguous run of marker lines (and blanks) immediately after the task heading. The first other line (a description paragraph, the `**Files:**` line, a checkbox step) ends the block; marker-shaped lines after it are ignored and surfaced in `marker_conflicts`, never trusted. Repeated `**Depends-on:**` lines accumulate; `none` combined with concrete ids is contradictory — the ids win, surfaced as a conflict. Contradictory `**Type:**` markers keep the first and surface the rest; near-miss spellings, colon placement, or missing values (`**type:**`, `**Depends-On:**`, `**Type**:`, a bare `**Depends-on:**`) are flagged for correction rather than silently treated as prose; a Files entry with an unknown or wrong-case label (`Delete:`, `modify:`) is a loud, named compile-time violation carrying a did-you-mean canonical-label fix (see Files grammar below) — never silently dropped; a canonical-label line with a wrong colon spacing, bullet character, or unbackticked multi-path value is a formatting-only near-miss, still tolerated and surfaced-but-dropped from overlap inference so one stray bullet never fails the whole compile; and a heading that fails the `### Task <id>:` shape — including wrong heading levels like `## Task 2:` — is a loud compile error (it would silently fold its task into the previous one).
 
@@ -96,28 +91,6 @@ Markers are honored only in the **header block** — the contiguous run of marke
 - `manual` — requires a human or another machine (credentials, hardware, owner
   action). Excluded from the waves; carried verbatim into the post-merge runbook.
 <!-- /BAKE -->
-
-## Executor variance
-
-The dispositions above bind **ultrapowers**. A sequential executor
-(subagent-driven-development, executing-plans) reads the same plan and treats
-every task — including `gate`, `release`, and `manual` — as an ordinary task to
-execute in document order. As of superpowers 5.1.0 both sequential executors run **continuously**
-(executing-plans dropped its batch checkpoints in 5.0.0; subagent-driven-development's explicit directive landed in 5.1.0) — subagent-driven-development explicitly instructs "Do not pause
-to check in with your human partner between tasks" — so a `release` push or a
-`manual` owner step in the plan **executes inline without fresh human eyes**. The
-safety comes from plan approval (the human approved exactly those steps when
-approving the plan) and from placement (put `release`/`manual` tasks LAST, so
-nothing irreversible runs before all implementation work has landed and been
-reviewed). When ultrapowers itself falls back to a sequential executor (SKILL.md
-Step 6), it withholds `release`/`manual` tasks from the handoff and carries them
-as the post-merge runbook instead. The semantic difference to author for:
-
-- `gate` — ultrapowers compiles it into run config; a sequential executor runs
-  it as written. Write gates so both work: pure verification commands, no writes.
-- `release` / `manual` — ultrapowers defers them to the post-merge runbook; a
-  sequential executor runs them inline at their document position. Place them
-  LAST in the plan so the inline execution order equals the deferred order.
 
 ## Classification heuristics (unmarked plans)
 
@@ -249,32 +222,5 @@ trailing prose (`nothing (test-data-only change)`, `none — standalone`) —
 tokenizes to empty and can never pair into an interface edge. Placeholder
 Consumes/Produces lines are always legal; they are the correct way to say
 "this task has no interface contract."
-
-## Authoring rules that complement the markers
-
-For the plan author (loaded at writing time by the `ultraplan` skill):
-
-- Make every task body self-contained; coordination knowledge lives in the affected
-  task's body, never only in a preamble.
-- Encode ordering as `**Depends-on:**` on the downstream task; never write global
-  ordering prose.
-- Let same-file edits stand. Never split a feature, chain a fan, or add a
-  `**Depends-on:**` to dodge a collision. Declare
-  `**Commutes:**` on shared append-natured surfaces — registration surfaces (route
-  tables, export lists, manifests) and shared test modules where two tasks each append
-  test functions to the same file; both writers declare it, and only for append-shaped
-  edits. Chain only non-text (binary/symlink) same-file pairs, which always fall back.
-  Blast radius follows the contract, not the file: a task that changes a declared
-  `Produces:` shape owns every strict-equality pin of it, in any sibling's file —
-  list that file in its own `**Files:**` (#233).
-- Name only what exists: every path, `report.json` field, or task a body cites must
-  exist at BASE, be created by a task it `Depends-on`, or be defined in
-  `report-format.md` — a phantom referent is a dead letter across worktrees. Run
-  `scripts/compile_plan.py --check --renders <plan.md>` and read its `ADVISORY`
-  blast-radius and referent lines before handoff.
-- Never instruct branch creation — the executor owns branching.
-- Give every test a unique port / temp path so same-wave suites can run concurrently.
-- Mark gates, releases, and manual steps explicitly so nothing rides on heuristics.
-- Spike tasks that spawn the real agent CLI must isolate `CLAUDE_CONFIG_DIR` (or disable session persistence) — a spawned session can otherwise write false memories or session state into the host project.
 
 (End of plan-markers.md.)
