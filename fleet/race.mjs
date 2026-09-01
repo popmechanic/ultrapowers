@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// fleet/race.mjs — #511 attempt racing v1: the launch verb.
+// fleet/race.mjs — #511 attempt racing v1: the launch and judge verbs.
 //
 //   node fleet/race.mjs launch <plan.md> <raceId> [--k N] [drive-one flags]
+//   node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]
 //
 // The same committed plan, driven K times concurrently, one process per race
 // (no daemon — each drive still starts and stops its own orchestrator). This
@@ -16,10 +17,11 @@
 // seam and are never re-typed here.
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { driveOne } from './drive.mjs'
-import { buildDriveOptions, parseArgs } from './drive-one.mjs'
+import { DEFAULTS, buildDriveOptions, parseArgs } from './drive-one.mjs'
+import { runEvents } from './status.mjs'
 
 // K = 3 for the first race (operator decision, 2026-09-01 sitting).
 export const DEFAULT_K = 3
@@ -55,7 +57,8 @@ export const readRaceManifest = (evidenceDir, raceId) =>
   JSON.parse(fs.readFileSync(raceManifestPath(evidenceDir, raceId), 'utf8'))
 
 export const usage = () =>
-  'usage: node fleet/race.mjs launch <plan.md> <raceId> [--k N] [drive-one flags]'
+  'usage: node fleet/race.mjs launch <plan.md> <raceId> [--k N] [drive-one flags]\n' +
+  '       node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]'
 
 // `--k` is the only flag race.mjs owns; everything else is drive-one's and
 // passes through untouched, so its refusals (unknown flag, bad runId, missing
@@ -186,15 +189,277 @@ export const launchRace = async (argv, deps = {}) => {
   return { manifest, results }
 }
 
+// ---------------------------------------------------------------------------
+// The judge verb. Read-only over artifacts every drive already wrote; its one
+// write is the verdict appended to the manifest. It never calls `gh`, never
+// merges and never closes: adoption is the operator's, driven by the printout.
+
+// A run is TERMINAL when its gate read exists — drive.mjs writes that file
+// unconditionally, so green, parked and failed runs all have one. A missing
+// file means the drive never finished writing it, not that the run lost.
+export const gateReadPath = (evidenceDir, runId) => path.join(evidenceDir, `gate-read-${runId}.json`)
+export const gateDetailPath = (evidenceDir, runId) => path.join(evidenceDir, `gate-read-${runId}.detail.json`)
+
+// The engine labels its fix workers `fix:<taskId>:<iter>` (run-engine.mjs:678),
+// one label per dispatched fix round. A round is a LABEL, not an event: the
+// worker seam emits `worker:start` and `worker:end` under the same label
+// (run-worker.mjs:581,596) and `worker:refused` under it with no end
+// (run-worker.mjs:542,547), and the events bridge promotes every one of them
+// with its `label` cell intact (events-bridge.mjs). Counting events would read
+// ~2x the rounds and — because a sandbox that dies after `worker:start` leaves
+// an unpaired event — not even a uniform 2x across runs, so the pre-registered
+// `fixRounds` dial (DIALS.baseline, above) would be compared against a number
+// in different units. Distinct labels is the count that survives both.
+export const FIX_LABEL_PREFIX = 'fix:'
+
+// What `--force` records for a run that never reported: an automatic loss,
+// distinguishable in the scorecard from a drive that ran and failed.
+export const NO_RECORD = 'no-record'
+
+// The rubric, in order. These strings ARE the output: the scorecard names the
+// stage that decided precisely so a decisive rubric is never re-read as rubric
+// quality — at n=1 "zero ties" says nothing (spec §Measurement).
+export const STAGES = Object.freeze({
+  driveStatus: 'drive status: only `gate-green` runs contend',
+  fixRounds: 'fix rounds: fewest distinct `fix:` worker labels',
+  tokens: 'tokens: fewest spendObservational tokens',
+  lexicographic: 'tie-break: lexicographic-least runId',
+  noGreen: 'FAILED: no run reached `gate-green`',
+})
+
+export const judgeUsage = () =>
+  'usage: node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]'
+
+// `--evidence-dir` is spelled as drive-one spells it, and defaults to the same
+// place, so the judge reads the dir the drives wrote into without being told.
+export const parseJudgeArgs = (argv) => {
+  const positional = []
+  let force = false
+  let evidenceDir = DEFAULTS.evidenceDir
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i]
+    if (arg === '--force') {
+      force = true
+      continue
+    }
+    if (arg === '--evidence-dir') {
+      const value = argv[i + 1]
+      if (value === undefined || value.startsWith('--')) {
+        throw new Error(`race: --evidence-dir needs a value\n${judgeUsage()}`)
+      }
+      evidenceDir = value
+      i += 1
+      continue
+    }
+    if (arg.startsWith('--')) throw new Error(`race: unknown judge flag ${arg}\n${judgeUsage()}`)
+    positional.push(arg)
+  }
+  const [raceId, ...extra] = positional
+  if (!raceId || extra.length) throw new Error(`race: judge expects exactly <raceId>\n${judgeUsage()}`)
+  return { raceId, force, evidenceDir }
+}
+
+// The store seam, mirroring status.mjs's own sqlite read so tests judge fixture
+// stores with no sqlite3 and no db on disk.
+export const storeReader = (dbDir) => {
+  const dbPath = path.join(dbDir, 'fleet.db')
+  const proc = spawnSync('sqlite3', [dbPath, 'SELECT store FROM tinybase LIMIT 1'],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  if (proc.status !== 0) {
+    throw new Error(`race: cannot read store at ${dbPath}: ${(proc.stderr || `sqlite3 exit ${proc.status}`).trim()}`)
+  }
+  return JSON.parse(proc.stdout)
+}
+
+export const countFixRounds = (storeJson, runId) =>
+  new Set(
+    runEvents(storeJson, runId)
+      .map((row) => String(row?.label ?? ''))
+      .filter((label) => label.startsWith(FIX_LABEL_PREFIX)),
+  ).size
+
+const readJsonFile = (file) => {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'))
+  } catch (error) {
+    throw new Error(`race: cannot read ${file}: ${error?.message ?? error}`)
+  }
+}
+
+const numberOrNull = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+
+// One row per manifest run: what the two gate-read files and the run's own
+// store say. Nothing is compared here — scoring is the rubric's job below.
+const scoreRun = (run, { evidenceDir, readStore }) => {
+  const notes = []
+  const readFile = gateReadPath(evidenceDir, run.runId)
+  if (!fs.existsSync(readFile)) {
+    notes.push('no gate read — --force scored this run an automatic loss')
+    return {
+      run,
+      reported: false,
+      driveStatus: NO_RECORD,
+      fixRounds: null,
+      spend: {},
+      elapsedMs: null,
+      pullRequest: null,
+      notes,
+    }
+  }
+  const read = readJsonFile(readFile)
+  const detailFile = gateDetailPath(evidenceDir, run.runId)
+  let detail = null
+  if (fs.existsSync(detailFile)) detail = readJsonFile(detailFile)
+  else notes.push(`no detail beside ${path.basename(readFile)} — drive status unknown`)
+
+  let fixRounds = null
+  try {
+    fixRounds = countFixRounds(readStore(run.dbDir), run.runId)
+  } catch (error) {
+    notes.push(`store unreadable (${error?.message ?? error}) — fix rounds unknown`)
+  }
+  return {
+    run,
+    reported: true,
+    driveStatus: typeof detail?.status === 'string' ? detail.status : 'unknown',
+    fixRounds,
+    spend: read?.spendObservational ?? {},
+    elapsedMs: numberOrNull(detail?.elapsedMs),
+    pullRequest: detail?.pullRequest ?? null,
+    notes,
+  }
+}
+
+// Compare like with like (spec rubric 3): the contestants are the runs that
+// can still win — the gate-green ones — so if any of THEIR ledgers is null,
+// every run on the card is priced in `reported` instead, flagged. With no
+// green at all there is no winner to price, so the whole reporting field sets
+// the source and the card stays internally comparable.
+const tokenSourceFor = (contenders, scored) => {
+  const basis = contenders.length > 0 ? contenders : scored
+  return basis.some((row) => numberOrNull(row.spend?.ledger) === null) ? 'reported' : 'ledger'
+}
+
+const fewest = (rows, value) => {
+  const best = Math.min(...rows.map((row) => value(row) ?? Infinity))
+  return rows.filter((row) => (value(row) ?? Infinity) === best)
+}
+
+const prLabel = (entry) =>
+  entry.pullRequest
+    ? `PR #${entry.pullRequest.number} ${entry.pullRequest.url} (${entry.pullRequest.branch})`
+    : 'no PR opened'
+
+const scorecardLine = (runId, entry) =>
+  `  ${runId}  ${entry.driveStatus}  fix ${entry.fixRounds ?? 'n/a'}  ` +
+  `tokens ${entry.tokens ?? 'n/a'} (${entry.tokenSource})  ${prLabel(entry)}`
+
+export const judgeRace = async (argv, deps = {}) => {
+  const { readStore = storeReader, print = (line) => console.log(line) } = deps
+  const { raceId, force, evidenceDir } = parseJudgeArgs(argv)
+  const manifest = readRaceManifest(evidenceDir, raceId)
+
+  const missing = manifest.runs
+    .filter((run) => !fs.existsSync(gateReadPath(evidenceDir, run.runId)))
+    .map((run) => run.runId)
+  if (missing.length > 0 && !force) {
+    throw new Error(
+      `race: ${raceId} is not judgeable — no gate read for ${missing.join(', ')} ` +
+      `(${missing.map((runId) => path.basename(gateReadPath(evidenceDir, runId))).join(', ')} absent). ` +
+      'Every drive writes one when it ends, green or not: judge again once they land, or pass --force to ' +
+      'score the runs that reported and mark the rest an automatic loss.')
+  }
+
+  const rows = manifest.runs.map((run) => scoreRun(run, { evidenceDir, readStore }))
+  const contenders = rows.filter((row) => row.driveStatus === 'gate-green')
+  const tokenSource = tokenSourceFor(contenders, rows.filter((row) => row.reported))
+  const tokenFallback = tokenSource === 'reported'
+  for (const row of rows) row.tokens = numberOrNull(row.spend?.[tokenSource])
+
+  // The ordered rubric. A stage is named as the decider only when it actually
+  // narrowed the field; the filter is the floor, since nothing but a green run
+  // can win at all.
+  let decidingStage = STAGES.driveStatus
+  let winner = null
+  let pool = contenders
+  if (pool.length === 0) {
+    decidingStage = STAGES.noGreen
+  } else {
+    for (const [stage, value] of [[STAGES.fixRounds, (r) => r.fixRounds], [STAGES.tokens, (r) => r.tokens]]) {
+      if (pool.length === 1) break
+      const next = fewest(pool, value)
+      if (next.length < pool.length) {
+        pool = next
+        decidingStage = stage
+      }
+    }
+    if (pool.length > 1) {
+      pool = [[...pool].sort((a, b) => (a.run.runId < b.run.runId ? -1 : 1))[0]]
+      decidingStage = STAGES.lexicographic
+    }
+    winner = pool[0].run.runId
+  }
+
+  const scorecard = {}
+  for (const row of rows) {
+    scorecard[row.run.runId] = {
+      driveStatus: row.driveStatus,
+      fixRounds: row.fixRounds,
+      tokens: row.tokens,
+      tokenSource,
+      tokenFallback,
+      elapsedMs: row.elapsedMs,
+      pullRequest: row.pullRequest,
+      winner: row.run.runId === winner,
+      notes: row.notes,
+    }
+  }
+
+  const verdict = { winner, decidingStage, scorecard }
+  // The only write. `dials` round-trips untouched — same parse, same indent,
+  // same key order — so the pre-registered block survives byte for byte.
+  fs.writeFileSync(raceManifestPath(evidenceDir, raceId), `${JSON.stringify({ ...manifest, verdict }, null, 2)}\n`)
+
+  print(winner ? `race ${raceId}: winner ${winner}` : `race ${raceId}: FAILED — no winner`)
+  print(`decided by: ${decidingStage}`)
+  for (const [runId, entry] of Object.entries(scorecard)) print(scorecardLine(runId, entry))
+  if (tokenFallback) {
+    print('note: a contestant\'s spendObservational.ledger was null — every run is priced on `reported`')
+  }
+  for (const [runId, entry] of Object.entries(scorecard)) {
+    for (const note of entry.notes) print(`note: ${runId}: ${note}`)
+  }
+  if (winner) {
+    print(`adopt: merge ${winner}'s ${prLabel(scorecard[winner])}, then close the other ` +
+      `${manifest.runs.length - 1} PR(s) with a comment naming race ${raceId} and the winner`)
+  } else {
+    print(`nothing merges: close all ${manifest.runs.length} PRs above and harvest the evidence`)
+  }
+  return verdict
+}
+
 export const main = async (argv = process.argv.slice(2), deps = {}) => {
   const [verb, ...rest] = argv
   if (verb === 'launch') return launchRace(rest, deps)
+  if (verb === 'judge') return judgeRace(rest, deps)
   throw new Error(`race: unknown verb ${verb ?? '(none)'}\n${usage()}`)
 }
 
+// The process entry, exported so the exit code is a tested value rather than a
+// spawned subprocess: a refusal prints to stderr and exits non-zero.
+export const cli = async (argv = process.argv.slice(2), deps = {}) => {
+  const printErr = deps.printErr ?? ((line) => console.error(line))
+  try {
+    await main(argv, deps)
+    return 0
+  } catch (error) {
+    printErr(String(error?.message ?? error))
+    return 1
+  }
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  main().catch((error) => {
-    console.error(error?.message ?? error)
-    process.exit(1)
+  cli().then((code) => {
+    if (code !== 0) process.exit(code)
   })
 }

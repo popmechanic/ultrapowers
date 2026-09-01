@@ -1,15 +1,17 @@
-// fleet/tests/test_race.mjs — #511 attempt racing v1, the launch verb.
+// fleet/tests/test_race.mjs — #511 attempt racing v1, the launch and judge verbs.
 //
 // `race.mjs launch <plan> <raceId> --k 3` is the #454 launch shape committed
 // once: one plan, K concurrent `driveOne` runs with distinct runId, port,
 // db-dir and repo-dir, and a raceId-qualified manifest written BEFORE any
 // drive starts so the pre-registered dials cannot be chosen after the results
-// are visible.
+// are visible. `race.mjs judge <raceId>` is the ordered rubric over what those
+// runs left behind — read-only but for the verdict it appends to the manifest.
 //
-// No live drive, no network, no git remote: `driveOne` and every git
-// subprocess (rev-parse, remote get-url/set-url, clone, checkout) ride injected
-// seams, exactly as test_drive_one.mjs injects the token reader. The only bytes
-// this file writes are the manifests, under fs.mkdtemp dirs it removes at the end.
+// No live drive, no network, no git remote, no sqlite: `driveOne`, every git
+// subprocess (rev-parse, remote get-url/set-url, clone, checkout) and the
+// judge's store read ride injected seams, exactly as test_drive_one.mjs injects
+// the token reader. The only bytes this file writes are the manifests and the
+// fixture gate reads, under fs.mkdtemp dirs it removes at the end.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -17,7 +19,12 @@ import path from 'node:path'
 import {
   DEFAULT_K,
   DIALS,
+  NO_RECORD,
   RUN_SUFFIXES,
+  STAGES,
+  cli,
+  countFixRounds,
+  judgeRace,
   launchRace,
   main,
   parseRaceArgs,
@@ -370,6 +377,394 @@ const stubDeps = ({ drive, git, log = () => {} }) => ({
   assert.match(usage(), /node fleet\/race\.mjs launch <plan\.md> <raceId>/)
   ok('the CLI names its verbs and refuses anything else')
 }
+
+// --- the judge verb: rubric, refusal, scorecard, verdict -------------------
+//
+// Fixtures only: a launch-shaped manifest, per-run gate-read + detail files,
+// and a MergeableStore-shaped JSON per run behind the injected store reader.
+// No sqlite, no drive, no git — the judge is read-only over artifacts and its
+// single write is the verdict it appends to the manifest.
+
+const stamped = (v) => [v, 'P0Q-hlc', 12345]
+
+// A run's store as `status.mjs` reads it: [[tables, values], hlc, hash], every
+// node stamped. `fixRounds` fix ROUNDS — and a round is what the engine
+// dispatched, not what it logged: run-worker emits `worker:start` AND
+// `worker:end` under the one `fix:<taskId>:<iter>` label, so the fixture emits
+// both. `unpairedRounds` many of the last rounds get only their `worker:start`
+// (the sandbox died mid-worker), which is exactly the case that makes an
+// event count non-uniform across runs. Plus one non-fix event and one SIBLING
+// run's fix event that must never be counted against this run.
+const runStore = (runId, fixRounds, unpairedRounds = 0) => {
+  const events = {
+    [`${runId}:01AAA`]: stamped({ kind: stamped('worker:start'), label: stamped('impl:1'), ts: stamped(1), runId: stamped(runId) }),
+    'other-run:01AZZ': stamped({ kind: stamped('worker:end'), label: stamped('fix:x:9'), ts: stamped(9), runId: stamped('other-run') }),
+  }
+  for (let i = 0; i < fixRounds; i += 1) {
+    const label = `fix:t${i}:1`
+    events[`${runId}:01AB${i}s`] = stamped({
+      kind: stamped('worker:start'), label: stamped(label), ts: stamped(2 + i * 2), runId: stamped(runId),
+    })
+    if (i < fixRounds - unpairedRounds) {
+      events[`${runId}:01AB${i}e`] = stamped({
+        kind: stamped('worker:end'), label: stamped(label), ts: stamped(3 + i * 2), runId: stamped(runId),
+      })
+    }
+  }
+  return [[{ events: stamped(events), runs: stamped({}) }, {}], 'hlc', 0]
+}
+
+// Fix rounds are counted by distinct label, not by event. Two runs that each
+// dispatched three fix rounds must score three — even when one of them lost a
+// sandbox after `worker:start` and so logged five labelled events to the
+// other's six. Counting events would score them 6 and 5, hand the fix-round
+// stage a difference that does not exist, and print a headline `fix` number in
+// units the pre-registered `DIALS.baseline[...].fixRounds` was never in.
+{
+  const paired = runStore('run-fx-a', 3)
+  const halfDead = runStore('run-fx-b', 3, 1)
+  const labelledEvents = (store, runId) =>
+    Object.values(store[0][0].events[0])
+      .filter((e) => String(e[0].label[0]).startsWith('fix:') && String(e[0].runId[0]) === runId).length
+  assert.equal(labelledEvents(paired, 'run-fx-a'), 6, 'three paired rounds log six labelled events')
+  assert.equal(labelledEvents(halfDead, 'run-fx-b'), 5, 'a round that lost its end logs five')
+  assert.equal(countFixRounds(paired, 'run-fx-a'), 3)
+  assert.equal(countFixRounds(halfDead, 'run-fx-b'), 3, 'an unpaired round is still one round')
+  assert.equal(countFixRounds(runStore('run-fx-c', 0), 'run-fx-c'), 0, 'no fix round, no count')
+  // A refused worker logs one event under the label and never starts; the
+  // round was still dispatched, so it counts once and only once.
+  const refused = runStore('run-fx-d', 1, 1)
+  refused[0][0].events[0]['run-fx-d:01ARF'] = stamped({
+    kind: stamped('worker:refused'), label: stamped('fix:t0:1'), ts: stamped(99), runId: stamped('run-fx-d'),
+  })
+  assert.equal(countFixRounds(refused, 'run-fx-d'), 1, 'start + refused under one label is one round')
+  // The sibling run's `fix:x:9` event sits in every fixture store and is never
+  // this run's round.
+  assert.equal(countFixRounds(paired, 'other-run'), 1)
+  ok('fix rounds count distinct `fix:` labels — start/end/refused under one label is one round')
+}
+
+// specs[i] describes run <raceId>-<suffix>: `missing` writes no gate-read at
+// all (a non-terminal run), otherwise the pair drive.mjs writes — the read
+// (`spendObservational`) and the detail (`status`, `elapsedMs`, `pullRequest`).
+const judgeFixture = (raceId, specs) => {
+  const evidenceDir = tmpdir('judge')
+  const storeRoot = path.join(evidenceDir, 'store')
+  const runs = specs.map((_, i) => ({
+    runId: `${raceId}-${RUN_SUFFIXES[i]}`,
+    port: 8300 + i,
+    dbDir: `${storeRoot}-${RUN_SUFFIXES[i]}`,
+    repoDir: `${storeRoot}-${RUN_SUFFIXES[i]}-repo`,
+  }))
+  const manifest = {
+    raceId,
+    planPath: 'docs/plans/boring.md',
+    baseCommit: BASE_SHA,
+    k: runs.length,
+    launchedAt: LAUNCHED_AT,
+    runs,
+    dials: DIALS,
+  }
+  fs.writeFileSync(raceManifestPath(evidenceDir, raceId), `${JSON.stringify(manifest, null, 2)}\n`)
+  const stores = {}
+  specs.forEach((spec, i) => {
+    const run = runs[i]
+    stores[run.dbDir] = runStore(run.runId, spec.fixRounds ?? 0)
+    if (spec.missing) return
+    fs.writeFileSync(path.join(evidenceDir, `gate-read-${run.runId}.json`), `${JSON.stringify({
+      o1: spec.status === 'gate-green',
+      receiptsResolvable: true,
+      leaseContinuity: true,
+      versionStamp: true,
+      spendObservational: {
+        reported: spec.reported === undefined ? null : spec.reported,
+        ledger: spec.ledger === undefined ? null : spec.ledger,
+      },
+    }, null, 2)}\n`)
+    fs.writeFileSync(path.join(evidenceDir, `gate-read-${run.runId}.detail.json`), `${JSON.stringify({
+      runId: run.runId,
+      planPath: 'docs/plans/boring.md',
+      status: spec.status,
+      elapsedMs: spec.elapsedMs ?? 1000,
+      pullRequest: spec.pr === undefined ? null : {
+        number: spec.pr,
+        url: `https://github.com/example/fleet/pull/${spec.pr}`,
+        draft: spec.status !== 'gate-green',
+        branch: `ultra/integration-${run.runId}`,
+      },
+    }, null, 2)}\n`)
+  })
+  const printed = []
+  const errored = []
+  const deps = {
+    readStore: (dbDir) => {
+      if (!(dbDir in stores)) throw new Error(`no store fixture for ${dbDir}`)
+      return stores[dbDir]
+    },
+    print: (line) => printed.push(line),
+    printErr: (line) => errored.push(line),
+  }
+  const argv = (...extra) => [raceId, '--evidence-dir', evidenceDir, ...extra]
+  return { evidenceDir, raceId, runs, manifest, deps, printed, errored, argv }
+}
+
+// (a) refusal while a run is non-terminal; --force scores the reporters and
+// marks the absentee an automatic loss.
+{
+  const f = judgeFixture('run-60', [
+    { status: 'gate-green', fixRounds: 0, ledger: 100_000, reported: 110_000, pr: 11 },
+    { status: 'gate-green', fixRounds: 1, ledger: 50_000, reported: 60_000, pr: 12 },
+    { missing: true },
+  ])
+  await assert.rejects(judgeRace(f.argv(), f.deps), /run-60-c/)
+  await assert.rejects(judgeRace(f.argv(), f.deps), /--force/)
+  assert.ok(!('verdict' in readRaceManifest(f.evidenceDir, 'run-60')), 'a refused judge writes nothing')
+
+  const forced = await judgeRace(f.argv('--force'), f.deps)
+  assert.equal(forced.winner, 'run-60-a')
+  assert.equal(forced.decidingStage, STAGES.fixRounds)
+  assert.deepEqual(forced.scorecard['run-60-c'], {
+    driveStatus: NO_RECORD,
+    fixRounds: null,
+    tokens: null,
+    tokenSource: 'ledger',
+    tokenFallback: false,
+    elapsedMs: null,
+    pullRequest: null,
+    winner: false,
+    notes: ['no gate read — --force scored this run an automatic loss'],
+  })
+  assert.deepEqual(Object.keys(forced.scorecard), ['run-60-a', 'run-60-b', 'run-60-c'])
+  ok('(a) judge refuses while a gate-read is missing; --force scores the reporters and marks the rest no-record')
+}
+
+// (b) the filter: the sole gate-green run beats parked and failed.
+{
+  const f = judgeFixture('run-61', [
+    { status: 'parked', fixRounds: 0, ledger: 10_000, pr: 21 },
+    { status: 'gate-green', fixRounds: 9, ledger: 900_000, pr: 22 },
+    { status: 'failed', fixRounds: 0, ledger: 1_000 },
+  ])
+  const v = await judgeRace(f.argv(), f.deps)
+  assert.equal(v.winner, 'run-61-b')
+  assert.equal(v.decidingStage, STAGES.driveStatus)
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(v.scorecard).map(([id, e]) => [id, e.driveStatus])),
+    { 'run-61-a': 'parked', 'run-61-b': 'gate-green', 'run-61-c': 'failed' },
+  )
+  ok('(b) the sole gate-green run wins on the drive-status filter, however expensive it was')
+}
+
+// (c) two greens: fewest fix: events decides.
+{
+  const f = judgeFixture('run-62', [
+    { status: 'gate-green', fixRounds: 2, ledger: 10_000, pr: 31 },
+    { status: 'gate-green', fixRounds: 0, ledger: 900_000, pr: 32 },
+    { status: 'parked', fixRounds: 0, ledger: 1_000, pr: 33 },
+  ])
+  const v = await judgeRace(f.argv(), f.deps)
+  assert.equal(v.winner, 'run-62-b')
+  assert.equal(v.decidingStage, STAGES.fixRounds)
+  assert.equal(v.scorecard['run-62-a'].fixRounds, 2)
+  assert.equal(v.scorecard['run-62-b'].fixRounds, 0)
+  // The sibling run's `fix:` event in the same store is never counted.
+  assert.equal(v.scorecard['run-62-c'].fixRounds, 0)
+  ok('(c) among greens, fewest fix: rounds wins and names the fix-round stage')
+}
+
+// (d) fix-round tie: fewest ledger tokens decides; a null ledger anywhere in
+// the contending set falls the whole comparison back to `reported`.
+{
+  const f = judgeFixture('run-63', [
+    { status: 'gate-green', fixRounds: 1, ledger: 700_000, reported: 10, pr: 41 },
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 20, pr: 42 },
+  ])
+  const v = await judgeRace(f.argv(), f.deps)
+  assert.equal(v.winner, 'run-63-b')
+  assert.equal(v.decidingStage, STAGES.tokens)
+  assert.equal(v.scorecard['run-63-b'].tokens, 500_000)
+  assert.equal(v.scorecard['run-63-b'].tokenSource, 'ledger')
+  assert.equal(v.scorecard['run-63-a'].tokenFallback, false)
+
+  // One contestant's ledger is null: both are compared on `reported`, which
+  // reverses the winner — and every scorecard entry says so.
+  const g = judgeFixture('run-64', [
+    { status: 'gate-green', fixRounds: 1, ledger: null, reported: 400_000, pr: 51 },
+    { status: 'gate-green', fixRounds: 1, ledger: 300_000, reported: 900_000, pr: 52 },
+  ])
+  const w = await judgeRace(g.argv(), g.deps)
+  assert.equal(w.winner, 'run-64-a')
+  assert.equal(w.decidingStage, STAGES.tokens)
+  assert.deepEqual(
+    Object.entries(w.scorecard).map(([id, e]) => [id, e.tokens, e.tokenSource, e.tokenFallback]),
+    [['run-64-a', 400_000, 'reported', true], ['run-64-b', 900_000, 'reported', true]],
+  )
+  assert.ok(g.printed.some((l) => l.includes('ledger')), 'the fallback is stated on stdout too')
+  ok('(d) fix-round ties go to fewest tokens; one null ledger compares `reported` for all and flags it')
+}
+
+// (e) everything ties: lexicographic-least runId, and the output says so.
+{
+  const f = judgeFixture('run-65', [
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, pr: 61 },
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, pr: 62 },
+    { status: 'gate-green', fixRounds: 1, ledger: 500_000, pr: 63 },
+  ])
+  const v = await judgeRace(f.argv(), f.deps)
+  assert.equal(v.winner, 'run-65-a')
+  assert.equal(v.decidingStage, STAGES.lexicographic)
+  assert.equal(f.printed[1], `decided by: ${STAGES.lexicographic}`)
+  ok('(e) a full tie goes to the lexicographic-least runId, named as the deciding stage')
+}
+
+// (f) zero greens: the race FAILED — no winner, and the K PRs are listed for
+// the operator to close. The judge itself closes nothing and never calls gh.
+{
+  const f = judgeFixture('run-66', [
+    { status: 'parked', fixRounds: 1, ledger: 100, pr: 71 },
+    { status: 'failed', fixRounds: 0, ledger: 200 },
+    { status: 'parked', fixRounds: 3, ledger: 300, pr: 73 },
+  ])
+  const v = await judgeRace(f.argv(), f.deps)
+  assert.equal(v.winner, null)
+  assert.equal(v.decidingStage, STAGES.noGreen)
+  assert.deepEqual(Object.keys(v.scorecard), ['run-66-a', 'run-66-b', 'run-66-c'])
+  assert.ok(Object.values(v.scorecard).every((e) => e.winner === false), 'a failed race names no winner')
+  assert.equal(f.printed[0], 'race run-66: FAILED — no winner')
+  assert.equal(f.printed[1], `decided by: ${STAGES.noGreen}`)
+  const out = f.printed.join('\n')
+  for (const run of f.runs) assert.ok(out.includes(run.runId), `${run.runId} must appear in the failure printout`)
+  assert.ok(out.includes('ultra/integration-run-66-a'), 'the parked run\'s PR branch is listed for closing')
+  assert.ok(out.includes('https://github.com/example/fleet/pull/73'), 'each open PR is named for the operator')
+  assert.ok(out.includes('no PR opened'), 'a run that published nothing says so')
+  assert.match(out, /close (all )?3 PRs|nothing merges/)
+  assert.equal(readRaceManifest(f.evidenceDir, 'run-66').verdict.winner, null)
+  ok('(f) zero greens is a FAILED race: no winner, every run\'s verdict and PR printed for the operator')
+}
+
+// (g)+(h) the appended verdict: the pre-registered dials survive byte-for-byte
+// and the scorecard is the full per-run card, keyed by runId.
+{
+  const f = judgeFixture('run-67', [
+    { status: 'gate-green', fixRounds: 0, ledger: 480_000, reported: 500_000, elapsedMs: 3_600_000, pr: 81 },
+    { status: 'parked', fixRounds: 2, ledger: 610_000, reported: 620_000, elapsedMs: 4_000_000, pr: 82 },
+  ])
+  const manifestPath = raceManifestPath(f.evidenceDir, 'run-67')
+  const before = fs.readFileSync(manifestPath, 'utf8')
+  const dialsBlock = before.slice(before.indexOf('  "dials": {'), before.lastIndexOf('\n}'))
+  assert.ok(dialsBlock.length > 100, 'the fixture must carry the real pre-registered dials block')
+
+  const v = await judgeRace(f.argv(), f.deps)
+  const after = fs.readFileSync(manifestPath, 'utf8')
+  assert.ok(after.includes(dialsBlock), 'the pre-registered dials block must survive byte-for-byte')
+  const reread = readRaceManifest(f.evidenceDir, 'run-67')
+  assert.deepEqual(reread.dials, DIALS)
+  for (const key of ['raceId', 'planPath', 'baseCommit', 'k', 'launchedAt', 'runs']) {
+    assert.deepEqual(reread[key], f.manifest[key], `${key} must be untouched by the judge`)
+  }
+  assert.deepEqual(reread.verdict, { winner: v.winner, decidingStage: v.decidingStage, scorecard: v.scorecard })
+  assert.deepEqual(Object.keys(reread), [...Object.keys(f.manifest), 'verdict'], 'the verdict is appended, nothing reordered')
+  ok('(g) the judge appends its verdict and leaves every pre-registered dial byte-identical')
+
+  assert.deepEqual(v, {
+    winner: 'run-67-a',
+    decidingStage: STAGES.driveStatus,
+    scorecard: {
+      'run-67-a': {
+        driveStatus: 'gate-green',
+        fixRounds: 0,
+        tokens: 480_000,
+        tokenSource: 'ledger',
+        tokenFallback: false,
+        elapsedMs: 3_600_000,
+        pullRequest: {
+          number: 81,
+          url: 'https://github.com/example/fleet/pull/81',
+          draft: false,
+          branch: 'ultra/integration-run-67-a',
+        },
+        winner: true,
+        notes: [],
+      },
+      'run-67-b': {
+        driveStatus: 'parked',
+        fixRounds: 2,
+        tokens: 610_000,
+        tokenSource: 'ledger',
+        tokenFallback: false,
+        elapsedMs: 4_000_000,
+        pullRequest: {
+          number: 82,
+          url: 'https://github.com/example/fleet/pull/82',
+          draft: true,
+          branch: 'ultra/integration-run-67-b',
+        },
+        winner: false,
+        notes: [],
+      },
+    },
+  })
+  // Judging twice is idempotent: the verdict is replaced, never duplicated.
+  const again = await judgeRace(f.argv(), f.deps)
+  assert.deepEqual(again, v)
+  assert.deepEqual(Object.keys(readRaceManifest(f.evidenceDir, 'run-67')), [...Object.keys(f.manifest), 'verdict'])
+  ok('(h) the scorecard is keyed by runId; each entry names drive status, fix rounds and tokens')
+}
+
+// (i) the CLI entry: winner, deciding stage and every run's scorecard line on
+// stdout, exit 0 — and a non-zero exit naming the missing run without --force.
+{
+  const f = judgeFixture('run-68', [
+    { status: 'gate-green', fixRounds: 0, ledger: 480_000, pr: 91 },
+    { status: 'gate-green', fixRounds: 3, ledger: 100_000, pr: 92 },
+    { status: 'parked', fixRounds: 0, ledger: 1_000, pr: 93 },
+  ])
+  const code = await cli(['judge', ...f.argv()], f.deps)
+  assert.equal(code, 0)
+  assert.equal(f.printed[0], 'race run-68: winner run-68-a')
+  assert.equal(f.printed[1], `decided by: ${STAGES.fixRounds}`)
+  assert.equal(
+    f.printed[2],
+    '  run-68-a  gate-green  fix 0  tokens 480000 (ledger)  PR #91 https://github.com/example/fleet/pull/91 (ultra/integration-run-68-a)',
+  )
+  for (const run of f.runs) {
+    const line = f.printed.find((l) => l.trim().startsWith(run.runId))
+    assert.ok(line, `${run.runId} must have a scorecard line`)
+    assert.match(line, /gate-green|parked/)
+  }
+  assert.deepEqual(f.errored, [])
+
+  const g = judgeFixture('run-69', [
+    { status: 'gate-green', fixRounds: 0, ledger: 1 },
+    { missing: true },
+  ])
+  const failCode = await cli(['judge', ...g.argv()], g.deps)
+  assert.equal(failCode, 1, 'a refused judge exits non-zero')
+  assert.match(g.errored.join('\n'), /run-69-b/)
+  assert.equal(g.printed.length, 0, 'a refused judge prints no verdict')
+  assert.ok(!('verdict' in readRaceManifest(g.evidenceDir, 'run-69')))
+  ok('(i) `race.mjs judge <raceId>` prints winner, deciding stage and every scorecard line; a missing gate-read exits non-zero')
+}
+
+// The judge refuses what it cannot judge, and the CLI names both verbs.
+{
+  const f = judgeFixture('run-70', [{ status: 'gate-green', fixRounds: 0, ledger: 1 }])
+  await assert.rejects(judgeRace(f.argv('--bogus'), f.deps), /unknown judge flag --bogus/)
+  await assert.rejects(judgeRace(f.argv('extra'), f.deps), /exactly <raceId>/)
+  await assert.rejects(judgeRace([], f.deps), /exactly <raceId>/)
+  await assert.rejects(judgeRace(['run-70', '--evidence-dir'], f.deps), /--evidence-dir needs a value/)
+  assert.match(usage(), /judge <raceId> \[--force\]/)
+  ok('the judge names its own flags and refuses anything else')
+}
+
+// Read-only apart from the verdict, and never `gh`: the operator adopts.
+{
+  const source = fs.readFileSync(new URL('../race.mjs', import.meta.url), 'utf8')
+  const code = source.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n')
+  assert.ok(!/\bgh\b/.test(code), 'race.mjs must never invoke gh')
+  ok('race.mjs never invokes gh — adoption stays the operator\'s, driven by the printout')
+}
+
 
 for (const dir of temps) fs.rmSync(dir, { recursive: true, force: true })
 
