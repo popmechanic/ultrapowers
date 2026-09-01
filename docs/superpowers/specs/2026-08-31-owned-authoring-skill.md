@@ -121,7 +121,7 @@ Body slots (exactly six, in order):
 | tier | status under claims-v1 |
 |---|---|
 | marker (`Depends-on`) | **refused** — the line may not appear |
-| interface (Consumes↔Produces token match) | **live** — primary semantic source |
+| interface (Consumes↔Produces token match) | **live** — primary semantic source; the legacy `undeclared-dependency` cross-check is **retired** in this mode (run-43 finding: its remedy — "add the marker" — is unsayable under this grammar), so interface edges order silently |
 | write-after-create (Files overlap) | **live** |
 | non-text same-file overlap | **new automatic edge** (§4.3) |
 | text (`after Task N` prose) | **off** — ordering-by-prose is inexpressible; task-reference ordering phrasing in body slots draws an `ADVISORY` |
