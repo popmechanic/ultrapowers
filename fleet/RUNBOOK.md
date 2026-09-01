@@ -234,8 +234,25 @@ credential it rode; expect `"authMethod":"oauth"`/subscription, **not**
 `"api_key"`. A sandbox only holds the token for the run's lifetime; rotate with
 a fresh `setup-token` if one is ever suspected compromised.
 
-Max usage is one 5-hour + weekly window **per user across all machines**, so
-the fleet shares the operator's own window; that — not vCPU — bounds width.
+Max usage is one 5-hour + weekly window **per account across all machines**, so
+the fleet shares the window of whichever account's token it rides. That line
+used to end "that — not vCPU — bounds width", and was cited for years-in-agent-
+time as the reason runs must be serial. **Measured 2026-09-01 (#454,
+`evals/frontier/results/2026-08-31-concurrent-drains.md`): it does not bind
+through N=3 concurrent drains** — six gate-green runs in one window, batch wall
+0.26× of serial-equivalent at N=3, zero 429s, no per-drain degradation. Serial-
+by-default is retired for independent plans; the ceiling is somewhere above
+N=3 and still unmeasured. Concurrent-launch shape (each drive needs its own
+`--port` and `--db-dir`, and each `nohup` its own subshell with the cwd set —
+a chained `nohup ... &` after the first loses the `cd`):
+
+```bash
+ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && nohup node fleet/drive-one.mjs <plan.md> run-$r --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1 &); done; exit'
+```
+
+Note the operator runs multiple subscriber accounts in rotation (#513): a
+`/usage` read is **per account**, so meter the token the fleet is actually
+riding, not whichever token the laptop Keychain holds.
 There is no per-invocation spend flag, and **there is no longer a per-run token
 cap** — it was deleted in #400 (one-driver Amendment 4): it never fired in
 twelve runs (peak run-18, 63%), metered dollars when the scarce resource is the

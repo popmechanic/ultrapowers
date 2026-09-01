@@ -127,8 +127,9 @@ review — a fresh-context subagent proposing the trimmed version (dispatch brie
 `skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec (or its
 companion record, where one exists — see `2026-08-28-one-driver-answers.md`) carries a
 `## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
-author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite` (the committed
-suite is the verification).
+author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite — the committed suite is the verification.`
+(the compiler's frozen vocabulary needs the `suite — <reason>` form; a bare `suite`
+fails to parse — caught live on sitting 2's drain plan).
 
 ## Conventions & gotchas (non-obvious — read before editing)
 
