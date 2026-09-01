@@ -192,6 +192,41 @@ const interfacesLine = (task) => {
 // is what the contend cell's critic explicitly asked for. Exported for the unit
 // pin on the red branch (as capWorkerParallelism is) — the engine only ever
 // adopts a green tree, so no live run reaches it.
+// Composition pinning, as a pure function (exported for the unit pin).
+// Per-task exclusion, never a wave-wide skip (review finding 10): one task
+// missing `writes` must not silence a genuine undeclared double-write between
+// two tasks that DID declare theirs.
+// Claims-v1 retirement (#390): `Commutes:` is no longer authorable, so when no
+// task in the wave declares one, an undeclared shared write is not a pinning
+// failure — it is the shipped fold default. The check only means something
+// while the declaration it audits can exist.
+export const compositionUnpinnedRows = (waveNumber, tasks) => {
+  const rows = []
+  if (!tasks.some((t) => Array.isArray(t.commutes) && t.commutes.length)) return rows
+  const declaring = tasks.filter((t) => Array.isArray(t.writes))
+  for (const t of tasks) {
+    if (!Array.isArray(t.writes)) {
+      rows.push('wave ' + waveNumber + ': task ' + t.id +
+        ' carries no writes field — excluded from composition rows')
+    }
+  }
+  if (declaring.length < 2) return rows
+  const writers = new Map()
+  for (const t of declaring) for (const p of t.writes) writers.set(p, (writers.get(p) || []).concat(t.id))
+  for (const [p, ids] of writers) {
+    if (ids.length < 2) continue
+    const undeclared = ids.filter((id) => {
+      const t = tasks.find((x) => x.id === id)
+      return !((t && t.commutes) || []).includes(p)
+    })
+    if (undeclared.length) {
+      rows.push('composition-unpinned: wave ' + waveNumber + ' ' + p +
+        ' — writers ' + ids.join(',') + '; undeclared: ' + undeclared.join(','))
+    }
+  }
+  return rows
+}
+
 export const suiteLine = (suite, cmd) => {
   if (!suite) return ''
   return '\nSUITE (driver-run, post-fold) — this is the authoritative result; ' +
@@ -934,35 +969,7 @@ export async function runEngine({
 
   let waveBaseSha = baseSha
   const compositionRows = (waveNumber, tasks) => {
-    // Per-task exclusion, never a wave-wide skip (review finding 10): one task
-    // missing `writes` must not silence a genuine undeclared double-write
-    // between two tasks that DID declare theirs.
-    // Claims-v1 retirement (#390): `Commutes:` is no longer authorable, so when
-    // no task in the wave declares one, an undeclared shared write is not a
-    // pinning failure — it is the shipped fold default. The check only means
-    // something while the declaration it audits can exist.
-    if (!tasks.some((t) => Array.isArray(t.commutes) && t.commutes.length)) return
-    const declaring = tasks.filter((t) => Array.isArray(t.writes))
-    for (const t of tasks) {
-      if (!Array.isArray(t.writes)) {
-        judgmentCalls.push('wave ' + waveNumber + ': task ' + t.id +
-          ' carries no writes field — excluded from composition rows')
-      }
-    }
-    if (declaring.length < 2) return
-    const writers = new Map()
-    for (const t of declaring) for (const p of t.writes) writers.set(p, (writers.get(p) || []).concat(t.id))
-    for (const [p, ids] of writers) {
-      if (ids.length < 2) continue
-      const undeclared = ids.filter((id) => {
-        const t = tasks.find((x) => x.id === id)
-        return !((t && t.commutes) || []).includes(p)
-      })
-      if (undeclared.length) {
-        judgmentCalls.push('composition-unpinned: wave ' + waveNumber + ' ' + p +
-          ' — writers ' + ids.join(',') + '; undeclared: ' + undeclared.join(','))
-      }
-    }
+    for (const line of compositionUnpinnedRows(waveNumber, tasks)) judgmentCalls.push(line)
   }
 
   let lastSuite = null
