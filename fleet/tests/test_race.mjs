@@ -1,45 +1,60 @@
-// fleet/tests/test_race.mjs — #511 attempt racing v1: the launch and judge verbs.
+// fleet/tests/test_race.mjs — #511 attempt racing v1, the launch verb.
 //
-// A race is K whole runs of one committed plan, driven concurrently from one
-// process. What has to be true before any of that is worth measuring: the
-// dials are written down BEFORE the results exist, the K identities cannot
-// collide (runId, port, db-dir and — spec finding 6 — repo-dir), and the
-// per-run options come off `drive-one.mjs`'s seam rather than a second
-// hand-typed copy of the drive constants.
+// The Proof legs of the launch task, in order: (a) the manifest records the
+// stub rev-parse output and carries the pre-registered dials; (b) the manifest
+// exists at the moment of the FIRST drive call (pre-registration is the whole
+// mechanism — dials chosen after results are visible are not dials);
+// (c) exactly K drives, overlapping in flight; (d) runId/port/dbDir/repoDir
+// pairwise distinct, IDs `<raceId>-a/-b/-c`, each repoDir cloned at
+// baseCommit; (e) options come from the REAL buildDriveOptions, so drive-one
+// defaults survive; (f) a suffixed runId never equals its own raceId;
+// (g) a drive rejection is a fast failure; (h) the CLI flag path reaches
+// launchRace with the parsed k and raceId.
 //
-// The judge half: the ordered rubric decides mechanically over pre-existing
-// per-run artifacts (gate-read, its detail, the run's own store), it names WHICH
-// stage decided — the #511 dial that keeps n=1 from being over-read as "the
-// rubric is good" — and it appends its verdict to the manifest without touching
-// the dials that were pre-registered before any result existed.
+// Plus the precondition the per-run clones made the launcher's own: the plan
+// must exist at the recorded base commit and match any working-tree copy,
+// refused BEFORE the first clone — `driveOne`'s #337 preflight cannot see it
+// from inside a clone detached at that commit.
 //
-// No live drive, no network, no git remote: `driveOne`, every git subprocess and
-// the sqlite store read are injected, as in test_drive_one.mjs.
+// Then the judge verb's Proof legs (a)-(i): the refusal on a missing gate read
+// and what `--force` does instead, each rubric stage deciding in turn, the
+// `reported`-token fallback, the FAILED race that merges nothing, the dials
+// surviving the append byte-identically, and the CLI printout.
+//
+// No live drive, no network, no git remote: `driveOne` and every git call are
+// injected (the `deps` pattern of test_drive_one.mjs). The judge's sqlite
+// access rides the same seam — `readStore` is injected, so no store, no
+// `sqlite3` binary and no fleet.db is ever touched.
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { REPO_DIR, buildDriveOptions, parseArgs } from '../drive-one.mjs'
 import {
+  DEFAULT_K,
   DIALS,
-  STAGES,
+  RUBRIC,
+  SUFFIXES,
   allocateRuns,
+  assertPlanCommittedAtBase,
+  countFixRounds,
+  gateDetailPath,
   gateReadPath,
   judgeRace,
   launchRace,
   main,
+  manifestPath,
   parseJudgeArgs,
   parseLaunchArgs,
-  raceManifestPath,
+  prLine,
   readRaceManifest,
-  runIdFor,
+  resolvePlan,
   scorecardLine,
+  selectWinner,
   usage,
 } from '../race.mjs'
-
-const RACE_MJS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'race.mjs')
+import { DEFAULTS, buildDriveOptions, parseArgs } from '../drive-one.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -47,744 +62,1001 @@ const ok = (label) => {
   console.log(`ok - ${label}`)
 }
 
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-race-test-'))
-const scratch = (name) => {
-  const dir = path.join(TMP, name)
-  fs.mkdirSync(dir, { recursive: true })
-  return dir
-}
+const BASE_COMMIT = '4f1c0de9b2a37c5e8d10a6b4f9c3e27d5a8b1c60'
+const LAUNCHED_AT_MS = 1_756_684_800_000 // fixed clock — the manifest is asserted whole
+const CLOCK = () => LAUNCHED_AT_MS
 
-const SHA = '0123456789abcdef0123456789abcdef01234567'
-const LAUNCHED_AT = '2026-09-01T12:00:00.000Z'
-// What the launch checkout's `origin` is: the GitHub https remote the publish
-// leg pushes to and `gh pr create` reads the host from.
-const ORIGIN_URL = 'https://github.com/acme/fleet.git'
+const tmpDir = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `fleet-race-${tag}-`))
 
-// The remote configuration the git calls actually leave behind. `git clone
-// <src> <dst>` writes `origin = <src>` — a filesystem path — and `remote
-// set-url origin <url>` replaces it; replaying the calls is what lets this
-// suite assert the resulting config and not merely the command sequence.
-const originsAfter = (gitCalls) => {
-  const origins = {}
-  for (const args of gitCalls) {
-    if (args[0] === 'clone') origins[args.at(-1)] = args.at(-2)
-    else if (args[0] === '-C' && args[2] === 'remote' && args[3] === 'set-url' && args[4] === 'origin') {
-      origins[args[1]] = args[5]
-    }
-  }
-  return origins
-}
-
-// The two seams drive-one already owns; identical references so the option
-// comparison below can be an equality, not a shape check.
-const exec = async () => ({ code: 0, stdout: '', stderr: '' })
-const readToken = () => '  fake-token  \n'
-
-const makeDeps = ({ drive, narrate } = {}) => {
-  const gitCalls = []
-  const driveCalls = []
-  const lines = []
-  const deps = {
-    git: async (args) => {
-      gitCalls.push(args)
-      if (args.includes('rev-parse')) return `${SHA}\n`
-      if (args.includes('get-url')) return `${ORIGIN_URL}\n`
+// A git runner that records every call and never touches a repository. `clone`
+// creates the destination so the harness can prove a repoDir exists; nothing
+// else needs to happen on disk.
+// `planAtBase` models the plan's presence at the recorded commit: a string is
+// the committed blob (`cat-file -e` succeeds, `show` returns it), null means
+// absent (`cat-file -e` exits non-zero, as the real runner surfaces it).
+const makeGit = ({
+  originUrl = 'https://github.com/example/repo.git',
+  head = BASE_COMMIT,
+  planAtBase = '# committed plan\n',
+} = {}) => {
+  const calls = []
+  const git = async (args, { cwd } = {}) => {
+    calls.push({ args, cwd })
+    if (args[0] === 'rev-parse') return `${head}\n`
+    if (args[0] === 'cat-file') {
+      if (planAtBase === null) throw new Error(`race: git ${args.join(' ')} failed — Not a valid object name`)
       return ''
-    },
-    drive:
-      drive ??
-      (async (opts) => {
-        driveCalls.push(opts)
-        return {
-          read: { runId: opts.runId, status: 'gate-green' },
-          reportPath: `/tmp/gate-read-${opts.runId}.json`,
-          detailPath: `/tmp/gate-read-${opts.runId}.detail.json`,
-        }
-      }),
-    readToken,
-    exec,
-    now: () => LAUNCHED_AT,
-    narrate: narrate ?? ((line) => lines.push(line)),
-    log: (line) => lines.push(line),
+    }
+    if (args[0] === 'show') {
+      if (planAtBase === null) throw new Error(`race: git ${args.join(' ')} failed — Not a valid object name`)
+      return planAtBase
+    }
+    if (args[0] === 'remote' && args[1] === 'get-url') {
+      if (originUrl === null) throw new Error('no origin')
+      return `${originUrl}\n`
+    }
+    if (args[0] === 'clone') fs.mkdirSync(args[2], { recursive: true })
+    return ''
   }
-  return { deps, gitCalls, driveCalls, lines }
+  return { git, calls }
 }
 
-// --- (a) the manifest: base commit + pre-registered dials -------------------
-
-{
-  const evidenceDir = scratch('ev-a')
-  const raceDir = path.join(TMP, 'race-a')
-  const { deps } = makeDeps()
-  const { manifest, results } = await launchRace(
-    ['docs/plan.md', 'race-90', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir],
-    deps,
-  )
-
-  const file = path.join(evidenceDir, 'race-race-90.json')
-  assert.equal(raceManifestPath(evidenceDir, 'race-90'), file)
-  assert.ok(fs.existsSync(file), `${file} must exist`)
-
-  const expected = {
-    raceId: 'race-90',
-    planPath: 'docs/plan.md',
-    baseCommit: SHA,
-    k: 3,
-    launchedAt: LAUNCHED_AT,
-    runs: [
-      { runId: 'race-90-a', port: 8180, dbDir: '/tmp/fleet-orch-live-a', repoDir: path.join(raceDir, 'race-90-a') },
-      { runId: 'race-90-b', port: 8181, dbDir: '/tmp/fleet-orch-live-b', repoDir: path.join(raceDir, 'race-90-b') },
-      { runId: 'race-90-c', port: 8182, dbDir: '/tmp/fleet-orch-live-c', repoDir: path.join(raceDir, 'race-90-c') },
-    ],
-    dials: JSON.parse(JSON.stringify(DIALS)),
-  }
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), expected)
-  assert.deepEqual(readRaceManifest(evidenceDir, 'race-90'), expected)
-  assert.deepEqual(manifest, expected)
-  // The pre-registered block is the spec's §Measurement list, not an empty hull.
-  assert.deepEqual(
-    Object.keys(DIALS).sort(),
-    ['baseline', 'comparatorDecisiveness', 'perRun', 'raceWall', 'totalTokens', 'winnerDefectSurface'],
-  )
-  assert.match(DIALS.raceWall, /launchedAt/)
-  assert.match(DIALS.raceWall, /elapsedMs/)
-  assert.equal(results.length, 3)
-  ok('(a) launch writes race-<raceId>.json: base commit from git, dials pre-registered')
-}
-
-// --- (b) pre-registration: the manifest exists before the first drive -------
-
-{
-  const evidenceDir = scratch('ev-b')
-  const raceDir = path.join(TMP, 'race-b')
-  const seen = []
-  const drive = async (opts) => {
-    seen.push(fs.existsSync(path.join(evidenceDir, 'race-race-91.json')))
-    return { read: { runId: opts.runId } }
-  }
-  const { deps } = makeDeps({ drive })
-  await launchRace(
-    ['docs/plan.md', 'race-91', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir],
-    deps,
-  )
-  assert.deepEqual(seen, [true, true, true], 'dials must not be choosable after results are visible')
-  ok('(b) the manifest is on disk at the moment of the first driveOne call')
-}
-
-// --- (c) K calls, all in flight together ------------------------------------
-
-{
-  const evidenceDir = scratch('ev-c')
-  const raceDir = path.join(TMP, 'race-c')
-  let started = 0
-  let inFlight = 0
-  let maxInFlight = 0
+// K stubs that resolve only once all K have STARTED: if the launcher awaited
+// each drive in turn, the first would never resolve and the test would hang.
+const makeConcurrentDrive = (k, { result = (opts) => ({ read: { runId: opts.runId } }) } = {}) => {
+  const calls = []
+  let observe = () => undefined
   let release
   const allStarted = new Promise((resolve) => {
     release = resolve
   })
   const drive = async (opts) => {
-    started += 1
-    inFlight += 1
-    maxInFlight = Math.max(maxInFlight, inFlight)
-    if (started === 3) release()
-    await allStarted // a sequential launcher deadlocks here; the guard names it
-    inFlight -= 1
-    return { read: { runId: opts.runId } }
+    calls.push(opts)
+    observe(opts)
+    if (calls.length === k) release()
+    await allStarted
+    return result(opts)
   }
-  const guard = new Promise((_, reject) => {
-    const timer = setTimeout(() => reject(new Error('the K drives never overlapped in flight')), 10_000)
-    timer.unref()
-  })
-  const { deps } = makeDeps({ drive })
-  await Promise.race([
-    launchRace(['docs/plan.md', 'race-92', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir], deps),
-    guard,
-  ])
-  assert.equal(started, 3, 'driveOne is called exactly K times')
-  assert.equal(maxInFlight, 3, 'the K drives run concurrently, not one after another')
-  ok('(c) driveOne is called exactly K times and the K calls overlap in flight')
-}
-
-// --- (d) allocation: pairwise distinct, cloned at the base commit -----------
-
-{
-  const evidenceDir = scratch('ev-d')
-  const raceDir = path.join(TMP, 'race-d')
-  const { deps, gitCalls, driveCalls } = makeDeps()
-  await launchRace(
-    ['docs/plan.md', 'race-93', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir],
-    deps,
-  )
-
-  assert.deepEqual(driveCalls.map((o) => o.runId), ['race-93-a', 'race-93-b', 'race-93-c'])
-  assert.deepEqual(driveCalls.map((o) => o.port), [8180, 8181, 8182])
-  assert.deepEqual(driveCalls.map((o) => o.dbDir), [
-    '/tmp/fleet-orch-live-a',
-    '/tmp/fleet-orch-live-b',
-    '/tmp/fleet-orch-live-c',
-  ])
-  assert.deepEqual(driveCalls.map((o) => o.repoDir), [
-    path.join(raceDir, 'race-93-a'),
-    path.join(raceDir, 'race-93-b'),
-    path.join(raceDir, 'race-93-c'),
-  ])
-  for (const key of ['runId', 'port', 'dbDir', 'repoDir']) {
-    assert.equal(new Set(driveCalls.map((o) => o[key])).size, 3, `${key} must be pairwise distinct`)
-  }
-
-  // Every repoDir is a fresh clone of the launch checkout, detached at the sha
-  // the manifest recorded — sharing one repoDir would race the publish leg's
-  // FETCH_HEAD window across siblings (spec finding 6).
-  assert.deepEqual(gitCalls, [
-    ['-C', REPO_DIR, 'rev-parse', 'HEAD'],
-    ['-C', REPO_DIR, 'remote', 'get-url', 'origin'],
-    ['clone', '--no-hardlinks', REPO_DIR, path.join(raceDir, 'race-93-a')],
-    ['-C', path.join(raceDir, 'race-93-a'), 'checkout', '--detach', SHA],
-    ['-C', path.join(raceDir, 'race-93-a'), 'remote', 'set-url', 'origin', ORIGIN_URL],
-    ['clone', '--no-hardlinks', REPO_DIR, path.join(raceDir, 'race-93-b')],
-    ['-C', path.join(raceDir, 'race-93-b'), 'checkout', '--detach', SHA],
-    ['-C', path.join(raceDir, 'race-93-b'), 'remote', 'set-url', 'origin', ORIGIN_URL],
-    ['clone', '--no-hardlinks', REPO_DIR, path.join(raceDir, 'race-93-c')],
-    ['-C', path.join(raceDir, 'race-93-c'), 'checkout', '--detach', SHA],
-    ['-C', path.join(raceDir, 'race-93-c'), 'remote', 'set-url', 'origin', ORIGIN_URL],
-  ])
-
-  // The configuration those calls leave behind, not just their order: a clone
-  // of a local path points `origin` at that path, and `driveOne`'s publish leg
-  // pushes to `origin` and then runs `gh pr create` in the same dir. Left as
-  // cloned, the race's branches would land in the operator's launch checkout
-  // and every run would end `gh pr create ... failed` with no PR to merge or
-  // close — the whole adoption path gone.
-  const origins = originsAfter(gitCalls)
-  for (const repoDir of driveCalls.map((o) => o.repoDir)) {
-    assert.equal(origins[repoDir], ORIGIN_URL, `${repoDir} must publish to the GitHub remote`)
-    assert.notEqual(origins[repoDir], REPO_DIR, 'a race must never push into the launch checkout')
-  }
-  ok('(d) runIds/ports/db-dirs/repo-dirs are pairwise distinct; each repo-dir is a clone at baseCommit')
-  ok('(d) each clone keeps the launch checkout\'s GitHub origin, not the local clone path')
-}
-
-// --- (d2) a launch checkout with no origin is refused, not published nowhere -
-
-{
-  const evidenceDir = scratch('ev-d2')
-  const raceDir = path.join(TMP, 'race-d2')
-  for (const broken of [
-    async (args) => {
-      if (args.includes('get-url')) throw new Error("error: No such remote 'origin'")
-      return args.includes('rev-parse') ? `${SHA}\n` : ''
+  return {
+    drive,
+    calls,
+    onStart: (fn) => {
+      observe = fn
     },
-    async (args) => (args.includes('rev-parse') ? `${SHA}\n` : ''), // get-url returns nothing
-  ]) {
-    const { deps, driveCalls } = makeDeps()
-    deps.git = broken
-    await assert.rejects(
-      launchRace(['docs/plan.md', 'race-93b', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir], deps),
-      /nowhere to publish/,
+  }
+}
+
+const deps = (extra = {}) => ({
+  readToken: () => '  fake-oauth-token  \n',
+  exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+  clock: CLOCK,
+  progressSink: () => {},
+  ...extra,
+})
+
+// --- parseLaunchArgs -------------------------------------------------------
+
+{
+  const p = parseLaunchArgs(['docs/plan.md', 'race-48', '--k', '3'])
+  assert.equal(p.planPath, 'docs/plan.md')
+  assert.equal(p.raceId, 'race-48')
+  assert.equal(p.runId, 'race-48', 'the raceId rides the drive-one positional, so it inherits #211 grammar')
+  assert.equal(p.k, 3)
+  // Everything else is drive-one's, untouched.
+  assert.equal(p.port, DEFAULTS.port)
+  assert.equal(p.dbDir, DEFAULTS.dbDir)
+  assert.equal(p.evidenceDir, DEFAULTS.evidenceDir)
+  assert.equal(p.prBase, DEFAULTS.prBase)
+
+  assert.equal(parseLaunchArgs(['p.md', 'race-48']).k, DEFAULT_K)
+  assert.equal(DEFAULT_K, 3, 'K = 3 for the first race (spec decision summary)')
+
+  // Drive-one passthrough flags survive alongside --k, in any order.
+  const q = parseLaunchArgs(['--port', '9100', 'p.md', 'race-49', '--k', '2', '--pr-base', 'release/9'])
+  assert.equal(q.port, 9100)
+  assert.equal(q.k, 2)
+  assert.equal(q.prBase, 'release/9')
+
+  assert.throws(() => parseLaunchArgs(['p.md', 'race-48', '--k']), /--k needs a value/)
+  assert.throws(() => parseLaunchArgs(['p.md', 'race-48', '--k', '1']), /--k must be an integer between 2 and 26/)
+  assert.throws(() => parseLaunchArgs(['p.md', 'race-48', '--k', '2.5']), /--k must be an integer/)
+  assert.throws(() => parseLaunchArgs(['p.md', 'race-48', '--k', '27']), /--k must be an integer between 2 and 26/)
+  assert.throws(() => parseLaunchArgs(['p.md', 'race 48', '--k', '3']), /#211/)
+  assert.throws(() => parseLaunchArgs(['p.md', 'race-48', '--bogus', 'x']), /unknown flag --bogus/)
+  assert.match(usage(), /node fleet\/race\.mjs launch <plan\.md> <raceId>/)
+  ok('parseLaunchArgs owns --k and hands everything else to drive-one, grammar included')
+}
+
+// --- (d)/(f) allocation ----------------------------------------------------
+
+{
+  const runs = allocateRuns({ raceId: 'race-48', k: 3, port: 8180, dbDir: '/tmp/fleet-orch-live' })
+  assert.deepEqual(runs, [
+    { runId: 'race-48-a', port: 8180, dbDir: '/tmp/fleet-orch-live-a', repoDir: '/tmp/fleet-orch-live-a-repo' },
+    { runId: 'race-48-b', port: 8181, dbDir: '/tmp/fleet-orch-live-b', repoDir: '/tmp/fleet-orch-live-b-repo' },
+    { runId: 'race-48-c', port: 8182, dbDir: '/tmp/fleet-orch-live-c', repoDir: '/tmp/fleet-orch-live-c-repo' },
+  ])
+  for (const field of ['runId', 'port', 'dbDir', 'repoDir']) {
+    const seen = runs.map((r) => r[field])
+    assert.equal(new Set(seen).size, runs.length, `${field} must be pairwise distinct: ${seen.join(', ')}`)
+  }
+  // (f) The decidable half of the never-reuse convention (spec finding 12): a
+  // suffixed ID can never equal the raceId it was derived from.
+  for (const run of runs) assert.notEqual(run.runId, 'race-48')
+  // Each allocated ID is still a legal drive-one runId (#211).
+  for (const run of runs) assert.equal(parseArgs(['p.md', run.runId]).runId, run.runId)
+  assert.equal(SUFFIXES.slice(0, 3).join(''), 'abc')
+  ok('(d)(f) IDs/ports/db-dirs/repo-dirs are pairwise distinct; a suffixed ID never equals its raceId')
+}
+
+// --- (a)(b)(c)(d)(e) the launch itself -------------------------------------
+
+{
+  const evidenceDir = path.join(tmpDir('ev'), 'nested-evidence') // created by launch
+  const argv = [
+    'docs/plan.md', 'race-48', '--k', '3',
+    '--evidence-dir', evidenceDir, '--port', '9200',
+    '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const parsed = parseLaunchArgs(argv)
+
+  const { git, calls: gitCalls } = makeGit()
+  const stub = makeConcurrentDrive(3)
+  // (b) Pre-registration: sample the manifest AS IT LOOKS at each drive start.
+  const manifestAtStart = []
+  stub.onStart(() => {
+    const p = manifestPath(evidenceDir, 'race-48')
+    manifestAtStart.push(fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null)
+  })
+
+  const d = deps({ git, drive: stub.drive })
+  const { manifest, results } = await launchRace(argv, d)
+
+  // (a) The manifest, asserted whole — schema, base commit and dials together.
+  const expectedRuns = allocateRuns({ raceId: 'race-48', k: 3, port: parsed.port, dbDir: parsed.dbDir })
+  assert.deepEqual(manifest, {
+    raceId: 'race-48',
+    planPath: 'docs/plan.md',
+    baseCommit: BASE_COMMIT,
+    k: 3,
+    launchedAt: new Date(LAUNCHED_AT_MS).toISOString(),
+    runs: expectedRuns,
+    dials: DIALS,
+  })
+  assert.deepEqual(gitCalls[0], { args: ['rev-parse', 'HEAD'], cwd: parsed.repoDir })
+  assert.deepEqual(readRaceManifest(evidenceDir, 'race-48'), manifest, 'the file round-trips to the returned manifest')
+  assert.equal(
+    manifestPath(evidenceDir, 'race-48'),
+    path.join(evidenceDir, 'race-race-48.json'),
+    'the manifest name is raceId-qualified — the shared evidence dir clobbers unqualified names (#323)',
+  )
+  ok('(a) the manifest records the rev-parse base commit and the pre-registered dials')
+
+  // (b) Every drive saw the finished manifest — including the first.
+  assert.equal(manifestAtStart.length, 3)
+  for (const seen of manifestAtStart) {
+    assert.ok(seen !== null, 'the manifest must exist before the first driveOne call')
+    assert.deepEqual(JSON.parse(seen).dials, DIALS, 'the dials were pre-registered, not chosen after results')
+  }
+  ok('(b) the manifest is on disk before the first drive starts — dials are pre-registered')
+
+  // (c) Exactly K, and all K were in flight together: the stubs only resolve
+  // once the third has started, so a sequential launcher would deadlock.
+  assert.equal(stub.calls.length, 3)
+  assert.deepEqual(results, [
+    { read: { runId: 'race-48-a' } },
+    { read: { runId: 'race-48-b' } },
+    { read: { runId: 'race-48-c' } },
+  ])
+  ok('(c) exactly K drives, overlapping in flight')
+
+  // (d) Distinct identities, and each repoDir was cloned at baseCommit.
+  assert.deepEqual(
+    stub.calls.map((o) => ({ runId: o.runId, port: o.port, dbDir: o.dbDir, repoDir: o.repoDir })),
+    expectedRuns,
+  )
+  for (const run of expectedRuns) {
+    assert.deepEqual(
+      gitCalls.filter((c) => c.args[0] === 'clone' && c.args[2] === run.repoDir),
+      [{ args: ['clone', parsed.repoDir, run.repoDir], cwd: undefined }],
+      `${run.repoDir} must be cloned exactly once from the launch checkout`,
     )
-    assert.equal(driveCalls.length, 0, 'the refusal comes before any drive starts')
+    assert.deepEqual(
+      gitCalls.filter((c) => c.cwd === run.repoDir && c.args[0] === 'checkout'),
+      [{ args: ['checkout', '--detach', BASE_COMMIT], cwd: run.repoDir }],
+      `${run.repoDir} must be checked out at the recorded base commit`,
+    )
+    assert.deepEqual(
+      gitCalls.filter((c) => c.cwd === run.repoDir && c.args[0] === 'remote'),
+      [{ args: ['remote', 'set-url', 'origin', 'https://github.com/example/repo.git'], cwd: run.repoDir }],
+      "the clone pushes to the launch checkout's origin, not to a filesystem path",
+    )
+    assert.ok(fs.existsSync(run.repoDir), 'the clone runner produced the repo dir')
   }
-  assert.ok(!fs.existsSync(path.join(evidenceDir, 'race-race-93b.json')), 'no manifest for a race that cannot publish')
-  ok('(d2) a launch checkout without an origin URL refuses before any drive starts')
-}
+  ok('(d) each repoDir is a fresh clone detached at baseCommit, origin re-pointed (spec finding 6)')
 
-// --- (e) the options come off buildDriveOptions, overrides only -------------
-
-{
-  const evidenceDir = scratch('ev-e')
-  const raceDir = path.join(TMP, 'race-e')
-  const narrated = []
-  const { deps, driveCalls } = makeDeps({ narrate: (line) => narrated.push(line) })
-  await launchRace(
-    ['docs/plan.md', 'race-94', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir],
-    deps,
-  )
-
-  const baseline = buildDriveOptions(
-    parseArgs(['docs/plan.md', 'race-94', '--evidence-dir', evidenceDir]),
-    { readToken, exec },
-  )
+  // (e) The options come from the REAL buildDriveOptions: the overrides are
+  // EXACTLY runId/port/dbDir/repoDir/progressLog and nothing else drifts.
+  const baseline = buildDriveOptions(parsed, { readToken: d.readToken, exec: d.exec })
   const OVERRIDDEN = new Set(['runId', 'port', 'dbDir', 'repoDir', 'progressLog'])
-  for (const opts of driveCalls) {
-    assert.deepEqual(Object.keys(opts).sort(), [...Object.keys(baseline), 'progressLog'].sort())
-    for (const key of Object.keys(baseline)) {
-      if (!OVERRIDDEN.has(key)) assert.deepEqual(opts[key], baseline[key], `${key} must survive untouched`)
+  for (const opts of stub.calls) {
+    assert.deepEqual(
+      new Set(Object.keys(opts)),
+      new Set([...Object.keys(baseline), 'progressLog']),
+      "the option shape is drive-one's plus progressLog",
+    )
+    for (const key of Object.keys(opts)) {
+      if (OVERRIDDEN.has(key)) continue
+      assert.deepEqual(opts[key], baseline[key], `${key} must survive the race untouched`)
     }
-    // A drive-one default nobody re-types here (#368), and the token seam.
+    // Named explicitly: a drive-one default and the token seam.
     assert.equal(opts.prBase, 'main')
-    assert.equal(opts.ttlMs, 4 * 60 * 60 * 1000)
-    assert.equal(opts.exec, exec)
-    assert.equal(opts.engineEnv.CLAUDE_CODE_OAUTH_TOKEN, 'fake-token')
-    // #511 review finding 11: three interleaved drives on one stderr.
+    assert.equal(opts.ttlMs, DEFAULTS.ttlHours * 60 * 60 * 1000)
+    assert.equal(opts.evidenceDir, evidenceDir)
+    assert.equal(opts.engineEnv.CLAUDE_CODE_OAUTH_TOKEN, 'fake-oauth-token')
+    assert.equal(opts.exec, d.exec)
     assert.equal(typeof opts.progressLog, 'function')
-    opts.progressLog('provisioning')
-    const line = narrated.at(-1)
-    assert.ok(line.startsWith(`[race ${opts.runId} `), line)
-    assert.ok(line.endsWith('] provisioning'), line)
   }
-  assert.equal(narrated.length, 3)
-  ok('(e) options are built through the real buildDriveOptions; only the five keys are overridden')
+  ok('(e) options are built through the real buildDriveOptions; overrides are exactly the five')
+
+  // The runId-prefixed progressLog (spec finding 11): three interleaved drives
+  // stay attributable on one stderr.
+  const lines = []
+  const attributed = await launchRace(
+    argv.map((a) => (a === 'race-48' ? 'race-50' : a)),
+    deps({
+      git: makeGit().git,
+      drive: async (opts) => {
+        opts.progressLog('watch: pending')
+        return { read: {} }
+      },
+      progressSink: (line) => lines.push(line),
+    }),
+  )
+  assert.equal(attributed.manifest.raceId, 'race-50')
+  assert.deepEqual(lines, ['[race-50-a] watch: pending', '[race-50-b] watch: pending', '[race-50-c] watch: pending'])
+  ok('progressLog is runId-prefixed, so interleaved drives stay attributable (finding 11)')
 }
 
-// --- (f) the suffixed runIds are legal and never their own raceId ----------
+// --- (g) a drive rejection is a fast failure -------------------------------
 
 {
-  const raceId = 'race-95'
-  const runs = allocateRuns({ raceId, k: 3, port: 8180, dbDir: '/tmp/db', raceDir: '/tmp/race' })
-  assert.deepEqual(runs.map((r) => r.runId), ['race-95-a', 'race-95-b', 'race-95-c'])
-  assert.equal(runIdFor(raceId, 0), 'race-95-a')
-  for (const run of runs) {
-    assert.notEqual(run.runId, raceId, 'a suffixed runId must never equal its own raceId (#211 never-reuse)')
-    // The #211 grammar drive-one enforces: parseArgs must accept every one.
-    assert.equal(parseArgs(['p.md', run.runId]).runId, run.runId)
-  }
-  ok('(f) suffixed runIds match the #211 grammar and never equal their own raceId')
-}
-
-// --- (g) a drive rejection is a fast failure --------------------------------
-
-{
-  const evidenceDir = scratch('ev-g')
-  const raceDir = path.join(TMP, 'race-g')
-  const drive = async (opts) => {
-    if (opts.runId === 'race-96-b') throw new Error('drive-one: plan is dirty at baseRef (#337)')
-    return { read: { runId: opts.runId } }
-  }
-  const { deps } = makeDeps({ drive })
+  const evidenceDir = tmpDir('fail')
+  const argv = [
+    'docs/plan.md', 'race-51', '--k', '3',
+    '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const boom = new Error('driveOne: provisionRun failed for race-51-b (#337-adjacent operator error)')
   await assert.rejects(
-    launchRace(['docs/plan.md', 'race-96', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir], deps),
-    /plan is dirty at baseRef/,
+    launchRace(
+      argv,
+      deps({
+        git: makeGit().git,
+        drive: async (opts) => {
+          if (opts.runId === 'race-51-b') throw boom
+          return { read: {} }
+        },
+      }),
+    ),
+    /provisionRun failed/,
   )
-  ok('(g) a driveOne rejection propagates as a fast failure')
+  // The manifest still landed: pre-registration precedes the drives, so a
+  // failed race is a recorded race.
+  assert.equal(readRaceManifest(evidenceDir, 'race-51').k, 3)
+  ok('(g) a driveOne rejection propagates as a fast failure, manifest already recorded')
 }
 
-// --- (h) the CLI entry: the flag path, not just the direct call ------------
+// A git precondition failure refuses before any drive runs.
+{
+  const evidenceDir = tmpDir('nogit')
+  const argv = ['p.md', 'race-52', '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store')]
+  const drives = []
+  await assert.rejects(
+    launchRace(
+      argv,
+      deps({
+        git: async (args) => {
+          if (args[0] === 'rev-parse') throw new Error('race: git rev-parse HEAD failed — not a git repository')
+          return ''
+        },
+        drive: async (o) => {
+          drives.push(o)
+          return { read: {} }
+        },
+      }),
+    ),
+    /rev-parse HEAD failed/,
+  )
+  assert.deepEqual(drives, [])
+  assert.equal(fs.existsSync(manifestPath(evidenceDir, 'race-52')), false)
+  ok('a failed base-commit read refuses before any manifest or drive')
+}
 
 {
-  const evidenceDir = scratch('ev-h')
-  const raceDir = path.join(TMP, 'race-h')
-  const { deps, driveCalls, lines } = makeDeps()
-  const { manifest } = await main(
-    ['launch', 'docs/plan.md', 'race-97', '--k', '3', '--evidence-dir', evidenceDir, '--race-dir', raceDir],
-    deps,
+  const evidenceDir = tmpDir('badsha')
+  const argv = ['p.md', 'race-53', '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store')]
+  await assert.rejects(
+    launchRace(argv, deps({ git: makeGit({ head: 'HEAD' }).git, drive: async () => ({ read: {} }) })),
+    /not a commit sha/,
   )
-  assert.equal(manifest.raceId, 'race-97')
+  ok('a rev-parse output that is not a sha refuses rather than being recorded as the base')
+}
+
+// --- the plan must be committed AT the recorded base, checked before anything
+// --- is spent (the delegation finding 6's per-run clones made unreachable) ---
+
+{
+  assert.deepEqual(resolvePlan('/repo', 'docs/plan.md'), {
+    planFile: '/repo/docs/plan.md',
+    planRel: 'docs/plan.md',
+  })
+  assert.deepEqual(resolvePlan('/repo', '/repo/docs/plan.md'), {
+    planFile: '/repo/docs/plan.md',
+    planRel: 'docs/plan.md',
+  })
+  ok('resolvePlan resolves the plan the way drive.mjs does — the two never disagree about which file')
+}
+
+// Absent at baseCommit: the operator wrote the plan but never committed it.
+// An unraced `drive-one` refuses before provisioning; the race must too, or it
+// burns K clones and K sandbox provisions on a commit carrying no such plan.
+{
+  const evidenceDir = tmpDir('uncommitted')
+  const argv = [
+    'docs/plans/foo.md', 'race-56', '--k', '3',
+    '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const { git, calls } = makeGit({ planAtBase: null })
+  const drives = []
+  await assert.rejects(
+    launchRace(argv, deps({ git, drive: async (o) => { drives.push(o); return { read: {} } } })),
+    /race: plan docs\/plans\/foo\.md does not exist at 4f1c0de.*#337/s,
+  )
+  assert.deepEqual(calls.map((c) => c.args[0]), ['rev-parse', 'cat-file'], 'nothing past the check ran')
+  assert.deepEqual(
+    calls.filter((c) => c.args[0] === 'clone'),
+    [],
+    'the refusal must precede the first clone — K clones is the cost of learning it late',
+  )
+  assert.deepEqual(drives, [], 'and no drive: no sandbox provision is spent on a plan the sandbox never gets')
+  assert.equal(fs.existsSync(manifestPath(evidenceDir, 'race-56')), false)
+  ok('an uncommitted plan refuses before any clone, manifest or drive (#337, the launcher owns it)')
+}
+
+// Dirty: the plan exists at the base commit but the working-tree copy differs.
+// In a clone detached at that commit the two texts are equal by construction,
+// so driveOne's own preflight cannot see this either.
+{
+  const repoDir = tmpDir('dirtyrepo')
+  fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+  fs.writeFileSync(path.join(repoDir, 'docs', 'plan.md'), '# edited, not committed\n')
+  const evidenceDir = tmpDir('dirty')
+  const argv = [
+    'docs/plan.md', 'race-57', '--k', '2', '--repo-dir', repoDir,
+    '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const { git, calls } = makeGit({ planAtBase: '# committed plan\n' })
+  const drives = []
+  await assert.rejects(
+    launchRace(argv, deps({ git, drive: async (o) => { drives.push(o); return { read: {} } } })),
+    /race: plan docs\/plan\.md differs between .*#337/s,
+  )
+  assert.deepEqual(calls.map((c) => c.args[0]), ['rev-parse', 'cat-file', 'show'])
+  assert.deepEqual(drives, [])
+  assert.equal(fs.existsSync(manifestPath(evidenceDir, 'race-57')), false)
+  ok('a working-tree edit over the committed plan refuses before any clone, manifest or drive (#337)')
+}
+
+// The same repo with the working copy matching the committed bytes races.
+{
+  const repoDir = tmpDir('cleanrepo')
+  fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+  fs.writeFileSync(path.join(repoDir, 'docs', 'plan.md'), '# committed plan\n')
+  const evidenceDir = tmpDir('clean')
+  const argv = [
+    'docs/plan.md', 'race-58', '--k', '2', '--repo-dir', repoDir,
+    '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const { git, calls } = makeGit({ planAtBase: '# committed plan\n' })
+  const { manifest } = await launchRace(argv, deps({ git, drive: async () => ({ read: {} }) }))
+  assert.equal(manifest.k, 2)
+  const kinds = calls.map((c) => c.args[0])
+  assert.ok(
+    kinds.indexOf('cat-file') < kinds.indexOf('clone'),
+    'the check is a precondition of cloning, not a step beside it',
+  )
+  assert.deepEqual(
+    calls.find((c) => c.args[0] === 'cat-file'),
+    { args: ['cat-file', '-e', `${BASE_COMMIT}:docs/plan.md`], cwd: repoDir },
+    'the plan is checked at the RECORDED commit, in the launch checkout',
+  )
+  ok('a committed, unedited plan passes the precondition and the race proceeds')
+}
+
+// #362's lesson: a path that fails the repo-path guard is refused AS a path
+// problem, never reported as an uncommitted plan.
+{
+  const evidenceDir = tmpDir('badpath')
+  const argv = [
+    '../outside.md', 'race-59', '--evidence-dir', evidenceDir, '--db-dir', path.join(tmpDir('db'), 'store'),
+  ]
+  const { git, calls } = makeGit()
+  await assert.rejects(
+    launchRace(argv, deps({ git, drive: async () => ({ read: {} }) })),
+    /fails the repo-path guard.*#362/s,
+  )
+  assert.deepEqual(calls.map((c) => c.args[0]), ['rev-parse'], 'refused before the plan is even looked up')
+  ok('a plan path escaping the repo is refused as a path problem, not read as uncommitted (#362)')
+}
+
+// The precondition standing alone, both refusals and the absent-locally pass.
+{
+  const repoDir = tmpDir('unit')
+  const call = (planAtBase) =>
+    assertPlanCommittedAtBase({
+      git: makeGit({ planAtBase }).git,
+      repoDir,
+      planPath: 'docs/plan.md',
+      baseCommit: BASE_COMMIT,
+    })
+  await assert.rejects(call(null), /does not exist at/)
+  // No local copy at all: the clones carry the committed text and that is the
+  // text the race is about — nothing to disagree with, so no refusal.
+  await call('# committed plan\n')
+  ok('assertPlanCommittedAtBase refuses an absent plan and passes when only the committed copy exists')
+}
+
+// An origin-less checkout still races: the clone simply keeps no origin url.
+{
+  const evidenceDir = tmpDir('noorigin')
+  const dbDir = path.join(tmpDir('db'), 'store')
+  const argv = ['p.md', 'race-54', '--k', '2', '--evidence-dir', evidenceDir, '--db-dir', dbDir]
+  const { git, calls } = makeGit({ originUrl: null })
+  const { manifest } = await launchRace(argv, deps({ git, drive: async () => ({ read: {} }) }))
+  assert.equal(manifest.k, 2)
+  assert.deepEqual(calls.filter((c) => c.args[0] === 'remote' && c.args[1] === 'set-url'), [])
+  ok("a checkout with no origin still races; the publish leg is driveOne's to report")
+}
+
+// --- (h) the CLI flag path -------------------------------------------------
+
+{
+  const evidenceDir = tmpDir('cli')
+  const dbDir = path.join(tmpDir('db'), 'store')
+  const stub = makeConcurrentDrive(3)
+  const lines = []
+  const { manifest, results } = await main(
+    ['launch', 'docs/plan.md', 'race-55', '--k', '3', '--evidence-dir', evidenceDir, '--db-dir', dbDir],
+    deps({ git: makeGit().git, drive: stub.drive, log: (l) => lines.push(l) }),
+  )
+  assert.equal(manifest.raceId, 'race-55')
   assert.equal(manifest.k, 3)
-  assert.equal(manifest.runs.length, 3)
-  assert.equal(driveCalls.length, 3)
-  assert.ok(fs.existsSync(path.join(evidenceDir, 'race-race-97.json')))
-  const printed = lines.join('\n')
-  assert.ok(printed.includes('race-97-a'), printed)
-  assert.ok(printed.includes(path.join(evidenceDir, 'race-race-97.json')), printed)
-  assert.ok(!printed.includes('fake-token'), 'the token must never be printed')
-  ok('(h) `launch <plan> <raceId> --k 3` reaches launchRace with that raceId and k=3')
+  assert.equal(results.length, 3)
+  assert.deepEqual(stub.calls.map((o) => o.runId), ['race-55-a', 'race-55-b', 'race-55-c'])
+  assert.deepEqual(readRaceManifest(evidenceDir, 'race-55'), manifest)
+  assert.equal(lines[0], `race race-55: 3 runs of docs/plan.md at ${BASE_COMMIT}`)
+  assert.equal(lines[1], `  race-55-a port=8180 db-dir=${dbDir}-a repo-dir=${dbDir}-a-repo`)
+  assert.equal(lines[4], `manifest: ${manifestPath(evidenceDir, 'race-55')}`)
+  // No token value ever reaches a printed line.
+  assert.ok(!lines.join('\n').includes('fake-oauth-token'), 'the token must never be printed')
+  ok('(h) `launch <plan> <raceId> --k 3` reaches launchRace with k=3 and that raceId')
+
+  await assert.rejects(main(['merge', 'race-55'], deps()), /unknown verb "merge"/)
+  await assert.rejects(main([], deps()), /unknown verb ""/)
+  ok('an unknown verb refuses with the usage line')
 }
 
-{
-  const { deps } = makeDeps()
-  await assert.rejects(main(['sprint', 'docs/plan.md', 'race-98'], deps), /unknown verb sprint/)
-  await assert.rejects(main([], deps), /usage: node fleet\/race\.mjs/)
-  assert.match(usage(), /launch <plan\.md> <raceId>/)
-  ok('an unknown or missing verb refuses with the usage line')
-}
-
-// --- launch-arg parsing -----------------------------------------------------
+// --- the dials block is a pinned, frozen pre-registration ------------------
 
 {
-  const parsed = parseLaunchArgs(['docs/plan.md', 'race-99', '--k', '2', '--race-dir', '/tmp/rd', '--pr-base', 'release/1'])
-  assert.equal(parsed.raceId, 'race-99')
-  assert.equal(parsed.planPath, 'docs/plan.md')
-  assert.equal(parsed.k, 2)
-  assert.equal(parsed.raceDir, '/tmp/rd')
-  assert.equal(parsed.prBase, 'release/1', 'drive-one flags pass through untouched')
-  assert.equal(parseLaunchArgs(['p.md', 'race-99']).k, 3, 'K defaults to 3 (#511 operator decision)')
-  assert.equal(parseLaunchArgs(['p.md', 'race-99']).raceDir, path.join(os.tmpdir(), 'fleet-race-race-99'))
-
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--k', '0']), /--k must be an integer/)
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--k', '2.5']), /--k must be an integer/)
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--k', '27']), /--k must be an integer/)
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--k']), /--k needs a value/)
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--race-dir']), /--race-dir needs a value/)
-  // Everything else is drive-one's business, refusals included.
-  assert.throws(() => parseLaunchArgs(['p.md', 'race-99', '--bogus', 'x']), /unknown flag --bogus/)
-  assert.throws(() => parseLaunchArgs(['p.md']), /expected exactly <plan\.md> <runId>/)
-  assert.throws(() => parseLaunchArgs(['p.md', 'race 99']), /#211/)
-  ok('--k and --race-dir are race flags; every other flag is drive-one passthrough')
+  assert.ok(Object.isFrozen(DIALS), 'the dials block must not be mutable at launch time')
+  assert.deepEqual(Object.keys(DIALS).sort(), [
+    'baseline',
+    'comparatorDecisiveness',
+    'nOfOne',
+    'perRun',
+    'raceWall',
+    'totalTokens',
+    'winnerDefectSurface',
+  ])
+  // Race wall's derivation is fixed HERE (spec finding 13) so it is computed
+  // the way it was pre-registered, not the way the reader later prefers.
+  assert.match(DIALS.raceWall, /launch timestamp -> max\(per-run elapsedMs end\)/)
+  assert.deepEqual(DIALS.baseline, {
+    'run-44': { wallMinutes: 79, tokens: 287_692, fixRounds: 0 },
+    'run-45': { wallMinutes: 62, tokens: 232_635, fixRounds: 1, planTracedDefects: 2 },
+    'run-47': { wallMinutes: 79, tokens: 239_564, fixRounds: 1, planTracedDefects: 1 },
+  })
+  ok('the pre-registered dials carry the spec baseline and the fixed race-wall derivation')
 }
 
 // ===========================================================================
-// The judge verb — `race.mjs judge <raceId> [--force]`
+// The judge verb.
 // ===========================================================================
-//
-// Read-only over artifacts the drives already wrote. The rubric is ordered and
-// mechanical, so what these legs pin is not "the winner looked best" but that
-// each stage is reached only when the one above it tied, and that the verdict
-// says WHICH stage decided (spec §Measurement: never read "zero ties" as
-// rubric quality — name the stage).
 
-// A trimmed MergeableStore shape, as test_status.mjs uses: [tables, values],
-// every node [value, hlc, hash]. The judge reads it through `runEvents`.
+// A trimmed MergeableStore, the shape status.mjs's own test pins: every node
+// [value, hlc, hash]. The judge reads it through the injected `readStore`, so
+// no sqlite3 and no fleet.db is involved.
 const stamped = (v) => [v, 'P0Q-hlc', 12345]
-
-// A run's store: two ordinary events, `fixRounds` events carrying the engine's
-// `fix:<taskId>:<iter>` worker label, and one decoy from a DIFFERENT run in the
-// same store — the per-run count must not absorb a sibling's fix rounds.
-const storeFor = (runId, fixRounds) => {
-  const events = {
-    [`${runId}:01AAA`]: stamped({ kind: stamped('engine:phase'), phase: stamped('Wave 1'), ts: stamped(1), runId: stamped(runId) }),
-    [`${runId}:01AAB`]: stamped({ kind: stamped('worker:start'), label: stamped('impl:1'), ts: stamped(2), runId: stamped(runId) }),
-    'other-run:01AAZ': stamped({ kind: stamped('worker:start'), label: stamped('fix:9:1'), ts: stamped(9), runId: stamped('other-run') }),
-  }
-  for (let i = 0; i < fixRounds; i += 1) {
-    events[`${runId}:01AB${i}`] =
-      stamped({ kind: stamped('worker:start'), label: stamped(`fix:${i + 1}:1`), ts: stamped(3 + i), runId: stamped(runId) })
-  }
+const storeWithLabels = (runId, labels) => {
+  const events = {}
+  labels.forEach((label, i) => {
+    events[`${runId}:01AA${String(i).padStart(2, '0')}`] = stamped({
+      kind: stamped(i % 2 === 0 ? 'worker:start' : 'worker:end'),
+      label: stamped(label),
+      ts: stamped(1_788_245_813_225 + i),
+      runId: stamped(runId),
+    })
+  })
   return [[{ events: stamped(events), runs: stamped({}) }, {}], 'hlc', 0]
 }
 
-const prFor = (runId, number) => ({
-  number,
-  url: `https://github.com/acme/fleet/pull/${number}`,
-  draft: false,
-  branch: `ultra/integration-${runId}`,
-})
+// A finished race on disk: the launch task's manifest, plus each run's
+// `gate-read-<runId>.json` / `.detail.json` — every one of them pre-existing
+// input the judge only reads.
+const makeRaceFixture = ({ raceId, specs }) => {
+  const evidenceDir = tmpDir('judge-ev')
+  const dbDir = path.join(tmpDir('judge-db'), 'store')
+  const runs = allocateRuns({ raceId, k: specs.length, port: 8180, dbDir })
+  const manifest = {
+    raceId,
+    planPath: 'docs/plan.md',
+    baseCommit: BASE_COMMIT,
+    k: specs.length,
+    launchedAt: new Date(LAUNCHED_AT_MS).toISOString(),
+    runs,
+    dials: DIALS,
+  }
+  fs.mkdirSync(evidenceDir, { recursive: true })
+  fs.writeFileSync(manifestPath(evidenceDir, raceId), `${JSON.stringify(manifest, null, 2)}\n`)
 
-// Stage a whole race from the real launch verb, then lay down exactly the
-// per-run artifacts the spec names. A `null` spec means that drive never wrote
-// a gate read at all — the not-terminal case the judge refuses over.
-let raceSeq = 0
-const stageRace = async (specs) => {
-  raceSeq += 1
-  const raceId = `race-2${raceSeq}0`
-  const evidenceDir = scratch(`ev-judge-${raceSeq}`)
-  const { deps } = makeDeps()
-  const { manifest } = await launchRace(
-    [
-      'docs/plan.md',
-      raceId,
-      '--k',
-      String(specs.length),
-      '--evidence-dir',
-      evidenceDir,
-      '--race-dir',
-      path.join(TMP, `rd-${raceSeq}`),
-    ],
-    deps,
-  )
   const stores = {}
-  manifest.runs.forEach((run, i) => {
+  runs.forEach((run, i) => {
     const spec = specs[i]
-    if (spec === null) return
-    // `read` is EXACTLY drive.mjs's gate read; `detail` is its sibling triage file.
-    fs.writeFileSync(
-      path.join(evidenceDir, `gate-read-${run.runId}.json`),
-      `${JSON.stringify(
-        {
-          o1: spec.status === 'gate-green',
-          spendObservational: { reported: spec.reported ?? null, ledger: spec.ledger ?? null },
-        },
-        null,
-        2,
-      )}\n`,
-    )
-    fs.writeFileSync(
-      path.join(evidenceDir, `gate-read-${run.runId}.detail.json`),
-      `${JSON.stringify(
-        {
-          runId: run.runId,
-          status: spec.status,
-          elapsedMs: spec.elapsedMs ?? 60_000,
-          pullRequest: prFor(run.runId, 100 + i),
-        },
-        null,
-        2,
-      )}\n`,
-    )
-    stores[path.join(run.dbDir, 'fleet.db')] = storeFor(run.runId, spec.fixRounds)
+    stores[run.dbDir] = storeWithLabels(run.runId, spec.labels ?? [])
+    if (spec.absent) return
+    const read = {
+      o1: spec.status === 'gate-green',
+      receiptsResolvable: true,
+      leaseContinuity: true,
+      versionStamp: true,
+      spendObservational: {
+        reported: spec.reported === undefined ? null : spec.reported,
+        ledger: spec.ledger === undefined ? null : spec.ledger,
+      },
+    }
+    const detail = {
+      runId: run.runId,
+      planPath: 'docs/plan.md',
+      status: spec.status,
+      elapsedMs: spec.elapsedMs === undefined ? 1000 : spec.elapsedMs,
+      pullRequest: spec.pullRequest ?? null,
+    }
+    fs.writeFileSync(gateReadPath(evidenceDir, run.runId), `${JSON.stringify(read, null, 2)}\n`)
+    fs.writeFileSync(gateDetailPath(evidenceDir, run.runId), `${JSON.stringify(detail, null, 2)}\n`)
   })
-  const judgeDeps = {
-    readStoreJson: (dbPath) => {
-      if (!(dbPath in stores)) throw new Error(`test: no store fixture for ${dbPath}`)
-      return stores[dbPath]
-    },
+
+  return {
+    raceId,
+    evidenceDir,
+    runs,
+    manifest,
+    deps: { readStore: (dir) => stores[dir] ?? null },
+    argv: (...extra) => [raceId, '--evidence-dir', evidenceDir, ...extra],
   }
-  return { raceId, evidenceDir, manifest, judgeDeps, args: [raceId, '--evidence-dir', evidenceDir] }
 }
 
-// --- (j) refusal until every run is terminal; --force scores the reporters ---
+// --- parseJudgeArgs --------------------------------------------------------
 
 {
-  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 510_000 },
-    null, // the race process died mid-drive: no gate read will ever appear
-    { status: 'gate-green', fixRounds: 1, ledger: 400_000, reported: 410_000 },
-  ])
-  const missing = `${raceId}-b`
+  const p = parseJudgeArgs(['race-48', '--evidence-dir', '/ev', '--force'])
+  assert.deepEqual(p, { raceId: 'race-48', evidenceDir: '/ev', force: true })
+  assert.equal(parseJudgeArgs(['race-48']).force, false)
+  assert.equal(parseJudgeArgs(['race-48']).evidenceDir, DEFAULTS.evidenceDir)
+  assert.throws(() => parseJudgeArgs([]), /judge expects exactly <raceId>/)
+  assert.throws(() => parseJudgeArgs(['race-48', 'race-49']), /judge expects exactly <raceId>/)
+  assert.throws(() => parseJudgeArgs(['race 48']), /#211/)
+  assert.throws(() => parseJudgeArgs(['race-48', '--k', '3']), /unknown flag --k/)
+  assert.throws(() => parseJudgeArgs(['race-48', '--evidence-dir']), /--evidence-dir needs a value/)
+  assert.match(usage(), /node fleet\/race\.mjs judge <raceId>/)
+  ok('parseJudgeArgs owns <raceId>, --evidence-dir and --force, and nothing else')
+}
 
+// --- (a) the refusal, and what --force does instead -------------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-60',
+    specs: [
+      { status: 'gate-green', ledger: 500_000, labels: ['fix:1:2', 'fix:1:2'] },
+      { status: 'gate-green', ledger: 400_000, labels: ['impl:1', 'impl:1'] },
+      { absent: true },
+    ],
+  })
   assert.throws(
-    () => judgeRace(args, judgeDeps),
-    (error) => {
-      assert.match(error.message, /refuses/)
-      assert.ok(error.message.includes(missing), error.message)
-      assert.ok(error.message.includes(gateReadPath(evidenceDir, missing)), error.message)
-      assert.match(error.message, /--force/)
-      return true
-    },
+    () => judgeRace(f.argv(), f.deps),
+    /race: judge race-60 refuses — no gate read for race-60-c\b.*not terminal.*--force/s,
+    'the refusal must name the run whose gate read is missing',
   )
-  // A refused judge writes nothing: no verdict may reach the manifest.
-  assert.equal(readRaceManifest(evidenceDir, raceId).verdict, undefined)
-
-  const verdict = judgeRace([...args, '--force'], judgeDeps)
-  // The absentee is scored, and it is an automatic loss — it can never win.
-  assert.deepEqual(verdict.scorecard[missing], {
-    runId: missing,
-    status: 'no-record',
-    fixRounds: null,
-    tokens: null,
-    tokenSource: null,
-    elapsedMs: null,
-    pr: null,
-    outcome: 'loser',
-  })
-  assert.equal(verdict.winner, `${raceId}-c`)
-  assert.equal(verdict.decidingStage, STAGES.tokens)
-  assert.deepEqual(Object.keys(verdict.scorecard), [`${raceId}-a`, missing, `${raceId}-c`])
-  ok('(j) judge refuses while a gate-read is missing; --force scores reporters and marks the rest no-record losses')
-}
-
-// --- (k) stage 1: the gate-green filter beats everything else ---------------
-
-{
-  // The green run is the WORST on both later stages: only the filter can pick it.
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'parked', fixRounds: 0, ledger: 100_000, reported: 100_000 },
-    { status: 'gate-green', fixRounds: 4, ledger: 900_000, reported: 900_000 },
-    { status: 'unknown', fixRounds: 0, ledger: 100_000, reported: 100_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, `${raceId}-b`)
-  assert.equal(verdict.decidingStage, STAGES.filter)
-  assert.match(STAGES.filter, /gate-green/)
-  assert.deepEqual(Object.values(verdict.scorecard).map((e) => e.outcome), ['loser', 'winner', 'loser'])
-  ok('(k) the sole gate-green run beats parked and failed drives; decidingStage is the filter')
-}
-
-// --- (l) stage 2: fewest fix: events, only among the greens -----------------
-
-{
-  // b wins on tokens by a mile and loses anyway: stage 2 is reached first.
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 0, ledger: 800_000, reported: 800_000 },
-    { status: 'gate-green', fixRounds: 2, ledger: 100_000, reported: 100_000 },
-    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, `${raceId}-a`)
-  assert.equal(verdict.decidingStage, STAGES.fixRounds)
-  assert.match(STAGES.fixRounds, /fix rounds/)
-  // The count is per-run: the decoy `fix:9:1` event of `other-run` never lands.
-  assert.equal(verdict.scorecard[`${raceId}-a`].fixRounds, 0)
-  assert.equal(verdict.scorecard[`${raceId}-b`].fixRounds, 2)
-  ok('(l) among greens the fewest fix:-labeled events wins; decidingStage names the fix-round stage')
-}
-
-// --- (m) stage 3: fewest tokens, and the like-with-like ledger fallback -----
-
-{
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 1, ledger: 700_000, reported: 10 },
-    { status: 'gate-green', fixRounds: 1, ledger: 300_000, reported: 999_999 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, `${raceId}-b`)
-  assert.equal(verdict.decidingStage, STAGES.tokens)
-  assert.match(STAGES.tokens, /tokens/)
-  assert.equal(verdict.scorecard[`${raceId}-a`].tokens, 700_000)
-  assert.equal(verdict.scorecard[`${raceId}-a`].tokenSource, 'ledger')
-  assert.equal(verdict.scorecard[`${raceId}-b`].tokens, 300_000)
-  ok('(m) among fix-round ties the fewest spendObservational.ledger tokens wins')
-}
-
-{
-  // One null ledger: comparing 300_000 against nothing is not a comparison, so
-  // the WHOLE field falls back to `reported` — which reverses the winner.
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 1, ledger: null, reported: 200_000 },
-    { status: 'gate-green', fixRounds: 1, ledger: 300_000, reported: 900_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, `${raceId}-a`)
-  assert.equal(verdict.decidingStage, STAGES.tokens)
-  assert.deepEqual(
-    Object.values(verdict.scorecard).map((e) => [e.tokens, e.tokenSource]),
-    [[200_000, 'reported'], [900_000, 'reported']],
-  )
-  ok('(m) one null ledger falls the whole field back to reported tokens, flagged in every scorecard entry')
-}
-
-// --- (n) stage 4: lexicographic runId, stated as the tie-break --------------
-
-{
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 500_000 },
-    { status: 'gate-green', fixRounds: 1, ledger: 500_000, reported: 500_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, `${raceId}-a`)
-  assert.ok(`${raceId}-a` < `${raceId}-b`, 'the tie-break is lexicographic, not positional')
-  assert.equal(verdict.decidingStage, STAGES.tieBreak)
-  assert.match(STAGES.tieBreak, /lexicographic/)
-  ok('(n) a full tie is broken by lexicographic runId, and the verdict says so')
-}
-
-// --- (o) zero greens: the race FAILED, no winner, K PRs to close ------------
-
-{
-  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
-    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
-    { status: 'running', fixRounds: 3, ledger: 2_000, reported: 2_000 },
-    { status: 'unknown', fixRounds: 1, ledger: 3_000, reported: 3_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.equal(verdict.winner, null)
-  assert.equal(verdict.decidingStage, STAGES.failed)
-  assert.match(STAGES.failed, /FAILED/)
-  assert.deepEqual(Object.values(verdict.scorecard).map((e) => e.outcome), ['loser', 'loser', 'loser'])
-
-  const { deps, lines } = makeDeps()
-  await main(['judge', ...args], { ...deps, ...judgeDeps })
-  const printed = lines.join('\n')
-  assert.match(printed, /FAILED/)
-  assert.match(printed, /merge nothing/)
-  for (const run of readRaceManifest(evidenceDir, raceId).runs) {
-    assert.ok(printed.includes(`ultra/integration-${run.runId}`), `the operator needs every PR branch: ${printed}`)
-  }
-  ok('(o) zero greens is a FAILED race: no winner, and all K PR branches are printed for the operator to close')
-}
-
-// --- (p) the verdict is APPENDED: the pre-registered dials stay byte-identical
-
-{
-  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 0, ledger: 100_000, reported: 100_000 },
-    { status: 'parked', fixRounds: 0, ledger: 1_000, reported: 1_000 },
-  ])
-  const file = raceManifestPath(evidenceDir, raceId)
-  const before = fs.readFileSync(file, 'utf8')
-  const beforeManifest = JSON.parse(before)
-
-  const verdict = judgeRace(args, judgeDeps)
-
-  const after = fs.readFileSync(file, 'utf8')
-  const afterManifest = JSON.parse(after)
-  // Byte-identical, not merely deep-equal: the dials block IS the pre-registration.
-  // The one byte the append may add to it is JSON's own key separator; every
-  // other byte of the block has to survive the rewrite untouched.
-  const dialsBytes = (text, end) => text.slice(text.indexOf('"dials"'), text.indexOf(end)).replace(/,$/, '')
-  assert.equal(dialsBytes(after, '\n  "verdict"'), dialsBytes(before, '\n}\n'))
-  assert.ok(before.includes(dialsBytes(after, '\n  "verdict"')), 'the dials block must be a verbatim substring of both')
-  assert.deepEqual(afterManifest.dials, JSON.parse(JSON.stringify(DIALS)))
-  // ...and nothing else the launch pre-registered moved either.
-  const { verdict: appended, ...rest } = afterManifest
-  assert.deepEqual(rest, beforeManifest)
-  assert.deepEqual(appended, verdict)
-  assert.deepEqual(Object.keys(verdict), ['winner', 'decidingStage', 'scorecard'])
-  ok('(p) the verdict is appended to race-<raceId>.json and every pre-registered dial stays byte-identical')
-}
-
-// --- (q) the scorecard is keyed by runId and names status/fix rounds/tokens --
-
-{
-  const { raceId, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 2, ledger: 640_000, reported: 650_000, elapsedMs: 3_960_000 },
-    { status: 'parked', fixRounds: 5, ledger: 120_000, reported: 130_000, elapsedMs: 1_800_000 },
-  ])
-  const verdict = judgeRace(args, judgeDeps)
-  assert.deepEqual(verdict.scorecard, {
-    [`${raceId}-a`]: {
-      runId: `${raceId}-a`,
-      status: 'gate-green',
-      fixRounds: 2,
-      tokens: 640_000,
-      tokenSource: 'ledger',
-      elapsedMs: 3_960_000,
-      pr: prFor(`${raceId}-a`, 100),
-      outcome: 'winner',
-    },
-    [`${raceId}-b`]: {
-      runId: `${raceId}-b`,
-      status: 'parked',
-      fixRounds: 5,
-      tokens: 120_000,
-      tokenSource: 'ledger',
-      elapsedMs: 1_800_000,
-      pr: prFor(`${raceId}-b`, 101),
-      outcome: 'loser',
-    },
-  })
   assert.equal(
-    scorecardLine(verdict.scorecard[`${raceId}-a`]),
-    `${raceId}-a: winner status=gate-green fix-rounds=2 tokens=640000 (ledger) pr=#100 ultra/integration-${raceId}-a`,
+    readRaceManifest(f.evidenceDir, 'race-60').verdict,
+    undefined,
+    'a refusal writes nothing — the manifest carries no verdict',
   )
-  ok('(q) the scorecard is keyed by runId; each entry names its drive status, fix rounds and tokens')
+
+  const verdict = judgeRace(f.argv('--force'), f.deps)
+  assert.deepEqual(Object.keys(verdict), ['winner', 'decidingStage', 'scorecard'])
+  assert.deepEqual(Object.keys(verdict.scorecard), ['race-60-a', 'race-60-b', 'race-60-c'])
+  assert.equal(verdict.scorecard['race-60-c'].status, 'no-record')
+  assert.equal(verdict.scorecard['race-60-c'].reported, false)
+  assert.equal(verdict.scorecard['race-60-c'].gateGreen, false)
+  assert.equal(verdict.scorecard['race-60-c'].verdict, 'lost', 'no record is an automatic loss')
+  assert.equal(verdict.scorecard['race-60-c'].fixRounds, null)
+  assert.equal(verdict.scorecard['race-60-c'].tokens, null)
+  // The reporters were scored normally: b ran no fix round, a ran one.
+  assert.equal(verdict.winner, 'race-60-b')
+  assert.equal(verdict.decidingStage, RUBRIC.fixRounds)
+  assert.equal(verdict.scorecard['race-60-a'].fixRounds, 1)
+  assert.equal(verdict.scorecard['race-60-b'].fixRounds, 0)
+  // An absentee has no ledger BY DEFINITION; it must not drag the reporters
+  // onto the `reported` fallback.
+  assert.equal(verdict.scorecard['race-60-a'].tokenBasis, 'ledger')
+  assert.equal(verdict.scorecard['race-60-a'].tokenFallback, false)
+  ok('(a) judge refuses on a missing gate read; --force scores the reporters and marks the rest no-record')
 }
 
-// --- (r) the CLI entry: the printout the operator actually adopts from ------
+// --- (b) the gate-green filter ---------------------------------------------
 
 {
-  const { raceId, evidenceDir, judgeDeps, args } = await stageRace([
-    { status: 'gate-green', fixRounds: 1, ledger: 700_000, reported: 700_000, elapsedMs: 4_020_000 },
-    { status: 'gate-green', fixRounds: 0, ledger: 800_000, reported: 800_000, elapsedMs: 3_600_000 },
-    { status: 'parked', fixRounds: 0, ledger: 10_000, reported: 10_000, elapsedMs: 600_000 },
-  ])
-  const { deps, lines } = makeDeps()
-  const { verdict } = await main(['judge', ...args], { ...deps, ...judgeDeps })
-  assert.equal(verdict.winner, `${raceId}-b`)
-  assert.equal(verdict.decidingStage, STAGES.fixRounds)
+  const f = makeRaceFixture({
+    raceId: 'race-61',
+    specs: [
+      { status: 'parked', ledger: 100_000, labels: [] },
+      { status: 'gate-green', ledger: 900_000, labels: ['fix:1:2', 'fix:2:2', 'fix:3:2'] },
+      { status: 'failed', ledger: 50_000, labels: [] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  // The green run loses BOTH later stages and still wins: the filter is first.
+  assert.equal(verdict.winner, 'race-61-b')
+  assert.equal(verdict.decidingStage, RUBRIC.green)
+  assert.equal(verdict.decidingStage, 'gate-green-filter')
+  assert.deepEqual(
+    Object.values(verdict.scorecard).map((e) => [e.status, e.verdict]),
+    [['parked', 'lost'], ['gate-green', 'winner'], ['failed', 'lost']],
+  )
+  ok('(b) the sole gate-green run beats parked and failed ones; decidingStage is the filter')
+}
 
-  assert.equal(lines[0], `race ${raceId}: winner ${raceId}-b — decided by ${STAGES.fixRounds}`)
-  assert.deepEqual(lines.slice(1, 4), Object.values(verdict.scorecard).map(scorecardLine))
-  assert.equal(lines.at(-1), `verdict appended to ${raceManifestPath(evidenceDir, raceId)}`)
-  // Every contestant gets a line, winner and losers alike.
-  for (const runId of Object.keys(verdict.scorecard)) {
-    assert.ok(lines.some((line) => line.startsWith(`${runId}:`)), `${runId} has no scorecard line`)
+// --- (c) fewest fix rounds --------------------------------------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-62',
+    specs: [
+      { status: 'gate-green', ledger: 100_000, labels: ['fix:1:2', 'fix:1:2'] },
+      { status: 'gate-green', ledger: 900_000, labels: ['impl:1'] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  // b spent 9x the tokens and still wins: fix rounds are ranked above tokens.
+  assert.equal(verdict.winner, 'race-62-b')
+  assert.equal(verdict.decidingStage, RUBRIC.fixRounds)
+  assert.equal(verdict.decidingStage, 'fix-rounds')
+  assert.equal(verdict.scorecard['race-62-a'].fixRounds, 1)
+  assert.equal(verdict.scorecard['race-62-b'].fixRounds, 0)
+  ok('(c) among two greens the fewer fix ROUNDS wins; decidingStage names the fix-round stage')
+}
+
+// --- (d) fewest ledger tokens, and the `reported` fallback ------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-63',
+    specs: [
+      { status: 'gate-green', ledger: 700_000, reported: 10, labels: ['fix:1:2'] },
+      { status: 'gate-green', ledger: 300_000, reported: 999_999, labels: ['fix:2:2'] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  assert.equal(verdict.winner, 'race-63-b')
+  assert.equal(verdict.decidingStage, RUBRIC.tokens)
+  assert.equal(verdict.decidingStage, 'tokens')
+  // `ledger`, not `reported`: a's reported is far smaller and it still loses.
+  assert.equal(verdict.scorecard['race-63-b'].tokens, 300_000)
+  assert.equal(verdict.scorecard['race-63-b'].tokenBasis, 'ledger')
+  assert.equal(verdict.scorecard['race-63-a'].tokenFallback, false)
+  ok('(d) among fix-round ties the fewer `ledger` tokens wins; decidingStage names the token stage')
+}
+
+{
+  // One null ledger: BOTH contestants switch to `reported`, and the switch is
+  // flagged. Under `ledger` a would win (300k vs null); under `reported` b does.
+  const f = makeRaceFixture({
+    raceId: 'race-64',
+    specs: [
+      { status: 'gate-green', ledger: 300_000, reported: 900_000, labels: ['fix:1:2'] },
+      { status: 'gate-green', ledger: undefined, reported: 100_000, labels: ['fix:2:2'] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  assert.equal(verdict.winner, 'race-64-b')
+  assert.equal(verdict.decidingStage, 'tokens')
+  assert.deepEqual(
+    Object.values(verdict.scorecard).map((e) => [e.runId, e.tokens, e.tokenBasis, e.tokenFallback]),
+    [
+      ['race-64-a', 900_000, 'reported', true],
+      ['race-64-b', 100_000, 'reported', true],
+    ],
+    'one null ledger moves EVERY contestant to reported, flagged on every entry',
+  )
+  ok('(d) a null ledger falls back to `reported` for all contestants and flags it in the scorecard')
+}
+
+// --- (e) the lexicographic tie-break ---------------------------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-65',
+    specs: [
+      { status: 'gate-green', ledger: 500_000, labels: ['fix:1:2'] },
+      { status: 'gate-green', ledger: 500_000, labels: ['fix:9:2'] },
+      { status: 'gate-green', ledger: 500_000, labels: ['fix:4:2'] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  assert.equal(verdict.winner, 'race-65-a')
+  assert.equal(verdict.decidingStage, RUBRIC.runId)
+  assert.equal(verdict.decidingStage, 'runId-lexicographic')
+  assert.deepEqual(
+    Object.values(verdict.scorecard).map((e) => e.verdict),
+    ['winner', 'lost', 'lost'],
+  )
+  // The stage is recorded precisely so a tie-broken race is not read as a
+  // decisive comparator (spec §Measurement, comparatorDecisiveness).
+  assert.equal(readRaceManifest(f.evidenceDir, 'race-65').verdict.decidingStage, 'runId-lexicographic')
+  ok('(e) among full ties the lexicographic-least runId wins; decidingStage names the tie-break')
+}
+
+// --- (f) zero greens: the race FAILED --------------------------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-66',
+    specs: [
+      {
+        status: 'parked',
+        ledger: 100_000,
+        labels: [],
+        pullRequest: { number: 71, url: 'https://github.com/example/repo/pull/71', draft: true, branch: 'ultra/integration-a' },
+      },
+      {
+        status: 'failed',
+        ledger: 200_000,
+        labels: [],
+        pullRequest: { number: 72, url: 'https://github.com/example/repo/pull/72', draft: true, branch: 'ultra/integration-b' },
+      },
+      { status: 'parked', ledger: 300_000, labels: [] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  assert.equal(verdict.winner, null, 'a failed race names no winner')
+  assert.equal(verdict.decidingStage, RUBRIC.none)
+  assert.equal(verdict.decidingStage, 'no-gate-green')
+  assert.deepEqual(Object.values(verdict.scorecard).map((e) => e.verdict), ['lost', 'lost', 'lost'])
+
+  const lines = []
+  await main(['judge', ...f.argv()], { ...f.deps, log: (l) => lines.push(l) })
+  assert.equal(lines[0], 'race race-66: FAILED — no gate-green run; merge nothing')
+  assert.equal(lines[1], 'deciding stage: no-gate-green')
+  assert.equal(lines[5], 'open PRs for the operator to close (3):')
+  assert.deepEqual(lines.slice(6, 9), [
+    '  race-66-a pr=#71 branch=ultra/integration-a url=https://github.com/example/repo/pull/71',
+    '  race-66-b pr=#72 branch=ultra/integration-b url=https://github.com/example/repo/pull/72',
+    '  race-66-c pr=none branch=none url=none',
+  ])
+  assert.equal(lines[9], `verdict: ${manifestPath(f.evidenceDir, 'race-66')}`)
+  ok('(f) zero greens reports FAILED, names no winner, and lists the K PRs for the operator to close')
+}
+
+// --- (g) the pre-registered dials survive the append byte-identically -------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-67',
+    specs: [
+      { status: 'gate-green', ledger: 100_000, labels: [] },
+      { status: 'parked', ledger: 200_000, labels: [] },
+    ],
+  })
+  const file = manifestPath(f.evidenceDir, 'race-67')
+  const before = fs.readFileSync(file, 'utf8')
+  // The literal bytes of the `dials` block, brace-walked out of the file — no
+  // dials value contains a brace, so the walk is exact.
+  const dialsBytes = (text) => {
+    const start = text.indexOf('  "dials": {')
+    assert.ok(start > 0, 'the manifest must carry a dials block')
+    let depth = 0
+    for (let i = start; i < text.length; i += 1) {
+      if (text[i] === '{') depth += 1
+      else if (text[i] === '}' && (depth -= 1) === 0) return text.slice(start, i + 1)
+    }
+    throw new Error('unterminated dials block')
   }
-  assert.ok(!lines.join('\n').includes('fake-token'), 'the token must never be printed')
-  ok('(r) `judge <raceId>` prints the winner, the deciding stage and every runId’s scorecard line')
+
+  const verdict = judgeRace(f.argv(), f.deps)
+  const after = fs.readFileSync(file, 'utf8')
+  assert.equal(dialsBytes(after), dialsBytes(before), 'every pre-registered dials value is byte-identical')
+
+  const reread = readRaceManifest(f.evidenceDir, 'race-67')
+  assert.deepEqual(reread.dials, DIALS)
+  assert.deepEqual(reread.verdict, verdict, 'the verdict is what the judge returned')
+  const { verdict: appended, ...preRegistered } = reread
+  assert.deepEqual(preRegistered, JSON.parse(before), 'the append disturbs nothing that was already there')
+  assert.deepEqual(Object.keys(reread), ['raceId', 'planPath', 'baseCommit', 'k', 'launchedAt', 'runs', 'dials', 'verdict'])
+  assert.ok(appended !== undefined)
+  ok('(g) the appended verdict leaves every pre-registered dials value byte-identical')
 }
 
-// --- (r2) the refusal is a non-zero exit of the real process, not a log line -
+// --- (h) the scorecard shape ------------------------------------------------
 
 {
-  const { raceId, evidenceDir } = await stageRace([
-    { status: 'gate-green', fixRounds: 0, ledger: 100_000, reported: 100_000 },
-    null,
+  const f = makeRaceFixture({
+    raceId: 'race-68',
+    specs: [
+      {
+        status: 'gate-green',
+        ledger: 588_000,
+        reported: 600_000,
+        elapsedMs: 4_020_000,
+        labels: ['fix:1:2'],
+        pullRequest: { number: 80, url: 'https://github.com/example/repo/pull/80', draft: false, branch: 'ultra/integration-a' },
+      },
+      { status: 'parked', ledger: 728_000, reported: 730_000, elapsedMs: 3_960_000, labels: [] },
+    ],
+  })
+  const verdict = judgeRace(f.argv(), f.deps)
+  assert.deepEqual(Object.keys(verdict.scorecard), ['race-68-a', 'race-68-b'], 'keyed by runId')
+  assert.deepEqual(verdict.scorecard['race-68-a'], {
+    runId: 'race-68-a',
+    reported: true,
+    status: 'gate-green',
+    gateGreen: true,
+    fixRounds: 1,
+    tokens: 588_000,
+    tokenBasis: 'ledger',
+    tokenFallback: false,
+    elapsedMs: 4_020_000,
+    pullRequest: { number: 80, url: 'https://github.com/example/repo/pull/80', draft: false, branch: 'ultra/integration-a' },
+    verdict: 'winner',
+  })
+  assert.deepEqual(verdict.scorecard['race-68-b'], {
+    runId: 'race-68-b',
+    reported: true,
+    status: 'parked',
+    gateGreen: false,
+    fixRounds: 0,
+    tokens: 728_000,
+    tokenBasis: 'ledger',
+    tokenFallback: false,
+    elapsedMs: 3_960_000,
+    pullRequest: null,
+    verdict: 'lost',
+  })
+  ok('(h) the scorecard is keyed by runId; each entry names its drive status, fix rounds and tokens')
+}
+
+// --- the pieces of the rubric, standing alone ------------------------------
+
+{
+  const store = storeWithLabels('run-9', ['impl:1', 'fix:1:2', 'fix:1:2', 'review:1'])
+  assert.equal(countFixRounds(store, 'run-9'), 1, 'one fix ROUND: only the worker:start row of a `fix:` label counts')
+  assert.equal(countFixRounds(store, 'run-8'), 0, "another run's events never leak in")
+  assert.equal(countFixRounds(null, 'run-9'), null, 'an unreadable store is an unknown count, not zero')
+
+  // An unknown count loses its comparison rather than winning it.
+  const entry = (runId, over) => ({ runId, gateGreen: true, fixRounds: 1, tokens: 10, ...over })
+  assert.deepEqual(selectWinner([entry('r-a', { fixRounds: null }), entry('r-b')]), {
+    winner: 'r-b',
+    decidingStage: 'fix-rounds',
+  })
+  assert.deepEqual(selectWinner([entry('r-a', { tokens: null }), entry('r-b')]), {
+    winner: 'r-b',
+    decidingStage: 'tokens',
+  })
+  assert.deepEqual(selectWinner([entry('r-a', { gateGreen: false })]), {
+    winner: null,
+    decidingStage: 'no-gate-green',
+  })
+  ok('an unreadable store or a missing token total loses its stage instead of winning it')
+}
+
+// --- (i) the CLI entry ------------------------------------------------------
+
+{
+  const f = makeRaceFixture({
+    raceId: 'race-69',
+    specs: [
+      { status: 'gate-green', ledger: 500_000, labels: ['fix:1:2', 'fix:1:2'] },
+      { status: 'gate-green', ledger: 400_000, labels: ['impl:1'] },
+      { status: 'parked', ledger: 300_000, labels: [] },
+    ],
+  })
+  const lines = []
+  const verdict = await main(['judge', ...f.argv()], { ...f.deps, log: (l) => lines.push(l) })
+  assert.equal(verdict.winner, 'race-69-b')
+  assert.deepEqual(lines, [
+    'race race-69: winner race-69-b',
+    'deciding stage: fix-rounds',
+    '  race-69-a status=gate-green fix-rounds=1 tokens=500000 (ledger) verdict=lost',
+    '  race-69-b status=gate-green fix-rounds=0 tokens=400000 (ledger) verdict=winner',
+    '  race-69-c status=parked fix-rounds=0 tokens=300000 (ledger) verdict=lost',
+    `verdict: ${manifestPath(f.evidenceDir, 'race-69')}`,
   ])
-  // No injection at all here: fixtures on disk, no drive, no network, no git,
-  // and the refusal lands before any store read, so nothing calls sqlite3.
-  const proc = spawnSync('node', [RACE_MJS, 'judge', raceId, '--evidence-dir', evidenceDir], { encoding: 'utf8' })
-  assert.equal(proc.status, 1, proc.stdout + proc.stderr)
-  assert.match(proc.stderr, /refuses/)
-  assert.ok(proc.stderr.includes(`${raceId}-b`), proc.stderr)
-  assert.equal(readRaceManifest(evidenceDir, raceId).verdict, undefined)
-  ok('(r2) the CLI exits non-zero on a missing gate-read, naming the run that never reported')
+  // A winning race prints no PR list: adoption of the winner is the operator's,
+  // and the judge has nothing to hand back for the losers to be closed by hand.
+  assert.equal(lines.filter((l) => l.startsWith('open PRs')).length, 0)
+  assert.deepEqual(readRaceManifest(f.evidenceDir, 'race-69').verdict, verdict)
+  // The line renderers, pinned whole.
+  assert.equal(
+    scorecardLine(verdict.scorecard['race-69-a']),
+    '  race-69-a status=gate-green fix-rounds=1 tokens=500000 (ledger) verdict=lost',
+  )
+  assert.equal(prLine(verdict.scorecard['race-69-c']), '  race-69-c pr=none branch=none url=none')
+  ok('(i) `judge <raceId>` prints the winner, the deciding stage and every runId’s scorecard line')
 }
-
-// --- judge-arg parsing ------------------------------------------------------
 
 {
-  const parsed = parseJudgeArgs(['race-99', '--force', '--evidence-dir', '/tmp/ev'])
-  assert.deepEqual(parsed, { raceId: 'race-99', force: true, evidenceDir: '/tmp/ev' })
-  assert.equal(parseJudgeArgs(['race-99']).force, false)
-  assert.equal(parseJudgeArgs(['race-99']).evidenceDir, '/home/exedev/fleet-evidence')
-  assert.throws(() => parseJudgeArgs([]), /expects exactly <raceId>/)
-  assert.throws(() => parseJudgeArgs(['race-99', 'race-98']), /expects exactly <raceId>/)
-  assert.throws(() => parseJudgeArgs(['race-99', '--bogus', 'x']), /unknown flag --bogus/)
-  assert.throws(() => parseJudgeArgs(['race-99', '--evidence-dir']), /--evidence-dir needs a value/)
-  assert.match(usage(), /judge <raceId> \[--force\]/)
-  ok('judge takes exactly <raceId> plus --force/--evidence-dir; anything else refuses with the usage line')
+  // A `reported`-basis scorecard line says so, so the reader never mistakes a
+  // fallback comparison for a ledger one.
+  const f = makeRaceFixture({
+    raceId: 'race-70',
+    specs: [
+      { status: 'gate-green', reported: 900_000, labels: [] },
+      { status: 'gate-green', reported: 100_000, labels: [] },
+    ],
+  })
+  const lines = []
+  await main(['judge', ...f.argv()], { ...f.deps, log: (l) => lines.push(l) })
+  assert.deepEqual(lines.slice(0, 4), [
+    'race race-70: winner race-70-b',
+    'deciding stage: tokens',
+    '  race-70-a status=gate-green fix-rounds=0 tokens=900000 (reported, ledger-fallback) verdict=lost',
+    '  race-70-b status=gate-green fix-rounds=0 tokens=100000 (reported, ledger-fallback) verdict=winner',
+  ])
+  ok('the printed scorecard line flags a `reported`-basis comparison as the fallback it is')
 }
 
-fs.rmSync(TMP, { recursive: true, force: true })
+// The same CLI entry, refusing. Both in-process (the rejection) and as a real
+// process (the non-zero exit an operator sees), with no store, no sqlite3 and
+// no network involved — the refusal precedes every read but the gate reads.
+{
+  const f = makeRaceFixture({
+    raceId: 'race-71',
+    specs: [{ status: 'gate-green', ledger: 100_000, labels: [] }, { absent: true }],
+  })
+  await assert.rejects(
+    main(['judge', ...f.argv()], { ...f.deps, log: () => {} }),
+    /no gate read for race-71-b/,
+    'the CLI refusal names the missing run',
+  )
+  assert.equal(readRaceManifest(f.evidenceDir, 'race-71').verdict, undefined)
+
+  const cli = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'race.mjs')
+  const proc = spawnSync(process.execPath, [cli, 'judge', ...f.argv()], { encoding: 'utf8' })
+  assert.notEqual(proc.status, 0, 'a refusal must exit non-zero')
+  assert.match(proc.stderr, /race: judge race-71 refuses — no gate read for race-71-b/)
+  assert.equal(proc.stdout, '', 'nothing is printed as if it were a verdict')
+  assert.equal(readRaceManifest(f.evidenceDir, 'race-71').verdict, undefined)
+
+  // …and `--force` through the same process is a scored race.
+  const forced = spawnSync(process.execPath, [cli, 'judge', ...f.argv('--force')], { encoding: 'utf8' })
+  assert.equal(forced.status, 0, forced.stderr)
+  assert.match(forced.stdout, /^race race-71: winner race-71-a$/m)
+  assert.match(forced.stdout, /^ {2}race-71-b status=no-record fix-rounds=null tokens=null verdict=lost$/m)
+  assert.equal(readRaceManifest(f.evidenceDir, 'race-71').verdict.winner, 'race-71-a')
+  ok('(i) the CLI exits non-zero with a refusal naming the missing run, and --force scores the rest')
+}
+
+
 console.log(`\nALL TESTS PASSED (${passed})`)
