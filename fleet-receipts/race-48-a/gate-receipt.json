@@ -1,0 +1,68 @@
+{
+  "mode": "gate",
+  "stamp": "race-48-a",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-race-48-a/report.json",
+  "branch": "ultra/integration-race-48-a",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs:156-166 \u2014 the live launch path: real `git rev-parse HEAD` / `clone` / `remote set-url` / `checkout --detach <baseCommit>` against an actual launch checkout, and the K in-process `driveOne` calls running green from those clones (Task 1 Machine claim). \u2014 The global constraint mandates that the suite inject `driveOne` and every git subprocess, so the tests prove call shape and ordering (test_race.mjs:196-208) but not real clone semantics. Statically consistent with BASE \u2014 drive.mjs:492 resolves a relative `planPath` under each clone's own `repoDir`, so each run reads its own committed plan at the recorded base commit, and per-run `dbDir`/`repoDir` avoid the shared-store and FETCH_HEAD races. One residual edge untested: a launch HEAD reachable from no branch ref is not carried by `git clone`, and the `checkout --detach` then refuses \u2014 loudly, before any drive starts. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/race.mjs:164 \u2014 that the inherited `origin` URL is a scheme the publish leg can authenticate, i.e. K raced runs actually open K PRs. \u2014 fleet/drive.mjs:1379-1385 documents `origin` as \"the orchestrator clone's https remote\" and pushes with `-c credential.helper='!gh auth git-credential'`. race.mjs copies whatever the launch checkout's `origin` actually is; if that is an ssh URL the clones inherit ssh and the credential helper is bypassed. This is the same behavior a plain `drive-one.mjs` run from that checkout already has \u2014 no regression \u2014 but it is a property of the operator's environment, not of the tree, and needs a live race (or an `origin` check) to confirm. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs:264-279 \u2014 `storeReader` + `countFixRounds` against a real post-teardown store: sqlite3 over `<dbDir>/fleet.db` returning the run's promoted `fix:`-labelled event rows, with per-run `dbDir` isolation keeping a sibling's rows out. \u2014 Every judge test injects `readStore`, so only the fixture JSON shape is exercised. The wiring is confirmed against BASE \u2014 orchestrator.mjs:161 with `FLEET_PATH = 'fleet'` (orchestrator.mjs:33) yields exactly `<dbDir>/fleet.db`, and the query and unwrap mirror status.mjs:78-88 / status.mjs:37-52, whose `key.startsWith(runId + ':')` filter is what excludes a sibling's rows \u2014 but no live store exists in this sandbox to read. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.kSNQKNqxoL/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 8/8 workers\\n8 workers [1273 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 11%]\\n........................................................................ [ 16%]\\n........................................................................ [ 22%]\\n........................................................................ [ 28%]\\n........................................................................ [ 33%]\\n........................................................................ [ 39%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 56%]\\n........................................................................ [ 62%]\\n........................................................................ [ 67%]\\n........................................................................ [ 73%]\\n........................................................................ [ 79%]\\n........................................................................ [ 84%]\\n........................................................................ [ 90%]\\n........................................................................ [ 96%]\\n.................................................                        [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1273 passed, 5 warnings in 107.45s (0:01:47) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
