@@ -89,11 +89,20 @@ def check_plan(md_text, gh):
             quotes += 1
             number = provenance.split("#", 1)[1]
             body = issue_body(number, gh, cache)
+            sentence = fold(operator_sentence(claims["claim"]))
             if body is None:
                 failures.append(
                     "provenance: task %s claim quotes #%s, which does not "
                     "resolve" % (task["id"], number))
-            elif fold(operator_sentence(claims["claim"])) not in fold(body):
+            elif not sentence:
+                # The vacuous pass: a Claim that is nothing but its tag strips
+                # to "", and "" is a substring of every body, so the comparison
+                # below would sign off on a quote of nothing.
+                failures.append(
+                    "provenance: task %s claim quotes #%s with an empty "
+                    "operator sentence — the Claim is nothing but its "
+                    "provenance tag" % (task["id"], number))
+            elif sentence not in fold(body):
                 failures.append("provenance: task %s claim is not verbatim in "
                                 "#%s" % (task["id"], number))
         for number in dict.fromkeys(ANCHOR_RE.findall(claims["authorized_by"])):
