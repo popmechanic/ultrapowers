@@ -6,10 +6,10 @@ ultrapowers authors a plan and then executes it in parallel. It started as an
 alternative execution engine for **superpowers**, the popular Claude Code skill for
 software-engineering automation, and since #390 it owns the authoring end too
 (`ultrawrite`). Where a sequential executor works a plan one task at a time,
-ultrapowers compiles it into dependency-ordered waves and executes them on Claude
-Code's native
-[Workflows](https://code.claude.com/docs/en/workflows) feature, which orchestrates
-parallelized subagents at scale across isolated git worktrees.
+ultrapowers compiles it into dependency-ordered waves and executes them as a fleet of
+`claude -p` workers on exe.dev sandboxes, driven by the deterministic engine in
+`fleet/run-engine.mjs`: each worker gets a clone at BASE, its patch is captured, and the
+kernel folds each wave — no LLM orchestrator, no Workflow tool (since 0.3.0).
 
 The aim is to move where humans spend their attention. ultrapowers keeps users
 closely involved in **planning** — deciding what to build and how it will be
@@ -30,7 +30,10 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers   # vali
 python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # compile a marked plan to its waves
 ```
 
-- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on `ultrapowers` + `ultrawrite`, then `pytest tests/` (which bridges every `fleet/tests/test_*.mjs`, the engine sims included).
+- CI (`.github/workflows/ci.yml`) runs `validate_skill.py` on all four skills (`ultrapowers`,
+  `ultrawrite`, `ultralearn`, `ultradocket`), prints skill/role prose sizes (report only, gates
+  nothing), then `pytest tests/ -n auto` (which bridges every `fleet/tests/test_*.mjs`, the
+  engine sims included).
 
 ## Layout
 
@@ -43,12 +46,13 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   invocation at #390. (Also `skills/ultradocket/`.)
 - `hooks/session_start.sh` — injects the plan-routing rule into every session.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
-- `docs/superpowers/{specs,intents,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`.
-  **`intents/` is the signed artifact under the post-#243 plan shape** (spec §6: seven slots,
-  `Files:`+`tier` signed, one operator-verifiable acceptance statement per task); the plan is
-  machine-derived per wave and disposable, so `plans/` is historical from 0.3.0.
-- `evals/fixtures/` — sample plan repos (`wide`/`chained`/`mixed`/`flawed`/`degrade`) used as
-  test data by `tests/test_compile_plan.py`.
+- `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`. Specs are
+  the signed input; `plans/` holds the claims-v1 plans ultrawrite emits (plus each plan's
+  `.gate-verdicts.json`). `docs/superpowers/intents/` is two historical 2026-08-28 docs from
+  the pre-#390 seven-slot shape — nothing writes there now.
+- `evals/fixtures/` — 14 sample plan repos (the legacy-grammar compiler corpus — `wide`,
+  `chained`, `mixed`, `flawed`, `degrade`, … — plus `claims`, the claims-v1 one) used as test
+  data by the compiler tests; `pytest.ini` keeps pytest from collecting them.
 - `fleet/` — Width Program W1 (spec `docs/superpowers/specs/2026-08-21-width-program.md`):
   orchestrator (TinyBase ws-server + guard + spend authority), sandbox run shim, exe.dev
   provisioner, drive-one driver, `RUNBOOK.md` for the live run. **One Driver engine
@@ -82,14 +86,12 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   The cutover shipped: the engine is `fleet/run-engine.mjs`, there is no LLM orchestrator and
   no Workflow tool, and `waves.js` + 118 tests were deleted (`44e0d15`) only after runs 26/27
   came back green. Read it as history, not as direction. Two of its rules outlive it and are
-  enforced elsewhere: **cap what an agent is MADE to read, never what a file stores** — the live
-  ceiling is 350 words on `fleet/roles/*.md`, at the point of dispatch (`fleet/tests/test_run_engine.mjs`);
-  the SKILL.md word ceilings and `tests/test_skill_budget.py` are **deleted at #492** (three
-  observed harms, zero observed saves — the count is now reported by CI's *Report skill prose
-  sizes* step and by release commit bodies, and gates nothing). **Do not read that as the
-  surviving ceiling being healthy: `reviewer.md` is at 349/350** — one word, the exact state
-  #492 deleted the others for, and with no raise protocol since it is a literal in a test
-  rather than a ratchet (**#496**). A budget a task cannot meet is a demolition order.
+  enforced elsewhere: **cap what an agent is MADE to read, never what a file stores** — and
+  every refusing word ceiling is now gone: the SKILL.md ceilings at #492 (three observed harms,
+  zero observed saves) and the last role-file ceiling at #496 (closed 2026-09-01). Prose sizes
+  are *reported* (CI's *Report skill prose sizes* step, `test_run_engine.mjs`'s stderr, release
+  commit bodies) and gate nothing; the one surviving role-file pin is stylistic (no
+  NEVER/ALWAYS/MUST). A budget a task cannot meet is a demolition order.
   Also standing: **deletion is owed
   per guard** — ballast goes behind a measurement gate, never on an incident narrative. Its
   design inputs, incl. Amendments 4–6 (sign intent, derive the plan, no verbatim implementation
@@ -103,7 +105,7 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
-  and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).
+  and never patch `skills/ultrapowers/kernel/vendor/manyana.py`, it is sha-pinned on purpose).
   **One piece moved out of #360 by One Driver Amendment 9 (2026-08-29): the kernel's INPUT
   SHAPE** — it takes patches against BASE instead of `--branch <task>=<branch>:<sha>`, so no
   worker needs shared refs and the worktree-vs-clone question dissolves. Semantics, layering
@@ -159,9 +161,8 @@ fails to parse — caught live on sitting 2's drain plan).
   disposition; a `sealed` line still parses (frozen vocabulary) but is
   `BLOCKED` at the gate — the sealing subsystem was cut in One Driver Phase 0
   (row 7).
-- **Judgment prompts are data files.** `fleet/roles/*.md` (≤350 words each, pinned by
-  the happy-path engine sim) are read at dispatch by `fleet/run-engine.mjs` — the single
-  copy; the pre-0.3.0 bake/re-bake convention and its drift pin are deleted with
+- **Judgment prompts are data files.** `fleet/roles/*.md` (sizes reported, not gated —
+  #496) are read at dispatch by `fleet/run-engine.mjs` — the single copy; the pre-0.3.0 bake/re-bake convention and its drift pin are deleted with
   `waves.js`. `references/plan-markers.md` is the runtime half only (its authoring rules
   were deleted at #390), and the execution-handoff rubric is still shared between
   `hooks/session_start.sh` and `ultrawrite/SKILL.md` (pinned by
