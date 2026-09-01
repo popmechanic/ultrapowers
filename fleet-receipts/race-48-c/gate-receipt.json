@@ -1,0 +1,68 @@
+{
+  "mode": "gate",
+  "stamp": "race-48-c",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-race-48-c/report.json",
+  "branch": "ultra/integration-race-48-c",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs `cloneAtCommit` \u2014 the real git behaviour of `git clone --quiet --no-checkout --local <repo> <dest>` followed by `git checkout --quiet --detach <base>` landing HEAD on the recorded base commit, and the resulting clone's remote configuration. \u2014 Escalated by both per-task reviewers. Every git call is stubbed in `fleet/tests/test_race.mjs:62-74` \u2014 which the global constraint (no network, no git remote) requires \u2014 so the suite proves the argv shape and the HEAD-mismatch refusal at `fleet/race.mjs:150-154`, not that real git produces a working tree at `baseCommit` or what `origin` the clone ends up with. The blocking finding above is the static consequence of that gap; a live launch would confirm it. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:external",
+        "detail": "fleet/race.mjs `launch` end to end against a live `driveOne` \u2014 provisioning K sandboxes, pushing `HEAD:refs/heads/fleet-base` from each clone (`fleet/provision.mjs:224`), the per-attempt publish leg, and K concurrent orchestrators on ports base+0/+1/+2. \u2014 Requires the orchestrator VM, the golden image, an OAuth token, a GitHub token and network. `fleet/tests/test_race.mjs` injects `driveOne`, `readToken` and `exec` throughout, so the whole launch-to-artifact path \u2014 including whether K in-process orchestrators on adjacent ports and sibling clones actually coexist \u2014 is structurally complete but unexecuted here. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "fleet/race.mjs `judge` over real artifacts \u2014 `gate-read-<runId>.json` / `.detail.json` written by `driveOne` and each run's real sqlite store at `<dbDir>/fleet.db` via the default `sqlite3` reader (`fleet/race.mjs:269-278`). \u2014 The suite injects `readStore` and hand-writes the gate-read fixtures. I verified the shapes line up statically against the tree (`fleet/drive.mjs:1232-1235` `spendObservational`, `:1257-1293` `status`/`elapsedMs`/`pullRequest`; `fleet/orchestrator.mjs:161` with `FLEET_PATH='fleet'` giving `<dbDir>/fleet.db`; `fleet/events-bridge.mjs:95` keying events `<runId>:<id>` as `fleet/status.mjs:43` filters), but the default `sqlite3` path itself is never executed. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.9ybF1AnZKo/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 8/8 workers\\n8 workers [1273 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 11%]\\n........................................................................ [ 16%]\\n........................................................................ [ 22%]\\n........................................................................ [ 28%]\\n........................................................................ [ 33%]\\n........................................................................ [ 39%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 56%]\\n........................................................................ [ 62%]\\n........................................................................ [ 67%]\\n........................................................................ [ 73%]\\n........................................................................ [ 79%]\\n........................................................................ [ 84%]\\n........................................................................ [ 90%]\\n........................................................................ [ 96%]\\n.................................................                        [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1273 passed, 5 warnings in 106.07s (0:01:46) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
