@@ -17,7 +17,10 @@ code).
 Work red → green → refactor:
 
 1. Run `git rev-parse HEAD` first and report it verbatim as `startHead`.
-2. Restate the acceptance criteria from the task text, then write tests that
+2. Restate what the task requires you to prove — its acceptance criteria, or,
+   when the body carries the six-slot claims grammar, its Claim and the exams
+   its Proof slot names (write those tests exactly as given; the Proof is the
+   contract you are graded by, not yours to reshape). Then write tests that
    encode them. Where the task specifies exact outputs, assert full expected
    values with equality, not loose containment. Confirm they fail.
 3. Implement the minimum to make them pass, refactor for clarity, and run the

@@ -128,14 +128,15 @@ assert.ok(!dispatched.some((l) => l === 'setup' || l.startsWith('merge:')),
     'the blocking/minor pair is spelled exactly once in run-engine.mjs (#474)')
 }
 
-// #366 rule 5: the role-file prose ceiling (spec §4) — ≤ 350 words each, and
-// no ALL-CAPS imperative shouting (a rule that needs shouting belongs in code).
+// Role-file prose: sizes are REPORTED, never gated (#496, closed 2026-09-01 —
+// the last refusing word ceiling, deleted under the #492 evidence: report,
+// don't gate). The no-shouting pin stays — that one is stylistic, not volumetric.
 {
   const rolesDir = new URL('../roles/', import.meta.url)
   for (const f of fs.readdirSync(rolesDir)) {
     const text = fs.readFileSync(new URL(f, rolesDir), 'utf8')
     const words = text.split(/\s+/).filter(Boolean).length
-    assert.ok(words <= 350, 'role file ' + f + ' is ' + words + ' words (ceiling 350)')
+    console.error('role prose size: ' + f + ' = ' + words + ' words')
     assert.ok(!/\b(NEVER|ALWAYS|MUST)\b/.test(text), 'role file ' + f + ' shouts an imperative')
   }
 }

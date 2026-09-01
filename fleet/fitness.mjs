@@ -27,7 +27,7 @@ const fenceCloses = (line, marker) => {
 
 /**
  * Strip fenced code blocks (``` … ``` and ~~~ … ~~~) so an EXAMPLE inside a
- * task's own step text (e.g. a task demonstrating what a Files block looks
+ * task's own body text (e.g. a task demonstrating what a Files block looks
  * like) never drives classification of the task that contains it.
  *
  * Scanned line by line rather than with a single non-greedy regex, because a

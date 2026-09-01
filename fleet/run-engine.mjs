@@ -627,7 +627,7 @@ export async function runEngine({
       const retryTier = capabilityFixable ? escalateTier(task.tier) : (task.tier || 'standard')
       if (looksStructural(msg)) {
         judgmentCalls.push('task ' + task.id + ': agent error looks structural (' + msg +
-          ') — looks like a missing Depends-on edge; a tier change will not fix it')
+          ') — looks like a missing dependency edge (the plan\'s Interfaces/Files do not order these tasks); a tier change will not fix it')
       }
       judgmentCalls.push('task ' + task.id + ': agent error at ' + (task.tier || 'standard') +
         ' — retrying once at ' + retryTier +
@@ -937,6 +937,11 @@ export async function runEngine({
     // Per-task exclusion, never a wave-wide skip (review finding 10): one task
     // missing `writes` must not silence a genuine undeclared double-write
     // between two tasks that DID declare theirs.
+    // Claims-v1 retirement (#390): `Commutes:` is no longer authorable, so when
+    // no task in the wave declares one, an undeclared shared write is not a
+    // pinning failure — it is the shipped fold default. The check only means
+    // something while the declaration it audits can exist.
+    if (!tasks.some((t) => Array.isArray(t.commutes) && t.commutes.length)) return
     const declaring = tasks.filter((t) => Array.isArray(t.writes))
     for (const t of tasks) {
       if (!Array.isArray(t.writes)) {

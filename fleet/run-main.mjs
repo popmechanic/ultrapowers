@@ -162,8 +162,9 @@ export const execSeam = (cmd, argv, { cwd, env, timeoutMs } = {}) =>
 // mostCapable, the standing quality-over-tokens posture — and records the
 // fill. This is deliberately cruder than the LLM's per-task judgment and
 // deliberately honest about it: per-task tier is the intent document's slot
-// (#243 — signed, not judged), and until #390 lands the uniform stamp is the
-// only producer that cannot hallucinate a judgment. `review` is plan-authored
+// (#243 — signed, not judged). #390 landed 2026-09-01: the signed slot is now
+// the producer wherever the intent doc carries one; the uniform stamp remains
+// the honest fallback for plans that do not. `review` is plan-authored
 // and never touched.
 export function fillTiers(argsObj, tier) {
   let filled = 0
