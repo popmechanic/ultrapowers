@@ -209,7 +209,24 @@ const emitWeave = async (headSha) => {
 
 **Files:**
 - Modify: `skills/ultrapowers/references/dependency-analysis.md`
+- Test: `tests/test_serialize_prose_deleted.py`
 
+- [ ] **Step 0: Write the pinning test** `tests/test_serialize_prose_deleted.py` — the deletion's durable regression pin (the precedent is `test_marker_contract.py` pinning the absence of deleted edge tiers):
+
+```python
+from pathlib import Path
+
+DOC = Path(__file__).resolve().parents[1] / "skills/ultrapowers/references/dependency-analysis.md"
+
+def test_serialize_is_a_knob_mention_not_authoring_doctrine():
+    text = DOC.read_text()
+    assert text.count("serialize") <= 2
+    for retired in ("serialize the scaffolding task",
+                    "do not assume it is safe to write concurrently",
+                    "write-after-write"):
+        assert retired not in text.lower().replace("'", "")
+```
+Run it first — FAIL against the undeleted doc.
 - [ ] **Step 1: Delete, per the 2026-09-01 inventory** (spec §4.1): the serialize clause in the reads bullet (line ~18), the "still fully supported, described throughout" clause (~36), rule 3's write-after-write serialize choreography (~71, keep the fold half), the serialize-only precedence rules (~77–79), the two conservative defaults at ~102–105 ("serialize the scaffolding task", "do not assume it is safe to write concurrently"), and the serialize byte-identity discussion inside §Small-Plan Degrade (~121–131, keep the 1-task degrade rule). Where a sentence's fold half survives, keep it grammatical. Add ONE line where the knob is first mentioned: "`--overlap serialize` remains as the measured-rollback knob; it is not an authoring consideration."
 - [ ] **Step 2: Verify** — `grep -c "serialize" skills/ultrapowers/references/dependency-analysis.md` returns ≤2 (the knob line + at most one flag reference); `python3 -m pytest tests/test_marker_compiler.py tests/test_compile_overlap.py -q` green (the knob's behavior tests are untouched).
 - [ ] **Step 3: Commit** — `git commit -m "ultraplan: delete serialize authoring prose — class retired by measurement (#360 sitting 3)"`
@@ -238,7 +255,21 @@ const emitWeave = async (headSha) => {
 
 **Files:**
 - Modify: `skills/ultrapowers/references/design-rationale.md`
+- Test: `tests/test_workflow_rationale_deleted.py`
 
+- [ ] **Step 0: Write the pinning test** `tests/test_workflow_rationale_deleted.py`:
+
+```python
+from pathlib import Path
+
+DOC = Path(__file__).resolve().parents[1] / "skills/ultrapowers/references/design-rationale.md"
+
+def test_workflow_era_rationale_is_gone():
+    text = DOC.read_text().lower()
+    for dead in ("ultracode", "harness", "saved workflow", ".claude/workflows"):
+        assert dead not in text
+```
+Run it first — FAIL against the undeleted doc.
 - [ ] **Step 1: Delete** §Step 4 and §Step 4a (lines ~9–62, ~465 words: `ultracode` keyword, write-side harnesses, saved-workflow registry — machinery deleted at 0.3.0). Leave a one-line tombstone under the nearest surviving heading: "Workflow-runtime rationale removed 2026-09-01 — that runtime was deleted at 0.3.0 (#434); see git history."
 - [ ] **Step 2: Verify** — `grep -ci "ultracode\|harness" skills/ultrapowers/references/design-rationale.md` returns 0; full suite green.
 - [ ] **Step 3: Commit** (own commit — this deletion rides the 0.3.0 cutover license, #403/#386, not the kernel measurement) — `git commit -m "docs: delete Workflow-era design rationale — machinery deleted at 0.3.0 (#403/#386)"`
