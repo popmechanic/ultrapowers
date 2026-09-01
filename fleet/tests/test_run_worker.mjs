@@ -33,6 +33,10 @@ import { isSchemaTrip } from '../run-engine.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 
+// PROVENANCE: `waves.js:NNNN` citations in this file point into the harness
+// deleted at 0.3.0 (`git show 44e0d15^:skills/ultrapowers/harnesses/waves.js`);
+// the engine that honours each cited contract today is fleet/run-engine.mjs.
+//
 // ── the escalation vocabulary, READ FROM waves.js, never copied ─────────────
 //
 // This module's retry classes reach waves.js's tier ladder as PROSE: `classify`
@@ -529,7 +533,7 @@ setInterval(() => {}, 1000)
   const spawnsBefore = fs.readdirSync(workersDir).length
   await assert.rejects(() => agent('x', { label: 'impl:T3', model: 'sonnet', schema: SCHEMA }),
     /already exhausted its per-worker budget/)
-  assert.equal(fs.readdirSync(workersDir).length, spawnsBefore, "waves.js's retry must not respawn it")
+  assert.equal(fs.readdirSync(workersDir).length, spawnsBefore, "the engine's retry must not respawn it")
 }
 
 // stdout is DECODED, not concatenated from Buffers. A multi-byte character

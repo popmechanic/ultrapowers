@@ -5,6 +5,12 @@
 // one `claude -p` process per call. Spec §2 (#401). (waves.js and its sims,
 // the seam's first two suppliers, are deleted since 0.3.0.)
 //
+// PROVENANCE: every `waves.js:NNNN` citation below points into that deleted
+// harness (`git show 44e0d15^:skills/ultrapowers/harnesses/waves.js`). The
+// contracts they cite are inherited verbatim by fleet/run-engine.mjs, which is
+// the caller today; the citations are kept as the record of where each rule
+// was read off, not as a live file.
+//
 // THE WHOLE INTERFACE — four option keys, ten call sites in waves.js:
 //
 //   label      all sites   worker identity; here it selects the role and the
