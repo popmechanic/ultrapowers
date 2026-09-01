@@ -1247,8 +1247,9 @@ def claims_advisories(tasks, tree_root=None):
     """Every `ADVISORY grammar:` line the parsed claims-v1 `tasks` draw.
 
     Pure and total: it reads the parsed tasks (and, for the same-file tier,
-    whether a tree root was provided at all) and returns lines. `tasks` that
-    carry no claims overlay — every legacy task — contribute nothing."""
+    the tree root, when one is provided, one shared path at a time) and
+    returns lines. `tasks` that carry no claims overlay — every legacy task —
+    contribute nothing."""
     tasks = [t for t in tasks if t.get("claims")]
     produced = {t["id"]: {tok for pr in t["interfaces"]["produces"]
                           if (tok := _interface_token(pr))} for t in tasks}
@@ -1290,22 +1291,100 @@ def claims_advisories(tasks, tree_root=None):
         lines.append("ADVISORY grammar: Context is %d words — task %s"
                      % (len(_slot_prose(claims.get("context", "")).split()),
                         t["id"]))
-    # Same-file pairs the compiler cannot classify: without a tree it cannot
-    # tell a mergeable text file from a non-text one it would have to order.
-    if tree_root is None:
-        for i, a in enumerate(tasks):
-            for b in tasks[i + 1:]:
-                shared = sorted((set(a["writes"]) | set(a["reads"]))
-                                & (set(b["writes"]) | set(b["reads"])))
-                if not shared:
-                    continue
-                lines.append(
-                    "ADVISORY grammar: same-file pair not classifiable without "
-                    "a tree — tasks %s and %s both name %s; pass --base so the "
-                    "compiler can tell a mergeable text file from a non-text "
-                    "one it must order"
-                    % (a["id"], b["id"], ", ".join("`%s`" % p for p in shared)))
+    # Same-file pairs. What the compiler can say about a shared path depends on
+    # whether it was handed a tree: with none it cannot tell a mergeable text
+    # file from a non-text one it would have to order, and says so. With one it
+    # asks `is_binary` per shared path — a non-text answer means the pair
+    # cannot fold, so the advisory names the order the compile puts on it
+    # instead of naming its own ignorance. A text-only pair folds and stays
+    # silent.
+    #
+    # That order is NOT always Tier 2b's document-order `non-text-overlap`
+    # edge. Tier 2b is guarded twice (:1734): it yields to any edge already on
+    # the pair, and to one that would close a cycle. So an interface edge can
+    # own the pair, in EITHER direction, and the advisory must report what the
+    # compile actually did — asking the edge builder, not re-deriving the guess
+    # and getting the reverse of the truth.
+    pairs = []
+    for i, a in enumerate(tasks):
+        for b in tasks[i + 1:]:
+            shared = sorted((set(a["writes"]) | set(a["reads"]))
+                            & (set(b["writes"]) | set(b["reads"])))
+            if shared:
+                pairs.append((a, b, shared))
+    edges = None
+    if pairs and tree_root is not None:
+        # The same edge set the compile builds: same grammar, same tree, and
+        # the shipped `fold` overlap default (`serialize` is the rollback knob,
+        # not what a `--check` predicts). Only implementation tasks enter it,
+        # exactly as the compile's own `impl` filter does.
+        edges, _ = build_edges(
+            [t for t in tasks if classify(t)[0] == "implementation"],
+            grammar=CLAIMS_GRAMMAR, tree_root=tree_root)
+    for a, b, shared in pairs:
+        if tree_root is None:
+            lines.append(
+                "ADVISORY grammar: same-file pair not classifiable without "
+                "a tree — tasks %s and %s both name %s; pass --base so the "
+                "compiler can tell a mergeable text file from a non-text "
+                "one it must order"
+                % (a["id"], b["id"],
+                   ", ".join("`%s`" % p for p in shared)))
+            continue
+        non_text = [p for p in shared if is_binary(tree_root, p)]
+        if not non_text:
+            continue
+        lines.append(
+            "ADVISORY grammar: non-text same-file pair — tasks %s and %s "
+            "both name %s; %s"
+            % (a["id"], b["id"], ", ".join("`%s`" % p for p in non_text),
+               _pair_ordering(edges, a["id"], b["id"])))
     return lines
+
+
+def _reaches(edges, src, dst):
+    """True when `dst` is reachable from `src` over `edges` (src itself is not
+    a hit — an unordered pair must not read as ordered)."""
+    adj = {}
+    for e in edges:
+        adj.setdefault(e["from"], []).append(e["to"])
+    stack, seen = list(adj.get(src, ())), set()
+    while stack:
+        n = stack.pop()
+        if n == dst:
+            return True
+        if n in seen:
+            continue
+        seen.add(n)
+        stack.extend(adj.get(n, ()))
+    return False
+
+
+def _pair_ordering(edges, a_id, b_id):
+    """How the compile orders the pair (a_id, b_id), as an advisory clause.
+
+    Three cases, and every non-text pair lands in one of them:
+      * a direct edge, in either direction — name it and its `why`. This is
+        Tier 2b's own `a -> b (non-text-overlap)` when no earlier tier claimed
+        the pair, and the earlier tier's edge and label when one did (Tier 2b's
+        `seen` guard means the label is that tier's, not `non-text-overlap`).
+      * no direct edge but a path — Tier 2b's cycle guard declined, because the
+        other task already reaches this one transitively. The order is real;
+        no single edge carries it, so none is named.
+      * neither — the pair is not two implementation tasks, so no tier reaches
+        it and the compile orders nothing. The non-text hazard is real and
+        unmanaged, which is precisely what the reader needs told."""
+    direct = next((e for e in edges
+                   if {e["from"], e["to"]} == {a_id, b_id}), None)
+    if direct is not None:
+        return ("the compile orders %s -> %s (%s)"
+                % (direct["from"], direct["to"], direct["why"]))
+    for x, y in ((a_id, b_id), (b_id, a_id)):
+        if _reaches(edges, x, y):
+            return ("the compile already orders %s before %s, transitively"
+                    % (x, y))
+    return ("the compile orders neither — the pair is not two implementation "
+            "tasks, so no edge tier reaches it")
 
 
 def collect_advisories(plan_path, tree_root=None):
@@ -2169,13 +2248,16 @@ def main(argv=None):
                          "referent-existence). Advisory: never changes the exit "
                          "code; prints nothing when there is nothing to say.")
     ap.add_argument("--base", type=Path, default=None,
-                    help="the tree file-level questions resolve against. With "
-                         "--check it requires --renders and is what the renders "
-                         "resolve against (default: the git toplevel of the "
-                         "plan's directory); on a plain compile it is the tree "
-                         "the claims-v1 non-text same-file classifier reads. "
-                         "Unset, a claims-v1 same-file pair is left unordered "
-                         "and draws an advisory instead.")
+                    help="the tree file-level questions resolve against. It "
+                         "is the tree the claims-v1 non-text same-file "
+                         "classifier reads — on a plain compile, where it "
+                         "orders the pair, and under --check, where the "
+                         "advisory names the order the compile would impose. "
+                         "With --check it requires --renders and is also what "
+                         "the renders resolve against (default: the git "
+                         "toplevel of the plan's directory). Unset, a "
+                         "claims-v1 same-file pair is left unordered and draws "
+                         "a not-classifiable advisory instead.")
     ap.add_argument("--exclude", action="append", default=[], metavar="PATH",
                     help="with --renders only, repeatable: a BASE-relative "
                          "tracked path the renders must not see (the eval "

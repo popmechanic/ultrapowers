@@ -28,8 +28,6 @@ correctly as long as the contract is what gets tested.
 
 ## Marker syntax
 
-<!-- BAKE:MARKER_SYNTAX -->
-<!-- The BAKE fences are section anchors read by tests/test_marker_contract.py; no bake step exists since 0.3.0. -->
 Markers are bold-labeled lines placed immediately after the task heading, before the
 `**Files:**` block:
 
@@ -48,7 +46,6 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   outside the task's own `**Files:**` block is surfaced as a marker conflict
   and dropped, never a compile error. Like every marker it belongs in the
   header block; after `**Files:**` it is discarded and `--check` refuses it.
-<!-- /BAKE -->
 
 Example:
 
@@ -83,7 +80,6 @@ Markers are honored only in the **header block** — the contiguous run of marke
 
 ## Type semantics (dispositions)
 
-<!-- BAKE:TYPE_SEMANTICS -->
 - `implementation` — a worktree-pure diff. Waved and executed.
 - `gate` — verification only (suite, lint, status checks); writes nothing. Compiled
   into run configuration: its suite command informs `testCmd`, its expectations are
@@ -92,7 +88,6 @@ Markers are honored only in the **header block** — the contiguous run of marke
   Excluded from the waves; carried verbatim into the post-merge runbook.
 - `manual` — requires a human or another machine (credentials, hardware, owner
   action). Excluded from the waves; carried verbatim into the post-merge runbook.
-<!-- /BAKE -->
 
 ## Classification heuristics (unmarked plans)
 

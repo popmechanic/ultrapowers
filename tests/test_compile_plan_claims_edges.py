@@ -415,6 +415,221 @@ def test_the_is_binary_classifier(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# `--check --renders --base` names the order it would impose
+#
+# Without a tree the same-file tier can only say it cannot tell (the pin above).
+# WITH one it can: `--check` classifies each shared path with the same
+# `is_binary` the compile uses, and for a non-text one it prints the order the
+# compile WOULD impose — the whole point of asking. Text pairs stay silent
+# because the kernel folds them; the rc never moves either way.
+# ---------------------------------------------------------------------------
+
+NON_TEXT_PAIR = "ADVISORY grammar: non-text same-file pair"
+
+
+def _disjoint_plan(tmp_path):
+    """Two claims tasks that share no path at all."""
+    return _claims_plan(
+        tmp_path,
+        _task("1", "Logo", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`logo() -> bytes`",
+              context="The logo is a raster asset."),
+        _task("2", "Badge", files=["Modify: `assets/badge.png`"],
+              consumes="nothing", produces="`badge() -> bytes`",
+              context="The badge is its own raster asset."))
+
+
+ORDERED_LINE = (
+    "ADVISORY grammar: non-text same-file pair \u2014 tasks 1 and 2 both name "
+    "`assets/logo.png`; the compile orders 1 -> 2 (non-text-overlap)")
+
+
+def test_with_a_tree_a_binary_pair_names_the_order_the_compile_imposes(tmp_path):
+    # Leg (a): one line, both ids, the path, the label, document order.
+    plan = _overlap_plan(tmp_path)
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0 and lines[0] == "PLAN OK"
+    drawn = [l for l in lines if l.startswith(NON_TEXT_PAIR)]
+    assert drawn == [ORDERED_LINE], lines
+    # ... and it is the order the compile actually imposes on the same tree.
+    assert _compile(plan, "--base", str(root))["dag_edges"] == [
+        {"from": "1", "to": "2", "why": "non-text-overlap"}]
+
+
+def test_with_a_tree_a_symlink_pair_names_the_order_the_compile_imposes(tmp_path):
+    # Leg (b): a symlink is non-text for exactly the same reason.
+    plan = _overlap_plan(tmp_path)
+    root = tmp_path / "tree"
+    (root / "assets").mkdir(parents=True)
+    (root / "assets/logo.png").symlink_to(tmp_path / "elsewhere.png")
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert [l for l in lines if l.startswith(NON_TEXT_PAIR)] == [ORDERED_LINE], lines
+
+
+def test_with_a_tree_a_text_pair_is_silent(tmp_path):
+    # Leg (c): a text pair folds, so there is nothing to say — and the
+    # not-classifiable line is retired the moment a tree can classify.
+    plan = _overlap_plan(tmp_path)
+    root = _tree(tmp_path, b"a text logo, line by line\n")
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert [l for l in lines if "non-text" in l] == [], lines
+    assert [l for l in lines if l.startswith(NOT_CLASSIFIABLE)] == [], lines
+    assert _compile(plan, "--base", str(root))["dag_edges"] == []
+
+
+def test_with_a_tree_a_pair_sharing_no_path_is_silent(tmp_path):
+    # The machine sentence's other silent case: no shared path at all.
+    plan = _disjoint_plan(tmp_path)
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert [l for l in lines if "non-text" in l] == [], lines
+    assert [l for l in lines if l.startswith(NOT_CLASSIFIABLE)] == [], lines
+
+
+def test_the_base_check_rc_is_the_no_base_rc(tmp_path):
+    # Leg (d): the advisory rides the tail; it never moves the verdict, on a
+    # clean plan or on one the structural net rejects.
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    clean = _overlap_plan(tmp_path)
+    assert _check(clean, "--renders", "--base", str(root))[0] == _check(clean)[0] == 0
+    broken = _write(tmp_path, _plan(
+        _task("1", "Logo", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`logo() -> bytes`",
+              context="The logo is a raster asset."),
+        _task("2", "Badge", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`badge() -> bytes`",
+              context="The badge is stamped into the same raster asset."),
+    ).replace("**Authorized-by:** #489", "", 1), name="broken.md")
+    rc_base, _ = _check(broken, "--renders", "--base", str(root))
+    rc_plain, _ = _check(broken)
+    assert rc_base == rc_plain == 2
+
+
+def _overlap_pair_with_interface(tmp_path, *, reversed_):
+    """The same shared-binary pair, plus ONE interface edge across it.
+
+    `reversed_` picks which way the interface tier points it: task 1 Consumes
+    what task 2 Produces (edge 2 -> 1, the reverse of document order), or the
+    other way round (edge 1 -> 2, document order)."""
+    return _claims_plan(
+        tmp_path,
+        _task("1", "Logo", files=["Modify: `assets/logo.png`"],
+              consumes="`badge() -> bytes`" if reversed_ else "nothing",
+              produces="`logo() -> bytes`",
+              context="The logo is a raster asset."),
+        _task("2", "Badge", files=["Modify: `assets/logo.png`"],
+              consumes="nothing" if reversed_ else "`logo() -> bytes`",
+              produces="`badge() -> bytes`",
+              context="The badge is stamped into the same raster asset."))
+
+
+def _only(lines, prefix=None):
+    drawn = [l for l in lines if l.startswith(prefix or NON_TEXT_PAIR)]
+    assert len(drawn) == 1, lines
+    return drawn[0]
+
+
+def test_a_reversing_interface_edge_is_reported_in_its_own_direction(tmp_path):
+    # Tier 2b is CYCLE-GUARDED: the interface tier has already ordered 2 -> 1,
+    # so `would_cycle(1, 2)` fires and Tier 2b adds nothing. The advisory must
+    # name THAT order, not the document order it would have proposed — naming
+    # `1 -> 2 (non-text-overlap)` here would be the reverse of the truth and a
+    # label carried by no edge the compile emits.
+    plan = _overlap_pair_with_interface(tmp_path, reversed_=True)
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    edges = _compile(plan, "--base", str(root))["dag_edges"]
+    assert edges == [{"from": "2", "to": "1", "why": "interface"}]
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert _only(lines) == (
+        "ADVISORY grammar: non-text same-file pair \u2014 tasks 1 and 2 both "
+        "name `assets/logo.png`; the compile orders 2 -> 1 (interface)")
+    assert "non-text-overlap" not in _only(lines)
+
+
+def test_an_agreeing_interface_edge_is_reported_with_its_own_label(tmp_path):
+    # The milder half of the same gap: the pair is already ordered 1 -> 2, so
+    # Tier 2b's `seen` guard suppresses its edge. The direction is right but the
+    # `why` is `interface`, and the advisory says `interface`.
+    plan = _overlap_pair_with_interface(tmp_path, reversed_=False)
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    edges = _compile(plan, "--base", str(root))["dag_edges"]
+    assert edges == [{"from": "1", "to": "2", "why": "interface"}]
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert _only(lines) == (
+        "ADVISORY grammar: non-text same-file pair \u2014 tasks 1 and 2 both "
+        "name `assets/logo.png`; the compile orders 1 -> 2 (interface)")
+
+
+def test_a_transitively_ordered_pair_names_no_edge_it_does_not_have(tmp_path):
+    # 3 -> 2 -> 1 by interface; 1 and 3 share the raster. Tier 2b's cycle guard
+    # declines (3 already reaches 1), so NO direct edge joins the pair. The
+    # order is nonetheless real, and the advisory reports it as transitive
+    # rather than inventing an edge, or a `why`, for it.
+    plan = _claims_plan(
+        tmp_path,
+        _task("1", "Logo", files=["Modify: `assets/logo.png`"],
+              consumes="`mid() -> int`", produces="`logo() -> bytes`",
+              context="The logo is a raster asset."),
+        _task("2", "Middle", files=["Modify: `src/mid.py`"],
+              consumes="`deep() -> int`", produces="`mid() -> int`",
+              context="The middle stage is plain text."),
+        _task("3", "Deep", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`deep() -> int`",
+              context="The deep stage restamps the same raster asset."))
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    edges = _compile(plan, "--base", str(root))["dag_edges"]
+    assert edges == [{"from": "2", "to": "1", "why": "interface"},
+                     {"from": "3", "to": "2", "why": "interface"}]
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert rc == 0
+    assert _only(lines) == (
+        "ADVISORY grammar: non-text same-file pair \u2014 tasks 1 and 3 both "
+        "name `assets/logo.png`; the compile already orders 3 before 1, "
+        "transitively")
+
+
+def test_a_pair_the_dag_never_reaches_is_reported_as_unordered(tmp_path):
+    # Only implementation tasks enter the edge tiers. A gate task sharing the
+    # raster with an implementation task is a real, UNMANAGED non-text overlap
+    # — so the advisory says the compile orders neither, rather than promising
+    # an order no tier will impose.
+    plan = _claims_plan(
+        tmp_path,
+        _task("1", "Logo", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`logo() -> bytes`",
+              context="The logo is a raster asset."),
+        _task("2", "Badge", files=["Modify: `assets/logo.png`"],
+              consumes="nothing", produces="`badge() -> bytes`",
+              context="The badge is stamped into the same raster asset.")
+        .replace("**Type:** implementation", "**Type:** gate", 1))
+    root = _tree(tmp_path, b"\x89PNG\x00")
+    assert _compile(plan, "--base", str(root))["dag_edges"] == []
+    rc, lines = _check(plan, "--renders", "--base", str(root))
+    assert _only(lines) == (
+        "ADVISORY grammar: non-text same-file pair \u2014 tasks 1 and 2 both "
+        "name `assets/logo.png`; the compile orders neither \u2014 the pair is "
+        "not two implementation tasks, so no edge tier reaches it")
+
+
+def test_the_canonical_claims_fixture_is_unmoved_by_a_base(tmp_path):
+    # Leg (f): the canonical fixture shares no path, so `--base` adds nothing
+    # to its tail — its `--check --renders` output is byte-identical with and
+    # without the tree root the renders already default to.
+    root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=ROOT,
+                          capture_output=True, text=True, check=True).stdout.strip()
+    rc_base, with_base = _check(CLAIMS_FIXTURE, "--renders", "--base", root)
+    rc_plain, without = _check(CLAIMS_FIXTURE, "--renders")
+    assert (rc_base, with_base) == (rc_plain, without)
+    assert [l for l in with_base if "non-text" in l] == []
+
+
+# ---------------------------------------------------------------------------
 # The half-threaded seam (run-43 Task-1 residue)
 # ---------------------------------------------------------------------------
 

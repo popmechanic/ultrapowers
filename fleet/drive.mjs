@@ -15,6 +15,7 @@
 // and `gh` as an env var through `exec(cmd, {env})`, never logged, never in
 // `detail`.
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { startOrchestrator, FLEET_PATH } from './orchestrator.mjs'
 import { provisionRun, destroySandbox, SANDBOX_SSH_OPTS, sandboxGitSsh } from './provision.mjs'
@@ -162,6 +163,133 @@ const normalizeFinding = (finding) => {
 }
 
 /**
+ * The tarball member holding the compiler's `result` (#527). ONE `tar -xzO`,
+ * with tar's own `--wildcards` doing the matching INSIDE the archive: the
+ * pattern is single-quoted, so the host shell never globs it, and a bundle
+ * with no such member exits non-zero rather than silently reading nothing.
+ * The `repo/` prefix is `sandboxLogPullCommand`'s — it tars the sandbox's
+ * gitignored run dirs under that name.
+ */
+const RUNBOOK_MEMBER = 'repo/.claude/ultrapowers/run-*/receipt.json'
+
+/**
+ * The plan's post-merge runbook, read out of the rescued sandbox bundle.
+ *
+ * #527 names `args.json` as the source; it is not there. `compile_plan.py`
+ * writes `args.json` and `launch.json` from the `implementation` tasks alone,
+ * and `post_merge_runbook` is exactly the `release`/`manual` set — so neither
+ * file carries it. It lives in the compiler's stdout `result`, which
+ * `ultra_run.py` stores verbatim as `receipt["compile"]` in
+ * `run-<stamp>/receipt.json`: a gitignored file that dies with the VM and is
+ * on no branch, but that IS inside the evidence bundle the drive pulls before
+ * teardown. So this is the one read that has to go through the tarball.
+ *
+ * The ids are joined to `compile.tasks[].title` and returned in TASKS order —
+ * the plan's order, which is what "in plan order" means to the operator;
+ * `post_merge_runbook` is a set, and its own order is not the plan's.
+ *
+ * Total: every failure — a refused or non-zero tar, output that is not JSON, a
+ * receipt with no `compile` — is `null`, never a throw. This runs on the
+ * publish path, after teardown, and nothing here may cost a PR.
+ *
+ * @param {string} tgzPath  the pulled bundle (`detail.sandboxLogs`)
+ * @param {(cmd: string) => Promise<{code: number, stdout: string}>} exec
+ * @returns {Promise<Array<{id: string, title: string}>|null>}
+ */
+export const readRunbookFromBundle = async (tgzPath, exec) => {
+  if (!isNonEmptyString(tgzPath) || typeof exec !== 'function') return null
+  let compile = null
+  try {
+    const result = await exec(`tar -xzOf ${shellQuote(tgzPath)} --wildcards ${shellQuote(RUNBOOK_MEMBER)}`)
+    if (result?.code !== 0) return null
+    compile = JSON.parse(result.stdout)?.compile
+  } catch {
+    return null
+  }
+  const ids = Array.isArray(compile?.post_merge_runbook) ? compile.post_merge_runbook.map(String) : null
+  if (ids === null || !Array.isArray(compile?.tasks)) return null
+  const wanted = new Set(ids)
+  return compile.tasks
+    .filter((task) => wanted.has(String(task?.id)))
+    .map((task) => ({ id: String(task.id), title: String(task?.title ?? '') }))
+}
+
+/**
+ * The two publish-leg failures a hand rescue answers, as they read on
+ * `errors` (the `push … to origin failed` and `gh pr create … failed` pushes
+ * in the publish leg below). Nothing else — a failed FETCH leaves nothing on
+ * this side to rescue, so the pinned ref the block prints would not exist.
+ */
+const PUBLISH_FAILURE = /(?:^|\s)(?:push \S+ to origin failed|gh pr create\b[^\n]*failed)/
+
+/**
+ * Every value the rescue block interpolates is one a human will paste into a
+ * shell, so it passes the SAME validators the drive uses before shelling it
+ * itself — a value that fails is named in the driver's notes and never
+ * rendered. `host` takes `isSafeVmName`: a hostname is the same character
+ * class, dots included.
+ */
+const unsafeRescueField = (rescue) => {
+  for (const [field, ok] of [['runId', isSafeBranchName], ['tip', isSafeSha], ['branch', isSafeBranchName], ['host', isSafeVmName]]) {
+    if (!ok(rescue?.[field])) return { field, value: rescue?.[field] }
+  }
+  return null
+}
+
+/**
+ * The host the rescue block tells the operator to fetch FROM. Not the sandbox
+ * (`vmName`): the sandbox is destroyed before the publish leg runs, and the
+ * tip the operator wants is the one pinned as `refs/fleet/<runId>` in the
+ * ORCHESTRATOR's `repoDir` (#497) — this process's own machine. So it is read
+ * off the host rather than configured: a card naming a baked constant would
+ * send the operator to the wrong box the day the orchestrator is renamed.
+ *
+ * exe.dev VMs report their bare name (`fleet-orchestrator`) and are reachable
+ * at `<name>.exe.xyz` (RUNBOOK §Prerequisites), so a bare name gets the suffix
+ * and a hostname that already carries a domain is used as-is.
+ *
+ * The fallback is total, and deliberately so: anything that does not survive
+ * `isSafeVmName` — unreadable, empty, or a character this module would refuse
+ * to print into a command — becomes the RUNBOOK's own
+ * `fleet-orchestrator.exe.xyz`. `drive.mjs` runs on that one host, so the
+ * fallback is the documented answer rather than a guess, and it is what keeps
+ * a rescue block on the card instead of silently dropping it over a hostname.
+ * The renderer still validates whatever it is handed (a caller may pass its
+ * own), so this never becomes the only check.
+ */
+export const orchestratorHost = (hostname = (() => {
+  try {
+    return os.hostname()
+  } catch {
+    return ''
+  }
+})()) => {
+  const bare = String(hostname ?? '').trim().replace(/\.+$/, '')
+  const host = bare.includes('.') ? bare : `${bare}.exe.xyz`
+  return bare.length > 0 && isSafeVmName(host) ? host : 'fleet-orchestrator.exe.xyz'
+}
+
+/**
+ * #497's run-44 rescue, which lived as prose in a comment and never as a
+ * block anyone could paste: read the pinned ref on the orchestrator, fetch it
+ * to the laptop over ssh, push it with an operator credential, open the PR by
+ * hand. Every value here is one the drive already held — nothing is computed.
+ * Kept byte-identical to `fleet/RUNBOOK.md` §Park triage step 3 (its spec
+ * matches both against the same four verbs, so the two cannot drift).
+ */
+const rescueCommands = ({ runId, tip, branch, host }) =>
+  `# 1. the run tip is already pinned on the orchestrator (#497) — confirm it
+ssh ${host} 'cd /home/exedev/repo && git rev-parse refs/fleet/${runId}'
+#    expect ${tip}
+# 2. fetch that pinned ref to your laptop over ssh
+git fetch ssh://exedev@${host}/home/exedev/repo refs/fleet/${runId}:refs/heads/${branch}
+# 3. push it with an operator credential — the drive's token could not
+git push origin ${branch}
+# 4. open the PR by hand, carrying this gate receipt as the body
+gh pr create --draft --head ${branch} --title '[parked] fleet ${runId}' --body-file pr-body-${runId}.md
+`
+
+/**
  * The PR body: the gate receipt rendered. `receipt` is the parsed
  * `fleet-receipts/<runId>/gate-receipt.json` from the fetched branch (or null
  * when it could not be read — the body says so rather than pretending).
@@ -169,8 +297,15 @@ const normalizeFinding = (finding) => {
  * acks. Then the five §W1d legs, spend, `autoResolved` and the
  * completeness-critic findings when the receipt carries them (they live in
  * the engine's gitignored `report.json`, which is not on the branch — the
- * evidence bundle has it), the receipt pointers, the driver's notes, the
- * `Closes #N` lines, and the standard trailer.
+ * evidence bundle has it), the post-merge runbook when the plan carried one
+ * (#527), the receipt pointers, the driver's notes, the `Closes #N` lines,
+ * and the standard trailer.
+ *
+ * #524: when a PARKED run's `errors` carry a publish-leg failure and the
+ * caller passes `rescue` ({runId, tip, branch, host}), a `## Rescue` section
+ * sits between the notes and the `Closes` lines — the four hand steps, with
+ * this run's real ref, sha, branch and host in them. A park without such a
+ * failure, and every green body, renders no such section.
  */
 export const renderPullRequestBody = ({
   runId,
@@ -184,6 +319,11 @@ export const renderPullRequestBody = ({
   receipts,
   closes,
   errors,
+  // #527: the plan's `release`/`manual` tasks, `{id, title}` in plan order,
+  // or absent/empty — which is the common case and renders NO section. Every
+  // pre-#527 call shape is unchanged by construction.
+  runbook,
+  rescue,
 }) => {
   const gate = receipt?.gateCheck && typeof receipt.gateCheck === 'object' ? receipt.gateCheck : receipt ?? {}
   const verdict = receipt?.verdict ?? gate?.verdict ?? 'unknown'
@@ -262,6 +402,14 @@ export const renderPullRequestBody = ({
     for (const f of minor) lines.push(`- ${f.detail}`)
     lines.push('')
   }
+  // #527. The titles are the plan's own prose and are rendered VERBATIM: this
+  // is a runbook the operator reads, and a title that carries markdown means
+  // it. Nothing here is a shell or a query — the body is a file `gh` reads.
+  if (Array.isArray(runbook) && runbook.length > 0) {
+    lines.push(`## Post-merge runbook (${runbook.length})`)
+    for (const entry of runbook) lines.push(`- ${String(entry?.id ?? '')} — ${String(entry?.title ?? '')}`)
+    lines.push('')
+  }
   lines.push(`## Receipts (${receipts.length})`)
   if (receipts.length === 0) lines.push('- none')
   for (const r of receipts) {
@@ -271,9 +419,36 @@ export const renderPullRequestBody = ({
   lines.push('')
   lines.push('_`autoResolved` and the completeness-critic findings render only when the receipt carries them; otherwise they live in `report.json` inside the evidence bundle, not on this branch._')
   lines.push('')
-  if (errors.length > 0) {
-    lines.push(`## Driver notes (${errors.length})`)
-    for (const e of errors) lines.push(`- ${e}`)
+  // The rescue is decided BEFORE the notes render: a refused value adds a note
+  // of its own, and the heading's count must stay the number of lines under it.
+  const notes = [...errors]
+  let rescue_ = null
+  if (parked && rescue && errors.some((e) => PUBLISH_FAILURE.test(String(e)))) {
+    const unsafe = unsafeRescueField(rescue)
+    if (unsafe) {
+      notes.push(
+        `rescue block omitted: unsafe ${unsafe.field} ${JSON.stringify(unsafe.value ?? null)} — ` +
+          'refusing to print a command built from it (#497)',
+      )
+    } else rescue_ = rescueCommands(rescue)
+  }
+  if (notes.length > 0) {
+    lines.push(`## Driver notes (${notes.length})`)
+    for (const e of notes) lines.push(`- ${e}`)
+    lines.push('')
+  }
+  if (rescue_) {
+    lines.push('## Rescue')
+    lines.push('')
+    lines.push(
+      `The publish leg failed, but nothing is lost: this run's tip was pinned to \`refs/fleet/${rescue.runId}\` on ` +
+        'the orchestrator before the push was attempted (#497). Recover it by hand — the same four steps as ' +
+        '`fleet/RUNBOOK.md` §Park triage:',
+    )
+    lines.push('')
+    lines.push('```bash')
+    lines.push(rescue_.trimEnd())
+    lines.push('```')
     lines.push('')
   }
   for (const n of closes) lines.push(`Closes #${n}`)
@@ -378,6 +553,10 @@ export const deriveSandboxStat = (statJson) => {
  * @param {string} [opts.prBase] - the PR's base branch (default `main`).
  *   Operator input that reaches a shell, so it passes `isSafeBranchName` at
  *   entry like `runId` does.
+ * @param {'fold'|'serialize'} [opts.overlap] - the engine's overlap mode
+ *   (#514), delivered in the run assignment and forwarded by `run-main.mjs`
+ *   to `ultra_run.py --overlap`. Absent → the assignment carries no `overlap`
+ *   key at all and the engine keeps the compiler's own default.
  * @returns {Promise<{read: object, reportPath: string, detailPath: string, detail: object}>}
  */
 export const driveOne = async ({
@@ -413,6 +592,10 @@ export const driveOne = async ({
   sandboxCpu,
   sandboxMemory,
   sandboxDisk,
+  // #514: the engine's fold-versus-serialize mode, forwarded verbatim to the
+  // sandbox in the run assignment. Undefined is the whole default: nothing is
+  // added to the payload, and the engine keeps the compiler's own default.
+  overlap,
   // #322: overrides the headless-fitness preflight refusal. Pass only with a
   // specific operator pre-authorization for the manual-judgment task named in
   // the thrown error — never as a standing default.
@@ -886,6 +1069,7 @@ export const driveOne = async ({
       port: effectivePort,
       planPath,
       engineEnv,
+      overlap,
       cpu: sandboxCpu,
       memory: sandboxMemory,
       disk: sandboxDisk,
@@ -1358,21 +1542,49 @@ export const driveOne = async ({
           } else errors.push(`git show ${receiptSource} failed (code ${shown?.code})`)
         }
         const closes = parsePlanCloses(committedText)
-        const body = renderPullRequestBody({
-          runId,
-          planPath,
-          branch: fetchedBranch,
-          vmName,
-          parked,
-          receipt,
-          receiptSource,
-          read,
-          receipts: detail.receipts,
-          closes,
-          errors: [...errors],
-        })
+        // #527: the release/manual tasks the compiler set aside, read out of
+        // the bundle teardown already pulled — the only copy that outlives the
+        // VM. `null` is "could not be read", `[]` is "the plan carried none";
+        // only the first is worth a note, and it is exactly one line. The read
+        // never throws, so a bundle that will not open costs the runbook and
+        // nothing else.
+        const runbook = await readRunbookFromBundle(sandboxLogs, boundedExec)
+        if (runbook === null) {
+          errors.push(`post-merge runbook: unreadable in ${sandboxLogs ?? 'no sandbox bundle'} — omitted from this PR`)
+        }
+        // #524: the card is a function of `errors`, and the two legs BELOW —
+        // the push and the `gh pr create` — push onto `errors` after this
+        // first render. So the render is a closure, called twice: once now
+        // (the file has to exist before `gh --body-file` reads it) and once
+        // after the leg, when a publish failure has landed. Before #524 only
+        // the first call existed, so a card that failed to publish described a
+        // drive that had not yet failed: its `## Driver notes` were a snapshot
+        // taken one line too early, and the `## Rescue` section the renderer
+        // grew could never appear at all.
+        //
+        // `rescue` is passed unconditionally — the renderer itself decides,
+        // and it renders the section ONLY for a parked run whose errors carry
+        // a publish-leg failure, so a green run and a clean park are byte-for
+        // -byte what they were.
+        const renderCard = () =>
+          renderPullRequestBody({
+            runId,
+            planPath,
+            branch: fetchedBranch,
+            vmName,
+            parked,
+            receipt,
+            receiptSource,
+            read,
+            receipts: detail.receipts,
+            closes,
+            errors: [...errors],
+            runbook,
+            rescue: { runId, tip: fetchedTip, branch: fetchedBranch, host: orchestratorHost() },
+          })
         fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
         const bodyFile = path.join(resolvedEvidenceDir, `pr-body-${runId}.md`)
+        let body = renderCard()
         fs.writeFileSync(bodyFile, body)
         const title = pullRequestTitle({ runId, planText: committedText, planPath, parked })
 
@@ -1403,6 +1615,17 @@ export const driveOne = async ({
             store.setCell('runs', runId, 'pullRequestUrl', parsed.url)
             note(`publish: opened ${parked ? 'draft ' : ''}PR #${parsed.number} ${parsed.url}`)
           }
+        }
+        // Re-render, now that the publish leg has had its say. Nothing is
+        // rewritten unless the text actually changed, so the file `gh` read on
+        // the success path is left exactly as uploaded; on a failed push or a
+        // failed `gh pr create` no PR exists, and this file IS the park card —
+        // step 4 of the rescue it now carries is what puts it on GitHub.
+        const settled = renderCard()
+        if (settled !== body) {
+          body = settled
+          fs.writeFileSync(bodyFile, body)
+          note(`publish: re-rendered ${path.basename(bodyFile)} with the publish-leg failure (#524)`)
         }
       } catch (error) {
         errors.push(`pull request: ${scrub(error?.message ?? error)}`)
