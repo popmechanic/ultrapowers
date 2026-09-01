@@ -221,14 +221,268 @@ def split_tasks(text):
     return tasks
 
 
-def parse_task(t, raise_on_marker_error=True):
+# ---------------------------------------------------------------------------
+# claims-v1 (spec 2026-08-31 §3-§4). An OPT-IN grammar, declared by a
+# `**Grammar:** claims-v1` line in the plan header. Absent, every line below is
+# dead code and the compiler parses exactly as it always has — legacy is the
+# rollback path and its output is pinned byte-for-byte by the fixture corpus.
+#
+# Every diagnostic this section can emit is namespaced `grammar:` so a
+# claims-v1 refusal is never confused with a legacy one, and no pre-existing
+# diagnostic string changes.
+# ---------------------------------------------------------------------------
+LEGACY_GRAMMAR = "legacy"
+CLAIMS_GRAMMAR = "claims-v1"
+# The declaration line, matched on the plan HEADER only (everything before the
+# first task heading) and fence-aware, so a plan that merely quotes or fences
+# the line — this repo's own spec and plan docs do — is not silently switched
+# into a grammar it was not written in.
+GRAMMAR_RE = re.compile(r"^\*\*Grammar:\*\*\s*(\S+)\s*$")
+
+# The six body slots, in the one legal order. There is no Steps slot: under
+# claims-v1 there is nowhere for procedure to live, which is the point.
+CLAIMS_SLOTS = ("Claim", "Authorized-by", "Interfaces", "Context", "Proof",
+                "Stale-if")
+# A slot label line. Both bold-colon forms are recognized (`**Claim:**` and
+# `**Claim**:`) and the name is matched case/space-insensitively, so a
+# near-miss label surfaces as a slot-shape refusal instead of degrading into
+# prose that silently empties the slot.
+SLOT_LABEL_RE = re.compile(
+    r"^\*\*\s*(claim|authorized[-\s]?by|interfaces|context|proof|stale[-\s]?if)"
+    r"\s*(?::\s*\*\*|\*\*\s*:)\s*(.*)$", re.I)
+# The provenance tag closing the Claim's operator sentence: the signature is
+# over a quote at signing time (§4.4), so the FORM is the compiler's business
+# and resolution is the provenance script's.
+CLAIM_PROVENANCE_RE = re.compile(r"\((elicited|quoted from #(\d+))\)\s*$", re.I)
+# Stale-if is a predicate, not prose — a free sentence here is undecidable and
+# is refused (§3).
+STALE_PREDICATE_RE = re.compile(
+    r"^(path-exists|path-absent|sha-matches|issue-open|issue-closed):")
+# The two body tiers claims-v1 does not sign. Ordering is DERIVED (Interfaces,
+# Files), never declared, so the lines may not appear at all — matched in the
+# same any-colon-position way MARKER_ISH is, so a near-miss cannot slip past.
+CLAIMS_REFUSED_MARKERS = (
+    ("Depends-on", re.compile(r"^\*\*\s*depends[-\s]on\s*(?:\*\*)?\s*:", re.I),
+     "ordering is derived from Interfaces and Files, never declared"),
+    ("Commutes", re.compile(r"^\*\*\s*commutes\s*(?:\*\*)?\s*:", re.I),
+     "same-path overlap is derived from Files, never declared"),
+)
+CLAIMS_STEP_RE = re.compile(r"^[-*+]\s*\[[ xX]\]")
+
+
+def plan_grammar(md_text):
+    """The grammar a plan declares: "claims-v1" or "legacy" (the default)."""
+    for line, fenced in _fence_aware_lines(md_text):
+        if fenced:
+            continue
+        if match_head(line):
+            break  # the header ends at the first task heading
+        m = GRAMMAR_RE.match(line.strip())
+        if m and m.group(1) == CLAIMS_GRAMMAR:
+            return CLAIMS_GRAMMAR
+    return LEGACY_GRAMMAR
+
+
+def _claims_slot_name(raw):
+    """Canonical slot name for a matched label (`stale if` -> `Stale-if`)."""
+    key = re.sub(r"[\s-]+", "-", raw.strip().lower())
+    return next(s for s in CLAIMS_SLOTS if s.lower() == key)
+
+
+def _claims_file_paths(value):
+    """The path(s) a Files-style bullet value names, by the same rule the
+    legacy Files parser uses: backticked path-like tokens, else the first
+    token when it is itself path-like."""
+    backticked = [p for p in PATH_RE.findall(value) if _is_pathlike(p)]
+    if backticked:
+        paths = backticked
+    else:
+        tokens = value.strip().split()
+        first = tokens[0].rstrip(",;") if tokens else ""
+        paths = [first] if _is_pathlike(first) else []
+    return [p.split(":")[0] for p in paths if p]
+
+
+def parse_claims_body(body, task_id):
+    """Parse one claims-v1 task body into its six slots.
+
+    Returns the slot texts under the keys `claim`, `authorized_by`,
+    `interfaces`, `context`, `proof`, `stale_if` (each the slot's raw text,
+    label stripped), the `claim_provenance` tag ("elicited" | "quoted:#NNN" |
+    None), the parsed `stale_if_entries` / `proof_tests`, and every grammar
+    `violations` message the body earns. The function is pure: it reads the
+    body and nothing else (§4.4 keeps the compiler a pure function — anchor
+    and quote RESOLUTION is the provenance script's job, not this one's)."""
+    lines = list(_fence_aware_lines(body))
+    violations = []
+
+    found = []  # (line index, canonical name, inline remainder)
+    for i, (line, fenced) in enumerate(lines):
+        if fenced:
+            continue
+        m = SLOT_LABEL_RE.match(line.strip())
+        if m:
+            found.append((i, _claims_slot_name(m.group(1)), m.group(2).strip()))
+
+    slots, ranges = {}, {}
+    for n, (i, name, inline) in enumerate(found):
+        end = found[n + 1][0] if n + 1 < len(found) else len(lines)
+        text = "\n".join(([inline] if inline else [])
+                         + [l for l, _ in lines[i + 1:end]]).strip()
+        # First occurrence wins; a duplicate label is caught as a slot-shape
+        # violation below rather than silently overwriting a filled slot.
+        slots.setdefault(name, text)
+        ranges.setdefault(name, (i, end))
+
+    # Slot shape: exactly six, in order, none empty.
+    seen = [name for _, name, _ in found]
+    for idx, expected in enumerate(CLAIMS_SLOTS):
+        actual = seen[idx] if idx < len(seen) else None
+        if actual != expected:
+            violations.append(
+                "grammar: expected slot **%s:** in task %s, %s — the body is "
+                "exactly %s, in that order"
+                % (expected, task_id,
+                   "found **%s:**" % actual if actual else "slot missing",
+                   ", ".join(CLAIMS_SLOTS)))
+            break
+    else:
+        if len(seen) > len(CLAIMS_SLOTS):
+            violations.append(
+                "grammar: expected slot list to end at **Stale-if:** in task "
+                "%s, found a further **%s:** — the body is exactly %s, in that "
+                "order" % (task_id, seen[len(CLAIMS_SLOTS)],
+                           ", ".join(CLAIMS_SLOTS)))
+    for name in CLAIMS_SLOTS:
+        if name in slots and not slots[name]:
+            violations.append(
+                "grammar: expected slot **%s:** in task %s to carry content, "
+                "found it empty" % (name, task_id))
+
+    # No Steps: procedure is unsayable under claims-v1 (§7 Fate A).
+    step = next((line.strip() for line, fenced in lines
+                 if not fenced and CLAIMS_STEP_RE.match(line.strip())), None)
+    if step is not None:
+        violations.append(
+            "grammar: Steps are not a slot — task %s carries a checkbox step "
+            "(%s); claims-v1 has no Steps slot" % (task_id, step))
+
+    # The two refused body markers.
+    for label, pattern, why in CLAIMS_REFUSED_MARKERS:
+        if any(pattern.match(line.strip()) for line, fenced in lines
+               if not fenced):
+            violations.append(
+                "grammar: %s is not signed under claims-v1 — task %s: %s"
+                % (label, task_id, why))
+
+    # Fences are legal in Proof and nowhere else: Proof is the exam, every
+    # other slot is prose the gate reads.
+    proof_start, proof_end = ranges.get("Proof", (len(lines), len(lines)))
+    stray = next((i for i, (line, _) in enumerate(lines)
+                  if FENCE.match(line.strip())
+                  and not proof_start <= i < proof_end), None)
+    if stray is not None:
+        violations.append(
+            "grammar: code fences are legal only in Proof — task %s, body line "
+            "%d (%s)" % (task_id, stray + 1, lines[stray][0].strip()))
+
+    # Provenance tag FORM on the Claim's operator sentence — the tag CLOSES
+    # that sentence, which may wrap over several lines, so every line up to
+    # the machine restatement is a candidate (and all of them when the pair
+    # carries no `Machine:` lead-in).
+    claim = slots.get("Claim", "")
+    provenance = None
+    operator_lines = []
+    for line in claim.splitlines():
+        if re.match(r"^machine\s*:", line.strip(), re.I):
+            break
+        operator_lines.append(line)
+    m = next((m for m in (CLAIM_PROVENANCE_RE.search(l.strip())
+                          for l in operator_lines) if m), None)
+    if m:
+        provenance = ("elicited" if m.group(2) is None
+                      else "quoted:#" + m.group(2))
+    elif claim:
+        violations.append(
+            "grammar: Claim carries no provenance tag — task %s; the operator "
+            "sentence ends `(elicited)` or `(quoted from #NNN)`" % task_id)
+
+    # Stale-if: one predicate per line, bullet optional.
+    stale_entries = []
+    for line in slots.get("Stale-if", "").splitlines():
+        entry = re.sub(r"^[-*+]\s+", "", line.strip())
+        if not entry:
+            continue
+        stale_entries.append(entry)
+        if not STALE_PREDICATE_RE.match(entry):
+            violations.append(
+                "grammar: Stale-if entry is not a predicate — task %s: %r; use "
+                "path-exists:/path-absent:/sha-matches:/issue-open:/"
+                "issue-closed:" % (task_id, entry))
+
+    # Proof/implementation path disjointness: the exam is a distinct artifact
+    # (#447), so a Proof-referenced `Test:` path may not be one the task itself
+    # creates or modifies.
+    impl_paths = set()
+    for line, fenced in lines[:found[0][0] if found else len(lines)]:
+        f = None if fenced else FILE_LINE.match(line.strip())
+        if f and f.group(1) in ("Create", "Modify"):
+            impl_paths.update(_claims_file_paths(f.group(2)))
+    proof_tests = set()
+    for line, fenced in lines[proof_start:proof_end]:
+        f = None if fenced else FILE_LINE.match(line.strip())
+        if f and f.group(1) == "Test":
+            proof_tests.update(_claims_file_paths(f.group(2)))
+    for path in sorted(proof_tests & impl_paths):
+        violations.append(
+            "grammar: Proof test paths must be disjoint from implementation "
+            "paths — task %s: `%s` is both a Proof `Test:` path and a "
+            "`Create:`/`Modify:` path" % (task_id, path))
+
+    return {"claim": claim,
+            "authorized_by": slots.get("Authorized-by", ""),
+            "interfaces": slots.get("Interfaces", ""),
+            "context": slots.get("Context", ""),
+            "proof": slots.get("Proof", ""),
+            "stale_if": slots.get("Stale-if", ""),
+            "claim_provenance": provenance,
+            "stale_if_entries": stale_entries,
+            "proof_tests": sorted(proof_tests),
+            "violations": violations}
+
+
+def _apply_claims_grammar(t):
+    """Overlay the claims-v1 body grammar on a task whose head markers and
+    **Interfaces:** block the legacy pass has already parsed (they are
+    unchanged under claims-v1, §3). The two tiers claims-v1 does not sign are
+    dropped rather than trusted: whatever the legacy pass read out of a
+    **Depends-on:**/**Commutes:** line is discarded here, and the line itself
+    is a refusal recorded in `grammar_violations`."""
+    claims = parse_claims_body(t["body"], t["id"])
+    t.update(claims=claims,
+             claim_provenance=claims["claim_provenance"],
+             grammar_violations=claims["violations"],
+             depends_on=[], depends_none=False,
+             commutes=[], commutes_conflicts=[])
+    return t
+
+
+def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
     """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
     validation failure (currently: an invalid or duplicate **Review:** value)
     is reported: True (the normal compile path, default) raises SystemExit
     immediately, so main() dies loudly at the first one found; False (the
     --check collecting mode, #85) records the same message into the returned
     task's `marker_violations` list instead, so collect_violations can gather
-    every task's violations in one pass rather than aborting at the first."""
+    every task's violations in one pass rather than aborting at the first.
+
+    `grammar` selects the plan's declared grammar (plan_grammar). Under the
+    default "legacy" this function is exactly what it has always been; under
+    "claims-v1" the head markers (**Type:**/**Files:**/**Review:**) and the
+    **Interfaces:** block parse identically — spec 2026-08-31 §3 keeps them
+    signed and unchanged — and the six-slot body grammar is then overlaid by
+    _apply_claims_grammar, which also drops the two body tiers claims-v1 does
+    not sign (**Depends-on:**/**Commutes:**, both refused outright)."""
     ttype = None
     deps, deps_none = [], False
     commutes = []
@@ -514,6 +768,8 @@ def parse_task(t, raise_on_marker_error=True):
              writes=sorted(set(creates) | set(modifies)),
              interfaces={"consumes": consumes, "produces": produces},
              prose=prose)
+    if grammar == CLAIMS_GRAMMAR:
+        _apply_claims_grammar(t)
     return t
 
 
@@ -819,9 +1075,15 @@ def collect_violations(plan_path):
         return ["duplicate task id(s): " + ", ".join(dups)
                 + " — task headings must be unique."]
 
-    tasks = [parse_task(t, raise_on_marker_error=False) for t in raw_tasks]
+    grammar = plan_grammar(plan_text)
+    tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar)
+             for t in raw_tasks]
 
     violations = []
+    # claims-v1 body grammar (empty for every legacy plan, which declares no
+    # grammar and so never enters the slot parser at all).
+    for t in tasks:
+        violations.extend(t.get("grammar_violations", []))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
     # A **Commutes:** after the header block is discarded by the runtime
@@ -1706,7 +1968,8 @@ def main(argv=None):
               "Refusing to compile." + level_hint, file=sys.stderr)
         raise SystemExit(1)
 
-    tasks = [parse_task(t) for t in split_tasks(plan_text)]
+    grammar = plan_grammar(plan_text)
+    tasks = [parse_task(t, grammar=grammar) for t in split_tasks(plan_text)]
     if not tasks:
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
@@ -1732,6 +1995,17 @@ def main(argv=None):
     for t in tasks:
         disp, heuristic = classify(t)
         t["disposition"], t["heuristic"] = disp, heuristic
+
+    # claims-v1 body grammar (spec 2026-08-31 §4): a slot-shape, Steps,
+    # refused-marker, fence, provenance, Stale-if or Proof-disjointness fault
+    # is a loud compile error, raised BEFORE edge building for the same reason
+    # the Files gate is — a body the compiler cannot read is a body whose
+    # ordering it must not guess at. Empty for every legacy plan.
+    grammar_violations = [v for t in tasks for v in t.get("grammar_violations", [])]
+    if grammar_violations:
+        print("compile_plan: claims-v1 grammar violation(s) — refusing to "
+              "compile:\n" + "\n".join(grammar_violations), file=sys.stderr)
+        raise SystemExit(1)
 
     files_violations = [v for t in tasks
                         if not _files_grammar_exempt(t)
