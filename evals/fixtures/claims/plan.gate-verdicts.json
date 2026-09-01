@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "329fe5317295ed8635b51bdde717191bf45933fc37487d25ef944ae898817dad",
+      "verdict": "pass",
+      "reason": "layer match: the machine restatement pins size and both refusals; the proof exercises exactly those three cases."
+    },
+    "2": {
+      "hash": "3904ca6f43b6c18f9eb3bb99a27cf1c31a6a781154e892703ebf736222b8289c",
+      "verdict": "pass",
+      "reason": "layer match: order and the empty case are both claimed and both exercised."
+    },
+    "3": {
+      "hash": "7970442bf8babc51989980c7475648de83d6e312902880a11f095aa8d79d0745",
+      "verdict": "pass",
+      "reason": "layer match: the unit suffix is claimed and the proof asserts the full formatted string, not a substring."
+    }
+  },
+  "tally": {
+    "dispatched": 3,
+    "rejected": 0
+  }
+}
