@@ -105,6 +105,9 @@ sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
 **From a filed issue** (the common path, and what keeps autonomous drains working): quote
 the operator's own words as the Claim, anchored to the issue; bind the machine
 restatement; show the pair once for confirmation — confirmation, not authorship.
+**Quote desired-state sentences, never diagnosis sentences**: an issue's description of
+the defect ("today X happens") makes a claim a passing exam renders *false* — the gate
+rejects it. Quote the sentence that says what should be true instead.
 
 **From a bare idea:** ask scenario questions — *"after this run, what can you see or do
 that you couldn't before?"* — offering 2–3 pre-chewed do:/see: options via
