@@ -279,7 +279,7 @@ def main(argv=None):
     ap.add_argument("--overlap", choices=OVERLAP_CHOICES, default=None,
                     help="scheduling knob forwarded to compile_plan.py's "
                          "--overlap; omit to use the compiler's own default "
-                         "(serialize)")
+                         "(fold)")
     a = ap.parse_args(argv)
 
     if a.validate_knobs is not None:

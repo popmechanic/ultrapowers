@@ -111,6 +111,14 @@ stops at the conflict that opened it.
 
 ### Auto-union (the assume rung)
 
+> **Producer status (2026-09-01, #390):** the CLI flag below is a supported
+> contract and still works, but its only producer was the `Commutes:` plan
+> marker, retired under the claims-v1 grammar — the engine now passes
+> `--commutes` only for legacy-grammar plans that declare it. A run whose plan
+> is claims-v1 never exercises this rung; conflicts there take ordinary
+> dispatch. If fold metrics show the union optimization is missed, the measured
+> case is for the engine deriving commutativity from diff shape (spec §1.2).
+
 A `resolve` event is also what the CLI writes when it resolves a conflict
 **itself**, with no resolver dispatch. `fold`/`resolve --commutes
 <taskId>=<path1,path2,...>` (repeatable) declares a task's commutative paths.

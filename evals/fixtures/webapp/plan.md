@@ -1,6 +1,6 @@
 # Linkboard Implementation Plan
 
-> **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries ultraplan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Parallel execution: use `ultrapowers:ultrapowers` (this plan carries legacy-grammar plan markers). Sequential fallback: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Acceptance:** suite — eval fixture; the committed `node --test tests/` suite is the check.
 
