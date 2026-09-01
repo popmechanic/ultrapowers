@@ -1,0 +1,18 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "eb64791fe8d9437eec2bc87712bcae41e56738223fcc9f3beac1785643f6250c",
+   "verdict": "pass",
+   "reason": "round 2: CLI argv leg (h) added after round-1 layer-mismatch rejection; every Machine clause has a leg at the launcher layer, concurrency proven by overlap-in-flight, distinctness universal"
+  },
+  "2": {
+   "hash": "cd1140b19808e6369e139856ac4b69c7c9e5fcd18d4c724959926eb9a004939f",
+   "verdict": "pass",
+   "reason": "round 3: Machine amended to state the reported-tokens fallback (round-2 quantifier mismatch) and CLI refusal leg added to (i); deciding-stage asserted per rubric stage after round-1 rejection"
+  }
+ },
+ "tally": {
+  "dispatched": 5,
+  "rejected": 3
+ }
+}
