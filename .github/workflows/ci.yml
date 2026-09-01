@@ -45,10 +45,10 @@ jobs:
       # attention, and one at a single word of headroom made an implementer
       # delete a normative rule to pay it. Accretion stays visible here and in
       # release commit bodies; what is gone is the assert that could hand a
-      # worker an impossible budget. The cap that survives is on what an agent
-      # is MADE to read — fleet/roles/*.md, 350 words, at the point of use.
+      # worker an impossible budget. #496 (closed 2026-09-01) deleted the last
+      # refusing ceiling — fleet/roles/*.md now report here too; nothing gates.
       - name: Report skill prose sizes
-        run: wc -w skills/*/SKILL.md 2>/dev/null || true
+        run: wc -w skills/*/SKILL.md fleet/roles/*.md 2>/dev/null || true
 
       - name: Run tests
         run: python -m pytest tests/ -n auto -v
