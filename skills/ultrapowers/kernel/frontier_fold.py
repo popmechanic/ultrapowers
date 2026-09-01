@@ -114,6 +114,19 @@ class FrontierEngine:
         self._touched_at[path] = len(self.events) - 1
         return True
 
+    def state_strings(self):
+        """Per-path serialized weave states of the current frontier.
+
+        The raw manyana state strings — the persistence unit Tier 1 writes as
+        content-addressed blobs (spec 2026-09-01 §2.1), NOT the visible text
+        `manifest` renders. A copy: the weave dir is written from a snapshot
+        of the frontier, and no caller may reach in and edit the live map.
+
+        Binary paths are absent by construction — `RepoState.files` holds text
+        weaves only, and only a weave has a state to persist.
+        """
+        return dict(self.frontier.files)
+
     def manifest(self):
         return rw.manifest(self.frontier)
 

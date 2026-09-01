@@ -4,62 +4,7 @@ Maintainer rationale for the ultrapowers operator procedure. The operator
 SKILL.md states WHAT to run; this file records WHY each guard exists. Load it
 when changing the engine, the gate, or the scripts — not during routine runs.
 
----
-
-## § Step 4 — Determinism guard and the read/write boundary
-
-> **Determinism guard:** never trigger the run with the `ultracode` keyword or by
-> asking for "a workflow" in prose — that opt-in makes Claude **author a new
-> script at runtime**, which is exactly the nondeterminism this skill exists to
-> remove. The only sanctioned launch is the saved workflow installed at Step 4a.
-> If it cannot be launched, the run fails (no receipt → red) — never a
-> fallback, never an improvised script.
-
-ultrapowers runs two kinds of phase, and they have different rules:
-
-- **Write-side phases** — anything that creates branches, edits files, merges,
-  or otherwise mutates a repository — MUST be executed by a registry harness
-  (a `skills/ultrapowers/harnesses/<name>.harness.json` whose `writeSide` is
-  true), launched by its `meta.name`. Never author or improvise a write-side
-  harness at runtime.
-- **Read-only phases** — discovery, triage, research, scoring — MAY be
-  improvised at runtime as dynamic workflows, and an improvised workflow MUST
-  stay read-only.
-
-This is policy enforced by prompts and review, not a sandbox; the hard
-guarantee is that nothing improvised ever holds the merge keys. The
-determinism guard restated: never launch write-side work via the `ultracode`
-keyword or a prose "make me a workflow" request — that authors a new script at
-runtime, which is exactly the nondeterminism the registry exists to remove.
-
----
-
-## § Step 4a — Saved-workflow registry snapshot
-
-Saved workflows (`.claude/workflows/*.js`) are the documented deterministic
-launch surface: they run **by name** with `args`, instead of relying on ad-hoc
-script delivery. Plugins cannot ship saved workflows, so the copies must be
-installed into the project.
-
-The plugin's **SessionStart hook** (`hooks/session_start.sh`) does this install
-at the start of *every* session — that is the load-bearing install, because the
-engine snapshots its saved-workflow registry **once, at session start**. A copy
-that lands on disk before that snapshot is registered this session; a copy
-written *during* the session (`ultra_run.py`'s `install` stage) is only registered
-**next** session. This is exactly why a fresh checkout's first `/ultrapowers`
-(A pre-0.3.0 row about the deleted Workflow-launch failure mode was removed at cutover.)
-had just copied the file: the project `.claude/workflows/` is gitignored and starts
-empty, so at the registry snapshot only the plugin-shipped workflows existed. The
-hook closes that window for normal use; the manual install remains an idempotent
-safety net (hooks disabled, a non-hook surface, a hand-installed skill).
-
-The installed filename is immaterial because the engine resolves saved workflows
-by the script's `meta.name`, not the filename. Run the copy unconditionally — it
-is byte-for-byte the committed script, so overwriting keeps any stale copy in
-sync with the installed plugin version. Never edit the copy. (The workflow is
-named `ultrapowers-run`, not `ultrapowers`, so the engine's auto-registered
-`/<meta.name>` command cannot shadow the `/ultrapowers` skill — see
-`docs/bugs/2026-06-15-ultrapowers-command-collision.md`.)
+Workflow-runtime rationale removed 2026-09-01 — that runtime was deleted at 0.3.0 (#434); see git history.
 
 ---
 
