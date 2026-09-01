@@ -180,15 +180,23 @@ export const readReportTokens = (reportFile) => {
 }
 
 /**
- * Sum every `output_tokens` reading in one Claude Code session transcript.
+ * Sum the `output_tokens` of every distinct assistant MESSAGE in one Claude
+ * Code session transcript.
  *
- * A transcript is newline-delimited JSON; each assistant message carries a
- * `message.usage` (or bare `usage`) block, and `output_tokens` is that turn's
- * generation. Summing them over a live, append-only transcript yields a
- * CUMULATIVE total that only rises — exactly the shape `maybeAppendSpend`'s
- * delta sampling needs.
+ * A transcript is newline-delimited JSON. Claude Code writes one record PER
+ * CONTENT BLOCK of a streamed assistant message (text, then each tool_use),
+ * and every one of those records carries the same `message.id` and the same
+ * `message.usage` block — the whole message's generation, not the block's.
+ * Summing every record therefore counts one message as many times as it has
+ * blocks: run-47 (2026-09-01) read 582,547 from 10 transcripts whose distinct
+ * messages total 239,564, the exact figure the workers' own envelopes report
+ * (`modelUsage`). So the reading is keyed by `message.id`, last value wins;
+ * a record with no id (older shapes, the sim's minimal lines) still counts
+ * once each. Over a live, append-only transcript the result is still
+ * CUMULATIVE and only rises — the shape `maybeAppendSpend`'s delta sampling
+ * needs — because a message's usage is complete on its first record.
  */
-const sumTranscriptOutputTokens = (file) => {
+export const sumTranscriptOutputTokens = (file) => {
   let content
   try {
     content = fs.readFileSync(file, 'utf8')
@@ -196,6 +204,7 @@ const sumTranscriptOutputTokens = (file) => {
     return 0
   }
   let total = 0
+  const byMessage = new Map()
   for (const raw of content.split('\n')) {
     if (!raw) continue
     let record
@@ -206,8 +215,12 @@ const sumTranscriptOutputTokens = (file) => {
     }
     const usage = record?.message?.usage ?? record?.usage
     const out = usage?.output_tokens
-    if (typeof out === 'number' && Number.isFinite(out)) total += out
+    if (typeof out !== 'number' || !Number.isFinite(out)) continue
+    const id = record?.message?.id
+    if (typeof id === 'string' && id) byMessage.set(id, out)
+    else total += out
   }
+  for (const out of byMessage.values()) total += out
   return total
 }
 

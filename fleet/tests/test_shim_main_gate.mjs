@@ -329,4 +329,30 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
   ok('readRunConfigTokens: recursive sum keyed by the run-owned dir, null when empty')
 }
 
+// --- 18. one message, many records: counted once (2026-09-01, run-47) --------
+// Claude Code writes one transcript record per streamed content block, each
+// carrying the same `message.id` and the whole message's `usage`. Summing every
+// record read run-47 at 582,547 output tokens against 239,564 of actual
+// generation (the workers' own envelopes). Keyed by message id, last value
+// wins; records with no id still count once each.
+{
+  const t18 = tmp()
+  const configDir = path.join(t18, 'claude')
+  const proj = path.join(configDir, 'projects', '-repo-y')
+  fs.mkdirSync(proj, { recursive: true })
+  const rec = (id, n, extra = {}) =>
+    JSON.stringify({ type: 'assistant', message: { id, usage: { output_tokens: n } }, ...extra }) + '\n'
+  fs.writeFileSync(path.join(proj, 'bbbb.jsonl'),
+    rec('msg_1', 100) +            // text block
+    rec('msg_1', 100) +            // tool_use block, same message, same usage
+    rec('msg_1', 100) +            // a second tool_use block
+    rec('msg_2', 40) +
+    JSON.stringify({ message: { usage: { output_tokens: 3 } } }) + '\n' +   // no id: counts once
+    JSON.stringify({ message: { usage: { output_tokens: 3 } } }) + '\n' +   // no id: counts again
+    JSON.stringify({ type: 'user', message: { role: 'user' } }) + '\n')     // no usage: ignored
+  assert.deepEqual(readRunConfigTokens(configDir), { total: 146, files: 1 },
+    'three records of msg_1 count 100 once; id-less records count each; 100+40+3+3')
+  ok('readRunConfigTokens: per-block records of one message are counted once (run-47 2.4x overcount)')
+}
+
 console.log(`\nALL TESTS PASSED (${passed})`)
