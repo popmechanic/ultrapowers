@@ -95,9 +95,12 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   design inputs, incl. Amendments 4–6 (sign intent, derive the plan, no verbatim implementation
   code, per-run token cap deleted) and #382's measured cache rows, remain the standing record in
   `docs/superpowers/specs/2026-08-28-one-driver-design-inputs.md`.
-- **Open maps:** #238 *The Authoring Frontier* (plan authoring; #243 resolved 2026-08-28 → #390
-  dependency posture; the live question is #239 — can plan-verbatim defects be made
-  inexpressible?); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
+- **Retired map — #238 *The Authoring Frontier* (destination reached 2026-09-01):** #239
+  answered yes (six-slot claims-v1 grammar), #390 shipped it at 0.3.2 (`ultrawrite`;
+  ultraplan + the writing-plans dependency deleted). Read as history.
+- **Open maps:** #525 *The Verification Frontier* (review finds truth it cannot enforce —
+  three generations of blocking-findings-that-could-not-block; tickets #518/#447/#519/#232,
+  experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
   and never patch `kernel/vendor/manyana.py`, it is sha-pinned on purpose).
