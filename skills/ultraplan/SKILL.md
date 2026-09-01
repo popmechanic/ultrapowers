@@ -38,10 +38,7 @@ independence the sequential pen glides over. Five moves:
 3. **Let same-file edits stand.** Coupling is interfaces and existence, not
    files. The compiler never serializes same-file text writes: the fold
    path resolves concurrent edits at merge, so a shared hot file is never a
-   reason to reshape a plan. Three old workarounds are
-   authoring **defects**: splitting a feature or a file to dodge a collision;
-   chaining a fan of independent tasks to serialize writers; adding
-   `Depends-on` for file overlap alone. Let colliding `Modify` lines collide.
+   reason to reshape a plan. Let colliding `Modify` lines collide.
    Two obligations survive: `**Files:**` blocks remain required — they are the
    compiler's contention-detection input — and declare `**Commutes:**` on shared
    append-natured surfaces so the engine can classify that contention and union
@@ -73,11 +70,6 @@ even without parallelism in mind?"*. A contract introduced only to fan out fails
 correct outcome — small or inherently-linear work should not be reshaped. Gate
 plus valve keep shaping from manufacturing breadth; the recommender routes a
 narrow plan to a sequential executor honestly.
-
-**Author for the resolver.** Write tasks that fold cleanly: give each a stable anchor to edit near (a named
-function, a labeled section), designate an append zone for a list two tasks both
-grow, and prefer additive registration over rewriting a shared block. Resolver
-guidance only — nothing parses it.
 
 ## Efforts too large for one plan
 
@@ -352,9 +344,7 @@ After writing-plans' own self-review checklist, verify:
 - Decomposition was shaped before annotation: every contract-first task names
   its independence win and passes the good-engineer test, each surviving move
   carries a `**Parallelization rationale:**` line — or the plan is intentionally
-  narrow because the work has no latent parallelism — and no task shape exists
-  only to dodge a same-file collision (no unnatural split, no chain-for-a-fan,
-  no overlap-only `Depends-on`).
+  narrow because the work has no latent parallelism.
 - Every `**Commutes:**` claim is true: the declared paths are in that task's own
   `**Files:**`, and its edits to them really are additive registrations.
 - Every task carries an explicit `**Type:**` (or is intentionally default

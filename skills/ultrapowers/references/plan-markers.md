@@ -258,8 +258,8 @@ For the plan author (loaded at writing time by the `ultraplan` skill):
   task's body, never only in a preamble.
 - Encode ordering as `**Depends-on:**` on the downstream task; never write global
   ordering prose.
-- Let same-file edits stand. Concurrent same-file text writes fold at merge, so never
-  split a feature, chain a fan, or add a `**Depends-on:**` to dodge a collision. Declare
+- Let same-file edits stand. Never split a feature, chain a fan, or add a
+  `**Depends-on:**` to dodge a collision. Declare
   `**Commutes:**` on shared append-natured surfaces — registration surfaces (route
   tables, export lists, manifests) and shared test modules where two tasks each append
   test functions to the same file; both writers declare it, and only for append-shaped

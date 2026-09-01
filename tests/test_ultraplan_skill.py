@@ -97,12 +97,10 @@ def test_ultraplan_names_every_marker_the_contract_defines():
     assert "adversarial" in text and "lean" in text
 
 
-def test_ultraplan_carries_the_commutes_and_resolver_doctrine():
+def test_ultraplan_carries_the_commutes_doctrine():
     text = ULTRAPLAN.read_text()
     # The Commutes marker is authored here, not only in the compiler.
     assert "**Commutes:**" in text
-    # Fold-native authoring guidance: write tasks the merge resolver can fold.
-    assert "author for the resolver" in text.lower()
 
 
 def test_ultraplan_drops_the_phantom_edge_authoring_rules():
@@ -165,3 +163,105 @@ def test_authoring_rules_require_evidence_for_live_world_claims():
     text = (ROOT / "skills/ultraplan/SKILL.md").read_text()
     assert "correspondence" in text
     assert "hand-executed record" in text
+
+
+# --- #360 sitting 3: the anti-workaround doctrine is deduped ------------------
+# The retired failure class is same-file-contention steering: the compiler folds
+# concurrent same-file text writes, so the argument restatements are dead weight
+# while the imperatives they wrap are live contract. plan-markers.md keeps the
+# ONE imperative copy; SKILL.md keeps only the obligations that still bind.
+
+MARKERS = ROOT / "skills/ultrapowers/references/plan-markers.md"
+
+
+def norm(text):
+    """Whitespace-insensitive view — these files hard-wrap prose."""
+    return " ".join(text.split())
+
+
+def test_skill_drops_the_anti_workaround_argumentation():
+    text = norm(ULTRAPLAN.read_text())
+    assert "Three old workarounds are authoring **defects**" not in text
+    assert "splitting a feature or a file to dodge a collision" not in text
+    assert "chaining a fan of independent tasks to serialize writers" not in text
+    assert "adding `Depends-on` for file overlap alone" not in text
+
+
+def test_skill_self_review_drops_the_dodge_clause():
+    text = norm(ULTRAPLAN.read_text())
+    assert "no task shape exists only to dodge a same-file collision" not in text
+    assert "no unnatural split, no chain-for-a-fan, no overlap-only `Depends-on`" not in text
+    # The bullet itself survives, ending on the escape valve.
+    assert (
+        "- Decomposition was shaped before annotation: every contract-first task names "
+        "its independence win and passes the good-engineer test, each surviving move "
+        "carries a `**Parallelization rationale:**` line — or the plan is intentionally "
+        "narrow because the work has no latent parallelism."
+    ) in text
+
+
+def test_skill_drops_the_resolver_choreography_paragraph():
+    text = norm(ULTRAPLAN.read_text())
+    assert "Author for the resolver" not in text
+    assert "author for the resolver" not in text.lower()
+    assert "Write tasks that fold cleanly" not in text
+    assert "stable anchor to edit near" not in text
+    assert "append zone" not in text
+    assert "Resolver guidance only — nothing parses it." not in text
+
+
+def test_skill_keeps_every_move_3_imperative_verbatim():
+    text = norm(ULTRAPLAN.read_text())
+    # Files: required — the contention-detection input.
+    assert (
+        "Two obligations survive: `**Files:**` blocks remain required — they are the "
+        "compiler's contention-detection input — and declare `**Commutes:**` on shared "
+        "append-natured surfaces so the engine can classify that contention and union "
+        "the additions instead of resolving them. Registration surfaces (route tables, "
+        "export lists, manifests) and shared test modules two tasks both append to "
+        "qualify; never declare it on a file the task also modifies or deletes existing "
+        "lines in."
+    ) in text
+    # The non-text exception.
+    assert (
+        "One exception: chain non-text (binary/symlink) same-file pairs with "
+        "`Depends-on` — they run in parallel otherwise and always fall back."
+    ) in text
+    # #233 blast radius.
+    assert (
+        "Blast radius follows the contract, not the file: a task that changes a "
+        "declared `Produces:` shape owns every strict-equality pin of it, in any "
+        "sibling's file — list that file in its own `**Files:**` (#233)."
+    ) in text
+    # The move survives as an imperative, and the deleted argument leaves no seam.
+    assert (
+        "reason to reshape a plan. Let colliding `Modify` lines collide. Two obligations"
+    ) in text
+
+
+def test_markers_keeps_the_one_imperative_copy_of_the_doctrine():
+    text = norm(MARKERS.read_text())
+    # The imperative survives here — this is the surviving copy.
+    assert (
+        "Let same-file edits stand. Never split a feature, chain a fan, or add a "
+        "`**Depends-on:**` to dodge a collision."
+    ) in text
+    # The rationale restatement does not; the marker semantics section above
+    # already carries it once (`the fold path resolves them at merge`).
+    assert "Concurrent same-file text writes fold at merge, so never" not in text
+    # Live contract, untouched.
+    assert (
+        "Declare `**Commutes:**` on shared append-natured surfaces — registration "
+        "surfaces (route tables, export lists, manifests) and shared test modules where "
+        "two tasks each append test functions to the same file; both writers declare it, "
+        "and only for append-shaped edits. Chain only non-text (binary/symlink) same-file "
+        "pairs, which always fall back. Blast radius follows the contract, not the file: "
+        "a task that changes a declared `Produces:` shape owns every strict-equality pin "
+        "of it, in any sibling's file — list that file in its own `**Files:**` (#233)."
+    ) in text
+
+
+def test_markers_pinned_vocabulary_is_untouched():
+    text = MARKERS.read_text()
+    for word in ("worktree-pure", "additive", "fence-aware"):
+        assert word in text
