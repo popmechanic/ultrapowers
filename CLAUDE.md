@@ -126,12 +126,13 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 
 Brainstorm → spec in `docs/superpowers/specs/` → `ultrapowers:ultrawrite` → plan in
 `docs/superpowers/plans/` → execute (subagent-driven, or `/ultrapowers` itself) → PR.
-Every spec gets an **adversarial trim review** before operator
-review — a fresh-context subagent proposing the trimmed version (dispatch brief in
-`skills/ultralearn/references/distilling-proposals.md` §Trim review); the spec (or its
-companion record, where one exists — see `2026-08-28-one-driver-answers.md`) carries a
-`## Trim review` section with adopt-or-answer for every trim, and the reviewer — never the
-author — grades `netConceptDelta`. Plans default to `**Acceptance:** suite — the committed suite is the verification.`
+Every spec gets a **neutral fresh-context review** before operator
+review (operator decision 2026-09-01, superseding the adversarial trim review — built for
+the complexity-creep era; #519 had already demoted trims): the reviewer hunts
+under-specification, scope reconciliation, and contradictions, with trim proposals
+welcome but not the mandate; the spec carries a `## Spec review` section with
+adopt-or-answer for every finding. Historical specs carry `## Trim review` sections
+(dispatch brief still in `skills/ultralearn/references/distilling-proposals.md` §Trim review). Plans default to `**Acceptance:** suite — the committed suite is the verification.`
 (the compiler's frozen vocabulary needs the `suite — <reason>` form; a bare `suite`
 fails to parse — caught live on sitting 2's drain plan).
 
