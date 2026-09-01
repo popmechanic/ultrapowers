@@ -1,0 +1,68 @@
+{
+  "mode": "gate",
+  "stamp": "race-48-b",
+  "reportPath": "/home/exedev/repo/.claude/ultrapowers/run-race-48-b/report.json",
+  "branch": "ultra/integration-race-48-b",
+  "gateCheck": {
+    "verdict": "NEEDS_ACK",
+    "checks": [
+      {
+        "name": "report-parse",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "clean-tree",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "wave-merges",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "head-match",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "git-verified",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "ancestry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "deliverables",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "acks": [
+      {
+        "type": "deferred:external",
+        "detail": "K concurrent live `driveOne` runs against real sandboxes (launchRace step 4, fleet/race.mjs:267-274) \u2014 provisioning, gate-green, publish to origin and PR creation across three simultaneous drives. \u2014 Requires real sandbox VMs, GitHub, and OAuth/GH tokens. Statically the shape is correct: `Promise.all` over K `drive(...)` calls that all start before any awaits, with per-run runId/port/dbDir/repoDir, and I confirmed against the tree that the concurrency hazards are closed \u2014 `provisionRun` pushes `fleet-base` to each run's own sandbox (fleet/provision.mjs:224, vmName `fleet-<runId>`), publish branches are runId-derived, and shared-evidence-dir artifacts are runId-qualified (fleet/drive.mjs:696, 1375). Whether K live drives hold up on the substrate is a property of a real race. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "The real `gitRunner` clone leg (fleet/race.mjs:83-92, 201-206): `clone` -> `remote set-url origin` -> `checkout --detach <baseCommit>` producing K usable per-run repoDirs from a live checkout. \u2014 Every git call is injected in the suite by design (the task mandates it), so the tests prove the argv shapes and their ordering, not that git accepts them. The design checks out against the tree \u2014 a detached clone still satisfies `provisionRun`'s `${baseRef}` push with baseRef defaulting to 'HEAD' (fleet/drive.mjs:393) \u2014 but that is tree evidence, not execution evidence. [structural false-green: sandbox could not execute it against the target]"
+      },
+      {
+        "type": "deferred:runtime",
+        "detail": "`storeReader` (fleet/race.mjs:324-337) reading a real `<dbDir>/fleet.db` and `countFixRounds` counting `fix:` events out of it. \u2014 `readStore` is injected in every judge test, so no sqlite3 binary and no fleet.db is touched. I verified statically that the path and query match `status.mjs:79` byte-for-byte and that `FLEET_PATH = 'fleet'` (fleet/orchestrator.mjs:33, 161) makes `<dbDir>/fleet.db` the file the orchestrator actually writes, and that the `fix:` grammar matches fleet/run-engine.mjs:678 \u2014 but reading a store a real drive produced needs a completed run. [structural false-green: sandbox could not execute it against the target]"
+      }
+    ],
+    "repo": "/home/exedev/repo"
+  },
+  "gateCheckExit": 2,
+  "acceptance": {
+    "disposition": "suite",
+    "exit": 0,
+    "output": "{\"sealId\": \"(suite)\", \"status\": \"OK\", \"passed\": true, \"exitCode\": 0, \"output\": \"============================= test session starts ==============================\\nplatform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.6.0\\nrootdir: /tmp/tmp.h7ttKcBzM2/suite-gate\\nconfigfile: pytest.ini\\ntestpaths: tests\\nplugins: xdist-3.8.0\\ncreated: 8/8 workers\\n8 workers [1273 items]\\n\\n........................................................................ [  5%]\\n........................................................................ [ 11%]\\n........................................................................ [ 16%]\\n........................................................................ [ 22%]\\n........................................................................ [ 28%]\\n........................................................................ [ 33%]\\n........................................................................ [ 39%]\\n........................................................................ [ 45%]\\n........................................................................ [ 50%]\\n........................................................................ [ 56%]\\n........................................................................ [ 62%]\\n........................................................................ [ 67%]\\n........................................................................ [ 73%]\\n........................................................................ [ 79%]\\n........................................................................ [ 84%]\\n........................................................................ [ 90%]\\n........................................................................ [ 96%]\\n.................................................                        [100%]\\n=============================== warnings summary ===============================\\ntests/test_harvest_fleet_runs.py::test_discover_unpacks_a_tarball\\ntests/test_harvest_fleet_runs.py::test_a_corrupt_tarball_among_healthy_ones_is_named_and_the_rest_land\\ntests/test_harvest_fleet_runs.py::test_an_unreadable_tarball_is_named_in_a_whole_failed_lookup_line\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\ntests/test_harvest_fleet_runs.py::test_two_bundles_unpack_to_separate_directories\\n  /usr/lib/python3.12/tarfile.py:2301: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\\n    warnings.warn(\\n\\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\\n================= 1273 passed, 5 warnings in 150.19s (0:02:30) =================\"}\n"
+  },
+  "verdict": "NEEDS_ACK"
+}
