@@ -248,30 +248,12 @@ def test_leg_c_m3_the_doctor_section_states_all_three_sentences():
         )
 
 
-def test_leg_d_m4_deleting_the_two_sections_restores_the_base_bytes():
-    """(d)/M4 — every line outside the two new sections is byte-identical to BASE."""
-    restored = without_new_sections(read())
-    digest = hashlib.sha256(restored.encode("utf-8")).hexdigest()
-    assert digest == BASE_DIGEST, (
-        "fleet/RUNBOOK.md changed outside the `## exe.dev account` and `## Doctor` "
-        f"sections: deleting them leaves sha256 {digest}, not BASE {BASE}'s "
-        f"{BASE_DIGEST}"
-    )
-
-
-def test_leg_d_m4_the_reconstruction_detects_an_edit_outside_the_two_sections():
-    """(d)/M4 — the control: one extra character outside those sections fails to match."""
-    text = read()
-    present = headings(text)
-    assert present[-1] not in NEW_SECTIONS, (
-        f"the last section is {present[-1]!r}, one of the new ones — a character "
-        "appended to the file would not be outside them"
-    )
-    mutated = without_new_sections(text + "x")
-    digest = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
-    assert digest != BASE_DIGEST, (
-        "the reconstruction is blind to an edit outside the two new sections"
-    )
+# The two byte-identical-to-BASE legs ((d)/M4: deleting the two sections
+# restores the frozen sha256 of fleet/RUNBOOK.md at d6efce4, and its one-char
+# negative control) were run-54's proof that task 4 touched nothing else. They
+# were discharged when #569 merged (9051fc2); the very next RUNBOOK edit
+# (run-53b, the sandbox-size knob) would have re-failed them forever, since a
+# frozen digest pins a file, not an edit. The heading-count half of M4 stays.
 
 
 def test_leg_d_m4_the_heading_count_is_base_plus_two():

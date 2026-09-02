@@ -1,5 +1,8 @@
 // fleet/tests/test_exam_edited_patches.mjs — the exam-edited result carries its
-// proposed-patch count (#561). `examEdited` returns the same `proposedPatches`
+// proposed-patch count (#561). Since run-54 task 5 a fix-round exam edit is
+// recorded (`examEdited`) and folded rather than refused, so the fix-round
+// cases here assert the merged row still carries the count; only the
+// before-any-review case (b) is still the `exam-edited` failure. `examEdited` returns the same `proposedPatches`
 // every other `runTaskInner` return carries: the number of blocking issues in
 // the review round that carried a non-empty `proposedPatch`, and `0` when no
 // review round ran before the edit. Run-52 crossed the exam route (#553) and
@@ -135,7 +138,8 @@ const verdictOf = (t) => ({ status: t.status, reviewVerdict: t.reviewVerdict })
     ids: ['T1'], review1: patched('not yet'), editsExamIn: { T1: 'fix' },
   })
   assert.ok(labels.includes('fix:T1:1'), 'the fix round ran: ' + labels.join(','))
-  assert.deepEqual(verdictOf(byId.T1), { status: 'failed', reviewVerdict: 'exam-edited' })
+  assert.deepEqual(verdictOf(byId.T1), { status: 'done', reviewVerdict: 'fixed' })
+  assert.deepEqual(byId.T1.examEdited, ['T1_test.sh'], 'the fix-round edit is recorded, not refused (run-54 task 5)')
   assert.equal(byId.T1.proposedPatches, 1, 'the round that dispatched the fix carried one patch')
 }
 
@@ -207,7 +211,8 @@ for (const [name] of FROZEN) {
     ]),
     editsExamIn: { T1: 'fix' },
   })
-  assert.deepEqual(verdictOf(byId.T1), { status: 'failed', reviewVerdict: 'exam-edited' })
+  assert.deepEqual(verdictOf(byId.T1), { status: 'done', reviewVerdict: 'fixed' })
+  assert.deepEqual(byId.T1.examEdited, ['T1_test.sh'], 'the fix-round edit is recorded, not refused (run-54 task 5)')
   assert.equal(byId.T1.proposedPatches, 1, 'an empty patch is no patch — two issues, one count')
 }
 
@@ -216,10 +221,11 @@ for (const [name] of FROZEN) {
   const { byId } = await sim({
     ids: ['T1', 'T2'], review1: patched('not yet'), editsExamIn: { T1: 'fix' },
   })
-  assert.deepEqual(verdictOf(byId.T1), { status: 'failed', reviewVerdict: 'exam-edited' })
+  assert.deepEqual(verdictOf(byId.T1), { status: 'done', reviewVerdict: 'fixed' })
+  assert.deepEqual(byId.T1.examEdited, ['T1_test.sh'], 'the fix-round edit is recorded, not refused (run-54 task 5)')
   assert.deepEqual(verdictOf(byId.T2), { status: 'done', reviewVerdict: 'fixed' })
   assert.equal(byId.T1.proposedPatches, byId.T2.proposedPatches,
-    'the exam-edited task counted the same round its sibling did')
+    'the exam-edited task counted the same round its sibling did (both merge since run-54 task 5)')
   assert.equal(byId.T1.proposedPatches, 1)
 }
 
