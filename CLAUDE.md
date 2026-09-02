@@ -100,9 +100,16 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - **Retired map — #238 *The Authoring Frontier* (destination reached 2026-09-01):** #239
   answered yes (six-slot claims-v1 grammar), #390 shipped it at 0.3.2 (`ultrawrite`;
   the prior authoring skill + the writing-plans dependency deleted). Read as history.
-- **Open maps:** #525 *The Verification Frontier* (review finds truth it cannot enforce —
-  three generations of blocking-findings-that-could-not-block; tickets #518/#447/#519/#232,
-  experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
+- **Open maps:** #551 *Peer Review* (chartered 2026-09-02: the plan is a submission — one
+  operator sentence per plan, the exam written by a peer worker in wave 0, the gate as editor;
+  tickets #552 signature / #553 examiner (= #447's design, run-52's experiment, ahead of #538) /
+  #554 clause-to-leg grammar / #555 generated BASE-facts Context / #556 `Review: peer` replaces
+  `adversarial`; #545 the remote oracle parked behind the first sealed-exam incident. Its
+  rules: the exam is written by a peer, never the submitter or the editor; the plan names
+  nothing it does not Produce/Consume outside a tool-generated BASE-facts block; one signature
+  per plan; the register is scientific, not adversarial); #525 *The Verification Frontier*
+  (review finds truth it cannot enforce — three generations of blocking-findings-that-could-not-block;
+  tickets #518/#519/#232, experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
   TinyBase coordinates the index* — never let the store's LWW merge a weave payload,
   and never patch `skills/ultrapowers/kernel/vendor/manyana.py`, it is sha-pinned on purpose).
