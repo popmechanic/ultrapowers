@@ -156,7 +156,7 @@ def test_cycle_plans_pass_check_self_application():
     # which formerly false-positived --check with 11 symbol-list violations each.
     for name in ("2026-07-03-plan-grammar-check.md",
                  "2026-07-03-authored-review-depth.md"):
-        plan = Path("docs/superpowers/plans") / name
+        plan = Path("tests/fixtures/plans") / name  # frozen copies (#544)
         proc = subprocess.run([sys.executable, str(SCRIPT), "--check", str(plan)],
                               capture_output=True, text=True)
         assert proc.returncode == 0, (name, proc.stdout, proc.stderr)

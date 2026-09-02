@@ -114,6 +114,6 @@ would justify removing it, and what currently blocks removal.
 
 - Local, gitignored (`~/.claude/ultralearn/`): raw bundles, full slices,
   verbatim evidence, watermark.
-- Committed (`docs/superpowers/observations/`): abstracted findings, metrics,
+- Local, untracked since #544 (`docs/superpowers/observations/`): abstracted findings, metrics,
   local pointers only. Runs are classified `home` (this repo — verbatim OK) or
   `foreign` (any other project — evidence must be abstracted).

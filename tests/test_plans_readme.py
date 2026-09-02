@@ -4,7 +4,7 @@ runtime form so the directory can never again read as the live input."""
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-README = ROOT / "docs/superpowers/plans/README.md"
+README = ROOT / "tests/fixtures/plans/README.md"  # frozen copy (#544)
 
 
 def test_plans_readme_exists():

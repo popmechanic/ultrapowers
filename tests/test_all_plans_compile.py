@@ -1,13 +1,14 @@
-"""Every committed marked plan must compile under the enforcing compiler — so
-the repo can never again accumulate an uncompilable plan once sealed-acceptance
-enforcement is live. A marked plan is one carrying Depends-on markers."""
+"""Every frozen fixture plan must compile under the enforcing compiler. Until
+#544 this globbed `docs/superpowers/plans/`; that directory is untracked now (the
+plan rides the run assignment), so the corpus is the frozen copy under
+`tests/fixtures/plans/`. A marked plan is one carrying Depends-on markers."""
 import pathlib
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
-PLANS = sorted((ROOT / "docs/superpowers/plans").glob("*.md"))
+PLANS = sorted((ROOT / "tests/fixtures/plans").glob("*.md"))
 
 
 def _is_marked(text):

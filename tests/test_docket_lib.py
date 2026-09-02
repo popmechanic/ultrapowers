@@ -221,5 +221,6 @@ def test_committed_docket_parses():
     values, fixed by hand in #481. parse_docket raises on both classes —
     the only thing missing was a caller pointed at the committed file."""
     m = load()
-    entries = m.parse_docket((ROOT / "docs/superpowers/docket.md").read_text())
-    assert entries, "docs/superpowers/docket.md parsed to zero entries"
+    # The live docket is untracked since #544; this is its frozen copy.
+    entries = m.parse_docket((ROOT / "tests/fixtures/plans/docket.md").read_text())
+    assert entries, "tests/fixtures/plans/docket.md parsed to zero entries"

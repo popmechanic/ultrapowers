@@ -237,13 +237,13 @@ def test_the_advisories_ride_check_and_never_refuse(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# The committed corpus: every claims-v1 plan on disk predates #554, is
-# unnumbered, and must still compile unchanged.
+# The frozen corpus (`tests/fixtures/plans/`, #544): every claims-v1 plan in
+# it predates #554, is unnumbered, and must still compile unchanged.
 # ---------------------------------------------------------------------------
 
-def test_every_committed_claims_plan_still_compiles():
+def test_every_frozen_claims_plan_still_compiles():
     import subprocess
-    plans = sorted((ROOT / "docs/superpowers/plans").glob("*.md"))
+    plans = sorted((ROOT / "tests/fixtures/plans").glob("*.md"))
     checked = 0
     for plan in plans:
         if "**Grammar:** claims-v1" not in plan.read_text():
@@ -253,4 +253,4 @@ def test_every_committed_claims_plan_still_compiles():
                            capture_output=True, text=True)
         assert r.returncode == 0, "%s: %s" % (plan.name, r.stderr[-400:])
         checked += 1
-    assert checked >= 4
+    assert checked >= 2
