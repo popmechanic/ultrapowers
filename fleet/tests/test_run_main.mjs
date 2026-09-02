@@ -103,7 +103,7 @@ const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', st
   assert.deepEqual(out, [1, 2, 3, 4, 5], 'results keep input order')
   assert.equal(peak, 2, 'never more than the bound in flight')
   await assert.rejects(boundedParallel(2)([async () => { throw new Error('boom') }]), /boom/)
-  assert.ok(WIDTH <= 12, 'the width bound stays within the measured range (#398)')
+  assert.equal(WIDTH, 12, 'the width bound is the measured clean figure (#398: 12/12 clean; raised 8->12 on 2026-09-01) — past it only with a width arm')
 }
 
 // ── role files + settings ────────────────────────────────────────────────────

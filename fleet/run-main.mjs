@@ -51,13 +51,23 @@ import { createRunWorker } from './run-worker.mjs'
 
 export const REPO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// The driver's scheduler bound. The engine's own chunking constant
-// (waves.js CONCURRENCY = 16) is the Workflow tool's cap and is #402 item 8's
-// problem; the number that governs how many `claude -p` processes actually
-// run at once is THIS one, and it is the spec's measured-margin default
-// (#398: 12/12 clean where the study stopped; 8 is "the last arm with real
-// headroom"). Raise it only with the suite-running width arm (#402 item 7).
-export const WIDTH = 8
+// The driver's scheduler bound: how many `claude -p` processes one run may
+// have in flight. It is a MEASURED number, never a vendor one — the exe.dev
+// plan is a dynamically shared pool (16 vCPU / 64 GB across every VM; a VM's
+// allocated size is a cap, not a reservation — RUNBOOK §Billing: "the plan
+// meters CONSUMPTION, not allocation"), and the sandbox's own 8 vCPU are
+// divided among the implementers' suites by capWorkerParallelism, which at
+// width >= 8 already hands each one a serial pytest. So the only thing this
+// constant guards is the subscription's concurrent-stream headroom.
+//
+// History: #398's study ran 12/12 clean and stopped there; 8 was chosen as
+// "the last arm with real headroom" and stood until 2026-09-01, when run-49
+// ran width 8 at load 1.5 of 8 cores while race-48's three arms ran beside it
+// (eleven concurrent streams on one account, no throttling, pool meter at 25%).
+// 12 is the study's clean figure. Raise past it only with a suite-running
+// width arm that watches sandbox memory (~3 GB per busy implementer) and the
+// pool meter, not the load average (#402 item 7; test_run_main pins <= 12).
+export const WIDTH = 12
 
 // Per-role wall-clock deadlines. Placement (which role gets which bound) is
 // principled — a read-only reviewer has no suite to run and no tree to edit,

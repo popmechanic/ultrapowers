@@ -402,9 +402,13 @@ Knobs, all optional (defaults = the W2 charter constants):
 dir; concurrent drains take distinct dirs — that separation is the W2a isolation),
 `--golden fleet-golden`, `--ttl-hours 4` (store-token lease TTL — size to the plan's
 expected wall clock with margin; a short lease expires mid-run and reads as a
-heartbeat timeout, #279), `--evidence-dir DIR` (default `/home/exedev/fleet-evidence` — durable, NOT under `/tmp`, #466), `--sandbox-cpu N` (widest wave
-width + 2, clamped to the plan's max) / `--sandbox-memory 16GB` (calibrate from
-`stat-<runId>.json`; golden 8/16 default), `--allow-unfit-plan` (only with a
+heartbeat timeout, #279), `--evidence-dir DIR` (default `/home/exedev/fleet-evidence` — durable, NOT under `/tmp`, #466), `--sandbox-cpu N` /
+`--sandbox-memory 16GB` (leave both at the golden's 8/16: a VM's allocated size is a
+CAP on a dynamically shared pool, never a reservation — §Billing below, "the plan meters
+CONSUMPTION, not allocation". The old "widest wave width + 2" rule sized against a number
+that constrains nothing; run-49 drew 1.5 of 8 cores at width 8. What a wide run actually
+spends is sandbox MEMORY, ~3 GB per busy implementer against the 64 GB pool, and
+subscription streams, `WIDTH` in `run-main.mjs`), `--allow-unfit-plan` (only with a
 specific operator pre-authorization for the manual-judgment task named by the
 #322 refusal — never a standing default). `node fleet/drive-one.mjs` with no
 arguments prints the usage line.
