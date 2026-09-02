@@ -62,7 +62,10 @@ const RUN_FIELDS = [
   ['repoDir', 'string'],
 ]
 const VERDICT_FIELDS = [
-  ['winner', 'string'],
+  // null is a legal winner: a race where no attempt reached gate-green is a
+  // FAILED race, and the judge still records the verdict (`race-rubric`'s
+  // selectWinner returns `winner: null`, and the printout renders it FAILED).
+  ['winner', 'string|null'],
   ['decidingStage', 'string'],
   ['scorecard', 'object'],   // keyed by runId
 ]
