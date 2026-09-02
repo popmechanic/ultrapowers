@@ -162,7 +162,8 @@ assert.ok(fixCalls(runA.calls)[0].includes('t1_test.sh'),
     '(b)/M2: naming both moved paths: ' + fixCalls(calls)[0])
 }
 
-// ── (c) the first-round guard is unchanged [M3] ─────────────────────────────
+// ── (c) the first round is the same rule: recorded, reviewed, folded [M3] ──
+// (Until 2026-09-02 this leg pinned the opposite — a total stop before review.)
 {
   const labels = []
   const stub = (prompt, opts, cwd) => {
@@ -177,13 +178,12 @@ assert.ok(fixCalls(runA.calls)[0].includes('t1_test.sh'),
   const { run } = rig({ waves: [[entry()]], stub })
   const report = await run()
   const row = report.tasks[0]
-  assert.equal(row.status, 'failed', '(c)/M3: an exam edited before any review still fails')
-  assert.equal(row.reviewVerdict, 'exam-edited', '(c)/M3: with reviewVerdict exam-edited')
-  assert.ok(!labels.some((l) => l.startsWith('review:T1')),
-    '(c)/M3: and no review is dispatched: ' + labels.join(','))
-  assert.equal(report.coverage.tasks_merged, 0, '(c)/M3: the patch is not folded')
-  assert.ok(!Object.prototype.hasOwnProperty.call(row, 'examEdited'),
-    '(c)/M3: a row returned before a fix round carries no examEdited key')
+  assert.equal(row.status, 'done', '(c)/M3: an exam edited before review is reviewed, and a clean review merges it')
+  assert.equal(row.reviewVerdict, 'clean')
+  assert.ok(labels.some((l) => l.startsWith('review:T1')),
+    '(c)/M3: the review is dispatched: ' + labels.join(','))
+  assert.equal(report.coverage.tasks_merged, 1, '(c)/M3: the patch is folded')
+  assert.deepEqual(row.examEdited, ['t1_test.sh'], '(c)/M3: the row records the moved path')
 }
 
 // ── (d) an exam edited by the fix round does not bypass the referee [M4] ────
@@ -205,8 +205,8 @@ assert.ok(fixCalls(runA.calls)[0].includes('t1_test.sh'),
 }
 
 // ── (f) the report's field table [M6] ───────────────────────────────────────
-const M6_SENTENCE = 'Raised only before the first review; an exam a referee asked the fix round ' +
-  'to repair is folded and recorded under `examEdited` instead (run-53, #556).'
+const M6_SENTENCE = 'An edited exam is never a verdict of its own: it is recorded under ' +
+  '`examEdited` and reviewed (2026-09-02).'
 const EXAM_EDITED_ROW = '| `tasks[].examEdited` |'
 const VERDICT_ROW = '| `tasks[].reviewVerdict` |'
 const reportTableOk = (text) => {

@@ -33,14 +33,14 @@ const M2 = 'A leg you cannot encode as written goes under `unsatisfiable` as '
   + '`{leg, why}`; return `BLOCKED` only when no exam at all can be written.'
 assert.ok(text.includes(M2), 'examiner.md does not carry the M2 unsatisfiable-leg sentence verbatim')
 
-// ── leg (c) [M3]: the reply shape, spelled exactly once, and startHead ───────
-const SHAPE = '{status: DONE|BLOCKED, summary, startHead, unsatisfiable: [{leg, why}]}'
+// ── leg (c) [M3]: the reply shape, spelled exactly once — and no startHead ──
+const SHAPE = '{status: DONE|BLOCKED, summary, unsatisfiable: [{leg, why}]}'
 const shapeCount = text.split(SHAPE).length - 1
 assert.equal(shapeCount, 1,
   'the reply shape is spelled ' + shapeCount + ' times in examiner.md; it is a shared literal with the engine, spelled exactly once')
 
-const M3 = 'Run `git rev-parse HEAD` first and report it verbatim as `startHead`.'
-assert.ok(text.includes(M3), 'examiner.md does not carry the M3 startHead sentence verbatim')
+// The driver knows BASE; no prompt asks a model to run git (Amendment 10).
+assert.ok(!/startHead|rev-parse/.test(text), 'examiner.md still asks the examiner to run git and report a sha')
 
 // ── leg (d) [M4]: the register the roles directory keeps ─────────────────────
 assert.ok(!/\b(NEVER|ALWAYS|MUST)\b/.test(text), 'examiner.md shouts an imperative')

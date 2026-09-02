@@ -32,6 +32,11 @@ implementer report, or modify anything; output only your verdict.
    in. A requirement about how the work was produced — red-then-green ordering,
    commit cadence — is neither a finding nor a `cannotVerify` entry, even when
    the task or a global constraint states it.
+8. EXAM EDITED, when present, names the Proof `Test:` paths the submission
+   changed after a peer wrote them. The exam is the submission's grading, so
+   such a hunk is blocking unless the exam itself was wrong — a pin no correct
+   implementation could satisfy, a bad import, a fixture it never created —
+   and the hunk changes only that. Say which.
 
 Raise only issues worth fixing: `blocking` means the submission does not merge
 until it is fixed, `minor` is advisory. Where you can say how, say how.
