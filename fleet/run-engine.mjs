@@ -85,11 +85,10 @@ export const IMPLEMENTER_SCHEMA = {
 // a concern about a leg IS an unsatisfiable entry.
 export const EXAMINER_SCHEMA = {
   type: 'object',
-  required: ['status', 'summary', 'startHead'],
+  required: ['status', 'summary'],
   properties: {
     status: { enum: ['DONE', 'BLOCKED'] },
     summary: { type: 'string' },
-    startHead: { type: 'string' },
     unsatisfiable: { type: 'array', items: { type: 'object',
       required: ['leg', 'why'], properties: {
         leg: { type: 'string' }, why: { type: 'string' } } } },
@@ -172,17 +171,11 @@ export const CRITIC_SCHEMA = {
 export const defaultRolesDir = () => fileURLToPath(new URL('./roles', import.meta.url))
 export function loadRoles(rolesDir = defaultRolesDir()) {
   const roles = {}
-  for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'critic']) {
+  // Seven, all hard: no wave can be dispatched without them. The examiner
+  // (#553) was soft-gated on its file's presence until 2026-09-02 — a toggle
+  // the committed suite made unreachable (#567), and one more branch per task.
+  for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'critic', 'examiner']) {
     roles[name] = fs.readFileSync(path.join(rolesDir, name + '.md'), 'utf8')
-  }
-  // examiner.md is the seventh (#553), read alongside the six — but SOFT: a
-  // roles directory without it must still run every other role, so the exam is
-  // what a missing file costs (recorded as a blocked exam, per task), never the
-  // run. The six are hard because no wave can be dispatched without them.
-  try {
-    roles.examiner = fs.readFileSync(path.join(rolesDir, 'examiner.md'), 'utf8')
-  } catch {
-    roles.examiner = null
   }
   return roles
 }
@@ -640,19 +633,13 @@ export async function runEngine({
     let exam = null
     let examBlobs = null
     if (proofTests.length && examTestCmd) {
-      const ex = roles.examiner
-        ? await agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
-            { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
-              schema: EXAMINER_SCHEMA })
-        : null
+      const ex = await agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
+        { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+          schema: EXAMINER_SCHEMA })
       for (const u of ((ex && Array.isArray(ex.unsatisfiable)) ? ex.unsatisfiable : [])) {
         judgmentCalls.push('task ' + task.id + ': examiner: ' + u.leg + ' — ' + u.why)
       }
-      if (!roles.examiner) {
-        exam = 'blocked'
-        judgmentCalls.push('task ' + task.id + ': examiner role file absent — no exam written; ' +
-          'the implementer proceeds unexamined')
-      } else if (!ex || ex.status !== 'DONE') {
+      if (!ex || ex.status !== 'DONE') {
         // A dead examiner is a transient process death and a BLOCKED one is a
         // judgment about the Proof; neither is the implementer's fault, and
         // neither is worth failing a task over. The task proceeds WITHOUT an
@@ -682,26 +669,29 @@ export async function runEngine({
       }
       return moved
     }
-    // Before any review, a moved Proof path is the task grading itself, and the
-    // stop is total: unreviewed, unfolded. (The fix round's drift is a
-    // different case — see `examMoved` below.) `proposedPatches` is read at
-    // call time, not closure time (#561): the binding below is initialised
-    // before this runs, and no review has happened yet, so it reports 0 —
-    // the same field every other runTaskInner return reports.
-    const examEditedRow = (moved) => {
-      judgmentCalls.push('task ' + task.id + ': the implementer edited the exam — ' +
-        moved.join(', ') + ' no longer matches the blob recorded at BASE; not reviewed, not folded')
-      return { task: task.id, baseCorrected, status: 'failed', branch: '',
-               reviewVerdict: 'exam-edited', exam,
-               notes: 'exam edited by the implementer: ' + moved.join(', '),
-               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
+    // One rule for exam drift (2026-09-02, after run-53): a moved Proof path is
+    // never refused by the driver — it is RECORDED on the row as `examEdited`,
+    // pushed as one judgment call, and named to the referee as EXAM EDITED so
+    // the review reads those hunks as what they are. Until run-54 the
+    // implementer's edit was a total stop (unreviewed, unfolded) while the fix
+    // round's was recorded; run-53's only real edit was a legitimate one — the
+    // exam was brittle — and two stops for one event were one too many. The
+    // referee, not the driver, decides whether the edit was the exam's fault
+    // (reviewer.md rule 8). `examEdited` is present on every row returned
+    // after the implementer when an exam was recorded, absent when none was.
+    let examEdited = null
+    const examEditedField = () => (examEdited === null ? {} : { examEdited })
+    const noteDrift = async (who) => {
+      if (!examBlobs) return
+      const moved = await examDrift()
+      const fresh = moved.filter((p) => !(examEdited || []).includes(p))
+      examEdited = (examEdited || []).concat(fresh)
+      if (fresh.length) {
+        judgmentCalls.push('task ' + task.id + ': ' + who + ' edited the exam — ' +
+          fresh.join(', ') + ' no longer matches the blob recorded at BASE; the review ' +
+          'reads the patch, exam hunks included')
+      }
     }
-    // The Proof paths the fix round moved, or null until that round's drift
-    // check has run. Rows returned after a fix round carry the list as
-    // `examEdited` (empty when nothing moved); rows returned before one carry
-    // no such key at all, so the first-round failure row is unchanged.
-    let examMoved = null
-    const examEditedField = () => (examMoved === null ? {} : { examEdited: examMoved })
 
     let baseCorrected = null
     let impl = await agent(
@@ -726,17 +716,12 @@ export async function runEngine({
     // with a patch attached (#551) — reported per task, and not reset by the
     // clean re-review that follows the fix. Zero when no round ever ran.
     let proposedPatches = 0
-    // The exam as the implementer left it: a Proof path whose blob moved is a
-    // task grading itself, and that outranks whatever the reply says about
-    // itself — so it is checked before the status branches below.
-    {
-      const moved = await examDrift()
-      if (moved.length) return examEditedRow(moved)
-    }
+    await noteDrift('the implementer')
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
-               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches,
+               ...examEditedField() }
     }
     if (!hasCoordinates(impl)) {
       // With driver capture the only way here is a capture failure — reply
@@ -746,7 +731,8 @@ export async function runEngine({
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'lost-coordinates',
                notes: 'no driver-captured patch/headSha — downgraded to failed before review',
-               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches,
+               ...examEditedField() }
     }
 
     // Round-1 advisories, carried into round 2 (2026-09-01, run-47 read): the
@@ -760,7 +746,8 @@ export async function runEngine({
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
-        globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors)
+        globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
+        (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '')
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -844,19 +831,9 @@ export async function runEngine({
       if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
-      // The fix round builds on the same tree, so the exam is checked again —
-      // but this drift is not the first round's defect (run-53, #556). The fix
-      // round is applying a referee's findings, and on run-53 the finding WAS
-      // the exam, with the referee's own proposedPatch attached. The re-review
-      // below reads the whole fix patch, exam hunks included, so the edit is
-      // reviewed rather than refused: it is recorded on the row and pushed as
-      // one judgment call, and the round falls through.
-      examMoved = await examDrift()
-      if (examMoved.length) {
-        judgmentCalls.push('task ' + task.id + ': the fix round edited the exam — ' +
-          examMoved.join(', ') + ' no longer matches the blob recorded at BASE; the ' +
-          're-review reads the fix patch, exam hunks included')
-      }
+      // Same tree, same rule: a fix round applying a referee's findings may
+      // find the finding WAS the exam (run-53, #556) — recorded, then re-reviewed.
+      await noteDrift('the fix round')
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
         judgmentCalls.push('task ' + task.id + ': fix round lost driver-captured coordinates (' +
           (impl.captureError || 'capture absent') + ') — failed before re-review')

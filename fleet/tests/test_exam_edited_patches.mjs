@@ -1,8 +1,8 @@
 // fleet/tests/test_exam_edited_patches.mjs — the exam-edited result carries its
 // proposed-patch count (#561). Since run-54 task 5 a fix-round exam edit is
 // recorded (`examEdited`) and folded rather than refused, so the fix-round
-// cases here assert the merged row still carries the count; only the
-// before-any-review case (b) is still the `exam-edited` failure. `examEdited` returns the same `proposedPatches`
+// cases here assert the merged row still carries the count — and since
+// 2026-09-02 the before-any-review case (b) is the same rule. `examEdited` returns the same `proposedPatches`
 // every other `runTaskInner` return carries: the number of blocking issues in
 // the review round that carried a non-empty `proposedPatch`, and `0` when no
 // review round ran before the edit. Run-52 crossed the exam route (#553) and
@@ -144,14 +144,17 @@ const verdictOf = (t) => ({ status: t.status, reviewVerdict: t.reviewVerdict })
 }
 
 // ── (b) [M1] the first implementer edits the exam, before any review ────────
+// Since 2026-09-02 the same rule as the fix round: recorded, reviewed, and
+// the count is the review's, not a refusal's.
 {
   const { byId, labels } = await sim({
     ids: ['T1'], review1: passReview(), editsExamIn: { T1: 'impl' },
   })
-  assert.ok(!labels.some((l) => l.startsWith('review:')), 'no review dispatched: ' + labels.join(','))
-  assert.deepEqual(verdictOf(byId.T1), { status: 'failed', reviewVerdict: 'exam-edited' })
+  assert.ok(labels.some((l) => l.startsWith('review:')), 'the review is dispatched: ' + labels.join(','))
+  assert.deepEqual(verdictOf(byId.T1), { status: 'done', reviewVerdict: 'clean' })
+  assert.deepEqual(byId.T1.examEdited, ['T1_test.sh'])
   assert.ok('proposedPatches' in byId.T1, 'the field is present, not absent')
-  assert.equal(byId.T1.proposedPatches, 0, 'no review round ran, so the count is zero')
+  assert.equal(byId.T1.proposedPatches, 0, 'a clean review attached nothing')
 }
 
 // ── (c) [M2] the field-table row, verbatim and in the table ─────────────────

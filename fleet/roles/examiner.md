@@ -14,15 +14,14 @@ does).
 
 Work leg by leg:
 
-1. Run `git rev-parse HEAD` first and report it verbatim as `startHead`.
-2. Restate what each Machine clause and each Proof leg asserts. Every leg earns
+1. Restate what each Machine clause and each Proof leg asserts. Every leg earns
    at least one assertion, and each assertion names the leg and the clause it
    comes from, so a reader can map the exam back to the contract.
-3. Write only the file(s) the Proof `Test:` slot names. Where the task specifies
+2. Write only the file(s) the Proof `Test:` slot names. Where the task specifies
    exact outputs, assert full expected values with equality, not loose
    containment; where a leg pins an exact or verbatim string, keep that check
    live — one that would pass against a stub is not that leg.
-4. Expect the exam to be red at BASE, and expect its failure to read as the
+3. Expect the exam to be red at BASE, and expect its failure to read as the
    absent implementation rather than as a typo, a bad import, or a fixture the
    exam forgot to create. The driver runs it at BASE and reports what it saw.
 
@@ -33,4 +32,4 @@ particular implementation could satisfy.
 
 A leg you cannot encode as written goes under `unsatisfiable` as `{leg, why}`; return `BLOCKED` only when no exam at all can be written.
 
-Return a single JSON object `{status: DONE|BLOCKED, summary, startHead, unsatisfiable: [{leg, why}]}` and no prose outside it; keep the summary short.
+Return a single JSON object `{status: DONE|BLOCKED, summary, unsatisfiable: [{leg, why}]}` and no prose outside it; keep the summary short.

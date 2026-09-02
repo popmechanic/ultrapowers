@@ -131,7 +131,7 @@ const examOk = (cwd, files = { 't1_test.sh': RED_AT_BASE }) => {
 
   // The schema.
   assert.deepEqual(exam.opts.schema, EXAMINER_SCHEMA, 'the exam is dispatched under EXAMINER_SCHEMA')
-  assert.deepEqual(EXAMINER_SCHEMA.required, ['status', 'summary', 'startHead'])
+  assert.deepEqual(EXAMINER_SCHEMA.required, ['status', 'summary'], 'no startHead: the driver knows BASE (Amendment 10)')
   assert.deepEqual(EXAMINER_SCHEMA.properties.status.enum, ['DONE', 'BLOCKED'])
   assert.deepEqual(EXAMINER_SCHEMA.properties.unsatisfiable.items.required, ['leg', 'why'])
 
@@ -206,14 +206,19 @@ for (const [name, reply] of [
   assert.equal(report.tasks[0].status, 'done', name + ' examiner does not fail the task')
 }
 
-// ── (d) an edited exam is not reviewed and not folded [M4] ─────────────────
+// ── (d) an edited exam is recorded, named to the referee, and reviewed [M4] ─
+// One rule since 2026-09-02 (after run-53): the driver never refuses the
+// edit. It lands on the row as `examEdited`, in one judgment call, and in the
+// review prompt as EXAM EDITED; the referee (reviewer.md rule 8) decides.
 const editExam = (cwd) =>
   fs.writeFileSync(path.join(cwd, 't1_test.sh'), '#!/bin/bash\nexit 0 # rewritten by the graded party\n')
 {
   // The implementer rewrites the exam it was handed.
   const labels = []
+  const prompts = {}
   const stub = (prompt, opts, cwd) => {
     labels.push(opts.label)
+    prompts[opts.label] = prompt
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return examOk(cwd)
     if (kind === 'impl') { writeOne(cwd); editExam(cwd); return doneImpl(cwd) }
@@ -223,12 +228,33 @@ const editExam = (cwd) =>
   }
   const { run } = rig({ waves: [[entry()]], stub })
   const report = await run()
-  assert.equal(report.tasks[0].status, 'failed')
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.equal(report.tasks[0].status, 'done', 'a clean review merges an edited exam: ' + report.tasks[0].notes)
+  assert.equal(report.tasks[0].reviewVerdict, 'clean')
   assert.equal(report.tasks[0].exam, 'red', 'the value recorded before the implementer ran')
-  assert.ok(!labels.some((l) => l.startsWith('review:T1')), 'no review dispatched: ' + labels.join(','))
-  assert.equal(report.coverage.tasks_merged, 0, 'and the patch is not folded')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'], 'the edit is on the row')
+  assert.ok(labels.includes('review:T1:1'), 'the review is dispatched: ' + labels.join(','))
+  assert.ok(prompts['review:T1:1'].includes('\nEXAM EDITED: t1_test.sh'),
+    'the referee is told which Proof path moved')
+  assert.equal(report.coverage.tasks_merged, 1)
   assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')).length, 1)
+}
+{
+  // The referee, told, may block it — and that is the whole enforcement.
+  const stub = (prompt, opts, cwd) => {
+    const kind = opts.label.split(':')[0]
+    if (kind === 'exam') return examOk(cwd)
+    if (kind === 'impl') { writeOne(cwd); editExam(cwd); return doneImpl(cwd) }
+    if (kind === 'review') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'the exam was weakened' }] }
+    if (kind === 'fix') return doneImpl(cwd)
+    if (opts.label === 'integration') return cleanCritic()
+    throw new Error('unexpected dispatch: ' + opts.label)
+  }
+  const { run } = rig({ waves: [[entry()]], stub })
+  const report = await run()
+  assert.equal(report.tasks[0].status, 'failed')
+  assert.equal(report.tasks[0].reviewVerdict, 'fix-loop-exhausted')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'])
+  assert.equal(report.coverage.tasks_merged, 0)
 }
 {
   // The same edit in the fix round, after a blocking first review, is the
@@ -272,9 +298,9 @@ const editExam = (cwd) =>
   }
   const { run } = rig({ waves: [[entry()]], stub })
   const report = await run()
-  assert.equal(report.tasks[0].status, 'failed')
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.equal(report.tasks[0].status, 'done')
   assert.equal(report.tasks[0].exam, 'green-at-base')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'])
 }
 
 // ── (e) no proofTests, no exam — and every other engine sim unchanged [M5] ─
@@ -343,7 +369,7 @@ const twoPathScenario = async (implFn, paths = ['t1_test.sh', 't1_extra.sh'],
 {
   // Creates the path the examiner left absent: the recorded null moved.
   const { report } = await twoPathScenario((cwd) => fs.writeFileSync(path.join(cwd, 't1_extra.sh'), 'x\n'))
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_extra.sh'])
   const calls = report.judgmentCalls.filter((j) => j.includes('exam'))
   const named = calls.filter((j) => j.includes('t1_extra.sh'))
   assert.equal(named.length, 1, 'the call names the created path: ' + calls.join(' | '))
@@ -353,7 +379,7 @@ const twoPathScenario = async (implFn, paths = ['t1_test.sh', 't1_extra.sh'],
   // Changes one byte of the written path.
   const { report } = await twoPathScenario((cwd) =>
     fs.writeFileSync(path.join(cwd, 't1_test.sh'), RED_AT_BASE + '\n'))
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'])
   const named = report.judgmentCalls.filter((j) => j.includes('t1_test.sh'))
   assert.equal(named.length, 1)
   assert.ok(!named[0].includes('t1_extra.sh'))
@@ -365,7 +391,7 @@ const twoPathScenario = async (implFn, paths = ['t1_test.sh', 't1_extra.sh'],
   const { report } = await twoPathScenario(
     (cwd) => fs.writeFileSync(path.join(cwd, 't1_second.sh'), '#!/bin/bash\nexit 0\n'),
     ['t1_test.sh', 't1_second.sh'], files)
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_second.sh'])
   const named = report.judgmentCalls.filter((j) => j.includes('t1_second.sh'))
   assert.equal(named.length, 1, 'exactly one call names the edited path')
   assert.ok(!named[0].includes('t1_test.sh'), 'and it does not name the untouched one: ' + named[0])
