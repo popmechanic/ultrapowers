@@ -69,8 +69,11 @@ CODE_PATHSPECS = ("*.py", "*.mjs", "*.js", "*.ts", "*.sh")
 # The first definition line of a symbol, over the code files, in `git ls-files`
 # order (git grep walks the tree in index order, so the first hit IS the first
 # in that order).
-DEF_PATTERN = (r"^(\s*(export\s+)?(async\s+)?(def|function|class|const|let)"
-               r"\s+%s\b)")
+# POSIX ERE only: Apple git (and any git not built against glibc regex) does
+# not honour `\s` or `\b`, and `_git` swallows the failed compile as '' — so
+# every symbol fact silently vanished on macOS (run-52 deferred ack #3).
+DEF_PATTERN = (r"^([[:space:]]*(export[[:space:]]+)?(async[[:space:]]+)?"
+               r"(def|function|class|const|let)[[:space:]]+%s([^[:alnum:]_]|$))")
 
 
 # --------------------------------------------------------------------------- #
