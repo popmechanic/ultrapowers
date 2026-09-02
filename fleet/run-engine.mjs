@@ -682,14 +682,23 @@ export async function runEngine({
       }
       return moved
     }
-    const examEdited = (moved, who, fixIterations) => {
-      judgmentCalls.push('task ' + task.id + ': ' + who + ' edited the exam — ' +
+    // Before any review, a moved Proof path is the task grading itself, and the
+    // stop is total: unreviewed, unfolded. (The fix round's drift is a
+    // different case — see `examMoved` below.)
+    const examEditedRow = (moved) => {
+      judgmentCalls.push('task ' + task.id + ': the implementer edited the exam — ' +
         moved.join(', ') + ' no longer matches the blob recorded at BASE; not reviewed, not folded')
       return { task: task.id, baseCorrected, status: 'failed', branch: '',
                reviewVerdict: 'exam-edited', exam,
-               notes: 'exam edited by ' + who + ': ' + moved.join(', '),
-               tier: economics.tier, review: economics.review, fixIterations }
+               notes: 'exam edited by the implementer: ' + moved.join(', '),
+               tier: economics.tier, review: economics.review, fixIterations: 0 }
     }
+    // The Proof paths the fix round moved, or null until that round's drift
+    // check has run. Rows returned after a fix round carry the list as
+    // `examEdited` (empty when nothing moved); rows returned before one carry
+    // no such key at all, so the first-round failure row is unchanged.
+    let examMoved = null
+    const examEditedField = () => (examMoved === null ? {} : { examEdited: examMoved })
 
     let baseCorrected = null
     let impl = await agent(
@@ -719,7 +728,7 @@ export async function runEngine({
     // itself — so it is checked before the status branches below.
     {
       const moved = await examDrift()
-      if (moved.length) return examEdited(moved, 'the implementer', 0)
+      if (moved.length) return examEditedRow(moved)
     }
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
       return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
@@ -807,12 +816,14 @@ export async function runEngine({
                  reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                  notes: priorMinors.map((m) => m.detail)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches }
+                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches,
+                 ...examEditedField() }
       }
       if (iter === 2) {
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 ...examEditedField() }
       }
       // Fix round: same tree (isolation routes fix:<id> to the task's clone),
       // prior work is simply the tree's state; capture stays cumulative
@@ -830,12 +841,18 @@ export async function runEngine({
       if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
-      // The fix round builds on the same tree, so the exam is checked again:
-      // an implementer that leaves the exam alone and then edits it under a
-      // blocking issue is the same defect one round later.
-      {
-        const moved = await examDrift()
-        if (moved.length) return examEdited(moved, 'the fix round', 1)
+      // The fix round builds on the same tree, so the exam is checked again —
+      // but this drift is not the first round's defect (run-53, #556). The fix
+      // round is applying a referee's findings, and on run-53 the finding WAS
+      // the exam, with the referee's own proposedPatch attached. The re-review
+      // below reads the whole fix patch, exam hunks included, so the edit is
+      // reviewed rather than refused: it is recorded on the row and pushed as
+      // one judgment call, and the round falls through.
+      examMoved = await examDrift()
+      if (examMoved.length) {
+        judgmentCalls.push('task ' + task.id + ': the fix round edited the exam — ' +
+          examMoved.join(', ') + ' no longer matches the blob recorded at BASE; the ' +
+          're-review reads the fix patch, exam hunks included')
       }
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
         judgmentCalls.push('task ' + task.id + ': fix round lost driver-captured coordinates (' +
@@ -843,12 +860,14 @@ export async function runEngine({
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'lost-coordinates',
                  notes: 'fix round produced no driver-captured patch/headSha',
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 ...examEditedField() }
       }
       if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
         return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'blocked-after-fix', notes: impl.summary,
-                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches,
+                 ...examEditedField() }
       }
     }
   }

@@ -11,6 +11,44 @@ account and nothing else.
 No step here touches `skills/ultrapowers/scripts/`, `skills/ultrapowers/kernel/`,
 — the run engine is `fleet/run-engine.mjs` (0.3.0, Amendment 10).
 
+## exe.dev account
+
+Everything below assumes an exe.dev account whose SSH key is registered, so
+that `ssh exe.dev whoami` prints your username. Nothing else in this file
+works without it: every VM is created, cloned and removed by an
+`ssh exe.dev ...` command, so the account is the first thing to build and the
+first row the doctor checks.
+
+1. Sign up at exe.dev and note the username it gives you.
+2. Register the public half of a local key on the account, through the web UI.
+   A key generated for this is fine:
+   `ssh-keygen -t ed25519 -N "" -C exe-dev -f ~/.ssh/id_ed25519`.
+3. Point the laptop's `~/.ssh/config` at that key for the two host patterns the
+   fleet uses — `exe.dev` itself, and the `*.exe.xyz` VMs it creates. This is
+   the same stanza §Orchestrator VM writes on the orchestrator for the
+   orchestrator's own key:
+
+```
+Host *.exe.xyz exe.dev
+  StrictHostKeyChecking accept-new
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+`IdentitiesOnly yes` is the line that keeps a laptop with many loaded keys from
+offering the wrong one first and being refused before it reaches this one.
+
+Then check it:
+
+```bash
+ssh exe.dev whoami
+```
+
+That printing your username is the whole of this step. A `Permission denied`
+means the key is not registered on the account, or `IdentitiesOnly` is unset
+and the agent offered a different key first. `node fleet/doctor.mjs` reports
+this same check as its first row (§Doctor).
+
 ## Golden VM build
 
 **Rebuilding an existing golden: build the replacement, then swap.** Step 1
@@ -313,6 +351,28 @@ URL from §Orchestrator VM. A missing token file is not a failure of the run:
 `detail.errors` gets `github-token missing at … — PR not opened`, the branch is
 still fetched into the orchestrator checkout, and the gate read is exactly what
 it would have been. Rotate by generating a new token and repeating step 2.
+
+## Doctor
+
+`node fleet/doctor.mjs` is the read-only check of everything above: one row per
+section — exe.dev account, orchestrator, golden, token — and a fifth,
+preflight, that runs only with `--probe` because it clones the golden into a
+throwaway `fleet-doctor-probe` VM and removes it.
+
+```bash
+node fleet/doctor.mjs           # the four read-only rows
+node fleet/doctor.mjs --probe   # plus preflight, which clones a VM and removes it
+node fleet/doctor.mjs --json    # the same verdicts as one JSON object
+```
+
+A missing row names the section of this file that builds it; `--json` is what
+`/ultrapowers setup` reads. Re-run it after every step of a build and after
+every `claude plugin update` on the golden; a green doctor is the posture
+check, not the build's exit code.
+
+The `--probe` row is the §Preflight procedure below, run for you; the section
+that follows is where its verdicts are explained and where to go when the
+VM→VM fetch is the leg that failed.
 
 ## Preflight
 

@@ -231,26 +231,33 @@ const editExam = (cwd) =>
   assert.deepEqual(report.judgmentCalls.filter((j) => j.includes('t1_test.sh')).length, 1)
 }
 {
-  // The same edit in the fix round, after a blocking first review.
+  // The same edit in the fix round, after a blocking first review, is the
+  // other case (run-54 task 5): the fix round is applying a referee's
+  // findings, and the finding may BE the exam. The edit is recorded and
+  // reviewed — the re-review reads the fix patch, exam hunks included — not
+  // refused. Its own sim is test_run_engine_exam_fix_edit.mjs.
   const labels = []
   const stub = (prompt, opts, cwd) => {
     labels.push(opts.label)
     const kind = opts.label.split(':')[0]
     if (kind === 'exam') return examOk(cwd)
     if (kind === 'impl') { writeOne(cwd); return doneImpl(cwd) }
-    if (kind === 'review') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'not yet' }] }
+    if (opts.label === 'review:T1:1') return { verdict: 'FIX_REQUIRED', issues: [{ severity: 'blocking', detail: 'not yet' }] }
+    if (kind === 'review') return passReview()
     if (kind === 'fix') { editExam(cwd); return doneImpl(cwd) }
     if (opts.label === 'integration') return cleanCritic()
     throw new Error('unexpected dispatch: ' + opts.label)
   }
   const { run } = rig({ waves: [[entry()]], stub })
   const report = await run()
-  assert.deepEqual(labels.filter((l) => l !== 'integration'), ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1'],
-    'the fix round ran and no second review followed it')
-  assert.equal(report.tasks[0].status, 'failed')
-  assert.equal(report.tasks[0].reviewVerdict, 'exam-edited')
+  assert.deepEqual(labels.filter((l) => l !== 'integration'),
+    ['exam:T1', 'impl:T1', 'review:T1:1', 'fix:T1:1', 'review:T1:2'],
+    'the fix round proceeds to its re-review')
+  assert.equal(report.tasks[0].status, 'done')
+  assert.equal(report.tasks[0].reviewVerdict, 'fixed')
   assert.equal(report.tasks[0].exam, 'red')
-  assert.equal(report.coverage.tasks_merged, 0)
+  assert.deepEqual(report.tasks[0].examEdited, ['t1_test.sh'])
+  assert.equal(report.coverage.tasks_merged, 1)
   assert.ok(report.judgmentCalls.some((j) => j.includes('t1_test.sh')))
 }
 {
