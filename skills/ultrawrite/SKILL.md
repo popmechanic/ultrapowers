@@ -54,9 +54,11 @@ derivation.
   system's own terms. Write do:/see: interactions, never system states. Register drift
   between the two halves is a defect the gate checks.
 - **Authorized-by:** the reference licensing this task — issue, spec §, decision record.
-- **Interfaces:** `Consumes:` / `Produces:` — exact signatures, exact test names. **A
-  test's import of a sibling's symbol is a `Consumes:`**; that is now the whole ordering
-  story for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet, but a
+- **Interfaces:** `Consumes:` / `Produces:` — exact signatures, exact test names, **one
+  symbol per bullet** (the compiler reads the first symbol of a bullet and nothing after
+  a comma, so a line listing three symbols derives no edge for the other two). **A test's
+  import of a sibling's symbol is a `Consumes:`**; that is now the whole ordering story
+  for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet, but a
   `Consumes:` no sibling `Produces:` draws an `ADVISORY`, because with no marker backstop
   a typo and a prose sentence are both silently missing edges.
 - **Context:** what the implementer must know that the repo cannot tell it. Its word count
@@ -171,15 +173,24 @@ Every `implementation` task is a pure diff against the integration branch:
 
 Independence is a property of contracts, not of files.
 
-1. **Contract-first.** Where a consumer would wait on a producer, fix the shared interface
-   up front as its own small early task that `Produces:` the signatures; consumers
-   `Consumes:` it and build against the contract concurrently.
-2. **The good-engineer gate.** Every such move must name a concrete independence win and
-   pass *"would a good engineer make this move even without parallelism in mind?"* A
-   contract introduced only to fan out fails — drop it. Surviving moves carry a
-   `**Parallelization rationale:**` line in that task's body.
-3. **The escape valve.** Concluding there is **no latent parallelism** is a correct
-   outcome. Small or inherently linear work is not reshaped.
+1. **Split by default.** Every piece of work that can carry its own contract — a module
+   with its own exports and its own tests — is its own task. Where a consumer would wait
+   on a producer, put the shared shape (a schema, a signature, a file format) as one
+   literal in the Context of every task that touches it; the critic checks that the
+   implementations agree with it. A `Consumes:` of a sibling's `Produces:` orders the two;
+   a shared literal does not, so prefer the literal wherever the consumer only needs the
+   shape. Workers have no shared memory — a chain of two tasks is two strangers in
+   sequence, not one mind holding a design — so a chain buys no coherence, only the wait.
+2. **A chain must justify itself.** The only reason to make task B wait on task A is that
+   B needs A's *runtime behaviour*, not A's shape — something no contract can promise.
+   Name that behaviour in B's Context, in one sentence. "At this size", "a good engineer
+   would keep this together" and "it is one file" are not reasons: same-file edits fold,
+   and size is what width is for. Measured 2026-09-02: the same tool built as a two-task
+   chain took 79 min with one fix round; as nine contracts, seven wide, it took 49.5 min
+   with none (#541).
+3. **State the width.** The plan's `**Parallelization rationale:**` line names each
+   wave's width and every chain longer than one with its sentence from rule 2. Concluding
+   that a plan is genuinely linear is still a legal outcome — it just has to say why.
 4. **Let same-file edits stand.** Concurrent same-file *text* writes fold at merge, so a
    shared hot file is never a reason to reshape a plan — let colliding `Modify` lines
    collide. Non-text (binary, symlink) same-file pairs are ordered automatically. Blast
@@ -244,5 +255,7 @@ task-by-task from contract plus proof.
   task's own writes; every fence sits in Proof.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
   or the Files blocks overlap. Nothing rides on prose.
-- Each contract-first move names its independence win, or the plan is intentionally narrow.
+- The rationale line states each wave's width; every chain longer than one names the
+  runtime behaviour its consumer needs (rule 2), and any exam that quantifies over a
+  directory was checked against BASE for pre-existing violators (#536).
 - Global Constraints state results, not process; the plan carries an Acceptance line.
