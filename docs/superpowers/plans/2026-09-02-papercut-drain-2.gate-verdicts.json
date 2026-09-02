@@ -1,0 +1,63 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "03e785d0444a51a46accc3eb798cd819b8025b7fbed9ddb7d69acec1db9aaef3",
+   "verdict": "pass",
+   "reason": "round 1: format and order pinned by (a)/(b), the three null cases by (c)/(d)/(e), the CLI layer by (f)/(g), --check by (i); the engine consumer of testCmd exists at BASE (run-engine.mjs:171-173) so the operator sentence's wider scope is already true"
+  },
+  "2": {
+   "hash": "5e4cae1aa6607751746585a138e866ef96826ac4ce6a0579f55ec397532ee30b",
+   "verdict": "pass",
+   "reason": "round 5: rounds 1-4 each found one unexamined clause (distinct-runner dedup, the probe worktree + non-zero exit, the pytest runner, the item's cmd field); (f)-(i) now pin all of them"
+  },
+  "3": {
+   "hash": "127098a6667361c6f58d2ddee866321bf886d9edeaff84bbc15010f290dadb12",
+   "verdict": "pass",
+   "reason": "round 3: (g) added the race-launch forwarding leg after round-1 found that clause unexamined; (b) became a frozen pre-edit literal sequence after round-2 found omitted-vs-minus-one could not catch an unconditional new command"
+  },
+  "4": {
+   "hash": "9de0032a4e2add96175c8caea8308d66e24f160d2d70fa8ddcfdd86291a448bf",
+   "verdict": "pass",
+   "reason": "round 2: (d) gained the exact <evidenceDir>/gate-read-<runId>.json path after round-1 found any .json under the evidence dir would green; (a)/(b) the render clauses, (d) the pin-success/failure gating"
+  },
+  "5": {
+   "hash": "d0762202bb36aafc5a64579bc7ac202ae012d5e5404fe6daec7b2fd893036461",
+   "verdict": "pass",
+   "reason": "round 1: each conjunct of the delete predicate has a falsifying branch in (a)/(b); zero deletes without the flag, exactly two with it; keep reasons in (a)/(c)/(d); (g) exercises the CLI entry"
+  },
+  "6": {
+   "hash": "e1a41d75fe83502871050e02fd45cf95c9675e071e30110f9b6b67f953492dad",
+   "verdict": "pass",
+   "reason": "round 3: the Machine line now says the assignment path never runs git show; (i) covers present-but-different at base and (j) compares the no-option exec list against a frozen pre-edit literal (rounds 1-2 found both universal clauses unexamined)"
+  },
+  "7": {
+   "hash": "35f02a7d548ef439511d5f4023e81156154c10daf638b2b5e0810571c62dde8c",
+   "verdict": "pass",
+   "reason": "round 1: (a) path/sibling/argv, (b) null verdicts, (c) no-plan argv equals BASE oneDriverArgs, (d) after-checkout order, (e) not a run-* dir, (f) planSha256 through main() on the harness"
+  },
+  "8": {
+   "hash": "b2105c1e3cad0aec3cd2f40eace598220cd420a501770411f44b63da83de028a",
+   "verdict": "pass",
+   "reason": "round 2: (b) gained the single-quoted, argument-less form after round-1 found the extractor's second quote branch unexercised; (c) allow-list shape, (d)/(e) regex-liveness floors"
+  },
+  "9": {
+   "hash": "9bcefedc48e67f7bb3d9c15dfb642e0533b9e291041e333035612c779698e1a2",
+   "verdict": "pass",
+   "reason": "round 3: the claim became a verbatim sentence (round-1: co-occurrence could not encode the negation) and (b) gained a section-scoped no-`-n auto` check (round-2: a following line without the hostname greened it)"
+  },
+  "10": {
+   "hash": "5c53bab52b808fd5ec615c28b8b85f54c60e978058bb50ab32f7a2658d1920eb",
+   "verdict": "pass",
+   "reason": "round 2: the claim became a verbatim sentence plus a fenced block with pinned first/last lines after round-1 found substring co-occurrence could not encode the negation; (c) pins all four rescue commands, not one"
+  },
+  "11": {
+   "hash": "730647226bf33bded8774797e1428fffa6819e853e63d9f687798fb86ddd823a",
+   "verdict": "pass",
+   "reason": "round 1: reader clauses by (a)/(b)/(c); the main() default branch by (d)/(e) with a distinguishing 1000-vs-900 pair on the run row; (f) is a docstring, nothing rests on it"
+  }
+ },
+ "tally": {
+  "dispatched": 24,
+  "rejected": 11
+ }
+}
