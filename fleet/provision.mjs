@@ -28,6 +28,8 @@ export const sandboxGitSsh = `ssh ${SANDBOX_SSH_OPTS}`
 /** Where the per-run engine env file lands on the sandbox (#213). */
 export const ENGINE_ENV_PATH = '/home/exedev/fleet-env'
 const ENGINE_ENV_EOF = 'FLEET_ENV_EOF'
+/** The heredoc sentinel the run assignment itself rides. */
+const ASSIGNMENT_EOF = 'FLEET_EOF'
 const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** POSIX single-quote a value: `'` becomes `'\''`. */
@@ -54,6 +56,32 @@ export function engineEnvFileBody(engineEnv) {
     lines.push(`${key}=${shQuote(text)}`)
   }
   return lines.join('\n')
+}
+
+/**
+ * The `plan` slot of the run assignment (#544 step 2): the plan text and its
+ * gate verdicts, SHIPPED to the sandbox instead of read from the repo at
+ * `baseRef`. Returns null for an absent plan — the pre-#544 shape, where the
+ * key does not exist at all and the sandbox falls back to `planPath`.
+ *
+ * `verdicts` normalizes to null when there is no sibling verdict file, so the
+ * key is always present and always a string-or-null: a consumer never has to
+ * distinguish "absent" from "empty".
+ *
+ * Both texts ride the FLEET_EOF heredoc, so either one carrying that sentinel
+ * would close the heredoc early and hand the remainder to the sandbox's shell.
+ * Refused here — the same refusal `engineEnvFileBody` makes for an env value,
+ * and made up front, before the first command is issued.
+ */
+export function assignmentPlan(plan) {
+  if (!isNonEmptyString(plan?.text)) return null
+  const verdicts = isNonEmptyString(plan.verdicts) ? plan.verdicts : null
+  for (const [field, text] of [['text', plan.text], ['verdicts', verdicts]]) {
+    if (typeof text === 'string' && text.includes(ASSIGNMENT_EOF)) {
+      throw new Error(`provisionRun: plan ${field} must not contain the heredoc sentinel ${ASSIGNMENT_EOF}`)
+    }
+  }
+  return { text: plan.text, verdicts }
 }
 
 /** The engine env-file delivery command: same umask-077 heredoc pattern as the assignment. */
@@ -156,7 +184,7 @@ const sizeFlags = ({ cpu, memory, disk }) => {
  * @param {() => number} [opts.clock] - defaults to Date.now.
  * @returns {Promise<{vmName: string, token: string, record: object}>}
  */
-export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, engineEnv, engine, overlap, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
+export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsUrl, port, planPath, plan, engineEnv, engine, overlap, cpu, memory, disk, registerToken, exec, clock = Date.now }) {
   // Validate the payload before the first ssh (#190): `JSON.stringify` silently
   // drops `undefined` fields, so an unvalidated caller mistake does not fail
   // here — it fails two stages later, on the sandbox, with a payload missing
@@ -176,6 +204,9 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   const engineEnvCommand = withEngineEnv ? engineEnvDeliveryCommand({ vmName, engineEnv }) : null
   // Validate sizing knobs before any exec call.
   const sizeFlagsStr = sizeFlags({ cpu, memory, disk })
+  // Same rule for the shipped plan (#544): a text carrying the heredoc
+  // sentinel must cost a refusal here, not a cloned sandbox two steps later.
+  const planArtifact = assignmentPlan(plan)
 
   // 1. Clone the golden VM into a fresh, run-scoped sandbox.
   await exec(`ssh exe.dev "cp ${golden} ${vmName}${sizeFlagsStr} --json"`)
@@ -216,13 +247,18 @@ export async function provisionRun({ golden, runId, baseRef, repoDir, ttlMs, wsU
   // `overlap` (#514) rides on the same terms, and for the same reason: an
   // absent key IS the old path — the shim launches the engine with the
   // three-argument argv it always did, so old assignments stay byte-identical.
+  // `plan` (#544 step 2) is the third on those terms: with it the sandbox
+  // writes the shipped text and runs THAT; without it, it reads `planPath`
+  // out of the pushed base exactly as before. `planPath` stays either way —
+  // the receipt and the PR title keep naming the repo path.
   const payload = {
     runId, token, wsUrl, ttlMs, planPath,
     ...(isNonEmptyString(engine) ? { engine } : {}),
     ...(isNonEmptyString(overlap) ? { overlap } : {}),
+    ...(planArtifact ? { plan: planArtifact } : {}),
   }
   await exec(
-    `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n${JSON.stringify(payload)}\nFLEET_EOF`
+    `ssh ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'${ASSIGNMENT_EOF}'\n${JSON.stringify(payload)}\n${ASSIGNMENT_EOF}`
   )
 
   // 4b. Deliver the engine's env (#213) the same way — a 0600 file the shim

@@ -128,6 +128,12 @@ export const launchRace = async (argv, deps = {}) => {
         port: run.port,
         dbDir: run.dbDir,
         repoDir: run.repoDir,
+        // #543: every attempt drives out of its own throwaway clone, so the
+        // #497 rescue ref would be written into a /tmp directory nobody looks
+        // in and the reaper removes. The launch checkout is the one place all
+        // K tips are findable, and it is the same value for every attempt —
+        // one more shared key, never a per-attempt lane.
+        pinRepoDir: sourceRepo,
       },
       driveDeps,
     ),

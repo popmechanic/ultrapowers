@@ -87,9 +87,10 @@ LLM_DERIVES = [
     "waves[][].tier on the args-file wave entries (slots pre-emitted as null; "
     "the engine reads knobs ONLY from these inline entries — never a "
     "top-level launch key)",
-    "waves[][].testCmd per task, only for polyglot plans where one task's stack "
-    "differs from the run-wide command (run-wide testCmd is driver-derived — "
-    "knob or detection — and already stamped in the args file and receipt)",
+    "nothing for waves[][].testCmd — the per-task command is compiler-derived "
+    "from the task's Proof `Test:` paths and pre-filled on the wave entries "
+    "(run-wide testCmd is driver-derived — knob or detection — and already "
+    "stamped in the args file and receipt)",
     "nothing for bootstrapCmd — pass --bootstrap-cmd to the preflight driver "
     "instead, so the receipt and the gate share the validated value",
     "nothing for review depth — it is plan-authored (**Review:** marker), "
@@ -145,6 +146,63 @@ def write_dirty_baseline(root):
                               stdout=fh, stderr=subprocess.PIPE, text=True)
 
 
+# #234: the runners a per-task `testCmd` may name, and the `--version` probe
+# that parse-checks each. A dry run is impossible — a task's `Test:` files are
+# created by the task and do not exist at BASE — so "is the runner there and
+# does it start" is the whole check. First matching prefix wins, so the
+# more specific one is listed first.
+TASK_RUNNERS = (
+    ("python3 -m pytest", "python3 -m pytest", ["python3", "-m", "pytest", "--version"]),
+    ("node ", "node", ["node", "--version"]),
+)
+
+
+def task_test_cmds(knobs):
+    """The distinct per-task `testCmd` strings on `waves[][]`, in
+    first-appearance order. A task with no derivable command carries `null`
+    (or no key at all); those slots are skipped, so an args file that names
+    none leaves every BASE output shape untouched."""
+    seen = []
+    for wave in knobs.get("waves") or []:
+        for t in wave:
+            cmd = t.get("testCmd")
+            if isinstance(cmd, str) and cmd.strip() and cmd not in seen:
+                seen.append(cmd)
+    return seen
+
+
+def runner_for(cmd):
+    """(runner, probe argv) for a per-task command, or (None, None) when it
+    matches no known runner — which is itself a red verdict, not a skip."""
+    for prefix, runner, probe in TASK_RUNNERS:
+        if cmd.startswith(prefix):
+            return runner, probe
+    return None, None
+
+
+def probe_task_test_cmds(cmds, cwd):
+    """One `{cmd, runner, ok}` per distinct command; each distinct RUNNER is
+    probed once, in `cwd` (the throwaway worktree), and its verdict is shared
+    by every command naming it. Fail closed: a runner that will not launch is
+    red, never an unknown."""
+    verdicts = {}
+    items = []
+    for cmd in cmds:
+        runner, probe = runner_for(cmd)
+        if runner is None:
+            items.append({"cmd": cmd, "runner": None, "ok": False})
+            continue
+        if runner not in verdicts:
+            try:
+                verdicts[runner] = subprocess.run(
+                    probe, cwd=cwd, capture_output=True, text=True,
+                    timeout=120).returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                verdicts[runner] = False
+        items.append({"cmd": cmd, "runner": runner, "ok": verdicts[runner]})
+    return items
+
+
 def validate_knobs(args_path, root):
     """Pre-launch knob validation, fail-closed (#89): every wave entry's
     tier/review must be a value the engine accepts, and a bootstrapCmd must
@@ -152,7 +210,9 @@ def validate_knobs(args_path, root):
     the session checkout, so a wrong draft cannot mutate the operator's tree.
     The worktree bounds repo-tree mutations only: shared global package
     caches (pip/npm/uv), outside-the-repo venvs, and network effects escape
-    it. Exit 0 = safe."""
+    it. In the same worktree, every per-task `testCmd`'s runner is probed
+    with `--version` (#234), so a task whose tests need a tool the sandbox
+    lacks fails here rather than mid-wave. Exit 0 = safe."""
     try:
         knobs = json.loads(Path(args_path).read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -195,9 +255,10 @@ def validate_knobs(args_path, root):
         return 1
     cmd = knobs.get("bootstrapCmd")
     test_cmd = knobs.get("testCmd")
+    task_cmds = task_test_cmds(knobs)
     has_bootstrap = isinstance(cmd, str) and bool(cmd.strip())
     has_test = isinstance(test_cmd, str) and bool(test_cmd.strip())
-    if not has_bootstrap and not has_test:
+    if not has_bootstrap and not has_test and not task_cmds:
         print(json.dumps({"ok": True, "stage": "knob-validate",
                           "detail": "no bootstrapCmd — nothing to validate"}))
         return 0
@@ -249,6 +310,15 @@ def validate_knobs(args_path, root):
                 result["baseline"] = {"ok": False, "exit": -1,
                                       "output": "[baseline timed out after 1800s]"}
             baseline_red = not result["baseline"]["ok"]
+        per_task_red = False
+        if task_cmds:
+            # Additive by construction: the key appears only when a wave entry
+            # actually carries a command, so an args file with none keeps every
+            # BASE output shape byte-identical.
+            result["perTaskTestCmds"] = probe_task_test_cmds(task_cmds, probe_wt)
+            per_task_red = not all(i["ok"] for i in result["perTaskTestCmds"])
+            if per_task_red:
+                result["ok"] = False
     finally:
         signal.signal(signal.SIGTERM, prev_term)
         rm = sh(["git", "worktree", "remove", "--force", str(probe_wt)],
@@ -258,7 +328,7 @@ def validate_knobs(args_path, root):
             result["output"] += ("\n[probe worktree removal failed: %s]"
                                  % rm.stderr.strip())
     print(json.dumps(result))
-    if bootstrap_red:
+    if bootstrap_red or per_task_red:
         return 1
     return 3 if baseline_red else 0
 

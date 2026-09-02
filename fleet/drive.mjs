@@ -30,6 +30,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // fold happens above the run) but is terminal wherever it appears.
 const TERMINAL = new Set(['gate-green', 'parked', 'revoked', 'folded'])
 
+/**
+ * The plan gate's verdict artifact, sibling to the plan: `<stem>.gate-verdicts.json`
+ * (compile_plan.py's `verdicts_path`). It rides the assignment beside the plan
+ * text under `planSource: 'assignment'`, so the sandbox's compiler can read the
+ * record for a plan that is no longer a repo file (#544).
+ */
+const GATE_VERDICTS_SUFFIX = '.gate-verdicts.json'
+
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0
 
 /**
@@ -306,6 +314,15 @@ gh pr create --draft --head ${branch} --title '[parked] fleet ${runId}' --body-f
  * sits between the notes and the `Closes` lines — the four hand steps, with
  * this run's real ref, sha, branch and host in them. A park without such a
  * failure, and every green body, renders no such section.
+ *
+ * #543: the rescue block answers a publish that FAILED, which is the rare
+ * case. The common one is a card someone closes — a park nobody acks, a race
+ * loser nobody adopts — and nothing on the body said the tip survives it. So
+ * a run whose pin landed carries ONE line, on EVERY body (parked or green),
+ * naming the ref, the evidence and the sweep. Both `pinnedRef` and
+ * `evidencePath` are required for it: the sentence points at a path, and a
+ * half-supplied pair would point the operator at `undefined`. Absent — every
+ * pre-#543 call shape — the body is byte-for-byte what it was.
  */
 export const renderPullRequestBody = ({
   runId,
@@ -324,6 +341,11 @@ export const renderPullRequestBody = ({
   // pre-#527 call shape is unchanged by construction.
   runbook,
   rescue,
+  // #543: `refs/fleet/<runId>`, as the drive actually wrote it, and the gate
+  // read beside it — the two things a closing operator needs and no section
+  // of this body otherwise carries.
+  pinnedRef,
+  evidencePath,
 }) => {
   const gate = receipt?.gateCheck && typeof receipt.gateCheck === 'object' ? receipt.gateCheck : receipt ?? {}
   const verdict = receipt?.verdict ?? gate?.verdict ?? 'unknown'
@@ -451,6 +473,17 @@ export const renderPullRequestBody = ({
     lines.push('```')
     lines.push('')
   }
+  // #543. Unconditional on the PIN, not on the publish: this is the standing
+  // fact about every pinned run, so it reads the same on a green card and on a
+  // park. One sentence, no fence, no heading — it has to survive being read in
+  // the two seconds before someone hits Close.
+  if (isNonEmptyString(pinnedRef) && isNonEmptyString(evidencePath)) {
+    lines.push(
+      `Closing this PR does not lose the work: tip pinned as \`${pinnedRef}\` on the orchestrator; ` +
+        `evidence at \`${evidencePath}\`; the branch is swept after adoption.`,
+    )
+    lines.push('')
+  }
   for (const n of closes) lines.push(`Closes #${n}`)
   if (closes.length > 0) lines.push('')
   lines.push('🤖 Generated with [Claude Code](https://claude.com/claude-code)')
@@ -504,6 +537,14 @@ export const deriveSandboxStat = (statJson) => {
  *   store for a fresh-store experiment never deletes the evidence.
  * @param {string} opts.repoDir - local checkout the base is pushed from and the
  *   run branch is fetched back into.
+ * @param {string} [opts.pinRepoDir] - the ONE checkout the run tip is pinned
+ *   in, whatever `repoDir` this drive runs out of (#543; default `repoDir`,
+ *   which is exactly the #497 behaviour). A race gives every attempt a
+ *   throwaway clone under /tmp, so `refs/fleet/<runId>` lands where nobody
+ *   looks and /tmp reaps — the "reachable by nothing" outcome #497 exists to
+ *   prevent. The mirror runs only AFTER the local pin lands, fetches the REF
+ *   (a bare sha needs `uploadpack.allowAnySHA1InWant`), and its failure is
+ *   recorded and never fatal.
  * @param {(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
  *   `stdout` is compared byte-for-byte against the working tree by the #337
  *   preflight, so an exec MUST keep stderr off it (#362); `stderr`, when
@@ -565,6 +606,10 @@ export const driveOne = async ({
   port,
   dbDir,
   repoDir,
+  // #543: defaulting to `repoDir` keeps every existing caller's exec sequence
+  // byte-identical — a drive that pins into its own checkout is the #497 leg
+  // unchanged, and the mirror below is skipped entirely.
+  pinRepoDir = repoDir,
   exec,
   clock = Date.now,
   runId,
@@ -600,6 +645,12 @@ export const driveOne = async ({
   // specific operator pre-authorization for the manual-judgment task named in
   // the thrown error — never as a standing default.
   allowUnfitPlan = false,
+  // #544 step 2: where the plan text comes from. Undefined (the default, and
+  // the whole absent-flag path) keeps #337 exactly as it was — the plan is a
+  // repo file, read from `baseRef`. `'assignment'` makes it a RUN ARTIFACT:
+  // read from the working tree, assessed there, and shipped to the sandbox in
+  // `fleet-run.json` beside the unchanged `planPath`.
+  planSource,
   // Injection seams for the provision/teardown legs — the real module
   // functions by default. They exist so the pullLogsOnce refusal branch
   // (defense in depth against a mid-run vmName mutation; unreachable through
@@ -681,6 +732,16 @@ export const driveOne = async ({
     workingText = null
   }
   let committedText = null
+  // The text the sandbox will ACTUALLY execute, whichever source produced it.
+  // The publish leg renders from it twice — `parsePlanCloses` for the PR
+  // body's `Closes #NNN` lines and `pullRequestTitle` for the plan's H1 — so
+  // it is bound HERE, once, by both branches below. Before #544 step 2 those
+  // two call sites read `committedText` directly; under
+  // `planSource: 'assignment'` that variable is never assigned, so a shipped
+  // plan carrying `Closes: #544` would have opened a PR that closed nothing
+  // and was titled after the plan file's basename — silently, since neither
+  // render throws on `null`.
+  let dispatchedText = null
   // Both halves are interpolated into a shell: the ref passes the guard
   // provisionRun applies to it, the path the receipt-pointer guard (same
   // character class, no `..` segment — a path that escapes the checkout can
@@ -689,6 +750,10 @@ export const driveOne = async ({
   // and then reported as an uncommitted plan (run-20's critic: misleading,
   // and non-overridable). The ref keeps its guard-miss reading of "absent":
   // the stamp cross-check below skips on it with a narrating errors line.
+  //
+  // The guard binds under BOTH plan sources: `planRel` is pushed to the
+  // sandbox as `planPath` either way, and a shipped plan does not make an
+  // escaping path safe to name.
   if (!isSafeRepoPath(planRel)) {
     throw new Error(
       `driveOne: plan path ${JSON.stringify(planRel)} (from ${planPath}) fails the repo-path guard — ` +
@@ -697,29 +762,10 @@ export const driveOne = async ({
         `the plan (#362)`,
     )
   }
-  if (isSafeBranchName(baseRef)) {
-    try {
-      const shown = await exec(`git -C ${repoDir} show ${baseRef}:${planRel}`)
-      if (shown?.code === 0 && typeof shown.stdout === 'string') committedText = shown.stdout
-    } catch {
-      committedText = null
-    }
-  }
-  if (committedText === null && workingText === null) {
-    note(`headless-fitness: plan absent at ${baseRef}:${planRel} and unreadable at ${planFile} — check skipped`)
-  } else if (committedText === null) {
-    throw new Error(
-      `driveOne: plan ${planRel} is in the working tree but not committed at ${baseRef} — the sandbox ` +
-        `executes the pushed ${baseRef}, never the working tree; commit it, or pass the ref that carries it (#337)`,
-    )
-  } else if (workingText !== null && workingText !== committedText) {
-    throw new Error(
-      `driveOne: plan ${planRel} differs between ${baseRef}:${planRel} (what the sandbox executes) and the ` +
-        `working tree ${planFile} — commit or discard the edit so the fitness verdict attaches to the ` +
-        `dispatched text (#337)`,
-    )
-  } else {
-    const fitness = assessHeadlessFitness(committedText)
+  // The fitness verdict on whichever text is about to be dispatched. Shared by
+  // both sources, so the check cannot drift between them: only its INPUT moves.
+  const assessDispatchedPlan = (text) => {
+    const fitness = assessHeadlessFitness(text)
     if (!fitness.fit) {
       const summary = fitness.findings.map((f) => `${f.task}: ${f.reason}`).join('; ')
       if (!allowUnfitPlan) {
@@ -738,6 +784,66 @@ export const driveOne = async ({
     for (const n of fitness.notes ?? []) {
       errors.push(`headless-fitness note (advisory): ${n.task}: ${n.note}`)
     }
+  }
+
+  // #544 step 2: the plan as a RUN ARTIFACT. The sandbox executes the text we
+  // SHIP it, so the working tree is the authoritative source and `baseRef` is
+  // not consulted at all — `git show` is never issued, and the two #337
+  // divergences it exists to detect (uncommitted, dirty) have nothing left to
+  // be about: neither can change the dispatched text. Fitness still gates; the
+  // check moves onto the shipped text rather than going away. The gate
+  // verdicts ride along from the sibling artifact the plan gate writes
+  // (`<stem>.gate-verdicts.json`), null when there is none.
+  let planArtifact = null
+  if (planSource === 'assignment') {
+    if (workingText === null) {
+      note(`plan-from-assignment: plan unreadable at ${planFile} — nothing to ship, fitness check skipped`)
+    } else {
+      const verdictsFile = path.join(
+        path.dirname(planFile),
+        `${path.basename(planFile, path.extname(planFile))}${GATE_VERDICTS_SUFFIX}`,
+      )
+      let verdictsText = null
+      try {
+        verdictsText = fs.readFileSync(verdictsFile, 'utf8')
+      } catch {
+        verdictsText = null
+      }
+      if (verdictsText === null) note(`plan-from-assignment: no gate verdicts beside the plan at ${verdictsFile}`)
+      planArtifact = { text: workingText, verdicts: verdictsText }
+      dispatchedText = workingText
+      note(`plan-from-assignment: shipping ${planRel} (${workingText.length} bytes) in the assignment`)
+      assessDispatchedPlan(workingText)
+    }
+  } else {
+    if (isSafeBranchName(baseRef)) {
+      try {
+        const shown = await exec(`git -C ${repoDir} show ${baseRef}:${planRel}`)
+        if (shown?.code === 0 && typeof shown.stdout === 'string') committedText = shown.stdout
+      } catch {
+        committedText = null
+      }
+    }
+    if (committedText === null && workingText === null) {
+      note(`headless-fitness: plan absent at ${baseRef}:${planRel} and unreadable at ${planFile} — check skipped`)
+    } else if (committedText === null) {
+      throw new Error(
+        `driveOne: plan ${planRel} is in the working tree but not committed at ${baseRef} — the sandbox ` +
+          `executes the pushed ${baseRef}, never the working tree; commit it, or pass the ref that carries it (#337)`,
+      )
+    } else if (workingText !== null && workingText !== committedText) {
+      throw new Error(
+        `driveOne: plan ${planRel} differs between ${baseRef}:${planRel} (what the sandbox executes) and the ` +
+          `working tree ${planFile} — commit or discard the edit so the fitness verdict attaches to the ` +
+          `dispatched text (#337)`,
+      )
+    } else {
+      assessDispatchedPlan(committedText)
+    }
+    // Unconditional, and outside the branch above: at BASE the publish leg read
+    // `committedText` whatever the preflight decided — including the
+    // absent-from-both case, where it is null. Same value, same reads.
+    dispatchedText = committedText
   }
 
   // #282/#190: what the stamp MUST name — resolved at drive start, from the
@@ -1068,6 +1174,9 @@ export const driveOne = async ({
       wsUrl: resolvedWsUrl,
       port: effectivePort,
       planPath,
+      // #544: absent unless `planSource: 'assignment'` shipped one — the key
+      // itself is the switch, on `overlap`'s terms.
+      ...(planArtifact ? { plan: planArtifact } : {}),
       engineEnv,
       overlap,
       cpu: sandboxCpu,
@@ -1270,6 +1379,10 @@ export const driveOne = async ({
   let fetchedOk = false
   let fetchedBranch = null
   let fetchedTip = null
+  // #543: `refs/fleet/<runId>` once the pin below actually lands — the value
+  // the PR body promises the operator. Null while it has not, so a run whose
+  // `update-ref` failed promises nothing.
+  let pinnedRef = null
   const parkedWithReceipts = status === 'parked' && receipts.length > 0
   if (((reachedGateGreen && !publishTimedOut) || parkedWithReceipts) && receipts.length > 0 && vmName) {
     let resolvable = false
@@ -1323,11 +1436,48 @@ export const driveOne = async ({
             } else {
               const pinned = await exec(`git -C ${repoDir} update-ref ${refName} ${fetchedTip}`)
               if (pinned?.code === 0) {
+                pinnedRef = refName
                 // Say it out loud. A ref nobody knows about rescues nobody: the
                 // next scope rejection at 3am otherwise prints `push … failed`
                 // and nothing else, and the operator repeats run-33's manual
                 // recovery for work that is already pinned.
                 note(`pinned run tip: ${refName} -> ${fetchedTip} (survives reset/gc, #497)`)
+                // #543: and pin it in ONE well-known place. `repoDir` is
+                // whatever checkout this drive happens to run out of — for a
+                // race attempt that is a throwaway clone under /tmp
+                // (`race-clone.mjs`), so #497's ref is written into the one
+                // directory nobody looks in and the reaper eventually removes.
+                // The mirror runs only now, after the local pin succeeded: a
+                // ref is always fetchable from a local path while a bare sha
+                // is not (`uploadpack.allowAnySHA1InWant`), so what is fetched
+                // is the REF just written, never `fetchedTip`.
+                //
+                // Failure is recorded and never fatal, for the same reason the
+                // pin above is: this leg exists to make a LATER failure
+                // survivable and must not become a new way for the drive to
+                // die.
+                if (pinRepoDir !== repoDir) {
+                  // `pinRepoDir` is operator input interpolated into a shell
+                  // string. Refuse it rather than quote it: a path this guard
+                  // rejects is a typo or an attack, and both are better read
+                  // in `errors` than executed.
+                  if (!isSafeRepoPath(pinRepoDir)) {
+                    errors.push(
+                      `pinRepoDir ${JSON.stringify(pinRepoDir)} fails the repo-path guard — no canonical pin written; ` +
+                        `${refName} exists only in ${repoDir} (#543)`,
+                    )
+                  } else {
+                    const mirrored = await exec(`git -C ${pinRepoDir} fetch ${repoDir} ${refName}:${refName}`)
+                    if (mirrored?.code === 0) {
+                      note(`pinned run tip in ${pinRepoDir}: ${refName} -> ${fetchedTip} (mirrored from ${repoDir}, #543)`)
+                    } else {
+                      errors.push(
+                        `could not pin ${refName} in ${pinRepoDir} from ${repoDir} (code ${mirrored?.code}) — ` +
+                          `the run tip is pinned only in ${repoDir}, which may be a throwaway clone (#543)`,
+                      )
+                    }
+                  }
+                }
               }
               if (pinned?.code !== 0) {
                 errors.push(`could not pin ${refName} to ${fetchedTip} (code ${pinned?.code}) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`)
@@ -1541,7 +1691,7 @@ export const driveOne = async ({
             }
           } else errors.push(`git show ${receiptSource} failed (code ${shown?.code})`)
         }
-        const closes = parsePlanCloses(committedText)
+        const closes = parsePlanCloses(dispatchedText)
         // #527: the release/manual tasks the compiler set aside, read out of
         // the bundle teardown already pulled — the only copy that outlives the
         // VM. `null` is "could not be read", `[]` is "the plan carried none";
@@ -1581,12 +1731,18 @@ export const driveOne = async ({
             errors: [...errors],
             runbook,
             rescue: { runId, tip: fetchedTip, branch: fetchedBranch, host: orchestratorHost() },
+            // #543: the ref the pin leg really wrote (null when it did not),
+            // and the gate read beside it — `resolvedReportPath` is where this
+            // drive's read actually lands, so the path the card names is the
+            // path an operator can open.
+            pinnedRef,
+            evidencePath: pinnedRef ? resolvedReportPath : null,
           })
         fs.mkdirSync(resolvedEvidenceDir, { recursive: true })
         const bodyFile = path.join(resolvedEvidenceDir, `pr-body-${runId}.md`)
         let body = renderCard()
         fs.writeFileSync(bodyFile, body)
-        const title = pullRequestTitle({ runId, planText: committedText, planPath, parked })
+        const title = pullRequestTitle({ runId, planText: dispatchedText, planPath, parked })
 
         // 1. Push the fetched tip AS-IS. `origin` is the orchestrator clone's
         //    https remote; `gh auth git-credential` turns GH_TOKEN into the

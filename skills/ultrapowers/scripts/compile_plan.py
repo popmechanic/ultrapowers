@@ -433,11 +433,19 @@ def parse_claims_body(body, task_id):
         f = None if fenced else FILE_LINE.match(line.strip())
         if f and f.group(1) in ("Create", "Modify"):
             impl_paths.update(_claims_file_paths(f.group(2)))
+    # Two views of the same paths: the sorted set the disjointness check and
+    # every existing consumer read, and the Proof-ORDER list the task-scoped
+    # test command derives from (#515 — the exam runs in the order the Proof
+    # bullets name, which sorting would silently reshuffle).
     proof_tests = set()
+    proof_tests_ordered = []
     for line, fenced in lines[proof_start:proof_end]:
         f = None if fenced else FILE_LINE.match(line.strip())
         if f and f.group(1) == "Test":
-            proof_tests.update(_claims_file_paths(f.group(2)))
+            for path in _claims_file_paths(f.group(2)):
+                if path not in proof_tests:
+                    proof_tests_ordered.append(path)
+                proof_tests.add(path)
     for path in sorted(proof_tests & impl_paths):
         violations.append(
             "grammar: Proof test paths must be disjoint from implementation "
@@ -453,7 +461,45 @@ def parse_claims_body(body, task_id):
             "claim_provenance": provenance,
             "stale_if_entries": stale_entries,
             "proof_tests": sorted(proof_tests),
+            "proof_tests_ordered": proof_tests_ordered,
             "violations": violations}
+
+
+# Task-scoped exams (#515): the implementer's red->green loop runs its OWN
+# Proof, not the whole suite. Only two path shapes are runnable that way — a
+# node test file under `fleet/tests/`, and any pytest file under `tests/`.
+# Anything else (a doc, a fixture, a directory, a legacy body with no Proof at
+# all) derives nothing, and the engine falls back to the run-wide command; the
+# full suite still runs at the integration head and the gate.
+MJS_PROOF_TEST_RE = re.compile(r"^fleet/tests/test_[^/]*\.mjs$")
+PY_PROOF_TEST_RE = re.compile(r"^tests/(?:[^/]+/)*[^/]+\.py$")
+
+
+def derive_task_test_cmd(proof_tests):
+    """The task-scoped test command a Proof's `Test:` paths derive, or None.
+
+    `proof_tests` is the task's Proof `Test:` paths in PROOF ORDER. Every path
+    must match one of the two runnable shapes or the whole command is None —
+    a partial command would quietly drop an exam the Proof named, which is
+    worse than falling back to the run-wide suite. The `.mjs` paths become one
+    `node <path>` each, in Proof order; the `.py` paths collapse into a single
+    `python3 -m pytest -q <paths>` (also Proof order) appended last, because
+    one pytest process over N files beats N processes.
+    """
+    if not proof_tests:
+        return None
+    node_paths, py_paths = [], []
+    for path in proof_tests:
+        if MJS_PROOF_TEST_RE.match(path):
+            node_paths.append(path)
+        elif PY_PROOF_TEST_RE.match(path):
+            py_paths.append(path)
+        else:
+            return None
+    parts = ["node " + path for path in node_paths]
+    if py_paths:
+        parts.append("python3 -m pytest -q " + " ".join(py_paths))
+    return " && ".join(parts)
 
 
 def _apply_claims_grammar(t):
@@ -2502,7 +2548,14 @@ def main(argv=None):
           # what it only reads/runs); commutes is the task's own validated
           # **Commutes:** declaration, [] when undeclared.
           "writes": by_id[tid].get("writes", []),
-          "commutes": by_id[tid].get("commutes", [])} for tid in wave]
+          "commutes": by_id[tid].get("commutes", []),
+          # Task-scoped exam (#515): the command the implementer iterates
+          # against, derived from this task's Proof. None whenever the Proof
+          # names nothing runnable (or the body is legacy grammar), which the
+          # engine reads as "use the run-wide command".
+          "testCmd": derive_task_test_cmd(
+              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", []))}
+         for tid in wave]
         for wave in waves]
 
     # One deterministic label per wave (same order as waves/launch_waves). The
