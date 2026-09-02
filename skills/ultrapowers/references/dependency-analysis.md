@@ -164,7 +164,7 @@ post_merge_runbook: [T6]    # rendered with the final report, in document order
 derived_knobs:
   testCmd: python3 -m pytest tests/ -q
   baseBranch: main
-  review: { T1: adversarial, default: lean }
+  review: { T1: peer, default: lean }
 
 waves:
   wave_0: [T1, T2]

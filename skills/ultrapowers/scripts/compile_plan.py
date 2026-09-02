@@ -27,6 +27,7 @@ the agent per dependency-analysis.md.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -560,6 +561,78 @@ def clause_citation_advisories(task_id, clauses, legs):
                 "ADVISORY grammar: enumerated clause %s is cited by %d leg — "
                 "task %s: %s; each enumerated row needs its own leg"
                 % (c["id"], len(citing), task_id, _short(c["text"])))
+    return lines
+
+
+# A Proof leg that quantifies over a path prefix (#536). The six forms the
+# check reads: `no|every|each file under|in X` and the negated backticked glob
+# (`no `fleet/tests/test_*.mjs` …`), X and the glob backticked. A quantifier
+# whose prefix the task's own Files cover is checked BY the task's diff; one
+# whose prefix they do not cover is a statement about BASE, and BASE may
+# already hold a violator the author never looked for — run-49's Task 6 wrote
+# "no `fleet/tests/test_*.mjs` contains more than ten `driveOne(` call sites"
+# over a tree where one held 16. Advisory, never a refusal: a universal the
+# author has genuinely checked is a good leg, and the line is the prompt.
+DIR_QUANT_RE = re.compile(
+    r"\b(?:no|every|each)\s+file\s+(?:under|in)\s+`([^`]+)`", re.I)
+GLOB_QUANT_RE = re.compile(r"\bno\s+`([^`]*[*?\[][^`]*)`", re.I)
+GLOB_CHARS = "*?["
+
+
+def _glob_prefix(glob):
+    """The leading glob-free directory part of a path glob, slash-terminated
+    (`fleet/tests/test_*.mjs` -> `fleet/tests/`); the glob itself when its
+    first segment already globs (`*.mjs`)."""
+    segments = glob.split("/")
+    lead = []
+    for s in segments:
+        if any(c in s for c in GLOB_CHARS):
+            break
+        lead.append(s)
+    return "/".join(lead) + "/" if lead else glob
+
+
+def _quantified_prefixes(text):
+    """Every path prefix the leg `text` quantifies over, in reading order."""
+    out = []
+    for m in DIR_QUANT_RE.finditer(text):
+        raw = m.group(1).strip()
+        out.append(_glob_prefix(raw) if any(c in raw for c in GLOB_CHARS)
+                   else raw.rstrip("/") + "/")
+    for m in GLOB_QUANT_RE.finditer(text):
+        out.append(_glob_prefix(m.group(1).strip()))
+    return out
+
+
+def _prefix_covered(prefix, paths):
+    """True when one of the task's own Files paths lies under `prefix` (or,
+    for a bare glob, matches it)."""
+    if prefix.endswith("/"):
+        return any(p == prefix.rstrip("/") or p.startswith(prefix)
+                   for p in paths)
+    return any(fnmatch.fnmatch(p, prefix)
+               or fnmatch.fnmatch(p.rsplit("/", 1)[-1], prefix)
+               for p in paths)
+
+
+def directory_quantifier_advisories(task_id, legs, own_paths):
+    """One `ADVISORY grammar: Proof leg ` line per (leg, quantified prefix)
+    pair whose prefix no path in the task's own Files covers."""
+    lines = []
+    for leg in legs:
+        seen = []
+        for prefix in _quantified_prefixes(leg["text"]):
+            if prefix in seen:
+                continue
+            seen.append(prefix)
+            if _prefix_covered(prefix, own_paths):
+                continue
+            lines.append(
+                "ADVISORY grammar: Proof leg quantifies over a path prefix "
+                "outside the task's Files — task %s, leg %s: `%s`; \"%s\"; a "
+                "universal over `%s` is checked against BASE, not against "
+                "this task's diff"
+                % (task_id, leg["label"], prefix, _short(leg["text"]), prefix))
     return lines
 
 
@@ -1585,7 +1658,7 @@ def _is_placeholder_interface(value):
     return bool(m) and m.group(1).lower() in PLACEHOLDER_TOKENS
 
 
-def claims_advisories(tasks, tree_root=None):
+def claims_grammar_advisories(tasks, tree_root=None):
     """Every `ADVISORY grammar:` line the parsed claims-v1 `tasks` draw.
 
     Pure and total: it reads the parsed tasks (and, for the same-file tier,
@@ -1638,6 +1711,12 @@ def claims_advisories(tasks, tree_root=None):
         lines.extend(clause_citation_advisories(
             t["id"], claims.get("machine_clauses") or [],
             claims.get("proof_legs") or []))
+        # A Proof leg quantifying over a directory the task does not write
+        # (#536): the gate cannot see it — it reads the Claim and Proof text
+        # with no tree — and the compiler has one.
+        lines.extend(directory_quantifier_advisories(
+            t["id"], claims.get("proof_legs") or [],
+            sorted(set(t["creates"]) | set(t["modifies"]) | set(t["reads"]))))
     # Same-file pairs. What the compiler can say about a shared path depends on
     # whether it was handed a tree: with none it cannot tell a mergeable text
     # file from a non-text one it would have to order, and says so. With one it
@@ -1748,7 +1827,7 @@ def collect_advisories(plan_path, tree_root=None):
     ids = [t["id"] for t in raw]
     if not raw or len(set(ids)) != len(ids):
         return []
-    return claims_advisories(
+    return claims_grammar_advisories(
         [parse_task(t, raise_on_marker_error=False, grammar=CLAIMS_GRAMMAR,
                     plan_claim=parse_plan_claim(plan_text))
          for t in raw], tree_root)

@@ -16,6 +16,7 @@ RUN = SCRIPTS / "ultra_run.py"
 sys.path.insert(0, str(SCRIPTS))
 import ultra_run  # noqa: E402
 from ultra_run import detect_test_cmd  # noqa: E402
+from deadline_slack import deadline_budget  # noqa: E402
 
 # End-to-end receipt tests spawn the real driver, so the pytest command they
 # see depends on whether pytest-xdist is installed here (#426). Derive the
@@ -677,12 +678,15 @@ def test_validate_knobs_removes_its_probe_worktree_on_sigterm(tmp_path):
                              str(args_path)], cwd=repo,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        deadline = time.time() + 15
+        # Both waits are budgeted, not bare: this file runs under `-n auto`, and
+        # the probe worktree's appearance is a process spawn racing the rest of
+        # the suite for the machine (#478). See tests/deadline_slack.py.
+        deadline = time.time() + deadline_budget(15)
         while time.time() < deadline and not _probe_dirs(repo):
             time.sleep(0.1)
         assert _probe_dirs(repo), "probe worktree never appeared"
         proc.terminate()
-        proc.wait(timeout=15)
+        proc.wait(timeout=deadline_budget(15))
     finally:
         if proc.poll() is None:
             proc.kill()

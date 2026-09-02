@@ -10,7 +10,8 @@ the Proof names something unrunnable — that is the point of shipping both.
 
 Leg (f) pins the rest of the entry: with `proofTests` deleted, the `waves`
 array of each corpus fixture deep-equals a literal recorded from the BASE
-compiler, and `--check --renders` stdout equals the BASE bytes.
+compiler, and the plan-determined lines of `--check --renders` stdout equal
+the BASE bytes.
 """
 import json
 import pathlib
@@ -21,7 +22,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 COMPILER = ROOT / "skills/ultrapowers/scripts/compile_plan.py"
 CLAIMS_FIXTURE = ROOT / "evals/fixtures/claims/plan.md"
 WIDE_FIXTURE = ROOT / "evals/fixtures/wide/plan.md"
-SELF_REL = "tests/" + pathlib.Path(__file__).name
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 from compile_plan import (  # noqa: E402
     gate_input_hash,
@@ -223,28 +223,12 @@ BASE_WIDE_WAVES = [
 
 BASE_CLAIMS_CHECK = (
     'PLAN OK\n'
-    '\n'
     'ADVISORY grammar: Context is 24 words — task 1\n'
     'ADVISORY grammar: Machine line carries no numbered clauses — task 1; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n'
     'ADVISORY grammar: Context is 27 words — task 2\n'
     'ADVISORY grammar: Machine line carries no numbered clauses — task 2; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n'
     'ADVISORY grammar: Context is 26 words — task 3\n'
-    'ADVISORY grammar: Machine line carries no numbered clauses — task 3; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n'
-    "ADVISORY blast-radius: Task 1 Produces `make_widget` — 7 file(s) at BASE outside Task 1's Files mention it:\n"
-    '  - tests/test_check_provenance.py\n'
-    '  - tests/test_compile_plan_claims.py\n'
-    '  - tests/test_compile_plan_claims_edges.py\n'
-    '  - tests/test_compile_plan_clause_citation.py\n'
-    '  - tests/test_compile_plan_task_test_cmd.py\n'
-    '  - tests/test_gate_verdicts.py\n'
-    '  - tests/test_plan_level_claim.py\n'
-    "ADVISORY blast-radius: Task 2 Produces `catalog` — 4 file(s) at BASE outside Task 2's Files mention it:\n"
-    '  - tests/test_compile_plan_claims.py\n'
-    '  - tests/test_compile_plan_claims_edges.py\n'
-    '  - tests/test_gate_verdicts.py\n'
-    '  - tests/test_plan_level_claim.py\n'
-    "ADVISORY blast-radius: Task 3 Produces `format_size` — 1 file(s) at BASE outside Task 3's Files mention it:\n"
-    '  - tests/test_gate_verdicts.py\n')
+    'ADVISORY grammar: Machine line carries no numbered clauses — task 3; write it `M1. … M2. …` so every Proof leg can cite the clause it establishes (`[M1]`)\n')
 
 BASE_WIDE_CHECK = "PLAN OK\n"
 
@@ -255,19 +239,21 @@ def _waves_without_proof_tests(payload):
 
 
 def _check_renders(fixture):
-    """`--check --renders` stdout, with THIS file hidden from the renders.
+    """The plan-determined lines of `--check --renders` stdout.
 
-    The blast-radius advisory lists every tracked CODE file mentioning a task's
-    Produces symbols, and the frozen waves literal above spells `make_widget`,
-    `catalog` and `format_size` — so an unexcluded run would list this file and
-    the pin would measure its own text instead of the compiler. `--exclude` is
-    the flag the eval campaign added for exactly that (compile_plan.py:2508)."""
+    The whole render is a function of the tree, not of the plan alone: its
+    blast-radius paragraphs list every tracked code file mentioning a task's
+    Produces symbols, so a file some other task adds turns a whole-stdout pin
+    red for a reason that has nothing to do with the compiler (#563). What
+    this pin compares is the two kinds of line the plan text alone decides —
+    the `PLAN OK` verdict and every `ADVISORY grammar:` line."""
     p = subprocess.run(
-        [sys.executable, str(COMPILER), str(fixture), "--check", "--renders",
-         "--exclude", SELF_REL],
+        [sys.executable, str(COMPILER), str(fixture), "--check", "--renders"],
         capture_output=True, text=True)
     assert p.returncode == 0, p.stdout + p.stderr
-    return p.stdout
+    return "".join(line for line in p.stdout.splitlines(True)
+                   if line == "PLAN OK\n"
+                   or line.startswith("ADVISORY grammar:"))
 
 
 def test_claims_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path):

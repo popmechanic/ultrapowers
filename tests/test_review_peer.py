@@ -17,7 +17,18 @@ DRIVER = ROOT / "skills/ultrapowers/scripts/ultra_run.py"
 VALIDATE_SKILL = ROOT / "skills/ultrapowers/scripts/validate_skill.py"
 SKILL_MD = ROOT / "skills/ultrawrite/SKILL.md"
 PLAN_MARKERS_MD = ROOT / "skills/ultrapowers/references/plan-markers.md"
+REPORT_FORMAT_MD = ROOT / "skills/ultrapowers/references/report-format.md"
+DEPENDENCY_ANALYSIS_MD = ROOT / "skills/ultrapowers/references/dependency-analysis.md"
+ULTRADOCKET_SKILL_MD = ROOT / "skills/ultradocket/SKILL.md"
 COMPILE_PLAN_TESTS = ROOT / "tests/test_compile_plan.py"
+SKILLS_DIR = ROOT / "skills"
+
+# The two code sites that keep the pre-#556 spelling on purpose: the compiler's
+# alias table and the driver's knob vocabulary both name it to accept it.
+LEGACY_CODE_SITES = [
+    "skills/ultrapowers/scripts/compile_plan.py",
+    "skills/ultrapowers/scripts/ultra_run.py",
+]
 
 sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 import ultra_run  # noqa: E402
@@ -170,3 +181,60 @@ def test_plan_markers_documents_the_peer_marker():
 def test_ultrawrite_skill_still_validates():
     p = sh([sys.executable, str(VALIDATE_SKILL), "skills/ultrawrite"], cwd=ROOT)
     assert p.returncode == 0, p.stdout + p.stderr
+
+
+# ── the reference docs say peer, and only the two code sites say adversarial ─
+
+def _occurrences(path):
+    """Every case-insensitive `adversarial` in path, for the failure message."""
+    return re.findall("adversarial", path.read_text(), re.I)
+
+
+def _review_row(text):
+    """The one `tasks[].review` row of the report-format table."""
+    rows = [line for line in text.splitlines()
+            if line.startswith("| `tasks[].review` ")]
+    assert len(rows) == 1, "expected exactly one tasks[].review row, got %r" % (rows,)
+    return rows[0]
+
+
+def test_report_format_review_row_documents_lean_and_peer():
+    text = REPORT_FORMAT_MD.read_text()
+    row = _review_row(text)
+    assert "`lean` (one pass)" in row, row
+    assert "`peer` (two)" in row, row
+    hits = _occurrences(REPORT_FORMAT_MD)
+    assert hits == [], "%s still says adversarial: %r" % (REPORT_FORMAT_MD, hits)
+
+
+def test_dependency_analysis_review_knob_example_says_peer():
+    text = DEPENDENCY_ANALYSIS_MD.read_text()
+    assert "review: { T1: peer, default: lean }" in text
+    hits = _occurrences(DEPENDENCY_ANALYSIS_MD)
+    assert hits == [], "%s still says adversarial: %r" % (DEPENDENCY_ANALYSIS_MD, hits)
+
+
+def test_ultradocket_skill_marks_review_peer():
+    text = ULTRADOCKET_SKILL_MD.read_text()
+    assert "`**Review:** peer`" in text
+    hits = _occurrences(ULTRADOCKET_SKILL_MD)
+    assert hits == [], "%s still says adversarial: %r" % (ULTRADOCKET_SKILL_MD, hits)
+
+
+def test_only_the_two_code_sites_under_skills_say_adversarial():
+    """Leg (d) widened from two authoring docs to the whole of `skills/`."""
+    found = []
+    for path in sorted(SKILLS_DIR.rglob("*")):
+        if not path.is_file():
+            continue
+        # `__pycache__` is git-ignored: a .pyc is a compiled copy of a source
+        # file already on this list, and it exists only if pytest ran here.
+        if "__pycache__" in path.parts:
+            continue
+        text = path.read_bytes().decode("utf-8", "replace")
+        if re.search("adversarial", text, re.I):
+            found.append(str(path.relative_to(ROOT)))
+    unexpected = [p for p in found if p not in LEGACY_CODE_SITES]
+    assert found == LEGACY_CODE_SITES, (
+        "unexpected adversarial under skills/: %r (missing: %r)"
+        % (unexpected, [p for p in LEGACY_CODE_SITES if p not in found]))
