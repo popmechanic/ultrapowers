@@ -19,15 +19,17 @@ plan locally, and `ultra_run.py` refuses to (its `fleet-run` stage).
 Selecting ultrapowers at the planning handoff, or invoking `/ultrapowers` on an
 approved plan, **is** the authorization to execute — no further approval pause.
 
-1. **Commit the plan and push it.** Bring the orchestrator's clone to that ref
-   (`fleet/RUNBOOK.md` §Live W1 run): `drive-one` pushes the run's base from
-   that checkout, and the fitness preflight reads the plan at that ref — never
-   from your working tree.
+1. **Put the plan on the orchestrator.** `docs/superpowers/` is untracked (#544), so
+   the plan is never in git: `rsync` it (and its `.gate-verdicts.json`) into
+   `/home/exedev/repo/docs/superpowers/plans/`, bring that checkout to the base you
+   want, and pass `--plan-from-assignment` — the drive ships the working-tree plan in
+   the run assignment and the sandbox compiles that copy (`fleet/RUNBOOK.md` §Live W1 run).
 2. **Launch** on the orchestrator with a fresh `run-<N>` (run IDs are never
    reused):
 
    ```bash
-   ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan-path> run-<N> </dev/null >/tmp/drive-run-<N>.out 2>&1'
+   rsync -a <plan-path> <plan-stem>.gate-verdicts.json fleet-orchestrator.exe.xyz:/home/exedev/repo/docs/superpowers/plans/
+   ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan-path> run-<N> --plan-from-assignment </dev/null >/tmp/drive-run-<N>.out 2>&1'
    ```
 
 3. **Watch** live as a sync peer (`fleet/watch.mjs` — RUNBOOK §Watch), or tail

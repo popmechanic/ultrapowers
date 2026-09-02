@@ -171,7 +171,9 @@ Every `implementation` task is a pure diff against the integration branch:
 3. **Concurrency-safe proofs.** Same-wave suites run at once on one machine: unique port
    and temp path per test, no shared on-disk fixtures.
 4. **Name only what exists.** Every path a slot cites must exist at BASE or be created by
-   a task this one derivably follows.
+   a task this one derivably follows. `docs/superpowers/` is untracked (#544) and absent
+   from every sandbox, so a spec path is a reference for the reader, never something a
+   worker is asked to open — put what the worker needs from a spec into Context.
 5. **Claims about the live world carry their evidence.** A task asserting what a live
    system does is unverifiable from a sandbox — paste the commands and their output into
    Context so review checks correspondence to a record, not truth it cannot reach.

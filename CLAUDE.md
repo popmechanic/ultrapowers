@@ -48,7 +48,11 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest + marketplace entry (the version lives here).
 - `docs/superpowers/{specs,plans}/` — design docs, named `YYYY-MM-DD-<topic>.md`. Specs are
   the signed input; `plans/` holds the claims-v1 plans ultrawrite emits (plus each plan's
-  `.gate-verdicts.json`). `docs/superpowers/intents/` is two historical 2026-08-28 docs from
+  `.gate-verdicts.json`). **Untracked since #544 (2026-09-02):** the whole of `docs/superpowers/`
+  is in `.git/info/exclude` on the laptop and the orchestrator, `docs/README.md` is the tracked
+  stub, `rsync` between the two checkouts is the interim replication, and a plan reaches the
+  fleet only through `drive-one.mjs --plan-from-assignment`. A plan may not ask a worker to
+  read a spec path — the sandbox has none. `docs/superpowers/intents/` is two historical 2026-08-28 docs from
   the pre-#390 seven-slot shape — nothing writes there now.
 - `evals/fixtures/` — 14 sample plan repos (the legacy-grammar compiler corpus — `wide`,
   `chained`, `mixed`, `flawed`, `degrade`, … — plus `claims`, the claims-v1 one) used as test

@@ -382,7 +382,9 @@ CLI lives in — `--repo-dir` overrides).
 # tests/test_launch_snippet_detaches.py pins this shape on every launch line here.
 # `mkdir -p` first: the redirect below is the SHELL's, evaluated before the driver
 # runs, so it does not benefit from drive.mjs's own mkdir of evidenceDir (#466).
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
+# docs/superpowers/ is untracked (#544): put the plan on the orchestrator first, then ship it in the assignment.
+rsync -a docs/superpowers/plans/<the-approved-plan>.md docs/superpowers/plans/<the-approved-plan>.gate-verdicts.json fleet-orchestrator.exe.xyz:/home/exedev/repo/docs/superpowers/plans/
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> --plan-from-assignment </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
 
 # Race the plan instead (#511, operator asks for it by name): K whole runs of
 # one plan, driven concurrently from this single process — so it detaches the

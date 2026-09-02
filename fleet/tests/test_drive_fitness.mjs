@@ -387,16 +387,19 @@ try {
     // exists to pre-empt would actually happen: a live drive reads its plan
     // from THIS repo, and an attribute committed here is invisible to any
     // question asked of `fs.mkdtemp`'s throwaway. Ask it of the paths a live
-    // plan occupies — every tracked plan, plus a not-yet-written one, so a
+    // plan occupies. Since #544 no plan is tracked (docs/superpowers/ is
+    // untracked and the plan rides the run assignment), so the probes are the
+    // frozen fixture plans' names under the live directory plus a not-yet-
+    // written one — `check-attr` answers for untracked paths too, and a
     // directory-wide pattern is caught before the plan it would break exists.
     const repoRoot = decodeURIComponent(new URL('../..', import.meta.url).pathname)
     const LIVE_PLANS = 'docs/superpowers/plans'
-    const tracked = await sh(`git ls-files -- '${LIVE_PLANS}/*.md'`, repoRoot)
-    assert.equal(tracked.code, 0, `git ls-files failed: ${tracked.stderr}`)
-    const livePlans = tracked.stdout.split('\n').filter(Boolean)
-    assert.ok(livePlans.length > 0, `the real checkout must carry the plans under ${LIVE_PLANS} this pin is about`)
-    // Every one of them, uncapped — a sample would read as coverage it isn't.
-    const probes = [...livePlans, `${LIVE_PLANS}/9999-12-31-not-yet-written.md`]
+    const frozen = await sh("git ls-files -- 'tests/fixtures/plans/*.md'", repoRoot)
+    assert.equal(frozen.code, 0, `git ls-files failed: ${frozen.stderr}`)
+    const fixturePlans = frozen.stdout.split('\n').filter(Boolean)
+    assert.ok(fixturePlans.length > 0, 'the frozen fixture plans under tests/fixtures/plans must exist (#544)')
+    const probes = [...fixturePlans.map((p) => `${LIVE_PLANS}/${p.split('/').pop()}`),
+                    `${LIVE_PLANS}/9999-12-31-not-yet-written.md`]
     const liveAttrs = await sh(`git check-attr -a -- ${probes.map((p) => `'${p}'`).join(' ')}`, repoRoot)
     assert.equal(liveAttrs.code, 0, `git check-attr failed in ${repoRoot}: ${liveAttrs.stderr}`)
     assert.equal(
