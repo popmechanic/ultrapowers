@@ -338,7 +338,7 @@ NEGATION_RE = re.compile(
     r"\b(no|none|never|not|nothing|without|neither|nor|unchanged|absent|"
     r"byte-identical|identical)\b", re.I)
 FALSIFIER_RE = re.compile(
-    r"\b(fails?|failing|absent|exactly|no|none|not|never|zero|empty|"
+    r"\b(fails?|failing|absent|exact(?:ly)?|verbatim|no|none|not|never|zero|empty|"
     r"refuses?|refused|identical|unchanged|deep-equals|only|nothing)\b", re.I)
 ENUMERATED_RE = re.compile(
     r"\b(each of|for each|every one of|for every|one per)\b", re.I)
