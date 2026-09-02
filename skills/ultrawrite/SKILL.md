@@ -18,8 +18,10 @@ derives it from a contract and an exam, against real code the plan never saw.
 ## The document
 
 Above the first task: `**Grammar:** claims-v1` (absent, the compiler parses the legacy
-grammar — that is the rollback path, not a choice), `**Goal:**`, `**Tech Stack:**`, the
-spec path, `## Global Constraints`, and one `**Acceptance:**` line.
+grammar — that is the rollback path, not a choice), one `**Claim:**` line — the operator's
+own do:/see: sentence about what they will see after the run, elicited and closed
+`(elicited)` — then `**Goal:**`, `**Tech Stack:**`, the spec path, `## Global Constraints`,
+and one `**Acceptance:**` line.
 
 ## Task shape — pinned to what the parser actually reads
 
@@ -35,8 +37,8 @@ conflict. Keep both markers in the contiguous run directly under the heading.
 - `**Type:**` — `implementation` (the default, and the only Type that waves),
   `gate`, `release`, `manual`. A write-nothing verification task is `gate`; anything that
   pushes, deploys, or waits on a human is its own `release`/`manual` task.
-- `**Review:**` — optional, `adversarial` or `lean`. Mark `adversarial` where failure is
-  costly or hard to see; unmarked is `lean`.
+- `**Review:**` — optional, `peer` or `lean`. Mark `peer` — a second independent read of
+  the same patch — where failure is costly or hard to see; unmarked is `lean`.
 - There is no `Tier` plan marker. Tier is a signed field of the *intent document* (One
   Driver spec §7), a spend authority — never written on a task here.
 - `Depends-on` and `Commutes` lines are refused outright. Ordering is derived from
@@ -50,7 +52,9 @@ derivation.
 ### The six body slots, in this order
 
 - **Claim:** the bilingual pair. The operator's own sentence, verbatim, closed by
-  `(quoted from #NNN)` or `(elicited)`; then a `Machine:` line restating it in the
+  `(quoted from #NNN)`, `(elicited)`, or `(derived)` when it descends from the plan-level
+  Claim rather than a sentence the operator said about this task; then a `Machine:` line
+  restating it in the
   system's own terms, **its clauses numbered `M1. … M2. …`** — one clause per thing the
   exam must establish. Write do:/see: interactions, never system states. Register drift
   between the two halves is a defect the gate checks.
@@ -83,7 +87,7 @@ derivation.
 ### Task 2: The widget catalog
 
 **Type:** implementation
-**Review:** adversarial
+**Review:** peer
 
 **Files:**
 - Create: `widgetkit/catalog.py`
@@ -262,8 +266,10 @@ task-by-task from contract plus proof.
 ## Self-review
 
 - Every task carries all six slots, in order, none empty, and no checkbox steps.
-- Every Claim is the operator's words with a provenance tag, paired with a machine
-  restatement at the same layer, and its gate verdict is recorded and fresh.
+- The plan carries one `**Claim:**` above the first task, elicited. Every task Claim is
+  either the operator's words with a provenance tag or `(derived)` under the
+  plan-level Claim, paired with a machine restatement at the same layer, and its gate
+  verdict is recorded and fresh.
 - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
   task's own writes; every fence sits in Proof.
 - Every Machine clause is numbered and cited by a leg; every universal or negation clause

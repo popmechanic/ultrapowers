@@ -46,10 +46,15 @@ MARKER_TYPE = re.compile(r"^\*\*Type:\*\*\s*([a-z]+)\s*$")
 # form `**Type**:` all count, so a near-miss never silently degrades to prose.
 MARKER_ISH = re.compile(r"^\*\*\s*(type|depends[-\s]on|review|commutes)\s*(?:\*\*)?\s*:", re.I)
 MARKER_DEPS = re.compile(r"^\*\*Depends-on:\*\*\s*(.+?)\s*$")
-# Authored review-depth marker (ultraplan #87): `**Review:** adversarial|lean`.
-# Valid values are enforced where it is consumed in parse_task — an invalid
-# or duplicate value is a compile-time SystemExit, never a silent default.
+# Authored review-depth marker (ultraplan #87): `**Review:** peer|lean`.
+# `adversarial` is the pre-#556 spelling of `peer` — still accepted for one
+# release, normalized to `peer` on the emitted wave entry so the engine and
+# the report only ever see the documented value. Valid values are enforced
+# where it is consumed in parse_task — an invalid or duplicate value is a
+# compile-time SystemExit, never a silent default.
 MARKER_REVIEW = re.compile(r"^\*\*Review:\*\*\s*([a-z-]+)\s*$")
+VALID_REVIEWS = ("peer", "lean")
+REVIEW_ALIASES = {"adversarial": "peer"}
 # Declared order-insensitive additive registrations (spec §2b): comma-separated
 # backticked paths the task asserts are safe to auto-union with another
 # declaring task's edits to the same path. Validated against the task's own
@@ -254,7 +259,11 @@ SLOT_LABEL_RE = re.compile(
 # The provenance tag closing the Claim's operator sentence: the signature is
 # over a quote at signing time (§4.4), so the FORM is the compiler's business
 # and resolution is the provenance script's.
-CLAIM_PROVENANCE_RE = re.compile(r"\((elicited|quoted from #(\d+))\)\s*$", re.I)
+# `(derived)` is the third form (#552): the task's sentence descends from the
+# plan's ONE elicited operator sentence, so it is signed by that signature and
+# there is nothing here to resolve.
+CLAIM_PROVENANCE_RE = re.compile(
+    r"\((elicited|derived|quoted from #(\d+))\)\s*$", re.I)
 # Stale-if is a predicate, not prose — a free sentence here is undecidable and
 # is refused (§3).
 STALE_PREDICATE_RE = re.compile(
@@ -282,6 +291,71 @@ def plan_grammar(md_text):
         if m and m.group(1) == CLAIMS_GRAMMAR:
             return CLAIMS_GRAMMAR
     return LEGACY_GRAMMAR
+
+
+# The plan-level Claim (#552): ONE operator sentence above the first task, in
+# the operator's words, about what they will see after the run. It is elicited
+# — there is no issue to quote a sentence about a run that has not happened —
+# so `(elicited)` is the only tag it takes.
+PLAN_CLAIM_ELICITED_RE = re.compile(r"\(elicited\)\s*$", re.I)
+
+
+def _plan_claim_raw(md_text):
+    """The header `**Claim:**` sentence with its tag still attached, or None.
+
+    The header is everything before the first task heading (the same fence-aware
+    scan `plan_grammar` runs), so a `**Claim:**` in a task body is not a
+    plan-level Claim and neither is one inside a fence. The sentence may wrap:
+    it runs to the next blank line, the next bold marker, or the end of the
+    header, and the wrapped lines join on a single space."""
+    claim_lines = None
+    for line, fenced in _fence_aware_lines(md_text):
+        if fenced:
+            if claim_lines is not None:
+                break
+            continue
+        if match_head(line):
+            break  # the header ends at the first task heading
+        stripped = line.strip()
+        if claim_lines is None:
+            m = SLOT_LABEL_RE.match(stripped)
+            if m and _claims_slot_name(m.group(1)) == "Claim":
+                claim_lines = [m.group(2).strip()]
+            continue
+        if not stripped or stripped.startswith("**"):
+            break
+        claim_lines.append(stripped)
+    if claim_lines is None:
+        return None
+    return re.sub(r"\s+", " ", " ".join(claim_lines)).strip()
+
+
+def parse_plan_claim(md_text):
+    """The plan's one operator sentence, tag stripped, or None when the header
+    carries no `**Claim:**` line. A task Claim marked `(derived)` descends from
+    this sentence; it is a plan-level fact and is never part of a task's
+    gate-input hash."""
+    raw = _plan_claim_raw(md_text)
+    if raw is None:
+        return None
+    return PLAN_CLAIM_ELICITED_RE.sub("", raw).strip()
+
+
+def plan_claim_violations(md_text):
+    """The plan-level Claim's own `grammar:` refusals. Empty when the header
+    carries none at all — a plan without a header Claim parses exactly as it
+    did before #552."""
+    raw = _plan_claim_raw(md_text)
+    if raw is None:
+        return []
+    if not PLAN_CLAIM_ELICITED_RE.search(raw):
+        return ["grammar: plan-level Claim carries no provenance tag — the one "
+                "operator sentence above the first task is elicited, and closes "
+                "`(elicited)`"]
+    if not parse_plan_claim(md_text):
+        return ["grammar: plan-level Claim carries no operator sentence — the "
+                "header Claim is nothing but its `(elicited)` tag"]
+    return []
 
 
 def _claims_slot_name(raw):
@@ -489,8 +563,14 @@ def clause_citation_advisories(task_id, clauses, legs):
     return lines
 
 
-def parse_claims_body(body, task_id):
+def parse_claims_body(body, task_id, plan_claim=None):
     """Parse one claims-v1 task body into its six slots.
+
+    `plan_claim` is the plan's header Claim (`parse_plan_claim`) or None. It is
+    the ONLY thing this function knows about the document around the body, and
+    it decides exactly one question: whether a `(derived)` tag has a signature
+    to descend from. The header sentence itself never enters a slot, so it
+    never reaches `gate_input_hash`.
 
     Returns the slot texts under the keys `claim`, `authorized_by`,
     `interfaces`, `context`, `proof`, `stale_if` (each the slot's raw text,
@@ -590,12 +670,23 @@ def parse_claims_body(body, task_id):
     normalized = re.sub(r"\s+", " ", " ".join(operator_lines)).strip()
     m = CLAIM_PROVENANCE_RE.search(normalized)
     if m:
-        provenance = ("elicited" if m.group(2) is None
-                      else "quoted:#" + m.group(2))
+        if m.group(2) is not None:
+            provenance = "quoted:#" + m.group(2)
+        elif m.group(1).lower() == "derived":
+            provenance = "derived"
+            if not plan_claim:
+                violations.append(
+                    "grammar: Claim is marked (derived) but the plan carries no "
+                    "plan-level Claim — task %s; a derived claim descends from "
+                    "the operator's one elicited sentence above the first task"
+                    % task_id)
+        else:
+            provenance = "elicited"
     elif claim:
         violations.append(
             "grammar: Claim carries no provenance tag — task %s; the operator "
-            "sentence ends `(elicited)` or `(quoted from #NNN)`" % task_id)
+            "sentence ends `(elicited)`, `(derived)` or `(quoted from #NNN)`"
+            % task_id)
 
     # Stale-if: one predicate per line, bullet optional.
     stale_entries = []
@@ -698,14 +789,14 @@ def derive_task_test_cmd(proof_tests):
     return " && ".join(parts)
 
 
-def _apply_claims_grammar(t):
+def _apply_claims_grammar(t, plan_claim=None):
     """Overlay the claims-v1 body grammar on a task whose head markers and
     **Interfaces:** block the legacy pass has already parsed (they are
     unchanged under claims-v1, §3). The two tiers claims-v1 does not sign are
     dropped rather than trusted: whatever the legacy pass read out of a
     **Depends-on:**/**Commutes:** line is discarded here, and the line itself
     is a refusal recorded in `grammar_violations`."""
-    claims = parse_claims_body(t["body"], t["id"])
+    claims = parse_claims_body(t["body"], t["id"], plan_claim)
     t.update(claims=claims,
              claim_provenance=claims["claim_provenance"],
              grammar_violations=claims["violations"],
@@ -794,7 +885,8 @@ def gate_verdict_violations(plan_path, tasks):
 
 
 
-def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
+def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR,
+               plan_claim=None):
     """Parse one task's body. raise_on_marker_error controls how a marker-VALUE
     validation failure (currently: an invalid or duplicate **Review:** value)
     is reported: True (the normal compile path, default) raises SystemExit
@@ -809,7 +901,12 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
     **Interfaces:** block parse identically — spec 2026-08-31 §3 keeps them
     signed and unchanged — and the six-slot body grammar is then overlaid by
     _apply_claims_grammar, which also drops the two body tiers claims-v1 does
-    not sign (**Depends-on:**/**Commutes:**, both refused outright)."""
+    not sign (**Depends-on:**/**Commutes:**, both refused outright).
+
+    `plan_claim` is the plan's header Claim, threaded to the body parser so a
+    `(derived)` task Claim can be checked against the signature it descends
+    from (#552). The default None preserves BASE behaviour for every caller
+    that does not pass it."""
     ttype = None
     deps, deps_none = [], False
     commutes = []
@@ -881,10 +978,11 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
             if not in_header:
                 late_markers.append(s)
             else:
-                val = m.group(1)
-                if val not in ("adversarial", "lean"):
+                val = REVIEW_ALIASES.get(m.group(1), m.group(1))
+                if val not in VALID_REVIEWS:
                     msg = ("Task {}: invalid **Review:** value {!r} "
-                           "(valid: adversarial, lean)".format(t["id"], val))
+                           "(valid: peer, adversarial, lean)".format(
+                               t["id"], m.group(1)))
                     if raise_on_marker_error:
                         raise SystemExit(msg)
                     marker_violations.append(msg)
@@ -1096,7 +1194,7 @@ def parse_task(t, raise_on_marker_error=True, grammar=LEGACY_GRAMMAR):
              interfaces={"consumes": consumes, "produces": produces},
              prose=prose)
     if grammar == CLAIMS_GRAMMAR:
-        _apply_claims_grammar(t)
+        _apply_claims_grammar(t, plan_claim)
     return t
 
 
@@ -1418,7 +1516,8 @@ def collect_violations(plan_path):
                 + " — task headings must be unique."]
 
     grammar = plan_grammar(plan_text)
-    tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar)
+    tasks = [parse_task(t, raise_on_marker_error=False, grammar=grammar,
+                        plan_claim=parse_plan_claim(plan_text))
              for t in raw_tasks]
 
     violations = []
@@ -1430,6 +1529,7 @@ def collect_violations(plan_path):
     # footing (spec §4.5): both channels close on it, so an author never
     # discovers at dispatch that the gate was never run.
     if grammar == CLAIMS_GRAMMAR:
+        violations.extend(plan_claim_violations(plan_text))
         violations.extend(gate_verdict_violations(plan_path, tasks))
     for t in tasks:
         violations.extend(t.get("marker_violations", []))
@@ -1649,7 +1749,8 @@ def collect_advisories(plan_path, tree_root=None):
     if not raw or len(set(ids)) != len(ids):
         return []
     return claims_advisories(
-        [parse_task(t, raise_on_marker_error=False, grammar=CLAIMS_GRAMMAR)
+        [parse_task(t, raise_on_marker_error=False, grammar=CLAIMS_GRAMMAR,
+                    plan_claim=parse_plan_claim(plan_text))
          for t in raw], tree_root)
 
 
@@ -2154,7 +2255,8 @@ def render_advisories(plan_path, base, exclude=()):
     # zeroed. Parsing it as legacy here made the renders read slot bodies
     # under a grammar the plan is not written in.
     tasks = [parse_task(t, raise_on_marker_error=False,
-                        grammar=plan_grammar(plan_text)) for t in raw]
+                        grammar=plan_grammar(plan_text),
+                        plan_claim=parse_plan_claim(plan_text)) for t in raw]
     exclude = tuple(exclude)
     ctx = {"base": Path(base), "plan_path": Path(plan_path).resolve(),
            "tracked": _git_tracked(base, exclude), "task_ids": set(ids),
@@ -2597,7 +2699,9 @@ def main(argv=None):
         raise SystemExit(1)
 
     grammar = plan_grammar(plan_text)
-    tasks = [parse_task(t, grammar=grammar) for t in split_tasks(plan_text)]
+    plan_claim = parse_plan_claim(plan_text)
+    tasks = [parse_task(t, grammar=grammar, plan_claim=plan_claim)
+             for t in split_tasks(plan_text)]
     if not tasks:
         print("compile_plan: no '### Task N:' headings found.", file=sys.stderr)
         raise SystemExit(1)
@@ -2631,7 +2735,9 @@ def main(argv=None):
     # ordering it must not guess at. Empty for every legacy plan.
     grammar_violations = [v for t in tasks for v in t.get("grammar_violations", [])]
     if grammar == CLAIMS_GRAMMAR:
-        grammar_violations.extend(gate_verdict_violations(args.plan, tasks))
+        grammar_violations = (plan_claim_violations(plan_text)
+                              + grammar_violations
+                              + gate_verdict_violations(args.plan, tasks))
     if grammar_violations:
         print("compile_plan: claims-v1 grammar violation(s) — refusing to "
               "compile:\n" + "\n".join(grammar_violations), file=sys.stderr)
@@ -2741,7 +2847,8 @@ def main(argv=None):
           # task.review from these inline entries — the ONLY channel (workflow
           # scripts cannot read files, so knobs never ride the launch file).
           # The orchestrator fills tier; review is plan-authored (**Review:**
-          # marker, "lean" when unmarked) and never touched.
+          # marker, "lean" when unmarked, "peer" for both `peer` and the
+          # legacy `adversarial`) and never touched.
           "tier": None,
           "review": by_id[tid].get("review") or "lean",
           # Contention-detection inputs (spec §2b): writes is sorted
@@ -2750,10 +2857,15 @@ def main(argv=None):
           # **Commutes:** declaration, [] when undeclared.
           "writes": by_id[tid].get("writes", []),
           "commutes": by_id[tid].get("commutes", []),
-          # Task-scoped exam (#515): the command the implementer iterates
-          # against, derived from this task's Proof. None whenever the Proof
-          # names nothing runnable (or the body is legacy grammar), which the
-          # engine reads as "use the run-wide command".
+          # Task-scoped exam (#515, #553): the Proof `Test:` paths themselves,
+          # in Proof order ([] for a legacy-grammar body), and the command the
+          # implementer iterates against, derived from that same list. The
+          # command is None whenever the Proof names nothing runnable, which
+          # the engine reads as "use the run-wide command" — the paths still
+          # ride, so a reviewer sees the exam a task was assigned even when it
+          # is not a shape the runner can invoke.
+          "proofTests": list(
+              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", [])),
           "testCmd": derive_task_test_cmd(
               (by_id[tid].get("claims") or {}).get("proof_tests_ordered", []))}
          for tid in wave]
@@ -2823,6 +2935,9 @@ def main(argv=None):
             "waveLabels": wave_labels,
             "globalConstraints": global_constraints,
             "planPath": str(args.plan.resolve()),
+            # The plan's ONE operator sentence (#552), or null when the header
+            # carries none — every other key is unchanged.
+            "planClaim": plan_claim,
         }
         if args.run_dir is not None:
             args_payload["pluginRoot"] = str(PLUGIN_ROOT)

@@ -116,10 +116,12 @@ export function makeCwdFor({ clonesDir, taskIdOf = defaultTaskIdOf }) {
   }
 }
 
-// The only two labels that carry isolation:'worktree': `impl:<id>` and
-// `fix:<id>:<iter>`.
+// The three labels that carry isolation:'worktree': `exam:<id>`, `impl:<id>`
+// and `fix:<id>:<iter>` — all three run in the task's own clone, which for the
+// examiner (#553) is the point: it writes the Proof's tests into the tree the
+// implementer will be handed, at BASE, before that implementer exists.
 export function defaultTaskIdOf(label) {
-  const m = /^(?:impl|fix):([^:]+)/.exec(String(label || ''))
+  const m = /^(?:exam|impl|fix):([^:]+)/.exec(String(label || ''))
   return m ? m[1] : null
 }
 

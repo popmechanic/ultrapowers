@@ -27,6 +27,9 @@ Work red → green → refactor:
    test command clean one final time.
 4. Commit your work.
 
+A Proof `Test:` file already in your tree when you start is a peer's exam and your grading: run it, do not edit it, and if it is red for a reason other than the missing implementation, report that as a `concerns` entry prefixed `exam:`.
+It is not yours to reshape, and the missing implementation is your job.
+
 Judgment rules: treat FILES as your expected footprint, not a fence — a path
 outside it that the task genuinely requires is fine, but disclose it as a
 `concerns` entry prefixed `out-of-FILES:` and report DONE_WITH_CONCERNS; never

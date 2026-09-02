@@ -77,6 +77,28 @@ export const IMPLEMENTER_SCHEMA = {
     startHead: { type: 'string' },
   },
 }
+// EXAMINER (#553): the wave-0 worker that writes the task's Proof tests in the
+// task's own clone at BASE, before the implementer sees the tree. Its status
+// vocabulary is two-valued on purpose — an exam either exists or the Proof
+// could not be written as given, and the reason belongs in `unsatisfiable`,
+// per leg, where a judgment call can carry it. There is no DONE_WITH_CONCERNS:
+// a concern about a leg IS an unsatisfiable entry.
+export const EXAMINER_SCHEMA = {
+  type: 'object',
+  required: ['status', 'summary', 'startHead'],
+  properties: {
+    status: { enum: ['DONE', 'BLOCKED'] },
+    summary: { type: 'string' },
+    startHead: { type: 'string' },
+    unsatisfiable: { type: 'array', items: { type: 'object',
+      required: ['leg', 'why'], properties: {
+        leg: { type: 'string' }, why: { type: 'string' } } } },
+  },
+}
+// The fix round's introduction to a referee's patch (#551). Shared literal
+// with fleet/roles/reviewer.md and fleet/roles/fix.md.
+export const PROPOSED_PATCH_HEADER =
+  'PROPOSED PATCH (from the referee — apply it when it is right; say why not when it is not):'
 // One severity vocabulary for the whole run (#474): the per-task reviewer and
 // the completeness critic grade defects on the same two-word scale, and the
 // pair is spelled here exactly once. Both schemas point at THIS array.
@@ -89,7 +111,12 @@ export const REVIEWER_SCHEMA = {
     issues: { type: 'array', items: { type: 'object',
       required: ['severity', 'detail'], properties: {
         severity: { enum: SEVERITY },
-        detail: { type: 'string' } } } },
+        detail: { type: 'string' },
+        // A referee's output is help (#551): when the reviewer can write the
+        // fix, it comes back here as a unified diff and the fix round is
+        // handed it under the issue it belongs to. Optional by construction —
+        // an issue still needs nothing but a severity and a detail.
+        proposedPatch: { type: 'string' } } } },
     cannotVerify: { type: 'array', items: { type: 'object',
       required: ['requirement', 'why'], properties: {
         requirement: { type: 'string' }, why: { type: 'string' } } } },
@@ -148,6 +175,15 @@ export function loadRoles(rolesDir = defaultRolesDir()) {
   for (const name of ['implementer', 'reviewer', 'fix', 'resolver', 'reconcile', 'critic']) {
     roles[name] = fs.readFileSync(path.join(rolesDir, name + '.md'), 'utf8')
   }
+  // examiner.md is the seventh (#553), read alongside the six — but SOFT: a
+  // roles directory without it must still run every other role, so the exam is
+  // what a missing file costs (recorded as a blocked exam, per task), never the
+  // run. The six are hard because no wave can be dispatched without them.
+  try {
+    roles.examiner = fs.readFileSync(path.join(rolesDir, 'examiner.md'), 'utf8')
+  } catch {
+    roles.examiner = null
+  }
   return roles
 }
 
@@ -184,6 +220,11 @@ const interfacesLine = (task) => {
     (consumes.length ? ('\nConsumes: ' + consumes.join(', ')) : '') +
     (produces.length ? ('\nProduces: ' + produces.join(', ')) : '')
 }
+// Review depth (#556): `peer` is the documented value for the two-reviewer
+// profile — it names the shape (a second independent read of the same patch),
+// not an attitude toward the author. `adversarial` is the legacy spelling of
+// the same profile and stays accepted; anything else is lean.
+export const isPairReview = (profile) => profile === 'peer' || profile === 'adversarial'
 // Round-1 minor findings, rendered for the round-2 reviewers (see the review
 // loop). Exported for the unit pin, as suiteLine is.
 export const priorAdvisoriesBlock = (minors) => {
@@ -406,16 +447,25 @@ export async function runEngine({
   const testCmd = (typeof args.testCmd === 'string' && args.testCmd.trim()) || undefined
   // #436: the driver's own suite runs stay at full width (serialized, one
   // integration clone); the concurrent implementers get the machine divided
-  // among them. args.width lets run-main pass its real WIDTH; the default
-  // matches it so a caller that omits it is not silently uncapped.
-  const workerWidth = Number.isInteger(args.width) && args.width > 0 ? args.width : 8
-  const workerTestCmd = capWorkerParallelism(testCmd, workerWidth, os.cpus().length)
+  // among them. #547: divide by the workers that actually SHARE the run-wide
+  // command, not by WIDTH. Per-task testCmd (#515) means testCmdLine hands a
+  // task with its own command that command — it never sees the capped one —
+  // so counting it as a sharer over-divides the machine for everyone else.
+  // The count is over every entry in the run (waves are sequential, but the
+  // cap is one string computed once, so the whole run's sharers is the honest
+  // upper bound). Zero sharers means the string is dead: leave it uncapped
+  // rather than log a cap nobody reads.
+  const runWideSharers = WAVES.reduce((n, w) => n + w.filter((t) =>
+    !(typeof t.testCmd === 'string' && t.testCmd.trim())).length, 0)
+  const workerTestCmd = runWideSharers > 0
+    ? capWorkerParallelism(testCmd, runWideSharers, os.cpus().length)
+    : testCmd
   if (workerTestCmd !== testCmd) {
     log('run-engine: worker testCmd capped for concurrency (#436) — ' + workerTestCmd)
   }
   const bootstrapCmd = (typeof args.bootstrapCmd === 'string' && args.bootstrapCmd.trim()) || undefined
   const ACCEPTANCE = (args.acceptance && typeof args.acceptance === 'object') ? args.acceptance : null
-  const reviewProfile = (args.reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
+  const reviewProfile = isPairReview(args.reviewProfile) ? args.reviewProfile : 'lean'
   const globalConstraints = (typeof args.globalConstraints === 'string' && args.globalConstraints.trim()) || ''
   const planPath = (typeof args.planPath === 'string' && args.planPath.trim()) || undefined
   const wavesPath = (typeof args.wavesPath === 'string' && args.wavesPath.trim()) || undefined
@@ -431,8 +481,11 @@ export async function runEngine({
   if (!testCmd) throw new Error('run-engine: args.testCmd is mandatory (#96)')
 
   const globalConstraintsBlock = globalConstraints ? ('\nGLOBAL CONSTRAINTS:\n' + globalConstraints) : ''
+  // The profile is reported verbatim, not normalized: a task that authored
+  // `adversarial` keeps saying so in the report even though `peer` is the
+  // documented spelling of the same pair.
   const taskReviewProfile = (task) =>
-    (task.review === 'adversarial' || reviewProfile === 'adversarial') ? 'adversarial' : 'lean'
+    isPairReview(task.review) ? task.review : (isPairReview(reviewProfile) ? reviewProfile : 'lean')
 
   // ── report accumulators (waves.js parity) ──────────────────────────────────
   const taskResults = []
@@ -547,7 +600,7 @@ export async function runEngine({
         }
       }
     }
-    if (task.review && task.review !== 'adversarial' && task.review !== 'lean') {
+    if (task.review && !isPairReview(task.review) && task.review !== 'lean') {
       judgmentCalls.push('task ' + task.id + ': unknown review="' + task.review +
         '" — fell back to the run default (' + reviewProfile + ')')
     }
@@ -558,6 +611,87 @@ export async function runEngine({
 
     const commonInputs = testCmdLine(task, workerTestCmd) + filesLine(task) + siblingsStr +
       globalConstraintsBlock + interfacesLine(task) + taskBodyBlock(task, wavesPath)
+
+    // ── the exam (#553) ──────────────────────────────────────────────────────
+    // A worker in the task's own clone at BASE, dispatched BEFORE the
+    // implementer, writes the tests the Proof names. It receives exactly the
+    // implementer's inputs — the same BASE, TEST COMMAND, FILES, SIBLING
+    // FILES, GLOBAL CONSTRAINTS, INTERFACES and TASK blocks — and NOT the
+    // implementer's role: the one agent that must not be told to make the
+    // suite green is the one writing the thing that measures it.
+    //
+    // What the driver then holds is the pair the exam is worth: the blob sha
+    // of every Proof path as the examiner left it, and whether the task's own
+    // testCmd is RED against those tests at BASE. Both are driver exec
+    // (Amendment 10) — no prompt asks anyone to run git or report a sha.
+    const cloneDir = path.join(clonesDir, 'task-' + task.id)
+    const proofTests = Array.isArray(task.proofTests)
+      ? task.proofTests.filter((p) => typeof p === 'string' && p.trim() !== '')
+      : []
+    const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
+      ? task.testCmd : null
+    // `git hash-object` on the path as it stands in the clone; an absent path
+    // is recorded as null, which is itself a value the drift check compares
+    // (creating a path the examiner declined to write IS an edit).
+    const blobShaOf = async (p) => {
+      const r = await exec('git', ['hash-object', path.resolve(cloneDir, p)], { cwd: cloneDir })
+      return r.code === 0 ? String(r.stdout || '').trim() : null
+    }
+    let exam = null
+    let examBlobs = null
+    if (proofTests.length && examTestCmd) {
+      const ex = roles.examiner
+        ? await agent(roles.examiner + '\nBASE: ' + baseShaForTask + commonInputs,
+            { label: 'exam:' + task.id, isolation: 'worktree', model: baseModel,
+              schema: EXAMINER_SCHEMA })
+        : null
+      for (const u of ((ex && Array.isArray(ex.unsatisfiable)) ? ex.unsatisfiable : [])) {
+        judgmentCalls.push('task ' + task.id + ': examiner: ' + u.leg + ' — ' + u.why)
+      }
+      if (!roles.examiner) {
+        exam = 'blocked'
+        judgmentCalls.push('task ' + task.id + ': examiner role file absent — no exam written; ' +
+          'the implementer proceeds unexamined')
+      } else if (!ex || ex.status !== 'DONE') {
+        // A dead examiner is a transient process death and a BLOCKED one is a
+        // judgment about the Proof; neither is the implementer's fault, and
+        // neither is worth failing a task over. The task proceeds WITHOUT an
+        // exam, which the record says in as many words.
+        exam = 'blocked'
+        judgmentCalls.push('task ' + task.id + ': examiner ' +
+          (ex ? (ex.status + ' (' + (ex.summary || 'no summary') + ')') : 'returned no reply') +
+          ' — no exam recorded; the implementer proceeds unexamined')
+      } else {
+        examBlobs = []
+        for (const p of proofTests) examBlobs.push([p, await blobShaOf(p)])
+        const atBase = await sh(examTestCmd, cloneDir)
+        if (atBase.code === 0) {
+          exam = 'green-at-base'
+          judgmentCalls.push('task ' + task.id + ': exam is green at BASE — it establishes nothing')
+        } else {
+          exam = 'red'
+        }
+      }
+    }
+    // The Proof paths whose blob no longer matches what the examiner left.
+    const examDrift = async () => {
+      if (!examBlobs) return []
+      const moved = []
+      for (const [p, sha] of examBlobs) {
+        if (await blobShaOf(p) !== sha) moved.push(p)
+      }
+      return moved
+    }
+    const examEdited = (moved, who, fixIterations) => {
+      judgmentCalls.push('task ' + task.id + ': ' + who + ' edited the exam — ' +
+        moved.join(', ') + ' no longer matches the blob recorded at BASE; not reviewed, not folded')
+      return { task: task.id, baseCorrected, status: 'failed', branch: '',
+               reviewVerdict: 'exam-edited', exam,
+               notes: 'exam edited by ' + who + ': ' + moved.join(', '),
+               tier: economics.tier, review: economics.review, fixIterations }
+    }
+
+    let baseCorrected = null
     let impl = await agent(
       roles.implementer + '\nBASE: ' + baseShaForTask + commonInputs,
       { label: 'impl:' + task.id, isolation: 'worktree', model: baseModel, schema: IMPLEMENTER_SCHEMA })
@@ -567,7 +701,6 @@ export async function runEngine({
     // #314 guard, kept one more run (spec §3.1): clones are cut at BASE by
     // construction, so a mismatch here is a check on a thing that cannot
     // happen — which is what a guard on an inexpressible defect looks like.
-    let baseCorrected = null
     if (typeof impl.startHead === 'string' && impl.startHead.trim()) {
       if (impl.startHead.trim() !== baseShaForTask) {
         baseCorrected = { from: impl.startHead.trim(), to: baseShaForTask }
@@ -577,20 +710,31 @@ export async function runEngine({
     } else {
       judgmentCalls.push('task ' + task.id + ': implementer reported no startHead — BASE anchoring unverified (#314)')
     }
+    // How many blocking issues the round that dispatched the fix handed over
+    // with a patch attached (#551) — reported per task, and not reset by the
+    // clean re-review that follows the fix. Zero when no round ever ran.
+    let proposedPatches = 0
+    // The exam as the implementer left it: a Proof path whose blob moved is a
+    // task grading itself, and that outranks whatever the reply says about
+    // itself — so it is checked before the status branches below.
+    {
+      const moved = await examDrift()
+      if (moved.length) return examEdited(moved, 'the implementer', 0)
+    }
     if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-      return { task: task.id, baseCorrected, status: 'failed', branch: '',
+      return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'not-reviewed', notes: impl.summary,
-               tier: economics.tier, review: economics.review, fixIterations: 0 }
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
     }
     if (!hasCoordinates(impl)) {
       // With driver capture the only way here is a capture failure — reply
       // carries captureError, cleared coordinates (run-waves.mjs). Honest loss.
       judgmentCalls.push('task ' + task.id + ': no driver-captured coordinates (' +
         (impl.captureError || 'capture absent') + ') — failed before review')
-      return { task: task.id, baseCorrected, status: 'failed', branch: '',
+      return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                reviewVerdict: 'lost-coordinates',
                notes: 'no driver-captured patch/headSha — downgraded to failed before review',
-               tier: economics.tier, review: economics.review, fixIterations: 0 }
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
     }
 
     // Round-1 advisories, carried into round 2 (2026-09-01, run-47 read): the
@@ -610,7 +754,7 @@ export async function runEngine({
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
       })
       let issues, verdicts
-      if (taskReviewProfile(task) === 'adversarial') {
+      if (isPairReview(taskReviewProfile(task))) {
         // Concurrent (2026-09-01): the pair reads the same patch with the same
         // prompt and neither depends on the other, so they run side by side —
         // run-47 spent 26 of 79 minutes in six serial reviewer calls. The
@@ -648,6 +792,8 @@ export async function runEngine({
       }
       const blocking = issues.filter((i) => i.severity === 'blocking')
       const minors = issues.filter((i) => i.severity === 'minor')
+      const patchOf = (i) => (typeof i.proposedPatch === 'string' ? i.proposedPatch : '')
+      if (blocking.length > 0) proposedPatches = blocking.filter((b) => patchOf(b) !== '').length
       for (const m of minors) {
         if (!priorMinors.some((p) => p.detail === m.detail)) priorMinors.push(m)
       }
@@ -656,17 +802,17 @@ export async function runEngine({
           judgmentCalls.push('task ' + task.id +
             ': reviewer said FIX_REQUIRED with no blocking issues — merged on the severity rule')
         }
-        return { task: task.id, baseCorrected, status: 'done', branch: '',
+        return { task: task.id, baseCorrected, status: 'done', branch: '', exam,
                  headSha: impl.headSha, patch: impl.patch,
                  reviewVerdict: iter === 1 ? 'clean' : 'fixed',
                  notes: priorMinors.map((m) => m.detail)
                    .concat(concerns.map((c) => 'concern: ' + c)).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: iter - 1 }
+                 tier: economics.tier, review: economics.review, fixIterations: iter - 1, proposedPatches }
       }
       if (iter === 2) {
-        return { task: task.id, baseCorrected, status: 'failed', branch: '',
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'fix-loop-exhausted', notes: blocking.map((b) => b.detail).join('; '),
-                 tier: economics.tier, review: economics.review, fixIterations: 1 }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
       }
       // Fix round: same tree (isolation routes fix:<id> to the task's clone),
       // prior work is simply the tree's state; capture stays cumulative
@@ -674,24 +820,35 @@ export async function runEngine({
       impl = await agent(
         roles.fix + taskBodyBlock(task, wavesPath) + testCmdLine(task, workerTestCmd) +
           filesLine(task) + siblingsStr + globalConstraintsBlock + interfacesLine(task) +
-          '\n\nBlocking issues to resolve:\n' + blocking.map((b) => '- ' + b.detail).join('\n'),
+          '\n\nBlocking issues to resolve:\n' + blocking.map((b) => {
+            const patch = patchOf(b)
+            return patch === '' ? '- ' + b.detail
+              : '- ' + b.detail + '\n' + PROPOSED_PATCH_HEADER + '\n' + patch
+          }).join('\n'),
         { label: 'fix:' + task.id + ':' + iter, isolation: 'worktree',
           model: TIER.mostCapable, schema: IMPLEMENTER_SCHEMA })
       if (impl === null) throw new Error('AGENT_NULL: fix-round implementer agent returned null (terminal Overloaded or skipped)')
       stripUntrustedPatch(impl, patchPrefix)
       noteConcerns(impl)
+      // The fix round builds on the same tree, so the exam is checked again:
+      // an implementer that leaves the exam alone and then edits it under a
+      // blocking issue is the same defect one round later.
+      {
+        const moved = await examDrift()
+        if (moved.length) return examEdited(moved, 'the fix round', 1)
+      }
       if ((impl.status === 'DONE' || impl.status === 'DONE_WITH_CONCERNS') && !hasCoordinates(impl)) {
         judgmentCalls.push('task ' + task.id + ': fix round lost driver-captured coordinates (' +
           (impl.captureError || 'capture absent') + ') — failed before re-review')
-        return { task: task.id, baseCorrected, status: 'failed', branch: '',
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'lost-coordinates',
                  notes: 'fix round produced no driver-captured patch/headSha',
-                 tier: economics.tier, review: economics.review, fixIterations: 1 }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
       }
       if (impl.status === 'BLOCKED' || impl.status === 'NEEDS_CONTEXT') {
-        return { task: task.id, baseCorrected, status: 'failed', branch: '',
+        return { task: task.id, baseCorrected, status: 'failed', branch: '', exam,
                  reviewVerdict: 'blocked-after-fix', notes: impl.summary,
-                 tier: economics.tier, review: economics.review, fixIterations: 1 }
+                 tier: economics.tier, review: economics.review, fixIterations: 1, proposedPatches }
       }
     }
   }

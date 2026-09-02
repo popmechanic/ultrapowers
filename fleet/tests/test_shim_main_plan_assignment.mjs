@@ -73,6 +73,11 @@ const runInvoke = async ({ plan, planPath = PLAN_PATH }) => {
       return 0
     },
     log: () => {},
+    // A no-op load sampler (#549), like every other seam here: the live one
+    // would create `run-r1` to hold its load.jsonl, and (e) below is about
+    // which directories the PLAN materialisation makes. Injected, this sim
+    // reads exactly the behaviour it read at BASE.
+    startSampler: () => ({ stop: () => {} }),
   })
   return { repoDir, events, argv, outcome, cleanup: () => fs.rmSync(repoDir, { recursive: true, force: true }) }
 }
