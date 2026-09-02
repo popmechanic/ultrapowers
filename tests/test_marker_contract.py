@@ -47,7 +47,9 @@ def test_contract_review_marker_lives_in_marker_syntax_section():
     # mirror retired (#390), this section IS the authoritative statement.
     syntax = contract_sections()[MARKER_SYNTAX]
     assert "**Review:**" in syntax
-    assert "adversarial" in syntax
+    # #556: the documented value is `peer` — it names the shape (a second
+    # independent read of the patch), not an attitude toward the author.
+    assert "peer" in syntax
     assert "lean" in syntax
 
 
@@ -77,7 +79,7 @@ def test_contract_no_longer_documents_the_deleted_edge_tiers():
 def test_contract_documents_review_marker_semantics():
     text = CONTRACT.read_text()
     assert "**Review:**" in text
-    assert "adversarial" in text
+    assert "peer" in text
     assert "lean" in text
     # unmarked = lean, and an invalid/duplicate value is a compile error —
     # these are the semantics the compiler (task 1) actually implements.

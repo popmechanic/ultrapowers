@@ -35,7 +35,7 @@ Markers are bold-labeled lines placed immediately after the task heading, before
   `release`, or `manual`.
 - `**Depends-on:**` — comma-separated task IDs from the plan's own numbering
   (`2`, `A3`, `C4b`), or `none`.
-- `**Review:**` — optional; one of `adversarial` or `lean`. Names the tasks that
+- `**Review:**` — optional; one of `peer` or `lean`. Names the tasks that
   earn a second independent review pass. Unmarked tasks are `lean`. An invalid
   or duplicate value is a compile error.
 - `**Commutes:**` — optional; comma-separated backticked paths, each of which

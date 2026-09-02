@@ -5,16 +5,24 @@ when it is asked to decide something. `fleet/run-engine.mjs` reads them at
 dispatch, one file per role:
 
 - `implementer.md` — write the task in an isolated tree
-- `reviewer.md` — judge a task's diff against its text
+- `examiner.md` — write the task's exam: the Proof `Test:` file, red at BASE
+- `reviewer.md` — referee a task's diff against its text
 - `fix.md` — act on a review's findings
 - `resolver.md` — settle a conflicted merge
 - `reconcile.md` — repair a wave that landed inconsistent
 - `critic.md` — read the finished run for what the plan missed
 
+The register is scientific peer review (#556): a referee checks that a
+submission establishes its claim by the stated exam and helps it get there, the
+critic is the editor's completeness read, and what a diff cannot settle is a
+question for the editor rather than a finding against the author.
+
 There is no bake step: this directory is the single copy, so editing a file
-here changes what the next dispatch sends. Each prompt is capped at 350 words
-by a pinning test in `fleet/tests/test_run_engine.mjs`, which also rejects
-shouted imperatives — a rule that needs shouting belongs in code.
+here changes what the next dispatch sends. Prompt sizes are reported, not
+gated — `fleet/tests/test_run_engine.mjs` prints each file's word count and
+gates nothing on it (#496). The same test rejects shouted imperatives, and
+`fleet/tests/test_roles_peer.mjs` pins the sentences that carry the register —
+a rule that needs shouting belongs in code.
 
 Choreography stays out. Git operations and kernel invocations are driver code
 in `run-engine.mjs`; the prompts describe judgment only, and models never run

@@ -19,9 +19,13 @@ sys.path.insert(0, str(ROOT / "skills/ultrapowers/scripts"))
 ENGINE_SOURCES = [
     p.read_text() for p in sorted((ROOT / "fleet/roles").glob("*.md"))
 ]
+# run-52 (#556): the reviewer and critic prompts moved to the peer-review
+# register, so their pre-register openings joined the historical set — they
+# still classify old transcripts, and the live sources carry the new phrases.
 HISTORICAL_MARKERS = {
     "You are the setup agent", "You are the wave merge agent",
     "You are the reconciliation agent", "what plan requirement is unmet?",
+    "You are an independent reviewer", "You are the completeness critic",
 }
 
 IMPL_7 = ("SAFETY: Operate ONLY inside the git worktree assigned to you.\n\n"

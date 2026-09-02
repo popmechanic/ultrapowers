@@ -35,8 +35,13 @@ ROLE_MARKERS = [
     # harvest corpus reaches back through the Workflow era) still classify.
     ("You are an implementer", "impl"),          # covers "…subagent" (old) and "…working in" (roles/)
     ("You are fixing your own prior implementation", "impl"),   # roles/fix.md
-    ("You are an independent reviewer", "review"),
-    ("You are the completeness critic", "integration"),         # roles/critic.md
+    # run-52: the roles moved to the peer-review register (#556) — the referee
+    # and the editor. Both pre-register openings stay so the harvest corpus's
+    # older reviewer/critic transcripts still classify.
+    ("You are a referee", "review"),                            # roles/reviewer.md
+    ("You are an independent reviewer", "review"),              # historical only
+    ("You are the editor's completeness read", "integration"),  # roles/critic.md
+    ("You are the completeness critic", "integration"),         # historical only
     ("You are the reconcile agent", "reconcile"),               # roles/reconcile.md
     ("You are the setup agent", "setup"),        # historical only (driver setup is code now)
     ("You are the wave merge agent", "merge"),   # historical only

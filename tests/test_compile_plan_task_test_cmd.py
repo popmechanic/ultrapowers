@@ -174,6 +174,8 @@ def test_entry_keeps_every_other_key_at_its_base_value(tmp_path):
         "review": "lean",
         "writes": ["widgetkit/widget.py"],
         "commutes": [],
+        # The Proof `Test:` paths this entry's command derives from (#553).
+        "proofTests": ["tests/test_widget.py"],
         "testCmd": "python3 -m pytest -q tests/test_widget.py",
     }
 

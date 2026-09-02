@@ -23,7 +23,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
@@ -45,6 +45,13 @@ export const RUN_ARTIFACT_DIR = '.claude/ultrapowers'
  * receipts are, and never by naming a directory the engine does not create.
  */
 export const RUN_REPORT_FILE = 'report.json'
+
+/**
+ * How often the shim samples the sandbox's own load into `<runDir>/load.jsonl`
+ * (#549). A minute: fine enough to see a wave saturate the box, coarse enough
+ * that a multi-hour run's evidence stays a few hundred lines.
+ */
+export const LOAD_SAMPLE_INTERVAL_MS = 60000
 
 /** The machine-written receipt the engine's gate leaves in each run directory. */
 export const GATE_RECEIPT_FILE = 'gate-receipt.json'
@@ -827,6 +834,112 @@ export const writeAssignmentPlan = (repoDir, planPath, runId, plan) => {
 }
 
 /**
+ * One line per minute of what the box itself was doing, into the run dir.
+ *
+ * The engine's own timings say a wave was slow; they never say the sandbox was
+ * oversubscribed — and the process that could have told us dies with the VM
+ * (#549, #484). So the shim samples itself: `/proc/loadavg`, the `Mem:` row of
+ * `free -m`, and how many `pytest` and `claude` processes are alive, appended
+ * as JSONL into `<runDir>/load.jsonl`, which the sandbox-logs pull already
+ * tars off the VM before teardown. No new transport, no drive change.
+ *
+ * Every reader is a seam, and every reader is allowed to fail: on macOS all
+ * three throw, and a sampler that crashed the run it was measuring would be a
+ * worse instrument than none. A throwing reader nulls ITS OWN fields for that
+ * line and the sampler keeps going — the `number|null` shape the rest of the
+ * fleet's metrics already use.
+ *
+ * The interval is unref'd: a sampler nobody stopped must never be the reason a
+ * process stays alive.
+ */
+export const startLoadSampler = ({
+  file,
+  intervalMs = LOAD_SAMPLE_INTERVAL_MS,
+  readLoadavg = () => fs.readFileSync('/proc/loadavg', 'utf8'),
+  readFree = () => execFileSync('free', ['-m'], { encoding: 'utf8' }),
+  listProcs = () => execFileSync('ps', ['-eo', 'args='], { encoding: 'utf8' }),
+  now = () => new Date().toISOString(),
+} = {}) => {
+  // The run dir is normally the engine's to create, and it does not exist yet
+  // when the shim starts sampling. `recursive` so the engine's own later
+  // `mkdirSync(recursive)` is a no-op, and swallowed so an unwritable tree
+  // costs the evidence rather than the run.
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+  } catch {}
+
+  const sample = () => {
+    const line = { ts: now(), ...readLoads(readLoadavg), ...readMemory(readFree), ...countProcs(listProcs) }
+    try {
+      fs.appendFileSync(file, `${JSON.stringify(line)}\n`)
+    } catch {
+      // A sampler is never the reason a run fails. An unwritable run dir is
+      // one lost line, not a dead engine.
+    }
+  }
+
+  sample()
+  const timer = setInterval(sample, intervalMs)
+  timer.unref?.()
+  return { stop: () => clearInterval(timer) }
+}
+
+/** A finite number, or `null` — the shape every unreadable field takes. */
+const asNumber = (text) => {
+  const value = Number(text)
+  return Number.isFinite(value) ? value : null
+}
+
+/** `/proc/loadavg`: the 1/5/15-minute averages are its first three fields. */
+const readLoads = (readLoadavg) => {
+  try {
+    const [one, five, fifteen] = String(readLoadavg()).trim().split(/\s+/)
+    return { load1: asNumber(one), load5: asNumber(five), load15: asNumber(fifteen) }
+  } catch {
+    return { load1: null, load5: null, load15: null }
+  }
+}
+
+/**
+ * `free -m`: the `Mem:` row, whose columns are total, used, free, shared,
+ * buff/cache, available. `available` — not `free` — is the one that says
+ * whether another worker fits.
+ */
+const readMemory = (readFree) => {
+  try {
+    const row = String(readFree()).split('\n').find((l) => l.trim().startsWith('Mem:'))
+    const cols = row.trim().split(/\s+/).slice(1)
+    return { memUsedMb: asNumber(cols[1]), memAvailMb: asNumber(cols[5]) }
+  } catch {
+    return { memUsedMb: null, memAvailMb: null }
+  }
+}
+
+/**
+ * `ps -eo args=`: one full command line per process. `pytest` is counted
+ * anywhere on the line (`python3 -m pytest …` is a pytest), `claude` only as
+ * the basename of the executable — otherwise every worker prompt mentioning
+ * the word would count as a process.
+ *
+ * A text reader and an array of lines are both accepted: the live reader
+ * returns `ps` output, a sim hands over the lines it wants counted.
+ */
+const countProcs = (listProcs) => {
+  try {
+    const raw = listProcs()
+    const procs = (Array.isArray(raw) ? raw : String(raw).split('\n'))
+      .map((l) => String(l).trim())
+      .filter((l) => l.length > 0)
+    return {
+      pytest: procs.filter((l) => l.includes('pytest')).length,
+      claude: procs.filter((l) => path.basename(l.split(/\s+/)[0]) === 'claude').length,
+    }
+  } catch {
+    return { pytest: null, claude: null }
+  }
+}
+
+/**
  * Launch the engine run headless, against the base the driver pushed.
  *
  * Four things must be true before a single token is spent, and all are
@@ -866,6 +979,9 @@ export const invokeEngineRun = async ({
   spawnEngine = spawnEngineProcess,
   log = console.error,
   excludeDirs,
+  // The load sampler (#549), on a seam beside the others so a sim can inject a
+  // no-op and read BASE behaviour exactly.
+  startSampler = startLoadSampler,
 }) => {
   // Order, and it is load-bearing: planPath → checkout BASE_REF → launch.
   // Each step refuses on failure.
@@ -904,12 +1020,26 @@ export const invokeEngineRun = async ({
   // session and its plugin-install dance were deleted at cutover; git history
   // holds them). `run-main.mjs` reads the scripts straight from the tree just
   // checked out; the gate-receipt read is unchanged.
-  const code = await spawnEngine({
-    command: 'node',
-    args: oneDriverArgs(repoDir, launchPlanPath, runId, overlap),
-    cwd: repoDir,
-    runId,
+  // Started before the spawn and stopped after it either way (#549): the
+  // sampler's whole purpose is to describe the box WHILE the engine runs, and
+  // a spawn that throws is exactly the run whose load line matters most. The
+  // run dir is the engine's to create (run-main.mjs) — a `recursive` mkdir
+  // here is harmless to the engine's own later `recursive` mkdirs.
+  const sampler = startSampler({
+    file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'load.jsonl'),
+    intervalMs: LOAD_SAMPLE_INTERVAL_MS,
   })
+  let code
+  try {
+    code = await spawnEngine({
+      command: 'node',
+      args: oneDriverArgs(repoDir, launchPlanPath, runId, overlap),
+      cwd: repoDir,
+      runId,
+    })
+  } finally {
+    sampler?.stop?.()
+  }
   // Resolved AFTER the run, because the run is what creates the directory.
   // The verdict lives in the gate receipt, never in report.json — see
   // `readGateGreen`. Scoped by `excludeDirs` to the directories this run

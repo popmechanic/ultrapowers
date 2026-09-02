@@ -9,8 +9,9 @@ validation step, ahead of the compile (spec 2026-08-31 §4.4).
     check_provenance.py <plan.md> [--gh <cmd>]
 
 Exit 0 when every `quoted:#NNN` claim string-matches its issue body and every
-Authorized-by anchor resolves; exit 2 with one line per failure; exit 1 on a
-usage error. `--gh` swaps the `gh` binary — the test seam, and the hook for a
+Authorized-by anchor resolves; `(derived)` claims are counted, never resolved —
+their signature is the plan-level Claim (#552), not an issue; exit 2 with one
+line per failure; exit 1 on a usage error. `--gh` swaps the `gh` binary — the test seam, and the hook for a
 caller with its own wrapper. Nothing here reaches the network by any other
 route: the binary is never resolved by bare name when `--gh` names one.
 
@@ -32,6 +33,7 @@ from compile_plan import (  # noqa: E402
     CLAIMS_GRAMMAR,
     CLAIM_PROVENANCE_RE,
     parse_claims_body,
+    parse_plan_claim,
     plan_grammar,
     split_tasks,
 )
@@ -79,11 +81,15 @@ def issue_body(number, gh, cache):
 def check_plan(md_text, gh):
     """Every provenance failure the plan earns, in task order, plus the counts
     of what was resolved. `elicited` claims are skipped outright — there is no
-    issue to fetch, so they cost no `gh` call."""
+    issue to fetch, so they cost no `gh` call — and so are `derived` ones
+    (#552): a derived claim descends from the plan's one elicited operator
+    sentence, which has no issue behind it either. They are COUNTED, so a run
+    of them is visible in the success line rather than silently absent."""
     failures, cache = [], {}
-    quotes = anchors = 0
+    quotes = derived = anchors = 0
+    plan_claim = parse_plan_claim(md_text)
     for task in split_tasks(md_text):
-        claims = parse_claims_body(task["body"], task["id"])
+        claims = parse_claims_body(task["body"], task["id"], plan_claim)
         provenance = claims["claim_provenance"] or ""
         if claims.get("claim") and not provenance:
             # Defense in depth (2026-09-01): a tag mangled past recognition
@@ -92,7 +98,10 @@ def check_plan(md_text, gh):
             # compiler's own refusal stays as the second wall.
             failures.append(
                 "provenance: task %s claim carries no recognizable provenance "
-                "tag — `(elicited)` or `(quoted from #NNN)`" % task["id"])
+                "tag — `(elicited)`, `(derived)` or `(quoted from #NNN)`"
+                % task["id"])
+        if provenance == "derived":
+            derived += 1
         if provenance.startswith("quoted:#"):
             quotes += 1
             number = provenance.split("#", 1)[1]
@@ -118,11 +127,19 @@ def check_plan(md_text, gh):
             if issue_body(number, gh, cache) is None:
                 failures.append("provenance: task %s Authorized-by anchor #%s "
                                 "does not resolve" % (task["id"], number))
-    return failures, quotes, anchors
+    return failures, quotes, derived, anchors
 
 
 def _plural(n, word):
     return "%d %s%s" % (n, word, "" if n == 1 else "s")
+
+
+def _series(parts):
+    """`A`, `A and B`, `A, B and C` — the success line reads as one sentence
+    whether or not the plan carries derived claims."""
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + " and " + parts[-1]
 
 
 def main(argv=None):
@@ -144,13 +161,18 @@ def main(argv=None):
               % (args.plan, CLAIMS_GRAMMAR))
         return 0
 
-    failures, quotes, anchors = check_plan(md_text, shlex.split(args.gh))
+    failures, quotes, derived, anchors = check_plan(md_text, shlex.split(args.gh))
     for line in failures:
         print(line)
     if failures:
         return 2
-    print("provenance: ok — %s and %s resolve"
-          % (_plural(quotes, "claim quote"), _plural(anchors, "anchor")))
+    # `<m> derived` is omitted when zero, so a plan with no derived claims
+    # prints exactly the line it printed before #552.
+    counts = [_plural(quotes, "claim quote")]
+    if derived:
+        counts.append("%d derived" % derived)
+    counts.append(_plural(anchors, "anchor"))
+    print("provenance: ok — %s resolve" % _series(counts))
     return 0
 
 

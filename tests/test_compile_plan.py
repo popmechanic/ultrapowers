@@ -2117,8 +2117,10 @@ def _compile_raw(tmp_path, plan_markdown, name="plan.md"):
 
 
 def test_review_marker_emits_adversarial_slot(tmp_path):
+    # #556: `adversarial` is still an accepted marker value, but it is the
+    # legacy spelling — the wave entry carries the documented `peer`.
     by_id = _emit_args_entries(tmp_path, REVIEW_PLAN)
-    assert by_id["1"]["review"] == "adversarial"
+    assert by_id["1"]["review"] == "peer"
 
 
 def test_unmarked_task_emits_lean_review_slot(tmp_path):

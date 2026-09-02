@@ -100,7 +100,11 @@ LLM_DERIVES = [
 # "cheap" stays accepted: pre-#286 launch/args files carry it; waves.js
 # coerces it to standard with a visible judgment call.
 VALID_TIERS = {None, "cheap", "standard", "mostCapable", "most-capable"}
-VALID_REVIEWS = {"lean", "adversarial"}
+# `peer` is the documented review-depth value (#556); `adversarial` is its
+# pre-#556 spelling, still accepted here because a pre-#556 args file carries
+# it. The compiler normalizes the marker to `peer` before it reaches an args
+# entry, so a fresh compile only ever emits `lean` or `peer`.
+VALID_REVIEWS = {"lean", "adversarial", "peer"}
 
 OVERLAP_CHOICES = ("serialize", "fold")
 
@@ -246,7 +250,7 @@ def validate_knobs(args_path, root):
                 if t.get("review") not in VALID_REVIEWS:
                     print(json.dumps({"ok": False, "stage": "knob-validate",
                                       "detail": "task %s: review %r is not "
-                                                "lean|adversarial"
+                                                "lean|peer (alias adversarial)"
                                                 % (tid, t.get("review"))}))
                     return 1
     except TypeError as e:
