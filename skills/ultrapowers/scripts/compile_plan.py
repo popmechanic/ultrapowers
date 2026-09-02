@@ -304,6 +304,191 @@ def _claims_file_paths(value):
     return [p.split(":")[0] for p in paths if p]
 
 
+# --- Clause-to-leg citation (#554) -------------------------------------------
+# run-51's proof gate rejected 11 of 24 pairs, every one for a gap a parser can
+# see: a Machine clause no leg examined, a universal or negation no leg could
+# falsify, an enumerated row without its own leg. So the grammar lets the
+# Machine line NUMBER its clauses (`M1. … M2. …`) and every Proof leg CITE the
+# clause it establishes (`[M2]`). The citation grammar is active for a task
+# exactly when its Machine line carries a clause marker; an unnumbered Machine
+# line (every plan authored before #554) parses as it always did and draws one
+# advisory. Under the active grammar the mechanical gaps are refusals — a clause
+# no leg cites, a leg citing nothing or a clause that does not exist — and the
+# two judgment species (a universal/negation clause whose citing legs name
+# nothing that fails, an enumerated clause with one citing leg) are advisories
+# the gate agent reads with the mechanical gaps already closed.
+MACHINE_LEAD_RE = re.compile(r"^machine\s*:\s*", re.I)
+# A clause marker: `M<n>.` followed by whitespace, not glued to a word or a
+# backtick (so `M1.5` in a literal or `xM2.` never marks a clause).
+CLAUSE_MARK_RE = re.compile(r"(?<![\w`])M(\d+)\.(?=\s)")
+# A leg's citation: `[M2]` or `[M1, M3]`; several brackets per leg all count.
+LEG_CITE_RE = re.compile(r"\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]")
+LEG_LABEL_RE = re.compile(r"\(([a-z])\)")
+LEGS_LEAD_RE = re.compile(r"(?m)^[-*+]?\s*legs?\s*:\s*", re.I)
+BULLET_RE = re.compile(r"^[-*+]\s+")
+# The judgment species. A clause is `universal` on a quantifier, `negation` on
+# a negating word; either wants a citing leg that names what FAILS, is ABSENT,
+# or is EXACTLY so — the falsifier tokens the ticket lists, plus the near
+# synonyms run-51's accepted legs actually used. An `enumerated` clause names
+# rows ("for each of node, pytest") and wants one leg per row, which the
+# compiler can only approximate as "more than one citing leg".
+UNIVERSAL_RE = re.compile(
+    r"\b(every|all|each|any|always|only|whole|entire)\b", re.I)
+NEGATION_RE = re.compile(
+    r"\b(no|none|never|not|nothing|without|neither|nor|unchanged|absent|"
+    r"byte-identical|identical)\b", re.I)
+FALSIFIER_RE = re.compile(
+    r"\b(fails?|failing|absent|exactly|no|none|not|never|zero|empty|"
+    r"refuses?|refused|identical|unchanged|deep-equals|only|nothing)\b", re.I)
+ENUMERATED_RE = re.compile(
+    r"\b(each of|for each|every one of|for every|one per)\b", re.I)
+
+
+def machine_restatement(claim):
+    """The Machine half of a Claim slot: the text from the `Machine:` lead-in
+    to the end of the slot, lead-in stripped, wrapped lines joined."""
+    lines = claim.splitlines()
+    for i, line in enumerate(lines):
+        if MACHINE_LEAD_RE.match(line.strip()):
+            first = MACHINE_LEAD_RE.sub("", line.strip(), count=1)
+            return " ".join([first] + [l.strip() for l in lines[i + 1:]]).strip()
+    return ""
+
+
+def parse_machine_clauses(machine):
+    """The numbered clauses of a Machine restatement.
+
+    Returns `(clauses, numbering_error)`: `clauses` is a list of
+    `{"id": "M1", "text": ...}` in text order, empty when the line carries no
+    marker at all (the citation grammar is then inactive); `numbering_error`
+    names the markers found when they are not exactly M1, M2, … in order."""
+    marks = list(CLAUSE_MARK_RE.finditer(machine))
+    if not marks:
+        return [], None
+    numbers = [int(m.group(1)) for m in marks]
+    error = None
+    if numbers != list(range(1, len(numbers) + 1)):
+        error = ", ".join("M%d" % n for n in numbers)
+    clauses = []
+    for k, m in enumerate(marks):
+        end = marks[k + 1].start() if k + 1 < len(marks) else len(machine)
+        clauses.append({"id": "M%d" % numbers[k],
+                        "text": machine[m.end():end].strip()})
+    return clauses, error
+
+
+def parse_proof_legs(proof):
+    """The legs of a Proof slot, each with the clauses it cites.
+
+    Prose only: fenced code and `Test:` bullets are not legs. Legs are split on
+    sequential `(a)`, `(b)`, … labels when the Proof uses them — only the NEXT
+    expected label splits, so a leg that says "as (a) but …" is not cut at the
+    back-reference — else each bullet is a leg (ordinals `#1`, `#2`), else the
+    whole prose is one leg. A leg's `cites` are the sorted distinct ids inside
+    its `[M…]` brackets."""
+    kept = []
+    for line, fenced in _fence_aware_lines(proof):
+        if fenced:
+            continue
+        stripped = line.strip()
+        if not stripped:
+            continue
+        f = FILE_LINE.match(stripped)
+        if f and f.group(1) == "Test":
+            continue
+        kept.append(stripped)
+    text = LEGS_LEAD_RE.sub("", "\n".join(kept))
+    starts, expected = [], "a"
+    for m in LEG_LABEL_RE.finditer(text):
+        if m.group(1) == expected:
+            starts.append((expected, m.start(), m.end()))
+            expected = chr(ord(expected) + 1)
+    legs = []
+    if starts:
+        for k, (label, _, en) in enumerate(starts):
+            end = starts[k + 1][1] if k + 1 < len(starts) else len(text)
+            legs.append(("(%s)" % label, text[en:end].strip()))
+    else:
+        bullets = []
+        for line in text.splitlines():
+            if BULLET_RE.match(line):
+                bullets.append(BULLET_RE.sub("", line))
+            elif bullets:
+                bullets[-1] += " " + line
+        if bullets:
+            legs = [("#%d" % (i + 1), b.strip()) for i, b in enumerate(bullets)]
+        elif text.strip():
+            legs = [("#1", text.strip())]
+    out = []
+    for label, body in legs:
+        cites = {c.strip() for m in LEG_CITE_RE.finditer(body)
+                 for c in m.group(1).split(",")}
+        out.append({"label": label, "text": body,
+                    "cites": sorted(cites, key=lambda c: int(c[1:]))})
+    return out
+
+
+def _short(s, n=80):
+    s = re.sub(r"\s+", " ", s).strip()
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def clause_citation_violations(task_id, clauses, numbering_error, legs):
+    """The `grammar:` refusals the citation grammar draws for one task; []
+    when the grammar is inactive (no clause marker on the Machine line)."""
+    v = []
+    if numbering_error:
+        v.append("grammar: Machine clauses must be numbered M1, M2, … "
+                 "consecutively — task %s: found %s" % (task_id, numbering_error))
+    if not clauses:
+        return v
+    ids = {c["id"] for c in clauses}
+    span = "M1" if len(clauses) == 1 else "M1–M%d" % len(clauses)
+    for leg in legs:
+        if not leg["cites"]:
+            v.append("grammar: Proof leg cites no Machine clause — task %s, leg "
+                     "%s: %s; end the leg with the clause it establishes "
+                     "(`[M1]`)" % (task_id, leg["label"], _short(leg["text"])))
+        for c in leg["cites"]:
+            if c not in ids:
+                v.append("grammar: Proof leg cites an unknown clause — task %s, "
+                         "leg %s cites %s; the Machine line numbers %s"
+                         % (task_id, leg["label"], c, span))
+    cited = {c for leg in legs for c in leg["cites"]}
+    for c in clauses:
+        if c["id"] not in cited:
+            v.append("grammar: Machine clause %s has no citing Proof leg — task "
+                     "%s: %s" % (c["id"], task_id, _short(c["text"])))
+    return v
+
+
+def clause_citation_advisories(task_id, clauses, legs):
+    """The `ADVISORY grammar:` lines of the two judgment species for one task,
+    plus the one line an unnumbered Machine line draws."""
+    lines = []
+    if not clauses:
+        lines.append(
+            "ADVISORY grammar: Machine line carries no numbered clauses — task "
+            "%s; write it `M1. … M2. …` so every Proof leg can cite the clause "
+            "it establishes (`[M1]`)" % task_id)
+        return lines
+    for c in clauses:
+        citing = [l for l in legs if c["id"] in l["cites"]]
+        species = ("universal" if UNIVERSAL_RE.search(c["text"]) else
+                   "negation" if NEGATION_RE.search(c["text"]) else None)
+        if species and not any(FALSIFIER_RE.search(l["text"]) for l in citing):
+            lines.append(
+                "ADVISORY grammar: %s clause %s has no falsifying leg — task "
+                "%s: %s; a citing leg should name what fails, is absent, or is "
+                "exactly so" % (species, c["id"], task_id, _short(c["text"])))
+        if ENUMERATED_RE.search(c["text"]) and len(citing) < 2:
+            lines.append(
+                "ADVISORY grammar: enumerated clause %s is cited by %d leg — "
+                "task %s: %s; each enumerated row needs its own leg"
+                % (c["id"], len(citing), task_id, _short(c["text"])))
+    return lines
+
+
 def parse_claims_body(body, task_id):
     """Parse one claims-v1 task body into its six slots.
 
@@ -452,6 +637,15 @@ def parse_claims_body(body, task_id):
             "paths — task %s: `%s` is both a Proof `Test:` path and a "
             "`Create:`/`Modify:` path" % (task_id, path))
 
+    # Clause-to-leg citation (#554): active exactly when the Machine line
+    # numbers its clauses; every refusal it draws is a `grammar:` line like
+    # the rest, so both channels refuse it.
+    machine_clauses, numbering_error = parse_machine_clauses(
+        machine_restatement(claim))
+    proof_legs = parse_proof_legs(slots.get("Proof", ""))
+    violations.extend(clause_citation_violations(
+        task_id, machine_clauses, numbering_error, proof_legs))
+
     return {"claim": claim,
             "authorized_by": slots.get("Authorized-by", ""),
             "interfaces": slots.get("Interfaces", ""),
@@ -462,6 +656,8 @@ def parse_claims_body(body, task_id):
             "stale_if_entries": stale_entries,
             "proof_tests": sorted(proof_tests),
             "proof_tests_ordered": proof_tests_ordered,
+            "machine_clauses": machine_clauses,
+            "proof_legs": proof_legs,
             "violations": violations}
 
 
@@ -1337,6 +1533,11 @@ def claims_advisories(tasks, tree_root=None):
         lines.append("ADVISORY grammar: Context is %d words — task %s"
                      % (len(_slot_prose(claims.get("context", "")).split()),
                         t["id"]))
+        # Clause-to-leg citation (#554): the judgment species, and the one
+        # line an unnumbered Machine line draws.
+        lines.extend(clause_citation_advisories(
+            t["id"], claims.get("machine_clauses") or [],
+            claims.get("proof_legs") or []))
     # Same-file pairs. What the compiler can say about a shared path depends on
     # whether it was handed a tree: with none it cannot tell a mergeable text
     # file from a non-text one it would have to order, and says so. With one it

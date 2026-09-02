@@ -51,7 +51,8 @@ derivation.
 
 - **Claim:** the bilingual pair. The operator's own sentence, verbatim, closed by
   `(quoted from #NNN)` or `(elicited)`; then a `Machine:` line restating it in the
-  system's own terms. Write do:/see: interactions, never system states. Register drift
+  system's own terms, **its clauses numbered `M1. … M2. …`** — one clause per thing the
+  exam must establish. Write do:/see: interactions, never system states. Register drift
   between the two halves is a defect the gate checks.
 - **Authorized-by:** the reference licensing this task — issue, spec §, decision record.
 - **Interfaces:** `Consumes:` / `Produces:` — exact signatures, exact test names, **one
@@ -67,7 +68,13 @@ derivation.
   ordering phrases (`after Task 2`) draw an advisory and order nothing.
 - **Proof:** the exam — tests, golden pairs, fixtures, executable probes. The only slot
   where code fences are legal. Its `Test:` paths must be **disjoint** from this task's
-  `Create:`/`Modify:` paths: the exam is a distinct artifact.
+  `Create:`/`Modify:` paths: the exam is a distinct artifact. Its legs — `(a) … (b) …` —
+  **each cite the clause they establish, `[M2]`**; the compiler refuses a clause no leg
+  cites, a leg citing nothing, or a citation of a clause that does not exist. A universal
+  or negation clause (`every`, `no`, `byte-identical`) wants a leg that names what fails
+  or is absent; an enumerated clause (`for each of node, pytest`) wants one leg per row —
+  both draw an `ADVISORY` when missing, which is the species run-51's gate rejected 11 of
+  24 pairs for.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
   is a refusal; an undecidable staleness test is inert prose.
@@ -84,7 +91,8 @@ derivation.
 
 **Claim:** An operator lists the sizes they want and gets one widget per size, in the
 order they asked. (quoted from #489)
-Machine: `catalog([1, 3])` returns two `Widget`s whose `size` values are `[1, 3]`.
+Machine: M1. `catalog([1, 3])` returns two `Widget`s whose `size` values are `[1, 3]`.
+M2. `catalog([])` returns an empty list.
 
 **Authorized-by:** #489; spec `docs/superpowers/specs/2026-08-31-owned-authoring-skill.md` §3
 
@@ -97,6 +105,8 @@ sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
 
 **Proof:**
 - Test: `tests/test_catalog.py`
+- Legs: (a) `catalog([1, 3])` yields exactly two widgets with sizes `[1, 3]` in that
+  order [M1]; (b) `catalog([])` is exactly `[]` [M2].
 
 **Stale-if:**
 - path-absent: `widgetkit/widget.py`
@@ -123,7 +133,10 @@ nothing.
 
 One fresh-context subagent per task, asked one question: *if this exam passes, is the
 sentence necessarily true, at the right layer?* Layer mismatch means no compile until the
-task is revised.
+task is revised. Run `compile_plan.py --check` first: the mechanical gaps (an uncited
+clause, an uncited leg) are refusals there, so the gate reads the pair clause by clause
+with those already closed and spends its judgment on the species only it can see — does
+leg (b) actually falsify M2, or merely mention it?
 
 Its diet is capped mechanically, not by the reader's restraint:
 
@@ -253,6 +266,8 @@ task-by-task from contract plus proof.
   restatement at the same layer, and its gate verdict is recorded and fresh.
 - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
   task's own writes; every fence sits in Proof.
+- Every Machine clause is numbered and cited by a leg; every universal or negation clause
+  has a leg that names what fails or is absent; every enumerated row has its own leg.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
   or the Files blocks overlap. Nothing rides on prose.
 - The rationale line states each wave's width; every chain longer than one names the
