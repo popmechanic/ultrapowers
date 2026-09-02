@@ -112,7 +112,7 @@ python3 skills/ultrapowers/scripts/compile_plan.py <plan.md>              # comp
   rules: the exam is written by a peer, never the submitter or the editor; the plan names
   nothing it does not Produce/Consume outside a tool-generated BASE-facts block; one signature
   per plan; review is collaborative and independence is authorship, not secrecy — the
-  implementer runs the peer's exam and never edits it); #525 *The Verification Frontier*
+  implementer runs the peer's exam; an edit to it is recorded as `examEdited`, named to the referee, and reviewed — never refused by the driver, since 2026-09-02); #525 *The Verification Frontier*
   (review finds truth it cannot enforce — three generations of blocking-findings-that-could-not-block;
   tickets #518/#519/#232, experiment queue #511→#522→#462→#516, single novelty per run window); #360 *The Merge Frontier* (the Manyana fold kernel — read its §Ground truth and §Rules before any
   kernel or orchestrator-store work; the binding one: *Manyana merges values,
