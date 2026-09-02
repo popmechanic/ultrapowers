@@ -35,6 +35,11 @@ export const DEFAULTS = Object.freeze({
   ttlHours: 4,
   tokenPath: '/home/exedev/.fleet/claude-oauth-token',
   repoDir: REPO_DIR,
+  // #543: the ONE checkout the run tip is pinned in. `repoDir` moves — a race
+  // attempt drives out of a throwaway clone under /tmp — so the rescue ref
+  // would land where nobody looks; this is the checkout the CLI itself lives
+  // in, which is the one an operator ssh's into.
+  pinRepoDir: REPO_DIR,
   // #368: the GitHub token the publish leg hands `git push`/`gh` as GH_TOKEN
   // (env only), and the PR's base branch.
   githubTokenPath: GITHUB_TOKEN_PATH,
@@ -51,6 +56,7 @@ const FLAGS = Object.freeze({
   '--sandbox-memory': 'sandboxMemory',
   '--token-path': 'tokenPath',
   '--repo-dir': 'repoDir',
+  '--pin-repo-dir': 'pinRepoDir',
   '--github-token-path': 'githubTokenPath',
   '--pr-base': 'prBase',
   // #514: the fold-versus-serialize A/B knob. Deliberately absent from
@@ -71,8 +77,9 @@ export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
   '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
   '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
-  '[--github-token-path FILE] [--pr-base BRANCH] [--overlap fold|serialize] [--allow-unfit-plan]'
-
+  '[--pin-repo-dir DIR] ' +
+  '[--github-token-path FILE] [--pr-base BRANCH] [--overlap fold|serialize] [--allow-unfit-plan] ' +
+  '[--plan-from-assignment]'
 export const parseArgs = (argv) => {
   const positional = []
   const opts = { ...DEFAULTS, allowUnfitPlan: false }
@@ -80,6 +87,15 @@ export const parseArgs = (argv) => {
     const arg = argv[i]
     if (arg === '--allow-unfit-plan') {
       opts.allowUnfitPlan = true
+      continue
+    }
+    // #544 step 2: ship the plan (and its gate verdicts) IN the assignment
+    // instead of reading it out of the repo at the base ref. Set as the
+    // `planSource` value driveOne takes, not as a boolean, so the option names
+    // the source rather than a switch — and left UNSET when the flag is
+    // absent, so `buildDriveOptions` adds no key at all.
+    if (arg === '--plan-from-assignment') {
+      opts.planSource = 'assignment'
       continue
     }
     if (arg.startsWith('--')) {
@@ -147,6 +163,7 @@ export const buildDriveOptions = (
   port: parsed.port,
   dbDir: parsed.dbDir,
   repoDir: parsed.repoDir,
+  pinRepoDir: parsed.pinRepoDir,
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN: String(readToken(parsed.tokenPath)).trim() },
   runId: parsed.runId,
@@ -157,6 +174,7 @@ export const buildDriveOptions = (
   ...(parsed.sandboxCpu ? { sandboxCpu: parsed.sandboxCpu } : {}),
   ...(parsed.sandboxMemory ? { sandboxMemory: parsed.sandboxMemory } : {}),
   ...(parsed.overlap ? { overlap: parsed.overlap } : {}),
+  ...(parsed.planSource ? { planSource: parsed.planSource } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,
   githubTokenPath: parsed.githubTokenPath,
   prBase: parsed.prBase,

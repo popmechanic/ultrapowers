@@ -19,6 +19,7 @@
 // NO credentials live here. Model access rides the sandbox's own exe.dev LLM
 // integration (`ANTHROPIC_BASE_URL` + a dummy key set on the golden image), so
 // this file neither reads nor sets an API key, and imports no vendor SDK.
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -265,6 +266,60 @@ export const readRunConfigTokens = (configDir) => {
   return { total, files: files.length }
 }
 
+/**
+ * The run's PRIMARY output-token reader: the number the workers' own
+ * envelopes report. `run-worker.mjs` writes each finished worker's result
+ * envelope to `<runDir>/workers/<label>/envelope.json`, and this sums
+ * `modelUsage[model].outputTokens` over every model of every envelope — the
+ * same sum the engine's own `meterOf` takes, and NEVER the envelope's
+ * `usage`, which reports the last call only.
+ *
+ * This is what the engine metered rather than what a transcript layout
+ * happens to expose, so it leads and `readRunConfigTokens` follows: run-47
+ * (2026-09-01) read 239,564 from the transcripts deduped by `message.id`
+ * against 239,695 from these envelopes — an agreement close enough that the
+ * fallback stays honest when no envelope was written.
+ *
+ * `total: null` with `files: 0` when no envelope exists — the same
+ * "reported: number|null" survival as the transcript reader, so a run that
+ * has written nothing yet is never reported as a zero-token run. An envelope
+ * that is unparseable or carries no `modelUsage` still COUNTS as a file (an
+ * envelope was written) and contributes 0.
+ */
+export const readRunEnvelopeTokens = (runDir) => {
+  const workersDir = path.join(runDir, 'workers')
+  let entries
+  try {
+    entries = fs.readdirSync(workersDir, { withFileTypes: true })
+  } catch {
+    return { total: null, files: 0 }
+  }
+  let total = 0
+  let files = 0
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    let content
+    try {
+      content = fs.readFileSync(path.join(workersDir, entry.name, 'envelope.json'), 'utf8')
+    } catch {
+      continue
+    }
+    files += 1
+    let envelope
+    try {
+      envelope = JSON.parse(content)
+    } catch {
+      continue
+    }
+    for (const usage of Object.values(envelope?.modelUsage ?? {})) {
+      const out = usage?.outputTokens
+      if (typeof out === 'number' && Number.isFinite(out)) total += out
+    }
+  }
+  if (files === 0) return { total: null, files: 0 }
+  return { total, files }
+}
+
 /** Ack types inside the #281 standing grant — everything else parks. */
 export const GRANTED_ACK_TYPES = new Set(['deferred:runtime', 'deferred:external'])
 
@@ -478,6 +533,18 @@ export const applyStamp = (store, runId, { pluginVersion, engineSha } = {}) => {
 
 export const applyReportedTokens = (store, runId, tokens) => {
   if (typeof tokens === 'number' && Number.isFinite(tokens)) store.setCell('runs', runId, 'reportedTokens', tokens)
+}
+
+/**
+ * Record WHICH plan the run executed, by content (#544). The plan text now
+ * rides the assignment rather than the base ref, so a ref+path no longer
+ * identifies it — the hash does, and it is the half of the receipt an operator
+ * can check against the plan they shipped. `setCell` for `applyStamp`'s
+ * reason; an assignment with no plan writes nothing rather than a hash of ''.
+ */
+export const applyPlanSha256 = (store, runId, planText) => {
+  if (!isNonEmptyString(planText)) return
+  store.setCell('runs', runId, 'planSha256', crypto.createHash('sha256').update(planText).digest('hex'))
 }
 
 export const applyReceipt = (store, runId, kind, { sha, path: receiptPath, verdict }) => {
@@ -718,6 +785,48 @@ export const spawnEngineProcess = ({ command, args, cwd, runId }) =>
   })
 
 /**
+ * Where an assignment-carried plan is materialised, relative to the repo root.
+ *
+ * `assignment-<runId>` and deliberately NOT `run-<runId>`: `runArtifactDirs`
+ * lists only `run-*` directories and #190 scopes every gate-receipt read to the
+ * directories that did not exist before launch. A plan copy written before the
+ * engine starts is not evidence — naming it `run-…` would put a directory this
+ * file created into the run's own evidence scope. The parent
+ * (`.claude/ultrapowers/`) self-ignores, so nothing here reaches the run branch
+ * or the dirty baseline.
+ */
+export const assignmentPlanDir = (runId) => path.join(RUN_ARTIFACT_DIR, `assignment-${runId}`)
+
+/**
+ * Write the assignment's plan into the checkout and return the repo-relative
+ * path to hand the engine; `null` when the assignment carries no plan (the
+ * pre-#544 shape, which launches against `planPath` exactly as at BASE).
+ *
+ * #544 §The one hard constraint: the plan the run executes need not exist in
+ * the base the driver pushed. The driver ships its TEXT in the assignment, the
+ * sandbox lays it down beside the checkout, and the run's receipt records the
+ * hash — so what ran is identified by content rather than by a ref that may
+ * never have carried it.
+ *
+ * The verdicts ride along because `compile_plan.py` looks for
+ * `<stem>.gate-verdicts.json` BESIDE the plan and refuses a claims-v1 plan
+ * without it. `null` verdicts write no file at all rather than an empty one:
+ * an empty verdict file is a different refusal than a missing one.
+ */
+export const writeAssignmentPlan = (repoDir, planPath, runId, plan) => {
+  if (!plan || !isNonEmptyString(plan.text)) return null
+  const relDir = assignmentPlanDir(runId)
+  const base = path.basename(planPath)
+  fs.mkdirSync(path.join(repoDir, relDir), { recursive: true })
+  fs.writeFileSync(path.join(repoDir, relDir, base), plan.text)
+  if (isNonEmptyString(plan.verdicts)) {
+    const stem = base.slice(0, base.length - path.extname(base).length)
+    fs.writeFileSync(path.join(repoDir, relDir, `${stem}.gate-verdicts.json`), plan.verdicts)
+  }
+  return path.join(relDir, base)
+}
+
+/**
  * Launch the engine run headless, against the base the driver pushed.
  *
  * Four things must be true before a single token is spent, and all are
@@ -751,6 +860,7 @@ export const invokeEngineRun = async ({
   repoDir,
   planPath,
   runId,
+  plan,
   overlap,
   exec = shellExec,
   spawnEngine = spawnEngineProcess,
@@ -784,13 +894,19 @@ export const invokeEngineRun = async ({
     return { gateGreen: false, error: `checkout ${BASE_REF} failed` }
   }
 
+  // AFTER the checkout and before the spawn, and both halves matter: the
+  // checkout moves the tree these files sit in, and the engine reads the plan
+  // the moment it starts. Absent `plan`, this is a no-op and `planPath` is
+  // spawned exactly as at BASE.
+  const launchPlanPath = writeAssignmentPlan(repoDir, planPath, runId, plan) ?? planPath
+
   // The checkout IS the engine (0.3.0: the only engine — the `claude` skill
   // session and its plugin-install dance were deleted at cutover; git history
   // holds them). `run-main.mjs` reads the scripts straight from the tree just
   // checked out; the gate-receipt read is unchanged.
   const code = await spawnEngine({
     command: 'node',
-    args: oneDriverArgs(repoDir, planPath, runId, overlap),
+    args: oneDriverArgs(repoDir, launchPlanPath, runId, overlap),
     cwd: repoDir,
     runId,
   })
@@ -820,6 +936,10 @@ export const main = async ({
   const { runId, token, wsUrl, ttlMs, overlap } = assignment
   const sandboxId = assignment.sandboxId ?? sandboxIdFor(runId)
   const planPath = assignment.planPath ?? process.env.FLEET_PLAN_PATH
+  // #544: `{ text, verdicts }` beside the unchanged `planPath` — the plan's
+  // CONTENT, for a base that may not carry it. Absent on a pre-#544
+  // assignment, and every path below degrades to what BASE did.
+  const plan = assignment.plan
 
   // The run's cumulative output-token total, from the run-owned config dir
   // (`readRunConfigTokens`). Injectable as a seam — like `invokeRun` and
@@ -829,8 +949,16 @@ export const main = async ({
   // `CLAUDE_CONFIG_DIR` (`<runDir>/claude`, run-main.mjs), so the spend read
   // is keyed by that directory rather than the session id — which no worker
   // shares.
-  const oneDriverConfigDir = path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'claude')
-  const readTokens = readTokensOverride ?? (() => readRunConfigTokens(oneDriverConfigDir).total)
+  // Envelopes lead, transcripts follow: the workers' own `modelUsage` is what
+  // the engine metered, so the transcript sum is only consulted when the run
+  // wrote no envelope at all (`files === 0`) — a run whose envelopes genuinely
+  // sum to 0 reports 0, not the transcripts' number.
+  const oneDriverRunDir = path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`)
+  const oneDriverConfigDir = path.join(oneDriverRunDir, 'claude')
+  const readTokens = readTokensOverride ?? (() => {
+    const envelopes = readRunEnvelopeTokens(oneDriverRunDir)
+    return envelopes.files > 0 ? envelopes.total : readRunConfigTokens(oneDriverConfigDir).total
+  })
 
   // The #209 sentinel's source, on the same seam. A test that injects
   // `readTokens` alone is driving the spend path, not the transcript layout —
@@ -898,7 +1026,7 @@ export const main = async ({
           file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'events.jsonl'),
         })
         try {
-          return await invokeEngineRun({ repoDir, planPath, runId, overlap, exec, spawnEngine, excludeDirs: preRunDirs })
+          return await invokeEngineRun({ repoDir, planPath, runId, plan, overlap, exec, spawnEngine, excludeDirs: preRunDirs })
         } finally {
           promoter.stop()
         }
@@ -938,6 +1066,7 @@ export const main = async ({
   // manifest + sha, written before launch.)
   applyStamp(store, runId, stamp)
   applyReportedTokens(store, runId, readTokens())
+  applyPlanSha256(store, runId, plan?.text)
 
   // #209 interim defense: the token total above is only as trustworthy as the
   // transcript layout it was summed from, and a layout drift undercounts

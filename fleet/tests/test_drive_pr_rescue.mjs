@@ -267,8 +267,9 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
       const dbDir = path.join(tmp, `db-${runId}`)
       const { detail } = await driveOne({ ...driveDefaults, parkedPublishWaitMs: 8_000, dbDir, exec, runId })
       await sandbox
-      const cardPath = path.join(`${dbDir}-evidence`, `pr-body-${runId}.md`)
-      return { detail, cardPath, card: fs.readFileSync(cardPath, 'utf8'), exec }
+      const evidenceDir = `${dbDir}-evidence`
+      const cardPath = path.join(evidenceDir, `pr-body-${runId}.md`)
+      return { detail, cardPath, evidenceDir, card: fs.readFileSync(cardPath, 'utf8'), exec }
     }
 
     // The four values the block must name, for a REAL run — none of them
@@ -336,10 +337,21 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
       const runId = 'run-rescue-ok'
       const restored = await sh(`git -C "${repoDir}" remote set-url origin "${fixture.originRepo}"`, tmp)
       assert.equal(restored.code, 0)
-      const { detail, card } = await parkedDrive({ runId, gh: { code: 0, stdout: 'https://github.com/popmechanic/ultrapowers/pull/4243\n' } })
+      const { detail, card, evidenceDir } = await parkedDrive({ runId, gh: { code: 0, stdout: 'https://github.com/popmechanic/ultrapowers/pull/4243\n' } })
       assert.equal(detail.pullRequest?.number, 4243, `the draft park card opened: ${JSON.stringify(detail.errors)}`)
       assert.ok(!card.includes('## Rescue'), `a published park card carries no rescue:\n${card}`)
-      assert.ok(!card.includes('refs/fleet/'), 'and no stray pinned ref')
+      assert.ok(!card.includes('```bash'), 'and no rescue commands anywhere in it')
+      // #543 put the pinned ref on EVERY card, so "no stray ref" narrowed to
+      // what this leg is about: the one mention is the standing #543 sentence
+      // — a fact, not the recovery block a failed publish would print.
+      assert.deepEqual(
+        card.split('\n').filter((l) => l.includes('refs/fleet/')),
+        [
+          `Closing this PR does not lose the work: tip pinned as \`refs/fleet/${runId}\` on the orchestrator; ` +
+            `evidence at \`${path.join(evidenceDir, `gate-read-${runId}.json`)}\`; the branch is swept after adoption.`,
+        ],
+        `the only pinned ref on a published card is the #543 line:\n${card}`,
+      )
     }
   } finally {
     cleanup()

@@ -193,8 +193,23 @@ ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapo
 ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q main && git -C /home/exedev/repo pull -q --ff-only && git -C /home/exedev/repo log --oneline -1'
 ```
 
+**Hand work on the orchestrator.**
+The orchestrator carries no `pytest-xdist`, so a suite run there is serial: `python3 -m pytest` without `-n auto` (141 s for the fleet files, measured 2026-09-01).
+
 The OAuth token lands here in the next section and the GitHub token in the one
 after (#368); nothing else secret lives on it.
+
+The orchestrator shell has no GitHub push credential (the drive pushes with its own token inside `drive.mjs`), so adoption or rescue work done by hand there is fetched to the laptop over ssh and pushed from the laptop:
+
+```bash
+# The orchestrator's own `main` after a hand adoption or a rescue commit
+# (#533) — name `refs/fleet/run-<N>` instead when it is a run tip you are
+# rescuing (§Park triage). A `git push` typed on the orchestrator itself dies
+# with `could not read Username` (#537); only the laptop has the credential.
+git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/repo main:orchestrator-main
+git log --oneline main..orchestrator-main   # read what you are about to push
+git push origin orchestrator-main:main
+```
 
 ## Engine auth — the Max subscription, delivered per run (#213)
 
