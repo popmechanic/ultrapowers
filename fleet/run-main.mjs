@@ -272,6 +272,11 @@ export const ROLE_PROMPTS = {
     'You are running headless inside a disposable fleet sandbox; no operator is present.\n',
   critic:
     'You are running headless inside a disposable fleet sandbox; no operator is present.\n',
+  // #553: same working tree as the implementer, a different job in it. The
+  // preamble says the tree and nothing about making anything pass.
+  examiner:
+    'You are running headless inside a disposable fleet sandbox; no operator is present. ' +
+    'Your working directory is the task\'s own working tree at BASE.\n',
 }
 
 export function writeRoleFiles(rolesDir) {
@@ -286,7 +291,7 @@ export function writeRoleFiles(rolesDir) {
 }
 
 // ── the PreToolUse settings (spec §4, #402 item 5) ───────────────────────────
-// One settings file, handed to the two bypass-mode write roles only: the hook
+// One settings file, handed to the three bypass-mode write roles only: the hook
 // derives its writable roots from the worker's own cwd (always the right
 // clone, by makeCwdFor) plus $FLEET_RUN_DIR, so nothing per-task is generated
 // and nothing can point at the wrong tree. The allowlist roles get no
@@ -302,7 +307,8 @@ export function writeConfineSettings({ runDir, hookPath }) {
       }],
     },
   }, null, 2))
-  return (role) => (role === 'implementer' || role === 'writeSide') ? settingsPath : undefined
+  return (role) => (role === 'implementer' || role === 'writeSide' || role === 'examiner')
+    ? settingsPath : undefined
 }
 
 // ── --add-dir scope, per role (measured 2026-08-31) ──────────────────────────

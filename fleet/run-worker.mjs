@@ -154,6 +154,19 @@ export const ROLES = {
     allowedTools: READ_ONLY_TOOLS,
     writableRoot: null,
   },
+  // #553: the wave-0 examiner writes the Proof `Test:` files in the task's own
+  // clone at BASE, so its writable root is the implementer's — the same tree,
+  // before the implementer sees it. It is a SEPARATE role rather than a second
+  // label on `implementer` because `promptFileFor` resolves `roles/<role>.md`:
+  // routing `exam:*` to the implementer role would hand the examiner the
+  // implementer's preamble, and the one agent that must not be told to make
+  // the suite green is the one writing the thing that measures it. Same
+  // permission posture, own prompt file, own confine settings.
+  examiner: {
+    permissionMode: 'bypassPermissions',
+    disallowedTools: ['Bash(git stash *)', 'Bash(git push *)'],
+    writableRoot: 'clone',
+  },
 }
 
 // ── label -> role ────────────────────────────────────────────────────────────
@@ -168,6 +181,7 @@ export const ROLES = {
 // crashing a run mid-wave; `resolve` moves to its own read-only role (the
 // driver writes the reply dir from the resolver's schema reply).
 //
+//   exam:<id>                                   examiner  (isolation, #553)
 //   impl:<id>                                   implementer  (isolation)
 //   fix:<id>:<iter>                             implementer  (isolation)
 //   review:<id>:<iter>[:<pass>]                 reviewer
@@ -183,6 +197,7 @@ export function roleForLabel(label) {
   if (label === 'setup') return 'writeSide'
   const prefix = label.split(':')[0]
   switch (prefix) {
+    case 'exam': return 'examiner'
     case 'impl': case 'fix': return 'implementer'
     case 'review': return 'reviewer'
     case 'resolve': return 'resolver'
