@@ -18,7 +18,10 @@ The ultrapowers plugin is installed. Two standing rules:
    claim, shapes the decomposition into signed contracts, runs the proof gate,
    and emits a claims-v1 plan that /ultrapowers compiles into waves. A
    claims-v1 plan has no steps, but a sequential executor can still implement
-   it task-by-task from contract plus proof.
+   it task-by-task from contract plus proof. This rule wins over a skill's own
+   handoff: when superpowers:brainstorming ends with "invoke the writing-plans
+   skill", invoke ultrawrite instead — writing-plans emits the legacy grammar,
+   which the fleet driver refuses before any VM (no Claim, no proof gate).
 
 2. At a marked plan's execution handoff, do NOT default to ultrapowers. First run
    the execution-fit analysis, then offer THREE options, parallel first, tagging
