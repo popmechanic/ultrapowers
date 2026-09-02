@@ -1,0 +1,53 @@
+{
+ "tasks": {
+  "1": {
+   "hash": "e2f8d2ea12f9282641b2f2351ccbf66e66472e85b8070e243237e30edd074b9d",
+   "verdict": "pass",
+   "reason": "round 3: operator sentence re-elicited to drop 'before anything starts' (the launcher's ordering, proven in task 8 leg b); leg (d) widened to every pre-existing key + exactly one new key; leg (g) synchronous write"
+  },
+  "2": {
+   "hash": "36ee97ecfa1be74506e777848ff0d7627fe660571cb653b06b6ba8e515107198",
+   "verdict": "pass",
+   "reason": "round 1: shapes, pairwise distinctness, runId != raceId, 1..26 boundaries, throw cases, constants"
+  },
+  "3": {
+   "hash": "c961967761b0b618a17ee792bc759404549c2abda5bb26bbbe07c597f0b91b39",
+   "verdict": "pass",
+   "reason": "round 1: three-call order with cwds and abort-on-clone-failure; origin refusals before any clone; 40-hex HEAD; resolvePlan both directions; one live git --version pin"
+  },
+  "4": {
+   "hash": "25df05979087b362b35f4307fa05a4f4f8e4beacae32088e9a0246db64badd6f",
+   "verdict": "pass",
+   "reason": "round 2: verb resolution made injectable (resolveVerb + frozen VERB_MODULES literal) and pinned with a recording importer; k=1/26 accepted; raceDir prefix; process-level exit codes via spawnSync"
+  },
+  "5": {
+   "hash": "997ecd36a10a7f074644ef0442aeb201864f03e0d7946308f9ae5d4c5e510a35",
+   "verdict": "pass",
+   "reason": "round 1: each of the four stages exercised as deciding; null loses for fix rounds and tokens; zero-green and empty input; tokenBasis both branches; STAGES pinned"
+  },
+  "6": {
+   "hash": "4901ce007cb34389cbf3465fe872bdf24ef4caa38e671772185bfc5565ee7480",
+   "verdict": "pass",
+   "reason": "round 1: per-field null-on-missing with missing[] naming; start-vs-end rows, fix: prefix, per-run scoping; null store; exact sqlite3 argv with null (never throw) on failure"
+  },
+  "7": {
+   "hash": "a928c08cb4c7f6dfd227575c64c6a50a99c230b352b677d46291096218359de7",
+   "verdict": "pass",
+   "reason": "round 1: exact scorecard strings in both shapes; winner and FAILED first lines; runId order; PR lines only when no winner; single-line elements"
+  },
+  "8": {
+   "hash": "6d73585fb8dca7d8661aa25c48ff4b30b6da48bb1f74e00efaab073d9e27be13",
+   "verdict": "pass",
+   "reason": "round 2: progressLog pinned as runId-prefixed and pairwise distinct with no other key differing; results[i] shape {runId, status, value|reason} in allocation order under a rejection"
+  },
+  "9": {
+   "hash": "83d19bdb35a2068535aa63abbb7823a7ec2c428e24aa8882620105e265fee4aa",
+   "verdict": "pass",
+   "reason": "round 1: missing-gate refusal naming the run and --force no-record; full ladder with decidingStage; reported fallback flagged on every entry; rubric assertion before any write; dials byte-identity; exact stdout lines"
+  }
+ },
+ "tally": {
+  "dispatched": 13,
+  "rejected": 4
+ }
+}
