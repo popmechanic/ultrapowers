@@ -255,7 +255,14 @@ assert.notEqual(shoutSet('gained a ' + SHOUT[1] + ' here'), shoutSet('gained a h
       return { code: 1, out: '' }
     }
   }
-  const diff = git(['diff', '--name-only', BASE_SHA])
+  // The leg is a pin against BASE, so it needs BASE in the object store. A
+  // depth-1 clone (the shape `actions/checkout` gives CI, #465) has no
+  // `d6efce4` to diff against; there the leg has nothing to say and says so,
+  // rather than failing for a reason unrelated to the tree's words. run-54's
+  // depth-1 leg caught exactly this on the first cut of this file.
+  const haveBase = git(['cat-file', '-e', BASE_SHA + '^{commit}']).code === 0
+  const diff = haveBase ? git(['diff', '--name-only', BASE_SHA]) : { code: 0, out: '' }
+  if (!haveBase) console.log('(g)/M7: BASE ' + BASE_SHA + ' not in this clone (shallow) — leg skipped')
   assert.equal(diff.code, 0, '(g)/M7: `git diff --name-only ' + BASE_SHA + '` runs in this tree')
   for (const rel of diff.out.split('\n').filter((l) => l.trim() !== '')) {
     const shown = git(['show', BASE_SHA + ':' + rel])

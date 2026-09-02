@@ -20,12 +20,14 @@ it answers.
 
 Build it from RUNBOOK §exe.dev account. Two things that section assumes and a
 stranger will not have: the alias is an SSH host entry, not a URL, so
-`! ssh exe.dev "ls --json"` is the whole test; and the key you register here is
+`! ssh exe.dev whoami` (the command the doctor runs) is the whole test; and the key you register here is
 your laptop's, distinct from the orchestrator's own key registered later in
 §Orchestrator VM.
 
-Until this row is `ok` the doctor reports the four rows below it as `skipped`
-rather than `missing` — it could not look, so it does not guess.
+Until this row is `ok`, expect the three rows below it to read `missing` too:
+each of them is an `ssh` to a `*.exe.xyz` host, and without a working account
+none of those commands can land. Fix this row first and run the doctor again
+before touching the others — only `preflight` is ever `skipped`.
 
 ## orchestrator
 
