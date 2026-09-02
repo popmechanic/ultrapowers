@@ -200,8 +200,8 @@ ok('usage names the committed entry point')
   // #466: drive-one now ALWAYS supplies evidenceDir, so drive.mjs never falls
   // back to `${dbDir}-evidence`. That fallback is what put the corpus in /tmp.
   assert.equal(o.evidenceDir, '/home/exedev/fleet-evidence')
-  assert.equal('sandboxCpu' in o, false)
-  assert.equal('sandboxMemory' in o, false)
+  assert.equal(o.sandboxCpu, 16)
+  assert.equal(o.sandboxMemory, '48GB')
   ok('options reproduce the heredoc shape; token read via the reader, trimmed, engineEnv only')
 }
 

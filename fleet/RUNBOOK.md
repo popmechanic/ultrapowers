@@ -480,15 +480,26 @@ dir; concurrent drains take distinct dirs — that separation is the W2a isolati
 `--golden fleet-golden`, `--ttl-hours 4` (store-token lease TTL — size to the plan's
 expected wall clock with margin; a short lease expires mid-run and reads as a
 heartbeat timeout, #279), `--evidence-dir DIR` (default `/home/exedev/fleet-evidence` — durable, NOT under `/tmp`, #466), `--sandbox-cpu N` /
-`--sandbox-memory 16GB` (leave both at the golden's 8/16: a VM's allocated size is a
-CAP on a dynamically shared pool, never a reservation — §Billing below, "the plan meters
-CONSUMPTION, not allocation". The old "widest wave width + 2" rule sized against a number
-that constrains nothing; run-49 drew 1.5 of 8 cores at width 8. What a wide run actually
-spends is sandbox MEMORY, ~3 GB per busy implementer against the 64 GB pool, and
+`--sandbox-memory SIZE` (the run sandbox's size — §Sandbox sizing, just below; width
+itself is bounded by the
 subscription streams, `WIDTH` in `run-main.mjs`), `--allow-unfit-plan` (only with a
 specific operator pre-authorization for the manual-judgment task named by the
 #322 refusal — never a standing default). `node fleet/drive-one.mjs` with no
 arguments prints the usage line.
+
+**Sandbox sizing (#546).**
+A run sandbox defaults to 16 vCPU and 48 GB; --sandbox-cpu and --sandbox-memory override it.
+The account pool is one shared 16 vCPU / 64 GB allocation across every VM, so an allocation
+is a cap and not a reservation — §Billing below, "the plan meters CONSUMPTION, not
+allocation".
+Raising the default therefore costs nothing while the sandbox is idle, and idle is most of a
+run: workers wait on model round-trips, and suite runs are bursts between turns.
+The old "widest wave width + 2" rule sized against a number that constrains nothing; run-49
+drew 1.5 of 8 cores at width 8.
+What a wide run actually spends is sandbox MEMORY, ~3 GB per busy implementer: run-51 sat an
+eleven-wide wave at load 2.89 on the golden's 8 vCPU with 3 GB used of 15, and run-52 — the
+flags typed by hand — peaked at load 4.28 on 16 vCPU with 3.6 GB used of 48.
+This is a default rather than a clamp: the flags keep overriding it in both directions.
 
 **`--engine one-driver`** (#402): run the engine on the sandbox as the
 deterministic driver (`node fleet/run-main.mjs`) instead of the `claude` skill

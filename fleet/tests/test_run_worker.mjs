@@ -30,6 +30,7 @@ import {
   createRunWorker, INFRA_STATUSES, CREDENTIAL_STATUSES, recordEnvelopeDenials,
 } from '../run-worker.mjs'
 import { isSchemaTrip } from '../run-engine.mjs'
+import { deadlineBudget } from './deadline-slack.mjs'
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'runworker-'))
 
@@ -460,9 +461,14 @@ await assert.rejects(
 
 // timeout -> SIGTERM -> 143 -> retryable once. The timeout path and the kill
 // path are deliberately the same class, so there is one branch, not two.
+//
+// 400 ms is the base the case is about, not the deadline it runs under: a node
+// process spawn on a loaded sandbox is longer than that, and this suite is
+// sampled several times per run precisely when the fleet is busiest (#478).
+// `deadlineBudget` scales it by FLEET_TEST_SLACK; see ./deadline-slack.mjs.
 {
   await assert.rejects(
-    () => mkAgent('hang', { timeoutMs: 400 })('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }),
+    () => mkAgent('hang', { timeoutMs: deadlineBudget(400) })('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }),
     (e) => e.workerVerdict.class === 'sigterm')
   const end = events.filter((e) => e.kind === 'worker:end').pop()
   assert.equal(end.timedOut, true)
@@ -493,11 +499,17 @@ process.on('SIGTERM', () => {})   // trapped and ignored, deliberately
 setInterval(() => {}, 1000)
 `)
   fs.chmodSync(stubborn, 0o755)
+  // Both halves of the deadline scale together, and the elapsed bound is read
+  // off what this case configured rather than named again: at BASE it was a
+  // bare 5000 against a configured 600, which is not an assertion about the
+  // escalation so much as about the machine.
+  const deadlines = { timeoutMs: deadlineBudget(300), graceMs: deadlineBudget(300) }
   const t0 = Date.now()
   await assert.rejects(
-    () => mkAgent('hang', { cli: stubborn, timeoutMs: 300, graceMs: 300 })('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }),
+    () => mkAgent('hang', { cli: stubborn, ...deadlines })('x', { label: 'impl:T1', model: 'sonnet', schema: SCHEMA }),
     (e) => e.workerVerdict.class === 'sigterm')
-  assert.ok(Date.now() - t0 < 5000, 'the deadline was enforced, not merely requested')
+  assert.ok(Date.now() - t0 < (deadlines.timeoutMs + deadlines.graceMs) * 8,
+    'the deadline was enforced, not merely requested')
   assert.equal(events.filter((e) => e.kind === 'worker:end').pop().exitCode, 143,
     'SIGKILL is the same class as SIGTERM: killed, no envelope, retryable once')
 }

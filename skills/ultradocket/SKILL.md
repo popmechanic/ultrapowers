@@ -181,7 +181,7 @@ docket-rank order (the order `compile_docket` emits). For each entry, run one
 dispatches no per-task reviewer of its own, and its step-2 dispatch
 instructs the sequential executor to skip its review passes — per-task
 and final — the step-3 gate is the verification. One exception: each task
-its plan marks `**Review:** adversarial` (from `launch_waves[].review`
+its plan marks `**Review:** peer` (from `launch_waves[].review`
 of step 3's own `compile_plan` run — no extra compile) gets one fresh
 review via `superpowers:requesting-code-review` against the diff from
 docket-line HEAD plus the plan text, before the plan's gate;

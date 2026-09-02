@@ -44,6 +44,17 @@ export const DEFAULTS = Object.freeze({
   // (env only), and the PR's base branch.
   githubTokenPath: GITHUB_TOKEN_PATH,
   prBase: 'main',
+  // #546: size the run sandbox to the account pool, not to the golden image's
+  // build size. Spread only-when-typed, a bare launch inherited the golden's
+  // 8 vCPU / 15 GB; run-51 sat an eleven-wide wave at load 2.89 on those 8
+  // cores with 3 GB used of 15, and memory is the thinner margin (~3 GB per
+  // busy implementer). The pool is one shared 16 vCPU / 64 GB allocation and
+  // an allocation is a cap rather than a reservation, so this costs nothing
+  // while the sandbox idles — which is most of a run. A default, not a clamp:
+  // the flags still override in both directions. NUMERIC coerces sandboxCpu,
+  // so this has to be the number 16 and not the string '16'.
+  sandboxCpu: 16,
+  sandboxMemory: '48GB',
 })
 
 const FLAGS = Object.freeze({
@@ -76,7 +87,7 @@ const OVERLAP_MODES = Object.freeze(['fold', 'serialize'])
 export const usage = () =>
   'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
   '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
-  '[--sandbox-cpu N] [--sandbox-memory 16GB] [--token-path FILE] [--repo-dir DIR] ' +
+  '[--sandbox-cpu 16] [--sandbox-memory 48GB] [--token-path FILE] [--repo-dir DIR] ' +
   '[--pin-repo-dir DIR] ' +
   '[--github-token-path FILE] [--pr-base BRANCH] [--overlap fold|serialize] [--allow-unfit-plan] ' +
   '[--plan-from-assignment]'
@@ -171,8 +182,10 @@ export const buildDriveOptions = (
   heartbeatTimeoutMs: 30 * 60_000,
   claimTimeoutMs: 10 * 60_000,
   evidenceDir: parsed.evidenceDir,
-  ...(parsed.sandboxCpu ? { sandboxCpu: parsed.sandboxCpu } : {}),
-  ...(parsed.sandboxMemory ? { sandboxMemory: parsed.sandboxMemory } : {}),
+  // #546: always sized. `parseArgs` folds DEFAULTS in, so these are already
+  // set for a bare launch; the `??` covers a hand-built `parsed`.
+  sandboxCpu: parsed.sandboxCpu ?? DEFAULTS.sandboxCpu,
+  sandboxMemory: parsed.sandboxMemory ?? DEFAULTS.sandboxMemory,
   ...(parsed.overlap ? { overlap: parsed.overlap } : {}),
   ...(parsed.planSource ? { planSource: parsed.planSource } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,

@@ -684,14 +684,17 @@ export async function runEngine({
     }
     // Before any review, a moved Proof path is the task grading itself, and the
     // stop is total: unreviewed, unfolded. (The fix round's drift is a
-    // different case — see `examMoved` below.)
+    // different case — see `examMoved` below.) `proposedPatches` is read at
+    // call time, not closure time (#561): the binding below is initialised
+    // before this runs, and no review has happened yet, so it reports 0 —
+    // the same field every other runTaskInner return reports.
     const examEditedRow = (moved) => {
       judgmentCalls.push('task ' + task.id + ': the implementer edited the exam — ' +
         moved.join(', ') + ' no longer matches the blob recorded at BASE; not reviewed, not folded')
       return { task: task.id, baseCorrected, status: 'failed', branch: '',
                reviewVerdict: 'exam-edited', exam,
                notes: 'exam edited by the implementer: ' + moved.join(', '),
-               tier: economics.tier, review: economics.review, fixIterations: 0 }
+               tier: economics.tier, review: economics.review, fixIterations: 0, proposedPatches }
     }
     // The Proof paths the fix round moved, or null until that round's drift
     // check has run. Rows returned after a fix round carry the list as
