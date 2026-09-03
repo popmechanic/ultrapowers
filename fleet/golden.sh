@@ -12,7 +12,7 @@
 # that stamp against the checked-in script, so an image and the script that
 # claims to describe it cannot drift unnoticed.
 #
-# NEVER `rm fleet-golden` to make room for a rebuild: a build that fails
+# Never `rm fleet-golden` to make room for a rebuild: a build that fails
 # partway then leaves no golden and no run can be provisioned until it is
 # repaired. Build the replacement under a second name, verify it, drive a real
 # run on it, and only then `swap`.

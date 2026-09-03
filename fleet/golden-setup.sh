@@ -139,7 +139,14 @@ else
   ( cd "$REPO_DIR/fleet" && npm install --no-audit --no-fund )
   rm -f "$REPO_DIR/fleet/package-lock.json"
 fi
-[ -d "$REPO_DIR/fleet/node_modules" ] || fail 'fleet/node_modules missing after install'
+# fleet/package.json may declare no dependencies at all (it does since the lift
+# deleted tinybase and ws), in which case npm creates no node_modules and there
+# is nothing to require.
+if grep -Eq '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$REPO_DIR/fleet/package.json"; then
+  [ -d "$REPO_DIR/fleet/node_modules" ] || fail 'fleet/node_modules missing after install'
+else
+  step 'fleet/package.json declares no dependencies; nothing to install'
+fi
 step 'fleet node deps installed'
 
 # --- bun cache --------------------------------------------------------------

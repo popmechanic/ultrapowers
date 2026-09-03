@@ -275,8 +275,12 @@ assert.notEqual(shoutSet('gained a ' + SHOUT[1] + ' here'), shoutSet('gained a h
     // some by subtraction.
     if (!fs.existsSync(abs)) continue
     const now = fs.readFileSync(abs, 'utf8')
-    assert.equal(shoutSet(now), shoutSet(atBase),
-      '(g)/M7: ' + rel + ' changed its upper-case NEV/ALW/MU set against BASE')
+    // The leg asks whether the tree GAINED shouting. A rewrite that drops a
+    // shouted word is not a gain, so the check is subset, not equality.
+    const gained = shoutSet(now).split(',').filter(Boolean)
+      .filter((w) => !shoutSet(atBase).split(',').includes(w))
+    assert.deepEqual(gained, [],
+      '(g)/M7: ' + rel + ' gained upper-case NEV/ALW/MU word(s) against BASE: ' + gained.join(','))
   }
 }
 
