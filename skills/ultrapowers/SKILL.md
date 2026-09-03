@@ -74,34 +74,38 @@ approved plan, **is** the authorization to execute — no further approval pause
    node <plugin-root>/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
    ```
 
-   It prints the run number and the status URL. Read both back to the user: the
-   run is `run-<N>`, and `https://fleet-run-<N>.exe.xyz/` is its status page.
-   Nothing else needs staging — the launcher publishes the plan and its
-   `.gate-verdicts.json` where the sandbox can read them, copies the golden,
-   grants the run its integrations, and writes the assignment that starts it.
+   It prints the run number, the VM name and the status URL. Read all three
+   back to the user: the run is `run-<N>`, the VM is `fleet-r<N>-…`, and
+   `https://<vm>.exe.xyz/status.json` is its status page. Nothing else needs
+   staging — the launcher commits the plan to `fleet-runs`, copies the golden,
+   attaches the run's integrations to that VM, writes the assignment comment,
+   and starts the run over ssh.
 
-3. **Walk away.** The `notify` integration reports the run: gate-green and
-   awaiting the write grant, parked, failed, or the deadman. There is nothing
-   to tail and no session to keep alive; the run outlives this one.
+3. **Walk away.** The run outlives this session; there is nothing to tail. Its
+   state is `status.json`, the same bytes on the VM's page and committed to
+   `fleet-runs/runs/<N>/` at every transition: `booting` → `running` →
+   `awaiting-grant` → `publishing` → `done`, or `parked` or `failed`. When the
+   user asks how a run is doing, pull the `fleet-runs` clone and read that
+   file back.
 
-4. **Approve.** When the phone says a run is `awaiting-grant`, the approval act
-   is one command:
+4. **Approve.** When the state is `awaiting-grant`, the approval act is one
+   command:
 
    ```bash
    node <plugin-root>/fleet/grant.mjs <N>
    ```
 
-   That is the pre-merge gate. It checks the run's status page reports the
-   engine finished, then swaps the run's read-only grant on the target for a
-   time-boxed writable one, and the sandbox pushes its branch and opens its own
+   That is the pre-merge gate. It reads the committed state, detaches the
+   run's read-only grant on the target from that VM, attaches the writable one
+   for fifteen minutes, and the sandbox pushes its branch and opens its own
    PR. Gate-green → a ready PR. Parked → a draft PR carrying the gate receipt:
-   acknowledge by marking it ready, or re-drive a narrower plan. The laptop
-   never fetches a run branch.
+   acknowledge by marking it ready, or re-drive a narrower plan. A parked run
+   with nothing to publish opens no PR and needs no grant; its evidence is in
+   `fleet-runs/runs/<N>/`. The laptop never fetches a run branch.
 
-5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs
-   that are done and marks the ones that have aged out. It is a cron job on
-   whichever machine holds the fleet-tagged key; run it by hand when that
-   machine has been asleep.
+5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` reads `fleet-runs` and
+   removes the VMs of runs that finished over an hour ago. It is a cron job;
+   run it by hand when its machine has been asleep.
 
 ## Resources
 

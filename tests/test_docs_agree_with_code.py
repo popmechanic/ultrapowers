@@ -8,7 +8,8 @@ the CLI does not have, a row the doctor does not report, a script that is not
 there, or a name that was retired two releases ago.
 
 So the checks here are structural. Each one compares a document against the
-code it claims to describe, and none of them can be satisfied by rewording:
+code or the contract it claims to describe, and none of them can be satisfied
+by rewording:
 
   * every ``--flag`` on SKILL.md's launch line exists in ``fleet/launch.mjs``'s
     usage string (run-59 lost a launch to a documented flag the driver did not
@@ -17,6 +18,11 @@ code it claims to describe, and none of them can be satisfied by rewording:
     order, so a red row always has a section to send the operator to;
   * every ``fleet/<name>.mjs`` and ``fleet/<name>.sh`` the documents name is a
     file that exists;
+  * the literals the documents teach — the unit the launcher starts, the
+    directory the engine is cloned into, the shape of a VM name — are the ones
+    ``fleet/CONTRACT.md`` declares, and the unit is a file in ``fleet/``;
+  * no document attaches a GitHub integration other than ``fleet-runs`` to a
+    tag (the contract's grant rule);
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
   * ``validate_skill.py`` still accepts ``skills/ultrapowers``.
@@ -40,6 +46,7 @@ README = ROOT / "README.md"
 # The four operator-facing documents the fleet is read from.
 DOCUMENTS = (SKILL, FIRST_RUN, RUNBOOK, README)
 
+CONTRACT = ROOT / "fleet/CONTRACT.md"
 LAUNCH = ROOT / "fleet/launch.mjs"
 DOCTOR = ROOT / "fleet/doctor.mjs"
 
@@ -216,6 +223,91 @@ def test_the_documents_name_scripts_at_all():
     assert "launch.mjs" in named, f"no document names fleet/launch.mjs; found {sorted(named)}"
 
 
+# ── the contract's literals ──────────────────────────────────────────────────
+
+# Each of these reads a literal out of `fleet/CONTRACT.md` and checks that the
+# documents teach that literal and not its predecessor. The contract is the
+# authority; a doc that drifts from it is a doc sending an operator to a unit,
+# a path or a VM name that is not there.
+
+START_UNIT_RE = re.compile(r"systemctl --user start (fleet-[\w.-]+\.service)")
+ENGINE_DIR_RE = re.compile(r"(/home/exedev/engines/)<sha>")
+VM_NAME_RE = re.compile(r"\*\*VM name:\*\*\s*`(fleet-r)<N>-")
+
+
+def contract_literal(regex, what):
+    match = regex.search(read(CONTRACT))
+    assert match, f"{CONTRACT} no longer declares {what} in the shape this pin reads"
+    return match.group(1)
+
+
+def test_the_documents_start_the_unit_the_contract_names():
+    unit = contract_literal(START_UNIT_RE, "the unit the launcher starts")
+    for document in (RUNBOOK, FIRST_RUN):
+        assert unit in read(document), f"{document} does not name `{unit}`"
+    assert (ROOT / "fleet" / unit).is_file(), (
+        f"the contract's unit `{unit}` is not a file in fleet/ — the golden "
+        "copies it from there"
+    )
+
+
+def test_the_documents_name_the_engine_directory_the_contract_declares():
+    engine_dir = contract_literal(ENGINE_DIR_RE, "the engine directory")
+    for document in (RUNBOOK, FIRST_RUN):
+        assert engine_dir in read(document), f"{document} does not name `{engine_dir}`"
+
+
+# A VM name the documents show: the contract's prefix, then the run number.
+DOC_VM_NAME_RE = re.compile(r"fleet-r(?:<N>|\d+)-")
+# The pre-lift shape, where the run number was the whole name.
+OLD_VM_NAME_RE = re.compile(r"fleet-run-(?:<N>|\d+)\b")
+
+
+def test_vm_names_in_the_documents_follow_the_contract():
+    prefix = contract_literal(VM_NAME_RE, "the VM name pattern")
+    assert DOC_VM_NAME_RE.pattern.startswith(prefix), (
+        f"this pin's own VM-name regex no longer starts with the contract's `{prefix}`"
+    )
+    for document in (RUNBOOK, SKILL):
+        text = read(document)
+        assert DOC_VM_NAME_RE.search(text), f"{document} shows no `{prefix}<N>-…` VM name"
+    for document in DOCUMENTS:
+        old = OLD_VM_NAME_RE.findall(read(document))
+        assert not old, f"{document} still names a VM by run number alone: {old!r}"
+
+
+# ── the grant rule: only fleet-runs rides the tag ────────────────────────────
+
+# Backslash-continued shell lines are one command.
+CONTINUATION_RE = re.compile(r"\\\n\s*")
+ADD_GITHUB_RE = re.compile(r"integrations add github[^\n]*")
+NAME_RE = re.compile(r"--name\s+([\w<>-]+)")
+
+
+def github_add_commands(path):
+    return ADD_GITHUB_RE.findall(CONTINUATION_RE.sub(" ", read(path)))
+
+
+def test_documents_attach_no_target_integration_to_a_tag():
+    commands = []
+    for document in DOCUMENTS:
+        commands.extend(github_add_commands(document))
+    assert commands, "no document shows an `integrations add github` command"
+    for command in commands:
+        name = NAME_RE.search(command)
+        assert name, f"an `integrations add github` command carries no --name: {command}"
+        if "--attach" in command:
+            assert name.group(1) == "fleet-runs", (
+                "a document attaches a GitHub integration other than fleet-runs "
+                f"at creation: {command}"
+            )
+        if name.group(1).endswith("-ro"):
+            assert "--readonly" in command, f"the -ro object is not --readonly: {command}"
+            assert "--act-as-user" not in command, f"the -ro object acts as user: {command}"
+        if name.group(1).endswith("-rw"):
+            assert "--act-as-user" in command, f"the -rw object does not --act-as-user: {command}"
+
+
 # ── retired vocabulary ───────────────────────────────────────────────────────
 
 # Each of these named a mechanism the lift removed. A document that still says
@@ -230,6 +322,13 @@ RETIRED = (
     "--pr-base",
     "sweep-branches",
     "update-cli",
+    # Counsel 2 (fleet/CONTRACT.md v2): the mutable boot unit, the engine
+    # pre-clone, the engine scope, the comment-polling start signal.
+    "fleet-boot.service",
+    "/home/exedev/repo",
+    "systemd-run --scope",
+    "KillMode=process",
+    "shim.log",
 )
 
 

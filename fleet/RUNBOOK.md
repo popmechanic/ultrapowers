@@ -1,38 +1,36 @@
 # Fleet RUNBOOK
 
-The operator procedure for the fleet: what to build once, what happens per run,
-how the golden is made, how to read capacity, what the trust boundary actually
-promises, and how to roll back. It is a document, not code — every command
-below names a real file in `fleet/`.
+The operator procedure for the fleet: what to build once, what happens per
+run, what each state means, how to read a failure, and how to roll back.
+`fleet/CONTRACT.md` is the authority for every literal here; where the two
+disagree, the contract wins. Every command below names a real file in `fleet/`.
 
 ## The shape
 
-A run's identity is its VM name. `fleet-run-<N>` is also its DNS name, its
-status URL, its `comment` key, its row in `ls` and its argument to `rm`. There
-is no orchestrator and no control VM. The laptop issues three lobby verbs per
-run — copy the golden, attach the Claude subscription to that copy for the
-run's window, write the assignment comment — and the comment is the start
-signal. The target's read grant needs no verb of its own: it rides the `fleet`
-tag, and the copy inherits it. The sandbox boots inert, reads its own name and
-comment from Reflection, clones what it needs from GitHub through exe.dev's
-GitHub integration, runs the engine under a systemd scope with the Claude token
-injected at exe.dev's edge, serves its own status page, commits receipts and
-evidence to the `fleet-runs` repository, posts to `notify`, waits for the write
-grant, then pushes its branch and opens its own pull request. A janitor reaps
-the VMs of runs that are done.
+A run is a number N. Its plan is `plans/run-N.md` in the private
+`popmechanic/fleet-runs` repository, committed by the launcher before any VM
+exists. The launcher copies the golden to a fresh VM named
+`fleet-r<N>-<yymmddHHMM>-<4 hex>`, attaches the run's integrations to that VM,
+writes the assignment as the VM comment, waits for ssh, and starts the run:
+`systemctl --user start fleet-run.service`. That unit runs an immutable
+bootstrap, which reads the comment once, clones the engine at `engine=<sha>`
+into `/home/exedev/engines/<sha>`, and execs that checkout's
+`fleet/sandbox-boot.sh`. The boot script runs the engine as a transient user
+service with a memory cap, serves a status page, commits `status.json` and the
+receipts to `fleet-runs` at every transition, and — only when there is
+something to publish — waits for the write grant, pushes and opens the PR.
 
-Nothing on any VM holds a secret. The two long-lived credentials are a
-tag-scoped ssh key on whichever machine runs the janitor, and a VM HTTPS token
-on the laptop for reading a status page.
+There is no orchestrator, no control VM, and no token on any VM. The Claude
+subscription and the GitHub credentials are injected at exe.dev's edge, per VM,
+for a bounded window. The grant tool and the janitor read `fleet-runs`, never
+a VM.
 
 ## One-time setup
 
-Four things, and `fleet/doctor.mjs` tells you which of them you are missing.
-`skills/ultrapowers/references/first-run.md` walks each of its rows for someone
-meeting the fleet for the first time; this is the short form.
+`node fleet/doctor.mjs --json` says which of these you are missing;
+`skills/ultrapowers/references/first-run.md` walks each row for a first-timer.
 
-**1. The exe.dev account.** Register a key, and point `~/.ssh/config` at it for
-both host patterns:
+**1. The exe.dev account.** Register a key and point `~/.ssh/config` at it:
 
 ```
 Host *.exe.xyz exe.dev
@@ -41,47 +39,58 @@ Host *.exe.xyz exe.dev
   IdentityFile ~/.ssh/id_ed25519
 ```
 
-`ssh exe.dev whoami` printing your username is the whole of this step.
+`ssh exe.dev whoami` printing your username is the whole of this step. This
+account key is what `launch.mjs` and `grant.mjs` use: `integrations attach`
+and `detach` need it.
 
-**2. A tag-scoped key on whichever VM runs the janitor.** Register it with
-`ssh-key add --tag=fleet`. Measured 2026-09-03: such a key sees only
-fleet-tagged VMs in `ls --json`, can `comment` a fleet VM, gets "not found" for
-anything else — and is refused `integrations attach` and `detach` outright. So
-the janitor's key reaps and writes comments; the write grant stays the
-laptop's act, which is where the pre-merge gate already lives. A run that
-finishes while the laptop sleeps simply waits for its PR.
+A second key, tag-scoped, is the right one for anything that only reaps.
+Register it with `ssh-key add --tag=fleet`. Measured 2026-09-03: such a key
+sees only fleet-tagged VMs in `ls --json`, can `comment` and `rm` them, gets
+"not found" for anything else, and is refused `integrations attach` and
+`detach`. Put the janitor's cron behind it.
 
-The janitor's cron line, every five minutes:
+**2. The Claude subscription, as an `http-proxy` integration.** The token
+goes in on stdin and never touches a VM. The `anthropic-beta` list is injected
+because the proxy does not forward the client's own header:
 
+```bash
+claude setup-token > ~/.fleet-oauth-token
+chmod 600 ~/.fleet-oauth-token
+ssh exe.dev "integrations add http-proxy --name claude-max \
+  --target https://api.anthropic.com --bearer=- \
+  --header 'anthropic-beta: claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,extended-cache-ttl-2025-04-11'" \
+  < ~/.fleet-oauth-token
+rm ~/.fleet-oauth-token
 ```
-*/5 * * * * node /home/exedev/repo/fleet/janitor.mjs
-```
 
-**3. The integration objects.** Three, plus a pair per target repository:
+Re-capture the beta list when the Claude CLI version changes (`integrations
+edit claude-max --header=…`). Rotate the token with
+`integrations edit claude-max --bearer=-` and a fresh token on stdin.
+`claude-max` is attached per run, per VM, `--for 6h`, never to a tag.
+
+**3. The GitHub integrations.** One for the state channel, attached to the
+tag; a pair per target repository, attached to nothing:
 
 ```bash
 ssh exe.dev "integrations add github --name fleet-runs \
-  --repository <owner>/fleet-runs --act-as-user --attach tag:fleet"
-node fleet/target.mjs add <owner>/<repo>     # creates the -ro / -rw pair
+  --repository popmechanic/fleet-runs --act-as-user --attach tag:fleet"
+ssh exe.dev "integrations add github --name t-<owner>-<repo>-ro \
+  --repository <owner>/<repo> --readonly"
+ssh exe.dev "integrations add github --name t-<owner>-<repo>-rw \
+  --repository <owner>/<repo> --act-as-user"
 ```
 
-`notify` is enabled once from exe.dev's Integrations page and attached to
-`tag:fleet`. `claude-max` is the Claude subscription as an `http-proxy`
-integration, its bearer piped in on stdin and its `anthropic-beta` header
-injected because the proxy does not forward the client's own; first-run.md
-§integrations carries that command and the reasons behind each of its flags.
+The launcher attaches `-ro` to the run's VM for six hours; `grant.mjs`
+detaches it and attaches `-rw` for fifteen minutes. The two are never on one
+VM at once, and `fleet-runs` is the only GitHub integration on `tag:fleet`. A
+public target needs no `-ro` object; the launcher skips the attach when there
+is none. `--act-as-user` attributes pushes and PRs to you once your GitHub
+account is linked on exe.dev's Integrations page; until then `gh` acts as the
+installation bot, which is fine.
 
-Two rules the doctor enforces, because both were paid for: a **writable**
-integration is never attached to a tag, and a target's read-only and writable
-grants never overlap on one VM. `fleet/target.mjs list` shows the pairs and
-`fleet/target.mjs gc` reconciles `integrations list --json` against them,
-because `rm` on a VM leaves integration objects behind.
-
-**4. The golden.** `fleet/golden.sh build`, then `verify`, then `swap` — see
-§The golden below.
-
-Laptop configuration lives in `~/.ultrapowers/fleet.json`; every key is
-optional:
+**4. The `fleet-runs` repository and the laptop config.** Create the private
+repo `popmechanic/fleet-runs` once. The tools clone it to `fleetRuns` on first
+use. `~/.ultrapowers/fleet.json` is optional; these are the defaults:
 
 ```json
 {
@@ -91,196 +100,171 @@ optional:
 }
 ```
 
-Those are the defaults; the values shown are what you get with no file at all.
-`fleetRuns` is a local clone of the `fleet-runs` repository, made for you on
-first use. `vmTokenPath` holds a token minted with
-`ssh exe.dev "ssh-key generate-api-key --vm=<vm> --exp=…"`, which is how a
-laptop script reads a run's status page through the proxy without a browser.
-Always pass `--exp`.
+`vmTokenPath` holds a token from
+`ssh exe.dev "ssh-key generate-api-key --vm=<vm> --exp=1h"`, which is how a
+laptop script reads a VM's status page without a browser. Pass `--exp` every
+time.
+
+**5. The golden.** See §The golden.
+
+## The golden
+
+The image every run VM is copied from: node, bun, npm, pytest with xdist,
+`busybox`, `gh`, the immutable `/home/exedev/fleet-bootstrap.sh`, the user unit
+`~/.config/systemd/user/fleet-run.service` (installed, not enabled — the
+launcher starts it), linger for `exedev`, and the stamp
+`/home/exedev/.fleet-golden` = sha256 of `fleet/golden-setup.sh`, written last.
+No engine checkout, no `ANTHROPIC_*` anywhere. The engine is cloned per run
+at the sha the assignment names, so the golden goes stale only when
+`golden-setup.sh` changes.
+
+```bash
+sh fleet/golden.sh build <fresh-name>     # a VM from golden-setup.sh
+sh fleet/golden.sh verify <fresh-name>    # the stamp equals the script's sha
+sh fleet/golden.sh swap --from <fresh-name> --to fleet-golden
+```
+
+Build under a fresh name every time: exe.dev reserves deleted VM names, so a
+name is one incarnation. `verify` is not optional and `swap` is separate on
+purpose: the golden in service keeps serving runs while the new one is built
+and checked. Never `rm fleet-golden` to make room — a build that then fails
+leaves no image at all. Never `defaults write dev.exe new.setup-script`: that
+setting is account-wide.
 
 ## Per run
-
-Three commands, and none of them is an ssh into a VM.
 
 ```bash
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-The launcher commits the plan and its `.gate-verdicts.json` to `fleet-runs`,
-copies the golden to `fleet-run-<N>` (which inherits the `fleet` tag and with
-it the read grants), attaches `claude-max` to that VM for the run's window, and
-writes the assignment comment that starts it. It prints the run number and
-`https://fleet-run-<N>.exe.xyz/`. A refusal — an unpushed base, a malformed
-target, a missing integration — exits 2 before any lobby verb runs, so a
-refused launch has changed nothing on the account.
+The launcher, in this order: commits the plan to `fleet-runs` as
+`plans/run-N.md`; `cp`s the golden to `fleet-r<N>-…`; attaches `claude-max`
+and `t-<owner>-<repo>-ro` to that VM `--for 6h`; writes the comment
+`run=<N> plan=<sha> target=<owner>/<repo> base=<sha> engine=<sha>`; waits up to
+120 s for `ssh <ssh_dest> true`; then starts the unit over ssh. It prints the
+run number, the VM name and the status URL. A refusal — an unpushed base, a
+malformed target, a missing integration — exits before any lobby verb runs.
 
-The engine the run drives with defaults to the public tip of this repository on
-GitHub, because the sandbox clones from GitHub and a commit that exists only on
-your laptop is unfetchable. `--engine <sha>` pins anything else — a release
-commit, or an older engine when the run is about an engine change.
+`--engine <sha>` pins the engine; the default is the public tip of this
+repository, because the sandbox clones from GitHub. `--run N` overrides the
+run number; `--overlap` and `--tier` ride the comment to the engine.
 
-Then walk away. `notify` reports gate-green, parked, failed, and the deadman.
-The status page is JSON: `state` moves `booting` → `running` →
-`awaiting-grant` → `publishing` → `done`, or stops at `parked` or `failed`.
+**Watch.** The same bytes are in two places:
+
+- `https://<vm>.exe.xyz/status.json` — the VM's own page, port 8000 behind
+  exe.dev's proxy; a browser logged in to exe.dev reads it, and so does a
+  script with the VM token.
+- `fleet-runs/runs/<N>/status.json` — committed at every transition, next to
+  `receipt.json`, `gate-receipt.json`, `report.json`, `events.jsonl` and
+  `engine.log`. `git pull` and read.
+
+**Grant.** When the state is `awaiting-grant`:
 
 ```bash
 node fleet/grant.mjs <N>
 ```
 
-The approval act, once the phone says `awaiting-grant`. It reads the run's
-state, detaches the target's read-only grant from that VM, attaches the
-writable one for fifteen minutes (`--for` changes the window), and the sandbox
-pushes and opens its PR. Never both grants at once.
+It pulls `fleet-runs`, requires `awaiting-grant`, finds the VM by
+`ls 'fleet-r<N>-*' --json`, detaches `-ro` and attaches `-rw --for 15m`. The
+sandbox then pushes `ultra/integration-run-<N>` and opens the PR: ready on
+PASS, a draft carrying the gate receipt otherwise. `--live` reads the VM's own
+page instead of the committed one; it needs the VM token. A grant that lapses
+before the push is re-issued with the same command.
 
-By default it reads the `status.json` the sandbox **committed** to
-`fleet-runs/runs/<N>/`, after a pull — plain git, no exe.dev token. `--live`
-reads the VM's own status page over HTTPS instead, which needs a token minted
-for that one VM:
-
-```bash
-ssh exe.dev "ssh-key generate-api-key --vm=fleet-run-<N> --exp=1h"
-```
-
-That per-VM minting is why the live read is not the default. Either way the run
-has to be in `awaiting-grant`, which the sandbox sets only after its engine
-scope is empty.
+**Reap.**
 
 ```bash
-node fleet/janitor.mjs [--dry-run] [--sweep-grants]
+node fleet/janitor.mjs
 ```
 
-Reaps. It lists fleet VMs, reads each status, `rm`s the ones that are `done` or
-long-failed, and marks a run `expired` after six hours without finishing.
-`--dry-run` prints what it would do; `--sweep-grants` also detaches grants left
-behind. It is a cron job; run it by hand when its machine has been asleep.
+It pulls `fleet-runs`; for each run in `done`, `parked` or `failed` for over an
+hour it `rm`s every `fleet-r<N>-*` VM; for any fleet VM whose run has had no
+status update in six hours it prints a line, once. It never sshes into a VM.
+Run it from cron every five minutes, or by hand. A VM that has to go now:
+`ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
 
-If a VM must go right now:
+## States
+
+`state` in `status.json`, in order:
+
+| state | meaning |
+|---|---|
+| `booting` | the bootstrap cloned the engine; the boot script is cloning the target |
+| `running` | `fleet-engine-<N>.service` is active; `phase` says which wave |
+| `awaiting-grant` | the engine service is inactive and the branch is ahead of base; waiting for `-rw` |
+| `publishing` | `-rw` seen; pushing and opening the PR |
+| `done` | PASS; `pr` is the ready PR |
+| `parked` | a gate verdict other than PASS; `pr` is a draft PR, or `null` when the branch had nothing to publish |
+| `failed` | a step other than the engine's verdict broke; `error` says which |
+
+An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch
+zero commits ahead of base is `parked` with its evidence committed and no
+grant wait, no push and no PR. A page already `done`, `parked` or `failed` is
+final: restarting the unit exits 0 and opens nothing twice.
+
+## Reading a failure
+
+Three logs, in the order a run writes them:
+
+1. `/home/exedev/fleet-boot.log` — the bootstrap: the comment read, the
+   `engine=` parse, the clone into `/home/exedev/engines/<sha>`. A run that
+   never reached `booting` is here.
+2. `/home/exedev/www/engine.log` — the engine's stdout and stderr, also served
+   at `https://<vm>.exe.xyz/engine.log` and committed to
+   `fleet-runs/runs/<N>/engine.log`. The `claude auth status` line before the
+   engine starts has to show `oauth_token`.
+3. `journalctl --user -u fleet-engine-<N>` — the service's own view: OOM kills
+   (`MemoryMax=40G`), the exit code, the timing.
+
+Over ssh, the user bus needs its runtime directory named:
 
 ```bash
-ssh exe.dev "rm fleet-run-7 fleet-run-9 --json"
+ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) journalctl --user -u fleet-engine-<N> --no-pager'
+ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet-run.service fleet-status'
 ```
 
-`rm` accepts several names at once. An orphan on exe.dev costs width and
-average disk, not hourly money — the billing pool is fixed — so a janitor every
-five minutes is plenty and there is nothing to page about.
+`<ssh_dest>` is the row's `ssh_dest` from `ssh exe.dev "ls '<vm>' --json"`,
+never `<vm>.exe.xyz`. The `failed` page's `error` names the step; a failure at
+any step, the clone included, commits and pushes that page before exiting.
 
-## The golden
+## Facts measured 2026-09-03
 
-The image every sandbox is copied from. `cp` takes seconds and warm caches
-multiply by concurrency, which is why the fleet copies an image rather than
-building each sandbox.
+- exe.dev reserves a deleted VM's name for good. Never reuse one; the run
+  number is the identity, the VM name is one incarnation.
+- `systemd-run --wait` is refused with `--scope`. The engine is a transient
+  service, and `--wait` is what makes its exit code the service's.
+- An `http-proxy` integration whose `--target` is an exe.dev host is refused
+  by the gateway. Peer traffic is its own integration kind.
+- `gh auth status` on a VM shows no token, by design: the credential is at the
+  edge. The health check is
+  `GH_HOST=github.int.exe.xyz gh repo view <owner>/<repo> --json nameWithOwner`.
+- `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
+  `shared_vms` are other people's. `vm_name`, `ssh_dest`, `ssh_host` and
+  `status` are documented; `comment`, `tags` and `created_at` are not, so a
+  tool reads them as optional and decides nothing from `created_at`.
+- `systemctl --user` and `journalctl --user` over plain ssh fail to find the
+  bus until `XDG_RUNTIME_DIR=/run/user/$(id -u)` is set. The launcher sets it;
+  so must you.
+- The VM comment holds 200 bytes. The assignment is one line of `key=value`
+  pairs and nothing else lives there.
+- A tag-scoped key cannot attach or detach integrations.
 
-`fleet/golden-setup.sh` is the whole build as one first-boot script: node,
-git identity from Reflection, pytest with xdist, Bun with its symlinks and a
-warmed cache, the engine clone with `npm ci` already run in `fleet/`, the
-settings file, the boot unit, a transcript prune, and a stamp at
-`/home/exedev/.fleet-golden` holding the script's own sha256. Over the size
-limit for a setup script, `fleet/golden-bootstrap.sh` is what is actually
-passed to `new` — 308 bytes that `curl` the versioned script from GitHub at a
-sha. Measured 2026-09-03: thirty seconds to a built VM.
+## Capacity
 
-```bash
-sh fleet/golden.sh build fleet-golden-next     # a fresh VM from golden-setup.sh
-sh fleet/golden.sh verify fleet-golden-next    # prove it is the image the script builds
-sh fleet/golden.sh swap                        # make it the image runs are copied from
-```
-
-`verify` is not optional and `swap` is separate on purpose: the golden in
-service keeps serving runs while the new one is built and checked, and only the
-swap changes what a launch copies. **Never `rm fleet-golden` to make room for a
-rebuild** — a build that fails then leaves no image at all, and the fleet is
-down until someone repairs it by hand. Build under the second name, verify it,
-drive one real run on it, and only then swap. A build that fails costs a VM,
-not a run.
-
-**Never `defaults write dev.exe new.setup-script`.** That setting is
-account-wide — it would apply the fleet's first-boot script to every VM you
-ever create. The script is passed to the one `new` that builds the golden and
-nowhere else.
-
-Two build inputs travel with the image and have to be re-captured together when
-the Claude CLI version changes: the CLI itself, and the `anthropic-beta` header
-list injected by the `claude-max` integration. The golden carries no
-`ANTHROPIC_*` variable anywhere; the base URL is set by the boot unit on the
-engine's child process only, and the run's log line recording
-`claude auth status` stays, so a run that ever reads `api_key` is caught.
-
-The build quiesces the image before the first `cp`, because `cp` is not
-promised to be application-consistent.
-
-## Capacity — read the meter, never sum the allocation
-
-**One command answers "do we have room":**
-
-```bash
-ssh exe.dev "billing usage --json --range=24h"   # what the plan actually meters
-ssh exe.dev "billing plan  --json"               # the limits it meters against
-```
-
-**The plan meters CONSUMPTION, not allocation, and the difference is large
-enough to invert a decision.** Summing `allocated_cpus` across `ls --json`
-gave 31 vCPU against a `max_cpus` of 16 — an apparent 2× oversubscription that
-does not exist. The meter is `avg_cpu_cores`, and it read **0.245**. Same trap
-on disk: `disk_capacity_bytes` summed to 288 GB provisioned while the metered
-`disk_used_bytes` was **68.9 GB** of 800 — the plan's own footnote says
-*"measured as filesystem usage"*.
-
-Reading, 2026-08-28, for scale:
-
-| resource | metered | limit | |
-|---|---|---|---|
-| CPU | `avg_cpu_cores` 0.245 | `max_cpus` 16 | 1.5% |
-| disk | `disk_used_bytes` 68.9 GB | `pooled_disk_gb` 800 | 8.6% |
-| VMs | `vm_count` 13 | `max_vms` 50 | 26% |
-| bandwidth | rx 1.1 + tx 2.3 GB | 200 GB | 1.7% |
-
-**So exe.dev capacity has not been, and is not close to, the binding constraint
-on wave width or on concurrent runs.** Do not reason about width from VM sizing
-without reading this first.
-
-**Caveat that matters for width specifically:** `avg_cpu_cores` is an average
-over the billing cycle, so it proves the *account* is far from its meter and
-says nothing about whether one wave saturates one sandbox. That question is
-per-VM, and the instrument is:
-
-```bash
-ssh exe.dev "stat <vmName> --json --range=24h"
-ssh exe.dev "billing credits usage --group=box"
-```
-
-`--range=24h` is what makes `billing usage` answer about today rather than
-about the cycle average; without it the reading is smoothed past the thing you
-are asking about.
-
-**RAM is the binding shared pool, and `stat` is too coarse to govern it.**
-Roughly 3 GB per busy implementer against 64 GB account-wide is about eighteen
-busy implementers summed over every sandbox, and exceeding it is an OOM rather
-than a slowdown. `stat` samples about every ten minutes and `billing usage` is
-cycle-averaged, so neither answers the per-wave question. The instrument that
-does is **PSI, read inside the sandbox**: `/proc/pressure/{cpu,memory,io}`,
-sampled every ten seconds into the run's event log, with `MemoryMax` on the
-engine's scope bounding the failure when the governor is too late.
+Read the meter, never sum the allocation: `billing usage --json --range=24h`
+against `billing plan --json`. The plan meters `avg_cpu_cores` and
+`disk_used_bytes`, and on 2026-08-28 both read under a tenth of their limits
+while the summed allocations looked oversubscribed. RAM is the binding shared
+pool — about 3 GB per busy implementer — and `MemoryMax=40G` on the engine
+service turns an overrun into a killed run rather than a frozen VM.
 
 ## Trust
 
-What the fleet promises, stated so it cannot be over-read.
-
-**The empty-scope check is the sandbox asserting about itself.** Before a run
-reaches `awaiting-grant` it checks that its engine's systemd scope is inactive,
-and `grant.mjs` reads that state off the status page. That is protection
-against an accident — a grant issued while a model is still running — and not
-protection against a hostile model, which could report anything it liked.
-
-What actually bounds a hostile model is the arrangement around it: **fifteen
-minutes**, **one repository**, **a pull request rather than a merge**, and **a
-human at the merge button**. Every one of those is mechanical; the scope check
-is the only one that is not, and it is the one to distrust.
-
-Two consequences worth keeping in view. Grants lapse on wall-clock and there is
-nothing to revoke afterwards, so a run that stalls between gate-green and
-approval simply loses its window and needs a fresh `grant.mjs`. And delivery
-TTL narrows exposure, not blast radius: the Claude token is good for its year
-if it is ever stolen — which is why it is on no VM, only at the edge.
+The `awaiting-grant` state is the sandbox asserting about itself: the engine
+service is inactive. That guards against an accident, not a hostile model.
+What bounds a hostile model is mechanical: fifteen minutes, one repository, a
+pull request rather than a merge, and a human at the merge button. Grants
+lapse on wall clock with nothing to revoke. The Claude token is on no VM.
 
 ## Rollback
 
@@ -290,11 +274,7 @@ The lift is one release. If it does not hold:
 /plugin marketplace update ultrapowers      # then pin 0.3.4
 ```
 
-The old orchestrator VM and the old golden are **untouched** until 0.3.5 has
-driven several runs — the previous fleet stays running, with its own key, its
-own image and its own store, so rolling the plugin back is the whole of the
-rollback. Nothing in the new path writes to anything the old path reads.
-
-Remove the old orchestrator and its golden only after the new shape has been
-green across a week of runs, and reap the old fleet's VMs by hand at that
-point — its reaper dies with it.
+The old fleet — its orchestrator VM, its golden, its VMs — is untouched until
+0.3.5 has driven several runs. Nothing in the new path writes to anything the
+old path reads, so rolling the plugin back is the whole of the rollback. Reap
+the old fleet by hand once the new shape has been green for a week.
