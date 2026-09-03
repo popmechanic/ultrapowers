@@ -42,6 +42,10 @@ name, not a second procedure — and the VM needs its own SSH key registered on
 the account, because the sandboxes push run branches back to its checkout and a
 key that only exists on your laptop cannot carry that.
 
+Build the golden first, even though the doctor lists this row above it:
+RUNBOOK §Orchestrator VM step 1 reuses the golden's setup script and step 2
+tags the golden.
+
 Its checkout at `/home/exedev/repo` is the engine: what is checked out there is
 what every run pushes to its sandbox, and the launch step pins it to the newest
 release on `main` first.
@@ -58,6 +62,8 @@ the repo clone at `/home/exedev/repo` is the engine every run checks out at the
 
 Build it from RUNBOOK §Golden VM build.
 The golden is built by the human, one RUNBOOK step at a time, and re-checked with the doctor after each; this walk verifies, it does not build.
+A from-scratch golden gets its `~/.claude/settings.json` from the setup script
+in RUNBOOK §Golden VM build step 1, and the doctor's golden row reads that file.
 A wrong image built quickly is harder to debug than a right one built slowly:
 the gotchas that section records — PEP 668's `--break-system-packages`, Bun on
 the workers' login-shell PATH rather than only the interactive one, the Bun

@@ -65,7 +65,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    ssh <orchestrator>.exe.xyz 'mkdir -p /home/exedev/plans/run-<N>'
    rsync -a <plan-path> <plan-stem>.gate-verdicts.json <orchestrator>.exe.xyz:/home/exedev/plans/run-<N>/
    ssh <orchestrator>.exe.xyz 'git -C <repoDir> fetch -q origin && git -C <repoDir> checkout -q $(git -C <repoDir> log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C <repoDir> show HEAD:.claude-plugin/plugin.json'
-   ssh -n <orchestrator>.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd <repoDir> && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<N>/<plan-basename> run-<N> --target <repo> --base <baseSha> </dev/null >/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'
+   ssh -n <orchestrator>.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd <repoDir> && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<N>/<plan-basename> run-<N> --target <repo> --base <baseSha> --golden <golden> --db-dir /tmp/fleet-orch-run-<N> </dev/null >/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'
    ```
 
    `<repoDir>` is the orchestrator's engine checkout, never the target;
@@ -73,10 +73,13 @@ approved plan, **is** the authorization to execute — no further approval pause
    prints is the engine this run drives with — report it to the user before the
    launch, and substitute the operator's ref for the `log -1` expression when
    the run is about an engine change.
-   The orchestrator hostname and its checkout path come from `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`); their defaults are `fleet-orchestrator` and `/home/exedev/repo`.
-   The doctor's `--json` envelope carries the resolved pair in its `config`
-   object, so the run that just checked the fleet also has the values to
-   substitute.
+   The orchestrator hostname, its checkout path and the golden's name come from
+   `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`, `golden`); their
+   defaults are `fleet-orchestrator`, `/home/exedev/repo` and `fleet-golden`.
+   The doctor's `--json` envelope carries all three in its `config` object, so
+   the run that just checked the fleet also has the values to substitute.
+   Every drive gets its own store directory (`--db-dir`): two drives sharing
+   the default leave one of them blind to its own sandbox.
 3. **Watch** live as a sync peer (`fleet/watch.mjs` — RUNBOOK §Watch), or tail
    the drive log (`ssh <orchestrator>.exe.xyz 'tail -f /home/exedev/fleet-evidence/drive-run-<N>.out'`).
 4. **Read the receipt in the PR the orchestrator opens.** Gate-green → a ready
