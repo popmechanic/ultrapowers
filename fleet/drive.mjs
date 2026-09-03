@@ -590,8 +590,11 @@ export const deriveSandboxStat = (statJson) => {
  *   (#575). Reached through its cache clone under `targetsDir`; refused at
  *   entry when it fails `isSafeTarget`.
  * @param {string} opts.baseSha - the commit the run starts from: a hex sha on
- *   the target's GitHub origin (`isSafeSha`; a symbolic ref is refused). A
- *   base absent from origin is refused before any VM is spent.
+ *   the target's GitHub origin (`isSafeSha`; a symbolic ref is refused), and
+ *   one the origin's DEFAULT BRANCH reaches (#579). A base absent from origin,
+ *   and a base present but on no default-branch history — a `pinned run tip:`
+ *   sha off a squash-merged PR, a commit pushed to a side branch — are both
+ *   refused before any VM is spent.
  * @param {string} opts.repoDir - the ENGINE checkout: the code every sandbox
  *   runs, pushed at its HEAD as `fleet-engine`. Read for its HEAD, its
  *   manifest and its cleanliness (the one new refusal: a dirty engine
@@ -964,13 +967,36 @@ export const driveOne = async ({
   // Presence, as the contract spells it (M4). The cache also holds every
   // earlier run's `refs/fleet/*` tip, so this is a weaker question than
   // "is it on origin" — the fatal fetch above is what keeps the answer honest
-  // for a base that was pushed, and a base copied off a `pinned run tip:`
-  // line that never reached GitHub is the operator's to know.
+  // for a base that was pushed, and the default-branch check below is what
+  // now answers for a base copied off a `pinned run tip:` line that never
+  // reached the default branch. It used to be the operator's to know.
   const present = await exec(`git -C ${cacheDir} cat-file -e ${baseSha}^{commit}`)
   if (present?.code !== 0) {
     throw new Error(
       `driveOne: base ${baseSha} is not on ${target} (cache ${cacheDir} does not hold it after fetching origin) — ` +
         `push it to GitHub before driving; a run starts from a commit anyone can fetch (#575)`,
+    )
+  }
+  // #579 items 1 and 3: present is not enough. `fetch origin <sha>` cannot ask
+  // this question — git satisfies a `want` it already holds without troubling
+  // the server, so a stranded tip already in the cache fetches green. The
+  // honest question is reachability from the default branch the fetch above
+  // just refreshed, and `merge-base --is-ancestor` is git's own answer to it:
+  // 0 for yes, 1 for no, 128 when a ref will not resolve.
+  const onDefault = await exec(`git -C ${cacheDir} merge-base --is-ancestor ${baseSha} refs/remotes/origin/HEAD`)
+  if (onDefault?.code === 1) {
+    throw new Error(
+      `driveOne: base ${baseSha} is on ${target} but not on its default branch ` +
+        `(cache ${cacheDir}: it is not an ancestor of refs/remotes/origin/HEAD) — ` +
+        `a sha copied off a \`pinned run tip:\` line, or off any branch other than the default, cannot be a base: ` +
+        `push it to the default branch, or drive from a commit already on it (#579)`,
+    )
+  }
+  if (onDefault?.code !== 0) {
+    throw new Error(
+      `driveOne: could not judge base ${baseSha} against refs/remotes/origin/HEAD in ${cacheDir} ` +
+        `(code ${onDefault?.code}) ${scrub(execDiagnostic(onDefault))} — the cache has no default branch to compare ` +
+        `against; run \`git -C ${cacheDir} remote set-head origin -a\` and drive again (#579)`,
     )
   }
 
