@@ -44,11 +44,11 @@ import {
   rwIntegrationFor
 } from './lobby.mjs'
 
-export const usage = () => [
-  'usage: node fleet/target.mjs add <owner>/<repo>',
-  '       node fleet/target.mjs list',
-  '       node fleet/target.mjs gc [--json]'
-].join('\n')
+export const USAGE = `usage: node fleet/target.mjs add <owner>/<repo>
+       node fleet/target.mjs list
+       node fleet/target.mjs gc [--json]`
+
+export const usage = () => USAGE
 
 /** The two `integrations add` lines, verbatim, for a target. */
 export const addCommands = (target) => [

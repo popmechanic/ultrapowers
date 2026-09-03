@@ -42,8 +42,10 @@ import {
   runCli
 } from './lobby.mjs'
 
-export const usage = () =>
+export const USAGE =
   'usage: node fleet/janitor.mjs [--dry-run] [--sweep-grants] [--config <path>] [--json]'
+
+export const usage = () => USAGE
 
 /** States that mean the run is over and its VM is ballast. */
 export const REAPABLE_STATES = Object.freeze(['done', 'failed'])

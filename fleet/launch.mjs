@@ -57,12 +57,14 @@ import {
   vmNameFor
 } from './lobby.mjs'
 
-export const usage = () => [
-  'usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>',
-  '                             [--engine <40-hex>] [--overlap fold|serialize]',
-  '                             [--tier standard|mostCapable] [--golden <vm>]',
-  '                             [--run <N>] [--config <path>] [--json]'
-].join('\n')
+/** One string, so a docs check that reads the first `usage` literal sees every
+ *  flag the launch line may carry. */
+export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
+                             [--engine <40-hex>] [--overlap fold|serialize]
+                             [--tier standard|mostCapable] [--golden <vm>]
+                             [--run <N>] [--config <path>] [--json]`
+
+export const usage = () => USAGE
 
 /** The two enumerated flags, with the exact spellings the comment carries. */
 export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])

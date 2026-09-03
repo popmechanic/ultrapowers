@@ -62,10 +62,10 @@ import {
   vmNameFor
 } from './lobby.mjs'
 
-export const usage = () => [
-  'usage: node fleet/grant.mjs <N> [--for 15m] [--live] [--target <owner>/<repo>]',
-  '                                [--config <path>] [--json]'
-].join('\n')
+export const USAGE = `usage: node fleet/grant.mjs <N> [--for 15m] [--live] [--target <owner>/<repo>]
+                                [--config <path>] [--json]`
+
+export const usage = () => USAGE
 
 /** The state a run must be in before write access is granted. */
 export const REQUIRED_STATE = 'awaiting-grant'
