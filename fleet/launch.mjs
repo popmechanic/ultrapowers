@@ -12,7 +12,7 @@
  *      the target's `-ro` object for 6 h when one exists;
  *   4. writes the assignment comment — the record the sandbox reads once;
  *   5. waits until `ssh <ssh_dest> true` answers, then starts the run:
- *      `systemctl --user start fleet-run.service`.
+ *      `systemctl --user --no-block start fleet-run.service`.
  *
  * Start AFTER attach: the boot never races a grant. Nothing on the VM polls;
  * the comment is not a signal, the ssh start is.
@@ -72,7 +72,7 @@ export const GRANT_FOR = '6h'
 /** The start command, run over ssh on the VM once it answers. The user
  *  manager needs XDG_RUNTIME_DIR set for a non-login ssh session. */
 export const START_COMMAND =
-  'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run.service'
+  'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service'
 
 /** How long to wait for the fresh VM to answer ssh, and how often to ask. */
 export const SSH_WAIT_MS = 120_000

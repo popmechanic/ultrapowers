@@ -201,7 +201,7 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
     { dest: `exedev@${VM1}.ssh.exe.xyz`, command: 'true' },
     { dest: `exedev@${VM1}.ssh.exe.xyz`, command: START_COMMAND }
   ], '(3) then ssh to the row\'s ssh_dest: the readiness probe, then the start')
-  assert.equal(START_COMMAND, 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run.service', '(3) the start command')
+  assert.equal(START_COMMAND, 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service', '(3) the start command')
   assert.equal(result.sshDest, `exedev@${VM1}.ssh.exe.xyz`, '(3) ssh_dest is read off the row, never derived from the name')
 
   // Start is last: after both attaches and the comment, as call indices.

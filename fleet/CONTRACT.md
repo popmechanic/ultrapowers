@@ -9,7 +9,7 @@ file (git history) and this text disagree, this text wins. The engine (`run-main
 A run is a number N. Its plan is `plans/run-N.md` in `popmechanic/fleet-runs`, committed by the launcher
 before any VM exists. The launcher `cp`s the golden to a fresh, never-reused VM name, attaches the run's
 integrations to THAT VM, writes the assignment as the VM comment (the record), waits for ssh, and STARTS
-the run over ssh: `systemctl --user start fleet-run.service`. The golden carries only an immutable
+the run over ssh: `systemctl --user --no-block start fleet-run.service`. The golden carries only an immutable
 bootstrap, which reads the assignment once, clones the engine at `engine=` into a content-addressed
 directory, and execs the checkout's `fleet/sandbox-boot.sh`. The boot script runs the engine as a
 transient user SERVICE with a memory cap, serves a status page from its own transient service, commits
@@ -34,7 +34,7 @@ fleet-runs, never a VM. No orchestrator, no control VM, no token on any VM.
 - **Launch order (launcher):** commit plan → `cp` → `integrations attach claude-max vm:<vm> --for 6h` →
   `integrations attach t-<owner>-<repo>-ro vm:<vm> --for 6h` (skip when the target is public and no
   `-ro` integration exists) → `comment <vm> '<assignment>'` → wait until `ssh <ssh_dest> true` succeeds
-  (retry ≤120 s) → `ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run.service'`.
+  (retry ≤120 s) → `ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service'`.
   Start AFTER attach: the boot never races the grant.
 - **Golden contents (golden-setup.sh):** node, bun, npm, xdist, `busybox`, `gh`, the immutable
   `/home/exedev/fleet-bootstrap.sh` (a copy of `fleet/fleet-bootstrap.sh`, mode 755), the user unit

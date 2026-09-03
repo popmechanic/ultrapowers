@@ -230,7 +230,7 @@ def test_the_documents_name_scripts_at_all():
 # authority; a doc that drifts from it is a doc sending an operator to a unit,
 # a path or a VM name that is not there.
 
-START_UNIT_RE = re.compile(r"systemctl --user start (fleet-[\w.-]+\.service)")
+START_UNIT_RE = re.compile(r"systemctl --user (?:--no-block )?start (fleet-[\w.-]+\.service)")
 ENGINE_DIR_RE = re.compile(r"(/home/exedev/engines/)<sha>")
 VM_NAME_RE = re.compile(r"\*\*VM name:\*\*\s*`(fleet-r)<N>-")
 

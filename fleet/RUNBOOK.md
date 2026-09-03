@@ -12,7 +12,7 @@ A run is a number N. Its plan is `plans/run-N.md` in the private
 exists. The launcher copies the golden to a fresh VM named
 `fleet-r<N>-<yymmddHHMM>-<4 hex>`, attaches the run's integrations to that VM,
 writes the assignment as the VM comment, waits for ssh, and starts the run:
-`systemctl --user start fleet-run.service`. That unit runs an immutable
+`systemctl --user --no-block start fleet-run.service`. That unit runs an immutable
 bootstrap, which reads the comment once, clones the engine at `engine=<sha>`
 into `/home/exedev/engines/<sha>`, and execs that checkout's
 `fleet/sandbox-boot.sh`. The boot script runs the engine as a transient user
