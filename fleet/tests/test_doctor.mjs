@@ -7,10 +7,10 @@
  *
  *   (a) [M1] loadFleetConfig: absent path → the four-key defaults; a file
  *            holding {"orchestrator":"my-orch"} overrides that key only.
- *   (b) [M2] doctor({config, exec}) → {config, rows, verdict}; five rows with
- *            exactly the five ids in order, each carrying status/detail/fix,
- *            and the five fix strings are exactly the five RUNBOOK headings.
- *   (c) [M3][M5] a green probe-absent run issues exactly the eight read-only
+ *   (b) [M2] doctor({config, exec}) → {config, rows, verdict}; six rows with
+ *            exactly the six ids in order, each carrying status/detail/fix,
+ *            and the six fix strings are exactly the six RUNBOOK headings.
+ *   (c) [M3][M5] a green probe-absent run issues exactly the nine read-only
  *            commands, in order, substituted from config, and nothing else.
  *   (d) [M3] one stub per red condition → exactly that row `missing`, every
  *            other read-only row `ok`, golden detail naming engine clone /
@@ -21,7 +21,7 @@
  *            fetch red + ls-remote green → detail exactly `https-fallback`.
  *   (g) [M5] cp red / BLOCKED / a rejecting exec all still issue the rm; a red
  *            prior row skips the probe entirely.
- *   (h) [M6] verdict is `ready` exactly when the four read-only rows are ok and
+ *   (h) [M6] verdict is `ready` exactly when the five read-only rows are ok and
  *            preflight is ok or skipped.
  *   (i) [M7] the CLI: --json, exit codes, the human two-line miss form,
  *            --probe, and the ~/.ultrapowers/fleet.json default config path.
@@ -54,15 +54,16 @@ const DEFAULT_CONFIG = {
   tokenPath: '/home/exedev/.fleet/claude-oauth-token'
 }
 
-// [M2] The five row ids, in order.
-const EXPECTED_IDS = ['exe-dev', 'orchestrator', 'golden', 'token', 'preflight']
+// [M2] The six row ids, in order — `github-token` between `token` and `preflight`.
+const EXPECTED_IDS = ['exe-dev', 'orchestrator', 'golden', 'token', 'github-token', 'preflight']
 
-// [M2] The five `fix` strings — exact `## ` headings in fleet/RUNBOOK.md.
+// [M2] The six `fix` strings — exact `## ` headings in fleet/RUNBOOK.md.
 const EXPECTED_FIXES = [
   'exe.dev account',
   'Orchestrator VM',
   'Golden VM build',
   'Engine auth — the Max subscription, delivered per run (#213)',
+  'GitHub auth (#368) — the orchestrator opens the PR',
   'Preflight'
 ]
 
@@ -79,10 +80,11 @@ const GOLDEN_HEX40 = '1f2e3d4c5b6a798899001122334455667788990a'
 const MANIFEST = '{"name":"ultrapowers","version":"0.3.3"}\n'
 const DESCRIBE = 'v0.3.3-4-gabc'
 
-// [M3] The eight read-only commands, byte for byte, with <orch>, <golden>,
+// [M3] The nine read-only commands, byte for byte, with <orch>, <golden>,
 // <repoDir> and <tokenPath> substituted from CONFIG. The golden's engine
 // command spells the sandbox engine clone literally: that path is fixed on
-// every sandbox, so it is not <repoDir>.
+// every sandbox, so it is not <repoDir> — and so, for the same reason, is the
+// GitHub token path the `github-token` row reads.
 const CMD = {
   whoami: 'ssh exe.dev whoami',
   revParse: "ssh orch1.exe.xyz 'git -C /repo rev-parse HEAD'",
@@ -93,7 +95,9 @@ const CMD = {
   xdist: `ssh gold1.exe.xyz 'python3 -c "import xdist"'`,
   settings: "ssh gold1.exe.xyz 'cat ~/.claude/settings.json'",
   token:
-    "ssh orch1.exe.xyz 'stat -c %a /tok && head -c 10 /tok | grep -q ^sk-ant-oat && echo prefix-ok'"
+    "ssh orch1.exe.xyz 'stat -c %a /tok && head -c 10 /tok | grep -q ^sk-ant-oat && echo prefix-ok'",
+  githubToken:
+    "ssh orch1.exe.xyz 'stat -c %a /home/exedev/.fleet/github-token && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh api user -q .login'"
 }
 
 const READ_ONLY_CMDS = [
@@ -104,7 +108,8 @@ const READ_ONLY_CMDS = [
   CMD.engine,
   CMD.xdist,
   CMD.settings,
-  CMD.token
+  CMD.token,
+  CMD.githubToken
 ]
 
 // [M5] The probe's two lifecycle commands.
@@ -144,6 +149,7 @@ const GREEN = {
   [CMD.xdist]: { code: 0, stdout: '' },
   [CMD.settings]: { code: 0, stdout: '{"permissions":{"defaultMode":"bypassPermissions"}}\n' },
   [CMD.token]: { code: 0, stdout: '600\nprefix-ok\n' },
+  [CMD.githubToken]: { code: 0, stdout: '600\npopmechanic\n' },
   [CP_CMD]: { code: 0, stdout: 'cloned\n' },
   [RM_CMD]: { code: 0, stdout: 'removed\n' },
   [FETCH_CMD]: { code: 0, stdout: '' },
@@ -173,7 +179,7 @@ function assertRowShape (result, where) {
   assert.deepEqual(
     result.rows.map((r) => r.id),
     EXPECTED_IDS,
-    `${where} [M2] rows must be the five ids in exactly this order`
+    `${where} [M2] rows must be the six ids in exactly this order`
   )
   for (const row of result.rows) {
     assert.ok(
@@ -186,7 +192,7 @@ function assertRowShape (result, where) {
   assert.deepEqual(
     result.rows.map((r) => r.fix),
     EXPECTED_FIXES,
-    `${where} [M2] the five fix strings must be the five RUNBOOK headings`
+    `${where} [M2] the six fix strings must be the six RUNBOOK headings`
   )
 }
 
@@ -237,14 +243,14 @@ function assertRowShape (result, where) {
   assertRowShape(result, '(b)')
   assert.deepEqual(
     result.rows.map((r) => r.status),
-    ['ok', 'ok', 'ok', 'ok', 'skipped'],
-    '(b) [M2][M5] an all-green run with probe absent: four ok rows and a skipped preflight row'
+    ['ok', 'ok', 'ok', 'ok', 'ok', 'skipped'],
+    '(b) [M2][M5] an all-green run with probe absent: five ok rows and a skipped preflight row'
   )
 
   assert.deepEqual(
     executed,
     READ_ONLY_CMDS,
-    '(c) [M3] a green probe-absent run issues exactly the eight read-only commands, in order, and nothing else'
+    '(c) [M3] a green probe-absent run issues exactly the nine read-only commands, in order, and nothing else'
   )
   assert.equal(
     executed.some((c) => c.includes('fleet-doctor-probe')),
@@ -252,7 +258,7 @@ function assertRowShape (result, where) {
     '(c) [M5] with probe absent no command containing fleet-doctor-probe is issued'
   )
 
-  assert.equal(result.verdict, 'ready', '(h) [M6] four ok rows plus a skipped preflight row is `ready`')
+  assert.equal(result.verdict, 'ready', '(h) [M6] five ok rows plus a skipped preflight row is `ready`')
 }
 
 // [M5] `probe: false` behaves as `probe` absent.
@@ -260,7 +266,7 @@ function assertRowShape (result, where) {
   const { exec, executed } = makeExec()
   const result = await doctor({ config: CONFIG, exec, probe: false })
   assert.equal(rowOf(result, 'preflight').status, 'skipped', '(c) [M5] probe:false leaves the preflight row skipped')
-  assert.deepEqual(executed, READ_ONLY_CMDS, '(c) [M5] probe:false issues exactly the eight read-only commands')
+  assert.deepEqual(executed, READ_ONLY_CMDS, '(c) [M5] probe:false issues exactly the nine read-only commands')
   assert.equal(result.verdict, 'ready', '(h) [M6] probe:false all-green is `ready`')
 }
 
@@ -336,7 +342,7 @@ for (const testCase of RED_CASES) {
   const where = `(d) [${testCase.name}]`
 
   assertRowShape(result, where)
-  for (const id of EXPECTED_IDS.slice(0, 4)) {
+  for (const id of EXPECTED_IDS.slice(0, 5)) {
     assert.equal(
       rowOf(result, id).status,
       id === testCase.red ? 'missing' : 'ok',
@@ -396,7 +402,7 @@ for (const testCase of RED_CASES) {
   assert.deepEqual(
     executed,
     [...READ_ONLY_CMDS, CP_CMD, FETCH_CMD, RM_CMD],
-    '(f) [M5] a green probe run issues the six read-only commands, then the cp, then preflight\'s ssh fetch, then the rm'
+    '(f) [M5] a green probe run issues the nine read-only commands, then the cp, then preflight\'s ssh fetch, then the rm'
   )
   assert.equal(rowOf(result, 'preflight').status, 'ok', '(f) [M5] verdict `ssh` makes the preflight row ok')
   assert.equal(
@@ -404,7 +410,7 @@ for (const testCase of RED_CASES) {
     'ssh',
     '(f) [M5] the preflight row detail is exactly the preflight verdict'
   )
-  assert.equal(result.verdict, 'ready', '(h) [M6] four ok rows plus an ok preflight row is `ready`')
+  assert.equal(result.verdict, 'ready', '(h) [M6] five ok rows plus an ok preflight row is `ready`')
 }
 
 // [M5] fetch red, ls-remote green → detail exactly `https-fallback`.
@@ -518,6 +524,7 @@ case "$*" in
   *rev-parse*) echo ${HEX40} ;;
   *"import xdist"*) : ;;
   *settings.json*) echo '{"permissions":{"defaultMode":"bypassPermissions"}}' ;;
+  *"gh api user"*) printf '600\\npopmechanic\\n' ;;
   *"stat -c"*) printf '600\\nprefix-ok\\n' ;;
   *fetch*) : ;;
   *ls-remote*) : ;;
@@ -546,7 +553,7 @@ const runCli = (args, { sshDir, home } = {}) => {
   assert.deepEqual(
     parsed.rows.map((r) => r.id),
     EXPECTED_IDS,
-    '(i) [M7] the printed envelope carries the five rows in order'
+    '(i) [M7] the printed envelope carries the six rows in order'
   )
   assert.deepEqual(parsed.config, DEFAULT_CONFIG, '(i) [M7] an absent --config path yields the defaults')
 }
@@ -575,7 +582,7 @@ const runCli = (args, { sshDir, home } = {}) => {
   assert.equal(res.status, 0, `(i) [M7] a ready run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
   const parsed = JSON.parse(res.stdout)
   assert.equal(parsed.verdict, 'ready', '(i) [M7] an all-green CLI run reports verdict ready')
-  assert.equal(parsed.rows[4].status, 'skipped', '(i) [M7][M5] without --probe the preflight row is skipped')
+  assert.equal(parsed.rows[5].status, 'skipped', '(i) [M7][M5] without --probe the preflight row is skipped')
 }
 
 // Green, --probe.
@@ -584,7 +591,7 @@ const runCli = (args, { sshDir, home } = {}) => {
   assert.equal(res.status, 0, `(i) [M7] a ready --probe run exits 0; stdout: ${res.stdout} stderr: ${res.stderr}`)
   const parsed = JSON.parse(res.stdout)
   assert.equal(parsed.verdict, 'ready', '(i) [M7] an all-green --probe CLI run reports verdict ready')
-  assert.equal(parsed.rows[4].status, 'ok', '(i) [M7][M5] --probe sets probe:true and the preflight row runs')
+  assert.equal(parsed.rows[5].status, 'ok', '(i) [M7][M5] --probe sets probe:true and the preflight row runs')
   const log = fs.readFileSync(GREEN_SSH.log, 'utf8')
   assert.ok(
     log.includes('cp fleet-golden fleet-doctor-probe --json'),
@@ -654,7 +661,7 @@ const runCli = (args, { sshDir, home } = {}) => {
       `(j) [M8] fleet/doctor.mjs must export ${name}`
     )
   }
-  assert.deepEqual(ROW_IDS, EXPECTED_IDS, '(j) [M8][M2] ROW_IDS is the five row ids in order')
+  assert.deepEqual(ROW_IDS, EXPECTED_IDS, '(j) [M8][M2] ROW_IDS is the six row ids in order')
 }
 
 console.log('ALL TESTS PASSED')

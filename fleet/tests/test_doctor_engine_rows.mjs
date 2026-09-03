@@ -17,8 +17,9 @@
  *   (c) [M3] every scenario in this exam records into one shared command list,
  *            which carries red-row entries and no `claude plugin` substring.
  *   (d) [M4] DOCTOR_DEFAULTS, ROW_IDS, every row's `fix`, the untouched
- *            `exe-dev` / `token` / `preflight` rows and their commands, the
- *            two verdicts, `parseArgs` and `renderRows` all equal BASE's.
+ *            `exe-dev` / `token` / `github-token` / `preflight` rows and their
+ *            commands, the two verdicts, `parseArgs` and `renderRows` all
+ *            equal BASE's.
  */
 
 import assert from 'node:assert/strict'
@@ -63,14 +64,17 @@ const CMD_XDIST = `ssh gold1.exe.xyz 'python3 -c "import xdist"'`
 const CMD_SETTINGS = "ssh gold1.exe.xyz 'cat ~/.claude/settings.json'"
 const GOLDEN_CMDS = [CMD_ENGINE, CMD_XDIST, CMD_SETTINGS]
 
-// [M4] The two read-only commands BASE issues for the rows this task leaves
-// alone, byte for byte.
+// [M4] The three read-only commands BASE issues for the rows this task leaves
+// alone, byte for byte. The `github-token` row spells its token path literally
+// — it is not <tokenPath>, which the OAuth row substitutes.
 const CMD_WHOAMI = 'ssh exe.dev whoami'
 const CMD_TOKEN =
   "ssh orch1.exe.xyz 'stat -c %a /tok && head -c 10 /tok | grep -q ^sk-ant-oat && echo prefix-ok'"
+const CMD_GITHUB_TOKEN =
+  "ssh orch1.exe.xyz 'stat -c %a /home/exedev/.fleet/github-token && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh api user -q .login'"
 
-// The eight read-only commands of a green probe-absent run, in row order.
-const READ_ONLY_CMDS = [CMD_WHOAMI, ...ORCH_CMDS, ...GOLDEN_CMDS, CMD_TOKEN]
+// The nine read-only commands of a green probe-absent run, in row order.
+const READ_ONLY_CMDS = [CMD_WHOAMI, ...ORCH_CMDS, ...GOLDEN_CMDS, CMD_TOKEN, CMD_GITHUB_TOKEN]
 
 // [M4] The probe row's three commands at BASE. The two preflight legs are
 // derived from the real module below so the byte-equality stays live.
@@ -88,16 +92,17 @@ const ORCH_DETAIL_UNREADABLE = `orch1 at ${ORCH_HEX} — version unreadable`
 // [M2] The golden row's green detail, spelled exactly as the Machine clause does.
 const GOLDEN_DETAIL_OK = 'gold1: engine clone, xdist and settings all clean'
 
-// [M4] BASE's five `fix` headings, in row order.
+// [M4] BASE's six `fix` headings, in row order.
 const EXPECTED_FIXES = [
   'exe.dev account',
   'Orchestrator VM',
   'Golden VM build',
   'Engine auth — the Max subscription, delivered per run (#213)',
+  'GitHub auth (#368) — the orchestrator opens the PR',
   'Preflight'
 ]
 
-// [M4] BASE's three untouched row objects on an all-green probe-absent run.
+// [M4] BASE's four untouched row objects on an all-green probe-absent run.
 const BASE_EXE_DEV_ROW = {
   id: 'exe-dev',
   status: 'ok',
@@ -109,6 +114,12 @@ const BASE_TOKEN_ROW = {
   status: 'ok',
   detail: 'mode 600, prefix-ok',
   fix: 'Engine auth — the Max subscription, delivered per run (#213)'
+}
+const BASE_GITHUB_TOKEN_ROW = {
+  id: 'github-token',
+  status: 'ok',
+  detail: 'mode 600, token valid as popmechanic',
+  fix: 'GitHub auth (#368) — the orchestrator opens the PR'
 }
 const BASE_PREFLIGHT_ROW_SKIPPED = {
   id: 'preflight',
@@ -157,6 +168,7 @@ const GREEN = {
   [CMD_XDIST]: { code: 0, stdout: '' },
   [CMD_SETTINGS]: { code: 0, stdout: '{"permissions":{"defaultMode":"bypassPermissions"}}\n' },
   [CMD_TOKEN]: { code: 0, stdout: '600\nprefix-ok\n' },
+  [CMD_GITHUB_TOKEN]: { code: 0, stdout: '600\npopmechanic\n' },
   [CP_CMD]: { code: 0, stdout: 'cloned\n' },
   [RM_CMD]: { code: 0, stdout: 'removed\n' },
   [FETCH_CMD]: { code: 0, stdout: '' },
@@ -360,8 +372,8 @@ assert.deepEqual(
 
 assert.deepEqual(
   [...ROW_IDS],
-  ['exe-dev', 'orchestrator', 'golden', 'token', 'preflight'],
-  '(d) [M4] ROW_IDS is BASE\'s five row ids in order'
+  ['exe-dev', 'orchestrator', 'golden', 'token', 'github-token', 'preflight'],
+  '(d) [M4] ROW_IDS is BASE\'s six row ids in order'
 )
 
 // The all-green probe-absent run: rows, fixes, commands and verdict.
@@ -371,8 +383,8 @@ assert.deepEqual(
 
   assert.deepEqual(
     result.rows.map((r) => r.id),
-    ['exe-dev', 'orchestrator', 'golden', 'token', 'preflight'],
-    '(d) [M4] the five rows keep BASE\'s ids and order'
+    ['exe-dev', 'orchestrator', 'golden', 'token', 'github-token', 'preflight'],
+    '(d) [M4] the six rows keep BASE\'s ids and order'
   )
   assert.deepEqual(
     result.rows.map((r) => r.fix),
@@ -391,20 +403,25 @@ assert.deepEqual(
     '(d) [M4] the token row object deep-equals BASE\'s literal on an all-green run'
   )
   assert.deepEqual(
+    rowOf(result, 'github-token'),
+    BASE_GITHUB_TOKEN_ROW,
+    '(d) [M4] the github-token row object deep-equals BASE\'s literal on an all-green run'
+  )
+  assert.deepEqual(
     rowOf(result, 'preflight'),
     BASE_PREFLIGHT_ROW_SKIPPED,
     '(d) [M4] the preflight row object deep-equals BASE\'s skipped literal on a probe-absent run'
   )
 
   assert.deepEqual(
-    executed.filter((c) => c === CMD_WHOAMI || c === CMD_TOKEN),
-    [CMD_WHOAMI, CMD_TOKEN],
-    '(d) [M4] the exe-dev and token rows issue BASE\'s literal commands, once each, in row order'
+    executed.filter((c) => c === CMD_WHOAMI || c === CMD_TOKEN || c === CMD_GITHUB_TOKEN),
+    [CMD_WHOAMI, CMD_TOKEN, CMD_GITHUB_TOKEN],
+    '(d) [M4] the exe-dev, token and github-token rows issue BASE\'s literal commands, once each, in row order'
   )
   assert.deepEqual(
     executed,
     READ_ONLY_CMDS,
-    '(d) [M1][M2][M4] a green probe-absent run issues exactly the eight read-only commands, in row order, and nothing else'
+    '(d) [M1][M2][M4] a green probe-absent run issues exactly the nine read-only commands, in row order, and nothing else'
   )
 
   assert.equal(result.verdict, 'ready', '(d) [M4] every row green makes the verdict `ready`')
@@ -429,7 +446,7 @@ assert.deepEqual(
   assert.deepEqual(
     executed,
     READ_ONLY_CMDS,
-    '(d) [M4] probe:false issues exactly the eight read-only commands'
+    '(d) [M4] probe:false issues exactly the nine read-only commands'
   )
   assert.deepEqual(
     rowOf(result, 'preflight'),
@@ -445,7 +462,7 @@ assert.deepEqual(
   assert.deepEqual(
     executed,
     [...READ_ONLY_CMDS, CP_CMD, FETCH_CMD, RM_CMD],
-    '(d) [M4] a green probe run issues the eight read-only commands, then BASE\'s cp, preflight fetch and rm'
+    '(d) [M4] a green probe run issues the nine read-only commands, then BASE\'s cp, preflight fetch and rm'
   )
   assert.deepEqual(
     rowOf(result, 'preflight'),
@@ -458,8 +475,8 @@ assert.deepEqual(
 // parseArgs of the four-flag argv.
 assert.deepEqual(
   parseArgs(['--json', '--probe', '--config', '/c']),
-  { json: true, probe: true, configPath: '/c' },
-  '(d) [M4] parseArgs([\'--json\', \'--probe\', \'--config\', \'/c\']) deep-equals BASE\'s literal'
+  { json: true, probe: true, configPath: '/c', target: null },
+  '(d) [M4] parseArgs([\'--json\', \'--probe\', \'--config\', \'/c\']) deep-equals BASE\'s literal, with target null'
 )
 
 // renderRows of a fixed rows array, byte for byte.

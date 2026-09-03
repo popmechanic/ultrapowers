@@ -310,7 +310,11 @@ parks the run at publish with a 403; the branch and its receipts are still
 pinned in the target's cache clone under `/home/exedev/targets/`. It lives
 beside the OAuth token, on the orchestrator only: never on the golden, never in
 a sandbox (the sandbox still pushes to the orchestrator's checkout over the
-tunnel exactly as today and never sees GitHub).
+tunnel exactly as today and never sees GitHub). Every new target needs this
+token's repository access widened before its first drive:
+`node fleet/doctor.mjs --target <owner>/<repo>` is the check, and
+`/ultrapowers` runs it before every launch, so a too-narrow token costs a
+launch, not a run.
 
 ```bash
 # 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate:
@@ -341,12 +345,13 @@ it would have been. Rotate by generating a new token and repeating step 2.
 ## Doctor
 
 `node fleet/doctor.mjs` is the read-only check of everything above: one row per
-section — exe.dev account, orchestrator, golden, token — and a fifth,
-preflight, that runs only with `--probe` because it clones the golden into a
-throwaway `fleet-doctor-probe` VM and removes it.
+section — exe.dev account, orchestrator, golden, token, github-token — and a
+sixth, preflight, that runs only with `--probe` because it clones the golden
+into a throwaway `fleet-doctor-probe` VM and removes it.
 
 ```bash
-node fleet/doctor.mjs           # the four read-only rows
+node fleet/doctor.mjs           # the five read-only rows
+node fleet/doctor.mjs --target <owner>/<repo>   # plus: can the token reach that repo?
 node fleet/doctor.mjs --probe   # plus preflight, which clones a VM and removes it
 node fleet/doctor.mjs --json    # the same verdicts as one JSON object
 ```

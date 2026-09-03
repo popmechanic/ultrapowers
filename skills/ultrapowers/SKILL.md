@@ -20,17 +20,17 @@ walk the missing ones.
 
 ## Setup
 
-The fleet is five pieces, and the doctor is the only thing that knows whether
+The fleet is six pieces, and the doctor is the only thing that knows whether
 you have them.
 
 Run the doctor from the plugin cache: `node <plugin-root>/fleet/doctor.mjs --json`, where `<plugin-root>` is two directories above this skill's base directory.
 The harness prints `Base directory for this skill:` when it loads this file;
 the cache path itself differs by version and by host, so derive it rather than
-naming it. The doctor answers with one row per piece —
-`exe-dev`, `orchestrator`, `golden`, `token`, `preflight`, in that order — each
-carrying a `status` of `ok`, `missing` or `skipped`, a human `detail`, and a
-`fix` naming the `fleet/RUNBOOK.md` section that builds it. Read the rows back
-to the user as a short list before touching anything.
+naming it. The doctor answers with one row per piece — `exe-dev`,
+`orchestrator`, `golden`, `token`, `github-token`, `preflight`, in that order —
+each carrying a `status` of `ok`, `missing` or `skipped`, a human `detail`, and
+a `fix` naming the `fleet/RUNBOOK.md` section that builds it. Read the rows
+back to the user as a short list before touching anything.
 
 For each row whose status is not `ok`, in order, open `references/first-run.md` at the section named for that row's `id` and follow it; every command a human has to run interactively is theirs to run, offered as `! <command>`, and nothing in this mode builds the golden for them.
 The order matters: each piece is built on the one above it, so a `missing`
@@ -38,7 +38,7 @@ The order matters: each piece is built on the one above it, so a `missing`
 Re-run the doctor after each row and show the user the row that just turned
 `ok`.
 
-When the four read-only rows are `ok`, run the doctor once more with `--probe`; a `ready` verdict ends setup.
+When the five read-only rows are `ok`, run the doctor once more with `--probe`; a `ready` verdict ends setup.
 The probe is the one check that costs a VM: it clones the golden into a
 throwaway named `fleet-doctor-probe`, runs `fleet/preflight.mjs` against it,
 and removes it. Anything short of `ready` leaves a row still red — go back to
@@ -52,12 +52,11 @@ Configuration lives in `~/.ultrapowers/fleet.json`; the doctor takes
 Selecting ultrapowers at the planning handoff, or invoking `/ultrapowers` on an
 approved plan, **is** the authorization to execute — no further approval pause.
 
-Before the rsync, run the doctor without `--probe`; a verdict other than `ready` means there is no fleet to launch on — offer `/ultrapowers setup` and stop.
-
 1. **Derive the target from this checkout.** The target is the repository this skill is run in: `repo` is `gh repo view --json nameWithOwner -q .nameWithOwner` and `baseSha` is `git rev-parse HEAD`.
    There is nothing per-project to configure — the pair travels in the launch,
    and each sandbox clones `repo` and branches from `baseSha`. That sha has to
    be one GitHub already has. When `git rev-parse @{upstream}` fails or prints a different sha, say that the base is not on GitHub yet, ask the operator to push, and stop.
+   Before the rsync, run the doctor with `--target <repo>` and without `--probe`; a verdict other than `ready` means there is no fleet to launch on for this target — offer `/ultrapowers setup` and stop.
 2. **Stage the plan, pin the engine, and launch** with a fresh `run-<N>` (run
    IDs are never reused). Stage the plan on the orchestrator under `/home/exedev/plans/run-<N>/`; nothing under `docs/` lives there.
    Pin the engine to the newest release on `main`, or to the ref the operator names when the run is about an engine change, and read the chosen version back:

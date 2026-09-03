@@ -34,12 +34,13 @@ export const DOCTOR_DEFAULTS = Object.freeze({
   tokenPath: '/home/exedev/.fleet/claude-oauth-token'
 })
 
-/** The five rows, in the order the doctor reports them. */
+/** The six rows, in the order the doctor reports them. */
 export const ROW_IDS = Object.freeze([
   'exe-dev',
   'orchestrator',
   'golden',
   'token',
+  'github-token',
   'preflight'
 ])
 
@@ -49,6 +50,7 @@ const FIXES = Object.freeze({
   orchestrator: 'Orchestrator VM',
   golden: 'Golden VM build',
   token: 'Engine auth — the Max subscription, delivered per run (#213)',
+  'github-token': 'GitHub auth (#368) — the orchestrator opens the PR',
   preflight: 'Preflight'
 })
 
@@ -56,10 +58,19 @@ const PROBE_VM = 'fleet-doctor-probe'
 /** Where every sandbox keeps its engine clone — a fixed path on the golden,
  *  not the orchestrator's `repoDir`. */
 const ENGINE_DIR = '/home/exedev/repo'
+/** The GitHub token a publish actually opens — a literal here, mirroring
+ *  `GITHUB_TOKEN_PATH` in fleet/drive.mjs rather than importing it, because
+ *  doctor.mjs may import nothing but `node:` and ./preflight.mjs. It is
+ *  deliberately not a config key: a doctor that let the path be overridden
+ *  would certify a file the run never opens. */
+const GITHUB_TOKEN_PATH = '/home/exedev/.fleet/github-token'
 const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
 const HEX40 = /^[0-9a-f]{40}/
 const MODE = /^[0-7]{3,4}$/
+/** A GitHub login: alphanumerics and inner hyphens, nothing else. Anything a
+ *  failing `gh` prints — a JSON error body, a usage line — falls outside it. */
+const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/
 
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
@@ -228,6 +239,54 @@ async function tokenRow (exec, config) {
 }
 
 /**
+ * The GitHub token the orchestrator publishes with, checked the way the OAuth
+ * row checks its own: one command, `$(cat …)` expanded in the orchestrator's
+ * shell so the token value never travels to the laptop, and a detail that
+ * carries only the mode and the one name the command was asked for.
+ *
+ * Without a target the question is "is this token still valid" and the answer
+ * is a login. With one it is the sharper "can this token see the repo I am
+ * about to drive" — a fine-grained token can be valid and still 404 on the
+ * repository, which is a failed publish at the end of a run rather than a red
+ * row before it. On a 404 `gh` prints a JSON error body to stdout, so the row
+ * reads the mode as the first `^[0-7]{3,4}$` line, the login as the first
+ * other line that looks like a login, and the repository as a line strictly
+ * equal to the target; every other line is dropped unread.
+ */
+async function githubTokenRow (exec, config, target) {
+  const query = target === null
+    ? 'gh api user -q .login'
+    : `gh api repos/${target} -q .full_name`
+  const res = await exec(
+    `ssh ${config.orchestrator}.exe.xyz 'stat -c %a ${GITHUB_TOKEN_PATH} && GH_TOKEN=$(cat ${GITHUB_TOKEN_PATH}) ${query}'`
+  )
+
+  const lines = String(res.stdout ?? '').split('\n').map((l) => l.trim())
+  const modeAt = lines.findIndex((l) => MODE.test(l))
+  const mode = modeAt === -1 ? null : lines[modeAt]
+  const rest = lines.filter((_, i) => i !== modeAt)
+  const name = target === null
+    ? (rest.find((l) => LOGIN.test(l)) ?? null)
+    : (rest.includes(target) ? target : null)
+
+  const modePart = mode === null ? 'mode unreadable' : `mode ${mode}`
+  if (res.code === 0 && mode === '600' && name !== null) {
+    return row(
+      'github-token',
+      'ok',
+      target === null ? `${modePart}, token valid as ${name}` : `${modePart}, reaches ${target}`
+    )
+  }
+  return row(
+    'github-token',
+    'missing',
+    target === null
+      ? `${modePart}, token rejected (code ${res.code})`
+      : `${modePart}, cannot reach ${target} (code ${res.code})`
+  )
+}
+
+/**
  * The only row that creates anything, so it is opt-in via `probe` and stays
  * out of the way while an earlier row is red — a missing golden cannot be
  * cloned, and a missing orchestrator cannot fetch. The `rm` runs in a
@@ -269,7 +328,7 @@ async function preflightRow (exec, config, probe, priorAllOk) {
  * `exec(cmd)` resolves `{ code, stdout }` exactly as fleet/preflight.mjs
  * consumes it, so a test drives the doctor with a stub.
  */
-export async function doctor ({ config, exec, probe = false } = {}) {
+export async function doctor ({ config, exec, probe = false, target = null } = {}) {
   const cfg = { ...DOCTOR_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
 
@@ -277,7 +336,8 @@ export async function doctor ({ config, exec, probe = false } = {}) {
     await exeDevRow(run),
     await orchestratorRow(run, cfg),
     await goldenRow(run, cfg),
-    await tokenRow(run, cfg)
+    await tokenRow(run, cfg),
+    await githubTokenRow(run, cfg, target ?? null)
   ]
   const priorAllOk = readOnly.every((r) => r.status === 'ok')
   const last = await preflightRow(run, cfg, probe === true, priorAllOk)
@@ -293,7 +353,7 @@ export async function doctor ({ config, exec, probe = false } = {}) {
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
 export function parseArgs (argv) {
-  const opts = { json: false, probe: false, configPath: null }
+  const opts = { json: false, probe: false, configPath: null, target: null }
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === '--json') opts.json = true
@@ -301,6 +361,9 @@ export function parseArgs (argv) {
     else if (arg === '--config') {
       i += 1
       opts.configPath = argv[i] ?? null
+    } else if (arg === '--target') {
+      i += 1
+      opts.target = argv[i] ?? null
     }
   }
   return opts
@@ -320,7 +383,12 @@ export function renderRows (rows) {
 async function main (argv) {
   const opts = parseArgs(argv)
   const config = await loadFleetConfig({ path: opts.configPath ?? DEFAULT_CONFIG_PATH() })
-  const result = await doctor({ config, exec: defaultExec, probe: opts.probe })
+  const result = await doctor({
+    config,
+    exec: defaultExec,
+    probe: opts.probe,
+    target: opts.target
+  })
   process.stdout.write(
     opts.json ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
   )

@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with five rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with six rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, which `fleet/RUNBOOK.md` section builds it,
 and the two or three things the RUNBOOK — written for the operator who built
@@ -24,7 +24,7 @@ stranger will not have: the alias is an SSH host entry, not a URL, so
 your laptop's, distinct from the orchestrator's own key registered later in
 §Orchestrator VM.
 
-Until this row is `ok`, expect the three rows below it to read `missing` too:
+Until this row is `ok`, expect the four rows below it to read `missing` too:
 each of them is an `ssh` to a `*.exe.xyz` host, and without a working account
 none of those commands can land. Fix this row first and run the doctor again
 before touching the others — only `preflight` is ever `skipped`.
@@ -70,7 +70,8 @@ whose output surprises you.
 ## token
 
 The engine inside each sandbox bills a Claude Max subscription through a
-one-year OAuth token. This is the only row that touches a secret.
+one-year OAuth token. This is the first of two rows that touch a secret;
+github-token is the other.
 
 Build it from RUNBOOK §Engine auth — the Max subscription, delivered per run
 (#213). The token comes from `! claude setup-token`, a browser flow that prints
@@ -85,6 +86,36 @@ The doctor checks that the file exists, is mode 0600, and starts with the
 expected prefix. It reports that as yes or no; it does not read the value back
 to anyone, and neither should this walk.
 
+## github-token
+
+The orchestrator holds one GitHub token, at `/home/exedev/.fleet/github-token`,
+and every run spends it: once a run resolves, the orchestrator pushes the run
+branch to GitHub and opens the pull request with it. A sandbox never sees
+GitHub — it pushes its branch to the orchestrator's checkout over the tunnel —
+and the golden carries no copy; the only copy off the orchestrator is the file
+you save while building it, which you scp across and can then delete.
+
+Build it from RUNBOOK §GitHub auth (#368) — the orchestrator opens the PR.
+Three things that section does not say to a newcomer. It is a fine-grained
+personal access token, and the two permissions it needs are exactly
+`Contents: Read and write` and `Pull requests: Read and write` — a classic
+token or a wider scope is not what this is. Its repository access has to cover
+every repository you will drive, ultrapowers itself among them, because a run
+against a repository the token cannot reach fails at the push, after the work
+is done. And unlike the Claude token, this one comes from a browser page rather
+than a command, so there is no output to redirect:
+The token is saved to a 0600 file straight from the GitHub page, never through
+this conversation: its value is never pasted here.
+
+The doctor checks that the file is mode 0600 and that `gh` accepts it — with
+`--target <owner>/<repo>`, that it reaches that repository as well. It reports
+the login and a yes or no; it never reads the value back, and neither should
+this walk.
+
+A new target means widening this token's repository access before its first
+drive; the doctor's `--target <owner>/<repo>` flag is the check, and a red row
+here costs a launch, not a run.
+
 ## preflight
 
 The one link no fact sheet demonstrated directly: VM→VM `git fetch` over SSH
@@ -96,7 +127,7 @@ exists for: `! node <plugin-root>/fleet/doctor.mjs --json --probe` clones the
 golden into a throwaway VM named `fleet-doctor-probe`, runs
 `fleet/preflight.mjs` against it, and removes it when it is done. Because the
 probe costs a VM, the doctor skips it unless asked — so `--probe` is the last
-thing setup runs, once the four rows above it are `ok`.
+thing setup runs, once the five rows above it are `ok`.
 
 Offer the probe as the doctor's own flag rather than as a hand-typed clone and
 delete. The removal step names a VM, and a mistyped VM name in a delete is a
