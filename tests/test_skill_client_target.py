@@ -76,8 +76,8 @@ L_LAUNCH = (
     "ssh -n <orchestrator>.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && "
     "cd <repoDir> && setsid -f node fleet/drive-one.mjs "
     "/home/exedev/plans/run-<N>/<plan-basename> run-<N> --target <repo> "
-    "--base <baseSha> </dev/null "
-    ">/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'"
+    "--base <baseSha> --golden <golden> --db-dir /tmp/fleet-orch-run-<N> "
+    "</dev/null >/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'"
 )
 
 BLOCK_LINES = [
@@ -102,9 +102,10 @@ DOCTOR_BEFORE_RSYNC = (
     "on for this target — offer `/ultrapowers setup` and stop."
 )
 CONFIG_SOURCE = (
-    "The orchestrator hostname and its checkout path come from "
-    "`~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`); their defaults "
-    "are `fleet-orchestrator` and `/home/exedev/repo`."
+    "The orchestrator hostname, its checkout path and the golden's name come "
+    "from `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`, `golden`); "
+    "their defaults are `fleet-orchestrator`, `/home/exedev/repo` and "
+    "`fleet-golden`."
 )
 KEPT_SENTENCES = [
     ("doctor-before-rsync", DOCTOR_BEFORE_RSYNC),

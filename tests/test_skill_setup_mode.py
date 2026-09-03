@@ -63,9 +63,10 @@ DOCTOR_BEFORE_RSYNC = (
     "on for this target — offer `/ultrapowers setup` and stop."
 )
 CONFIG_SOURCE = (
-    "The orchestrator hostname and its checkout path come from "
-    "`~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`); their defaults "
-    "are `fleet-orchestrator` and `/home/exedev/repo`."
+    "The orchestrator hostname, its checkout path and the golden's name come "
+    "from `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`, `golden`); "
+    "their defaults are `fleet-orchestrator`, `/home/exedev/repo` and "
+    "`fleet-golden`."
 )
 RETIRED_SENTENCE = (
     "Nothing runs here and there is no local fallback: without the fleet, say "

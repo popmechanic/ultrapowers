@@ -58,11 +58,12 @@ room — a rebuild that fails partway then leaves no golden and no run can be
 provisioned until it is repaired. Instead:
 
 1. `ssh exe.dev "cp fleet-golden fleet-golden-next --json"` and apply the
-   deltas to the clone. Prefer this to a from-scratch build: the steps below
-   never recreate `~/.claude/settings.json` (`permissions.defaultMode`,
-   `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`), so a from-scratch golden silently
-   comes up without them. The clone inherits the `fleet` tag, which the
-   orchestrator's tag-scoped key needs in order to `cp` it.
+   deltas to the clone. The setup script writes `~/.claude/settings.json`, so
+   a from-scratch golden carries it; the doctor's golden row reads that file.
+   The clone inherits the `fleet` tag, which the orchestrator's tag-scoped key
+   needs in order to `cp` it — a from-scratch replacement has to be tagged by
+   hand (`ssh exe.dev "tag fleet-golden-next fleet"`) before the orchestrator
+   can reach it.
 2. Verify: every check in this section, run against `fleet-golden-next`.
 3. Prove it with a real run: `node fleet/drive-one.mjs … --golden fleet-golden-next`.
 4. Only then `ssh exe.dev "rm fleet-golden"` and
@@ -74,16 +75,35 @@ clone. **No superpowers, no credentials of any kind** — the golden image holds
 nothing that could leak if a clone were ever compromised (spec §W1a).
 
 ```bash
-# 1. Create the VM. node is NOT preinstalled on exeuntu (#179 fact sheet §3),
-#    so install it with a first-boot setup script rather than by hand after —
-#    that keeps the golden image reproducible from one command.
+# 1. Create the VM. exeuntu ships `claude` (Claude Code) and Shelley; node is
+#    not preinstalled, which is what the setup script is for. The script runs
+#    at first boot as `exedev`, not root (`exe-setup.service`), so every
+#    privileged line takes `sudo -n`; without it the install stops on "Could
+#    not open lock file … are you root?" and the VM comes up with no node and
+#    no npm (measured 2026-09-03 on two fresh VMs, #588). The script also
+#    writes the golden's `~/.claude/settings.json`: golden-only files belong in
+#    this version-controlled script, not in hand work after the boot.
 cat > /tmp/fleet-golden-setup.sh <<'EOF'
 #!/bin/sh
-set -e
-curl -fsSL https://deb.nodesource.com/setup_lts.x | bash -
-apt-get install -y nodejs
+set -eu
+curl -fsSL https://deb.nodesource.com/setup_lts.x -o /tmp/nodesource-setup.sh
+sudo -n bash /tmp/nodesource-setup.sh
+sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+rm -f /tmp/nodesource-setup.sh
+install -d -m 700 /home/exedev/.claude
+cat > /home/exedev/.claude/settings.json <<'JSON'
+{
+  "env": { "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "0" },
+  "permissions": { "defaultMode": "bypassPermissions" }
+}
+JSON
+chmod 600 /home/exedev/.claude/settings.json
 EOF
-ssh exe.dev "new --name=fleet-golden --cpu=8 --memory=16GB --setup-script=/tmp/fleet-golden-setup.sh --json"
+#    A laptop path handed to `ssh exe.dev new` is read on exe.dev's side, where
+#    it does not exist; pipe the script in on stdin instead (exe.dev docs,
+#    §Setup scripts). The outer `'EOF'` is quoted, so `$` stays literal, and
+#    the inner heredoc needs its own terminator.
+ssh exe.dev "new --name=fleet-golden --cpu=8 --memory=16GB --setup-script=/dev/stdin --json" < /tmp/fleet-golden-setup.sh
 
 # 2. Clone the repo into the exact path provision.mjs and shim-main.mjs expect
 #    (fleet/shim-main.mjs: REPO_DIR = '/home/exedev/repo').
@@ -192,9 +212,15 @@ driver, and holds the only credentials in the fleet (§W1a). It is the machine
 you run every drive FROM; sandboxes push their run branches back to its
 checkout.
 
+**Build the golden first (§Golden VM build): step 1 reuses its setup script and
+step 2 tags it, so an orchestrator built before the golden stops at its first
+command.**
+
 ```bash
-# 1. Create it (small — it never runs an engine; the sandboxes do).
-ssh exe.dev "new --name=fleet-orchestrator --cpu=2 --memory=4GB --setup-script=/tmp/fleet-golden-setup.sh --json"
+# 1. Create it (small — it never runs an engine; the sandboxes do). The setup
+#    script is the golden's, written in §Golden VM build step 1 and piped in
+#    on stdin the same way.
+ssh exe.dev "new --name=fleet-orchestrator --cpu=2 --memory=4GB --setup-script=/dev/stdin --json" < /tmp/fleet-golden-setup.sh
 
 # 2. Its own SSH key, registered on the account SCOPED BY TAG so the key can
 #    reach fleet VMs (cp/rm/stat for provisioning + teardown) but nothing else
@@ -256,7 +282,9 @@ scp ~/.secrets/fleet-claude-oauth-token fleet-orchestrator.exe.xyz:/home/exedev/
 ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/claude-oauth-token'
 
 # 3. Golden settings.json: NO ANTHROPIC_* keys. Edit with jq, never a heredoc
-#    overwrite (that dropped enabledPlugins once and cost a run — see #193):
+#    overwrite (that dropped enabledPlugins once and cost a run — see #193).
+#    The file exists because the golden's setup script wrote it (§Golden VM
+#    build step 1); on a fresh golden this is a no-op.
 ssh -n fleet-golden.exe.xyz 'f=~/.claude/settings.json; jq "del(.env.ANTHROPIC_BASE_URL, .env.ANTHROPIC_API_KEY)" $f > $f.new && mv $f.new $f && cat $f'
 #    expected: env keeps CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS; permissions intact.
 ```
@@ -326,8 +354,10 @@ launch, not a run.
 scp ~/.secrets/fleet-github-token fleet-orchestrator.exe.xyz:/home/exedev/.fleet/github-token
 ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /home/exedev/.fleet/github-token'
 
-# 3. Prove it, without printing it: gh reads GH_TOKEN from the env.
-ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh auth status 2>&1 | grep -v token'
+# 3. Prove it, without printing it: gh reads GH_TOKEN from the env, and
+#    gh prints the token masked itself (`- Token: github_pat_****…`), so
+#    nothing here needs to filter the output.
+ssh -n fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && GH_TOKEN=$(cat /home/exedev/.fleet/github-token) gh auth status'
 ```
 
 `driveOne` reads the file (`--github-token-path` overrides the path) and hands
