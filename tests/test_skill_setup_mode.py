@@ -14,7 +14,7 @@ that contract, one assertion group per Proof leg:
   (g) M4 — the launch snippet is parameterised: every `rsync -a`/`ssh -n` line
       addresses `<orchestrator>.exe.xyz`, and the retired "no local fallback"
       sentence is gone.
-  (h) M5 — `first-run.md` has exactly the five doctor row ids as `## `
+  (h) M5 — `first-run.md` has exactly the six doctor row ids as `## `
       headings, in the doctor's order; each bridges to its RUNBOOK heading; the
       secret-touching and hand-built rows carry their verbatim sentences; and no
       section hands a human a bare destructive `ssh exe.dev "rm` fence.
@@ -54,13 +54,13 @@ RED_ROW_WALK = (
     "for them."
 )
 PROBE_ENDS_SETUP = (
-    "When the four read-only rows are `ok`, run the doctor once more with "
+    "When the five read-only rows are `ok`, run the doctor once more with "
     "`--probe`; a `ready` verdict ends setup."
 )
 DOCTOR_BEFORE_RSYNC = (
-    "Before the rsync, run the doctor without `--probe`; a verdict other than "
-    "`ready` means there is no fleet to launch on — offer "
-    "`/ultrapowers setup` and stop."
+    "Before the rsync, run the doctor with `--target <repo>` and without "
+    "`--probe`; a verdict other than `ready` means there is no fleet to launch "
+    "on for this target — offer `/ultrapowers setup` and stop."
 )
 CONFIG_SOURCE = (
     "The orchestrator hostname and its checkout path come from "
@@ -82,13 +82,14 @@ GOLDEN_SENTENCE = (
     "build."
 )
 
-# The doctor's five rows, in the doctor's order, each with the exact RUNBOOK
+# The doctor's six rows, in the doctor's order, each with the exact RUNBOOK
 # heading its `fix` names.
 ROWS = [
     ("exe-dev", "exe.dev account"),
     ("orchestrator", "Orchestrator VM"),
     ("golden", "Golden VM build"),
     ("token", "Engine auth — the Max subscription, delivered per run (#213)"),
+    ("github-token", "GitHub auth (#368) — the orchestrator opens the PR"),
     ("preflight", "Preflight"),
 ]
 ROW_IDS = [row_id for row_id, _ in ROWS]
@@ -291,7 +292,7 @@ def test_leg_h_first_run_exists():
     )
 
 
-def test_leg_h_headings_are_the_five_row_ids_in_order():
+def test_leg_h_headings_are_the_six_row_ids_in_order():
     """(h)[M5] one section per doctor row, named by `id`, in the doctor's
     order — so the walk can index by row id alone."""
     headings = [h for h, _ in sections(read(FIRST_RUN))]
@@ -315,8 +316,8 @@ def test_leg_h_each_section_bridges_to_its_runbook_heading():
 
 
 def test_leg_h_token_section_hands_over_the_command_and_the_secret_rule():
-    """(h)[M5] the one section that touches a secret names the command the
-    human runs and states the 0600-direct-from-output rule."""
+    """(h)[M5] the first of the two sections that touch a secret names the
+    command the human runs and states the 0600-direct-from-output rule."""
     bodies = dict(sections(read(FIRST_RUN)))
     assert "token" in bodies, "(h)[M5] first-run.md has no `## token`"
     assert "claude setup-token" in bodies["token"], (

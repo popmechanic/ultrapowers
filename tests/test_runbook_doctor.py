@@ -62,7 +62,7 @@ M2_CONFIG_LINES = ("Host *.exe.xyz exe.dev", "IdentitiesOnly yes")
 
 # M3 — the three sentences the Doctor section states verbatim.
 M3_SENTENCES = (
-    "`node fleet/doctor.mjs` is the read-only check of everything above: one row per section — exe.dev account, orchestrator, golden, token — and a fifth, preflight, that runs only with `--probe` because it clones the golden into a throwaway `fleet-doctor-probe` VM and removes it.",
+    "`node fleet/doctor.mjs` is the read-only check of everything above: one row per section — exe.dev account, orchestrator, golden, token, github-token — and a sixth, preflight, that runs only with `--probe` because it clones the golden into a throwaway `fleet-doctor-probe` VM and removes it.",
     "A missing row names the section of this file that builds it; `--json` is what `/ultrapowers setup` reads.",
     "Re-run it after every step of a build; a green doctor is the posture check, not the build's exit code.",
 )

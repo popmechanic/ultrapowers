@@ -16,8 +16,8 @@ exam for that contract, one assertion group per Proof leg:
       `pinRepoDir`, `--pr-base`, and any line that both rsyncs and names
       `docs/superpowers`.
   (d) M4 — the two BASE sentences the sibling repo tests pin are still there,
-      the `## Setup` section is byte-identical to the BASE literal frozen in
-      this file, and `validate_skill.py` still prints `skill ok`.
+      the `## Setup` section is byte-identical to the literal frozen in this
+      file, and `validate_skill.py` still prints `skill ok`.
 
 Prose wraps, so every "contains this verbatim" check compares
 whitespace-collapsed text: a line break inside a pinned sentence is allowed, a
@@ -97,9 +97,9 @@ FORBIDDEN_TOKENS = ["--plan-from-assignment", "pinRepoDir", "--pr-base"]
 # --- M4: what stays ---------------------------------------------------------
 
 DOCTOR_BEFORE_RSYNC = (
-    "Before the rsync, run the doctor without `--probe`; a verdict other than "
-    "`ready` means there is no fleet to launch on — offer "
-    "`/ultrapowers setup` and stop."
+    "Before the rsync, run the doctor with `--target <repo>` and without "
+    "`--probe`; a verdict other than `ready` means there is no fleet to launch "
+    "on for this target — offer `/ultrapowers setup` and stop."
 )
 CONFIG_SOURCE = (
     "The orchestrator hostname and its checkout path come from "
@@ -112,17 +112,17 @@ KEPT_SENTENCES = [
 ]
 
 SETUP_SECTION_AT_BASE = (
-    """The fleet is five pieces, and the doctor is the only thing that knows whether
+    """The fleet is six pieces, and the doctor is the only thing that knows whether
 you have them.
 
 Run the doctor from the plugin cache: `node <plugin-root>/fleet/doctor.mjs --json`, where `<plugin-root>` is two directories above this skill's base directory.
 The harness prints `Base directory for this skill:` when it loads this file;
 the cache path itself differs by version and by host, so derive it rather than
-naming it. The doctor answers with one row per piece —
-`exe-dev`, `orchestrator`, `golden`, `token`, `preflight`, in that order — each
-carrying a `status` of `ok`, `missing` or `skipped`, a human `detail`, and a
-`fix` naming the `fleet/RUNBOOK.md` section that builds it. Read the rows back
-to the user as a short list before touching anything.
+naming it. The doctor answers with one row per piece — `exe-dev`,
+`orchestrator`, `golden`, `token`, `github-token`, `preflight`, in that order —
+each carrying a `status` of `ok`, `missing` or `skipped`, a human `detail`, and
+a `fix` naming the `fleet/RUNBOOK.md` section that builds it. Read the rows
+back to the user as a short list before touching anything.
 
 For each row whose status is not `ok`, in order, open `references/first-run.md` at the section named for that row's `id` and follow it; every command a human has to run interactively is theirs to run, offered as `! <command>`, and nothing in this mode builds the golden for them.
 The order matters: each piece is built on the one above it, so a `missing`
@@ -130,7 +130,7 @@ The order matters: each piece is built on the one above it, so a `missing`
 Re-run the doctor after each row and show the user the row that just turned
 `ok`.
 
-When the four read-only rows are `ok`, run the doctor once more with `--probe`; a `ready` verdict ends setup.
+When the five read-only rows are `ok`, run the doctor once more with `--probe`; a `ready` verdict ends setup.
 The probe is the one check that costs a VM: it clones the golden into a
 throwaway named `fleet-doctor-probe`, runs `fleet/preflight.mjs` against it,
 and removes it. Anything short of `ready` leaves a row still red — go back to
@@ -351,12 +351,12 @@ def test_leg_d_the_pinned_base_sentences_are_still_present():
     )
 
 
-def test_leg_d_setup_section_is_unchanged_from_base():
-    """(d)[M4] this task rewrites `## Client` only: `## Setup` still reads
-    exactly as it does at BASE."""
+def test_leg_d_setup_section_matches_the_frozen_literal():
+    """(d)[M4] `## Setup` reads exactly as the literal above: a change to the
+    six-piece walk is a deliberate re-pin here, never a drift."""
     assert section_body("Setup").strip() == SETUP_SECTION_AT_BASE, (
-        "(d)[M4] the `## Setup` section is no longer the BASE text; this task "
-        "changes `## Client` only"
+        "(d)[M4] the `## Setup` section no longer matches the frozen literal; "
+        "re-pin it here when the setup walk changes on purpose"
     )
 
 
