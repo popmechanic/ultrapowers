@@ -148,11 +148,8 @@ cmd_verify() {
   valid_name "$name" || die "not a VM name: $name"
   [ -z "$sha" ] || valid_sha "$sha" || die "not a 40-hex sha: $sha"
 
-  local host="$name.exe.xyz" expected got want_head
+  local host="$name.exe.xyz" expected got
   expected=$(expected_stamp_at "$sha")
-  # Which commit the image should have been built from: the one named, or this
-  # clone's HEAD — the same default `build` uses.
-  want_head=${sha:-$(git -C "$ROOT" rev-parse HEAD)}
 
   got=$(run_ssh "$host" 'cat /home/exedev/.fleet-golden' 2>/dev/null | tr -d '\r\n ' || true)
   if [ "$got" != "$expected" ]; then
@@ -161,12 +158,35 @@ cmd_verify() {
   say "stamp: $got"
 
   local out
-  # The stamp says which SCRIPT built the image; this says which COMMIT the
-  # clone was built from. They are two claims: a golden built from a stale
-  # default branch stamps correctly and is still missing the branch's files.
-  out=$(run_ssh "$host" 'git -C /home/exedev/repo rev-parse HEAD' | tr -d '\r\n ' || true)
-  [ "$out" = "$want_head" ] || die "engine clone: $name is at ${out:-<none>}, want $want_head"
-  say "engine clone: $out"
+  # The image's one moving part: the immutable bootstrap, executable, outside
+  # every checkout. Its bytes are the setup script's concern (the stamp above).
+  out=$(run_ssh "$host" 'stat -c %a /home/exedev/fleet-bootstrap.sh' | tr -d '\r\n ' || true)
+  [ "$out" = '755' ] || die "fleet-bootstrap.sh: mode is ${out:-<none>}, want 755"
+  say 'fleet-bootstrap.sh: 755'
+
+  # Installed, never enabled: the launcher starts it. `static` is what a unit
+  # with no [Install] section reads as; `disabled` would be one that grew an
+  # [Install] and was still left alone. `enabled` is a golden that runs
+  # something at boot with no assignment — the v1 shape.
+  out=$(run_ssh "$host" 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-enabled fleet-run.service' | tr -d '\r\n ' || true)
+  case "$out" in
+    static|disabled) say "fleet-run.service: $out" ;;
+    *) die "fleet-run.service: ${out:-<none>}, want static or disabled" ;;
+  esac
+
+  # No engine pre-clone. A repo in the image is exactly the stale boot script
+  # run-68 died on; the bootstrap clones each run's engine at its own sha.
+  out=$(run_ssh "$host" 'test -e /home/exedev/repo && echo present || echo absent' | tr -d '\r\n ' || true)
+  [ "$out" = 'absent' ] || die "/home/exedev/repo: ${out:-<none>}, want absent"
+  say '/home/exedev/repo: absent'
+
+  out=$(run_ssh "$host" 'busybox --list | grep -cx httpd' | tr -d '\r\n ' || true)
+  [ "$out" = '1' ] || die "busybox: httpd applet ${out:-<none>}, want 1"
+  say 'busybox: httpd'
+
+  out=$(run_ssh "$host" 'gh --version' | head -n 1 | tr -d '\r\n' || true)
+  [ -n "$out" ] || die 'gh: not installed'
+  say "gh: $out"
 
   out=$(run_ssh "$host" 'node --version' | tr -d '\r\n ' || true)
   [ -n "$out" ] || die 'node: not installed'
@@ -190,15 +210,13 @@ cmd_verify() {
   [ "$out" = '600' ] || die "settings.json: mode is ${out:-<none>}, want 600"
   say 'settings.json: 600'
 
-  out=$(run_ssh "$host" 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-enabled fleet-boot.service' | tr -d '\r\n ' || true)
-  [ "$out" = 'enabled' ] || die "fleet-boot.service: ${out:-<none>}, want enabled"
-  say 'fleet-boot.service: enabled'
-
   # The OAuth token lives at exe.dev's edge. An image that carries ANTHROPIC_*
   # is an image that could leak a subscription if a clone were compromised.
-  out=$(run_ssh "$host" 'grep -c ANTHROPIC /home/exedev/.claude/settings.json || true' | tr -d '\r\n ' || true)
-  [ "$out" = '0' ] || die "settings.json: ${out:-?} ANTHROPIC lines, want 0"
-  say 'settings.json: no ANTHROPIC_*'
+  # The files a shell or Claude Code would read a variable from, and the
+  # bootstrap itself.
+  out=$(run_ssh "$host" 'grep -l ANTHROPIC_ /home/exedev/.claude/settings.json /home/exedev/.bashrc /home/exedev/.profile /home/exedev/fleet-bootstrap.sh 2>/dev/null | wc -l' | tr -d '\r\n ' || true)
+  [ "$out" = '0' ] || die "ANTHROPIC_*: named in ${out:-?} file(s), want 0"
+  say 'no ANTHROPIC_*'
 
   say "verify: $name is a good golden"
 }

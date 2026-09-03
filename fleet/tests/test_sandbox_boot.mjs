@@ -10,7 +10,10 @@
  * the literal-argv assertions read.
  *
  * No network, no systemd, no real `claude`: `FLEET_BIN_DIR` is prepended to
- * PATH and `FLEET_HOME` relocates every path the script touches.
+ * PATH and `FLEET_HOME` relocates every path the script touches. The engine is
+ * where the bootstrap would have put it — `$FLEET_HOME/engines/<sha>` — and
+ * the assignment arrives the way the bootstrap hands it over, in
+ * `FLEET_ASSIGNMENT`.
  */
 
 import assert from 'node:assert/strict'
@@ -29,7 +32,7 @@ const PLAN_SHA = 'a1'.repeat(20)
 const BASE_SHA = 'b2'.repeat(20)
 const ENGINE_SHA = 'c3'.repeat(20)
 const TARGET = 'popmechanic/smoke'
-const VM_NAME = 'fleet-run-7'
+const VM_NAME = 'fleet-r7-2609032215-a1b2'
 const PR_URL = 'https://github.com/popmechanic/smoke/pull/1'
 const PLAN_H1 = 'Smoke: the fleet proves itself'
 const ASSIGNMENT =
@@ -60,19 +63,18 @@ case "$url" in
     say "curl email"; printf '{"email":"op@example.com"}\\n' ;;
   */comment)
     n=$(bump comment); say "curl comment $n"
-    if [ "$n" -lt 3 ]; then printf '{"comment":""}\\n'
-    else printf '{"comment":"%s"}\\n' "$STUB_COMMENT"; fi ;;
+    printf '{"comment":"%s"}\\n' "$STUB_COMMENT" ;;
   */integrations)
     n=$(bump integrations)
     if [ "$n" -le "\${STUB_RO_POLLS:-3}" ]; then
       say "curl integrations=ro"
       printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-ro"]\\n'
-    elif [ -n "\${STUB_RO_GONE:-}" ]; then
-      say "curl integrations=rw"
-      printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-rw"]\\n'
-    else
+    elif [ -n "\${STUB_RO_STAYS:-}" ]; then
       say "curl integrations=rw+ro"
       printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-ro","t-popmechanic-smoke-rw"]\\n'
+    else
+      say "curl integrations=rw"
+      printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-rw"]\\n'
     fi ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
@@ -106,18 +108,11 @@ case "$1" in
       "merge-base --is-ancestor") [ -n "\${STUB_PLAN_NOT_IN_HEAD:-}" ] && exit 1
                                   exit 0 ;;
     esac
-    # A commit is the moment the evidence becomes readable by the grant tool, so
-    # snapshot the status page exactly as it is committed.
-    # The engine checkout replaces the boot script at ITS OWN path — the golden's
-    # copy and the checkout's are one file on a sandbox.
-    case "$3" in
-      checkout) if [ -n "\${STUB_CHECKOUT_REPLACES_BOOT:-}" ] && [ "$2" = "$FLEET_HOME/repo" ]; then
-                  printf '#!/bin/bash\nprintf "REEXEC %%s\\n" "$1" >>"$FLEET_HOME/fleet-boot.log"\nexit 0\n' >"$FLEET_HOME/repo/fleet/sandbox-boot.sh"
-                fi ;;
-    esac
     case "$3" in
       rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
     esac
+    # A commit is the moment the evidence becomes readable by the grant tool, so
+    # snapshot the status page exactly as it is committed.
     case "$3" in
       commit) [ -f "$2/runs/7/status.json" ] && cat "$2/runs/7/status.json" >>"$FLEET_HOME/commits.log" ;;
     esac ;;
@@ -129,11 +124,17 @@ argv "gh" "$@"
 say "gh $1 $2 GH_HOST=\${GH_HOST:-unset}"
 printf '%s\\n' "$STUB_PR_URL"
 `,
-  // The engine. Records its argv AND its own environment — the environment it
-  // records is the BOOT SCRIPT'S, because the child's two Anthropic variables
-  // ride in this stub's argv (an `env` prefix), not in its environment.
+  // Two transient services. The status server is started and forgotten; the
+  // engine is run to completion. The engine stub records its own environment —
+  // which is the BOOT SCRIPT'S, because the child's two Anthropic variables
+  // ride in this stub's argv (an \`env\` prefix), not in its environment.
   'systemd-run': `
 argv "systemd-run" "$@"
+unit=""
+for a in "$@"; do case "$a" in --unit=*) unit="\${a#--unit=}" ;; esac; done
+case "$unit" in
+  fleet-status) say "systemd-run status"; exit 0 ;;
+esac
 env >"$FLEET_HOME/systemd-run.env"
 say "systemd-run engine"
 run_dir="$FLEET_HOME/target/.claude/ultrapowers/run-run-7"
@@ -154,15 +155,18 @@ exit \${STUB_ENGINE_CODE:-0}
   systemctl: `
 argv "systemctl" "$@"
 say "systemctl $2 $3"
-[ "$2" = "is-active" ] && printf 'inactive\\n'
-exit 0
-`,
-  busybox: `
-say "busybox $1"
+if [ "$2" = "is-active" ]; then
+  case "$3" in
+    fleet-status.service) printf '%s\\n' "\${STUB_STATUS_ACTIVE:-inactive}" ;;
+    fleet-engine-*) printf '%s\\n' "\${STUB_ENGINE_ACTIVE:-inactive}" ;;
+    *) printf 'inactive\\n' ;;
+  esac
+fi
 exit 0
 `,
   npm: `
 argv "npm" "$@"
+say "npm $1 in $PWD"
 exit 0
 `,
   claude: `
@@ -170,6 +174,12 @@ say "claude $1 $2"
 printf 'authMethod: %s\\napiProvider: firstParty\\n' "\${STUB_AUTH:-oauth_token}"
 exit 0
 `,
+  // Never called directly by the boot script: busybox and node are argv to
+  // systemd-run, and loginctl is the golden's. A CALL line from any of them is
+  // a finding.
+  busybox: `say "busybox DIRECT $*"; exit 0`,
+  node: `say "node DIRECT $*"; exit 0`,
+  loginctl: `say "loginctl DIRECT $*"; exit 0`,
 }
 
 const PRELUDE = `#!/bin/sh
@@ -182,7 +192,7 @@ argv() { name="$1"; shift; { for a in "$name" "$@"; do printf '%s\\t' "$a"; done
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sandbox-boot-'))
 let caseNo = 0
 
-function makeHome(extraEnv = {}) {
+function makeHome({ packageJson = '{"name":"fleet"}', nodeModules = true } = {}) {
   caseNo += 1
   const home = path.join(tmpRoot, `home-${caseNo}`)
   const bin = path.join(home, 'bin')
@@ -193,14 +203,17 @@ function makeHome(extraEnv = {}) {
     fs.writeFileSync(file, PRELUDE + body)
     fs.chmodSync(file, 0o755)
   }
-  // The golden pre-clones the engine and warms its deps.
-  fs.mkdirSync(path.join(home, 'repo', '.git'), { recursive: true })
-  fs.mkdirSync(path.join(home, 'repo', 'fleet', 'node_modules'), { recursive: true })
-  return { home, bin, extraEnv }
+  // The bootstrap's clone, at the sha the assignment names.
+  const engine = path.join(home, 'engines', ENGINE_SHA, 'fleet')
+  fs.mkdirSync(engine, { recursive: true })
+  fs.writeFileSync(path.join(engine, 'run-main.mjs'), '')
+  fs.writeFileSync(path.join(engine, 'package.json'), packageJson)
+  if (nodeModules) fs.mkdirSync(path.join(engine, 'node_modules'))
+  return { home, bin }
 }
 
-function boot(ctx, args = ['boot'], env = {}, script = SCRIPT) {
-  const r = spawnSync('bash', [script, ...args], {
+function boot(ctx, args = ['boot'], env = {}) {
+  return spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
     env: {
       PATH: process.env.PATH,
@@ -209,6 +222,7 @@ function boot(ctx, args = ['boot'], env = {}, script = SCRIPT) {
       FLEET_BIN_DIR: ctx.bin,
       FLEET_POLL_SECONDS: '0',
       FLEET_STATUS_INTERVAL: '30',
+      FLEET_ASSIGNMENT: ASSIGNMENT,
       // In the boot script's OWN environment, to prove the child's `env -u`
       // removes it and that the two Anthropic variables are never here.
       CLAUDE_CONFIG_DIR: '/should/be/unset/in/the/child',
@@ -217,12 +231,10 @@ function boot(ctx, args = ['boot'], env = {}, script = SCRIPT) {
       STUB_VERDICT: 'PASS',
       STUB_PR_URL: PR_URL,
       STUB_PLAN_H1: PLAN_H1,
-      ...ctx.extraEnv,
       ...env,
     },
     timeout: 60000,
   })
-  return r
 }
 
 const readLog = (ctx, name) => {
@@ -249,6 +261,10 @@ const lastIndexOf = (ctx, needle) => {
   return -1
 }
 const notifies = (ctx) => lines(readLog(ctx, 'notify.log')).map((l) => JSON.parse(l))
+const committed = (ctx) => lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
+const unitsRun = (ctx) => argvLines(ctx, 'systemd-run').map((a) => a.find((s) => s.startsWith('--unit='))?.slice(7))
+const engineRuns = (ctx) => unitsRun(ctx).filter((u) => u === 'fleet-engine-7').length
+const directCalls = (ctx) => stream(ctx).filter((l) => l.includes(' DIRECT '))
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
@@ -266,6 +282,10 @@ const green = () => {
   return GREEN
 }
 
+test('the boot script parses', () => {
+  assert.equal(spawnSync('bash', ['-n', SCRIPT]).status, 0)
+})
+
 // ── 1. the whole green path ──────────────────────────────────────────────────
 
 test('a gate-green run walks booting → running → awaiting-grant → publishing → done', () => {
@@ -279,6 +299,7 @@ test('a gate-green run walks booting → running → awaiting-grant → publishi
   assert.equal(status.run, '7')
   assert.equal(status.state, 'done')
   assert.equal(status.branch, 'ultra/integration-run-7')
+  assert.equal(status.vm, VM_NAME, 'the page names the VM incarnation, read from Reflection')
   assert.equal(status.pr, PR_URL)
   assert.equal(status.error, null)
   assert.match(status.startedAt, /^\d{4}-\d{2}-\d{2}T/)
@@ -288,12 +309,38 @@ test('a gate-green run walks booting → running → awaiting-grant → publishi
   // the engine runs — the last `engine:phase` line, not a guess.
   assert.ok(stream(ctx).some((l) => l === 'status: state=running phase=gate'),
     'expected a phase refresh from events.jsonl:\n' + stream(ctx).join('\n'))
-
-  // The status page reaches the operator over busybox, started once.
-  assert.deepEqual(stream(ctx).filter((l) => l.startsWith('CALL busybox')), ['CALL busybox httpd'])
+  assert.deepEqual(directCalls(ctx), [], 'busybox, node and loginctl are never run by this script')
 })
 
-test('the comment is parsed into the clone and checkout argv, target at base and engine at sha', () => {
+test('the status page is its own transient service, started once, before anything else', () => {
+  const ctx = green()
+  const H = ctx.home
+  const status = argvLines(ctx, 'systemd-run').filter((a) => a.includes('--unit=fleet-status'))
+  assert.equal(status.length, 1)
+  assert.deepEqual(status[0], [
+    'systemd-run', '--user', '--unit=fleet-status', '-p', 'Restart=on-failure', '--',
+    'busybox', 'httpd', '-f', '-p', '8000', '-h', `${H}/www`,
+  ])
+  assert.ok(indexOf(ctx, 'CALL systemd-run status') < indexOf(ctx, 'status: state=booting'))
+  // Asked first, so a restart never starts a second server on the port.
+  assert.ok(argvLines(ctx, 'systemctl').some((a) => a.join(' ') === 'systemctl --user is-active fleet-status.service'))
+})
+
+test('a status server that is already active is not started again', () => {
+  const ctx = makeHome()
+  assert.equal(boot(ctx, ['boot'], { STUB_STATUS_ACTIVE: 'active' }).status, 0)
+  assert.deepEqual(unitsRun(ctx), ['fleet-engine-7'], 'only the engine is started')
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('fleet-status.service already active'))
+})
+
+test('the assignment comes from FLEET_ASSIGNMENT; Reflection is asked only for the name', () => {
+  const ctx = green()
+  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl comment')).length, 0,
+    'the bootstrap already read the comment; this script does not read it again')
+  assert.ok(indexOf(ctx, 'CALL curl name') >= 0)
+})
+
+test('the clones are fleet-runs first, then the target at base — the engine is never cloned', () => {
   const ctx = green()
   const git = argvLines(ctx, 'git')
   const H = ctx.home
@@ -307,8 +354,10 @@ test('the comment is parsed into the clone and checkout argv, target at base and
   assert.deepEqual(git[4], ['git', 'clone',
     `https://github.int.exe.xyz/${TARGET}.git`, `${H}/target`])
   assert.deepEqual(git[5], ['git', '-C', `${H}/target`, 'checkout', BASE_SHA])
-  assert.deepEqual(git[6], ['git', '-C', `${H}/repo`, 'fetch', 'origin', ENGINE_SHA])
-  assert.deepEqual(git[7], ['git', '-C', `${H}/repo`, 'checkout', ENGINE_SHA])
+
+  // The engine is the bootstrap's: no git command names it.
+  assert.deepEqual(git.filter((a) => a.join(' ').includes('/engines/')), [])
+  assert.deepEqual(git.filter((a) => a.join(' ').includes('ultrapowers.git')), [])
 
   // HEAD already contained the plan commit, so nothing moved HEAD — the plan
   // file is pinned by the path-scoped checkout alone.
@@ -320,29 +369,25 @@ test('the comment is parsed into the clone and checkout argv, target at base and
     git.filter((a) => a.join(' ').includes('ultra/integration-run-7')).map((a) => a[3]),
     ['rev-list', 'push'],
     'the run branch is only counted against base and pushed — never created or switched to')
-
-  // The comment is read until it carries an assignment — three polls here.
-  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl comment')).length, 3)
-  // The VM reads its own name.
-  assert.ok(indexOf(ctx, 'CALL curl name') >= 0)
 })
 
-test('the engine argv is the contract, and only the child env carries the Anthropic pair', () => {
+test('the engine is a transient service with the contract argv; only its child env carries the Anthropic pair', () => {
   const ctx = green()
   const H = ctx.home
-  const engine = argvLines(ctx, 'systemd-run')
+  const engine = argvLines(ctx, 'systemd-run').filter((a) => a.includes('--unit=fleet-engine-7'))
   assert.equal(engine.length, 1)
   assert.deepEqual(engine[0], [
-    'systemd-run', '--user', '--scope', '--unit=fleet-engine-7',
-    '-p', 'MemoryMax=40G', '-p', 'MemorySwapMax=0',
+    'systemd-run', '--user', '--unit=fleet-engine-7', '--pipe', '--wait', '--collect',
+    '-p', 'MemoryMax=40G', '-p', 'MemorySwapMax=0', '-p', `WorkingDirectory=${H}/target`, '--',
     'env', '-u', 'CLAUDE_CONFIG_DIR',
     'ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz',
     'CLAUDE_CODE_OAUTH_TOKEN=placeholder',
     'ULTRAPOWERS_FLEET_RUN=run-7',
-    'node', `${H}/repo/fleet/run-main.mjs`,
+    'node', `${H}/engines/${ENGINE_SHA}/fleet/run-main.mjs`,
     `${H}/fleet-runs/plans/run-7.md`, 'run-7', '--repo', `${H}/target`,
-    '--overlap', 'fold', '--tier', 'mostCapable',
+    '--tier', 'mostCapable', '--overlap', 'fold',
   ])
+  assert.equal(argvLines(ctx, 'systemd-run').filter((a) => a.includes('--scope')).length, 0, 'never a scope')
 
   // The environment the engine's launcher inherited — i.e. the boot script's —
   // carries neither variable. The golden holds no ANTHROPIC_* and neither does
@@ -358,20 +403,39 @@ test('the engine argv is the contract, and only the child env carries the Anthro
   assert.ok(indexOf(ctx, 'CALL claude auth status') >= 0)
   assert.ok(indexOf(ctx, 'CALL claude auth status') < indexOf(ctx, 'CALL systemd-run engine'))
   assert.ok(readLog(ctx, 'fleet-boot.log').includes('claude auth status: authMethod: oauth_token'))
-
-  // The engine waits for its subscription grant.
-  assert.ok(indexOf(ctx, 'CALL curl integrations') < indexOf(ctx, 'CALL systemd-run engine'))
+  assert.equal(readLog(ctx, 'npm.log'), '', 'node_modules present: nothing to install')
 })
 
-test('awaiting-grant is claimed only after systemd reports the engine scope inactive', () => {
+test('missing deps are installed in the engine checkout when its package.json declares any', () => {
+  const ctx = makeHome({ packageJson: '{"dependencies":{"ws":"8"}}', nodeModules: false })
+  assert.equal(boot(ctx).status, 0)
+  assert.deepEqual(argvLines(ctx, 'npm'), [['npm', 'install', '--no-audit', '--no-fund']],
+    'no lockfile in the tree, so install rather than ci')
+  assert.ok(stream(ctx).some((l) => l === `CALL npm install in ${ctx.home}/engines/${ENGINE_SHA}/fleet`))
+  assert.ok(indexOf(ctx, 'CALL npm install') < indexOf(ctx, 'CALL systemd-run engine'))
+})
+
+test('an engine checkout the bootstrap did not leave fails the run before anything runs', () => {
+  const ctx = makeHome()
+  fs.rmSync(path.join(ctx.home, 'engines'), { recursive: true })
+  const r = boot(ctx)
+  assert.notEqual(r.status, 0)
+  assert.equal(statusOf(ctx).state, 'failed')
+  assert.match(statusOf(ctx).error, /no fleet\/run-main\.mjs/)
+  assert.equal(engineRuns(ctx), 0)
+  assert.equal(committed(ctx)[0].state, 'failed', 'recorded in fleet-runs, which was cloned first')
+})
+
+test('awaiting-grant is claimed only after systemd reports the engine service inactive', () => {
   const ctx = green()
-  const scope = indexOf(ctx, 'CALL systemctl is-active')
+  const check = indexOf(ctx, 'CALL systemctl is-active fleet-engine-7.service')
   const claim = indexOf(ctx, 'status: state=awaiting-grant')
-  assert.ok(scope >= 0, 'the scope must be checked')
+  assert.ok(check >= 0, 'the service must be checked')
   assert.ok(claim >= 0)
-  assert.ok(scope < claim, 'the empty-scope check precedes the awaiting-grant claim')
-  assert.deepEqual(argvLines(ctx, 'systemctl')[0],
-    ['systemctl', '--user', 'is-active', 'fleet-engine-7.scope'])
+  assert.ok(check < claim, 'the inactive check precedes the awaiting-grant claim')
+  assert.ok(argvLines(ctx, 'systemctl').some((a) =>
+    a.join(' ') === 'systemctl --user is-active fleet-engine-7.service'))
+  assert.equal(argvLines(ctx, 'systemctl').filter((a) => a.join(' ').includes('.scope')).length, 0)
 })
 
 test('the push and the PR happen only after the rw grant appears', () => {
@@ -400,51 +464,31 @@ test('the push and the PR happen only after the rw grant appears', () => {
   const body = fs.readFileSync(path.join(H, 'fleet-runs', 'runs', '7', 'pr-body.md'), 'utf8')
   assert.ok(body.includes('PASS'), 'the card carries the verdict')
   assert.ok(body.includes('### Checks'), 'the card carries the checks')
+  assert.ok(body.includes(VM_NAME), 'the card names the VM')
   assert.ok(body.includes('https://github.com/popmechanic/fleet-runs/tree/main/runs/7/'),
     'the card links the evidence')
 })
 
-test('a ro grant that rides tag:fleet does not hold the write grant hostage', () => {
-  // The `-ro` integration is attached to the tag, and a tag attachment cannot be
-  // detached from one VM — so `-ro` is still listed when `-rw` arrives. Waiting
-  // for it to disappear would wait forever.
+test('readiness is the rw grant alone — a ro grant still listed does not hold it', () => {
   const ctx = makeHome()
-  assert.equal(boot(ctx).status, 0)
+  assert.equal(boot(ctx, ['boot'], { STUB_RO_STAYS: '1' }).status, 0)
   assert.ok(indexOf(ctx, 'CALL curl integrations=rw+ro') >= 0,
     'the fixture must answer with BOTH grants listed')
   assert.equal(argvLines(ctx, 'gh').length, 1, 'the PR is opened anyway')
-  assert.ok(readLog(ctx, 'fleet-boot.log').includes("still listed — the tag's, not this VM's"))
-})
-
-test('a detached ro grant reads as detached', () => {
-  const ctx = makeHome()
-  assert.equal(boot(ctx, ['boot'], { STUB_RO_GONE: '1' }).status, 0)
-  assert.equal(argvLines(ctx, 'gh').length, 1)
-  assert.ok(readLog(ctx, 'fleet-boot.log')
-    .includes('t-popmechanic-smoke-rw attached, t-popmechanic-smoke-ro detached'))
 })
 
 test('the status page the grant tool reads is committed at awaiting-grant and again at done', () => {
   // `fleet/grant.mjs` pulls fleet-runs and requires `runs/<N>/status.json` to
   // say `awaiting-grant`; it never reads the HTTPS page. So the page must be in
   // the commit made the moment that state is claimed.
-  const ctx = makeHome()
-  assert.equal(boot(ctx).status, 0)
-  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
-  assert.ok(committed.length >= 2, 'at least the awaiting-grant and the done commits')
-  assert.equal(committed[0].state, 'awaiting-grant')
-  assert.equal(committed[0].pr, null)
-  assert.equal(committed[committed.length - 1].state, 'done')
-  assert.equal(committed[committed.length - 1].pr, PR_URL)
-})
-
-test('a failed engine commits a status page that says failed, not running', () => {
-  const ctx = makeHome()
-  assert.notEqual(boot(ctx, ['boot'], { STUB_ENGINE_CODE: '9' }).status, 0)
-  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
-  assert.equal(committed.length, 1)
-  assert.equal(committed[0].state, 'failed')
-  assert.match(committed[0].error, /^engine exited 9\n/)
+  const ctx = green()
+  const c = committed(ctx)
+  assert.ok(c.length >= 2, 'at least the awaiting-grant and the done commits')
+  assert.equal(c[0].state, 'awaiting-grant')
+  assert.equal(c[0].pr, null)
+  assert.equal(c[0].vm, VM_NAME)
+  assert.equal(c[c.length - 1].state, 'done')
+  assert.equal(c[c.length - 1].pr, PR_URL)
 })
 
 test('a write grant that never arrives parks the run and commits that too', () => {
@@ -455,15 +499,14 @@ test('a write grant that never arrives parks the run and commits that too', () =
   assert.equal(status.state, 'parked')
   assert.match(status.error, /^grant: no t-popmechanic-smoke-rw within 3s$/)
   assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR without the grant')
-  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
-  assert.equal(committed[committed.length - 1].state, 'parked')
+  assert.equal(committed(ctx)[committed(ctx).length - 1].state, 'parked')
 })
 
 test('the evidence lands in fleet-runs and is committed and pushed', () => {
   const ctx = green()
   const H = ctx.home
   const dir = path.join(H, 'fleet-runs', 'runs', '7')
-  for (const f of ['gate-receipt.json', 'report.json', 'events.jsonl', 'receipt.json', 'status.json']) {
+  for (const f of ['gate-receipt.json', 'report.json', 'events.jsonl', 'receipt.json', 'status.json', 'engine.log']) {
     assert.ok(fs.existsSync(path.join(dir, f)), `runs/7/${f} must be collected`)
   }
   assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'gate-receipt.json'), 'utf8')).verdict, 'PASS')
@@ -487,7 +530,7 @@ test('the notifications name the run, the outcome, the target and the PR', () =>
   ])
 })
 
-// ── 2. a parked run ──────────────────────────────────────────────────────────
+// ── 2. parked runs ───────────────────────────────────────────────────────────
 
 test('a non-PASS gate receipt parks the run and opens a draft PR', () => {
   const ctx = makeHome()
@@ -508,29 +551,84 @@ test('a non-PASS gate receipt parks the run and opens a draft PR', () => {
   ])
 })
 
+test('a run with nothing ahead of base is parked before any grant wait — no push, no PR', () => {
+  // run-69: every task blocked, branch == BASE, GitHub refuses an empty PR —
+  // and the operator was asked to approve a write that had nothing to write.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+
+  assert.deepEqual(states(ctx), ['booting', 'running', 'parked'], 'never awaiting-grant')
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'parked')
+  assert.equal(status.pr, null)
+  assert.match(status.error, /no commits ahead of base \(verdict NEEDS_ACK\)/)
+  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length, 0,
+    'the write grant is never polled')
+  assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR is attempted')
+  assert.equal(argvLines(ctx, 'git').filter((a) => a[3] === 'push' && a[2] === `${ctx.home}/target`).length, 0,
+    'the empty branch is not pushed')
+  // The verdict was still read after the engine was seen to be inactive.
+  assert.ok(indexOf(ctx, 'CALL systemctl is-active fleet-engine-7.service') < indexOf(ctx, 'status: state=parked'))
+  const c = committed(ctx)
+  assert.equal(c.length, 1)
+  assert.equal(c[0].state, 'parked')
+  assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'gate-receipt.json')),
+    'the evidence is committed even with nothing to publish')
+  assert.deepEqual(notifies(ctx), [{ title: 'run-7 parked', message: `${TARGET} — nothing ahead of base` }])
+})
+
+test('an engine exit of 1 with a gate receipt is a verdict, not a failure', () => {
+  // run-main exits 1 on gate-blocked; the receipt is its terminal artifact.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_VERDICT: 'NEEDS_ACK' })
+  assert.notEqual(statusOf(ctx).state, 'failed', r.stdout + r.stderr)
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('a verdict, not a crash'))
+})
+
 // ── 3. refusals ──────────────────────────────────────────────────────────────
 
-test('a malformed comment fails the run and clones nothing', () => {
+test('a malformed assignment fails the run and clones nothing', () => {
   const ctx = makeHome()
   const bad = `run=7 plan=not-a-sha target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA}`
-  const r = boot(ctx, ['boot'], { STUB_COMMENT: bad })
+  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: bad })
   assert.notEqual(r.status, 0, 'a malformed assignment must exit non-zero')
 
   const status = statusOf(ctx)
   assert.equal(status.state, 'failed')
   assert.match(status.error, /plan is not a 40-hex sha/)
   assert.equal(readLog(ctx, 'git.log'), '', 'nothing is cloned on a refused assignment')
-  assert.equal(readLog(ctx, 'systemd-run.log'), '', 'no engine on a refused assignment')
+  assert.equal(engineRuns(ctx), 0, 'no engine on a refused assignment')
   assert.equal(notifies(ctx).length, 1)
   assert.equal(notifies(ctx)[0].title, 'run-7 failed')
 })
 
-test('an unknown key in the comment fails the run', () => {
+test('an unknown key in the assignment fails the run', () => {
   const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { STUB_COMMENT: `${ASSIGNMENT} sudo=yes` })
+  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: `${ASSIGNMENT} sudo=yes` })
   assert.notEqual(r.status, 0)
   assert.match(statusOf(ctx).error, /unknown key 'sudo'/)
   assert.equal(readLog(ctx, 'git.log'), '')
+})
+
+test('without FLEET_ASSIGNMENT the comment is read from Reflection exactly once', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: '' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl comment')).length, 1)
+  assert.equal(statusOf(ctx).state, 'done')
+})
+
+test('without FLEET_ASSIGNMENT and with an empty comment the run fails at once — no polling', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { FLEET_ASSIGNMENT: '', STUB_COMMENT: '' })
+  assert.notEqual(r.status, 0)
+  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl comment')).length, 1,
+    'one read; an empty comment is a launcher bug, not something to wait out')
+  assert.equal(statusOf(ctx).state, 'failed')
+  assert.match(statusOf(ctx).error, /no run= comment/)
+  assert.equal(readLog(ctx, 'git.log'), '')
+  assert.equal(engineRuns(ctx), 0)
 })
 
 test('an api_key auth status stops the run before the engine spends a credit', () => {
@@ -539,7 +637,7 @@ test('an api_key auth status stops the run before the engine spends a credit', (
   assert.notEqual(r.status, 0)
   assert.equal(statusOf(ctx).state, 'failed')
   assert.match(statusOf(ctx).error, /api_key/)
-  assert.equal(readLog(ctx, 'systemd-run.log'), '', 'the engine never starts on an api_key')
+  assert.equal(engineRuns(ctx), 0, 'the engine never starts on an api_key')
 })
 
 test('a non-zero engine exit fails the run, after the receipts are committed', () => {
@@ -551,6 +649,9 @@ test('a non-zero engine exit fails the run, after the receipts are committed', (
   assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'gate-receipt.json')),
     'the evidence of a failed run is still committed')
   assert.equal(argvLines(ctx, 'gh').length, 0, 'a failed engine opens no PR')
+  const c = committed(ctx)
+  assert.equal(c.length, 1)
+  assert.equal(c[0].state, 'failed', 'the committed page says failed, not running')
   assert.deepEqual(notifies(ctx), [
     { title: 'run-7 failed', message: `${TARGET} — engine exited 9` },
   ])
@@ -597,8 +698,7 @@ test("the engine's output is served, logged, and quoted in the error", () => {
   // …and it rides to fleet-runs as evidence, which is the only artifact a run
   // that never reached its gate produces.
   assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'engine.log')))
-  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
-  assert.equal(committed[committed.length - 1].state, 'failed')
+  assert.equal(committed(ctx)[committed(ctx).length - 1].state, 'failed')
 })
 
 // ── 6. failing before the clones ─────────────────────────────────────────────
@@ -612,10 +712,10 @@ test('a failure before the target clone still lands in fleet-runs', () => {
 
   const dir = path.join(ctx.home, 'fleet-runs', 'runs', '7')
   assert.ok(fs.existsSync(path.join(dir, 'status.json')), 'runs/7/ exists even this early')
-  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
-  assert.equal(committed.length, 1)
-  assert.equal(committed[0].state, 'failed')
-  assert.equal(argvLines(ctx, 'systemd-run').length, 0, 'the engine never started')
+  const c = committed(ctx)
+  assert.equal(c.length, 1)
+  assert.equal(c[0].state, 'failed')
+  assert.equal(engineRuns(ctx), 0, 'the engine never started')
 })
 
 // ── 7. re-entry ──────────────────────────────────────────────────────────────
@@ -625,18 +725,27 @@ test('a run that failed after its engine ran is not restarted', () => {
   assert.notEqual(boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_NO_RECEIPT: '1' }).status, 0)
   const gitBefore = argvLines(ctx, 'git').length
 
-  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
   const again = boot(ctx)
-  assert.equal(again.status, 0, 'exit 0, so Restart=on-failure lets it rest')
-  assert.ok(readLog(ctx, 'fleet-boot.log').includes('leaving it for the janitor'))
-  assert.equal(argvLines(ctx, 'systemd-run').length, 1, 'the engine is not re-run')
+  assert.equal(again.status, 0, 'exit 0: finished, whatever it finished as')
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('already failed — leaving it for the janitor'))
+  assert.equal(engineRuns(ctx), 1, 'the engine is not re-run')
   assert.equal(argvLines(ctx, 'git').length, gitBefore, 'and nothing is re-cloned')
+})
+
+test('a run parked with nothing to publish is not restarted either', () => {
+  const ctx = makeHome()
+  assert.equal(boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1' }).status, 0)
+  const gitBefore = argvLines(ctx, 'git').length
+  const again = boot(ctx)
+  assert.equal(again.status, 0)
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('already parked — leaving it for the janitor'))
+  assert.equal(engineRuns(ctx), 1)
+  assert.equal(argvLines(ctx, 'git').length, gitBefore)
 })
 
 test('a fleet-runs clone whose HEAD has moved past the plan is not checked out over', () => {
   const ctx = makeHome()
   assert.equal(boot(ctx).status, 0)
-  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
   // The crash shape run-66 hit: evidence committed, HEAD advanced, unit restarts.
   fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'),
     JSON.stringify({ ...statusOf(ctx), state: 'running' }))
@@ -657,56 +766,9 @@ test('a clone that is behind the plan commit is detached onto it', () => {
     a.join(' ') === `git -C ${H}/fleet-runs checkout --detach ${PLAN_SHA}`))
 })
 
-test('a newer boot script in the engine checkout takes over, in the mode it was started in', () => {
-  const ctx = makeHome()
-  const successor = path.join(ctx.home, 'repo', 'fleet', 'sandbox-boot.sh')
-  fs.mkdirSync(path.dirname(successor), { recursive: true })
-  fs.writeFileSync(successor,
-    '#!/bin/bash\nprintf "REEXEC %s\\n" "$1" >>"$FLEET_HOME/fleet-boot.log"\nexit 0\n')
-  fs.chmodSync(successor, 0o755)
-
-  assert.equal(boot(ctx).status, 0)
-  assert.ok(readLog(ctx, 'fleet-boot.log').includes('REEXEC boot'),
-    'the mode survives the re-exec')
-  assert.equal(argvLines(ctx, 'systemd-run').length, 0,
-    'the superseded script runs no engine of its own')
-})
-
-
-test('a boot script replaced at its own path by the engine checkout still hands over', () => {
-  // run-68: `$0` and the checkout were the same file, so a path-vs-path
-  // comparison after the checkout saw only the new bytes and never fired,
-  // while bash kept executing the old inode.
-  const ctx = makeHome()
-  const self = path.join(ctx.home, 'repo', 'fleet', 'sandbox-boot.sh')
-  fs.copyFileSync(SCRIPT, self)
-  fs.chmodSync(self, 0o755)
-  assert.equal(boot(ctx, ['boot'], { STUB_CHECKOUT_REPLACES_BOOT: '1' }, self).status, 0)
-  assert.ok(readLog(ctx, 'fleet-boot.log').includes('REEXEC boot'), 'the new bytes take over')
-  assert.equal(argvLines(ctx, 'systemd-run').length, 0, 'the superseded script runs no engine')
-})
-
-test('an engine exit of 1 with a gate receipt is a verdict, not a failure', () => {
-  // run-main exits 1 on gate-blocked; the receipt is its terminal artifact.
-  const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_VERDICT: 'NEEDS_ACK' })
-  assert.notEqual(statusOf(ctx).state, 'failed', r.stdout + r.stderr)
-  assert.ok(readLog(ctx, 'fleet-boot.log').includes('a verdict, not a crash'))
-})
-
-test('a parked run with no commits ahead of base is parked without a PR', () => {
-  // run-69: every task blocked, branch == BASE, GitHub refuses an empty PR.
-  const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1', STUB_RO_GONE: '1' })
-  assert.equal(statusOf(ctx).state, 'parked', r.stdout + r.stderr)
-  assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR is attempted')
-  assert.equal(argvLines(ctx, 'git').filter((a) => a[3] === 'push' && a[2] === `${ctx.home}/target`).length, 0,
-    'the empty branch is not pushed')
-})
-
 test('re-entering after a finished engine re-runs neither the engine nor the PR', () => {
   const ctx = green()
-  assert.equal(argvLines(ctx, 'systemd-run').length, 1)
+  assert.equal(engineRuns(ctx), 1)
   assert.equal(argvLines(ctx, 'gh').length, 1)
 
   // The unit restarted after the run had finished but before the page said so:
@@ -714,44 +776,45 @@ test('re-entering after a finished engine re-runs neither the engine nor the PR'
   const statusFile = path.join(ctx.home, 'www', 'status.json')
   const crashed = { ...statusOf(ctx), state: 'running' }
   fs.writeFileSync(statusFile, JSON.stringify(crashed))
-  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
 
   const again = boot(ctx)
   assert.equal(again.status, 0, again.stdout + again.stderr)
-  assert.equal(argvLines(ctx, 'systemd-run').length, 1, 'the engine is not re-run')
+  assert.equal(engineRuns(ctx), 1, 'the engine is not re-run')
   assert.equal(argvLines(ctx, 'gh').length, 1, 'a second PR is never opened')
   assert.equal(argvLines(ctx, 'git').filter((a) => a[1] === 'clone').length, 2,
     'existing clones are not re-cloned')
   assert.equal(statusOf(ctx).state, 'done')
+  assert.equal(statusOf(ctx).vm, VM_NAME, 'the VM name survives a re-entry')
 })
 
 test('re-entering a run that already reached done does nothing at all', () => {
   const ctx = green()
   const before = argvLines(ctx, 'git').length
-  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
   const again = boot(ctx)
   assert.equal(again.status, 0)
   assert.equal(argvLines(ctx, 'git').length, before, 'a done run issues no further git')
-  assert.equal(argvLines(ctx, 'systemd-run').length, 1)
+  assert.equal(engineRuns(ctx), 1)
 })
 
-// ── 6. the deadman ───────────────────────────────────────────────────────────
+// ── 8. the deadman ───────────────────────────────────────────────────────────
 
-test('the deadman parks a run that never reached done, and stops the scope', () => {
+test('the deadman parks a run stuck in running and stops the engine service', () => {
   const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '9' })
-  assert.notEqual(r.status, 0)
+  assert.equal(boot(ctx).status, 0)
+  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'),
+    JSON.stringify({ ...statusOf(ctx), state: 'running', pr: null }))
 
-  const dead = boot(ctx, ['deadman'])
+  const dead = boot(ctx, ['deadman'], { STUB_ENGINE_ACTIVE: 'active' })
   assert.equal(dead.status, 0, dead.stdout + dead.stderr)
   const status = statusOf(ctx)
   assert.equal(status.state, 'parked')
-  assert.equal(status.error, 'deadman: 6h without done')
+  assert.match(status.error, /^deadman: /)
   assert.equal(status.run, '7')
+  assert.equal(status.vm, VM_NAME)
   const notes = notifies(ctx)
-  assert.deepEqual(notes[notes.length - 1],
-    { title: 'run-7 parked', message: 'deadman: 6h without done' })
-  assert.ok(argvLines(ctx, 'systemctl').some((a) => a[2] === 'is-active'))
+  assert.equal(notes[notes.length - 1].title, 'run-7 parked')
+  assert.ok(argvLines(ctx, 'systemctl').some((a) =>
+    a.join(' ') === 'systemctl --user stop fleet-engine-7.service'), 'the service, not a scope')
 })
 
 test('the deadman leaves a finished run alone', () => {
@@ -761,6 +824,7 @@ test('the deadman leaves a finished run alone', () => {
   assert.equal(dead.status, 0)
   assert.equal(statusOf(ctx).state, 'done')
   assert.equal(notifies(ctx).length, notesBefore, 'no notification for a done run')
+  assert.equal(argvLines(ctx, 'systemctl').filter((a) => a[2] === 'stop').length, 0)
 })
 
 // ── run ──────────────────────────────────────────────────────────────────────

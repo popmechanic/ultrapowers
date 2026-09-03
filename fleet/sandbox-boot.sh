@@ -1,36 +1,34 @@
 #!/usr/bin/env bash
 #
-# fleet/sandbox-boot.sh — the whole sandbox side of a run.
+# fleet/sandbox-boot.sh — the sandbox side of a run, from the assignment to the PR.
 #
-# The golden boots INERT. This script is the run's only driver: it reads its own
-# name and its assignment from Reflection, clones what the run needs straight
-# from GitHub through exe.dev's edge-injected integrations, runs the engine under
-# a systemd scope with the Anthropic credentials in the ENGINE'S CHILD ENV ONLY,
-# serves its own status page, commits receipts to `fleet-runs`, waits for the
-# operator's write grant, pushes the run branch and opens its own PR.
+# The immutable bootstrap (`fleet/fleet-bootstrap.sh`, started by
+# fleet-run.service) reads the VM comment, clones this engine at the sha the
+# comment names, and execs this file with the assignment in FLEET_ASSIGNMENT.
+# From here: clone fleet-runs and the target through exe.dev's edge-injected
+# GitHub integrations, run the engine as a transient user SERVICE with the
+# Anthropic pair in the ENGINE'S CHILD ENV ONLY, serve the status page from a
+# service of its own, commit receipts to `fleet-runs` at every transition, and —
+# only when the branch has something to publish — wait for the operator's write
+# grant, push, and open the PR.
 #
-# There is no orchestrator, no control VM and no ssh into this box. The one-way
-# trust boundary is the VM `comment`: the tag-scoped key can WRITE it, this
-# script can only READ it. The comment is the assignment AND the start signal.
+# No orchestrator, no control VM, no token on this box, and no waiting for an
+# assignment: the launcher writes the comment and attaches the grants BEFORE it
+# starts the unit. Amendment 10 holds: every git and gh command below is this
+# script's, never a model's, and the publish window opens only after systemd
+# says the engine service is inactive.
 #
-# Amendment 10 holds: every git and gh command below is run by this script, never
-# by an agent prompt, and the publish window opens only after the engine's scope
-# is empty.
-#
-# IDEMPOTENCE IS A REQUIREMENT, not a nicety: the unit is `Restart=on-failure`,
-# so every failure path here is also a re-entry point. Re-entering must not
-# re-clone a clone that exists and must never re-run an engine that finished —
-# the engine spends real subscription money and leaves a branch. The two markers
-# are the clones themselves and `$FLEET_HOME/.fleet-engine-done`.
+# IDEMPOTENCE IS A REQUIREMENT, not a nicety: this script can be started again
+# on the same box, and re-entering must not re-clone a clone that exists and
+# must never re-run an engine that finished — the engine spends real
+# subscription money and leaves a branch. The markers are the clones
+# themselves, `$FLEET_HOME/.fleet-engine-done`, and the status page.
 #
 # SEAMS. Every external program goes through a `fleet_*` wrapper and `PATH` is
 # prefixed with `$FLEET_BIN_DIR`, so `fleet/tests/test_sandbox_boot.mjs` drives
 # the whole state machine against stub binaries; `$FLEET_HOME` relocates every
 # path. Neither is set in production and both default to the real thing.
 set -euo pipefail
-
-# The bytes this process is running — see checkout_engine for why.
-SELF_SHA="$(sha256sum <"$0" | cut -c1-64)"
 
 # --- relocatable roots -------------------------------------------------------
 
@@ -50,7 +48,6 @@ export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 
 WWW_DIR="$FLEET_HOME/www"
 STATUS_FILE="$WWW_DIR/status.json"
-HTTPD_PID_FILE="$WWW_DIR/.httpd.pid"
 BOOT_LOG="$FLEET_HOME/fleet-boot.log"
 # The engine's combined output, IN THE SERVED DIRECTORY. run-66 exited 1 and the
 # only trace anywhere was "engine: exited 1"; the reason (`run-main:
@@ -60,8 +57,9 @@ BOOT_LOG="$FLEET_HOME/fleet-boot.log"
 ENGINE_LOG="$WWW_DIR/engine.log"
 FLEET_RUNS_DIR="$FLEET_HOME/fleet-runs"
 TARGET_DIR="$FLEET_HOME/target"
-ENGINE_REPO_DIR="$FLEET_HOME/repo"
 ENGINE_DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
+# Set once the assignment is parsed: the bootstrap's content-addressed clone.
+ENGINE_REPO_DIR=""
 
 # The literals. They are the contract; nothing here is configurable in
 # production because every one of them is also a name somewhere else.
@@ -69,7 +67,6 @@ REFLECTION_URL="https://reflection.int.exe.xyz"
 NOTIFY_URL="https://notify.int.exe.xyz/"
 GITHUB_INT_HOST="github.int.exe.xyz"
 FLEET_RUNS_REPO="popmechanic/fleet-runs"
-ENGINE_REPO_URL="https://github.com/popmechanic/ultrapowers.git"
 ANTHROPIC_PROXY_URL="https://claude-max.int.exe.xyz"
 FLEET_RUNS_BRANCH="${FLEET_RUNS_BRANCH:-main}"
 
@@ -77,14 +74,12 @@ FLEET_RUNS_BRANCH="${FLEET_RUNS_BRANCH:-main}"
 # whole state machine runs in a second.
 POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
-ASSIGNMENT_TIMEOUT="${FLEET_ASSIGNMENT_TIMEOUT:-21600}"   # 6 h — the deadman's window
-CLAUDE_GRANT_TIMEOUT="${FLEET_CLAUDE_GRANT_TIMEOUT:-600}" # 10 min
-WRITE_GRANT_TIMEOUT="${FLEET_WRITE_GRANT_TIMEOUT:-86400}" # 24 h
-SCOPE_TIMEOUT="${FLEET_SCOPE_TIMEOUT:-300}"               # 5 min for the scope to go inactive
+WRITE_GRANT_TIMEOUT="${FLEET_WRITE_GRANT_TIMEOUT:-86400}"   # 24 h
+ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 
 # Run identity, filled by `parse_assignment`. `RUN_N` is the bare number (the
-# `runs/<N>/` path and the VM name's tail); `RUN_ID` is `run-<N>` (the engine's
-# runId, its run dir and its branch).
+# `runs/<N>/` path); `RUN_ID` is `run-<N>` (the engine's runId, its run dir and
+# its branch).
 RUN_N=""
 RUN_ID=""
 PLAN_SHA=""
@@ -108,7 +103,6 @@ fleet_curl()       { curl "$@"; }
 fleet_git()        { git "$@"; }
 fleet_gh()         { GH_HOST="$GITHUB_INT_HOST" gh "$@"; }
 fleet_npm()        { npm "$@"; }
-fleet_busybox()    { busybox "$@"; }
 fleet_systemd_run(){ systemd-run "$@"; }
 fleet_systemctl()  { systemctl "$@"; }
 
@@ -133,7 +127,7 @@ json_field() { # $1 = field name; document on stdin -> the FIRST match, or ''
     sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
 }
 
-# A newline becomes `\n`, never nothing: `error` now carries the engine's last
+# A newline becomes `\n`, never nothing: `error` carries the engine's last
 # lines, and deleting the breaks would run twenty stack frames into one word.
 json_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
@@ -152,7 +146,8 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 #
 # One writer, written atomically, and every write is also a log line — which is
 # what makes the ORDER of states an observable fact rather than a screenshot of
-# the last one.
+# the last one. `vm` names this incarnation: the run id is durable, the VM name
+# is one copy of the golden that carried it.
 
 write_status() { # $1 = state, $2 = phase (optional, defaults to the current one)
   STATE="$1"
@@ -165,7 +160,7 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   :
   tmp="$STATUS_FILE.tmp.$$"
   cat >"$tmp" <<EOF
-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"branch":"$(json_escape "$BRANCH")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
+{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
 EOF
   mv "$tmp" "$STATUS_FILE"
   log "status: state=$STATE phase=$PHASE"
@@ -201,21 +196,24 @@ fail() { # $1 = error text
 
 # --- the status page's own server --------------------------------------------
 #
-# `-f` (foreground) plus `&` so the process is this script's child and dies with
-# the run — the unit that starts this script must therefore outlive it or use
-# KillMode=process if the janitor is to read `done` off the page.
+# Its own transient service, not this script's child: a child dies with the
+# unit that started it, and the page going dark the moment the run ends is
+# exactly what the janitor cannot work with. `Restart=on-failure` is the whole
+# supervision it needs. exe.dev proxies port 8000 at https://<vm>.exe.xyz/.
 
-start_httpd() {
+start_status_server() {
   mkdir -p "$WWW_DIR"
-  if [ -f "$HTTPD_PID_FILE" ] && kill -0 "$(cat "$HTTPD_PID_FILE" 2>/dev/null)" 2>/dev/null; then
-    log "httpd: already running"
-    return 0
+  case "$(fleet_systemctl --user is-active fleet-status.service 2>/dev/null || true)" in
+    active*) log "status server: fleet-status.service already active"; return 0 ;;
+  esac
+  # Not fatal: the record of a run is its fleet-runs commits, and a box whose
+  # page cannot be served still owes those.
+  if fleet_systemd_run --user --unit=fleet-status -p Restart=on-failure -- \
+      busybox httpd -f -p 8000 -h "$WWW_DIR" >>"$BOOT_LOG" 2>&1; then
+    log "status server: fleet-status.service serving $WWW_DIR on 8000"
+  else
+    log "status server: systemd-run fleet-status failed (continuing without a served page)"
   fi
-  # Its own stdio, not this script's: a background job that keeps the inherited
-  # pipes open outlives every reader of them.
-  fleet_busybox httpd -f -p 8000 -h "$WWW_DIR" >/dev/null 2>>"$BOOT_LOG" &
-  printf '%s\n' "$!" >"$HTTPD_PID_FILE"
-  log "httpd: started on 8000 serving $WWW_DIR"
 }
 
 # --- polling -----------------------------------------------------------------
@@ -238,18 +236,15 @@ read_identity() {
   log "reflection: name=${VM_NAME:-<unknown>}"
 }
 
-await_comment() {
-  local attempts n=0 comment=""
-  attempts="$(poll_attempts "$ASSIGNMENT_TIMEOUT")"
-  while [ "$n" -lt "$attempts" ]; do
-    comment="$(fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true)"
-    case "$comment" in
-      run=*) printf '%s\n' "$comment"; return 0 ;;
-    esac
-    n=$(( n + 1 ))
-    sleep "$POLL_SECONDS"
-  done
-  return 1
+# The bootstrap hands the comment over in FLEET_ASSIGNMENT. Started by hand
+# instead, this reads it ONCE — no waiting: the launcher writes the comment
+# before anything starts this script, so an empty one is a launcher bug.
+read_assignment() {
+  if [ -n "${FLEET_ASSIGNMENT:-}" ]; then
+    printf '%s\n' "$FLEET_ASSIGNMENT"
+    return 0
+  fi
+  fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true
 }
 
 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
@@ -282,15 +277,7 @@ parse_assignment() { # $1 = the comment line
 
   RUN_ID="run-$RUN_N"
   BRANCH="ultra/integration-$RUN_ID"
-
-  # A comment written to the wrong VM would run the wrong plan on the wrong
-  # target and open a PR nobody asked for. Only checked when this box carries a
-  # fleet name at all — a spike VM may be called anything.
-  case "$VM_NAME" in
-    fleet-run-*)
-      [ "$VM_NAME" = "fleet-$RUN_ID" ] || fail "assignment: comment says $RUN_ID but this VM is $VM_NAME"
-      ;;
-  esac
+  ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
   log "assignment: $RUN_ID plan=$PLAN_SHA target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA overlap=${OVERLAP:-<default>} tier=${TIER:-<default>}"
 }
 
@@ -364,36 +351,25 @@ clone_target() {
   fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
 }
 
-checkout_engine() {
-  if ! is_clone "$ENGINE_REPO_DIR"; then
-    # The golden pre-clones it; a golden that did not is still recoverable.
-    fleet_git clone "$ENGINE_REPO_URL" "$ENGINE_REPO_DIR" || fail "clone: engine"
-  fi
-  fleet_git -C "$ENGINE_REPO_DIR" fetch origin "$ENGINE_SHA" || fail "fetch: engine $ENGINE_SHA"
-  fleet_git -C "$ENGINE_REPO_DIR" checkout "$ENGINE_SHA" || fail "checkout: engine $ENGINE_SHA"
-  # The golden's copy of this script is what systemd started; the engine sha
-  # the comment names may carry a newer one. Re-exec from the checkout so a
-  # boot-script fix needs no golden rebuild.
-  if [ -n "${FLEET_BOOT_REEXEC:-}" ]; then
-    :
-  elif [ -f "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" ] \
-    && [ "$(sha256sum <"$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" | cut -c1-64)" != "$SELF_SHA" ]; then
-    # Compared against the bytes THIS process started from, not against `$0`:
-    # on a sandbox the golden's copy and the checkout are the same path, so
-    # after the checkout `$0` names the new file while bash is still reading
-    # the old inode — a path-vs-path comparison there is always "same".
-    log "engine: boot script differs at $ENGINE_SHA — re-exec from the checkout"
-    # `$MODE`, not `$@`: inside a function `$@` is the FUNCTION's arguments, and
-    # this one takes none — a re-exec on `$@` would silently restart every mode
-    # as `boot`.
-    FLEET_BOOT_REEXEC=1 exec bash "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" "$MODE"
-  fi
+# The engine is the bootstrap's clone at `engine=` — this script is running
+# out of it. It is never cloned, fetched or checked out here, and never
+# re-exec'd: that was run-68.
+check_engine() {
+  [ -f "$ENGINE_REPO_DIR/fleet/run-main.mjs" ] \
+    || fail "engine: $ENGINE_REPO_DIR has no fleet/run-main.mjs (the bootstrap clones the engine; this script never does)"
   # fleet/package.json may declare no dependencies (it does since the lift), in
   # which case npm creates no node_modules and there is nothing to install.
-  if [ ! -d "$ENGINE_REPO_DIR/fleet/node_modules" ] && grep -Eq '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$ENGINE_REPO_DIR/fleet/package.json"; then
-    log "engine: fleet/node_modules missing — npm ci (npm install if there is no lockfile)"
-    ( cd "$ENGINE_REPO_DIR/fleet" && { fleet_npm ci || fleet_npm install; } ) || fail "npm install: engine deps"
+  if [ ! -d "$ENGINE_REPO_DIR/fleet/node_modules" ] \
+    && grep -Eq '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$ENGINE_REPO_DIR/fleet/package.json"; then
+    if [ -f "$ENGINE_REPO_DIR/fleet/package-lock.json" ]; then
+      log "engine: fleet/node_modules missing — npm ci"
+      ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
+    else
+      log "engine: fleet/node_modules missing and no lockfile — npm install"
+      ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"
+    fi
   fi
+  log "engine: $ENGINE_REPO_DIR"
 }
 
 # --- integrations ------------------------------------------------------------
@@ -412,39 +388,18 @@ target_grant_name() { # $1 = ro|rw
   printf 't-%s-%s' "$(printf '%s' "$TARGET_REPO" | tr '/' '-')" "$1"
 }
 
-await_claude_grant() {
-  local attempts n=0 body
-  attempts="$(poll_attempts "$CLAUDE_GRANT_TIMEOUT")"
-  while [ "$n" -lt "$attempts" ]; do
-    body="$(integrations_body)"
-    if has_integration "$body" "claude-max"; then
-      log "integrations: claude-max attached"
-      return 0
-    fi
-    n=$(( n + 1 ))
-    sleep "$POLL_SECONDS"
-  done
-  return 1
-}
-
-# READINESS IS THE `-rw` GRANT, AND ONLY THAT. The design says never to overlap
-# a read-only and a writable grant for one repo, and the operator's approval does
-# detach what it can — but the `-ro` integration rides `tag:fleet`, and a tag
-# attachment cannot be detached from a single VM. So a `-ro` still listed here is
-# the TAG's, not this VM's, and waiting for it to disappear would wait forever.
+# READINESS IS THE `-rw` GRANT, AND ONLY THAT. The grant tool detaches `-ro`
+# before it attaches `-rw`, but whether `-ro` is still listed is the grant
+# tool's business — waiting for anything but `-rw` to appear is a way to wait
+# forever.
 await_write_grant() {
-  local attempts n=0 body ro rw
-  ro="$(target_grant_name ro)"
+  local attempts n=0 body rw
   rw="$(target_grant_name rw)"
   attempts="$(poll_attempts "$WRITE_GRANT_TIMEOUT")"
   while [ "$n" -lt "$attempts" ]; do
     body="$(integrations_body)"
     if has_integration "$body" "$rw"; then
-      if has_integration "$body" "$ro"; then
-        log "integrations: $rw attached ($ro still listed — the tag's, not this VM's)"
-      else
-        log "integrations: $rw attached, $ro detached"
-      fi
+      log "integrations: $rw attached"
       return 0
     fi
     n=$(( n + 1 ))
@@ -497,36 +452,39 @@ log_auth_status() {
   esac
 }
 
+# A transient SERVICE, not a scope: `--wait` hands back the engine's exit code
+# and is refused for a scope, `--collect` unloads the unit when it stops so the
+# is-active check below reads `inactive` rather than a lingering `failed`, and
+# the memory cap bounds the engine alone — ssh, this script and the page keep
+# their headroom. A service inherits neither cwd nor environment from here, so
+# the cwd is a property and the child's variables ride in its own argv.
 run_engine() {
   local code=0 refresher="" knobs=()
   # The two optional knobs as ARRAY elements: `${VAR:+--flag "$VAR"}` splits on
   # whitespace, and an argv this script builds must never depend on a value's
   # shape to stay one word.
-  [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
   [ -n "$TIER" ] && knobs+=(--tier "$TIER")
+  [ -n "$OVERLAP" ] && knobs+=(--overlap "$OVERLAP")
   :
   write_status running "engine starting"
   log_auth_status
 
   set +e
-  # Same reason as httpd's redirect, plus one of its own: killing this loop
-  # leaves its in-flight `sleep` behind for up to one interval, and a stray
-  # sleep holding this script's stdout would make the run look unfinished to
-  # whoever is reading it.
+  # Its stdio redirected for the same reason: killing this loop leaves its
+  # in-flight `sleep` behind for up to one interval, and a stray sleep holding
+  # this script's stdout would make the run look unfinished to a reader.
   phase_refresher >/dev/null 2>>"$BOOT_LOG" &
   refresher=$!
-  (
-    cd "$TARGET_DIR" || exit 1
-    fleet_systemd_run --user --scope "--unit=fleet-engine-$RUN_N" \
-      -p MemoryMax=40G -p MemorySwapMax=0 \
-      env -u CLAUDE_CONFIG_DIR \
-        "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-        "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
-        "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
-        node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
-        "$FLEET_RUNS_DIR/plans/$RUN_ID.md" "$RUN_ID" --repo "$TARGET_DIR" \
-        ${knobs[@]+"${knobs[@]}"}
-  ) 2>&1 | tee -a "$ENGINE_LOG" >>"$BOOT_LOG"
+  fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
+    -p MemoryMax=40G -p MemorySwapMax=0 -p "WorkingDirectory=$TARGET_DIR" -- \
+    env -u CLAUDE_CONFIG_DIR \
+      "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
+      "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
+      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" \
+      node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
+      "$FLEET_RUNS_DIR/plans/$RUN_ID.md" "$RUN_ID" --repo "$TARGET_DIR" \
+      ${knobs[@]+"${knobs[@]}"} \
+    2>&1 | tee -a "$ENGINE_LOG" >>"$BOOT_LOG"
   # The ENGINE's status, not `tee`'s — a pipeline's exit code is its last
   # command's, and reading it would report every failed run as a success.
   code=${PIPESTATUS[0]}
@@ -549,14 +507,16 @@ engine_already_ran() {
   return 1
 }
 
-await_scope_inactive() {
+# `awaiting-grant` and `parked` are claims that no model is running. They are
+# made only after systemd says so — this check IS Amendment 10 made mechanical.
+await_engine_inactive() {
   local attempts n=0 out
-  attempts="$(poll_attempts "$SCOPE_TIMEOUT")"
+  attempts="$(poll_attempts "$ENGINE_STOP_TIMEOUT")"
   while [ "$n" -lt "$attempts" ]; do
-    out="$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.scope" 2>&1 || true)"
+    out="$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.service" 2>&1 || true)"
     case "$out" in
       *inactive*|*failed*|*unknown*|*"not found"*|"")
-        log "scope: fleet-engine-$RUN_N.scope is $out — no model is running"
+        log "engine: fleet-engine-$RUN_N.service is ${out:-gone} — no model is running"
         return 0 ;;
     esac
     n=$(( n + 1 ))
@@ -646,7 +606,8 @@ render_card() { # $1 = outcome; prints the body file's path
     printf '| target | `%s` at `%s` |\n' "$TARGET_REPO" "$BASE_SHA"
     printf '| engine | `%s` |\n' "$ENGINE_SHA"
     printf '| plan | `%s` at `%s` |\n' "plans/$RUN_ID.md" "$PLAN_SHA"
-    printf '| branch | `%s` |\n\n' "$BRANCH"
+    printf '| branch | `%s` |\n' "$BRANCH"
+    printf '| vm | `%s` |\n\n' "${VM_NAME:-<unknown>}"
     printf '### Checks\n\n'
     if [ -f "$receipt" ]; then
       printf '```json\n'
@@ -663,15 +624,7 @@ render_card() { # $1 = outcome; prints the body file's path
 }
 
 publish() { # $1 = outcome (gate-green|parked)
-  local body title heading out draft=() ahead
-  # run-69: a parked run whose every task was blocked has a branch equal to
-  # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
-  # parked outcome with no PR, not a failure.
-  ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "$BASE_SHA..$BRANCH" 2>/dev/null || echo 1)"
-  if [ "$ahead" = "0" ]; then
-    log "publish: $BRANCH has no commits ahead of $BASE_SHA — parked without a PR"
-    return 0
-  fi
+  local body title heading out draft=()
   write_status publishing "pushing $BRANCH"
   fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
   body="$(render_card "$1")"
@@ -698,39 +651,40 @@ do_boot() {
   # from erasing them.
   STARTED_AT="$(read_status_field startedAt)"
   PR_URL="$(read_status_field pr)"
-  start_httpd
-  # RE-ENTRY, GUARD 1. `Restart=on-failure` means every exit below is also a
-  # start. A run that already reached `done` has a PR; re-running it would open
-  # a second one.
+  VM_NAME="$(read_status_field vm)"
+  start_status_server
+  # RE-ENTRY, GUARD 1. A page that already reached a terminal state with the
+  # engine's marker present is finished, whatever it finished as: the engine is
+  # not re-runnable (it has spent its money and left its branch), and a `done`
+  # run has a PR a second pass would duplicate. Exit 0 and leave it for the
+  # janitor.
   local prior
   prior="$(read_status_field state)"
-  if [ "$prior" = "done" ]; then
-    log "boot: this run is already done — nothing to do"
-    exit 0
-  fi
-  # RE-ENTRY, GUARD 1b. A run whose ENGINE has run and whose page says `failed`
-  # is finished, whatever it failed at: the engine is not re-runnable (it has
-  # spent its money and left its branch), so restarting is a loop that ends when
-  # the janitor arrives. Exit 0 so `Restart=on-failure` lets it rest.
-  if [ "$prior" = "failed" ] && [ -f "$ENGINE_DONE_MARKER" ]; then
-    log "boot: this run failed after its engine ran — leaving it for the janitor"
-    exit 0
-  fi
+  case "$prior" in
+    done|parked|failed)
+      if [ "$prior" = "done" ] || [ -f "$ENGINE_DONE_MARKER" ]; then
+        log "boot: this run is already $prior — leaving it for the janitor"
+        exit 0
+      fi ;;
+  esac
   write_status booting "reading the assignment"
   read_identity
 
   local comment
-  comment="$(await_comment)" || fail "assignment: no run= comment within ${ASSIGNMENT_TIMEOUT}s"
+  comment="$(read_assignment)"
+  case "$comment" in
+    run=*) : ;;
+    *) fail "assignment: no run= comment (FLEET_ASSIGNMENT unset and Reflection /comment empty)" ;;
+  esac
   parse_assignment "$comment"
   write_status booting "assignment read"
 
-  # FIRST of the three clones, and deliberately: from here on, `fail` can record
-  # what happened in `fleet-runs` instead of only on a status page that dies
-  # with the VM.
+  # FIRST of the clones, and deliberately: from here on, `fail` can record what
+  # happened in `fleet-runs` instead of only on a status page that dies with
+  # the VM.
   prepare_fleet_runs
   clone_target
-  checkout_engine
-  await_claude_grant || fail "integrations: claude-max not attached within ${CLAUDE_GRANT_TIMEOUT}s"
+  check_engine
 
   if engine_already_ran; then
     log "engine: already finished (marker or gate receipt present) — not re-running"
@@ -738,7 +692,7 @@ do_boot() {
     run_engine
   fi
 
-  local code outcome
+  local code outcome verdict ahead
   code="$(engine_exit_code)"
   collect_evidence
 
@@ -764,13 +718,26 @@ $(engine_tail)"
     exit 1
   fi
 
-  if [ "$(gate_verdict)" = "PASS" ]; then outcome="gate-green"; else outcome="parked"; fi
-  log "outcome: $outcome (verdict=$(gate_verdict))"
+  verdict="$(gate_verdict)"
+  if [ "$verdict" = "PASS" ]; then outcome="gate-green"; else outcome="parked"; fi
+  log "outcome: $outcome (verdict=${verdict:-none})"
+  await_engine_inactive || fail "engine: fleet-engine-$RUN_N.service still active after ${ENGINE_STOP_TIMEOUT}s"
 
-  # `awaiting-grant` is a claim that no model is running. It is written only
-  # after systemd says so — the empty-scope check IS Amendment 10 made
-  # mechanical, and writing the state first would make the page lie.
-  await_scope_inactive || fail "scope: fleet-engine-$RUN_N.scope still active after ${SCOPE_TIMEOUT}s"
+  # run-69: a parked run whose every task was blocked has a branch equal to
+  # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
+  # parked outcome with its evidence committed — and no grant to wait for, no
+  # push, no PR, so the operator is never asked to approve an empty write. A
+  # branch git cannot count is likewise nothing to push.
+  ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "$BASE_SHA..$BRANCH" 2>/dev/null || echo 0)"
+  if [ "$ahead" = "0" ]; then
+    ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
+    write_status parked "nothing to publish"
+    collect_evidence
+    push_evidence "$RUN_ID: parked — nothing ahead of base"
+    notify "run-$RUN_N parked" "$TARGET_REPO — nothing ahead of base"
+    exit 0
+  fi
+
   write_status awaiting-grant "$outcome"
   collect_evidence
   push_evidence "$RUN_ID: $outcome receipts"
@@ -782,8 +749,6 @@ $(engine_tail)"
     collect_evidence
     push_evidence "$RUN_ID: parked — no write grant"
     notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"
-    # Non-zero so the unit restarts and resumes at the grant wait: the engine
-    # marker and the gate receipt make that re-entry a resumption, not a re-run.
     exit 1
   fi
 
@@ -800,7 +765,7 @@ $(engine_tail)"
   if [ "$outcome" = "gate-green" ]; then
     write_status done "$PR_URL"
   else
-    ERROR="parked: gate verdict $(gate_verdict)"
+    ERROR="parked: gate verdict ${verdict:-none}"
     write_status parked "$PR_URL"
   fi
   collect_evidence
@@ -808,23 +773,29 @@ $(engine_tail)"
   notify "run-$RUN_N $STATE" "$TARGET_REPO — $PR_URL"
 }
 
+# By hand, for a run that is neither finished nor progressing: park the page
+# and stop the engine's service. Nothing on the golden arms this — the
+# `claude-max` attachment expires with its `--for`, and the janitor reads
+# fleet-runs — so it is a tool for an operator on the box, not a timer.
 do_deadman() {
   RUN_N="$(read_status_field run)"
   [ -n "$RUN_N" ] && RUN_ID="run-$RUN_N" && BRANCH="ultra/integration-$RUN_ID"
   :
   STARTED_AT="$(read_status_field startedAt)"
+  VM_NAME="$(read_status_field vm)"
   local state
   state="$(read_status_field state)"
-  if [ "$state" = "done" ]; then
-    log "deadman: already done — nothing to do"
-    exit 0
-  fi
-  ERROR="deadman: 6h without done"
+  case "$state" in
+    done|parked|failed)
+      log "deadman: already $state — nothing to do"
+      exit 0 ;;
+  esac
+  ERROR="deadman: parked by hand without done"
   write_status parked "deadman"
-  notify "run-${RUN_N:-?} parked" "deadman: 6h without done"
+  notify "run-${RUN_N:-?} parked" "$ERROR"
   if [ -n "$RUN_N" ]; then
-    case "$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.scope" 2>&1 || true)" in
-      active*) fleet_systemctl --user stop "fleet-engine-$RUN_N.scope" || true ;;
+    case "$(fleet_systemctl --user is-active "fleet-engine-$RUN_N.service" 2>&1 || true)" in
+      active*) fleet_systemctl --user stop "fleet-engine-$RUN_N.service" || true ;;
     esac
   fi
   exit 0
