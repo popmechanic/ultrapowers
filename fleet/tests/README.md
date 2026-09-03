@@ -13,7 +13,5 @@ Main areas under test:
   the top-level run control flow.
 - `test_confine_hook.mjs` — the implementer confinement boundary: which tool
   calls a task's clone is allowed to make.
-- `test_drive_one.mjs` — the drive CLI: driving a single task end to end from
-  the command line.
-- `test_shim*.mjs` — the shim: transport, gating, publishing, and token
-  accounting between the plugin client and the fleet.
+- `test_run_engine*.mjs` — the engine kernel: wave scheduling, review pairing,
+  the fix loop, the examiner, and the gate.

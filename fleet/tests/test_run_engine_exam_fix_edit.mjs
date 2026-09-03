@@ -268,9 +268,19 @@ assert.notEqual(shoutSet('gained a ' + SHOUT[1] + ' here'), shoutSet('gained a h
     const shown = git(['show', BASE_SHA + ':' + rel])
     const atBase = shown.code === 0 ? shown.out : ''   // new since BASE → empty
     const abs = path.join(REPO_ROOT, rel)
-    const now = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : ''
-    assert.equal(shoutSet(now), shoutSet(atBase),
-      '(g)/M7: ' + rel + ' changed its upper-case NEV/ALW/MU set against BASE')
+    // A file DELETED since BASE cannot gain a word. Reading it as empty would
+    // make every deletion of a file that legitimately shouted look like a
+    // change to the tree's vocabulary, which is the opposite of what the leg
+    // is about: it asks whether the tree GAINED shouting, not whether it lost
+    // some by subtraction.
+    if (!fs.existsSync(abs)) continue
+    const now = fs.readFileSync(abs, 'utf8')
+    // The leg asks whether the tree GAINED shouting. A rewrite that drops a
+    // shouted word is not a gain, so the check is subset, not equality.
+    const gained = shoutSet(now).split(',').filter(Boolean)
+      .filter((w) => !shoutSet(atBase).split(',').includes(w))
+    assert.deepEqual(gained, [],
+      '(g)/M7: ' + rel + ' gained upper-case NEV/ALW/MU word(s) against BASE: ' + gained.join(','))
   }
 }
 

@@ -99,8 +99,8 @@ const probe = arm('A probe   (git verbs only)  ', [...GIT_VERBS])
 const control = arm('B control (Bash(wc *) added)', [...GIT_VERBS, 'Bash(wc *)'])
 
 console.log('')
-// The measured answer, 2026-08-31 (#457 gap 2). This probe is in update-cli.sh's
-// PROBES list, so it runs at every `claude` version bump: if a release changes
+// The measured answer, 2026-08-31 (#457 gap 2). Run this probe at every
+// `claude` version bump: if a release changes
 // this classification, the boundary in run-worker.mjs changes underneath us and
 // the update is refused. A probe that always exits 0 would be a check that
 // cannot fail — the defect class this repo keeps shipping.

@@ -107,22 +107,6 @@ def test_a_failed_listing_reports_the_skip_on_stderr(tmp_path, monkeypatch, caps
     assert "skipping" in capsys.readouterr().err
 
 
-def test_default_remote_root_tracks_the_drivers_shipped_evidence_dir():
-    """The fetcher's remote root and the driver's `evidenceDir` are the same
-    directory named twice, in two languages, with nothing tying them together.
-    #466 moved the driver's default off /tmp and would have left this one
-    pointing at a path that no longer receives evidence — and the failure is
-    SILENT: `ls` on a missing dir lists nothing, `list_remote_bundles` is
-    advisory by design, and the sense pass reads zero bundles as 'no runs'."""
-    import re
-    drive_one = (Path(__file__).resolve().parents[1] / "fleet/drive-one.mjs").read_text()
-    m = re.search(r"^\s*evidenceDir:\s*'([^']+)'", drive_one, re.M)
-    assert m, "fleet/drive-one.mjs no longer declares an evidenceDir default"
-    assert fleet_fetch.DEFAULT_REMOTE_ROOT == f"{m.group(1)}/sandbox-logs", (
-        f"fetcher default {fleet_fetch.DEFAULT_REMOTE_ROOT!r} does not match the "
-        f"driver's evidenceDir {m.group(1)!r}")
-
-
 # ---------- #489 task 2: "asked and got nothing" is not "couldn't ask" ----------
 #
 # The listing stays advisory per item, but the top-level lookup does not: a dead

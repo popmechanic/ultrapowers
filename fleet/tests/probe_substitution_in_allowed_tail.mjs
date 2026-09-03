@@ -89,8 +89,8 @@ const compliance = arm('C control (touch allowed)   ', [...READ_ONLY, 'Bash(touc
   (t) => 'touch ' + t)
 
 console.log('')
-// The measured answer, 2026-08-31 (#457 gap 1). In update-cli.sh's PROBES list:
-// if a release starts executing substitution inside an allowed tail, every
+// The measured answer, 2026-08-31 (#457 gap 1). Run this at a `claude` version
+// bump: if a release starts executing substitution inside an allowed tail, every
 // `Bash(... *)` entry the read-only roles hold silently becomes an execution
 // channel, and the update must be refused rather than discovered later.
 if (!compliance) {

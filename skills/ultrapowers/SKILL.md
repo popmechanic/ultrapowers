@@ -8,11 +8,11 @@ allowed-tools: Skill Read Grep Glob Bash
 # Ultrapowers
 
 This skill is the CLIENT only. Since 0.3.0 there is no LLM engine session:
-on the sandbox, the shim spawns the deterministic driver
-(`node fleet/run-main.mjs` → `fleet/run-engine.mjs`), which runs preflight,
-compiles the plan, dispatches judgment agents, folds each wave with the
-kernel, gates, and approves — code, not prose. Nothing in this skill runs a
-plan locally, and `ultra_run.py` refuses to (its `fleet-run` stage).
+on the sandbox, a boot unit spawns the deterministic driver
+(`node fleet/run-main.mjs` → `fleet/run-engine.mjs`), which compiles the plan,
+dispatches judgment agents, folds each wave with the kernel, gates, and
+approves — code, not prose. Nothing in this skill runs a plan locally, and
+`ultra_run.py` refuses to (its `fleet-run` stage).
 
 The argument decides the mode. A plan path is the client below; the bare word
 `setup` is the guided first run: find out which pieces of the fleet exist and
@@ -20,78 +20,99 @@ walk the missing ones.
 
 ## Setup
 
-The fleet is six pieces, and the doctor is the only thing that knows whether
+The fleet is three pieces, and the doctor is the only thing that knows whether
 you have them.
 
-Run the doctor from the plugin cache: `node <plugin-root>/fleet/doctor.mjs --json`, where `<plugin-root>` is two directories above this skill's base directory.
-The harness prints `Base directory for this skill:` when it loads this file;
-the cache path itself differs by version and by host, so derive it rather than
-naming it. The doctor answers with one row per piece — `exe-dev`,
-`orchestrator`, `golden`, `token`, `github-token`, `preflight`, in that order —
-each carrying a `status` of `ok`, `missing` or `skipped`, a human `detail`, and
-a `fix` naming the `fleet/RUNBOOK.md` section that builds it. Read the rows
-back to the user as a short list before touching anything.
+Run the doctor from the plugin cache:
 
-For each row whose status is not `ok`, in order, open `references/first-run.md` at the section named for that row's `id` and follow it; every command a human has to run interactively is theirs to run, offered as `! <command>`, and nothing in this mode builds the golden for them.
-The order matters: each piece is built on the one above it, so a `missing`
-`orchestrator` makes everything below it unreadable rather than absent.
+```bash
+node <plugin-root>/fleet/doctor.mjs --json
+```
+
+`<plugin-root>` is two directories above this skill's base directory. The
+harness prints `Base directory for this skill:` when it loads this file; the
+cache path itself differs by version and by host, so derive it rather than
+naming it.
+
+The doctor answers with one row per piece — `exe-dev`, `integrations`,
+`golden`, in that order — each carrying a `status` of `ok` or `missing`, a
+human `detail`, and a `fix`. Read the rows back to the user as a short list
+before touching anything. Every row is a read: running the doctor twice is the
+same as running it once, and nothing in setup creates a VM.
+
+For each row whose status is not `ok`, in order, open `references/first-run.md`
+at the `## ` section named for that row's `id` and follow it. Every command a
+human has to run interactively is theirs to run, offered as `! <command>`.
 Re-run the doctor after each row and show the user the row that just turned
-`ok`.
-
-When the five read-only rows are `ok`, run the doctor once more with `--probe`; a `ready` verdict ends setup.
-The probe is the one check that costs a VM: it clones the golden into a
-throwaway named `fleet-doctor-probe`, runs `fleet/preflight.mjs` against it,
-and removes it. Anything short of `ready` leaves a row still red — go back to
-its section.
+`ok`. A `ready` verdict ends setup.
 
 Configuration lives in `~/.ultrapowers/fleet.json`; the doctor takes
-`--config <path>` to read it from somewhere else.
+`--config <path>` to read it from somewhere else, and `--target <owner>/<repo>`
+to add that repository's two integration objects to the `integrations` row.
 
 ## Client
 
 Selecting ultrapowers at the planning handoff, or invoking `/ultrapowers` on an
 approved plan, **is** the authorization to execute — no further approval pause.
 
-1. **Derive the target from this checkout.** The target is the repository this skill is run in: `repo` is `gh repo view --json nameWithOwner -q .nameWithOwner` and `baseSha` is `git rev-parse HEAD`.
-   There is nothing per-project to configure — the pair travels in the launch,
-   and each sandbox clones `repo` and branches from `baseSha`. That sha has to
-   be one GitHub already has. When `git rev-parse @{upstream}` fails or prints a different sha, say that the base is not on GitHub yet, ask the operator to push, and stop.
-   Before the rsync, run the doctor with `--target <repo>` and without `--probe`; a verdict other than `ready` means there is no fleet to launch on for this target — offer `/ultrapowers setup` and stop.
-2. **Stage the plan, pin the engine, and launch** with a fresh `run-<N>` (run
-   IDs are never reused). Stage the plan on the orchestrator under `/home/exedev/plans/run-<N>/`; nothing under `docs/` lives there.
-   Pin the engine to the newest release on `main`, or to the ref the operator names when the run is about an engine change, and read the chosen version back:
+1. **Derive the target from this checkout.** The target is the repository this
+   skill is run in: `repo` is
+   `gh repo view --json nameWithOwner -q .nameWithOwner`, and `baseSha` is the
+   checkout's current commit. There is nothing per-project to configure — the
+   pair travels in the launch, and each sandbox clones `repo` and branches from
+   `baseSha`. That sha has to be one GitHub already has, so compare it against
+   the upstream tip: when they differ, say the base is not on GitHub yet, ask
+   the operator to push, and stop.
+
+   Then run the doctor once with `--target <repo>`. A verdict other than
+   `ready` means there is no fleet to launch on for this target — offer
+   `/ultrapowers setup` and stop.
+
+2. **Launch.** One line, run on the laptop:
 
    ```bash
-   ssh <orchestrator>.exe.xyz 'mkdir -p /home/exedev/plans/run-<N>'
-   rsync -a <plan-path> <plan-stem>.gate-verdicts.json <orchestrator>.exe.xyz:/home/exedev/plans/run-<N>/
-   ssh <orchestrator>.exe.xyz 'git -C <repoDir> fetch -q origin && git -C <repoDir> checkout -q $(git -C <repoDir> log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C <repoDir> show HEAD:.claude-plugin/plugin.json'
-   ssh -n <orchestrator>.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd <repoDir> && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<N>/<plan-basename> run-<N> --target <repo> --base <baseSha> --golden <golden> --db-dir /tmp/fleet-orch-run-<N> </dev/null >/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'
+   node <plugin-root>/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
    ```
 
-   `<repoDir>` is the orchestrator's engine checkout, never the target;
-   `<plan-basename>` is the plan file's basename. The `version` the third line
-   prints is the engine this run drives with — report it to the user before the
-   launch, and substitute the operator's ref for the `log -1` expression when
-   the run is about an engine change.
-   The orchestrator hostname, its checkout path and the golden's name come from
-   `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`, `golden`); their
-   defaults are `fleet-orchestrator`, `/home/exedev/repo` and `fleet-golden`.
-   The doctor's `--json` envelope carries all three in its `config` object, so
-   the run that just checked the fleet also has the values to substitute.
-   Every drive gets its own store directory (`--db-dir`): two drives sharing
-   the default leave one of them blind to its own sandbox.
-3. **Watch** live as a sync peer (`fleet/watch.mjs` — RUNBOOK §Watch), or tail
-   the drive log (`ssh <orchestrator>.exe.xyz 'tail -f /home/exedev/fleet-evidence/drive-run-<N>.out'`).
-4. **Read the receipt in the PR the orchestrator opens.** Gate-green → a ready
-   PR. Parked → a draft PR carrying the gate receipt: acknowledge by marking it
-   ready, or re-drive a narrower plan. The laptop never fetches a run branch.
+   It prints the run number, the VM name and the status URL. Read all three
+   back to the user: the run is `run-<N>`, the VM is `fleet-r<N>-…`, and
+   `https://<vm>.exe.xyz/status.json` is its status page. Nothing else needs
+   staging — the launcher commits the plan to `fleet-runs`, copies the golden,
+   attaches the run's integrations to that VM, writes the assignment comment,
+   and starts the run over ssh.
+
+3. **Walk away.** The run outlives this session; there is nothing to tail. Its
+   state is `status.json`, the same bytes on the VM's page and committed to
+   `fleet-runs/runs/<N>/` at every transition: `booting` → `running` →
+   `awaiting-grant` → `publishing` → `done`, or `parked` or `failed`. When the
+   user asks how a run is doing, pull the `fleet-runs` clone and read that
+   file back.
+
+4. **Approve.** When the state is `awaiting-grant`, the approval act is one
+   command:
+
+   ```bash
+   node <plugin-root>/fleet/grant.mjs <N>
+   ```
+
+   That is the pre-merge gate. It reads the committed state, detaches the
+   run's read-only grant on the target from that VM, attaches the writable one
+   for fifteen minutes, and the sandbox pushes its branch and opens its own
+   PR. Gate-green → a ready PR. Parked → a draft PR carrying the gate receipt:
+   acknowledge by marking it ready, or re-drive a narrower plan. A parked run
+   with nothing to publish opens no PR and needs no grant; its evidence is in
+   `fleet-runs/runs/<N>/`. The laptop never fetches a run branch.
+
+5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` reads `fleet-runs` and
+   removes the VMs of runs that finished over an hour ago. It is a cron job;
+   run it by hand when its machine has been asleep.
 
 ## Resources
 
 - `fleet/run-engine.mjs` — the engine (waves, judgments, fold, gate) as code;
   `fleet/roles/*.md` — the judgment prompts, one file per role.
-- `references/first-run.md` — one section per doctor row: what it means and
-  which RUNBOOK section builds it.
+- `references/first-run.md` — one section per doctor row: what it means and the
+  command that builds it.
 - `references/design-rationale.md` — why each surviving guard exists.
 - `references/dependency-analysis.md`, `references/plan-markers.md` — plan → waves.
 - `references/report-format.md`, `references/finishing-notes.md` — report schema; finishing checks.

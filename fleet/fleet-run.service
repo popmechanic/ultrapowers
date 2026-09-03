@@ -1,0 +1,13 @@
+[Unit]
+Description=ultrapowers fleet run
+After=network-online.target
+
+# Started by the launcher over ssh (`systemctl --user start fleet-run.service`)
+# once the assignment is written and the integrations are attached — never at
+# boot, so there is no [Install] section and nothing to enable. Oneshot: the
+# bootstrap execs the engine checkout's boot script, and that script's exit is
+# the run's. The status page and the engine are transient services of their
+# own, so no KillMode games are needed to keep the page up after this exits.
+[Service]
+Type=oneshot
+ExecStart=/home/exedev/fleet-bootstrap.sh
