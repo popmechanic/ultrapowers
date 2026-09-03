@@ -1,0 +1,12 @@
+[Unit]
+Description=ultrapowers sandbox boot
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/exedev/repo/fleet/sandbox-boot.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
