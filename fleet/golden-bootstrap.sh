@@ -31,5 +31,12 @@ esac
 echo "[golden-bootstrap] fetching golden-setup.sh at $SHA"
 curl -fsSL "$URL" -o "$OUT"
 echo "[golden-bootstrap] running $OUT"
+# The setup script builds the image from the SAME commit it is itself read
+# from: it checks the clone out at GOLDEN_SHA before it installs anything from
+# the repo. Without this the clone sits on the default branch, and a golden
+# built for a branch that has not merged yet fails on the first file the branch
+# added (measured: "fleet/fleet-boot.service missing from the clone").
+GOLDEN_SHA=$SHA
+export GOLDEN_SHA
 sh "$OUT"
 echo '[golden-bootstrap] done'
