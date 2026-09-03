@@ -29,7 +29,8 @@ const execFileAsync = promisify(execFile)
  *  the RUNBOOK needs no `~/.ultrapowers/fleet.json` at all. */
 export const DOCTOR_DEFAULTS = Object.freeze({
   orchestrator: 'fleet-orchestrator',
-  golden: 'fleet-golden',
+  // #456: see fleet/drive-one.mjs DEFAULTS.golden — same image, same reason.
+  golden: 'fleet-golden-next',
   repoDir: '/home/exedev/repo',
   tokenPath: '/home/exedev/.fleet/claude-oauth-token'
 })

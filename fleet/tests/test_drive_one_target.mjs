@@ -146,7 +146,7 @@ const throwsAnything = (fn, label) => {
   // The keys that stayed are the same values they were at BASE.
   assert.equal(o.planPath, PLAN)
   assert.equal(o.runId, 'run-1')
-  assert.equal(o.golden, 'fleet-golden')
+  assert.equal(o.golden, 'fleet-golden-next')
   assert.equal(o.port, 8180)
   assert.equal(o.dbDir, '/tmp/fleet-orch-live')
   assert.equal(o.ttlMs, 4 * 60 * 60 * 1000)
