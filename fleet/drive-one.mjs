@@ -156,6 +156,40 @@ export const parseArgs = (argv) => {
   return { planPath, runId, ...opts }
 }
 
+// #580: a mistyped plan path costs a usage line, not a cloned sandbox. Since
+// #575 the plan is a file the driver ships by basename — nothing reads it out
+// of git any more — so `driveOne`'s own handling of an unreadable plan is a
+// narrated skip that lets the drive go on to clone and size a sandbox. That
+// skip is load-bearing for the in-process drive tests, whose default plan path
+// does not exist, so the refusal lives HERE, in the CLI.
+//
+// Not in `parseArgs`, which stays pure: fleet/race.mjs calls it (via
+// `parseLaunchArgs`) without going through this `main`, and a filesystem touch
+// inside the parser would change what that shared seam means.
+//
+// Every message names the path, so an operator reading only the error line
+// knows which argument they mistyped.
+export const assertPlanReadable = (planPath) => {
+  let stat
+  try {
+    stat = fs.statSync(planPath)
+  } catch (error) {
+    throw new Error(
+      `drive-one: cannot read the plan at ${planPath} (${error?.code ?? error?.message}) — nothing was driven`
+    )
+  }
+  if (!stat.isFile()) {
+    throw new Error(`drive-one: the plan path ${planPath} is not a regular file — nothing was driven`)
+  }
+  try {
+    fs.accessSync(planPath, fs.constants.R_OK)
+  } catch (error) {
+    throw new Error(
+      `drive-one: the plan at ${planPath} is not readable (${error?.code ?? error?.message}) — nothing was driven`
+    )
+  }
+}
+
 // `env` (#368) is LAYERED over the process environment for that one command —
 // the publish leg's GH_TOKEN rides here and nowhere else: never on argv, never
 // exported into this process, never in the log.
@@ -207,6 +241,8 @@ export const buildDriveOptions = (
 
 export const main = async (argv = process.argv.slice(2), { drive = driveOne, log = console.log, ...deps } = {}) => {
   const parsed = parseArgs(argv)
+  // Before anything is provisioned: a plan the driver cannot read is not a run.
+  assertPlanReadable(parsed.planPath)
   const { read, reportPath, detailPath } = await drive(buildDriveOptions(parsed, deps))
   log(JSON.stringify(read, null, 2))
   log(`report: ${reportPath}`)
