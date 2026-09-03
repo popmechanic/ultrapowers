@@ -37,7 +37,12 @@ const execFileAsync = promisify(execFile)
  *  when nothing else in the fleet does, so it imports nothing. The copy is
  *  pinned by fleet/tests/test_doctor.mjs, which imports both and compares them
  *  — two readers of one config file that disagree about a default would
- *  certify a fleet the launcher never looks at. */
+ *  certify a fleet the launcher never looks at.
+ *
+ *  The two paths are stored UNEXPANDED so the constant is comparable across
+ *  machines. The doctor never resolves either — it reads only `golden` — but a
+ *  row that ever opens one of them has to expand `~` first, the way
+ *  lobby.mjs's `expandHome` does at the moment of use. */
 export const DOCTOR_DEFAULTS = Object.freeze({
   golden: 'fleet-golden',
   fleetRuns: '~/.ultrapowers/fleet-runs',
