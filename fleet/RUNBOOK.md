@@ -108,15 +108,19 @@ ssh fleet-golden.exe.xyz 'python3 -c "import xdist; print(xdist.__version__)"'  
 # own `bun install` then needs no network beyond the registry. The fleet DRIVER
 # stays on node — its spawn/SIGTERM semantics are the measured ones.
 ssh fleet-golden.exe.xyz 'curl -fsSL https://bun.sh/install | bash'
-ssh fleet-golden.exe.xyz 'export PATH="$HOME/.bun/bin:$PATH" && bun --version'
-#    `~/.bun/bin` must be on the PATH the WORKERS inherit, not just this ssh:
-#    a target's `testCmd` (`bunx tsc --noEmit && bun test`) and its
-#    `bootstrapCmd` (`bun install`) run through `bash -lc`, so the entry has to
-#    come from a login-shell file. The installer appends it to `~/.bashrc`,
-#    which exeuntu's stock `~/.profile` sources — make that explicit rather
-#    than assumed, then prove it the way a worker will see it:
-ssh fleet-golden.exe.xyz 'grep -q .bun/bin ~/.profile || echo export PATH=\"\$HOME/.bun/bin:\$PATH\" >> ~/.profile'
-ssh fleet-golden.exe.xyz 'bash -lc "bun --version"'   # non-empty, no PATH edit
+#    The installer puts bun in `~/.bun/bin` and adds it to `~/.bashrc`, which is
+#    a LOGIN-shell path — and the engine never uses a login shell. `ultra_run.py`
+#    runs the suite as `subprocess.run(cmd, shell=True)` (`/bin/sh -c`) and
+#    `ultra_gate.py` spawns `["bash", run_acceptance.sh]`; neither reads
+#    `~/.profile` or `~/.bashrc`. An image with bun only on the login PATH looks
+#    healthy and cannot run a single Bun target — measured 2026-09-03, when
+#    `/bin/sh -c 'bun --version'` on this golden exited 127 while
+#    `bash -lc` answered 1.4.0 (#456). Symlink into a directory that is already
+#    on the non-interactive PATH instead of editing any profile:
+ssh fleet-golden.exe.xyz 'sudo ln -sf /home/exedev/.bun/bin/bun /usr/local/bin/bun && sudo ln -sf /home/exedev/.bun/bin/bunx /usr/local/bin/bunx'
+#    Prove it the way the ENGINE will see it — a non-login shell. `bash -lc` here
+#    is a check that cannot fail: it passes on exactly the broken image.
+ssh fleet-golden.exe.xyz 'bash -c "bun --version && bunx --version"'   # both non-empty
 #    Warm Bun's global package cache IN THE IMAGE so it clones with every
 #    sandbox instead of being refetched per run (#425 item 3). With the cache
 #    warm, a target's `bun install` is a hardlink operation: measured 574 ms
@@ -124,15 +128,15 @@ ssh fleet-golden.exe.xyz 'bash -lc "bun --version"'   # non-empty, no PATH edit
 #    a cold-cache fetch of the npm registry on every cell. `bun install --offline`
 #    succeeding IS the proof the cache is real — it cannot pass by silently
 #    reaching the registry.
-ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install && rm -rf node_modules bun.lock"'
+ssh fleet-golden.exe.xyz 'bash -c "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install && rm -rf node_modules bun.lock"'
 #    Measure the cache by PATH — never with a `du -sh` of `$(bun pm cache)`:
 #    outside a project dir `bun pm cache` exits non-zero with "No package.json
 #    was found", the substitution collapses to empty, and `du -sh` silently
 #    measures `.` instead — printing a healthy-looking 535M for $HOME on a
 #    golden whose cache is cold. A check that cannot fail is not a check
 #    (2026-08-30).
-ssh fleet-golden.exe.xyz 'bash -lc "du -sh ~/.bun/install/cache"'   # tens of MB: the cache survives
-ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install --offline && rm -rf node_modules bun.lock"'
+ssh fleet-golden.exe.xyz 'bash -c "du -sh ~/.bun/install/cache"'   # tens of MB: the cache survives
+ssh fleet-golden.exe.xyz 'bash -c "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install --offline && rm -rf node_modules bun.lock"'
 
 # 3. Install fleet's own node deps inside the clone (fleet/node_modules stays
 #    gitignored — the shim imports tinybase + ws). Nothing else is installed

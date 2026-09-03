@@ -104,7 +104,7 @@ const SENTENCE = 'A run sandbox defaults to 16 vCPU and 48 GB; --sandbox-cpu and
 // their flags, and `target`/`baseSha` are what a launch now names.
 const FROZEN_BARE_OPTIONS = {
   planPath: 'p.md',
-  golden: 'fleet-golden-next',
+  golden: 'fleet-golden',
   port: 8180,
   dbDir: '/tmp/fleet-orch-live',
   target: TARGET,

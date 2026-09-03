@@ -49,7 +49,7 @@ const DOCTOR_SRC = path.join(FLEET_DIR, 'doctor.mjs')
 // [M1] The four-key default config, verbatim from the Machine clause.
 const DEFAULT_CONFIG = {
   orchestrator: 'fleet-orchestrator',
-  golden: 'fleet-golden-next',
+  golden: 'fleet-golden',
   repoDir: '/home/exedev/repo',
   tokenPath: '/home/exedev/.fleet/claude-oauth-token'
 }
@@ -587,7 +587,7 @@ const runCli = (args, { sshDir, home } = {}) => {
   assert.equal(parsed.rows[4].status, 'ok', '(i) [M7][M5] --probe sets probe:true and the preflight row runs')
   const log = fs.readFileSync(GREEN_SSH.log, 'utf8')
   assert.ok(
-    log.includes('cp fleet-golden-next fleet-doctor-probe --json'),
+    log.includes('cp fleet-golden fleet-doctor-probe --json'),
     `(i) [M7][M5] --probe clones the golden into fleet-doctor-probe; log: ${log}`
   )
   assert.ok(
