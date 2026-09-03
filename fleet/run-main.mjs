@@ -79,14 +79,21 @@ export const WIDTH = 12
 // Per-role wall-clock deadlines. Placement (which role gets which bound) is
 // principled — a read-only reviewer has no suite to run and no tree to edit,
 // so it must finish well before an implementer; merge agents run the test
-// suite, so they get implementer time. The VALUES are defaults pending
-// measurement: no per-role duration distribution exists yet (runs 18–23
-// predate per-role timing), so these are sized from the one number known —
-// the old single 30-minute default never tripped. The first runs' event logs
-// (worker:start/end pairs) are the data that re-sizes them.
+// suite, so they get implementer time; the examiner reads the whole task and
+// writes a suite, so it gets implementer time too.
+//
+// The deadline is a HANG guard, not a scope budget: it exists so a worker that
+// never exits cannot hold a wave open forever, and it should sit far outside
+// the working distribution. Measured on run-55 (2026-09-03, a seven-task
+// claims-v1 plan): implementers ran 3/12/14/18/19/22 min and the widest task
+// (19 files) was killed at the old 30-minute cap — the guard was adjudicating
+// task width, which is the plan author's decision, not the engine's. 90 min
+// keeps the hang protection above the observed spread. Reviewer-class roles
+// ran 4–7 min, so their 15-minute bound stays.
 export const ROLE_TIMEOUT_MS = {
-  implementer: 30 * 60 * 1000,
-  writeSide: 30 * 60 * 1000,
+  implementer: 90 * 60 * 1000,
+  writeSide: 90 * 60 * 1000,
+  examiner: 90 * 60 * 1000,
   reviewer: 15 * 60 * 1000,
   resolver: 15 * 60 * 1000,
   critic: 15 * 60 * 1000,
