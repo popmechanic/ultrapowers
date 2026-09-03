@@ -233,8 +233,16 @@ BASE_CLAIMS_CHECK = (
 BASE_WIDE_CHECK = "PLAN OK\n"
 
 
-def _waves_without_proof_tests(payload):
-    return [[{k: v for k, v in e.items() if k != "proofTests"} for e in wave]
+# The keys this pin deliberately does NOT compare: the Proof-slot LISTS, each
+# added by its own task and pinned by its own exam (`proofTests` by #515/#553,
+# `proofRuns` by #589). What this pin guards is that adding one leaves EVERY
+# OTHER key — `testCmd` included — at its base value.
+PROOF_SLOT_KEYS = ("proofTests", "proofRuns")
+
+
+def _waves_without_proof_slots(payload):
+    return [[{k: v for k, v in e.items() if k not in PROOF_SLOT_KEYS}
+             for e in wave]
             for wave in payload["waves"]]
 
 
@@ -258,12 +266,12 @@ def _check_renders(fixture):
 
 def test_claims_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path):
     payload = _emit_args(tmp_path, CLAIMS_FIXTURE)
-    assert _waves_without_proof_tests(payload) == BASE_CLAIMS_WAVES
+    assert _waves_without_proof_slots(payload) == BASE_CLAIMS_WAVES
 
 
 def test_wide_fixture_entries_keep_every_other_key_at_its_base_value(tmp_path):
     payload = _emit_args(tmp_path, WIDE_FIXTURE)
-    assert _waves_without_proof_tests(payload) == BASE_WIDE_WAVES
+    assert _waves_without_proof_slots(payload) == BASE_WIDE_WAVES
 
 
 def test_claims_fixture_check_renders_stdout_is_unchanged():

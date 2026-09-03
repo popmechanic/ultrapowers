@@ -177,6 +177,9 @@ def test_entry_keeps_every_other_key_at_its_base_value(tmp_path):
         # The Proof `Test:` paths this entry's command derives from (#553).
         "proofTests": ["tests/test_widget.py"],
         "testCmd": "python3 -m pytest -q tests/test_widget.py",
+        # The Proof `Run:` commands (#589) — `[]` here, because this fixture
+        # task's Proof names an exam file and no command.
+        "proofRuns": [],
     }
 
 

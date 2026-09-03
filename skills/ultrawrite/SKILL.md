@@ -79,6 +79,11 @@ derivation.
   or is absent; an enumerated clause (`for each of node, pytest`) wants one leg per row —
   both draw an `ADVISORY` when missing, which is the species run-51's gate rejected 11 of
   24 pairs for.
+  A `Run:` bullet names a command the driver executes in the task's clone after the
+  implementer's patch lands; its exit code and output are evidence the reviewer reads
+  against the legs, and a non-zero exit sends the task to the fix loop. A task whose
+  deliverable is prose proves itself with `Run:` commands, never with a test that
+  matches sentences of a document.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`. A free sentence
   is a refusal; an undecidable staleness test is inert prose.
@@ -274,6 +279,8 @@ task-by-task from contract plus proof.
   verdict is recorded and fresh.
 - Every Stale-if entry is a predicate; every Proof `Test:` path is disjoint from the
   task's own writes; every fence sits in Proof.
+- No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
+  `Run:`.
 - Every Machine clause is numbered and cited by a leg; every universal or negation clause
   has a leg that names what fails or is absent; every enumerated row has its own leg.
 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,

@@ -220,4 +220,10 @@ tokenizes to empty and can never pair into an interface edge. Placeholder
 Consumes/Produces lines are always legal; they are the correct way to say
 "this task has no interface contract."
 
+## Proof grammar
+
+A `Run:` bullet is executed by the driver in the task's clone after the
+implementer's patch; each execution is a `driver:proof-run` event, and a
+non-zero exit is a blocking review issue that sends the task to fix.
+
 (End of plan-markers.md.)

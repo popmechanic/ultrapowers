@@ -63,6 +63,12 @@ REVIEW_ALIASES = {"adversarial": "peer"}
 # rendered marker conflict, never a SystemExit.
 MARKER_COMMUTES = re.compile(r"^\*\*Commutes:\*\*\s*(.+?)\s*$")
 FILE_LINE = re.compile(r"^-\s*(Create|Modify|Test|Test fixture\(s\)|Fixture\(s\)):\s*(.+)$")
+# A Proof `Run:` bullet (#589): the task's proof is a COMMAND, not an exam
+# file. Deliberately NOT a FILE_LINE alternative — a `Run:` value is never a
+# path, so it must never reach the Files parser, the disjointness set, or
+# derive_task_test_cmd. It rides verbatim to the engine, which executes it in
+# the task's clone through the same `sh` seam as the run-wide test command.
+RUN_LINE = re.compile(r"^-\s*Run:\s*(.+)$")
 # Files-entry near-misses (`- Modify : x`, `- create: x`, `* Modify: x`) inside an open Files
 # block would otherwise drop silently — losing a write path and with it the
 # overlap edge that prevents a same-wave write race.
@@ -379,6 +385,26 @@ def _claims_file_paths(value):
     return [p.split(":")[0] for p in paths if p]
 
 
+# A whole-value backtick wrapper, the one rewrite a `Run:` command undergoes:
+# `- Run: `node check.mjs --strict`` names the same command as the bare form.
+# The `[^`]+` body is what keeps it a WHOLE-value rule — a command carrying
+# backticks inside it (`node -e "console.log(`hi`)"`) does not match and rides
+# untouched.
+WHOLLY_BACKTICKED = re.compile(r"^`([^`]+)`$")
+
+
+def _claims_run_command(value):
+    """The command a Proof `Run:` bullet names, verbatim.
+
+    Leading and trailing whitespace is stripped and a whole-value backtick
+    wrapper removed — as a `Test:` value's backticks are — and nothing else is
+    altered. Internal spacing, quoting and shell metacharacters survive
+    exactly, because the driver runs this string, not a re-rendering of it."""
+    command = value.strip()
+    m = WHOLLY_BACKTICKED.match(command)
+    return m.group(1).strip() if m else command
+
+
 # --- Clause-to-leg citation (#554) -------------------------------------------
 # run-51's proof gate rejected 11 of 24 pairs, every one for a gap a parser can
 # see: a Machine clause no leg examined, a universal or negation no leg could
@@ -470,6 +496,11 @@ def parse_proof_legs(proof):
             continue
         f = FILE_LINE.match(stripped)
         if f and f.group(1) == "Test":
+            continue
+        # A `Run:` bullet names the proof, it does not argue it (#589) — so it
+        # is skipped exactly as a `Test:` bullet is, and the prose legs around
+        # it keep numbering from #1.
+        if RUN_LINE.match(stripped):
             continue
         kept.append(stripped)
     text = LEGS_LEAD_RE.sub("", "\n".join(kept))
@@ -788,13 +819,22 @@ def parse_claims_body(body, task_id, plan_claim=None):
     # bullets name, which sorting would silently reshuffle).
     proof_tests = set()
     proof_tests_ordered = []
+    # The third view: the Proof's `Run:` commands in Proof order (#589). A
+    # command is not a path — it is not deduplicated against the test paths,
+    # not sorted, and not checked for existence. The same command named twice
+    # is two runs, because running it twice is what the Proof asked for.
+    proof_runs = []
     for line, fenced in lines[proof_start:proof_end]:
-        f = None if fenced else FILE_LINE.match(line.strip())
+        stripped = line.strip()
+        f = None if fenced else FILE_LINE.match(stripped)
+        r = None if fenced else RUN_LINE.match(stripped)
         if f and f.group(1) == "Test":
             for path in _claims_file_paths(f.group(2)):
                 if path not in proof_tests:
                     proof_tests_ordered.append(path)
                 proof_tests.add(path)
+        elif r:
+            proof_runs.append(_claims_run_command(r.group(1)))
     for path in sorted(proof_tests & impl_paths):
         violations.append(
             "grammar: Proof test paths must be disjoint from implementation "
@@ -820,6 +860,7 @@ def parse_claims_body(body, task_id, plan_claim=None):
             "stale_if_entries": stale_entries,
             "proof_tests": sorted(proof_tests),
             "proof_tests_ordered": proof_tests_ordered,
+            "proof_runs": proof_runs,
             "machine_clauses": machine_clauses,
             "proof_legs": proof_legs,
             "violations": violations}
@@ -2946,7 +2987,14 @@ def main(argv=None):
           "proofTests": list(
               (by_id[tid].get("claims") or {}).get("proof_tests_ordered", [])),
           "testCmd": derive_task_test_cmd(
-              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", []))}
+              (by_id[tid].get("claims") or {}).get("proof_tests_ordered", [])),
+          # The Proof `Run:` commands (#589), in Proof order, [] for a task
+          # that names none (and for every legacy-grammar body). The driver
+          # executes these in the task's clone; no model ever runs one, and
+          # they are additive to testCmd, which still derives from `Test:`
+          # paths alone.
+          "proofRuns": list(
+              (by_id[tid].get("claims") or {}).get("proof_runs", []))}
          for tid in wave]
         for wave in waves]
 

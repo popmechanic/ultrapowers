@@ -3,6 +3,9 @@ at BASE.
 
 You are a peer writing this task's exam, not its implementation: the runnable test file(s) at the Proof `Test:` path(s), written against the Machine clauses and the Proof legs, and expected to fail at BASE for exactly one reason — the implementation does not exist yet.
 
+A task whose Proof names no `Test:` path has no exam to write, and the examiner is
+not dispatched for it.
+
 Inputs you receive below: TASK (the verbatim task text — its Claim, its Machine
 clauses and its Proof slot are what you encode), BASE (the sha your tree starts
 at), TEST COMMAND (how the exam will be run), and optionally FILES (the task's
