@@ -36,8 +36,12 @@ DRIVE_ONE_CAP = 10
 # file may join it.
 GRANDFATHERED = {"test_drive_lifecycle.mjs": 16}
 
-# The count at BASE, when all of them lived in `test_drive.mjs`.
-DRIVE_ONE_TOTAL_AT_BASE = 25
+# The count at BASE, when all of them lived in `test_drive.mjs`, was 25. #575
+# deleted the two #337 divergence scenarios (13c uncommitted, 13e `git show`
+# chatter) with the `git show` that made them possible — the plan is a shipped
+# file now, with no committed copy to diverge from — so the three files hold
+# 24, and every one of the remaining scenarios is accounted for.
+DRIVE_ONE_TOTAL_AT_BASE = 24
 
 
 def _read(name):
@@ -100,71 +104,30 @@ def test_c_no_scenario_was_dropped():
     )
 
 
-def test_d_every_docs_dir_the_fitness_file_mints_is_removed():
-    text = _read("test_drive_fitness.mjs")
-    seen = 0
-    for block in _blocks(text):
-        for expr in re.findall(r"mkdirSync\((.+?),\s*\{", block):
-            if not expr.rstrip().endswith("'docs')"):
-                continue
-            seen += 1
-            wanted = re.compile(
-                r"rmSync\(\s*" + re.escape(expr) + r"\s*,\s*\{[^}]*recursive:\s*true"
-            )
-            assert wanted.search(block), (
-                f"a block mkdirSync's {expr} without rmSync'ing it recursively "
-                f"— it re-violates 13d's invariant:\n{block}"
-            )
-    assert seen >= 2, f"expected the 13-series' docs/ mkdirs to be found, got {seen}"
+def test_d_every_plan_the_fitness_file_writes_lives_outside_the_engine_checkout():
+    """13d's invariant, in its #575 form.
 
-
-def test_e_the_gitattributes_pin_is_check_attr_on_the_plan_path():
-    """The #362-4 pin asks `check-attr` of the scenario's plan path.
-
-    `check-attr` is the same resolution the smudge itself uses, so it sees an
-    untracked `.gitattributes`, `.git/info/attributes` and a global
-    `core.attributesFile` — none of which the `git ls-files` read at BASE could.
+    The engine checkout must be CLEAN — that is the one refusal #575 added —
+    so the fitness file may not mint a `docs/` dir inside `repoDir` any more:
+    every plan it writes lives under the fixture's `plans/` dir beside the
+    repos, and the file ends by asserting the checkout is still clean.
     """
     text = _read("test_drive_fitness.mjs")
-    lines = [line for line in text.splitlines() if "git check-attr -a --" in line]
-    assert lines, "the .gitattributes pin must read `git check-attr -a --`"
-    interpolated = [
-        m.group(1) for m in (re.search(r"git check-attr -a -- \$\{(\w+)\}", l) for l in lines) if m
-    ]
-    assert interpolated, f"a pin must interpolate the plan path, got: {lines}"
-    assert any(
-        re.search(rf"planPath: {var}\b", text) for var in interpolated
-    ), f"one of {interpolated} must be the scenario's plan path"
-
-
-def test_e2_the_pin_still_reads_the_repository_a_live_drive_reads():
-    """…and it asks it of the REAL checkout too, not only of the fixture.
-
-    `setupDriveFixture()` builds its repo with `git init` under `fs.mkdtemp`, so
-    a `check-attr` run there can only ever see that throwaway's attributes. The
-    refusal #362-4 exists to pre-empt happens in the repository a live drive
-    reads — a filter added to THIS repo's `.gitattributes` makes `git show
-    <baseRef>:<plan>` return the raw blob against a smudged working tree, and
-    every clean run refuses with `differs between …`. So the fixture-scoped pin
-    above is necessary and not sufficient: the real-repo read is pinned here
-    separately, and may be `check-attr` on the live plan paths, the `ls-files`
-    blanket BASE carried, or both.
-    """
-    text = _read("test_drive_fitness.mjs")
-    assert "new URL('../..', import.meta.url)" in text, (
-        "the pin must resolve the real repository root from the spec's own "
-        "location — the fixture repo is not the repo a live drive reads"
+    assert not re.search(r"mkdirSync\(path\.join\(repoDir", text), (
+        "the fitness file writes into the engine checkout — a dirty checkout "
+        "refuses to drive (#575), so its plans belong under plansDir"
     )
-    real = [
-        line
-        for line in text.splitlines()
-        if "repoRoot)" in line and ("check-attr" in line or ".gitattributes" in line)
-    ]
-    assert real, (
-        "no attribute read runs against the real repository root; a "
-        "`.gitattributes` committed here would then break every live drive "
-        "with nothing in the suite going red (#362-4)"
+    assert not re.search(r"writeFileSync\(path\.join\(repoDir", text)
+    assert "plansDir" in text, "the fitness file must keep its plans under a plansDir"
+    assert "leaves the engine checkout clean" in text, (
+        "the file must end by asserting `git status --porcelain` is empty in repoDir"
     )
+
+
+# (test_e / test_e2 — the #362-4 `.gitattributes` pins — died with the `git show
+# <baseRef>:<plan>` byte comparison they guarded. #575 ships the plan file's
+# own bytes and reads nothing out of git, so a smudge filter has nothing to
+# diverge from; the RUNBOOK's headless-fitness paragraph says so.)
 
 
 def test_g_the_thirteen_series_lives_only_in_the_fitness_file():
@@ -172,7 +135,8 @@ def test_g_the_thirteen_series_lives_only_in_the_fitness_file():
     elsewhere = {
         name: _read(name) for name in SPLIT if name != "test_drive_fitness.mjs"
     }
-    for marker in [f"13{suffix}." for suffix in "abcdefg"]:
+    # 13c and 13e are gone (#575, see DRIVE_ONE_TOTAL_AT_BASE); the rest stay.
+    for marker in [f"13{suffix}." for suffix in "abdfg"]:
         assert marker in fitness, f"{marker} must live in test_drive_fitness.mjs"
         for name, text in elsewhere.items():
             assert marker not in text, f"{marker} must not remain in {name}"

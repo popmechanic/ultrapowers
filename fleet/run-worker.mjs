@@ -548,6 +548,17 @@ export function createRunWorker(cfg) {
   // Labels whose per-worker budget backstop already tripped. waves.js will
   // retry them; there is nothing to learn from spending the backstop twice.
   const budgetTripped = new Set()
+  // Dispatches per label. `sessionIdFor` is deterministic in (runId, label) so
+  // a RE-DRIVE lands on the same transcript — but within ONE run a label is
+  // dispatched twice whenever the engine retries (its single retry keeps
+  // `impl:<id>` / `exam:<id>`), and `claude -p` refuses a session id it has
+  // already used. Run-55 (2026-09-03): task 3's implementer was killed at the
+  // wall clock, the retry re-dispatched `exam:3` with the first exam's id, and
+  // the CLI answered `Session ID … is already in use` in 0.4 s — the retry lane
+  // had never retried anything. So the second dispatch of a label derives its
+  // id from the label plus its attempt number, the same `.2` the evidence
+  // directory gets from `nextWorkerDir`; the first keeps the re-drive property.
+  const dispatched = new Map()
 
   return async function agent(prompt, opts = {}) {
     // Refuse BEFORE spawning. This is the whole of the credential row's value:
@@ -564,7 +575,9 @@ export function createRunWorker(cfg) {
         ' already exhausted its per-worker budget; refusing to spend the backstop again')
     }
     const role = roleForLabel(opts.label)
-    const sessionId = sessionIdFor(runId, opts.label)
+    const attempt = (dispatched.get(opts.label) || 0) + 1
+    dispatched.set(opts.label, attempt)
+    const sessionId = sessionIdFor(runId, attempt === 1 ? opts.label : opts.label + '#' + attempt)
     const cwd = cwdFor(opts)
     if (!cwd) {
       throw new Error('runWorker: no cwd resolved for label "' + opts.label + '" — ' +

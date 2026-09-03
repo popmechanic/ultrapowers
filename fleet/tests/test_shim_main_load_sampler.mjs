@@ -192,16 +192,19 @@ const boom = () => { throw new Error('no such reader on this host') }
   ok('(h) with no startSampler injected, the real sampler writes all eight keys into the run dir')
 }
 
-// --- (e) the sandbox-logs pull is untouched: load.jsonl rides the bundle ----
+// --- (e) the sandbox-logs pull carries the run dir: load.jsonl rides the bundle
+// #575: the run dir lives in the sandbox's TARGET clone and is renamed to the
+// `repo/` prefix every reader expects on the way into the archive.
 {
   assert.equal(
     sandboxLogPullCommand({ vmName: 'fleet-run-9', dest: '/d/x.tgz' }),
     'ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null fleet-run-9.exe.xyz ' +
-      `'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects ` +
-      `$(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|repo/|") 2>/dev/null' ` +
-      '> /d/x.tgz',
+      "sh > /d/x.tgz <<'FLEET_PULL_EOF'\n" +
+      `cd /home/exedev && tar czf - --transform 's,^target/,repo/,' --exclude="target/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects ` +
+      `$(cd target && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|target/|") 2>/dev/null\n` +
+      'FLEET_PULL_EOF',
   )
-  ok('(e) sandboxLogPullCommand is byte-identical to BASE — the run dir rides, load.jsonl with it')
+  ok('(e) sandboxLogPullCommand tars the target clone\'s run dirs under the repo/ prefix — load.jsonl rides with them')
 }
 
 // --- (f) the sibling shim sims still pass ----------------------------------

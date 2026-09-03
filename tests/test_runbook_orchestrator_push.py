@@ -22,6 +22,9 @@ PUSH_RULE = (
 )
 
 SSH_REPO = "ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/repo"
+# #575: a run tip is pinned in the TARGET's cache clone, never in the engine
+# checkout — §Park triage spells the placeholder literally.
+SSH_TARGET_CACHE = "ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/targets/<owner>--<repo>"
 
 
 def section(heading):
@@ -76,9 +79,12 @@ def test_park_triage_keeps_its_four_rescue_commands():
         for line in park.splitlines()
         if line.strip() and not line.strip().startswith("#")
     ]
-    assert any("git rev-parse refs/fleet/run-<N>" in c for c in commands)
+    assert any(
+        "cd /home/exedev/targets/<owner>--<repo> && git rev-parse refs/fleet/run-<N>" in c
+        for c in commands
+    )
     assert (
-        f"git fetch {SSH_REPO} "
+        f"git fetch {SSH_TARGET_CACHE} "
         "refs/fleet/run-<N>:refs/heads/ultra/integration-run-<N>"
     ) in commands
     assert "git push origin ultra/integration-run-<N>" in commands

@@ -31,7 +31,7 @@ import path from 'node:path'
 import { driveOne, readRunbookFromBundle, renderPullRequestBody } from '../drive.mjs'
 import { OLDER_BRANCH, setupDriveFixture, sh, writeFile } from './_drive_helpers.mjs'
 
-const { tmp, repoDir, sandboxRepo, cleanup, makeExec, startStubSandbox, driveDefaults } = await setupDriveFixture()
+const { tmp, sandboxRepo, cleanup, makeExec, startStubSandbox, driveDefaults } = await setupDriveFixture()
 
 const TRAILER = '🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
@@ -271,22 +271,10 @@ try {
     '**Closes:** #318\n\n' +
     '### Task 1: Code\n**Type:** implementation\n**Depends-on:** none\n\n' +
     '**Files:**\n- Modify: `fleet/x.mjs`\n- Test: `fleet/tests/test_x.mjs`\n\n- [ ] **Step 1: edit**\n'
-  const planSha = await (async () => {
-    const idx = path.join(tmp, 'plan-pr.idx')
-    const blobFile = path.join(tmp, 'plan-pr.blob')
-    fs.writeFileSync(blobFile, PLAN_TEXT)
-    const r = await sh(
-      `set -e; blob=$(git hash-object -w "${blobFile}"); ` +
-        `GIT_INDEX_FILE="${idx}" git read-tree main; ` +
-        `GIT_INDEX_FILE="${idx}" git update-index --add --cacheinfo 100644,$blob,${PLAN_REL}; ` +
-        `tree=$(GIT_INDEX_FILE="${idx}" git write-tree); ` +
-        `commit=$(git commit-tree $tree -p main -m plan-pr); ` +
-        `git branch plan-pr $commit; printf '%s' $commit`,
-      repoDir,
-    )
-    assert.equal(r.code, 0, `plan-pr fixture failed: ${r.stderr}`)
-    return r.stdout.trim()
-  })()
+  // #575: the plan is a file the driver ships from wherever it lives.
+  const planFile = path.join(tmp, 'plans', path.basename(PLAN_REL))
+  fs.mkdirSync(path.dirname(planFile), { recursive: true })
+  fs.writeFileSync(planFile, PLAN_TEXT)
 
   const GREEN_RECEIPT = {
     mode: 'gate',
@@ -335,7 +323,6 @@ try {
           receiptPath: greenReceiptPath,
           exec,
           branch: GREEN_BRANCH,
-          stamp: { pluginVersion: '9.9.9', engineSha: planSha },
         })
       }, 30)
     })
@@ -351,8 +338,7 @@ try {
     exec.calls = inner.calls
     const result = await driveOne({
       ...driveDefaults,
-      planPath: PLAN_REL,
-      baseRef: 'plan-pr',
+      planPath: planFile,
       dbDir: path.join(tmp, `db-${runId}`),
       evidenceDir: path.join(tmp, `evidence-${runId}`),
       exec,

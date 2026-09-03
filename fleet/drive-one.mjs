@@ -18,7 +18,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { driveOne, GITHUB_TOKEN_PATH } from './drive.mjs'
+import { driveOne, GITHUB_TOKEN_PATH, isSafeTarget } from './drive.mjs'
 import { isSafeSha } from './shim-main.mjs'
 
 // The checkout this file lives in — the base ref is pushed from here, so the
@@ -94,8 +94,8 @@ export const usage = () =>
 
 // `owner/repo`: exactly one slash, and each half a git-safe name. The target is
 // spelled into fetch refspecs and remote URLs downstream, so it is checked
-// before anything is provisioned rather than after.
-const TARGET_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+// before anything is provisioned rather than after — with the driver's own
+// guard, so the CLI and `driveOne` cannot disagree about what a target is.
 export const parseArgs = (argv) => {
   const positional = []
   const opts = { ...DEFAULTS, allowUnfitPlan: false }
@@ -120,7 +120,7 @@ export const parseArgs = (argv) => {
         throw new Error(
           `drive-one: ${arg} must be one of ${OVERLAP_MODES.join('|')}, got ${JSON.stringify(value)}\n${usage()}`
         )
-      } else if (key === 'target' && !TARGET_RE.test(value)) {
+      } else if (key === 'target' && !isSafeTarget(value)) {
         throw new Error(`drive-one: --target must be <owner>/<repo>, got ${JSON.stringify(value)}\n${usage()}`)
       } else if (key === 'baseSha' && !isSafeSha(value)) {
         // A symbolic base ('HEAD', a branch, an abbreviation) would let two

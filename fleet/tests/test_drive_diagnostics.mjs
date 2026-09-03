@@ -24,7 +24,7 @@
 //   (b) a failing sandbox-log pull       → `pull sandbox logs: …` carries it
 //   (c) a failing push to origin         → carries it, token scrubbed
 //   (d) a failing `gh pr create`         → carries it, token scrubbed
-//   (e) an unsafe planRel absent everywhere → refused before any command
+//   (e) an unsafe plan file NAME → refused before any command (#362, #575)
 //   (f) `makeExec()` with no knob        → no `stderr` key, fixture unchanged
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -196,32 +196,30 @@ try {
     assert.ok(!exec.cmds.some((c) => c.includes(GITHUB_TOKEN)), 'the token must never appear on a command line')
   }
 
-  // -- (e) the guard-miss refusal (drive.mjs:503-511) -------------------------
-  // A plan absent from `baseRef` AND from the working tree whose path fails the
-  // repo-path guard. The other reading — "absent, so skip the fitness check with
-  // narration" (:521, pinned by test_drive's 13g) — would shell the path into
-  // `git show HEAD:<path>` and hand it to the provisioner as-is. #362 decided
-  // the path problem wins, ahead of every read of `baseRef`; this pins that it
-  // is a REFUSAL, and that it lands before the drive has run one command.
+  // -- (e) the guard-miss refusal ---------------------------------------------
+  // A plan whose FILE NAME fails the repo-path guard. #575 ships the plan from
+  // wherever it lives and the sandbox knows it by basename alone, so the name
+  // is what reaches the sandbox's launch argv — and the other reading,
+  // "unreadable, so skip the fitness check with narration", would hand it to
+  // the provisioner as-is. #362 decided the name problem wins; this pins that
+  // it is a REFUSAL, and that it lands before the drive has run one command.
   {
     const runId = 'run-diag-guard'
     const PLAN_REL = 'docs/superpowers/plans/evil name;whoami.md'
-    assert.equal(isSafeRepoPath(PLAN_REL), false, 'precondition: the path fails the repo-path guard')
-    assert.ok(!fs.existsSync(path.join(repoDir, PLAN_REL)), 'precondition: absent from the working tree')
-    const tracked = (await sh('git ls-tree -r --name-only HEAD', repoDir)).stdout.split('\n')
-    assert.ok(!tracked.includes(PLAN_REL), 'precondition: absent at baseRef')
+    const PLAN_NAME = 'evil name;whoami.md'
+    assert.equal(isSafeRepoPath(PLAN_NAME), false, 'precondition: the name fails the repo-path guard')
+    assert.ok(!fs.existsSync(path.resolve(PLAN_REL)), 'precondition: absent from disk')
 
     const dbDir = path.join(tmp, `db-${runId}`)
-    const exec = makeExec(() => assert.fail('no sandbox may start behind a refused plan path'))
+    const exec = makeExec(() => assert.fail('no sandbox may start behind a refused plan name'))
     await assert.rejects(
       driveOne({ ...driveDefaults, planPath: PLAN_REL, dbDir, exec, runId }),
       (error) => {
         assert.equal(
           error.message,
-          `driveOne: plan path ${JSON.stringify(PLAN_REL)} (from ${PLAN_REL}) fails the repo-path guard — ` +
-            `[A-Za-z0-9._/-] only, no leading '-', no '..' segment, and inside ${repoDir}; the path is ` +
-            `interpolated into 'git show HEAD:<path>' and pushed to the sandbox as-is. Move or rename ` +
-            `the plan (#362)`,
+          `driveOne: plan file name ${JSON.stringify(PLAN_NAME)} (from ${PLAN_REL}) fails the repo-path guard — ` +
+            `[A-Za-z0-9._/-] only, no leading '-'; the name is pushed to the sandbox as-is and interpolated ` +
+            `into its launch. Rename the plan (#362)`,
         )
         return true
       },

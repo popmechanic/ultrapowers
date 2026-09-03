@@ -60,6 +60,7 @@ const {
   tmp,
   repoDir,
   sandboxRepo,
+  cacheDir,
   cleanup,
   headSha,
   olderSha,
@@ -106,7 +107,7 @@ try {
     // every stop reason) — the pull and the destroy both fire even though the
     // sandbox never claimed anything.
     assert.ok(
-      exec.cmds.some((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)),
+      exec.cmds.some((c) => /tar czf - .*shim\.log/.test(c)),
       `expected the evidence pull even though the sandbox never claimed, got: ${JSON.stringify(exec.cmds)}`,
     )
     assert.ok(
@@ -270,30 +271,13 @@ try {
   }
 
   // -- N3. #322: an unfit plan is refused BEFORE any provisioning -------------
-  // #337: the preflight reads the plan as COMMITTED at baseRef, so the unfit
-  // plan is committed onto a side branch (temporary index; HEAD, the working
-  // tree and every fixture sha stay put) and the drive names that ref. The
-  // working-tree copy is written too, identical — the honest live shape.
-  const unfitPlan = 'docs/unfit-plan.md'
+  // #575: the plan is a file the driver ships, wherever it lives — here under
+  // a `plans/` directory beside the fixture repos, in no checkout at all.
+  const unfitPlan = path.join(tmp, 'plans', 'unfit-plan.md')
   const UNFIT_PLAN_TEXT =
     '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n'
-  const unfitSha = await (async () => {
-    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
-    fs.writeFileSync(path.join(repoDir, unfitPlan), UNFIT_PLAN_TEXT)
-    const idx = path.join(tmp, 'unfit-plan.idx')
-    const r = await sh(
-      `set -e; blob=$(git hash-object -w ${unfitPlan}); ` +
-        `GIT_INDEX_FILE="${idx}" git read-tree main; ` +
-        `GIT_INDEX_FILE="${idx}" git update-index --add --cacheinfo 100644,$blob,${unfitPlan}; ` +
-        `tree=$(GIT_INDEX_FILE="${idx}" git write-tree); ` +
-        `commit=$(git commit-tree $tree -p main -m unfit-plan); ` +
-        `git branch unfit-plan $commit; printf '%s' $commit`,
-      repoDir,
-    )
-    assert.equal(r.code, 0, `committing the unfit plan on a side branch failed: ${r.stderr}`)
-    return r.stdout.trim()
-  })()
-  assert.match(unfitSha, /^[0-9a-f]{40}$/)
+  fs.mkdirSync(path.dirname(unfitPlan), { recursive: true })
+  fs.writeFileSync(unfitPlan, UNFIT_PLAN_TEXT)
   {
     const runId = 'run-drive-unfit'
     let provisioned = false
@@ -301,7 +285,6 @@ try {
       driveOne({
         ...driveDefaults,
         planPath: unfitPlan,
-        baseRef: 'unfit-plan',
         dbDir: path.join(tmp, 'dbN3'),
         exec: makeExec(() => {}),
         runId,
@@ -328,15 +311,12 @@ try {
           exec,
           branch: OLDER_BRANCH,
           receiptPath: 'old.txt',
-          // The stamp expectation is resolved from `baseRef` — the side branch.
-          stamp: { pluginVersion: '9.9.9', engineSha: unfitSha },
         })
       }, 30)
     })
     const { read, detail } = await driveOne({
       ...driveDefaults,
       planPath: unfitPlan,
-      baseRef: 'unfit-plan',
       allowUnfitPlan: true,
       dbDir: path.join(tmp, 'dbN4'),
       exec,
@@ -344,20 +324,16 @@ try {
     })
     await sandbox
     assert.equal(read.o1, true, 'the override drives normally')
-    assert.equal(read.versionStamp, true, 'the expectation resolved from the side branch')
+    assert.equal(read.versionStamp, true, 'the expectation resolved from the engine checkout')
     assert.ok(
       detail.errors.some((e) => /headless-fitness: proceeding on operator override/.test(e)),
       `the override is on the record, got: ${JSON.stringify(detail.errors)}`,
     )
+    // The shipped plan is the file's bytes, known to the sandbox by name only.
+    assert.equal(exec.delivered.plan.text, UNFIT_PLAN_TEXT)
+    assert.equal(exec.delivered.planPath, 'unfit-plan.md')
   }
-
-  // #362-5: leave the fixture as N3 found it — the side branch and the
-  // working-tree copy it minted are gone before the next scenario, so nothing
-  // downstream is order-dependent on the N3/N4 pair.
-  fs.rmSync(path.join(repoDir, 'docs'), { recursive: true, force: true })
-  assert.equal((await sh('git branch -D unfit-plan', repoDir)).code, 0, 'the N3 side branch is deleted')
-  assert.equal(fs.existsSync(path.join(repoDir, unfitPlan)), false, 'the N3 working-tree copy is gone')
-  assert.equal((await sh('git branch --list unfit-plan', repoDir)).stdout.trim(), '', 'no unfit-plan branch remains')
+  fs.rmSync(path.join(tmp, 'plans'), { recursive: true, force: true })
 
   // -- 12. shim-main's pure helpers -------------------------------------------
   {
@@ -926,6 +902,9 @@ try {
     const runId = 'run-drive-20'
     let connectResult = 'not-attempted'
     const exec = async (cmd) => {
+      // #575: the preflight reads the engine checkout's HEAD; everything else
+      // this bespoke stub sees is answered green.
+      if (/ rev-parse HEAD$/.test(cmd)) return { code: 0, stdout: `${headSha}\n` }
       if (cmd.startsWith('ssh ')) {
         const payload = cmd.match(/<<'FLEET_EOF'\n([\s\S]*?)\nFLEET_EOF/)
         if (payload) exec.delivered = JSON.parse(payload[1])
@@ -1052,28 +1031,33 @@ try {
       receiptsResolvable: true,
       unapproved: true,
     })
-    // The fetch was REAL: the receipt sha is reachable from FETCH_HEAD.
+    // The fetch was REAL, straight into the pin (#575): the receipt sha is
+    // reachable from `refs/fleet/<runId>` in the TARGET's cache clone, and
+    // nothing was written to the engine checkout.
     assert.equal(
-      (await sh(`git -C "${repoDir}" merge-base --is-ancestor ${integrationSha} FETCH_HEAD`)).code,
+      (await sh(`git -C "${cacheDir}" merge-base --is-ancestor ${integrationSha} refs/fleet/${runId}`)).code,
       0,
-      'the parked branch must actually have been fetched',
+      'the parked branch must actually have been fetched into the pin',
     )
+    assert.notEqual((await sh(`git -C "${repoDir}" rev-parse --verify refs/fleet/${runId}`)).code, 0, 'the engine checkout carries no run refs')
     // #497: FETCH_HEAD is NOT durable — it is one file the next fetch
     // overwrites, and a run whose publish fails is then reachable by nothing.
     // That is not hypothetical: run-33's work sat unreferenced in the
     // orchestrator's clone, one `reset --hard` and a gc from gone, and was
     // recovered only because a human wrote a ref by hand. The fetched tip must
-    // land on a real ref BEFORE the publish leg can fail.
+    // land on a real ref BEFORE the publish leg can fail — and since #575 the
+    // fetch's own refspec is what writes it, so there is no later step to fail.
     assert.equal(
-      (await sh(`git -C "${repoDir}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim(),
+      (await sh(`git -C "${cacheDir}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim(),
       integrationSha,
       'the fetched run tip must be pinned by a durable ref (#497)',
     )
+    assert.ok(!exec.cmds.some((c) => c.includes('FETCH_HEAD') || c.includes('update-ref')), `no FETCH_HEAD, no update-ref: ${JSON.stringify(exec.cmds.filter((c) => /fetch|ref/.test(c)))}`)
     // And it must survive what would actually have destroyed it: every reflog
     // expired and unreachable objects pruned, with nothing referencing the
     // commit except that ref.
     //
-    // Run it on a COPY. `gc --prune=now` is permanent and `repoDir` is shared
+    // Run it on a COPY. `gc --prune=now` is permanent and the cache clone is shared
     // with every scenario after this one (N2, V1, V2, V3…). It happens to be
     // safe today only because the fixture's deliberately-dangling commit is
     // held by `git branch fleet-unreachable` — one line away from being tidied
@@ -1081,7 +1065,7 @@ try {
     // unrelated scenario would fail with a misleading message. A destructive
     // assertion should not be one refactor away from breaking its neighbours.
     const gcProbe = path.join(tmp, 'gc-probe-N1')
-    await sh(`cp -R "${repoDir}" "${gcProbe}"`)
+    await sh(`cp -R "${cacheDir}" "${gcProbe}"`)
     assert.equal(
       (await sh(`git -C "${gcProbe}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim(),
       integrationSha,
@@ -1174,12 +1158,13 @@ try {
     })
 
     // …and it says WHICH code ran and which was pushed. Pinned in full: the
-    // expectation is read from the driver's own `baseRef`, so the fixture's
-    // `headSha`/`9.9.9` appearing here is what proves the source.
+    // expectation is read from the driver's own engine checkout — its HEAD and
+    // its manifest (#575) — so the fixture's `headSha`/`9.9.9` appearing here
+    // is what proves the source.
     const mismatches = detail.errors.filter((e) => /version stamp mismatch/.test(e))
     assert.deepEqual(mismatches, [
       `version stamp mismatch: sandbox ran 0.0.1@${wrongSha}, ` +
-        `pushed base is 9.9.9@${headSha} — stale golden or wrong base (#282)`,
+        `pushed engine is 9.9.9@${headSha} — stale golden or wrong engine checkout (#282, #575)`,
     ])
     // The expectation RESOLVED — a skipped cross-check would be a different
     // (and silently green) failure mode.
@@ -1198,15 +1183,16 @@ try {
   // no plugin participates in the run; review finding 1.)
 
   // -- V2. an unresolvable expectation SKIPS the check, never reddens it ------
-  // The cross-check compares against the driver's OWN repo. If that repo cannot
-  // answer — a `baseRef` that does not resolve locally, a manifest missing at
-  // that ref — the honest reading is "unknown", not "wrong": `versionStamp`
-  // keeps its non-emptiness meaning and the gap is narrated instead. Otherwise
-  // a driver-side repo problem manufactures a red on a perfectly good run.
+  // The cross-check compares against the driver's OWN engine checkout. If its
+  // manifest cannot be read at HEAD, the honest reading is "unknown", not
+  // "wrong": `versionStamp` keeps its non-emptiness meaning and the gap is
+  // narrated instead. Otherwise a driver-side repo problem manufactures a red
+  // on a perfectly good run. (HEAD itself is REQUIRED — the engine push needs
+  // a sha — so only the manifest half can be unresolvable.)
   {
     const runId = 'run-drive-stamp-unresolvable'
     let sandbox = null
-    const exec = makeExec((assignment) => {
+    const inner = makeExec((assignment) => {
       setTimeout(() => {
         sandbox = startStubSandbox({
           assignment,
@@ -1219,10 +1205,18 @@ try {
         })
       }, 30)
     })
+    const exec = async (cmd, opts) => {
+      if (cmd === `git -C ${repoDir} show HEAD:.claude-plugin/plugin.json`) {
+        inner.cmds.push(cmd)
+        return { code: 128, stdout: '', stderr: 'fatal: path .claude-plugin/plugin.json does not exist' }
+      }
+      return inner(cmd, opts)
+    }
+    exec.cmds = inner.cmds
+    exec.calls = inner.calls
 
     const { read, detail } = await driveOne({
       ...driveDefaults,
-      baseRef: 'no-such-base-ref',
       dbDir: path.join(tmp, 'dbV2'),
       exec,
       runId,
@@ -1231,7 +1225,7 @@ try {
 
     assert.equal(read.versionStamp, true, 'an unresolvable expectation must not manufacture a red stamp')
     assert.ok(
-      detail.errors.some((e) => e === 'version cross-check unavailable: could not resolve no-such-base-ref locally'),
+      detail.errors.some((e) => e === `version cross-check unavailable: could not read HEAD:.claude-plugin/plugin.json in ${repoDir}`),
       `the skipped cross-check is on the record, got: ${JSON.stringify(detail.errors)}`,
     )
     assert.ok(
@@ -1240,42 +1234,36 @@ try {
     )
   }
 
-  // -- V3. an unsafe baseRef never reaches the cross-check's shell ------------
-  // `baseRef` is operator input, and the cross-check interpolates it straight
-  // into `git -C … rev-parse <ref>` and `git … show <ref>:<manifest>`. It passes
-  // the same `isSafeBranchName` guard the pointer halves do BEFORE either
-  // command is built; a rejected ref takes the skip path, exactly as an
-  // unresolvable one does. `provision` is stubbed to throw so the drive stops
-  // right after the cross-check — this scenario is about the two commands only.
+  // -- V3. the engine HEAD is required: a checkout that cannot name it refuses -
+  // The push needs a sha, and the stamp cross-check needs the same one. A
+  // `rev-parse HEAD` that fails is refused before the orchestrator starts and
+  // before any command addressed to exe.dev — not narrated past.
   {
-    const badRef = 'main; touch /tmp/fleet-pwned'
     const cmds = []
-    const { detail } = await driveOne({
-      ...driveDefaults,
-      baseRef: badRef,
-      dbDir: path.join(tmp, 'dbV3'),
-      runId: 'run-drive-stamp-unsafe',
-      exec: async (cmd) => {
-        cmds.push(cmd)
-        return { code: 0, stdout: '' }
-      },
-      provision: async () => {
-        throw new Error('provision stubbed off')
-      },
-    })
-    assert.ok(
-      !cmds.some((c) => c.includes(badRef)),
-      `no command may carry an unsafe baseRef, got: ${JSON.stringify(cmds)}`,
+    await assert.rejects(
+      driveOne({
+        ...driveDefaults,
+        dbDir: path.join(tmp, 'dbV3'),
+        runId: 'run-drive-no-head',
+        exec: async (cmd) => {
+          cmds.push(cmd)
+          if (/ rev-parse HEAD$/.test(cmd)) return { code: 128, stdout: '', stderr: 'fatal: not a git repository' }
+          return { code: 0, stdout: '' }
+        },
+        provision: async () => {
+          throw new Error('provision must not be reached')
+        },
+      }),
+      /could not resolve HEAD of the engine checkout/,
     )
-    assert.ok(
-      detail.errors.some((e) => e === `version cross-check unavailable: could not resolve ${badRef} locally`),
-      `an unsafe ref skips the cross-check on the record, got: ${JSON.stringify(detail.errors)}`,
-    )
+    assert.ok(!cmds.some((c) => /exe\.dev|\.exe\.xyz/.test(c)), `no exe.dev command before the engine is known, got: ${JSON.stringify(cmds)}`)
+    assert.equal(fs.existsSync(path.join(tmp, 'dbV3')), false, 'refusal precedes the orchestrator start')
   }
 
   // Control: scenario 1 above asserts the full-equality read with
   // `versionStamp: true` and is UNTOUCHED by this change — its stub stamps from
-  // `BASE_REF`, which in the fixture repo is exactly the base the driver pushes.
+  // `ENGINE_REF`, which in the fixture repo is exactly the engine HEAD the
+  // driver pushes.
 
   // -- #211 residual: runId is required, never defaulted ----------------------
   await assert.rejects(

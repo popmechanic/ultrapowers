@@ -11,9 +11,9 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
 
 // provisionRun: recording exec stub. The SSH-probe leg fails once (code 1)
 // then succeeds (code 0) to prove the retry loop; every other command
-// succeeds immediately. Six logical steps, but the failed probe attempt
-// means seven total exec calls (clone, probe-fail, probe-ok, delivery,
-// push, shim-start = wait, that's 6 — count them below).
+// succeeds immediately. Eight logical steps (#575: the base push became a
+// `git init` plus TWO pushes), and the failed probe attempt makes nine exec
+// calls — count them below.
 {
   const cmds = []
   let probeCalls = 0
@@ -32,8 +32,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   const result = await provisionRun({
     golden: 'fleet-golden',
     runId: 'r1',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
@@ -49,8 +51,8 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   assert.equal(result.record.tokenHash, hashToken(result.token))
   assert.equal(result.record.expiresAt, 1000 + 60000)
 
-  // Exec call count: clone(1) + probe-fail(1) + probe-ok(1) + delivery(1) + push(1) + tunnel(1) + shim-start(1) = 7.
-  assert.equal(cmds.length, 7, `expected 7 exec calls, got ${cmds.length}: ${JSON.stringify(cmds)}`)
+  // Exec call count: clone(1) + probe-fail(1) + probe-ok(1) + delivery(1) + git-init(1) + engine-push(1) + target-push(1) + tunnel(1) + shim-start(1) = 9.
+  assert.equal(cmds.length, 9, `expected 9 exec calls, got ${cmds.length}: ${JSON.stringify(cmds)}`)
 
   // Step 1: clone the golden VM — a LOBBY command, no host-key flags.
   assert.ok(
@@ -84,36 +86,48 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   assert.equal(payload.planPath, 'docs/superpowers/plans/2026-08-21-width-w1.md', 'the plan path is delivered to the sandbox')
   assert.ok(!('engine' in payload), 'no engine key when unset — old assignments stay byte-identical')
 
-  // Step 5: base push — via `-c core.sshCommand=` carrying the same flags,
-  // since a bare `ssh://` URL gives git no way to pass ssh options.
-  assert.ok(
-    cmds[4].startsWith(
-      `git -C /tmp/repo -c core.sshCommand="${sandboxGitSsh}" push ssh://exedev@fleet-r1.exe.xyz/home/exedev/repo refs/heads/main:refs/heads/fleet-base`
-    ),
-    `cmds[4] should be the base push, got: ${cmds[4]}`
+  // Step 5 (#575): the target's fresh clone is initialised on the sandbox,
+  // then the ENGINE is pushed into the golden's baked clone as `fleet-engine`
+  // and the TARGET into the fresh one as `fleet-base` — each push via
+  // `-c core.sshCommand=` carrying the no-pin flags, since a bare `ssh://` URL
+  // gives git no way to pass ssh options. Byte for byte, in this order.
+  assert.equal(cmds[4], `ssh ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git init -q /home/exedev/target'`, `cmds[4] should be the target git init, got: ${cmds[4]}`)
+  assert.equal(
+    cmds[5],
+    `git -C /tmp/engine -c core.sshCommand="${sandboxGitSsh}" push ssh://exedev@fleet-r1.exe.xyz/home/exedev/repo ${'e'.repeat(40)}:refs/heads/fleet-engine`,
+    `cmds[5] should be the engine push, got: ${cmds[5]}`
   )
-  assert.ok(cmds[4].includes(SANDBOX_SSH_OPTS), `the base push must carry the no-pin host-key flags, got: ${cmds[4]}`)
+  assert.equal(
+    cmds[6],
+    `git -C /tmp/targets/o--r -c core.sshCommand="${sandboxGitSsh}" push ssh://exedev@fleet-r1.exe.xyz/home/exedev/target ${'b'.repeat(40)}:refs/heads/fleet-base`,
+    `cmds[6] should be the target push, got: ${cmds[6]}`
+  )
+  for (const i of [5, 6]) assert.ok(cmds[i].includes(SANDBOX_SSH_OPTS), `push ${i} must carry the no-pin host-key flags, got: ${cmds[i]}`)
+  assert.ok(!('engine' in payload), 'the payload carries no engine key — #575 deleted it')
 
   // Step 6: the SSH reverse tunnel (#196). exe.dev VMs share no private
   // network, so the sandbox reaches the orchestrator's ws port only through a
   // reverse tunnel mapping sandbox:127.0.0.1:<port> back to the orchestrator's
   // 127.0.0.1:<port> — which is what keeps `wsUrl` true on both ends. It is
-  // opened AFTER the reachability probe has passed and BEFORE the shim starts.
+  // opened AFTER the pushes and BEFORE the shim starts.
   assert.equal(
-    cmds[5],
+    cmds[7],
     `ssh -o BatchMode=yes -o ExitOnForwardFailure=yes ${SANDBOX_SSH_OPTS} -fN -R 8151:127.0.0.1:8151 fleet-r1.exe.xyz`,
-    `cmds[5] should be the reverse tunnel, got: ${cmds[5]}`
+    `cmds[7] should be the reverse tunnel, got: ${cmds[7]}`
   )
 
   // Step 7: shim start — last, after the tunnel exists to carry its ws. Checks
-  // out `fleet-base` first (#282: the golden's baked-in checkout is stale the
-  // moment a new base is pushed), `&&`-gated ahead of `nohup` so a failed
-  // checkout starts nothing; its output truncates shim.log, the shim appends.
+  // out `fleet-engine` in the ENGINE clone first (#282/#575: the golden's
+  // baked-in checkout is stale the moment a new engine is pushed; the target's
+  // `fleet-base` checkout is the shim's own), `&&`-gated ahead of `nohup` so a
+  // failed checkout starts nothing; its output truncates shim.log, the shim
+  // appends.
   assert.equal(
-    cmds[6],
-    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 || exit 1; nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
-    `cmds[6] should be the shim start, got: ${cmds[6]}`
+    cmds[8],
+    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-engine > /home/exedev/shim.log 2>&1 || exit 1; nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
+    `cmds[8] should be the shim start, got: ${cmds[8]}`
   )
+  assert.ok(!cmds[8].includes('fleet-base'), 'the shim start never checks out fleet-base — that is the shim\'s own leg')
 }
 
 // provisionRun: a tunnel that fails to open is surfaced, not swallowed — a run
@@ -130,8 +144,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
     provisionRun({
       golden: 'fleet-golden',
       runId: 'r2',
-      baseRef: 'refs/heads/main',
-      repoDir: '/tmp/repo',
+      engineDir: '/tmp/engine',
+      engineSha: 'e'.repeat(40),
+      targetDir: '/tmp/targets/o--r',
+      baseSha: 'b'.repeat(40),
       ttlMs: 60000,
       wsUrl: 'ws://127.0.0.1:8152/fleet',
       port: 8152,
@@ -146,6 +162,42 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
     !cmds.some((cmd) => cmd.includes('shim-main.mjs')),
     `the shim must not be started over a dead tunnel, got: ${JSON.stringify(cmds)}`
   )
+}
+
+// provisionRun (#575): a REJECTED push is surfaced, not swallowed — the shim
+// would otherwise check out a stale `fleet-engine` (or nothing) and the drive
+// would idle to its claim timeout with no line naming the push. Neither the
+// tunnel nor the shim start is issued behind a failed push.
+for (const [step, hit] of [['engine push', / push ssh:\/\/\S+\/home\/exedev\/repo /], ['target push', / push ssh:\/\/\S+\/home\/exedev\/target /], ['target git init', /git init -q \/home\/exedev\/target/]]) {
+  const cmds = []
+  const exec = async (cmd) => {
+    cmds.push(cmd)
+    if (hit.test(cmd)) return { code: 1, stdout: '', stderr: '! [rejected] (non-fast-forward)' }
+    return { code: 0, stdout: '{}' }
+  }
+  await assert.rejects(
+    provisionRun({
+      golden: 'fleet-golden',
+      runId: 'r-push-fail',
+      engineDir: '/tmp/engine',
+      engineSha: 'e'.repeat(40),
+      targetDir: '/tmp/targets/o--r',
+      baseSha: 'b'.repeat(40),
+      ttlMs: 60000,
+      wsUrl: 'ws://127.0.0.1:8151/fleet',
+      port: 8151,
+      planPath: 'p.md',
+      exec,
+      clock: () => 1000,
+    }),
+    (error) => {
+      assert.ok(error.message.includes(step), `${step}: the error names the step, got: ${error.message}`)
+      assert.ok(error.message.includes('non-fast-forward'), `${step}: the error carries git's reason`)
+      return true
+    },
+  )
+  assert.ok(!cmds.some((c) => / -fN -R /.test(c)), `${step}: no tunnel behind a failed push`)
+  assert.ok(!cmds.some((c) => /shim-main\.mjs/.test(c)), `${step}: no shim start behind a failed push`)
 }
 
 // destroySandbox: the VM is removed FIRST (the billing clock is what teardown
@@ -206,8 +258,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   await provisionRun({
     golden: 'fleet-golden',
     runId: 'r3',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:8153/fleet',
     port: 8153,
@@ -216,8 +270,8 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
     exec,
     clock: () => 1000,
   })
-  // clone, probe, assignment, ENV FILE, push, tunnel, shim-start = 7 (probe passes first time here).
-  assert.equal(cmds.length, 7, `expected 7 exec calls with engineEnv, got ${cmds.length}: ${JSON.stringify(cmds)}`)
+  // clone, probe, assignment, ENV FILE, git-init, engine-push, target-push, tunnel, shim-start = 9 (probe passes first time here).
+  assert.equal(cmds.length, 9, `expected 9 exec calls with engineEnv, got ${cmds.length}: ${JSON.stringify(cmds)}`)
   const envCmd = cmds[3]
   assert.ok(
     envCmd.startsWith(`ssh ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'umask 077 && cat > /home/exedev/fleet-env'`),
@@ -228,14 +282,14 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   // One `KEY='value'` line per entry, single-quoted with embedded quotes
   // escaped, so `.`-sourcing it in sh yields the exact value back.
   assert.equal(body[1], `CLAUDE_CODE_OAUTH_TOKEN='sk-ant-oat01-FAKE-TOKEN-with-$dollar-and-'\\''quote'\\'''`)
-  // The shim start checks out fleet-base, THEN sources the env file (set -a
+  // The shim start checks out fleet-engine, THEN sources the env file (set -a
   // exports every assignment) immediately before `nohup`, and carries NO
   // secret on its own argv.
-  const start = cmds[6]
+  const start = cmds[8]
   assert.equal(
     start,
-    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-base > /home/exedev/shim.log 2>&1 || exit 1; set -a && . /home/exedev/fleet-env && set +a; nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
-    `shim start must checkout fleet-base then source the env file, got: ${start}`
+    `ssh -n ${SANDBOX_SSH_OPTS} fleet-r3.exe.xyz 'git -C /home/exedev/repo checkout -q fleet-engine > /home/exedev/shim.log 2>&1 || exit 1; set -a && . /home/exedev/fleet-env && set +a; nohup node /home/exedev/repo/fleet/shim-main.mjs >> /home/exedev/shim.log 2>&1 < /dev/null &'`,
+    `shim start must checkout fleet-engine then source the env file, got: ${start}`
   )
   assert.ok(!start.includes('sk-ant-oat01'), 'the token must never appear on the shim-start argv')
   // The store-token assignment is still delivered, unchanged, before the env file.
@@ -250,7 +304,7 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   const exec = async (cmd) => { cmds.push(cmd); return { code: 0, stdout: '{}' } }
   await assert.rejects(
     provisionRun({
-      golden: 'fleet-golden', runId: 'r4', baseRef: 'refs/heads/main', repoDir: '/tmp/repo', ttlMs: 1,
+      golden: 'fleet-golden', runId: 'r4', engineDir: '/tmp/engine', engineSha: 'e'.repeat(40), targetDir: '/tmp/targets/o--r', baseSha: 'b'.repeat(40), ttlMs: 1,
       wsUrl: 'ws://127.0.0.1:8154/fleet', port: 8154, planPath: 'docs/plan.md',
       engineEnv: { 'BAD KEY; rm -rf /': 'x' }, exec, clock: () => 1,
     }),
@@ -259,7 +313,7 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   assert.equal(cmds.length, 0, 'an invalid engineEnv key must be refused before any command runs')
   await assert.rejects(
     provisionRun({
-      golden: 'fleet-golden', runId: 'r5', baseRef: 'refs/heads/main', repoDir: '/tmp/repo', ttlMs: 1,
+      golden: 'fleet-golden', runId: 'r5', engineDir: '/tmp/engine', engineSha: 'e'.repeat(40), targetDir: '/tmp/targets/o--r', baseSha: 'b'.repeat(40), ttlMs: 1,
       wsUrl: 'ws://127.0.0.1:8155/fleet', port: 8155, planPath: 'docs/plan.md',
       engineEnv: { OK_KEY: 'line1\nFLEET_ENV_EOF\nrm -rf /' }, exec, clock: () => 1,
     }),
@@ -279,8 +333,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   await provisionRun({
     golden: 'fleet-golden',
     runId: 'r6',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 1000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
@@ -308,8 +364,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   await provisionRun({
     golden: 'fleet-golden',
     runId: 'r7',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 1000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
@@ -339,8 +397,10 @@ assert.equal(sandboxGitSsh, `ssh ${SANDBOX_SSH_OPTS}`)
   await provisionRun({
     golden: 'fleet-golden',
     runId: 'r8',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 1000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
@@ -367,8 +427,10 @@ for (const bad of [{ cpu: 'four' }, { cpu: 0 }, { cpu: -2 }, { cpu: 3.5 }]) {
       provisionRun({
         golden: 'fleet-golden',
         runId: 'r9',
-        baseRef: 'refs/heads/main',
-        repoDir: '/tmp/repo',
+        engineDir: '/tmp/engine',
+        engineSha: 'e'.repeat(40),
+        targetDir: '/tmp/targets/o--r',
+        baseSha: 'b'.repeat(40),
         ttlMs: 1000,
         wsUrl: 'ws://127.0.0.1:8151/fleet',
         port: 8151,
@@ -395,8 +457,10 @@ for (const bad of [{ memory: '8' }, { memory: '8gb; rm -rf /' }, { memory: 'lots
       provisionRun({
         golden: 'fleet-golden',
         runId: 'r10',
-        baseRef: 'refs/heads/main',
-        repoDir: '/tmp/repo',
+        engineDir: '/tmp/engine',
+        engineSha: 'e'.repeat(40),
+        targetDir: '/tmp/targets/o--r',
+        baseSha: 'b'.repeat(40),
         ttlMs: 1000,
         wsUrl: 'ws://127.0.0.1:8151/fleet',
         port: 8151,
@@ -423,8 +487,10 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
       provisionRun({
         golden: 'fleet-golden',
         runId: 'r11',
-        baseRef: 'refs/heads/main',
-        repoDir: '/tmp/repo',
+        engineDir: '/tmp/engine',
+        engineSha: 'e'.repeat(40),
+        targetDir: '/tmp/targets/o--r',
+        baseSha: 'b'.repeat(40),
         ttlMs: 1000,
         wsUrl: 'ws://127.0.0.1:8151/fleet',
         port: 8151,
@@ -453,8 +519,10 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
   const { record } = await provisionRun({
     golden: 'fleet-golden',
     runId: 'r302',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:9/fleet',
     planPath: 'p.md',
@@ -474,7 +542,7 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
 
 // --- #190: payload validation refuses before any command ---------------------
 {
-  const base = { golden: 'fleet-golden', runId: 'run-v1', baseRef: 'HEAD', repoDir: '/tmp/x', ttlMs: 60_000, wsUrl: 'ws://127.0.0.1:1/fleet', port: 1, planPath: 'docs/p.md', registerToken: () => {}, clock: () => 0 }
+  const base = { golden: 'fleet-golden', runId: 'run-v1', engineDir: '/tmp/engine', engineSha: 'e'.repeat(40), targetDir: '/tmp/targets/o--r', baseSha: 'b'.repeat(40), ttlMs: 60_000, wsUrl: 'ws://127.0.0.1:1/fleet', port: 1, planPath: 'docs/p.md', registerToken: () => {}, clock: () => 0 }
   for (const [field, value, problem] of [
     ['runId', undefined, 'missing'],
     ['planPath', undefined, 'missing'],
@@ -482,6 +550,13 @@ for (const bad of [{ disk: 'lots' }, { disk: '30' }, { disk: '30gb; rm -rf /' }]
     ['wsUrl', undefined, 'missing'],
     ['ttlMs', undefined, 'missing'],
     ['ttlMs', -5, 'not a positive finite number'],
+    // #575: the two shas and the two directories are refused before any exec.
+    ['engineSha', 'main', 'fails isSafeSha'],
+    ['engineSha', undefined, 'fails isSafeSha'],
+    ['baseSha', 'HEAD', 'fails isSafeSha'],
+    ['baseSha', 'refs/heads/main', 'fails isSafeSha'],
+    ['engineDir', undefined, 'missing'],
+    ['targetDir', '', 'missing'],
   ]) {
     const cmds = []
     const exec = async (cmd) => {

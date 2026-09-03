@@ -1,23 +1,19 @@
-// fleet/tests/test_drive_plan_in_assignment.mjs — #544 step 2: the plan and
-// its gate verdicts ride the RUN ASSIGNMENT, not the repo at `baseRef`.
+// fleet/tests/test_drive_plan_in_assignment.mjs — #544 step 2, #575: the plan
+// and its gate verdicts ride the RUN ASSIGNMENT. Always.
 //
-// The #337 rule ("the text assessed is the plan AS COMMITTED AT baseRef") is
-// what makes a plan a repo file: a plan uncommitted at the base ref, or
-// differing from it, is refused outright. `planSource: 'assignment'` makes
-// that rule OPTIONAL — the driver reads the plan (and its sibling
-// `<stem>.gate-verdicts.json`) from the working tree, assesses THAT text, and
-// ships both to the sandbox inside `fleet-run.json`. It does not untrack
-// `docs/`; #544 steps 1 and 3 are later work.
+// Under #337 the plan was a repo file, read as committed at a base ref, and a
+// working-tree copy that diverged was refused. #544 step 2 made shipping the
+// working-tree text an option (`planSource: 'assignment'`); #575 made it the
+// only path — there is no base ref to read a plan from any more (the engine
+// checkout is not the target, and the target's cache clone carries no plan),
+// so `planSource` is gone and every drive ships the file at `planPath`, from
+// wherever it lives, known to the sandbox by its basename.
 //
-// `planSource` is a `driveOne` option, not a flag: #575 deleted
-// `--plan-from-assignment` from the CLI, so every leg below sets the option
-// directly.
-//
-// The absent-flag path is the load-bearing half of this spec: with no
-// `planSource`, every exec string and the delivered payload must be
-// byte-identical to BASE. Leg (j) freezes the whole BASE exec sequence as a
-// literal, recorded from this same stub against BASE before the edit, so any
-// added or reordered command reddens here.
+// The load-bearing leg is (j): the preflight's whole exec sequence, frozen as
+// a literal — the engine checkout's cleanliness, HEAD and manifest reads, the
+// target's cache clone (a first-use `clone`, or a `fetch origin` when the
+// clone exists) and the `cat-file -e <base>^{commit}` that refuses a base
+// origin does not carry. Any added, dropped or reordered command reddens here.
 //
 // No network, no ssh, no gh: `exec` is a stub, `provision` and `destroy` are
 // the injected seams, and every byte of state lives under one `fs.mkdtemp`.
@@ -39,6 +35,9 @@ const UNFIT_PLAN =
   '# P\n\n### Task 1: Docs only\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `docs/a.md`\n\n- [ ] **Step 1: edit**\n'
 const VERDICTS = '{"tasks":{"1":{"hash":"abc","verdict":"pass","reason":"r"}},"tally":{"dispatched":1,"rejected":0}}'
 
+const ENGINE_SHA = 'a'.repeat(40)
+const BASE_SHA = 'b'.repeat(40)
+
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-plan-assign-'))
 
 try {
@@ -47,11 +46,13 @@ try {
   const provisionArgs = {
     golden: 'fleet-golden',
     runId: 'r1',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: ENGINE_SHA,
+    targetDir: '/tmp/targets/o--r',
+    baseSha: BASE_SHA,
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
-    planPath: 'docs/p.md',
+    planPath: 'p.md',
     clock: () => 1000,
   }
   const recordingExec = () => {
@@ -78,24 +79,26 @@ try {
       token: result.token,
       wsUrl: 'ws://127.0.0.1:8151/fleet',
       ttlMs: 60000,
-      planPath: 'docs/p.md',
+      planPath: 'p.md',
     })
-    ok('(a) the assignment payload carries plan.text/plan.verdicts beside the untouched BASE keys')
+    ok('(a) the assignment payload carries plan.text/plan.verdicts beside the untouched keys')
   }
 
-  // (b) without `plan`, the delivery command is byte-identical to BASE —
-  //     asserted against a literal, not a substring.
+  // (b) without `plan`, the delivery command is byte-identical to the
+  //     shipped pin — asserted against a literal, not a substring — and
+  //     carries no `engine` key (#575 deleted it).
   {
     const exec = recordingExec()
     const result = await provisionRun({ ...provisionArgs, exec })
     assert.equal(
       deliveryOf(exec.cmds),
       `ssh ${SANDBOX_SSH_OPTS} fleet-r1.exe.xyz 'umask 077 && cat > /home/exedev/fleet-run.json' <<'FLEET_EOF'\n` +
-        `{"runId":"r1","token":"${result.token}","wsUrl":"ws://127.0.0.1:8151/fleet","ttlMs":60000,"planPath":"docs/p.md"}\n` +
+        `{"runId":"r1","token":"${result.token}","wsUrl":"ws://127.0.0.1:8151/fleet","ttlMs":60000,"planPath":"p.md"}\n` +
         'FLEET_EOF',
     )
     assert.equal('plan' in payloadOf(exec.cmds), false, 'no plan key when unset — old assignments stay byte-identical')
-    ok('(b) the no-plan delivery command is byte-identical to BASE')
+    assert.equal('engine' in payloadOf(exec.cmds), false, 'no engine key, ever')
+    ok('(b) the no-plan delivery command is byte-identical to the shipped pin')
   }
 
   // (c) the heredoc sentinel is refused BEFORE the golden is cloned, exactly
@@ -113,47 +116,55 @@ try {
     ok('(c) a plan or verdict text carrying FLEET_EOF is refused before any exec')
   }
 
-  // -- d-j. driveOne: the preflight source and what reaches `provision`. -----
-  // A stub exec answering the three git reads the preflight and the version
-  // cross-check make; `provision` records its options and stops the drive
-  // there (its throw is caught into the read, as any provisioner failure is),
-  // and `destroy` is a no-op so teardown issues only its two captures.
-  const G128 = { code: 128, stdout: '', stderr: 'fatal: path does not exist' }
+  // -- d-j. driveOne: the preflight and what reaches `provision`. ------------
+  // A stub exec answering the reads the preflight makes of the engine checkout
+  // and the target's cache; `provision` records its options and stops the
+  // drive there (its throw is caught into the read, as any provisioner failure
+  // is), and `destroy` is a no-op so teardown issues only its two captures.
   const stubDrive = async ({
     label,
     runId = `run-plan-${label}`,
-    planSource,
     planText = FIT_PLAN,
     verdicts = null,
-    show,
     allowUnfitPlan = false,
+    cacheExists = false,
+    // The cache's answer to `cat-file -e <base>^{commit}`: 0 holds it, 1 does not.
+    catFileCode = 0,
   }) => {
     const root = path.join(tmp, label)
     const repoDir = path.join(root, 'repo')
-    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
-    if (planText !== null) fs.writeFileSync(path.join(repoDir, 'docs/p.md'), planText)
-    if (verdicts !== null) fs.writeFileSync(path.join(repoDir, 'docs/p.gate-verdicts.json'), verdicts)
+    const targetsDir = path.join(root, 'targets')
+    const planFile = path.join(root, 'plans', 'p.md')
+    fs.mkdirSync(repoDir, { recursive: true })
+    fs.mkdirSync(path.dirname(planFile), { recursive: true })
+    if (cacheExists) fs.mkdirSync(path.join(targetsDir, 'o--r'), { recursive: true })
+    if (planText !== null) fs.writeFileSync(planFile, planText)
+    if (verdicts !== null) fs.writeFileSync(path.join(root, 'plans', 'p.gate-verdicts.json'), verdicts)
     const cmds = []
+    const calls = []
     const provisionCalls = []
-    const exec = async (cmd) => {
+    const exec = async (cmd, opts) => {
       cmds.push(cmd)
-      if (/ rev-parse base-ref$/.test(cmd)) return { code: 0, stdout: `${'a'.repeat(40)}\n`, stderr: '' }
-      if (/ show base-ref:\.claude-plugin\/plugin\.json$/.test(cmd)) return { code: 0, stdout: '{"version":"9.9.9"}', stderr: '' }
-      if (/ show base-ref:docs\/p\.md$/.test(cmd)) return show
+      calls.push({ cmd, env: opts?.env ?? null })
+      if (/ rev-parse HEAD$/.test(cmd)) return { code: 0, stdout: `${ENGINE_SHA}\n`, stderr: '' }
+      if (/ show HEAD:\.claude-plugin\/plugin\.json$/.test(cmd)) return { code: 0, stdout: '{"version":"9.9.9"}', stderr: '' }
+      if (/ cat-file -e /.test(cmd)) return { code: catFileCode, stdout: '', stderr: '' }
       return { code: 0, stdout: '', stderr: '' }
     }
     const drive = () =>
       driveOne({
-        planPath: 'docs/p.md',
+        planPath: planFile,
         golden: 'fleet-golden',
         port: 0,
         dbDir: path.join(root, 'db'),
         evidenceDir: path.join(root, 'ev'),
+        target: 'o/r',
+        baseSha: BASE_SHA,
         repoDir,
+        targetsDir,
         exec,
         clock: () => 2_000_000,
         runId,
-        baseRef: 'base-ref',
         ttlMs: 60_000,
         tickMs: 25,
         settleMs: 20,
@@ -163,169 +174,155 @@ try {
         heartbeatTimeoutMs: 1_000,
         progressLog: () => {},
         allowUnfitPlan,
+        githubTokenPath: path.join(root, 'no-such-token'),
         provision: async (options) => {
           provisionCalls.push(options)
           throw new Error('provision-stop')
         },
         destroy: async () => {},
-        ...(planSource === undefined ? {} : { planSource }),
       })
-    return { drive, cmds, provisionCalls, repoDir, root }
+    return { drive, cmds, calls, provisionCalls, repoDir, root }
   }
-  const showedPlan = (cmds) => cmds.filter((cmd) => / show base-ref:docs\/p\.md$/.test(cmd))
+  const showedPlan = (cmds) => cmds.filter((cmd) => / show \S+:\S*\.md/.test(cmd))
 
-  // (d) absent at baseRef (`git show` code 128) is NOT a refusal under
-  //     `planSource: 'assignment'` — the drive proceeds, and the working-tree
-  //     plan and its sibling verdicts reach `provision`.
+  // (d) the working-tree plan and its sibling verdicts reach `provision`, and
+  //     no command reads a plan out of git.
   {
-    const h = await stubDrive({ label: 'd', planSource: 'assignment', verdicts: VERDICTS, show: G128 })
+    const h = await stubDrive({ label: 'd', verdicts: VERDICTS })
     const read = await h.drive()
     assert.equal(h.provisionCalls.length, 1, `expected one provision call, got ${h.provisionCalls.length}`)
     assert.deepEqual(h.provisionCalls[0].plan, { text: FIT_PLAN, verdicts: VERDICTS })
-    assert.deepEqual(showedPlan(h.cmds), [], 'planSource: assignment never runs git show <baseRef>:<plan>')
+    assert.equal(h.provisionCalls[0].planPath, 'p.md', 'the sandbox knows the plan by its basename')
+    assert.deepEqual(showedPlan(h.cmds), [], 'nothing ever runs git show <ref>:<plan>')
     assert.deepEqual(
       read.detail.errors.filter((line) => /#337/.test(line)),
       [],
       'no #337 refusal reaches the read',
     )
-    ok('(d) a plan absent at baseRef ships from the working tree with its verdicts')
+    ok('(d) a plan file ships from the working tree with its verdicts')
   }
 
   // (e) no sibling verdict file — `verdicts` is null, not absent and not ''.
   {
-    const h = await stubDrive({ label: 'e', planSource: 'assignment', show: G128 })
+    const h = await stubDrive({ label: 'e' })
     await h.drive()
     assert.deepEqual(h.provisionCalls[0].plan, { text: FIT_PLAN, verdicts: null })
     ok('(e) an absent sibling verdict file ships plan.verdicts === null')
   }
 
-  // (f) WITHOUT `planSource` the #337 rule is exactly as it was: a plan
-  //     uncommitted at baseRef is refused, before provisioning, with the BASE
-  //     message.
+  // (g) fitness is assessed on the shipped text, and still gates.
   {
-    const h = await stubDrive({ label: 'f', show: G128 })
-    await assert.rejects(
-      h.drive(),
-      (error) => {
-        assert.equal(
-          error.message,
-          'driveOne: plan docs/p.md is in the working tree but not committed at base-ref — the sandbox ' +
-            'executes the pushed base-ref, never the working tree; commit it, or pass the ref that carries it (#337)',
-        )
-        return true
-      },
-    )
-    assert.deepEqual(h.provisionCalls, [], 'the refusal must precede provisioning')
-    ok('(f) without planSource an absent-at-base plan keeps the BASE #337 refusal')
-  }
-
-  // (g) fitness is assessed on the shipped text, and still gates: the
-  //     preflight is relocated, not removed.
-  {
-    const h = await stubDrive({ label: 'g', planSource: 'assignment', planText: UNFIT_PLAN, show: G128 })
+    const h = await stubDrive({ label: 'g', planText: UNFIT_PLAN })
     await assert.rejects(h.drive(), /headless-unfit/)
     assert.deepEqual(h.provisionCalls, [], 'an unfit plan must not provision')
 
-    const allowed = await stubDrive({
-      label: 'g-allowed',
-      planSource: 'assignment',
-      planText: UNFIT_PLAN,
-      show: G128,
-      allowUnfitPlan: true,
-    })
+    const allowed = await stubDrive({ label: 'g-allowed', planText: UNFIT_PLAN, allowUnfitPlan: true })
     await allowed.drive()
     assert.deepEqual(allowed.provisionCalls[0].plan, { text: UNFIT_PLAN, verdicts: null })
-    ok('(g) an unfit working-tree plan is refused under planSource: assignment unless allowUnfitPlan')
+    ok('(g) an unfit plan file is refused unless allowUnfitPlan')
   }
 
-  // (h) was the CLI flag. #575 deleted `--plan-from-assignment` from
-  // `fleet/drive-one.mjs` — a launch names its target and its base and nothing
-  // else about where the plan comes from — so `parseArgs` refuses it as an
-  // unknown flag now and `buildDriveOptions` carries no `planSource` key at
-  // all. That refusal is pinned in `test_drive_one_target.mjs` leg (a); what
-  // remains this file's is the `driveOne({ planSource })` option itself, which
-  // every other leg here drives directly.
-
-  // (i) a working tree that DIFFERS from baseRef is not a refusal either —
-  //     and the text that ships is the working tree's, never `git show`'s.
+  // (h) an absent plan ships nothing, and says so — the sandbox still learns
+  //     the name it was dispatched under.
   {
-    const h = await stubDrive({
-      label: 'i',
-      planSource: 'assignment',
-      show: { code: 0, stdout: `${FIT_PLAN}# a different committed copy\n`, stderr: '' },
-    })
+    const h = await stubDrive({ label: 'h', planText: null })
     await h.drive()
-    assert.equal(h.provisionCalls[0].plan.text, FIT_PLAN)
-    assert.deepEqual(showedPlan(h.cmds), [], 'planSource: assignment never runs git show <baseRef>:<plan>')
-    ok('(i) a plan differing at baseRef ships the working-tree text')
+    assert.equal('plan' in h.provisionCalls[0], false, 'no plan key reaches provision for a plan that is not there')
+    assert.equal(h.provisionCalls[0].planPath, 'p.md')
+    ok('(h) an absent plan file ships no plan key')
   }
 
-  // (j) the frozen BASE exec sequence. Recorded from this same stub against
-  //     BASE (1e09182) BEFORE this task's edit: the absent-flag drive must
-  //     issue these five commands, in this order, byte for byte. The
-  //     `planSource: 'assignment'` drive differs by exactly one thing — the
-  //     `git show <baseRef>:<plan>` read is gone.
-  const BASE_EXEC_SEQUENCE = [
-    'git -C <root>/repo show base-ref:docs/p.md',
-    'git -C <root>/repo rev-parse base-ref',
-    'git -C <root>/repo show base-ref:.claude-plugin/plugin.json',
+  // (j) the frozen preflight exec sequence (#575). The drive must issue these
+  //     commands, in this order, byte for byte: the run tip's ref name (git's
+  //     own grammar, before any VM); the engine checkout's cleanliness, its
+  //     HEAD, its manifest; the target's first-use clone (the token file is
+  //     absent here, so the clone's env carries no GH_TOKEN) or its
+  //     credentialed fetch; the `cat-file` that refuses a base origin does not
+  //     carry; then, from the aborted provision's teardown, the two captures.
+  const PULL =
     'ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null ' +
-      'fleet-run-plan-j.exe.xyz \'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" ' +
-      'shim.log fleet-run.json .claude/projects $(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | ' +
-      'sed "s|^|repo/|") 2>/dev/null\' > <root>/ev/sandbox-logs/fleet-run-plan-j-<ts>/sandbox-logs.tgz',
-    'ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-run-plan-j --json --range=24h"',
+    "fleet-run-plan-j.exe.xyz sh > <root>/ev/sandbox-logs/fleet-run-plan-j-<ts>/sandbox-logs.tgz <<'FLEET_PULL_EOF'\n" +
+    `cd /home/exedev && tar czf - --transform 's,^target/,repo/,' --exclude="target/.claude/ultrapowers/run-*/clones" ` +
+    'shim.log fleet-run.json .claude/projects $(cd target && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | ' +
+    'sed "s|^|target/|") 2>/dev/null\nFLEET_PULL_EOF'
+  const STAT = 'ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-run-plan-j --json --range=24h"'
+  const FIRST_USE_SEQUENCE = [
+    'git check-ref-format refs/fleet/run-plan-j',
+    'git -C <root>/repo status --porcelain',
+    'git -C <root>/repo rev-parse HEAD',
+    'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
+    `git -c credential.helper= -c credential.helper='!gh auth git-credential' clone https://github.com/o/r.git <root>/targets/o--r`,
+    `git -C <root>/targets/o--r cat-file -e ${BASE_SHA}^{commit}`,
+    PULL,
+    STAT,
+  ]
+  const CACHED_SEQUENCE = [
+    'git check-ref-format refs/fleet/run-plan-j',
+    'git -C <root>/repo status --porcelain',
+    'git -C <root>/repo rev-parse HEAD',
+    'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
+    `git -C <root>/targets/o--r -c credential.helper= -c credential.helper='!gh auth git-credential' fetch origin`,
+    `git -C <root>/targets/o--r cat-file -e ${BASE_SHA}^{commit}`,
+    PULL,
+    STAT,
   ]
   // The two varying substrings — the mkdtemp root and the log-pull directory's
   // wall-clock stamp — and nothing else.
   const normalize = (cmds, root) =>
     cmds.map((cmd) => cmd.split(root).join('<root>').replace(/(\/fleet-[A-Za-z0-9-]+)-\d+\//, '$1-<ts>/'))
   {
-    const control = await stubDrive({ label: 'j', runId: 'run-plan-j', show: { code: 0, stdout: FIT_PLAN, stderr: '' } })
-    await control.drive()
-    assert.deepEqual(normalize(control.cmds, control.root), BASE_EXEC_SEQUENCE)
-    assert.equal(control.provisionCalls.length, 1)
-    assert.equal('plan' in control.provisionCalls[0], false, 'no plan key reaches provision without planSource')
+    const first = await stubDrive({ label: 'j', runId: 'run-plan-j' })
+    await first.drive()
+    assert.deepEqual(normalize(first.cmds, first.root), FIRST_USE_SEQUENCE)
+    assert.equal(first.provisionCalls.length, 1)
+    const clone = first.calls.find((c) => / clone /.test(c.cmd))
+    assert.ok(clone && !('GH_TOKEN' in (clone.env ?? {})), `no token file → no GH_TOKEN in the clone env: ${JSON.stringify(clone?.env)}`)
+    assert.ok(!first.cmds.slice(0, 5).some((c) => /exe\.dev|\.exe\.xyz/.test(c)), 'nothing reaches exe.dev before the base is known to be real')
 
-    const shipped = await stubDrive({
-      label: 'j-assignment',
-      runId: 'run-plan-j',
-      planSource: 'assignment',
-      show: { code: 0, stdout: FIT_PLAN, stderr: '' },
+    const cached = await stubDrive({ label: 'j-cached', runId: 'run-plan-j', cacheExists: true })
+    await cached.drive()
+    assert.deepEqual(normalize(cached.cmds, cached.root), CACHED_SEQUENCE)
+    assert.ok(!cached.cmds.some((c) => / clone /.test(c)), 'an existing cache clone is fetched, never re-cloned')
+    ok('(j) the preflight exec sequence is frozen byte for byte, first-use and cached')
+  }
+
+  // (j-refuse) a base the cache does not hold is refused, naming the sha and
+  //            the remedy, before anything reaches exe.dev.
+  {
+    const h = await stubDrive({ label: 'j-absent', runId: 'run-plan-absent', catFileCode: 1 })
+    await assert.rejects(h.drive(), (error) => {
+      assert.ok(error.message.includes('push'), `names the remedy: ${error.message}`)
+      assert.ok(error.message.includes(BASE_SHA), `names the base: ${error.message}`)
+      return true
     })
-    await shipped.drive()
-    assert.deepEqual(normalize(shipped.cmds, shipped.root), BASE_EXEC_SEQUENCE.slice(1))
-    ok('(j) the absent-flag exec sequence is BASE byte for byte; assignment drops only the git show')
+    assert.deepEqual(h.provisionCalls, [], 'an absent base must not provision')
+    assert.ok(!h.cmds.some((c) => /exe\.dev|\.exe\.xyz/.test(c)), `no exe.dev command for a refused base: ${JSON.stringify(h.cmds)}`)
+    assert.equal(fs.existsSync(path.join(h.root, 'db')), false, 'refusal precedes the orchestrator start')
+    ok('(j-refuse) a base absent from origin is refused with push + the sha, before any VM')
   }
 
   // -- k. the PUBLISH leg renders from the DISPATCHED plan. -----------------
-  // The two preflight branches are not the end of the plan text's life: the
-  // publish leg reads it again, for the PR body's `Closes #NNN` lines
-  // (`parsePlanCloses`) and for the PR title (`planTitleFrom`, whose fallback
-  // is the plan file's BASENAME). Both used to read `committedText`, which
-  // `planSource: 'assignment'` never assigns — so a shipped plan opened a PR
-  // that closed nothing and was titled `fleet <runId>: <file>.md`, silently,
-  // because neither render throws on `null`. Legs (a)-(j) are all upstream of
-  // the publish leg and stayed green with that defect present; this one is
-  // the leg that reddens on it.
-  //
-  // A REAL drive to a green publish: the shared `_drive_helpers.mjs` fixture
-  // (its own tmp, two real git repos, a bare `origin`, a real `runShim` over
-  // the real ws transport). `gh pr create` is the only stub — its command
-  // string carries the title, and its `--body-file` is read off disk.
+  // The publish leg reads the plan text again, for the PR body's
+  // `Closes #NNN` lines (`parsePlanCloses`) and for the PR title
+  // (`planTitleFrom`, whose fallback is the plan file's BASENAME). A REAL
+  // drive to a green publish: the shared `_drive_helpers.mjs` fixture (its own
+  // tmp, three real git repos, a bare `origin`, a real `runShim` over the real
+  // ws transport). `gh pr create` is the only stub — its command string
+  // carries the title, and its `--body-file` is read off disk.
   {
     const fixture = await setupDriveFixture()
     try {
-      const { tmp: fxTmp, repoDir, headSha, makeExec, startStubSandbox, driveDefaults } = fixture
+      const { tmp: fxTmp, headSha, makeExec, startStubSandbox, driveDefaults } = fixture
       const runId = 'run-plan-k'
-      // The plan lives ONLY in the working tree — uncommitted at `main`, which
-      // is exactly the #337 divergence leg (f) still refuses without the flag.
-      const PLAN_REL = 'docs/superpowers/plans/2026-09-02-shipped.md'
+      // The plan lives ONLY under a `plans/` dir beside the fixture repos —
+      // in no checkout at all, which is the #575 shape.
+      const planFile = path.join(fxTmp, 'plans', '2026-09-02-shipped.md')
       const PLAN_TEXT =
         '# The shipped plan H1 (#544)\n\n' +
         '**Closes:** #544, #337\n\n' +
         FIT_PLAN.split('\n').slice(1).join('\n')
-      fs.mkdirSync(path.join(repoDir, path.dirname(PLAN_REL)), { recursive: true })
-      fs.writeFileSync(path.join(repoDir, PLAN_REL), PLAN_TEXT)
+      fs.mkdirSync(path.dirname(planFile), { recursive: true })
+      fs.writeFileSync(planFile, PLAN_TEXT)
 
       const exec = makeExec((assignment) => {
         setTimeout(() => {
@@ -335,15 +332,12 @@ try {
             receiptSha: headSha,
             receiptPath: 'f.txt',
             exec,
-            stamp: { pluginVersion: '9.9.9', engineSha: headSha },
           })
         }, 30)
       })
       const { detail } = await driveOne({
         ...driveDefaults,
-        planPath: PLAN_REL,
-        baseRef: 'main',
-        planSource: 'assignment',
+        planPath: planFile,
         dbDir: path.join(fxTmp, `db-${runId}`),
         evidenceDir: path.join(fxTmp, `evidence-${runId}`),
         exec,
@@ -351,8 +345,6 @@ try {
       })
       await exec.sandbox
 
-      // Precondition: the plan really is absent at the base ref, so this is a
-      // drive only `planSource: 'assignment'` could have reached at all.
       assert.deepEqual(detail.pullRequest?.url, PR_URL, `expected a published PR, got ${JSON.stringify(detail.pullRequest)}`)
       const ghCmd = exec.cmds.find((cmd) => / gh pr create /.test(cmd))
       assert.ok(ghCmd, `expected gh pr create, got: ${JSON.stringify(exec.cmds.filter((c) => / gh /.test(c)))}`)

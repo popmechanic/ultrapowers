@@ -438,6 +438,31 @@ const mkAgent = (scenario, over = {}) => createRunWorker({
   assert.equal(end.role, 'implementer')
 }
 
+// A label dispatched TWICE in one run gets two DISTINCT session ids. Run-55:
+// the engine's retry re-dispatched `exam:3` with the first attempt's id and
+// `claude -p` refused it (`Session ID … is already in use`) in 0.4 s, so the
+// retry lane failed the task without retrying. The first dispatch keeps the
+// deterministic id (a re-drive still lands on the same transcript); the second
+// is derived from the label plus its attempt, beside the `.2` evidence dir.
+{
+  const agent = mkAgent('success')
+  const sid = (argv) => argv[argv.indexOf('--session-id') + 1]
+  await agent('first attempt', { label: 'impl:T9', model: 'sonnet', schema: SCHEMA })
+  const first = sid(JSON.parse(fs.readFileSync(argvOut, 'utf8')))
+  await agent('second attempt', { label: 'impl:T9', model: 'sonnet', schema: SCHEMA })
+  const second = sid(JSON.parse(fs.readFileSync(argvOut, 'utf8')))
+  assert.equal(first, sessionIdFor('run-24', 'impl:T9'), 'the first dispatch keeps the re-drive-stable id')
+  assert.notEqual(second, first, 'the retry must not reuse a session id the CLI already refuses (run-55)')
+  assert.match(second, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'still a uuid')
+  assert.equal(second, sessionIdFor('run-24', 'impl:T9#2'), 'derived from the label and its attempt number')
+  assert.ok(fs.existsSync(path.join(workersDir, 'impl_T9.2', 'cmd')), 'the second attempt keeps its own evidence dir')
+  assert.deepEqual(
+    events.filter((e) => e.kind === 'worker:start' && e.label === 'impl:T9').map((e) => e.sessionId),
+    [first, second],
+    'the event log names both ids',
+  )
+}
+
 // overload -> null, NEVER a throw. This is the single most load-bearing line in
 // the module: waves.js turns null into AGENT_NULL at all ten sites, and
 // AGENT_NULL is the ONLY signal its isInfraFault classifier trusts (:892 — it

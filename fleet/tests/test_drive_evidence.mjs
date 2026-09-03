@@ -67,7 +67,7 @@ try {
       }, 30)
     })
     const exec = async (cmd) => {
-      if (/tar czf - --exclude=[^ ]* shim\.log/.test(cmd)) {
+      if (/tar czf - .*shim\.log/.test(cmd)) {
         inner.cmds.push(cmd)
         throw new Error('ssh: connect to host fleet-run-drive-7b.exe.xyz port 22: Connection timed out')
       }
@@ -83,7 +83,7 @@ try {
     })
     await sandbox
 
-    assert.equal(exec.cmds.filter((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)).length, 1, 'the pull is attempted exactly once')
+    assert.equal(exec.cmds.filter((c) => /tar czf - .*shim\.log/.test(c)).length, 1, 'the pull is attempted exactly once')
     assert.ok(
       exec.cmds.includes(`ssh exe.dev "rm fleet-${runId} --json"`),
       `the sandbox is destroyed even though the pull failed, got: ${JSON.stringify(exec.cmds)}`,

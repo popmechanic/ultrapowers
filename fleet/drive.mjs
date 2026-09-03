@@ -11,9 +11,18 @@
 // sandbox's store token is minted inside `provisionRun` and delivered over
 // ssh, and this module only ever handles the resulting record (a hash and an
 // expiry). The one credential it reads itself is the orchestrator's GitHub
-// token (#368), for the publish leg at the very end — handed to `git push`
-// and `gh` as an env var through `exec(cmd, {env})`, never logged, never in
-// `detail`.
+// token (#368) — for the target's first-use cache clone (#575) and for the
+// publish leg at the very end — handed to `git` and `gh` as an env var
+// through `exec(cmd, {env})`, never logged, never in `detail`.
+//
+// #575 — every run is a foreign run. A launch names a TARGET (`owner/repo`)
+// and a BASE (a sha on it); the checkout this drive runs out of (`repoDir`)
+// is the ENGINE and nothing else. The target lives in a per-target cache
+// clone under `targetsDir`, the sandbox receives both as two pushes, and the
+// run branch comes back into the cache clone as `refs/fleet/<runId>` — the
+// fetch IS the pin. The self-host special case is gone: ultrapowers driving
+// ultrapowers is just a target whose cache clone happens to hold the same
+// commits as the engine checkout.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -33,10 +42,34 @@ const TERMINAL = new Set(['gate-green', 'parked', 'revoked', 'folded'])
 /**
  * The plan gate's verdict artifact, sibling to the plan: `<stem>.gate-verdicts.json`
  * (compile_plan.py's `verdicts_path`). It rides the assignment beside the plan
- * text under `planSource: 'assignment'`, so the sandbox's compiler can read the
- * record for a plan that is no longer a repo file (#544).
+ * text, so the sandbox's compiler can read the record for a plan that is not
+ * a repo file at all (#544, #575).
  */
 const GATE_VERDICTS_SUFFIX = '.gate-verdicts.json'
+
+/** Where the orchestrator keeps one cache clone per target (#575). */
+export const DEFAULT_TARGETS_DIR = '/home/exedev/targets'
+
+/**
+ * `owner/repo`: exactly one slash, each half a git-safe name. The target is
+ * spelled into the cache clone's path, the clone URL, the fetch/push refspecs
+ * and `gh pr create --repo`, so it is checked before anything is provisioned.
+ */
+export const isSafeTarget = (value) => typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)
+
+/** The cache clone's directory name for a target: `<owner>--<repo>`. */
+export const cacheDirNameFor = (target) => String(target).replace('/', '--')
+
+/**
+ * The git config that turns `GH_TOKEN` into a clone/fetch/push credential
+ * with nothing written to disk. Every GitHub-bound git command carries it —
+ * `-c` is per-invocation and git itself never reads `GH_TOKEN`, so a command
+ * without it is anonymous whatever its env says.
+ */
+export const GH_CREDENTIAL = `-c credential.helper= -c credential.helper='!gh auth git-credential'`
+
+/** The heredoc sentinel the sandbox log pull's remote script rides. */
+const LOG_PULL_EOF = 'FLEET_PULL_EOF'
 
 const isNonEmptyString = (value) => typeof value === 'string' && value.length > 0
 
@@ -44,20 +77,32 @@ const isNonEmptyString = (value) => typeof value === 'string' && value.length > 
  * The evidence-before-teardown pull (#197), as proven in the live run: tar the
  * SMALL sandbox artifacts — shim.log, the delivered assignment, the engine's
  * session transcripts (`~/.claude/projects`), and the gitignored
- * `.claude/ultrapowers/run-*` dirs inside the repo — back to the orchestrator
- * as one archive. Never the repo itself. Every diagnosis in the live run
- * depended on exactly these files, and they die with the VM.
+ * `.claude/ultrapowers/run-*` dirs inside the TARGET clone — back to the
+ * orchestrator as one archive. Never the repo itself. Every diagnosis in the
+ * live run depended on exactly these files, and they die with the VM.
+ *
+ * #575: the run dirs live under `/home/exedev/target` now (the engine is
+ * spawned with the target as its cwd), but every reader of the bundle —
+ * `readRunbookFromBundle`'s member glob, the ultralearn harvest, the
+ * RUNBOOK's evidence-diff pattern — names them `repo/…`. So tar renames the
+ * prefix on the way in (`--transform`) and every member keeps the name the
+ * readers already use. The remote script rides a heredoc rather than a
+ * quoted argument because it needs both quote kinds verbatim — the
+ * transform's `'` and the exclude's `"` — and a heredoc is the one shape in
+ * which the command string carries them untouched.
+ *
+ * --exclude the one-driver run tree's clones/ (run-main.mjs): they are full
+ * repo copies — N tasks + integration, .git included — and "never the repo
+ * itself" is this command's whole rule. Everything else in the run dir
+ * (events.jsonl, patches, workers, receipts, the claude/ transcripts) IS the
+ * evidence. Excludes match the ORIGINAL member names, so the pattern is
+ * spelled `target/…`.
  */
 export const sandboxLogPullCommand = ({ vmName, dest }) =>
-  `ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz ` +
-  // --exclude the one-driver run tree's clones/ (run-main.mjs): they are full
-  // repo copies — N tasks + integration, .git included — and "never the repo
-  // itself" is this command's whole rule. Everything else in the run dir
-  // (events.jsonl, patches, workers, receipts, the claude/ transcripts) IS
-  // the evidence.
-  `'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects ` +
-  `$(cd repo && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|repo/|") 2>/dev/null' ` +
-  `> ${dest}`
+  `ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} ${vmName}.exe.xyz sh > ${dest} <<'${LOG_PULL_EOF}'\n` +
+  `cd /home/exedev && tar czf - --transform 's,^target/,repo/,' --exclude="target/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects ` +
+  `$(cd target && ls -d .claude/ultrapowers/run-*/ 2>/dev/null | sed "s|^|target/|") 2>/dev/null\n` +
+  `${LOG_PULL_EOF}`
 
 /**
  * The VM names this module is willing to interpolate into a shell. `vmName`
@@ -238,7 +283,7 @@ const PUBLISH_FAILURE = /(?:^|\s)(?:push \S+ to origin failed|gh pr create\b[^\n
  * class, dots included.
  */
 const unsafeRescueField = (rescue) => {
-  for (const [field, ok] of [['runId', isSafeBranchName], ['tip', isSafeSha], ['branch', isSafeBranchName], ['host', isSafeVmName]]) {
+  for (const [field, ok] of [['runId', isSafeBranchName], ['tip', isSafeSha], ['branch', isSafeBranchName], ['host', isSafeVmName], ['target', isSafeTarget]]) {
     if (!ok(rescue?.[field])) return { field, value: rescue?.[field] }
   }
   return null
@@ -248,7 +293,8 @@ const unsafeRescueField = (rescue) => {
  * The host the rescue block tells the operator to fetch FROM. Not the sandbox
  * (`vmName`): the sandbox is destroyed before the publish leg runs, and the
  * tip the operator wants is the one pinned as `refs/fleet/<runId>` in the
- * ORCHESTRATOR's `repoDir` (#497) — this process's own machine. So it is read
+ * ORCHESTRATOR's cache clone for the target (#497, #575) — this process's own
+ * machine. So it is read
  * off the host rather than configured: a card naming a baked constant would
  * send the operator to the wrong box the day the orchestrator is renamed.
  *
@@ -281,21 +327,26 @@ export const orchestratorHost = (hostname = (() => {
  * #497's run-44 rescue, which lived as prose in a comment and never as a
  * block anyone could paste: read the pinned ref on the orchestrator, fetch it
  * to the laptop over ssh, push it with an operator credential, open the PR by
- * hand. Every value here is one the drive already held — nothing is computed.
- * Kept byte-identical to `fleet/RUNBOOK.md` §Park triage step 3 (its spec
- * matches both against the same four verbs, so the two cannot drift).
+ * hand. Every value here is one the drive already held — nothing is computed
+ * beyond the cache clone's name, which is a spelling of `target` (#575: the
+ * pin lives in `/home/exedev/targets/<owner>--<repo>`, the target's cache
+ * clone, never in the engine checkout). Kept byte-identical to
+ * `fleet/RUNBOOK.md` §Park triage step 3 (its spec matches both against the
+ * same four verbs, so the two cannot drift).
  */
-const rescueCommands = ({ runId, tip, branch, host }) =>
-  `# 1. the run tip is already pinned on the orchestrator (#497) — confirm it
-ssh ${host} 'cd /home/exedev/repo && git rev-parse refs/fleet/${runId}'
+const rescueCommands = ({ runId, tip, branch, host, target }) => {
+  const cache = path.posix.join(DEFAULT_TARGETS_DIR, cacheDirNameFor(target))
+  return `# 1. the run tip is already pinned on the orchestrator (#497) — confirm it
+ssh ${host} 'cd ${cache} && git rev-parse refs/fleet/${runId}'
 #    expect ${tip}
 # 2. fetch that pinned ref to your laptop over ssh
-git fetch ssh://exedev@${host}/home/exedev/repo refs/fleet/${runId}:refs/heads/${branch}
+git fetch ssh://exedev@${host}${cache} refs/fleet/${runId}:refs/heads/${branch}
 # 3. push it with an operator credential — the drive's token could not
 git push origin ${branch}
 # 4. open the PR by hand, carrying this gate receipt as the body
 gh pr create --draft --head ${branch} --title '[parked] fleet ${runId}' --body-file pr-body-${runId}.md
 `
+}
 
 /**
  * The PR body: the gate receipt rendered. `receipt` is the parsed
@@ -310,7 +361,7 @@ gh pr create --draft --head ${branch} --title '[parked] fleet ${runId}' --body-f
  * and the standard trailer.
  *
  * #524: when a PARKED run's `errors` carry a publish-leg failure and the
- * caller passes `rescue` ({runId, tip, branch, host}), a `## Rescue` section
+ * caller passes `rescue` ({runId, tip, branch, host, target}), a `## Rescue` section
  * sits between the notes and the `Closes` lines — the four hand steps, with
  * this run's real ref, sha, branch and host in them. A park without such a
  * failure, and every green body, renders no such section.
@@ -535,17 +586,20 @@ export const deriveSandboxStat = (statJson) => {
  * @param {string} [opts.evidenceDir] - where this run's evidence lands
  *   (default `${dbDir}-evidence`). Deliberately OUTSIDE `dbDir`, so wiping the
  *   store for a fresh-store experiment never deletes the evidence.
- * @param {string} opts.repoDir - local checkout the base is pushed from and the
- *   run branch is fetched back into.
- * @param {string} [opts.pinRepoDir] - the ONE checkout the run tip is pinned
- *   in, whatever `repoDir` this drive runs out of (#543; default `repoDir`,
- *   which is exactly the #497 behaviour). When a caller drives out of a
- *   checkout nobody keeps, `refs/fleet/<runId>` lands where nobody looks and
- *   whatever reaps that directory takes it — the "reachable by nothing"
- *   outcome #497 exists to prevent. The mirror runs only AFTER the local pin
- *   lands, fetches the REF
- *   (a bare sha needs `uploadpack.allowAnySHA1InWant`), and its failure is
- *   recorded and never fatal.
+ * @param {string} opts.target - the repository the run works on, `owner/repo`
+ *   (#575). Reached through its cache clone under `targetsDir`; refused at
+ *   entry when it fails `isSafeTarget`.
+ * @param {string} opts.baseSha - the commit the run starts from: a hex sha on
+ *   the target's GitHub origin (`isSafeSha`; a symbolic ref is refused). A
+ *   base absent from origin is refused before any VM is spent.
+ * @param {string} opts.repoDir - the ENGINE checkout: the code every sandbox
+ *   runs, pushed at its HEAD as `fleet-engine`. Read for its HEAD, its
+ *   manifest and its cleanliness (the one new refusal: a dirty engine
+ *   checkout does not drive); never fetched into, never the target.
+ * @param {string} [opts.targetsDir] - where the per-target cache clones live
+ *   (default `/home/exedev/targets`). `<targetsDir>/<owner>--<repo>` is cloned
+ *   on first use, `fetch origin`ed after, and is where the run tip is pinned
+ *   as `refs/fleet/<runId>` and pushed to GitHub from.
  * @param {(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
  *   `stdout` is compared byte-for-byte against the working tree by the #337
  *   preflight, so an exec MUST keep stderr off it (#362); `stderr`, when
@@ -584,17 +638,16 @@ export const deriveSandboxStat = (statJson) => {
  *   preflight, which otherwise throws (before any provisioning) when the plan
  *   at `planPath` carries a task whose only evidence is human judgment. Pass
  *   only with a specific operator pre-authorization; the override is recorded
- *   in `detail.errors`. The plan is read as committed at `baseRef` (#337); an
- *   uncommitted or dirty plan is refused regardless of this flag.
+ *   in `detail.errors`. The plan is the working-tree file at `planPath` — any
+ *   readable file, shipped in the run assignment (#544, #575); nothing reads
+ *   it out of git.
  * @param {string} [opts.githubTokenPath] - the orchestrator's GitHub token
- *   file (#368; default `GITHUB_TOKEN_PATH`). Read here, handed to `git push`
- *   and `gh` ONLY as the `GH_TOKEN` env var through `exec(cmd, {env})` —
- *   never on a command line, never in `detail`. Absent → the run still reads
- *   exactly as it would have; `github-token missing …` lands in
- *   `detail.errors` and no PR is opened.
- * @param {string} [opts.prBase] - the PR's base branch (default `main`).
- *   Operator input that reaches a shell, so it passes `isSafeBranchName` at
- *   entry like `runId` does.
+ *   file (#368; default `GITHUB_TOKEN_PATH`). Read once, handed to the
+ *   first-use cache clone, `git push` and `gh` ONLY as the `GH_TOKEN` env var
+ *   through `exec(cmd, {env})` — never on a command line, never in `detail`.
+ *   Absent → the clone is anonymous and the run still reads exactly as it
+ *   would have; `github-token missing …` lands in `detail.errors` and no PR
+ *   is opened.
  * @param {'fold'|'serialize'} [opts.overlap] - the engine's overlap mode
  *   (#514), delivered in the run assignment and forwarded by `run-main.mjs`
  *   to `ultra_run.py --overlap`. Absent → the assignment carries no `overlap`
@@ -606,16 +659,15 @@ export const driveOne = async ({
   golden,
   port,
   dbDir,
+  // #575: the two a launch names, and the one checkout every drive runs out of.
+  target,
+  baseSha,
   repoDir,
-  // #543: defaulting to `repoDir` keeps every existing caller's exec sequence
-  // byte-identical — a drive that pins into its own checkout is the #497 leg
-  // unchanged, and the mirror below is skipped entirely.
-  pinRepoDir = repoDir,
+  targetsDir = DEFAULT_TARGETS_DIR,
   exec,
   clock = Date.now,
   runId,
   branch = 'fleet-run',
-  baseRef = 'HEAD',
   // #279: ttlMs is the store-token lease TTL delivered to the sandbox. 15 min
   // was a smoke-run constant; a real plan's engine phase runs for hours, and an
   // expired lease surfaces two stages away as a heartbeat timeout. 4h covers
@@ -646,26 +698,24 @@ export const driveOne = async ({
   // specific operator pre-authorization for the manual-judgment task named in
   // the thrown error — never as a standing default.
   allowUnfitPlan = false,
-  // #544 step 2: where the plan text comes from. Undefined (the default, and
-  // the whole absent-flag path) keeps #337 exactly as it was — the plan is a
-  // repo file, read from `baseRef`. `'assignment'` makes it a RUN ARTIFACT:
-  // read from the working tree, assessed there, and shipped to the sandbox in
-  // `fleet-run.json` beside the unchanged `planPath`.
-  planSource,
   // Injection seams for the provision/teardown legs — the real module
   // functions by default. They exist so the pullLogsOnce refusal branch
   // (defense in depth against a mid-run vmName mutation; unreachable through
   // the public surface post-#298) is testable at all (#290-2).
   provision = provisionRun,
   destroy = destroySandbox,
-  // #368: the publish leg's inputs. The token stays on the orchestrator.
+  // #368: the token stays on the orchestrator.
   githubTokenPath = GITHUB_TOKEN_PATH,
-  prBase = 'main',
 }) => {
-  // #368: `prBase` is operator input interpolated into `gh pr create`; refuse
-  // an unsafe one at entry, before any command, exactly as `runId` is.
-  if (!isSafeBranchName(prBase)) {
-    throw new Error(`driveOne: unsafe prBase ${JSON.stringify(prBase)} — fails isSafeBranchName; refusing before any command`)
+  // #575: the two things a launch names, both interpolated into shells below
+  // (the cache clone's path and URL, the fetch/push refspecs, `gh pr create
+  // --repo`). Refused at entry, before the orchestrator starts and before any
+  // exec call, exactly as `runId` is.
+  if (!isSafeTarget(target)) {
+    throw new Error(`driveOne: target ${JSON.stringify(target)} must be <owner>/<repo> — refusing before any command (#575)`)
+  }
+  if (!isSafeSha(baseSha)) {
+    throw new Error(`driveOne: baseSha ${JSON.stringify(baseSha)} fails isSafeSha — a run names a hex commit, never a symbolic ref; refusing before any command (#575)`)
   }
   // #298: `runId` becomes `fleet-<runId>` and is interpolated into every
   // sandbox-bound ssh/git command string downstream (clone, deliveries,
@@ -687,9 +737,49 @@ export const driveOne = async ({
     )
   }
 
+  // The plan is a RUN ARTIFACT (#544 step 2, #575): `planPath` may be any
+  // readable file — under the engine checkout, beside it, or nowhere near a
+  // repo — and its working-tree text is what the sandbox executes, shipped in
+  // the run assignment beside its sibling gate verdicts. Nothing reads the
+  // plan out of git: the engine checkout is not the target, and the target's
+  // cache clone carries no plan. The sandbox knows the plan by its BASENAME,
+  // which is the only part of the path that survives the trip. An unreadable
+  // plan skips the check with narration only (the live drive always has one;
+  // the in-process tests mostly do not).
+  const planFile = path.resolve(planPath)
+  const planName = path.basename(planFile)
+  // The basename is pushed to the sandbox as `planPath` and interpolated into
+  // its launch argv, so it passes the receipt-pointer guard (same character
+  // class, no leading `-`). #362: a name that fails is refused AS a name
+  // problem, here, before any exec call.
+  if (!isSafeRepoPath(planName)) {
+    throw new Error(
+      `driveOne: plan file name ${JSON.stringify(planName)} (from ${planPath}) fails the repo-path guard — ` +
+        `[A-Za-z0-9._/-] only, no leading '-'; the name is pushed to the sandbox as-is and interpolated ` +
+        `into its launch. Rename the plan (#362)`,
+    )
+  }
+
+  // #575: the fetch is the pin, so `refs/fleet/<runId>` has to be a ref git
+  // will write — and that is decided here, before a VM, not after a full run.
+  // Two questions, and only one of them is `isSafeVmName`'s: it says yes to
+  // `run-1.` and `a..b`, both of which git REJECTS as ref names, so a runId
+  // that is otherwise entirely legal would complete a paid run and then
+  // fetch nothing. `check-ref-format` is git's own grammar and needs no
+  // repository, so the two agree by definition instead of by a regex trying
+  // to mirror it — a second copy of a contract is a copy that drifts (#492).
+  const refName = `refs/fleet/${runId}`
+  if ((await exec(`git check-ref-format ${refName}`))?.code !== 0) {
+    throw new Error(`driveOne: runId ${JSON.stringify(runId)} is not a usable ref name — the run tip is pinned as ${refName}; refusing before any VM (#497, #575)`)
+  }
+
   const resolvedEvidenceDir = evidenceDir ?? `${dbDir}-evidence`
   const resolvedReportPath = reportPath ?? path.join(resolvedEvidenceDir, `gate-read-${runId}.json`)
   const detailPath = `${resolvedReportPath.replace(/\.json$/, '')}.detail.json`
+  // The target's cache clone (#575): one per target, shared by every drive of
+  // it, keyed by the `<owner>--<repo>` spelling so the path never needs a
+  // separator the shell would read.
+  const cacheDir = path.join(targetsDir, cacheDirNameFor(target))
   // A throwing progressLog must never break the drive — it is narration, not
   // a dependency.
   const note = (line) => {
@@ -699,6 +789,29 @@ export const driveOne = async ({
       // narration is best-effort
     }
   }
+
+  // #362-1: the exec seam keeps stderr OFF stdout (the plan preflight used to
+  // compare stdout byte-for-byte), so a failed command's reason — which git,
+  // ssh and gh print on stderr — is joined back in for the diagnostic lines only.
+  const execDiagnostic = (result) =>
+    [String(result?.stdout ?? '').trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
+
+  // #368/#575: the GitHub token, read up front for the first-use cache clone
+  // and read AGAIN at the publish leg hours later, so a token rotated while a
+  // run was in flight is the one the push rides. It rides only the env of the
+  // commands that need it; a missing file is not a failure of the run (the
+  // clone goes anonymous, the publish leg reports `github-token missing` and
+  // opens no PR).
+  const readToken = () => {
+    try {
+      return fs.readFileSync(githubTokenPath, 'utf8').trim() || null
+    } catch {
+      return null
+    }
+  }
+  let token = readToken()
+  const scrub = (text) => (token ? String(text ?? '').split(token).join('<redacted>') : String(text ?? '')).trim()
+  const ghEnv = (extra) => ({ ...(token ? { GH_TOKEN: token } : {}), ...extra })
 
   // Handed to the orchestrator by reference — a token minted mid-run is honored
   // on the next handshake without restarting the server.
@@ -712,57 +825,16 @@ export const driveOne = async ({
   // evidence is human judgment is GUARANTEED to park an unattended drive —
   // refuse it here, before a sandbox exists, not 200k tokens later.
   //
-  // #337: the text assessed is the plan AS COMMITTED AT `baseRef` — the same
-  // source `provisionRun` pushes and the sandbox executes — never the working
-  // tree. Assessing the working tree let the verdict attach to text that was
-  // never dispatched (a spurious refusal on an uncommitted edit; a silent
-  // pass of an unfit committed plan). Two divergences are operator errors,
-  // refused outright and NOT fitness verdicts, so `allowUnfitPlan` does not
-  // cover them: a plan present in the working tree but absent at `baseRef`
-  // (uncommitted — the sandbox would receive nothing), and a plan whose
-  // working-tree copy differs from the committed one (dirty — nobody can say
-  // which text the verdict is about). A plan absent from BOTH skips the check
-  // with narration only (the live drive always has the merged plan committed;
-  // the in-process tests do not).
-  const planFile = path.isAbsolute(planPath) ? planPath : path.join(repoDir, planPath)
-  const planRel = path.relative(repoDir, planFile)
   let workingText = null
   try {
     workingText = fs.readFileSync(planFile, 'utf8')
   } catch {
     workingText = null
   }
-  let committedText = null
-  // The text the sandbox will ACTUALLY execute, whichever source produced it.
-  // The publish leg renders from it twice — `parsePlanCloses` for the PR
-  // body's `Closes #NNN` lines and `pullRequestTitle` for the plan's H1 — so
-  // it is bound HERE, once, by both branches below. Before #544 step 2 those
-  // two call sites read `committedText` directly; under
-  // `planSource: 'assignment'` that variable is never assigned, so a shipped
-  // plan carrying `Closes: #544` would have opened a PR that closed nothing
-  // and was titled after the plan file's basename — silently, since neither
-  // render throws on `null`.
+  // The text the sandbox will ACTUALLY execute. The publish leg renders from
+  // it twice — `parsePlanCloses` for the PR body's `Closes #NNN` lines and
+  // `pullRequestTitle` for the plan's H1 — so it is bound HERE, once.
   let dispatchedText = null
-  // Both halves are interpolated into a shell: the ref passes the guard
-  // provisionRun applies to it, the path the receipt-pointer guard (same
-  // character class, no `..` segment — a path that escapes the checkout can
-  // be at no ref). #362: a path that fails its guard is refused AS a path
-  // problem, here, before any exec call — not read as "absent at baseRef"
-  // and then reported as an uncommitted plan (run-20's critic: misleading,
-  // and non-overridable). The ref keeps its guard-miss reading of "absent":
-  // the stamp cross-check below skips on it with a narrating errors line.
-  //
-  // The guard binds under BOTH plan sources: `planRel` is pushed to the
-  // sandbox as `planPath` either way, and a shipped plan does not make an
-  // escaping path safe to name.
-  if (!isSafeRepoPath(planRel)) {
-    throw new Error(
-      `driveOne: plan path ${JSON.stringify(planRel)} (from ${planPath}) fails the repo-path guard — ` +
-        `[A-Za-z0-9._/-] only, no leading '-', no '..' segment, and inside ${repoDir}; the path is ` +
-        `interpolated into 'git show ${baseRef}:<path>' and pushed to the sandbox as-is. Move or rename ` +
-        `the plan (#362)`,
-    )
-  }
   // The fitness verdict on whichever text is about to be dispatched. Shared by
   // both sources, so the check cannot drift between them: only its INPUT moves.
   const assessDispatchedPlan = (text) => {
@@ -787,102 +859,122 @@ export const driveOne = async ({
     }
   }
 
-  // #544 step 2: the plan as a RUN ARTIFACT. The sandbox executes the text we
-  // SHIP it, so the working tree is the authoritative source and `baseRef` is
-  // not consulted at all — `git show` is never issued, and the two #337
-  // divergences it exists to detect (uncommitted, dirty) have nothing left to
-  // be about: neither can change the dispatched text. Fitness still gates; the
-  // check moves onto the shipped text rather than going away. The gate
-  // verdicts ride along from the sibling artifact the plan gate writes
-  // (`<stem>.gate-verdicts.json`), null when there is none.
+  // The plan is always shipped (#575 M6). The gate verdicts ride along from
+  // the sibling artifact the plan gate writes (`<stem>.gate-verdicts.json`),
+  // null when there is none. Fitness gates on the shipped text.
   let planArtifact = null
-  if (planSource === 'assignment') {
-    if (workingText === null) {
-      note(`plan-from-assignment: plan unreadable at ${planFile} — nothing to ship, fitness check skipped`)
-    } else {
-      const verdictsFile = path.join(
-        path.dirname(planFile),
-        `${path.basename(planFile, path.extname(planFile))}${GATE_VERDICTS_SUFFIX}`,
-      )
-      let verdictsText = null
-      try {
-        verdictsText = fs.readFileSync(verdictsFile, 'utf8')
-      } catch {
-        verdictsText = null
-      }
-      if (verdictsText === null) note(`plan-from-assignment: no gate verdicts beside the plan at ${verdictsFile}`)
-      planArtifact = { text: workingText, verdicts: verdictsText }
-      dispatchedText = workingText
-      note(`plan-from-assignment: shipping ${planRel} (${workingText.length} bytes) in the assignment`)
-      assessDispatchedPlan(workingText)
-    }
+  if (workingText === null) {
+    note(`plan unreadable at ${planFile} — nothing to ship, fitness check skipped`)
   } else {
-    if (isSafeBranchName(baseRef)) {
-      try {
-        const shown = await exec(`git -C ${repoDir} show ${baseRef}:${planRel}`)
-        if (shown?.code === 0 && typeof shown.stdout === 'string') committedText = shown.stdout
-      } catch {
-        committedText = null
-      }
+    const verdictsFile = path.join(
+      path.dirname(planFile),
+      `${path.basename(planFile, path.extname(planFile))}${GATE_VERDICTS_SUFFIX}`,
+    )
+    let verdictsText = null
+    try {
+      verdictsText = fs.readFileSync(verdictsFile, 'utf8')
+    } catch {
+      verdictsText = null
     }
-    if (committedText === null && workingText === null) {
-      note(`headless-fitness: plan absent at ${baseRef}:${planRel} and unreadable at ${planFile} — check skipped`)
-    } else if (committedText === null) {
-      throw new Error(
-        `driveOne: plan ${planRel} is in the working tree but not committed at ${baseRef} — the sandbox ` +
-          `executes the pushed ${baseRef}, never the working tree; commit it, or pass the ref that carries it (#337)`,
-      )
-    } else if (workingText !== null && workingText !== committedText) {
-      throw new Error(
-        `driveOne: plan ${planRel} differs between ${baseRef}:${planRel} (what the sandbox executes) and the ` +
-          `working tree ${planFile} — commit or discard the edit so the fitness verdict attaches to the ` +
-          `dispatched text (#337)`,
-      )
-    } else {
-      assessDispatchedPlan(committedText)
-    }
-    // Unconditional, and outside the branch above: at BASE the publish leg read
-    // `committedText` whatever the preflight decided — including the
-    // absent-from-both case, where it is null. Same value, same reads.
-    dispatchedText = committedText
+    if (verdictsText === null) note(`plan: no gate verdicts beside the plan at ${verdictsFile}`)
+    planArtifact = { text: workingText, verdicts: verdictsText }
+    dispatchedText = workingText
+    note(`plan: shipping ${planName} (${workingText.length} bytes) in the assignment`)
+    assessDispatchedPlan(workingText)
   }
 
-  // #282/#190: what the stamp MUST name — resolved at drive start, from the
-  // same ref provisionRun is about to push, so a repo that moves mid-drive
-  // cannot shift the expectation. `baseRef` is operator input interpolated into
-  // the shell here exactly as `provisionRun` interpolates it, so it passes the
-  // same guard first; an unresolvable expectation SKIPS the cross-check (with a
-  // narrating errors line) rather than reddening the stamp from the driver's own
-  // repo state.
+  // #575 M3 — the ONE new refusal. The engine checkout is pushed to every
+  // sandbox at its HEAD, so an uncommitted change here would run as something
+  // HEAD does not name and the #282 stamp could not tell. Refused before the
+  // orchestrator starts and before any command addressed to exe.dev.
+  const tree = await exec(`git -C ${repoDir} status --porcelain`)
+  if (tree?.code !== 0 || String(tree.stdout ?? '').trim().length > 0) {
+    const why = tree?.code !== 0 ? `git status failed (code ${tree?.code}) ${execDiagnostic(tree)}` : `uncommitted changes:\n${String(tree.stdout).trimEnd()}`
+    throw new Error(
+      `driveOne: engine checkout ${repoDir} is not clean — the engine is pushed as fleet-engine at HEAD, ` +
+        `and a working tree HEAD does not name cannot be what the sandbox ran; commit, stash or discard, ` +
+        `then drive again (#575). ${why}`,
+    )
+  }
+
+  // #575 M5 / #282: the engine identity — HEAD and its manifest — resolved
+  // at drive start, from the checkout provisionRun is about to push, so a
+  // checkout that moves mid-drive cannot shift the expectation. HEAD is
+  // required: the push needs a sha. The manifest half may be unreadable (a
+  // checkout with no plugin.json), which SKIPS the version cross-check with
+  // a narrating errors line rather than reddening the stamp from the driver's
+  // own repo state.
+  const head = await exec(`git -C ${repoDir} rev-parse HEAD`)
+  const engineSha = String(head?.stdout ?? '').trim()
+  if (head?.code !== 0 || !isSafeSha(engineSha)) {
+    throw new Error(
+      `driveOne: could not resolve HEAD of the engine checkout ${repoDir} (code ${head?.code}) ${execDiagnostic(head)} — ` +
+        `the engine is pushed at HEAD, so a checkout that cannot name it cannot drive (#575)`,
+    )
+  }
   let expectedStamp = null
-  if (isSafeBranchName(baseRef)) {
-    try {
-      const shaRes = await exec(`git -C ${repoDir} rev-parse ${baseRef}`)
-      const manifestRes = await exec(`git -C ${repoDir} show ${baseRef}:${MANIFEST_PATH}`)
-      if (shaRes?.code === 0 && manifestRes?.code === 0) {
-        const version = JSON.parse(manifestRes.stdout)?.version
-        const sha = String(shaRes.stdout ?? '').trim()
-        if (isSafeSha(sha) && isNonEmptyString(version)) {
-          expectedStamp = { engineSha: sha, pluginVersion: version }
-        }
-      }
-    } catch {
-      expectedStamp = null
+  try {
+    const manifestRes = await exec(`git -C ${repoDir} show HEAD:${MANIFEST_PATH}`)
+    if (manifestRes?.code === 0) {
+      const version = JSON.parse(manifestRes.stdout)?.version
+      if (isNonEmptyString(version)) expectedStamp = { engineSha, pluginVersion: version }
+    }
+  } catch {
+    expectedStamp = null
+  }
+  if (expectedStamp === null) errors.push(`version cross-check unavailable: could not read HEAD:${MANIFEST_PATH} in ${repoDir}`)
+
+  // #575 M4: the target's cache clone. Cloned from GitHub on first use (the
+  // token rides the env when there is one; without it the clone is anonymous,
+  // which is enough for a public target), `fetch origin`ed on every later
+  // drive, and asked whether it holds the base BEFORE a VM is spent — a base
+  // that is not on origin is an operator error (push it), not a run outcome.
+  // Every command here is addressed to GitHub or to this machine; nothing
+  // reaches exe.dev until the base is known to be real.
+  if (!fs.existsSync(cacheDir)) {
+    note(`target cache: cloning ${target} into ${cacheDir}`)
+    const cloned = await exec(`git ${GH_CREDENTIAL} clone https://github.com/${target}.git ${cacheDir}`, {
+      env: ghEnv({ GIT_TERMINAL_PROMPT: '0' }),
+    })
+    if (cloned?.code !== 0) {
+      throw new Error(
+        `driveOne: could not clone ${target} into ${cacheDir} (code ${cloned?.code}) ${scrub(execDiagnostic(cloned))} — ` +
+          `check the target's spelling and the orchestrator's GitHub token (#575)`,
+      )
+    }
+  } else {
+    // Credentialed like the clone and the push: `-c` is per-invocation, so
+    // the clone's helper is not in the cache's config, and an anonymous fetch
+    // of a private target fails on every drive after the first. Its failure
+    // is FATAL: this is the one preflight that proves the token and the
+    // target are still what they were, and a run that cannot fetch origin
+    // now cannot push to it in four hours either.
+    const fetched = await exec(`git -C ${cacheDir} ${GH_CREDENTIAL} fetch origin`, { env: ghEnv({ GIT_TERMINAL_PROMPT: '0' }) })
+    if (fetched?.code !== 0) {
+      throw new Error(
+        `driveOne: could not fetch ${target} into ${cacheDir} (code ${fetched?.code}) ${scrub(execDiagnostic(fetched))} — ` +
+          `check the target's spelling, the orchestrator's GitHub token, and whether ${cacheDir} is a finished clone (#575)`,
+      )
     }
   }
-  if (expectedStamp === null) errors.push(`version cross-check unavailable: could not resolve ${baseRef} locally`)
+  // Presence, as the contract spells it (M4). The cache also holds every
+  // earlier run's `refs/fleet/*` tip, so this is a weaker question than
+  // "is it on origin" — the fatal fetch above is what keeps the answer honest
+  // for a base that was pushed, and a base copied off a `pinned run tip:`
+  // line that never reached GitHub is the operator's to know.
+  const present = await exec(`git -C ${cacheDir} cat-file -e ${baseSha}^{commit}`)
+  if (present?.code !== 0) {
+    throw new Error(
+      `driveOne: base ${baseSha} is not on ${target} (cache ${cacheDir} does not hold it after fetching origin) — ` +
+        `push it to GitHub before driving; a run starts from a commit anyone can fetch (#575)`,
+    )
+  }
 
   let vmName = null
   let destroyed = false
   let pulled = false
   let sandboxLogs = null
   let sandboxStat = null
-
-  // #362-1: the exec seam keeps stderr OFF stdout (the #337 preflight compares
-  // stdout byte-for-byte), so a failed command's reason — which git, ssh and
-  // gh print on stderr — is joined back in for the diagnostic lines only.
-  const execDiagnostic = (result) =>
-    [String(result?.stdout ?? '').trim(), String(result?.stderr ?? '').trim()].filter(Boolean).join(' ')
 
   // One command, bounded by `logPullTimeoutMs`. The bound is PER COMMAND, not
   // shared across the captures: a slow log pull must not eat the budget the
@@ -1169,14 +1261,19 @@ export const driveOne = async ({
     const provisioned = await provision({
       golden,
       runId,
-      baseRef,
-      repoDir,
+      // #575: the engine is this checkout at its HEAD; the target is the
+      // cache clone at the named base. Two pushes, two clones.
+      engineDir: repoDir,
+      engineSha,
+      targetDir: cacheDir,
+      baseSha,
       ttlMs,
       wsUrl: resolvedWsUrl,
       port: effectivePort,
-      planPath,
-      // #544: absent unless `planSource: 'assignment'` shipped one — the key
-      // itself is the switch, on `overlap`'s terms.
+      // The sandbox knows the plan by its basename (M6); the text rides `plan`.
+      planPath: planName,
+      // #544: absent when the plan was unreadable — the key itself is the
+      // switch, on `overlap`'s terms.
       ...(planArtifact ? { plan: planArtifact } : {}),
       engineEnv,
       overlap,
@@ -1328,8 +1425,8 @@ export const driveOne = async ({
   const receipts = receiptsFor()
 
   // Receipts resolve only against a branch actually fetched back from the
-  // sandbox, and only sha-by-sha. No receipts at all is NOT resolvable: an
-  // empty set must never read as vacuously green.
+  // sandbox into the target's cache clone, and only sha-by-sha. No receipts
+  // at all is NOT resolvable: an empty set must never read as vacuously green.
   //
   // The branch is the one the SANDBOX published (the engine integrates to
   // `ultra/integration-<stamp>`, a name nothing on this side chose); `branch` is
@@ -1346,14 +1443,12 @@ export const driveOne = async ({
   //                distinct from the failures below.
   //   reachable    `merge-base --is-ancestor <sha> <fetchedTip>` — is the
   //                commit on the branch THIS run produced. The operand is the
-  //                tip pinned at fetch time, never `FETCH_HEAD`: this line
-  //                used to name FETCH_HEAD, and stated a guarantee that ref
-  //                could not give it. Concurrent drives share one `repoDir`
-  //                (one default; the RUNBOOK separates ports and db-dirs, not
-  //                repo dirs), so a sibling drive's fetch lands over this
-  //                one's and the check silently answers about the WRONG
-  //                run's branch — a green run then reads
-  //                `receiptsResolvable: false` and strands (#497).
+  //                tip pinned at fetch time (`refs/fleet/<runId>`), never
+  //                `FETCH_HEAD`: concurrent drives of one target share one
+  //                cache clone, so a sibling drive's fetch would land over
+  //                this one's `FETCH_HEAD` and the check would silently
+  //                answer about the WRONG run's branch — a green run then
+  //                reads `receiptsResolvable: false` and strands (#497).
   //   dereferenced `cat-file -e <sha>:<path>` — does the recorded PATH exist in
   //                the tree at that commit. Without it, a pointer into a
   //                gitignored directory (which is where the engine writes its
@@ -1373,16 +1468,15 @@ export const driveOne = async ({
   let receiptsResolvable = false
   let parkedPublish = null
   // #368: the fetched tip, pinned by sha the moment the fetch lands — the
-  // publish leg pushes THIS object, so nothing that touches FETCH_HEAD later
-  // can change what reaches GitHub, and a folded tip goes up as-is (merge
-  // commits included; a linear replay re-creates the overlap the fold
-  // unioned — #363).
+  // publish leg pushes THIS object, so nothing later can change what reaches
+  // GitHub, and a folded tip goes up as-is (merge commits included; a linear
+  // replay re-creates the overlap the fold unioned — #363).
   let fetchedOk = false
   let fetchedBranch = null
   let fetchedTip = null
-  // #543: `refs/fleet/<runId>` once the pin below actually lands — the value
-  // the PR body promises the operator. Null while it has not, so a run whose
-  // `update-ref` failed promises nothing.
+  // #543/#575: `refs/fleet/<runId>` once the fetch below lands — the value the
+  // PR body promises the operator. Null while it has not, so a run whose
+  // fetch failed promises nothing.
   let pinnedRef = null
   const parkedWithReceipts = status === 'parked' && receipts.length > 0
   if (((reachedGateGreen && !publishTimedOut) || parkedWithReceipts) && receipts.length > 0 && vmName) {
@@ -1392,132 +1486,71 @@ export const driveOne = async ({
       if (!isSafeBranchName(runBranch)) {
         errors.push(`unsafe branch name in runs.${runId}.branch — refusing to fetch`)
       } else {
-        const fetched = await exec(
-          `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/repo ${runBranch}`,
-        )
-        if (fetched?.code !== 0) {
-          errors.push(`fetch ${runBranch} failed (code ${fetched?.code})`)
-        } else {
-          fetchedOk = true
-          fetchedBranch = runBranch
-          resolvable = true
-          const tip = await exec(`git -C ${repoDir} rev-parse FETCH_HEAD`)
-          const tipSha = String(tip?.stdout ?? '').trim()
-          if (tip?.code === 0 && isSafeSha(tipSha)) fetchedTip = tipSha
-          else errors.push(`rev-parse FETCH_HEAD after fetching ${runBranch} failed (code ${tip?.code}) — nothing to push`)
-          // #497: pin the tip to a REAL ref, here, before any later leg can
-          // fail. `FETCH_HEAD` is one file the next fetch overwrites, so a run
-          // whose publish fails is left reachable by nothing at all. That is
-          // not hypothetical: run-33 finished green, its push was refused
-          // (the orchestrator's token has no `workflow` scope and main's
-          // ci.yml had moved under it), and its work sat unreferenced in this
-          // clone — one `reset --hard`, which is the FIRST step of launching
-          // the next run, and a gc from gone. It survived because a human
-          // wrote this ref by hand.
-          //
-          // Deliberately not a branch: `refs/fleet/<runId>` keeps `git branch`
-          // clean and cannot be checked out by accident, while still being a
-          // real ref that gc honours. Failure to write it is recorded and
-          // never fatal — this leg exists to make a LATER failure survivable,
-          // so it must not become a new way for the drive to die.
-          if (fetchedTip) {
-            // Two questions, and only one of them is `isSafeBranchName`'s.
-            // It answers "is this safe to interpolate into a shell" — it says
-            // yes to `a..b` and `run-1.`, both of which git then REJECTS as ref
-            // names, so the pin would silently not happen for a runId that is
-            // otherwise entirely legal: the failure this leg exists to prevent.
-            // `check-ref-format` is git's own grammar, so the two agree by
-            // definition instead of by a regex trying to mirror it — a second
-            // copy of a contract is a copy that drifts (#492).
-            const refName = `refs/fleet/${runId}`
-            const shellSafe = isSafeBranchName(runId)
-            const wellFormed = shellSafe && (await exec(`git -C ${repoDir} check-ref-format ${refName}`))?.code === 0
-            if (!wellFormed) {
-              errors.push(`runId ${JSON.stringify(runId)} is not a usable ref name — no rescue ref written; if this run's publish fails its tip is reachable only via FETCH_HEAD (#497)`)
+        // #575: THE FETCH IS THE PIN. The run branch comes straight out of the
+        // sandbox's target clone into `refs/fleet/<runId>` in the target's
+        // cache clone — a real ref that gc honours and `reset --hard` cannot
+        // touch (#497's whole point), written by the fetch itself rather than
+        // by a later `update-ref` that could fail after the fetch succeeded.
+        // Per-ref locking is also what makes K concurrent drives on one cache
+        // clone safe: nothing here reads `FETCH_HEAD`, the one file a sibling
+        // drive's fetch overwrites (#497 follow-up), so there is no window in
+        // which drive A's reachability check answers about drive B's branch.
+        // The refspec is FORCED (`+`): the pin means "THIS drive's tip", and a
+        // re-drive of a runId whose earlier pin survived a failed publish
+        // starts from base again, so its tip is a sibling of the old one and
+        // an unforced fetch would be rejected as non-fast-forward — leaving a
+        // green run's branch to die with the sandbox. (The ref name itself was
+        // checked at entry, before any VM.)
+        {
+          const fetched = await exec(
+            `git -C ${cacheDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@${vmName}.exe.xyz/home/exedev/target +${runBranch}:${refName}`,
+          )
+          if (fetched?.code !== 0) {
+            errors.push(`fetch ${runBranch} failed (code ${fetched?.code}) ${execDiagnostic(fetched)}`.trim())
+          } else {
+            fetchedOk = true
+            fetchedBranch = runBranch
+            resolvable = true
+            const tip = await exec(`git -C ${cacheDir} rev-parse ${refName}`)
+            const tipSha = String(tip?.stdout ?? '').trim()
+            if (tip?.code === 0 && isSafeSha(tipSha)) {
+              fetchedTip = tipSha
+              pinnedRef = refName
+              // Say it out loud. A ref nobody knows about rescues nobody: the
+              // next scope rejection at 3am otherwise prints `push … failed`
+              // and nothing else, and the operator repeats run-33's manual
+              // recovery for work that is already pinned.
+              note(`pinned run tip: ${refName} -> ${fetchedTip} (survives reset/gc, #497)`)
             } else {
-              const pinned = await exec(`git -C ${repoDir} update-ref ${refName} ${fetchedTip}`)
-              if (pinned?.code === 0) {
-                pinnedRef = refName
-                // Say it out loud. A ref nobody knows about rescues nobody: the
-                // next scope rejection at 3am otherwise prints `push … failed`
-                // and nothing else, and the operator repeats run-33's manual
-                // recovery for work that is already pinned.
-                note(`pinned run tip: ${refName} -> ${fetchedTip} (survives reset/gc, #497)`)
-                // #543: and pin it in ONE well-known place. `repoDir` is
-                // whatever checkout this drive happens to run out of, and a
-                // caller is free to point it at a directory nobody keeps — so
-                // #497's ref would be written into the one directory nobody
-                // looks in and whatever reaps it eventually removes.
-                // The mirror runs only now, after the local pin succeeded: a
-                // ref is always fetchable from a local path while a bare sha
-                // is not (`uploadpack.allowAnySHA1InWant`), so what is fetched
-                // is the REF just written, never `fetchedTip`.
-                //
-                // Failure is recorded and never fatal, for the same reason the
-                // pin above is: this leg exists to make a LATER failure
-                // survivable and must not become a new way for the drive to
-                // die.
-                if (pinRepoDir !== repoDir) {
-                  // `pinRepoDir` is operator input interpolated into a shell
-                  // string. Refuse it rather than quote it: a path this guard
-                  // rejects is a typo or an attack, and both are better read
-                  // in `errors` than executed.
-                  if (!isSafeRepoPath(pinRepoDir)) {
-                    errors.push(
-                      `pinRepoDir ${JSON.stringify(pinRepoDir)} fails the repo-path guard — no canonical pin written; ` +
-                        `${refName} exists only in ${repoDir} (#543)`,
-                    )
-                  } else {
-                    const mirrored = await exec(`git -C ${pinRepoDir} fetch ${repoDir} ${refName}:${refName}`)
-                    if (mirrored?.code === 0) {
-                      note(`pinned run tip in ${pinRepoDir}: ${refName} -> ${fetchedTip} (mirrored from ${repoDir}, #543)`)
-                    } else {
-                      errors.push(
-                        `could not pin ${refName} in ${pinRepoDir} from ${repoDir} (code ${mirrored?.code}) — ` +
-                          `the run tip is pinned only in ${repoDir}, which may be a throwaway clone (#543)`,
-                      )
-                    }
-                  }
-                }
+              errors.push(`rev-parse ${refName} after fetching ${runBranch} failed (code ${tip?.code}) — nothing to push`)
+            }
+            for (const receipt of receipts) {
+              if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
+                errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
+                receiptChecks.push({ ...receipt, exists: false, reachable: false, dereferenced: false, resolved: false })
+                resolvable = false
+                continue
               }
-              if (pinned?.code !== 0) {
-                errors.push(`could not pin ${refName} to ${fetchedTip} (code ${pinned?.code}) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`)
+              const seen = await exec(`git -C ${cacheDir} cat-file -e ${receipt.sha}`)
+              const exists = seen?.code === 0
+              let reachable = false
+              let dereferenced = false
+              if (exists && fetchedTip) {
+                // The operand is the tip PINNED AT FETCH TIME, never
+                // `FETCH_HEAD` (#497 follow-up): concurrent drives share one
+                // cache clone, and a sibling's fetch would otherwise make this
+                // check answer about the wrong run's branch.
+                const ancestry = await exec(`git -C ${cacheDir} merge-base --is-ancestor ${receipt.sha} ${fetchedTip}`)
+                reachable = ancestry?.code === 0
               }
+              if (reachable) {
+                const blob = await exec(`git -C ${cacheDir} cat-file -e ${receipt.sha}:${receipt.path}`)
+                dereferenced = blob?.code === 0
+              }
+              const resolved = exists && reachable && dereferenced
+              receiptChecks.push({ ...receipt, exists, reachable, dereferenced, resolved })
+              if (!resolved) resolvable = false
             }
-          }
-          for (const receipt of receipts) {
-            if (!isSafeSha(receipt.sha) || !isSafeRepoPath(receipt.path)) {
-              errors.push(`unsafe receipt pointer in ${receipt.rowId} — refusing to verify`)
-              receiptChecks.push({ ...receipt, exists: false, reachable: false, dereferenced: false, resolved: false })
-              resolvable = false
-              continue
-            }
-            const seen = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}`)
-            const exists = seen?.code === 0
-            let reachable = false
-            let dereferenced = false
-            if (exists) {
-              // The operand is the tip PINNED AT FETCH TIME, never `FETCH_HEAD`
-              // (#497 follow-up). `repoDir` has one default and the RUNBOOK
-              // tells operators concurrent drains take distinct ports and
-              // db-dirs — never a distinct repo dir — so two concurrent drives
-              // share one `FETCH_HEAD`. Drive B's fetch lands over drive A's,
-              // and A's reachability check then answers a question about B's
-              // branch: a green run reads `receiptsResolvable: false`, the
-              // publish leg refuses, and the work strands — the exact outcome
-              // #497 is about. `fetchedTip` is already immune, and #368 pinned
-              // it by sha for the PUSH leg for precisely this reason; this leg
-              // was simply left behind.
-              const ancestry = await exec(`git -C ${repoDir} merge-base --is-ancestor ${receipt.sha} ${fetchedTip}`)
-              reachable = ancestry?.code === 0
-            }
-            if (reachable) {
-              const blob = await exec(`git -C ${repoDir} cat-file -e ${receipt.sha}:${receipt.path}`)
-              dereferenced = blob?.code === 0
-            }
-            const resolved = exists && reachable && dereferenced
-            receiptChecks.push({ ...receipt, exists, reachable, dereferenced, resolved })
-            if (!resolved) resolvable = false
           }
         }
       }
@@ -1526,8 +1559,8 @@ export const driveOne = async ({
       resolvable = false
     }
     if (reachedGateGreen) receiptsResolvable = resolvable
-    // #336: non-null ⟺ the branch was fetched into repoDir. A failed or
-    // refused fetch leaves NOTHING on this side — the branch dies with the
+    // #336: non-null ⟺ the branch was fetched into the cache clone. A failed
+    // or refused fetch leaves NOTHING on this side — the branch dies with the
     // sandbox at teardown — so it reads null (RUNBOOK park triage step 2:
     // evidence-diff recovery), never a survived-shaped object carrying
     // `branch: null`. Why it was not fetched is already in `errors`.
@@ -1537,11 +1570,12 @@ export const driveOne = async ({
   const leaseContinuity = epochs.size === 1 && epochs.has(1) && !sawExpired && !sawRevoked
 
   // #282/#190: non-emptiness is necessary but nowhere near sufficient — a
-  // sandbox that ran the GOLDEN IMAGE's code instead of the pushed base stamps
-  // two perfectly non-empty cells naming the wrong commit. Cross-check them
-  // against what the driver itself pushed. When that expectation could not be
-  // resolved (`expectedStamp === null`, already narrated above) the check is
-  // skipped and the key keeps its old non-emptiness meaning.
+  // sandbox that ran the GOLDEN IMAGE's code instead of the pushed engine
+  // stamps two perfectly non-empty cells naming the wrong commit. Cross-check
+  // them against the engine checkout's HEAD and manifest, which is what the
+  // driver itself pushed (#575). When that expectation could not be resolved
+  // (`expectedStamp === null`, already narrated above) the check is skipped
+  // and the key keeps its old non-emptiness meaning.
   const stampedVersion = store.getCell('runs', runId, 'pluginVersion')
   const stampedSha = store.getCell('runs', runId, 'engineSha')
   let versionStamp = isNonEmptyString(stampedVersion) && isNonEmptyString(stampedSha)
@@ -1550,7 +1584,7 @@ export const driveOne = async ({
     if (!match) {
       errors.push(
         `version stamp mismatch: sandbox ran ${stampedVersion}@${stampedSha}, ` +
-          `pushed base is ${expectedStamp.pluginVersion}@${expectedStamp.engineSha} — stale golden or wrong base (#282)`,
+          `pushed engine is ${expectedStamp.pluginVersion}@${expectedStamp.engineSha} — stale golden or wrong engine checkout (#282, #575)`,
       )
       versionStamp = false
     }
@@ -1647,32 +1681,26 @@ export const driveOne = async ({
   // --- the publish leg (#368) -----------------------------------------------
   // AFTER teardown (the billing clock never waits on GitHub) and BEFORE the
   // store stops (so the PR url is stamped on the runs row). Runs only when the
-  // branch is actually in `repoDir` with a pinned tip: a green run whose
+  // branch is actually in the cache clone with a pinned tip: a green run whose
   // receipts RESOLVE (a gate-green status with a pointer that does not bind is
   // a defect to diagnose, not a PR to open — RUNBOOK §Gate read), or a park
   // that published (`parkedPublish` non-null; the draft PR is the park card
   // even when a pointer is off, and its body says so). Every failure lands in
   // `errors` and leaves `pullRequest` null — the read above is already final
-  // and is never touched. The token is read here, rides ONLY the env of the
-  // two commands, is scrubbed from any output that is recorded, and is never
-  // logged.
+  // and is never touched. The token is read AGAIN here (a rotation during a
+  // long run lands), rides ONLY the env of the two commands, is scrubbed from
+  // any output that is recorded, and is never logged.
   const publishable = fetchedOk && fetchedTip !== null && ((reachedGateGreen && receiptsResolvable) || parkedPublish !== null)
   if (fetchedOk && reachedGateGreen && !receiptsResolvable) {
     errors.push(`PR not opened: gate-green but receipts unresolvable on ${fetchedBranch} — diagnose before publishing`)
   }
   if (publishable) {
     const parked = !reachedGateGreen
-    let token = null
-    try {
-      token = fs.readFileSync(githubTokenPath, 'utf8').trim()
-    } catch {
-      token = null
-    }
+    token = readToken()
     if (!token) {
       errors.push(`github-token missing at ${githubTokenPath} — PR not opened`)
       note('publish: github-token missing — branch not pushed, PR not opened')
     } else {
-      const scrub = (text) => String(text ?? '').split(token).join('<redacted>').trim()
       try {
         // The receipt to render: the run's own `gate` row when it resolved,
         // else the first resolved pointer. Both halves of a resolved pointer
@@ -1683,7 +1711,7 @@ export const driveOne = async ({
         let receiptSource = null
         if (chosen) {
           receiptSource = `${chosen.sha}:${chosen.path}`
-          const shown = await exec(`git -C ${repoDir} show ${chosen.sha}:${chosen.path}`)
+          const shown = await exec(`git -C ${cacheDir} show ${chosen.sha}:${chosen.path}`)
           if (shown?.code === 0) {
             try {
               receipt = JSON.parse(shown.stdout)
@@ -1731,7 +1759,7 @@ export const driveOne = async ({
             closes,
             errors: [...errors],
             runbook,
-            rescue: { runId, tip: fetchedTip, branch: fetchedBranch, host: orchestratorHost() },
+            rescue: { runId, tip: fetchedTip, branch: fetchedBranch, host: orchestratorHost(), target },
             // #543: the ref the pin leg really wrote (null when it did not),
             // and the gate read beside it — `resolvedReportPath` is where this
             // drive's read actually lands, so the path the card names is the
@@ -1745,24 +1773,26 @@ export const driveOne = async ({
         fs.writeFileSync(bodyFile, body)
         const title = pullRequestTitle({ runId, planText: dispatchedText, planPath, parked })
 
-        // 1. Push the fetched tip AS-IS. `origin` is the orchestrator clone's
-        //    https remote; `gh auth git-credential` turns GH_TOKEN into the
-        //    push credential with nothing written to disk. No prompt may ever
-        //    hang an unattended drive.
-        const pushCmd =
-          `git -C ${repoDir} -c credential.helper= -c credential.helper='!gh auth git-credential' ` +
-          `push origin ${fetchedTip}:refs/heads/${fetchedBranch}`
-        const pushed = await boundedExec(pushCmd, { env: { GH_TOKEN: token, GIT_TERMINAL_PROMPT: '0' } })
+        // 1. Push the fetched tip AS-IS. `origin` is the cache clone's https
+        //    remote — the target's own GitHub repository (#575); `gh auth
+        //    git-credential` turns GH_TOKEN into the push credential with
+        //    nothing written to disk. No prompt may ever hang an unattended
+        //    drive.
+        const pushCmd = `git -C ${cacheDir} ${GH_CREDENTIAL} push origin ${fetchedTip}:refs/heads/${fetchedBranch}`
+        const pushed = await boundedExec(pushCmd, { env: ghEnv({ GIT_TERMINAL_PROMPT: '0' }) })
         if (pushed?.code !== 0) {
           errors.push(`push ${fetchedBranch} to origin failed (code ${pushed?.code}) ${scrub(execDiagnostic(pushed))}`.trim())
           note(`publish: push of ${fetchedBranch} failed`)
         } else {
           note(`publish: pushed ${fetchedBranch} (${fetchedTip}) to origin`)
-          // 2. Open the PR. Draft on the parked path — the park card.
+          // 2. Open the PR. Draft on the parked path — the park card. On the
+          //    TARGET's repository (`--repo`, explicit even though the cwd is
+          //    its cache clone), against GitHub's default branch — a foreign
+          //    PR has no business naming one (#575).
           const ghCmd =
-            `cd ${shellQuote(repoDir)} && gh pr create --base ${prBase} --head ${fetchedBranch} ` +
+            `cd ${shellQuote(cacheDir)} && gh pr create --repo ${target} --head ${fetchedBranch} ` +
             `--title ${shellQuote(title)} --body-file ${shellQuote(bodyFile)}${parked ? ' --draft' : ''}`
-          const created = await boundedExec(ghCmd, { env: { GH_TOKEN: token, GH_PROMPT_DISABLED: '1' } })
+          const created = await boundedExec(ghCmd, { env: ghEnv({ GH_PROMPT_DISABLED: '1' }) })
           const parsed = created?.code === 0 ? parsePullRequestUrl(created.stdout) : null
           if (parsed === null) {
             errors.push(`gh pr create for ${fetchedBranch} failed (code ${created?.code}) ${scrub(execDiagnostic(created))}`.trim())

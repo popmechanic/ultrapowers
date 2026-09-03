@@ -203,9 +203,10 @@ ssh fleet-orchestrator.exe.xyz 'printf "Host *.exe.xyz exe.dev\n  StrictHostKeyC
 # 3. A clone of this repo at the same path the shim expects, with fleet's deps.
 ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo && cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
 #    This checkout is the engine every run pushes: whatever is here is what the
-#    drive delivers to the sandbox as `fleet-engine` (drive-one.mjs --repo-dir
-#    defaults to it), and the #282 versionStamp cross-check reads plugin.json
-#    from it. Before a drive, pin it to the newest release on `main` — the last
+#    drive delivers to the sandbox as `fleet-engine` (drive-one.mjs runs out of
+#    it; where the drive runs from is not a flag), and the #282 versionStamp
+#    cross-check reads plugin.json from HEAD of it. A dirty checkout refuses to
+#    drive (#575). Before a drive, pin it to the newest release on `main` — the last
 #    commit that touched .claude-plugin/plugin.json — and read the stamp back:
 ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q $(git -C /home/exedev/repo log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C /home/exedev/repo show HEAD:.claude-plugin/plugin.json'
 ```
@@ -280,7 +281,7 @@ chain of them after the first loses the `cd`; `setsid -f` rather than
 `nohup ... &` for the same reason as the single run below):
 
 ```bash
-ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan.md> run-$r --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1); done; exit'
+ssh -n fleet-orchestrator.exe.xyz 'for r in 41 42 43; do (cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs <plan.md> run-$r --target <owner>/<repo> --base <sha> --port $((8146+r)) --db-dir /tmp/fleet-orch-run$r </dev/null >/home/exedev/fleet-evidence/drive-run-$r.out 2>&1); done; exit'
 ```
 
 Note the operator runs multiple subscriber accounts in rotation (#513): a
@@ -550,21 +551,24 @@ dispatching: rewrite the verification into runtime/external form (add a
 pinning test), or route that task to a local drain. `allowUnfitPlan: true`
 (`--allow-unfit-plan`) overrides — pass it only with a specific operator
 pre-authorization for that manual ack, and the override is recorded in
-`detail.errors`. The plan assessed is the one **committed at `baseRef`**
-(`git show <baseRef>:<planPath>`, default `HEAD`) — the same text the sandbox
-executes — never the working tree. Two operator errors are refused before any
-provisioning and are not covered by the override: the plan is in the working
-tree but not committed at `baseRef` (`not committed at …` — commit it), or the
-working-tree copy differs from the committed one (`differs between …` — commit
-or discard the edit). Merge the plan and drive from a clean checkout.
+`detail.errors`. The plan assessed is the **file at `<plan.md>`** — any
+readable file, shipped in the run assignment and known to the sandbox by its
+basename (#544, #575); nothing reads a plan out of git, so there is no
+committed copy for it to diverge from. What must be clean is the ENGINE
+checkout the drive runs out of: an uncommitted change there is refused before
+any provisioning (`is not clean` — commit, stash or discard it), because the
+engine is pushed at HEAD and a tree HEAD does not name cannot be what the
+sandbox ran.
 
 **The orchestrator opens the PR (#368).** Once the run resolves and its
-branch is fetched into the orchestrator checkout, `driveOne` — after teardown,
-so the billing clock never waits on GitHub — pushes the fetched tip to
-`origin` **as-is** (`git push origin <tip-sha>:refs/heads/<runBranch>`; merge
-commits included, never rebased — a linear replay re-creates the overlap the
-fold unioned, #363) and opens the PR with `gh pr create --base main --head
-<runBranch> --body-file <evidenceDir>/pr-body-<runId>.md`. The body is the
+branch is fetched into the target's cache clone as `refs/fleet/<runId>`
+(#575), `driveOne` — after teardown, so the billing clock never waits on
+GitHub — pushes the fetched tip to that clone's `origin` (the target's own
+GitHub repository) **as-is** (`git push origin <tip-sha>:refs/heads/<runBranch>`;
+merge commits included, never rebased — a linear replay re-creates the overlap
+the fold unioned, #363) and opens the PR with `gh pr create --repo <owner>/<repo>
+--head <runBranch> --body-file <evidenceDir>/pr-body-<runId>.md` — no `--base`:
+a foreign PR targets GitHub's default branch. The body is the
 gate receipt (`fleet-receipts/<runId>/gate-receipt.json`, read off the branch
 at its receipt pointer) rendered: verdict, checks, acks, the five §W1d legs,
 spend, `autoResolved` and the completeness-critic findings when the receipt
@@ -611,7 +615,7 @@ byte for byte. Check it against the five pre-registered questions:
 | Field | §W1d question |
 |---|---|
 | `o1` | Did provision → claim → run → gate-green → receipts complete with zero store-caused failures (nothing the guard had to converge away)? |
-| `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> FETCH_HEAD`), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
+| `receiptsResolvable` | Does every receipt the run produced resolve at its `sha` on the fetched sandbox integration branch (the real `ultra/integration-*` branch from the sandbox, stored in `runs.<runId>.branch`, fetched for real — not simulated)? Three verification legs: (1) object existence (`git cat-file -e <sha>`), (2) reachability from the run branch (`git merge-base --is-ancestor <sha> refs/fleet/<runId>` — the fetch's own refspec pins the tip in the target's cache clone, #575), (3) path dereference in the tree (`git cat-file -e <sha>:<path>` — receipts are committed under `fleet-receipts/<runId>/` on the run branch). |
 | `leaseContinuity` | Did the lease renew across the whole run with no false expiry? |
 | `versionStamp` | Is the run row stamped with `pluginVersion` + `engineSha` read from the pushed base ref inside the sandbox, and do they match what the driver pushed (#282)? The installed-plugin half died at 0.3.0 with the install it checked (`drive.mjs:1123-1127`): no plugin participates in the run, and comparing the golden's bootstrap plugin to the pushed manifest would go permanently red at the first release bump. versionStamp attests the checkout stamp alone. |
 | `spendObservational` | `{reported, ledger}` — the run report's own token total vs. the shim's spend-row sum. **Observational at n=1 by construction** (spec §W1d, finding F6): this first run's own numbers are the input, not a pass/fail check yet. |
@@ -678,18 +682,20 @@ On every park, triage in this order:
    apply cleanly to base (PR #317 precedent); reconstruct any
    integration-only fixes from `report.json`.
 3. **The run's tip is already pinned — do not hand-rescue it.** Every fetched
-   run tip lands on `refs/fleet/<runId>` in the orchestrator's clone the moment
-   the fetch succeeds, before the publish leg can fail (#497). It survives
-   `git reset --hard` (the first step of launching the next run) and `gc`. The
-   drive logs `pinned run tip: refs/fleet/<runId> -> <sha>` when it happens. So
-   a failed publish is recoverable, not fatal:
+   run tip lands on `refs/fleet/<runId>` in the TARGET's cache clone on the
+   orchestrator (`/home/exedev/targets/<owner>--<repo>`, #575) the moment the
+   fetch succeeds — the fetch is the pin — before the publish leg can fail
+   (#497). It survives `git reset --hard` on the engine checkout (the first
+   step of launching the next run) and `gc`. The drive logs `pinned run tip:
+   refs/fleet/<runId> -> <sha>` when it happens. So a failed publish is
+   recoverable, not fatal:
 
    ```bash
    # 1. the run tip is already pinned on the orchestrator (#497) — confirm it
-   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/repo && git rev-parse refs/fleet/run-<N>'
+   ssh fleet-orchestrator.exe.xyz 'cd /home/exedev/targets/<owner>--<repo> && git rev-parse refs/fleet/run-<N>'
    #    expect the sha the drive logged as `pinned run tip: … -> <sha>`
    # 2. fetch that pinned ref to your laptop over ssh
-   git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/repo refs/fleet/run-<N>:refs/heads/ultra/integration-run-<N>
+   git fetch ssh://exedev@fleet-orchestrator.exe.xyz/home/exedev/targets/<owner>--<repo> refs/fleet/run-<N>:refs/heads/ultra/integration-run-<N>
    # 3. push it with an operator credential — the drive's token could not
    git push origin ultra/integration-run-<N>
    # 4. open the PR by hand, carrying this gate receipt as the body

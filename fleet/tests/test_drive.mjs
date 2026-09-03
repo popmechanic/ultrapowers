@@ -46,6 +46,7 @@ const {
   repoDir,
   sandboxRepo,
   originRepo,
+  cacheDir,
   cleanup,
   headSha,
   olderSha,
@@ -182,11 +183,12 @@ try {
     ])
 
     // The branch leg: the driver fetched the branch the run ACTUALLY integrated
-    // to — detected from the sandbox's own refs — and never the `fleet-run`
-    // fallback.
+    // to — detected from the sandbox's own refs — out of the sandbox's TARGET
+    // clone, straight into `refs/fleet/<runId>` in the target's cache clone
+    // (#575: the fetch is the pin), and never the `fleet-run` fallback.
     assert.ok(
       exec.cmds.includes(
-        `git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${INTEGRATION_BRANCH}`,
+        `git -C ${cacheDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/target +${INTEGRATION_BRANCH}:refs/fleet/${runId}`,
       ),
       `expected a fetch of ${INTEGRATION_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
@@ -199,7 +201,7 @@ try {
     // verified with a real existence pre-check AND a real reachability check
     // against the fetched branch.
     const fetchIdx = exec.cmds.findIndex((c) => /^git -C \S+ -c core\.sshCommand="[^"]*" fetch ssh:\/\/exedev@fleet-run-drive-1\.exe\.xyz/.test(c))
-    const catIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}`)
+    const catIdx = exec.cmds.findIndex((c) => c === `git -C ${cacheDir} cat-file -e ${receiptsSha}`)
     // #497 follow-up: the operand is the tip PINNED AT FETCH TIME, never
     // `FETCH_HEAD`. `repoDir` has one default and the RUNBOOK tells operators
     // that concurrent drains take distinct ports and db-dirs — never a distinct
@@ -211,7 +213,7 @@ try {
     // The fetched tip IS `receiptsSha` here — line ~145 pins that the receipts
     // commit advances the integration branch — so the operand is that sha.
     const ancIdx = exec.cmds.findIndex(
-      (c) => c === `git -C ${repoDir} merge-base --is-ancestor ${receiptsSha} ${receiptsSha}`,
+      (c) => c === `git -C ${cacheDir} merge-base --is-ancestor ${receiptsSha} ${receiptsSha}`,
     )
     assert.ok(
       !exec.cmds.some((c) => c.includes('merge-base --is-ancestor') && c.includes('FETCH_HEAD')),
@@ -220,7 +222,7 @@ try {
     // The dereference leg: the recorded PATH must exist in the tree at the
     // recorded sha. Reachability alone would happily green a pointer into a
     // gitignored directory that no commit ever contained.
-    const derefIdx = exec.cmds.findIndex((c) => c === `git -C ${repoDir} cat-file -e ${receiptsSha}:${committedReceipt}`)
+    const derefIdx = exec.cmds.findIndex((c) => c === `git -C ${cacheDir} cat-file -e ${receiptsSha}:${committedReceipt}`)
     assert.ok(fetchIdx >= 0, `expected a run-branch fetch, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(catIdx >= 0, `expected a cat-file on the receipt sha, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(ancIdx >= 0, `expected a reachability check on the receipt sha, got: ${JSON.stringify(exec.cmds)}`)
@@ -239,18 +241,22 @@ try {
     // transcripts and the gitignored run dirs die with the VM, and every live
     // diagnosis depended on them. The driver pulls them — small artifacts only,
     // never the whole repo — exactly once, and strictly before the `rm`.
-    const pullIdx = exec.cmds.findIndex((c) => c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz 'cd /home/exedev && tar czf - --exclude="repo/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects `))
+    // #575: the run dirs live in the sandbox's TARGET clone and are renamed to
+    // the `repo/` prefix every reader expects on the way into the archive.
+    const pullIdx = exec.cmds.findIndex((c) =>
+      c.startsWith(`ssh -o BatchMode=yes -o ConnectTimeout=10 ${SANDBOX_SSH_OPTS} fleet-run-drive-1.exe.xyz sh > `) &&
+      c.includes(`cd /home/exedev && tar czf - --transform 's,^target/,repo/,' --exclude="target/.claude/ultrapowers/run-*/clones" shim.log fleet-run.json .claude/projects `))
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     assert.ok(pullIdx >= 0, `expected a sandbox log pull, got: ${JSON.stringify(exec.cmds)}`)
     assert.ok(pullIdx < rmIdx, 'sandbox logs are pulled BEFORE the sandbox is destroyed')
-    assert.equal(exec.cmds.filter((c) => /tar czf - --exclude=[^ ]* shim\.log/.test(c)).length, 1, 'the log pull fires exactly once')
+    assert.equal(exec.cmds.filter((c) => /tar czf - .*shim\.log/.test(c)).length, 1, 'the log pull fires exactly once')
     const pullCmd = exec.cmds[pullIdx]
-    assert.ok(/repo\/\.claude\/ultrapowers\/run-/.test(pullCmd) || /run-\*\//.test(pullCmd), `the pull must include the gitignored run dirs, got: ${pullCmd}`)
-    assert.ok(/> \S+\/sandbox-logs\.tgz$/.test(pullCmd), `the pull must land in a sandbox-logs.tgz, got: ${pullCmd}`)
+    assert.ok(/cd target && ls -d \.claude\/ultrapowers\/run-\*\//.test(pullCmd), `the pull must include the gitignored run dirs of the target clone, got: ${pullCmd}`)
+    assert.ok(/ sh > \S+\/sandbox-logs\.tgz <<'FLEET_PULL_EOF'\n/.test(pullCmd), `the pull must land in a sandbox-logs.tgz, got: ${pullCmd}`)
     // Destination lives beside the gate read, in the EVIDENCE dir — never
     // inside `dbDir`, which is the persister dir an operator wipes for a
     // fresh-store experiment. Evidence must survive that wipe.
-    const dest = pullCmd.match(/> (\S+\/sandbox-logs\.tgz)$/)[1]
+    const dest = pullCmd.match(/ sh > (\S+\/sandbox-logs\.tgz) <<'FLEET_PULL_EOF'\n/)[1]
     assert.ok(dest.startsWith(path.join(tmp, 'db1-evidence')),
       'log destination must be under evidenceDir, never under dbDir: ' + dest)
     assert.ok(!dest.startsWith(path.join(tmp, 'db1', 'sandbox-logs')),
@@ -276,7 +282,9 @@ try {
     // engine with a literal `undefined` plan path.
     assert.equal(exec.delivered.runId, runId)
     assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${detail.effectivePort}/fleet`)
-    assert.equal(exec.delivered.planPath, driveDefaults.planPath)
+    // #575: the sandbox knows the plan by its BASENAME — the only part of the
+    // path that survives the trip out of a checkout it never sees.
+    assert.equal(exec.delivered.planPath, path.basename(driveDefaults.planPath))
 
     // The stamp names the code that RAN. `main()` stamps BEFORE the run, and
     // the run is what moves the target's checkout — first onto the pushed base,
@@ -308,11 +316,11 @@ try {
     // the production writer and the leg agree on the pointer.
     assert.deepEqual(detail.pullRequest, { number: 4242, url: 'https://github.com/popmechanic/ultrapowers/pull/4242', draft: false, branch: INTEGRATION_BRANCH })
     assert.ok(
-      exec.cmds.includes(`git -C ${repoDir} -c credential.helper= -c credential.helper='!gh auth git-credential' push origin ${receiptsSha}:refs/heads/${INTEGRATION_BRANCH}`),
+      exec.cmds.includes(`git -C ${cacheDir} -c credential.helper= -c credential.helper='!gh auth git-credential' push origin ${receiptsSha}:refs/heads/${INTEGRATION_BRANCH}`),
       `the receipts commit is the tip pushed to origin, got: ${JSON.stringify(exec.cmds.filter((c) => / push origin /.test(c)))}`,
     )
     assert.equal((await sh(`git -C "${originRepo}" rev-parse refs/heads/${INTEGRATION_BRANCH}`)).stdout.trim(), receiptsSha)
-    assert.ok(exec.cmds.includes(`git -C ${repoDir} show ${receiptsSha}:${committedReceipt}`), 'the body is rendered from the committed receipt')
+    assert.ok(exec.cmds.includes(`git -C ${cacheDir} show ${receiptsSha}:${committedReceipt}`), 'the body is rendered from the committed receipt')
     assert.ok(!exec.cmds.some((c) => c.includes(GITHUB_TOKEN)), 'the token never reaches a command line')
 
     // Hand the shared fixture back the way it was found: the run's own dir is
@@ -367,6 +375,13 @@ try {
   // what actually binds a receipt to the run.
   {
     const runId = 'run-drive-3'
+    // #575: receipts resolve in the TARGET's cache clone, which is cut from
+    // origin and does not carry the fixture's dangling commit. Put the object
+    // there under a ref the run never fetches, so the shape under test is
+    // "present but unreachable" and not merely "absent" (scenario 2).
+    if (!fs.existsSync(cacheDir)) assert.equal((await sh(`git clone -q "${originRepo}" "${cacheDir}"`)).code, 0)
+    assert.equal((await sh(`git -C "${cacheDir}" fetch -q "${repoDir}" fleet-unreachable:refs/fleet-fixture/unreachable`)).code, 0)
+    assert.equal((await sh(`git -C "${cacheDir}" cat-file -e ${unreachableSha}`)).code, 0, 'precondition: the object is in the cache clone')
     let sandbox = null
     const exec = makeExec((assignment) => {
       setTimeout(() => {
@@ -431,7 +446,7 @@ try {
     await sandbox
 
     assert.ok(
-      exec.cmds.includes(`git -C ${repoDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/repo ${OLDER_BRANCH}`),
+      exec.cmds.includes(`git -C ${cacheDir} -c core.sshCommand="${sandboxGitSsh}" fetch ssh://exedev@fleet-${runId}.exe.xyz/home/exedev/target +${OLDER_BRANCH}:refs/fleet/${runId}`),
       `expected a fetch of ${OLDER_BRANCH}, got: ${JSON.stringify(exec.cmds)}`,
     )
     assert.ok(
@@ -571,10 +586,12 @@ try {
     assert.deepEqual(detail.receipts, [])
     // Bounded: the wait is capped, not open-ended.
     assert.ok(Date.now() - startedAt < 20_000, 'the publish wait must be bounded')
-    // Nothing was fetched, because there was no published branch to fetch.
+    // Nothing was fetched from the sandbox, because there was no published
+    // branch to fetch. (The preflight's `fetch origin` of the target cache is
+    // a different fetch — GitHub-bound, before any VM — and always runs.)
     assert.ok(
-      !exec.cmds.some((cmd) => / fetch /.test(cmd)),
-      `nothing may be fetched for an unpublished run, got: ${JSON.stringify(exec.cmds)}`,
+      !exec.cmds.some((cmd) => / fetch ssh:\/\//.test(cmd)),
+      `nothing may be fetched from the sandbox for an unpublished run, got: ${JSON.stringify(exec.cmds.filter((c) => / fetch /.test(c)))}`,
     )
   }
 
@@ -616,12 +633,12 @@ try {
 
     assert.equal(detail.status, 'parked')
     assert.ok(
-      exec.cmds.some((cmd) => new RegExp(` fetch ssh://\\S+ ${ghostBranch}$`).test(cmd)),
+      exec.cmds.some((cmd) => new RegExp(` fetch ssh://\\S+ \\+${ghostBranch}:refs/fleet/${runId}$`).test(cmd)),
       `the fetch must have been ATTEMPTED (this is the fetch-failed path, not the unsafe path), got: ${JSON.stringify(exec.cmds.filter((c) => c.includes('fetch')))}`,
     )
     assert.equal(detail.parkedPublish, null, 'a branch that was not fetched did not survive — null, never {branch:null, fetched:false}')
     assert.ok(
-      detail.errors.some((e) => new RegExp(`^fetch ${ghostBranch} failed \\(code \\d+\\)$`).test(e)),
+      detail.errors.some((e) => new RegExp(`^fetch ${ghostBranch} failed \\(code \\d+\\)`).test(e)),
       `the failed fetch is on the record, got: ${JSON.stringify(detail.errors)}`,
     )
     assert.equal(read.o1, false)

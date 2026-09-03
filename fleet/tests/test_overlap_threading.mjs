@@ -99,9 +99,9 @@ const NAMED = ['--target', 'o/r', '--base', '3f'.repeat(20)]
 
 // --- hop 2: driveOne hands it to the provisioner -----------------------------
 
-// The plan the #337 preflight must read as fit and clean. Committed at HEAD
-// and present byte-identical in the working tree, so the drive gets as far as
-// provisioning — which is the hop under test.
+// A plan the fitness preflight reads as fit. It is shipped from the file
+// (#575), so it only has to exist; the engine checkout must be CLEAN (the one
+// new refusal), which is why the plan lives beside the repo, not in it.
 const FIT_PLAN =
   '# P\n\n### Task 1: Code\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `fleet/x.mjs`\n- Test: `fleet/tests/test_x.mjs`\n\n- [ ] **Step 1: edit**\n'
 
@@ -116,17 +116,21 @@ const sh = (cmd, cwd) =>
   const tmp = tmpDir()
   try {
     const repoDir = path.join(tmp, 'repo')
-    const planRel = 'docs/plan.md'
-    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    const planFile = path.join(tmp, 'plans', 'plan.md')
+    fs.mkdirSync(path.dirname(planFile), { recursive: true })
     fs.mkdirSync(path.join(repoDir, '.claude-plugin'), { recursive: true })
     fs.writeFileSync(path.join(repoDir, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '9.9.9' }))
-    fs.writeFileSync(path.join(repoDir, planRel), FIT_PLAN)
+    fs.writeFileSync(planFile, FIT_PLAN)
     const init = await sh(
       'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
         'git add -A && git -c commit.gpgsign=false commit -q -m init',
       repoDir,
     )
     assert.equal(init.code, 0, `fixture git init failed: ${init.stderr}`)
+    const headSha = (await sh('git rev-parse HEAD', repoDir)).stdout.trim()
+    // #575: the target's cache clone is cut from this same repo, so the base
+    // (its HEAD) is really there for the preflight's `cat-file -e` to find.
+    const targetsDir = path.join(tmp, 'targets')
 
     // The drive is aborted at the provision hop: the stub records what it was
     // handed and throws, so nothing downstream of provisioning runs. (`driveOne`
@@ -151,17 +155,25 @@ const sh = (cmd, cwd) =>
     const driveToProvision = async (extra) => {
       let seen = null
       await driveOne({
-        planPath: planRel,
+        planPath: planFile,
         golden: 'fleet-golden',
         port: 0,
+        target: 'o/r',
+        baseSha: headSha,
         repoDir,
+        targetsDir,
         dbDir: path.join(tmp, `db-${extra.runId}`),
         evidenceDir: path.join(tmp, `ev-${extra.runId}`),
+        githubTokenPath: path.join(tmp, 'no-such-token'),
         exec: async (cmd) => {
           if (isSandboxBound(cmd)) {
             sshAttempts.push(cmd)
             return { code: 0, stdout: '{}' }
           }
+          // The target's first-use clone would go to GitHub; cut it from the
+          // fixture repo instead (the `_drive_helpers.mjs` retargeting).
+          const cloned = cmd.match(/ clone https:\/\/github\.com\/o\/r\.git (\S+)$/)
+          if (cloned) return sh(`git clone -q "${repoDir}" "${cloned[1]}"`, tmp)
           return sh(cmd, repoDir)
         },
         ttlMs: 60_000,
@@ -198,7 +210,7 @@ const sh = (cmd, cwd) =>
     // would mean the drive ran past the hop the stub was supposed to stop it at.
     for (const cmd of sshAttempts) {
       assert.ok(
-        /^ssh .*\.exe\.xyz .*tar czf -/.test(cmd) || /^ssh .* exe\.dev "stat /.test(cmd),
+        /^ssh [\s\S]*\.exe\.xyz [\s\S]*tar czf -/.test(cmd) || /^ssh .* exe\.dev "stat /.test(cmd),
         `unexpected sandbox-bound command reached the exec seam: ${cmd}`,
       )
     }
@@ -221,8 +233,10 @@ const deliveredPayload = async (extra) => {
   const result = await provisionRun({
     golden: 'fleet-golden',
     runId: 'r1',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
