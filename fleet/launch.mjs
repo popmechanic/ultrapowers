@@ -36,6 +36,7 @@
 
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -121,8 +122,21 @@ async function defaultEngineSha (exec) {
  * Everything the launcher does, with the exec seam, the clock, the sleep and
  * the name's random half injected. Answers the launched run's record.
  */
+// The Claude Max access token lives at the edge and expires in hours; the
+// laptop holds the refresh token. Before a VM exists, rotate it if it is within
+// 30 minutes of expiry — a run that outlives its bearer dies in the gate.
+// A laptop set up with `claude setup-token` (no keychain record) skips this.
+export function defaultRefreshCredential () {
+  const r = spawnSync(process.execPath, [new URL('./claude-token.mjs', import.meta.url).pathname, 'refresh'], { encoding: 'utf8' })
+  const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
+  if (r.status === 0) return { ok: true, out }
+  if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
+  return { ok: false, out }
+}
+
 export async function launch ({
-  argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand
+  argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
+  refreshCredential = defaultRefreshCredential
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json'] })
 
@@ -219,6 +233,9 @@ export async function launch ({
     commands.push(remote)
     return lobby(exec, remote)
   }
+
+  const cred = refreshCredential()
+  if (!cred.ok) throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
 
   await verb(`cp ${golden} ${vm} --copy-tags --json`)
   await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for ${ATTACH_FOR}`)

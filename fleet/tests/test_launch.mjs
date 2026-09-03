@@ -77,8 +77,8 @@ function workspace ({ seed = {}, verdicts = true } = {}) {
 const argvFor = (planPath, extra = []) =>
   [planPath, '--target', TARGET, '--base', BASE, ...extra]
 
-const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {} } = {}) =>
-  launch({ argv, exec, config: ws.config, now: () => NOW, sleep, rand: RAND })
+const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {}, refreshCredential = () => ({ ok: true }) } = {}) =>
+  launch({ argv, exec, config: ws.config, now: () => NOW, sleep, rand: RAND, refreshCredential })
 
 // ── 0. The lobby reader and the names ───────────────────────────────────────
 {
@@ -391,6 +391,26 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   for (const flag of ['--target', '--base', '--engine', '--overlap', '--tier', '--golden', '--run', '--json']) {
     assert.ok(usage().includes(flag), `(7) usage names ${flag}`)
   }
+}
+
+// ── 9. The Claude credential is refreshed before any VM exists ───────────────
+{
+  const ws = workspace()
+  const order = []
+  const exec = makeExec({ rules: readRules() })
+  await launchIn(ws, { exec, refreshCredential: () => { order.push(`refresh@${exec.calls.length}`); return { ok: true } } })
+  const cpIndex = exec.calls.findIndex((c) => c.argv.join(' ').includes(' cp '))
+  assert.equal(order.length, 1, '(9) refresh runs once')
+  assert.ok(Number(order[0].split('@')[1]) <= cpIndex, '(9) refresh runs before cp')
+  ws.cleanup()
+
+  const ws2 = workspace()
+  const exec2 = makeExec({ rules: readRules() })
+  const error = await thrown(() => launchIn(ws2, { exec: exec2, refreshCredential: () => ({ ok: false, out: 'token endpoint answered 400: nope' }) }))
+  assert.match(error?.message ?? '', /could not be refreshed — no VM was created/, '(9) a failed refresh refuses')
+  assert.match(error.message, /token endpoint answered 400/, '(9) with the tool\'s own words')
+  assert.ok(!exec2.calls.some((c) => c.argv.join(' ').includes(' cp ')), '(9) and no cp was issued')
+  ws2.cleanup()
 }
 
 console.log('ALL TESTS PASSED')
