@@ -13,7 +13,7 @@
  *
  * Both are attached per VM and per window, by the tools that need them: the
  * launcher attaches `-ro` for the run's six hours, the grant swaps it for
- * `-rw` for fifteen minutes. Nothing GitHub rides `tag:fleet` except
+ * `-rw` for forty-five minutes. Nothing GitHub rides `tag:fleet` except
  * `fleet-runs` — a tag attachment is a credential every sandbox holds, and a
  * tag-attached `-ro` cannot be detached from one VM when `-rw` has to take its
  * place, since `github.int.exe.xyz` resolves one credential per repo.

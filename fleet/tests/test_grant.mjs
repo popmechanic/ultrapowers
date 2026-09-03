@@ -91,14 +91,17 @@ const grantIn = (ws, argv = ['5'], exec) => grant({ argv, exec, config: ws.confi
   assert.deepEqual(exec.lobby(), [
     PATTERN,
     `integrations detach t-popmechanic-smoke-ro vm:${VM}`,
-    `integrations attach t-popmechanic-smoke-rw vm:${VM} --for 15m`
+    `integrations attach t-popmechanic-smoke-rw vm:${VM} --for 45m`
   ], '(2) the pattern lookup, detach, attach — in that order, nothing else')
   assert.ok(exec.calls.every((c) => c.cmd !== 'ssh' || c.argv[0] === 'exe.dev'), '(2) no ssh into the VM')
   assert.equal(result.vm, VM, '(2) the VM came from the ls row')
-  assert.equal(result.for, DEFAULT_FOR, '(2) the default window is 15m')
-  assert.equal(result.expiresAt, '2026-09-03T12:15:00.000Z', '(2) the expiry is now + the window')
+  // 45m, not 15m (Counsel 3): a run that stalled 16 minutes between the grant
+  // and `gh pr create` lost `gh` mid-publish.
+  assert.equal(DEFAULT_FOR, '45m', '(2) the default window is 45m')
+  assert.equal(result.for, DEFAULT_FOR, '(2) and the result carries it')
+  assert.equal(result.expiresAt, '2026-09-03T12:45:00.000Z', '(2) the expiry is now + the window')
   assert.equal(result.target, TARGET, '(2) the target came from the VM comment')
-  assert.match(renderGrant(result), new RegExp(`t-popmechanic-smoke-rw attached to vm:${VM} for 15m`), '(2) the printed line')
+  assert.match(renderGrant(result), new RegExp(`t-popmechanic-smoke-rw attached to vm:${VM} for 45m`), '(2) the printed line')
   ws.cleanup()
 
   const ws2 = workspace()
@@ -136,7 +139,7 @@ const grantIn = (ws, argv = ['5'], exec) => grant({ argv, exec, config: ws.confi
     rules: rules({ detach: answer('', { code: 1, stderr: `integration not attached to vm:${VM}\n` }) })
   })
   const result = await grantIn(ws, ['5'], exec)
-  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for 15m`),
+  assert.ok(exec.lobby().includes(`integrations attach t-popmechanic-smoke-rw vm:${VM} --for 45m`),
     '(3) a detach that answers "not attached" is tolerated — the read grant lapsed on its own')
   assert.equal(result.vm, VM, '(3) and the grant completes')
   ws.cleanup()

@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { launch, renderLaunch, usage, START_COMMAND, SSH_WAIT_MS, SSH_RETRY_MS } from '../launch.mjs'
+import { launch, renderLaunch, usage, startCommandFor, SSH_WAIT_MS, SSH_RETRY_MS } from '../launch.mjs'
 import {
   LobbyError, isVmName, listVms, runOfVmName, statusUrlFor, vmNameFor, vmPatternFor
 } from '../lobby.mjs'
@@ -35,6 +35,8 @@ const NOW = new Date('2026-09-03T22:15:00.000Z')
 const RAND = 'a1b2'
 /** The name every launch in this file mints: run 1 at NOW with RAND. */
 const VM1 = 'fleet-r1-2609032215-a1b2'
+/** And the command that starts run 1: the template instanced with N. */
+const START_1 = startCommandFor(1)
 
 /** The reads and the post-cp lookup, canned green: `ls '<vm>'` answers a row for
  *  whatever name was asked about, with an ssh_dest that is not the DNS name. */
@@ -199,21 +201,24 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   ], '(3) the read, then cp with the tags, the two 6 h grants, the comment, the ssh_dest lookup')
   assert.deepEqual(exec.vm(), [
     { dest: `exedev@${VM1}.ssh.exe.xyz`, command: 'true' },
-    { dest: `exedev@${VM1}.ssh.exe.xyz`, command: START_COMMAND }
+    { dest: `exedev@${VM1}.ssh.exe.xyz`, command: START_1 }
   ], '(3) then ssh to the row\'s ssh_dest: the readiness probe, then the start')
-  assert.equal(START_COMMAND, 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service', '(3) the start command')
+  // No `--no-block` (Counsel 3): the unit is Type=exec, so the blocking start's
+  // exit status is the launch ack. The instance carries the run number.
+  assert.equal(START_1, 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run@1.service', '(3) the start command')
+  assert.equal(startCommandFor(70), 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run@70.service', '(3) instanced per run')
   assert.equal(result.sshDest, `exedev@${VM1}.ssh.exe.xyz`, '(3) ssh_dest is read off the row, never derived from the name')
 
   // Start is last: after both attaches and the comment, as call indices.
   const index = (pred) => exec.calls.findIndex((c) => pred(c))
-  const startAt = index((c) => c.cmd === 'ssh' && c.argv.includes(START_COMMAND))
+  const startAt = index((c) => c.cmd === 'ssh' && c.argv.includes(START_1))
   const lastMutation = Math.max(
     index((c) => c.argv[1]?.startsWith('integrations attach claude-max')),
     index((c) => c.argv[1]?.startsWith('integrations attach t-popmechanic-smoke-ro')),
     index((c) => c.argv[1]?.startsWith('comment '))
   )
   assert.ok(startAt > lastMutation, '(3) the start happens only after both attaches and the comment')
-  assert.equal(exec.calls.filter((c) => c.argv.includes(START_COMMAND)).length, 1, '(3) and exactly once')
+  assert.equal(exec.calls.filter((c) => c.argv.includes(START_1)).length, 1, '(3) and exactly once')
   for (const call of exec.calls) {
     assert.notEqual(call.cmd, 'sh', '(3) nothing goes through a shell')
     assert.notEqual(call.cmd, 'bash', '(3) nothing goes through a shell')
@@ -260,7 +265,7 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   const result = await launchIn(ws, { exec })
   assert.ok(!exec.lobby().some((line) => line.includes('t-popmechanic-smoke-ro')), '(3b) a public target gets no read grant')
   assert.match(result.readGrant, /node fleet\/target\.mjs add popmechanic\/smoke/, '(3b) and the operator is told how to make one')
-  assert.equal(exec.vm().at(-1)?.command, START_COMMAND, '(3b) the run still starts')
+  assert.equal(exec.vm().at(-1)?.command, START_1, '(3b) the run still starts')
   ws.cleanup()
 }
 
@@ -302,8 +307,8 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   const result = await launchIn(ws, { exec, sleep: async (ms) => { slept.push(ms) } })
   assert.equal(probes, 3, '(5) two refusals, then an answer')
   assert.deepEqual(slept, [SSH_RETRY_MS, SSH_RETRY_MS], '(5) one sleep per refusal')
-  assert.equal(exec.vm().filter((c) => c.command === START_COMMAND).length, 1, '(5) the start is issued once, after the probe answers')
-  assert.equal(exec.vm().at(-1).command, START_COMMAND, '(5) and last')
+  assert.equal(exec.vm().filter((c) => c.command === START_1).length, 1, '(5) the start is issued once, after the probe answers')
+  assert.equal(exec.vm().at(-1).command, START_1, '(5) and last')
   assert.equal(result.vm, VM1, '(5) the launch completes')
   ws.cleanup()
 
@@ -324,10 +329,35 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   assert.ok(error instanceof LobbyError, '(5) a VM that never answers is a failure')
   assert.match(error.message, new RegExp(`within ${SSH_WAIT_MS / 1000} s`), '(5) naming the wait')
   assert.match(error.message, /Connection timed out/, '(5) with the last ssh answer')
-  assert.ok(error.message.includes(`ssh exedev@${VM1}.ssh.exe.xyz '${START_COMMAND}'`), '(5) and the start command to run by hand')
-  assert.ok(!exec2.vm().some((c) => c.command === START_COMMAND), '(5) no start was issued')
+  assert.ok(error.message.includes(`ssh exedev@${VM1}.ssh.exe.xyz '${START_1}'`), '(5) and the start command to run by hand')
+  assert.ok(!exec2.vm().some((c) => c.command === START_1), '(5) no start was issued')
   assert.ok(t >= SSH_WAIT_MS, '(5) it waited the whole window')
   stuck.cleanup()
+}
+
+// ── 5b. A start that answers non-zero is a launch failure, verbatim ─────────
+{
+  // Type=exec: `systemctl start` fails when the bootstrap cannot be exec'd.
+  // That answer is the whole point of dropping `--no-block`, so it has to
+  // surface as a failure with systemd's own words, not as a launched run.
+  const ws = workspace()
+  const exec = makeExec({
+    rules: [
+      vmRule((cmd, argv) => argv.at(-1) === START_1
+        ? answer('', { code: 1, stderr: 'Job for fleet-run@1.service failed because the control process exited with error code.\nSee "systemctl --user status fleet-run@1.service" and "journalctl --user -xeu fleet-run@1.service" for details.\n' })
+        : answer('')),
+      ...readRules()
+    ]
+  })
+  const error = await thrown(() => launchIn(ws, { exec }))
+  assert.ok(error instanceof LobbyError, '(5b) a non-zero start is a failure, exit 1')
+  assert.equal(error.exitCode, 1, '(5b) exit 1')
+  assert.match(error.message, /run 1 did not start/, '(5b) named as the run not starting')
+  assert.match(error.message, /\(exit 1\)/, '(5b) with the exit status')
+  assert.ok(error.message.includes(`ssh exedev@${VM1}.ssh.exe.xyz '${START_1}'`), '(5b) and the command that failed')
+  assert.ok(error.message.includes('Job for fleet-run@1.service failed'), '(5b) and systemd\'s words, verbatim')
+  assert.equal(exec.vm().filter((c) => c.command === START_1).length, 1, '(5b) the start was issued once and not retried')
+  ws.cleanup()
 }
 
 // ── 7. --engine pins, --golden overrides, usage names the flags ─────────────

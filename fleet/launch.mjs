@@ -12,10 +12,13 @@
  *      the target's `-ro` object for 6 h when one exists;
  *   4. writes the assignment comment — the record the sandbox reads once;
  *   5. waits until `ssh <ssh_dest> true` answers, then starts the run:
- *      `systemctl --user --no-block start fleet-run.service`.
+ *      `systemctl --user start fleet-run@<N>.service`.
  *
  * Start AFTER attach: the boot never races a grant. Nothing on the VM polls;
- * the comment is not a signal, the ssh start is.
+ * the comment is not a signal, the ssh start is. The unit is Type=exec, so
+ * `start` (no `--no-block`) returns once the bootstrap has execve'd and
+ * non-zero when it could not — that exit status IS the launch ack, and a
+ * non-zero one is a launch failure shown verbatim.
  *
  * A refusal (exit 2) happens before step 2, so the account is exactly as it
  * was. A failure after that (exit 1) prints the lobby's own words: exe.dev
@@ -69,10 +72,11 @@ export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 /** How long each grant the launcher attaches lives. Wall clock; it lapses. */
 export const GRANT_FOR = '6h'
 
-/** The start command, run over ssh on the VM once it answers. The user
- *  manager needs XDG_RUNTIME_DIR set for a non-login ssh session. */
-export const START_COMMAND =
-  'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service'
+/** The start command for run N, run over ssh on the VM once it answers. The
+ *  user manager needs XDG_RUNTIME_DIR set for a non-login ssh session. No
+ *  `--no-block`: with Type=exec the return is the execve ack (Counsel 3). */
+export const startCommandFor = (run) =>
+  `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run@${run}.service`
 
 /** How long to wait for the fresh VM to answer ssh, and how often to ask. */
 export const SSH_WAIT_MS = 120_000
@@ -214,17 +218,24 @@ export async function launch ({
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   await verb(`comment ${vm} '${comment}'`)
 
+  const startCommand = startCommandFor(run)
   const row = (await listVms(exec, vm)).find((entry) => entry.name === vm)
   if (!row?.sshDest || !SSH_DEST.test(row.sshDest)) {
     throw new LobbyError(
-      `launch: ls '${vm}' --json shows no usable ssh_dest for the VM cp just made (got ${JSON.stringify(row?.sshDest ?? null)}); start it by hand: ssh <ssh_dest> '${START_COMMAND}'`
+      `launch: ls '${vm}' --json shows no usable ssh_dest for the VM cp just made (got ${JSON.stringify(row?.sshDest ?? null)}); start it by hand: ssh <ssh_dest> '${startCommand}'`
     )
   }
   const sshDest = row.sshDest
-  await waitForSsh({ exec, sshDest, vm, now, sleep })
-  const start = await exec('ssh', [sshDest, START_COMMAND])
+  await waitForSsh({ exec, sshDest, vm, now, sleep, startCommand })
+  // The ack. `systemctl start` on a Type=exec unit returns non-zero when the
+  // bootstrap could not be exec'd (missing, not executable, no manager), so
+  // this is the one place a dead-on-arrival run is caught before the operator
+  // goes looking for a status page that will never appear.
+  const start = await exec('ssh', [sshDest, startCommand])
   if (start.code !== 0) {
-    throw new LobbyError(`launch: ssh ${sshDest} '${START_COMMAND}' failed (exit ${start.code}):\n${output(start)}`)
+    throw new LobbyError(
+      `launch: run ${run} did not start — ssh ${sshDest} '${startCommand}' failed (exit ${start.code}):\n${output(start)}`
+    )
   }
 
   return {
@@ -254,14 +265,14 @@ export async function launch ({
  * the last ssh output and the start command, since the grants and the comment
  * are already in place and only the start is owed.
  */
-async function waitForSsh ({ exec, sshDest, vm, now, sleep }) {
+async function waitForSsh ({ exec, sshDest, vm, now, sleep, startCommand }) {
   const deadline = now().getTime() + SSH_WAIT_MS
   for (;;) {
     const res = await exec('ssh', [...SSH_OPTS, sshDest, 'true'])
     if (res.code === 0) return
     if (now().getTime() >= deadline) {
       throw new LobbyError(
-        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits grants and comment are in place — start it by hand: ssh ${sshDest} '${START_COMMAND}'`
+        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits grants and comment are in place — start it by hand: ssh ${sshDest} '${startCommand}'`
       )
     }
     await sleep(SSH_RETRY_MS)

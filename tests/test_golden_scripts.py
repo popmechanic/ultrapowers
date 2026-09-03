@@ -3,7 +3,8 @@
 `fleet/golden-setup.sh` builds the image, `fleet/golden-bootstrap.sh` is the few
 hundred bytes that fetch it at a sha, `fleet/fleet-bootstrap.sh` is the image's
 one moving part (exercised end to end in `fleet/tests/test_fleet_bootstrap.mjs`),
-`fleet/fleet-run.service` is the unit the launcher starts, and `fleet/golden.sh`
+`fleet/fleet-run@.service` is the unit template the launcher instances per run
+(`fleet-run@<N>.service`), and `fleet/golden.sh`
 builds, verifies and swaps. Every exam here runs one of them and watches what it
 does — a stub `FLEET_SSH` stands in for the whole exe.dev platform, a stub `curl`
 stands in for GitHub. Nothing here pins a sentence of a document.
@@ -31,7 +32,7 @@ SETUP = ROOT / "fleet/golden-setup.sh"
 GOLDEN_BOOTSTRAP = ROOT / "fleet/golden-bootstrap.sh"
 FLEET_BOOTSTRAP = ROOT / "fleet/fleet-bootstrap.sh"
 GOLDEN = ROOT / "fleet/golden.sh"
-UNIT = ROOT / "fleet/fleet-run.service"
+UNIT = ROOT / "fleet/fleet-run@.service"
 
 # The contract's literal. The golden's settings.json is the only file the image
 # carries that Claude Code reads, and this is exactly what it must hold.
@@ -147,7 +148,10 @@ def test_setup_installs_the_immutable_bootstrap_and_the_unit_from_the_source():
     lines = list(sh_lines(SETUP))
     assert "BOOTSTRAP=/home/exedev/fleet-bootstrap.sh" in lines
     assert 'install -m 755 "$SRC/fleet/fleet-bootstrap.sh" "$BOOTSTRAP"' in lines
-    assert 'install -m 644 "$SRC/fleet/fleet-run.service" "$UNIT_DIR/fleet-run.service"' in lines
+    # The template, under its template name: `fleet-run@.service`, so that the
+    # launcher's `start fleet-run@<N>.service` finds it for any N.
+    assert 'install -m 644 "$SRC/fleet/fleet-run@.service" "$UNIT_DIR/fleet-run@.service"' in lines
+    assert not any("fleet-run.service" in l for l in lines), "the pre-template unit name is gone"
     text = SETUP.read_text()
     assert "systemctl --user daemon-reload" in text
     assert "loginctl enable-linger" in text
@@ -157,7 +161,7 @@ def test_setup_installs_the_immutable_bootstrap_and_the_unit_from_the_source():
 
 
 def test_setup_enables_nothing():
-    # The launcher starts fleet-run.service over ssh once the assignment is
+    # The launcher starts fleet-run@<N>.service over ssh once the assignment is
     # written and the grants attached. A unit enabled at boot would start a
     # run on every fresh copy with no assignment — the v1 shape.
     assert [l for l in sh_lines(SETUP) if "systemctl --user enable" in l] == []
@@ -172,7 +176,7 @@ def test_setup_reads_the_source_out_at_the_bootstrapped_sha():
     assert any("fetch -q origin" in l and '"$GOLDEN_SHA"' in l for l in lines), lines
     # The checkout has to precede everything read out of the source.
     at = next(i for i, l in enumerate(lines) if "checkout" in l and "GOLDEN_SHA" in l)
-    for needle in ('"$SRC/fleet/fleet-bootstrap.sh"', '"$SRC/fleet/fleet-run.service"',
+    for needle in ('"$SRC/fleet/fleet-bootstrap.sh"', '"$SRC/fleet/fleet-run@.service"',
                    '"$SRC/$BUN_FIXTURE"'):
         later = [i for i, l in enumerate(lines) if needle in l]
         assert later and min(later) > at, f"{needle} is read before the checkout"
@@ -272,12 +276,24 @@ def test_the_generated_bootstrap_fetches_and_runs_the_setup_script(tmp_path):
 # --- the run unit -----------------------------------------------------------
 
 
-def test_run_unit_is_a_oneshot_of_the_immutable_bootstrap_with_nothing_to_enable():
-    cfg = configparser.ConfigParser()
+def test_run_unit_is_an_exec_template_of_the_immutable_bootstrap_with_nothing_to_enable():
+    # Counsel 3, measured on exeuntu (systemd 255): a oneshot has
+    # TimeoutStartUSec=infinity, ignores RuntimeMaxSec=, and finished reads
+    # inactive/dead — the same as never started. Type=exec makes `start` the
+    # execve ack, RuntimeMaxSec the wall-clock budget, and RemainAfterExit what
+    # keeps done, crashed, timed-out and never-launched apart in `show`.
+    assert UNIT.name == "fleet-run@.service", "a template, instanced per run"
+    # `%i` is systemd's specifier, not configparser's interpolation.
+    cfg = configparser.ConfigParser(interpolation=None)
     cfg.optionxform = str
     cfg.read_string(UNIT.read_text())
-    assert cfg["Service"]["Type"] == "oneshot"
-    assert cfg["Service"]["ExecStart"] == "/home/exedev/fleet-bootstrap.sh"
+    assert cfg["Unit"]["Description"] == "ultrapowers run %i"
+    assert cfg["Unit"]["After"] == "network-online.target"
+    assert cfg["Service"]["Type"] == "exec"
+    assert cfg["Service"]["RemainAfterExit"] == "yes"
+    assert cfg["Service"]["RuntimeMaxSec"] == "6h"
+    # %i, the run number, rides to the bootstrap as its one argument.
+    assert cfg["Service"]["ExecStart"] == "/home/exedev/fleet-bootstrap.sh %i"
     # The launcher starts it; nothing may enable it at boot.
     assert "Install" not in cfg.sections()
     # The page and the engine are services of their own now; the kill-mode
@@ -309,7 +325,7 @@ cmd=$2
 case "$cmd" in
   'cat /home/exedev/.fleet-golden') echo "$STUB_STAMP" ;;
   'stat -c %a /home/exedev/fleet-bootstrap.sh') echo "$STUB_BOOTSTRAP_MODE" ;;
-  *'is-enabled fleet-run.service'*) echo "$STUB_ENABLED" ;;
+  *'fleet-run@.service'*) echo "$STUB_UNIT" ;;
   *'test -e /home/exedev/repo'*) echo "$STUB_REPO" ;;
   *'busybox --list'*) echo 1 ;;
   'gh --version') echo 'gh version 2.80.0 (2026-08-01)' ;;
@@ -342,7 +358,7 @@ def stub(tmp_path):
             STUB_LOG=str(log),
             STUB_STAMP=sha256_of_setup(),
             STUB_BOOTSTRAP_MODE="755",
-            STUB_ENABLED="static",
+            STUB_UNIT="loaded",
             STUB_REPO="absent",
             STUB_MODE="600",
             STUB_ANTHROPIC="0",
@@ -355,7 +371,7 @@ def stub(tmp_path):
     return call
 
 
-ROWS = ("stamp:", "fleet-bootstrap.sh: 755", "fleet-run.service: static",
+ROWS = ("stamp:", "fleet-bootstrap.sh: 755", "fleet-run@.service: loaded",
         "/home/exedev/repo: absent", "busybox: httpd", "gh: gh version",
         "node:", "npm:", "bun:", "xdist:", "settings.json: 600", "no ANTHROPIC_*")
 
@@ -367,11 +383,23 @@ def test_verify_passes_when_the_stamp_matches_the_checked_in_script(stub):
         assert row in r.stdout, r.stdout
 
 
-def test_verify_accepts_a_unit_that_reads_as_disabled(stub):
-    # A unit that grew an [Install] section and was still left alone.
-    r = stub(["verify", "fleet-golden-next"], STUB_ENABLED="disabled")
+def test_verify_accepts_a_template_the_manager_has_not_loaded_yet(stub):
+    # The file is in place but the user bus was not up to `cat` it — the
+    # manager reads it when it starts; presence is the claim, not enablement.
+    r = stub(["verify", "fleet-golden-next"], STUB_UNIT="installed")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "fleet-run.service: disabled" in r.stdout
+    assert "fleet-run@.service: installed" in r.stdout
+
+
+def test_verify_asks_for_the_template_not_an_enablement_state(stub):
+    # A template has no enabled/disabled state of its own; the row that asked
+    # `is-enabled fleet-run.service` would answer for a unit that is not there.
+    r = stub(["verify", "fleet-golden-next"])
+    assert r.returncode == 0, r.stdout + r.stderr
+    issued = stub.log.read_text()
+    assert "systemctl --user cat fleet-run@.service" in issued
+    assert "is-enabled" not in issued
+    assert "fleet-run.service" not in issued
 
 
 def test_verify_fails_and_names_both_stamps_when_the_image_drifted(stub):
@@ -387,8 +415,8 @@ def test_verify_fails_and_names_both_stamps_when_the_image_drifted(stub):
     [
         ({"STUB_BOOTSTRAP_MODE": "644"}, "fleet-bootstrap.sh"),
         ({"STUB_BOOTSTRAP_MODE": ""}, "fleet-bootstrap.sh"),
-        ({"STUB_ENABLED": "enabled"}, "enabled"),
-        ({"STUB_ENABLED": ""}, "fleet-run.service"),
+        ({"STUB_UNIT": "missing"}, "fleet-run@.service"),
+        ({"STUB_UNIT": ""}, "fleet-run@.service"),
         ({"STUB_REPO": "present"}, "/home/exedev/repo"),
         ({"STUB_MODE": "644"}, "644"),
         ({"STUB_ANTHROPIC": "1"}, "ANTHROPIC"),

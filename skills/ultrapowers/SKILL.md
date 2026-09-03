@@ -97,7 +97,7 @@ approved plan, **is** the authorization to execute — no further approval pause
 
    That is the pre-merge gate. It reads the committed state, detaches the
    run's read-only grant on the target from that VM, attaches the writable one
-   for fifteen minutes, and the sandbox pushes its branch and opens its own
+   for forty-five minutes, and the sandbox pushes its branch and opens its own
    PR. Gate-green → a ready PR. Parked → a draft PR carrying the gate receipt:
    acknowledge by marking it ready, or re-drive a narrower plan. A parked run
    with nothing to publish opens no PR and needs no grant; its evidence is in

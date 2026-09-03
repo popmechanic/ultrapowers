@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 /**
- * fleet/grant.mjs — the operator's approval, as a fifteen-minute write grant.
+ * fleet/grant.mjs — the operator's approval, as a forty-five-minute write grant.
  *
  * The pre-merge gate is the operator's act, expressed the way exe.dev
  * expresses trust: an integration attachment, per VM, time-boxed, that lapses
  * on its own with nothing to revoke.
  *
- *   node fleet/grant.mjs <N> [--for 15m] [--live] [--target <owner>/<repo>]
+ *   node fleet/grant.mjs <N> [--for 45m] [--live] [--target <owner>/<repo>]
  *
  * One read, one lookup, two verbs:
  *
  *   - `git pull` fleet-runs and require `runs/<N>/status.json` to say
  *     `awaiting-grant`. The sandbox writes that state only after its engine
  *     service is inactive, so a write grant never reaches a running model.
- *     (What bounds a hostile model is still 15 minutes, one repo, a PR rather
+ *     (What bounds a hostile model is still 45 minutes, one repo, a PR rather
  *     than a merge, and a human at the button.)
  *   - the VM by pattern: `ls 'fleet-r<N>-*' --json`, exactly one row.
  *   - `integrations detach t-<owner>-<repo>-ro vm:<vm>` FIRST (a grant that
  *     already lapsed answers "not attached", which is fine), then
- *     `integrations attach t-<owner>-<repo>-rw vm:<vm> --for 15m`. Never both
+ *     `integrations attach t-<owner>-<repo>-rw vm:<vm> --for 45m`. Never both
  *     at once: `github.int.exe.xyz` resolves one credential per repo and no
  *     precedence is documented.
  *
@@ -53,15 +53,17 @@ import {
   vmPatternFor
 } from './lobby.mjs'
 
-export const USAGE = `usage: node fleet/grant.mjs <N> [--for 15m] [--live] [--target <owner>/<repo>]
+export const USAGE = `usage: node fleet/grant.mjs <N> [--for 45m] [--live] [--target <owner>/<repo>]
                                 [--config <path>] [--json]`
 
 export const usage = () => USAGE
 
 /** The state a run must be in before write access is granted. */
 export const REQUIRED_STATE = 'awaiting-grant'
-/** The default grant window. Wall clock; it lapses with nothing to revoke. */
-export const DEFAULT_FOR = '15m'
+/** The default grant window. Wall clock; it lapses with nothing to revoke.
+ *  Forty-five minutes, not fifteen (Counsel 3): a run that stalled for
+ *  sixteen minutes between the grant and `gh pr create` lost `gh` mid-publish. */
+export const DEFAULT_FOR = '45m'
 
 /** The one VM incarnation of run N, or a refusal naming the pattern. */
 async function vmFor (exec, run) {
@@ -146,7 +148,7 @@ export async function grant ({ argv, exec = defaultExec, config, now = () => new
   const forWindow = opts.for === undefined || opts.for === true ? DEFAULT_FOR : String(opts.for)
   const ms = parseDuration(forWindow)
   if (ms === null) {
-    throw new Refusal(`grant: --for must look like 15m or 2h, got ${JSON.stringify(forWindow)}`)
+    throw new Refusal(`grant: --for must look like 45m or 2h, got ${JSON.stringify(forWindow)}`)
   }
   const settings = config ?? await loadFleetConfig({ path: opts.config })
 

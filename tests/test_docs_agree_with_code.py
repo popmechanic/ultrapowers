@@ -230,7 +230,15 @@ def test_the_documents_name_scripts_at_all():
 # authority; a doc that drifts from it is a doc sending an operator to a unit,
 # a path or a VM name that is not there.
 
-START_UNIT_RE = re.compile(r"systemctl --user (?:--no-block )?start (fleet-[\w.-]+\.service)")
+# The launcher starts an INSTANCE of a template: `fleet-run@<N>.service` in the
+# documents is the file `fleet/fleet-run@.service` with `<N>` as its `%i`. No
+# `--no-block` is admitted by this regex on purpose (Counsel 3): with Type=exec
+# the blocking `start` is the launch ack, and a doc teaching `--no-block` again
+# would teach an operator to ignore it.
+START_UNIT_RE = re.compile(r"systemctl --user start (fleet-[\w-]+@)<N>\.service")
+# A start line that still carries the flag — prose that says "no `--no-block`"
+# is allowed to explain why.
+NO_BLOCK_START_RE = re.compile(r"--no-block start")
 ENGINE_DIR_RE = re.compile(r"(/home/exedev/engines/)<sha>")
 VM_NAME_RE = re.compile(r"\*\*VM name:\*\*\s*`(fleet-r)<N>-")
 
@@ -242,12 +250,16 @@ def contract_literal(regex, what):
 
 
 def test_the_documents_start_the_unit_the_contract_names():
-    unit = contract_literal(START_UNIT_RE, "the unit the launcher starts")
-    for document in (RUNBOOK, FIRST_RUN):
-        assert unit in read(document), f"{document} does not name `{unit}`"
-    assert (ROOT / "fleet" / unit).is_file(), (
-        f"the contract's unit `{unit}` is not a file in fleet/ — the golden "
-        "copies it from there"
+    template = contract_literal(START_UNIT_RE, "the unit the launcher starts")
+    instance = f"{template}<N>.service"
+    for document in (RUNBOOK, FIRST_RUN, CONTRACT):
+        assert instance in read(document), f"{document} does not name `{instance}`"
+        assert not NO_BLOCK_START_RE.search(read(document)), (
+            f"{document} still shows a `--no-block start` line"
+        )
+    assert (ROOT / "fleet" / f"{template}.service").is_file(), (
+        f"the contract's template `{template}.service` is not a file in fleet/ — "
+        "the golden copies it from there"
     )
 
 

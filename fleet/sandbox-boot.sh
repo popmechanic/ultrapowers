@@ -2,9 +2,12 @@
 #
 # fleet/sandbox-boot.sh — the sandbox side of a run, from the assignment to the PR.
 #
-# The immutable bootstrap (`fleet/fleet-bootstrap.sh`, started by
-# fleet-run.service) reads the VM comment, clones this engine at the sha the
-# comment names, and execs this file with the assignment in FLEET_ASSIGNMENT.
+# The immutable bootstrap (`fleet/fleet-bootstrap.sh`, the main process of the
+# run unit `fleet-run@<N>.service`) reads the VM comment, clones this engine at
+# the sha the comment names, and execs this file with the assignment in
+# FLEET_ASSIGNMENT — so THIS script is the run unit's process, and its exit is
+# the unit's result. It starts and stops the engine unit `fleet-engine-<N>` and
+# never its own.
 # From here: clone fleet-runs and the target through exe.dev's edge-injected
 # GitHub integrations, run the engine as a transient user SERVICE with the
 # Anthropic pair in the ENGINE'S CHILD ENV ONLY, serve the status page from a

@@ -117,10 +117,21 @@ Three things these commands hide:
 
 The image every run VM is copied from: node, bun, npm, pytest with xdist,
 `busybox`, `gh`, the immutable bootstrap at `/home/exedev/fleet-bootstrap.sh`,
-and the user unit `fleet-run.service`, installed but not enabled. A `cp` of it
-takes seconds and inherits the `fleet` tag. The engine is not in the image:
-each run's bootstrap clones it at the sha the assignment names, into
+and the user unit template `fleet-run@.service`, installed but never enabled.
+A `cp` of it takes seconds and inherits the `fleet` tag. The engine is not in
+the image: each run's bootstrap clones it at the sha the assignment names, into
 `/home/exedev/engines/<sha>`.
+
+The launcher starts a run as `systemctl --user start fleet-run@<N>.service`
+over ssh, with no `--no-block`: the unit is `Type=exec`, so the command
+returns once the bootstrap is running and fails when it could not start, and
+the launcher prints that failure verbatim. The write grant `grant.mjs`
+attaches at approval lasts `--for 45m`. When a run has left no status page,
+its unit's own log needs no environment variable:
+
+```bash
+ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'
+```
 
 It is built by `fleet/golden-setup.sh`, and the build stamps that script's
 sha256 into `/home/exedev/.fleet-golden`, last. The doctor's row is that

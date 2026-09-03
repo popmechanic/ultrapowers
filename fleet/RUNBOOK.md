@@ -12,7 +12,10 @@ A run is a number N. Its plan is `plans/run-N.md` in the private
 exists. The launcher copies the golden to a fresh VM named
 `fleet-r<N>-<yymmddHHMM>-<4 hex>`, attaches the run's integrations to that VM,
 writes the assignment as the VM comment, waits for ssh, and starts the run:
-`systemctl --user --no-block start fleet-run.service`. That unit runs an immutable
+`systemctl --user start fleet-run@<N>.service` — no `--no-block`; the unit is
+`Type=exec`, so `start` returns once the bootstrap has exec'd and non-zero when
+it could not, which the launcher reports verbatim as a launch failure. That
+unit runs an immutable
 bootstrap, which reads the comment once, clones the engine at `engine=<sha>`
 into `/home/exedev/engines/<sha>`, and execs that checkout's
 `fleet/sandbox-boot.sh`. The boot script runs the engine as a transient user
@@ -81,7 +84,7 @@ ssh exe.dev "integrations add github --name t-<owner>-<repo>-rw \
 ```
 
 The launcher attaches `-ro` to the run's VM for six hours; `grant.mjs`
-detaches it and attaches `-rw` for fifteen minutes. The two are never on one
+detaches it and attaches `-rw` for forty-five minutes. The two are never on one
 VM at once, and `fleet-runs` is the only GitHub integration on `tag:fleet`. A
 public target needs no `-ro` object; the launcher skips the attach when there
 is none. `--act-as-user` attributes pushes and PRs to you once your GitHub
@@ -111,8 +114,9 @@ time.
 
 The image every run VM is copied from: node, bun, npm, pytest with xdist,
 `busybox`, `gh`, the immutable `/home/exedev/fleet-bootstrap.sh`, the user unit
-`~/.config/systemd/user/fleet-run.service` (installed, not enabled — the
-launcher starts it), linger for `exedev`, and the stamp
+template `~/.config/systemd/user/fleet-run@.service` (installed, never
+enabled — the launcher starts the instance `fleet-run@<N>.service`), linger for
+`exedev`, and the stamp
 `/home/exedev/.fleet-golden` = sha256 of `fleet/golden-setup.sh`, written last.
 No engine checkout, no `ANTHROPIC_*` anywhere. The engine is cloned per run
 at the sha the assignment names, so the golden goes stale only when
@@ -165,11 +169,13 @@ node fleet/grant.mjs <N>
 ```
 
 It pulls `fleet-runs`, requires `awaiting-grant`, finds the VM by
-`ls 'fleet-r<N>-*' --json`, detaches `-ro` and attaches `-rw --for 15m`. The
+`ls 'fleet-r<N>-*' --json`, detaches `-ro` and attaches `-rw --for 45m`. The
 sandbox then pushes `ultra/integration-run-<N>` and opens the PR: ready on
 PASS, a draft carrying the gate receipt otherwise. `--live` reads the VM's own
 page instead of the committed one; it needs the VM token. A grant that lapses
-before the push is re-issued with the same command.
+before the push is re-issued with the same command. Forty-five minutes, not
+fifteen: a run that stalled sixteen minutes between the grant and
+`gh pr create` lost `gh` mid-publish.
 
 **Reap.**
 
@@ -202,6 +208,24 @@ zero commits ahead of base is `parked` with its evidence committed and no
 grant wait, no push and no PR. A page already `done`, `parked` or `failed` is
 final: restarting the unit exits 0 and opens nothing twice.
 
+The run unit has a state of its own, readable when the page is not:
+
+```bash
+ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus'
+```
+
+| it reads | meaning |
+|---|---|
+| `ActiveState=active`, `SubState=exited`, `Result=success` | done — the boot script returned 0 (`RemainAfterExit` keeps it visible) |
+| `ActiveState=failed`, `ExecMainStatus=N` | crashed — the boot script exited N; the page's `error` and the journal say where |
+| `ActiveState=failed`, `Result=timeout` | over budget — `RuntimeMaxSec=6h` stopped it |
+| `ActiveState=inactive`, `SubState=dead` | never launched — the launcher's ssh start did not happen or did not reach this box |
+
+That reading is why the unit is a `Type=exec` template and not a oneshot
+(Counsel 3, measured on exeuntu, systemd 255): a oneshot has
+`TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads
+`inactive/dead` — the same as never started.
+
 ## Reading a failure
 
 Three logs, in the order a run writes them:
@@ -216,11 +240,20 @@ Three logs, in the order a run writes them:
 3. `journalctl --user -u fleet-engine-<N>` — the service's own view: OOM kills
    (`MemoryMax=40G`), the exit code, the timing.
 
+The run unit's own journal — the bootstrap's and the boot script's stderr,
+which is where a run that died before it wrote a page left its last words —
+needs no environment variable at all, because a field match asks the journal
+directly instead of the user bus:
+
+```bash
+ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'
+```
+
 Over ssh, the user bus needs its runtime directory named:
 
 ```bash
 ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) journalctl --user -u fleet-engine-<N> --no-pager'
-ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet-run.service fleet-status'
+ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user status fleet-run@<N>.service fleet-status'
 ```
 
 `<ssh_dest>` is the row's `ssh_dest` from `ssh exe.dev "ls '<vm>' --json"`,
@@ -262,7 +295,7 @@ service turns an overrun into a killed run rather than a frozen VM.
 
 The `awaiting-grant` state is the sandbox asserting about itself: the engine
 service is inactive. That guards against an accident, not a hostile model.
-What bounds a hostile model is mechanical: fifteen minutes, one repository, a
+What bounds a hostile model is mechanical: forty-five minutes, one repository, a
 pull request rather than a merge, and a human at the merge button. Grants
 lapse on wall clock with nothing to revoke. The Claude token is on no VM.
 

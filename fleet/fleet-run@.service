@@ -1,0 +1,26 @@
+[Unit]
+Description=ultrapowers run %i
+After=network-online.target
+
+# A TEMPLATE, instanced per run: the launcher starts `fleet-run@<N>.service`
+# over ssh once the assignment is written and the integrations are attached —
+# never at boot, so there is no [Install] section and nothing to enable.
+#
+# Type=exec, not oneshot (Counsel 3, measured on exeuntu, systemd 255): a
+# oneshot has TimeoutStartUSec=infinity, ignores RuntimeMaxSec=, and once it
+# has finished reads `inactive/dead` — the same as one never started. With
+# exec, `start` returns as soon as the bootstrap has execve'd (non-zero when it
+# cannot), the run's wall clock is bounded by RuntimeMaxSec, and
+# RemainAfterExit keeps the finished unit around so `systemctl show` tells
+# `active/exited + success` (done) from `failed + Result=timeout` (over budget)
+# from `inactive/dead` (never launched).
+#
+# %i is the run number. The bootstrap still reads the assignment from
+# Reflection; the argument only lets it assert that the comment's run= agrees.
+# The status page and the engine are transient services of their own, so no
+# KillMode games are needed to keep the page up after this exits.
+[Service]
+Type=exec
+RemainAfterExit=yes
+RuntimeMaxSec=6h
+ExecStart=/home/exedev/fleet-bootstrap.sh %i

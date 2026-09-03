@@ -85,8 +85,8 @@ function makeCase() {
   return { root, home, bin, logs, record: path.join(root, 'record') }
 }
 
-function run(ctx, env = {}) {
-  return spawnSync('bash', [SCRIPT], {
+function run(ctx, env = {}, args = []) {
+  return spawnSync('bash', [SCRIPT, ...args], {
     encoding: 'utf8',
     env: {
       PATH: `${ctx.bin}:${process.env.PATH}`,
@@ -194,6 +194,43 @@ test('a scratch directory left by a dead attempt is discarded before the clone',
   assert.equal(r.status, 0, r.stdout + r.stderr)
   assert.ok(fs.existsSync(path.join(ctx.home, 'engines', SHA, '.git')))
   assert.ok(!fs.existsSync(stale))
+})
+
+// ── the unit's %i: the run number, checked against the comment ──────────────
+
+test('the run number the unit passes is accepted when the comment agrees', () => {
+  // fleet-run@7.service runs `fleet-bootstrap.sh 7`. The assignment still
+  // comes from Reflection; the argument only proves this is run 7's box.
+  const ctx = makeCase()
+  const r = run(ctx, {}, ['7'])
+  assert.equal(r.status, 0, r.stdout + r.stderr)
+  assert.equal(commentReads(ctx), 1, 'still one read')
+  const rec = record(ctx)
+  assert.ok(rec, 'the checkout boot script ran')
+  assert.equal(rec.arg1, 'boot', 'the boot script gets `boot`, not the run number')
+  assert.equal(rec.assignment, COMMENT, 'the assignment is the comment, not something built from $1')
+  assert.match(bootLog(ctx), / bootstrap: comment: run=7 .*\(unit run=7\)/, 'the unit\'s number is logged')
+})
+
+test('a run number that disagrees with the comment is logged and fatal', () => {
+  // fleet-run@8.service on a box whose comment says run=7: the wrong unit on
+  // the wrong VM. Refuse before anything is cloned or exec\'d.
+  const ctx = makeCase()
+  const r = run(ctx, {}, ['8'])
+  assert.notEqual(r.status, 0, 'must exit non-zero')
+  assert.equal(commentReads(ctx), 1, 'one read')
+  assert.equal(readLog(ctx, 'git'), '', 'nothing is cloned')
+  assert.equal(record(ctx), null, 'nothing is exec\'d')
+  assert.match(bootLog(ctx), /unit run=8 but the comment says run=7/, bootLog(ctx))
+  assert.deepEqual(homeListing(ctx), ['fleet-boot.log'], 'only the log is written')
+})
+
+test('a run number against a comment with no run= is fatal too', () => {
+  const ctx = makeCase()
+  const r = run(ctx, { STUB_COMMENT: `plan=${'a1'.repeat(20)} engine=${SHA}` }, ['7'])
+  assert.notEqual(r.status, 0)
+  assert.equal(record(ctx), null)
+  assert.match(bootLog(ctx), /unit run=7 but the comment says run=<none>/, bootLog(ctx))
 })
 
 // ── refusals: nothing is cloned ──────────────────────────────────────────────

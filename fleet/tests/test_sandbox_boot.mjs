@@ -330,6 +330,10 @@ test('a status server that is already active is not started again', () => {
   const ctx = makeHome()
   assert.equal(boot(ctx, ['boot'], { STUB_STATUS_ACTIVE: 'active' }).status, 0)
   assert.deepEqual(unitsRun(ctx), ['fleet-engine-7'], 'only the engine is started')
+  // The boot script IS the run unit's process (fleet-run@7.service); it asks
+  // systemd only about the engine unit and the page, never about itself.
+  assert.ok(!argvLines(ctx, 'systemctl').some((a) => a.some((s) => s.includes('fleet-run'))),
+    'no systemctl call names the run unit')
   assert.ok(readLog(ctx, 'fleet-boot.log').includes('fleet-status.service already active'))
 })
 
@@ -815,6 +819,10 @@ test('the deadman parks a run stuck in running and stops the engine service', ()
   assert.equal(notes[notes.length - 1].title, 'run-7 parked')
   assert.ok(argvLines(ctx, 'systemctl').some((a) =>
     a.join(' ') === 'systemctl --user stop fleet-engine-7.service'), 'the service, not a scope')
+  // The run unit (fleet-run@7.service) is this script's own process; the
+  // deadman stops the engine unit and never the unit it may itself be in.
+  assert.ok(!argvLines(ctx, 'systemctl').some((a) => a.some((s) => s.includes('fleet-run'))),
+    'the run unit is never named — only the engine unit is stopped')
 })
 
 test('the deadman leaves a finished run alone', () => {

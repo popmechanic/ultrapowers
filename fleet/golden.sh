@@ -164,14 +164,14 @@ cmd_verify() {
   [ "$out" = '755' ] || die "fleet-bootstrap.sh: mode is ${out:-<none>}, want 755"
   say 'fleet-bootstrap.sh: 755'
 
-  # Installed, never enabled: the launcher starts it. `static` is what a unit
-  # with no [Install] section reads as; `disabled` would be one that grew an
-  # [Install] and was still left alone. `enabled` is a golden that runs
-  # something at boot with no assignment — the v1 shape.
-  out=$(run_ssh "$host" 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user is-enabled fleet-run.service' | tr -d '\r\n ' || true)
+  # The run unit is a template the launcher instances per run
+  # (`fleet-run@<N>.service`); a template has no enabled/disabled state of its
+  # own, so the row is presence: the manager can `cat` it (installed AND
+  # reloaded), or at least the file is where the manager will read it from.
+  out=$(run_ssh "$host" 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user cat fleet-run@.service >/dev/null 2>&1 && echo loaded || { test -f /home/exedev/.config/systemd/user/fleet-run@.service && echo installed || echo missing; }' | tr -d '\r\n ' || true)
   case "$out" in
-    static|disabled) say "fleet-run.service: $out" ;;
-    *) die "fleet-run.service: ${out:-<none>}, want static or disabled" ;;
+    loaded|installed) say "fleet-run@.service: $out" ;;
+    *) die "fleet-run@.service: ${out:-<none>}, want loaded or installed" ;;
   esac
 
   # No engine pre-clone. A repo in the image is exactly the stale boot script

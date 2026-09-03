@@ -9,7 +9,7 @@ file (git history) and this text disagree, this text wins. The engine (`run-main
 A run is a number N. Its plan is `plans/run-N.md` in `popmechanic/fleet-runs`, committed by the launcher
 before any VM exists. The launcher `cp`s the golden to a fresh, never-reused VM name, attaches the run's
 integrations to THAT VM, writes the assignment as the VM comment (the record), waits for ssh, and STARTS
-the run over ssh: `systemctl --user --no-block start fleet-run.service`. The golden carries only an immutable
+the run over ssh: `systemctl --user start fleet-run@<N>.service`. The golden carries only an immutable
 bootstrap, which reads the assignment once, clones the engine at `engine=` into a content-addressed
 directory, and execs the checkout's `fleet/sandbox-boot.sh`. The boot script runs the engine as a
 transient user SERVICE with a memory cap, serves a status page from its own transient service, commits
@@ -34,19 +34,31 @@ fleet-runs, never a VM. No orchestrator, no control VM, no token on any VM.
 - **Launch order (launcher):** commit plan → `cp` → `integrations attach claude-max vm:<vm> --for 6h` →
   `integrations attach t-<owner>-<repo>-ro vm:<vm> --for 6h` (skip when the target is public and no
   `-ro` integration exists) → `comment <vm> '<assignment>'` → wait until `ssh <ssh_dest> true` succeeds
-  (retry ≤120 s) → `ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user --no-block start fleet-run.service'`.
-  Start AFTER attach: the boot never races the grant.
+  (retry ≤120 s) → `ssh <ssh_dest> 'XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user start fleet-run@<N>.service'`
+  — no `--no-block`: the unit is `Type=exec`, so `start` returns once the bootstrap has execve'd and
+  non-zero when it could not; that exit status is the launch ack, and a non-zero one is a launch
+  failure printed verbatim. Start AFTER attach: the boot never races the grant.
 - **Golden contents (golden-setup.sh):** node, bun, npm, xdist, `busybox`, `gh`, the immutable
   `/home/exedev/fleet-bootstrap.sh` (a copy of `fleet/fleet-bootstrap.sh`, mode 755), the user unit
-  `~/.config/systemd/user/fleet-run.service` (a copy of `fleet/fleet-run.service`, `Type=oneshot`,
-  `ExecStart=/home/exedev/fleet-bootstrap.sh`, installed and daemon-reloaded but NOT enabled — the
-  launcher starts it), `loginctl enable-linger exedev`, stamp `/home/exedev/.fleet-golden` = sha256 of
+  TEMPLATE `~/.config/systemd/user/fleet-run@.service` (a copy of `fleet/fleet-run@.service`:
+  `Description=ultrapowers run %i`, `After=network-online.target`, `Type=exec`, `RemainAfterExit=yes`,
+  `RuntimeMaxSec=6h`, `ExecStart=/home/exedev/fleet-bootstrap.sh %i`, no `[Install]`, no `KillMode`, no
+  `Restart`; installed and daemon-reloaded but never enabled — the launcher starts the instance
+  `fleet-run@<N>.service`), `loginctl enable-linger exedev`, stamp `/home/exedev/.fleet-golden` = sha256 of
   `fleet/golden-setup.sh` written LAST. No `/home/exedev/repo`, no engine pre-clone, no `ANTHROPIC_*`.
+  Why a template of `Type=exec` and not a oneshot (Counsel 3, measured on exeuntu, systemd 255): a
+  oneshot has `TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads `inactive/dead`
+  — indistinguishable from never started. `systemctl --user show fleet-run@<N>.service -p ActiveState
+  -p SubState -p Result -p ExecMainStatus` now reads: `active/exited` + `success` = done;
+  `failed` + `ExecMainStatus=N` = crashed with exit N; `failed` + `Result=timeout` = over the 6 h budget;
+  `inactive/dead` = never launched.
 - **Bootstrap (`fleet/fleet-bootstrap.sh`, ≤40 lines, bash, `set -euo pipefail`):** read the comment once
-  → parse `engine=` (40 hex or fail) → `dst=/home/exedev/engines/<sha>`; if absent, clone
+  → when `$1` (the unit's `%i`) is given, it and the comment's `run=` agree or the run fails → parse
+  `engine=` (40 hex or fail) → `dst=/home/exedev/engines/<sha>`; if absent, clone
   `https://github.com/popmechanic/ultrapowers.git` to `$dst.tmp`, `git checkout -q <sha>`, `mv` →
   `exec "$dst/fleet/sandbox-boot.sh" boot` with `FLEET_ASSIGNMENT='<comment>'` in its env. It never writes
   anywhere but `/home/exedev/engines/` and `/home/exedev/fleet-boot.log`. It is never overwritten by a run.
+  The assignment comes from Reflection, never from `$1`.
 - **Boot script (`fleet/sandbox-boot.sh`), invoked by the bootstrap:** takes the assignment from
   `FLEET_ASSIGNMENT` (one Reflection read as fallback; no polling loop). Paths: engine
   `/home/exedev/engines/<sha>` (`ENGINE_REPO_DIR`), target `/home/exedev/target` (clone at `base=` through
@@ -80,8 +92,11 @@ fleet-runs, never a VM. No orchestrator, no control VM, no token on any VM.
 - **Grant (`fleet/grant.mjs <N>`):** `git pull` fleet-runs → require `runs/<N>/status.json` state
   `awaiting-grant` (`--live` reads `https://<vm>.exe.xyz/status.json` with the VM token instead) → find
   the VM by `ls 'fleet-r<N>-*' --json` → `integrations detach t-<owner>-<repo>-ro vm:<vm>` (ignore "not
-  attached") → `integrations attach t-<owner>-<repo>-rw vm:<vm> --for 15m`. `-ro` and `-rw` are never
+  attached") → `integrations attach t-<owner>-<repo>-rw vm:<vm> --for 45m` (45, not 15: a run that
+  stalled 16 minutes between the grant and `gh pr create` lost `gh` mid-publish). `-ro` and `-rw` are never
   attached to one VM at once; NO GitHub integration is attached to `tag:fleet` except `fleet-runs`.
+- **Logs without an env var:** `ssh <ssh_dest> 'journalctl _SYSTEMD_USER_UNIT=fleet-run@<N>.service --no-pager -n 200'`
+  reads the run unit's journal by field match, so it needs no `XDG_RUNTIME_DIR` and no `--user`.
 - **Janitor (`fleet/janitor.mjs`):** `git pull` fleet-runs; for each `runs/<N>/status.json` in
   `done|parked|failed` with `updatedAt` older than 1 h → `ls 'fleet-r<N>-*' --json` → `rm <vm> --json` for
   each row. For each `ls 'fleet-r*' --json` row whose N has no status update in 6 h → notify once
