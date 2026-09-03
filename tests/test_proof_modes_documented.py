@@ -30,6 +30,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASE = "0a3559a"
+BASE_FULL = "0a3559a2e0c9998553c0c725e5510e20e5802b1b"  # fetch-by-sha needs all 40
 
 SKILL_PATH = "skills/ultrawrite/SKILL.md"
 EXAMINER_PATH = "fleet/roles/examiner.md"
@@ -45,8 +46,19 @@ def read(rel):
     return (ROOT / rel).read_text()
 
 
+def _ensure_base_present():
+    """A depth-1 checkout (CI's `actions/checkout`) does not hold BASE; fetch
+    exactly that commit from origin, which serves any reachable sha."""
+    probe = subprocess.run(["git", "cat-file", "-e", f"{BASE}^{{commit}}"],
+                           cwd=ROOT, capture_output=True)
+    if probe.returncode != 0:
+        subprocess.run(["git", "fetch", "-q", "--depth=1", "origin", BASE_FULL],
+                       cwd=ROOT, capture_output=True)
+
+
 def base_text(rel):
     """The file's bytes at BASE (`0a3559a`), not at HEAD."""
+    _ensure_base_present()
     done = subprocess.run(
         ["git", "show", f"{BASE}:{rel}"],
         cwd=ROOT, capture_output=True, text=True,

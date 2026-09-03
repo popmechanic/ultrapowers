@@ -353,7 +353,14 @@ CORPUS = (sorted((ROOT / "evals/fixtures").glob("*/plan.md"))
 
 @pytest.fixture(scope="module")
 def base_compiler(tmp_path_factory):
-    """The compiler as of the frozen BASE sha, written to a temp file."""
+    """The compiler as of the frozen BASE sha, written to a temp file. A
+    depth-1 checkout (CI) does not hold BASE; fetch exactly that commit from
+    origin, which serves any reachable sha."""
+    probe = subprocess.run(["git", "cat-file", "-e", BASE_SHA + "^{commit}"],
+                           cwd=str(ROOT), capture_output=True)
+    if probe.returncode != 0:
+        subprocess.run(["git", "fetch", "-q", "--depth=1", "origin", BASE_SHA],
+                       cwd=str(ROOT), capture_output=True)
     blob = subprocess.run(["git", "show", "%s:%s" % (BASE_SHA, COMPILER_REL)],
                           cwd=str(ROOT), capture_output=True)
     assert blob.returncode == 0, blob.stderr.decode("utf-8", "replace")
