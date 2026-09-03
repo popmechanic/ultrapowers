@@ -108,6 +108,13 @@ case "$1" in
     esac
     # A commit is the moment the evidence becomes readable by the grant tool, so
     # snapshot the status page exactly as it is committed.
+    # The engine checkout replaces the boot script at ITS OWN path — the golden's
+    # copy and the checkout's are one file on a sandbox.
+    case "$3" in
+      checkout) if [ -n "\${STUB_CHECKOUT_REPLACES_BOOT:-}" ] && [ "$2" = "$FLEET_HOME/repo" ]; then
+                  printf '#!/bin/bash\nprintf "REEXEC %%s\\n" "$1" >>"$FLEET_HOME/fleet-boot.log"\nexit 0\n' >"$FLEET_HOME/repo/fleet/sandbox-boot.sh"
+                fi ;;
+    esac
     case "$3" in
       commit) [ -f "$2/runs/7/status.json" ] && cat "$2/runs/7/status.json" >>"$FLEET_HOME/commits.log" ;;
     esac ;;
@@ -189,8 +196,8 @@ function makeHome(extraEnv = {}) {
   return { home, bin, extraEnv }
 }
 
-function boot(ctx, args = ['boot'], env = {}) {
-  const r = spawnSync('bash', [SCRIPT, ...args], {
+function boot(ctx, args = ['boot'], env = {}, script = SCRIPT) {
+  const r = spawnSync('bash', [script, ...args], {
     encoding: 'utf8',
     env: {
       PATH: process.env.PATH,
@@ -610,7 +617,7 @@ test('a failure before the target clone still lands in fleet-runs', () => {
 
 test('a run that failed after its engine ran is not restarted', () => {
   const ctx = makeHome()
-  assert.notEqual(boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1' }).status, 0)
+  assert.notEqual(boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_NO_RECEIPT: '1' }).status, 0)
   const gitBefore = argvLines(ctx, 'git').length
 
   fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
@@ -660,6 +667,27 @@ test('a newer boot script in the engine checkout takes over, in the mode it was 
     'the superseded script runs no engine of its own')
 })
 
+
+test('a boot script replaced at its own path by the engine checkout still hands over', () => {
+  // run-68: `$0` and the checkout were the same file, so a path-vs-path
+  // comparison after the checkout saw only the new bytes and never fired,
+  // while bash kept executing the old inode.
+  const ctx = makeHome()
+  const self = path.join(ctx.home, 'repo', 'fleet', 'sandbox-boot.sh')
+  fs.copyFileSync(SCRIPT, self)
+  fs.chmodSync(self, 0o755)
+  assert.equal(boot(ctx, ['boot'], { STUB_CHECKOUT_REPLACES_BOOT: '1' }, self).status, 0)
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('REEXEC boot'), 'the new bytes take over')
+  assert.equal(argvLines(ctx, 'systemd-run').length, 0, 'the superseded script runs no engine')
+})
+
+test('an engine exit of 1 with a gate receipt is a verdict, not a failure', () => {
+  // run-main exits 1 on gate-blocked; the receipt is its terminal artifact.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_VERDICT: 'NEEDS_ACK' })
+  assert.notEqual(statusOf(ctx).state, 'failed', r.stdout + r.stderr)
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('a verdict, not a crash'))
+})
 
 test('re-entering after a finished engine re-runs neither the engine nor the PR', () => {
   const ctx = green()

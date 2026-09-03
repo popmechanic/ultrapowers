@@ -29,6 +29,9 @@
 # path. Neither is set in production and both default to the real thing.
 set -euo pipefail
 
+# The bytes this process is running — see checkout_engine for why.
+SELF_SHA="$(sha256sum <"$0" | cut -c1-64)"
+
 # --- relocatable roots -------------------------------------------------------
 
 FLEET_HOME="${FLEET_HOME:-/home/exedev}"
@@ -373,7 +376,12 @@ checkout_engine() {
   # boot-script fix needs no golden rebuild.
   if [ -n "${FLEET_BOOT_REEXEC:-}" ]; then
     :
-  elif [ -f "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" ] && ! cmp -s "$0" "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh"; then
+  elif [ -f "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" ] \
+    && [ "$(sha256sum <"$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" | cut -c1-64)" != "$SELF_SHA" ]; then
+    # Compared against the bytes THIS process started from, not against `$0`:
+    # on a sandbox the golden's copy and the checkout are the same path, so
+    # after the checkout `$0` names the new file while bash is still reading
+    # the old inode — a path-vs-path comparison there is always "same".
     log "engine: boot script differs at $ENGINE_SHA — re-exec from the checkout"
     # `$MODE`, not `$@`: inside a function `$@` is the FUNCTION's arguments, and
     # this one takes none — a re-exec on `$@` would silently restart every mode
@@ -725,6 +733,13 @@ do_boot() {
   local code outcome
   code="$(engine_exit_code)"
   collect_evidence
+
+  if [ "$code" = "1" ] && [ -n "$(gate_receipt_path)" ]; then
+    # run-main exits 1 on `gate-blocked` — the receipt is its terminal artifact
+    # and the verdict below reads it. A verdict is a parked run, not a failed one.
+    log "engine: exited $code with a gate receipt — a verdict, not a crash"
+    code=0
+  fi
 
   if [ "$code" != "0" ]; then
     # The page goes to `failed` BEFORE the push, because the copy of it that
