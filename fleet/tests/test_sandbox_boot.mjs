@@ -92,10 +92,19 @@ case "$1" in
     esac
     case "\${STUB_CLONE_404:-}" in
       "$url") printf 'remote: Repository not found.\\nfatal: 404\\n' >&2; rm -rf "$dir"; exit 128 ;;
+    esac
+    case "\${STUB_CLONE_FAIL:-}" in
+      "$url") printf 'fatal: boom\\n' >&2; rm -rf "$dir"; exit 128 ;;
     esac ;;
   -C)
     case "$3 $4" in
       "config user.email") exit 1 ;;
+    esac
+    # Does HEAD already contain the plan commit? A fresh clone of fleet-runs
+    # sits on main, which does — the plan was pushed before the VM was copied.
+    case "$3 $4" in
+      "merge-base --is-ancestor") [ -n "\${STUB_PLAN_NOT_IN_HEAD:-}" ] && exit 1
+                                  exit 0 ;;
     esac
     # A commit is the moment the evidence becomes readable by the grant tool, so
     # snapshot the status page exactly as it is committed.
@@ -120,9 +129,15 @@ say "systemd-run engine"
 run_dir="$FLEET_HOME/target/.claude/ultrapowers/run-run-7"
 mkdir -p "$run_dir" "$FLEET_HOME/target/fleet-receipts/run-7"
 printf '{"kind":"engine:phase","phase":"gate","id":"x","ts":1}\\n' >"$run_dir/events.jsonl"
-printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$FLEET_HOME/target/fleet-receipts/run-7/gate-receipt.json"
-printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
-printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
+# The engine talks on stdout and stderr, and a run that dies before its gate
+# leaves nothing else behind.
+printf 'run-main: preflight\\n'
+printf 'run-main: knob-validate-failed\\n' >&2
+if [ -z "\${STUB_NO_RECEIPT:-}" ]; then
+  printf '{"verdict":"%s"}\\n' "$STUB_VERDICT" >"$FLEET_HOME/target/fleet-receipts/run-7/gate-receipt.json"
+  printf '{"stamp":"run-7"}\\n' >"$run_dir/report.json"
+  printf '{"argsFile":"x"}\\n' >"$run_dir/receipt.json"
+fi
 [ -n "\${STUB_ENGINE_SLEEP:-}" ] && sleep "$STUB_ENGINE_SLEEP"
 exit \${STUB_ENGINE_CODE:-0}
 `,
@@ -273,14 +288,21 @@ test('the comment is parsed into the clone and checkout argv, target at base and
   const git = argvLines(ctx, 'git')
   const H = ctx.home
 
+  // fleet-runs FIRST — it is where a failure gets recorded.
   assert.deepEqual(git[0], ['git', 'clone',
     'https://github.int.exe.xyz/popmechanic/fleet-runs.git', `${H}/fleet-runs`])
-  assert.deepEqual(git[1], ['git', '-C', `${H}/fleet-runs`, 'checkout', PLAN_SHA])
-  assert.deepEqual(git[2], ['git', 'clone',
+  assert.deepEqual(git[1], ['git', '-C', `${H}/fleet-runs`, 'fetch', 'origin'])
+  assert.deepEqual(git[2], ['git', '-C', `${H}/fleet-runs`, 'merge-base', '--is-ancestor', PLAN_SHA, 'HEAD'])
+  assert.deepEqual(git[3], ['git', '-C', `${H}/fleet-runs`, 'checkout', '--force', PLAN_SHA, '--', 'plans'])
+  assert.deepEqual(git[4], ['git', 'clone',
     `https://github.int.exe.xyz/${TARGET}.git`, `${H}/target`])
-  assert.deepEqual(git[3], ['git', '-C', `${H}/target`, 'checkout', BASE_SHA])
-  assert.deepEqual(git[4], ['git', '-C', `${H}/repo`, 'fetch', 'origin', ENGINE_SHA])
-  assert.deepEqual(git[5], ['git', '-C', `${H}/repo`, 'checkout', ENGINE_SHA])
+  assert.deepEqual(git[5], ['git', '-C', `${H}/target`, 'checkout', BASE_SHA])
+  assert.deepEqual(git[6], ['git', '-C', `${H}/repo`, 'fetch', 'origin', ENGINE_SHA])
+  assert.deepEqual(git[7], ['git', '-C', `${H}/repo`, 'checkout', ENGINE_SHA])
+
+  // HEAD already contained the plan commit, so nothing moved HEAD — the plan
+  // file is pinned by the path-scoped checkout alone.
+  assert.equal(git.filter((a) => a.includes('--detach')).length, 0)
 
   // The clone is LEFT at base: the integration branch is the engine's to create.
   assert.equal(git.filter((a) => a.includes('switch')).length, 0)
@@ -410,7 +432,7 @@ test('a failed engine commits a status page that says failed, not running', () =
   const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
   assert.equal(committed.length, 1)
   assert.equal(committed[0].state, 'failed')
-  assert.equal(committed[0].error, 'engine exited 9')
+  assert.match(committed[0].error, /^engine exited 9\n/)
 })
 
 test('a write grant that never arrives parks the run and commits that too', () => {
@@ -513,7 +535,7 @@ test('a non-zero engine exit fails the run, after the receipts are committed', (
   const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '9' })
   assert.notEqual(r.status, 0)
   assert.equal(statusOf(ctx).state, 'failed')
-  assert.equal(statusOf(ctx).error, 'engine exited 9')
+  assert.match(statusOf(ctx).error, /^engine exited 9\n/)
   assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'gate-receipt.json')),
     'the evidence of a failed run is still committed')
   assert.equal(argvLines(ctx, 'gh').length, 0, 'a failed engine opens no PR')
@@ -539,7 +561,105 @@ test('a target the exe.dev edge cannot find is cloned from github.com and re-poi
     'origin goes back to the edge, because the write grant is what makes the push work')
 })
 
-// ── 5. re-entry ──────────────────────────────────────────────────────────────
+// ── 5. the engine's own words ────────────────────────────────────────────────
+
+test("the engine's output is served, logged, and quoted in the error", () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1', STUB_NO_RECEIPT: '1' })
+  assert.notEqual(r.status, 0)
+
+  // Served beside the status page, so a laptop with a VM token can read it.
+  const engineLog = readLog(ctx, path.join('www', 'engine.log'))
+  assert.ok(engineLog.includes('run-main: preflight'), 'stdout is captured')
+  assert.ok(engineLog.includes('run-main: knob-validate-failed'), 'stderr is captured')
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('run-main: knob-validate-failed'),
+    'and the boot log carries it too')
+
+  // The reason is in the cell a reader opens, not only in a file on a VM the
+  // janitor is about to delete.
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed')
+  assert.match(status.error, /^engine exited 1\n/)
+  assert.ok(status.error.includes('run-main: knob-validate-failed'), status.error)
+
+  // …and it rides to fleet-runs as evidence, which is the only artifact a run
+  // that never reached its gate produces.
+  assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'engine.log')))
+  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
+  assert.equal(committed[committed.length - 1].state, 'failed')
+})
+
+// ── 6. failing before the clones ─────────────────────────────────────────────
+
+test('a failure before the target clone still lands in fleet-runs', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_CLONE_FAIL: `https://github.int.exe.xyz/${TARGET}.git` })
+  assert.notEqual(r.status, 0)
+  assert.equal(statusOf(ctx).state, 'failed')
+  assert.match(statusOf(ctx).error, /^clone: target/)
+
+  const dir = path.join(ctx.home, 'fleet-runs', 'runs', '7')
+  assert.ok(fs.existsSync(path.join(dir, 'status.json')), 'runs/7/ exists even this early')
+  const committed = lines(readLog(ctx, 'commits.log')).map((l) => JSON.parse(l))
+  assert.equal(committed.length, 1)
+  assert.equal(committed[0].state, 'failed')
+  assert.equal(argvLines(ctx, 'systemd-run').length, 0, 'the engine never started')
+})
+
+// ── 7. re-entry ──────────────────────────────────────────────────────────────
+
+test('a run that failed after its engine ran is not restarted', () => {
+  const ctx = makeHome()
+  assert.notEqual(boot(ctx, ['boot'], { STUB_ENGINE_CODE: '1' }).status, 0)
+  const gitBefore = argvLines(ctx, 'git').length
+
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
+  const again = boot(ctx)
+  assert.equal(again.status, 0, 'exit 0, so Restart=on-failure lets it rest')
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('leaving it for the janitor'))
+  assert.equal(argvLines(ctx, 'systemd-run').length, 1, 'the engine is not re-run')
+  assert.equal(argvLines(ctx, 'git').length, gitBefore, 'and nothing is re-cloned')
+})
+
+test('a fleet-runs clone whose HEAD has moved past the plan is not checked out over', () => {
+  const ctx = makeHome()
+  assert.equal(boot(ctx).status, 0)
+  fs.writeFileSync(path.join(ctx.home, 'stub', 'comment'), '2')
+  // The crash shape run-66 hit: evidence committed, HEAD advanced, unit restarts.
+  fs.writeFileSync(path.join(ctx.home, 'www', 'status.json'),
+    JSON.stringify({ ...statusOf(ctx), state: 'running' }))
+  assert.equal(boot(ctx).status, 0)
+
+  const H = ctx.home
+  const fr = argvLines(ctx, 'git').filter((a) => a[2] === `${H}/fleet-runs`)
+  assert.equal(fr.filter((a) => a[3] === 'checkout' && a[4] === PLAN_SHA).length, 0,
+    'the plan sha is never checked out bare — that is what killed run-66')
+  assert.ok(fr.some((a) => a[3] === 'merge-base'), 'HEAD is asked whether it already has it')
+})
+
+test('a clone that is behind the plan commit is detached onto it', () => {
+  const ctx = makeHome()
+  assert.equal(boot(ctx, ['boot'], { STUB_PLAN_NOT_IN_HEAD: '1' }).status, 0)
+  const H = ctx.home
+  assert.ok(argvLines(ctx, 'git').some((a) =>
+    a.join(' ') === `git -C ${H}/fleet-runs checkout --detach ${PLAN_SHA}`))
+})
+
+test('a newer boot script in the engine checkout takes over, in the mode it was started in', () => {
+  const ctx = makeHome()
+  const successor = path.join(ctx.home, 'repo', 'fleet', 'sandbox-boot.sh')
+  fs.mkdirSync(path.dirname(successor), { recursive: true })
+  fs.writeFileSync(successor,
+    '#!/bin/bash\nprintf "REEXEC %s\\n" "$1" >>"$FLEET_HOME/fleet-boot.log"\nexit 0\n')
+  fs.chmodSync(successor, 0o755)
+
+  assert.equal(boot(ctx).status, 0)
+  assert.ok(readLog(ctx, 'fleet-boot.log').includes('REEXEC boot'),
+    'the mode survives the re-exec')
+  assert.equal(argvLines(ctx, 'systemd-run').length, 0,
+    'the superseded script runs no engine of its own')
+})
+
 
 test('re-entering after a finished engine re-runs neither the engine nor the PR', () => {
   const ctx = green()

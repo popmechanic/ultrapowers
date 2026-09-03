@@ -49,6 +49,12 @@ WWW_DIR="$FLEET_HOME/www"
 STATUS_FILE="$WWW_DIR/status.json"
 HTTPD_PID_FILE="$WWW_DIR/.httpd.pid"
 BOOT_LOG="$FLEET_HOME/fleet-boot.log"
+# The engine's combined output, IN THE SERVED DIRECTORY. run-66 exited 1 and the
+# only trace anywhere was "engine: exited 1"; the reason (`run-main:
+# knob-validate-failed`) had to be reproduced by hand on the box. An engine's
+# own words are the first thing anyone wants and the one thing that was thrown
+# away, so they go where the status page already reaches: /engine.log.
+ENGINE_LOG="$WWW_DIR/engine.log"
 FLEET_RUNS_DIR="$FLEET_HOME/fleet-runs"
 TARGET_DIR="$FLEET_HOME/target"
 ENGINE_REPO_DIR="$FLEET_HOME/repo"
@@ -124,8 +130,17 @@ json_field() { # $1 = field name; document on stdin -> the FIRST match, or ''
     sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'
 }
 
+# A newline becomes `\n`, never nothing: `error` now carries the engine's last
+# lines, and deleting the breaks would run twenty stack frames into one word.
 json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | tr -d '\n'
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' |
+    awk 'BEGIN { ORS = "" } { print (NR > 1 ? "\\n" : "") $0 }'
+}
+
+# The engine's own last words, for the `error` cell of the status page.
+engine_tail() {
+  [ -f "$ENGINE_LOG" ] || return 0
+  tail -n 20 "$ENGINE_LOG" | tail -c 4000
 }
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -168,6 +183,14 @@ notify() { # $1 = title, $2 = message
 fail() { # $1 = error text
   ERROR="$1"
   write_status failed
+  # Every failure path leaves its account in `fleet-runs`, not only on a status
+  # page the janitor is about to delete with the VM. `FAILING` is what keeps
+  # `push_evidence`'s own failure from recursing back in here.
+  if [ -z "${FAILING:-}" ] && [ -n "$RUN_N" ] && is_clone "$FLEET_RUNS_DIR"; then
+    FAILING=1
+    collect_evidence || true
+    push_evidence "$RUN_ID: failed — $1" || true
+  fi
   notify "run-${RUN_N:-?} failed" "$1"
   log "FAILED: $1"
   exit 1
@@ -272,14 +295,39 @@ parse_assignment() { # $1 = the comment line
 
 is_clone() { [ -e "$1/.git" ]; }
 
-clone_fleet_runs() {
+# FIRST, and before anything else can fail: this clone is where a failure gets
+# RECORDED. run-65 died at the engine's deps with `runs/65/` never created, so
+# the only account of it was a status page on a VM the janitor was about to
+# delete.
+prepare_fleet_runs() {
   if is_clone "$FLEET_RUNS_DIR"; then
     log "fleet-runs: clone already present"
   else
     fleet_git clone "https://$GITHUB_INT_HOST/$FLEET_RUNS_REPO.git" "$FLEET_RUNS_DIR" \
       || fail "clone: fleet-runs"
   fi
-  fleet_git -C "$FLEET_RUNS_DIR" checkout "$PLAN_SHA" || fail "checkout: fleet-runs at $PLAN_SHA"
+  fleet_git -C "$FLEET_RUNS_DIR" fetch origin || fail "fetch: fleet-runs"
+
+  # RE-ENTRY. A previous attempt committed `runs/<N>/` on top of the plan commit
+  # and pushed it, so HEAD has moved and the tree may be dirty; checking the plan
+  # sha out over that is how run-66's restart died. HEAD only has to CONTAIN the
+  # plan commit — the plan file itself is pinned by the path-scoped checkout
+  # below, and that file is the only thing this clone is READ for.
+  if fleet_git -C "$FLEET_RUNS_DIR" merge-base --is-ancestor "$PLAN_SHA" HEAD; then
+    log "fleet-runs: HEAD already contains $PLAN_SHA"
+  elif fleet_git -C "$FLEET_RUNS_DIR" checkout --detach "$PLAN_SHA"; then
+    log "fleet-runs: detached at $PLAN_SHA"
+  else
+    fleet_git -C "$FLEET_RUNS_DIR" checkout --force --detach "$PLAN_SHA" \
+      || fail "checkout: fleet-runs at $PLAN_SHA"
+  fi
+
+  # `--force` for the PLANS PATH ONLY: the engine runs the plan that was signed
+  # at `plan=`, whatever else this clone carries. Nothing ever checks out over
+  # `runs/<N>/` — those files are rewritten from the target clone on every pass,
+  # so a re-entry can never lose an attempt's evidence to a checkout.
+  fleet_git -C "$FLEET_RUNS_DIR" checkout --force "$PLAN_SHA" -- plans \
+    || fail "checkout: fleet-runs plans at $PLAN_SHA"
 }
 
 clone_target() {
@@ -327,7 +375,10 @@ checkout_engine() {
     :
   elif [ -f "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" ] && ! cmp -s "$0" "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh"; then
     log "engine: boot script differs at $ENGINE_SHA — re-exec from the checkout"
-    FLEET_BOOT_REEXEC=1 exec bash "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" "$@"
+    # `$MODE`, not `$@`: inside a function `$@` is the FUNCTION's arguments, and
+    # this one takes none — a re-exec on `$@` would silently restart every mode
+    # as `boot`.
+    FLEET_BOOT_REEXEC=1 exec bash "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" "$MODE"
   fi
   # fleet/package.json may declare no dependencies (it does since the lift), in
   # which case npm creates no node_modules and there is nothing to install.
@@ -467,14 +518,16 @@ run_engine() {
         node "$ENGINE_REPO_DIR/fleet/run-main.mjs" \
         "$FLEET_RUNS_DIR/plans/$RUN_ID.md" "$RUN_ID" --repo "$TARGET_DIR" \
         ${knobs[@]+"${knobs[@]}"}
-  )
-  code=$?
+  ) 2>&1 | tee -a "$ENGINE_LOG" >>"$BOOT_LOG"
+  # The ENGINE's status, not `tee`'s — a pipeline's exit code is its last
+  # command's, and reading it would report every failed run as a success.
+  code=${PIPESTATUS[0]}
   kill "$refresher" 2>/dev/null
   wait "$refresher" 2>/dev/null
   set -e
 
   printf '%s\n' "$code" >"$ENGINE_DONE_MARKER"
-  log "engine: exited $code"
+  log "engine: exited $code (output in $ENGINE_LOG)"
   return 0
 }
 
@@ -517,6 +570,10 @@ collect_evidence() {
   for f in report.json events.jsonl receipt.json; do
     [ -f "$run_dir/$f" ] && cp "$run_dir/$f" "$dest/$f"
   done
+  # The engine's combined output rides along: it is the only evidence a run that
+  # died before writing a receipt produces at all.
+  [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$dest/engine.log"
+  :
   cp "$STATUS_FILE" "$dest/status.json" 2>/dev/null || true
   log "evidence: $(ls "$dest" | tr '\n' ' ')"
 }
@@ -629,8 +686,18 @@ do_boot() {
   # RE-ENTRY, GUARD 1. `Restart=on-failure` means every exit below is also a
   # start. A run that already reached `done` has a PR; re-running it would open
   # a second one.
-  if [ "$(read_status_field state)" = "done" ]; then
+  local prior
+  prior="$(read_status_field state)"
+  if [ "$prior" = "done" ]; then
     log "boot: this run is already done — nothing to do"
+    exit 0
+  fi
+  # RE-ENTRY, GUARD 1b. A run whose ENGINE has run and whose page says `failed`
+  # is finished, whatever it failed at: the engine is not re-runnable (it has
+  # spent its money and left its branch), so restarting is a loop that ends when
+  # the janitor arrives. Exit 0 so `Restart=on-failure` lets it rest.
+  if [ "$prior" = "failed" ] && [ -f "$ENGINE_DONE_MARKER" ]; then
+    log "boot: this run failed after its engine ran — leaving it for the janitor"
     exit 0
   fi
   write_status booting "reading the assignment"
@@ -641,7 +708,10 @@ do_boot() {
   parse_assignment "$comment"
   write_status booting "assignment read"
 
-  clone_fleet_runs
+  # FIRST of the three clones, and deliberately: from here on, `fail` can record
+  # what happened in `fleet-runs` instead of only on a status page that dies
+  # with the VM.
+  prepare_fleet_runs
   clone_target
   checkout_engine
   await_claude_grant || fail "integrations: claude-max not attached within ${CLAUDE_GRANT_TIMEOUT}s"
@@ -660,7 +730,10 @@ do_boot() {
     # The page goes to `failed` BEFORE the push, because the copy of it that
     # lands in `fleet-runs/runs/<N>/status.json` is what the grant tool reads —
     # a pushed page still saying `running` would be a lie with a reader.
-    ERROR="engine exited $code"
+    # The engine's own last words, in the cell a reader actually opens. Without
+    # them "engine exited 1" is the whole account of the run.
+    ERROR="engine exited $code
+$(engine_tail)"
     write_status failed "engine exit $code"
     collect_evidence
     push_evidence "$RUN_ID: failed (engine exit $code)"
@@ -734,7 +807,8 @@ do_deadman() {
   exit 0
 }
 
-case "${1:-boot}" in
+MODE="${1:-boot}"
+case "$MODE" in
   boot)    do_boot ;;
   deadman) do_deadman ;;
   *) printf 'usage: sandbox-boot.sh [boot|deadman]\n' >&2; exit 2 ;;
