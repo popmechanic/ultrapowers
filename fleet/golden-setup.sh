@@ -118,7 +118,18 @@ else
   step "cloning $REPO_URL to $REPO_DIR"
   git clone "$REPO_URL" "$REPO_DIR"
 fi
-step "engine clone at $(git -C "$REPO_DIR" rev-parse --short HEAD)"
+# Build the image from the commit this script came from. The bootstrap exports
+# GOLDEN_SHA; without it the clone sits on the default branch and every file
+# the build needs from an unmerged branch is missing. GitHub serves any
+# reachable sha by id, so a branch tip fetches by sha with no ref name.
+if [ -n "${GOLDEN_SHA:-}" ]; then
+  step "checking the clone out at $GOLDEN_SHA"
+  git -C "$REPO_DIR" fetch -q origin "$GOLDEN_SHA"
+  git -C "$REPO_DIR" checkout -q "$GOLDEN_SHA"
+else
+  step 'GOLDEN_SHA not set; leaving the clone on the default branch'
+fi
+step "engine clone at $(git -C "$REPO_DIR" rev-parse HEAD)"
 
 step 'installing fleet node deps'
 if [ -f "$REPO_DIR/fleet/package-lock.json" ]; then

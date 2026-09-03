@@ -148,8 +148,11 @@ cmd_verify() {
   valid_name "$name" || die "not a VM name: $name"
   [ -z "$sha" ] || valid_sha "$sha" || die "not a 40-hex sha: $sha"
 
-  local host="$name.exe.xyz" expected got
+  local host="$name.exe.xyz" expected got want_head
   expected=$(expected_stamp_at "$sha")
+  # Which commit the image should have been built from: the one named, or this
+  # clone's HEAD — the same default `build` uses.
+  want_head=${sha:-$(git -C "$ROOT" rev-parse HEAD)}
 
   got=$(run_ssh "$host" 'cat /home/exedev/.fleet-golden' 2>/dev/null | tr -d '\r\n ' || true)
   if [ "$got" != "$expected" ]; then
@@ -158,6 +161,13 @@ cmd_verify() {
   say "stamp: $got"
 
   local out
+  # The stamp says which SCRIPT built the image; this says which COMMIT the
+  # clone was built from. They are two claims: a golden built from a stale
+  # default branch stamps correctly and is still missing the branch's files.
+  out=$(run_ssh "$host" 'git -C /home/exedev/repo rev-parse HEAD' | tr -d '\r\n ' || true)
+  [ "$out" = "$want_head" ] || die "engine clone: $name is at ${out:-<none>}, want $want_head"
+  say "engine clone: $out"
+
   out=$(run_ssh "$host" 'node --version' | tr -d '\r\n ' || true)
   [ -n "$out" ] || die 'node: not installed'
   say "node: $out"

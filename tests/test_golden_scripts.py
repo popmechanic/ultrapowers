@@ -144,6 +144,27 @@ def test_generated_bootstrap_names_the_versioned_url():
     assert f"SHA={SHA}" in out
 
 
+def test_generated_bootstrap_exports_the_sha_for_the_setup_script():
+    # The image must be built from the commit the script came from. Without
+    # this the clone sits on the default branch and a golden built for an
+    # unmerged branch dies on the first file that branch added.
+    out = print_bootstrap()
+    assert f"GOLDEN_SHA={SHA}" in out or "GOLDEN_SHA=$SHA" in out
+    assert "export GOLDEN_SHA" in out
+
+
+def test_setup_checks_the_clone_out_at_the_bootstrapped_sha():
+    lines = list(sh_lines(SETUP))
+    checkout = [l for l in lines if "checkout" in l]
+    assert any('"$GOLDEN_SHA"' in l for l in checkout), checkout
+    assert any("fetch -q origin" in l and '"$GOLDEN_SHA"' in l for l in lines), lines
+    # The checkout has to precede everything read out of the repo.
+    at = next(i for i, l in enumerate(lines) if "checkout" in l and "GOLDEN_SHA" in l)
+    for needle in ("npm ci", "fleet-boot.service", '"$REPO_DIR/$BUN_FIXTURE"'):
+        later = [i for i, l in enumerate(lines) if needle in l]
+        assert later and min(later) > at, f"{needle} is read before the checkout"
+
+
 def _curl_stub(bindir, payload="echo RAN-SETUP\n"):
     stub = bindir / "curl"
     stub.write_text(
@@ -180,10 +201,12 @@ def test_the_generated_bootstrap_fetches_and_runs_the_setup_script(tmp_path):
     boot = tmp_path / "boot.sh"
     boot.write_text(print_bootstrap())
     env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", TMPDIR=str(tmp_path))
-    env.update(_curl_stub(bindir))
+    # The payload echoes the sha the bootstrap exported, so this proves the
+    # setup script really receives GOLDEN_SHA and not just that the line exists.
+    env.update(_curl_stub(bindir, payload='echo "RAN-SETUP $GOLDEN_SHA"\n'))
     r = run(["sh", str(boot)], env=env)
     assert r.returncode == 0, r.stderr
-    assert "RAN-SETUP" in r.stdout
+    assert f"RAN-SETUP {SHA}" in r.stdout
     assert (tmp_path / "golden-setup.sh").exists()
 
 
@@ -197,6 +220,17 @@ def test_boot_unit_starts_the_sandbox_boot_script_at_boot():
     assert cfg["Service"]["ExecStart"] == "/home/exedev/repo/fleet/sandbox-boot.sh"
     assert cfg["Install"]["WantedBy"] == "default.target"
     assert cfg["Service"]["Restart"] == "on-failure"
+    assert cfg["Service"]["RestartSec"] == "10"
+    assert cfg["Service"]["Type"] == "simple"
+    # The script backgrounds `busybox httpd` for the status page; the default
+    # kill mode reaps it with the script and the janitor never sees `done`.
+    assert cfg["Service"]["KillMode"] == "process"
+
+
+def test_verify_does_not_require_a_lockfile():
+    # fleet/package-lock.json is gitignored, so `npm ci` -> `npm install` is the
+    # live path in the image. Nothing in verify may ask for a lockfile.
+    assert "package-lock" not in GOLDEN.read_text()
 
 
 def test_setup_installs_and_enables_the_boot_unit():
@@ -219,6 +253,10 @@ def test_setup_installs_the_six_hour_deadman():
 # --- golden.sh verify, against a stubbed platform ---------------------------
 
 
+def head_sha():
+    return run(["git", "-C", str(ROOT), "rev-parse", "HEAD"]).stdout.strip()
+
+
 def sha256_of_setup():
     tool = shutil.which("sha256sum")
     argv = [tool, str(SETUP)] if tool else ["shasum", "-a", "256", str(SETUP)]
@@ -232,6 +270,7 @@ host=$1
 cmd=$2
 case "$cmd" in
   'cat /home/exedev/.fleet-golden') echo "$STUB_STAMP" ;;
+  *'rev-parse HEAD'*) echo "$STUB_HEAD" ;;
   'node --version') echo v24.4.0 ;;
   'npm --version') echo 11.0.0 ;;
   *'bun --version'*) echo 1.4.0 ;;
@@ -261,6 +300,7 @@ def stub(tmp_path):
             FLEET_SSH=str(path),
             STUB_LOG=str(log),
             STUB_STAMP=sha256_of_setup(),
+            STUB_HEAD=head_sha(),
             STUB_MODE="600",
             STUB_ENABLED="enabled",
             STUB_ANTHROPIC="0",
@@ -276,7 +316,9 @@ def stub(tmp_path):
 def test_verify_passes_when_the_stamp_matches_the_checked_in_script(stub):
     r = stub(["verify", "fleet-golden-next"])
     assert r.returncode == 0, r.stdout + r.stderr
-    for row in ("stamp:", "node:", "npm:", "bun:", "xdist:", "settings.json: 600"):
+    rows = ("stamp:", "engine clone:", "node:", "npm:", "bun:", "xdist:",
+            "settings.json: 600")
+    for row in rows:
         assert row in r.stdout, r.stdout
 
 
@@ -291,6 +333,7 @@ def test_verify_fails_and_names_both_stamps_when_the_image_drifted(stub):
 @pytest.mark.parametrize(
     "override, expected",
     [
+        ({"STUB_HEAD": "c" * 40}, "engine clone"),
         ({"STUB_MODE": "644"}, "644"),
         ({"STUB_ENABLED": "disabled"}, "disabled"),
         ({"STUB_ANTHROPIC": "1"}, "ANTHROPIC"),
