@@ -101,7 +101,7 @@ real, approved plan?*
 
 ### How it runs
 
-ultrapowers runs on an exe.dev fleet you provision — the plugin is the client. `/ultrapowers <plan-path>` commits your approved plan and launches a run on the fleet orchestrator; every wave, review, and test suite executes inside a disposable sandbox, and the orchestrator opens the pull request with the gate receipt in its body. There is no local engine: nothing builds, tests, or merges on your machine. Provisioning the fleet is a one-time setup — see [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md).
+ultrapowers runs on an exe.dev fleet you provision — the plugin is the client. `/ultrapowers <plan-path>` publishes your approved plan and starts a run on a disposable sandbox of its own; every wave, review, and test suite executes there, and when you approve the finished result the sandbox opens the pull request with the gate receipt in its body. There is no local engine: nothing builds, tests, or merges on your machine. Provisioning the fleet is a one-time setup — see [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md).
 
 The clearest way to see what it does is to zoom in — the whole plan, then one task, then a single
 agent.
@@ -199,12 +199,12 @@ alongside it if you want its brainstorming and practice skills as companions.
 
 Authoring needs no configuration: `ultrawrite`, `compile_plan.py`, `ultradocket` and
 `ultralearn` are local Python plus `gh`, and you can write, gate and compile plans without
-an exe.dev account. Only `/ultrapowers <plan-path>` needs the fleet — two exe.dev VMs you
-provision once, following `fleet/RUNBOOK.md`. Run `/ultrapowers setup` first: it checks for
-each piece of the fleet and walks you to the RUNBOOK section that builds any piece you are
-missing.
+an exe.dev account. Only `/ultrapowers <plan-path>` needs the fleet — an exe.dev account, a
+handful of integration objects, and one image you build with a single command, following
+`fleet/RUNBOOK.md`. Run `/ultrapowers setup` first: it checks each piece of the fleet and
+walks you through building any piece you are missing.
 
-**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can commit a plan. A run builds the repository you run `/ultrapowers` in and opens its pull request there; ultrapowers itself is just one such repository.
+**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can publish a plan. A run builds the repository you run `/ultrapowers` in and opens its pull request there; ultrapowers itself is just one such repository.
 
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)

@@ -1,3 +1,10 @@
+"""ultralearn's SKILL.md and its harvester agree.
+
+The two sentence pins that stood here (a deleted paragraph, three phrases in
+`reading-lenses.md`) are gone with the rest of the prose diet. What survives is
+the pair that reads code: the skill names the script and the file it consumes,
+and every flag it advertises is a flag the CLI actually has.
+"""
 import re
 import subprocess
 import sys
@@ -5,12 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills/ultralearn/SKILL.md"
-LENSES = ROOT / "skills/ultralearn/references/reading-lenses.md"
 HARVEST = ROOT / "skills/ultralearn/scripts/harvest_fleet_runs.py"
-
-
-def test_the_known_gap_paragraph_is_gone():
-    assert "KNOWN GAP since 0.3.0" not in SKILL.read_text()
 
 
 def test_skill_names_the_fleet_harvester_and_its_corpus():
@@ -28,10 +30,3 @@ def test_every_flag_the_skill_advertises_exists():
                               "--origin", "--engine-version", "--slice-budget",
                               "--remote-root"}:
         assert flag in help_text, f"SKILL.md advertises {flag}, the CLI has no such flag"
-
-
-def test_lenses_carry_the_cutover_disciplines():
-    text = LENSES.read_text()
-    assert "## Reading across the cutover" in text
-    assert "deleted, not fixed" in text
-    assert "ULID" in text
