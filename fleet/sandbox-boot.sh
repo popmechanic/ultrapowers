@@ -320,9 +320,20 @@ checkout_engine() {
   fi
   fleet_git -C "$ENGINE_REPO_DIR" fetch origin "$ENGINE_SHA" || fail "fetch: engine $ENGINE_SHA"
   fleet_git -C "$ENGINE_REPO_DIR" checkout "$ENGINE_SHA" || fail "checkout: engine $ENGINE_SHA"
-  if [ ! -d "$ENGINE_REPO_DIR/fleet/node_modules" ]; then
-    log "engine: fleet/node_modules missing — npm ci"
-    ( cd "$ENGINE_REPO_DIR/fleet" && fleet_npm ci ) || fail "npm ci: engine deps"
+  # The golden's copy of this script is what systemd started; the engine sha
+  # the comment names may carry a newer one. Re-exec from the checkout so a
+  # boot-script fix needs no golden rebuild.
+  if [ -n "${FLEET_BOOT_REEXEC:-}" ]; then
+    :
+  elif [ -f "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" ] && ! cmp -s "$0" "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh"; then
+    log "engine: boot script differs at $ENGINE_SHA — re-exec from the checkout"
+    FLEET_BOOT_REEXEC=1 exec bash "$ENGINE_REPO_DIR/fleet/sandbox-boot.sh" "$@"
+  fi
+  # fleet/package.json may declare no dependencies (it does since the lift), in
+  # which case npm creates no node_modules and there is nothing to install.
+  if [ ! -d "$ENGINE_REPO_DIR/fleet/node_modules" ] && grep -Eq '"(dependencies|devDependencies)"[[:space:]]*:[[:space:]]*\{[[:space:]]*"' "$ENGINE_REPO_DIR/fleet/package.json"; then
+    log "engine: fleet/node_modules missing — npm ci (npm install if there is no lockfile)"
+    ( cd "$ENGINE_REPO_DIR/fleet" && { fleet_npm ci || fleet_npm install; } ) || fail "npm install: engine deps"
   fi
 }
 
