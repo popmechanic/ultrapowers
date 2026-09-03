@@ -15,8 +15,9 @@
  * There are no token rows, because after the lift no token is on any disk the
  * doctor could stat: the Claude subscription reaches a sandbox through the
  * `claude-max` http-proxy integration, whose bearer is injected at exe.dev's
- * edge, and GitHub reaches it through the per-target integration pair. What
- * used to be two secret-file rows is one `integrations` row.
+ * edge, and GitHub reaches it through the target's one integration
+ * `gh-<owner>-<repo>`. What used to be two secret-file rows is one
+ * `integrations` row.
  */
 
 import { execFile } from 'node:child_process'
@@ -82,8 +83,9 @@ const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
 
-/** `owner/repo` → the stem both per-target integration objects are named for. */
-export const targetStem = (target) => `t-${String(target).replace(/\//g, '-')}`
+/** `owner/repo` → the target's one integration object, `gh-<owner>-<repo>`.
+ *  A copy of lobby.mjs's `githubIntegrationFor`, pinned equal by the exam. */
+export const targetIntegration = (target) => `gh-${String(target).replace(/\//g, '-')}`
 
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
@@ -164,9 +166,18 @@ export function parseIntegrations (stdout) {
     if (!entry || typeof entry !== 'object') continue
     const name = typeof entry.name === 'string' ? entry.name : entry.id
     if (typeof name !== 'string' || name === '') continue
-    out.set(name, { name, tags: attachedTags(entry) })
+    out.set(name, { name, tags: attachedTags(entry), github: isGithub(entry, name) })
   }
   return out
+}
+
+/** Is this entry a GitHub integration? By its declared type, by the
+ *  repository field only GitHub objects carry, or by the fleet's own naming. */
+function isGithub (entry, name) {
+  const type = entry.type ?? entry.kind
+  if (type === 'github') return true
+  if (typeof entry.repository === 'string' || typeof entry.repo === 'string') return true
+  return name === RUNS_INTEGRATION || name.startsWith('gh-')
 }
 
 const ATTACHMENT_KEYS = ['attachments', 'attached', 'attachedTo', 'attached_to', 'targets']
@@ -190,15 +201,15 @@ function attachedTags (entry) {
 /**
  * One `ssh` and one verdict for every integration a launch needs. The row's
  * detail names the FIRST thing wrong and the command that builds it, because
- * the objects are built in pairs and a stranger reading four failures at once
- * cannot tell which one to run first.
+ * a stranger reading four failures at once cannot tell which one to run first.
  *
- * Only `fleet-runs` rides `tag:fleet`. `claude-max` and BOTH halves of a
- * target pair must exist and must NOT be on the tag: the launcher attaches
- * `-ro` per VM for the run's window and the grant swaps it for `-rw`, and a
- * tag-attached `-ro` can neither be detached from one VM nor share the repo's
- * one credential slot with `-rw`. Any `t-…-ro`/`t-…-rw` on the tag is red,
- * whether or not `--target` named it.
+ * Only `fleet-runs` rides `tag:fleet`. `claude-max` exists and is on no tag —
+ * the launcher attaches it per VM for the run's window. With `--target`, the
+ * target's one object `gh-<owner>-<repo>` exists. Any GitHub integration other
+ * than `fleet-runs` on the tag is red, whether or not `--target` named it: a
+ * tag attachment lands on every fleet VM, and two GitHub integrations naming
+ * one repo on one VM leave the edge to pick a credential by no documented rule
+ * (measured 2026-09-03).
  */
 async function integrationsRow (exec, target) {
   const res = await exec(`ssh exe.dev "integrations list --json"`)
@@ -216,10 +227,7 @@ async function integrationsRow (exec, target) {
     { name: NOTIFY_INTEGRATION, tagged: null, fix: 'enable notify on the exe.dev Integrations page' }
   ]
   if (target !== null) {
-    const stem = targetStem(target)
-    const fix = `node fleet/target.mjs add ${target}`
-    wants.push({ name: `${stem}-ro`, tagged: false, fix })
-    wants.push({ name: `${stem}-rw`, tagged: false, fix })
+    wants.push({ name: targetIntegration(target), tagged: false, fix: `node fleet/target.mjs ${target}` })
   }
 
   for (const want of wants) {
@@ -239,11 +247,11 @@ async function integrationsRow (exec, target) {
     }
   }
   for (const [name, have] of found) {
-    if (/^t-.+-(ro|rw)$/.test(name) && have.tags.has(TAG)) {
+    if (have.github && name !== RUNS_INTEGRATION && have.tags.has(TAG)) {
       return row(
         'integrations',
         'missing',
-        `${name} is attached to tag:${TAG} — grants are per VM; ssh exe.dev "integrations detach ${name} tag:${TAG}"`
+        `${name} is attached to tag:${TAG} — a GitHub integration is attached per VM, by the launcher; ssh exe.dev "integrations detach ${name} tag:${TAG}"`
       )
     }
   }

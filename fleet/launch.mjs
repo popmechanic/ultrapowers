@@ -8,20 +8,28 @@
  *      `plans/run-N.md` and takes that commit's sha as `plan=`;
  *   2. `cp`s the golden to a fresh VM name (`fleet-r<N>-<yymmddHHMM>-<4 hex>`,
  *      `--copy-tags` so the `fleet` tag and `fleet-runs` come with it);
- *   3. attaches the run's per-VM, time-boxed grants — `claude-max` for 6 h and
- *      the target's `-ro` object for 6 h when one exists;
+ *   3. attaches the run's per-VM, time-boxed integrations, each `--for 6h`:
+ *      `claude-max`, then the target's one GitHub object `gh-<owner>-<repo>`
+ *      — attached for the run's whole life, since the sandbox clones, pushes
+ *      and opens the PR through it and the PR itself is the human gate;
  *   4. writes the assignment comment — the record the sandbox reads once;
  *   5. waits until `ssh <ssh_dest> true` answers, then starts the run:
  *      `systemctl --user start fleet-run@<N>.service`.
  *
- * Start AFTER attach: the boot never races a grant. Nothing on the VM polls;
- * the comment is not a signal, the ssh start is. The unit is Type=exec, so
- * `start` (no `--no-block`) returns once the bootstrap has execve'd and
+ * Start AFTER attach: the boot never races an attachment. Nothing on the VM
+ * polls; the comment is not a signal, the ssh start is. The unit is Type=exec,
+ * so `start` (no `--no-block`) returns once the bootstrap has execve'd and
  * non-zero when it could not — that exit status IS the launch ack, and a
  * non-zero one is a launch failure shown verbatim.
  *
- * A refusal (exit 2) happens before step 2, so the account is exactly as it
- * was. A failure after that (exit 1) prints the lobby's own words: exe.dev
+ * A target with no `gh-<owner>-<repo>` object is a refusal, before the plan is
+ * committed: a public repo would still clone from github.com, but nothing
+ * could push its branch or open its PR, and a run that cannot publish is a
+ * run nobody asked for. `node fleet/target.mjs <owner>/<repo>` builds the
+ * object once.
+ *
+ * A refusal (exit 2) happens before step 1, so the account and `fleet-runs`
+ * are exactly as they were. A failure after that (exit 1) prints the lobby's own words: exe.dev
  * documents no error envelope, so a refused name or a full account is shown
  * verbatim rather than paraphrased.
  */
@@ -40,6 +48,7 @@ import {
   defaultExec,
   ensureFleetRuns,
   git,
+  githubIntegrationFor,
   highestPlanRun,
   isFullSha,
   isRunNumber,
@@ -50,7 +59,6 @@ import {
   lobby,
   output,
   parseArgs,
-  roIntegrationFor,
   runCli,
   statusUrlFor,
   vmNameFor
@@ -69,8 +77,8 @@ export const usage = () => USAGE
 export const OVERLAP_VALUES = Object.freeze(['fold', 'serialize'])
 export const TIER_VALUES = Object.freeze(['standard', 'mostCapable'])
 
-/** How long each grant the launcher attaches lives. Wall clock; it lapses. */
-export const GRANT_FOR = '6h'
+/** How long each attachment the launcher makes lives. Wall clock; it lapses. */
+export const ATTACH_FOR = '6h'
 
 /** The start command for run N, run over ssh on the VM once it answers. The
  *  user manager needs XDG_RUNTIME_DIR set for a non-login ssh session. No
@@ -176,8 +184,12 @@ export async function launch ({
   //    plans directory is the complete record of runs ever launched. ────────
   const fleetRunsDir = await ensureFleetRuns(exec, settings.fleetRuns)
   const run = opts.run ? Number(opts.run) : await highestPlanRun(fleetRunsDir) + 1
-  const roName = roIntegrationFor(target)
-  const ro = (await listIntegrations(exec)).some((row) => row.name === roName)
+  const githubName = githubIntegrationFor(target)
+  if (!(await listIntegrations(exec)).some((row) => row.name === githubName)) {
+    throw new Refusal(
+      `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
+    )
+  }
   const engine = opts.engine ?? await defaultEngineSha(exec)
 
   // ── The plan commit. A local git failure is still a refusal: exe.dev has
@@ -209,12 +221,8 @@ export async function launch ({
   }
 
   await verb(`cp ${golden} ${vm} --copy-tags --json`)
-  await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for ${GRANT_FOR}`)
-  let readGrant = 'none — public target, or run node fleet/target.mjs add ' + target
-  if (ro) {
-    await verb(`integrations attach ${roName} vm:${vm} --for ${GRANT_FOR}`)
-    readGrant = `${roName} vm --for ${GRANT_FOR}`
-  }
+  await verb(`integrations attach ${CLAUDE_INTEGRATION} vm:${vm} --for ${ATTACH_FOR}`)
+  await verb(`integrations attach ${githubName} vm:${vm} --for ${ATTACH_FOR}`)
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
   await verb(`comment ${vm} '${comment}'`)
 
@@ -252,7 +260,7 @@ export async function launch ({
     target,
     base: opts.base,
     engine,
-    readGrant,
+    github: githubName,
     fleetRuns: fleetRunsDir,
     launchedAt: now().toISOString(),
     commands
@@ -262,8 +270,8 @@ export async function launch ({
 /**
  * A fresh `cp` answers `ls` before it answers ssh. Ask `ssh <dest> true` until
  * it does, for at most SSH_WAIT_MS; a VM that never answers is reported with
- * the last ssh output and the start command, since the grants and the comment
- * are already in place and only the start is owed.
+ * the last ssh output and the start command, since the attachments and the
+ * comment are already in place and only the start is owed.
  */
 async function waitForSsh ({ exec, sshDest, vm, now, sleep, startCommand }) {
   const deadline = now().getTime() + SSH_WAIT_MS
@@ -272,7 +280,7 @@ async function waitForSsh ({ exec, sshDest, vm, now, sleep, startCommand }) {
     if (res.code === 0) return
     if (now().getTime() >= deadline) {
       throw new LobbyError(
-        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits grants and comment are in place — start it by hand: ssh ${sshDest} '${startCommand}'`
+        `launch: ${vm} did not answer ssh ${sshDest} within ${SSH_WAIT_MS / 1000} s; last answer (exit ${res.code}):\n${output(res)}\nits attachments and comment are in place — start it by hand: ssh ${sshDest} '${startCommand}'`
       )
     }
     await sleep(SSH_RETRY_MS)

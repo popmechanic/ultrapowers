@@ -34,6 +34,22 @@ const ENGINE_SHA = 'c3'.repeat(20)
 const TARGET = 'popmechanic/smoke'
 const VM_NAME = 'fleet-r7-2609032215-a1b2'
 const PR_URL = 'https://github.com/popmechanic/smoke/pull/1'
+const PR_AUTHOR = 'popmechanic'
+/** What GitHub answers a POST /pulls with, in its own field order: the PR's
+ *  `html_url` and its `user` (the author) come before the head/base
+ *  repositories, which carry the same field names for other things. */
+const PR_JSON = JSON.stringify({
+  url: 'https://api.github.com/repos/popmechanic/smoke/pulls/1',
+  id: 1,
+  node_id: 'PR_x',
+  html_url: PR_URL,
+  diff_url: `${PR_URL}.diff`,
+  number: 1,
+  state: 'open',
+  user: { login: PR_AUTHOR, id: 2, html_url: 'https://github.com/popmechanic' },
+  head: { ref: 'ultra/integration-run-7', user: { login: 'not-the-author' }, repo: { html_url: 'https://github.com/popmechanic/smoke' } },
+  base: { ref: 'main', user: { login: 'not-the-author-either' } }
+})
 const PLAN_H1 = 'Smoke: the fleet proves itself'
 const ASSIGNMENT =
   `run=7 plan=${PLAN_SHA} target=${TARGET} base=${BASE_SHA} engine=${ENGINE_SHA} ` +
@@ -42,9 +58,12 @@ const ASSIGNMENT =
 // ── stub bin dir ─────────────────────────────────────────────────────────────
 
 const STUBS = {
-  // Reflection, notify, and nothing else. `$1..` carries the URL as the only
-  // https:// word; a POST carries its payload after `-d`.
+  // Reflection, notify, and the GitHub edge's PR endpoint. `$1..` carries the
+  // URL as the only https:// word; a POST carries its payload after `-d`. The
+  // PR answer is the body, then the status code on its own line — the shape
+  // `-w '\\n%{http_code}'` makes real curl print.
   curl: `
+argv "curl" "$@"
 url=""; payload=""; prev=""
 for a in "$@"; do
   case "$a" in https://*) url="$a" ;; esac
@@ -65,17 +84,17 @@ case "$url" in
     n=$(bump comment); say "curl comment $n"
     printf '{"comment":"%s"}\\n' "$STUB_COMMENT" ;;
   */integrations)
-    n=$(bump integrations)
-    if [ "$n" -le "\${STUB_RO_POLLS:-3}" ]; then
-      say "curl integrations=ro"
-      printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-ro"]\\n'
-    elif [ -n "\${STUB_RO_STAYS:-}" ]; then
-      say "curl integrations=rw+ro"
-      printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-ro","t-popmechanic-smoke-rw"]\\n'
-    else
-      say "curl integrations=rw"
-      printf '["claude-max","fleet-runs","notify","t-popmechanic-smoke-rw"]\\n'
-    fi ;;
+    n=$(bump integrations); say "curl integrations $n"
+    # Reflection's shape: each github integration names its repository inside
+    # its help string. fleet-runs names its own TWICE in one string, which is
+    # one integration, not a duplicate. STUB_DUPE adds a second integration
+    # naming the target — the fault the preflight exists to refuse.
+    dupe=""
+    [ -n "\${STUB_DUPE:-}" ] && dupe=',{"type":"github","name":"t-popmechanic-smoke-rw","help":"git clone https://github.int.exe.xyz/popmechanic/smoke.git"}'
+    printf '{"integrations":[{"type":"http-proxy","name":"claude-max","help":"ANTHROPIC_BASE_URL=https://claude-max.int.exe.xyz"},{"type":"github","name":"fleet-runs","help":"git clone https://github.int.exe.xyz/popmechanic/fleet-runs.git or push to https://github.int.exe.xyz/popmechanic/fleet-runs.git"},{"type":"github","name":"gh-popmechanic-smoke","help":"git clone https://github.int.exe.xyz/popmechanic/smoke.git"}%s]}\\n' "$dupe" ;;
+  *github.int.exe.xyz/api/v3/repos/*/pulls)
+    say "curl pr create"; printf '%s\\n' "$payload" >>"$FLEET_HOME/pr.log"
+    printf '%s\\n%s\\n' "$STUB_PR_BODY" "\${STUB_PR_CODE:-201}" ;;
   *notify.int.exe.xyz*)
     say "curl notify"; printf '%s\\n' "$payload" >>"$FLEET_HOME/notify.log"; printf 'ok\\n' ;;
   *) say "curl UNKNOWN $url"; exit 22 ;;
@@ -110,8 +129,12 @@ case "$1" in
     esac
     case "$3" in
       rev-list) if [ -n "\${STUB_NO_COMMITS:-}" ]; then echo 0; else echo 3; fi; exit 0 ;;
+      # What the remote advertised as HEAD at clone time; \`none\` is a remote
+      # that advertised nothing.
+      symbolic-ref) [ "\${STUB_HEAD_REF:-}" = none ] && exit 1
+                    printf '%s\\n' "\${STUB_HEAD_REF:-refs/remotes/origin/main}"; exit 0 ;;
     esac
-    # A commit is the moment the evidence becomes readable by the grant tool, so
+    # A commit is the moment the evidence becomes readable off the box, so
     # snapshot the status page exactly as it is committed.
     case "$3" in
       commit) [ -f "$2/runs/7/status.json" ] && cat "$2/runs/7/status.json" >>"$FLEET_HOME/commits.log" ;;
@@ -119,11 +142,9 @@ case "$1" in
 esac
 exit 0
 `,
-  gh: `
-argv "gh" "$@"
-say "gh $1 $2 GH_HOST=\${GH_HOST:-unset}"
-printf '%s\\n' "$STUB_PR_URL"
-`,
+  // Never called: the PR is one REST POST through curl. A CALL line from gh
+  // is a finding.
+  gh: `say "gh DIRECT $*"; exit 0`,
   // Two transient services. The status server is started and forgotten; the
   // engine is run to completion. The engine stub records its own environment —
   // which is the BOOT SCRIPT'S, because the child's two Anthropic variables
@@ -229,7 +250,7 @@ function boot(ctx, args = ['boot'], env = {}) {
       STUB_VM_NAME: VM_NAME,
       STUB_COMMENT: ASSIGNMENT,
       STUB_VERDICT: 'PASS',
-      STUB_PR_URL: PR_URL,
+      STUB_PR_BODY: PR_JSON,
       STUB_PLAN_H1: PLAN_H1,
       ...env,
     },
@@ -265,6 +286,12 @@ const committed = (ctx) => lines(readLog(ctx, 'commits.log')).map((l) => JSON.pa
 const unitsRun = (ctx) => argvLines(ctx, 'systemd-run').map((a) => a.find((s) => s.startsWith('--unit='))?.slice(7))
 const engineRuns = (ctx) => unitsRun(ctx).filter((u) => u === 'fleet-engine-7').length
 const directCalls = (ctx) => stream(ctx).filter((l) => l.includes(' DIRECT '))
+/** Every POST /pulls the script made, as its parsed JSON payload. */
+const prPosts = (ctx) => lines(readLog(ctx, 'pr.log')).map((l) => JSON.parse(l))
+/** The curl argv of the PR POST, or undefined. */
+const prArgv = (ctx) => argvLines(ctx, 'curl').find((a) => a.some((s) => s.endsWith('/pulls')))
+/** How many times Reflection's /integrations was read. */
+const integrationsReads = (ctx) => stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length
 
 const tests = []
 const test = (name, fn) => tests.push([name, fn])
@@ -288,19 +315,20 @@ test('the boot script parses', () => {
 
 // ── 1. the whole green path ──────────────────────────────────────────────────
 
-test('a gate-green run walks booting → running → awaiting-grant → publishing → done', () => {
+test('a gate-green run walks booting → running → publishing → done', () => {
   const ctx = makeHome()
   const r = boot(ctx, ['boot'], { FLEET_STATUS_INTERVAL: '1', STUB_ENGINE_SLEEP: '2' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
 
-  assert.deepEqual(states(ctx), ['booting', 'running', 'awaiting-grant', 'publishing', 'done'])
+  assert.deepEqual(states(ctx), ['booting', 'running', 'publishing', 'done'], 'no grant to await')
 
   const status = statusOf(ctx)
   assert.equal(status.run, '7')
   assert.equal(status.state, 'done')
   assert.equal(status.branch, 'ultra/integration-run-7')
   assert.equal(status.vm, VM_NAME, 'the page names the VM incarnation, read from Reflection')
-  assert.equal(status.pr, PR_URL)
+  assert.equal(status.pr, PR_URL, 'the PR is .html_url of the REST answer')
+  assert.equal(status.prAuthor, PR_AUTHOR, 'and .user.login is recorded — a bot-authored PR is a fact on the page')
   assert.equal(status.error, null)
   assert.match(status.startedAt, /^\d{4}-\d{2}-\d{2}T/)
   assert.match(status.updatedAt, /^\d{4}-\d{2}-\d{2}T/)
@@ -309,7 +337,26 @@ test('a gate-green run walks booting → running → awaiting-grant → publishi
   // the engine runs — the last `engine:phase` line, not a guess.
   assert.ok(stream(ctx).some((l) => l === 'status: state=running phase=gate'),
     'expected a phase refresh from events.jsonl:\n' + stream(ctx).join('\n'))
-  assert.deepEqual(directCalls(ctx), [], 'busybox, node and loginctl are never run by this script')
+  assert.deepEqual(directCalls(ctx), [], 'busybox, node, loginctl and gh are never run by this script')
+})
+
+test('two github integrations naming one repository fail the run before any clone', () => {
+  // Measured 2026-09-03: the GitHub edge routes by repo path and documents no
+  // tie-break between two integrations covering the same repo — a push under
+  // the wrong credential is the result. The box refuses at second zero.
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], { STUB_DUPE: '1' })
+  assert.notEqual(r.status, 0, 'a duplicate is fatal')
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed')
+  assert.match(status.error, /two github integrations on this VM name one repository/)
+  assert.ok(status.error.includes('github.int.exe.xyz/popmechanic/smoke.git'), 'the error names the duplicated repo: ' + status.error)
+  assert.ok(!status.error.includes('fleet-runs.git'), 'one integration naming its repo twice in its own help string is not a duplicate')
+  assert.equal(readLog(ctx, 'git.log'), '', 'nothing is cloned — the preflight is before the clones')
+  assert.equal(engineRuns(ctx), 0)
+  assert.equal(integrationsReads(ctx), 1, 'one read of /integrations')
+  assert.ok(indexOf(ctx, 'assignment: run-7') < indexOf(ctx, 'CALL curl integrations'), 'read after the assignment is parsed')
+  assert.deepEqual(notifies(ctx).map((n) => n.title), ['run-7 failed'])
 })
 
 test('the status page is its own transient service, started once, before anything else', () => {
@@ -430,80 +477,111 @@ test('an engine checkout the bootstrap did not leave fails the run before anythi
   assert.equal(committed(ctx)[0].state, 'failed', 'recorded in fleet-runs, which was cloned first')
 })
 
-test('awaiting-grant is claimed only after systemd reports the engine service inactive', () => {
+test('publishing is claimed only after systemd reports the engine service inactive', () => {
   const ctx = green()
   const check = indexOf(ctx, 'CALL systemctl is-active fleet-engine-7.service')
-  const claim = indexOf(ctx, 'status: state=awaiting-grant')
+  const claim = indexOf(ctx, 'status: state=publishing')
   assert.ok(check >= 0, 'the service must be checked')
   assert.ok(claim >= 0)
-  assert.ok(check < claim, 'the inactive check precedes the awaiting-grant claim')
+  assert.ok(check < claim, 'the inactive check precedes the publishing claim')
   assert.ok(argvLines(ctx, 'systemctl').some((a) =>
     a.join(' ') === 'systemctl --user is-active fleet-engine-7.service'))
   assert.equal(argvLines(ctx, 'systemctl').filter((a) => a.join(' ').includes('.scope')).length, 0)
 })
 
-test('the push and the PR happen only after the rw grant appears', () => {
+test('the branch is pushed after the engine is inactive, and the PR is one REST POST through the edge', () => {
   const ctx = green()
-  const lastRo = lastIndexOf(ctx, 'CALL curl integrations=ro')
-  const firstRw = indexOf(ctx, 'CALL curl integrations=rw')
+  const inactive = indexOf(ctx, 'CALL systemctl is-active fleet-engine-7.service')
   const push = indexOf(ctx, `${ctx.home}/target push origin ultra/integration-run-7`)
-  const pr = indexOf(ctx, 'CALL gh pr create')
-  assert.ok(firstRw > lastRo, 'the run polls until the write grant answers')
-  assert.ok(push > firstRw, 'the branch is pushed only after the write grant')
+  const pr = indexOf(ctx, 'CALL curl pr create')
+  assert.ok(push > inactive, 'the branch is pushed only after the engine service is inactive')
   assert.ok(pr > push, 'the PR follows the push')
+
+  // Nothing is polled after the gate: /integrations was read once, in the
+  // preflight, before the first clone.
+  assert.equal(integrationsReads(ctx), 1, 'one read of /integrations, ever')
+  assert.ok(indexOf(ctx, 'CALL curl integrations') < indexOf(ctx, 'git clone'), 'and that read is before any clone')
 
   const H = ctx.home
   const gitPush = argvLines(ctx, 'git').find((a) => a[1] === '-C' && a[3] === 'push' && a[2] === `${H}/target`)
   assert.deepEqual(gitPush, ['git', '-C', `${H}/target`, 'push', 'origin', 'ultra/integration-run-7'])
 
-  const gh = argvLines(ctx, 'gh')
-  assert.equal(gh.length, 1)
-  assert.deepEqual(gh[0], ['gh', 'pr', 'create', '--repo', TARGET,
-    '--head', 'ultra/integration-run-7',
-    '--title', `fleet run-7: ${PLAN_H1}`,
-    '--body-file', `${H}/fleet-runs/runs/7/pr-body.md`])
-  assert.ok(stream(ctx).some((l) => l === 'CALL gh pr create GH_HOST=github.int.exe.xyz'),
-    'gh runs against the exe.dev GitHub edge')
+  // The REST call: POST, the edge's /api/v3 path for the target, a JSON
+  // content type, and the payload inline after -d. gh is never run.
+  const curl = prArgv(ctx)
+  assert.ok(curl, 'a curl to /pulls was made')
+  assert.ok(curl.includes('-X') && curl[curl.indexOf('-X') + 1] === 'POST', 'it is a POST')
+  assert.ok(curl.includes(`https://github.int.exe.xyz/api/v3/repos/${TARGET}/pulls`), 'to the edge, under /api/v3/repos/<owner>/<repo>')
+  assert.ok(curl.includes('-H') && curl[curl.indexOf('-H') + 1] === 'content-type: application/json', 'as JSON')
+  assert.ok(curl.includes('-d'), 'with a payload')
+  assert.equal(argvLines(ctx, 'gh').length, 0, 'gh is not used')
+  assert.ok(stream(ctx).some((l) => l.includes('symbolic-ref refs/remotes/origin/HEAD')), 'the base is read from the clone')
 
-  const body = fs.readFileSync(path.join(H, 'fleet-runs', 'runs', '7', 'pr-body.md'), 'utf8')
+  const posts = prPosts(ctx)
+  assert.equal(posts.length, 1)
+  assert.equal(posts[0].title, `fleet run-7: ${PLAN_H1}`)
+  assert.equal(posts[0].head, 'ultra/integration-run-7')
+  assert.equal(posts[0].base, 'main', 'base is what origin/HEAD pointed at')
+  assert.equal(posts[0].draft, false, 'PASS is a ready PR')
+  const body = posts[0].body
+  // The rendered card, less the trailing newline a command substitution drops.
+  assert.equal(body, fs.readFileSync(path.join(H, 'fleet-runs', 'runs', '7', 'pr-body.md'), 'utf8').trimEnd(), 'the body is the rendered card')
   assert.ok(body.includes('PASS'), 'the card carries the verdict')
   assert.ok(body.includes('### Checks'), 'the card carries the checks')
   assert.ok(body.includes(VM_NAME), 'the card names the VM')
   assert.ok(body.includes('https://github.com/popmechanic/fleet-runs/tree/main/runs/7/'),
     'the card links the evidence')
+
+  // Both halves of the answer are logged, so a bot-authored PR is readable
+  // off the box.
+  assert.ok(stream(ctx).some((l) => l === `publish: ${PR_URL} (base main, draft false)`))
+  assert.ok(stream(ctx).some((l) => l === `publish: author ${PR_AUTHOR}`))
 })
 
-test('readiness is the rw grant alone — a ro grant still listed does not hold it', () => {
+test('the base is the default branch the clone advertised, whatever it is called', () => {
   const ctx = makeHome()
-  assert.equal(boot(ctx, ['boot'], { STUB_RO_STAYS: '1' }).status, 0)
-  assert.ok(indexOf(ctx, 'CALL curl integrations=rw+ro') >= 0,
-    'the fixture must answer with BOTH grants listed')
-  assert.equal(argvLines(ctx, 'gh').length, 1, 'the PR is opened anyway')
+  assert.equal(boot(ctx, ['boot'], { STUB_HEAD_REF: 'refs/remotes/origin/master' }).status, 0)
+  assert.equal(prPosts(ctx)[0].base, 'master')
+
+  // A remote that advertised no HEAD is a failure, not a guess: a PR against
+  // a guessed branch is refused by GitHub or, worse, opened against the wrong
+  // one.
+  const none = makeHome()
+  const r = boot(none, ['boot'], { STUB_HEAD_REF: 'none' })
+  assert.notEqual(r.status, 0)
+  assert.equal(statusOf(none).state, 'failed')
+  assert.match(statusOf(none).error, /default branch/)
+  assert.equal(prPosts(none).length, 0, 'no PR is attempted without a base')
 })
 
-test('the status page the grant tool reads is committed at awaiting-grant and again at done', () => {
-  // `fleet/grant.mjs` pulls fleet-runs and requires `runs/<N>/status.json` to
-  // say `awaiting-grant`; it never reads the HTTPS page. So the page must be in
-  // the commit made the moment that state is claimed.
+test('a non-2xx answer from the PR endpoint fails the run with the body quoted', () => {
+  const ctx = makeHome()
+  const r = boot(ctx, ['boot'], {
+    STUB_PR_CODE: '422',
+    STUB_PR_BODY: '{"message":"Validation Failed","errors":[{"message":"A pull request already exists for popmechanic:ultra/integration-run-7."}]}',
+  })
+  assert.notEqual(r.status, 0)
+  const status = statusOf(ctx)
+  assert.equal(status.state, 'failed')
+  assert.match(status.error, /POST \/repos\/popmechanic\/smoke\/pulls answered 422/)
+  assert.ok(status.error.includes('A pull request already exists'), 'GitHub\'s own words: ' + status.error)
+  assert.equal(status.pr, null, 'no PR is recorded')
+  assert.equal(committed(ctx)[committed(ctx).length - 1].state, 'failed')
+})
+
+test('the status page is committed at publishing and again at done', () => {
+  // The receipts are in fleet-runs before the push, so a publish that dies
+  // leaves its verdict somewhere other than a VM the janitor will delete.
   const ctx = green()
   const c = committed(ctx)
-  assert.ok(c.length >= 2, 'at least the awaiting-grant and the done commits')
-  assert.equal(c[0].state, 'awaiting-grant')
+  assert.ok(c.length >= 2, 'at least the publishing and the done commits')
+  assert.equal(c[0].state, 'publishing')
   assert.equal(c[0].pr, null)
+  assert.equal(c[0].prAuthor, null)
   assert.equal(c[0].vm, VM_NAME)
   assert.equal(c[c.length - 1].state, 'done')
   assert.equal(c[c.length - 1].pr, PR_URL)
-})
-
-test('a write grant that never arrives parks the run and commits that too', () => {
-  const ctx = makeHome()
-  const r = boot(ctx, ['boot'], { STUB_RO_POLLS: '100000', FLEET_WRITE_GRANT_TIMEOUT: '3' })
-  assert.notEqual(r.status, 0, 'a run still waiting is not a finished run')
-  const status = statusOf(ctx)
-  assert.equal(status.state, 'parked')
-  assert.match(status.error, /^grant: no t-popmechanic-smoke-rw within 3s$/)
-  assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR without the grant')
-  assert.equal(committed(ctx)[committed(ctx).length - 1].state, 'parked')
+  assert.equal(c[c.length - 1].prAuthor, PR_AUTHOR)
 })
 
 test('the evidence lands in fleet-runs and is committed and pushed', () => {
@@ -526,12 +604,11 @@ test('the evidence lands in fleet-runs and is committed and pushed', () => {
   assert.deepEqual(pushes[0], ['git', '-C', `${H}/fleet-runs`, 'push', 'origin', 'HEAD:main'])
 })
 
-test('the notifications name the run, the outcome, the target and the PR', () => {
+test('the notification names the run, the outcome, the target and the PR', () => {
   const ctx = green()
   assert.deepEqual(notifies(ctx), [
-    { title: 'run-7 gate-green', message: `${TARGET} — awaiting write grant` },
     { title: 'run-7 done', message: `${TARGET} — ${PR_URL}` },
-  ])
+  ], 'one notification: the PR is the thing to act on, and there is no grant to ask for')
 })
 
 // ── 2. parked runs ───────────────────────────────────────────────────────────
@@ -541,35 +618,32 @@ test('a non-PASS gate receipt parks the run and opens a draft PR', () => {
   const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
 
-  assert.deepEqual(states(ctx), ['booting', 'running', 'awaiting-grant', 'publishing', 'parked'])
+  assert.deepEqual(states(ctx), ['booting', 'running', 'publishing', 'parked'])
   const status = statusOf(ctx)
   assert.equal(status.state, 'parked')
   assert.equal(status.pr, PR_URL)
+  assert.equal(status.prAuthor, PR_AUTHOR)
   assert.equal(status.error, 'parked: gate verdict NEEDS_ACK')
 
-  const gh = argvLines(ctx, 'gh')[0]
-  assert.ok(gh.includes('--draft'), 'a parked run publishes a DRAFT PR')
+  assert.equal(prPosts(ctx)[0].draft, true, 'a parked run publishes a DRAFT PR')
   assert.deepEqual(notifies(ctx), [
-    { title: 'run-7 parked', message: `${TARGET} — awaiting write grant` },
     { title: 'run-7 parked', message: `${TARGET} — ${PR_URL}` },
   ])
 })
 
-test('a run with nothing ahead of base is parked before any grant wait — no push, no PR', () => {
-  // run-69: every task blocked, branch == BASE, GitHub refuses an empty PR —
-  // and the operator was asked to approve a write that had nothing to write.
+test('a run with nothing ahead of base is parked without publishing — no push, no PR', () => {
+  // run-69: every task blocked, branch == BASE, GitHub refuses an empty PR.
   const ctx = makeHome()
   const r = boot(ctx, ['boot'], { STUB_VERDICT: 'NEEDS_ACK', STUB_NO_COMMITS: '1' })
   assert.equal(r.status, 0, r.stdout + r.stderr)
 
-  assert.deepEqual(states(ctx), ['booting', 'running', 'parked'], 'never awaiting-grant')
+  assert.deepEqual(states(ctx), ['booting', 'running', 'parked'], 'never publishing')
   const status = statusOf(ctx)
   assert.equal(status.state, 'parked')
   assert.equal(status.pr, null)
   assert.match(status.error, /no commits ahead of base \(verdict NEEDS_ACK\)/)
-  assert.equal(stream(ctx).filter((l) => l.startsWith('CALL curl integrations')).length, 0,
-    'the write grant is never polled')
-  assert.equal(argvLines(ctx, 'gh').length, 0, 'no PR is attempted')
+  assert.equal(integrationsReads(ctx), 1, 'only the preflight read /integrations; nothing is polled after the gate')
+  assert.equal(prPosts(ctx).length, 0, 'no PR is attempted')
   assert.equal(argvLines(ctx, 'git').filter((a) => a[3] === 'push' && a[2] === `${ctx.home}/target`).length, 0,
     'the empty branch is not pushed')
   // The verdict was still read after the engine was seen to be inactive.
@@ -652,7 +726,7 @@ test('a non-zero engine exit fails the run, after the receipts are committed', (
   assert.match(statusOf(ctx).error, /^engine exited 9\n/)
   assert.ok(fs.existsSync(path.join(ctx.home, 'fleet-runs', 'runs', '7', 'gate-receipt.json')),
     'the evidence of a failed run is still committed')
-  assert.equal(argvLines(ctx, 'gh').length, 0, 'a failed engine opens no PR')
+  assert.equal(prPosts(ctx).length, 0, 'a failed engine opens no PR')
   const c = committed(ctx)
   assert.equal(c.length, 1)
   assert.equal(c[0].state, 'failed', 'the committed page says failed, not running')
@@ -675,7 +749,7 @@ test('a target the exe.dev edge cannot find is cloned from github.com and re-poi
     'a public target falls back to github.com')
   assert.ok(git.some((a) => a.join(' ') ===
     `git -C ${H}/target remote set-url origin https://github.int.exe.xyz/${TARGET}.git`),
-    'origin goes back to the edge, because the write grant is what makes the push work')
+    'origin goes back to the edge, because the attached integration is what makes the push work')
 })
 
 // ── 5. the engine's own words ────────────────────────────────────────────────
@@ -773,7 +847,7 @@ test('a clone that is behind the plan commit is detached onto it', () => {
 test('re-entering after a finished engine re-runs neither the engine nor the PR', () => {
   const ctx = green()
   assert.equal(engineRuns(ctx), 1)
-  assert.equal(argvLines(ctx, 'gh').length, 1)
+  assert.equal(prPosts(ctx).length, 1)
 
   // The unit restarted after the run had finished but before the page said so:
   // clones on disk, the engine's marker written, a PR already recorded.
@@ -784,11 +858,13 @@ test('re-entering after a finished engine re-runs neither the engine nor the PR'
   const again = boot(ctx)
   assert.equal(again.status, 0, again.stdout + again.stderr)
   assert.equal(engineRuns(ctx), 1, 'the engine is not re-run')
-  assert.equal(argvLines(ctx, 'gh').length, 1, 'a second PR is never opened')
+  assert.equal(prPosts(ctx).length, 1, 'a second PR is never opened')
   assert.equal(argvLines(ctx, 'git').filter((a) => a[1] === 'clone').length, 2,
     'existing clones are not re-cloned')
   assert.equal(statusOf(ctx).state, 'done')
   assert.equal(statusOf(ctx).vm, VM_NAME, 'the VM name survives a re-entry')
+  assert.equal(statusOf(ctx).pr, PR_URL, 'and so does the PR')
+  assert.equal(statusOf(ctx).prAuthor, PR_AUTHOR, 'and its author')
 })
 
 test('re-entering a run that already reached done does nothing at all', () => {

@@ -8,8 +8,10 @@
  *      lobby's whole output; a VM name is one incarnation, never N alone;
  *   1. every refusal happens with NOTHING executed;
  *   2. the run number is one past the highest `plans/run-*.md`;
- *   3. the verbs in order — cp, the two attaches, the comment — and the ssh
- *      start ONLY after all of them, so the boot never races a grant;
+ *   3. the verbs in order — cp, the two attaches (`claude-max`, then the
+ *      target's one GitHub object), the comment — and the ssh start ONLY after
+ *      all of them, so the boot never races an attachment; a target with no
+ *      GitHub object is a refusal before the plan is committed;
  *   4. a refused `cp` prints exe.dev's own words and stops there;
  *   5. the ssh wait retries, then gives up naming the start command;
  *   6. the plan really is a commit on the origin.
@@ -30,6 +32,8 @@ import {
 const BASE = 'a'.repeat(40)
 const ENGINE = 'b'.repeat(40)
 const TARGET = 'popmechanic/smoke'
+/** The target's one GitHub integration, which every launch attaches. */
+const GH = 'gh-popmechanic-smoke'
 const GOLDEN = 'fleet-golden'
 const NOW = new Date('2026-09-03T22:15:00.000Z')
 const RAND = 'a1b2'
@@ -40,7 +44,7 @@ const START_1 = startCommandFor(1)
 
 /** The reads and the post-cp lookup, canned green: `ls '<vm>'` answers a row for
  *  whatever name was asked about, with an ssh_dest that is not the DNS name. */
-const readRules = ({ integrations = [], ls } = {}) => [
+const readRules = ({ integrations = [{ name: GH, attachments: [] }], ls } = {}) => [
   sshRule('integrations list --json', answer(integrations)),
   sshRule('ls ', ls ?? ((cmd, argv) => {
     const name = /^ls '([^']+)'/.exec(argv[1])?.[1]
@@ -179,8 +183,8 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   const exec = makeExec({
     rules: readRules({
       integrations: [
-        { name: 't-popmechanic-smoke-ro', attachments: [] },
-        { name: 't-popmechanic-smoke-rw', attachments: [] },
+        { name: 'fleet-runs', attachments: ['tag:fleet'] },
+        { name: GH, attachments: [] },
         { name: 'claude-max', attachments: [] }
       ]
     })
@@ -195,10 +199,11 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
     'integrations list --json',
     `cp fleet-golden ${VM1} --copy-tags --json`,
     `integrations attach claude-max vm:${VM1} --for 6h`,
-    `integrations attach t-popmechanic-smoke-ro vm:${VM1} --for 6h`,
+    `integrations attach ${GH} vm:${VM1} --for 6h`,
     `comment ${VM1} '${result.comment}'`,
     `ls '${VM1}' --json`
-  ], '(3) the read, then cp with the tags, the two 6 h grants, the comment, the ssh_dest lookup')
+  ], '(3) the read, then cp with the tags, the two 6 h attachments, the comment, the ssh_dest lookup')
+  assert.equal(result.github, GH, '(3) the record names the GitHub object the run rides')
   assert.deepEqual(exec.vm(), [
     { dest: `exedev@${VM1}.ssh.exe.xyz`, command: 'true' },
     { dest: `exedev@${VM1}.ssh.exe.xyz`, command: START_1 }
@@ -214,7 +219,7 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   const startAt = index((c) => c.cmd === 'ssh' && c.argv.includes(START_1))
   const lastMutation = Math.max(
     index((c) => c.argv[1]?.startsWith('integrations attach claude-max')),
-    index((c) => c.argv[1]?.startsWith('integrations attach t-popmechanic-smoke-ro')),
+    index((c) => c.argv[1]?.startsWith(`integrations attach ${GH}`)),
     index((c) => c.argv[1]?.startsWith('comment '))
   )
   assert.ok(startAt > lastMutation, '(3) the start happens only after both attaches and the comment')
@@ -258,14 +263,24 @@ const launchIn = (ws, { argv = argvFor(ws.planPath), exec, sleep = async () => {
   ws.cleanup()
 }
 
-// ── 3b. No -ro object: no read grant, still started ─────────────────────────
+// ── 3b. No GitHub object for the target: a refusal, before the plan commit ──
 {
+  // A public repo would still clone from github.com, but nothing could push
+  // its branch or open its PR — so the launch refuses, with exe.dev and
+  // fleet-runs untouched, and names the one command that builds the object.
   const ws = workspace()
-  const exec = makeExec({ rules: readRules({ integrations: [] }) })
-  const result = await launchIn(ws, { exec })
-  assert.ok(!exec.lobby().some((line) => line.includes('t-popmechanic-smoke-ro')), '(3b) a public target gets no read grant')
-  assert.match(result.readGrant, /node fleet\/target\.mjs add popmechanic\/smoke/, '(3b) and the operator is told how to make one')
-  assert.equal(exec.vm().at(-1)?.command, START_1, '(3b) the run still starts')
+  const before = ws.runs.git(['rev-parse', 'origin/main'])
+  const exec = makeExec({ rules: readRules({ integrations: [{ name: 'claude-max', attachments: [] }] }) })
+  const error = await thrown(() => launchIn(ws, { exec }))
+  assert.ok(error, '(3b) a target with no gh- object must refuse')
+  assert.equal(error.exitCode, 2, '(3b) exit 2')
+  assert.match(error.message, new RegExp(`no ${GH} integration`), '(3b) naming the missing object')
+  assert.match(error.message, /public .*github\.com/, '(3b) saying a public target would clone but not publish')
+  assert.ok(error.message.includes(`node fleet/target.mjs ${TARGET}`), '(3b) and the command that builds it')
+  assert.deepEqual(exec.mutating(), [], '(3b) no cp, no attach, no comment')
+  assert.deepEqual(exec.vm(), [], '(3b) no ssh into anything')
+  assert.equal(ws.runs.git(['rev-parse', 'origin/main']), before, '(3b) and no plan was committed — the run number is not spent')
+  assert.ok(!fs.existsSync(path.join(ws.runs.dir, 'plans', 'run-1.md')), '(3b) not even locally')
   ws.cleanup()
 }
 

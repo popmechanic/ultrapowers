@@ -1,24 +1,26 @@
 #!/usr/bin/env node
 /**
- * fleet/target.mjs — the two integration objects a target repository needs.
+ * fleet/target.mjs — the one integration object a target repository needs.
  *
- *   node fleet/target.mjs add <owner>/<repo>
+ *   node fleet/target.mjs <owner>/<repo>
  *   node fleet/target.mjs list
  *   node fleet/target.mjs gc
  *
- * Per target, exactly two objects, created once, attached to NOTHING:
+ * Per target, exactly ONE object, created once, attached to NOTHING:
  *
- *   t-<owner>-<repo>-ro   --readonly
- *   t-<owner>-<repo>-rw   --act-as-user
+ *   gh-<owner>-<repo>   --act-as-user
  *
- * Both are attached per VM and per window, by the tools that need them: the
- * launcher attaches `-ro` for the run's six hours, the grant swaps it for
- * `-rw` for forty-five minutes. Nothing GitHub rides `tag:fleet` except
- * `fleet-runs` — a tag attachment is a credential every sandbox holds, and a
- * tag-attached `-ro` cannot be detached from one VM when `-rw` has to take its
- * place, since `github.int.exe.xyz` resolves one credential per repo.
+ * The launcher attaches it to the run's VM for the run's six hours; the
+ * sandbox clones, pushes and opens the PR through it; the human gate is the PR
+ * itself. There is no read-only twin and no write grant, because of two facts
+ * measured 2026-09-03: exe.dev's GitHub edge routes each request by repo path
+ * and serves a cached installation token for 30–60 s after an integration is
+ * attached (a `gh pr create` twenty seconds after the swap produced a
+ * bot-authored PR), and two integrations naming one repo on one VM have no
+ * documented tie-break. One object per repo makes both faults inexpressible.
+ * Nothing GitHub rides `tag:fleet` except `fleet-runs`.
  *
- * `add` is idempotent: an object that exists is left exactly as it is and
+ * Creating is idempotent: an object that exists is left exactly as it is and
  * reported as `skipped`. `gc` reports and never deletes — it names integration
  * objects whose repository `gh repo view` can no longer see, and leaves the
  * decision to the operator, because a repo that is merely private to another
@@ -31,48 +33,36 @@ import { fileURLToPath } from 'node:url'
 import {
   Refusal,
   defaultExec,
+  githubIntegrationFor,
   isSafeTarget,
   listIntegrations,
   lobby,
   parseArgs,
-  roIntegrationFor,
-  runCli,
-  rwIntegrationFor
+  runCli
 } from './lobby.mjs'
 
-export const USAGE = `usage: node fleet/target.mjs add <owner>/<repo>
+export const USAGE = `usage: node fleet/target.mjs <owner>/<repo>
        node fleet/target.mjs list
        node fleet/target.mjs gc [--json]`
 
 export const usage = () => USAGE
 
-/** The two `integrations add` lines, verbatim, for a target. No `--attach`. */
-export const addCommands = (target) => [
-  `integrations add github --name ${roIntegrationFor(target)} --repository ${target} --readonly`,
-  `integrations add github --name ${rwIntegrationFor(target)} --repository ${target} --act-as-user`
-]
+/** The one `integrations add` line, verbatim, for a target. No `--attach`, no `--readonly`. */
+export const addCommand = (target) =>
+  `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user`
 
-/** Is this one of the per-target objects? `t-<slug>-ro` / `t-<slug>-rw`. */
-const isTargetIntegration = (name) => /^t-.+-(ro|rw)$/.test(name)
+/** Is this one of the per-target objects? `gh-<slug>`. */
+const isTargetIntegration = (name) => /^gh-.+/.test(name)
 
 async function add ({ exec, target }) {
-  if (!isSafeTarget(target)) {
-    throw new Refusal(`target: add needs <owner>/<repo>, got ${JSON.stringify(target ?? null)}`)
-  }
+  const name = githubIntegrationFor(target)
   const existing = new Set((await listIntegrations(exec)).map((row) => row.name))
-  const results = []
-  for (const [name, command] of [
-    [roIntegrationFor(target), addCommands(target)[0]],
-    [rwIntegrationFor(target), addCommands(target)[1]]
-  ]) {
-    if (existing.has(name)) {
-      results.push({ name, action: 'skipped', command: null })
-      continue
-    }
-    await lobby(exec, command)
-    results.push({ name, action: 'created', command })
+  if (existing.has(name)) {
+    return { verb: 'add', target, results: [{ name, action: 'skipped', command: null }] }
   }
-  return { verb: 'add', target, results }
+  const command = addCommand(target)
+  await lobby(exec, command)
+  return { verb: 'add', target, results: [{ name, action: 'created', command }] }
 }
 
 async function list ({ exec }) {
@@ -84,7 +74,7 @@ async function list ({ exec }) {
 
 /**
  * Report objects whose repository is gone. The repository comes from the
- * listing's own `repository` field: `t-<owner>-<repo>-ro` cannot be reversed,
+ * listing's own `repository` field: `gh-<owner>-<repo>` cannot be reversed,
  * because the slash became a hyphen and hyphens are legal in both halves.
  */
 async function gc ({ exec }) {
@@ -111,11 +101,13 @@ async function gc ({ exec }) {
 
 export async function target ({ argv, exec = defaultExec }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json'] })
-  const [verb, value] = positional
-  if (verb === 'add') return { ...await add({ exec, target: value }), json: opts.json === true }
-  if (verb === 'list') return { ...await list({ exec }), json: opts.json === true }
-  if (verb === 'gc') return { ...await gc({ exec }), json: opts.json === true }
-  throw new Refusal(`target: unknown verb ${JSON.stringify(verb ?? null)}\n${usage()}`)
+  const [verb] = positional
+  const json = opts.json === true
+  if (verb === 'list') return { ...await list({ exec }), json }
+  if (verb === 'gc') return { ...await gc({ exec }), json }
+  // A target has a slash and a verb has none, so the bare form is unambiguous.
+  if (isSafeTarget(verb)) return { ...await add({ exec, target: verb }), json }
+  throw new Refusal(`target: expected <owner>/<repo>, list or gc, got ${JSON.stringify(verb ?? null)}\n${usage()}`)
 }
 
 const attachedTo = (attachments) =>

@@ -21,8 +21,9 @@ by rewording:
   * the literals the documents teach — the unit the launcher starts, the
     directory the engine is cloned into, the shape of a VM name — are the ones
     ``fleet/CONTRACT.md`` declares, and the unit is a file in ``fleet/``;
-  * no document attaches a GitHub integration other than ``fleet-runs`` to a
-    tag (the contract's grant rule);
+  * no document creates a GitHub integration attached to anything or
+    read-only, the per-target one acts as the user, and only ``fleet-runs`` is
+    ever named with ``tag:fleet`` (the contract's one-integration rule);
   * the retired vocabulary of the pre-lift fleet appears in none of the four
     documents;
   * ``validate_skill.py`` still accepts ``skills/ultrapowers``.
@@ -288,11 +289,18 @@ def test_vm_names_in_the_documents_follow_the_contract():
         assert not old, f"{document} still names a VM by run number alone: {old!r}"
 
 
-# ── the grant rule: only fleet-runs rides the tag ────────────────────────────
+# ── the one-integration rule ─────────────────────────────────────────────────
+#
+# One GitHub integration per target, `gh-<owner>-<repo>`, acting as the user,
+# created attached to nothing; the launcher attaches it per VM. Only
+# `fleet-runs` ever rides `tag:fleet`. Two integrations naming one repo on a
+# VM have no documented tie-break (measured 2026-09-03), so a document showing
+# a read-only twin, or an add that attaches, teaches the fault back in.
 
 # Backslash-continued shell lines are one command.
 CONTINUATION_RE = re.compile(r"\\\n\s*")
 ADD_GITHUB_RE = re.compile(r"integrations add github[^\n]*")
+INTEGRATION_VERB_RE = re.compile(r"integrations (?:add|attach)[^\n]*")
 NAME_RE = re.compile(r"--name\s+([\w<>-]+)")
 
 
@@ -300,7 +308,7 @@ def github_add_commands(path):
     return ADD_GITHUB_RE.findall(CONTINUATION_RE.sub(" ", read(path)))
 
 
-def test_documents_attach_no_target_integration_to_a_tag():
+def test_documents_create_github_integrations_attached_to_nothing():
     commands = []
     for document in DOCUMENTS:
         commands.extend(github_add_commands(document))
@@ -308,16 +316,42 @@ def test_documents_attach_no_target_integration_to_a_tag():
     for command in commands:
         name = NAME_RE.search(command)
         assert name, f"an `integrations add github` command carries no --name: {command}"
-        if "--attach" in command:
-            assert name.group(1) == "fleet-runs", (
-                "a document attaches a GitHub integration other than fleet-runs "
-                f"at creation: {command}"
+        assert "--attach" not in command, (
+            f"a document attaches a GitHub integration at creation: {command}"
+        )
+        assert "--readonly" not in command, (
+            f"a document creates a read-only GitHub integration: {command}"
+        )
+        if name.group(1).startswith("gh-"):
+            assert "--act-as-user" in command, (
+                f"the per-target object does not --act-as-user: {command}"
             )
-        if name.group(1).endswith("-ro"):
-            assert "--readonly" in command, f"the -ro object is not --readonly: {command}"
-            assert "--act-as-user" not in command, f"the -ro object acts as user: {command}"
-        if name.group(1).endswith("-rw"):
-            assert "--act-as-user" in command, f"the -rw object does not --act-as-user: {command}"
+
+
+def test_the_documents_show_the_per_target_add():
+    """A regex that matched only fleet-runs would make the pin above vacuous."""
+    names = set()
+    for document in DOCUMENTS:
+        for command in github_add_commands(document):
+            name = NAME_RE.search(command)
+            if name:
+                names.add(name.group(1))
+    assert any(name.startswith("gh-") for name in names), (
+        f"no document shows the `gh-<owner>-<repo>` add; found {sorted(names)}"
+    )
+
+
+def test_only_fleet_runs_is_named_with_the_tag():
+    tagged = []
+    for document in DOCUMENTS:
+        for command in INTEGRATION_VERB_RE.findall(CONTINUATION_RE.sub(" ", read(document))):
+            if "tag:fleet" in command:
+                tagged.append((document.name, command))
+    assert tagged, "no document attaches anything to tag:fleet"
+    for document, command in tagged:
+        assert "fleet-runs" in command, (
+            f"{document} names tag:fleet on something other than fleet-runs: {command}"
+        )
 
 
 # ── retired vocabulary ───────────────────────────────────────────────────────
@@ -341,6 +375,14 @@ RETIRED = (
     "systemd-run --scope",
     "KillMode=process",
     "shim.log",
+    # The single-integration change (2026-09-03): the write-grant tool, its
+    # state, and the read-only/writable pair — two integrations naming one
+    # repo on a VM have no documented tie-break at the GitHub edge.
+    "grant.mjs",
+    "awaiting-grant",
+    "t-<owner>-<repo>",
+    "-ro`",
+    "-rw`",
 )
 
 

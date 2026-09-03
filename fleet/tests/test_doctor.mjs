@@ -15,12 +15,12 @@
  *      three ids in order; every row carries id/status/detail/fix.
  *   3  commands — a green run issues exactly three reads, in order, with the
  *      configured golden name substituted, and nothing else.
- *   4  integrations — each of the five objects missing, or on the tag when it
+ *   4  integrations — each of the four objects missing, or on the tag when it
  *      must not be (only `fleet-runs` rides `tag:fleet`), turns the row red,
- *      and the detail names the object; with --target the two per-target
- *      objects join the check and the detail carries the `fleet/target.mjs
- *      add` command; a `t-…-ro`/`-rw` on the tag is red with or without
- *      --target.
+ *      and the detail names the object; with --target the target's one object
+ *      `gh-<owner>-<repo>` joins the check and the detail carries the
+ *      `fleet/target.mjs` command; any GitHub integration other than
+ *      `fleet-runs` on the tag is red with or without --target.
  *   5  golden — no stamp → red; a stamp that is some other sha256 → red; a
  *      stamp equal to golden-setup.sh's sha256 → green.
  *   6  verdict — `ready` exactly when all three rows are ok.
@@ -39,14 +39,14 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { FLEET_DEFAULTS, roIntegrationFor, rwIntegrationFor } from '../lobby.mjs'
+import { FLEET_DEFAULTS, githubIntegrationFor } from '../lobby.mjs'
 import * as doctorModule from '../doctor.mjs'
 import {
   doctor,
   loadFleetConfig,
   goldenScriptSha,
   parseIntegrations,
-  targetStem,
+  targetIntegration,
   ROW_IDS,
   DOCTOR_DEFAULTS
 } from '../doctor.mjs'
@@ -71,7 +71,7 @@ const CMD = {
 const READ_ONLY_CMDS = [CMD.whoami, CMD.integrations, CMD.stamp]
 
 const TARGET = 'popmechanic/ultrapowers'
-const STEM = 't-popmechanic-ultrapowers'
+const GH = 'gh-popmechanic-ultrapowers'
 
 /** A sha256 that is definitely not any file's — the "your golden is old" case. */
 const OTHER_SHA = 'a'.repeat(64)
@@ -83,13 +83,12 @@ const SCRIPT_SHA = await goldenScriptSha()
 
 const integrationsJson = (entries) => `${JSON.stringify({ integrations: entries })}\n`
 
-/** The five objects a fully-built fleet holds, with a target's pair. */
+/** The four objects a fully-built fleet holds, with a target's one object. */
 const fullCatalog = () => [
-  { name: 'fleet-runs', attachments: ['tag:fleet'] },
-  { name: 'claude-max', attachments: [] },
-  { name: 'notify', attachments: ['tag:fleet'] },
-  { name: `${STEM}-ro`, attachments: ['vm:fleet-r7-2609032215-a1b2'] },
-  { name: `${STEM}-rw`, attachments: [] }
+  { name: 'fleet-runs', type: 'github', repository: 'popmechanic/fleet-runs', attachments: ['tag:fleet'] },
+  { name: 'claude-max', type: 'http-proxy', attachments: [] },
+  { name: 'notify', type: 'notify', attachments: ['tag:fleet'] },
+  { name: GH, type: 'github', repository: TARGET, attachments: ['vm:fleet-r7-2609032215-a1b2'] }
 ]
 
 const GREEN = {
@@ -253,69 +252,66 @@ for (const name of ['fleet-runs', 'claude-max', 'notify']) {
 }
 
 {
-  // Without --target the per-target pair is not asked about at all, so a fleet
-  // with no targets yet is still green.
-  const catalog = fullCatalog().filter((e) => !e.name.startsWith(STEM))
+  // Without --target the per-target object is not asked about at all, so a
+  // fleet with no targets yet is still green.
+  const catalog = fullCatalog().filter((e) => e.name !== GH)
   const { exec } = makeExec({
     [CMD.integrations]: { code: 0, stdout: integrationsJson(catalog) }
   })
   const row = rowById(await doctor({ config: CONFIG, exec }), 'integrations')
-  assert.equal(row.status, 'ok', '4 no target pair is fine when no --target was given')
-}
-
-for (const suffix of ['-ro', '-rw']) {
-  const catalog = fullCatalog().filter((e) => e.name !== `${STEM}${suffix}`)
-  const { exec } = makeExec({
-    [CMD.integrations]: { code: 0, stdout: integrationsJson(catalog) }
-  })
-  const row = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
-  assert.equal(row.status, 'missing', `4 --target with no ${STEM}${suffix} turns the row red`)
-  assert.ok(
-    row.detail.includes(`${STEM}${suffix}`),
-    `4 the detail names the missing object; got ${row.detail}`
-  )
-  assert.ok(
-    row.detail.includes(`fleet/target.mjs add ${TARGET}`),
-    `4 the detail names the command that builds the pair; got ${row.detail}`
-  )
+  assert.equal(row.status, 'ok', '4 no target object is fine when no --target was given')
 }
 
 {
-  const catalog = fullCatalog().map((e) =>
-    e.name === `${STEM}-rw` ? { ...e, attachments: ['tag:fleet'] } : e
-  )
+  const catalog = fullCatalog().filter((e) => e.name !== GH)
   const { exec } = makeExec({
     [CMD.integrations]: { code: 0, stdout: integrationsJson(catalog) }
   })
   const row = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
-  assert.equal(row.status, 'missing', '4 a writable target grant on the tag turns the row red')
+  assert.equal(row.status, 'missing', `4 --target with no ${GH} turns the row red`)
+  assert.ok(row.detail.includes(GH), `4 the detail names the missing object; got ${row.detail}`)
+  assert.ok(
+    row.detail.includes(`fleet/target.mjs ${TARGET}`),
+    `4 the detail names the command that builds it; got ${row.detail}`
+  )
+  assert.ok(!row.detail.includes('target.mjs add'), `4 there is no add verb; got ${row.detail}`)
 }
 
-for (const suffix of ['-ro', '-rw']) {
-  // Grants are per VM: a -ro on the tag cannot be detached from one VM when
-  // -rw has to take its place, so it is as red as a -rw there — and it is red
-  // whether or not --target named it, since any target's pair is checked.
-  const catalog = fullCatalog().map((e) =>
-    e.name === `${STEM}${suffix}` ? { ...e, attachments: ['tag:fleet'] } : e
-  )
+for (const extra of [
+  // The target's own object on the tag: red with and without --target.
+  { name: GH, type: 'github', repository: TARGET, attachments: ['tag:fleet'] },
+  // Another repo's object on the tag, recognised by its type…
+  { name: 'gh-popmechanic-other', type: 'github', repository: 'popmechanic/other', attachments: ['tag:fleet'] },
+  // …by its repository field alone…
+  { name: 'legacy-github', repository: 'popmechanic/legacy', attachments: ['tag:fleet'] },
+  // …or by the fleet's own naming when the listing says nothing else.
+  { name: 'gh-bare-name', attachments: ['tag:fleet'] }
+]) {
+  // A tag attachment lands on every fleet VM, and two GitHub integrations
+  // naming one repo on one VM leave the edge to pick by no documented rule
+  // — so any GitHub object but fleet-runs on the tag is red, whether or not
+  // --target named it.
+  const catalog = fullCatalog().filter((e) => e.name !== extra.name).concat([extra])
   const { exec } = makeExec({
     [CMD.integrations]: { code: 0, stdout: integrationsJson(catalog) }
   })
   const named = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
-  assert.equal(named.status, 'missing', `4 ${STEM}${suffix} on the tag turns the row red with --target`)
-  assert.ok(named.detail.includes(`${STEM}${suffix}`), `4 the detail names it; got ${named.detail}`)
+  assert.equal(named.status, 'missing', `4 ${extra.name} on the tag turns the row red with --target`)
+  assert.ok(named.detail.includes(extra.name), `4 the detail names it; got ${named.detail}`)
   assert.ok(named.detail.includes('detach'), `4 and says to detach; got ${named.detail}`)
   const unnamed = rowById(await doctor({ config: CONFIG, exec }), 'integrations')
-  assert.equal(unnamed.status, 'missing', `4 ${STEM}${suffix} on the tag turns the row red without --target too`)
-  assert.ok(unnamed.detail.includes(`${STEM}${suffix}`), `4 the detail names it; got ${unnamed.detail}`)
+  assert.equal(unnamed.status, 'missing', `4 ${extra.name} on the tag turns the row red without --target too`)
+  assert.ok(unnamed.detail.includes(extra.name), `4 the detail names it; got ${unnamed.detail}`)
 }
 
 {
+  // A non-GitHub object on the tag is not the doctor's concern here: notify
+  // rides the tag in the full catalog and the row is green.
   const { exec } = makeExec({
     [CMD.integrations]: { code: 0, stdout: integrationsJson(fullCatalog()) }
   })
   const row = rowById(await doctor({ config: CONFIG, exec, target: TARGET }), 'integrations')
-  assert.equal(row.status, 'ok', '4 a full catalog with the target pair is ok')
+  assert.equal(row.status, 'ok', '4 a full catalog with the target object is ok')
 }
 
 {
@@ -350,21 +346,16 @@ for (const suffix of ['-ro', '-rw']) {
   const parsed = parseIntegrations('[{"name":"a","attachments":["tag:fleet","vm:x"]}]')
   assert.equal(parsed.get('a').tags.has('fleet'), true, '4 parseIntegrations reads a tag attachment')
   assert.equal(parsed.get('a').tags.has('x'), false, '4 a vm attachment is not a tag')
-  assert.equal(targetStem('owner/repo'), 't-owner-repo', '4 targetStem replaces the slash')
+  assert.equal(targetIntegration('owner/repo'), 'gh-owner-repo', '4 targetIntegration replaces the slash')
 
-  // The doctor looks for the two objects fleet/target.mjs creates, by the names
-  // fleet/lobby.mjs gives them. A doctor checking for `t-owner-repo-ro` while
-  // the launcher attaches `target-owner-repo-ro` would be green on a fleet no
-  // run can use.
+  // The doctor looks for the object fleet/target.mjs creates, by the name
+  // fleet/lobby.mjs gives it. A doctor checking for `gh-owner-repo` while the
+  // launcher attaches `target-owner-repo` would be green on a fleet no run can
+  // use.
   assert.equal(
-    `${targetStem(TARGET)}-ro`,
-    roIntegrationFor(TARGET),
-    '4 the doctor and lobby.mjs name the read-only target integration alike'
-  )
-  assert.equal(
-    `${targetStem(TARGET)}-rw`,
-    rwIntegrationFor(TARGET),
-    '4 the doctor and lobby.mjs name the writable target integration alike'
+    targetIntegration(TARGET),
+    githubIntegrationFor(TARGET),
+    '4 the doctor and lobby.mjs name the target integration alike'
   )
 }
 

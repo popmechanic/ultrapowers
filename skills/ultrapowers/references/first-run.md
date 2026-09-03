@@ -39,8 +39,8 @@ Three things a stranger will not know:
 - The `*.exe.xyz` pattern matters as much as `exe.dev` itself: a run VM is
   reached over ssh at the `ssh_dest` that `ls --json` reports, and its status
   page is `https://<vm>.exe.xyz/status.json`.
-- **This key launches and grants.** `integrations attach` and `detach` are
-  refused to a tag-scoped key, so the laptop keeps the account key. A second
+- **This key launches.** `integrations attach` is refused to a tag-scoped key,
+  so the laptop keeps the account key. A second
   key registered with `ssh-key add --tag=fleet` sees and reaps only
   fleet-tagged VMs; that is the one to put behind the janitor's cron.
 
@@ -55,14 +55,13 @@ sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
 the secret on the way out. The VM never holds it, never sees it, and cannot
 read it back. Attachments are per VM or per tag, and time-boxed.
 
-Four objects, and the doctor names whichever one is wrong first:
+Three objects, and the doctor names whichever one is wrong first:
 
 | object | what it is | attached to |
 |---|---|---|
 | `claude-max` | the Claude subscription, as an http-proxy | per run, per VM, `--for 6h` |
 | `fleet-runs` | the private repo holding plans, receipts and status | `tag:fleet` |
-| `t-<owner>-<repo>-ro` | read access to one target repository | per run, per VM, at launch |
-| `t-<owner>-<repo>-rw` | write access to that target | per run, per VM, at approval |
+| `gh-<owner>-<repo>` | one target repository, read and write | per run, per VM, `--for 6h`, at launch |
 
 `claude-max` is built by hand, because its bearer is a token from a browser
 flow:
@@ -77,20 +76,20 @@ ssh exe.dev "integrations add http-proxy --name claude-max \
 rm ~/.fleet-oauth-token
 ```
 
-The GitHub objects are three commands. The first is once per account; the
-pair is once per repository you will drive, and ultrapowers itself is one of
-them:
+The GitHub objects are one command per account and one per repository you
+will drive, and ultrapowers itself is one of them.
+`node <plugin-root>/fleet/target.mjs <owner>/<repo>` runs the last line for
+you and skips an object that exists:
 
 ```bash
 ssh exe.dev "integrations add github --name fleet-runs \
-  --repository popmechanic/fleet-runs --act-as-user --attach tag:fleet"
-ssh exe.dev "integrations add github --name t-<owner>-<repo>-ro \
-  --repository <owner>/<repo> --readonly"
-ssh exe.dev "integrations add github --name t-<owner>-<repo>-rw \
+  --repository popmechanic/fleet-runs --act-as-user"
+ssh exe.dev "integrations attach fleet-runs tag:fleet"
+ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
   --repository <owner>/<repo> --act-as-user"
 ```
 
-The doctor only asks about a target's pair when you pass
+The doctor only asks about a target's object when you pass
 `--target <owner>/<repo>`, so a fleet with no targets yet is still `ready`.
 
 Three things these commands hide:
@@ -105,13 +104,15 @@ Three things these commands hide:
   sends have to be injected here or `claude -p` answers 400 on a beta it was
   counting on. Re-capture the list when the CLI version changes
   (`integrations edit claude-max --header=…`).
-- **Only `fleet-runs` rides the tag.** `claude-max` and both halves of a target
-  pair are attached to one VM for a bounded window — at launch, and at
-  approval. The read-only and writable halves are never on one VM at once:
-  `grant.mjs` detaches one before it attaches the other. On the shared tag any
-  of them would be a standing grant to every VM on the account, which is the
-  posture this arrangement exists to remove. The doctor turns the row red for
-  a tag attachment on any of the three.
+- **Only `fleet-runs` rides the tag.** `claude-max` and `gh-<owner>-<repo>`
+  are attached to one VM for the run's six hours, at launch. On the shared tag
+  either would be a standing credential on every VM on the account. And never
+  two GitHub integrations naming one repository on one VM: exe.dev's GitHub
+  edge routes by repo path and documents no tie-break between them, so the
+  sandbox refuses to boot into that, and the doctor turns the row red for any
+  GitHub object but `fleet-runs` on the tag. `gh auth status` on a VM is
+  meaningless — the credential is at the edge, and the edge proxies only the
+  repository's own paths.
 
 ## golden
 
@@ -125,8 +126,7 @@ the image: each run's bootstrap clones it at the sha the assignment names, into
 The launcher starts a run as `systemctl --user start fleet-run@<N>.service`
 over ssh, with no `--no-block`: the unit is `Type=exec`, so the command
 returns once the bootstrap is running and fails when it could not start, and
-the launcher prints that failure verbatim. The write grant `grant.mjs`
-attaches at approval lasts `--for 45m`. When a run has left no status page,
+the launcher prints that failure verbatim. When a run has left no status page,
 its unit's own log needs no environment variable:
 
 ```bash

@@ -8,18 +8,23 @@
 # FLEET_ASSIGNMENT — so THIS script is the run unit's process, and its exit is
 # the unit's result. It starts and stops the engine unit `fleet-engine-<N>` and
 # never its own.
-# From here: clone fleet-runs and the target through exe.dev's edge-injected
-# GitHub integrations, run the engine as a transient user SERVICE with the
-# Anthropic pair in the ENGINE'S CHILD ENV ONLY, serve the status page from a
-# service of its own, commit receipts to `fleet-runs` at every transition, and —
-# only when the branch has something to publish — wait for the operator's write
-# grant, push, and open the PR.
+# From here: refuse to boot when two GitHub integrations name one repository,
+# clone fleet-runs and the target through exe.dev's edge-injected GitHub
+# integrations, run the engine as a transient user SERVICE with the Anthropic
+# pair in the ENGINE'S CHILD ENV ONLY, serve the status page from a service of
+# its own, commit receipts to `fleet-runs` at every transition, and — only when
+# the branch has something to publish — push and open the PR over GitHub's REST
+# API through the edge. The PR is the human gate; there is no write grant to
+# wait for, because the target's one integration is attached for the run's
+# whole life (measured 2026-09-03: the edge routes by repo path and caches an
+# installation token for 30–60 s after an attach, so a grant swapped in at
+# publish time produced a bot-authored PR).
 #
 # No orchestrator, no control VM, no token on this box, and no waiting for an
-# assignment: the launcher writes the comment and attaches the grants BEFORE it
-# starts the unit. Amendment 10 holds: every git and gh command below is this
-# script's, never a model's, and the publish window opens only after systemd
-# says the engine service is inactive.
+# assignment: the launcher writes the comment and attaches the integrations
+# BEFORE it starts the unit. Amendment 10 holds: every git command and every
+# GitHub call below is this script's, never a model's, and the push happens
+# only after systemd says the engine service is inactive.
 #
 # IDEMPOTENCE IS A REQUIREMENT, not a nicety: this script can be started again
 # on the same box, and re-entering must not re-clone a clone that exists and
@@ -77,7 +82,6 @@ FLEET_RUNS_BRANCH="${FLEET_RUNS_BRANCH:-main}"
 # whole state machine runs in a second.
 POLL_SECONDS="${FLEET_POLL_SECONDS:-2}"
 STATUS_INTERVAL="${FLEET_STATUS_INTERVAL:-30}"
-WRITE_GRANT_TIMEOUT="${FLEET_WRITE_GRANT_TIMEOUT:-86400}"   # 24 h
 ENGINE_STOP_TIMEOUT="${FLEET_ENGINE_STOP_TIMEOUT:-300}"     # 5 min for the service to go inactive
 
 # Run identity, filled by `parse_assignment`. `RUN_N` is the bare number (the
@@ -98,13 +102,16 @@ STARTED_AT=""
 STATE=""
 PHASE=""
 PR_URL=""
+# Who GitHub says opened the PR (`.user.login`): the operator when
+# `--act-as-user` took, the app bot when it did not. Recorded so a bot-authored
+# PR is a fact on the page, not a surprise on GitHub.
+PR_AUTHOR=""
 ERROR=""
 
 # --- seams -------------------------------------------------------------------
 
 fleet_curl()       { curl "$@"; }
 fleet_git()        { git "$@"; }
-fleet_gh()         { GH_HOST="$GITHUB_INT_HOST" gh "$@"; }
 fleet_npm()        { npm "$@"; }
 fleet_systemd_run(){ systemd-run "$@"; }
 fleet_systemctl()  { systemctl "$@"; }
@@ -157,13 +164,14 @@ write_status() { # $1 = state, $2 = phase (optional, defaults to the current one
   if [ "$#" -ge 2 ]; then PHASE="$2"; fi
   mkdir -p "$WWW_DIR"
   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
-  local pr_cell="null" err_cell="null" tmp
+  local pr_cell="null" author_cell="null" err_cell="null" tmp
   [ -n "$PR_URL" ] && pr_cell="\"$(json_escape "$PR_URL")\""
+  [ -n "$PR_AUTHOR" ] && author_cell="\"$(json_escape "$PR_AUTHOR")\""
   [ -n "$ERROR" ] && err_cell="\"$(json_escape "$ERROR")\""
   :
   tmp="$STATUS_FILE.tmp.$$"
   cat >"$tmp" <<EOF
-{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
+{"run":"$(json_escape "$RUN_N")","state":"$(json_escape "$STATE")","phase":"$(json_escape "$PHASE")","pr":$pr_cell,"prAuthor":$author_cell,"branch":"$(json_escape "$BRANCH")","vm":"$(json_escape "$VM_NAME")","startedAt":"$STARTED_AT","updatedAt":"$(now_iso)","error":$err_cell}
 EOF
   mv "$tmp" "$STATUS_FILE"
   log "status: state=$STATE phase=$PHASE"
@@ -332,17 +340,17 @@ clone_target() {
       log "target: cloned through $GITHUB_INT_HOST"
     else
       printf '%s\n' "$out" >>"$BOOT_LOG"
-      # No `-ro` integration for this target: it may still be a PUBLIC repo, and
-      # a public repo needs no grant to READ. Anything but a not-found is a real
-      # failure and must not be papered over with a second attempt.
+      # The edge knows no integration for this target: it may still be a PUBLIC
+      # repo, which needs no credential to READ. Anything but a not-found is a
+      # real failure and is not papered over with a second attempt.
       case "$out" in
         *404*|*"not found"*|*"Not Found"*|*"Repository not found"*)
           log "target: $GITHUB_INT_HOST says not found — trying public github.com"
           fleet_git clone "https://github.com/$TARGET_REPO.git" "$TARGET_DIR" \
             || fail "clone: target $TARGET_REPO (neither $GITHUB_INT_HOST nor github.com)"
-          # The push at the end goes through the edge, because the `-rw` grant is
-          # what makes it work. So origin is the int URL whichever host answered
-          # the read.
+          # The push at the end goes through the edge, because the attached
+          # integration is what makes it work. So origin is the int URL whichever
+          # host answered the read.
           fleet_git -C "$TARGET_DIR" remote set-url origin "https://$GITHUB_INT_HOST/$TARGET_REPO.git" \
             || fail "target: could not point origin at $GITHUB_INT_HOST"
           ;;
@@ -377,38 +385,36 @@ check_engine() {
 
 # --- integrations ------------------------------------------------------------
 #
-# Shape-agnostic: `/integrations` is matched on the integration NAME bounded by
-# non-name characters, so a list of strings and a list of objects both read the
-# same and `…-ro` can never satisfy a test for `…-rw`.
+# One read of Reflection's `/integrations`, once, before any clone. Each GitHub
+# integration publishes its repository inside its `help` string
+# (`git clone https://github.int.exe.xyz/<owner>/<repo>.git`), so the box can
+# tell whether two of them name one repo — the case exe.dev's edge, which
+# routes by repo path, resolves by an undocumented tie-break. Measured
+# 2026-09-03: that is how a push went out under the wrong credential. A
+# duplicate is a refusal at second zero, not a nondeterministic auth failure
+# forty minutes later. No jq: one help string per line, then the first
+# `github.int.exe.xyz/…git` inside each.
 
 integrations_body() { fleet_curl -fsS "$REFLECTION_URL/integrations" 2>/dev/null || true; }
 
-has_integration() { # $1 = body, $2 = name
-  printf '%s' "$1" | grep -qE "(^|[^A-Za-z0-9_-])$2([^A-Za-z0-9_-]|\$)"
+duplicate_repos() { # body on stdin -> one duplicated repo path per line
+  grep -oE '"help"[[:space:]]*:[[:space:]]*"[^"]*"' |
+    sed -n 's/.*\(github\.int\.exe\.xyz\/[^"[:space:]]*\.git\).*/\1/p' |
+    sort | uniq -d
 }
 
-target_grant_name() { # $1 = ro|rw
-  printf 't-%s-%s' "$(printf '%s' "$TARGET_REPO" | tr '/' '-')" "$1"
-}
-
-# READINESS IS THE `-rw` GRANT, AND ONLY THAT. The grant tool detaches `-ro`
-# before it attaches `-rw`, but whether `-ro` is still listed is the grant
-# tool's business — waiting for anything but `-rw` to appear is a way to wait
-# forever.
-await_write_grant() {
-  local attempts n=0 body rw
-  rw="$(target_grant_name rw)"
-  attempts="$(poll_attempts "$WRITE_GRANT_TIMEOUT")"
-  while [ "$n" -lt "$attempts" ]; do
-    body="$(integrations_body)"
-    if has_integration "$body" "$rw"; then
-      log "integrations: $rw attached"
-      return 0
-    fi
-    n=$(( n + 1 ))
-    sleep "$POLL_SECONDS"
-  done
-  return 1
+preflight_integrations() {
+  local body dupes
+  body="$(integrations_body)"
+  if [ -z "$body" ]; then
+    log "integrations: Reflection /integrations answered nothing — no duplicate check possible"
+    return 0
+  fi
+  dupes="$(printf '%s' "$body" | duplicate_repos | tr '\n' ' ')"
+  if [ -n "$dupes" ]; then
+    fail "integrations: two github integrations on this VM name one repository: ${dupes% }— detach one; the edge picks between them by no documented rule"
+  fi
+  log "integrations: no two github integrations name one repository"
 }
 
 # --- the engine --------------------------------------------------------------
@@ -510,8 +516,9 @@ engine_already_ran() {
   return 1
 }
 
-# `awaiting-grant` and `parked` are claims that no model is running. They are
-# made only after systemd says so — this check IS Amendment 10 made mechanical.
+# `publishing` and `parked` are claims that no model is running. They are made
+# only after systemd says so — this check IS Amendment 10 made mechanical: the
+# push and the PR happen after the engine service is inactive, never beside it.
 await_engine_inactive() {
   local attempts n=0 out
   attempts="$(poll_attempts "$ENGINE_STOP_TIMEOUT")"
@@ -626,23 +633,54 @@ render_card() { # $1 = outcome; prints the body file's path
   printf '%s\n' "$body"
 }
 
+# The target's default branch, read from the clone: `origin/HEAD` is what the
+# remote advertised at clone time, whichever host answered. A PR against a
+# guessed `main` on a `master` repository would be refused by GitHub, or worse,
+# accepted against the wrong branch — so an unreadable HEAD is a failure.
+default_branch() {
+  local ref
+  ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
+  case "$ref" in
+    refs/remotes/origin/?*) printf '%s\n' "${ref#refs/remotes/origin/}" ;;
+    *) return 1 ;;
+  esac
+}
+
+# The PR is opened over GitHub's REST API through the edge, not with `gh`. `gh`
+# decides for itself which token to present, and the aggregate host proxies
+# only `/repos/<owner>/<repo>/…` — `/user`, which `gh` likes to ask first,
+# answers 403 from the edge. One POST, one JSON answer, nothing to negotiate.
 publish() { # $1 = outcome (gate-green|parked)
-  local body title heading out draft=()
-  write_status publishing "pushing $BRANCH"
+  local body title heading base draft payload answer code reply
   fleet_git -C "$TARGET_DIR" push origin "$BRANCH" || fail "publish: push $BRANCH"
   body="$(render_card "$1")"
   heading="$(plan_title)"
   [ -n "$heading" ] || heading="$RUN_ID"
   title="fleet $RUN_ID: $heading"
-  # A parked run still gets its PR — as a DRAFT. The operator granted the write;
-  # what the gate withheld is the claim that it is ready to merge.
-  [ "$1" = "gate-green" ] || draft=(--draft)
-  out="$(fleet_gh pr create --repo "$TARGET_REPO" \
-    --head "$BRANCH" --title "$title" --body-file "$body" ${draft[@]+"${draft[@]}"})" \
-    || fail "publish: gh pr create"
-  PR_URL="$(printf '%s' "$out" | grep -oE 'https://[^ ]+' | tail -n 1 || true)"
-  [ -n "$PR_URL" ] || PR_URL="$(printf '%s' "$out" | tail -n 1)"
-  log "publish: $PR_URL"
+  base="$(default_branch)" || fail "publish: cannot read the target's default branch from refs/remotes/origin/HEAD"
+  # A parked run still gets its PR — as a DRAFT. What the gate withheld is the
+  # claim that it is ready to merge; the operator's act is the merge button.
+  if [ "$1" = "gate-green" ]; then draft=false; else draft=true; fi
+  payload="{\"title\":\"$(json_escape "$title")\",\"head\":\"$(json_escape "$BRANCH")\",\"base\":\"$(json_escape "$base")\",\"body\":\"$(json_escape "$(cat "$body")")\",\"draft\":$draft}"
+  # The status code rides as the last line of the answer, so a non-2xx is told
+  # apart from a 201 without a second request or a headers file.
+  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls" \
+    -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}')" \
+    || fail "publish: POST /repos/$TARGET_REPO/pulls did not complete: $(printf '%s' "$answer" | tail -c 2000)"
+  code="$(printf '%s' "$answer" | tail -n 1)"
+  reply="$(printf '%s' "$answer" | sed '$d')"
+  case "$code" in
+    2[0-9][0-9]) : ;;
+    *) fail "publish: POST /repos/$TARGET_REPO/pulls answered $code: $(printf '%s' "$reply" | tail -c 2000)" ;;
+  esac
+  # First match wins in `json_field`, and GitHub's PR document puts its own
+  # `html_url` and the `user` object (the author) ahead of the head/base
+  # repositories that carry the same field names.
+  PR_URL="$(printf '%s' "$reply" | json_field html_url)"
+  PR_AUTHOR="$(printf '%s' "$reply" | json_field login)"
+  [ -n "$PR_URL" ] || fail "publish: POST /repos/$TARGET_REPO/pulls answered $code with no html_url: $(printf '%s' "$reply" | tail -c 2000)"
+  log "publish: $PR_URL (base $base, draft $draft)"
+  log "publish: author ${PR_AUTHOR:-<unknown>}"
 }
 
 # --- the two entry points ----------------------------------------------------
@@ -654,6 +692,7 @@ do_boot() {
   # from erasing them.
   STARTED_AT="$(read_status_field startedAt)"
   PR_URL="$(read_status_field pr)"
+  PR_AUTHOR="$(read_status_field prAuthor)"
   VM_NAME="$(read_status_field vm)"
   start_status_server
   # RE-ENTRY, GUARD 1. A page that already reached a terminal state with the
@@ -681,6 +720,9 @@ do_boot() {
   esac
   parse_assignment "$comment"
   write_status booting "assignment read"
+  # Before any clone: a VM carrying two github integrations for one repo has
+  # no defined credential for the push, and nothing later can repair that.
+  preflight_integrations
 
   # FIRST of the clones, and deliberately: from here on, `fail` can record what
   # happened in `fleet-runs` instead of only on a status page that dies with
@@ -708,8 +750,9 @@ do_boot() {
 
   if [ "$code" != "0" ]; then
     # The page goes to `failed` BEFORE the push, because the copy of it that
-    # lands in `fleet-runs/runs/<N>/status.json` is what the grant tool reads —
-    # a pushed page still saying `running` would be a lie with a reader.
+    # lands in `fleet-runs/runs/<N>/status.json` is what the janitor and the
+    # operator read — a pushed page still saying `running` would be a lie with
+    # a reader.
     # The engine's own last words, in the cell a reader actually opens. Without
     # them "engine exited 1" is the whole account of the run.
     ERROR="engine exited $code
@@ -728,9 +771,8 @@ $(engine_tail)"
 
   # run-69: a parked run whose every task was blocked has a branch equal to
   # BASE, and GitHub refuses a PR with no commits. Nothing to publish is a
-  # parked outcome with its evidence committed — and no grant to wait for, no
-  # push, no PR, so the operator is never asked to approve an empty write. A
-  # branch git cannot count is likewise nothing to push.
+  # parked outcome with its evidence committed — no push, no PR. A branch git
+  # cannot count is likewise nothing to push.
   ahead="$(fleet_git -C "$TARGET_DIR" rev-list --count "$BASE_SHA..$BRANCH" 2>/dev/null || echo 0)"
   if [ "$ahead" = "0" ]; then
     ERROR="parked: $BRANCH has no commits ahead of base (verdict ${verdict:-none})"
@@ -741,19 +783,11 @@ $(engine_tail)"
     exit 0
   fi
 
-  write_status awaiting-grant "$outcome"
+  # The receipts are committed BEFORE the push, so a publish that dies leaves
+  # its verdict in fleet-runs and not only on this box.
+  write_status publishing "$outcome — pushing $BRANCH"
   collect_evidence
   push_evidence "$RUN_ID: $outcome receipts"
-  notify "run-$RUN_N $outcome" "$TARGET_REPO — awaiting write grant"
-
-  if ! await_write_grant; then
-    ERROR="grant: no $(target_grant_name rw) within ${WRITE_GRANT_TIMEOUT}s"
-    write_status parked "awaiting write grant"
-    collect_evidence
-    push_evidence "$RUN_ID: parked — no write grant"
-    notify "run-$RUN_N parked" "$TARGET_REPO — $ERROR"
-    exit 1
-  fi
 
   # RE-ENTRY, GUARD 2. The PR is the one step here that is not idempotent by
   # construction, so it is made idempotent by its own record: a status page that

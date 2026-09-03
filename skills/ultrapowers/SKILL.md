@@ -48,7 +48,8 @@ Re-run the doctor after each row and show the user the row that just turned
 
 Configuration lives in `~/.ultrapowers/fleet.json`; the doctor takes
 `--config <path>` to read it from somewhere else, and `--target <owner>/<repo>`
-to add that repository's two integration objects to the `integrations` row.
+to add that repository's one integration object, `gh-<owner>-<repo>`, to the
+`integrations` row.
 
 ## Client
 
@@ -84,24 +85,21 @@ approved plan, **is** the authorization to execute — no further approval pause
 3. **Walk away.** The run outlives this session; there is nothing to tail. Its
    state is `status.json`, the same bytes on the VM's page and committed to
    `fleet-runs/runs/<N>/` at every transition: `booting` → `running` →
-   `awaiting-grant` → `publishing` → `done`, or `parked` or `failed`. When the
-   user asks how a run is doing, pull the `fleet-runs` clone and read that
-   file back.
+   `publishing` → `done`, or `parked` or `failed`. When the user asks how a
+   run is doing, pull the `fleet-runs` clone and read that file back.
 
-4. **Approve.** When the state is `awaiting-grant`, the approval act is one
-   command:
-
-   ```bash
-   node <plugin-root>/fleet/grant.mjs <N>
-   ```
-
-   That is the pre-merge gate. It reads the committed state, detaches the
-   run's read-only grant on the target from that VM, attaches the writable one
-   for forty-five minutes, and the sandbox pushes its branch and opens its own
-   PR. Gate-green → a ready PR. Parked → a draft PR carrying the gate receipt:
-   acknowledge by marking it ready, or re-drive a narrower plan. A parked run
-   with nothing to publish opens no PR and needs no grant; its evidence is in
-   `fleet-runs/runs/<N>/`. The laptop never fetches a run branch.
+4. **The PR is the gate.** There is no approval command. When the engine is
+   done and the branch is ahead of base, the sandbox pushes it and opens the
+   PR itself, through the target's integration attached at launch. Gate-green
+   → a ready PR and `done`. Parked → a draft PR carrying the gate receipt and
+   `parked`. `pr` and `prAuthor` in `status.json` are the PR's URL and who
+   GitHub says opened it — read both back to the user, and say so when the
+   author is the installation bot rather than them (their GitHub account is
+   not yet linked on exe.dev's Integrations page). The operator merges or
+   closes the PR; a parked run is acknowledged by marking it ready, or
+   re-driven as a narrower plan. A parked run with nothing to publish opens no
+   PR; its evidence is in `fleet-runs/runs/<N>/`. The laptop never fetches a
+   run branch.
 
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` reads `fleet-runs` and
    removes the VMs of runs that finished over an hour ago. It is a cron job;

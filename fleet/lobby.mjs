@@ -7,8 +7,8 @@
  * `fleet-r<N>-*`. Everything the laptop does is either a git command against
  * `fleet-runs` or one exe.dev lobby verb issued as `ssh exe.dev "<verb …>"`.
  *
- * This module is what the four laptop CLIs (`launch`, `grant`, `janitor`,
- * `target`) share: the exec seam, the config file, the name validators, and
+ * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
+ * share: the exec seam, the config file, the name validators, and
  * the two lobby readers. It runs from the installed plugin cache, so — like
  * `doctor.mjs` — every specifier is `node:`-prefixed and there are no npm
  * dependencies.
@@ -84,9 +84,15 @@ export const FLEET_PATTERN = 'fleet-r*'
 /** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name. */
 export const targetSlug = (target) => String(target).replace('/', '-')
 
-/** The two per-target integration objects: read-only and writable. */
-export const roIntegrationFor = (target) => `t-${targetSlug(target)}-ro`
-export const rwIntegrationFor = (target) => `t-${targetSlug(target)}-rw`
+/**
+ * The ONE GitHub integration a target has: `gh-<owner>-<repo>`, `--act-as-user`,
+ * writable, attached per VM for the run's window. Named for the repository so
+ * a plain `integrations list` shows two objects naming one repo without any
+ * parsing — and two such objects on one VM is the fault the sandbox refuses
+ * to boot into (measured 2026-09-03: the GitHub edge routes by repo path and
+ * documents no tie-break between two integrations covering the same repo).
+ */
+export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 
 /** The run's status page, served by `busybox httpd` on the VM's port 8000. */
 export const statusUrlFor = (vmName) => `https://${vmName}.exe.xyz/status.json`
@@ -178,12 +184,11 @@ export const output = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
  * One lobby verb: `ssh exe.dev "<remote>"`, the remote half as ONE argv
  * element. A non-zero exit is a `LobbyError` carrying ALL of the output,
  * verbatim: exe.dev documents no error envelope, so nothing is parsed out and
- * nothing is dropped. `tolerate(res)` names the non-zero answers that are fine
- * (a detach of a grant that already lapsed).
+ * nothing is dropped.
  */
-export async function lobby (exec, remote, { tolerate = () => false } = {}) {
+export async function lobby (exec, remote) {
   const res = await exec('ssh', [EXE_HOST, remote])
-  if (res.code !== 0 && !tolerate(res)) {
+  if (res.code !== 0) {
     const verb = remote.split(/\s+/)[0]
     throw new LobbyError(`exe.dev ${verb} failed (exit ${res.code}):\n${output(res)}`)
   }
