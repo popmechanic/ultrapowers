@@ -70,8 +70,7 @@ flow:
 claude setup-token > ~/.fleet-oauth-token
 chmod 600 ~/.fleet-oauth-token
 ssh exe.dev "integrations add http-proxy --name claude-max \
-  --target https://api.anthropic.com --bearer=- \
-  --header 'anthropic-beta: claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,extended-cache-ttl-2025-04-11'" \
+  --target https://api.anthropic.com --bearer=-" \
   < ~/.fleet-oauth-token
 rm ~/.fleet-oauth-token
 ```
@@ -99,11 +98,13 @@ Three things these commands hide:
   `--env`, in the golden image, or in this conversation. After the integration
   exists the local file has no further use — delete it. Rotation is one
   `integrations edit claude-max --bearer=-` with a fresh token on stdin.
-- **The `anthropic-beta` header is a build input, not decoration.** The proxy
-  does not forward the client's own beta header, so the nine flags Claude Code
-  sends have to be injected here or `claude -p` answers 400 on a beta it was
-  counting on. Re-capture the list when the CLI version changes
-  (`integrations edit claude-max --header=…`).
+- **Inject the bearer and nothing else.** The proxy forwards Claude Code's own
+  headers, and an injected header of the same name replaces the client's
+  (measured 2026-09-03), so an injected `anthropic-beta` list would destroy the
+  flags the CLI sends. Two edit traps: `--clear-header` removes the bearer too,
+  and any `integrations edit claude-max` should pass `--bearer=-` again in the
+  same command; read the result from `integrations list --json`, never from a
+  request made seconds after the edit.
 - **Only `fleet-runs` rides the tag.** `claude-max` and `gh-<owner>-<repo>`
   are attached to one VM for the run's six hours, at launch. On the shared tag
   either would be a standing credential on every VM on the account. And never

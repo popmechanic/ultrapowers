@@ -52,15 +52,16 @@ sees only fleet-tagged VMs in `ls --json`, can `comment` and `rm` them, gets
 `detach`. Put the janitor's cron behind it.
 
 **2. The Claude subscription, as an `http-proxy` integration.** The token
-goes in on stdin and never touches a VM. The `anthropic-beta` list is injected
-because the proxy does not forward the client's own header:
+goes in on stdin and never touches a VM. Inject the bearer and nothing else:
+the proxy forwards Claude Code's own headers, and an injected header of the same
+name replaces the client's (measured 2026-09-03), so an injected `anthropic-beta`
+list would destroy the flags the CLI sends.
 
 ```bash
 claude setup-token > ~/.fleet-oauth-token
 chmod 600 ~/.fleet-oauth-token
 ssh exe.dev "integrations add http-proxy --name claude-max \
-  --target https://api.anthropic.com --bearer=- \
-  --header 'anthropic-beta: claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,effort-2025-11-24,extended-cache-ttl-2025-04-11'" \
+  --target https://api.anthropic.com --bearer=-" \
   < ~/.fleet-oauth-token
 rm ~/.fleet-oauth-token
 ```
