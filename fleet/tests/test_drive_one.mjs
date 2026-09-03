@@ -5,6 +5,7 @@
 // never touched here).
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import {
   DEFAULTS,
@@ -235,14 +236,23 @@ ok('usage names the committed entry point')
 
 // --- main -----------------------------------------------------------------
 
-{
+// #580: `main` now refuses a plan path it cannot read before it drives, so
+// this leg — which is about flag threading, not about the plan check — needs a
+// plan that really exists. Unique to this file and removed before it exits;
+// same-wave suites run concurrently on one machine. What the plan SAYS is
+// never read here: the drive is a stub.
+const planDir = fs.mkdtempSync(path.join(os.tmpdir(), 'drive-one-main-'))
+const PLAN = path.join(planDir, 'plan.md')
+fs.writeFileSync(PLAN, '# a plan\n\n### Task 1: something\n')
+
+try {
   const calls = []
   const lines = []
   const drive = async (opts) => {
     calls.push(opts)
     return { read: { o1: true, runId: opts.runId }, reportPath: '/tmp/r.json', detailPath: '/tmp/d.json' }
   }
-  const read = await main(['p.md', 'run-46', ...NAMED, '--port', '7'], {
+  const read = await main([PLAN, 'run-46', ...NAMED, '--port', '7'], {
     drive,
     log: (l) => lines.push(l),
     readToken: () => 'tok',
@@ -251,6 +261,7 @@ ok('usage names the committed entry point')
   assert.equal(calls.length, 1)
   assert.equal(calls[0].port, 7)
   assert.equal(calls[0].runId, 'run-46')
+  assert.equal(calls[0].planPath, PLAN)
   assert.equal(calls[0].engineEnv.CLAUDE_CODE_OAUTH_TOKEN, 'tok')
   assert.deepEqual(read, { o1: true, runId: 'run-46' })
   assert.equal(lines[0], JSON.stringify({ o1: true, runId: 'run-46' }, null, 2))
@@ -258,7 +269,10 @@ ok('usage names the committed entry point')
   assert.equal(lines[2], 'detail: /tmp/d.json')
   assert.ok(!lines.join('\n').includes('tok'), 'the token must never be printed')
   ok('main parses, drives once, prints the gate read + paths, never the token')
+} finally {
+  fs.rmSync(planDir, { recursive: true, force: true })
 }
+assert.equal(fs.existsSync(planDir), false, 'the temp plan dir must be removed before this file exits')
 
 // --- shellExec (#362-1) ----------------------------------------------------
 // The production exec seam keeps stdout PURE. drive.mjs's #337 preflight

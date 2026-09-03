@@ -884,10 +884,14 @@ export const driveOne = async ({
   }
 
   // #575 M3 — the ONE new refusal. The engine checkout is pushed to every
-  // sandbox at its HEAD, so an uncommitted change here would run as something
-  // HEAD does not name and the #282 stamp could not tell. Refused before the
-  // orchestrator starts and before any command addressed to exe.dev.
-  const tree = await exec(`git -C ${repoDir} status --porcelain`)
+  // sandbox at its HEAD, so an uncommitted change to a TRACKED file here would
+  // run as something HEAD does not name and the #282 stamp could not tell.
+  // Untracked files are exempt (#579): the push ships `engineSha` only, so a
+  // stray `drive-run-*.out`, an editor swap file or a plan staged in the
+  // checkout can never reach a sandbox — and must not refuse the drive.
+  // Refused before the orchestrator starts and before any command addressed
+  // to exe.dev.
+  const tree = await exec(`git -C ${repoDir} status --porcelain --untracked-files=no`)
   if (tree?.code !== 0 || String(tree.stdout ?? '').trim().length > 0) {
     const why = tree?.code !== 0 ? `git status failed (code ${tree?.code}) ${execDiagnostic(tree)}` : `uncommitted changes:\n${String(tree.stdout).trimEnd()}`
     throw new Error(

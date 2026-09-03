@@ -555,10 +555,12 @@ pre-authorization for that manual ack, and the override is recorded in
 readable file, shipped in the run assignment and known to the sandbox by its
 basename (#544, #575); nothing reads a plan out of git, so there is no
 committed copy for it to diverge from. What must be clean is the ENGINE
-checkout the drive runs out of: an uncommitted change there is refused before
-any provisioning (`is not clean` — commit, stash or discard it), because the
-engine is pushed at HEAD and a tree HEAD does not name cannot be what the
-sandbox ran.
+checkout the drive runs out of: an uncommitted change to a tracked file there
+is refused before any provisioning (`is not clean` — commit, stash or discard
+it), because the engine is pushed at HEAD and a tree HEAD does not name cannot
+be what the sandbox ran. An untracked file is not: the push ships that HEAD
+alone, so a stray `drive-run-*.out` or a plan staged in the checkout can never
+reach a sandbox and is tolerated (#579).
 
 **The orchestrator opens the PR (#368).** Once the run resolves and its
 branch is fetched into the target's cache clone as `refs/fleet/<runId>`

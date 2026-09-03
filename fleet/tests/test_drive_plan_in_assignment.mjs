@@ -248,7 +248,7 @@ try {
   const STAT = 'ssh -o BatchMode=yes -o ConnectTimeout=10 exe.dev "stat fleet-run-plan-j --json --range=24h"'
   const FIRST_USE_SEQUENCE = [
     'git check-ref-format refs/fleet/run-plan-j',
-    'git -C <root>/repo status --porcelain',
+    'git -C <root>/repo status --porcelain --untracked-files=no',
     'git -C <root>/repo rev-parse HEAD',
     'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
     `git -c credential.helper= -c credential.helper='!gh auth git-credential' clone https://github.com/o/r.git <root>/targets/o--r`,
@@ -258,7 +258,7 @@ try {
   ]
   const CACHED_SEQUENCE = [
     'git check-ref-format refs/fleet/run-plan-j',
-    'git -C <root>/repo status --porcelain',
+    'git -C <root>/repo status --porcelain --untracked-files=no',
     'git -C <root>/repo rev-parse HEAD',
     'git -C <root>/repo show HEAD:.claude-plugin/plugin.json',
     `git -C <root>/targets/o--r -c credential.helper= -c credential.helper='!gh auth git-credential' fetch origin`,

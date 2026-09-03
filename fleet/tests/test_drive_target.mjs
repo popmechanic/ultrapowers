@@ -213,13 +213,18 @@ const greenDrive = async (fixture, { runId, overrides = {}, stamp = null, provis
 
 // ---------------------------------------------------------------------------
 // (c) M3: a dirty engine checkout refuses before anything reaches exe.dev.
+//     Dirty means a TRACKED file the checkout has modified (#579): the push
+//     ships HEAD alone, so an untracked file cannot reach a sandbox and no
+//     longer refuses — `fleet/tests/test_drive_engine_untracked.mjs` pins that
+//     half. `f.txt` is committed by the fixture, so editing it is the dirt.
 // ---------------------------------------------------------------------------
 {
   const fixture = await setupDriveFixture()
   try {
     const { tmp, repoDir, driveDefaults, makeExec } = fixture
-    const stray = path.join(repoDir, 'uncommitted.txt')
-    fs.writeFileSync(stray, 'not in HEAD\n')
+    const tracked = path.join(repoDir, 'f.txt')
+    const committed = fs.readFileSync(tracked, 'utf8')
+    fs.writeFileSync(tracked, 'edited, not committed\n')
     const exec = makeExec(() => assert.fail('no sandbox may start behind a dirty engine checkout'))
     await assert.rejects(
       driveOne({ ...driveDefaults, dbDir: path.join(tmp, 'db-c'), exec, runId: 'run-c-dirty' }),
@@ -231,11 +236,11 @@ const greenDrive = async (fixture, { runId, overrides = {}, stamp = null, provis
     )
     assert.ok(!exec.cmds.some(isExeDev), `no command addressed to exe.dev, got: ${JSON.stringify(exec.cmds)}`)
     assert.equal(fs.existsSync(path.join(tmp, 'db-c')), false, 'refusal precedes the orchestrator start')
-    fs.rmSync(stray)
+    fs.writeFileSync(tracked, committed)
   } finally {
     fixture.cleanup()
   }
-  ok('(c) a dirty engine checkout refuses, naming it and `clean`, with no exe.dev command [M3]')
+  ok('(c) a dirty tracked file in the engine checkout refuses, naming it and `clean`, with no exe.dev command [M3]')
 }
 
 // ---------------------------------------------------------------------------
