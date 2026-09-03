@@ -26,6 +26,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// The run's event log lives in run-waves.mjs; the engine borrows its ULID
+// stamp so the driver's own records sort with the worker envelopes rather
+// than beside them (readers order by id, never by line — run-waves.mjs).
+import { ulid } from './run-waves.mjs'
 
 // ── model tiers (waves.js parity) ────────────────────────────────────────────
 export const TIER = { standard: 'sonnet', mostCapable: 'opus' }
@@ -220,6 +224,19 @@ const interfacesLine = (task) => {
 export const isPairReview = (profile) => profile === 'peer' || profile === 'adversarial'
 // Round-1 minor findings, rendered for the round-2 reviewers (see the review
 // loop). Exported for the unit pin, as suiteLine is.
+// #589 — `Run:` proofs. A Proof slot may name a COMMAND instead of a test path,
+// and the driver runs it: models never run git, and they never run the proof
+// either. What the reviewer gets is not a claim that the command passed but the
+// bytes it printed, so the referee reads the same evidence the driver recorded.
+// Empty runs render nothing at all — a task without `Run:` keeps the prompt it
+// had before this existed, byte for byte.
+export const runEvidenceBlock = (runs) => {
+  if (!Array.isArray(runs) || runs.length === 0) return ''
+  return '\n\nRUN EVIDENCE: the driver executed each of the Proof\'s `Run:` commands ' +
+    'itself, in this task\'s own clone, on the tree the patch above describes — ' +
+    'stdout and stderr combined, last 4,000 characters.' +
+    runs.map((r) => '\n\n$ ' + r.cmd + '\nexit ' + r.exit + '\n' + r.stdout).join('')
+}
 export const priorAdvisoriesBlock = (minors) => {
   if (!Array.isArray(minors) || minors.length === 0) return ''
   return '\nPRIOR-ROUND ADVISORIES (minor findings from the previous review round, already ' +
@@ -400,6 +417,19 @@ export async function runEngine({
   const sh = shOf(exec)
   const git = gitOf(exec)
   const { runDir, clonesDir } = paths
+  // The engine is handed `log` and `phase` (both events of their own kind) but
+  // no raw sink, and `driver:proof-run` is a RECORD, not narration: it has to
+  // survive the run as data a sense pass can count. So it goes to the same
+  // append-only `<runDir>/events.jsonl` makeEventLog opened, stamped the same
+  // way. A failed append is never the run's failure mode — the evidence the
+  // reviewer reads is the prompt block, and this is the durable copy.
+  const appendEvent = (e) => {
+    try {
+      const ts = Date.now()
+      fs.appendFileSync(path.join(runDir, 'events.jsonl'),
+        JSON.stringify({ ...e, id: ulid(ts), ts }) + '\n')
+    } catch { /* evidence, not control flow */ }
+  }
   const repoDir = path.resolve(paths.repoDir)
   const integ = path.join(clonesDir, 'integration')
 
@@ -621,6 +651,13 @@ export async function runEngine({
     const proofTests = Array.isArray(task.proofTests)
       ? task.proofTests.filter((p) => typeof p === 'string' && p.trim() !== '')
       : []
+    // The Proof's `Run:` commands, in Proof order (#589). Absent or empty for
+    // every task compiled before the slot existed — and M6: a `Run:`-only
+    // proof leaves `proofTests` empty, so it dispatches no examiner by the
+    // branch already below, with no new condition.
+    const proofRuns = Array.isArray(task.proofRuns)
+      ? task.proofRuns.filter((c) => typeof c === 'string' && c.trim() !== '')
+      : []
     const examTestCmd = (typeof task.testCmd === 'string' && task.testCmd.trim())
       ? task.testCmd : null
     // `git hash-object` on the path as it stands in the clone; an absent path
@@ -742,12 +779,25 @@ export async function runEngine({
     // round 1 already recorded; the report keeps the union, not round 2 alone.
     const priorMinors = []
     for (let iter = 1; iter <= 2; iter++) {
+      // ── the `Run:` proofs (#589) ─────────────────────────────────────────
+      // Once per review round, not once per task: a fix round is measured by a
+      // FRESH execution, so round 2's evidence replaces round 1's rather than
+      // re-quoting a run that predates the repair. Same `sh` seam as the
+      // run-wide suite (`bash -lc`, SHELL_TIMEOUT_MS), same cwd the implementer
+      // just wrote to, same tail-truncation the rest of the evidence uses.
+      const runEvidence = []
+      for (const cmd of proofRuns) {
+        const r = await sh(cmd, cloneDir)
+        runEvidence.push({ cmd, exit: r.code, stdout: tail(r.stdout + r.stderr) })
+        appendEvent({ kind: 'driver:proof-run', task: task.id, cmd, exit: r.code, iter })
+      }
       const reviewPrompt = roles.reviewer + taskBodyBlock(task, wavesPath) +
         '\nPATCH: ' + impl.patch +
         '\nHEAD: ' + impl.headSha +
         '\nBASE: ' + baseShaForTask + filesLine(task) + siblingsStr +
         globalConstraintsBlock + interfacesLine(task) + priorAdvisoriesBlock(priorMinors) +
-        (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '')
+        (examEdited && examEdited.length ? '\nEXAM EDITED: ' + examEdited.join(', ') : '') +
+        runEvidenceBlock(runEvidence)
       const reviewOpts = (pass) => ({
         label: 'review:' + task.id + ':' + iter + (pass ? ':' + pass : ''),
         model: REVIEWER_MODEL, schema: REVIEWER_SCHEMA,
@@ -788,6 +838,18 @@ export async function runEngine({
           'treating as FIX_REQUIRED with a blocking issue (never merging on an empty review)')
         issues = issues.concat([{ severity: 'blocking',
           detail: 'review result carried no recognizable verdict — re-review required' }])
+      }
+      // A red `Run:` command outranks the reviewer's verdict: the Proof is the
+      // task's contract, and a referee reading the failing output and saying
+      // PASS anyway is exactly the merge this exists to stop. The detail names
+      // the command and the exit code because the fix round reads these lines
+      // as its instructions.
+      for (const r of runEvidence) {
+        if (r.exit === 0) continue
+        issues = issues.concat([{ severity: 'blocking',
+          detail: 'the Proof\'s Run: command failed: ' + r.cmd + ' — exit ' + r.exit }])
+        judgmentCalls.push('task ' + task.id + ': Run: proof `' + r.cmd + '` exited ' + r.exit +
+          ' in review round ' + iter + ' — blocking, whatever the reviewer returned')
       }
       const blocking = issues.filter((i) => i.severity === 'blocking')
       const minors = issues.filter((i) => i.severity === 'minor')
