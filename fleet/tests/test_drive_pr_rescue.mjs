@@ -40,7 +40,10 @@ const RUN_ID = 'run-9'
 const BRANCH = 'ultra/integration-run-9'
 const HOST = 'fleet-orchestrator.exe.xyz'
 const TIP = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
-const RESCUE = { runId: RUN_ID, tip: TIP, branch: BRANCH, host: HOST }
+// #575: the pin lives in the TARGET's cache clone, so the card names the target.
+const TARGET = 'octo/widgets'
+const CACHE = '/home/exedev/targets/octo--widgets'
+const RESCUE = { runId: RUN_ID, tip: TIP, branch: BRANCH, host: HOST, target: TARGET }
 
 // The two real failure texts, in the shape `driveOne`'s publish leg pushes
 // onto `errors`, already scrubbed of the token. R9/R10 below assert against
@@ -98,10 +101,10 @@ const rescueBlock = (text) => {
 // run-44 comment; nothing here is computed, every value is one the drive
 // already held.
 const EXPECTED_BLOCK = `# 1. the run tip is already pinned on the orchestrator (#497) — confirm it
-ssh ${HOST} 'cd /home/exedev/repo && git rev-parse refs/fleet/${RUN_ID}'
+ssh ${HOST} 'cd ${CACHE} && git rev-parse refs/fleet/${RUN_ID}'
 #    expect ${TIP}
 # 2. fetch that pinned ref to your laptop over ssh
-git fetch ssh://exedev@${HOST}/home/exedev/repo refs/fleet/${RUN_ID}:refs/heads/${BRANCH}
+git fetch ssh://exedev@${HOST}${CACHE} refs/fleet/${RUN_ID}:refs/heads/${BRANCH}
 # 3. push it with an operator credential — the drive's token could not
 git push origin ${BRANCH}
 # 4. open the PR by hand, carrying this gate receipt as the body
@@ -115,9 +118,10 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
   assert.equal(rescueBlock(text), EXPECTED_BLOCK)
   // The four values, present in the block itself and not merely in the prose.
   const block = rescueBlock(text)
-  for (const value of [`refs/fleet/${RUN_ID}`, TIP, BRANCH, HOST]) {
+  for (const value of [`refs/fleet/${RUN_ID}`, TIP, BRANCH, HOST, CACHE]) {
     assert.ok(block.includes(value), `the block names ${value}: ${block}`)
   }
+  assert.ok(!block.includes('/home/exedev/repo'), `the engine checkout holds no run refs (#575): ${block}`)
   assert.ok(text.endsWith(`\n${TRAILER}\n`))
 }
 
@@ -179,8 +183,8 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
     const heading = text.split('\n').find((l) => l.startsWith('## Driver notes'))
     assert.equal(heading, '## Driver notes (2)', `the count includes the refusal: ${heading}`)
   }
-  // The other three fields are validated the same way.
-  for (const [field, value] of [['branch', 'ultra/integration; id'], ['runId', '../../etc'], ['host', 'orchestrator.exe.xyz; id']]) {
+  // The other four fields are validated the same way.
+  for (const [field, value] of [['branch', 'ultra/integration; id'], ['runId', '../../etc'], ['host', 'orchestrator.exe.xyz; id'], ['target', 'a/b/c'], ['target', 'octo/widgets; id']]) {
     const text = body({ rescue: { ...RESCUE, [field]: value } })
     assert.ok(!text.includes('## Rescue'), `no block for ${field} ${JSON.stringify(value)}: ${text}`)
     const line = text.split('\n').find((l) => l.startsWith('- rescue block omitted'))
@@ -206,7 +210,10 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
     assert.ok(triage.includes(verb), `§Park triage carries \`${verb}\`: ${triage}`)
   }
   // The two shapes the card prints, spelled the same way in the RUNBOOK.
-  assert.ok(/git fetch ssh:\/\/exedev@fleet-orchestrator\.exe\.xyz\/home\/exedev\/repo refs\/fleet\//.test(triage), 'the fetch line matches the card')
+  // #575: the RUNBOOK spells the cache clone with the literal placeholder in
+  // both positions the card fills from `target`.
+  assert.ok(triage.includes("cd /home/exedev/targets/<owner>--<repo> && git rev-parse refs/fleet/run-<N>"), 'the confirm line names the target cache')
+  assert.ok(/git fetch ssh:\/\/exedev@fleet-orchestrator\.exe\.xyz\/home\/exedev\/targets\/<owner>--<repo> refs\/fleet\//.test(triage), 'the fetch line matches the card')
   assert.ok(triage.includes('```bash'), 'the four steps are a fenced bash block')
 }
 
@@ -240,7 +247,7 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
 // section they gate.
 {
   const fixture = await setupDriveFixture()
-  const { tmp, repoDir, integrationSha, makeExec, startStubSandbox, driveDefaults, cleanup } = fixture
+  const { tmp, repoDir, cacheDir, integrationSha, unreachableSha, makeExec, startStubSandbox, driveDefaults, cleanup } = fixture
   try {
     // A parked run that publishes: status `parked` + a receipt row is what
     // makes the drive fetch the branch, pin `refs/fleet/<runId>` and reach the
@@ -275,18 +282,21 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
     // The four values the block must name, for a REAL run — none of them
     // invented by the card: the pinned ref is the one the drive wrote, the tip
     // is the sha it fetched, the branch is the one the sandbox published.
-    const assertCarriesRescue = ({ card, runId }) => {
+    const assertCarriesRescue = async ({ card, runId }) => {
       assert.ok(card.includes('\n## Rescue\n'), `the card on disk carries the section:\n${card}`)
       const block = rescueBlock(card)
-      const tip = (fs.readFileSync(path.join(repoDir, '.git', 'refs', 'fleet', runId), 'utf8') || '').trim()
+      // #575: the pin is in the TARGET's cache clone — the fetch wrote it.
+      const tip = (await sh(`git -C "${cacheDir}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim()
       assert.match(tip, /^[0-9a-f]{40}$/, 'the drive really pinned refs/fleet/<runId>')
       assert.equal(tip, integrationSha, 'and it pinned the tip the sandbox integrated')
       for (const value of [`refs/fleet/${runId}`, tip, INTEGRATION_BRANCH, orchestratorHost()]) {
         assert.ok(block.includes(value), `the block names ${value}:\n${block}`)
       }
       // Every one of the four steps, in order, with this run's values in them.
-      assert.ok(block.includes(`ssh ${orchestratorHost()} 'cd /home/exedev/repo && git rev-parse refs/fleet/${runId}'`), block)
-      assert.ok(block.includes(`git fetch ssh://exedev@${orchestratorHost()}/home/exedev/repo refs/fleet/${runId}:refs/heads/${INTEGRATION_BRANCH}`), block)
+      // The card names the operator's box — `/home/exedev/targets/<owner>--<repo>`
+      // — spelled from the target, not this process's `targetsDir`.
+      assert.ok(block.includes(`ssh ${orchestratorHost()} 'cd /home/exedev/targets/octo--widgets && git rev-parse refs/fleet/${runId}'`), block)
+      assert.ok(block.includes(`git fetch ssh://exedev@${orchestratorHost()}/home/exedev/targets/octo--widgets refs/fleet/${runId}:refs/heads/${INTEGRATION_BRANCH}`), block)
       assert.ok(block.includes(`git push origin ${INTEGRATION_BRANCH}`), block)
       assert.ok(block.includes(`gh pr create --draft --head ${INTEGRATION_BRANCH}`), block)
     }
@@ -299,7 +309,7 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
       assert.equal(detail.pullRequest, null, 'the PR was refused — this IS the case the rescue answers')
       const failure = detail.errors.find((e) => e.startsWith(`gh pr create for ${INTEGRATION_BRANCH} failed`))
       assert.ok(failure, `the failure is on the record: ${JSON.stringify(detail.errors)}`)
-      assertCarriesRescue({ card, runId })
+      await assertCarriesRescue({ card, runId })
       // …and the notes the section sits under are no longer a snapshot taken
       // before the failure. This is the staleness the section exposed.
       assert.ok(card.includes(`- ${failure}`), `the card's Driver notes carry the publish failure itself:\n${card}`)
@@ -308,17 +318,19 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
     }
 
     // -- R10a: the push refuses (run-33's shape: no `workflow` scope) --------
-    // The stand-in origin is moved out from under the push, so the real
-    // `git push origin <sha>:refs/heads/<branch>` fails for real — locally,
-    // with no network. `gh pr create` is never reached.
+    // origin's copy of the run branch is force-parked on an unrelated commit,
+    // so the real `git push origin <sha>:refs/heads/<branch>` is rejected as a
+    // non-fast-forward by git itself — locally, with no network, and with
+    // origin still reachable for the preflight's (fatal, #575) `fetch origin`.
+    // `gh pr create` is never reached.
     {
       const runId = 'run-rescue-push'
       const { detail, card, exec } = await parkedDrive({
         runId,
         gh: { code: 0, stdout: 'https://github.com/popmechanic/ultrapowers/pull/1\n' },
         before: async () => {
-          const moved = await sh(`git -C "${repoDir}" remote set-url origin "${path.join(tmp, 'no-such-origin.git')}"`, tmp)
-          assert.equal(moved.code, 0, `could not repoint origin: ${moved.stderr}`)
+          const parked = await sh(`git -C "${repoDir}" push -q origin +${unreachableSha}:refs/heads/${INTEGRATION_BRANCH}`, tmp)
+          assert.equal(parked.code, 0, `could not park origin's branch: ${parked.stderr}`)
         },
       })
       assert.equal(detail.pullRequest, null)
@@ -327,7 +339,7 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
         `the push really failed: ${JSON.stringify(detail.errors)}`,
       )
       assert.ok(!exec.cmds.some((c) => / gh pr create /.test(c)), 'and `gh pr create` was never reached')
-      assertCarriesRescue({ card, runId })
+      await assertCarriesRescue({ card, runId })
     }
 
     // -- R10b: a park that publishes cleanly carries no rescue ---------------
@@ -335,8 +347,8 @@ gh pr create --draft --head ${BRANCH} --title '[parked] fleet ${RUN_ID}' --body-
     // handed are the bytes left on disk.
     {
       const runId = 'run-rescue-ok'
-      const restored = await sh(`git -C "${repoDir}" remote set-url origin "${fixture.originRepo}"`, tmp)
-      assert.equal(restored.code, 0)
+      const restored = await sh(`git -C "${repoDir}" push -q origin :refs/heads/${INTEGRATION_BRANCH}`, tmp)
+      assert.equal(restored.code, 0, `could not clear origin's branch: ${restored.stderr}`)
       const { detail, card, evidenceDir } = await parkedDrive({ runId, gh: { code: 0, stdout: 'https://github.com/popmechanic/ultrapowers/pull/4243\n' } })
       assert.equal(detail.pullRequest?.number, 4243, `the draft park card opened: ${JSON.stringify(detail.errors)}`)
       assert.ok(!card.includes('## Rescue'), `a published park card carries no rescue:\n${card}`)

@@ -17,7 +17,7 @@ import { EventEmitter } from 'node:events'
 import { execFileSync } from 'node:child_process'
 import {
   parseArgs, fillTiers, ackDecision, acksOf, criticDecision, boundedParallel, provisionRunTree,
-  writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage,
+  writeRoleFiles, writeConfineSettings, composeAgent, runMain, usage, DEFAULTS,
   makeAddDirsFor,
   WIDTH, ROLE_TIMEOUT_MS, ROLE_PROMPTS,
 } from '../run-main.mjs'
@@ -29,17 +29,24 @@ const git = (argv, cwd) => execFileSync('git', argv, { cwd, encoding: 'utf8', st
 
 // ── parseArgs ────────────────────────────────────────────────────────────────
 {
-  const p = parseArgs(['plan.md', 'run-24'])
+  const p = parseArgs(['plan.md', 'run-24', '--repo', '/t'])
   assert.equal(p.planPath, 'plan.md')
   assert.equal(p.runId, 'run-24')
   assert.equal(p.tier, 'mostCapable')
-  const q = parseArgs(['plan.md', 'run-24', '--tier', 'standard', '--overlap', 'serialize'])
+  assert.equal(p.repoDir, '/t')
+  const q = parseArgs(['plan.md', 'run-24', '--repo', '/t', '--tier', 'standard', '--overlap', 'serialize'])
   assert.equal(q.tier, 'standard')
   assert.equal(q.overlap, 'serialize')
   assert.throws(() => parseArgs(['plan.md']), /expected exactly/)
   assert.throws(() => parseArgs(['plan.md', 'run 24']), /runId must be/)
   assert.throws(() => parseArgs(['plan.md', 'run-24', '--bogus', 'x']), /unknown flag/)
+  // #575: the target is mandatory. The engine builds the tree it is pointed
+  // at; a default pointing it at its own checkout is the deleted self-host
+  // case, so an omitted --repo is a refusal, not an inference.
+  assert.throws(() => parseArgs(['plan.md', 'run-24']), /--repo/)
+  assert.ok(!Object.keys(DEFAULTS).includes('repoDir'), 'DEFAULTS carries no repoDir key')
   assert.ok(usage().includes('--tier'))
+  assert.ok(usage().includes('--repo'))
 }
 
 // ── fillTiers ────────────────────────────────────────────────────────────────

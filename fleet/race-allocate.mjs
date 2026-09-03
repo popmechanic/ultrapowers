@@ -1,9 +1,11 @@
 // fleet/race-allocate.mjs — one attempt, one lane. A race runs k attempts of
 // the same plan at once, and every resource they touch has to be theirs alone:
-// the run id (the #211 grammar — a suffixed id is a new id), the drive port,
-// the events db-dir, and the repo they drive. The repo-dir is the load-bearing
-// one: driveOne resolves its base as HEAD of its own repoDir, so siblings
-// sharing a checkout would race the publish leg's FETCH_HEAD window (#497).
+// the run id (the #211 grammar — a suffixed id is a new id), the drive port
+// and the events db-dir. (A per-lane repo-dir is still minted here for the
+// manifest's sake, but `race-launch.mjs` overrides it: since #575 every
+// attempt drives out of the one engine checkout, names the same target and
+// base, and pins its tip under its own `refs/fleet/<runId>` in the target's
+// shared cache clone — per-ref locks are what keep siblings from racing.)
 //
 // Pure: no filesystem, no git, no clock. The entries this returns are exactly
 // the manifest's `runs` array.

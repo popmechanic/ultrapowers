@@ -204,7 +204,7 @@ provision once, following `fleet/RUNBOOK.md`. Run `/ultrapowers setup` first: it
 each piece of the fleet and walks you to the RUNBOOK section that builds any piece you are
 missing.
 
-**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can commit a plan.
+**Where it runs.** ultrapowers runs on an exe.dev fleet you provision; the plugin is the client, and there is no local engine — see "How it runs" above and [`fleet/RUNBOOK.md`](fleet/RUNBOOK.md) for the one-time fleet setup. The engine (`fleet/run-main.mjs`, spawned on the sandbox) runs there, never on your machine, so the plugin works from any Claude Code surface that can commit a plan. A run builds the repository you run `/ultrapowers` in and opens its pull request there; ultrapowers itself is just one such repository.
 
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)

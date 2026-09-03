@@ -1,24 +1,26 @@
 // fleet/race-launch.mjs — #511 task 8: the launch verb.
 //
-//   node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]
+//   node fleet/race.mjs launch <plan.md> <raceId> --target <owner>/<repo> --base <sha> [--k N]
 //
 // One committed plan, K concurrent attempts (the #454 launch shape). Every
-// attempt gets its own runId, port, db-dir and checkout (`allocateRuns`), every
-// checkout is the same `baseCommit` with origin re-pointed at the launch
-// checkout's remote (`cloneAtCommit`), and every drive is built through
-// drive-one's own `parseArgs`/`buildDriveOptions` seam — never hand-assembled,
-// because the token read, the TTL, the heartbeat and the publish constants all
-// live behind it.
+// attempt gets its own runId, port and db-dir (`allocateRuns`), and every drive
+// is built through drive-one's own `parseArgs`/`buildDriveOptions` seam — never
+// hand-assembled, because the token read, the TTL, the heartbeat and the
+// publish constants all live behind it.
 //
-// Three orderings here are load-bearing:
+// This module runs no git and starts no subprocess of its own. The commit is
+// not discovered here — it is NAMED on the launch line as `--base`, and every
+// attempt is handed that same sha, the same `--target` and the same engine
+// checkout. The drive reaches the target by fetching it into a ref of its own,
+// which is what makes one checkout safe for K attempts at once; a race
+// therefore needs no per-attempt checkout, and there is none.
 //
-//   1. The origin read and the plan resolution happen BEFORE the manifest is
-//      written and before the first clone, so a race that cannot publish fails
-//      while it is still free rather than K paid drives later.
-//   2. The manifest is written before any drive starts. The dials are
+// Two orderings here are load-bearing:
+//
+//   1. The manifest is written before any drive starts. The dials are
 //      pre-registered; a manifest written after results are visible would let
 //      them be chosen to fit what came back.
-//   3. Every drive is SETTLED, not raced (`Promise.allSettled`). A preflight
+//   2. Every drive is SETTLED, not raced (`Promise.allSettled`). A preflight
 //      refusal on one attempt used to take the process down mid-provision and
 //      leave the siblings' `fleet-<runId>` VMs orphaned — the defect run-47's
 //      review and all three race-48 reviews flagged (#535 item 1). A rejection
@@ -31,13 +33,6 @@ import { buildDriveOptions } from './drive-one.mjs'
 import { parseLaunchArgs } from './race.mjs'
 import { DIALS, assertManifest, writeRaceManifest } from './race-manifest.mjs'
 import { allocateRuns } from './race-allocate.mjs'
-import {
-  gitRunner,
-  baseCommitOf,
-  originUrlOf,
-  cloneAtCommit,
-  resolvePlan,
-} from './race-clone.mjs'
 
 /**
  * Launch a race: K drives of one plan at one commit, all in flight together.
@@ -46,8 +41,6 @@ import {
  *   drive-one's runId positional; `parseLaunchArgs` owns the grammar).
  * @param {object} [deps]
  * @param {(opts: object) => Promise<any>} [deps.drive] - `driveOne`; injected in tests.
- * @param {(args: string[], opts?: {cwd?: string}) => Promise<string>} [deps.git] -
- *   every git call travels through this one runner.
  * @param {string} [deps.evidenceDir] - overrides the parsed evidence dir for
  *   both the manifest and the drives (tests pass a temp dir).
  * @param {() => string|number} [deps.now] - the `launchedAt` instant.
@@ -61,7 +54,6 @@ import {
 export const launchRace = async (argv, deps = {}) => {
   const {
     drive = defaultDriveOne,
-    git = gitRunner,
     evidenceDir: evidenceDirOverride,
     now = () => new Date().toISOString(),
     stdout = (line) => process.stdout.write(`${line}\n`),
@@ -71,31 +63,27 @@ export const launchRace = async (argv, deps = {}) => {
   } = deps
 
   const parsed = parseLaunchArgs(argv)
-  const { raceId, k } = parsed
-  // The launch checkout: drive-one's `--repo-dir`, defaulting to the checkout
-  // this CLI lives in. Its HEAD is the raced commit and its origin is the
-  // remote every clone is re-pointed at — both read through the injected git,
-  // never off process.cwd().
-  const sourceRepo = parsed.repoDir
+  const { raceId, k, target, baseSha, planPath } = parsed
+  // The one engine checkout every attempt drives out of — drive-one's
+  // `REPO_DIR`, defaulted there and no longer a flag anywhere.
+  const repoDir = parsed.repoDir
   const evidenceDir = evidenceDirOverride ?? parsed.evidenceDir
 
-  const baseCommit = await baseCommitOf(git, sourceRepo)
-  const originUrl = await originUrlOf(git, sourceRepo)
-  // Stored repo-relative: each attempt is handed this path against its own clone.
-  const planPath = resolvePlan(sourceRepo, parsed.planPath)
-
+  // `allocateRuns` still hands each lane a repo-dir; there are no per-attempt
+  // checkouts any more, so the lane record carries the shared one and the
+  // manifest says what actually happened.
   const runs = allocateRuns({
     raceId,
     k,
     port: parsed.port,
     dbDir: parsed.dbDir,
-    raceDir: parsed.raceDir,
-  })
+    raceDir: repoDir,
+  }).map((run) => ({ ...run, repoDir }))
 
   const manifest = {
     raceId,
     planPath,
-    baseCommit,
+    baseCommit: baseSha,
     k,
     launchedAt: now(),
     runs,
@@ -104,20 +92,13 @@ export const launchRace = async (argv, deps = {}) => {
   assertManifest(manifest)
   const manifestFile = writeRaceManifest(evidenceDir, manifest)
   stdout(`race ${raceId}: manifest ${manifestFile}`)
-  stdout(`race ${raceId}: ${k} attempts of ${planPath} at ${baseCommit} (from ${sourceRepo})`)
-
-  // Sequential, and before any drive: a clone that fails stops the race while
-  // the only thing built is a directory. `git clone` creates its destination's
-  // leading directories, so the race dir needs no mkdir of its own.
-  for (const run of runs) {
-    await cloneAtCommit({ git, sourceRepo, repoDir: run.repoDir, baseCommit, originUrl })
-    stdout(`race ${raceId}: ${run.runId} -> ${run.repoDir}`)
-  }
+  stdout(`race ${raceId}: ${k} attempts of ${planPath} on ${target} at ${baseSha} (from ${repoDir})`)
 
   // Built for every attempt BEFORE the first drive starts: an option build that
   // throws (an unreadable token file, say) must refuse the race outright rather
-  // than half of it. Exactly five keys differ between attempts — the four
-  // allocated lanes and the runId-prefixed narration.
+  // than half of it. Exactly four keys differ between attempts — the three
+  // allocated lanes and the runId-prefixed narration. `target`, `baseSha` and
+  // `repoDir` are shared by construction.
   const options = runs.map((run) => ({
     ...buildDriveOptions(
       {
@@ -128,12 +109,6 @@ export const launchRace = async (argv, deps = {}) => {
         port: run.port,
         dbDir: run.dbDir,
         repoDir: run.repoDir,
-        // #543: every attempt drives out of its own throwaway clone, so the
-        // #497 rescue ref would be written into a /tmp directory nobody looks
-        // in and the reaper removes. The launch checkout is the one place all
-        // K tips are findable, and it is the same value for every attempt —
-        // one more shared key, never a per-attempt lane.
-        pinRepoDir: sourceRepo,
       },
       driveDeps,
     ),

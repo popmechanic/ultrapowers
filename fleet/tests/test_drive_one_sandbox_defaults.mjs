@@ -10,7 +10,6 @@
 // implementer. This exam pins the defaults, and pins that nothing else about
 // the option shape moved with them.
 import assert from 'node:assert/strict'
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -23,19 +22,24 @@ const ok = (label) => {
   console.log(`ok - ${label}`)
 }
 
-// Derived from THIS file's location, not from drive-one.mjs — so the two
-// repo-path values in the frozen literal below are checked against an
-// independent derivation rather than against the module under test.
+// Derived from THIS file's location, not from drive-one.mjs — so the repo-path
+// value in the frozen literal below is checked against an independent
+// derivation rather than against the module under test.
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const RUNBOOK = path.join(REPO_ROOT, 'fleet', 'RUNBOOK.md')
 const DRIVE_ONE_TEST = path.join(REPO_ROOT, 'fleet', 'tests', 'test_drive_one.mjs')
+
+// A launch names the repository and the commit; both are required.
+const TARGET = 'o/r'
+const SHA = '3f'.repeat(20)
+const NAMED = ['--target', TARGET, '--base', SHA]
 
 const options = (argv) => buildDriveOptions(parseArgs(argv), { readToken: () => 't' })
 
 // --- (a) M1: a bare parse carries the pool defaults ------------------------
 
 {
-  const o = options(['p.md', 'run-x'])
+  const o = options(['p.md', 'run-x', ...NAMED])
   // The number 16, not the string '16': NUMERIC coerces the flag, so the
   // default has to arrive already coerced.
   assert.equal(o.sandboxCpu, 16)
@@ -48,7 +52,7 @@ const options = (argv) => buildDriveOptions(parseArgs(argv), { readToken: () => 
 // --- (b) M2: the flags still override, in both directions ------------------
 
 {
-  const o = options(['p.md', 'run-x', '--sandbox-cpu', '8', '--sandbox-memory', '16GB'])
+  const o = options(['p.md', 'run-x', ...NAMED, '--sandbox-cpu', '8', '--sandbox-memory', '16GB'])
   assert.equal(o.sandboxCpu, 8)
   assert.equal(typeof o.sandboxCpu, 'number')
   assert.equal(o.sandboxMemory, '16GB')
@@ -96,13 +100,16 @@ const SENTENCE = 'A run sandbox defaults to 16 vCPU and 48 GB; --sandbox-cpu and
 // Frozen from BASE (ae24d58) — `buildDriveOptions(parseArgs(['p.md','run-x']))`
 // with `engineEnv` and `exec` dropped — plus exactly the two entries this task
 // adds. Any other key added, absent, or changed in value fails leg (e).
+// Task 4 (#575) moved three entries: `pinRepoDir` and `prBase` are gone with
+// their flags, and `target`/`baseSha` are what a launch now names.
 const FROZEN_BARE_OPTIONS = {
   planPath: 'p.md',
   golden: 'fleet-golden',
   port: 8180,
   dbDir: '/tmp/fleet-orch-live',
+  target: TARGET,
+  baseSha: SHA,
   repoDir: REPO_ROOT,
-  pinRepoDir: REPO_ROOT,
   runId: 'run-x',
   ttlMs: 14400000,
   heartbeatTimeoutMs: 1800000,
@@ -110,14 +117,13 @@ const FROZEN_BARE_OPTIONS = {
   evidenceDir: '/home/exedev/fleet-evidence',
   allowUnfitPlan: false,
   githubTokenPath: '/home/exedev/.fleet/github-token',
-  prBase: 'main',
   // the two added entries, and only these two
   sandboxCpu: 16,
   sandboxMemory: '48GB',
 }
 
 {
-  const { engineEnv, exec, ...rest } = options(['p.md', 'run-x'])
+  const { engineEnv, exec, ...rest } = options(['p.md', 'run-x', ...NAMED])
   assert.deepEqual(rest, FROZEN_BARE_OPTIONS)
   // deepEqual is loose about key ORDER but not about presence; assert the two
   // dropped keys were actually there, so dropping them cannot hide a rename.
@@ -126,30 +132,23 @@ const FROZEN_BARE_OPTIONS = {
   ok('the bare option shape is BASE plus exactly sandboxCpu/sandboxMemory')
 }
 
-// --- (f) M5: test_drive_one.mjs is rewritten in place, and stays green -----
+// --- (f) M5: test_drive_one.mjs still asserts the two defaults, and is green -
 
-// Frozen at BASE: the file was 269 lines, the two bare-parse assertions sat at
-// lines 203 and 204, and the SHA-256 of every OTHER line (joined with '\n')
-// was this digest. A file gutted anywhere else, or one that deletes the two
-// assertions instead of rewriting them, fails here.
-const BASE_LINE_COUNT = 269
-const FROZEN_LINES = [203, 204]
-const BASE_DIGEST_EXCLUDING_FROZEN = 'be8daf5d348f59d3934bffa7ee0bc2cf7b5f7e533d65141bd24da8ca95d7b238'
-
+// The #546 version of this leg froze test_drive_one.mjs by line count and by
+// the SHA-256 of every line but two. #575 rewrites that file — every argv in
+// it now names --target and --base — so the digest is retired rather than
+// re-frozen against this run's own edit, which would prove nothing. What the
+// leg still owns is the substance: the two default assertions are there, and
+// the file is green.
 {
-  const lines = fs.readFileSync(DRIVE_ONE_TEST, 'utf8').split('\n')
-  if (lines[lines.length - 1] === '') lines.pop()
-  assert.equal(lines.length, BASE_LINE_COUNT, 'test_drive_one.mjs changed line count')
-  const frozen = new Set(FROZEN_LINES.map((n) => n - 1))
-  const rest = lines.filter((_, i) => !frozen.has(i)).join('\n')
-  assert.equal(
-    crypto.createHash('sha256').update(rest, 'utf8').digest('hex'),
-    BASE_DIGEST_EXCLUDING_FROZEN,
-    'test_drive_one.mjs changed outside the two frozen lines',
+  const text = fs.readFileSync(DRIVE_ONE_TEST, 'utf8')
+  assert.match(text, /assert\.equal\(o\.sandboxCpu, 16\)/, 'test_drive_one.mjs no longer asserts the cpu default')
+  assert.match(
+    text,
+    /assert\.equal\(o\.sandboxMemory, '48GB'\)/,
+    'test_drive_one.mjs no longer asserts the memory default',
   )
-  assert.ok(lines[202].includes('16'), `line 203 does not assert the new cpu default: ${lines[202]}`)
-  assert.ok(lines[203].includes('48GB'), `line 204 does not assert the new memory default: ${lines[203]}`)
-  ok('test_drive_one.mjs rewrote exactly the two pinned assertions and nothing else')
+  ok('test_drive_one.mjs still asserts 16 vCPU and 48GB on the bare option shape')
 }
 
 {

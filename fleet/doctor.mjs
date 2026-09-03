@@ -53,6 +53,9 @@ const FIXES = Object.freeze({
 })
 
 const PROBE_VM = 'fleet-doctor-probe'
+/** Where every sandbox keeps its engine clone — a fixed path on the golden,
+ *  not the orchestrator's `repoDir`. */
+const ENGINE_DIR = '/home/exedev/repo'
 const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
 const HEX40 = /^[0-9a-f]{40}/
@@ -110,16 +113,50 @@ async function exeDevRow (exec) {
   return row('exe-dev', 'missing', `ssh exe.dev whoami answered code ${res.code} with no account name`)
 }
 
-async function orchestratorRow (exec, config) {
-  const res = await exec(`ssh ${config.orchestrator}.exe.xyz 'git -C ${config.repoDir} rev-parse HEAD'`)
-  const head = firstLine(res.stdout)
-  if (res.code === 0 && HEX40.test(head)) {
-    return row('orchestrator', 'ok', `${config.orchestrator} at ${head.slice(0, 40)}`)
+/** The `version` of the manifest the `show` command printed, or null when the
+ *  command failed, printed no JSON, or carried no version string. */
+function manifestVersion (stdout) {
+  try {
+    const version = JSON.parse(String(stdout ?? ''))?.version
+    return typeof version === 'string' && version !== '' ? version : null
+  } catch {
+    return null
   }
+}
+
+/**
+ * Three commands rather than one. The HEAD is what makes the row green; the
+ * manifest and the tag are what make it useful — the version read is the
+ * manifest at the orchestrator checkout's HEAD, the same commit a run pushes
+ * as the engine, so what the doctor prints is what a run will execute. A
+ * checkout that predates `.claude-plugin/plugin.json`, or a repo with no tags
+ * to describe, is still an orchestrator: a failed read of either leaves the
+ * row green and says only that the version is unreadable.
+ */
+async function orchestratorRow (exec, config) {
+  const host = `${config.orchestrator}.exe.xyz`
+  const res = await exec(`ssh ${host} 'git -C ${config.repoDir} rev-parse HEAD'`)
+  const manifest = await exec(`ssh ${host} 'git -C ${config.repoDir} show HEAD:.claude-plugin/plugin.json'`)
+  const described = await exec(`ssh ${host} 'git -C ${config.repoDir} describe --tags --always'`)
+
+  const head = firstLine(res.stdout)
+  if (res.code !== 0 || !HEX40.test(head)) {
+    return row(
+      'orchestrator',
+      'missing',
+      `no repo HEAD at ${config.repoDir} on ${config.orchestrator} (code ${res.code}: ${head || 'no output'})`
+    )
+  }
+
+  const version = manifest.code === 0 ? manifestVersion(manifest.stdout) : null
+  const describe = described.code === 0 ? firstLine(described.stdout) : ''
+  const at = `${config.orchestrator} at ${head.slice(0, 40)}`
   return row(
     'orchestrator',
-    'missing',
-    `no repo HEAD at ${config.repoDir} on ${config.orchestrator} (code ${res.code}: ${head || 'no output'})`
+    'ok',
+    version !== null && describe !== ''
+      ? `${at} — ultrapowers ${version} (${describe})`
+      : `${at} — version unreadable`
   )
 }
 
@@ -130,16 +167,24 @@ async function orchestratorRow (exec, config) {
  * costs money — auth precedence is ANTHROPIC_API_KEY > apiKeyHelper >
  * CLAUDE_CODE_OAUTH_TOKEN, so a stray key in the golden's settings.json
  * silently bills a gateway instead of the subscription.
+ *
+ * The first command asks what a run actually consumes: an engine clone at
+ * /home/exedev/repo whose `fleet/node_modules` is installed. The golden keeps an
+ * inert plugin from earlier builds, and the doctor does not look for it —
+ * a plugin list answers a question no run asks.
  */
 async function goldenRow (exec, config) {
   const host = `${config.golden}.exe.xyz`
-  const plugin = await exec(`ssh ${host} 'claude plugin list'`)
+  const engine = await exec(`ssh ${host} 'test -d ${ENGINE_DIR}/fleet/node_modules && git -C ${ENGINE_DIR} rev-parse HEAD'`)
   const xdist = await exec(`ssh ${host} 'python3 -c "import xdist"'`)
   const settings = await exec(`ssh ${host} 'cat ~/.claude/settings.json'`)
 
   const failures = []
-  if (plugin.code !== 0 || !String(plugin.stdout ?? '').includes('ultrapowers')) {
-    failures.push(`plugin: ultrapowers is not in the golden's plugin list (code ${plugin.code})`)
+  const engineHead = firstLine(engine.stdout)
+  if (engine.code !== 0 || !HEX40.test(engineHead)) {
+    failures.push(
+      `engine: no engine clone with fleet/node_modules at ${ENGINE_DIR} on ${config.golden} (code ${engine.code}: ${engineHead || 'no output'})`
+    )
   }
   if (xdist.code !== 0) {
     failures.push(`xdist: python3 -c "import xdist" answered code ${xdist.code}`)
@@ -155,7 +200,7 @@ async function goldenRow (exec, config) {
   }
 
   if (failures.length === 0) {
-    return row('golden', 'ok', `${config.golden}: plugin, xdist and settings all clean`)
+    return row('golden', 'ok', `${config.golden}: engine clone, xdist and settings all clean`)
   }
   return row('golden', 'missing', failures.join('; '))
 }

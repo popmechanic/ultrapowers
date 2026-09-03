@@ -15,13 +15,17 @@
 // lives under an `fs.mkdtemp` directory unique to the calling process. No
 // shared fixtures across processes.
 //
-// The sandbox VM is simulated; nothing about the *verification* is. Two REAL
-// git repos stand in for the two ends of the transport — `repoDir` is the
-// orchestrator-side checkout, `sandboxRepo` is the sandbox's `/home/exedev/repo`
-// — and the driver's fetch is retargeted from the ssh URL onto the second one
-// and executed for real. So `FETCH_HEAD` is a real ref, and every receipt is
-// resolved by a real `git cat-file -e` plus a real
-// `git merge-base --is-ancestor <sha> FETCH_HEAD`.
+// The sandbox VM is simulated; nothing about the *verification* is. Three
+// REAL git repos stand in for the ends of the transport (#575) — `repoDir` is
+// the orchestrator-side ENGINE checkout, `originRepo` is the bare stand-in for
+// the target's GitHub repository, `sandboxRepo` is the sandbox's target clone
+// (`/home/exedev/target`; it plays the engine clone too, so both refs sit on
+// one commit) — and the driver's first-use clone of the target is retargeted
+// from the GitHub URL onto `originRepo`, its fetch of the run branch from the
+// sandbox ssh URL onto `sandboxRepo`, and both are executed for real into the
+// cache clone under `targetsDir`. So `refs/fleet/<runId>` is a real ref, and
+// every receipt is resolved by a real `git cat-file -e` plus a real
+// `git merge-base --is-ancestor <sha> <tip>`.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -31,6 +35,7 @@ import { WebSocket } from 'ws'
 import { createMergeableStore } from 'tinybase'
 import { createWsSynchronizer } from 'tinybase/synchronizers/synchronizer-ws-client'
 import { runShim } from '../shim.mjs'
+import { cacheDirNameFor, GH_CREDENTIAL } from '../drive.mjs'
 import {
   applyBranch,
   applyReceipt,
@@ -38,6 +43,7 @@ import {
   applyReportedTokens,
   applyStamp,
   BASE_REF,
+  ENGINE_REF,
   readStamp,
   sandboxIdFor,
 } from '../shim-main.mjs'
@@ -66,6 +72,10 @@ export const REPORT_PATH = `${RUN_DIR}/report.json`
 // appear in NO command and in NO detail, only in the env `gh` was handed.
 export const GITHUB_TOKEN = 'ghp_FIXTURE_TOKEN_0123456789abcdef'
 export const PR_URL = 'https://github.com/popmechanic/ultrapowers/pull/4242'
+// #575: the target every drive names, and the cache clone's directory name
+// (`<owner>--<repo>`) the driver derives from it.
+export const TARGET = 'octo/widgets'
+export const CACHE_DIR_NAME = cacheDirNameFor(TARGET)
 export const GH_PR_CREATE_OK = { code: 0, stdout: `${PR_URL}\n` }
 
 // Real shell execution, used for the git commands the spec insists must be real.
@@ -127,6 +137,13 @@ export const setupDriveFixture = async () => {
     // run while HEAD moves twice (base checkout, then the engine's integration
     // branch), which is precisely why the stamp is read from it and not from HEAD.
     assert.equal((await sh(`git branch ${BASE_REF} main`, sandboxRepo)).code, 0)
+    // The engine ref, at the SAME commit. Live, this ref lives in a second
+    // directory — the golden's baked engine clone — and the base lives in the
+    // target. This one stand-in repo plays both, so the two refs are pinned to
+    // one commit and the stamp `main()` reads from `ENGINE_REF` is still the
+    // fixture checkout's own sha and manifest, which is what the drive's
+    // `versionStamp` check compares against.
+    assert.equal((await sh(`git branch ${ENGINE_REF} main`, sandboxRepo)).code, 0)
 
     await sh(`git checkout -q -b ${OLDER_BRANCH}`, sandboxRepo)
     writeFile(sandboxRepo, 'old.txt', 'old\n')
@@ -161,8 +178,19 @@ export const setupDriveFixture = async () => {
     const originRepo = path.join(tmp, 'origin.git')
     const originInit = await sh(`git init -q --bare "${originRepo}" && git -C "${repoDir}" remote add origin "${originRepo}"`, tmp)
     assert.equal(originInit.code, 0, `origin fixture failed: ${originInit.stderr}`)
+    // #575: origin really HOLDS the base. The driver's preflight asks the
+    // target's cache clone `cat-file -e <baseSha>^{commit}` after a `fetch
+    // origin`, and refuses a base origin does not carry — so `main` is pushed
+    // there, and the dangling `unreachableSha` below deliberately is not.
+    const seeded = await sh(`git -C "${repoDir}" push -q origin main:main`, tmp)
+    assert.equal(seeded.code, 0, `origin seed failed: ${seeded.stderr}`)
     const githubTokenPath = path.join(tmp, 'github-token')
     fs.writeFileSync(githubTokenPath, `${GITHUB_TOKEN}\n`, { mode: 0o600 })
+    // #575: where the driver keeps the target's cache clone. Created lazily by
+    // the first drive in this process (the clone command below is retargeted
+    // onto `originRepo`); every later drive `fetch origin`s it.
+    const targetsDir = path.join(tmp, 'targets')
+    const cacheDir = path.join(targetsDir, CACHE_DIR_NAME)
 
     // -- a sha that EXISTS locally but is reachable from no fetched branch -----
     // Built with `commit-tree` so it never touches a working tree: `cat-file -e`
@@ -173,12 +201,15 @@ export const setupDriveFixture = async () => {
     await sh(`git branch fleet-unreachable ${unreachableSha}`, repoDir)
 
     // -- shared exec stub ------------------------------------------------------
-    // ssh never happens, and the sandbox-bound `git push` would need it, so
-    // that leg is stubbed green. The FETCH leg is real — retargeted from the
-    // sandbox's ssh URL onto the stand-in sandbox repo on disk — which is what
-    // makes FETCH_HEAD a real ref and reachability a real answer. The
-    // GitHub-bound `push origin` (#368) is real too, against the bare
-    // `originRepo` above. `gh pr create` is stubbed: it answers with a PR URL
+    // ssh never happens, and the two sandbox-bound `git push`es (engine and
+    // target, #575) and the sandbox's `git init` would need it, so those legs
+    // are stubbed green. The target's first-use CLONE is real — retargeted
+    // from `https://github.com/<target>.git` onto the bare `originRepo` — and
+    // so is the FETCH of the run branch, retargeted from the sandbox's ssh URL
+    // onto the stand-in sandbox repo on disk with its `<branch>:refs/fleet/<runId>`
+    // refspec intact — which is what makes `refs/fleet/<runId>` a real ref
+    // and reachability a real answer. The GitHub-bound `push origin` (#368)
+    // is real too, from the cache clone into `originRepo`. `gh pr create` is stubbed: it answers with a PR URL
     // (or whatever `gh` is overridden to), and the env the driver handed it is
     // recorded in `exec.calls` so a spec can prove the token rode the env and
     // never the command line. Every other git command runs for real.
@@ -209,6 +240,15 @@ export const setupDriveFixture = async () => {
         if (/^git -C \S+ -c core\.sshCommand="[^"]*" push /.test(cmd)) return { code: 0, stdout: '' }
         const fetched = cmd.match(/^git -C (\S+) -c core\.sshCommand="[^"]*" fetch ssh:\/\/\S+ (\S+)$/)
         if (fetched) return sh(`git -C "${fetched[1]}" fetch "${sandboxRepo}" ${fetched[2]}`)
+        // #575: the first-use cache clone — `https://github.com/<target>.git`
+        // stands for `originRepo`, whatever the target was spelled as.
+        const clonePrefix = `git ${GH_CREDENTIAL} clone https://github.com/`
+        if (cmd.startsWith(clonePrefix)) {
+          const dest = cmd.slice(clonePrefix.length).match(/^\S+\.git (\S+)$/)
+          if (dest) return sh(`git clone -q "${originRepo}" "${dest[1]}"`)
+        }
+        // …and the credentialed reuse fetch is real too (the cache's origin IS `originRepo`).
+        if (cmd.startsWith(`git -C `) && cmd.includes(` ${GH_CREDENTIAL} fetch origin`)) return sh(cmd)
         if (/ gh pr create /.test(cmd)) return typeof gh === 'function' ? gh(cmd, opts) : gh
         if (cmd.startsWith('git ')) return sh(cmd)
         return { code: 0, stdout: '' }
@@ -315,7 +355,13 @@ export const setupDriveFixture = async () => {
       planPath: 'docs/superpowers/plans/example.md',
       golden: 'fleet-golden',
       port: 0,
+      // #575: the two a launch names — the target (its cache clone is cut
+      // from `originRepo`) and the base, which is the fixture's one commit —
+      // and the engine checkout every drive runs out of.
+      target: TARGET,
+      baseSha: headSha,
       repoDir,
+      targetsDir,
       clock,
       ttlMs: 60_000,
       tickMs: 25,
@@ -336,6 +382,8 @@ export const setupDriveFixture = async () => {
       repoDir,
       sandboxRepo,
       originRepo,
+      targetsDir,
+      cacheDir,
       githubTokenPath,
       cleanup,
       headSha,

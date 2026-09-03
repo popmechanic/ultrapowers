@@ -34,11 +34,15 @@ const ok = (label) => {
 
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
 
+// drive-one requires the two a launch names (#575); every argv below that is
+// meant to PARSE carries them.
+const NAMED = ['--target', 'o/r', '--base', '3f'.repeat(20)]
+
 // --- hop 1: the drive CLI ---------------------------------------------------
 
 {
   // (a) the flag is parsed and rides into the driveOne options.
-  const parsed = parseArgs(['p.md', 'run-1', '--overlap', 'serialize'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED, '--overlap', 'serialize'])
   assert.equal(parsed.overlap, 'serialize')
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.overlap, 'serialize')
@@ -47,7 +51,7 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
 
 {
   // (c) the other legal mode, same path.
-  const parsed = parseArgs(['p.md', 'run-1', '--overlap', 'fold'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED, '--overlap', 'fold'])
   assert.equal(parsed.overlap, 'fold')
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.overlap, 'fold')
@@ -59,7 +63,7 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
   // ends. `JSON.stringify` would drop an undefined, but `driveOne`'s option
   // shape is read by `'overlap' in o`-grade checks downstream, and a knobless
   // default must stay knobless.
-  const parsed = parseArgs(['p.md', 'run-1'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED])
   assert.equal('overlap' in parsed, false, `parseArgs invented an overlap key: ${JSON.stringify(parsed)}`)
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal('overlap' in o, false, `buildDriveOptions invented an overlap key: ${JSON.stringify(Object.keys(o))}`)
@@ -73,9 +77,9 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
   // `FOLD` would be refused two hops away, on the sandbox, as an argparse
   // error nobody reads.
   for (const argv of [
-    ['p.md', 'run-1', '--overlap', 'sideways'],
-    ['p.md', 'run-1', '--overlap', 'FOLD'],
-    ['p.md', 'run-1', '--overlap'],
+    ['p.md', 'run-1', ...NAMED, '--overlap', 'sideways'],
+    ['p.md', 'run-1', ...NAMED, '--overlap', 'FOLD'],
+    ['p.md', 'run-1', ...NAMED, '--overlap'],
   ]) {
     assert.throws(
       () => parseArgs(argv),
@@ -95,9 +99,9 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
 
 // --- hop 2: driveOne hands it to the provisioner -----------------------------
 
-// The plan the #337 preflight must read as fit and clean. Committed at HEAD
-// and present byte-identical in the working tree, so the drive gets as far as
-// provisioning — which is the hop under test.
+// A plan the fitness preflight reads as fit. It is shipped from the file
+// (#575), so it only has to exist; the engine checkout must be CLEAN (the one
+// new refusal), which is why the plan lives beside the repo, not in it.
 const FIT_PLAN =
   '# P\n\n### Task 1: Code\n**Type:** implementation\n**Depends-on:** none\n\n**Files:**\n- Modify: `fleet/x.mjs`\n- Test: `fleet/tests/test_x.mjs`\n\n- [ ] **Step 1: edit**\n'
 
@@ -112,17 +116,21 @@ const sh = (cmd, cwd) =>
   const tmp = tmpDir()
   try {
     const repoDir = path.join(tmp, 'repo')
-    const planRel = 'docs/plan.md'
-    fs.mkdirSync(path.join(repoDir, 'docs'), { recursive: true })
+    const planFile = path.join(tmp, 'plans', 'plan.md')
+    fs.mkdirSync(path.dirname(planFile), { recursive: true })
     fs.mkdirSync(path.join(repoDir, '.claude-plugin'), { recursive: true })
     fs.writeFileSync(path.join(repoDir, '.claude-plugin', 'plugin.json'), JSON.stringify({ version: '9.9.9' }))
-    fs.writeFileSync(path.join(repoDir, planRel), FIT_PLAN)
+    fs.writeFileSync(planFile, FIT_PLAN)
     const init = await sh(
       'git init -q -b main . && git config user.email t@example.com && git config user.name t && ' +
         'git add -A && git -c commit.gpgsign=false commit -q -m init',
       repoDir,
     )
     assert.equal(init.code, 0, `fixture git init failed: ${init.stderr}`)
+    const headSha = (await sh('git rev-parse HEAD', repoDir)).stdout.trim()
+    // #575: the target's cache clone is cut from this same repo, so the base
+    // (its HEAD) is really there for the preflight's `cat-file -e` to find.
+    const targetsDir = path.join(tmp, 'targets')
 
     // The drive is aborted at the provision hop: the stub records what it was
     // handed and throws, so nothing downstream of provisioning runs. (`driveOne`
@@ -147,17 +155,25 @@ const sh = (cmd, cwd) =>
     const driveToProvision = async (extra) => {
       let seen = null
       await driveOne({
-        planPath: planRel,
+        planPath: planFile,
         golden: 'fleet-golden',
         port: 0,
+        target: 'o/r',
+        baseSha: headSha,
         repoDir,
+        targetsDir,
         dbDir: path.join(tmp, `db-${extra.runId}`),
         evidenceDir: path.join(tmp, `ev-${extra.runId}`),
+        githubTokenPath: path.join(tmp, 'no-such-token'),
         exec: async (cmd) => {
           if (isSandboxBound(cmd)) {
             sshAttempts.push(cmd)
             return { code: 0, stdout: '{}' }
           }
+          // The target's first-use clone would go to GitHub; cut it from the
+          // fixture repo instead (the `_drive_helpers.mjs` retargeting).
+          const cloned = cmd.match(/ clone https:\/\/github\.com\/o\/r\.git (\S+)$/)
+          if (cloned) return sh(`git clone -q "${repoDir}" "${cloned[1]}"`, tmp)
           return sh(cmd, repoDir)
         },
         ttlMs: 60_000,
@@ -194,7 +210,7 @@ const sh = (cmd, cwd) =>
     // would mean the drive ran past the hop the stub was supposed to stop it at.
     for (const cmd of sshAttempts) {
       assert.ok(
-        /^ssh .*\.exe\.xyz .*tar czf -/.test(cmd) || /^ssh .* exe\.dev "stat /.test(cmd),
+        /^ssh [\s\S]*\.exe\.xyz [\s\S]*tar czf -/.test(cmd) || /^ssh .* exe\.dev "stat /.test(cmd),
         `unexpected sandbox-bound command reached the exec seam: ${cmd}`,
       )
     }
@@ -217,8 +233,10 @@ const deliveredPayload = async (extra) => {
   const result = await provisionRun({
     golden: 'fleet-golden',
     runId: 'r1',
-    baseRef: 'refs/heads/main',
-    repoDir: '/tmp/repo',
+    engineDir: '/tmp/engine',
+    engineSha: 'e'.repeat(40),
+    targetDir: '/tmp/targets/o--r',
+    baseSha: 'b'.repeat(40),
     ttlMs: 60000,
     wsUrl: 'ws://127.0.0.1:8151/fleet',
     port: 8151,
@@ -268,15 +286,16 @@ const deliveredPayload = async (extra) => {
 // --- hop 4: the engine launch argv -------------------------------------------
 
 {
-  // (e) the fourth argument appends exactly two entries, in run-main.mjs's own
-  // flag spelling; the three-argument call is today's pinned array.
+  // (e) `overlap` appends exactly two entries, in run-main.mjs's own flag
+  // spelling; without it the five-entry array is today's pinned launch.
+  const base = { engineDir: '/engine', repoDir: '/repo', planPath: 'docs/plan.md', runId: 'run-24' }
   assert.deepEqual(
-    oneDriverArgs('/repo', 'docs/plan.md', 'run-24', 'serialize'),
-    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--overlap', 'serialize'],
+    oneDriverArgs({ ...base, overlap: 'serialize' }),
+    ['/engine/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--repo', '/repo', '--overlap', 'serialize'],
   )
   assert.deepEqual(
-    oneDriverArgs('/repo', 'docs/plan.md', 'run-24'),
-    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'],
+    oneDriverArgs(base),
+    ['/engine/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--repo', '/repo'],
   )
   ok('(e) oneDriverArgs appends --overlap <mode> only when given')
 }
@@ -288,6 +307,7 @@ const deliveredPayload = async (extra) => {
     try {
       const spawns = []
       await invokeEngineRun({
+        engineDir: '/engine',
         repoDir: tmp,
         planPath: 'docs/plan.md',
         runId: 'run-24',
@@ -301,21 +321,29 @@ const deliveredPayload = async (extra) => {
       })
       assert.equal(spawns.length, 1)
       assert.equal(spawns[0].command, 'node')
-      return spawns[0].args.map((a) => (a === tmp ? a : a.replace(tmp, '/repo')))
+      return spawns[0].args.map((a) => String(a).replace(tmp, '/repo'))
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
   }
 
   assert.deepEqual(await spawnedArgs({ overlap: 'serialize' }), [
-    '/repo/fleet/run-main.mjs',
+    '/engine/fleet/run-main.mjs',
     'docs/plan.md',
     'run-24',
+    '--repo',
+    '/repo',
     '--overlap',
     'serialize',
   ])
-  assert.deepEqual(await spawnedArgs({}), ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'])
-  ok('(f) invokeEngineRun spawns five argv entries with overlap, exactly three without')
+  assert.deepEqual(await spawnedArgs({}), [
+    '/engine/fleet/run-main.mjs',
+    'docs/plan.md',
+    'run-24',
+    '--repo',
+    '/repo',
+  ])
+  ok('(f) invokeEngineRun spawns seven argv entries with overlap, exactly five without')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

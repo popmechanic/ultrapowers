@@ -31,7 +31,25 @@ import { runShim, connectOpenWs, deliverAndClose } from './shim.mjs'
 import { startEventPromoter } from './events-bridge.mjs'
 
 export const ASSIGNMENT_PATH = '/home/exedev/fleet-run.json'
-export const REPO_DIR = '/home/exedev/repo'
+
+/**
+ * The two clones a sandbox holds, and they are not the same directory.
+ *
+ * `ENGINE_DIR` is the golden image's baked checkout, parked at `ENGINE_REF` by
+ * the provisioner before this file runs. It is the code that RUNS: the only
+ * thing `oneDriverArgs` resolves `fleet/run-main.mjs` out of, and the only
+ * thing the version stamp may name.
+ *
+ * `TARGET_DIR` is the clone the driver pushed `BASE_REF` into. It is the tree
+ * the run BUILDS: what `invokeEngineRun` checks out, what the engine is spawned
+ * in, and what every receipt, branch, sampler and promoter path resolves under.
+ *
+ * They were one `REPO_DIR` until now, which made the stamp read whichever ref
+ * happened to sit in the single checkout — engine identity and target identity
+ * were indistinguishable because they were the same commit by construction.
+ */
+export const ENGINE_DIR = '/home/exedev/repo'
+export const TARGET_DIR = '/home/exedev/target'
 
 /** Where the engine writes its per-run artifacts, relative to the repo root. */
 export const RUN_ARTIFACT_DIR = '.claude/ultrapowers'
@@ -67,6 +85,17 @@ export const GATE_RECEIPT_FILE = 'gate-receipt.json'
  * baked with, which is a green read for code nobody asked to test.
  */
 export const BASE_REF = 'fleet-base'
+
+/**
+ * The branch the provisioner parks the ENGINE clone on before starting this
+ * file — the identity half of the split above.
+ *
+ * A LITERAL for the same reason `BASE_REF` is: it is interpolated into a shell,
+ * and nothing upstream may influence it. The stamp is read from THIS ref in
+ * THAT directory, so the sha and version the driver cross-checks name the code
+ * that ran, never the code it was pointed at.
+ */
+export const ENGINE_REF = 'fleet-engine'
 
 /**
  * The plugin manifest, repo-relative — the version half of the version stamp.
@@ -693,10 +722,12 @@ export const applyRunReceipts = async (store, runId, { repoDir, exec, branch, ex
  * read only checks that the cells are non-empty, so that misattribution passes
  * `versionStamp` and reaches the gate looking exactly like a correct one.
  *
- * `BASE_REF` is the fixed point: `provisionRun` pushes the driver's base to it,
- * nothing moves it afterwards, and it still resolves once the engine has moved
- * HEAD — so the stamp is the same whether it is taken before or after the run,
- * and both halves come from the one commit under test.
+ * A ref is the fixed point: nothing in a run moves one, and it still resolves
+ * once the engine has moved HEAD — so the stamp is the same whether it is taken
+ * before or after the run, and both halves come from one commit. `main` calls
+ * this with the ENGINE clone and `ENGINE_REF`, because the identity the driver
+ * cross-checks is the code that ran, not the tree it built; the `ref` default
+ * stays `BASE_REF` for a caller that wants the tree's own identity instead.
  *
  * A repo where the ref does not resolve stamps EMPTY, with no fall back to
  * disk: an unpushed base means `invokeEngineRun` fails the run anyway, and a
@@ -757,14 +788,23 @@ export const shellExec = (cmd) =>
  * like `engineArgs`). No directive rides it: the standing directive was
  * instructions for an LLM session, and this launch has none — the two-move
  * rule it dictated is `run-main.mjs`'s `ackDecision`, code not prose.
+ *
+ * The two directories part company here, and this is the line where it shows:
+ * the module path comes from `engineDir` because that is the code being run,
+ * and `--repo <repoDir>` names the target because that is the tree being built.
+ * `--repo` is mandatory on `run-main.mjs`'s side, so it is always emitted —
+ * a driver launched without it would resolve its repo from its own module
+ * location, which is now the engine clone rather than the target.
  */
-export const oneDriverArgs = (repoDir, planPath, runId, overlap) => [
-  path.join(repoDir, 'fleet', 'run-main.mjs'),
+export const oneDriverArgs = ({ engineDir, repoDir, planPath, runId, overlap } = {}) => [
+  path.join(engineDir, 'fleet', 'run-main.mjs'),
   planPath,
   runId,
+  '--repo',
+  repoDir,
   // #514: the run assignment's optional overlap mode, in `run-main.mjs`'s own
-  // flag spelling. Absent → exactly the three-entry argv that shipped before,
-  // so an assignment written by a pre-#514 driver launches identically.
+  // flag spelling. Absent → exactly the five-entry argv above, so an
+  // assignment written by a pre-#514 driver launches identically.
   ...(overlap ? ['--overlap', overlap] : []),
 ]
 
@@ -970,6 +1010,7 @@ const countProcs = (listProcs) => {
  * into the run's event log before the engine phase.
  */
 export const invokeEngineRun = async ({
+  engineDir = ENGINE_DIR,
   repoDir,
   planPath,
   runId,
@@ -1016,10 +1057,12 @@ export const invokeEngineRun = async ({
   // spawned exactly as at BASE.
   const launchPlanPath = writeAssignmentPlan(repoDir, planPath, runId, plan) ?? planPath
 
-  // The checkout IS the engine (0.3.0: the only engine — the `claude` skill
+  // The ENGINE clone is the engine (0.3.0: the only engine — the `claude` skill
   // session and its plugin-install dance were deleted at cutover; git history
-  // holds them). `run-main.mjs` reads the scripts straight from the tree just
-  // checked out; the gate-receipt read is unchanged.
+  // holds them). `run-main.mjs` is read out of `engineDir` and spawned with
+  // `cwd` and `--repo` naming the target it just checked out, so the code that
+  // runs and the tree it builds are separately identified; the gate-receipt
+  // read is unchanged and still scoped to the target.
   // Started before the spawn and stopped after it either way (#549): the
   // sampler's whole purpose is to describe the box WHILE the engine runs, and
   // a spawn that throws is exactly the run whose load line matters most. The
@@ -1033,7 +1076,7 @@ export const invokeEngineRun = async ({
   try {
     code = await spawnEngine({
       command: 'node',
-      args: oneDriverArgs(repoDir, launchPlanPath, runId, overlap),
+      args: oneDriverArgs({ engineDir, repoDir, planPath: launchPlanPath, runId, overlap }),
       cwd: repoDir,
       runId,
     })
@@ -1051,7 +1094,11 @@ const withToken = (wsUrl, token) => `${wsUrl}${wsUrl.includes('?') ? '&' : '?'}t
 
 export const main = async ({
   assignmentPath = ASSIGNMENT_PATH,
-  repoDir = REPO_DIR,
+  // The engine clone: read for the stamp, resolved for the launch argv, and
+  // written to by nothing. `repoDir` keeps its name and is now the TARGET —
+  // every other read and write below resolves under it.
+  engineDir = ENGINE_DIR,
+  repoDir = TARGET_DIR,
   exec = shellExec,
   // The engine spawn, injectable like `exec` so a test can drive `main()`
   // through the real `invokeEngineRun` (checkout → plugin install → launch)
@@ -1116,15 +1163,16 @@ export const main = async ({
   await synchronizer.startSync()
 
   // Read ONCE and re-applied below rather than re-read after the run. That is
-  // sound only because it is sourced from `BASE_REF`, which the run does not
-  // move: a stamp read from the checkout would be stale by the time the engine
-  // returned, which is exactly the bug `readStamp` documents.
-  const stamp = await readStamp({ repoDir, exec })
+  // sound only because it is sourced from a ref the run does not move:
+  // `ENGINE_REF` in the ENGINE clone, which nothing in a run touches at all.
+  // It is deliberately not the target's `BASE_REF` — the driver cross-checks
+  // this sha and version against ITS engine checkout's HEAD and manifest, so a
+  // stamp naming the tree under test would compare two unrelated commits.
+  const stamp = await readStamp({ repoDir: engineDir, exec, ref: ENGINE_REF })
   applyStamp(store, runId, stamp)
-  // The installed half of #282 is NOT read here: what is installed right now
-  // is the golden's bootstrap plugin, and `invokeEngineRun` replaces it from
-  // the `BASE_REF` checkout before the engine launches (#373). It is read once,
-  // after the run, so the cell names the plugin the engine actually ran.
+  // The installed half of #282 is NOT read here, and is not read at all any
+  // more: no plugin participates in a run (the engine clone IS the engine), so
+  // the stamp above — the engine ref's sha and manifest — is the whole of it.
 
   // The run's scope, snapshotted BEFORE the engine launches (#190): every run
   // directory on disk right now predates this run, so none of them is this
@@ -1156,7 +1204,7 @@ export const main = async ({
           file: path.join(repoDir, RUN_ARTIFACT_DIR, `run-${runId}`, 'events.jsonl'),
         })
         try {
-          return await invokeEngineRun({ repoDir, planPath, runId, plan, overlap, exec, spawnEngine, excludeDirs: preRunDirs })
+          return await invokeEngineRun({ engineDir, repoDir, planPath, runId, plan, overlap, exec, spawnEngine, excludeDirs: preRunDirs })
         } finally {
           promoter.stop()
         }

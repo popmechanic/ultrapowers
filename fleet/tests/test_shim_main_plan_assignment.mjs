@@ -47,6 +47,8 @@ const VERDICT_FILE = path.join(ASSIGNMENT_DIR, 'some-plan.gate-verdicts.json')
  * greens the checkout and records the order of events, the spawn seam records
  * the argv it was handed. No process is ever started.
  */
+const ENGINE_DIR = '/engine'
+
 const runInvoke = async ({ plan, planPath = PLAN_PATH }) => {
   const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-plan-assign-'))
   const events = []
@@ -59,6 +61,7 @@ const runInvoke = async ({ plan, planPath = PLAN_PATH }) => {
   }
   let argv = null
   const outcome = await invokeEngineRun({
+    engineDir: ENGINE_DIR,
     repoDir,
     planPath,
     runId: 'r1',
@@ -87,7 +90,16 @@ const runInvoke = async ({ plan, planPath = PLAN_PATH }) => {
   const { repoDir, argv, cleanup } = await runInvoke({ plan: { text: 'T', verdicts: 'V' } })
   assert.equal(fs.readFileSync(path.join(repoDir, PLAN_FILE), 'utf8'), 'T')
   assert.equal(fs.readFileSync(path.join(repoDir, VERDICT_FILE), 'utf8'), 'V')
-  assert.deepEqual(argv, oneDriverArgs(repoDir, '.claude/ultrapowers/assignment-r1/some-plan.md', 'r1', undefined))
+  assert.deepEqual(
+    argv,
+    oneDriverArgs({
+      engineDir: ENGINE_DIR,
+      repoDir,
+      planPath: '.claude/ultrapowers/assignment-r1/some-plan.md',
+      runId: 'r1',
+      overlap: undefined,
+    }),
+  )
   assert.equal(argv[1], '.claude/ultrapowers/assignment-r1/some-plan.md')
   cleanup()
   ok('assignment plan: text + verdicts are written and the engine launches against the repo-relative copy')
@@ -106,10 +118,13 @@ const runInvoke = async ({ plan, planPath = PLAN_PATH }) => {
 // --- (c) no plan: the argv is exactly what BASE spawned ---------------------
 {
   const { repoDir, argv, cleanup } = await runInvoke({ plan: undefined })
-  assert.deepEqual(argv, oneDriverArgs(repoDir, PLAN_PATH, 'r1', undefined))
+  assert.deepEqual(
+    argv,
+    oneDriverArgs({ engineDir: ENGINE_DIR, repoDir, planPath: PLAN_PATH, runId: 'r1', overlap: undefined }),
+  )
   assert.equal(fs.existsSync(path.join(repoDir, ASSIGNMENT_DIR)), false)
   cleanup()
-  ok('no assignment plan: the spawned argv deep-equals oneDriverArgs(repoDir, planPath, runId, undefined)')
+  ok('no assignment plan: the spawned argv deep-equals oneDriverArgs({ engineDir, repoDir, planPath, runId })')
 }
 
 // --- (d) the writes happen AFTER the checkout ------------------------------

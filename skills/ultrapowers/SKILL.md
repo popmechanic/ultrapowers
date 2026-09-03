@@ -54,25 +54,32 @@ approved plan, **is** the authorization to execute — no further approval pause
 
 Before the rsync, run the doctor without `--probe`; a verdict other than `ready` means there is no fleet to launch on — offer `/ultrapowers setup` and stop.
 
-1. **Put the plan on the orchestrator.** `docs/superpowers/` is untracked (#544), so
-   the plan is never in git: `rsync` it (and its `.gate-verdicts.json`) into
-   `<repoDir>/docs/superpowers/plans/`, bring that checkout to the base you
-   want, and pass `--plan-from-assignment` — the drive ships the working-tree plan in
-   the run assignment and the sandbox compiles that copy (`fleet/RUNBOOK.md` §Live W1 run).
-2. **Launch** on the orchestrator with a fresh `run-<N>` (run IDs are never
-   reused):
+1. **Derive the target from this checkout.** The target is the repository this skill is run in: `repo` is `gh repo view --json nameWithOwner -q .nameWithOwner` and `baseSha` is `git rev-parse HEAD`.
+   There is nothing per-project to configure — the pair travels in the launch,
+   and each sandbox clones `repo` and branches from `baseSha`. That sha has to
+   be one GitHub already has. When `git rev-parse @{upstream}` fails or prints a different sha, say that the base is not on GitHub yet, ask the operator to push, and stop.
+2. **Stage the plan, pin the engine, and launch** with a fresh `run-<N>` (run
+   IDs are never reused). Stage the plan on the orchestrator under `/home/exedev/plans/run-<N>/`; nothing under `docs/` lives there.
+   Pin the engine to the newest release on `main`, or to the ref the operator names when the run is about an engine change, and read the chosen version back:
 
    ```bash
-   rsync -a <plan-path> <plan-stem>.gate-verdicts.json <orchestrator>.exe.xyz:<repoDir>/docs/superpowers/plans/
-   ssh -n <orchestrator>.exe.xyz 'cd <repoDir> && setsid -f node fleet/drive-one.mjs <plan-path> run-<N> --plan-from-assignment </dev/null >/tmp/drive-run-<N>.out 2>&1'
+   ssh <orchestrator>.exe.xyz 'mkdir -p /home/exedev/plans/run-<N>'
+   rsync -a <plan-path> <plan-stem>.gate-verdicts.json <orchestrator>.exe.xyz:/home/exedev/plans/run-<N>/
+   ssh <orchestrator>.exe.xyz 'git -C <repoDir> fetch -q origin && git -C <repoDir> checkout -q $(git -C <repoDir> log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C <repoDir> show HEAD:.claude-plugin/plugin.json'
+   ssh -n <orchestrator>.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd <repoDir> && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<N>/<plan-basename> run-<N> --target <repo> --base <baseSha> </dev/null >/home/exedev/fleet-evidence/drive-run-<N>.out 2>&1'
    ```
 
+   `<repoDir>` is the orchestrator's engine checkout, never the target;
+   `<plan-basename>` is the plan file's basename. The `version` the third line
+   prints is the engine this run drives with — report it to the user before the
+   launch, and substitute the operator's ref for the `log -1` expression when
+   the run is about an engine change.
    The orchestrator hostname and its checkout path come from `~/.ultrapowers/fleet.json` (`orchestrator`, `repoDir`); their defaults are `fleet-orchestrator` and `/home/exedev/repo`.
    The doctor's `--json` envelope carries the resolved pair in its `config`
    object, so the run that just checked the fleet also has the values to
    substitute.
 3. **Watch** live as a sync peer (`fleet/watch.mjs` — RUNBOOK §Watch), or tail
-   the drive log (`ssh <orchestrator>.exe.xyz 'tail -f /tmp/drive-run-<N>.out'`).
+   the drive log (`ssh <orchestrator>.exe.xyz 'tail -f /home/exedev/fleet-evidence/drive-run-<N>.out'`).
 4. **Read the receipt in the PR the orchestrator opens.** Gate-green → a ready
    PR. Parked → a draft PR carrying the gate receipt: acknowledge by marking it
    ready, or re-drive a narrower plan. The laptop never fetches a run branch.

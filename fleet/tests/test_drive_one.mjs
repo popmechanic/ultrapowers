@@ -23,10 +23,16 @@ const ok = (label) => {
   console.log(`ok - ${label}`)
 }
 
+// A launch names the repository and the commit; both are required, so every
+// argv here that is meant to PARSE carries them.
+const TARGET = 'o/r'
+const SHA = '3f'.repeat(20)
+const NAMED = ['--target', TARGET, '--base', SHA]
+
 // --- parseArgs ------------------------------------------------------------
 
 {
-  const p = parseArgs(['docs/plan.md', 'run-42'])
+  const p = parseArgs(['docs/plan.md', 'run-42', ...NAMED])
   assert.equal(p.planPath, 'docs/plan.md')
   assert.equal(p.runId, 'run-42')
   assert.equal(p.golden, DEFAULTS.golden)
@@ -37,9 +43,11 @@ const ok = (label) => {
   assert.equal(p.repoDir, REPO_DIR)
   assert.equal(p.allowUnfitPlan, false)
   assert.equal(p.evidenceDir, '/home/exedev/fleet-evidence')
-  // #368: the GitHub token sits beside the OAuth token; the PR targets main.
+  // #368: the GitHub token sits beside the OAuth token.
   assert.equal(p.githubTokenPath, '/home/exedev/.fleet/github-token')
-  assert.equal(p.prBase, 'main')
+  // The two a launch names ride through as given.
+  assert.equal(p.target, TARGET)
+  assert.equal(p.baseSha, SHA)
   ok('defaults match the RUNBOOK heredoc constants')
 }
 
@@ -62,18 +70,16 @@ const ok = (label) => {
 }
 
 {
-  const p = parseArgs(['p.md', 'run-47', '--github-token-path', '/tmp/gh-tok', '--pr-base', 'release/1'])
+  const p = parseArgs(['p.md', 'run-47', ...NAMED, '--github-token-path', '/tmp/gh-tok'])
   assert.equal(p.githubTokenPath, '/tmp/gh-tok')
-  assert.equal(p.prBase, 'release/1')
   const o = buildDriveOptions(p, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.githubTokenPath, '/tmp/gh-tok')
-  assert.equal(o.prBase, 'release/1')
   assert.match(usage(), /--github-token-path FILE/)
   // The GitHub token is NOT read here: driveOne reads it itself (fs) and hands
   // it to git/gh as an env — buildDriveOptions only forwards the PATH.
   assert.equal('GH_TOKEN' in o, false)
   assert.ok(!JSON.stringify(o).includes('gh-tok-contents'))
-  ok('#368: --github-token-path / --pr-base ride through as paths and names, never as a token')
+  ok('#368: --github-token-path rides through as a path, never as a token')
 }
 
 {
@@ -91,10 +97,10 @@ const ok = (label) => {
 
 {
   const p = parseArgs([
-    'p.md', 'run-43', '--port', '40109', '--db-dir', '/tmp/x', '--golden', 'g2',
+    'p.md', 'run-43', ...NAMED, '--port', '40109', '--db-dir', '/tmp/x', '--golden', 'g2',
     '--ttl-hours', '2', '--evidence-dir', '/tmp/ev',
     '--sandbox-cpu', '4', '--sandbox-memory', '8GB', '--token-path', '/tmp/tok',
-    '--repo-dir', '/tmp/repo', '--allow-unfit-plan',
+    '--allow-unfit-plan',
   ])
   assert.equal(p.port, 40109)
   assert.equal(p.dbDir, '/tmp/x')
@@ -104,7 +110,9 @@ const ok = (label) => {
   assert.equal(p.sandboxCpu, 4)
   assert.equal(p.sandboxMemory, '8GB')
   assert.equal(p.tokenPath, '/tmp/tok')
-  assert.equal(p.repoDir, '/tmp/repo')
+  // Where the drive runs from is NOT a flag: the checkout the CLI lives in,
+  // whatever else the launch line says.
+  assert.equal(p.repoDir, REPO_DIR)
   assert.equal(p.allowUnfitPlan, true)
   // The cap is DELETED, not defaulted away (#400). `--cap-tokens` is refused
   // loudly rather than ignored: an operator who still passes it must find out,
@@ -145,7 +153,7 @@ const ok = (label) => {
 
 {
   // Flags may precede the positionals — operators paste them in either order.
-  const p = parseArgs(['--port', '1', 'p.md', 'run-1'])
+  const p = parseArgs(['--port', '1', 'p.md', 'run-1', ...NAMED])
   assert.equal(p.port, 1)
   assert.equal(p.runId, 'run-1')
   ok('flag order is free')
@@ -156,10 +164,10 @@ assert.throws(() => parseArgs([]), /expected exactly <plan.md> <runId>/)
 assert.throws(() => parseArgs(['p.md', 'run-1', 'extra']), /expected exactly/)
 ok('missing or surplus positionals refuse with the usage line')
 
-assert.throws(() => parseArgs(['p.md', 'run-1', '--bogus', 'x']), /unknown flag --bogus/)
-assert.throws(() => parseArgs(['p.md', 'run-1', '--port']), /--port needs a value/)
-assert.throws(() => parseArgs(['p.md', 'run-1', '--port', '--db-dir', '/x']), /--port needs a value/)
-assert.throws(() => parseArgs(['p.md', 'run-1', '--port', 'eighty']), /--port must be a number/)
+assert.throws(() => parseArgs(['p.md', 'run-1', ...NAMED, '--bogus', 'x']), /unknown flag --bogus/)
+assert.throws(() => parseArgs(['p.md', 'run-1', ...NAMED, '--port']), /--port needs a value/)
+assert.throws(() => parseArgs(['p.md', 'run-1', ...NAMED, '--port', '--db-dir', '/x']), /--port needs a value/)
+assert.throws(() => parseArgs(['p.md', 'run-1', ...NAMED, '--port', 'eighty']), /--port must be a number/)
 ok('unknown flags, missing values and non-numeric numerics refuse')
 
 // (--engine died at 0.3.0: one engine, no flag — a flag with one legal value
@@ -176,7 +184,7 @@ ok('usage names the committed entry point')
 // --- buildDriveOptions ----------------------------------------------------
 
 {
-  const parsed = parseArgs(['docs/plan.md', 'run-44', '--token-path', '/nowhere/token'])
+  const parsed = parseArgs(['docs/plan.md', 'run-44', ...NAMED, '--token-path', '/nowhere/token'])
   const seen = []
   const readToken = (p) => {
     seen.push(p)
@@ -193,6 +201,8 @@ ok('usage names the committed entry point')
   assert.equal(o.port, 8180)
   assert.equal(o.dbDir, '/tmp/fleet-orch-live')
   assert.equal(o.repoDir, REPO_DIR)
+  assert.equal(o.target, TARGET)
+  assert.equal(o.baseSha, SHA)
   assert.equal(o.ttlMs, 4 * 60 * 60 * 1000)
   assert.equal(o.heartbeatTimeoutMs, 30 * 60_000)
   assert.equal(o.claimTimeoutMs, 10 * 60_000)
@@ -206,7 +216,7 @@ ok('usage names the committed entry point')
 }
 
 {
-  const parsed = parseArgs(['p.md', 'run-45', '--evidence-dir', '/tmp/ev', '--sandbox-cpu', '6', '--sandbox-memory', '12GB', '--ttl-hours', '1'])
+  const parsed = parseArgs(['p.md', 'run-45', ...NAMED, '--evidence-dir', '/tmp/ev', '--sandbox-cpu', '6', '--sandbox-memory', '12GB', '--ttl-hours', '1'])
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.evidenceDir, '/tmp/ev')
   assert.equal(o.sandboxCpu, 6)
@@ -232,7 +242,7 @@ ok('usage names the committed entry point')
     calls.push(opts)
     return { read: { o1: true, runId: opts.runId }, reportPath: '/tmp/r.json', detailPath: '/tmp/d.json' }
   }
-  const read = await main(['p.md', 'run-46', '--port', '7'], {
+  const read = await main(['p.md', 'run-46', ...NAMED, '--port', '7'], {
     drive,
     log: (l) => lines.push(l),
     readToken: () => 'tok',

@@ -18,14 +18,14 @@
 //   A  green and parked, both pinned → exactly one line, with the run's values
 //   B  no `pinnedRef` → no such line at all (and no half-rendered sentence)
 //   C  the line sits outside every fenced block and before the `Closes` lines
-//   D  END TO END: a drive whose `update-ref` succeeds leaves the line on disk
-//      with `refs/fleet/<runId>` and `<evidenceDir>/gate-read-<runId>.json`;
-//      one whose `update-ref` fails leaves a card without it
+//   D  END TO END: a drive whose fetch (the pin, #575) lands leaves the line
+//      on disk with `refs/fleet/<runId>` and `<evidenceDir>/gate-read-<runId>.json`;
+//      one whose fetch fails has nothing to publish and writes no card at all
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { driveOne, renderPullRequestBody } from '../drive.mjs'
-import { INTEGRATION_BRANCH, RECEIPT_PATH, setupDriveFixture } from './_drive_helpers.mjs'
+import { INTEGRATION_BRANCH, RECEIPT_PATH, setupDriveFixture, sh } from './_drive_helpers.mjs'
 
 const TRAILER = '🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
@@ -131,7 +131,7 @@ const insideFence = (text, index) => {
   const parkedWithRescue = body({
     parked: true,
     errors: [PUSH_ERROR],
-    rescue: { runId: RUN_ID, tip: TIP, branch: BRANCH, host: HOST },
+    rescue: { runId: RUN_ID, tip: TIP, branch: BRANCH, host: HOST, target: 'octo/widgets' },
   })
   assert.ok(parkedWithRescue.includes('```bash'), `precondition: this body carries a fence:\n${parkedWithRescue}`)
   for (const text of [body(), body({ parked: true }), parkedWithRescue]) {
@@ -154,15 +154,18 @@ const insideFence = (text, index) => {
 
 // -- D: the wiring, end to end ---------------------------------------------
 // The legs above call the renderer. This one drives `driveOne` for real — a
-// real fetch, a real `git update-ref`, a real publish — and reads the card off
-// disk, because what is under test is the two values the drive carries into
-// the render: the ref IT wrote and the evidence path IT was given.
+// real fetch (which IS the pin since #575: the refspec writes
+// `refs/fleet/<runId>` in the target's cache clone), a real publish — and
+// reads the card off disk, because what is under test is the two values the
+// drive carries into the render: the ref IT wrote and the evidence path IT
+// was given.
 {
   const fixture = await setupDriveFixture()
-  const { tmp, repoDir, integrationSha, makeExec, startStubSandbox, driveDefaults, cleanup } = fixture
+  const { tmp, cacheDir, integrationSha, makeExec, startStubSandbox, driveDefaults, cleanup } = fixture
   try {
-    // `failPin` wraps the fixture's exec to refuse exactly the pin, leaving
-    // every other command real — the shape of a `update-ref` that cannot lock.
+    // `failPin` wraps the fixture's exec to refuse exactly the fetch, leaving
+    // every other command real — the shape of a sandbox that died before the
+    // branch could be pulled.
     const greenDrive = async ({ runId, failPin = false }) => {
       let sandbox = null
       const inner = makeExec((assignment) => {
@@ -178,10 +181,10 @@ const insideFence = (text, index) => {
         }, 30)
       })
       const exec = async (cmd, opts) => {
-        if (failPin && / update-ref refs\/fleet\//.test(cmd)) {
+        if (failPin && / fetch ssh:\/\/\S+ \S+:refs\/fleet\//.test(cmd)) {
           inner.cmds.push(cmd)
           inner.calls.push({ cmd, env: opts?.env ?? null })
-          return { code: 128, stdout: '', stderr: 'fatal: cannot lock ref\n' }
+          return { code: 128, stdout: '', stderr: 'fatal: Could not read from remote repository.\n' }
         }
         return inner(cmd, opts)
       }
@@ -197,7 +200,7 @@ const insideFence = (text, index) => {
       })
       await sandbox
       const cardPath = path.join(evidenceDir, `pr-body-${runId}.md`)
-      return { detail, exec, evidenceDir, card: fs.readFileSync(cardPath, 'utf8') }
+      return { detail, exec, evidenceDir, cardPath, card: fs.existsSync(cardPath) ? fs.readFileSync(cardPath, 'utf8') : null }
     }
 
     // -- D1: the pin lands → the card names the ref and the evidence --------
@@ -206,8 +209,9 @@ const insideFence = (text, index) => {
       const { detail, evidenceDir, card } = await greenDrive({ runId })
       assert.equal(detail.status, 'gate-green', `precondition: a green run: ${JSON.stringify(detail.errors)}`)
       assert.equal(detail.pullRequest?.draft, false, `the green PR opened: ${JSON.stringify(detail.errors)}`)
-      // The ref really exists on the orchestrator side, and holds the tip.
-      const pinned = fs.readFileSync(path.join(repoDir, '.git', 'refs', 'fleet', runId), 'utf8').trim()
+      // The ref really exists on the orchestrator side — in the TARGET's cache
+      // clone (#575) — and holds the tip.
+      const pinned = (await sh(`git -C "${cacheDir}" rev-parse --verify refs/fleet/${runId}`)).stdout.trim()
       assert.equal(pinned, integrationSha, 'the drive really pinned the tip it fetched')
       // The line on disk, to the byte — the ref the drive wrote and the
       // evidence path IT was given, never a path the renderer invented.
@@ -222,24 +226,22 @@ const insideFence = (text, index) => {
       assert.ok(card.indexOf(expected) < card.indexOf(TRAILER), 'above the trailer')
     }
 
-    // -- D2: the pin fails → no line, and the failure is on the record ------
+    // -- D2: the pin fails → nothing to publish, no card, the failure on record
+    // #575 made the fetch the pin, so "pinned but not fetched" cannot happen
+    // and "fetched but not pinned" cannot either: a failed fetch leaves
+    // nothing on this side, the publish leg never runs, and the only place the
+    // ref is named is the recorded failure.
     {
       const runId = 'run-pin-nopin'
-      const { detail, card } = await greenDrive({ runId, failPin: true })
+      const { detail, card, cardPath } = await greenDrive({ runId, failPin: true })
       assert.ok(
-        detail.errors.some((e) => e.startsWith(`could not pin refs/fleet/${runId}`)),
-        `the pin really failed: ${JSON.stringify(detail.errors)}`,
+        detail.errors.some((e) => e.startsWith(`fetch ${INTEGRATION_BRANCH} failed (code 128)`)),
+        `the fetch really failed: ${JSON.stringify(detail.errors)}`,
       )
-      assert.ok(!fs.existsSync(path.join(repoDir, '.git', 'refs', 'fleet', runId)), 'and no ref was written')
-      assert.ok(!card.includes(OPENING), `a card with no pin behind it promises nothing:\n${card}`)
-      // The ref name still appears once — as the RECORDED FAILURE in the
-      // driver notes, which is the opposite of a promise.
-      assert.deepEqual(
-        card.split('\n').filter((l) => l.includes('refs/fleet/')),
-        [`- could not pin refs/fleet/${runId} to ${integrationSha} (code 128) — the run tip is reachable only via FETCH_HEAD and will not survive the next fetch or gc (#497)`],
-        `the only mention of the ref is the failure itself:\n${card}`,
-      )
-      assert.ok(card.endsWith(`\n${TRAILER}\n`), 'the rest of the card is untouched')
+      assert.notEqual((await sh(`git -C "${cacheDir}" rev-parse --verify refs/fleet/${runId}`)).code, 0, 'and no ref was written')
+      assert.equal(card, null, `no card is written for a run nothing fetched: ${cardPath}`)
+      assert.equal(detail.pullRequest, null)
+      assert.ok(!JSON.stringify(detail).includes(OPENING), 'nothing promises a pin that never happened')
     }
   } finally {
     cleanup()

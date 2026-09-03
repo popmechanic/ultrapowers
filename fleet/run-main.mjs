@@ -49,7 +49,14 @@ import {
 import { runEngine } from './run-engine.mjs'
 import { createRunWorker } from './run-worker.mjs'
 
-export const REPO_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+// ONE VARIABLE BECAME TWO (#575, spec §1). `ENGINE_DIR` is THIS module's own
+// repository, resolved from its own location: the kernel scripts, the role
+// prompts and the confine hook are the engine's, wherever the engine was
+// started from. `repoDir` (the mandatory `--repo`) is the tree being BUILT:
+// BASE, the clones, the run dir and the gate. They were the same variable
+// while the engine only ever built itself; that self-host special case is
+// what this deletes, so nothing here defaults one to the other.
+export const ENGINE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // The driver's scheduler bound: how many `claude -p` processes one run may
 // have in flight. It is a MEASURED number, never a vendor one — the exe.dev
@@ -72,21 +79,29 @@ export const WIDTH = 12
 // Per-role wall-clock deadlines. Placement (which role gets which bound) is
 // principled — a read-only reviewer has no suite to run and no tree to edit,
 // so it must finish well before an implementer; merge agents run the test
-// suite, so they get implementer time. The VALUES are defaults pending
-// measurement: no per-role duration distribution exists yet (runs 18–23
-// predate per-role timing), so these are sized from the one number known —
-// the old single 30-minute default never tripped. The first runs' event logs
-// (worker:start/end pairs) are the data that re-sizes them.
+// suite, so they get implementer time; the examiner reads the whole task and
+// writes a suite, so it gets implementer time too.
+//
+// The deadline is a HANG guard, not a scope budget: it exists so a worker that
+// never exits cannot hold a wave open forever, and it should sit far outside
+// the working distribution. Measured on run-55 (2026-09-03, a seven-task
+// claims-v1 plan): implementers ran 3/12/14/18/19/22 min and the widest task
+// (19 files) was killed at the old 30-minute cap — the guard was adjudicating
+// task width, which is the plan author's decision, not the engine's. 90 min
+// keeps the hang protection above the observed spread. Reviewer-class roles
+// ran 4–7 min, so their 15-minute bound stays.
 export const ROLE_TIMEOUT_MS = {
-  implementer: 30 * 60 * 1000,
-  writeSide: 30 * 60 * 1000,
+  implementer: 90 * 60 * 1000,
+  writeSide: 90 * 60 * 1000,
+  examiner: 90 * 60 * 1000,
   reviewer: 15 * 60 * 1000,
   resolver: 15 * 60 * 1000,
   critic: 15 * 60 * 1000,
 }
 
+// No `repoDir` key: the target is mandatory, and a default that pointed the
+// engine at itself is exactly the self-host case being deleted.
 export const DEFAULTS = Object.freeze({
-  repoDir: REPO_DIR,
   tier: 'mostCapable',
   overlap: null,
   testCmd: null,
@@ -104,7 +119,7 @@ const FLAGS = Object.freeze({
 })
 
 export const usage = () =>
-  'usage: node fleet/run-main.mjs <plan.md> <runId> [--repo DIR] [--tier standard|mostCapable] ' +
+  'usage: node fleet/run-main.mjs <plan.md> <runId> --repo DIR [--tier standard|mostCapable] ' +
   '[--overlap fold|serialize] [--test-cmd CMD] [--bootstrap-cmd CMD] [--cli BIN]'
 
 export function parseArgs(argv) {
@@ -134,6 +149,13 @@ export function parseArgs(argv) {
   // the wf_ worktree glob.
   if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(runId)) {
     throw new Error('run-main: runId must be [A-Za-z0-9-] (got ' + JSON.stringify(runId) + ')')
+  }
+  // The target is named or the run does not start. The shim always passes it
+  // (its argv contract is [run-main.mjs, plan, runId, '--repo', target, …]),
+  // and inferring one from this file's location is the deleted self-host case.
+  if (!opts.repoDir) {
+    throw new Error('run-main: --repo DIR is required — the engine builds the tree it is ' +
+      'pointed at, never the one it lives in\n' + usage())
   }
   return { planPath, runId, ...opts }
 }
@@ -279,15 +301,35 @@ export const ROLE_PROMPTS = {
     'Your working directory is the task\'s own working tree at BASE.\n',
 }
 
-export function writeRoleFiles(rolesDir) {
-  fs.mkdirSync(rolesDir, { recursive: true })
+export function writeRoleFiles(destDir) {
+  fs.mkdirSync(destDir, { recursive: true })
   const files = {}
   for (const [role, text] of Object.entries(ROLE_PROMPTS)) {
-    const p = path.join(rolesDir, role + '.md')
+    const p = path.join(destDir, role + '.md')
     fs.writeFileSync(p, text)
     files[role] = p
   }
   return (role) => files[role]
+}
+
+// ── the engine's judgment prompts, recorded in the run tree ──────────────────
+// `fleet/roles/*.md` are the OTHER kind of role file: the prompts run-engine
+// hands a model when it asks for a judgment (loadRoles, from run-engine's own
+// location — Amendment 10). They are the engine's, so they are read from
+// ENGINE_DIR and never from `--repo`; a target repository has no `fleet/` and
+// is never asked for one. Copying them beside the transcripts makes the run
+// directory a complete record: the evidence bundle is ONE tree, and what a
+// worker was asked is half of what it did.
+export function copyEngineRoles(destDir, sourceDir = path.join(ENGINE_DIR, 'fleet/roles')) {
+  fs.mkdirSync(destDir, { recursive: true })
+  const copied = []
+  for (const name of fs.readdirSync(sourceDir).sort()) {
+    const from = path.join(sourceDir, name)
+    if (!fs.statSync(from).isFile()) continue
+    fs.copyFileSync(from, path.join(destDir, name))
+    copied.push(name)
+  }
+  return copied
 }
 
 // ── the PreToolUse settings (spec §4, #402 item 5) ───────────────────────────
@@ -404,7 +446,7 @@ export async function runMain(parsed, deps = {}) {
   const repoDir = path.resolve(parsed.repoDir)
   const stamp = runId
   const py = 'python3'
-  const scripts = path.join(repoDir, 'skills/ultrapowers/scripts')
+  const scripts = path.join(ENGINE_DIR, 'skills/ultrapowers/scripts')
   // ULTRAPOWERS_FLEET_RUN: ultra_run's fleet-run stage (and nothing else here)
   // reads it; setting it from the runId is what makes this entry the engine.
   const pyEnv = { ...env, ULTRAPOWERS_FLEET_RUN: runId }
@@ -485,9 +527,14 @@ export async function runMain(parsed, deps = {}) {
   const taskIds = argsObj.waves.flat().map((t) => t.id)
   stage('provision', 'BASE ' + base + '; ' + taskIds.length + ' task clone(s) + integration')
   const tree = provisionRunTree({ repoDir, runDir, base, taskIds })
-  const promptFileFor = writeRoleFiles(path.join(runDir, 'roles'))
+  // Two different files per role, kept in two directories so neither can be
+  // mistaken for the other: `preambles/` holds the neutral orientation text
+  // appended to a worker's system prompt, `roles/` holds the engine's own
+  // judgment prompts verbatim. Both come from ENGINE_DIR; so does the hook.
+  const promptFileFor = writeRoleFiles(path.join(runDir, 'preambles'))
+  copyEngineRoles(path.join(runDir, 'roles'))
   const settingsFor = writeConfineSettings({
-    runDir, hookPath: path.join(repoDir, 'fleet/confine-hook.mjs'),
+    runDir, hookPath: path.join(ENGINE_DIR, 'fleet/confine-hook.mjs'),
   })
 
   // 4. The engine. CLAUDE_CONFIG_DIR points into the run tree (spec §5) so

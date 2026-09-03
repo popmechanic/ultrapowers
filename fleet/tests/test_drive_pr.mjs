@@ -18,7 +18,7 @@
 //   P4  push failure → recorded, pullRequest null, read unchanged
 //   P5  gh failure → recorded, pullRequest null, read unchanged
 //   P6  parked with NOTHING fetched → no publish leg at all
-//   P7  unsafe prBase → refused at entry, before any command
+//   P7  unsafe target / symbolic base → refused at entry, before any command (#575)
 //   P8  the pure helpers: Closes parsing, title, body order, quoting, url parse
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
@@ -36,21 +36,22 @@ import {
   GITHUB_TOKEN,
   OLDER_BRANCH,
   PR_URL,
+  TARGET,
   setupDriveFixture,
   sh,
   writeFile,
 } from './_drive_helpers.mjs'
 
-const { tmp, repoDir, sandboxRepo, originRepo, githubTokenPath, cleanup, headSha, makeExec, startStubSandbox, driveDefaults } =
+const { tmp, sandboxRepo, originRepo, cacheDir, githubTokenPath, cleanup, headSha, makeExec, startStubSandbox, driveDefaults } =
   await setupDriveFixture()
 
 const TRAILER = '🤖 Generated with [Claude Code](https://claude.com/claude-code)'
 
 try {
-  // -- fixture: a plan at baseRef carrying the #368 Closes convention --------
-  // Committed on a side branch through a temporary index (HEAD, the working
-  // tree and every fixture sha stay put — the test_drive 13 pattern).
-  const PLAN_REL = 'docs/superpowers/plans/2026-08-28-pr-leg.md'
+  // -- fixture: a plan FILE carrying the #368 Closes convention ---------------
+  // #575: the plan is shipped from wherever it lives — here under `plans/`
+  // beside the fixture repos, in no checkout at all.
+  const PLAN_REL = 'plans/2026-08-28-pr-leg.md'
   const PLAN_TEXT =
     '# Fleet PR Leg Implementation Plan (#368)\n\n' +
     '**Goal:** the orchestrator opens the PR.\n\n' +
@@ -59,23 +60,9 @@ try {
     '### Task 1: Code\n**Type:** implementation\n**Depends-on:** none\n\n' +
     '**Files:**\n- Modify: `fleet/x.mjs`\n- Test: `fleet/tests/test_x.mjs`\n\n- [ ] **Step 1: edit**\n\n' +
     '## Not the header\n\nCloses #999\n'
-  const planSha = await (async () => {
-    const idx = path.join(tmp, 'plan-pr.idx')
-    const blobFile = path.join(tmp, 'plan-pr.blob')
-    fs.writeFileSync(blobFile, PLAN_TEXT)
-    const r = await sh(
-      `set -e; blob=$(git hash-object -w "${blobFile}"); ` +
-        `GIT_INDEX_FILE="${idx}" git read-tree main; ` +
-        `GIT_INDEX_FILE="${idx}" git update-index --add --cacheinfo 100644,$blob,${PLAN_REL}; ` +
-        `tree=$(GIT_INDEX_FILE="${idx}" git write-tree); ` +
-        `commit=$(git commit-tree $tree -p main -m plan-pr); ` +
-        `git branch plan-pr $commit; printf '%s' $commit`,
-      repoDir,
-    )
-    assert.equal(r.code, 0, `plan-pr fixture failed: ${r.stderr}`)
-    return r.stdout.trim()
-  })()
-  assert.match(planSha, /^[0-9a-f]{40}$/)
+  const planFile = path.join(tmp, PLAN_REL)
+  fs.mkdirSync(path.dirname(planFile), { recursive: true })
+  fs.writeFileSync(planFile, PLAN_TEXT)
 
   // -- fixture: two integration branches carrying REAL-shaped gate receipts --
   // Shaped like fleet-receipts/run-20/gate-receipt.json (gateCheck.{verdict,
@@ -130,10 +117,12 @@ try {
   const greenReceiptSha = greenParents[0]
   assert.equal((await sh(`git cat-file -e ${greenReceiptSha}:${greenReceiptPath}`, sandboxRepo)).code, 0)
 
+  // #575: both from the TARGET's cache clone; the PR names the target's own
+  // repository and no base — a foreign PR targets GitHub's default branch.
   const pushCmdFor = (tip, branch) =>
-    `git -C ${repoDir} -c credential.helper= -c credential.helper='!gh auth git-credential' push origin ${tip}:refs/heads/${branch}`
+    `git -C ${cacheDir} -c credential.helper= -c credential.helper='!gh auth git-credential' push origin ${tip}:refs/heads/${branch}`
   const ghCmdFor = ({ branch, title, bodyFile, draft }) =>
-    `cd ${shellQuote(repoDir)} && gh pr create --base main --head ${branch} --title ${shellQuote(title)} --body-file ${shellQuote(bodyFile)}${draft ? ' --draft' : ''}`
+    `cd ${shellQuote(cacheDir)} && gh pr create --repo ${TARGET} --head ${branch} --title ${shellQuote(title)} --body-file ${shellQuote(bodyFile)}${draft ? ' --draft' : ''}`
   const noTokenAnywhere = (exec, detail) => {
     assert.ok(!exec.cmds.some((c) => c.includes(GITHUB_TOKEN)), 'the token must never appear on a command line')
     assert.ok(!JSON.stringify(detail).includes(GITHUB_TOKEN), 'the token must never land in the detail')
@@ -142,8 +131,7 @@ try {
   const driveGreen = async ({ runId, exec, overrides = {} }) =>
     driveOne({
       ...driveDefaults,
-      planPath: PLAN_REL,
-      baseRef: 'plan-pr',
+      planPath: planFile,
       dbDir: path.join(tmp, `db-${runId}`),
       evidenceDir: path.join(tmp, `evidence-${runId}`),
       exec,
@@ -161,7 +149,6 @@ try {
           exec,
           branch,
           gateGreen,
-          stamp: { pluginVersion: '9.9.9', engineSha: planSha },
         })
       }, 30)
     }
@@ -201,20 +188,21 @@ try {
       'the merge commit reached origin with both parents — never rebased',
     )
 
-    // The PR: base main, head the run branch, receipt-rendered body file, no
-    // --draft; token in the env only.
+    // The PR: on the target's repo, head the run branch, no base,
+    // receipt-rendered body file, no --draft; token in the env only.
     const bodyFile = path.join(tmp, `evidence-${runId}`, `pr-body-${runId}.md`)
     const ghCmd = ghCmdFor({ branch: GREEN_BRANCH, title: `fleet ${runId}: Fleet PR Leg Implementation Plan (#368)`, bodyFile, draft: false })
     const ghIdx = exec.cmds.indexOf(ghCmd)
     assert.ok(ghIdx >= 0, `expected gh pr create, got: ${JSON.stringify(exec.cmds.filter((c) => / gh /.test(c)))}`)
     assert.ok(!exec.cmds[ghIdx].includes('--draft'), 'a green run is a normal PR, never a draft')
+    assert.ok(!exec.cmds[ghIdx].includes(' --base '), 'a foreign PR names no base branch (#575)')
     assert.deepEqual(exec.calls[ghIdx].env, { GH_TOKEN: GITHUB_TOKEN, GH_PROMPT_DISABLED: '1' }, 'the token rides the gh env')
     assert.ok(pushIdx < ghIdx, 'push before PR')
     // After teardown: the billing clock never waits on GitHub.
     const rmIdx = exec.cmds.findIndex((c) => c === `ssh exe.dev "rm fleet-${runId} --json"`)
     assert.ok(rmIdx >= 0 && rmIdx < pushIdx, 'the sandbox is destroyed BEFORE the publish leg starts')
     // The receipt was read off the fetched branch, by its resolved pointer.
-    assert.ok(exec.cmds.includes(`git -C ${repoDir} show ${greenReceiptSha}:${greenReceiptPath}`), 'the receipt is read from the branch')
+    assert.ok(exec.cmds.includes(`git -C ${cacheDir} show ${greenReceiptSha}:${greenReceiptPath}`), 'the receipt is read from the branch, in the cache clone')
 
     // The body IS the gate receipt rendered.
     const body = fs.readFileSync(bodyFile, 'utf8')
@@ -304,7 +292,7 @@ try {
     assert.ok(!exec.cmds.some((c) => / gh pr create /.test(c)), 'no PR without a token')
     assert.ok(!fs.existsSync(path.join(tmp, `evidence-${runId}`, `pr-body-${runId}.md`)), 'no body file is written either')
     // …and the branch is still fetched and resolved locally exactly as before.
-    assert.ok(exec.cmds.some((c) => new RegExp(` fetch ssh://\\S+ ${GREEN_BRANCH}$`).test(c)))
+    assert.ok(exec.cmds.some((c) => new RegExp(` fetch ssh://\\S+ \\+${GREEN_BRANCH}:refs/fleet/${runId}$`).test(c)))
   }
 
   // -- P4. push failure: recorded, pullRequest null, no gh, read unchanged ---
@@ -371,24 +359,32 @@ try {
     assert.ok(!detail.errors.some((e) => /github-token|PR not opened/.test(e)), 'and no token noise for a run with nothing to publish')
   }
 
-  // -- P7. an unsafe prBase is refused at entry, before any command ----------
+  // -- P7. an unsafe target or a symbolic base is refused at entry (#575) ----
+  // Both reach a shell (`--repo`, the clone URL, the cache path, the refspecs)
+  // — refused before any command, exactly as `prBase` used to be.
   {
-    const cmds = []
-    await assert.rejects(
-      driveOne({
-        ...driveDefaults,
-        dbDir: path.join(tmp, 'db-pr-unsafe-base'),
-        runId: 'run-pr-unsafe-base',
-        prBase: 'main; touch /tmp/fleet-pwned',
-        exec: async (cmd) => {
-          cmds.push(cmd)
-          return { code: 0, stdout: '' }
-        },
-      }),
-      /unsafe prBase/,
-    )
-    assert.deepEqual(cmds, [], 'refusal precedes every exec call')
-    assert.equal(fs.existsSync(path.join(tmp, 'db-pr-unsafe-base')), false, 'refusal precedes the orchestrator start')
+    for (const [label, override, pattern] of [
+      ['a target with shell in it', { target: 'octo/widgets; touch /tmp/fleet-pwned' }, /must be <owner>\/<repo>/],
+      ['a symbolic base', { baseSha: 'main' }, /fails isSafeSha/],
+    ]) {
+      const cmds = []
+      await assert.rejects(
+        driveOne({
+          ...driveDefaults,
+          ...override,
+          dbDir: path.join(tmp, 'db-pr-unsafe-base'),
+          runId: 'run-pr-unsafe-base',
+          exec: async (cmd) => {
+            cmds.push(cmd)
+            return { code: 0, stdout: '' }
+          },
+        }),
+        pattern,
+        label,
+      )
+      assert.deepEqual(cmds, [], `${label}: refusal precedes every exec call`)
+      assert.equal(fs.existsSync(path.join(tmp, 'db-pr-unsafe-base')), false, `${label}: refusal precedes the orchestrator start`)
+    }
   }
 
   // -- P8. the pure helpers ---------------------------------------------------
