@@ -459,7 +459,7 @@ run_engine() {
   (
     cd "$TARGET_DIR" || exit 1
     fleet_systemd_run --user --scope "--unit=fleet-engine-$RUN_N" \
-      -p MemoryMax=40G -p MemorySwapMax=0 --wait --collect \
+      -p MemoryMax=40G -p MemorySwapMax=0 \
       env -u CLAUDE_CONFIG_DIR \
         "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
         "CLAUDE_CODE_OAUTH_TOKEN=placeholder" \
