@@ -42,19 +42,27 @@ name, not a second procedure — and the VM needs its own SSH key registered on
 the account, because the sandboxes push run branches back to its checkout and a
 key that only exists on your laptop cannot carry that.
 
+Its checkout at `/home/exedev/repo` is the engine: what is checked out there is
+what every run pushes to its sandbox, and the launch step pins it to the newest
+release on `main` first.
+The GitHub token it holds has to reach every repository you will drive;
+ultrapowers itself is one of them.
+
 ## golden
 
-The image every sandbox is cloned from: node, the repo checkout, pytest, Bun,
-and the plugin, warm. A run's cost and its failure modes are mostly decided
-here, which is why it is built by hand.
+The image every sandbox is cloned from: node, the repo checkout, pytest and
+Bun, warm. A run's cost and its failure modes are mostly decided here, which is
+why it is built by hand. Nothing about the image chooses what a run executes —
+the repo clone at `/home/exedev/repo` is the engine every run checks out at the
+`fleet-engine` ref the orchestrator pushes.
 
 Build it from RUNBOOK §Golden VM build.
 The golden is built by the human, one RUNBOOK step at a time, and re-checked with the doctor after each; this walk verifies, it does not build.
 A wrong image built quickly is harder to debug than a right one built slowly:
 the gotchas that section records — PEP 668's `--break-system-packages`, Bun on
-the workers' login-shell PATH rather than only the interactive one, the plugin
-addressed as `<plugin>@<marketplace>` — each cost a run to find, and each is
-invisible until a sandbox fails halfway through a wave.
+the workers' login-shell PATH rather than only the interactive one, the Bun
+cache measured by path rather than through `bun pm cache` — each cost a run to
+find, and each is invisible until a sandbox fails halfway through a wave.
 
 Take the steps in the order the RUNBOOK gives them and stop at the first one
 whose output surprises you.

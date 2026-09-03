@@ -60,19 +60,18 @@ provisioned until it is repaired. Instead:
 1. `ssh exe.dev "cp fleet-golden fleet-golden-next --json"` and apply the
    deltas to the clone. Prefer this to a from-scratch build: the steps below
    never recreate `~/.claude/settings.json` (`permissions.defaultMode`,
-   `enabledPlugins`, `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`), so a from-scratch
-   golden silently comes up without them. The clone inherits the `fleet` tag,
-   which the orchestrator's tag-scoped key needs in order to `cp` it.
+   `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`), so a from-scratch golden silently
+   comes up without them. The clone inherits the `fleet` tag, which the
+   orchestrator's tag-scoped key needs in order to `cp` it.
 2. Verify: every check in this section, run against `fleet-golden-next`.
 3. Prove it with a real run: `node fleet/drive-one.mjs … --golden fleet-golden-next`.
 4. Only then `ssh exe.dev "rm fleet-golden"` and
    `ssh exe.dev "rename fleet-golden-next fleet-golden"`. Renaming keeps the
    `drive-one` default correct with no code change.
 
-One hand-maintained golden VM: exeuntu + node + the ultrapowers plugin + a
-warmed repo clone. **No superpowers, no credentials of any kind** — the golden
-image holds nothing that could leak if a clone were ever compromised (spec
-§W1a).
+One hand-maintained golden VM: exeuntu + node + pytest + Bun + a warmed repo
+clone. **No superpowers, no credentials of any kind** — the golden image holds
+nothing that could leak if a clone were ever compromised (spec §W1a).
 
 ```bash
 # 1. Create the VM. node is NOT preinstalled on exeuntu (#179 fact sheet §3),
@@ -135,70 +134,48 @@ ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-gree
 ssh fleet-golden.exe.xyz 'bash -lc "du -sh ~/.bun/install/cache"'   # tens of MB: the cache survives
 ssh fleet-golden.exe.xyz 'bash -lc "cd /home/exedev/repo/evals/fixtures/bun-greenfield/project && bun install --offline && rm -rf node_modules bun.lock"'
 
-# 3. Install the ultrapowers plugin inside the clone (fleet/node_modules stays
-#    gitignored — install fleet's own deps too, since the shim imports tinybase + ws).
+# 3. Install fleet's own node deps inside the clone (fleet/node_modules stays
+#    gitignored — the shim imports tinybase + ws). Nothing else is installed
+#    into the image: the engine arrives per run as a pushed ref, and no
+#    superpowers install is present — deliberately (see the note after step 6).
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
-#    The plugin is addressed as <plugin>@<marketplace>; the bare name fails with
-#    "Plugin not found". Register the marketplace first (it is this repo).
-#    THIS IS THE BOOTSTRAP ONLY (#373): it puts *a* plugin in the image so the
-#    per-run re-install below has something to uninstall. It does NOT choose
-#    the engine under test — see the note after step 6.
-ssh fleet-golden.exe.xyz 'claude plugin marketplace add popmechanic/ultrapowers'
-ssh fleet-golden.exe.xyz 'claude plugin install ultrapowers@ultrapowers'   # no superpowers install — deliberately absent
 
-# 4. Warm the clone once so the first real run pays no cold cost (pyc caches,
-#    plugin registry) and prove the suite actually runs in the image:
+# 4. Warm the clone once so the first real run pays no cold cost (pyc caches)
+#    and prove the suite actually runs in the image:
 ssh fleet-golden.exe.xyz 'cd /home/exedev/repo && python3 -m pytest -q tests/test_version_sync.py'
 
 # 5. Prune the golden's Claude transcripts before trusting the image. Every
-#    `claude` invocation above (plugin install, warm-up) leaves a session
-#    transcript under ~/.claude/projects; those ride into every sandbox clone
-#    and land in the evidence bundle `driveOne` pulls (#197), polluting the
-#    ultralearn sense corpus — six-day-old golden transcripts have been found
-#    in run bundles. Repeat this after EVERY `claude plugin update` on the
-#    golden (see step 6): the update session writes a transcript too.
+#    `claude` invocation above leaves a session transcript under
+#    ~/.claude/projects; those ride into every sandbox clone and land in the
+#    evidence bundle `driveOne` pulls (#197), polluting the ultralearn sense
+#    corpus — six-day-old golden transcripts have been found in run bundles.
+#    Prune once, here, at the end of the build: nothing the image does
+#    afterwards writes another transcript.
 ssh fleet-golden.exe.xyz 'rm -rf ~/.claude/projects/*'
 
 # 6. Verify the posture before trusting the image for real runs.
 ssh fleet-golden.exe.xyz 'claude --version'   # non-empty
+#    That version is the CLI the workers run, not the engine a run executes —
+#    the engine arrives as the pushed `fleet-engine` ref (the note below). Keep
+#    the CLI fresh through `fleet/update-cli.sh` (§Live W1 run), the one entry
+#    point, which updates golden and orchestrator together.
 ssh fleet-golden.exe.xyz 'nproc'              # must print 8 (the --cpu=8 above; #179 fact sheet §1)
 ssh fleet-golden.exe.xyz 'test -d /home/exedev/repo/.git && echo clone-ok'
 ssh fleet-golden.exe.xyz 'git -C /home/exedev/repo remote get-url origin && test -z "$(git -C /home/exedev/repo status --porcelain)" && echo clone-clean'
 ssh fleet-golden.exe.xyz 'which claude-code-superpowers || echo no-superpowers-ok'
-ssh fleet-golden.exe.xyz 'claude plugin list'
-#    The version printed here is NOT the engine a run will execute (#373, below).
-#    Keep the golden's `claude` CLI and its deps fresh as ordinary hygiene —
-#    `claude plugin update` refreshes nothing at the same version anyway — and
-#    prune the transcripts the update session leaves behind (step 5 again):
-ssh fleet-golden.exe.xyz 'claude plugin update ultrapowers@ultrapowers && rm -rf ~/.claude/projects/*'
 ```
 
-**The engine under test is the pushed base, not the golden's plugin (#373).**
-The marketplace install in step 3 is the bootstrap only. Every run re-installs
-the plugin inside its own sandbox from the sandbox's `fleet-base` checkout —
-`fleet/shim-main.mjs` `invokeEngineRun` runs `pluginInstallCommands`
-(`claude plugin marketplace add /home/exedev/repo` → `claude plugin uninstall
-ultrapowers@ultrapowers` → `claude plugin install ultrapowers@ultrapowers`,
-~2 s) after the `fleet-base` checkout and before the engine launches, and
-REFUSES TO LAUNCH if any of the three fails (the run parks with
-to the image's plugin). The per-run re-install means the engine under test is the pushed base by
-construction; the drive's `versionStamp` leg attests the checkout stamp
-(`pluginVersion` + `engineSha`), not the installed plugin — that half died at
-0.3.0 (`drive.mjs:1123-1127`). Consequences:
-
-- `claude plugin update` on the golden is no longer how the engine under test is
-  chosen — the base ref you push IS the engine. A branch, or main between
-  releases, runs its own engine. Rebuilding the golden after a release is
-  hygiene, not a prerequisite for driving that release.
-- The bootstrap install must exist: `claude plugin uninstall` exits 1 when
-  nothing is installed, and the run refuses at that step. A golden built
-  without step 3 drives nothing.
-- The local-path `marketplace add` REPLACES the golden's GitHub marketplace
-  entry of the same name (`ultrapowers`) inside the sandbox clone only; the
-  golden itself is never touched.
-- The per-run `claude plugin …` commands write no session transcript
-  (`~/.claude/projects` stays clean), so the evidence bundle (#197) is not
-  polluted by them.
+**The engine is the orchestrator checkout, pushed as `fleet-engine` (#575).**
+What a run executes is the orchestrator's `/home/exedev/repo` at the commit the
+launch step pinned, pushed to the sandbox's `/home/exedev/repo` as
+`fleet-engine`; the repository being built is a separate push, `fleet-base`,
+delivered to `/home/exedev/target` from that target's cache clone under
+`/home/exedev/targets/`. No plugin is installed on any sandbox, so nothing
+about the golden's image chooses the engine: a branch, or main between
+releases, runs its own engine by virtue of being what the orchestrator has
+checked out. What still needs a golden rebuild is a dependency change in
+`fleet/package.json` — the image carries `fleet/node_modules`, and no push can
+add to it. Rebuild with the swap procedure at the top of this section.
 
 Every real run clones this VM with `provisionRun` (`fleet/provision.mjs`), which
 issues `ssh exe.dev "cp fleet-golden fleet-<runId> --json"` as its first command
@@ -225,10 +202,12 @@ ssh fleet-orchestrator.exe.xyz 'printf "Host *.exe.xyz exe.dev\n  StrictHostKeyC
 
 # 3. A clone of this repo at the same path the shim expects, with fleet's deps.
 ssh fleet-orchestrator.exe.xyz 'git clone https://github.com/popmechanic/ultrapowers.git /home/exedev/repo && cd /home/exedev/repo/fleet && npm install --no-audit --no-fund'
-#    Before EVERY drive, bring it to the base ref you mean to drive — the driver
-#    pushes the base from this checkout (drive-one.mjs --repo-dir defaults to it)
-#    and the #282 versionStamp cross-check reads plugin.json from it:
-ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q main && git -C /home/exedev/repo pull -q --ff-only && git -C /home/exedev/repo log --oneline -1'
+#    This checkout is the engine every run pushes: whatever is here is what the
+#    drive delivers to the sandbox as `fleet-engine` (drive-one.mjs --repo-dir
+#    defaults to it), and the #282 versionStamp cross-check reads plugin.json
+#    from it. Before a drive, pin it to the newest release on `main` — the last
+#    commit that touched .claude-plugin/plugin.json — and read the stamp back:
+ssh fleet-orchestrator.exe.xyz 'git -C /home/exedev/repo fetch -q origin && git -C /home/exedev/repo checkout -q $(git -C /home/exedev/repo log -1 --format=%H origin/main -- .claude-plugin/plugin.json) && git -C /home/exedev/repo show HEAD:.claude-plugin/plugin.json'
 ```
 
 **Hand work on the orchestrator.**
@@ -273,8 +252,8 @@ ssh -n fleet-orchestrator.exe.xyz 'chmod 700 /home/exedev/.fleet && chmod 600 /h
 
 # 3. Golden settings.json: NO ANTHROPIC_* keys. Edit with jq, never a heredoc
 #    overwrite (that dropped enabledPlugins once and cost a run — see #193):
-ssh -n fleet-golden.exe.xyz 'f=~/.claude/settings.json; jq "del(.env.ANTHROPIC_BASE_URL, .env.ANTHROPIC_API_KEY)" $f > $f.new && mv $f.new $f && cat $f && claude plugin list | grep -c enabled'
-#    expected: env keeps CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS; permissions + enabledPlugins intact; "1".
+ssh -n fleet-golden.exe.xyz 'f=~/.claude/settings.json; jq "del(.env.ANTHROPIC_BASE_URL, .env.ANTHROPIC_API_KEY)" $f > $f.new && mv $f.new $f && cat $f'
+#    expected: env keeps CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS; permissions intact.
 ```
 
 The driver passes the token as `engineEnv` (below). `provisionRun` delivers it
@@ -319,16 +298,18 @@ is the spend control, and reading it is the operator's job.**
 The second (and last) secret in the fleet. After a run resolves, `driveOne`
 pushes the fetched run branch to `origin` (GitHub) and opens the PR itself —
 see §Live W1 run "The orchestrator opens the PR". That needs a **fine-grained
-personal access token scoped to this one repository** with exactly
+personal access token scoped to the repositories you drive** with exactly
 `Contents: Read and write` + `Pull requests: Read and write` (nothing else —
-no `Workflows`, no org scope). It lives beside the OAuth token, on the
-orchestrator only: never on the golden, never in a sandbox (the sandbox still
-pushes to the orchestrator's checkout over the tunnel exactly as today and
-never sees GitHub).
+no `Workflows`, no org scope). A target outside the token's repository access
+parks the run at publish with a 403; the branch and its receipts are still
+pinned in the target's cache clone under `/home/exedev/targets/`. It lives
+beside the OAuth token, on the orchestrator only: never on the golden, never in
+a sandbox (the sandbox still pushes to the orchestrator's checkout over the
+tunnel exactly as today and never sees GitHub).
 
 ```bash
 # 1. GitHub → Settings → Developer settings → Fine-grained tokens → Generate:
-#    Repository access: only popmechanic/ultrapowers.
+#    Repository access: every repository you will drive with `/ultrapowers`, ultrapowers itself included.
 #    Permissions: Contents (Read and write), Pull requests (Read and write).
 #    Save the printed token to a 0600 file, e.g. ~/.secrets/fleet-github-token.
 
@@ -366,9 +347,8 @@ node fleet/doctor.mjs --json    # the same verdicts as one JSON object
 ```
 
 A missing row names the section of this file that builds it; `--json` is what
-`/ultrapowers setup` reads. Re-run it after every step of a build and after
-every `claude plugin update` on the golden; a green doctor is the posture
-check, not the build's exit code.
+`/ultrapowers setup` reads. Re-run it after every step of a build; a green
+doctor is the posture check, not the build's exit code.
 
 The `--probe` row is the §Preflight procedure below, run for you; the section
 that follows is where its verdicts are explained and where to go when the
@@ -442,14 +422,18 @@ CLI lives in — `--repo-dir` overrides).
 # tests/test_launch_snippet_detaches.py pins this shape on every launch line here.
 # `mkdir -p` first: the redirect below is the SHELL's, evaluated before the driver
 # runs, so it does not benefit from drive.mjs's own mkdir of evidenceDir (#466).
-# docs/superpowers/ is untracked (#544): put the plan on the orchestrator first, then ship it in the assignment.
-rsync -a docs/superpowers/plans/<the-approved-plan>.md docs/superpowers/plans/<the-approved-plan>.gate-verdicts.json fleet-orchestrator.exe.xyz:/home/exedev/repo/docs/superpowers/plans/
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs docs/superpowers/plans/<the-approved-plan>.md run-<fresh> --plan-from-assignment </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
+# The plan is staged OUTSIDE the engine checkout, in a per-run directory: the
+# checkout is the engine (§Orchestrator VM) and a plan file dropped into it
+# would ride to the sandbox as an engine change. `--target` and `--base` name
+# the repository the run builds — ultrapowers is just one of them.
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/plans/run-<fresh>'
+rsync -a docs/superpowers/plans/<the-approved-plan>.md docs/superpowers/plans/<the-approved-plan>.gate-verdicts.json fleet-orchestrator.exe.xyz:/home/exedev/plans/run-<fresh>/
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/drive-one.mjs /home/exedev/plans/run-<fresh>/<the-approved-plan>.md run-<fresh> --target <owner>/<repo> --base <sha> </dev/null >/home/exedev/fleet-evidence/drive-run-<fresh>.out 2>&1'
 
 # Race the plan instead (#511, operator asks for it by name): K whole runs of
 # one plan, driven concurrently from this single process — so it detaches the
 # same way, and the raceId is a fresh `run-N` whose attempts become run-<N>-a/b/c.
-ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/race.mjs launch docs/superpowers/plans/<the-approved-plan>.md run-<fresh> --k 3 </dev/null >/home/exedev/fleet-evidence/race-run-<fresh>.out 2>&1'
+ssh -n fleet-orchestrator.exe.xyz 'mkdir -p /home/exedev/fleet-evidence && cd /home/exedev/repo && setsid -f node fleet/race.mjs launch /home/exedev/plans/run-<fresh>/<the-approved-plan>.md run-<fresh> --k 3 --target <owner>/<repo> --base <sha> </dev/null >/home/exedev/fleet-evidence/race-run-<fresh>.out 2>&1'
 # Then read it: `node fleet/race.mjs judge run-<fresh>` (RUNBOOK evidence dir).
 
 # Updating Claude Code on the fleet: NEVER by hand and never on a schedule —
@@ -500,16 +484,6 @@ What a wide run actually spends is sandbox MEMORY, ~3 GB per busy implementer: r
 eleven-wide wave at load 2.89 on the golden's 8 vCPU with 3 GB used of 15, and run-52 — the
 flags typed by hand — peaked at load 4.28 on 16 vCPU with 3.6 GB used of 48.
 This is a default rather than a clamp: the flags keep overriding it in both directions.
-
-**`--engine one-driver`** (#402): run the engine on the sandbox as the
-deterministic driver (`node fleet/run-main.mjs`) instead of the `claude` skill
-session. It provisions clones at BASE, captures each task's patch itself, folds
-every wave, confines the implementer with a `PreToolUse` hook, and gates —
-writing the same receipts to the same run directory, so the drive, the gate
-read and the PR are unchanged. Omit the flag for the old `claude` path, which
-stays the fallback until the first self-hosted run passes (spec §10 stage 2).
-The laptop refuses any `--engine` value but `one-driver`; the sandbox treats a
-missing key as the `claude` launch, so old assignments stay valid.
 
 Two things a live run needs now live in `fleet/` proper, so the script above
 needs no exec wrapper of its own:

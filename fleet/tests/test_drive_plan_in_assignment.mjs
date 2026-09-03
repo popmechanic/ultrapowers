@@ -9,6 +9,10 @@
 // ships both to the sandbox inside `fleet-run.json`. It does not untrack
 // `docs/`; #544 steps 1 and 3 are later work.
 //
+// `planSource` is a `driveOne` option, not a flag: #575 deleted
+// `--plan-from-assignment` from the CLI, so every leg below sets the option
+// directly.
+//
 // The absent-flag path is the load-bearing half of this spec: with no
 // `planSource`, every exec string and the delivered payload must be
 // byte-identical to BASE. Leg (j) freezes the whole BASE exec sequence as a
@@ -23,7 +27,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { driveOne, shellQuote } from '../drive.mjs'
 import { provisionRun, SANDBOX_SSH_OPTS } from '../provision.mjs'
-import { buildDriveOptions, parseArgs } from '../drive-one.mjs'
 import { PR_URL, setupDriveFixture } from './_drive_helpers.mjs'
 
 const ok = (line) => console.log(`ok - ${line}`)
@@ -235,16 +238,13 @@ try {
     ok('(g) an unfit working-tree plan is refused under planSource: assignment unless allowUnfitPlan')
   }
 
-  // (h) the CLI flag, and its absence.
-  {
-    const parsed = parseArgs(['docs/p.md', 'run-1', '--plan-from-assignment'])
-    assert.equal(parsed.planSource, 'assignment')
-    const deps = { readToken: () => 'tok\n', exec: async () => ({ code: 0, stdout: '' }) }
-    assert.equal(buildDriveOptions(parsed, deps).planSource, 'assignment')
-    const without = parseArgs(['docs/p.md', 'run-1'])
-    assert.equal('planSource' in buildDriveOptions(without, deps), false, 'no planSource key when the flag is absent')
-    ok('(h) --plan-from-assignment sets planSource, and its absence adds no key')
-  }
+  // (h) was the CLI flag. #575 deleted `--plan-from-assignment` from
+  // `fleet/drive-one.mjs` — a launch names its target and its base and nothing
+  // else about where the plan comes from — so `parseArgs` refuses it as an
+  // unknown flag now and `buildDriveOptions` carries no `planSource` key at
+  // all. That refusal is pinned in `test_drive_one_target.mjs` leg (a); what
+  // remains this file's is the `driveOne({ planSource })` option itself, which
+  // every other leg here drives directly.
 
   // (i) a working tree that DIFFERS from baseRef is not a refusal either —
   //     and the text that ships is the working tree's, never `git show`'s.

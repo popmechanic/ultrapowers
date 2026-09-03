@@ -38,6 +38,7 @@ import {
   applyReportedTokens,
   applyStamp,
   BASE_REF,
+  ENGINE_REF,
   readStamp,
   sandboxIdFor,
 } from '../shim-main.mjs'
@@ -127,6 +128,13 @@ export const setupDriveFixture = async () => {
     // run while HEAD moves twice (base checkout, then the engine's integration
     // branch), which is precisely why the stamp is read from it and not from HEAD.
     assert.equal((await sh(`git branch ${BASE_REF} main`, sandboxRepo)).code, 0)
+    // The engine ref, at the SAME commit. Live, this ref lives in a second
+    // directory — the golden's baked engine clone — and the base lives in the
+    // target. This one stand-in repo plays both, so the two refs are pinned to
+    // one commit and the stamp `main()` reads from `ENGINE_REF` is still the
+    // fixture checkout's own sha and manifest, which is what the drive's
+    // `versionStamp` check compares against.
+    assert.equal((await sh(`git branch ${ENGINE_REF} main`, sandboxRepo)).code, 0)
 
     await sh(`git checkout -q -b ${OLDER_BRANCH}`, sandboxRepo)
     writeFile(sandboxRepo, 'old.txt', 'old\n')

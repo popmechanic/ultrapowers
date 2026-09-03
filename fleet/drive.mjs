@@ -539,10 +539,11 @@ export const deriveSandboxStat = (statJson) => {
  *   run branch is fetched back into.
  * @param {string} [opts.pinRepoDir] - the ONE checkout the run tip is pinned
  *   in, whatever `repoDir` this drive runs out of (#543; default `repoDir`,
- *   which is exactly the #497 behaviour). A race gives every attempt a
- *   throwaway clone under /tmp, so `refs/fleet/<runId>` lands where nobody
- *   looks and /tmp reaps — the "reachable by nothing" outcome #497 exists to
- *   prevent. The mirror runs only AFTER the local pin lands, fetches the REF
+ *   which is exactly the #497 behaviour). When a caller drives out of a
+ *   checkout nobody keeps, `refs/fleet/<runId>` lands where nobody looks and
+ *   whatever reaps that directory takes it — the "reachable by nothing"
+ *   outcome #497 exists to prevent. The mirror runs only AFTER the local pin
+ *   lands, fetches the REF
  *   (a bare sha needs `uploadpack.allowAnySHA1InWant`), and its failure is
  *   recorded and never fatal.
  * @param {(cmd: string, opts?: {env?: Record<string,string>}) => Promise<{stdout: string, code: number, stderr?: string}>} opts.exec -
@@ -1443,10 +1444,10 @@ export const driveOne = async ({
                 // recovery for work that is already pinned.
                 note(`pinned run tip: ${refName} -> ${fetchedTip} (survives reset/gc, #497)`)
                 // #543: and pin it in ONE well-known place. `repoDir` is
-                // whatever checkout this drive happens to run out of — for a
-                // race attempt that is a throwaway clone under /tmp
-                // (`race-clone.mjs`), so #497's ref is written into the one
-                // directory nobody looks in and the reaper eventually removes.
+                // whatever checkout this drive happens to run out of, and a
+                // caller is free to point it at a directory nobody keeps — so
+                // #497's ref would be written into the one directory nobody
+                // looks in and whatever reaps it eventually removes.
                 // The mirror runs only now, after the local pin succeeded: a
                 // ref is always fetchable from a local path while a bare sha
                 // is not (`uploadpack.allowAnySHA1InWant`), so what is fetched

@@ -10,10 +10,11 @@
  *   (b) [M2] doctor({config, exec}) → {config, rows, verdict}; five rows with
  *            exactly the five ids in order, each carrying status/detail/fix,
  *            and the five fix strings are exactly the five RUNBOOK headings.
- *   (c) [M3][M5] a green probe-absent run issues exactly the six read-only
+ *   (c) [M3][M5] a green probe-absent run issues exactly the eight read-only
  *            commands, in order, substituted from config, and nothing else.
  *   (d) [M3] one stub per red condition → exactly that row `missing`, every
- *            other read-only row `ok`, golden detail naming plugin/xdist/settings.
+ *            other read-only row `ok`, golden detail naming engine clone /
+ *            xdist / settings.
  *   (e) [M4] a token stdout carrying a secret never reaches the result.
  *   (f) [M5] probe:true green → cp, the preflight ssh fetch (byte-equal to what
  *            fleet/tests/test_preflight.mjs pins), rm — row ok, detail `ssh`;
@@ -68,24 +69,43 @@ const EXPECTED_FIXES = [
 const STATUSES = new Set(['ok', 'missing', 'skipped'])
 
 // The config the stub-driven tests run against, so every substitution in the
-// six commands is visibly a substitution and not a hard-coded default.
+// read-only commands is visibly a substitution and not a hard-coded default.
 const CONFIG = { orchestrator: 'orch1', golden: 'gold1', repoDir: '/repo', tokenPath: '/tok' }
 
 const HEX40 = 'd6efce4da55f6a750a2632d30a70a0c635113c68'
+const GOLDEN_HEX40 = '1f2e3d4c5b6a798899001122334455667788990a'
 
-// [M3] The six read-only commands, byte for byte, with <orch>, <golden>,
-// <repoDir> and <tokenPath> substituted from CONFIG.
+// The manifest the `show` command answers and the text `describe` prints.
+const MANIFEST = '{"name":"ultrapowers","version":"0.3.3"}\n'
+const DESCRIBE = 'v0.3.3-4-gabc'
+
+// [M3] The eight read-only commands, byte for byte, with <orch>, <golden>,
+// <repoDir> and <tokenPath> substituted from CONFIG. The golden's engine
+// command spells the sandbox engine clone literally: that path is fixed on
+// every sandbox, so it is not <repoDir>.
 const CMD = {
   whoami: 'ssh exe.dev whoami',
   revParse: "ssh orch1.exe.xyz 'git -C /repo rev-parse HEAD'",
-  plugin: "ssh gold1.exe.xyz 'claude plugin list'",
+  show: "ssh orch1.exe.xyz 'git -C /repo show HEAD:.claude-plugin/plugin.json'",
+  describe: "ssh orch1.exe.xyz 'git -C /repo describe --tags --always'",
+  engine:
+    "ssh gold1.exe.xyz 'test -d /home/exedev/repo/fleet/node_modules && git -C /home/exedev/repo rev-parse HEAD'",
   xdist: `ssh gold1.exe.xyz 'python3 -c "import xdist"'`,
   settings: "ssh gold1.exe.xyz 'cat ~/.claude/settings.json'",
   token:
     "ssh orch1.exe.xyz 'stat -c %a /tok && head -c 10 /tok | grep -q ^sk-ant-oat && echo prefix-ok'"
 }
 
-const READ_ONLY_CMDS = [CMD.whoami, CMD.revParse, CMD.plugin, CMD.xdist, CMD.settings, CMD.token]
+const READ_ONLY_CMDS = [
+  CMD.whoami,
+  CMD.revParse,
+  CMD.show,
+  CMD.describe,
+  CMD.engine,
+  CMD.xdist,
+  CMD.settings,
+  CMD.token
+]
 
 // [M5] The probe's two lifecycle commands.
 const CP_CMD = 'ssh exe.dev "cp gold1 fleet-doctor-probe --json"'
@@ -118,7 +138,9 @@ const LS_REMOTE_CMD =
 const GREEN = {
   [CMD.whoami]: { code: 0, stdout: 'marcus\n' },
   [CMD.revParse]: { code: 0, stdout: `${HEX40}\n` },
-  [CMD.plugin]: { code: 0, stdout: 'ultrapowers@ultrapowers (v0.1.0) enabled\n' },
+  [CMD.show]: { code: 0, stdout: MANIFEST },
+  [CMD.describe]: { code: 0, stdout: `${DESCRIBE}\n` },
+  [CMD.engine]: { code: 0, stdout: `${GOLDEN_HEX40}\n` },
   [CMD.xdist]: { code: 0, stdout: '' },
   [CMD.settings]: { code: 0, stdout: '{"permissions":{"defaultMode":"bypassPermissions"}}\n' },
   [CMD.token]: { code: 0, stdout: '600\nprefix-ok\n' },
@@ -222,7 +244,7 @@ function assertRowShape (result, where) {
   assert.deepEqual(
     executed,
     READ_ONLY_CMDS,
-    '(c) [M3] a green probe-absent run issues exactly the six read-only commands, in order, and nothing else'
+    '(c) [M3] a green probe-absent run issues exactly the eight read-only commands, in order, and nothing else'
   )
   assert.equal(
     executed.some((c) => c.includes('fleet-doctor-probe')),
@@ -238,7 +260,7 @@ function assertRowShape (result, where) {
   const { exec, executed } = makeExec()
   const result = await doctor({ config: CONFIG, exec, probe: false })
   assert.equal(rowOf(result, 'preflight').status, 'skipped', '(c) [M5] probe:false leaves the preflight row skipped')
-  assert.deepEqual(executed, READ_ONLY_CMDS, '(c) [M5] probe:false issues exactly the six read-only commands')
+  assert.deepEqual(executed, READ_ONLY_CMDS, '(c) [M5] probe:false issues exactly the eight read-only commands')
   assert.equal(result.verdict, 'ready', '(h) [M6] probe:false all-green is `ready`')
 }
 
@@ -264,10 +286,17 @@ const RED_CASES = [
     red: 'orchestrator'
   },
   {
-    name: 'plugin list lacking ultrapowers',
-    overrides: { [CMD.plugin]: { code: 0, stdout: 'superpowers@superpowers (v1.0.0) enabled\n' } },
+    name: 'engine command code 1 — no clone or no node_modules',
+    overrides: { [CMD.engine]: { code: 1, stdout: '' } },
     red: 'golden',
-    detailIncludes: 'plugin'
+    detailIncludes: 'engine clone'
+  },
+  {
+    // code 0 with no 40-hex prefix — a code-only check fails this leg too.
+    name: 'engine command code 0 with a non-hex line',
+    overrides: { [CMD.engine]: { code: 0, stdout: 'no such directory\n' } },
+    red: 'golden',
+    detailIncludes: 'engine clone'
   },
   {
     name: 'xdist code 1',
@@ -484,8 +513,9 @@ const GREEN_SSH = fakeSshDir('green', (log) => `#!/bin/sh
 printf '%s\\n' "$*" >> '${log}'
 case "$*" in
   *whoami*) echo marcus ;;
+  *"show HEAD:"*) echo '{"name":"ultrapowers","version":"0.3.3"}' ;;
+  *"describe --tags"*) echo ${DESCRIBE} ;;
   *rev-parse*) echo ${HEX40} ;;
-  *"plugin list"*) echo "ultrapowers@ultrapowers (v0.1.0) enabled" ;;
   *"import xdist"*) : ;;
   *settings.json*) echo '{"permissions":{"defaultMode":"bypassPermissions"}}' ;;
   *"stat -c"*) printf '600\\nprefix-ok\\n' ;;

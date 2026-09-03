@@ -549,6 +549,10 @@ try {
   // shared call log so the ORDER of the two side effects is pinned, not just
   // their presence.
   const engineRepo = path.join(tmp, 'engine-repo')
+  // The ENGINE clone the driver module is resolved out of. A literal, and never
+  // created on disk: nothing in this leg may read it — `engineRepo` above is the
+  // TARGET, the tree that is checked out, spawned in and scanned for receipts.
+  const ENGINE_CLONE = '/lifecycle-engine-clone'
   {
     fs.mkdirSync(engineRepo, { recursive: true })
     writeFile(engineRepo, 'seed.txt', 'seed\n')
@@ -599,6 +603,7 @@ try {
     {
       const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'PASS' }) })
       const outcome = await invokeEngineRun({
+        engineDir: ENGINE_CLONE,
         repoDir: engineRepo,
         planPath: ENGINE_PLAN,
         runId: 'run-lifecycle',
@@ -615,8 +620,15 @@ try {
       assert.equal(rec.calls[0], `git -C ${engineRepo} checkout -q ${BASE_REF}`)
       assert.equal(rec.calls.length, 2, `expected checkout then one spawn, got: ${JSON.stringify(rec.calls)}`)
       const spawnIdx = 1
-      assert.equal(rec.calls[spawnIdx],
-        `node ${oneDriverArgs(engineRepo, ENGINE_PLAN, 'run-lifecycle').join(' ')}`)
+      assert.equal(
+        rec.calls[spawnIdx],
+        `node ${oneDriverArgs({
+          engineDir: ENGINE_CLONE,
+          repoDir: engineRepo,
+          planPath: ENGINE_PLAN,
+          runId: 'run-lifecycle',
+        }).join(' ')}`,
+      )
       assert.ok(rec.calls[spawnIdx].includes(ENGINE_PLAN), `the spawn must carry the assignment's planPath`)
       assert.ok(!rec.calls[spawnIdx].includes('undefined'))
 
@@ -638,6 +650,7 @@ try {
       const rec = makeRecorder({ engineCode: 1, onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'PASS' }) })
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',
@@ -654,6 +667,7 @@ try {
       const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'BLOCKED' }) })
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',
@@ -672,6 +686,7 @@ try {
       const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: 'NEEDS_ACK' }) })
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',
@@ -688,6 +703,7 @@ try {
       const rec = makeRecorder()
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: missing,
           runId: 'run-lifecycle',
@@ -712,6 +728,7 @@ try {
       const rec = makeRecorder({ checkoutCode: 1 })
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',
@@ -738,6 +755,7 @@ try {
       const rec = makeRecorder()
       assert.deepEqual(
         await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: engineRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',
@@ -788,6 +806,7 @@ try {
 
         const rec = makeRecorder({ onSpawn: writesArtifacts({ report: { outputTokens: 4321 }, verdict: ownVerdict }) })
         const outcome = await invokeEngineRun({
+          engineDir: ENGINE_CLONE,
           repoDir: dirtyRepo,
           planPath: ENGINE_PLAN,
           runId: 'run-lifecycle',

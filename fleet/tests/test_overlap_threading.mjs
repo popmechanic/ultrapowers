@@ -34,11 +34,15 @@ const ok = (label) => {
 
 const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
 
+// drive-one requires the two a launch names (#575); every argv below that is
+// meant to PARSE carries them.
+const NAMED = ['--target', 'o/r', '--base', '3f'.repeat(20)]
+
 // --- hop 1: the drive CLI ---------------------------------------------------
 
 {
   // (a) the flag is parsed and rides into the driveOne options.
-  const parsed = parseArgs(['p.md', 'run-1', '--overlap', 'serialize'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED, '--overlap', 'serialize'])
   assert.equal(parsed.overlap, 'serialize')
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.overlap, 'serialize')
@@ -47,7 +51,7 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
 
 {
   // (c) the other legal mode, same path.
-  const parsed = parseArgs(['p.md', 'run-1', '--overlap', 'fold'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED, '--overlap', 'fold'])
   assert.equal(parsed.overlap, 'fold')
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal(o.overlap, 'fold')
@@ -59,7 +63,7 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
   // ends. `JSON.stringify` would drop an undefined, but `driveOne`'s option
   // shape is read by `'overlap' in o`-grade checks downstream, and a knobless
   // default must stay knobless.
-  const parsed = parseArgs(['p.md', 'run-1'])
+  const parsed = parseArgs(['p.md', 'run-1', ...NAMED])
   assert.equal('overlap' in parsed, false, `parseArgs invented an overlap key: ${JSON.stringify(parsed)}`)
   const o = buildDriveOptions(parsed, { readToken: () => 't', exec: async () => ({ code: 0, stdout: '' }) })
   assert.equal('overlap' in o, false, `buildDriveOptions invented an overlap key: ${JSON.stringify(Object.keys(o))}`)
@@ -73,9 +77,9 @@ const tmpDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-overlap-'))
   // `FOLD` would be refused two hops away, on the sandbox, as an argparse
   // error nobody reads.
   for (const argv of [
-    ['p.md', 'run-1', '--overlap', 'sideways'],
-    ['p.md', 'run-1', '--overlap', 'FOLD'],
-    ['p.md', 'run-1', '--overlap'],
+    ['p.md', 'run-1', ...NAMED, '--overlap', 'sideways'],
+    ['p.md', 'run-1', ...NAMED, '--overlap', 'FOLD'],
+    ['p.md', 'run-1', ...NAMED, '--overlap'],
   ]) {
     assert.throws(
       () => parseArgs(argv),
@@ -268,15 +272,16 @@ const deliveredPayload = async (extra) => {
 // --- hop 4: the engine launch argv -------------------------------------------
 
 {
-  // (e) the fourth argument appends exactly two entries, in run-main.mjs's own
-  // flag spelling; the three-argument call is today's pinned array.
+  // (e) `overlap` appends exactly two entries, in run-main.mjs's own flag
+  // spelling; without it the five-entry array is today's pinned launch.
+  const base = { engineDir: '/engine', repoDir: '/repo', planPath: 'docs/plan.md', runId: 'run-24' }
   assert.deepEqual(
-    oneDriverArgs('/repo', 'docs/plan.md', 'run-24', 'serialize'),
-    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--overlap', 'serialize'],
+    oneDriverArgs({ ...base, overlap: 'serialize' }),
+    ['/engine/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--repo', '/repo', '--overlap', 'serialize'],
   )
   assert.deepEqual(
-    oneDriverArgs('/repo', 'docs/plan.md', 'run-24'),
-    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'],
+    oneDriverArgs(base),
+    ['/engine/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--repo', '/repo'],
   )
   ok('(e) oneDriverArgs appends --overlap <mode> only when given')
 }
@@ -288,6 +293,7 @@ const deliveredPayload = async (extra) => {
     try {
       const spawns = []
       await invokeEngineRun({
+        engineDir: '/engine',
         repoDir: tmp,
         planPath: 'docs/plan.md',
         runId: 'run-24',
@@ -301,21 +307,29 @@ const deliveredPayload = async (extra) => {
       })
       assert.equal(spawns.length, 1)
       assert.equal(spawns[0].command, 'node')
-      return spawns[0].args.map((a) => (a === tmp ? a : a.replace(tmp, '/repo')))
+      return spawns[0].args.map((a) => String(a).replace(tmp, '/repo'))
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
   }
 
   assert.deepEqual(await spawnedArgs({ overlap: 'serialize' }), [
-    '/repo/fleet/run-main.mjs',
+    '/engine/fleet/run-main.mjs',
     'docs/plan.md',
     'run-24',
+    '--repo',
+    '/repo',
     '--overlap',
     'serialize',
   ])
-  assert.deepEqual(await spawnedArgs({}), ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'])
-  ok('(f) invokeEngineRun spawns five argv entries with overlap, exactly three without')
+  assert.deepEqual(await spawnedArgs({}), [
+    '/engine/fleet/run-main.mjs',
+    'docs/plan.md',
+    'run-24',
+    '--repo',
+    '/repo',
+  ])
+  ok('(f) invokeEngineRun spawns seven argv entries with overlap, exactly five without')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

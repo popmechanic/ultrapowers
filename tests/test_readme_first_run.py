@@ -9,7 +9,8 @@ Each test names the Proof leg and the Machine clause it encodes:
   (b) [M1] ... the only-`/ultrapowers`-needs-the-fleet sentence
   (c) [M1] ... the `/ultrapowers setup` sentence
   (d) [M2] the heading occurs exactly once, inside `## Get started`
-  (e) [M3] deleting the subsection restores BASE `d6efce4` byte for byte
+  (e) [M3] the `**Where it runs.**` line survives (the digest half is retired --
+      see the note above leg (e))
   (f) [M4] no new upper-case whole-word occurrence of the three words M4 names
 
 Reading note for (a)-(c): "verbatim" is checked against the subsection with runs
@@ -18,7 +19,6 @@ source lines still counts. Every character of the sentence -- its wording, order
 punctuation, backticks and em dash -- is still pinned; only the position of a line
 break is free.
 """
-import hashlib
 import pathlib
 import re
 
@@ -28,11 +28,6 @@ README = ROOT / "README.md"
 HEADING = "### Before your first run"
 GET_STARTED = "## Get started"
 WHERE_IT_RUNS = "**Where it runs.**"
-
-# SHA-256 of README.md at BASE d6efce4da55f6a750a2632d30a70a0c635113c68
-# (blob 3d119f86388a0ade9c4af1c294d00c238d354fa5), computed before any edit
-# existed and frozen here as the literal M3 compares against.
-BASE_README_SHA256 = "69a2c8241266ab24be1f768c4a01bffcdbbe7078ffee4d7716196a3eb0f64b78"
 
 # The three sentences M1 pins, verbatim.
 SENTENCE_AUTHORING = (
@@ -111,10 +106,6 @@ def collapse(s):
     return " ".join(s.split())
 
 
-def digest(s):
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-
 # --- leg (a) [M1] ---------------------------------------------------------
 
 def test_leg_a_subsection_says_authoring_needs_no_configuration():
@@ -185,27 +176,24 @@ def test_leg_d_heading_occurs_once_inside_get_started():
 
 # --- leg (e) [M3] ---------------------------------------------------------
 
-def test_leg_e_rest_of_readme_is_byte_identical_to_base():
-    """Leg (e) [M3]: deleting the subsection yields exactly BASE d6efce4's README.md,
-    the same reconstruction over a one-character-longer copy does not, and the
-    `**Where it runs.**` line survives."""
+# The digest half of leg (e) -- deleting the subsection restores the frozen
+# sha256 of README.md at d6efce4, plus its one-character negative control -- was
+# run-54 task 3's proof that the task touched nothing else. Its span stops AT the
+# `**Where it runs.**` line, so that paragraph counted as outside the subsection
+# and was pinned to d6efce4 too. run-55 task 7 (#575) writes into that paragraph
+# by machine clause, which a frozen digest cannot survive: a digest pins a file,
+# not an edit -- the same reason the matching leg in tests/test_runbook_doctor.py
+# was discharged when #569 merged. The proof is not lost, it moved forward:
+# tests/test_runbook_one_path.py leg (g) re-freezes it at BASE 3fee7e7 over the
+# whole `### Before your first run` subsection (heading up to the next heading,
+# so the paragraph is inside it), with its own mutation control. What stays live
+# here is the half that needs no digest.
+
+
+def test_leg_e_the_where_it_runs_line_survives():
+    """Leg (e) [M3], the part a frozen digest is not needed for: a line beginning
+    `**Where it runs.**` is still in README.md."""
     text = readme_text()
-
-    reconstructed = without_subsection(text)
-    assert digest(reconstructed) == BASE_README_SHA256, (
-        "README.md outside the `### Before your first run` subsection is not "
-        "byte-identical to BASE d6efce4: reconstruction hashes to %s, expected %s"
-        % (digest(reconstructed), BASE_README_SHA256)
-    )
-
-    # Negative control: the digest check is live, not vacuous -- a single extra
-    # character outside the subsection must break it.
-    tampered = without_subsection(text + "x")
-    assert digest(tampered) != BASE_README_SHA256, (
-        "the reconstruction check is vacuous: appending a character outside the "
-        "subsection still hashes to the frozen BASE digest"
-    )
-
     assert any(
         line.startswith(WHERE_IT_RUNS) for line in text.splitlines()
     ), "README.md no longer contains a line beginning %r" % WHERE_IT_RUNS

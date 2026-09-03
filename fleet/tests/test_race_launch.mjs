@@ -1,21 +1,25 @@
 // fleet/tests/test_race_launch.mjs — #511 task 8: the launch verb.
 //
 // The claim: launch the same committed plan as K concurrent runs — distinct
-// runIds, ports, db-dirs (the #454 launch shape).
+// runIds, ports, db-dirs (the #454 launch shape) — against the target and the
+// commit the launch line NAMES.
 //
-// Two defects this suite makes inexpressible:
+// Three defects this suite makes inexpressible:
 //
 //   * a manifest written after the results are visible (the dials are
-//     pre-registered; leg (b) reads the file from inside the first drive), and
+//     pre-registered; leg (b) reads the file from inside the first drive),
 //   * a rejecting drive taking the process down while its siblings are still
 //     provisioning, orphaning their `fleet-<runId>` VMs — the defect run-47's
 //     review and all three race-48 reviews flagged (#535 item 1). Leg (f) has
 //     one attempt reject while the other two are in flight and demands the
-//     other two still resolve.
+//     other two still resolve, and
+//   * a race that discovers its own commit. #575 deleted the per-attempt
+//     checkout: the base is named as `--base`, every attempt drives out of the
+//     one engine checkout, and leg (g) refuses any git at all.
 //
-// No live drive, no network, no git: `driveOne`, the git runner, the token read
-// and the shell are all injected, and the only thing that touches the disk is
-// the manifest, in a temp evidence dir.
+// No live drive, no network, no git: `driveOne`, the token read and the shell
+// are all injected, and the only thing that touches the disk is the manifest,
+// in a temp evidence dir.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -23,7 +27,7 @@ import path from 'node:path'
 import { launchRace } from '../race-launch.mjs'
 import { DIALS, manifestPath } from '../race-manifest.mjs'
 import { allocateRuns } from '../race-allocate.mjs'
-import { DEFAULTS } from '../drive-one.mjs'
+import { DEFAULTS, REPO_DIR } from '../drive-one.mjs'
 
 let passed = 0
 const ok = (label) => {
@@ -32,43 +36,25 @@ const ok = (label) => {
 }
 
 const SHA = '3f'.repeat(20)
-const ORIGIN = 'https://github.com/x/y.git'
-const LAUNCH_DIR = '/launch'
+const TARGET = 'o/r'
 const RACE_ID = 'race-9'
 const LAUNCHED_AT = '2026-09-02T00:00:00.000Z'
-const ARGV = ['docs/plan.md', RACE_ID, '--k', '3', '--repo-dir', LAUNCH_DIR]
+const ARGV = ['docs/plan.md', RACE_ID, '--k', '3', '--target', TARGET, '--base', SHA]
 const TOKEN = 'oauth-token-value'
 
 const tempEvidenceDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'race-launch-'))
 
 // The three lanes the launcher must allocate, computed the same way the
-// launcher's own defaults compute them.
+// launcher's own defaults compute them. There is no per-attempt checkout any
+// more, so every lane's repoDir is the one engine checkout.
 const expectedRuns = () =>
   allocateRuns({
     raceId: RACE_ID,
     k: 3,
     port: DEFAULTS.port,
     dbDir: DEFAULTS.dbDir,
-    raceDir: path.join(os.tmpdir(), `fleet-race-${RACE_ID}`),
-  })
-
-// A recording git stub: every call is appended verbatim with its cwd. It knows
-// three answers — HEAD, origin, and silence for the clone verbs. `originUrlOf`
-// asks `config --get remote.origin.url`; `remote get-url origin` is the same
-// question and gets the same answer, so the stub is not pinned to one spelling.
-const recordingGit = ({ sha = SHA, origin = ORIGIN } = {}) => {
-  const calls = []
-  const git = async (args, opts = {}) => {
-    calls.push({ args: [...args], cwd: opts.cwd ?? null })
-    if (args[0] === 'rev-parse') return `${sha}\n`
-    const asksOrigin =
-      (args[0] === 'config' && args[1] === '--get' && args[2] === 'remote.origin.url') ||
-      (args[0] === 'remote' && args[1] === 'get-url' && args[2] === 'origin')
-    return asksOrigin ? `${origin}\n` : ''
-  }
-  git.calls = calls
-  return git
-}
+    raceDir: REPO_DIR,
+  }).map((run) => ({ ...run, repoDir: REPO_DIR }))
 
 // A gate that opens only once `n` callers have arrived: awaiting it inside the
 // drive stub means the stub cannot resolve until every sibling has STARTED, so
@@ -117,12 +103,17 @@ const sameValue = (a, b) => {
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+// A git runner that must never be called. Passed on every launch below: a
+// launcher that reached for git would fail the leg it was called from.
+const refusingGit = () => {
+  throw new Error('race-launch must run no git')
+}
+
 // ---------------------------------------------------------------------------
 // (a)-(e) one launch of three attempts, all fulfilling.
 // ---------------------------------------------------------------------------
 {
   const evidenceDir = tempEvidenceDir()
-  const git = recordingGit()
   const gate = gateFor(3, 'overlap')
   const driveCalls = []
   const manifestOnDiskAtCall = []
@@ -138,7 +129,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
   const { manifest, results } = await launchRace(ARGV, {
     drive,
-    git,
+    git: refusingGit,
     evidenceDir,
     now: () => LAUNCHED_AT,
     readToken: () => `${TOKEN}\n`,
@@ -151,6 +142,8 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   })
 
   // (a) the manifest on disk is exactly the schema literal, dials included.
+  //     `baseCommit` is the sha the launch line NAMED — nothing read it off a
+  //     checkout's HEAD, and nothing could.
   const onDisk = JSON.parse(fs.readFileSync(manifestPath(evidenceDir, RACE_ID), 'utf8'))
   assert.deepEqual(onDisk, {
     raceId: RACE_ID,
@@ -166,7 +159,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   assert.deepEqual(onDisk.dials, DIALS)
   assert.deepEqual(manifest.runs, expectedRuns())
   assert.equal(manifest.raceId, RACE_ID)
-  ok('(a) race-race-9.json records the stub sha, the repo-relative plan, the three lanes and the dials')
+  ok('(a) race-race-9.json records the named sha, the plan path as given, the three lanes and the dials')
 
   // (b) the manifest was on disk before the first drive was called.
   assert.deepEqual(manifestOnDiskAtCall, [true, true, true])
@@ -181,13 +174,14 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   )
   ok('(c) driveOne is called exactly 3 times and all three are in flight together')
 
-  // (d) exactly the five per-attempt keys differ; everything else is shared.
+  // (d) exactly the four per-attempt keys differ; everything else is shared —
+  //     and `repoDir` is now on the shared side, with `target` and `baseSha`.
   const keys = [...new Set(driveCalls.flatMap((opts) => Object.keys(opts)))].sort()
   const differing = keys.filter(
     (key) =>
       !(sameValue(driveCalls[0][key], driveCalls[1][key]) && sameValue(driveCalls[1][key], driveCalls[2][key])),
   )
-  assert.deepEqual(differing, ['dbDir', 'port', 'progressLog', 'repoDir', 'runId'])
+  assert.deepEqual(differing, ['dbDir', 'port', 'progressLog', 'runId'])
   for (const key of differing) {
     const values = driveCalls.map((opts) => opts[key])
     assert.equal(new Set(values).size, 3, `${key} must be pairwise distinct across the attempts`)
@@ -196,6 +190,11 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     driveCalls.map((opts) => opts.runId),
     ['race-9-a', 'race-9-b', 'race-9-c'],
   )
+  for (const opts of driveCalls) {
+    assert.equal(opts.target, TARGET)
+    assert.equal(opts.baseSha, SHA)
+    assert.equal(opts.repoDir, REPO_DIR, 'every attempt drives out of the one engine checkout')
+  }
   assert.deepEqual(
     driveCalls.map((opts) => ({ runId: opts.runId, port: opts.port, dbDir: opts.dbDir, repoDir: opts.repoDir })),
     expectedRuns(),
@@ -209,20 +208,12 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
       `progressLog must prefix its own runId, got ${JSON.stringify(progress[before])}`,
     )
   }
-  for (const run of expectedRuns()) {
-    const forRun = git.calls.filter((call) => call.cwd === run.repoDir || call.args.includes(run.repoDir))
-    assert.deepEqual(forRun, [
-      { args: ['clone', LAUNCH_DIR, run.repoDir], cwd: null },
-      { args: ['checkout', '--detach', SHA], cwd: run.repoDir },
-      { args: ['remote', 'set-url', 'origin', ORIGIN], cwd: run.repoDir },
-    ])
-  }
-  ok('(d) runId, port, dbDir, repoDir and progressLog differ per attempt; each repoDir was cloned, detached and re-pointed')
+  ok('(d) runId, port, dbDir and progressLog differ per attempt; target, baseSha and repoDir are shared')
 
   // (e) the seam's own constants ride through untouched.
   for (const opts of driveCalls) {
-    assert.equal(opts.prBase, DEFAULTS.prBase)
-    assert.equal(opts.prBase, 'main')
+    assert.equal(opts.githubTokenPath, DEFAULTS.githubTokenPath)
+    assert.equal(opts.golden, DEFAULTS.golden)
     assert.equal(opts.planPath, 'docs/plan.md')
     assert.equal(opts.evidenceDir, evidenceDir)
     assert.equal(opts.ttlMs, DEFAULTS.ttlHours * 60 * 60 * 1000)
@@ -232,7 +223,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   for (const line of [...out, ...err, ...progress]) {
     assert.ok(!line.includes(TOKEN), `a printed line leaked the token: ${JSON.stringify(line)}`)
   }
-  ok("(e) every option object carries drive-one's default prBase, built through the real buildDriveOptions")
+  ok("(e) every option object carries drive-one's own defaults, built through the real buildDriveOptions")
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +231,6 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 // ---------------------------------------------------------------------------
 {
   const evidenceDir = tempEvidenceDir()
-  const git = recordingGit()
   // Only the two survivors arrive at the gate: 'b' rejects the moment it is
   // called, while 'a' and 'c' are still in flight.
   const gate = gateFor(2, 'siblings')
@@ -262,7 +252,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
   const { results } = await launchRace(ARGV, {
     drive,
-    git,
+    git: refusingGit,
     evidenceDir,
     now: () => LAUNCHED_AT,
     readToken: () => TOKEN,
@@ -287,48 +277,20 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // ---------------------------------------------------------------------------
-// (g) an unpublishable origin is refused before anything is written or driven.
+// (g) the launcher runs no git and starts no subprocess: the commit is named,
+//     never discovered, and there is no checkout to build.
 // ---------------------------------------------------------------------------
 {
   const evidenceDir = tempEvidenceDir()
-  const git = recordingGit({ origin: '/home/exedev/repo' })
-  const driveCalls = []
-  await assert.rejects(
-    launchRace(ARGV, {
-      drive: async (opts) => {
-        driveCalls.push(opts.runId)
-        return {}
-      },
-      git,
-      evidenceDir,
-      now: () => LAUNCHED_AT,
-      readToken: () => TOKEN,
-      exec: () => {
-        throw new Error('race-launch must not shell out')
-      },
-      stdout: () => {},
-      stderr: () => {},
-    }),
-    /origin/,
-  )
-  assert.deepEqual(driveCalls, [])
-  assert.equal(fs.existsSync(manifestPath(evidenceDir, RACE_ID)), false)
-  assert.deepEqual(
-    git.calls.filter((call) => call.args[0] === 'clone'),
-    [],
-  )
-  ok('(g) a filesystem origin refuses the race naming origin — no manifest, no clone, no drive')
-}
-
-// ---------------------------------------------------------------------------
-// (h) HEAD came through the injected git, read in the launch checkout.
-// ---------------------------------------------------------------------------
-{
-  const evidenceDir = tempEvidenceDir()
-  const git = recordingGit()
-  await launchRace(ARGV, {
+  const gitCalls = []
+  const { manifest } = await launchRace(ARGV, {
     drive: async (opts) => ({ read: { runId: opts.runId } }),
-    git,
+    // Recording rather than throwing, so a launcher that DID call git fails
+    // with the argv it tried rather than with a stack from inside the stub.
+    git: (...args) => {
+      gitCalls.push(args)
+      return ''
+    },
     evidenceDir,
     now: () => LAUNCHED_AT,
     readToken: () => TOKEN,
@@ -338,13 +300,38 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
     stdout: () => {},
     stderr: () => {},
   })
-  assert.deepEqual(git.calls[0], { args: ['rev-parse', 'HEAD'], cwd: LAUNCH_DIR })
-  assert.notEqual(process.cwd(), LAUNCH_DIR)
-  assert.ok(
-    git.calls.some((call) => call.args[0] === 'rev-parse' && call.cwd === LAUNCH_DIR),
-    'HEAD must be read in the launch checkout, not this process cwd',
-  )
-  ok('(h) the raced commit is read through the injected git with cwd = the launch checkout')
+  assert.deepEqual(gitCalls, [], `launchRace ran git: ${JSON.stringify(gitCalls)}`)
+  assert.equal(manifest.baseCommit, SHA)
+  ok('(g) launchRace runs no git — the raced commit is the --base it was given')
+}
+
+// ---------------------------------------------------------------------------
+// (h) a launch that does not name its target and its base is refused, before
+//     the manifest and before any drive.
+// ---------------------------------------------------------------------------
+{
+  const evidenceDir = tempEvidenceDir()
+  const driveCalls = []
+  const deps = {
+    drive: async (opts) => {
+      driveCalls.push(opts.runId)
+      return {}
+    },
+    git: refusingGit,
+    evidenceDir,
+    now: () => LAUNCHED_AT,
+    readToken: () => TOKEN,
+    exec: () => {
+      throw new Error('race-launch must not shell out')
+    },
+    stdout: () => {},
+    stderr: () => {},
+  }
+  await assert.rejects(launchRace(['docs/plan.md', RACE_ID, '--k', '3', '--base', SHA], deps), /--target/)
+  await assert.rejects(launchRace(['docs/plan.md', RACE_ID, '--k', '3', '--target', TARGET], deps), /--base/)
+  assert.deepEqual(driveCalls, [])
+  assert.equal(fs.existsSync(manifestPath(evidenceDir, RACE_ID)), false)
+  ok('(h) a launch missing --target or --base refuses by name — no manifest, no drive')
 }
 
 console.log(`\nALL TESTS PASSED (${passed})`)

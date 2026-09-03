@@ -132,6 +132,7 @@ const boom = () => { throw new Error('no such reader on this host') }
     return { stop: () => seq.push('stop') }
   }
   const outcome = await invokeEngineRun({
+    engineDir: '/engine',
     repoDir: t,
     planPath: 'docs/plan.md',
     runId: 'run-24',
@@ -154,6 +155,7 @@ const boom = () => { throw new Error('no such reader on this host') }
   }
   await assert.rejects(
     invokeEngineRun({
+      engineDir: '/engine',
       repoDir: t,
       planPath: 'docs/plan.md',
       runId: 'run-24',
@@ -172,6 +174,7 @@ const boom = () => { throw new Error('no such reader on this host') }
 {
   const t = tmp()
   await invokeEngineRun({
+    engineDir: '/engine',
     repoDir: t,
     planPath: 'docs/plan.md',
     runId: 'run-h',

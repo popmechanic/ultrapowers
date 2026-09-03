@@ -8,11 +8,10 @@
 // last leg reads this file's own source back to keep it that way.
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { DEFAULTS } from '../drive-one.mjs'
+import { DEFAULTS, REPO_DIR } from '../drive-one.mjs'
 import {
   VERB_MODULES,
   main,
@@ -30,6 +29,13 @@ const ok = (label) => {
   passed += 1
   console.log(`ok - ${label}`)
 }
+
+// drive-one requires both, so every launch argv here that is meant to PARSE
+// carries them (#575). Where a drive runs from is no longer a flag on either
+// side of the split, which is why `--k` is all the race owns now.
+const TARGET = 'o/r'
+const SHA = '3f'.repeat(20)
+const NAMED = ['--target', TARGET, '--base', SHA]
 
 // A verb stub that records every call and returns nothing interesting.
 const recorder = () => {
@@ -53,35 +59,42 @@ const sink = () => {
 // --- (a) parseLaunchArgs: race flags split from drive-one's -----------------
 
 {
-  const p = parseLaunchArgs(['p.md', 'race-9', '--k', '3', '--port', '8190'])
+  const p = parseLaunchArgs(['p.md', 'race-9', '--k', '3', '--port', '8190', ...NAMED])
   assert.equal(p.raceId, 'race-9')
   assert.equal(p.k, 3)
   assert.equal(p.port, 8190)
   assert.equal(p.planPath, 'p.md')
   // The raceId rides in as drive-one's runId positional (#211 grammar).
   assert.equal(p.runId, 'race-9')
-  assert.equal(p.raceDir, path.join(os.tmpdir(), 'fleet-race-race-9'))
-  // Everything that is not --k/--race-dir is drive-one's and keeps its defaults.
+  // Everything that is not --k is drive-one's and keeps its defaults — including
+  // the checkout every attempt drives out of, which is not a flag at all.
   assert.equal(p.dbDir, DEFAULTS.dbDir)
   assert.equal(p.evidenceDir, DEFAULTS.evidenceDir)
+  assert.equal(p.repoDir, REPO_DIR)
+  assert.equal(p.target, TARGET)
+  assert.equal(p.baseSha, SHA)
 
-  const overridden = parseLaunchArgs(['p.md', 'race-9', '--race-dir', '/x'])
-  assert.equal(overridden.raceDir, '/x')
-  ok('(a) parseLaunchArgs yields raceId/k/raceDir beside drive-one\'s options; --race-dir overrides')
+  // `--race-dir` went with the per-attempt checkout: there is nothing left for
+  // it to name, so it is drive-one's unknown flag like any other.
+  assert.throws(
+    () => parseLaunchArgs(['p.md', 'race-9', ...NAMED, '--race-dir', '/x']),
+    (error) => error.message.includes('unknown flag --race-dir'),
+  )
+  ok('(a) parseLaunchArgs yields raceId/k beside drive-one\'s options; --race-dir is gone')
 }
 
 // --- (b) --k: default 3, integer 1..26, else a refusal naming --k -----------
 
 {
-  assert.equal(parseLaunchArgs(['p.md', 'race-9']).k, 3)
-  assert.equal(parseLaunchArgs(['p.md', 'race-9', '--k', '1']).k, 1)
-  assert.equal(parseLaunchArgs(['p.md', 'race-9', '--k', '26']).k, 26)
+  assert.equal(parseLaunchArgs(['p.md', 'race-9', ...NAMED]).k, 3)
+  assert.equal(parseLaunchArgs(['p.md', 'race-9', ...NAMED, '--k', '1']).k, 1)
+  assert.equal(parseLaunchArgs(['p.md', 'race-9', ...NAMED, '--k', '26']).k, 26)
 
   for (const argv of [
-    ['p.md', 'race-9', '--k', '0'],
-    ['p.md', 'race-9', '--k', '27'],
-    ['p.md', 'race-9', '--k', 'x'],
-    ['p.md', 'race-9', '--k'],
+    ['p.md', 'race-9', ...NAMED, '--k', '0'],
+    ['p.md', 'race-9', ...NAMED, '--k', '27'],
+    ['p.md', 'race-9', ...NAMED, '--k', 'x'],
+    ['p.md', 'race-9', ...NAMED, '--k'],
   ]) {
     let thrown = null
     try {
@@ -100,7 +113,7 @@ const sink = () => {
 
 {
   assert.throws(
-    () => parseLaunchArgs(['p.md', 'race-9', '--bogus']),
+    () => parseLaunchArgs(['p.md', 'race-9', ...NAMED, '--bogus']),
     (error) => error.message.includes('unknown flag') && error.message.includes('--bogus'),
   )
   ok('(c) an unknown flag falls through to drive-one\'s unknown-flag refusal')

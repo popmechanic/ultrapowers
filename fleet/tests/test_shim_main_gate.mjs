@@ -194,6 +194,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-gate-'))
   // (c) invokeEngineRun threads the assignment's runId to the spawn seam
   const seen = []
   const outcome = await invokeEngineRun({
+    engineDir: '/engine',
     repoDir: t12,
     planPath: 'docs/plan.md',
     runId: 'run-77',
@@ -209,6 +210,7 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-gate-'))
   // (d) no runId → refused before any checkout or spawn (fail-closed, like a missing planPath)
   const calls = []
   const refused = await invokeEngineRun({
+    engineDir: '/engine',
     repoDir: t12,
     planPath: 'docs/plan.md',
     exec: async (cmd) => {
@@ -283,16 +285,18 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
 {
   const t16 = tmp()
   // (a) the launch argv is pinned, like engineArgs: the driver module from the
-  // checkout, then plan and runId — no directive rides it (ackDecision is code).
+  // ENGINE clone, then plan and runId, then `--repo <target>` — no directive
+  // rides it (ackDecision is code).
   assert.deepEqual(
-    oneDriverArgs('/repo', 'docs/plan.md', 'run-24'),
-    ['/repo/fleet/run-main.mjs', 'docs/plan.md', 'run-24'],
+    oneDriverArgs({ engineDir: '/engine', repoDir: '/repo', planPath: 'docs/plan.md', runId: 'run-24' }),
+    ['/engine/fleet/run-main.mjs', 'docs/plan.md', 'run-24', '--repo', '/repo'],
   )
-  // (b) engine: 'one-driver' spawns node with that argv from the checkout and
-  // SKIPS the plugin install (the checkout IS the engine on this path).
+  // (b) engine: 'one-driver' spawns node with that argv from the ENGINE clone
+  // and SKIPS the plugin install (the clone IS the engine on this path).
   const cmds = []
   const spawns = []
   const outcome = await invokeEngineRun({
+    engineDir: '/engine',
     repoDir: t16,
     planPath: 'docs/plan.md',
     runId: 'run-24',
@@ -302,7 +306,10 @@ ok('GRANTED_ACK_TYPES is exactly {deferred:runtime, deferred:external}')
   })
   assert.equal(spawns.length, 1)
   assert.equal(spawns[0].command, 'node')
-  assert.deepEqual(spawns[0].args, oneDriverArgs(t16, 'docs/plan.md', 'run-24'))
+  assert.deepEqual(
+    spawns[0].args,
+    oneDriverArgs({ engineDir: '/engine', repoDir: t16, planPath: 'docs/plan.md', runId: 'run-24' }),
+  )
   assert.equal(spawns[0].cwd, t16)
   assert.equal(spawns[0].runId, 'run-24')
   assert.ok(!cmds.some((c) => /plugin/.test(c)), 'no plugin install on the one-driver path')

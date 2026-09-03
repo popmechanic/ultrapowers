@@ -28,7 +28,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { driveOne } from '../drive.mjs'
 import { SANDBOX_SSH_OPTS, sandboxGitSsh } from '../provision.mjs'
-import { BASE_REF, main as shimMain } from '../shim-main.mjs'
+import { ENGINE_REF, main as shimMain } from '../shim-main.mjs'
 import {
   GITHUB_TOKEN,
   INTEGRATION_BRANCH,
@@ -83,6 +83,10 @@ try {
         // the receipts rows. Only the engine launch is replaced.
         sandbox = shimMain({
           assignmentPath,
+          // Live these are two directories — the golden's engine clone and the
+          // pushed target. The one stand-in repo carries both refs, so it plays
+          // both ends and the stamp stays the fixture checkout's own identity.
+          engineDir: sandboxRepo,
           repoDir: sandboxRepo,
           exec: (cmd) => {
             shimCalls.push(cmd)
@@ -274,14 +278,14 @@ try {
     assert.equal(exec.delivered.wsUrl, `ws://127.0.0.1:${detail.effectivePort}/fleet`)
     assert.equal(exec.delivered.planPath, driveDefaults.planPath)
 
-    // The stamp names the code under test. `main()` stamps BEFORE the run, and
-    // the run is what moves the checkout — first onto the pushed base, then onto
-    // the engine's integration branch — so a stamp read from the checkout names
-    // whatever the golden image happened to be baked at. It is read from the
-    // pushed ref instead, which is stable across both moves.
+    // The stamp names the code that RAN. `main()` stamps BEFORE the run, and
+    // the run is what moves the target's checkout — first onto the pushed base,
+    // then onto the engine's integration branch — so a stamp read from a
+    // checkout names whatever the golden image happened to be baked at. It is
+    // read from the engine ref instead, which nothing in a run moves.
     assert.ok(
-      shimCalls.includes(`git -C ${sandboxRepo} rev-parse ${BASE_REF}`),
-      `main() must stamp from ${BASE_REF}, got: ${JSON.stringify(shimCalls)}`,
+      shimCalls.includes(`git -C ${sandboxRepo} rev-parse ${ENGINE_REF}`),
+      `main() must stamp from ${ENGINE_REF}, got: ${JSON.stringify(shimCalls)}`,
     )
     assert.ok(
       !shimCalls.some((cmd) => /rev-parse HEAD$/.test(cmd)),

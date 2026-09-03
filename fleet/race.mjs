@@ -1,24 +1,26 @@
 #!/usr/bin/env node
 // fleet/race.mjs — #511: attempt racing. One command, two verbs.
 //
-//   node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]
+//   node fleet/race.mjs launch <plan.md> <raceId> --target <owner>/<repo> --base <sha> [--k N]
 //   node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]
 //
-// Only `--k` and `--race-dir` belong to the race. Everything else on a launch
-// line belongs to drive-one and is parsed by its own `parseArgs` — which owns
-// the unknown-flag refusal and the #211 runId grammar. The raceId rides in as
-// that runId positional, so a race is named by the same rules a run is.
+// Only `--k` belongs to the race. Everything else on a launch line belongs to
+// drive-one and is parsed by its own `parseArgs` — which owns the required
+// `--target`/`--base` pair, the unknown-flag refusal and the #211 runId
+// grammar. The raceId rides in as that runId positional, so a race is named by
+// the same rules a run is. There is no per-attempt checkout to name: every
+// attempt drives out of the one engine checkout drive-one lives in.
 //
 // The two verb modules are resolved AT RUN TIME (`resolveVerb`), never by a
 // static import: an unknown or missing verb must be able to print the usage
 // line without loading either one.
-import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { DEFAULTS, parseArgs } from './drive-one.mjs'
 
 export const usage = () =>
-  'usage: node fleet/race.mjs launch <plan.md> <raceId> [--k N] [--race-dir DIR] [drive-one flags]\n' +
+  'usage: node fleet/race.mjs launch <plan.md> <raceId> --target <owner>/<repo> --base <sha> ' +
+  '[--k N] [drive-one flags]\n' +
   '       node fleet/race.mjs judge <raceId> [--force] [--evidence-dir DIR]'
 
 // The verb name -> module literal, shared with the wave-2 modules that
@@ -48,28 +50,21 @@ const parseK = (value) => {
 export const parseLaunchArgs = (argv) => {
   const rest = []
   let k = K_DEFAULT
-  let raceDir = null
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--k' || arg === '--race-dir') {
+    if (arg === '--k') {
       const value = argv[i + 1]
       if (value === undefined || value.startsWith('--')) throw needsValue(arg)
-      if (arg === '--k') k = parseK(value)
-      else raceDir = value
+      k = parseK(value)
       i += 1
       continue
     }
     rest.push(arg)
   }
-  // drive-one owns the rest: unknown flags, numeric coercion, the runId grammar.
+  // drive-one owns the rest: --target, --base, unknown flags, numeric
+  // coercion, the runId grammar.
   const parsed = parseArgs(rest)
-  const raceId = parsed.runId
-  return {
-    ...parsed,
-    raceId,
-    k,
-    raceDir: raceDir ?? path.join(os.tmpdir(), `fleet-race-${raceId}`),
-  }
+  return { ...parsed, raceId: parsed.runId, k }
 }
 
 export const parseJudgeArgs = (argv) => {

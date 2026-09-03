@@ -6,7 +6,11 @@
 // which was retyped with typos, left the checkout dirty, and hard-coded the
 // operator's constants. This is that wrapper, committed once:
 //
-//   node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ...
+//   node fleet/drive-one.mjs <plan.md> <runId> --target <owner>/<repo> --base <sha> ...
+//
+// A launch names two things and only two: the repository the run works on and
+// the commit it starts from. Where the drive itself runs from is not a flag —
+// it is the checkout this file lives in (`REPO_DIR`).
 //
 // The OAuth token is read from --token-path (default: the orchestrator's 0600
 // file) and passed to driveOne as engineEnv — never printed, never on argv.
@@ -15,6 +19,7 @@ import path from 'node:path'
 import { execFile } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { driveOne, GITHUB_TOKEN_PATH } from './drive.mjs'
+import { isSafeSha } from './shim-main.mjs'
 
 // The checkout this file lives in — the base ref is pushed from here, so the
 // CLI works from any cwd (the RUNBOOK's old "run from the repo root" rule).
@@ -34,16 +39,12 @@ export const DEFAULTS = Object.freeze({
   // Store-token lease TTL; 4h covers any single-plan drain (#279).
   ttlHours: 4,
   tokenPath: '/home/exedev/.fleet/claude-oauth-token',
+  // Not a flag: every attempt of every run drives out of the checkout the CLI
+  // lives in. The target repository is reached by fetch, not by moving here.
   repoDir: REPO_DIR,
-  // #543: the ONE checkout the run tip is pinned in. `repoDir` moves — a race
-  // attempt drives out of a throwaway clone under /tmp — so the rescue ref
-  // would land where nobody looks; this is the checkout the CLI itself lives
-  // in, which is the one an operator ssh's into.
-  pinRepoDir: REPO_DIR,
   // #368: the GitHub token the publish leg hands `git push`/`gh` as GH_TOKEN
-  // (env only), and the PR's base branch.
+  // (env only).
   githubTokenPath: GITHUB_TOKEN_PATH,
-  prBase: 'main',
   // #546: size the run sandbox to the account pool, not to the golden image's
   // build size. Spread only-when-typed, a bare launch inherited the golden's
   // 8 vCPU / 15 GB; run-51 sat an eleven-wide wave at load 2.89 on those 8
@@ -66,10 +67,11 @@ const FLAGS = Object.freeze({
   '--sandbox-cpu': 'sandboxCpu',
   '--sandbox-memory': 'sandboxMemory',
   '--token-path': 'tokenPath',
-  '--repo-dir': 'repoDir',
-  '--pin-repo-dir': 'pinRepoDir',
   '--github-token-path': 'githubTokenPath',
-  '--pr-base': 'prBase',
+  // The two a launch names. Both required, both validated here: a malformed
+  // target or a symbolic base costs a usage line instead of a paid drive.
+  '--target': 'target',
+  '--base': 'baseSha',
   // #514: the fold-versus-serialize A/B knob. Deliberately absent from
   // DEFAULTS — an unset flag must leave NO `overlap` key anywhere along
   // the chain, so the fleet default stays whatever the compiler's own
@@ -85,12 +87,15 @@ const NUMERIC = new Set(['port', 'ttlHours', 'sandboxCpu'])
 const OVERLAP_MODES = Object.freeze(['fold', 'serialize'])
 
 export const usage = () =>
-  'usage: node fleet/drive-one.mjs <plan.md> <runId> [--port N] [--db-dir DIR] ' +
-  '[--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
-  '[--sandbox-cpu 16] [--sandbox-memory 48GB] [--token-path FILE] [--repo-dir DIR] ' +
-  '[--pin-repo-dir DIR] ' +
-  '[--github-token-path FILE] [--pr-base BRANCH] [--overlap fold|serialize] [--allow-unfit-plan] ' +
-  '[--plan-from-assignment]'
+  'usage: node fleet/drive-one.mjs <plan.md> <runId> --target <owner>/<repo> --base <sha> ' +
+  '[--port N] [--db-dir DIR] [--golden VM] [--ttl-hours N] [--evidence-dir DIR] ' +
+  '[--sandbox-cpu 16] [--sandbox-memory 48GB] [--token-path FILE] ' +
+  '[--github-token-path FILE] [--overlap fold|serialize] [--allow-unfit-plan]'
+
+// `owner/repo`: exactly one slash, and each half a git-safe name. The target is
+// spelled into fetch refspecs and remote URLs downstream, so it is checked
+// before anything is provisioned rather than after.
+const TARGET_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 export const parseArgs = (argv) => {
   const positional = []
   const opts = { ...DEFAULTS, allowUnfitPlan: false }
@@ -98,15 +103,6 @@ export const parseArgs = (argv) => {
     const arg = argv[i]
     if (arg === '--allow-unfit-plan') {
       opts.allowUnfitPlan = true
-      continue
-    }
-    // #544 step 2: ship the plan (and its gate verdicts) IN the assignment
-    // instead of reading it out of the repo at the base ref. Set as the
-    // `planSource` value driveOne takes, not as a boolean, so the option names
-    // the source rather than a switch — and left UNSET when the flag is
-    // absent, so `buildDriveOptions` adds no key at all.
-    if (arg === '--plan-from-assignment') {
-      opts.planSource = 'assignment'
       continue
     }
     if (arg.startsWith('--')) {
@@ -124,6 +120,14 @@ export const parseArgs = (argv) => {
         throw new Error(
           `drive-one: ${arg} must be one of ${OVERLAP_MODES.join('|')}, got ${JSON.stringify(value)}\n${usage()}`
         )
+      } else if (key === 'target' && !TARGET_RE.test(value)) {
+        throw new Error(`drive-one: --target must be <owner>/<repo>, got ${JSON.stringify(value)}\n${usage()}`)
+      } else if (key === 'baseSha' && !isSafeSha(value)) {
+        // A symbolic base ('HEAD', a branch, an abbreviation) would let two
+        // runs claim one commit and resolve it differently.
+        throw new Error(
+          `drive-one: --base must be a hex commit sha, got ${JSON.stringify(value)}\n${usage()}`
+        )
       } else {
         opts[key] = value
       }
@@ -140,6 +144,14 @@ export const parseArgs = (argv) => {
   // the store row, so it must be a clean token and must never be reused.
   if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(runId)) {
     throw new Error(`drive-one: runId must be [A-Za-z0-9-] (got ${JSON.stringify(runId)}) — and never reuse one (#211)`)
+  }
+  // Neither has a default: a run that does not name its repository and its
+  // commit is not a run anybody can reproduce.
+  if (!opts.target) {
+    throw new Error(`drive-one: --target <owner>/<repo> is required\n${usage()}`)
+  }
+  if (!opts.baseSha) {
+    throw new Error(`drive-one: --base <sha> is required\n${usage()}`)
   }
   return { planPath, runId, ...opts }
 }
@@ -173,8 +185,10 @@ export const buildDriveOptions = (
   golden: parsed.golden,
   port: parsed.port,
   dbDir: parsed.dbDir,
-  repoDir: parsed.repoDir,
-  pinRepoDir: parsed.pinRepoDir,
+  // The two a launch names, and the one checkout every drive runs out of.
+  target: parsed.target,
+  baseSha: parsed.baseSha,
+  repoDir: parsed.repoDir ?? REPO_DIR,
   exec,
   engineEnv: { CLAUDE_CODE_OAUTH_TOKEN: String(readToken(parsed.tokenPath)).trim() },
   runId: parsed.runId,
@@ -187,10 +201,8 @@ export const buildDriveOptions = (
   sandboxCpu: parsed.sandboxCpu ?? DEFAULTS.sandboxCpu,
   sandboxMemory: parsed.sandboxMemory ?? DEFAULTS.sandboxMemory,
   ...(parsed.overlap ? { overlap: parsed.overlap } : {}),
-  ...(parsed.planSource ? { planSource: parsed.planSource } : {}),
   allowUnfitPlan: parsed.allowUnfitPlan,
   githubTokenPath: parsed.githubTokenPath,
-  prBase: parsed.prBase,
 })
 
 export const main = async (argv = process.argv.slice(2), { drive = driveOne, log = console.log, ...deps } = {}) => {
